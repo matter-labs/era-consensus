@@ -1,0 +1,31 @@
+[package]
+name = "network"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+async-trait.workspace = true
+im.workspace = true
+once_cell.workspace = true
+pin-project.workspace = true
+prometheus.workspace = true
+rand.workspace = true
+snow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+
+concurrency = { path = "../../libs/concurrency" }
+crypto = { path = "../../libs/crypto" }
+roles = { path = "../../libs/roles" }
+schema = { path = "../../libs/schema" }
+utils = { path = "../../libs/utils" }
+
+[dev-dependencies]
+futures.workspace = true
+pretty_assertions.workspace = true
+test-casing.workspace = true
+tokio.workspace = true

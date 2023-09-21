@@ -1,0 +1,13 @@
+plugin: gcp_compute
+auth_kind: application
+projects:
+  - matterlabs-gpu-sandbox
+filters:
+  - status = RUNNING
+  - labels.repo = zksync-bft
+  - labels.test_id = "${TEST_ID}" # Placeholder for envsubst
+keyed_groups:
+  - prefix: gcp
+    key: labels.purpose
+compose:
+  ansible_host: networkInterfaces[0].accessConfigs[0].natIP

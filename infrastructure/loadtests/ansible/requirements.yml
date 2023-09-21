@@ -1,0 +1,6 @@
+---
+collections:
+  - name: victoriametrics.cluster
+    version: "0.41.0"
+  - name: prometheus.prometheus
+    version: "0.6.0"

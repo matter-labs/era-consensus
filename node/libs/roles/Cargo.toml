@@ -1,0 +1,20 @@
+[package]
+name = "roles"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+bit-vec.workspace = true
+hex.workspace = true
+rand.workspace = true
+serde.workspace = true
+tracing.workspace = true
+
+concurrency = { path = "../concurrency" }
+crypto = { path = "../crypto" }
+schema = { path = "../schema" }
+utils = { path = "../utils" }

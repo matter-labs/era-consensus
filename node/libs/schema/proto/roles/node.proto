@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package roles.node;
+
+message Msg {
+  oneof t {
+    bytes session_id = 1;
+  }
+}
+
+message PublicKey {
+  optional bytes ed25519 = 1;
+}
+
+message Signature {
+  optional bytes ed25519 = 1;
+}
+
+message Signed {
+  optional Msg msg = 1;
+  optional PublicKey key = 2;
+  optional Signature sig = 3;
+}

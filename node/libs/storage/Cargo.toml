@@ -1,0 +1,20 @@
+[package]
+name = "storage"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+rand.workspace = true
+rocksdb.workspace = true
+tracing.workspace = true
+
+concurrency = { path = "../concurrency" }
+roles = { path = "../roles" }
+schema = { path = "../schema" }
+
+[dev-dependencies]
+tempfile.workspace = true
