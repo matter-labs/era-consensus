@@ -1,0 +1,85 @@
+[workspace]
+members = [
+    "libs/concurrency",
+    "actors/consensus",
+    "libs/crypto",
+    "actors/executor",
+    "actors/network",
+    "actors/sync_blocks",
+    "libs/roles",
+    "libs/schema",
+    "libs/storage",
+    "tools",
+    "libs/utils",
+]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+authors = ["The Matter Labs Team <hello@matterlabs.dev>"]
+homepage = "https://matter-labs.io/"
+license = "MIT"
+
+[workspace.dependencies]
+anyhow = "1"
+assert_matches = "1.5.0"
+async-trait = "0.1.71"
+bit-vec = "0.6"
+blst = "0.3.10"
+clap = { version = "4.3.3", features = ["derive"] }
+ed25519-dalek = { version = "2.0.0", features = ["serde", "rand_core"] }
+futures = "0.3.28"
+hex = "0.4.3"
+hyper = { version = "0.14.27", features = ["http1", "http2","server","tcp"] }
+im = "15.1.0"
+once_cell = "1.17.1"
+pin-project = "1.1.0"
+prometheus = "0.13.3"
+prost = "0.11.0"
+prost-build = "0.11.0"
+prost-reflect = { version = "0.11.0", features = ["derive","serde"] }
+prost-reflect-build = "0.11.0"
+protoc-bin-vendored = "3.0.0"
+prettyplease = "0.2.6"
+pretty_assertions = "1.4.0"
+quick-protobuf = "0.8.1"
+rand = "0.8.0"
+rocksdb = "0.21.0"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0.95"
+sha2 = "0.10.6"
+snow = "0.9.3"
+syn = "2.0.17"
+tempfile = "3"
+test-casing = "0.1.0"
+thiserror = "1.0.40"
+time = "0.3.23"
+# TODO(gprusak): only concurrency crate should depend on tokio.
+# All the other crates should depend on concurrency.
+tokio = { version = "1.28.1", features = ["full"] }
+tracing = { version = "0.1.37", features = ["attributes"] }
+tracing-subscriber = { version = "0.3.16", features = ["env-filter", "fmt"] }
+
+# Note that "bench" profile inherits from "release" profile and
+# "test" profile inherits from "dev" profile.
+# https://doc.rust-lang.org/cargo/reference/profiles.html#test
+#
+# However "test" and "bench" profiles ignore the panic setting:
+# https://doc.rust-lang.org/cargo/reference/profiles.html#panic
+#
+# It won't change until panic-abort-tests is stable:
+# https://doc.rust-lang.org/cargo/reference/unstable.html#panic-abort-tests
+[profile.dev]
+panic = 'abort'
+
+[profile.release]
+panic = 'abort'
+
+# Compile all the external dependencies with optimizations, because
+# some of them (especially the cryptographic primitives) are extremely
+# slow when compiled without optimizations, and make the tests run slow.
+# Longer compilation is OK, because the compiled dependencies are cached.
+# Enabling compilation optimizations for the crates in this repository
+# is currently considered too slow for development.
+[profile.dev.package."*"]
+opt-level = 3

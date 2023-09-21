@@ -1,0 +1,101 @@
+---
+- hosts: gcp_monitoring
+  become: true
+  tasks:
+    - name: Install Victoriametrics Agent
+      include_role:
+        name: victoriametrics.cluster.vmagent
+      vars:
+        vmagent_version: v1.93.1
+        vmagent_remote_write_host: https://vm-access.infra-staging.matterlabs.dev
+        vmagent_service_args:
+          "remoteWrite.basicAuth.username": "{{ lookup('env', 'VM_AUTH_USERNAME') }}"
+          "remoteWrite.basicAuth.password": "{{ lookup('env', 'VM_AUTH_PASSWORD') }}"
+          "remoteWrite.url": "{{ vmagent_remote_write_host }}/prometheus/api/v1/write"
+          "promscrape.config": "{{ vmagent_config_dir }}/config.yml"
+          "remoteWrite.tmpDataPath": /tmp/vmagent
+          "remoteWrite.streamAggr.config": "{{ vmagent_config_dir }}/aggregation.yml"
+          "remoteWrite.label": "test_id={{ lookup('env', 'TEST_ID') }}"
+        vmagent_scrape_config:
+          scrape_configs:
+            - job_name: zksync-bft-loadtest
+              gce_sd_configs:
+                - project: matterlabs-gpu-sandbox
+                  zone: "
+                    {%- set ips = [] %}
+                    {%- for host in groups['gcp_loadtest'] %}
+                    {{- ips.append(hostvars[host]['zone']) }}
+                    {%- endfor %}
+                    {{- ips -}}"
+                  filter: (labels.test_id = {{ lookup('env', 'TEST_ID') }}) AND (labels.purpose = loadtest)
+              relabel_configs:
+                - source_labels: [__meta_gce_instance_name]
+                  target_label: instance
+                - source_labels: [__meta_gce_public_ip]
+                  target_label: __address__
+                  replacement: "${1}:{{ lookup('env', 'METRICS_PORT') }}"
+                - source_labels:
+                  - __meta_gce_zone
+                  target_label: zone
+                  regex: '.*/zones/(.*)'
+            - job_name: zksync-bft-loadtest-node-exporter
+              gce_sd_configs:
+                - project: matterlabs-gpu-sandbox
+                  zone: "
+                    {%- set ips = [] %}
+                    {%- for host in groups['gcp_loadtest'] %}
+                    {{- ips.append(hostvars[host]['zone']) }}
+                    {%- endfor %}
+                    {{- ips -}}"
+                  filter: (labels.test_id = {{ lookup('env', 'TEST_ID') }}) AND (labels.purpose = loadtest)
+              relabel_configs:
+                - source_labels: [__meta_gce_instance_name]
+                  target_label: instance
+                - source_labels: [__meta_gce_public_ip]
+                  target_label: __address__
+                  replacement: "${1}:9100"
+                - source_labels:
+                  - __meta_gce_zone
+                  target_label: zone
+                  regex: '.*/zones/(.*)'
+- hosts: gcp_loadtest
+  become: true
+  any_errors_fatal: true
+  tasks:
+    # https://stackoverflow.com/questions/15626982/does-tcp-sliding-congestion-window-shrink-if-connection-is-idle
+    - name: Disable tcp_slow_start_after_idle
+      shell: "sysctl -w net.ipv4.tcp_slow_start_after_idle=0"
+
+    - name: Install Victoriametrics Agent
+      include_role:
+        name: prometheus.prometheus.node_exporter
+
+    - name: Upload configs to matching host
+      copy:
+        src: "../../../node/artifacts/node_configs/{{ ansible_host }}:8080/"
+        dest: "/etc/zksync-bft/"
+
+    - name: Upload executor binary
+      copy:
+        src: "../../../node/artifacts/binaries/"
+        dest: "/etc/zksync-bft/"
+
+    - name: Make executor binary executable
+      file:
+        path: /etc/zksync-bft/executor
+        mode: "0755"
+
+    - name: Start executor binary in background
+      shell: "nohup ./executor > /var/log/zksync-bft.log 2>&1 &"
+      args:
+        chdir: /etc/zksync-bft/
+      environment:
+        NO_COLOR: "1"
+
+    - name: Wait a few seconds to let executor process start
+      wait_for:
+        timeout: 5
+
+    - name: Monitor executor process for 2 hours
+      include_tasks: monitor_process.yml
+      loop: "{{ range(0, 240) }}" # 240 iterations * 30 seconds sleep = 7200 seconds = 2 hours

@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package storage;
+
+import "roles/validator.proto";
+
+message Void {}
+
+message ReplicaState {
+  optional uint64 view = 1;
+  optional roles.validator.Phase phase = 2;
+  optional roles.validator.ReplicaCommit high_vote = 3;
+  optional roles.validator.CommitQC high_qc = 4;
+  repeated roles.validator.Block blocks = 5;
+}

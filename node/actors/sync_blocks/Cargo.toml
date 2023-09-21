@@ -1,0 +1,26 @@
+[package]
+name = "sync_blocks"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+tracing.workspace = true
+
+concurrency = { path = "../../libs/concurrency" }
+roles = { path = "../../libs/roles" }
+storage = { path = "../../libs/storage" }
+utils = { path = "../../libs/utils" }
+
+network = { path = "../network" }
+
+[dev-dependencies]
+assert_matches.workspace = true
+async-trait.workspace = true
+rand.workspace = true
+tempfile.workspace = true
+test-casing.workspace = true
+tokio.workspace = true

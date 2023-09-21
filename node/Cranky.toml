@@ -1,0 +1,39 @@
+deny = [
+  "unsafe_code",
+]
+
+warn = [
+  "noop_method_call",
+  "missing_docs",
+  "unreachable_pub",
+  "unused_qualifications",
+  "unused_tuple_struct_fields",
+  
+  # restriction group
+  "clippy::create_dir",
+  "clippy::empty_structs_with_brackets",
+  "clippy::float_arithmetic",
+  "clippy::missing_docs_in_private_items",
+  "clippy::non_ascii_literal",
+  "clippy::partial_pub_fields",
+  "clippy::print_stdout",
+  "clippy::string_to_string",
+  "clippy::suspicious_xor_used_as_pow",
+  "clippy::try_err",
+  "clippy::separated_literal_suffix",
+
+  # pedantic group
+  "clippy::bool_to_int_with_if",
+  "clippy::default_trait_access",
+  "clippy::if_not_else",
+  "clippy::manual_assert",
+  "clippy::manual_instant_elapsed",
+  "clippy::manual_let_else",
+  "clippy::manual_ok_or",
+  "clippy::manual_string_new",
+  "clippy::match_bool",
+  "clippy::wildcard_imports",
+
+  # cargo group
+  "clippy::wildcard_dependencies",
+]

@@ -1,0 +1,45 @@
+# This section defines the default nextest profile. Custom profiles are layered
+# on top of the default profile.
+[profile.default]
+# Show these test statuses at the end of the run.
+#
+# The possible values this can take are:
+# * none: no output
+# * fail: show failed (including exec-failed) tests
+# * retry: show flaky and retried tests
+# * slow: show slow tests
+# * pass: show passed tests
+# * skip: show skipped tests (most useful for CI)
+# * all: all of the above
+#
+# Each value includes all the values above it; for example, "slow" includes
+# failed and retried tests.
+#
+# Can be overridden through the `--status-level` flag.
+final-status-level = "slow"
+
+# Profile for CI runs.
+[profile.ci]
+# "retries" defines the number of times a test should be retried. If set to a
+# non-zero value, tests that succeed on a subsequent attempt will be marked as
+# non-flaky. Can be overridden through the `--retries` option.
+# Examples
+# * retries = 3
+# * retries = { backoff = "fixed", count = 2, delay = "1s" }
+# * retries = { backoff = "exponential", count = 10, delay = "1s", jitter = true, max-delay = "10s" }
+retries = 2
+
+# Print out output for failing tests as soon as they fail, and also at the end
+# of the run (for easy scrollability).
+failure-output = "immediate-final"
+
+# Do not cancel the test run on the first failure.
+fail-fast = false
+
+# Print all statuses at the end of the run.
+final-status-level = "all"
+
+[[profile.ci.overrides]]
+# Force end-to-end tests to run sequentially and exclusively with all other tests
+filter = "test(/::end_to_end::/)"
+threads-required = "num-test-threads"

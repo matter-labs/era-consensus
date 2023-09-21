@@ -1,0 +1,32 @@
+use crate::{run_network, testonly};
+use concurrency::{ctx, scope};
+use tracing::Instrument as _;
+use utils::pipe;
+
+/// Test that metrics are correctly defined
+/// (won't panic during registration).
+#[tokio::test]
+async fn test_metrics() {
+    concurrency::testonly::abort_on_panic();
+    let ctx = &mut ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let nodes = testonly::Instance::new(rng, 3, 1);
+    scope::run!(ctx, |ctx, s| async {
+        for (i, n) in nodes.iter().enumerate() {
+            let (network_pipe, _) = pipe::new();
+            s.spawn_bg(
+                run_network(ctx, n.state.clone(), network_pipe)
+                    .instrument(tracing::info_span!("node", i)),
+            );
+        }
+        testonly::instant_network(ctx, nodes.iter()).await?;
+        let r = prometheus::Registry::new();
+        r.register(Box::new(nodes[0].state.collector())).unwrap();
+        let enc = prometheus::TextEncoder::new();
+        let body = enc.encode_to_string(&r.gather())?;
+        tracing::info!("stats =\n{}", body);
+        Ok(())
+    })
+    .await
+    .unwrap()
+}
