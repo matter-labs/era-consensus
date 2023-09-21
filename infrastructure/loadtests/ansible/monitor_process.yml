@@ -1,0 +1,18 @@
+- name: Check if executor process is running
+  command: pgrep -f "./executor"
+  ignore_errors: true
+  register: process_check
+
+- name: Fetch log contents if executor process is not running
+  slurp:
+    src: /var/log/zksync-bft.log
+  register: log_contents
+  when: process_check.rc != 0
+
+- name: Exit with an error and print log if executor process is not running
+  fail:
+    msg: "Executor process is not running on {{ ansible_hostname }}.\nLog contents:\n{{ (log_contents['content'] | b64decode) }}"
+  when: process_check.rc != 0
+
+- name: Sleep for 30 seconds before the next iteration
+  command: sleep 30

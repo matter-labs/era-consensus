@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package network.preface;
+
+// Every connection starts with the following preface:
+// 1. client sends Encryption msg to server.
+// 2. connection is upgraded to encrypted connection, according to the
+//    algorithm specified in the Encryption message.
+// 3. client sends Endpoint msg to server.
+
+message Encryption {
+  // Noise protocol encryption in NN variant.
+  message NoiseNN {}
+
+  // e2e encryption to apply before exchanging
+  // any further messages.
+  oneof t {
+    NoiseNN noise_nn = 1;
+  }
+}
+
+// Endpoint to connect to.
+message Endpoint {
+  message ConsensusNet {}
+  message GossipNet {}
+
+  oneof t {
+    ConsensusNet consensus_net = 1;
+    GossipNet gossip_net = 2;
+  }
+}

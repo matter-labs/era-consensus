@@ -1,0 +1,10 @@
+version: v1
+breaking:
+  use:
+    # We use FILE rule set for everything,
+    # althout only protos which we use with JSON format need that.
+    # All the other protos would be fine with WIRE rule set.
+    # TODO(gprusak): separate JSON protos from binary protos
+    #   to weaken the compatibility restrictions, in case using FILE
+    #   for everything turns out to be too annoying.
+    - FILE

@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package network.consensus;
+
+import "roles/validator.proto";
+import "std.proto";
+
+// First message exchanged in the encrypted session.
+message Handshake {
+  optional roles.validator.Signed session_id = 1;
+}
+
+message ConsensusReq {
+  optional roles.validator.Signed msg = 1;
+}
+
+message ConsensusResp {}
