@@ -1,0 +1,37 @@
+name: protobuf_compatibility
+
+on:
+  pull_request:
+    branches: [ "*" ]
+  push:
+    # protobuf compatibility is a transitive property,
+    # but it requires all the transitions to be checked.
+    # If we checked it just against the PR branches,
+    # we may end up with conflicting PRs getting merged
+    # (unless we improve our github setup).
+    # Therefore on post-merge we will execute the
+    # compatibility check as well (TODO: alerting).
+    branches: ["main"]
+
+env:
+  PROTOS_DIR: "node/libs/schema/proto"
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    steps:
+      # github.base_ref -> github.head_ref for pull_request
+      # github.event.before -> github.event.after for push
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.base_ref || github.event.before }}
+          path: before
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ github.head_ref || github.event.after }}
+          path: after
+      - uses: bufbuild/buf-setup-action@v1
+      - uses: bufbuild/buf-breaking-action@v1
+        with:
+          input: "after/$PROTOS_DIR"
+          against: "before/$PROTOS_DIR"

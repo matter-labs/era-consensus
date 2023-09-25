@@ -1,0 +1,46 @@
+name: protobuf_canonical_encoding_conformance
+
+on:
+  pull_request:
+    branches: [ "*" ]
+  push:
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUSTFLAGS: "-Dwarnings -C linker=clang -C link-arg=-fuse-ld=lld"
+  RUSTC_WRAPPER: "sccache"
+  SCCACHE_GHA_ENABLED: "true"
+  RUST_BACKTRACE: "1"
+
+jobs:
+  conformance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          path: "this"
+      - uses: actions/checkout@v3
+        with:
+          repository: "protocolbuffers/protobuf"
+          ref: "main"
+          path: "protobuf"
+      - uses: mozilla-actions/sccache-action@v0.0.3
+      - name: build test
+        run: cargo build -p schema --bin conformance_test
+        working-directory: "this/node"
+      - name: Cache Bazel
+        uses: actions/cache@v3
+        with:
+          path: |
+            ~/.cache/bazel
+          key: ${{ runner.os }}-bazel-${{ hashFiles('.bazelversion', '.bazelrc', 'WORKSPACE', 'WORKSPACE.bazel', 'MODULE.bazel') }}
+          restore-keys: |
+            ${{ runner.os }}-bazel-
+      - name: run test
+        run: >
+          bazel run //conformance:conformance_test_runner --
+          --failure_list "${{ github.workspace }}/this/node/libs/schema/src/bin/conformance_test_failure_list.txt"
+          "${{ github.workspace }}/this/node/target/debug/conformance_test"
+        working-directory: "protobuf"

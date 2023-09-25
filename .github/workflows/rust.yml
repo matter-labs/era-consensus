@@ -1,0 +1,55 @@
+name: Rust
+
+on:
+  pull_request:
+    branches: [ "*" ]
+  push:
+    # Caches of different branches are isolated, so first presubmit on a given pull request is slow.
+    # However workflows of pull request have read-only access to the cache of the target branch.
+    # To utilize that we are rerunning the workflow on the dev branch after merging.
+    branches: ["main"]
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUSTFLAGS: "-Dwarnings -C linker=clang -C link-arg=-fuse-ld=lld"
+  RUSTC_WRAPPER: "sccache"
+  SCCACHE_GHA_ENABLED: "true"
+  RUST_BACKTRACE: "1"
+
+jobs:
+  check-build-test:
+
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ./node
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: mozilla-actions/sccache-action@v0.0.3
+      - name: install nextest
+        uses: baptiste0928/cargo-install@v1
+        with:
+          crate: cargo-nextest
+      - name: install cranky
+        uses: baptiste0928/cargo-install@v1
+        with:
+          crate: cargo-cranky
+      - name: install deny
+        uses: baptiste0928/cargo-install@v1
+        with:
+          crate: cargo-deny
+      - name: deny
+        run: cargo deny check
+      - name: fmt
+        run: cargo fmt --all --check
+      - name: cranky
+        run: cargo cranky --all-targets --all-features
+      - name: build
+        run: cargo build --all-targets --locked
+      - name: test
+        run: cargo nextest run --profile ci
+
