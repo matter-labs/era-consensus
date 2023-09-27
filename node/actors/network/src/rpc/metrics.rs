@@ -26,8 +26,8 @@ impl CallLatencyType {
             method: R::METHOD,
             submethod: R::submethod(req),
             result: match result {
-                Ok(_) => CallResult::Ok,
-                Err(_) => CallResult::Err,
+                Ok(_) => ResultLabel::Ok,
+                Err(_) => ResultLabel::Err,
             },
         }
     }
@@ -35,7 +35,7 @@ impl CallLatencyType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelValue)]
 #[metrics(rename_all = "snake_case")]
-enum CallResult {
+enum ResultLabel {
     Ok,
     Err,
 }
@@ -45,14 +45,14 @@ pub(super) struct CallLatencyLabels {
     r#type: CallLatencyType,
     method: &'static str,
     submethod: &'static str,
-    result: CallResult,
+    result: ResultLabel,
 }
 
 impl CallLatencyLabels {
     pub(super) fn set_result(&mut self, result: &anyhow::Result<impl Any>) {
         self.result = match result {
-            Ok(_) => CallResult::Ok,
-            Err(_) => CallResult::Err,
+            Ok(_) => ResultLabel::Ok,
+            Err(_) => ResultLabel::Err,
         };
     }
 }

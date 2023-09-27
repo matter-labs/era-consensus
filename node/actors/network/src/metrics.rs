@@ -33,13 +33,8 @@ impl NetworkGauges {
                 gauges.gossip_outbound_connections.set(len);
                 let len = state.consensus.inbound.subscribe().borrow().current().len();
                 gauges.consensus_inbound_connections.set(len);
-                let len = state
-                    .consensus
-                    .outbound
-                    .subscribe()
-                    .borrow()
-                    .current()
-                    .len();
+                let subscriber = state.consensus.outbound.subscribe();
+                let len = subscriber.borrow().current().len();
                 gauges.consensus_outbound_connections.set(len);
                 gauges
             })
