@@ -1,6 +1,5 @@
-use crate::ConsensusInner;
-use concurrency::{ctx, time};
-use once_cell::sync::Lazy;
+use crate::{metrics, ConsensusInner};
+use concurrency::{ctx, metrics::LatencyHistogramExt as _, time};
 use roles::validator;
 use std::{
     collections::{BTreeMap, HashMap},
@@ -8,22 +7,6 @@ use std::{
 };
 use storage::Storage;
 use tracing::{instrument, warn};
-
-static PROCESSING_LATENCY: Lazy<prometheus::HistogramVec> = Lazy::new(|| {
-    prometheus::register_histogram_vec!(
-        "consensus_replica__processing_latency",
-        "latency of processing messages",
-        &["type", "result"]
-    )
-    .unwrap()
-});
-
-fn result_label<T, E>(res: &Result<T, E>) -> &str {
-    match res {
-        Ok(_) => "ok",
-        Err(_) => "err",
-    }
-}
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
 /// for validating and voting on blocks. When participating in consensus we are always a replica.
@@ -106,20 +89,19 @@ impl StateMachine {
         };
 
         let now = ctx.now();
-        let (type_, result) = match &signed_msg.msg {
+        let (label, result) = match &signed_msg.msg {
             validator::ConsensusMsg::LeaderPrepare(_) => (
-                "LeaderPrepare",
+                metrics::ConsensusMsgLabel::LeaderPrepare,
                 self.process_leader_prepare(ctx, consensus, signed_msg.cast().unwrap()),
             ),
             validator::ConsensusMsg::LeaderCommit(_) => (
-                "LeaderCommit",
+                metrics::ConsensusMsgLabel::LeaderCommit,
                 self.process_leader_commit(ctx, consensus, signed_msg.cast().unwrap()),
             ),
             _ => unreachable!(),
         };
-        PROCESSING_LATENCY
-            .with_label_values(&[type_, result_label(&result)])
-            .observe((ctx.now() - now).as_seconds_f64());
+        metrics::METRICS.replica_processing_latency[&label.with_result(&result)]
+            .observe_latency(ctx.now() - now);
         // All errors from processing inputs are recoverable, so we just log them.
         if let Err(e) = result {
             warn!("{}", e);

@@ -1,20 +1,10 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner, leader::error::Error};
+use crate::{inner::ConsensusInner, leader::error::Error, metrics};
 use anyhow::{anyhow, Context};
-use concurrency::ctx;
+use concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use network::io::{ConsensusInputMessage, Target};
-use once_cell::sync::Lazy;
 use roles::validator;
 use tracing::instrument;
-
-static COMMIT_PHASE_LATENCY: Lazy<prometheus::Histogram> = Lazy::new(|| {
-    prometheus::register_histogram!(
-        "consensus_leader__commit_phase_latency",
-        "latency of the commit phase observed by the leader",
-        prometheus::exponential_buckets(0.01, 1.5, 20).unwrap(),
-    )
-    .unwrap()
-});
 
 impl StateMachine {
     #[instrument(level = "trace", ret)]
@@ -92,7 +82,9 @@ impl StateMachine {
         // ----------- Update the state machine --------------
 
         let now = ctx.now();
-        COMMIT_PHASE_LATENCY.observe((now - self.phase_start).as_seconds_f64());
+        metrics::METRICS
+            .leader_commit_phase_latency
+            .observe_latency(now - self.phase_start);
         self.view = message.view.next();
         self.phase = validator::Phase::Prepare;
         self.phase_start = now;
