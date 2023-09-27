@@ -31,7 +31,7 @@ pub type Listener = tokio::net::TcpListener;
 /// Accepts an INBOUND listener connection.
 pub async fn accept(ctx: &ctx::Ctx, this: &mut Listener) -> ctx::OrCanceled<io::Result<Stream>> {
     Ok(ctx.wait(this.accept()).await?.map(|stream| {
-        metrics::TCP_METRICS.established_connections[&Direction::Inbound].inc();
+        metrics::TCP_METRICS.established[&Direction::Inbound].inc();
 
         // We are the only owner of the correctly opened
         // socket at this point so `set_nodelay` should
@@ -39,7 +39,7 @@ pub async fn accept(ctx: &ctx::Ctx, this: &mut Listener) -> ctx::OrCanceled<io::
         stream.0.set_nodelay(true).unwrap();
         Stream {
             stream: stream.0,
-            _active: metrics::TCP_METRICS.active_connections[&Direction::Inbound]
+            _active: metrics::TCP_METRICS.active[&Direction::Inbound]
                 .clone()
                 .into(),
         }
@@ -55,14 +55,14 @@ pub async fn connect(
         .wait(tokio::net::TcpStream::connect(addr))
         .await?
         .map(|stream| {
-            metrics::TCP_METRICS.established_connections[&Direction::Outbound].inc();
+            metrics::TCP_METRICS.established[&Direction::Outbound].inc();
             // We are the only owner of the correctly opened
             // socket at this point so `set_nodelay` should
             // always succeed.
             stream.set_nodelay(true).unwrap();
             Stream {
                 stream,
-                _active: metrics::TCP_METRICS.active_connections[&Direction::Outbound]
+                _active: metrics::TCP_METRICS.active[&Direction::Outbound]
                     .clone()
                     .into(),
             }

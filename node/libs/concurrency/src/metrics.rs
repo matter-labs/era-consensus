@@ -32,7 +32,7 @@ pub(crate) enum Direction {
 
 /// Metrics reported for TCP connections.
 #[derive(Debug, Metrics)]
-#[metrics(prefix = "concurrency_tcp")]
+#[metrics(prefix = "concurrency_net_tcp")]
 pub(crate) struct TcpMetrics {
     /// Total bytes sent over all TCP connections.
     #[metrics(unit = Unit::Bytes)]
@@ -41,9 +41,9 @@ pub(crate) struct TcpMetrics {
     #[metrics(unit = Unit::Bytes)]
     pub(crate) received: Counter,
     /// TCP connections established since the process started.
-    pub(crate) established_connections: Family<Direction, Counter>,
+    pub(crate) established: Family<Direction, Counter>,
     /// Number of currently active TCP connections.
-    pub(crate) active_connections: Family<Direction, Gauge>,
+    pub(crate) active: Family<Direction, Gauge>,
 }
 
 /// TCP metrics instance.
