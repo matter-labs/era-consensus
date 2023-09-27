@@ -14,13 +14,15 @@
 //! ```
 //! You can construct an Rpc service with multiple servers and clients
 //! at the same time (max 1 client + server per CapabilityId).
+
+use self::metrics::{CallLatencyType, CallType, RPC_METRICS};
 use crate::{frame, mux};
 use anyhow::Context as _;
-use concurrency::{ctx, io, limiter, metrics, scope};
-use once_cell::sync::Lazy;
+use concurrency::{ctx, io, limiter, metrics::GaugeGuard, scope};
 use std::{collections::BTreeMap, sync::Arc};
 
 pub(crate) mod consensus;
+mod metrics;
 pub(crate) mod ping;
 pub(crate) mod sync_blocks;
 pub(crate) mod sync_validator_addrs;
@@ -28,52 +30,6 @@ pub(crate) mod sync_validator_addrs;
 pub(crate) mod testonly;
 #[cfg(test)]
 mod tests;
-
-static RPC_LATENCY: Lazy<prometheus::HistogramVec> = Lazy::new(|| {
-    prometheus::register_histogram_vec!(
-        "network_rpc_latency",
-        "latency of Rpcs in seconds",
-        &["type", "method", "submethod", "result"],
-        prometheus::exponential_buckets(0.01, 1.5, 20).unwrap(),
-    )
-    .unwrap()
-});
-static RPC_INFLIGHT: Lazy<prometheus::IntGaugeVec> = Lazy::new(|| {
-    prometheus::register_int_gauge_vec!(
-        "network_rpc_inflight",
-        "Rpcs inflight",
-        &["type", "method", "submethod"]
-    )
-    .unwrap()
-});
-static RPC_MESSAGE_SIZE: Lazy<prometheus::HistogramVec> = Lazy::new(|| {
-    prometheus::register_histogram_vec!(
-        "network_rpc_message_size",
-        "message sizes in bytes",
-        &["type", "method", "submethod"],
-    )
-    .unwrap()
-});
-static RPC_CALL_RESERVE_LATENCY: Lazy<prometheus::HistogramVec> = Lazy::new(|| {
-    prometheus::register_histogram_vec!(
-        "network_rpc_call_reserve_latency",
-        "time that client waits for the server to prepare a stream for an RPC call",
-        &["method"],
-    )
-    .unwrap()
-});
-
-const CLIENT_SEND_RECV: &str = "client_send_recv";
-const SERVER_RECV_SEND: &str = "server_recv_send";
-const SERVER_PROCESS: &str = "server_process";
-
-const REQ_SENT: &str = "req_sent";
-const REQ_RECV: &str = "req_recv";
-const RESP_SENT: &str = "resp_sent";
-const RESP_RECV: &str = "resp_recv";
-
-const OK: &str = "ok";
-const ERR: &str = "err";
 
 const MUX_CONFIG: mux::Config = mux::Config {
     read_buffer_size: 160 * schema::kB as u64,
@@ -131,31 +87,22 @@ impl<'a, R: Rpc> ReservedCall<'a, R> {
         let mut stream = self.stream.open(ctx).await??;
         drop(self.permit);
         let res = async {
-            let _guard = metrics::GaugeGuard::from(RPC_INFLIGHT.with_label_values(&[
-                "client",
-                R::submethod(req),
-                R::METHOD,
-            ]));
+            let metric_labels = CallType::Client.to_labels::<R>(req);
+            let _guard = GaugeGuard::from(RPC_METRICS.inflight[&metric_labels].clone());
             let msg_size = frame::mux_send_proto(ctx, &mut stream.write, req).await?;
-            RPC_MESSAGE_SIZE
-                .with_label_values(&[REQ_SENT, R::METHOD, R::submethod(req)])
-                .observe(msg_size as f64);
+            RPC_METRICS.message_size[&CallType::ReqSent.to_labels::<R>(req)].observe(msg_size);
             drop(stream.write);
             frame::mux_recv_proto(ctx, &mut stream.read).await
         }
         .await;
-        let res_label = match res {
-            Ok(_) => OK,
-            Err(_) => ERR,
-        };
+
         let now = ctx.now();
-        RPC_LATENCY
-            .with_label_values(&[CLIENT_SEND_RECV, R::METHOD, R::submethod(req), res_label])
-            .observe((now - send_time).as_seconds_f64());
+        let metric_labels = CallLatencyType::ClientSendRecv.to_labels::<R>(req, &res);
+        if let Ok(latency) = (now - send_time).try_into() {
+            RPC_METRICS.latency[&metric_labels].observe(latency);
+        }
         let (res, msg_size) = res?;
-        RPC_MESSAGE_SIZE
-            .with_label_values(&[RESP_RECV, R::METHOD, R::submethod(req)])
-            .observe(msg_size as f64);
+        RPC_METRICS.message_size[&CallType::RespRecv.to_labels::<R>(req)].observe(msg_size);
         Ok(res)
     }
 }
@@ -189,9 +136,9 @@ impl<R: Rpc> Client<R> {
             .reserve(ctx)
             .await
             .context("StreamQueue::open()")?;
-        RPC_CALL_RESERVE_LATENCY
-            .with_label_values(&[R::METHOD])
-            .observe((ctx.now() - reserve_time).as_seconds_f64());
+        if let Ok(latency) = (ctx.now() - reserve_time).try_into() {
+            RPC_METRICS.call_reserve_latency[&R::METHOD].observe(latency);
+        }
         Ok(ReservedCall {
             stream,
             permit,
@@ -241,43 +188,32 @@ impl<R: Rpc, H: Handler<R>> ServerTrait for Server<R, H> {
                             let recv_time = ctx.now();
                             let (req, msg_size) =
                                 frame::mux_recv_proto::<R::Req>(ctx, &mut stream.read).await?;
-                            let submethod = R::submethod(&req);
-                            RPC_MESSAGE_SIZE
-                                .with_label_values(&[REQ_RECV, R::METHOD, submethod])
-                                .observe(msg_size as f64);
+
+                            let size_labels = CallType::ReqRecv.to_labels::<R>(&req);
+                            let resp_size_labels = CallType::RespSent.to_labels::<R>(&req);
+                            RPC_METRICS.message_size[&size_labels].observe(msg_size);
+                            let inflight_labels = CallType::Server.to_labels::<R>(&req);
                             let _guard =
-                                metrics::GaugeGuard::from(RPC_INFLIGHT.with_label_values(&[
-                                    "server",
-                                    R::METHOD,
-                                    submethod,
-                                ]));
+                                GaugeGuard::from(RPC_METRICS.inflight[&inflight_labels].clone());
+                            let mut server_process_labels =
+                                CallLatencyType::ServerProcess.to_labels::<R>(&req, &Ok(()));
+                            let mut recv_send_labels =
+                                CallLatencyType::ServerRecvSend.to_labels::<R>(&req, &Ok(()));
+
                             let process_time = ctx.now();
                             let res = self.handler.handle(ctx, req).await.context(R::METHOD);
-                            let res_label = match res {
-                                Ok(_) => OK,
-                                Err(_) => ERR,
-                            };
-                            RPC_LATENCY
-                                .with_label_values(&[
-                                    SERVER_PROCESS,
-                                    R::METHOD,
-                                    submethod,
-                                    res_label,
-                                ])
-                                .observe((ctx.now() - process_time).as_seconds_f64());
+                            if let Ok(latency) = (ctx.now() - process_time).try_into() {
+                                server_process_labels.set_result(&res);
+                                RPC_METRICS.latency[&server_process_labels].observe(latency);
+                            }
+
                             let res = frame::mux_send_proto(ctx, &mut stream.write, &res?).await;
-                            RPC_LATENCY
-                                .with_label_values(&[
-                                    SERVER_RECV_SEND,
-                                    R::METHOD,
-                                    submethod,
-                                    res_label,
-                                ])
-                                .observe((ctx.now() - recv_time).as_seconds_f64());
+                            if let Ok(latency) = (ctx.now() - recv_time).try_into() {
+                                recv_send_labels.set_result(&res);
+                                RPC_METRICS.latency[&recv_send_labels].observe(latency);
+                            }
                             let msg_size = res?;
-                            RPC_MESSAGE_SIZE
-                                .with_label_values(&[RESP_SENT, R::METHOD, submethod])
-                                .observe(msg_size as f64);
+                            RPC_METRICS.message_size[&resp_size_labels].observe(msg_size);
                             anyhow::Ok(())
                         }
                         .await;

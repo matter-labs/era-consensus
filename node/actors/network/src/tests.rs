@@ -20,11 +20,12 @@ async fn test_metrics() {
             );
         }
         testonly::instant_network(ctx, nodes.iter()).await?;
-        let r = prometheus::Registry::new();
-        r.register(Box::new(nodes[0].state.collector())).unwrap();
-        let enc = prometheus::TextEncoder::new();
-        let body = enc.encode_to_string(&r.gather())?;
-        tracing::info!("stats =\n{}", body);
+
+        let registry = vise::Registry::collect();
+        nodes[0].state().register_metrics();
+        let mut encoded_metrics = String::new();
+        registry.encode(&mut encoded_metrics, vise::Format::OpenMetricsForPrometheus)?;
+        tracing::info!("stats =\n{encoded_metrics}");
         Ok(())
     })
     .await
