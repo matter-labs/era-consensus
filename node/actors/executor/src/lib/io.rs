@@ -1,5 +1,6 @@
 //! Module to manage the communication between actors. It simply converts and forwards messages from and to each different actor.
 
+use crate::metrics;
 use concurrency::{
     ctx::{self, channel},
     scope,
@@ -8,20 +9,11 @@ use consensus::io::{
     InputMessage as ConsensusInputMessage, OutputMessage as ConsensusOutputMessage,
 };
 use network::io::{InputMessage as NetworkInputMessage, OutputMessage as NetworkOutputMessage};
-use once_cell::sync::Lazy;
 use sync_blocks::io::{
     InputMessage as SyncBlocksInputMessage, OutputMessage as SyncBlocksOutputMessage,
 };
 use tracing::instrument;
 use utils::pipe::DispatcherPipe;
-
-static FINALIZED_BLOCK_NUMBER: Lazy<prometheus::IntGauge> = Lazy::new(|| {
-    prometheus::register_int_gauge!(
-        "executor_lib_io__finalized_block_number",
-        "Number of the last finalized block observed by the node",
-    )
-    .unwrap()
-});
 
 /// The IO dispatcher, it is the main struct to handle actor messages. It simply contains a sender and a receiver for
 /// a pair of channels for each actor. This of course allows us to send and receive messages to and from each actor.
@@ -62,8 +54,11 @@ impl Dispatcher {
                             self.network_input.send(message.into())
                         }
                         ConsensusOutputMessage::FinalizedBlock(b) => {
-                            let n = FINALIZED_BLOCK_NUMBER.get();
-                            FINALIZED_BLOCK_NUMBER.set(n.max(b.block.number.0 as i64));
+                            let number_metric = &metrics::METRICS.finalized_block_number;
+                            let current_number = number_metric.get();
+                            number_metric.set(current_number.max(b.block.number.0));
+                            // This works because this is the only place where `finalized_block_number`
+                            // is modified, and there should be a single running `Dispatcher`.
                         }
                     }
                 }

@@ -2,14 +2,15 @@
 //! manages communication between the actors. It is the main executable in this workspace.
 
 use anyhow::Context as _;
-use concurrency::{ctx, metrics, scope, time};
+use concurrency::{ctx, scope, time};
 use consensus::Consensus;
 use executor::{configurator::Configs, io::Dispatcher};
 use std::{fs, io::IsTerminal as _, path::Path, sync::Arc};
 use storage::Storage;
 use tracing::{debug, info, metadata::LevelFilter};
 use tracing_subscriber::{prelude::*, Registry};
-use utils::pipe;
+use utils::{no_copy::NoCopy, pipe};
+use vise_exporter::MetricsExporter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -100,16 +101,22 @@ async fn main() -> anyhow::Result<()> {
     debug!("Starting actors in separate threads.");
     scope::run!(ctx, |ctx, s| async {
         if let Some(addr) = configs.config.metrics_server_addr {
-            s.spawn_bg(metrics::run_server(ctx, addr));
+            let addr = NoCopy::from(addr);
+            s.spawn_bg(async {
+                let addr = addr;
+                MetricsExporter::default()
+                    .with_graceful_shutdown(ctx.canceled_owned()) // FIXME: support non-'static shutdown
+                    .start(*addr)
+                    .await?;
+                Ok(())
+            });
         }
 
         s.spawn_blocking(|| dispatcher.run(ctx).context("IO Dispatcher stopped"));
 
         s.spawn(async {
             let state = network::State::new(configs.network_config(), None, None);
-            prometheus::default_registry()
-                .register(Box::new(state.collector()))
-                .unwrap();
+            state.register_metrics();
             network::run_network(ctx, state, network_actor_pipe)
                 .await
                 .context("Network stopped")

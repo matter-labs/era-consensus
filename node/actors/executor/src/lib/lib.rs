@@ -2,3 +2,4 @@
 
 pub mod configurator;
 pub mod io;
+mod metrics;
