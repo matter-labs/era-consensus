@@ -26,6 +26,10 @@ jobs:
         uses: runforesight/workflow-telemetry-action@v1
       - uses: actions/checkout@v3
       - uses: mozilla-actions/sccache-action@v0.0.3
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          default: true
       - name: install tarpaulin
         uses: baptiste0928/cargo-install@v2
         with:
