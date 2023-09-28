@@ -26,11 +26,12 @@ jobs:
         uses: runforesight/workflow-telemetry-action@v1
       - uses: actions/checkout@v3
       - uses: mozilla-actions/sccache-action@v0.0.3
-      - name: Run cargo-tarpaulin
-        uses: actions-rs/tarpaulin@v0.1
+      - name: install tarpaulin
+        uses: baptiste0928/cargo-install@v1
         with:
-          version: '0.15.0'
-          args: '--manifest-path node/Cargo.toml -- --test-threads 1'
+          crate: cargo-tarpaulin
+      - name: run tarpaulin
+        run: cargo tarpaulin --out xml --manifest-path node/Cargo.toml -- --test-threads 1
         env:
           RUST_LOG: 'network=trace,sync_blocks=trace,consensus=trace'
 
