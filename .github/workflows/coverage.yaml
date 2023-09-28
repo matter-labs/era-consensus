@@ -4,6 +4,14 @@ on:
   pull_request:
     branches: [ "*" ]
 
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUSTFLAGS: "-Dwarnings -C linker=clang -C link-arg=-fuse-ld=lld"
+  RUSTC_WRAPPER: "sccache"
+  SCCACHE_GHA_ENABLED: "true"
+  RUST_BACKTRACE: "1"
+
 jobs:
   check:
     name: Rust project
@@ -14,9 +22,9 @@ jobs:
         working-directory: ./node
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
+      - uses: actions/checkout@v3
 
+      - uses: mozilla-actions/sccache-action@v0.0.3
       - name: Install stable toolchain
         uses: actions-rs/toolchain@v1
         with:
