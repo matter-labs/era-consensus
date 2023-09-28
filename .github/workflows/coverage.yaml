@@ -31,7 +31,7 @@ jobs:
         with:
           crate: cargo-tarpaulin
       - name: run tarpaulin
-        run: cargo tarpaulin --out xml --manifest-path node/Cargo.toml -- --test-threads 1
+        run: cargo tarpaulin --out xml -- --test-threads 1
         env:
           RUST_LOG: 'network=trace,sync_blocks=trace,consensus=trace'
 
