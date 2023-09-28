@@ -1,8 +1,98 @@
 //! General-purpose network metrics.
 
 use crate::state::State;
-use std::sync::Weak;
-use vise::{Collector, Gauge, Metrics};
+use concurrency::{io, metrics::GaugeGuard, net};
+use std::{
+    pin::Pin,
+    sync::Weak,
+    task::{ready, Context, Poll},
+};
+use vise::{Collector, Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Metrics, Unit};
+
+/// Metered TCP stream.
+#[pin_project::pin_project]
+pub(crate) struct MeteredStream {
+    #[pin]
+    stream: net::tcp::Stream,
+    _active: GaugeGuard,
+}
+
+impl MeteredStream {
+    /// Creates a new stream with the specified `direction`.
+    pub(crate) fn new(stream: net::tcp::Stream, direction: Direction) -> Self {
+        TCP_METRICS.established[&direction].inc();
+        Self {
+            stream,
+            _active: GaugeGuard::from(TCP_METRICS.active[&direction].clone()),
+        }
+    }
+}
+
+impl io::AsyncRead for MeteredStream {
+    #[inline(always)]
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut io::ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        let this = self.project();
+        let before = buf.remaining();
+        let res = this.stream.poll_read(cx, buf);
+        let after = buf.remaining();
+        TCP_METRICS.received.inc_by((before - after) as u64);
+        res
+    }
+}
+
+impl io::AsyncWrite for MeteredStream {
+    #[inline(always)]
+    fn poll_write(self: Pin<&mut Self>, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
+        let this = self.project();
+        let res = ready!(this.stream.poll_write(cx, buf))?;
+        TCP_METRICS.sent.inc_by(res as u64);
+        Poll::Ready(Ok(res))
+    }
+
+    #[inline(always)]
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<()>> {
+        self.project().stream.poll_flush(cx)
+    }
+
+    #[inline(always)]
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<()>> {
+        self.project().stream.poll_shutdown(cx)
+    }
+}
+
+/// Direction of a TCP connection.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelSet, EncodeLabelValue)]
+#[metrics(label = "direction", rename_all = "snake_case")]
+pub(crate) enum Direction {
+    /// Inbound connection.
+    Inbound,
+    /// Outbound connection.
+    Outbound,
+}
+
+/// Metrics reported for TCP connections.
+#[derive(Debug, Metrics)]
+#[metrics(prefix = "concurrency_net_tcp")]
+struct TcpMetrics {
+    /// Total bytes sent over all TCP connections.
+    #[metrics(unit = Unit::Bytes)]
+    sent: Counter,
+    /// Total bytes received over all TCP connections.
+    #[metrics(unit = Unit::Bytes)]
+    received: Counter,
+    /// TCP connections established since the process started.
+    established: Family<Direction, Counter>,
+    /// Number of currently active TCP connections.
+    active: Family<Direction, Gauge>,
+}
+
+/// TCP metrics instance.
+#[vise::register]
+static TCP_METRICS: vise::Global<TcpMetrics> = vise::Global::new();
 
 /// General-purpose network metrics exposed via a collector.
 #[derive(Debug, Metrics)]
