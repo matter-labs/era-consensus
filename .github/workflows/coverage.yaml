@@ -22,15 +22,10 @@ jobs:
         working-directory: ./node
 
     steps:
+      - name: Collect Workflow Telemetry
+        uses: runforesight/workflow-telemetry-action@v1
       - uses: actions/checkout@v3
-
       - uses: mozilla-actions/sccache-action@v0.0.3
-      - name: Install stable toolchain
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-          override: true
-
       - name: Run cargo-tarpaulin
         uses: actions-rs/tarpaulin@v0.1
         with:
