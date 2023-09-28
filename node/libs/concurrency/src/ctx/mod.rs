@@ -173,9 +173,9 @@ impl Ctx {
 
     /// Awaits until the local context gets canceled. Unlike [`Self::canceled()`], the returned
     /// future has a static lifetime.
-    pub fn canceled_owned(&self) -> CtxAware<impl Future<Output = ()>> {
+    pub fn canceled_owned(&self) -> impl Future<Output = ()> {
         let canceled = self.0.canceled.clone();
-        CtxAware(async move { canceled.cancel_safe_recv().await })
+        async move { canceled.cancel_safe_recv().await }
     }
 
     /// Checks if the context is still active (i.e., not canceled).
