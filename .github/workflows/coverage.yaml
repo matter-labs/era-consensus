@@ -31,9 +31,7 @@ jobs:
           toolchain: stable
           default: true
       - name: install tarpaulin
-        uses: baptiste0928/cargo-install@v2
-        with:
-          crate: cargo-tarpaulin
+        run: cargo install cargo-tarpaulin
       - name: run tarpaulin
         run: cargo tarpaulin --out xml --engine llvm -- --test-threads 1
         env:
