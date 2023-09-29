@@ -61,3 +61,8 @@ skip = [
     # Old versions required by hyper.
     { name = "socket2", version = "=0.4.9" },
 ]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-org = { github = ["matter-labs"] }

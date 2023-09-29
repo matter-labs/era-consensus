@@ -1,8 +1,8 @@
 //! Network actor maintaining a pool of outbound and inbound connections to other nodes.
-use super::{consensus, event::Event, gossip, preface};
+use super::{consensus, event::Event, gossip, metrics, preface};
 use crate::io::{InputMessage, OutputMessage, SyncState};
 use anyhow::Context as _;
-use concurrency::{ctx, ctx::channel, metrics, net, scope, sync::watch};
+use concurrency::{ctx, ctx::channel, net, scope, sync::watch};
 use std::sync::Arc;
 use utils::pipe::ActorPipe;
 
@@ -51,6 +51,11 @@ impl State {
     pub fn cfg(&self) -> &Config {
         &self.cfg
     }
+
+    /// Registers metrics for this state.
+    pub fn register_metrics(self: &Arc<Self>) {
+        metrics::NetworkGauges::register(Arc::downgrade(self));
+    }
 }
 
 /// Runs the network actor.
@@ -97,7 +102,7 @@ pub async fn run_network(
         });
 
         // TODO(gprusak): add rate limit and inflight limit for inbound handshakes.
-        while let Ok(stream) = net::tcp::accept(ctx, &mut listener).await {
+        while let Ok(stream) = metrics::MeteredStream::listen(ctx, &mut listener).await {
             let stream = stream.context("listener.accept()")?;
             s.spawn(async {
                 let res = async {
@@ -125,32 +130,4 @@ pub async fn run_network(
         Ok(())
     })
     .await
-}
-
-impl State {
-    /// Collection of gauges monitoring the state,
-    /// which can be added to prometheus registry.
-    pub fn collector(self: &Arc<Self>) -> metrics::Collector<Self> {
-        metrics::Collector::new(Arc::downgrade(self))
-            .gauge(
-                "network_gossip_inbound_connections",
-                "number of active gossipnet inbound connections",
-                |s| s.gossip.inbound.subscribe().borrow().current().len() as f64,
-            )
-            .gauge(
-                "network_gossip_outbound_connections",
-                "number of active gossipnet outbound connections",
-                |s| s.gossip.outbound.subscribe().borrow().current().len() as f64,
-            )
-            .gauge(
-                "network_consensus_inbound_connections",
-                "number of active consensusnet inbound connections",
-                |s| s.consensus.inbound.subscribe().borrow().current().len() as f64,
-            )
-            .gauge(
-                "network_consensus_outbound_connections",
-                "number of active consensusnet outbound connections",
-                |s| s.consensus.outbound.subscribe().borrow().current().len() as f64,
-            )
-    }
 }

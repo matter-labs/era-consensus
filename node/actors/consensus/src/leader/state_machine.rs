@@ -1,28 +1,11 @@
-use crate::ConsensusInner;
-use concurrency::{ctx, time};
-use once_cell::sync::Lazy;
+use crate::{metrics, ConsensusInner};
+use concurrency::{ctx, metrics::LatencyHistogramExt as _, time};
 use roles::validator;
 use std::{
     collections::{BTreeMap, HashMap},
     unreachable,
 };
 use tracing::{instrument, warn};
-
-static PROCESSING_LATENCY: Lazy<prometheus::HistogramVec> = Lazy::new(|| {
-    prometheus::register_histogram_vec!(
-        "consensus_leader__processing_latency",
-        "latency of processing messages",
-        &["type", "result"]
-    )
-    .unwrap()
-});
-
-fn result_label<T, E>(res: &Result<T, E>) -> &str {
-    match res {
-        Ok(_) => "ok",
-        Err(_) => "err",
-    }
-}
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
@@ -76,20 +59,19 @@ impl StateMachine {
         input: validator::Signed<validator::ConsensusMsg>,
     ) {
         let now = ctx.now();
-        let (type_, result) = match &input.msg {
+        let (label, result) = match &input.msg {
             validator::ConsensusMsg::ReplicaPrepare(_) => (
-                "ReplicaPrepare",
+                metrics::ConsensusMsgLabel::ReplicaPrepare,
                 self.process_replica_prepare(ctx, consensus, input.cast().unwrap()),
             ),
             validator::ConsensusMsg::ReplicaCommit(_) => (
-                "ReplicaCommit",
+                metrics::ConsensusMsgLabel::ReplicaCommit,
                 self.process_replica_commit(ctx, consensus, input.cast().unwrap()),
             ),
             _ => unreachable!(),
         };
-        PROCESSING_LATENCY
-            .with_label_values(&[type_, result_label(&result)])
-            .observe((ctx.now() - now).as_seconds_f64());
+        metrics::METRICS.leader_processing_latency[&label.with_result(&result)]
+            .observe_latency(ctx.now() - now);
         if let Err(e) = result {
             warn!("{}", e);
         }

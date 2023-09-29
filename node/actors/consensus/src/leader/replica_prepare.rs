@@ -1,21 +1,12 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner, leader::error::Error};
+use crate::{inner::ConsensusInner, leader::error::Error, metrics};
 use anyhow::{anyhow, Context as _};
 use concurrency::ctx;
 use network::io::{ConsensusInputMessage, Target};
-use once_cell::sync::Lazy;
 use rand::Rng;
 use roles::validator;
 use std::collections::HashMap;
 use tracing::instrument;
-
-static PROPOSAL_PAYLOAD_SIZE: Lazy<prometheus::Histogram> = Lazy::new(|| {
-    prometheus::register_histogram!(
-        "consensus_leader__proposal_payload_size",
-        "size of the proposed payload in bytes",
-    )
-    .unwrap()
-});
 
 impl StateMachine {
     #[instrument(level = "trace", ret)]
@@ -170,7 +161,9 @@ impl StateMachine {
                     number: highest_qc.message.proposal_block_number.next(),
                     payload,
                 };
-                PROPOSAL_PAYLOAD_SIZE.observe(block.payload.len() as f64);
+                metrics::METRICS
+                    .leader_proposal_payload_size
+                    .observe(block.payload.len());
 
                 let vote = validator::ReplicaCommit {
                     view: message.view,

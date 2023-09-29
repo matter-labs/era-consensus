@@ -27,7 +27,7 @@ jobs:
         uses: actions-rs/tarpaulin@v0.1
         with:
           version: '0.15.0'
-          args: '--manifest-path /home/runner/work/zksync-bft/zksync-bft/node/Cargo.toml -- --test-threads 1'
+          args: '--manifest-path node/Cargo.toml -- --test-threads 1'
         env:
           RUST_LOG: 'network=trace,sync_blocks=trace,consensus=trace'
 

@@ -393,7 +393,6 @@ dependencies = [
  "hyper",
  "once_cell",
  "pin-project",
- "prometheus",
  "rand",
  "sha2",
  "thiserror",
@@ -401,6 +400,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "vise",
 ]
 
 [[package]]
@@ -412,7 +412,6 @@ dependencies = [
  "crypto",
  "network",
  "once_cell",
- "prometheus",
  "rand",
  "roles",
  "schema",
@@ -422,6 +421,7 @@ dependencies = [
  "tokio",
  "tracing",
  "utils",
+ "vise",
 ]
 
 [[package]]
@@ -533,6 +533,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "dtoa"
+version = "1.0.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dcbb2bf8e87535c23f7a8a321e364ce21462d0ff10cb6407820e8e96dfff6653"
+
+[[package]]
 name = "ed25519"
 version = "2.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -562,6 +568,15 @@ name = "either"
 version = "1.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a26ae43d7bcc3b814de94796a5e736d4029efb0ee900c12e2d54c993ad1a1e07"
+
+[[package]]
+name = "elsa"
+version = "1.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "714f766f3556b44e7e4776ad133fcc3445a489517c25c704ace411bb14790194"
+dependencies = [
+ "stable_deref_trait",
+]
 
 [[package]]
 name = "errno"
@@ -595,7 +610,6 @@ dependencies = [
  "hex",
  "network",
  "once_cell",
- "prometheus",
  "rand",
  "roles",
  "schema",
@@ -607,6 +621,8 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "utils",
+ "vise",
+ "vise-exporter",
 ]
 
 [[package]]
@@ -981,6 +997,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "linkme"
+version = "0.3.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f948366ad5bb46b5514ba7a7a80643726eef08b06632592699676748c8bc33b"
+dependencies = [
+ "linkme-impl",
+]
+
+[[package]]
+name = "linkme-impl"
+version = "0.3.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bc28438cad73dcc90ff3466fc329a9252b1b8ba668eb0d5668ba97088cf4eef0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.29",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.4.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1072,7 +1108,6 @@ dependencies = [
  "once_cell",
  "pin-project",
  "pretty_assertions",
- "prometheus",
  "rand",
  "roles",
  "schema",
@@ -1082,6 +1117,7 @@ dependencies = [
  "tokio",
  "tracing",
  "utils",
+ "vise",
 ]
 
 [[package]]
@@ -1321,18 +1357,26 @@ dependencies = [
 ]
 
 [[package]]
-name = "prometheus"
-version = "0.13.3"
+name = "prometheus-client"
+version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "449811d15fbdf5ceb5c1144416066429cf82316e2ec8ce0c1f6f8a02e7bbcf8c"
+checksum = "3c99afa9a01501019ac3a14d71d9f94050346f55ca471ce90c799a15c58f61e2"
 dependencies = [
- "cfg-if",
- "fnv",
- "lazy_static",
- "memchr",
+ "dtoa",
+ "itoa",
  "parking_lot",
- "protobuf",
- "thiserror",
+ "prometheus-client-derive-encode",
+]
+
+[[package]]
+name = "prometheus-client-derive-encode"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "440f724eba9f6996b75d63681b0a92b06947f1457076d503a4d2e2c8f56442b8"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.29",
 ]
 
 [[package]]
@@ -1424,12 +1468,6 @@ checksum = "213622a1460818959ac1181aaeb2dc9c7f63df720db7d788b3e24eacd1983e13"
 dependencies = [
  "prost",
 ]
-
-[[package]]
-name = "protobuf"
-version = "2.28.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "106dd99e98437432fed6519dedecfade6a06a73bb7b2a1e019fdd2bee5778d94"
 
 [[package]]
 name = "protoc-bin-vendored"
@@ -1844,6 +1882,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "stable_deref_trait"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
+
+[[package]]
 name = "storage"
 version = "0.1.0"
 dependencies = [
@@ -2186,6 +2230,40 @@ name = "version_check"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
+
+[[package]]
+name = "vise"
+version = "0.1.0"
+source = "git+https://github.com/matter-labs/vise.git?rev=8322ddc4bb115a7d11127626730b94f93b804cbe#8322ddc4bb115a7d11127626730b94f93b804cbe"
+dependencies = [
+ "elsa",
+ "linkme",
+ "once_cell",
+ "prometheus-client",
+ "vise-macros",
+]
+
+[[package]]
+name = "vise-exporter"
+version = "0.1.0"
+source = "git+https://github.com/matter-labs/vise.git?rev=8322ddc4bb115a7d11127626730b94f93b804cbe#8322ddc4bb115a7d11127626730b94f93b804cbe"
+dependencies = [
+ "hyper",
+ "once_cell",
+ "tokio",
+ "tracing",
+ "vise",
+]
+
+[[package]]
+name = "vise-macros"
+version = "0.1.0"
+source = "git+https://github.com/matter-labs/vise.git?rev=8322ddc4bb115a7d11127626730b94f93b804cbe#8322ddc4bb115a7d11127626730b94f93b804cbe"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.29",
+]
 
 [[package]]
 name = "want"

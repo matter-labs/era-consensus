@@ -12,11 +12,11 @@ async-trait.workspace = true
 im.workspace = true
 once_cell.workspace = true
 pin-project.workspace = true
-prometheus.workspace = true
 rand.workspace = true
 snow.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
+vise.workspace = true
 
 concurrency = { path = "../../libs/concurrency" }
 crypto = { path = "../../libs/crypto" }
