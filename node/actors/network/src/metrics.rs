@@ -1,8 +1,9 @@
 //! General-purpose network metrics.
 
 use crate::state::State;
-use concurrency::{io, metrics::GaugeGuard, net};
+use concurrency::{ctx, io, metrics::GaugeGuard, net};
 use std::{
+    net::SocketAddr,
     pin::Pin,
     sync::Weak,
     task::{ready, Context, Poll},
@@ -18,8 +19,33 @@ pub(crate) struct MeteredStream {
 }
 
 impl MeteredStream {
-    /// Creates a new stream with the specified `direction`.
-    pub(crate) fn new(stream: net::tcp::Stream, direction: Direction) -> Self {
+    /// Opens a TCP connection to a remote host and returns a metered stream.
+    pub(crate) async fn connect(
+        ctx: &ctx::Ctx,
+        addr: SocketAddr,
+    ) -> ctx::OrCanceled<io::Result<Self>> {
+        let io_result = net::tcp::connect(ctx, addr).await?;
+        Ok(io_result.map(|stream| Self::new(stream, Direction::Outbound)))
+    }
+
+    /// Accepts an inbound connection and returns a metered stream.
+    pub(crate) async fn listen(
+        ctx: &ctx::Ctx,
+        listener: &mut net::tcp::Listener,
+    ) -> ctx::OrCanceled<io::Result<Self>> {
+        let io_result = net::tcp::accept(ctx, listener).await?;
+        Ok(io_result.map(|stream| Self::new(stream, Direction::Inbound)))
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn test_pipe(ctx: &ctx::Ctx) -> (Self, Self) {
+        let (outbound_stream, inbound_stream) = net::tcp::testonly::pipe(ctx).await;
+        let outbound_stream = Self::new(outbound_stream, Direction::Outbound);
+        let inbound_stream = Self::new(inbound_stream, Direction::Inbound);
+        (outbound_stream, inbound_stream)
+    }
+
+    fn new(stream: net::tcp::Stream, direction: Direction) -> Self {
         TCP_METRICS.established[&direction].inc();
         Self {
             stream,
@@ -67,7 +93,7 @@ impl io::AsyncWrite for MeteredStream {
 /// Direction of a TCP connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelSet, EncodeLabelValue)]
 #[metrics(label = "direction", rename_all = "snake_case")]
-pub(crate) enum Direction {
+enum Direction {
     /// Inbound connection.
     Inbound,
     /// Outbound connection.

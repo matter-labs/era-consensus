@@ -8,7 +8,7 @@
 //! Hence, the preface protocol is used to enable encryption
 //! and multiplex between mutliple endpoints available on the same TCP port.
 use crate::{frame, metrics, noise};
-use concurrency::{ctx, net, time};
+use concurrency::{ctx, time};
 use schema::{proto::network::preface as proto, required, ProtoFmt};
 
 /// Timeout on executing the preface protocol.
@@ -79,8 +79,7 @@ pub(crate) async fn connect(
     endpoint: Endpoint,
 ) -> anyhow::Result<noise::Stream> {
     let ctx = &ctx.with_timeout(TIMEOUT);
-    let stream = net::tcp::connect(ctx, addr).await??;
-    let mut stream = metrics::MeteredStream::new(stream, metrics::Direction::Outbound);
+    let mut stream = metrics::MeteredStream::connect(ctx, addr).await??;
     frame::send_proto(ctx, &mut stream, &Encryption::NoiseNN).await?;
     let mut stream = noise::Stream::client_handshake(ctx, stream).await?;
     frame::send_proto(ctx, &mut stream, &endpoint).await?;
@@ -90,9 +89,8 @@ pub(crate) async fn connect(
 /// Performs a server-side preface protocol.
 pub(crate) async fn accept(
     ctx: &ctx::Ctx,
-    stream: net::tcp::Stream,
+    mut stream: metrics::MeteredStream,
 ) -> anyhow::Result<(noise::Stream, Endpoint)> {
-    let mut stream = metrics::MeteredStream::new(stream, metrics::Direction::Inbound);
     let ctx = &ctx.with_timeout(TIMEOUT);
     let _: Encryption = frame::recv_proto(ctx, &mut stream).await?;
     let mut stream = noise::Stream::server_handshake(ctx, stream).await?;

@@ -102,7 +102,7 @@ pub async fn run_network(
         });
 
         // TODO(gprusak): add rate limit and inflight limit for inbound handshakes.
-        while let Ok(stream) = net::tcp::accept(ctx, &mut listener).await {
+        while let Ok(stream) = metrics::MeteredStream::listen(ctx, &mut listener).await {
             let stream = stream.context("listener.accept()")?;
             s.spawn(async {
                 let res = async {
