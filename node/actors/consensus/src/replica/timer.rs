@@ -1,15 +1,7 @@
 use super::StateMachine;
-use concurrency::{ctx, time};
-use once_cell::sync::Lazy;
+use crate::metrics;
+use concurrency::{ctx, metrics::LatencyGaugeExt as _, time};
 use tracing::instrument;
-
-static VIEW_TIMEOUT: Lazy<prometheus::Gauge> = Lazy::new(|| {
-    prometheus::register_gauge!(
-        "consensus_replica__view_timeout",
-        "currently set timeout after which replica will proceed to the next view",
-    )
-    .unwrap()
-});
 
 impl StateMachine {
     /// The base duration of the timeout.
@@ -21,7 +13,7 @@ impl StateMachine {
     pub(crate) fn reset_timer(&mut self, ctx: &ctx::Ctx) {
         let timeout =
             Self::BASE_DURATION * 2u32.pow((self.view.0 - self.high_qc.message.view.0) as u32);
-        VIEW_TIMEOUT.set(timeout.as_seconds_f64());
+        metrics::METRICS.replica_view_timeout.set_latency(timeout);
         self.timeout_deadline = time::Deadline::Finite(ctx.now() + timeout);
     }
 }

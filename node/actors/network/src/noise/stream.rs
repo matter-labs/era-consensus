@@ -1,9 +1,9 @@
 //! `tokio::io` stream using Noise encryption.
 use super::bytes;
+use crate::metrics::MeteredStream;
 use concurrency::{
     ctx, io,
     io::{AsyncRead as _, AsyncWrite as _},
-    net,
 };
 use crypto::{sha256::Sha256, ByteFmt};
 use std::{
@@ -29,65 +29,6 @@ fn params() -> snow::params::NoiseParams {
         cipher: snow::params::CipherChoice::ChaChaPoly,
         // We use SHA256 for hashing used in the noise protocol.
         hash: snow::params::HashChoice::SHA256,
-    }
-}
-
-impl Stream {
-    /// Performs a server-side noise handshake and returns the encrypted stream.
-    pub(crate) async fn server_handshake(
-        ctx: &ctx::Ctx,
-        s: net::tcp::Stream,
-    ) -> anyhow::Result<Stream> {
-        Self::handshake(ctx, s, snow::Builder::new(params()).build_responder()?).await
-    }
-
-    /// Performs a client-side noise handshake and returns the encrypted stream.
-    pub(crate) async fn client_handshake(
-        ctx: &ctx::Ctx,
-        s: net::tcp::Stream,
-    ) -> anyhow::Result<Stream> {
-        Self::handshake(ctx, s, snow::Builder::new(params()).build_initiator()?).await
-    }
-
-    /// Performs the noise handshake given the HandshakeState.
-    async fn handshake(
-        ctx: &ctx::Ctx,
-        mut stream: net::tcp::Stream,
-        mut hs: snow::HandshakeState,
-    ) -> anyhow::Result<Stream> {
-        let mut buf = vec![0; 65536];
-        let mut payload = vec![];
-        loop {
-            if hs.is_handshake_finished() {
-                return Ok(Stream {
-                    id: ByteFmt::decode(hs.get_handshake_hash()).unwrap(),
-                    inner: stream,
-                    noise: hs.into_transport_mode()?,
-                    read_buf: Box::default(),
-                    write_buf: Box::default(),
-                });
-            }
-            if hs.is_my_turn() {
-                let n = hs.write_message(&payload, &mut buf)?;
-                // TODO(gprusak): writing/reading length field and the frame content could be
-                // done in a single syscall.
-                io::write_all(ctx, &mut stream, &u16::to_le_bytes(n as u16)).await??;
-                io::write_all(ctx, &mut stream, &buf[..n]).await??;
-                io::flush(ctx, &mut stream).await??;
-            } else {
-                let mut msg_size = [0u8, 2];
-                io::read_exact(ctx, &mut stream, &mut msg_size).await??;
-                let n = u16::from_le_bytes(msg_size) as usize;
-                io::read_exact(ctx, &mut stream, &mut buf[..n]).await??;
-                hs.read_message(&buf[..n], &mut payload)?;
-            }
-        }
-    }
-
-    /// Returns the noise session id.
-    /// See `Stream::id`.
-    pub(crate) fn id(&self) -> Sha256 {
-        self.id
     }
 }
 
@@ -130,16 +71,14 @@ impl Default for Buffer {
 
 /// Encrypted stream.
 /// It implements tokio::io::AsyncRead/AsyncWrite.
-#[pin_project::pin_project(project=StreamProject)]
-pub(crate) struct Stream {
+#[pin_project::pin_project(project = StreamProject)]
+pub(crate) struct Stream<S = MeteredStream> {
     /// Hash of the handshake messages.
     /// Uniquely identifies the noise session.
     id: Sha256,
     /// Underlying TCP stream.
-    /// TODO(gprusak): we can generalize noise::Stream to wrap an arbitrary
-    /// stream if needed.
     #[pin]
-    inner: net::tcp::Stream,
+    inner: S,
     /// Noise protocol state, used to encrypt/decrypt frames.
     noise: snow::TransportState,
     /// Buffers used for the read half of the stream.
@@ -148,12 +87,66 @@ pub(crate) struct Stream {
     write_buf: Box<Buffer>,
 }
 
-impl Stream {
+impl<S> Stream<S>
+where
+    S: io::AsyncRead + io::AsyncWrite + Unpin,
+{
+    /// Performs a server-side noise handshake and returns the encrypted stream.
+    pub(crate) async fn server_handshake(ctx: &ctx::Ctx, stream: S) -> anyhow::Result<Self> {
+        Self::handshake(ctx, stream, snow::Builder::new(params()).build_responder()?).await
+    }
+
+    /// Performs a client-side noise handshake and returns the encrypted stream.
+    pub(crate) async fn client_handshake(ctx: &ctx::Ctx, stream: S) -> anyhow::Result<Self> {
+        Self::handshake(ctx, stream, snow::Builder::new(params()).build_initiator()?).await
+    }
+
+    /// Performs the noise handshake given the HandshakeState.
+    async fn handshake(
+        ctx: &ctx::Ctx,
+        mut stream: S,
+        mut hs: snow::HandshakeState,
+    ) -> anyhow::Result<Self> {
+        let mut buf = vec![0; 65536];
+        let mut payload = vec![];
+        loop {
+            if hs.is_handshake_finished() {
+                return Ok(Self {
+                    id: ByteFmt::decode(hs.get_handshake_hash()).unwrap(),
+                    inner: stream,
+                    noise: hs.into_transport_mode()?,
+                    read_buf: Box::default(),
+                    write_buf: Box::default(),
+                });
+            }
+            if hs.is_my_turn() {
+                let n = hs.write_message(&payload, &mut buf)?;
+                // TODO(gprusak): writing/reading length field and the frame content could be
+                // done in a single syscall.
+                io::write_all(ctx, &mut stream, &u16::to_le_bytes(n as u16)).await??;
+                io::write_all(ctx, &mut stream, &buf[..n]).await??;
+                io::flush(ctx, &mut stream).await??;
+            } else {
+                let mut msg_size = [0u8, 2];
+                io::read_exact(ctx, &mut stream, &mut msg_size).await??;
+                let n = u16::from_le_bytes(msg_size) as usize;
+                io::read_exact(ctx, &mut stream, &mut buf[..n]).await??;
+                hs.read_message(&buf[..n], &mut payload)?;
+            }
+        }
+    }
+
+    /// Returns the noise session id.
+    /// See `Stream::id`.
+    pub(crate) fn id(&self) -> Sha256 {
+        self.id
+    }
+
     /// Wait until a frame is fully loaded.
     /// Returns the size of the frame.
     /// Returns None in case EOF is reached before the frame is loaded.
     fn poll_read_frame(
-        this: &mut StreamProject<'_>,
+        this: &mut StreamProject<'_, S>,
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<Option<usize>>> {
         // Fetch frame until complete.
@@ -179,7 +172,7 @@ impl Stream {
 
     /// Wait until payload is nonempty.
     fn poll_read_payload(
-        this: &mut StreamProject<'_>,
+        this: &mut StreamProject<'_, S>,
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<()>> {
         if this.read_buf.payload.len() > 0 {
@@ -203,7 +196,10 @@ impl Stream {
     }
 }
 
-impl io::AsyncRead for Stream {
+impl<S> io::AsyncRead for Stream<S>
+where
+    S: io::AsyncRead + io::AsyncWrite + Unpin,
+{
     /// From tokio::io::AsyncRead:
     /// * The amount of data read can be determined by the increase
     ///   in the length of the slice returned by ReadBuf::filled.
@@ -227,9 +223,15 @@ impl io::AsyncRead for Stream {
     }
 }
 
-impl Stream {
+impl<S> Stream<S>
+where
+    S: io::AsyncRead + io::AsyncWrite + Unpin,
+{
     /// poll_flush_frame will either flush this.write_buf.frame, or return an error.
-    fn poll_flush_frame(this: &mut StreamProject, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_flush_frame(
+        this: &mut StreamProject<'_, S>,
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<()>> {
         while this.write_buf.frame.len() > 0 {
             let n =
                 ready!(Pin::new(&mut this.inner).poll_write(cx, this.write_buf.frame.as_slice()))?;
@@ -242,7 +244,10 @@ impl Stream {
     }
 
     /// poll_flush_payload will either flush this.write_buf.payload, or return an error.
-    fn poll_flush_payload(this: &mut StreamProject, cx: &mut Context<'_>) -> Poll<io::Result<()>> {
+    fn poll_flush_payload(
+        this: &mut StreamProject<'_, S>,
+        cx: &mut Context<'_>,
+    ) -> Poll<io::Result<()>> {
         if this.write_buf.payload.len() == 0 {
             return Poll::Ready(Ok(()));
         }
@@ -266,7 +271,10 @@ impl Stream {
     }
 }
 
-impl io::AsyncWrite for Stream {
+impl<S> io::AsyncWrite for Stream<S>
+where
+    S: io::AsyncRead + io::AsyncWrite + Unpin,
+{
     /// from futures::io::AsyncWrite:
     /// * poll_write must try to make progress by flushing if needed to become writable
     /// from std::io::Write:

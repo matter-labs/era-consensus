@@ -1,12 +1,17 @@
-use crate::noise;
-use concurrency::{ctx, net, scope};
+use crate::{metrics, noise};
+use concurrency::{ctx, scope};
 
 pub(crate) async fn pipe(ctx: &ctx::Ctx) -> (noise::Stream, noise::Stream) {
     scope::run!(ctx, |ctx, s| async {
-        let (s1, s2) = net::tcp::testonly::pipe(ctx).await;
-        let s1 = s.spawn(async { noise::Stream::client_handshake(ctx, s1).await });
-        let s2 = s.spawn(async { noise::Stream::server_handshake(ctx, s2).await });
-        Ok((s1.join(ctx).await?, s2.join(ctx).await?))
+        let (outbound_stream, inbound_stream) = metrics::MeteredStream::test_pipe(ctx).await;
+        let outbound_task =
+            s.spawn(async { noise::Stream::client_handshake(ctx, outbound_stream).await });
+        let inbound_task =
+            s.spawn(async { noise::Stream::server_handshake(ctx, inbound_stream).await });
+        Ok((
+            outbound_task.join(ctx).await?,
+            inbound_task.join(ctx).await?,
+        ))
     })
     .await
     .unwrap()

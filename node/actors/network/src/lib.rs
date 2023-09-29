@@ -9,6 +9,7 @@ mod event;
 mod frame;
 pub mod gossip;
 pub mod io;
+mod metrics;
 mod mux;
 mod noise;
 mod pool;
