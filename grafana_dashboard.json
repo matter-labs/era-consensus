@@ -352,7 +352,7 @@
             "uid": "ebcc7fad-20b5-44f0-a8ab-7ba2195ef2c0"
           },
           "editorMode": "code",
-          "expr": "quantile(0.1, rate(concurrency_net_tcp_sent_bytes{test_id=\"$test_id\"}[1m]))",
+          "expr": "quantile(0.1, rate(network_tcp_sent_bytes{test_id=\"$test_id\"}[1m]))",
           "hide": false,
           "legendFormat": "total, 10th percentile",
           "range": true,
@@ -364,7 +364,7 @@
             "uid": "ebcc7fad-20b5-44f0-a8ab-7ba2195ef2c0"
           },
           "editorMode": "code",
-          "expr": "quantile(0.5, rate(concurrency_net_tcp_sent_bytes{test_id=\"$test_id\"}[1m]))",
+          "expr": "quantile(0.5, rate(network_tcp_sent_bytes{test_id=\"$test_id\"}[1m]))",
           "hide": false,
           "legendFormat": "total, 50th percentile",
           "range": true,
@@ -376,7 +376,7 @@
             "uid": "ebcc7fad-20b5-44f0-a8ab-7ba2195ef2c0"
           },
           "editorMode": "code",
-          "expr": "quantile(0.9, rate(concurrency_net_tcp_sent_bytes{test_id=\"$test_id\"}[1m]))",
+          "expr": "quantile(0.9, rate(network_tcp_sent_bytes{test_id=\"$test_id\"}[1m]))",
           "hide": false,
           "legendFormat": "total, 90th percentile",
           "range": true,
@@ -388,7 +388,7 @@
             "uid": "ebcc7fad-20b5-44f0-a8ab-7ba2195ef2c0"
           },
           "editorMode": "code",
-          "expr": "quantile(1., rate(concurrency_net_tcp_sent_bytes{test_id=\"$test_id\"}[1m]))",
+          "expr": "quantile(1., rate(network_tcp_sent_bytes{test_id=\"$test_id\"}[1m]))",
           "hide": false,
           "legendFormat": "total, max",
           "range": true,
@@ -1527,7 +1527,7 @@
             "uid": "ebcc7fad-20b5-44f0-a8ab-7ba2195ef2c0"
           },
           "editorMode": "code",
-          "expr": "sum(rate(concurrency_net_tcp_established{test_id=\"$test_id\",direction=\"inbound\"}[1m]))",
+          "expr": "sum(rate(network_tcp_established{test_id=\"$test_id\",direction=\"inbound\"}[1m]))",
           "legendFormat": "new inbound",
           "range": true,
           "refId": "A"

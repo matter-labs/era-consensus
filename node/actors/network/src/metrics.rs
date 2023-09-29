@@ -102,7 +102,7 @@ enum Direction {
 
 /// Metrics reported for TCP connections.
 #[derive(Debug, Metrics)]
-#[metrics(prefix = "concurrency_net_tcp")]
+#[metrics(prefix = "network_tcp")]
 struct TcpMetrics {
     /// Total bytes sent over all TCP connections.
     #[metrics(unit = Unit::Bytes)]
