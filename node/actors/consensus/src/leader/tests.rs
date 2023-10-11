@@ -1,4 +1,4 @@
-use crate::{leader::error::Error, testonly};
+use crate::{leader::error::ReplicaMessageError, testonly};
 use concurrency::ctx;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use roles::validator;
@@ -36,6 +36,6 @@ async fn replica_commit() {
             &consensus.inner,
             test_replica_msg.cast().unwrap()
         ),
-        Err(Error::MissingProposal)
+        Err(ReplicaMessageError::CommitMissingProposal)
     );
 }
