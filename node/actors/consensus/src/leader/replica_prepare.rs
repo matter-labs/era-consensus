@@ -26,12 +26,12 @@ impl StateMachine {
             return Err(ReplicaMessageError::PrepareOld {
                 current_view: self.view,
                 current_phase: self.phase,
-            })
+            });
         }
 
         // If the message is for a view when we are not a leader, we discard it.
         if consensus.view_leader(message.view) != consensus.secret_key.public() {
-            return Err(ReplicaMessageError::PrepareWhenNotLeaderInView)
+            return Err(ReplicaMessageError::PrepareWhenNotLeaderInView);
         }
 
         // If we already have a message from the same validator and for the same view, we discard it.
@@ -42,7 +42,7 @@ impl StateMachine {
         {
             return Err(ReplicaMessageError::PrepareDuplicated {
                 existing_message: format!("{:?}", existing_message),
-            })
+            });
         }
 
         // ----------- Checking the signed part of the message --------------
@@ -50,9 +50,7 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message
             .verify()
-            .map_err(|err| ReplicaMessageError::PrepareInvalidSignature {
-                inner_err: err
-            })?;
+            .map_err(|err| ReplicaMessageError::PrepareInvalidSignature { inner_err: err })?;
 
         // ----------- Checking the contents of the message --------------
 
@@ -60,9 +58,7 @@ impl StateMachine {
         message
             .high_qc
             .verify(&consensus.validator_set, consensus.threshold())
-            .map_err(|err| ReplicaMessageError::PrepareInvalidHighQC {
-                inner_err: err
-            })?;
+            .map_err(|err| ReplicaMessageError::PrepareInvalidHighQC { inner_err: err })?;
 
         // If the high QC is for a future view, we discard the message.
         // This check is not necessary for correctness, but it's useful to
@@ -71,7 +67,7 @@ impl StateMachine {
             return Err(ReplicaMessageError::PrepareHighQCOfFutureView {
                 high_qc_view: message.high_qc.message.view,
                 current_view: message.view,
-            })
+            });
         }
 
         // ----------- All checks finished. Now we process the message. --------------
@@ -88,8 +84,8 @@ impl StateMachine {
         if num_messages < consensus.threshold() {
             return Err(ReplicaMessageError::PrepareNumReceivedBelowThreshold {
                 num_messages,
-                threshold: consensus.threshold()
-            })
+                threshold: consensus.threshold(),
+            });
         }
 
         // ----------- Creating the block proposal --------------

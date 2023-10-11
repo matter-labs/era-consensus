@@ -1,5 +1,5 @@
-use thiserror::Error;
 use roles::validator;
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 #[allow(clippy::missing_docs_in_private_items)]
@@ -21,13 +21,9 @@ pub(crate) enum ReplicaMessageError {
     #[error("prepare for a view when we are not a leader")]
     PrepareWhenNotLeaderInView,
     #[error("commit duplicated (existing message: {existing_message:?}")]
-    CommitDuplicated {
-        existing_message: String
-    },
+    CommitDuplicated { existing_message: String },
     #[error("prepare duplicated (existing message: {existing_message:?}")]
-    PrepareDuplicated {
-        existing_message: String
-    },
+    PrepareDuplicated { existing_message: String },
     #[error("commit while number of received messages below threshold, waiting for more (received: {num_messages:?}, threshold: {threshold:?}")]
     CommitNumReceivedBelowThreshold {
         num_messages: usize,
@@ -44,19 +40,12 @@ pub(crate) enum ReplicaMessageError {
         current_view: validator::ViewNumber,
     },
     #[error("commit with invalid signature")]
-    CommitInvalidSignature {
-        inner_err: crypto::bls12_381::Error
-    },
+    CommitInvalidSignature { inner_err: crypto::bls12_381::Error },
     #[error("prepare with invalid signature")]
-    PrepareInvalidSignature {
-        inner_err: crypto::bls12_381::Error
-    },
+    PrepareInvalidSignature { inner_err: crypto::bls12_381::Error },
     #[error("prepare with invalid high QC")]
-    PrepareInvalidHighQC {
-        inner_err: anyhow::Error
-    }
+    PrepareInvalidHighQC { inner_err: anyhow::Error },
 }
-
 
 /// Needed due to inner errors.
 impl PartialEq for ReplicaMessageError {

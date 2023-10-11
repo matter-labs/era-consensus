@@ -23,8 +23,8 @@ impl StateMachine {
         if (message.view, validator::Phase::Commit) < (self.view, self.phase) {
             return Err(ReplicaMessageError::CommitOld {
                 current_view: self.view,
-                current_phase: self.phase
-            })
+                current_phase: self.phase,
+            });
         }
 
         // If the message is for a view when we are not a leader, we discard it.
@@ -40,7 +40,7 @@ impl StateMachine {
         {
             return Err(ReplicaMessageError::CommitDuplicated {
                 existing_message: format!("{:?}", existing_message),
-            })
+            });
         }
 
         // ----------- Checking the signed part of the message --------------
@@ -48,9 +48,7 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message
             .verify()
-            .map_err(|err| ReplicaMessageError::CommitInvalidSignature {
-                inner_err: err
-            })?;
+            .map_err(|err| ReplicaMessageError::CommitInvalidSignature { inner_err: err })?;
 
         // ----------- Checking the contents of the message --------------
 
@@ -74,8 +72,8 @@ impl StateMachine {
         if num_messages < consensus.threshold() {
             return Err(ReplicaMessageError::CommitNumReceivedBelowThreshold {
                 num_messages,
-                threshold: consensus.threshold()
-            })
+                threshold: consensus.threshold(),
+            });
         }
 
         debug_assert!(num_messages == consensus.threshold());
