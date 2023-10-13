@@ -24,7 +24,7 @@ RUN cargo run -p tools --bin localnet_config -- --nodes=$nodes
 WORKDIR /usr/src/myapp/node
 RUN cargo build -p executor --release
 
-# Create the artifacts directory 
+# Create the artifacts directory
 WORKDIR /usr/src/myapp/node/
 RUN i=0; \
     while [ $i -lt $nodes ]; do \
@@ -57,5 +57,5 @@ RUN i=0; \
         i=$(expr $i + 1); \
     done
 
-# Some rundom command
+# Report succes
 CMD ["echo", "Done"]

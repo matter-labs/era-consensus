@@ -20,7 +20,7 @@ env:
 jobs:
   check-build-test:
 
-    runs-on: ubuntu-latest
+    runs-on: [ubuntu-22.04-github-hosted-16core]
 
     defaults:
       run:
