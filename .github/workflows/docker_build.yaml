@@ -17,7 +17,8 @@ jobs:
 
       - name: Set outputs
         id: vars
-        run: echo "::set-output name=sha_short::$(git rev-parse --short HEAD)"
+        run: echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
       - name: Login to GAR
         run: |
           gcloud auth configure-docker us-docker.pkg.dev -q
@@ -29,11 +30,11 @@ jobs:
         id: set_version
         run: |
           if [[ ${{ github.ref }} =~ "refs/tags" ]]; then
-            echo "::set-output name=image_tag_suffix::${GITHUB_REF#refs/*/}"
+            echo "image_tag_suffix=${GITHUB_REF#refs/*/}" >> $GITHUB_OUTPUT
           else
             sha=$(git rev-parse --short HEAD)
             ts=$(date +%s%N | cut -b1-13)
-            echo "::set-output name=image_tag_suffix::${sha}-${ts}"
+            echo "image_tag_suffix=${sha}-${ts}" >> $GITHUB_OUTPUT
           fi
       - name: Log in to Docker Hub
         uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a # v2.1.0
