@@ -1,6 +1,5 @@
 use super::StateMachine;
-use crate::ConsensusInner;
-use anyhow::{bail, Context};
+use crate::{inner::ConsensusInner, replica::error::Error};
 use concurrency::ctx;
 use network::io::{ConsensusInputMessage, Target};
 use roles::validator;
@@ -15,7 +14,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
         signed_message: validator::Signed<validator::LeaderPrepare>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
 
         // Unwrap message.
@@ -25,31 +24,31 @@ impl StateMachine {
             .justification
             .map
             .first_key_value()
-            .context("Received leader prepare message with empty map in the justification.")?
+            .ok_or(Error::LeaderPrepareJustificationWithEmptyMap)?
             .0
             .view;
 
         // Check that it comes from the correct leader.
         if author != &consensus.view_leader(view) {
-            bail!(
-                "Received leader prepare message with invalid leader.\nCorrect leader: {:?}\nReceived leader: {:?}",
-                consensus.view_leader(view), author
-            );
+            return Err(Error::LeaderPrepareInvalidLeader {
+                correct_leader: consensus.view_leader(view),
+                received_leader: author.clone(),
+            });
         }
 
         // If the message is from the "past", we discard it.
         if (view, validator::Phase::Prepare) < (self.view, self.phase) {
-            bail!(
-            "Received leader prepare message for a past view/phase.\nCurrent view: {:?}\nCurrent phase: {:?}",
-            self.view, self.phase
-        );
+            return Err(Error::LeaderPrepareOld {
+                current_view: self.view,
+                current_phase: self.phase,
+            });
         }
 
         // ----------- Checking the signed part of the message --------------
 
         signed_message
             .verify()
-            .with_context(|| "Received leader prepare message with invalid signature.")?;
+            .map_err(Error::LeaderPrepareInvalidSignature)?;
 
         // ----------- Checking the justification of the message --------------
 
@@ -57,7 +56,7 @@ impl StateMachine {
         message
             .justification
             .verify(&consensus.validator_set, consensus.threshold())
-            .with_context(|| "Received leader prepare message with invalid PrepareQC.")?;
+            .map_err(Error::LeaderPrepareInvalidPrepareQC)?;
 
         // Get the highest block voted and check if there's a quorum of votes for it. To have a quorum
         // in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
@@ -90,16 +89,16 @@ impl StateMachine {
 
         highest_qc
             .verify(&consensus.validator_set, consensus.threshold())
-            .with_context(|| "Received leader prepare message with invalid highest QC.")?;
+            .map_err(Error::LeaderPrepareInvalidHighQC)?;
 
         // If the high QC is for a future view, we discard the message.
         // This check is not necessary for correctness, but it's useful to
         // guarantee that our messages don't contain QCs from the future.
         if highest_qc.message.view >= view {
-            bail!(
-                "Received leader prepare message with a highest QC from the future.\nHighest QC view: {:?}\nCurrent view: {:?}",
-                highest_qc.message.view, view
-            );
+            return Err(Error::LeaderPrepareHighQCOfFutureView {
+                high_qc_view: highest_qc.message.view,
+                current_view: view,
+            });
         }
 
         // Try to create a finalized block with this CommitQC and our block proposal cache.
@@ -120,32 +119,31 @@ impl StateMachine {
                             highest_qc.message.proposal_block_hash,
                         ))
                 {
-                    bail!(
-                        "Received new block proposal when the previous proposal was not finalized."
-                    );
+                    return Err(Error::LeaderPrepareProposalWhenPreviousNotFinalized);
                 }
 
                 if highest_qc.message.proposal_block_hash != block.parent {
-                    bail!(
-                        "Received block proposal with invalid parent hash.\nCorrect parent hash: {:#?}\nReceived parent hash: {:#?}\nBlock: {:?}",
-                        highest_qc.message.proposal_block_hash, block.parent, block
-                    );
+                    return Err(Error::LeaderPrepareProposalInvalidParentHash {
+                        correct_parent_hash: highest_qc.message.proposal_block_hash,
+                        received_parent_hash: block.parent,
+                        block: block.clone(),
+                    });
                 }
 
                 if highest_qc.message.proposal_block_number.next() != block.number {
-                    bail!(
-                        "Received block proposal with non-sequential number.\nCorrect proposal number: {}\nReceived proposal number: {}\nBlock: {:?}",
-                        highest_qc.message.proposal_block_number.next().0, block.number.0, block
-                    );
+                    return Err(Error::LeaderPrepareProposalNonSequentialNumber {
+                        correct_number: highest_qc.message.proposal_block_number.next().0,
+                        received_number: block.number.0,
+                        block: block.clone(),
+                    });
                 }
 
                 // Check that the payload doesn't exceed the maximum size.
                 if block.payload.len() > ConsensusInner::PAYLOAD_MAX_SIZE {
-                    bail!(
-                        "Received block proposal with too large payload.\nPayload size: {}\nBlock: {:?}",
-                        block.payload.len(),
-                         block
-                    );
+                    return Err(Error::LeaderPrepareProposalOversizedPayload {
+                        payload_size: block.payload.len(),
+                        block: block.clone(),
+                    });
                 }
 
                 (block.number, block.hash(), Some(block))
@@ -159,7 +157,7 @@ impl StateMachine {
                             highest_qc.message.proposal_block_hash,
                         ))
                 {
-                    bail!("Received block reproposal when the previous proposal was finalized.");
+                    return Err(Error::LeaderPrepareReproposalWhenFinalized);
                 }
 
                 if highest_vote.unwrap()
@@ -168,7 +166,7 @@ impl StateMachine {
                         commit_vote.proposal_block_hash,
                     )
                 {
-                    bail!("Received invalid block re-proposal.",);
+                    return Err(Error::LeaderPrepareReproposalInvalidBlock);
                 }
 
                 (highest_vote.unwrap().0, highest_vote.unwrap().1, None)

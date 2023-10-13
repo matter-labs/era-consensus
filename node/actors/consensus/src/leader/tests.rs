@@ -36,6 +36,6 @@ async fn replica_commit() {
             &consensus.inner,
             test_replica_msg.cast().unwrap()
         ),
-        Err(Error::MissingProposal)
+        Err(Error::ReplicaCommitMissingProposal)
     );
 }

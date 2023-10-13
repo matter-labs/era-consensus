@@ -1,6 +1,5 @@
 use super::StateMachine;
 use crate::{inner::ConsensusInner, leader::error::Error, metrics};
-use anyhow::{anyhow, Context as _};
 use concurrency::ctx;
 use network::io::{ConsensusInputMessage, Target};
 use rand::Rng;
@@ -24,15 +23,15 @@ impl StateMachine {
 
         // If the message is from the "past", we discard it.
         if (message.view, validator::Phase::Prepare) < (self.view, self.phase) {
-            return Err(Error::Other(anyhow!("Received replica prepare message for a past view/phase.\nCurrent view: {:?}\nCurrent phase: {:?}",
-                self.view, self.phase)));
+            return Err(Error::ReplicaPrepareOld {
+                current_view: self.view,
+                current_phase: self.phase,
+            });
         }
 
         // If the message is for a view when we are not a leader, we discard it.
         if consensus.view_leader(message.view) != consensus.secret_key.public() {
-            return Err(Error::Other(anyhow!(
-                "Received replica prepare message for a view when we are not a leader."
-            )));
+            return Err(Error::ReplicaPrepareWhenNotLeaderInView);
         }
 
         // If we already have a message from the same validator and for the same view, we discard it.
@@ -41,10 +40,9 @@ impl StateMachine {
             .get(&message.view)
             .and_then(|x| x.get(author))
         {
-            return Err(Error::Other(anyhow!(
-                "Received replica prepare message that we already have.\nExisting message: {:?}",
-                existing_message
-            )));
+            return Err(Error::ReplicaPrepareExists {
+                existing_message: format!("{:?}", existing_message),
+            });
         }
 
         // ----------- Checking the signed part of the message --------------
@@ -52,7 +50,7 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message
             .verify()
-            .with_context(|| "Received replica prepare message with invalid signature.")?;
+            .map_err(Error::ReplicaPrepareInvalidSignature)?;
 
         // ----------- Checking the contents of the message --------------
 
@@ -60,16 +58,16 @@ impl StateMachine {
         message
             .high_qc
             .verify(&consensus.validator_set, consensus.threshold())
-            .with_context(|| "Received replica prepare message with invalid high QC.")?;
+            .map_err(Error::ReplicaPrepareInvalidHighQC)?;
 
         // If the high QC is for a future view, we discard the message.
         // This check is not necessary for correctness, but it's useful to
         // guarantee that our proposals don't contain QCs from the future.
         if message.high_qc.message.view >= message.view {
-            return Err(Error::Other(anyhow!(
-                "Received replica prepare message with a high QC from the future.\nHigh QC view: {:?}\nCurrent view: {:?}",
-                message.high_qc.message.view, message.view
-            )));
+            return Err(Error::ReplicaPrepareHighQCOfFutureView {
+                high_qc_view: message.high_qc.message.view,
+                current_view: message.view,
+            });
         }
 
         // ----------- All checks finished. Now we process the message. --------------
@@ -84,9 +82,10 @@ impl StateMachine {
         let num_messages = self.prepare_message_cache.get(&message.view).unwrap().len();
 
         if num_messages < consensus.threshold() {
-            return Err(Error::Other(anyhow!("Received replica prepare message. Waiting for more messages.\nCurrent number of messages: {}\nThreshold: {}",
-            num_messages,
-            consensus.threshold())));
+            return Err(Error::ReplicaPrepareNumReceivedBelowThreshold {
+                num_messages,
+                threshold: consensus.threshold(),
+            });
         }
 
         // ----------- Creating the block proposal --------------
