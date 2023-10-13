@@ -43,7 +43,7 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message
             .verify()
-            .map_err(|err| Error::LeaderCommitInvalidSignature(err))?;
+            .map_err(Error::LeaderCommitInvalidSignature)?;
 
         // ----------- Checking the justification of the message --------------
 
@@ -51,7 +51,7 @@ impl StateMachine {
         message
             .justification
             .verify(&consensus.validator_set, consensus.threshold())
-            .map_err(|err| Error::LeaderCommitInvalidJustification(err))?;
+            .map_err(Error::LeaderCommitInvalidJustification)?;
 
         // ----------- All checks finished. Now we process the message. --------------
 

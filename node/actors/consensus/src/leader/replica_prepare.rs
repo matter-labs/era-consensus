@@ -50,7 +50,7 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message
             .verify()
-            .map_err(|err| Error::ReplicaPrepareInvalidSignature(err))?;
+            .map_err(Error::ReplicaPrepareInvalidSignature)?;
 
         // ----------- Checking the contents of the message --------------
 
@@ -58,7 +58,7 @@ impl StateMachine {
         message
             .high_qc
             .verify(&consensus.validator_set, consensus.threshold())
-            .map_err(|err| Error::ReplicaPrepareInvalidHighQC(err))?;
+            .map_err(Error::ReplicaPrepareInvalidHighQC)?;
 
         // If the high QC is for a future view, we discard the message.
         // This check is not necessary for correctness, but it's useful to

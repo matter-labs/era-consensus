@@ -48,7 +48,7 @@ impl StateMachine {
 
         signed_message
             .verify()
-            .map_err(|err| Error::LeaderPrepareInvalidSignature(err))?;
+            .map_err(Error::LeaderPrepareInvalidSignature)?;
 
         // ----------- Checking the justification of the message --------------
 
@@ -56,7 +56,7 @@ impl StateMachine {
         message
             .justification
             .verify(&consensus.validator_set, consensus.threshold())
-            .map_err(|err| Error::LeaderPrepareInvalidPrepareQC(err))?;
+            .map_err(Error::LeaderPrepareInvalidPrepareQC)?;
 
         // Get the highest block voted and check if there's a quorum of votes for it. To have a quorum
         // in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
@@ -89,7 +89,7 @@ impl StateMachine {
 
         highest_qc
             .verify(&consensus.validator_set, consensus.threshold())
-            .map_err(|err| Error::LeaderPrepareInvalidHighQC(err))?;
+            .map_err(Error::LeaderPrepareInvalidHighQC)?;
 
         // If the high QC is for a future view, we discard the message.
         // This check is not necessary for correctness, but it's useful to

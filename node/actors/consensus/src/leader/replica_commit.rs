@@ -48,7 +48,7 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message
             .verify()
-            .map_err(|err| Error::ReplicaCommitInvalidSignature(err))?;
+            .map_err(Error::ReplicaCommitInvalidSignature)?;
 
         // ----------- Checking the contents of the message --------------
 
