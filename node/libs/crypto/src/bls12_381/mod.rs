@@ -203,7 +203,7 @@ impl Ord for AggregateSignature {
 }
 
 /// Error type for generating and interacting with BLS keys/signatures
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, PartialEq)]
 #[non_exhaustive]
 pub enum Error {
     /// Signature verification failure
