@@ -26,7 +26,7 @@ jobs:
       - name: Run cargo-tarpaulin
         uses: actions-rs/tarpaulin@v0.1
         with:
-          version: '0.27.1'
+          version: '0.27.0'
           args: '--manifest-path node/Cargo.toml -- --test-threads 16 --timeout 300'
         env:
           RUST_LOG: 'network=trace,sync_blocks=trace,consensus=trace'
