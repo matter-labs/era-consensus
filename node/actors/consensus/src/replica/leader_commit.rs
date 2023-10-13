@@ -1,6 +1,6 @@
 use super::StateMachine;
-use crate::ConsensusInner;
-use anyhow::{bail, Context};
+use crate::{inner::ConsensusInner, replica::error::Error};
+
 use concurrency::ctx;
 use roles::validator;
 use tracing::instrument;
@@ -14,7 +14,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
         signed_message: validator::Signed<validator::LeaderCommit>,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
 
         // Unwrap message.
@@ -24,18 +24,18 @@ impl StateMachine {
 
         // Check that it comes from the correct leader.
         if author != &consensus.view_leader(view) {
-            bail!(
-                "Received leader commit message with invalid leader.\nCorrect leader: {:?}\nReceived leader: {:?}",
-                consensus.view_leader(view), author
-            );
+            return Err(Error::LeaderCommitInvalidLeader {
+                correct_leader: consensus.view_leader(view),
+                received_leader: author.clone(),
+            });
         }
 
         // If the message is from the "past", we discard it.
         if (view, validator::Phase::Commit) < (self.view, self.phase) {
-            bail!(
-                "Received leader commit message for a past view/phase.\nCurrent view: {:?}\nCurrent phase: {:?}",
-                self.view, self.phase
-            );
+            return Err(Error::LeaderCommitOld {
+                current_view: self.view,
+                current_phase: self.phase,
+            });
         }
 
         // ----------- Checking the signed part of the message --------------
@@ -43,7 +43,7 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message
             .verify()
-            .with_context(|| "Received leader commit message with invalid signature.")?;
+            .map_err(|err| Error::LeaderCommitInvalidSignature(err))?;
 
         // ----------- Checking the justification of the message --------------
 
@@ -51,7 +51,7 @@ impl StateMachine {
         message
             .justification
             .verify(&consensus.validator_set, consensus.threshold())
-            .with_context(|| "Received leader commit message with invalid justification.")?;
+            .map_err(|err| Error::LeaderCommitInvalidJustification(err))?;
 
         // ----------- All checks finished. Now we process the message. --------------
 

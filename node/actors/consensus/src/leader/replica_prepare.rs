@@ -1,5 +1,5 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner, leader::error::ReplicaMessageError, metrics};
+use crate::{inner::ConsensusInner, leader::error::Error, metrics};
 use concurrency::ctx;
 use network::io::{ConsensusInputMessage, Target};
 use rand::Rng;
@@ -14,7 +14,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
         signed_message: validator::Signed<validator::ReplicaPrepare>,
-    ) -> Result<(), ReplicaMessageError> {
+    ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
 
         // Unwrap message.
@@ -23,7 +23,7 @@ impl StateMachine {
 
         // If the message is from the "past", we discard it.
         if (message.view, validator::Phase::Prepare) < (self.view, self.phase) {
-            return Err(ReplicaMessageError::PrepareOld {
+            return Err(Error::ReplicaPrepareOld {
                 current_view: self.view,
                 current_phase: self.phase,
             });
@@ -31,7 +31,7 @@ impl StateMachine {
 
         // If the message is for a view when we are not a leader, we discard it.
         if consensus.view_leader(message.view) != consensus.secret_key.public() {
-            return Err(ReplicaMessageError::PrepareWhenNotLeaderInView);
+            return Err(Error::ReplicaPrepareWhenNotLeaderInView);
         }
 
         // If we already have a message from the same validator and for the same view, we discard it.
@@ -40,7 +40,7 @@ impl StateMachine {
             .get(&message.view)
             .and_then(|x| x.get(author))
         {
-            return Err(ReplicaMessageError::PrepareDuplicated {
+            return Err(Error::ReplicaPrepareExists {
                 existing_message: format!("{:?}", existing_message),
             });
         }
@@ -50,7 +50,7 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message
             .verify()
-            .map_err(|err| ReplicaMessageError::PrepareInvalidSignature { inner_err: err })?;
+            .map_err(|err| Error::ReplicaPrepareInvalidSignature(err))?;
 
         // ----------- Checking the contents of the message --------------
 
@@ -58,13 +58,13 @@ impl StateMachine {
         message
             .high_qc
             .verify(&consensus.validator_set, consensus.threshold())
-            .map_err(|err| ReplicaMessageError::PrepareInvalidHighQC { inner_err: err })?;
+            .map_err(|err| Error::ReplicaPrepareInvalidHighQC(err))?;
 
         // If the high QC is for a future view, we discard the message.
         // This check is not necessary for correctness, but it's useful to
         // guarantee that our proposals don't contain QCs from the future.
         if message.high_qc.message.view >= message.view {
-            return Err(ReplicaMessageError::PrepareHighQCOfFutureView {
+            return Err(Error::ReplicaPrepareHighQCOfFutureView {
                 high_qc_view: message.high_qc.message.view,
                 current_view: message.view,
             });
@@ -82,7 +82,7 @@ impl StateMachine {
         let num_messages = self.prepare_message_cache.get(&message.view).unwrap().len();
 
         if num_messages < consensus.threshold() {
-            return Err(ReplicaMessageError::PrepareNumReceivedBelowThreshold {
+            return Err(Error::ReplicaPrepareNumReceivedBelowThreshold {
                 num_messages,
                 threshold: consensus.threshold(),
             });

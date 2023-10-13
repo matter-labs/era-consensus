@@ -1,5 +1,5 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner, leader::error::ReplicaMessageError, metrics};
+use crate::{inner::ConsensusInner, leader::error::Error, metrics};
 use concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use network::io::{ConsensusInputMessage, Target};
 use roles::validator;
@@ -12,7 +12,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
         signed_message: validator::Signed<validator::ReplicaCommit>,
-    ) -> Result<(), ReplicaMessageError> {
+    ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
 
         // Unwrap message.
@@ -21,7 +21,7 @@ impl StateMachine {
 
         // If the message is from the "past", we discard it.
         if (message.view, validator::Phase::Commit) < (self.view, self.phase) {
-            return Err(ReplicaMessageError::CommitOld {
+            return Err(Error::ReplicaCommitOld {
                 current_view: self.view,
                 current_phase: self.phase,
             });
@@ -29,7 +29,7 @@ impl StateMachine {
 
         // If the message is for a view when we are not a leader, we discard it.
         if consensus.view_leader(message.view) != consensus.secret_key.public() {
-            return Err(ReplicaMessageError::CommitWhenNotLeaderInView);
+            return Err(Error::ReplicaCommitWhenNotLeaderInView);
         }
 
         // If we already have a message from the same validator and for the same view, we discard it.
@@ -38,7 +38,7 @@ impl StateMachine {
             .get(&message.view)
             .and_then(|x| x.get(author))
         {
-            return Err(ReplicaMessageError::CommitDuplicated {
+            return Err(Error::ReplicaCommitExists {
                 existing_message: format!("{:?}", existing_message),
             });
         }
@@ -48,14 +48,14 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message
             .verify()
-            .map_err(|err| ReplicaMessageError::CommitInvalidSignature { inner_err: err })?;
+            .map_err(|err| Error::ReplicaCommitInvalidSignature(err))?;
 
         // ----------- Checking the contents of the message --------------
 
         // We only accept replica commit messages for proposals that we have cached. That's so
         // we don't need to store replica commit messages for different proposals.
         if self.block_proposal_cache != Some(message) {
-            return Err(ReplicaMessageError::CommitMissingProposal);
+            return Err(Error::ReplicaCommitMissingProposal);
         }
 
         // ----------- All checks finished. Now we process the message. --------------
@@ -70,7 +70,7 @@ impl StateMachine {
         let num_messages = self.commit_message_cache.get(&message.view).unwrap().len();
 
         if num_messages < consensus.threshold() {
-            return Err(ReplicaMessageError::CommitNumReceivedBelowThreshold {
+            return Err(Error::ReplicaCommitNumReceivedBelowThreshold {
                 num_messages,
                 threshold: consensus.threshold(),
             });
