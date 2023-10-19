@@ -206,7 +206,7 @@ impl StateMachine {
         }
 
         // Backup our state.
-        self.backup_state();
+        self.backup_state(ctx);
 
         // Send the replica message to the leader.
         let output_message = ConsensusInputMessage {

@@ -1,11 +1,11 @@
 use crate::{metrics, ConsensusInner};
-use concurrency::{ctx, metrics::LatencyHistogramExt as _, time};
+use concurrency::{ctx, metrics::LatencyHistogramExt as _, scope, time};
 use roles::validator;
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
-use storage::Storage;
+use storage::ReplicaStateStore;
 use tracing::{instrument, warn};
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
@@ -26,14 +26,17 @@ pub(crate) struct StateMachine {
     /// The deadline to receive an input message.
     pub(crate) timeout_deadline: time::Deadline,
     /// A reference to the storage module. We use it to backup the replica state.
-    pub(crate) storage: Arc<Storage>,
+    pub(crate) storage: Arc<dyn ReplicaStateStore>,
 }
 
 impl StateMachine {
     /// Creates a new StateMachine struct. We try to recover a past state from the storage module,
     /// otherwise we initialize the state machine with whatever head block we have.
-    pub(crate) fn new(storage: Arc<Storage>) -> Self {
-        match storage.get_replica_state() {
+    pub(crate) async fn new(
+        ctx: &ctx::Ctx,
+        storage: Arc<dyn ReplicaStateStore>,
+    ) -> anyhow::Result<Self> {
+        Ok(match storage.replica_state(ctx).await? {
             Some(backup) => Self {
                 view: backup.view,
                 phase: backup.phase,
@@ -44,8 +47,7 @@ impl StateMachine {
                 storage,
             },
             None => {
-                let head = storage.get_head_block();
-
+                let head = storage.head_block(ctx).await?;
                 Self {
                     view: head.justification.message.view,
                     phase: validator::Phase::Prepare,
@@ -56,7 +58,7 @@ impl StateMachine {
                     storage,
                 }
             }
-        }
+        })
     }
 
     /// Starts the state machine. The replica state needs to be initialized before
@@ -109,7 +111,7 @@ impl StateMachine {
     }
 
     /// Backups the replica state to disk.
-    pub(crate) fn backup_state(&self) {
+    pub(crate) fn backup_state(&self, ctx: &ctx::Ctx) {
         let backup = storage::ReplicaState {
             view: self.view,
             phase: self.phase,
@@ -118,6 +120,12 @@ impl StateMachine {
             block_proposal_cache: self.block_proposal_cache.clone(),
         };
 
-        self.storage.put_replica_state(&backup);
+        scope::run_blocking!(ctx, |ctx, s| {
+            let backup_future = self.storage.put_replica_state(ctx, &backup);
+            s.spawn(backup_future).join(ctx).block()?;
+            anyhow::Ok(())
+        })
+        .expect("Failed backing up replica state");
+        // ^ We don't know how to recover from DB errors, so panicking is the only option so far.
     }
 }

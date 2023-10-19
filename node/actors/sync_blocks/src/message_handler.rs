@@ -5,7 +5,7 @@ use concurrency::ctx::{self, channel};
 use network::io::{GetBlockError, GetBlockResponse, SyncBlocksRequest};
 use roles::validator::BlockNumber;
 use std::sync::Arc;
-use storage::Storage;
+use storage::WriteBlockStore;
 use tracing::instrument;
 
 /// Inner details of `SyncBlocks` actor allowing to process messages.
@@ -14,19 +14,17 @@ pub(crate) struct SyncBlocksMessageHandler {
     /// Pipe using which the actor sends / receives messages.
     pub(crate) message_receiver: channel::UnboundedReceiver<InputMessage>,
     /// Persistent storage for blocks.
-    pub(crate) storage: Arc<Storage>,
+    pub(crate) storage: Arc<dyn WriteBlockStore>,
     /// Set of validators authoring blocks.
     pub(crate) peer_states_handle: PeerStatesHandle,
 }
 
 impl SyncBlocksMessageHandler {
     /// Implements the message processing loop.
-    ///
-    /// **This method is blocking and will run indefinitely.**
     #[instrument(level = "trace", skip_all, err)]
-    pub(crate) fn process_messages(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub(crate) async fn process_messages(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         loop {
-            let input_message = self.message_receiver.recv(ctx).block()?;
+            let input_message = self.message_receiver.recv(ctx).await?;
             match input_message {
                 InputMessage::Network(SyncBlocksRequest::UpdatePeerSyncState {
                     peer,
@@ -40,7 +38,7 @@ impl SyncBlocksMessageHandler {
                     block_number,
                     response,
                 }) => {
-                    response.send(self.get_block(block_number)).ok();
+                    response.send(self.get_block(ctx, block_number).await?).ok();
                 }
             }
         }
@@ -49,10 +47,16 @@ impl SyncBlocksMessageHandler {
     /// Gets a block with the specified `number` from the storage.
     ///
     /// **This method is blocking.**
-    #[instrument(level = "trace", skip(self), err)]
-    fn get_block(&self, number: BlockNumber) -> GetBlockResponse {
-        self.storage
-            .get_block(number)
-            .ok_or(GetBlockError::NotSynced)
+    #[instrument(level = "trace", skip(self, ctx), err)]
+    async fn get_block(
+        &self,
+        ctx: &ctx::Ctx,
+        number: BlockNumber,
+    ) -> anyhow::Result<GetBlockResponse> {
+        Ok(self
+            .storage
+            .block(ctx, number)
+            .await?
+            .ok_or(GetBlockError::NotSynced))
     }
 }

@@ -1,6 +1,5 @@
 use super::StateMachine;
 use crate::{inner::ConsensusInner, replica::error::Error};
-
 use concurrency::ctx;
 use roles::validator;
 use tracing::instrument;

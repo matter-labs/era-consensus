@@ -13,7 +13,7 @@ use concurrency::{
 };
 use network::io::SyncState;
 use std::sync::Arc;
-use storage::Storage;
+use storage::WriteBlockStore;
 use tracing::instrument;
 use utils::pipe::ActorPipe;
 
@@ -40,23 +40,24 @@ pub struct SyncBlocks {
 
 impl SyncBlocks {
     /// Creates a new actor.
-    pub fn new(
+    pub async fn new(
+        ctx: &ctx::Ctx,
         pipe: ActorPipe<InputMessage, OutputMessage>,
-        storage: Arc<Storage>,
+        storage: Arc<dyn WriteBlockStore>,
         config: Config,
-    ) -> Self {
-        let (state_sender, _) = watch::channel(Self::get_sync_state(&storage));
+    ) -> anyhow::Result<Self> {
+        let (state_sender, _) = watch::channel(Self::get_sync_state(ctx, storage.as_ref()).await?);
         let (peer_states, peer_states_handle) = PeerStates::new(pipe.send, storage.clone(), config);
         let inner = SyncBlocksMessageHandler {
             message_receiver: pipe.recv,
             storage,
             peer_states_handle,
         };
-        Self {
+        Ok(Self {
             message_handler: inner,
             peer_states,
             state_sender,
-        }
+        })
     }
 
     /// Subscribes to `SyncState` updates emitted by the actor.
@@ -68,25 +69,26 @@ impl SyncBlocks {
     ///
     /// **This method is blocking and will run indefinitely.**
     #[instrument(level = "trace", skip_all, err)]
-    pub fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let storage = self.message_handler.storage.clone();
 
-        scope::run_blocking!(ctx, |ctx, s| {
+        scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(Self::emit_state_updates(ctx, storage, &self.state_sender));
             s.spawn_bg(self.peer_states.run(ctx));
-            self.message_handler.process_messages(ctx)
+            self.message_handler.process_messages(ctx).await
         })
+        .await
     }
 
     #[instrument(level = "trace", skip_all, err)]
     async fn emit_state_updates(
         ctx: &ctx::Ctx,
-        storage: Arc<Storage>,
+        storage: Arc<dyn WriteBlockStore>,
         state_sender: &watch::Sender<SyncState>,
     ) -> anyhow::Result<()> {
         let mut storage_subscriber = storage.subscribe_to_block_writes();
         loop {
-            let state = Self::get_sync_state(&storage);
+            let state = Self::get_sync_state(ctx, storage.as_ref()).await?;
             if state_sender.send(state).is_err() {
                 tracing::info!("`SyncState` subscriber dropped; exiting");
                 return Ok(());
@@ -98,19 +100,21 @@ impl SyncBlocks {
     }
 
     /// Gets the current sync state of this node based on information from the storage.
-    ///
-    /// **This method is blocking.**
     #[instrument(level = "trace", skip_all)]
-    fn get_sync_state(storage: &Storage) -> SyncState {
-        let last_contiguous_block_number = storage.get_last_contiguous_block_number();
+    async fn get_sync_state(
+        ctx: &ctx::Ctx,
+        storage: &dyn WriteBlockStore,
+    ) -> anyhow::Result<SyncState> {
+        let last_contiguous_block_number = storage.last_contiguous_block_number(ctx).await?;
         let last_contiguous_stored_block = storage
-            .get_block(last_contiguous_block_number)
+            .block(ctx, last_contiguous_block_number)
+            .await?
             .expect("`last_contiguous_stored_block` disappeared");
 
-        SyncState {
-            first_stored_block: storage.get_first_block().justification,
+        Ok(SyncState {
+            first_stored_block: storage.first_block(ctx).await?.justification,
             last_contiguous_stored_block: last_contiguous_stored_block.justification,
-            last_stored_block: storage.get_head_block().justification,
-        }
+            last_stored_block: storage.head_block(ctx).await?.justification,
+        })
     }
 }

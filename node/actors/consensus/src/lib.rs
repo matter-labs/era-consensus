@@ -20,7 +20,7 @@ use concurrency::ctx;
 use inner::ConsensusInner;
 use roles::validator;
 use std::sync::Arc;
-use storage::Storage;
+use storage::ReplicaStateStore;
 use tracing::{info, instrument};
 use utils::pipe::ActorPipe;
 
@@ -48,22 +48,22 @@ pub struct Consensus {
 impl Consensus {
     /// Creates a new Consensus struct.
     #[instrument(level = "trace", ret)]
-    pub fn new(
+    pub async fn new(
         ctx: &ctx::Ctx,
         pipe: ActorPipe<InputMessage, OutputMessage>,
         secret_key: validator::SecretKey,
         validator_set: validator::ValidatorSet,
-        storage: Arc<Storage>,
-    ) -> Self {
-        Consensus {
+        storage: Arc<dyn ReplicaStateStore>,
+    ) -> anyhow::Result<Self> {
+        Ok(Consensus {
             inner: ConsensusInner {
                 pipe,
                 secret_key,
                 validator_set,
             },
-            replica: replica::StateMachine::new(storage),
+            replica: replica::StateMachine::new(ctx, storage).await?,
             leader: leader::StateMachine::new(ctx),
-        }
+        })
     }
 
     /// Starts the Consensus actor. It will start running, processing incoming messages and

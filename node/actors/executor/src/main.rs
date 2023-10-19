@@ -6,7 +6,7 @@ use concurrency::{ctx, scope, time};
 use consensus::Consensus;
 use executor::{configurator::Configs, io::Dispatcher};
 use std::{fs, io::IsTerminal as _, path::Path, sync::Arc};
-use storage::Storage;
+use storage::{BlockStore, RocksdbStorage};
 use tracing::{debug, info, metadata::LevelFilter};
 use tracing_subscriber::{prelude::*, Registry};
 use utils::{no_copy::NoCopy, pipe};
@@ -70,10 +70,8 @@ async fn main() -> anyhow::Result<()> {
     // Initialize the storage.
     debug!("Initializing storage.");
 
-    let storage = Arc::new(Storage::new(
-        &configs.config.genesis_block,
-        Path::new("./database"),
-    ));
+    let storage = RocksdbStorage::new(ctx, &configs.config.genesis_block, Path::new("./database"));
+    let storage = Arc::new(storage.await.context("RocksdbStorage::new()")?);
 
     // Generate the communication pipes. We have one for each actor.
     let (consensus_actor_pipe, consensus_dispatcher_pipe) = pipe::new();
@@ -95,7 +93,9 @@ async fn main() -> anyhow::Result<()> {
         configs.validator_key.clone(),
         validator_set.clone(),
         storage.clone(),
-    );
+    )
+    .await
+    .context("consensus")?;
     // FIXME(slowli): Run `sync_blocks` actor once it's fully functional
 
     debug!("Starting actors in separate threads.");
@@ -127,9 +127,14 @@ async fn main() -> anyhow::Result<()> {
         // if we are in CI mode, we wait for the node to finalize 100 blocks and then we stop it
         if ci_mode {
             let storage = storage.clone();
-
             loop {
-                let block_finalized = storage.get_head_block().block.number.0;
+                let block_finalized = storage
+                    .head_block(ctx)
+                    .await
+                    .context("head_block")?
+                    .block
+                    .number
+                    .0;
 
                 info!("current finalized block {}", block_finalized);
                 if block_finalized > 100 {

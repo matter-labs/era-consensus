@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+async-trait.workspace = true
 rand.workspace = true
 rocksdb.workspace = true
 tracing.workspace = true
@@ -18,3 +19,4 @@ schema = { path = "../schema" }
 
 [dev-dependencies]
 tempfile.workspace = true
+tokio.workspace = true

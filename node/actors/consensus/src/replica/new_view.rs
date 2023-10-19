@@ -6,7 +6,7 @@ use roles::validator;
 use tracing::{info, instrument};
 
 impl StateMachine {
-    /// This method is used whenever we start a new view.
+    /// This blocking method is used whenever we start a new view.
     #[instrument(level = "trace", ret)]
     pub(crate) fn start_new_view(&mut self, ctx: &ctx::Ctx, consensus: &ConsensusInner) {
         info!("Starting view {}", self.view.next().0);
@@ -22,7 +22,7 @@ impl StateMachine {
             .retain(|k, _| k > &self.high_qc.message.proposal_block_number);
 
         // Backup our state.
-        self.backup_state();
+        self.backup_state(ctx);
 
         // Send the replica message to the next leader.
         let output_message = ConsensusInputMessage {
