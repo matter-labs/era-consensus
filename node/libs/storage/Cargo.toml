@@ -20,4 +20,5 @@ schema = { path = "../schema" }
 
 [dev-dependencies]
 tempfile.workspace = true
+test-casing.workspace = true
 tokio.workspace = true
