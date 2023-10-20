@@ -36,6 +36,7 @@ pub trait ContiguousBlockStore: BlockStore {
 #[derive(Debug)]
 struct BlockBuffer {
     store_block_number: BlockNumber,
+    is_block_scheduled: bool,
     blocks: BTreeMap<BlockNumber, FinalBlock>,
 }
 
@@ -43,6 +44,7 @@ impl BlockBuffer {
     fn new(store_block_number: BlockNumber) -> Self {
         Self {
             store_block_number,
+            is_block_scheduled: false,
             blocks: BTreeMap::new(),
         }
     }
@@ -52,7 +54,18 @@ impl BlockBuffer {
     }
 
     fn set_store_block(&mut self, store_block_number: BlockNumber) {
+        assert_eq!(
+            store_block_number,
+            self.store_block_number.next(),
+            "`ContiguousBlockStore` invariant broken: unexpected new head block number"
+        );
+        assert!(
+            self.is_block_scheduled,
+            "`ContiguousBlockStore` invariant broken: unexpected update"
+        );
+
         self.store_block_number = store_block_number;
+        self.is_block_scheduled = false;
         self.blocks = self.blocks.split_off(&store_block_number.next());
         // ^ Removes all entries up to and including `store_block_number`
     }
@@ -90,8 +103,14 @@ impl BlockBuffer {
         tracing::trace!(%block_number, "Inserted block in buffer");
     }
 
-    fn take_next_block_for_store(&mut self) -> Option<FinalBlock> {
-        self.blocks.remove(&self.store_block_number.next())
+    fn next_block_for_store(&mut self) -> Option<FinalBlock> {
+        if self.is_block_scheduled {
+            None
+        } else {
+            let next_block = self.blocks.get(&self.store_block_number.next()).cloned();
+            self.is_block_scheduled = next_block.is_some();
+            next_block
+        }
     }
 }
 
@@ -117,6 +136,16 @@ impl<T: ContiguousBlockStore> BufferedStorage<T> {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn as_ref(&self) -> &T {
+        &self.inner
+    }
+
+    #[cfg(test)]
+    pub(crate) async fn buffer_len(&self) -> usize {
+        self.buffer.lock().await.blocks.len()
+    }
+
     /// Listens to the updates in the underlying storage. This method must be spawned as a task;
     /// otherwise, [`BufferedStorage`] will function incorrectly.
     #[tracing::instrument(level = "trace", skip_all, err)]
@@ -125,9 +154,13 @@ impl<T: ContiguousBlockStore> BufferedStorage<T> {
         loop {
             let store_block_number = *sync::changed(ctx, &mut subscriber).await?;
             tracing::trace!("Underlying block number updated to {store_block_number}");
-            let mut buffer = sync::lock(ctx, &self.buffer).await?;
-            buffer.set_store_block(store_block_number);
-            if let Some(block) = buffer.take_next_block_for_store() {
+
+            let next_block_for_store = {
+                let mut buffer = sync::lock(ctx, &self.buffer).await?;
+                buffer.set_store_block(store_block_number);
+                buffer.next_block_for_store()
+            };
+            if let Some(block) = next_block_for_store {
                 self.inner.schedule_next_block(ctx, &block).await?;
                 let block_number = block.block.number;
                 tracing::trace!(%block_number, "Block put in underlying storage");
@@ -200,7 +233,7 @@ impl<T: ContiguousBlockStore> WriteBlockStore for BufferedStorage<T> {
                 return Err(StorageError::Database(err));
             }
             buffer.put_block(block.clone());
-            buffer.take_next_block_for_store()
+            buffer.next_block_for_store()
         };
 
         if let Some(block) = next_block_for_store {
