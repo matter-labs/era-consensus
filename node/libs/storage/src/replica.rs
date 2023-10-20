@@ -7,6 +7,7 @@ use crate::{
 use anyhow::Context as _;
 use async_trait::async_trait;
 use concurrency::{ctx, scope};
+use std::sync::Arc;
 
 /// Storage for [`ReplicaState`].
 ///
@@ -22,6 +23,21 @@ pub trait ReplicaStateStore: BlockStore {
         ctx: &ctx::Ctx,
         replica_state: &ReplicaState,
     ) -> StorageResult<()>;
+}
+
+#[async_trait]
+impl<S: ReplicaStateStore + ?Sized> ReplicaStateStore for Arc<S> {
+    async fn replica_state(&self, ctx: &ctx::Ctx) -> StorageResult<Option<ReplicaState>> {
+        (**self).replica_state(ctx).await
+    }
+
+    async fn put_replica_state(
+        &self,
+        ctx: &ctx::Ctx,
+        replica_state: &ReplicaState,
+    ) -> StorageResult<()> {
+        (**self).put_replica_state(ctx, replica_state).await
+    }
 }
 
 #[async_trait]

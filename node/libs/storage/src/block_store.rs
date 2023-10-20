@@ -9,7 +9,10 @@ use async_trait::async_trait;
 use concurrency::{ctx, scope, sync::watch};
 use rocksdb::{IteratorMode, ReadOptions};
 use roles::validator::{BlockNumber, FinalBlock};
-use std::{fmt, iter, ops, sync::atomic::Ordering};
+use std::{
+    fmt, iter, ops,
+    sync::{atomic::Ordering, Arc},
+};
 
 /// Storage of L2 blocks.
 ///
@@ -46,6 +49,41 @@ pub trait BlockStore: fmt::Debug + Send + Sync {
     /// If no blocks were written during the `Storage` lifetime, the channel contains the number
     /// of the genesis block.
     fn subscribe_to_block_writes(&self) -> watch::Receiver<BlockNumber>;
+}
+
+#[async_trait]
+impl<S: BlockStore + ?Sized> BlockStore for Arc<S> {
+    async fn head_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
+        (**self).head_block(ctx).await
+    }
+
+    async fn first_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
+        (**self).first_block(ctx).await
+    }
+
+    async fn last_contiguous_block_number(&self, ctx: &ctx::Ctx) -> StorageResult<BlockNumber> {
+        (**self).last_contiguous_block_number(ctx).await
+    }
+
+    async fn block(
+        &self,
+        ctx: &ctx::Ctx,
+        number: BlockNumber,
+    ) -> StorageResult<Option<FinalBlock>> {
+        (**self).block(ctx, number).await
+    }
+
+    async fn missing_block_numbers(
+        &self,
+        ctx: &ctx::Ctx,
+        range: ops::Range<BlockNumber>,
+    ) -> StorageResult<Vec<BlockNumber>> {
+        (**self).missing_block_numbers(ctx, range).await
+    }
+
+    fn subscribe_to_block_writes(&self) -> watch::Receiver<BlockNumber> {
+        (**self).subscribe_to_block_writes()
+    }
 }
 
 #[async_trait]
@@ -127,6 +165,13 @@ impl BlockStore for RocksdbStorage {
 pub trait WriteBlockStore: BlockStore {
     /// Puts a block into this storage.
     async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()>;
+}
+
+#[async_trait]
+impl<S: WriteBlockStore + ?Sized> WriteBlockStore for Arc<S> {
+    async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()> {
+        (**self).put_block(ctx, block).await
+    }
 }
 
 #[async_trait]
