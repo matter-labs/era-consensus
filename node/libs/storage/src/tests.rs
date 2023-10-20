@@ -250,6 +250,7 @@ impl ContiguousBlockStore for MockContiguousStore {
 
 #[tracing::instrument(level = "trace", skip(shuffle_blocks))]
 async fn test_buffered_storage(
+    initial_block_count: usize,
     block_count: usize,
     block_interval: time::Duration,
     shuffle_blocks: impl FnOnce(&mut StdRng, &mut [FinalBlock]),
@@ -259,29 +260,34 @@ async fn test_buffered_storage(
     let rng = &mut ctx.rng();
 
     let (genesis_block, block_store, _temp_dir) = init_store(ctx, rng).await;
+    let mut initial_blocks = gen_blocks(rng, genesis_block.clone(), initial_block_count);
+    for block in &initial_blocks {
+        block_store.put_block(ctx, block).await.unwrap();
+    }
+    initial_blocks.insert(0, genesis_block.clone());
+
     let (block_store, block_receiver) = MockContiguousStore::new(block_store);
     let buffered_store = BufferedStorage::new(block_store);
 
     // Check initial values returned by the store.
-    assert_eq!(buffered_store.head_block(ctx).await.unwrap(), genesis_block);
+    let last_initial_block = initial_blocks.last().unwrap().clone();
     assert_eq!(
-        buffered_store
-            .block(ctx, BlockNumber(0))
-            .await
-            .unwrap()
-            .as_ref(),
-        Some(&genesis_block)
+        buffered_store.head_block(ctx).await.unwrap(),
+        last_initial_block
     );
-    assert_eq!(
-        buffered_store.block(ctx, BlockNumber(1)).await.unwrap(),
-        None
-    );
+    for block in &initial_blocks {
+        let block_result = buffered_store.block(ctx, block.block.number).await;
+        assert_eq!(block_result.unwrap().as_ref(), Some(block));
+    }
     let mut subscriber = buffered_store.subscribe_to_block_writes();
-    assert_eq!(*subscriber.borrow(), BlockNumber(0));
+    assert_eq!(
+        *subscriber.borrow(),
+        BlockNumber(initial_block_count as u64)
+    );
 
-    let mut blocks = gen_blocks(rng, genesis_block.clone(), block_count);
+    let mut blocks = gen_blocks(rng, last_initial_block, block_count);
     shuffle_blocks(rng, &mut blocks);
-    let last_block_number = BlockNumber(block_count as u64);
+    let last_block_number = BlockNumber((block_count + initial_block_count) as u64);
 
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(buffered_store.as_ref().run_updates(ctx, block_receiver));
@@ -299,7 +305,7 @@ async fn test_buffered_storage(
             assert_eq!(new_block_number, block.block.number);
 
             // Check that all written blocks are immediately accessible.
-            for existing_block in &blocks[0..=idx] {
+            for existing_block in initial_blocks.iter().chain(&blocks[0..=idx]) {
                 let number = existing_block.block.number;
                 assert_eq!(
                     buffered_store.block(ctx, number).await?.as_ref(),
@@ -356,7 +362,7 @@ const BLOCK_INTERVALS: [time::Duration; 4] = [
 #[test_casing(4, BLOCK_INTERVALS)]
 #[tokio::test]
 async fn buffered_storage_with_sequential_blocks(block_interval: time::Duration) {
-    test_buffered_storage(30, block_interval, |_, _| {
+    test_buffered_storage(0, 30, block_interval, |_, _| {
         // Do not perform shuffling
     })
     .await;
@@ -365,14 +371,34 @@ async fn buffered_storage_with_sequential_blocks(block_interval: time::Duration)
 #[test_casing(4, BLOCK_INTERVALS)]
 #[tokio::test]
 async fn buffered_storage_with_random_blocks(block_interval: time::Duration) {
-    test_buffered_storage(30, block_interval, |rng, blocks| blocks.shuffle(rng)).await;
+    test_buffered_storage(0, 30, block_interval, |rng, blocks| blocks.shuffle(rng)).await;
 }
 
 #[test_casing(4, BLOCK_INTERVALS)]
 #[tokio::test]
 async fn buffered_storage_with_slightly_shuffled_blocks(block_interval: time::Duration) {
-    test_buffered_storage(30, block_interval, |rng, blocks| {
+    test_buffered_storage(0, 30, block_interval, |rng, blocks| {
         for chunk in blocks.chunks_mut(4) {
+            chunk.shuffle(rng);
+        }
+    })
+    .await;
+}
+
+#[test_casing(4, BLOCK_INTERVALS)]
+#[tokio::test]
+async fn buffered_storage_with_initial_blocks(block_interval: time::Duration) {
+    test_buffered_storage(10, 20, block_interval, |_, _| {
+        // Do not perform shuffling
+    })
+    .await;
+}
+
+#[test_casing(4, BLOCK_INTERVALS)]
+#[tokio::test]
+async fn buffered_storage_with_initial_blocks_and_slight_shuffling(block_interval: time::Duration) {
+    test_buffered_storage(10, 20, block_interval, |rng, blocks| {
+        for chunk in blocks.chunks_mut(5) {
             chunk.shuffle(rng);
         }
     })

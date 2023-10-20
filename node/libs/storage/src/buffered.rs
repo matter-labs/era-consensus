@@ -53,6 +53,7 @@ impl BlockBuffer {
         self.blocks.values().next_back().cloned()
     }
 
+    #[tracing::instrument(level = "trace", skip(self))]
     fn set_store_block(&mut self, store_block_number: BlockNumber) {
         assert_eq!(
             store_block_number,
@@ -66,8 +67,10 @@ impl BlockBuffer {
 
         self.store_block_number = store_block_number;
         self.is_block_scheduled = false;
+        let old_len = self.blocks.len();
         self.blocks = self.blocks.split_off(&store_block_number.next());
         // ^ Removes all entries up to and including `store_block_number`
+        tracing::trace!("Removed {} blocks from buffer", old_len - self.blocks.len());
     }
 
     fn last_contiguous_block_number(&self) -> BlockNumber {
@@ -128,6 +131,7 @@ impl<T: ContiguousBlockStore> BufferedStorage<T> {
     pub fn new(store: T) -> Self {
         let inner_subscriber = store.subscribe_to_block_writes();
         let store_block_number = *inner_subscriber.borrow();
+        tracing::trace!(%store_block_number, "Initialized buffer storage");
         Self {
             inner: store,
             inner_subscriber,
