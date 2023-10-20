@@ -254,11 +254,7 @@ impl RocksdbStorage {
             })
             .fuse();
 
-        MissingBlockNumbers {
-            range,
-            existing_numbers: iter.peekable(),
-        }
-        .collect()
+        MissingBlockNumbers::new(range, iter).collect()
     }
 
     // ---------------- Write methods ----------------
@@ -284,9 +280,23 @@ impl RocksdbStorage {
     }
 }
 
-struct MissingBlockNumbers<I: Iterator> {
+/// Iterator over missing block numbers.
+pub(crate) struct MissingBlockNumbers<I: Iterator> {
     range: ops::Range<BlockNumber>,
     existing_numbers: iter::Peekable<I>,
+}
+
+impl<I> MissingBlockNumbers<I>
+where
+    I: Iterator<Item = anyhow::Result<BlockNumber>>,
+{
+    /// Creates a new iterator based on the provided params.
+    pub(crate) fn new(range: ops::Range<BlockNumber>, existing_numbers: I) -> Self {
+        Self {
+            range,
+            existing_numbers: existing_numbers.peekable(),
+        }
+    }
 }
 
 impl<I> Iterator for MissingBlockNumbers<I>

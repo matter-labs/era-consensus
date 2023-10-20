@@ -12,6 +12,7 @@ use std::{
 use thiserror::Error;
 
 mod block_store;
+mod buffered;
 mod replica;
 mod testonly;
 #[cfg(test)]
@@ -20,6 +21,7 @@ mod types;
 
 pub use crate::{
     block_store::{BlockStore, WriteBlockStore},
+    buffered::{BufferedStorage, ContiguousBlockStore},
     replica::ReplicaStateStore,
     types::ReplicaState,
 };
