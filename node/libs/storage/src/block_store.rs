@@ -3,7 +3,8 @@
 //! getting a block, checking if a block is contained in the DB. We also store the head of the chain. Storing it explicitly allows us to fetch
 //! the current head quickly.
 
-use crate::{types::DatabaseKey, RocksdbStorage};
+use crate::{types::DatabaseKey, RocksdbStorage, StorageError, StorageResult};
+use anyhow::Context as _;
 use async_trait::async_trait;
 use concurrency::{ctx, scope, sync::watch};
 use rocksdb::{IteratorMode, ReadOptions};
@@ -11,26 +12,24 @@ use roles::validator::{BlockNumber, FinalBlock};
 use std::{fmt, iter, ops, sync::atomic::Ordering};
 
 /// Storage of L2 blocks.
-// FIXME: methods should return errors!
+///
+/// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait]
 pub trait BlockStore: fmt::Debug + Send + Sync {
     /// Gets the head block.
-    async fn head_block(&self, ctx: &ctx::Ctx) -> anyhow::Result<FinalBlock>;
+    async fn head_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock>;
 
     /// Returns a block with the least number stored in this database.
-    async fn first_block(&self, ctx: &ctx::Ctx) -> anyhow::Result<FinalBlock>;
+    async fn first_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock>;
 
     /// Returns the number of the last block in the first contiguous range of blocks stored in this DB.
     /// If there are no missing blocks, this is equal to the number of [`Self::get_head_block()`],
     /// if there *are* missing blocks, the returned number will be lower.
-    async fn last_contiguous_block_number(&self, ctx: &ctx::Ctx) -> anyhow::Result<BlockNumber>;
+    async fn last_contiguous_block_number(&self, ctx: &ctx::Ctx) -> StorageResult<BlockNumber>;
 
     /// Gets a block by its number.
-    async fn block(
-        &self,
-        ctx: &ctx::Ctx,
-        number: BlockNumber,
-    ) -> anyhow::Result<Option<FinalBlock>>;
+    async fn block(&self, ctx: &ctx::Ctx, number: BlockNumber)
+        -> StorageResult<Option<FinalBlock>>;
 
     /// Iterates over block numbers in the specified `range` that the DB *does not* have.
     // TODO(slowli): We might want to limit the length of the vec returned
@@ -38,7 +37,7 @@ pub trait BlockStore: fmt::Debug + Send + Sync {
         &self,
         ctx: &ctx::Ctx,
         range: ops::Range<BlockNumber>,
-    ) -> anyhow::Result<Vec<BlockNumber>>;
+    ) -> StorageResult<Vec<BlockNumber>>;
 
     /// Subscribes to block write operations performed using this `Storage`. Note that since
     /// updates are passed using a `watch` channel, only the latest written [`BlockNumber`]
@@ -51,62 +50,69 @@ pub trait BlockStore: fmt::Debug + Send + Sync {
 
 #[async_trait]
 impl BlockStore for RocksdbStorage {
-    async fn head_block(&self, ctx: &ctx::Ctx) -> anyhow::Result<FinalBlock> {
+    async fn head_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
         scope::run!(ctx, |ctx, s| async {
-            s.spawn_blocking(|| Ok(self.head_block_blocking()))
-                .join(ctx)
-                .await
+            Ok(
+                s.spawn_blocking(|| self.head_block_blocking().map_err(StorageError::Database))
+                    .join(ctx)
+                    .await?,
+            )
         })
         .await
-        .map_err(Into::into)
     }
 
-    async fn first_block(&self, ctx: &ctx::Ctx) -> anyhow::Result<FinalBlock> {
+    async fn first_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
         scope::run!(ctx, |ctx, s| async {
-            s.spawn_blocking(|| Ok(self.first_block_blocking()))
-                .join(ctx)
-                .await
+            Ok(
+                s.spawn_blocking(|| self.first_block_blocking().map_err(StorageError::Database))
+                    .join(ctx)
+                    .await?,
+            )
         })
         .await
-        .map_err(Into::into)
     }
 
-    async fn last_contiguous_block_number(&self, ctx: &ctx::Ctx) -> anyhow::Result<BlockNumber> {
+    async fn last_contiguous_block_number(&self, ctx: &ctx::Ctx) -> StorageResult<BlockNumber> {
         scope::run!(ctx, |ctx, s| async {
-            s.spawn_blocking(|| Ok(self.last_contiguous_block_number_blocking()))
-                .join(ctx)
-                .await
+            Ok(s.spawn_blocking(|| {
+                self.last_contiguous_block_number_blocking()
+                    .map_err(StorageError::Database)
+            })
+            .join(ctx)
+            .await?)
         })
         .await
-        .map_err(Into::into)
     }
 
     async fn block(
         &self,
         ctx: &ctx::Ctx,
         number: BlockNumber,
-    ) -> anyhow::Result<Option<FinalBlock>> {
+    ) -> StorageResult<Option<FinalBlock>> {
         scope::run!(ctx, |ctx, s| async {
-            s.spawn_blocking(|| Ok(self.block_blocking(number)))
-                .join(ctx)
-                .await
+            Ok(
+                s.spawn_blocking(|| self.block_blocking(number).map_err(StorageError::Database))
+                    .join(ctx)
+                    .await?,
+            )
         })
         .await
-        .map_err(Into::into)
     }
 
     async fn missing_block_numbers(
         &self,
         ctx: &ctx::Ctx,
         range: ops::Range<BlockNumber>,
-    ) -> anyhow::Result<Vec<BlockNumber>> {
+    ) -> StorageResult<Vec<BlockNumber>> {
         scope::run!(ctx, |ctx, s| async {
-            s.spawn_blocking(|| Ok(self.missing_block_numbers_blocking(range)))
-                .join(ctx)
-                .await
+            Ok(s.spawn_blocking(|| {
+                self.missing_block_numbers_blocking(range)
+                    .map_err(StorageError::Database)
+            })
+            .join(ctx)
+            .await?)
         })
         .await
-        .map_err(Into::into)
     }
 
     fn subscribe_to_block_writes(&self) -> watch::Receiver<BlockNumber> {
@@ -115,30 +121,31 @@ impl BlockStore for RocksdbStorage {
 }
 
 /// Mutable storage of L2 blocks.
+///
+/// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait]
 pub trait WriteBlockStore: BlockStore {
     /// Puts a block into this storage.
-    async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> anyhow::Result<()>;
+    async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()>;
 }
 
 #[async_trait]
 impl WriteBlockStore for RocksdbStorage {
-    async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> anyhow::Result<()> {
+    async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()> {
         scope::run!(ctx, |ctx, s| async {
-            s.spawn_blocking(|| {
-                self.put_block_blocking(block);
-                Ok(())
+            Ok(s.spawn_blocking(|| {
+                self.put_block_blocking(block)
+                    .map_err(StorageError::Database)
             })
             .join(ctx)
-            .await
+            .await?)
         })
         .await
-        .map_err(Into::into)
     }
 }
 
 impl RocksdbStorage {
-    fn head_block_blocking(&self) -> FinalBlock {
+    fn head_block_blocking(&self) -> anyhow::Result<FinalBlock> {
         let db = self.read();
 
         let mut options = ReadOptions::default();
@@ -146,13 +153,13 @@ impl RocksdbStorage {
         let mut iter = db.iterator_opt(DatabaseKey::BLOCK_HEAD_ITERATOR, options);
         let (_, head_block) = iter
             .next()
-            .expect("Head block not found")
-            .expect("RocksDB error reading head block");
-        schema::decode(&head_block).expect("Failed decoding head block bytes")
+            .context("Head block not found")?
+            .context("RocksDB error reading head block")?;
+        schema::decode(&head_block).context("Failed decoding head block bytes")
     }
 
     /// Returns a block with the least number stored in this database.
-    fn first_block_blocking(&self) -> FinalBlock {
+    fn first_block_blocking(&self) -> anyhow::Result<FinalBlock> {
         let db = self.read();
 
         let mut options = ReadOptions::default();
@@ -160,26 +167,26 @@ impl RocksdbStorage {
         let mut iter = db.iterator_opt(IteratorMode::Start, options);
         let (_, first_block) = iter
             .next()
-            .expect("First stored block not found")
-            .expect("RocksDB error reading first stored block");
-        schema::decode(&first_block).expect("Failed decoding first stored block bytes")
+            .context("First stored block not found")?
+            .context("RocksDB error reading first stored block")?;
+        schema::decode(&first_block).context("Failed decoding first stored block bytes")
     }
 
-    fn last_contiguous_block_number_blocking(&self) -> BlockNumber {
+    fn last_contiguous_block_number_blocking(&self) -> anyhow::Result<BlockNumber> {
         let last_contiguous_block_number = self
             .cached_last_contiguous_block_number
             .load(Ordering::Relaxed);
         let last_contiguous_block_number = BlockNumber(last_contiguous_block_number);
 
         let last_contiguous_block_number =
-            self.last_contiguous_block_number_impl(last_contiguous_block_number);
+            self.last_contiguous_block_number_impl(last_contiguous_block_number)?;
 
         // The cached value may have been updated by the other thread. Fortunately, we have a simple
         // protection against such "edit conflicts": the greater cached value is always valid and
         // should win.
         self.cached_last_contiguous_block_number
             .fetch_max(last_contiguous_block_number.0, Ordering::Relaxed);
-        last_contiguous_block_number
+        Ok(last_contiguous_block_number)
     }
 
     // Implementation that is not aware of caching specifics. The only requirement for the method correctness
@@ -187,7 +194,7 @@ impl RocksdbStorage {
     fn last_contiguous_block_number_impl(
         &self,
         cached_last_contiguous_block_number: BlockNumber,
-    ) -> BlockNumber {
+    ) -> anyhow::Result<BlockNumber> {
         let db = self.read();
 
         let mut options = ReadOptions::default();
@@ -196,35 +203,42 @@ impl RocksdbStorage {
         let iter = db.iterator_opt(IteratorMode::Start, options);
         let iter = iter
             .map(|bytes| {
-                let (key, _) = bytes.expect("RocksDB error iterating over block numbers");
+                let (key, _) = bytes.context("RocksDB error iterating over block numbers")?;
                 DatabaseKey::parse_block_key(&key)
             })
             .fuse();
 
         let mut prev_block_number = cached_last_contiguous_block_number;
         for block_number in iter {
+            let block_number = block_number?;
             if block_number > prev_block_number.next() {
-                return prev_block_number;
+                return Ok(prev_block_number);
             }
             prev_block_number = block_number;
         }
-        prev_block_number
+        Ok(prev_block_number)
     }
 
     /// Gets a block by its number.
-    pub(crate) fn block_blocking(&self, number: BlockNumber) -> Option<FinalBlock> {
+    pub(crate) fn block_blocking(&self, number: BlockNumber) -> anyhow::Result<Option<FinalBlock>> {
         let db = self.read();
 
-        let raw_block = db
+        let Some(raw_block) = db
             .get(DatabaseKey::Block(number).encode_key())
-            .unwrap_or_else(|err| panic!("RocksDB error reading block #{number}: {err}"))?;
-        Some(schema::decode(&raw_block).unwrap_or_else(|err| {
-            panic!("Failed decoding block #{number}: {err}");
-        }))
+            .with_context(|| format!("RocksDB error reading block #{number}"))?
+        else {
+            return Ok(None);
+        };
+        let block = schema::decode(&raw_block)
+            .with_context(|| format!("Failed decoding block #{number}"))?;
+        Ok(Some(block))
     }
 
     /// Iterates over block numbers in the specified `range` that the DB *does not* have.
-    fn missing_block_numbers_blocking(&self, range: ops::Range<BlockNumber>) -> Vec<BlockNumber> {
+    fn missing_block_numbers_blocking(
+        &self,
+        range: ops::Range<BlockNumber>,
+    ) -> anyhow::Result<Vec<BlockNumber>> {
         let db = self.read();
 
         let mut options = ReadOptions::default();
@@ -235,7 +249,7 @@ impl RocksdbStorage {
         let iter = db.iterator_opt(IteratorMode::Start, options);
         let iter = iter
             .map(|bytes| {
-                let (key, _) = bytes.expect("RocksDB error iterating over block numbers");
+                let (key, _) = bytes.context("RocksDB error iterating over block numbers")?;
                 DatabaseKey::parse_block_key(&key)
             })
             .fuse();
@@ -250,9 +264,8 @@ impl RocksdbStorage {
     // ---------------- Write methods ----------------
 
     /// Insert a new block into the database.
-    pub(crate) fn put_block_blocking(&self, finalized_block: &FinalBlock) {
+    pub(crate) fn put_block_blocking(&self, finalized_block: &FinalBlock) -> anyhow::Result<()> {
         let db = self.write();
-
         let block_number = finalized_block.block.number;
         tracing::debug!("Inserting new block #{block_number} into the database.");
 
@@ -261,12 +274,13 @@ impl RocksdbStorage {
             DatabaseKey::Block(block_number).encode_key(),
             schema::encode(finalized_block),
         );
-
         // Commit the transaction.
-        db.write(write_batch).unwrap();
+        db.write(write_batch)
+            .context("Failed writing block to database")?;
         drop(db);
 
         self.block_writes_sender.send_replace(block_number);
+        Ok(())
     }
 }
 
@@ -277,17 +291,25 @@ struct MissingBlockNumbers<I: Iterator> {
 
 impl<I> Iterator for MissingBlockNumbers<I>
 where
-    I: Iterator<Item = BlockNumber>,
+    I: Iterator<Item = anyhow::Result<BlockNumber>>,
 {
-    type Item = BlockNumber;
+    type Item = anyhow::Result<BlockNumber>;
 
     fn next(&mut self) -> Option<Self::Item> {
         // Loop while existing numbers match the starting numbers from the range. The check
         // that the range is non-empty is redundant given how `existing_numbers` are constructed
         // (they are guaranteed to be lesser than the upper range bound); we add it just to be safe.
-        while !self.range.is_empty() && self.existing_numbers.peek() == Some(&self.range.start) {
+        while !self.range.is_empty()
+            && matches!(self.existing_numbers.peek(), Some(&Ok(num)) if num == self.range.start)
+        {
             self.range.start = self.range.start.next();
             self.existing_numbers.next(); // Advance to the next number
+        }
+
+        if matches!(self.existing_numbers.peek(), Some(&Err(_))) {
+            let err = self.existing_numbers.next().unwrap().unwrap_err();
+            // ^ Both unwraps are safe due to the check above.
+            return Some(Err(err));
         }
 
         if self.range.is_empty() {
@@ -295,6 +317,6 @@ where
         }
         let next_number = self.range.start;
         self.range.start = self.range.start.next();
-        Some(next_number)
+        Some(Ok(next_number))
     }
 }

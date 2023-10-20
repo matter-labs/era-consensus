@@ -43,9 +43,11 @@ impl DatabaseKey {
     }
 
     /// Parses the specified bytes as a `Self::Block(_)` key.
-    pub(crate) fn parse_block_key(raw_key: &[u8]) -> validator::BlockNumber {
-        let raw_key = raw_key.try_into().expect("Invalid encoding for block key");
-        validator::BlockNumber(u64::from_be_bytes(raw_key))
+    pub(crate) fn parse_block_key(raw_key: &[u8]) -> anyhow::Result<validator::BlockNumber> {
+        let raw_key = raw_key
+            .try_into()
+            .context("Invalid encoding for block key")?;
+        Ok(validator::BlockNumber(u64::from_be_bytes(raw_key)))
     }
 }
 

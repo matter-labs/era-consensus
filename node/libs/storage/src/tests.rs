@@ -32,7 +32,7 @@ async fn init_store_twice() {
         },
         justification: rng.gen(),
     };
-    block_store.put_block_blocking(&block_1);
+    block_store.put_block(&ctx, &block_1).await.unwrap();
 
     assert_eq!(block_store.first_block(&ctx).await.unwrap(), genesis_block);
     assert_eq!(block_store.head_block(&ctx).await.unwrap(), block_1);
@@ -151,4 +151,11 @@ fn test_schema_encode_decode() {
 
     let replica = rng.gen::<ReplicaState>();
     assert_eq!(replica, schema::decode(&schema::encode(&replica)).unwrap());
+}
+
+#[test]
+fn cancellation_is_detected_in_storage_errors() {
+    let err = StorageError::from(ctx::Canceled);
+    let err = anyhow::Error::from(err);
+    assert!(err.root_cause().is::<ctx::Canceled>());
 }

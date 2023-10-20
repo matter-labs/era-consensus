@@ -123,7 +123,7 @@ impl StateMachine {
         scope::run_blocking!(ctx, |ctx, s| {
             let backup_future = self.storage.put_replica_state(ctx, &backup);
             s.spawn(backup_future).join(ctx).block()?;
-            anyhow::Ok(())
+            Ok(())
         })
         .expect("Failed backing up replica state");
         // ^ We don't know how to recover from DB errors, so panicking is the only option so far.

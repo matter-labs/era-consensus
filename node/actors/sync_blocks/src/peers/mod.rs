@@ -224,7 +224,8 @@ impl PeerStates {
         if let Some(events_sender) = &self.events_sender {
             events_sender.send(PeerStateEvent::GotBlock(block_number));
         }
-        storage.put_block(ctx, &block).await
+        storage.put_block(ctx, &block).await?;
+        Ok(())
     }
 
     #[instrument(level = "trace", skip(self, ctx))]

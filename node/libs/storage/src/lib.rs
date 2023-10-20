@@ -9,6 +9,7 @@ use std::{
     path::Path,
     sync::{atomic::AtomicU64, RwLock},
 };
+use thiserror::Error;
 
 mod block_store;
 mod replica;
@@ -22,6 +23,20 @@ pub use crate::{
     replica::ReplicaStateStore,
     types::ReplicaState,
 };
+
+/// Storage errors.
+#[derive(Debug, Error)]
+pub enum StorageError {
+    /// Operation was canceled by structured concurrency framework.
+    #[error("operation was canceled by structured concurrency framework")]
+    Canceled(#[from] ctx::Canceled),
+    /// Database operation failed.
+    #[error("database operation failed")]
+    Database(#[source] anyhow::Error),
+}
+
+/// [`Result`] for fallible storage operations.
+pub type StorageResult<T> = Result<T, StorageError>;
 
 /// Main struct for the Storage module, it just contains the database. Provides a set of high-level
 /// atomic operations on the database. It "contains" the following data:
@@ -71,7 +86,7 @@ impl RocksdbStorage {
             cached_last_contiguous_block_number: AtomicU64::new(0),
             block_writes_sender: watch::channel(genesis_block.block.number).0,
         };
-        if let Some(stored_genesis_block) = this.block_blocking(genesis_block.block.number) {
+        if let Some(stored_genesis_block) = this.block_blocking(genesis_block.block.number)? {
             anyhow::ensure!(
                 stored_genesis_block.block == genesis_block.block,
                 "Mismatch between stored and expected genesis block"
@@ -81,7 +96,7 @@ impl RocksdbStorage {
                 "Genesis block not present in RocksDB at `{path}`; saving {genesis_block:?}",
                 path = path.display()
             );
-            this.put_block_blocking(genesis_block);
+            this.put_block_blocking(genesis_block)?;
         }
         Ok(this)
     }
