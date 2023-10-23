@@ -123,7 +123,7 @@ async fn subscribing_to_state_updates() {
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(async {
             actor.run(ctx).await.or_else(|err| {
-                if err.is::<ctx::Canceled>() {
+                if err.root_cause().is::<ctx::Canceled>() {
                     Ok(()) // Swallow cancellation errors after the test is finished
                 } else {
                     Err(err)
@@ -221,7 +221,7 @@ async fn getting_blocks() {
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(async {
             actor.run(ctx).await.or_else(|err| {
-                if err.is::<ctx::Canceled>() {
+                if err.root_cause().is::<ctx::Canceled>() {
                     Ok(()) // Swallow cancellation errors after the test is finished
                 } else {
                     Err(err)

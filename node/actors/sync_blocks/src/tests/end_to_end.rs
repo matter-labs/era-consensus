@@ -254,7 +254,7 @@ async fn test_sync_blocks<T: GossipNetworkTest>(test: T) {
                     .unwrap_err();
 
                 tracing::trace!(?key, "Node task completed");
-                if err.is::<ctx::Canceled>() {
+                if err.root_cause().is::<ctx::Canceled>() {
                     Ok(()) // Test has successfully completed
                 } else {
                     Err(err)

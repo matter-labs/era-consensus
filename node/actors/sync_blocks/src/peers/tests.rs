@@ -95,7 +95,7 @@ async fn test_peer_states<T: Test>(test: T) {
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(async {
             peer_states.run(ctx).await.or_else(|err| {
-                if err.is::<ctx::Canceled>() {
+                if err.root_cause().is::<ctx::Canceled>() {
                     Ok(()) // Swallow cancellation errors after the test is finished
                 } else {
                     Err(err)

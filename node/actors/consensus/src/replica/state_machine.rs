@@ -5,7 +5,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
-use storage::ReplicaStateStore;
+use storage::{ReplicaStateStore, StorageError};
 use tracing::{instrument, warn};
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
@@ -120,12 +120,16 @@ impl StateMachine {
             block_proposal_cache: self.block_proposal_cache.clone(),
         };
 
-        scope::run_blocking!(ctx, |ctx, s| {
+        let store_result = scope::run_blocking!(ctx, |ctx, s| {
             let backup_future = self.storage.put_replica_state(ctx, &backup);
             s.spawn(backup_future).join(ctx).block()?;
             Ok(())
-        })
-        .expect("Failed backing up replica state");
-        // ^ We don't know how to recover from DB errors, so panicking is the only option so far.
+        });
+        match store_result {
+            Ok(()) => { /* Everything went fine */ }
+            Err(StorageError::Canceled(_)) => tracing::trace!("Storing replica state was canceled"),
+            Err(StorageError::Database(err)) => panic!("Failed storing replica state: {err}"),
+            // ^ We don't know how to recover from DB errors, so panicking is the only option so far.
+        }
     }
 }
