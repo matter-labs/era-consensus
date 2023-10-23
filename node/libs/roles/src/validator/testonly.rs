@@ -1,8 +1,4 @@
-use super::{
-    AggregateSignature, Block, BlockHash, BlockNumber, CommitQC, ConsensusMsg, FinalBlock,
-    LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Phase, PrepareQC, Proposal, PublicKey,
-    ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorSet, ViewNumber,
-};
+use super::*;
 use bit_vec::BitVec;
 use concurrency::time;
 use rand::{
@@ -42,19 +38,41 @@ impl Distribution<BlockNumber> for Standard {
     }
 }
 
-impl Distribution<BlockHash> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockHash {
-        BlockHash(rng.gen())
+impl Distribution<PayloadHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PayloadHash {
+        PayloadHash(rng.gen())
+    }
+}
+
+impl Distribution<BlockHeaderHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockHeaderHash {
+        BlockHeaderHash(rng.gen())
+    }
+}
+
+impl Distribution<BlockHeader> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockHeader {
+        BlockHeader {
+            protocol_version: ProtocolVersion(rng.gen()),
+            parent: rng.gen(),
+            number: rng.gen(),
+            payload_hash: rng.gen(),
+        }
+    }
+}
+
+impl Distribution<Payload> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Payload {
+        let size: usize = rng.gen_range(0..11);
+        Payload((0..size).map(|_| rng.gen()).collect())
     }
 }
 
 impl Distribution<Block> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Block {
-        let arr_size: usize = rng.gen_range(0..11);
         Block {
-            parent: rng.gen(),
-            number: rng.gen(),
-            payload: (0..arr_size).map(|_| rng.gen()).collect(),
+            header: rng.gen(),
+            payload: rng.gen(),
         }
     }
 }
@@ -82,8 +100,8 @@ impl Distribution<ReplicaCommit> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaCommit {
         ReplicaCommit {
             view: rng.gen(),
-            proposal_block_hash: rng.gen(),
-            proposal_block_number: rng.gen(),
+            proposal_hash: rng.gen(),
+            proposal_number: rng.gen(),
         }
     }
 }

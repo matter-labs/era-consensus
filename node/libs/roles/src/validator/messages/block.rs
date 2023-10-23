@@ -4,6 +4,49 @@ use super::CommitQC;
 use crypto::{sha256, ByteFmt, Text, TextFmt};
 use std::fmt;
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ProtocolVersion(pub(crate) u32);
+
+impl ProtocolVersion {
+    pub fn genesis() -> Self { Self(0) }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Payload(pub(crate) Vec<u8>);
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PayloadHash(pub(crate) sha256::Sha256);
+
+impl TextFmt for PayloadHash {
+    fn encode(&self) -> String {
+        format!(
+            "payload:sha256:{}",
+            hex::encode(ByteFmt::encode(&self.0))
+        )
+    }
+    fn decode(text: Text) -> anyhow::Result<Self> {
+        text.strip("payload:sha256:")?.decode_hex().map(Self)
+    }
+}
+
+impl fmt::Debug for PayloadHash {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str(&TextFmt::encode(self))
+    }
+}
+
+impl Payload {
+    pub fn hash(&self) -> PayloadHash {
+        PayloadHash(sha256::Sha256::new(&self.0))
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Block {
+    pub header: BlockHeader,
+    pub payload: Payload,
+}
+
 /// Sequential number of the block.
 /// Genesis block has number 0.
 /// For other blocks: block.number = block.parent.number + 1.
@@ -30,9 +73,9 @@ impl fmt::Display for BlockNumber {
 
 /// Hash of the block.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BlockHash(pub(crate) sha256::Sha256);
+pub struct BlockHeaderHash(pub(crate) sha256::Sha256);
 
-impl TextFmt for BlockHash {
+impl TextFmt for BlockHeaderHash {
     fn encode(&self) -> String {
         format!(
             "block_hash:sha256:{}",
@@ -44,35 +87,38 @@ impl TextFmt for BlockHash {
     }
 }
 
-impl fmt::Debug for BlockHash {
+impl fmt::Debug for BlockHeaderHash {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.write_str(&TextFmt::encode(self))
     }
 }
 
-/// A block.
+/// A block header.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Block {
+pub struct BlockHeader {
+    /// 
+    pub protocol_version: ProtocolVersion,
     /// Hash of the parent block.
-    pub parent: BlockHash,
+    pub parent: BlockHeaderHash,
     /// Number of the block.
     pub number: BlockNumber,
     /// Payload of the block.
-    pub payload: Vec<u8>,
+    pub payload_hash: PayloadHash,
 }
 
-impl Block {
+impl BlockHeader {
     /// Returns the hash of the block.
-    pub fn hash(&self) -> BlockHash {
-        BlockHash(sha256::Sha256::new(&schema::canonical(self)))
+    pub fn hash(&self) -> BlockHeaderHash {
+        BlockHeaderHash(sha256::Sha256::new(&schema::canonical(self)))
     }
 
     /// Creates a genesis block.
-    pub fn genesis(payload: Vec<u8>) -> Block {
-        Block {
-            parent: BlockHash(sha256::Sha256::default()),
+    pub fn genesis(payload_hash: PayloadHash) -> BlockHeader {
+        BlockHeader {
+            protocol_version: ProtocolVersion::genesis(),
+            parent: BlockHeaderHash(sha256::Sha256::default()),
             number: BlockNumber(0),
-            payload,
+            payload_hash,
         }
     }
 }
@@ -89,8 +135,7 @@ pub struct FinalBlock {
 impl FinalBlock {
     /// Creates a new finalized block.
     pub fn new(block: Block, justification: CommitQC) -> Self {
-        assert_eq!(block.hash(), justification.message.proposal_block_hash);
-
+        assert_eq!(block.header.hash(), justification.message.proposal_hash);
         Self {
             block,
             justification,

@@ -76,9 +76,9 @@ fn test_text_encoding() {
         Text::new(&t).decode::<AggregateSignature>().unwrap()
     );
 
-    let block_hash: BlockHash = rng.gen();
-    let t = TextFmt::encode(&block_hash);
-    assert_eq!(block_hash, Text::new(&t).decode::<BlockHash>().unwrap());
+    let block_header_hash: BlockHeaderHash = rng.gen();
+    let t = TextFmt::encode(&block_header_hash);
+    assert_eq!(block_header_hash, Text::new(&t).decode::<BlockHeaderHash>().unwrap());
 
     let final_block: FinalBlock = rng.gen();
     let t = TextFmt::encode(&final_block);
@@ -93,7 +93,9 @@ fn test_text_encoding() {
 fn test_schema_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    test_encode_random::<_, BlockHash>(rng);
+    test_encode_random::<_, PayloadHash>(rng);
+    test_encode_random::<_, BlockHeader>(rng);
+    test_encode_random::<_, BlockHeaderHash>(rng);
     test_encode_random::<_, Block>(rng);
     test_encode_random::<_, FinalBlock>(rng);
     test_encode_random::<_, Signed<ConsensusMsg>>(rng);

@@ -4,14 +4,30 @@ package roles.validator;
 
 import "std.proto";
 
-message BlockHash {
+message BlockHeaderHash {
+  optional bytes sha256 = 1;
+}
+
+message PayloadHash {
   optional bytes sha256 = 1;
 }
 
 message Block {
-  optional BlockHash parent = 1;
-  optional uint64 number = 2;
-  optional bytes payload = 3;
+  optional BlockHeader header = 1;
+  optional bytes payload = 2;
+}
+
+message BlockHeader {
+  // Protocol version determines the algorithm
+  // according to which this block has been constructed.
+  // In particular it defines how payload should be interpreted.
+  optional uint32 protocol_version = 1;
+  // Hash of the parent Block.  
+  optional BlockHeaderHash parent = 2;
+  // Sequential number of the block = parent.number + 1.
+  optional uint64 number = 3;
+  // Hash of the block payload.
+  optional PayloadHash payload_hash = 4;
 }
 
 message FinalBlock {
@@ -36,7 +52,7 @@ message ReplicaPrepare {
 
 message ReplicaCommit {
   optional uint64 view = 1;
-  optional BlockHash hash = 2;
+  optional BlockHeaderHash hash = 2;
   optional uint64 number = 3;
 }
 

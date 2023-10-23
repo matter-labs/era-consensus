@@ -1,17 +1,14 @@
-use super::{
-    AggregateSignature, Block, BlockHash, BlockNumber, CommitQC, ConsensusMsg, FinalBlock,
-    LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Phase, PrepareQC, Proposal, PublicKey,
-    ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, ViewNumber,
-};
-use crate::{node::SessionId, validator};
+use super::*;
+use crate::{node::SessionId};
 use ::schema::{read_required, required, ProtoFmt};
 use anyhow::Context as _;
 use crypto::ByteFmt;
 use std::collections::BTreeMap;
 use utils::enum_util::Variant;
+use schema::proto::roles::validator as proto;
 
-impl ProtoFmt for BlockHash {
-    type Proto = validator::schema::BlockHash;
+impl ProtoFmt for BlockHeaderHash {
+    type Proto = proto::BlockHeaderHash;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(ByteFmt::decode(required(&r.sha256)?)?))
     }
@@ -22,26 +19,57 @@ impl ProtoFmt for BlockHash {
     }
 }
 
-impl ProtoFmt for Block {
-    type Proto = validator::schema::Block;
+impl ProtoFmt for PayloadHash {
+    type Proto = proto::PayloadHash;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.sha256)?)?))
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            sha256: Some(self.0.encode()),
+        }
+    }
+}
+
+impl ProtoFmt for BlockHeader {
+    type Proto = proto::BlockHeader;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
+            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
             parent: read_required(&r.parent).context("parent")?,
             number: BlockNumber(r.number.context("number")?),
-            payload: required(&r.payload).context("payload")?.clone(),
+            payload_hash: read_required(&r.payload_hash).context("payload")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
+            protocol_version: Some(self.protocol_version.0),
             parent: Some(self.parent.build()),
             number: Some(self.number.0),
-            payload: Some(self.payload.clone()),
+            payload_hash: Some(self.payload_hash.build()),
+        }
+    }
+}
+
+impl ProtoFmt for Block {
+    type Proto = proto::Block;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            header: read_required(&r.header).context("block")?,
+            payload: Payload(required(&r.payload).context("payload")?.clone()),
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            header: Some(self.header.build()),
+            payload: Some(self.payload.0.clone()),
         }
     }
 }
 
 impl ProtoFmt for FinalBlock {
-    type Proto = validator::schema::FinalBlock;
+    type Proto = proto::FinalBlock;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             block: read_required(&r.block).context("block")?,
@@ -58,10 +86,10 @@ impl ProtoFmt for FinalBlock {
 }
 
 impl ProtoFmt for ConsensusMsg {
-    type Proto = validator::schema::ConsensusMsg;
+    type Proto = proto::ConsensusMsg;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        use validator::schema::consensus_msg::T;
+        use proto::consensus_msg::T;
         Ok(match r.t.as_ref().context("missing")? {
             T::ReplicaPrepare(r) => {
                 Self::ReplicaPrepare(ProtoFmt::read(r).context("ReplicaPrepare")?)
@@ -73,7 +101,7 @@ impl ProtoFmt for ConsensusMsg {
     }
 
     fn build(&self) -> Self::Proto {
-        use validator::schema::consensus_msg::T;
+        use proto::consensus_msg::T;
 
         let t = match self {
             Self::ReplicaPrepare(x) => T::ReplicaPrepare(x.build()),
@@ -87,7 +115,7 @@ impl ProtoFmt for ConsensusMsg {
 }
 
 impl ProtoFmt for ReplicaPrepare {
-    type Proto = validator::schema::ReplicaPrepare;
+    type Proto = proto::ReplicaPrepare;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
@@ -107,27 +135,27 @@ impl ProtoFmt for ReplicaPrepare {
 }
 
 impl ProtoFmt for ReplicaCommit {
-    type Proto = validator::schema::ReplicaCommit;
+    type Proto = proto::ReplicaCommit;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             view: ViewNumber(r.view.context("view_number")?),
-            proposal_block_hash: read_required(&r.hash).context("hash")?,
-            proposal_block_number: BlockNumber(r.number.context("number")?),
+            proposal_hash: read_required(&r.hash).context("hash")?,
+            proposal_number: BlockNumber(r.number.context("number")?),
         })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
             view: Some(self.view.0),
-            hash: Some(self.proposal_block_hash.build()),
-            number: Some(self.proposal_block_number.0),
+            hash: Some(self.proposal_hash.build()),
+            number: Some(self.proposal_number.0),
         }
     }
 }
 
 impl ProtoFmt for LeaderPrepare {
-    type Proto = validator::schema::LeaderPrepare;
+    type Proto = proto::LeaderPrepare;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
@@ -145,10 +173,10 @@ impl ProtoFmt for LeaderPrepare {
 }
 
 impl ProtoFmt for Proposal {
-    type Proto = validator::schema::Proposal;
+    type Proto = proto::Proposal;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        use validator::schema::proposal::T;
+        use proto::proposal::T;
         Ok(match required(&r.t)? {
             T::New(r) => Self::New(ProtoFmt::read(r).context("Block")?),
             T::Retry(r) => Self::Retry(ProtoFmt::read(r).context("ReplicaCommit")?),
@@ -156,7 +184,7 @@ impl ProtoFmt for Proposal {
     }
 
     fn build(&self) -> Self::Proto {
-        use validator::schema::proposal::T;
+        use proto::proposal::T;
         let t = match self {
             Self::New(x) => T::New(x.build()),
             Self::Retry(x) => T::Retry(x.build()),
@@ -166,7 +194,7 @@ impl ProtoFmt for Proposal {
 }
 
 impl ProtoFmt for LeaderCommit {
-    type Proto = validator::schema::LeaderCommit;
+    type Proto = proto::LeaderCommit;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
@@ -182,7 +210,7 @@ impl ProtoFmt for LeaderCommit {
 }
 
 impl ProtoFmt for PrepareQC {
-    type Proto = validator::schema::PrepareQc;
+    type Proto = proto::PrepareQc;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let mut map = BTreeMap::new();
@@ -216,7 +244,7 @@ impl ProtoFmt for PrepareQC {
 }
 
 impl ProtoFmt for CommitQC {
-    type Proto = validator::schema::CommitQc;
+    type Proto = proto::CommitQc;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
@@ -236,10 +264,10 @@ impl ProtoFmt for CommitQC {
 }
 
 impl ProtoFmt for Phase {
-    type Proto = validator::schema::Phase;
+    type Proto = proto::Phase;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        use validator::schema::phase::T;
+        use proto::phase::T;
         Ok(match required(&r.t)? {
             T::Prepare(_) => Self::Prepare,
             T::Commit(_) => Self::Commit,
@@ -247,7 +275,7 @@ impl ProtoFmt for Phase {
     }
 
     fn build(&self) -> Self::Proto {
-        use validator::schema::phase::T;
+        use proto::phase::T;
         let t = match self {
             Self::Prepare => T::Prepare(schema::proto::std::Void {}),
             Self::Commit => T::Commit(schema::proto::std::Void {}),
@@ -257,7 +285,7 @@ impl ProtoFmt for Phase {
 }
 
 impl ProtoFmt for NetAddress {
-    type Proto = validator::schema::NetAddress;
+    type Proto = proto::NetAddress;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
@@ -277,10 +305,10 @@ impl ProtoFmt for NetAddress {
 }
 
 impl ProtoFmt for Msg {
-    type Proto = validator::schema::Msg;
+    type Proto = proto::Msg;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        use validator::schema::msg::T;
+        use proto::msg::T;
         Ok(match r.t.as_ref().context("missing")? {
             T::Consensus(r) => Self::Consensus(ProtoFmt::read(r).context("Consensus")?),
             T::SessionId(r) => Self::SessionId(SessionId(r.clone())),
@@ -289,7 +317,7 @@ impl ProtoFmt for Msg {
     }
 
     fn build(&self) -> Self::Proto {
-        use validator::schema::msg::T;
+        use proto::msg::T;
 
         let t = match self {
             Self::Consensus(x) => T::Consensus(x.build()),
@@ -302,7 +330,7 @@ impl ProtoFmt for Msg {
 }
 
 impl ProtoFmt for MsgHash {
-    type Proto = validator::schema::MsgHash;
+    type Proto = proto::MsgHash;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(ByteFmt::decode(required(&r.sha256)?)?))
@@ -316,7 +344,7 @@ impl ProtoFmt for MsgHash {
 }
 
 impl<V: Variant<Msg> + Clone> ProtoFmt for Signed<V> {
-    type Proto = validator::schema::Signed;
+    type Proto = proto::Signed;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             msg: V::extract(read_required::<Msg>(&r.msg).context("msg")?)?,
@@ -334,7 +362,7 @@ impl<V: Variant<Msg> + Clone> ProtoFmt for Signed<V> {
 }
 
 impl ProtoFmt for PublicKey {
-    type Proto = validator::schema::PublicKey;
+    type Proto = proto::PublicKey;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(ByteFmt::decode(required(&r.bls12381)?)?))
@@ -348,7 +376,7 @@ impl ProtoFmt for PublicKey {
 }
 
 impl ProtoFmt for Signature {
-    type Proto = validator::schema::Signature;
+    type Proto = proto::Signature;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(ByteFmt::decode(required(&r.bls12381)?)?))
@@ -362,7 +390,7 @@ impl ProtoFmt for Signature {
 }
 
 impl ProtoFmt for AggregateSignature {
-    type Proto = validator::schema::AggregateSignature;
+    type Proto = proto::AggregateSignature;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(ByteFmt::decode(required(&r.bls12381)?)?))

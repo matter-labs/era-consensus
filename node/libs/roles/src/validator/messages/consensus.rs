@@ -1,6 +1,6 @@
 //! Messages related to the consensus protocol.
 
-use super::{Block, BlockHash, BlockNumber, Msg, Signed};
+use super::*;
 use crate::validator;
 use anyhow::{bail, Context};
 use bit_vec::BitVec;
@@ -94,10 +94,10 @@ pub struct ReplicaPrepare {
 pub struct ReplicaCommit {
     /// The number of the current view.
     pub view: ViewNumber,
-    /// The hash of the block that the replica is committing to.
-    pub proposal_block_hash: BlockHash,
+    /// The hash of the block header that the replica is committing to.
+    pub proposal_hash: BlockHeaderHash,
     /// The number of the block that the replica is committing to.
-    pub proposal_block_number: BlockNumber,
+    pub proposal_number: BlockNumber,
 }
 
 /// A Prepare message from a leader.

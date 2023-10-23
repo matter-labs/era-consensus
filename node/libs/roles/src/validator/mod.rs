@@ -10,4 +10,3 @@ mod testonly;
 
 pub use keys::*;
 pub use messages::*;
-pub use schema::proto::roles::validator as schema;
