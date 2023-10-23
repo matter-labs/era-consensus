@@ -11,4 +11,4 @@ pub use secret_key::SecretKey;
 pub use signature::Signature;
 
 /// Error type returned by validator key operations.
-pub type Error = crypto::bls12_381::Error;
+pub type Error = crypto::bn254::Error;

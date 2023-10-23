@@ -3,14 +3,15 @@
 use std::collections::BTreeMap;
 
 use anyhow::anyhow;
-use bn254::{ECDSA, PrivateKey};
+use bn254::{PrivateKey, ECDSA};
 use rand::Rng;
 
-use crate::bn254::error::Error;
+pub use crate::bn254::error::Error;
 use crate::ByteFmt;
 
 mod error;
 
+mod testonly;
 #[cfg(test)]
 mod tests;
 
@@ -35,7 +36,6 @@ impl SecretKey {
         PublicKey(pk)
     }
 }
-
 
 impl ByteFmt for SecretKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
@@ -119,7 +119,8 @@ impl ByteFmt for Signature {
             .map_err(|err| anyhow!("Error decoding signature: {err:?}"))
     }
     fn encode(&self) -> Vec<u8> {
-        self.0.to_compressed().unwrap()   }
+        self.0.to_compressed().unwrap()
+    }
 }
 
 impl PartialOrd for Signature {
@@ -172,5 +173,28 @@ impl AggregateSignature {
         }
 
         Ok(())
+    }
+}
+
+impl ByteFmt for AggregateSignature {
+    fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
+        let signature = Signature::decode(bytes)?;
+        Ok(AggregateSignature(signature))
+    }
+
+    fn encode(&self) -> Vec<u8> {
+        Signature::encode(&self.0)
+    }
+}
+
+impl PartialOrd for AggregateSignature {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for AggregateSignature {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        ByteFmt::encode(self).cmp(&ByteFmt::encode(other))
     }
 }

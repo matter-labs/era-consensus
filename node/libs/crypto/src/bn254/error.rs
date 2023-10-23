@@ -1,9 +1,6 @@
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     /// Signature verification failure
-    #[error("Failed to decode secret key: TODO(moshababo)")]
-    DecodeFailure,
-    /// Signature verification failure
     #[error("Signature verification failure: {0:?}")]
     SignatureVerification(bn254::Error),
     /// Aggregate signature verification failure

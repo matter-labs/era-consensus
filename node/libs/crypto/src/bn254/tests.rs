@@ -1,4 +1,4 @@
-use crate::bn254::{AggregateSignature, PublicKey, SecretKey, Signature, ByteFmt};
+use crate::bn254::{AggregateSignature, ByteFmt, PublicKey, SecretKey, Signature};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::iter::repeat_with;
 
@@ -63,11 +63,10 @@ fn aggregate_signature_failure_smoke() {
     assert!(agg_sig.verify(pks.iter().map(|pk| (&msg[..], pk))).is_err())
 }
 
-
 #[test]
 fn aggregate_signature_distinct_messages() {
     let mut rng = StdRng::seed_from_u64(29483920);
-    let num_keys = 6;
+    let num_keys = 5;
     let num_distinct = 2;
 
     // Use an arbitrary 5 keys for the smoke test

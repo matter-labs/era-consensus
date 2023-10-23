@@ -26,9 +26,9 @@ pub(crate) enum Error {
         current_phase: validator::Phase,
     },
     #[error("received leader commit message with invalid signature")]
-    LeaderCommitInvalidSignature(#[source] crypto::bls12_381::Error),
+    LeaderCommitInvalidSignature(#[source] crypto::bn254::Error),
     #[error("received leader prepare message with invalid signature")]
-    LeaderPrepareInvalidSignature(#[source] crypto::bls12_381::Error),
+    LeaderPrepareInvalidSignature(#[source] crypto::bn254::Error),
     #[error("received leader commit message with invalid justification")]
     LeaderCommitInvalidJustification(#[source] anyhow::Error),
     #[error("received leader prepare message with empty map in the justification")]

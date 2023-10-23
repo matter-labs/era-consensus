@@ -2,7 +2,7 @@
 
 use super::{ConsensusMsg, NetAddress};
 use crate::{node::SessionId, validator};
-use crypto::{bls12_381::Error, sha256, ByteFmt, Text, TextFmt};
+use crypto::{bn254::Error, sha256, ByteFmt, Text, TextFmt};
 use std::fmt;
 use utils::enum_util::{ErrBadVariant, Variant};
 

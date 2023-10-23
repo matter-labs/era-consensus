@@ -40,9 +40,9 @@ pub(crate) enum Error {
         current_view: validator::ViewNumber,
     },
     #[error("received replica commit message with invalid signature")]
-    ReplicaCommitInvalidSignature(#[source] crypto::bls12_381::Error),
+    ReplicaCommitInvalidSignature(#[source] crypto::bn254::Error),
     #[error("received replica prepare message with invalid signature")]
-    ReplicaPrepareInvalidSignature(#[source] crypto::bls12_381::Error),
+    ReplicaPrepareInvalidSignature(#[source] crypto::bn254::Error),
     #[error("received replica prepare message with invalid high QC")]
     ReplicaPrepareInvalidHighQC(#[source] anyhow::Error),
 }

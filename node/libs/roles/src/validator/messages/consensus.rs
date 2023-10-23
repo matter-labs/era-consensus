@@ -177,7 +177,7 @@ impl PrepareQC {
 
         // Aggregate the signatures.
         let signature =
-            validator::AggregateSignature::aggregate(signed_messages.iter().map(|v| &v.sig))?;
+            validator::AggregateSignature::aggregate(signed_messages.iter().map(|v| &v.sig));
 
         Ok(Self { map, signature })
     }
@@ -297,7 +297,7 @@ impl CommitQC {
             .collect();
 
         // Aggregate the signatures.
-        let signature = validator::AggregateSignature::aggregate(msg_map.values().copied())?;
+        let signature = validator::AggregateSignature::aggregate(msg_map.values().copied());
         Ok(Self {
             message,
             signers: Signers(bit_vec),
