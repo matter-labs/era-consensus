@@ -1,5 +1,6 @@
 use super::*;
-use crate::types::ReplicaState;
+use crate::{buffered::BufferedStorageEvent, types::ReplicaState};
+use assert_matches::assert_matches;
 use async_trait::async_trait;
 use concurrency::{
     ctx::{self, channel},
@@ -267,7 +268,9 @@ async fn test_buffered_storage(
     initial_blocks.insert(0, genesis_block.clone());
 
     let (block_store, block_receiver) = MockContiguousStore::new(block_store);
-    let buffered_store = BufferedStorage::new(block_store);
+    let mut buffered_store = BufferedStorage::new(block_store);
+    let (events_sender, mut events_receiver) = channel::unbounded();
+    buffered_store.set_events_sender(events_sender);
 
     // Check initial values returned by the store.
     let last_initial_block = initial_blocks.last().unwrap().clone();
@@ -341,6 +344,16 @@ async fn test_buffered_storage(
             < last_block_number
         {
             sync::changed(ctx, &mut inner_subscriber).await?;
+        }
+
+        // Check events emitted by the buffered storage. This also ensures that all underlying storage
+        // updates are processed before proceeding to the following checks.
+        let expected_numbers = (initial_block_count as u64 + 1)..=last_block_number.0;
+        for expected_number in expected_numbers.map(BlockNumber) {
+            assert_matches!(
+                events_receiver.recv(ctx).await?,
+                BufferedStorageEvent::UpdateReceived(number) if number == expected_number
+            );
         }
 
         assert_eq!(buffered_store.buffer_len().await, 0);

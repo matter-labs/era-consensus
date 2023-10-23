@@ -5,6 +5,8 @@ use crate::{
     StorageError, StorageResult,
 };
 use async_trait::async_trait;
+#[cfg(test)]
+use concurrency::ctx::channel;
 use concurrency::{
     ctx,
     sync::{self, watch, Mutex},
@@ -117,6 +119,14 @@ impl BlockBuffer {
     }
 }
 
+/// Events emitted by [`BufferedStorage`].
+#[cfg(test)]
+#[derive(Debug)]
+pub(crate) enum BufferedStorageEvent {
+    /// Update was received from
+    UpdateReceived(BlockNumber),
+}
+
 /// [`BlockStore`] with an in-memory buffer for pending blocks.
 #[derive(Debug)]
 pub struct BufferedStorage<T> {
@@ -124,6 +134,8 @@ pub struct BufferedStorage<T> {
     inner_subscriber: watch::Receiver<BlockNumber>,
     block_writes_sender: watch::Sender<BlockNumber>,
     buffer: Mutex<BlockBuffer>,
+    #[cfg(test)]
+    events_sender: channel::UnboundedSender<BufferedStorageEvent>,
 }
 
 impl<T: ContiguousBlockStore> BufferedStorage<T> {
@@ -137,7 +149,17 @@ impl<T: ContiguousBlockStore> BufferedStorage<T> {
             inner_subscriber,
             block_writes_sender: watch::channel(store_block_number).0,
             buffer: Mutex::new(BlockBuffer::new(store_block_number)),
+            #[cfg(test)]
+            events_sender: channel::unbounded().0,
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_events_sender(
+        &mut self,
+        sender: channel::UnboundedSender<BufferedStorageEvent>,
+    ) {
+        self.events_sender = sender;
     }
 
     #[cfg(test)]
@@ -167,8 +189,12 @@ impl<T: ContiguousBlockStore> BufferedStorage<T> {
             if let Some(block) = next_block_for_store {
                 self.inner.schedule_next_block(ctx, &block).await?;
                 let block_number = block.block.number;
-                tracing::trace!(%block_number, "Block put in underlying storage");
+                tracing::trace!(%block_number, "Block scheduled in underlying storage");
             }
+
+            #[cfg(test)]
+            self.events_sender
+                .send(BufferedStorageEvent::UpdateReceived(store_block_number));
         }
     }
 }
@@ -242,7 +268,7 @@ impl<T: ContiguousBlockStore> WriteBlockStore for BufferedStorage<T> {
 
         if let Some(block) = next_block_for_store {
             self.inner.schedule_next_block(ctx, &block).await?;
-            tracing::trace!(block_number = %block.block.number, "Block put in underlying storage");
+            tracing::trace!(block_number = %block.block.number, "Block scheduled in underlying storage");
         }
         self.block_writes_sender.send_replace(block.block.number);
         Ok(())

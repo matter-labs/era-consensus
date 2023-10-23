@@ -19,6 +19,7 @@ roles = { path = "../roles" }
 schema = { path = "../schema" }
 
 [dev-dependencies]
+assert_matches.workspace = true
 tempfile.workspace = true
 test-casing.workspace = true
 tokio.workspace = true
