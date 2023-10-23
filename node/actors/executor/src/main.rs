@@ -7,7 +7,7 @@ use consensus::Consensus;
 use executor::{configurator::Configs, io::Dispatcher};
 use std::{fs, io::IsTerminal as _, path::Path, sync::Arc};
 use storage::{BlockStore, RocksdbStorage};
-use tracing::{debug, info, metadata::LevelFilter};
+use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use utils::{no_copy::NoCopy, pipe};
 use vise_exporter::MetricsExporter;
@@ -55,20 +55,20 @@ async fn main() -> anyhow::Result<()> {
         tracing::subscriber::set_global_default(subscriber).unwrap();
 
         // Start the node.
-        info!("Starting node.");
+        tracing::info!("Starting node.");
     }
 
     // Load the config files.
-    debug!("Loading config files.");
+    tracing::debug!("Loading config files.");
     let configs = Configs::read(&args).context("configs.read()")?;
 
     if config_mode {
-        info!("Configuration verified.");
+        tracing::info!("Configuration verified.");
         return Ok(());
     }
 
     // Initialize the storage.
-    debug!("Initializing storage.");
+    tracing::debug!("Initializing storage.");
 
     let storage = RocksdbStorage::new(ctx, &configs.config.genesis_block, Path::new("./database"));
     let storage = Arc::new(storage.await.context("RocksdbStorage::new()")?);
@@ -98,7 +98,7 @@ async fn main() -> anyhow::Result<()> {
     .context("consensus")?;
     // FIXME(slowli): Run `sync_blocks` actor once it's fully functional
 
-    debug!("Starting actors in separate threads.");
+    tracing::debug!("Starting actors in separate threads.");
     scope::run!(ctx, |ctx, s| async {
         if let Some(addr) = configs.config.metrics_server_addr {
             let addr = NoCopy::from(addr);
@@ -128,15 +128,10 @@ async fn main() -> anyhow::Result<()> {
         if ci_mode {
             let storage = storage.clone();
             loop {
-                let block_finalized = storage
-                    .head_block(ctx)
-                    .await
-                    .context("head_block")?
-                    .block
-                    .number
-                    .0;
+                let block_finalized = storage.head_block(ctx).await.context("head_block")?;
+                let block_finalized = block_finalized.block.number.0;
 
-                info!("current finalized block {}", block_finalized);
+                tracing::info!("current finalized block {}", block_finalized);
                 if block_finalized > 100 {
                     // we wait for 10 seconds to make sure that we send enough messages to other nodes
                     // and other nodes have enough messages to finalize 100+ blocks
@@ -146,7 +141,7 @@ async fn main() -> anyhow::Result<()> {
                 ctx.sleep(time::Duration::seconds(1)).await?;
             }
 
-            info!("Cancel all tasks");
+            tracing::info!("Cancel all tasks");
             s.cancel();
         }
 
