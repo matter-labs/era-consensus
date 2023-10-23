@@ -26,6 +26,7 @@ assert_matches = "1.5.0"
 async-trait = "0.1.71"
 bit-vec = "0.6"
 blst = "0.3.10"
+bn254 = "0.0.1"
 clap = { version = "4.3.3", features = ["derive"] }
 ed25519-dalek = { version = "2.0.0", features = ["serde", "rand_core"] }
 futures = "0.3.28"

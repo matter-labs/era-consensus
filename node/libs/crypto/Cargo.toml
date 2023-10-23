@@ -9,6 +9,7 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 blst.workspace = true
+bn254.workspace = true
 ed25519-dalek.workspace = true
 hex.workspace = true
 rand.workspace = true
