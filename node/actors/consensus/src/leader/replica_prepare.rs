@@ -109,7 +109,7 @@ impl StateMachine {
 
         for vote in replica_messages.iter().map(|s| &s.msg.high_vote) {
             *count
-                .entry((vote.proposal_block_number, vote.proposal_block_hash))
+                .entry((vote.proposal_number, vote.proposal_hash))
                 .or_default() += 1;
         }
 
@@ -135,13 +135,13 @@ impl StateMachine {
             // f+1 honest replicas have the block can broadcast when finalized
             // (2f+1 have stated that they voted for the block, at most f are malicious).
             Some((block_number, block_hash))
-                if block_number != highest_qc.message.proposal_block_number
-                    || block_hash != highest_qc.message.proposal_block_hash =>
+                if block_number != highest_qc.message.proposal_number
+                    || block_hash != highest_qc.message.proposal_hash =>
             {
                 let vote = validator::ReplicaCommit {
                     view: message.view,
-                    proposal_block_hash: block_hash,
-                    proposal_block_number: block_number,
+                    proposal_hash: block_hash,
+                    proposal_number: block_number,
                 };
 
                 let proposal = validator::Proposal::Retry(vote);
@@ -155,9 +155,11 @@ impl StateMachine {
                 let mut payload = vec![0; ConsensusInner::PAYLOAD_MAX_SIZE];
                 ctx.rng().fill(&mut payload[..]);
 
-                let block = validator::Block {
-                    parent: highest_qc.message.proposal_block_hash,
-                    number: highest_qc.message.proposal_block_number.next(),
+                let block = validator::Block::new(&validator::BlockHeader {
+                        protocol_version: validator::ProtocolVersion::genesis(),
+                        parent: highest_qc.message.proposal_hash,
+                        number: highest_qc.message.proposal_number.next(),
+                        payload_hash:
                     payload,
                 };
                 metrics::METRICS
@@ -166,8 +168,8 @@ impl StateMachine {
 
                 let vote = validator::ReplicaCommit {
                     view: message.view,
-                    proposal_block_hash: block.hash(),
-                    proposal_block_number: block.number,
+                    proposal_hash: block.hash(),
+                    proposal_number: block.number,
                 };
 
                 let proposal = validator::Proposal::New(block);

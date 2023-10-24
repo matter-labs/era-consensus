@@ -12,7 +12,7 @@ impl ProtocolVersion {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Payload(pub(crate) Vec<u8>);
+pub struct Payload(pub Vec<u8>);
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct PayloadHash(pub(crate) sha256::Sha256);
@@ -45,6 +45,29 @@ impl Payload {
 pub struct Block {
     pub header: BlockHeader,
     pub payload: Payload,
+}
+
+impl Block {
+    pub fn genesis(payload: Payload) -> Self {
+        Self {
+            header: BlockHeader::genesis(payload.hash()),
+            payload,
+        }
+    }
+
+    pub fn new(parent: &BlockHeader, payload: Payload) -> Self {
+        Self {
+            header: BlockHeader {
+                // TODO: once we make protocol_version updateable,
+                // it should be taken as a separate argument of `new()`.
+                protocol_version: parent.protocol_version,
+                parent: parent.hash(),
+                number: parent.number.next(),
+                payload_hash: payload.hash(),
+            },
+            payload,
+        }
+    }
 }
 
 /// Sequential number of the block.

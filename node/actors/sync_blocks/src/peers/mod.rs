@@ -88,7 +88,7 @@ impl PeerStates {
             // `storage` uses blocking I/O, so we spawn it a blocking context for it
             let blocks_task = s.spawn_blocking(|| {
                 let start_number = storage.get_last_contiguous_block_number();
-                let end_number = storage.get_head_block().block.number;
+                let end_number = storage.get_head_block().block.header.number;
                 let missing_blocks = storage.get_missing_block_numbers(start_number..end_number);
                 Ok((end_number, missing_blocks))
             });
@@ -348,11 +348,11 @@ impl PeerStates {
 
     fn validate_block(&self, block_number: BlockNumber, block: &FinalBlock) -> anyhow::Result<()> {
         anyhow::ensure!(
-            block.block.number == block_number,
+            block.block.header.number == block_number,
             "Block does not have requested number"
         );
         anyhow::ensure!(
-            block.block.number == block.justification.message.proposal_block_number,
+            block.block.header.number == block.justification.message.proposal_block_number,
             "Block numbers in `block` and quorum certificate don't match"
         );
         anyhow::ensure!(

@@ -14,14 +14,14 @@ impl Distribution<ReplicaState> for Standard {
         for _ in 0..n {
             let block: validator::Block = rng.gen();
 
-            match block_proposal_cache.get_mut(&block.number) {
+            match block_proposal_cache.get_mut(&block.header.number) {
                 Some(blocks) => {
-                    blocks.insert(block.hash(), block.clone());
+                    blocks.insert(block.header.hash(), block.clone());
                 }
                 None => {
                     let mut blocks = HashMap::new();
-                    blocks.insert(block.hash(), block.clone());
-                    block_proposal_cache.insert(block.number, blocks);
+                    blocks.insert(block.header.hash(), block.clone());
+                    block_proposal_cache.insert(block.header.number, blocks);
                 }
             }
         }

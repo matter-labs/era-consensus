@@ -49,7 +49,7 @@ impl Test {
                 .collect();
             assert!(!honest.is_empty());
 
-            let mut finalized: HashMap<validator::BlockNumber, validator::BlockHash> =
+            let mut finalized: HashMap<validator::BlockNumber, validator::BlockHeaderHash> =
                 HashMap::new();
             let mut observers: HashMap<validator::BlockNumber, HashSet<validator::PublicKey>> =
                 HashMap::new();
@@ -61,9 +61,9 @@ impl Test {
                     continue;
                 }
                 let block = metric.finalized_block.block;
-                let hash = block.hash();
-                assert_eq!(*finalized.entry(block.number).or_insert(hash), hash);
-                let observers = observers.entry(block.number).or_default();
+                let hash = block.header.hash();
+                assert_eq!(*finalized.entry(block.header.number).or_insert(hash), hash);
+                let observers = observers.entry(block.header.number).or_default();
                 if observers.insert(metric.validator.clone()) && observers.len() == honest.len() {
                     fully_observed += 1;
                 }

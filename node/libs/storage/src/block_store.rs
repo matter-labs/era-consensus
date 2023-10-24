@@ -131,7 +131,7 @@ impl Storage {
     pub fn put_block(&self, finalized_block: &FinalBlock) {
         let db = self.write();
 
-        let block_number = finalized_block.block.number;
+        let block_number = finalized_block.block.header.number;
         tracing::debug!("Inserting new block #{block_number} into the database.");
 
         let mut write_batch = rocksdb::WriteBatch::default();

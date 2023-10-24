@@ -1,5 +1,5 @@
 use crate::validator;
-use roles::validator::BlockHash;
+use roles::validator::BlockHeaderHash;
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -46,8 +46,8 @@ pub(crate) enum Error {
     LeaderPrepareProposalWhenPreviousNotFinalized,
     #[error("received leader prepare message with new block proposal with invalid parent hash (correct parent hash: {correct_parent_hash:#?}, received parent hash: {received_parent_hash:#?}, block: {block:?})")]
     LeaderPrepareProposalInvalidParentHash {
-        correct_parent_hash: BlockHash,
-        received_parent_hash: BlockHash,
+        correct_parent_hash: BlockHeaderHash,
+        received_parent_hash: BlockHeaderHash,
         block: validator::Block,
     },
     #[error("received leader prepare message with block proposal with non-sequential number (correct proposal number: {correct_number}, received proposal number: {received_number}, block: {block:?})")]

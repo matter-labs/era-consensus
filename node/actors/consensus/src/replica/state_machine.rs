@@ -22,7 +22,7 @@ pub(crate) struct StateMachine {
     pub(crate) high_qc: validator::CommitQC,
     /// A cache of the received block proposals.
     pub(crate) block_proposal_cache:
-        BTreeMap<validator::BlockNumber, HashMap<validator::BlockHash, validator::Block>>,
+        BTreeMap<validator::BlockNumber, HashMap<validator::BlockHeaderHash, validator::Block>>,
     /// The deadline to receive an input message.
     pub(crate) timeout_deadline: time::Deadline,
     /// A reference to the storage module. We use it to backup the replica state.

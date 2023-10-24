@@ -49,9 +49,9 @@ impl Storage {
         let this = Self {
             inner: RwLock::new(db),
             cached_last_contiguous_block_number: AtomicU64::new(0),
-            block_writes_sender: watch::channel(genesis_block.block.number).0,
+            block_writes_sender: watch::channel(genesis_block.block.header.number).0,
         };
-        if let Some(stored_genesis_block) = this.get_block(genesis_block.block.number) {
+        if let Some(stored_genesis_block) = this.get_block(genesis_block.block.header.number) {
             assert_eq!(
                 stored_genesis_block.block, genesis_block.block,
                 "Mismatch between stored and expected genesis block"

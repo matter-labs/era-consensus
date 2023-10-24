@@ -62,7 +62,7 @@ pub struct ReplicaState {
     pub high_qc: validator::CommitQC,
     /// A cache of the received block proposals.
     pub block_proposal_cache:
-        BTreeMap<validator::BlockNumber, HashMap<validator::BlockHash, validator::Block>>,
+        BTreeMap<validator::BlockNumber, HashMap<validator::BlockHeaderHash, validator::Block>>,
 }
 
 impl ProtoFmt for ReplicaState {
@@ -75,14 +75,14 @@ impl ProtoFmt for ReplicaState {
             let block: validator::Block =
                 read_required(&Some(schema_block).cloned()).context("block")?;
 
-            match map.get_mut(&block.number) {
+            match map.get_mut(&block.header.number) {
                 Some(blocks) => {
-                    blocks.insert(block.hash(), block.clone());
+                    blocks.insert(block.header.hash(), block.clone());
                 }
                 None => {
                     let mut blocks = HashMap::new();
-                    blocks.insert(block.hash(), block.clone());
-                    map.insert(block.number, blocks);
+                    blocks.insert(block.header.hash(), block.clone());
+                    map.insert(block.header.number, blocks);
                 }
             }
         }
