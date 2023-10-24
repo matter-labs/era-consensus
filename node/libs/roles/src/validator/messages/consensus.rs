@@ -90,14 +90,12 @@ pub struct ReplicaPrepare {
 }
 
 /// A Commit message from a replica.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReplicaCommit {
     /// The number of the current view.
     pub view: ViewNumber,
-    /// The hash of the block header that the replica is committing to.
-    pub proposal_hash: BlockHeaderHash,
-    /// The number of the block that the replica is committing to.
-    pub proposal_number: BlockNumber,
+    /// The header of the block that the replica is committing to.
+    pub proposal: BlockHeader,
 }
 
 /// A Prepare message from a leader.

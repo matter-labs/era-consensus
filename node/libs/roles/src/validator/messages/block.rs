@@ -14,7 +14,7 @@ impl ProtocolVersion {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Payload(pub Vec<u8>);
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PayloadHash(pub(crate) sha256::Sha256);
 
 impl TextFmt for PayloadHash {
@@ -117,7 +117,7 @@ impl fmt::Debug for BlockHeaderHash {
 }
 
 /// A block header.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockHeader {
     /// 
     pub protocol_version: ProtocolVersion,
@@ -158,7 +158,7 @@ pub struct FinalBlock {
 impl FinalBlock {
     /// Creates a new finalized block.
     pub fn new(block: Block, justification: CommitQC) -> Self {
-        assert_eq!(block.header.hash(), justification.message.proposal_hash);
+        assert_eq!(block.header, justification.message.proposal);
         Self {
             block,
             justification,

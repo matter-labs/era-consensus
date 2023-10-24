@@ -100,8 +100,7 @@ impl Distribution<ReplicaCommit> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaCommit {
         ReplicaCommit {
             view: rng.gen(),
-            proposal_hash: rng.gen(),
-            proposal_number: rng.gen(),
+            proposal: rng.gen(),
         }
     }
 }

@@ -51,9 +51,9 @@ message ReplicaPrepare {
 }
 
 message ReplicaCommit {
+  reserved 2,3;
   optional uint64 view = 1;
-  optional BlockHeaderHash hash = 2;
-  optional uint64 number = 3;
+  optional BlockHeader proposal = 4;
 }
 
 message LeaderPrepare {

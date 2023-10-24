@@ -140,16 +140,14 @@ impl ProtoFmt for ReplicaCommit {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             view: ViewNumber(r.view.context("view_number")?),
-            proposal_hash: read_required(&r.hash).context("hash")?,
-            proposal_number: BlockNumber(r.number.context("number")?),
+            proposal: read_required(&r.proposal).context("proposal")?,
         })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
             view: Some(self.view.0),
-            hash: Some(self.proposal_hash.build()),
-            number: Some(self.proposal_number.0),
+            proposal: Some(self.proposal.build()),
         }
     }
 }
