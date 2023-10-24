@@ -1,4 +1,4 @@
-use crate::{metrics, replica::error::Error, ConsensusInner};
+use crate::{metrics, ConsensusInner};
 use concurrency::{ctx, metrics::LatencyHistogramExt as _, scope, time};
 use roles::validator;
 use std::{
@@ -113,25 +113,27 @@ impl StateMachine {
         let (label, result) = match &signed_msg.msg {
             validator::ConsensusMsg::LeaderPrepare(_) => (
                 metrics::ConsensusMsgLabel::LeaderPrepare,
-                self.process_leader_prepare(ctx, consensus, signed_msg.cast().unwrap()).map_err(Error::LeaderPrepare),
+                match self.process_leader_prepare(ctx, consensus, signed_msg.cast().unwrap()) {
+                    Err(super::leader_prepare::Error::Internal(err)) => return Err(err).context("process_leader_prepare()"),
+                    res => res.map_err(Error::LeaderPrepare),
+                },
             ),
             validator::ConsensusMsg::LeaderCommit(_) => (
                 metrics::ConsensusMsgLabel::LeaderCommit,
-                self.process_leader_commit(ctx, consensus, signed_msg.cast().unwrap()).map_err(Error::LeaderCommit),
+                match self.process_leader_commit(ctx, consensus, signed_msg.cast().unwrap()) {
+                    Err(super::leader_commit::Error::Internal(err)) => return Err(err).context("process_leader_commit()"),
+                    res => res.map_err(Error::LeaderCommit),
+                },
             ),
             _ => unreachable!(),
         };
         metrics::METRICS.replica_processing_latency[&label.with_result(&result)]
             .observe_latency(ctx.now() - now);
-        match result {
-            Ok(()) => Ok(()),
-            Err(err @ Error::ReplicaStateSave(_)) => Err(err.into()),
-            Err(err) => {
-                // Other errors from processing inputs are recoverable, so we just log them.
-                tracing::warn!("{err}");
-                Ok(())
-            }
+        if let Err(err) = result {
+            // Expected errors from processing inputs are recoverable, so we just log them.
+            tracing::warn!("{}",err);
         }
+        Ok(())
     }
 
     /// Backups the replica state to disk.

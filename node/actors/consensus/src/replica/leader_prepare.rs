@@ -57,6 +57,8 @@ pub(crate) enum Error {
     ReproposalWhenFinalized,
     #[error("block re-proposal of invalid block")]
     ReproposalInvalidBlock,
+    #[error("internal error: {0}")]
+    Internal(#[from] anyhow::Error),
 }
 
 impl StateMachine {
@@ -231,7 +233,7 @@ impl StateMachine {
         }
 
         // Backup our state.
-        self.backup_state(ctx).map_err(Error::ReplicaStateSave)?;
+        self.backup_state(ctx).context("backup_state()")?;
 
         // Send the replica message to the leader.
         let output_message = ConsensusInputMessage {

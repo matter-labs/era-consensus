@@ -21,6 +21,8 @@ pub(crate) enum Error {
     InvalidSignature(#[source] crypto::bls12_381::Error),
     #[error("invalid justification")]
     InvalidJustification(#[source] anyhow::Error),
+    #[error("internal error: {0}")]
+    Internal(#[from] anyhow::Error),
 }
 
 impl StateMachine {
@@ -84,7 +86,7 @@ impl StateMachine {
 
         // Start a new view. But first we skip to the view of this message.
         self.view = view;
-        self.start_new_view(ctx, consensus)?;
+        self.start_new_view(ctx, consensus).context("start_new_view()")?;
 
         Ok(())
     }

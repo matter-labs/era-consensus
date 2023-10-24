@@ -1,4 +1,4 @@
-use super::{error::Error, StateMachine};
+use super::{StateMachine};
 use crate::ConsensusInner;
 use concurrency::ctx;
 use network::io::{ConsensusInputMessage, Target};
@@ -12,7 +12,7 @@ impl StateMachine {
         &mut self,
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
-    ) -> Result<(), Error> {
+    ) -> anyhow::Result<()> {
         tracing::info!("Starting view {}", self.view.next().0);
 
         // Update the state machine.
@@ -26,7 +26,7 @@ impl StateMachine {
             .retain(|k, _| k > &self.high_qc.message.proposal.number);
 
         // Backup our state.
-        self.backup_state(ctx).map_err(Error::ReplicaStateSave)?;
+        self.backup_state(ctx).context("backup_state")?;
 
         // Send the replica message to the next leader.
         let output_message = ConsensusInputMessage {

@@ -6,7 +6,6 @@ use rocksdb::{Direction, IteratorMode};
 use roles::validator::{self, BlockNumber};
 use schema::{proto::storage as proto, read_required, required, ProtoFmt};
 use std::{
-    collections::{BTreeMap, HashMap},
     iter, ops,
 };
 use thiserror::Error;
@@ -74,7 +73,6 @@ pub struct ReplicaState {
     /// The highest commit quorum certificate known to the replica.
     pub high_qc: validator::CommitQC,
     /// A cache of the received block proposals.
-<<<<<<< HEAD
     pub proposals: Vec<Proposal>,
 }
 
@@ -94,10 +92,6 @@ impl ProtoFmt for Proposal {
             payload: Some(self.payload.0.clone()),
         }
     }
-=======
-    pub block_proposal_cache:
-        BTreeMap<BlockNumber, HashMap<validator::BlockHash, validator::Block>>,
->>>>>>> origin/main
 }
 
 impl ProtoFmt for ReplicaState {
