@@ -129,17 +129,12 @@ impl StateMachine {
 
         // Create the block proposal to send to the replicas,
         // and the commit vote to store in our block proposal cache.
-        let proposal = match highest_vote {
+        let (proposal,payload) = match highest_vote {
             // The previous block was not finalized, so we need to propose it again.
-            // For this we only need the hash, since we are guaranteed that at least
+            // For this we only need the header, since we are guaranteed that at least
             // f+1 honest replicas have the block can broadcast when finalized
             // (2f+1 have stated that they voted for the block, at most f are malicious).
-            Some(header) if proposal != highest_qc.message.proposal {
-                validator::Proposal::Retry(validator::ReplicaCommit {
-                    view: message.view,
-                    proposal,
-                })
-            }
+            Some(proposal) if proposal != highest_qc.message.proposal => (proposal, None),
             // The previous block was finalized, so we can propose a new block.
             _ => {
                 // TODO(bruno): For now we just create a block with a random payload. After we integrate with
@@ -147,11 +142,11 @@ impl StateMachine {
                 let mut payload = Payload(vec![0; ConsensusInner::PAYLOAD_MAX_SIZE]);
                 ctx.rng().fill(&mut payload.0[..]);
 
-                let block = validator::Block::new(&highest_qc.message.proposal, payload); 
                 metrics::METRICS
                     .leader_proposal_payload_size
-                    .observe(block.payload.len());
-                validator::Proposal::New(block)
+                    .observe(payload.len());
+                let proposal = validator::BlockHeader::new(&highest_qc.message.proposal, payload.hash()); 
+                (proposal,Some(payload)
             }
         };
 
@@ -160,7 +155,10 @@ impl StateMachine {
         self.view = message.view;
         self.phase = validator::Phase::Commit;
         self.phase_start = ctx.now();
-        self.block_proposal_cache = Some(proposal.vote());
+        self.block_proposal_cache = Some(validator::ReplicaCommit {
+            number: proposal.number,
+            payload: payload.clone(),
+        });
 
         // ----------- Prepare our message and send it --------------
 
