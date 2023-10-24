@@ -5,7 +5,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     unreachable,
 };
-use tracing::{instrument, warn};
+use tracing::instrument;
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
@@ -72,8 +72,5 @@ impl StateMachine {
         };
         metrics::METRICS.leader_processing_latency[&label.with_result(&result)]
             .observe_latency(ctx.now() - now);
-        if let Err(e) = result {
-            warn!("{}", e);
-        }
     }
 }

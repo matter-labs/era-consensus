@@ -21,7 +21,10 @@ async fn start_new_view_not_leader() {
 
     scope::run!(ctx, |ctx, s| {
         s.spawn_blocking(|| {
-            consensus.replica.start_new_view(ctx, &consensus.inner);
+            consensus
+                .replica
+                .start_new_view(ctx, &consensus.inner)
+                .unwrap();
             Ok(())
         })
         .join(ctx)

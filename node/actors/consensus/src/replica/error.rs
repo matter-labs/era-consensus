@@ -65,4 +65,6 @@ pub(crate) enum Error {
     LeaderPrepareReproposalWhenFinalized,
     #[error("received leader prepare message with block re-proposal of invalid block")]
     LeaderPrepareReproposalInvalidBlock,
+    #[error("failed saving replica state to DB: {_0}")]
+    ReplicaStateSave(#[source] anyhow::Error),
 }

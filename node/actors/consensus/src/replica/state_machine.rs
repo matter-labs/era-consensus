@@ -1,4 +1,4 @@
-use crate::{metrics, ConsensusInner};
+use crate::{metrics, replica::error::Error, ConsensusInner};
 use concurrency::{ctx, metrics::LatencyHistogramExt as _, scope, time};
 use roles::validator;
 use std::{
@@ -6,7 +6,7 @@ use std::{
     sync::Arc,
 };
 use storage::{ReplicaStateStore, StorageError};
-use tracing::{instrument, warn};
+use tracing::instrument;
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
 /// for validating and voting on blocks. When participating in consensus we are always a replica.
@@ -65,11 +65,16 @@ impl StateMachine {
     /// we are able to process inputs. If we are in the genesis block, then we start a new view,
     /// this will kick start the consensus algorithm. Otherwise, we just start the timer.
     #[instrument(level = "trace", ret)]
-    pub(crate) fn start(&mut self, ctx: &ctx::Ctx, consensus: &ConsensusInner) {
+    pub(crate) fn start(
+        &mut self,
+        ctx: &ctx::Ctx,
+        consensus: &ConsensusInner,
+    ) -> Result<(), Error> {
         if self.view == validator::ViewNumber(0) {
             self.start_new_view(ctx, consensus)
         } else {
-            self.reset_timer(ctx)
+            self.reset_timer(ctx);
+            Ok(())
         }
     }
 
@@ -82,12 +87,12 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
         input: Option<validator::Signed<validator::ConsensusMsg>>,
-    ) {
+    ) -> anyhow::Result<()> {
         let Some(signed_msg) = input else {
-            warn!("We timed out before receiving a message.");
+            tracing::warn!("We timed out before receiving a message.");
             // Start new view.
-            self.start_new_view(ctx, consensus);
-            return;
+            self.start_new_view(ctx, consensus)?;
+            return Ok(());
         };
 
         let now = ctx.now();
@@ -104,14 +109,19 @@ impl StateMachine {
         };
         metrics::METRICS.replica_processing_latency[&label.with_result(&result)]
             .observe_latency(ctx.now() - now);
-        // All errors from processing inputs are recoverable, so we just log them.
-        if let Err(e) = result {
-            warn!("{}", e);
+        match result {
+            Ok(()) => Ok(()),
+            Err(err @ Error::ReplicaStateSave(_)) => Err(err.into()),
+            Err(err) => {
+                // Other errors from processing inputs are recoverable, so we just log them.
+                tracing::warn!("{err}");
+                Ok(())
+            }
         }
     }
 
     /// Backups the replica state to disk.
-    pub(crate) fn backup_state(&self, ctx: &ctx::Ctx) {
+    pub(crate) fn backup_state(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let backup = storage::ReplicaState {
             view: self.view,
             phase: self.phase,
@@ -128,8 +138,8 @@ impl StateMachine {
         match store_result {
             Ok(()) => { /* Everything went fine */ }
             Err(StorageError::Canceled(_)) => tracing::trace!("Storing replica state was canceled"),
-            Err(StorageError::Database(err)) => panic!("Failed storing replica state: {err}"),
-            // ^ We don't know how to recover from DB errors, so panicking is the only option so far.
+            Err(StorageError::Database(err)) => return Err(err),
         }
+        Ok(())
     }
 }

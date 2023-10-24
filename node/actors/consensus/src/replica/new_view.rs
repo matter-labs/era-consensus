@@ -1,15 +1,19 @@
-use super::StateMachine;
+use super::{error::Error, StateMachine};
 use crate::ConsensusInner;
 use concurrency::ctx;
 use network::io::{ConsensusInputMessage, Target};
 use roles::validator;
-use tracing::{info, instrument};
+use tracing::instrument;
 
 impl StateMachine {
     /// This blocking method is used whenever we start a new view.
-    #[instrument(level = "trace", ret)]
-    pub(crate) fn start_new_view(&mut self, ctx: &ctx::Ctx, consensus: &ConsensusInner) {
-        info!("Starting view {}", self.view.next().0);
+    #[instrument(level = "trace", err)]
+    pub(crate) fn start_new_view(
+        &mut self,
+        ctx: &ctx::Ctx,
+        consensus: &ConsensusInner,
+    ) -> Result<(), Error> {
+        tracing::info!("Starting view {}", self.view.next().0);
 
         // Update the state machine.
         let next_view = self.view.next();
@@ -22,7 +26,7 @@ impl StateMachine {
             .retain(|k, _| k > &self.high_qc.message.proposal_block_number);
 
         // Backup our state.
-        self.backup_state(ctx);
+        self.backup_state(ctx).map_err(Error::ReplicaStateSave)?;
 
         // Send the replica message to the next leader.
         let output_message = ConsensusInputMessage {
@@ -41,5 +45,6 @@ impl StateMachine {
 
         // Reset the timer.
         self.reset_timer(ctx);
+        Ok(())
     }
 }
