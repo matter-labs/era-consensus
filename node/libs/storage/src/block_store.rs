@@ -265,7 +265,7 @@ impl RocksdbStorage {
     }
 
     /// Gets a block by its number.
-    pub(crate) fn block_blocking(&self, number: BlockNumber) -> anyhow::Result<Option<FinalBlock>> {
+    fn block_blocking(&self, number: BlockNumber) -> anyhow::Result<Option<FinalBlock>> {
         let db = self.read();
 
         let Some(raw_block) = db
@@ -305,7 +305,7 @@ impl RocksdbStorage {
     // ---------------- Write methods ----------------
 
     /// Insert a new block into the database.
-    pub(crate) fn put_block_blocking(&self, finalized_block: &FinalBlock) -> anyhow::Result<()> {
+    fn put_block_blocking(&self, finalized_block: &FinalBlock) -> anyhow::Result<()> {
         let db = self.write();
         let block_number = finalized_block.block.number;
         tracing::debug!("Inserting new block #{block_number} into the database.");

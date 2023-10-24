@@ -66,39 +66,38 @@ impl RocksdbStorage {
         ctx: &ctx::Ctx,
         genesis_block: &validator::FinalBlock,
         path: &Path,
-    ) -> anyhow::Result<Self> {
-        scope::run!(ctx, |_, scope| async {
-            Ok(scope
-                .spawn_blocking(|| Self::new_blocking(genesis_block, path))
-                .join(ctx)
-                .await?)
-        })
-        .await
-    }
-
-    /// Blocking version of [`Self::new()`].
-    fn new_blocking(genesis_block: &validator::FinalBlock, path: &Path) -> anyhow::Result<Self> {
+    ) -> StorageResult<Self> {
         let mut options = rocksdb::Options::default();
         options.create_missing_column_families(true);
         options.create_if_missing(true);
 
-        let db = rocksdb::DB::open(&options, path).context("Failed opening RocksDB")?;
+        let db = scope::run!(ctx, |_, s| async {
+            Ok(s.spawn_blocking(|| {
+                rocksdb::DB::open(&options, path)
+                    .context("Failed opening RocksDB")
+                    .map_err(StorageError::Database)
+            })
+            .join(ctx)
+            .await?)
+        })
+        .await?;
+
         let this = Self {
             inner: RwLock::new(db),
             cached_last_contiguous_block_number: AtomicU64::new(0),
             block_writes_sender: watch::channel(genesis_block.block.number).0,
         };
-        if let Some(stored_genesis_block) = this.block_blocking(genesis_block.block.number)? {
-            anyhow::ensure!(
-                stored_genesis_block.block == genesis_block.block,
-                "Mismatch between stored and expected genesis block"
-            );
+        if let Some(stored_genesis_block) = this.block(ctx, genesis_block.block.number).await? {
+            if stored_genesis_block.block != genesis_block.block {
+                let err = anyhow::anyhow!("Mismatch between stored and expected genesis block");
+                return Err(StorageError::Database(err));
+            }
         } else {
             tracing::debug!(
                 "Genesis block not present in RocksDB at `{path}`; saving {genesis_block:?}",
                 path = path.display()
             );
-            this.put_block_blocking(genesis_block)?;
+            this.put_block(ctx, genesis_block).await?;
         }
         Ok(this)
     }
