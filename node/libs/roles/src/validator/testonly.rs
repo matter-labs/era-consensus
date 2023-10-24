@@ -56,7 +56,7 @@ impl Distribution<BlockHeader> for Standard {
             protocol_version: ProtocolVersion(rng.gen()),
             parent: rng.gen(),
             number: rng.gen(),
-            payload_hash: rng.gen(),
+            payload: rng.gen(),
         }
     }
 }
@@ -68,19 +68,11 @@ impl Distribution<Payload> for Standard {
     }
 }
 
-impl Distribution<Block> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Block {
-        Block {
-            header: rng.gen(),
-            payload: rng.gen(),
-        }
-    }
-}
-
 impl Distribution<FinalBlock> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> FinalBlock {
         FinalBlock {
-            block: rng.gen(),
+            header: rng.gen(),
+            payload: rng.gen(),
             justification: rng.gen(),
         }
     }
@@ -108,20 +100,10 @@ impl Distribution<ReplicaCommit> for Standard {
 impl Distribution<LeaderPrepare> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderPrepare {
         LeaderPrepare {
+            view: rng.gen(),
             proposal: rng.gen(),
+            proposal_payload: rng.gen(),
             justification: rng.gen(),
-        }
-    }
-}
-
-impl Distribution<Proposal> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Proposal {
-        let i = rng.gen_range(0..2);
-
-        match i {
-            0 => Proposal::New(rng.gen()),
-            1 => Proposal::Retry(rng.gen()),
-            _ => unreachable!(),
         }
     }
 }

@@ -3,8 +3,7 @@
 use anyhow::Context as _;
 use rocksdb::{Direction, IteratorMode};
 use roles::validator;
-use schema::{proto::storage as proto, read_required, ProtoFmt};
-use std::collections::{BTreeMap, HashMap};
+use schema::{proto::storage as proto, read_required, required, ProtoFmt};
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -49,6 +48,12 @@ impl DatabaseKey {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Proposal {
+    pub number: validator::BlockNumber,
+    pub payload: validator::Payload,
+}
+
 /// The struct that contains the replica state to be persisted.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReplicaState {
@@ -61,55 +66,47 @@ pub struct ReplicaState {
     /// The highest commit quorum certificate known to the replica.
     pub high_qc: validator::CommitQC,
     /// A cache of the received block proposals.
-    pub block_proposal_cache:
-        BTreeMap<validator::BlockNumber, HashMap<validator::BlockHeaderHash, validator::Block>>,
+    pub proposals: Vec<Proposal>,
+}
+
+impl ProtoFmt for Proposal {
+    type Proto = proto::Proposal;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            number: validator::BlockNumber(*required(&r.number).context("number")?),
+            payload: validator::Payload(required(&r.payload).context("payload")?.clone()),
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            number: Some(self.number.0),
+            payload: Some(self.payload.0.clone()),
+        }
+    }
 }
 
 impl ProtoFmt for ReplicaState {
     type Proto = proto::ReplicaState;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let mut map: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
-
-        for schema_block in r.blocks.iter() {
-            let block: validator::Block =
-                read_required(&Some(schema_block).cloned()).context("block")?;
-
-            match map.get_mut(&block.header.number) {
-                Some(blocks) => {
-                    blocks.insert(block.header.hash(), block.clone());
-                }
-                None => {
-                    let mut blocks = HashMap::new();
-                    blocks.insert(block.header.hash(), block.clone());
-                    map.insert(block.header.number, blocks);
-                }
-            }
-        }
-
         Ok(Self {
             view: validator::ViewNumber(r.view.context("view_number")?),
             phase: read_required(&r.phase).context("phase")?,
             high_vote: read_required(&r.high_vote).context("high_vote")?,
             high_qc: read_required(&r.high_qc).context("high_qc")?,
-            block_proposal_cache: map,
+            proposals: r.proposals.iter().map(|p|ProtoFmt::read(p)).collect::<Result<_,_>>().context("proposals")?,
         })
     }
 
     fn build(&self) -> Self::Proto {
-        let blocks = self
-            .block_proposal_cache
-            .values()
-            .flat_map(|x| x.values())
-            .map(|block| block.build())
-            .collect();
-
         Self::Proto {
             view: Some(self.view.0),
             phase: Some(self.phase.build()),
             high_vote: Some(self.high_vote.build()),
             high_qc: Some(self.high_qc.build()),
-            blocks,
+            proposals: self.proposals.iter().map(|p|p.build()).collect(),
         }
     }
 }

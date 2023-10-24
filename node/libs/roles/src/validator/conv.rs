@@ -38,7 +38,7 @@ impl ProtoFmt for BlockHeader {
             protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
             parent: read_required(&r.parent).context("parent")?,
             number: BlockNumber(r.number.context("number")?),
-            payload_hash: read_required(&r.payload_hash).context("payload")?,
+            payload: read_required(&r.payload).context("payload")?,
         })
     }
     fn build(&self) -> Self::Proto {
@@ -46,24 +46,7 @@ impl ProtoFmt for BlockHeader {
             protocol_version: Some(self.protocol_version.0),
             parent: Some(self.parent.build()),
             number: Some(self.number.0),
-            payload_hash: Some(self.payload_hash.build()),
-        }
-    }
-}
-
-impl ProtoFmt for Block {
-    type Proto = proto::Block;
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {
-            header: read_required(&r.header).context("block")?,
-            payload: Payload(required(&r.payload).context("payload")?.clone()),
-        })
-    }
-
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            header: Some(self.header.build()),
-            payload: Some(self.payload.0.clone()),
+            payload: Some(self.payload.build()),
         }
     }
 }
@@ -72,14 +55,16 @@ impl ProtoFmt for FinalBlock {
     type Proto = proto::FinalBlock;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            block: read_required(&r.block).context("block")?,
+            header: read_required(&r.header).context("header")?,
+            payload: Payload(required(&r.payload).context("payload")?.clone()),
             justification: read_required(&r.justification).context("justification")?,
         })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            block: Some(self.block.build()),
+            header: Some(self.header.build()),
+            payload: Some(self.payload.0.clone()),
             justification: Some(self.justification.build()),
         }
     }
@@ -119,7 +104,7 @@ impl ProtoFmt for ReplicaPrepare {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            view: ViewNumber(r.view.context("view_number")?),
+            view: ViewNumber(*required(&r.view).context("view")?),
             high_vote: read_required(&r.high_vote).context("high_vote")?,
             high_qc: read_required(&r.high_qc).context("high_qc")?,
         })
@@ -139,7 +124,7 @@ impl ProtoFmt for ReplicaCommit {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            view: ViewNumber(r.view.context("view_number")?),
+            view: ViewNumber(*required(&r.view).context("view")?),
             proposal: read_required(&r.proposal).context("proposal")?,
         })
     }
@@ -157,37 +142,20 @@ impl ProtoFmt for LeaderPrepare {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
+            view: ViewNumber(*required(&r.view).context("view")?),
             proposal: read_required(&r.proposal).context("proposal")?,
+            proposal_payload: r.proposal_payload.as_ref().map(|p|Payload(p.clone())),
             justification: read_required(&r.justification).context("justification")?,
         })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
+            view: Some(self.view.0),
             proposal: Some(self.proposal.build()),
+            proposal_payload: self.proposal_payload.as_ref().map(|p|p.0.clone()),
             justification: Some(self.justification.build()),
         }
-    }
-}
-
-impl ProtoFmt for Proposal {
-    type Proto = proto::Proposal;
-
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        use proto::proposal::T;
-        Ok(match required(&r.t)? {
-            T::New(r) => Self::New(ProtoFmt::read(r).context("Block")?),
-            T::Retry(r) => Self::Retry(ProtoFmt::read(r).context("ReplicaCommit")?),
-        })
-    }
-
-    fn build(&self) -> Self::Proto {
-        use proto::proposal::T;
-        let t = match self {
-            Self::New(x) => T::New(x.build()),
-            Self::Retry(x) => T::Retry(x.build()),
-        };
-        Self::Proto { t: Some(t) }
     }
 }
 

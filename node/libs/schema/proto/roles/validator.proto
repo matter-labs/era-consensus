@@ -22,17 +22,13 @@ message BlockHeader {
   // Sequential number of the block = parent.number + 1.
   optional uint64 number = 3;
   // Hash of the block payload.
-  optional PayloadHash payload_hash = 4;
-}
-
-message Block {
-  optional BlockHeader header = 1;
-  optional bytes payload = 2;
+  optional PayloadHash payload = 4;
 }
 
 message FinalBlock {
-  optional Block block = 1;
-  optional CommitQC justification = 2;
+  optional BlockHeader header = 1;
+  optional bytes payload = 2;
+  optional CommitQC justification = 3;
 }
 
 message ConsensusMsg {
@@ -56,9 +52,10 @@ message ReplicaCommit {
 }
 
 message LeaderPrepare {
-  optional bytes payload = 1;
-  optional ReplicaCommit vote = 3;
-  optional PrepareQC justification = 2;
+  optional uint64 view = 1; // required
+  optional BlockHeader proposal = 2; // required
+  optional bytes proposal_payload = 3; // optional (depending on justification)
+  optional PrepareQC justification = 4; // required
 }
 
 message LeaderCommit {

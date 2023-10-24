@@ -96,7 +96,6 @@ fn test_schema_encoding() {
     test_encode_random::<_, PayloadHash>(rng);
     test_encode_random::<_, BlockHeader>(rng);
     test_encode_random::<_, BlockHeaderHash>(rng);
-    test_encode_random::<_, Block>(rng);
     test_encode_random::<_, FinalBlock>(rng);
     test_encode_random::<_, Signed<ConsensusMsg>>(rng);
     test_encode_random::<_, PrepareQC>(rng);

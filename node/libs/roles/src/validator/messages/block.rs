@@ -41,35 +41,6 @@ impl Payload {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Block {
-    pub header: BlockHeader,
-    pub payload: Payload,
-}
-
-impl Block {
-    pub fn genesis(payload: Payload) -> Self {
-        Self {
-            header: BlockHeader::genesis(payload.hash()),
-            payload,
-        }
-    }
-
-    pub fn new(parent: &BlockHeader, payload: Payload) -> Self {
-        Self {
-            header: BlockHeader {
-                // TODO: once we make protocol_version updateable,
-                // it should be taken as a separate argument of `new()`.
-                protocol_version: parent.protocol_version,
-                parent: parent.hash(),
-                number: parent.number.next(),
-                payload_hash: payload.hash(),
-            },
-            payload,
-        }
-    }
-}
-
 /// Sequential number of the block.
 /// Genesis block has number 0.
 /// For other blocks: block.number = block.parent.number + 1.
@@ -126,7 +97,7 @@ pub struct BlockHeader {
     /// Number of the block.
     pub number: BlockNumber,
     /// Payload of the block.
-    pub payload_hash: PayloadHash,
+    pub payload: PayloadHash,
 }
 
 impl BlockHeader {
@@ -136,12 +107,12 @@ impl BlockHeader {
     }
 
     /// Creates a genesis block.
-    pub fn genesis(payload_hash: PayloadHash) -> BlockHeader {
+    pub fn genesis(payload: PayloadHash) -> BlockHeader {
         BlockHeader {
             protocol_version: ProtocolVersion::genesis(),
             parent: BlockHeaderHash(sha256::Sha256::default()),
             number: BlockNumber(0),
-            payload_hash,
+            payload,
         }
     }
 }
@@ -149,18 +120,20 @@ impl BlockHeader {
 /// A block that has been finalized by the consensus protocol.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FinalBlock {
-    /// The block.
-    pub block: Block,
+    pub header: BlockHeader,
+    pub payload: Payload,
     /// Justification for the block. What guarantees that the block is final.
     pub justification: CommitQC,
 }
 
 impl FinalBlock {
     /// Creates a new finalized block.
-    pub fn new(block: Block, justification: CommitQC) -> Self {
-        assert_eq!(block.header, justification.message.proposal);
+    pub fn new(header: BlockHeader, payload :Payload, justification: CommitQC) -> Self {
+        assert_eq!(header.payload, payload.hash()); 
+        assert_eq!(header, justification.message.proposal);
         Self {
-            block,
+            header,
+            payload,
             justification,
         }
     }
