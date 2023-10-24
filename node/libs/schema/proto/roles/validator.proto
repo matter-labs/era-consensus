@@ -4,17 +4,12 @@ package roles.validator;
 
 import "std.proto";
 
-message BlockHeaderHash {
-  optional bytes sha256 = 1;
-}
-
 message PayloadHash {
   optional bytes sha256 = 1;
 }
 
-message Block {
-  optional BlockHeader header = 1;
-  optional bytes payload = 2;
+message BlockHeaderHash {
+  optional bytes sha256 = 1;
 }
 
 message BlockHeader {
@@ -28,6 +23,11 @@ message BlockHeader {
   optional uint64 number = 3;
   // Hash of the block payload.
   optional PayloadHash payload_hash = 4;
+}
+
+message Block {
+  optional BlockHeader header = 1;
+  optional bytes payload = 2;
 }
 
 message FinalBlock {
@@ -51,21 +51,14 @@ message ReplicaPrepare {
 }
 
 message ReplicaCommit {
-  reserved 2,3;
   optional uint64 view = 1;
   optional BlockHeader proposal = 4;
 }
 
 message LeaderPrepare {
-  optional Proposal proposal = 1;
+  optional bytes payload = 1;
+  optional ReplicaCommit vote = 3;
   optional PrepareQC justification = 2;
-}
-
-message Proposal {
-  oneof t {
-    Block new = 1;
-    ReplicaCommit retry = 2;
-  }
 }
 
 message LeaderCommit {

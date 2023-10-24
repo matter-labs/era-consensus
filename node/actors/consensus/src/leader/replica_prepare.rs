@@ -109,7 +109,7 @@ impl StateMachine {
 
         for vote in replica_messages.iter().map(|s| &s.msg.high_vote) {
             *count
-                .entry((vote.proposal_number, vote.proposal_hash))
+                .entry((vote.proposal.number, vote.proposal_hash))
                 .or_default() += 1;
         }
 
@@ -129,52 +129,29 @@ impl StateMachine {
 
         // Create the block proposal to send to the replicas,
         // and the commit vote to store in our block proposal cache.
-        let (proposal, commit_vote) = match highest_vote {
+        let proposal = match highest_vote {
             // The previous block was not finalized, so we need to propose it again.
             // For this we only need the hash, since we are guaranteed that at least
             // f+1 honest replicas have the block can broadcast when finalized
             // (2f+1 have stated that they voted for the block, at most f are malicious).
-            Some((block_number, block_hash))
-                if block_number != highest_qc.message.proposal_number
-                    || block_hash != highest_qc.message.proposal_hash =>
-            {
-                let vote = validator::ReplicaCommit {
+            Some(header) if proposal != highest_qc.message.proposal {
+                validator::Proposal::Retry(validator::ReplicaCommit {
                     view: message.view,
-                    proposal_hash: block_hash,
-                    proposal_number: block_number,
-                };
-
-                let proposal = validator::Proposal::Retry(vote);
-
-                (proposal, vote)
+                    proposal,
+                })
             }
             // The previous block was finalized, so we can propose a new block.
             _ => {
                 // TODO(bruno): For now we just create a block with a random payload. After we integrate with
                 //              the execution layer we should have a call here to the mempool to get a real payload.
-                let mut payload = vec![0; ConsensusInner::PAYLOAD_MAX_SIZE];
-                ctx.rng().fill(&mut payload[..]);
+                let mut payload = Payload(vec![0; ConsensusInner::PAYLOAD_MAX_SIZE]);
+                ctx.rng().fill(&mut payload.0[..]);
 
-                let block = validator::Block::new(&validator::BlockHeader {
-                        protocol_version: validator::ProtocolVersion::genesis(),
-                        parent: highest_qc.message.proposal_hash,
-                        number: highest_qc.message.proposal_number.next(),
-                        payload_hash:
-                    payload,
-                };
+                let block = validator::Block::new(&highest_qc.message.proposal, payload); 
                 metrics::METRICS
                     .leader_proposal_payload_size
                     .observe(block.payload.len());
-
-                let vote = validator::ReplicaCommit {
-                    view: message.view,
-                    proposal_hash: block.hash(),
-                    proposal_number: block.number,
-                };
-
-                let proposal = validator::Proposal::New(block);
-
-                (proposal, vote)
+                validator::Proposal::New(block)
             }
         };
 
@@ -183,7 +160,7 @@ impl StateMachine {
         self.view = message.view;
         self.phase = validator::Phase::Commit;
         self.phase_start = ctx.now();
-        self.block_proposal_cache = Some(commit_vote);
+        self.block_proposal_cache = Some(proposal.vote());
 
         // ----------- Prepare our message and send it --------------
 

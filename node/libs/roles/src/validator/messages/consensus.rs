@@ -101,8 +101,9 @@ pub struct ReplicaCommit {
 /// A Prepare message from a leader.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeaderPrepare {
+    pub payload: Option<Payload>,
     /// The proposal from the leader.
-    pub proposal: Proposal,
+    pub vote: ReplicaCommit,
     /// The PrepareQC that justifies this proposal from the leader.
     pub justification: PrepareQC,
 }
@@ -117,6 +118,17 @@ pub enum Proposal {
     /// a previous leader but that wasn't finalized. We propose it again
     /// to try to finalize it.
     Retry(ReplicaCommit),
+}
+
+impl Proposal {
+    fn vote(&self) -> ReplicaCommit {
+        match self {
+            Self::New(block) => ReplicaCommit {
+                
+            },
+            Self::Retry(commit) => *commit,
+        }
+    }
 }
 
 /// A Commit message from a leader.

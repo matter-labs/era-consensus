@@ -212,7 +212,7 @@ impl SyncState {
             last_contiguous_stored_block: rng.gen(),
             last_stored_block: rng.gen(),
         };
-        this.last_stored_block.message.proposal_number = number;
+        this.last_stored_block.message.proposal.number = number;
         this
     }
 }
