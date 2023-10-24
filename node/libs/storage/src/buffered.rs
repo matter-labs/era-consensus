@@ -1,7 +1,8 @@
 //! Buffered [`BlockStore`] implementation.
 
 use crate::{
-    block_store::{BlockStore, MissingBlockNumbers, WriteBlockStore},
+    traits::{BlockStore, ContiguousBlockStore, WriteBlockStore},
+    types::MissingBlockNumbers,
     StorageError, StorageResult,
 };
 use async_trait::async_trait;
@@ -13,27 +14,6 @@ use concurrency::{
 };
 use roles::validator::{BlockNumber, FinalBlock};
 use std::{collections::BTreeMap, ops};
-
-/// [`BlockStore`] variation that upholds additional invariants as to how blocks are processed.
-///
-/// The invariants are as follows:
-///
-/// - Stored blocks always have contiguous numbers; there are no gaps.
-/// - Blocks can be scheduled to be added using [`Self::schedule_next_block()`] only. New blocks do not
-///   appear in the store otherwise.
-#[async_trait]
-pub trait ContiguousBlockStore: BlockStore {
-    /// Schedules a block to be added to the store. Unlike [`WriteBlockStore::put_block()`],
-    /// there is no expectation that the block is added to the store *immediately*. It's
-    /// expected that it will be added to the store eventually, which will be signaled via
-    /// a subscriber returned from [`BlockStore::subscribe_to_block_writes()`].
-    ///
-    /// [`BufferedStorage`] guarantees that this method will only ever be called:
-    ///
-    /// - with the next block (i.e., one immediately after [`BlockStore::head_block()`])
-    /// - sequentially (i.e., multiple blocks cannot be scheduled at once)
-    async fn schedule_next_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()>;
-}
 
 #[derive(Debug)]
 struct BlockBuffer {

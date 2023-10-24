@@ -4,8 +4,8 @@ use assert_matches::assert_matches;
 use async_trait::async_trait;
 use concurrency::{
     ctx::{self, channel},
-    sync,
-    sync::watch,
+    scope,
+    sync::{self, watch},
     time,
 };
 use rand::{rngs::StdRng, seq::SliceRandom, Rng};
