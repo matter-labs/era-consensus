@@ -170,15 +170,8 @@ impl PrepareQC {
     }
 
     /// Verifies the integrity of the PrepareQC.
-    pub fn verify(&self, validators: &ValidatorSet, threshold: usize) -> anyhow::Result<()> {
+    pub fn verify(&self, view: ViewNumber, validators: &ValidatorSet, threshold: usize) -> anyhow::Result<()> {
         // First we check that all messages are for the same view number.
-        let view = self
-            .map
-            .first_key_value()
-            .context("Empty map in PrepareQC!")?
-            .0
-            .view;
-
         for msg in self.map.keys() {
             if msg.view != view {
                 bail!("PrepareQC contains messages for different views!");

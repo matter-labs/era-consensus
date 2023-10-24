@@ -107,11 +107,20 @@ impl BlockHeader {
     }
 
     /// Creates a genesis block.
-    pub fn genesis(payload: PayloadHash) -> BlockHeader {
-        BlockHeader {
+    pub fn genesis(payload: PayloadHash) -> Self {
+        Self {
             protocol_version: ProtocolVersion::genesis(),
             parent: BlockHeaderHash(sha256::Sha256::default()),
             number: BlockNumber(0),
+            payload,
+        }
+    }
+
+    pub fn new(parent: &BlockHeader, payload: PayloadHash) -> Self {
+        Self {
+            protocol_version: parent.protocol_version,
+            parent: parent.hash(),
+            number: parent.number.next(),
             payload,
         }
     }

@@ -46,10 +46,9 @@ impl Fuzz for validator::ReplicaPrepare {
 
 impl Fuzz for validator::ReplicaCommit {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..3) {
+        match rng.gen_range(0..2) {
             0 => self.view = rng.gen(),
-            1 => self.proposal_block_hash = rng.gen(),
-            2 => self.proposal_block_number = rng.gen(),
+            1 => self.proposal.mutate(rng),
             _ => unreachable!(),
         }
     }
@@ -62,15 +61,6 @@ impl Fuzz for validator::LeaderPrepare {
             1 => self.justification.mutate(rng),
             _ => unreachable!(),
         }
-    }
-}
-
-impl Fuzz for validator::Proposal {
-    fn mutate(&mut self, rng: &mut impl Rng) {
-        match self {
-            validator::Proposal::New(x) => x.mutate(rng),
-            validator::Proposal::Retry(x) => x.mutate(rng),
-        };
     }
 }
 
@@ -155,21 +145,23 @@ impl Fuzz for validator::Signers {
     }
 }
 
-impl Fuzz for validator::Block {
+impl Fuzz for validator::Payload {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..3) {
+        // Push bytes into the payload until it exceeds the limit.
+        let num_bytes = crate::ConsensusInner::PAYLOAD_MAX_SIZE + 1 - self.0.len();
+        let bytes: Vec<u8> = (0..num_bytes).map(|_| rng.gen()).collect();
+        self.0.extend_from_slice(&bytes);
+        assert!(self.0.len() > crate::ConsensusInner::PAYLOAD_MAX_SIZE);
+    }
+}
+
+impl Fuzz for validator::BlockHeader {
+    fn mutate(&mut self, rng: &mut impl Rng) {
+        match rng.gen_range(0..4) {
             0 => self.parent = rng.gen(),
             1 => self.number = rng.gen(),
-            2 => {
-                // Push bytes into the payload until it exceeds the limit.
-                let num_bytes = crate::ConsensusInner::PAYLOAD_MAX_SIZE + 1 - self.payload.len();
-
-                let bytes: Vec<u8> = (0..num_bytes).map(|_| rng.gen()).collect();
-
-                self.payload.extend_from_slice(&bytes);
-
-                assert!(self.payload.len() > crate::ConsensusInner::PAYLOAD_MAX_SIZE);
-            }
+            2 => self.protocol_version = rng.gen(),
+            3 => self.payload = rng.gen(),
             _ => unreachable!(),
         }
     }

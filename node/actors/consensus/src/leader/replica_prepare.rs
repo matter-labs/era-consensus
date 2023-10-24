@@ -1,11 +1,39 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner, leader::error::Error, metrics};
+use crate::{inner::ConsensusInner, metrics};
 use concurrency::ctx;
 use network::io::{ConsensusInputMessage, Target};
 use rand::Rng;
 use roles::validator;
 use std::collections::HashMap;
 use tracing::instrument;
+
+#[derive(thiserror::Error, Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
+pub(crate) enum Error {
+    #[error("received replica prepare message for a past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
+    Old {
+        current_view: validator::ViewNumber,
+        current_phase: validator::Phase,
+    },
+    #[error("received replica prepare message for a view when we are not a leader")]
+    WhenNotLeaderInView,
+    #[error("received replica prepare message that already exists (existing message: {existing_message:?}")]
+    Exists { existing_message: String },
+    #[error("received replica prepare message while number of received messages below threshold. waiting for more (received: {num_messages:?}, threshold: {threshold:?}")]
+    NumReceivedBelowThreshold {
+        num_messages: usize,
+        threshold: usize,
+    },
+    #[error("received replica prepare message with high QC of a future view (high QC view: {high_qc_view:?}, current view: {current_view:?}")]
+    HighQCOfFutureView {
+        high_qc_view: validator::ViewNumber,
+        current_view: validator::ViewNumber,
+    },
+    #[error("received replica prepare message with invalid signature")]
+    InvalidSignature(#[source] crypto::bls12_381::Error),
+    #[error("received replica prepare message with invalid high QC")]
+    InvalidHighQC(#[source] anyhow::Error),
+}
 
 impl StateMachine {
     #[instrument(level = "trace", ret)]
@@ -23,7 +51,7 @@ impl StateMachine {
 
         // If the message is from the "past", we discard it.
         if (message.view, validator::Phase::Prepare) < (self.view, self.phase) {
-            return Err(Error::ReplicaPrepareOld {
+            return Err(Error::Old {
                 current_view: self.view,
                 current_phase: self.phase,
             });
@@ -31,7 +59,7 @@ impl StateMachine {
 
         // If the message is for a view when we are not a leader, we discard it.
         if consensus.view_leader(message.view) != consensus.secret_key.public() {
-            return Err(Error::ReplicaPrepareWhenNotLeaderInView);
+            return Err(Error::WhenNotLeaderInView);
         }
 
         // If we already have a message from the same validator and for the same view, we discard it.
@@ -40,7 +68,7 @@ impl StateMachine {
             .get(&message.view)
             .and_then(|x| x.get(author))
         {
-            return Err(Error::ReplicaPrepareExists {
+            return Err(Error::Exists {
                 existing_message: format!("{:?}", existing_message),
             });
         }
@@ -50,7 +78,7 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message
             .verify()
-            .map_err(Error::ReplicaPrepareInvalidSignature)?;
+            .map_err(Error::InvalidSignature)?;
 
         // ----------- Checking the contents of the message --------------
 
@@ -58,13 +86,13 @@ impl StateMachine {
         message
             .high_qc
             .verify(&consensus.validator_set, consensus.threshold())
-            .map_err(Error::ReplicaPrepareInvalidHighQC)?;
+            .map_err(Error::InvalidHighQC)?;
 
         // If the high QC is for a future view, we discard the message.
         // This check is not necessary for correctness, but it's useful to
         // guarantee that our proposals don't contain QCs from the future.
         if message.high_qc.message.view >= message.view {
-            return Err(Error::ReplicaPrepareHighQCOfFutureView {
+            return Err(Error::HighQCOfFutureView {
                 high_qc_view: message.high_qc.message.view,
                 current_view: message.view,
             });
@@ -82,7 +110,7 @@ impl StateMachine {
         let num_messages = self.prepare_message_cache.get(&message.view).unwrap().len();
 
         if num_messages < consensus.threshold() {
-            return Err(Error::ReplicaPrepareNumReceivedBelowThreshold {
+            return Err(Error::NumReceivedBelowThreshold {
                 num_messages,
                 threshold: consensus.threshold(),
             });
@@ -93,13 +121,12 @@ impl StateMachine {
         // Get all the replica prepare messages for this view. Note that we consume the
         // messages here. That's purposeful, so that we don't create a new block proposal
         // for this same view if we receive another replica prepare message after this.
-        let replica_messages = self
+        let replica_messages : Vec<_> = self
             .prepare_message_cache
             .remove(&message.view)
             .unwrap()
-            .values()
-            .cloned()
-            .collect::<Vec<_>>();
+            .into_values()
+            .collect();
 
         debug_assert!(num_messages == consensus.threshold());
 
@@ -107,13 +134,13 @@ impl StateMachine {
         // in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
         let mut count: HashMap<_, usize> = HashMap::new();
 
-        for vote in replica_messages.iter().map(|s| &s.msg.high_vote) {
+        for vote in replica_messages.iter() {
             *count
-                .entry((vote.proposal.number, vote.proposal_hash))
+                .entry(vote.msg.high_vote.proposal.clone())
                 .or_default() += 1;
         }
 
-        let highest_vote = count
+        let highest_vote : Option<validator::BlockHeader> = count
             .iter()
             // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
             .find(|(_, v)| **v > 2 * consensus.faulty_replicas())
@@ -121,7 +148,7 @@ impl StateMachine {
             .cloned();
 
         // Get the highest CommitQC.
-        let highest_qc = &replica_messages
+        let highest_qc : &validator::CommitQC = replica_messages
             .iter()
             .map(|s| &s.msg.high_qc)
             .max_by_key(|qc| qc.message.view)
@@ -144,7 +171,7 @@ impl StateMachine {
 
                 metrics::METRICS
                     .leader_proposal_payload_size
-                    .observe(payload.len());
+                    .observe(payload.0.len());
                 let proposal = validator::BlockHeader::new(&highest_qc.message.proposal, payload.hash()); 
                 (proposal,Some(payload))
             }
@@ -171,7 +198,7 @@ impl StateMachine {
                     validator::LeaderPrepare {
                         view: self.view,
                         proposal,
-                        payload,
+                        proposal_payload: payload,
                         justification,
                     },
                 )),

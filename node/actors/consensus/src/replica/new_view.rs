@@ -19,7 +19,7 @@ impl StateMachine {
 
         // Clear the block cache.
         self.block_proposal_cache
-            .retain(|k, _| k > &self.high_qc.message.proposal_block_number);
+            .retain(|k, _| k > &self.high_qc.message.proposal.number);
 
         // Backup our state.
         self.backup_state();

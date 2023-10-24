@@ -60,7 +60,7 @@ impl Test {
                 if !honest.contains(&metric.validator) {
                     continue;
                 }
-                let block = metric.finalized_block.block;
+                let block = metric.finalized_block;
                 let hash = block.header.hash();
                 assert_eq!(*finalized.entry(block.header.number).or_insert(hash), hash);
                 let observers = observers.entry(block.header.number).or_default();
@@ -85,7 +85,7 @@ async fn run_nodes(
         .iter()
         .map(|r| r.net.state().cfg().consensus.key.clone())
         .collect();
-    let (genesis_block, _) = testonly::make_genesis(&keys, vec![]);
+    let (genesis_block, _) = testonly::make_genesis(&keys, validator::Payload(vec![]));
     let network_ready = signal::Once::new();
     let mut network_pipes = HashMap::new();
     let mut network_send = HashMap::new();

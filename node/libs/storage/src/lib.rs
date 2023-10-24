@@ -16,7 +16,7 @@ mod testonly;
 mod tests;
 mod types;
 
-pub use types::ReplicaState;
+pub use types::{ReplicaState,Proposal};
 
 /// Main struct for the Storage module, it just contains the database. Provides a set of high-level
 /// atomic operations on the database. It "contains" the following data:

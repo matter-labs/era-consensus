@@ -8,6 +8,14 @@ use std::{
 use storage::Storage;
 use tracing::{instrument, warn};
 
+#[derive(thiserror::Error, Debug)]
+pub(crate) enum Error {
+    #[error("LeaderPrepare: {0}")]
+    LeaderPrepare(#[from] super::leader_prepare::Error),
+    #[error("LeaderCommit: {0}")]
+    LeaderCommit(#[from] super::leader_commit::Error),
+}
+
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
 /// for validating and voting on blocks. When participating in consensus we are always a replica.
 #[derive(Debug)]
@@ -34,14 +42,20 @@ impl StateMachine {
     /// otherwise we initialize the state machine with whatever head block we have.
     pub(crate) fn new(storage: Arc<Storage>) -> Self {
         match storage.get_replica_state() {
-            Some(backup) => Self {
-                view: backup.view,
-                phase: backup.phase,
-                high_vote: backup.high_vote,
-                high_qc: backup.high_qc,
-                block_proposal_cache: backup.block_proposal_cache,
-                timeout_deadline: time::Deadline::Infinite,
-                storage,
+            Some(backup) => {
+                let mut block_proposal_cache : BTreeMap<_, HashMap<_,_>> = BTreeMap::new();
+                for p in backup.proposals {
+                    block_proposal_cache.entry(p.number).or_default().insert(p.payload.hash(),p.payload);
+                }
+                Self {
+                    view: backup.view,
+                    phase: backup.phase,
+                    high_vote: backup.high_vote,
+                    high_qc: backup.high_qc,
+                    block_proposal_cache,
+                    timeout_deadline: time::Deadline::Infinite,
+                    storage,
+                }
             },
             None => {
                 let head = storage.get_head_block();
@@ -92,11 +106,11 @@ impl StateMachine {
         let (label, result) = match &signed_msg.msg {
             validator::ConsensusMsg::LeaderPrepare(_) => (
                 metrics::ConsensusMsgLabel::LeaderPrepare,
-                self.process_leader_prepare(ctx, consensus, signed_msg.cast().unwrap()),
+                self.process_leader_prepare(ctx, consensus, signed_msg.cast().unwrap()).map_err(Error::LeaderPrepare),
             ),
             validator::ConsensusMsg::LeaderCommit(_) => (
                 metrics::ConsensusMsgLabel::LeaderCommit,
-                self.process_leader_commit(ctx, consensus, signed_msg.cast().unwrap()),
+                self.process_leader_commit(ctx, consensus, signed_msg.cast().unwrap()).map_err(Error::LeaderCommit),
             ),
             _ => unreachable!(),
         };
@@ -110,12 +124,16 @@ impl StateMachine {
 
     /// Backups the replica state to disk.
     pub(crate) fn backup_state(&self) {
+        let mut proposals = vec![];
+        for (number,payloads) in &self.block_proposal_cache {
+            proposals.extend(payloads.values().map(|p|storage::Proposal { number: *number, payload: p.clone() }));
+        }
         let backup = storage::ReplicaState {
             view: self.view,
             phase: self.phase,
             high_vote: self.high_vote,
             high_qc: self.high_qc.clone(),
-            block_proposal_cache: self.block_proposal_cache.clone(),
+            proposals,
         };
 
         self.storage.put_replica_state(&backup);

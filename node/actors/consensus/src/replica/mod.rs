@@ -3,7 +3,6 @@
 //! node will perform both the replica and leader roles simultaneously.
 
 mod block;
-mod error;
 mod leader_commit;
 mod leader_prepare;
 mod new_view;
