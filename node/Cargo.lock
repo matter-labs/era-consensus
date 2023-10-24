@@ -1892,12 +1892,17 @@ name = "storage"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "assert_matches",
+ "async-trait",
  "concurrency",
  "rand",
  "rocksdb",
  "roles",
  "schema",
  "tempfile",
+ "test-casing",
+ "thiserror",
+ "tokio",
  "tracing",
 ]
 

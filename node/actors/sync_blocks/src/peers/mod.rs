@@ -14,7 +14,7 @@ use roles::{
     validator::{BlockNumber, FinalBlock},
 };
 use std::{collections::HashMap, sync::Arc};
-use storage::Storage;
+use storage::WriteBlockStore;
 use tracing::instrument;
 
 mod events;
@@ -49,7 +49,7 @@ pub(crate) struct PeerStates {
     events_sender: Option<channel::UnboundedSender<PeerStateEvent>>,
     peers: Mutex<HashMap<node::PublicKey, PeerState>>,
     message_sender: channel::UnboundedSender<io::OutputMessage>,
-    storage: Arc<Storage>,
+    storage: Arc<dyn WriteBlockStore>,
     config: Config,
 }
 
@@ -57,7 +57,7 @@ impl PeerStates {
     /// Creates a new instance together with a handle.
     pub(crate) fn new(
         message_sender: channel::UnboundedSender<io::OutputMessage>,
-        storage: Arc<Storage>,
+        storage: Arc<dyn WriteBlockStore>,
         config: Config,
     ) -> (Self, PeerStatesHandle) {
         let (updates_sender, updates_receiver) = channel::unbounded();
@@ -80,19 +80,16 @@ impl PeerStates {
     /// 3. Spawn a task to get each missing block.
     pub(crate) async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let updates_receiver = self.updates_receiver.take().unwrap();
-        let storage = &self.storage;
+        let storage = self.storage.as_ref();
         let get_block_semaphore = Semaphore::new(self.config.max_concurrent_blocks);
         let (new_blocks_sender, mut new_blocks_subscriber) = watch::channel(BlockNumber(0));
 
         scope::run!(ctx, |ctx, s| async {
-            // `storage` uses blocking I/O, so we spawn it a blocking context for it
-            let blocks_task = s.spawn_blocking(|| {
-                let start_number = storage.get_last_contiguous_block_number();
-                let end_number = storage.get_head_block().block.number;
-                let missing_blocks = storage.get_missing_block_numbers(start_number..end_number);
-                Ok((end_number, missing_blocks))
-            });
-            let (mut last_block_number, missing_blocks) = blocks_task.join(ctx).await?;
+            let start_number = storage.last_contiguous_block_number(ctx).await?;
+            let mut last_block_number = storage.head_block(ctx).await?.block.number;
+            let missing_blocks = storage
+                .missing_block_numbers(ctx, start_number..last_block_number)
+                .await?;
             new_blocks_sender.send_replace(last_block_number);
 
             s.spawn_bg(self.run_updates(ctx, updates_receiver, new_blocks_sender));
@@ -219,7 +216,7 @@ impl PeerStates {
         ctx: &ctx::Ctx,
         block_number: BlockNumber,
         get_block_permit: sync::SemaphorePermit<'_>,
-        storage: &Storage,
+        storage: &dyn WriteBlockStore,
     ) -> anyhow::Result<()> {
         let block = self.get_block(ctx, block_number).await?;
         drop(get_block_permit);
@@ -227,18 +224,7 @@ impl PeerStates {
         if let Some(events_sender) = &self.events_sender {
             events_sender.send(PeerStateEvent::GotBlock(block_number));
         }
-
-        scope::run!(ctx, |ctx, s| async {
-            s.spawn_blocking(|| {
-                let block = block;
-                storage.put_block(&block);
-                Ok(())
-            })
-            .join(ctx)
-            .await
-        })
-        .await?;
-
+        storage.put_block(ctx, &block).await?;
         Ok(())
     }
 

@@ -6,8 +6,9 @@ use concurrency::{ctx, scope, time};
 use consensus::Consensus;
 use executor::{configurator::Configs, io::Dispatcher};
 use std::{fs, io::IsTerminal as _, path::Path, sync::Arc};
-use storage::Storage;
-use tracing::{debug, info, metadata::LevelFilter};
+use storage::{BlockStore, RocksdbStorage};
+use sync_blocks::SyncBlocks;
+use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use utils::{no_copy::NoCopy, pipe};
 use vise_exporter::MetricsExporter;
@@ -55,29 +56,27 @@ async fn main() -> anyhow::Result<()> {
         tracing::subscriber::set_global_default(subscriber).unwrap();
 
         // Start the node.
-        info!("Starting node.");
+        tracing::info!("Starting node.");
     }
 
     // Load the config files.
-    debug!("Loading config files.");
+    tracing::debug!("Loading config files.");
     let configs = Configs::read(&args).context("configs.read()")?;
 
     if config_mode {
-        info!("Configuration verified.");
+        tracing::info!("Configuration verified.");
         return Ok(());
     }
 
     // Initialize the storage.
-    debug!("Initializing storage.");
+    tracing::debug!("Initializing storage.");
 
-    let storage = Arc::new(Storage::new(
-        &configs.config.genesis_block,
-        Path::new("./database"),
-    ));
+    let storage = RocksdbStorage::new(ctx, &configs.config.genesis_block, Path::new("./database"));
+    let storage = Arc::new(storage.await.context("RocksdbStorage::new()")?);
 
     // Generate the communication pipes. We have one for each actor.
     let (consensus_actor_pipe, consensus_dispatcher_pipe) = pipe::new();
-    let (_, sync_blocks_dispatcher_pipe) = pipe::new();
+    let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
     let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
 
     // Create the IO dispatcher.
@@ -95,10 +94,24 @@ async fn main() -> anyhow::Result<()> {
         configs.validator_key.clone(),
         validator_set.clone(),
         storage.clone(),
-    );
-    // FIXME(slowli): Run `sync_blocks` actor once it's fully functional
+    )
+    .await
+    .context("consensus")?;
 
-    debug!("Starting actors in separate threads.");
+    let sync_blocks_config = sync_blocks::Config::new(
+        validator_set.clone(),
+        consensus::misc::consensus_threshold(validator_set.len()),
+    )?;
+    let sync_blocks = SyncBlocks::new(
+        ctx,
+        sync_blocks_actor_pipe,
+        storage.clone(),
+        sync_blocks_config,
+    )
+    .await
+    .context("sync_blocks")?;
+
+    tracing::debug!("Starting actors in separate threads.");
     scope::run!(ctx, |ctx, s| async {
         if let Some(addr) = configs.config.metrics_server_addr {
             let addr = NoCopy::from(addr);
@@ -123,15 +136,16 @@ async fn main() -> anyhow::Result<()> {
         });
 
         s.spawn_blocking(|| consensus.run(ctx).context("Consensus stopped"));
+        s.spawn(async { sync_blocks.run(ctx).await.context("Syncing blocks stopped") });
 
         // if we are in CI mode, we wait for the node to finalize 100 blocks and then we stop it
         if ci_mode {
             let storage = storage.clone();
-
             loop {
-                let block_finalized = storage.get_head_block().block.number.0;
+                let block_finalized = storage.head_block(ctx).await.context("head_block")?;
+                let block_finalized = block_finalized.block.number.0;
 
-                info!("current finalized block {}", block_finalized);
+                tracing::info!("current finalized block {}", block_finalized);
                 if block_finalized > 100 {
                     // we wait for 10 seconds to make sure that we send enough messages to other nodes
                     // and other nodes have enough messages to finalize 100+ blocks
@@ -141,7 +155,7 @@ async fn main() -> anyhow::Result<()> {
                 ctx.sleep(time::Duration::seconds(1)).await?;
             }
 
-            info!("Cancel all tasks");
+            tracing::info!("Cancel all tasks");
             s.cancel();
         }
 

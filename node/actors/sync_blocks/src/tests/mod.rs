@@ -9,6 +9,7 @@ use rand::{
 };
 use roles::validator::{self, Block, BlockNumber, CommitQC, FinalBlock, ValidatorSet};
 use std::iter;
+use storage::RocksdbStorage;
 use utils::pipe;
 
 mod end_to_end;
@@ -111,16 +112,18 @@ async fn subscribing_to_state_updates() {
     let block_2 = create_block(&block_1, rng);
     let block_3 = create_block(&block_2, rng);
 
-    let storage = Storage::new(&genesis_block, storage_dir.path());
-    let storage = &Arc::new(storage);
+    let storage = RocksdbStorage::new(ctx, &genesis_block, storage_dir.path()).await;
+    let storage = &Arc::new(storage.unwrap());
     let (actor_pipe, _dispatcher_pipe) = pipe::new();
-    let actor = SyncBlocks::new(actor_pipe, storage.clone(), rng.gen());
+    let actor = SyncBlocks::new(ctx, actor_pipe, storage.clone(), rng.gen())
+        .await
+        .unwrap();
     let mut state_subscriber = actor.subscribe_to_state_updates();
 
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg_blocking(|| {
-            actor.run(ctx).or_else(|err| {
-                if err.is::<ctx::Canceled>() {
+        s.spawn_bg(async {
+            actor.run(ctx).await.or_else(|err| {
+                if err.root_cause().is::<ctx::Canceled>() {
                     Ok(()) // Swallow cancellation errors after the test is finished
                 } else {
                     Err(err)
@@ -144,7 +147,7 @@ async fn subscribing_to_state_updates() {
         assert_eq!(initial_state.last_stored_block, genesis_block.justification);
         drop(initial_state);
 
-        storage.put_block(&block_1);
+        storage.put_block(ctx, &block_1).await.unwrap();
 
         let new_state = sync::changed(ctx, &mut state_subscriber).await?;
         assert_eq!(new_state.first_stored_block, genesis_block.justification);
@@ -155,7 +158,7 @@ async fn subscribing_to_state_updates() {
         assert_eq!(new_state.last_stored_block, block_1.justification);
         drop(new_state);
 
-        storage.put_block(&block_3);
+        storage.put_block(ctx, &block_3).await.unwrap();
 
         let new_state = sync::changed(ctx, &mut state_subscriber).await?;
         assert_eq!(new_state.first_stored_block, genesis_block.justification);
@@ -200,23 +203,25 @@ async fn getting_blocks() {
     let rng = &mut ctx.rng();
     let genesis_block = create_block_from_base(Block::genesis(vec![]), rng);
 
-    let storage = Storage::new(&genesis_block, storage_dir.path());
-    let storage = Arc::new(storage);
+    let storage = RocksdbStorage::new(ctx, &genesis_block, storage_dir.path());
+    let storage = Arc::new(storage.await.unwrap());
     let blocks = iter::successors(Some(genesis_block), |parent| {
         Some(create_block(parent, rng))
     });
     let blocks: Vec<_> = blocks.take(5).collect();
     for block in &blocks {
-        storage.put_block(block);
+        storage.put_block(ctx, block).await.unwrap();
     }
 
     let (actor_pipe, dispatcher_pipe) = pipe::new();
-    let actor = SyncBlocks::new(actor_pipe, storage.clone(), rng.gen());
+    let actor = SyncBlocks::new(ctx, actor_pipe, storage.clone(), rng.gen())
+        .await
+        .unwrap();
 
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg_blocking(|| {
-            actor.run(ctx).or_else(|err| {
-                if err.is::<ctx::Canceled>() {
+        s.spawn_bg(async {
+            actor.run(ctx).await.or_else(|err| {
+                if err.root_cause().is::<ctx::Canceled>() {
                     Ok(()) // Swallow cancellation errors after the test is finished
                 } else {
                     Err(err)

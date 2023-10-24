@@ -7,7 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use storage::Storage;
+use storage::RocksdbStorage;
 use tracing::Instrument as _;
 use utils::pipe;
 
@@ -100,16 +100,23 @@ async fn run_nodes(
             network_pipes.insert(validator_key.public(), network_actor_pipe);
             s.spawn(
                 async {
-                    let dir = tempfile::tempdir().unwrap();
+                    let dir = tempfile::tempdir().context("tempdir()")?;
                     let storage =
-                        Arc::new(Storage::new(&genesis_block, &dir.path().join("storage")));
+                        RocksdbStorage::new(ctx, &genesis_block, &dir.path().join("storage"))
+                            .await
+                            .context("RocksdbStorage")?;
+                    let storage = Arc::new(storage);
+
                     let consensus = Consensus::new(
                         ctx,
                         consensus_actor_pipe,
                         n.net.state().cfg().consensus.key.clone(),
                         validator_set,
                         storage,
-                    );
+                    )
+                    .await
+                    .context("consensus")?;
+
                     scope::run!(ctx, |ctx, s| async {
                         network_ready.recv(ctx).await?;
                         s.spawn_blocking(|| consensus.run(ctx).context("consensus.run()"));
