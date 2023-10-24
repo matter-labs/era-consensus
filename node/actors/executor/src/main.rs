@@ -7,6 +7,7 @@ use consensus::Consensus;
 use executor::{configurator::Configs, io::Dispatcher};
 use std::{fs, io::IsTerminal as _, path::Path, sync::Arc};
 use storage::{BlockStore, RocksdbStorage};
+use sync_blocks::SyncBlocks;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use utils::{no_copy::NoCopy, pipe};
@@ -75,7 +76,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Generate the communication pipes. We have one for each actor.
     let (consensus_actor_pipe, consensus_dispatcher_pipe) = pipe::new();
-    let (_, sync_blocks_dispatcher_pipe) = pipe::new();
+    let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
     let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
 
     // Create the IO dispatcher.
@@ -96,7 +97,19 @@ async fn main() -> anyhow::Result<()> {
     )
     .await
     .context("consensus")?;
-    // FIXME(slowli): Run `sync_blocks` actor once it's fully functional
+
+    let sync_blocks_config = sync_blocks::Config::new(
+        validator_set.clone(),
+        consensus::misc::consensus_threshold(validator_set.len()),
+    )?;
+    let sync_blocks = SyncBlocks::new(
+        ctx,
+        sync_blocks_actor_pipe,
+        storage.clone(),
+        sync_blocks_config,
+    )
+    .await
+    .context("sync_blocks")?;
 
     tracing::debug!("Starting actors in separate threads.");
     scope::run!(ctx, |ctx, s| async {
@@ -123,6 +136,7 @@ async fn main() -> anyhow::Result<()> {
         });
 
         s.spawn_blocking(|| consensus.run(ctx).context("Consensus stopped"));
+        s.spawn(async { sync_blocks.run(ctx).await.context("Syncing blocks stopped") });
 
         // if we are in CI mode, we wait for the node to finalize 100 blocks and then we stop it
         if ci_mode {
