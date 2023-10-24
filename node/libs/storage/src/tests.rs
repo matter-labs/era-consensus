@@ -6,17 +6,17 @@ use roles::validator::{Payload, BlockNumber, BlockHeader, FinalBlock};
 use std::iter;
 use tempfile::TempDir;
 
-fn init_store<R: Rng>(rng: &mut R) -> (FinalBlock, Storage, TempDir) {
+async fn init_store<R: Rng>(ctx: &ctx::Ctx, rng: &mut R) -> (FinalBlock, RocksdbStorage, TempDir) {
     let payload = Payload(vec![]);
     let genesis_block = FinalBlock {
         header: BlockHeader::genesis(payload.hash()),
         payload,
         justification: rng.gen(),
     };
-
     let temp_dir = TempDir::new().unwrap();
-    let block_store = Storage::new(&genesis_block, temp_dir.path());
-
+    let block_store = RocksdbStorage::new(ctx, &genesis_block, temp_dir.path())
+        .await
+        .unwrap();
     (genesis_block, block_store, temp_dir)
 }
 
@@ -34,77 +34,97 @@ fn make_block<R:Rng>(rng: &mut R, parent: &BlockHeader) -> FinalBlock {
     }
 }
 
-#[test]
-fn init_store_twice() {
+#[tokio::test]
+async fn init_store_twice() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let (genesis_block, block_store, temp_dir) = init_store(rng);
+    let (genesis_block, block_store, temp_dir) = init_store(&ctx, rng).await;
     let block_1 = make_block(rng,&genesis_block.header);
-    block_store.put_block(&block_1);
+    block_store.put_block(&ctx, &block_1).await.unwrap();
 
-    assert_eq!(block_store.get_first_block(), genesis_block);
-    assert_eq!(block_store.get_head_block(), block_1);
+    assert_eq!(block_store.first_block(&ctx).await.unwrap(), genesis_block);
+    assert_eq!(block_store.head_block(&ctx).await.unwrap(), block_1);
 
     drop(block_store);
-    let block_store = Storage::new(&genesis_block, temp_dir.path());
+    let block_store = RocksdbStorage::new(&ctx, &genesis_block, temp_dir.path())
+        .await
+        .unwrap();
 
-    assert_eq!(block_store.get_first_block(), genesis_block);
-    assert_eq!(block_store.get_head_block(), block_1);
+    assert_eq!(block_store.first_block(&ctx).await.unwrap(), genesis_block);
+    assert_eq!(block_store.head_block(&ctx).await.unwrap(), block_1);
 }
 
-#[test]
-fn test_put_block() {
+#[tokio::test]
+async fn test_put_block() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let (genesis_block, block_store, _temp_dir) = init_store(rng);
+    let (genesis_block, block_store, _temp_dir) = init_store(&ctx, rng).await;
 
-    assert_eq!(block_store.get_first_block(), genesis_block);
-    assert_eq!(block_store.get_head_block(), genesis_block);
+    assert_eq!(block_store.first_block(&ctx).await.unwrap(), genesis_block);
+    assert_eq!(block_store.head_block(&ctx).await.unwrap(), genesis_block);
 
     let mut block_subscriber = block_store.subscribe_to_block_writes();
     assert_eq!(*block_subscriber.borrow_and_update(), BlockNumber(0));
 
     // Test inserting a block with a valid parent.
     let block_1 = make_block(rng, &genesis_block.header);
-    block_store.put_block(&block_1);
+    block_store.put_block(&ctx, &block_1).await.unwrap();
 
-    assert_eq!(block_store.get_first_block(), genesis_block);
-    assert_eq!(block_store.get_head_block(), block_1);
-    assert_eq!(*block_subscriber.borrow_and_update(), block_1.header.number);
+    assert_eq!(block_store.first_block(&ctx).await.unwrap(), genesis_block);
+    assert_eq!(block_store.head_block(&ctx).await.unwrap(), block_1);
+    assert_eq!(*block_subscriber.borrow_and_update(), block_1.block.number);
 
     // Test inserting a block with a valid parent that is not the genesis.
-    let block_2 = make_block(rng, &block_1.header);
-    block_store.put_block(&block_2);
+    let block_2 = FinalBlock {
+        block: Block {
+            parent: block_1.block.hash(),
+            number: block_1.block.number.next(),
+            payload: Vec::new(),
+        },
+        justification: rng.gen(),
+    };
+    block_store.put_block(&ctx, &block_2).await.unwrap();
 
-    assert_eq!(block_store.get_first_block(), genesis_block);
-    assert_eq!(block_store.get_head_block(), block_2);
-    assert_eq!(*block_subscriber.borrow_and_update(), block_2.header.number);
+    assert_eq!(block_store.first_block(&ctx).await.unwrap(), genesis_block);
+    assert_eq!(block_store.head_block(&ctx).await.unwrap(), block_2);
+    assert_eq!(*block_subscriber.borrow_and_update(), block_2.block.number);
+>>>>>>> origin/main
 }
 
-#[test]
-fn test_get_missing_block_numbers() {
-    let ctx = ctx::test_root(&ctx::RealClock);
-    let rng = &mut ctx.rng();
-    let (genesis_block, block_store, _temp_dir) = init_store(rng);
-
+fn gen_blocks(rng: &mut impl Rng, genesis_block: FinalBlock, count: usize) -> Vec<FinalBlock> {
     let blocks = iter::successors(Some(genesis_block), |parent| {
         Some(make_block(rng,&parent.header))
     });
-    let mut blocks: Vec<_> = blocks.skip(1).take(100).collect();
+    blocks.skip(1).take(count).collect()
+}
+
+#[tokio::test]
+async fn test_get_missing_block_numbers() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let (genesis_block, block_store, _temp_dir) = init_store(&ctx, rng).await;
+    let mut blocks = gen_blocks(rng, genesis_block, 100);
     blocks.shuffle(rng);
 
     assert!(block_store
-        .get_missing_block_numbers(BlockNumber(0)..BlockNumber(101))
+        .missing_block_numbers(&ctx, BlockNumber(0)..BlockNumber(101))
+        .await
+        .unwrap()
         .into_iter()
         .map(|number| number.0)
         .eq(1..101));
 
     for (i, block) in blocks.iter().enumerate() {
-        block_store.put_block(block);
-        let missing_block_numbers =
-            block_store.get_missing_block_numbers(BlockNumber(0)..BlockNumber(101));
-        let last_contiguous_block_number = block_store.get_last_contiguous_block_number();
+        block_store.put_block(&ctx, block).await.unwrap();
+        let missing_block_numbers = block_store
+            .missing_block_numbers(&ctx, BlockNumber(0)..BlockNumber(101))
+            .await
+            .unwrap();
+        let last_contiguous_block_number = block_store
+            .last_contiguous_block_number(&ctx)
+            .await
+            .unwrap();
 
         let mut expected_block_numbers: Vec<_> =
             blocks[(i + 1)..].iter().map(|b| b.header.number).collect();
@@ -129,4 +149,11 @@ fn test_schema_encode_decode() {
 
     let replica = rng.gen::<ReplicaState>();
     assert_eq!(replica, schema::decode(&schema::encode(&replica)).unwrap());
+}
+
+#[test]
+fn cancellation_is_detected_in_storage_errors() {
+    let err = StorageError::from(ctx::Canceled);
+    let err = anyhow::Error::from(err);
+    assert!(err.root_cause().is::<ctx::Canceled>());
 }

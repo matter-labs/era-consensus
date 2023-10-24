@@ -310,3 +310,18 @@ impl<'env, E: 'static + Send> Scope<'env, E> {
         }
     }
 }
+
+/// Spawns the provided blocking closure `f` and waits until it completes or the context gets canceled.
+pub async fn wait_blocking<'a, R, E>(
+    ctx: &'a ctx::Ctx,
+    f: impl FnOnce() -> Result<R, E> + Send + 'a,
+) -> Result<R, E>
+where
+    R: 'static + Send,
+    E: 'static + From<ctx::Canceled> + Send,
+{
+    run!(ctx, |ctx, s| async {
+        Ok(s.spawn_blocking(f).join(ctx).await?)
+    })
+    .await
+}

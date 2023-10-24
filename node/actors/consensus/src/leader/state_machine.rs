@@ -5,7 +5,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     unreachable,
 };
-use tracing::{instrument, warn};
+use tracing::instrument;
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
@@ -80,8 +80,5 @@ impl StateMachine {
         };
         metrics::METRICS.leader_processing_latency[&label.with_result(&result)]
             .observe_latency(ctx.now() - now);
-        if let Err(e) = result {
-            warn!("{}", e);
-        }
     }
 }

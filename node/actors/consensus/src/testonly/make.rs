@@ -7,12 +7,12 @@ use crate::{
 use concurrency::ctx;
 use roles::validator;
 use std::sync::Arc;
-use storage::Storage;
+use storage::RocksdbStorage;
 use tempfile::tempdir;
 use utils::pipe::{self, DispatcherPipe};
 
 /// This creates a mock Consensus struct for unit tests.
-pub fn make_consensus(
+pub async fn make_consensus(
     ctx: &ctx::Ctx,
     key: &validator::SecretKey,
     validator_set: &validator::ValidatorSet,
@@ -20,12 +20,11 @@ pub fn make_consensus(
 ) -> (Consensus, DispatcherPipe<InputMessage, OutputMessage>) {
     // Create a temporary folder.
     let temp_dir = tempdir().unwrap();
-
     let temp_file = temp_dir.path().join("block_store");
-
     // Initialize the storage.
-    let storage = Storage::new(genesis_block, &temp_file);
-
+    let storage = RocksdbStorage::new(ctx, genesis_block, &temp_file)
+        .await
+        .unwrap();
     // Create the pipe.
     let (consensus_pipe, dispatcher_pipe) = pipe::new();
 
@@ -36,7 +35,9 @@ pub fn make_consensus(
         validator_set.clone(),
         Arc::new(storage),
     );
-
+    let consensus = consensus
+        .await
+        .expect("Initializing consensus actor failed");
     (consensus, dispatcher_pipe)
 }
 

@@ -16,11 +16,12 @@
 //! - Blog posts explaining [safety](https://seafooler.com/2022/01/24/understanding-safety-hotstuff/) and [responsiveness](https://seafooler.com/2022/04/02/understanding-responsiveness-hotstuff/)
 
 use crate::io::{InputMessage, OutputMessage};
+use anyhow::Context as _;
 use concurrency::ctx;
 use inner::ConsensusInner;
 use roles::validator;
 use std::sync::Arc;
-use storage::Storage;
+use storage::ReplicaStateStore;
 use tracing::{info, instrument};
 use utils::pipe::ActorPipe;
 
@@ -48,22 +49,22 @@ pub struct Consensus {
 impl Consensus {
     /// Creates a new Consensus struct.
     #[instrument(level = "trace", ret)]
-    pub fn new(
+    pub async fn new(
         ctx: &ctx::Ctx,
         pipe: ActorPipe<InputMessage, OutputMessage>,
         secret_key: validator::SecretKey,
         validator_set: validator::ValidatorSet,
-        storage: Arc<Storage>,
-    ) -> Self {
-        Consensus {
+        storage: Arc<dyn ReplicaStateStore>,
+    ) -> anyhow::Result<Self> {
+        Ok(Consensus {
             inner: ConsensusInner {
                 pipe,
                 secret_key,
                 validator_set,
             },
-            replica: replica::StateMachine::new(storage),
+            replica: replica::StateMachine::new(ctx, storage).await?,
             leader: leader::StateMachine::new(ctx),
-        }
+        })
     }
 
     /// Starts the Consensus actor. It will start running, processing incoming messages and
@@ -76,7 +77,9 @@ impl Consensus {
         );
 
         // We need to start the replica before processing inputs.
-        self.replica.start(ctx, &self.inner);
+        self.replica
+            .start(ctx, &self.inner)
+            .context("replica.start()")?;
 
         // This is the infinite loop where the consensus actually runs. The validator waits for either
         // a message from the network or for a timeout, and processes each accordingly.
@@ -99,18 +102,21 @@ impl Consensus {
                     match &req.msg.msg {
                         validator::ConsensusMsg::ReplicaPrepare(_)
                         | validator::ConsensusMsg::ReplicaCommit(_) => {
-                            self.leader.process_input(ctx, &self.inner, req.msg)
+                            self.leader.process_input(ctx, &self.inner, req.msg);
                         }
                         validator::ConsensusMsg::LeaderPrepare(_)
                         | validator::ConsensusMsg::LeaderCommit(_) => {
-                            self.replica.process_input(ctx, &self.inner, Some(req.msg))
+                            self.replica
+                                .process_input(ctx, &self.inner, Some(req.msg))?;
                         }
                     }
                     // Notify network actor that the message has been processed.
                     // Ignore sending error.
                     let _ = req.ack.send(());
                 }
-                None => self.replica.process_input(ctx, &self.inner, None),
+                None => {
+                    self.replica.process_input(ctx, &self.inner, None)?;
+                }
             }
         }
     }

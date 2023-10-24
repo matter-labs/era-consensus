@@ -1,12 +1,12 @@
-use crate::{metrics, ConsensusInner};
-use concurrency::{ctx, metrics::LatencyHistogramExt as _, time};
+use crate::{metrics, replica::error::Error, ConsensusInner};
+use concurrency::{ctx, metrics::LatencyHistogramExt as _, scope, time};
 use roles::validator;
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
-use storage::Storage;
-use tracing::{instrument, warn};
+use storage::{ReplicaStateStore, StorageError};
+use tracing::instrument;
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
@@ -34,14 +34,17 @@ pub(crate) struct StateMachine {
     /// The deadline to receive an input message.
     pub(crate) timeout_deadline: time::Deadline,
     /// A reference to the storage module. We use it to backup the replica state.
-    pub(crate) storage: Arc<Storage>,
+    pub(crate) storage: Arc<dyn ReplicaStateStore>,
 }
 
 impl StateMachine {
     /// Creates a new StateMachine struct. We try to recover a past state from the storage module,
     /// otherwise we initialize the state machine with whatever head block we have.
-    pub(crate) fn new(storage: Arc<Storage>) -> Self {
-        match storage.get_replica_state() {
+    pub(crate) async fn new(
+        ctx: &ctx::Ctx,
+        storage: Arc<dyn ReplicaStateStore>,
+    ) -> anyhow::Result<Self> {
+        Ok(match storage.replica_state(ctx).await? {
             Some(backup) => {
                 let mut block_proposal_cache : BTreeMap<_, HashMap<_,_>> = BTreeMap::new();
                 for p in backup.proposals {
@@ -52,14 +55,13 @@ impl StateMachine {
                     phase: backup.phase,
                     high_vote: backup.high_vote,
                     high_qc: backup.high_qc,
-                    block_proposal_cache,
+                    block_proposal_cache: backup.block_proposal_cache,
                     timeout_deadline: time::Deadline::Infinite,
                     storage,
                 }
             },
             None => {
-                let head = storage.get_head_block();
-
+                let head = storage.head_block(ctx).await?;
                 Self {
                     view: head.justification.message.view,
                     phase: validator::Phase::Prepare,
@@ -70,18 +72,23 @@ impl StateMachine {
                     storage,
                 }
             }
-        }
+        })
     }
 
     /// Starts the state machine. The replica state needs to be initialized before
     /// we are able to process inputs. If we are in the genesis block, then we start a new view,
     /// this will kick start the consensus algorithm. Otherwise, we just start the timer.
     #[instrument(level = "trace", ret)]
-    pub(crate) fn start(&mut self, ctx: &ctx::Ctx, consensus: &ConsensusInner) {
+    pub(crate) fn start(
+        &mut self,
+        ctx: &ctx::Ctx,
+        consensus: &ConsensusInner,
+    ) -> Result<(), Error> {
         if self.view == validator::ViewNumber(0) {
             self.start_new_view(ctx, consensus)
         } else {
-            self.reset_timer(ctx)
+            self.reset_timer(ctx);
+            Ok(())
         }
     }
 
@@ -94,12 +101,12 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
         input: Option<validator::Signed<validator::ConsensusMsg>>,
-    ) {
+    ) -> anyhow::Result<()> {
         let Some(signed_msg) = input else {
-            warn!("We timed out before receiving a message.");
+            tracing::warn!("We timed out before receiving a message.");
             // Start new view.
-            self.start_new_view(ctx, consensus);
-            return;
+            self.start_new_view(ctx, consensus)?;
+            return Ok(());
         };
 
         let now = ctx.now();
@@ -116,14 +123,19 @@ impl StateMachine {
         };
         metrics::METRICS.replica_processing_latency[&label.with_result(&result)]
             .observe_latency(ctx.now() - now);
-        // All errors from processing inputs are recoverable, so we just log them.
-        if let Err(e) = result {
-            warn!("{}", e);
+        match result {
+            Ok(()) => Ok(()),
+            Err(err @ Error::ReplicaStateSave(_)) => Err(err.into()),
+            Err(err) => {
+                // Other errors from processing inputs are recoverable, so we just log them.
+                tracing::warn!("{err}");
+                Ok(())
+            }
         }
     }
 
     /// Backups the replica state to disk.
-    pub(crate) fn backup_state(&self) {
+    pub(crate) fn backup_state(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let mut proposals = vec![];
         for (number,payloads) in &self.block_proposal_cache {
             proposals.extend(payloads.values().map(|p|storage::Proposal { number: *number, payload: p.clone() }));
@@ -136,6 +148,16 @@ impl StateMachine {
             proposals,
         };
 
-        self.storage.put_replica_state(&backup);
+        let store_result = scope::run_blocking!(ctx, |ctx, s| {
+            let backup_future = self.storage.put_replica_state(ctx, &backup);
+            s.spawn(backup_future).join(ctx).block()?;
+            Ok(())
+        });
+        match store_result {
+            Ok(()) => { /* Everything went fine */ }
+            Err(StorageError::Canceled(_)) => tracing::trace!("Storing replica state was canceled"),
+            Err(StorageError::Database(err)) => return Err(err),
+        }
+        Ok(())
     }
 }

@@ -1,9 +1,15 @@
 //! Defines the schema of the database.
 
 use anyhow::Context as _;
+use concurrency::ctx;
 use rocksdb::{Direction, IteratorMode};
-use roles::validator;
+use roles::validator::{self, BlockNumber};
 use schema::{proto::storage as proto, read_required, required, ProtoFmt};
+use std::{
+    collections::{BTreeMap, HashMap},
+    iter, ops,
+};
+use thiserror::Error;
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -13,7 +19,7 @@ pub(crate) enum DatabaseKey {
     ReplicaState,
     /// Key used to store the finalized blocks.
     /// Block(BlockNumber) -> FinalBlock
-    Block(validator::BlockNumber),
+    Block(BlockNumber),
 }
 
 impl DatabaseKey {
@@ -42,9 +48,11 @@ impl DatabaseKey {
     }
 
     /// Parses the specified bytes as a `Self::Block(_)` key.
-    pub(crate) fn parse_block_key(raw_key: &[u8]) -> validator::BlockNumber {
-        let raw_key = raw_key.try_into().expect("Invalid encoding for block key");
-        validator::BlockNumber(u64::from_be_bytes(raw_key))
+    pub(crate) fn parse_block_key(raw_key: &[u8]) -> anyhow::Result<BlockNumber> {
+        let raw_key = raw_key
+            .try_into()
+            .context("Invalid encoding for block key")?;
+        Ok(BlockNumber(u64::from_be_bytes(raw_key)))
     }
 }
 
@@ -66,6 +74,7 @@ pub struct ReplicaState {
     /// The highest commit quorum certificate known to the replica.
     pub high_qc: validator::CommitQC,
     /// A cache of the received block proposals.
+<<<<<<< HEAD
     pub proposals: Vec<Proposal>,
 }
 
@@ -85,6 +94,10 @@ impl ProtoFmt for Proposal {
             payload: Some(self.payload.0.clone()),
         }
     }
+=======
+    pub block_proposal_cache:
+        BTreeMap<BlockNumber, HashMap<validator::BlockHash, validator::Block>>,
+>>>>>>> origin/main
 }
 
 impl ProtoFmt for ReplicaState {
@@ -110,3 +123,68 @@ impl ProtoFmt for ReplicaState {
         }
     }
 }
+
+/// Iterator over missing block numbers.
+pub(crate) struct MissingBlockNumbers<I: Iterator> {
+    range: ops::Range<BlockNumber>,
+    existing_numbers: iter::Peekable<I>,
+}
+
+impl<I> MissingBlockNumbers<I>
+where
+    I: Iterator<Item = anyhow::Result<BlockNumber>>,
+{
+    /// Creates a new iterator based on the provided params.
+    pub(crate) fn new(range: ops::Range<BlockNumber>, existing_numbers: I) -> Self {
+        Self {
+            range,
+            existing_numbers: existing_numbers.peekable(),
+        }
+    }
+}
+
+impl<I> Iterator for MissingBlockNumbers<I>
+where
+    I: Iterator<Item = anyhow::Result<BlockNumber>>,
+{
+    type Item = anyhow::Result<BlockNumber>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        // Loop while existing numbers match the starting numbers from the range. The check
+        // that the range is non-empty is redundant given how `existing_numbers` are constructed
+        // (they are guaranteed to be lesser than the upper range bound); we add it just to be safe.
+        while !self.range.is_empty()
+            && matches!(self.existing_numbers.peek(), Some(&Ok(num)) if num == self.range.start)
+        {
+            self.range.start = self.range.start.next();
+            self.existing_numbers.next(); // Advance to the next number
+        }
+
+        if matches!(self.existing_numbers.peek(), Some(&Err(_))) {
+            let err = self.existing_numbers.next().unwrap().unwrap_err();
+            // ^ Both unwraps are safe due to the check above.
+            return Some(Err(err));
+        }
+
+        if self.range.is_empty() {
+            return None;
+        }
+        let next_number = self.range.start;
+        self.range.start = self.range.start.next();
+        Some(Ok(next_number))
+    }
+}
+
+/// Storage errors.
+#[derive(Debug, Error)]
+pub enum StorageError {
+    /// Operation was canceled by structured concurrency framework.
+    #[error("operation was canceled by structured concurrency framework")]
+    Canceled(#[from] ctx::Canceled),
+    /// Database operation failed.
+    #[error("database operation failed")]
+    Database(#[source] anyhow::Error),
+}
+
+/// [`Result`] for fallible storage operations.
+pub type StorageResult<T> = Result<T, StorageError>;

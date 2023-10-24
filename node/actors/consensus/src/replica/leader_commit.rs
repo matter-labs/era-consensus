@@ -1,6 +1,5 @@
 use super::StateMachine;
 use crate::{inner::ConsensusInner};
-
 use concurrency::ctx;
 use roles::validator;
 use tracing::instrument;
@@ -27,7 +26,7 @@ pub(crate) enum Error {
 impl StateMachine {
     /// Processes a leader commit message. We can approve this leader message even if we
     /// don't have the block proposal stored. It is enough to see the justification.
-    #[instrument(level = "trace", ret)]
+    #[instrument(level = "trace", err)]
     pub(crate) fn process_leader_commit(
         &mut self,
         ctx: &ctx::Ctx,
@@ -85,7 +84,7 @@ impl StateMachine {
 
         // Start a new view. But first we skip to the view of this message.
         self.view = view;
-        self.start_new_view(ctx, consensus);
+        self.start_new_view(ctx, consensus)?;
 
         Ok(())
     }

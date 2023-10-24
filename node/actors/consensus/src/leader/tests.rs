@@ -11,7 +11,7 @@ async fn replica_commit() {
 
     let keys: Vec<_> = (0..1).map(|_| rng.gen()).collect();
     let (genesis, val_set) = testonly::make_genesis(&keys, validator::Payload(vec![]));
-    let (mut consensus, _) = testonly::make_consensus(ctx, &keys[0], &val_set, &genesis);
+    let (mut consensus, _) = testonly::make_consensus(ctx, &keys[0], &val_set, &genesis).await;
 
     consensus.leader.view = validator::ViewNumber(3);
     consensus.leader.phase = validator::Phase::Commit;

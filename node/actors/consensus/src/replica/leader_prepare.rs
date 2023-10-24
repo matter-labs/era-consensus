@@ -231,7 +231,7 @@ impl StateMachine {
         }
 
         // Backup our state.
-        self.backup_state();
+        self.backup_state(ctx).map_err(Error::ReplicaStateSave)?;
 
         // Send the replica message to the leader.
         let output_message = ConsensusInputMessage {
