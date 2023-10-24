@@ -66,8 +66,6 @@ impl SyncBlocks {
     }
 
     /// Runs the actor processing incoming requests until `ctx` is canceled.
-    ///
-    /// **This method is blocking and will run indefinitely.**
     #[instrument(level = "trace", skip_all, err)]
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let storage = self.message_handler.storage.clone();

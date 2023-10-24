@@ -172,8 +172,9 @@ impl<T: ContiguousBlockStore> BufferedStorage<T> {
         self.buffer.lock().await.blocks.len()
     }
 
-    /// Listens to the updates in the underlying storage. This method must be spawned as a task;
-    /// otherwise, [`BufferedStorage`] will function incorrectly.
+    /// Listens to the updates in the underlying storage. This method must be spawned as a background task
+    /// which should be running as long at the [`BufferedStorage`] is in use. Otherwise,
+    /// `BufferedStorage` will function incorrectly.
     #[tracing::instrument(level = "trace", skip_all, err)]
     pub async fn listen_to_updates(&self, ctx: &ctx::Ctx) -> StorageResult<()> {
         let mut subscriber = self.inner_subscriber.clone();
