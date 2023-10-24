@@ -74,6 +74,7 @@ message CommitQC {
   optional AggregateSignature sig = 3;
 }
 
+// TODO: move to storage
 message Phase {
   oneof t {
     std.Void prepare = 1;

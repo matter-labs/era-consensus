@@ -48,18 +48,18 @@ pub(crate) enum Error {
     LeaderPrepareProposalInvalidParentHash {
         correct_parent_hash: BlockHeaderHash,
         received_parent_hash: BlockHeaderHash,
-        block: validator::Block,
+        block: validator::BlockHeader,
     },
     #[error("received leader prepare message with block proposal with non-sequential number (correct proposal number: {correct_number}, received proposal number: {received_number}, block: {block:?})")]
     LeaderPrepareProposalNonSequentialNumber {
         correct_number: u64,
         received_number: u64,
-        block: validator::Block,
+        block: validator::BlockHeader,
     },
     #[error("received leader prepare message with block proposal with an oversized payload (payload size: {payload_size}, block: {block:?}")]
     LeaderPrepareProposalOversizedPayload {
         payload_size: usize,
-        block: validator::Block,
+        block: validator::BlockHeader,
     },
     #[error("received leader prepare message with block re-proposal when the previous proposal was finalized")]
     LeaderPrepareReproposalWhenFinalized,

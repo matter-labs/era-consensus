@@ -139,14 +139,14 @@ impl StateMachine {
             _ => {
                 // TODO(bruno): For now we just create a block with a random payload. After we integrate with
                 //              the execution layer we should have a call here to the mempool to get a real payload.
-                let mut payload = Payload(vec![0; ConsensusInner::PAYLOAD_MAX_SIZE]);
+                let mut payload = validator::Payload(vec![0; ConsensusInner::PAYLOAD_MAX_SIZE]);
                 ctx.rng().fill(&mut payload.0[..]);
 
                 metrics::METRICS
                     .leader_proposal_payload_size
                     .observe(payload.len());
                 let proposal = validator::BlockHeader::new(&highest_qc.message.proposal, payload.hash()); 
-                (proposal,Some(payload)
+                (proposal,Some(payload))
             }
         };
 
@@ -155,10 +155,7 @@ impl StateMachine {
         self.view = message.view;
         self.phase = validator::Phase::Commit;
         self.phase_start = ctx.now();
-        self.block_proposal_cache = Some(validator::ReplicaCommit {
-            number: proposal.number,
-            payload: payload.clone(),
-        });
+        self.block_proposal_cache = Some(proposal.clone());
 
         // ----------- Prepare our message and send it --------------
 
@@ -172,7 +169,9 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::LeaderPrepare(
                     validator::LeaderPrepare {
+                        view: self.view,
                         proposal,
+                        payload,
                         justification,
                     },
                 )),

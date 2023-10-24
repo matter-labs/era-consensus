@@ -21,7 +21,7 @@ pub(crate) struct StateMachine {
     /// Time when the current phase has started.
     pub(crate) phase_start: time::Instant,
     /// A cache of our latest block proposal. We use it to determine if we accept a replica commit message.
-    pub(crate) block_proposal_cache: Option<validator::ReplicaCommit>,
+    pub(crate) block_proposal_cache: Option<validator::BlockHeader>,
     /// A cache of replica prepare messages indexed by view number and validator.
     pub(crate) prepare_message_cache: BTreeMap<
         validator::ViewNumber,

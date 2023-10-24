@@ -108,19 +108,21 @@ impl StateMachine {
         // ----------- Checking the block proposal --------------
 
         // Check that the proposal is valid.
-        let (proposal_block_number, proposal_block_hash, proposal_block) = match &message.proposal {
+        match message.payload {
             // The leader proposed a new block.
-            validator::Proposal::New(block) => {
+            Some(payload) => {
                 // Check that we finalized the previous block.
-                if highest_vote.is_some()
-                    && highest_vote
-                        != Some(&(
-                            highest_qc.message.proposal_block_number,
-                            highest_qc.message.proposal_block_hash,
-                        ))
+                if highest_vote.is_some() && highest_vote != Some(&(
+                    highest_qc.message.proposal.number,
+                    highest_qc.message.proposal.hash(),
+                ))
                 {
                     return Err(Error::LeaderPrepareProposalWhenPreviousNotFinalized);
                 }
+        }
+        let (proposal_block_number, proposal_block_hash, proposal_block) = match &message.proposal {
+            validator::Proposal::New(block) => {
+                
 
                 if highest_qc.message.proposal_block_hash != block.parent {
                     return Err(Error::LeaderPrepareProposalInvalidParentHash {
