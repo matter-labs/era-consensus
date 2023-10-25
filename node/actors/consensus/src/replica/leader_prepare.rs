@@ -22,11 +22,11 @@ pub(crate) enum Error {
         current_view: validator::ViewNumber,
         current_phase: validator::Phase,
     },
-    #[error("invalid signature")]
+    #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] crypto::bls12_381::Error),
-    #[error("invalid PrepareQC")]
+    #[error("invalid PrepareQC: {0:#}")]
     InvalidPrepareQC(#[source] anyhow::Error),
-    #[error("invalid high QC")]
+    #[error("invalid high QC: {0:#}")]
     InvalidHighQC(#[source] anyhow::Error),
     #[error(
         "high QC of a future view (high QC view: {high_qc_view:?}, current view: {current_view:?}"
@@ -64,7 +64,7 @@ pub(crate) enum Error {
     ReproposalWhenFinalized,
     #[error("block re-proposal of invalid block")]
     ReproposalInvalidBlock,
-    #[error("internal error: {0}")]
+    #[error("internal error: {0:#}")]
     Internal(#[from] anyhow::Error),
 }
 

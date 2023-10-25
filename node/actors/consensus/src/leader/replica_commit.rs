@@ -26,7 +26,7 @@ pub(crate) enum Error {
         num_messages: usize,
         threshold: usize,
     },
-    #[error("received replica commit message with invalid signature")]
+    #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] crypto::bls12_381::Error),
 }
 

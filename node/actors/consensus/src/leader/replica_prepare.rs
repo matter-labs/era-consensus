@@ -10,28 +10,32 @@ use tracing::instrument;
 #[derive(thiserror::Error, Debug)]
 #[allow(clippy::missing_docs_in_private_items)]
 pub(crate) enum Error {
-    #[error("received replica prepare message for a past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
+    #[error("past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
     Old {
         current_view: validator::ViewNumber,
         current_phase: validator::Phase,
     },
-    #[error("received replica prepare message for a view when we are not a leader")]
+    #[error("we are not a leader for this message's view")]
     WhenNotLeaderInView,
-    #[error("received replica prepare message that already exists (existing message: {existing_message:?}")]
-    Exists { existing_message: String },
-    #[error("received replica prepare message while number of received messages below threshold. waiting for more (received: {num_messages:?}, threshold: {threshold:?}")]
+    #[error("duplicate message from a replica (existing message: {existing_message:?}")]
+    Exists {
+        existing_message: validator::ReplicaPrepare,
+    },
+    #[error("number of received messages below threshold. waiting for more (received: {num_messages:?}, threshold: {threshold:?}")]
     NumReceivedBelowThreshold {
         num_messages: usize,
         threshold: usize,
     },
-    #[error("received replica prepare message with high QC of a future view (high QC view: {high_qc_view:?}, current view: {current_view:?}")]
+    #[error(
+        "high QC of a future view (high QC view: {high_qc_view:?}, current view: {current_view:?}"
+    )]
     HighQCOfFutureView {
         high_qc_view: validator::ViewNumber,
         current_view: validator::ViewNumber,
     },
-    #[error("received replica prepare message with invalid signature")]
+    #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] crypto::bls12_381::Error),
-    #[error("received replica prepare message with invalid high QC")]
+    #[error("invalid high QC: {0:#}")]
     InvalidHighQC(#[source] anyhow::Error),
 }
 
@@ -69,7 +73,7 @@ impl StateMachine {
             .and_then(|x| x.get(author))
         {
             return Err(Error::Exists {
-                existing_message: format!("{:?}", existing_message),
+                existing_message: existing_message.msg.clone(),
             });
         }
 

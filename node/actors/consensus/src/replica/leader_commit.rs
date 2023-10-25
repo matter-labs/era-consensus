@@ -20,11 +20,11 @@ pub(crate) enum Error {
         current_view: validator::ViewNumber,
         current_phase: validator::Phase,
     },
-    #[error("invalid signature")]
+    #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] crypto::bls12_381::Error),
-    #[error("invalid justification")]
+    #[error("invalid justification: {0:#}")]
     InvalidJustification(#[source] anyhow::Error),
-    #[error("internal error: {0}")]
+    #[error("internal error: {0:#}")]
     Internal(#[from] anyhow::Error),
 }
 
