@@ -1,14 +1,16 @@
 //! General-purpose network metrics.
 
 use crate::state::State;
-use concurrency::{ctx, io, metrics::GaugeGuard, net};
+use concurrency::{ctx, io, net};
 use std::{
     net::SocketAddr,
     pin::Pin,
     sync::Weak,
     task::{ready, Context, Poll},
 };
-use vise::{Collector, Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Metrics, Unit};
+use vise::{
+    Collector, Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, GaugeGuard, Metrics, Unit,
+};
 
 /// Metered TCP stream.
 #[pin_project::pin_project]
@@ -49,7 +51,7 @@ impl MeteredStream {
         TCP_METRICS.established[&direction].inc();
         Self {
             stream,
-            _active: GaugeGuard::from(TCP_METRICS.active[&direction].clone()),
+            _active: TCP_METRICS.active[&direction].inc_guard(1),
         }
     }
 }

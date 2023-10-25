@@ -21,7 +21,7 @@ async fn test_metrics() {
         }
         testonly::instant_network(ctx, nodes.iter()).await?;
 
-        let registry = vise::Registry::collect();
+        let registry = vise::MetricsCollection::default().collect();
         nodes[0].state().register_metrics();
         let mut encoded_metrics = String::new();
         registry.encode(&mut encoded_metrics, vise::Format::OpenMetricsForPrometheus)?;

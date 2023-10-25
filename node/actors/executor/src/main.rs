@@ -118,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
             s.spawn_bg(async {
                 let addr = addr;
                 MetricsExporter::default()
-                    .with_graceful_shutdown(ctx.canceled_owned()) // FIXME: support non-'static shutdown
+                    .with_graceful_shutdown(ctx.canceled())
                     .start(*addr)
                     .await?;
                 Ok(())
