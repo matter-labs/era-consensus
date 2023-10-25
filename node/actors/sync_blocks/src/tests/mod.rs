@@ -7,11 +7,14 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use roles::validator::{self, BlockHeader, Payload, BlockNumber, CommitQC, FinalBlock, ValidatorSet};
+use roles::validator::{
+    self,
+    testonly::{make_block, make_genesis_block},
+    BlockHeader, BlockNumber, CommitQC, FinalBlock, Payload, ValidatorSet,
+};
 use std::iter;
 use storage::RocksdbStorage;
 use utils::pipe;
-use roles::validator::testonly::{make_genesis_block,make_block};
 
 mod end_to_end;
 
@@ -49,7 +52,7 @@ impl TestValidators {
         let mut latest_block = BlockHeader::genesis(payload.hash());
         let final_blocks = (0..block_count).map(|_| {
             let final_block = FinalBlock {
-                header: latest_block.clone(),
+                header: latest_block,
                 payload: payload.clone(),
                 justification: this.certify_block(&latest_block),
             };
@@ -67,7 +70,7 @@ impl TestValidators {
     fn certify_block(&self, proposal: &BlockHeader) -> CommitQC {
         let message_to_sign = validator::ReplicaCommit {
             view: validator::ViewNumber(proposal.number.0),
-            proposal: proposal.clone(),
+            proposal: *proposal,
         };
         let signed_messages: Vec<_> = self
             .validator_secret_keys
@@ -110,8 +113,10 @@ async fn subscribing_to_state_updates() {
     let block_2 = make_block(rng, &block_1.header);
     let block_3 = make_block(rng, &block_2.header);
 
-    let storage = RocksdbStorage::new(ctx, &genesis_block, storage_dir.path()).await;
-    let storage = &Arc::new(storage.unwrap());
+    let storage = RocksdbStorage::new(ctx, &genesis_block, storage_dir.path())
+        .await
+        .unwrap();
+    let storage = &Arc::new(storage);
     let (actor_pipe, _dispatcher_pipe) = pipe::new();
     let actor = SyncBlocks::new(ctx, actor_pipe, storage.clone(), rng.gen())
         .await

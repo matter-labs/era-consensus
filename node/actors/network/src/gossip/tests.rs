@@ -346,8 +346,7 @@ impl NetworkState {
                         state,
                         response,
                     } => {
-                        let last_block_number =
-                            state.last_stored_block.message.proposal.number;
+                        let last_block_number = state.last_stored_block.message.proposal.number;
                         if last_block_number == expected_latest_block_number {
                             // We might receive outdated states, hence this check
                             received_states_by_peer.insert(peer.clone(), *state.clone());

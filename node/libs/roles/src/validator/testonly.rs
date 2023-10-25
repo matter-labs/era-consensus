@@ -1,4 +1,4 @@
-use super::*;
+use super::{AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg, FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorSet, ViewNumber};
 use bit_vec::BitVec;
 use concurrency::time;
 use rand::{
@@ -8,26 +8,36 @@ use rand::{
 use std::sync::Arc;
 use utils::enum_util::Variant;
 
-pub fn make_genesis_block<R:Rng>(rng: &mut R) -> FinalBlock {
-    let payload : Payload = rng.gen();
-    FinalBlock {
-        header: BlockHeader::genesis(payload.hash()),
-        payload,
-        justification: rng.gen(),
+pub fn make_justification<R: Rng>(rng: &mut R, header: &BlockHeader) -> CommitQC {
+    CommitQC {
+        message: ReplicaCommit {
+            view: ViewNumber(header.number.0),
+            proposal: *header,
+        },
+        signers: rng.gen(),
+        signature: rng.gen(),
     }
 }
 
-pub fn make_block<R:Rng>(rng: &mut R, parent: &BlockHeader) -> FinalBlock {
-    let payload : Payload = rng.gen();
+pub fn make_genesis_block<R: Rng>(rng: &mut R) -> FinalBlock {
+    let payload: Payload = rng.gen();
+    let header = BlockHeader::genesis(payload.hash());
+    let justification = make_justification(rng, &header);
     FinalBlock {
-        header: BlockHeader {
-            protocol_version: parent.protocol_version,
-            parent: parent.hash(),
-            number: parent.number.next(),
-            payload: payload.hash(),
-        },
+        header,
         payload,
-        justification: rng.gen(),
+        justification,
+    }
+}
+
+pub fn make_block<R: Rng>(rng: &mut R, parent: &BlockHeader) -> FinalBlock {
+    let payload: Payload = rng.gen();
+    let header = BlockHeader::new(parent, payload.hash());
+    let justification = make_justification(rng, &header);
+    FinalBlock {
+        header,
+        payload,
+        justification,
     }
 }
 
@@ -161,8 +171,8 @@ impl Distribution<CommitQC> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> CommitQC {
         CommitQC {
             message: rng.gen(),
-            signers: rng.gen::<Signers>(),
-            signature: rng.gen::<AggregateSignature>(),
+            signers: rng.gen(),
+            signature: rng.gen(),
         }
     }
 }

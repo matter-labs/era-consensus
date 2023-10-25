@@ -64,13 +64,13 @@ message LeaderCommit {
 
 message PrepareQC {
   repeated ReplicaPrepare msgs = 1;
-  repeated bytes signers = 2;
+  repeated std.BitVector signers = 2;
   optional AggregateSignature sig = 3;
 }
 
 message CommitQC {
   optional ReplicaCommit msg = 1;
-  optional bytes signers = 2;
+  optional std.BitVector signers = 2;
   optional AggregateSignature sig = 3;
 }
 

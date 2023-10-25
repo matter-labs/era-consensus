@@ -36,12 +36,6 @@ fn test_byte_encoding() {
         ByteFmt::decode(&ByteFmt::encode(&final_block)).unwrap()
     );
 
-    let signers: Signers = rng.gen();
-    assert_eq!(
-        signers,
-        ByteFmt::decode(&ByteFmt::encode(&signers)).unwrap()
-    );
-
     let msg_hash: MsgHash = rng.gen();
     assert_eq!(
         msg_hash,
@@ -78,7 +72,10 @@ fn test_text_encoding() {
 
     let block_header_hash: BlockHeaderHash = rng.gen();
     let t = TextFmt::encode(&block_header_hash);
-    assert_eq!(block_header_hash, Text::new(&t).decode::<BlockHeaderHash>().unwrap());
+    assert_eq!(
+        block_header_hash,
+        Text::new(&t).decode::<BlockHeaderHash>().unwrap()
+    );
 
     let final_block: FinalBlock = rng.gen();
     let t = TextFmt::encode(&final_block);
@@ -102,6 +99,7 @@ fn test_schema_encoding() {
     test_encode_random::<_, CommitQC>(rng);
     test_encode_random::<_, Msg>(rng);
     test_encode_random::<_, MsgHash>(rng);
+    test_encode_random::<_, Signers>(rng);
     test_encode_random::<_, PublicKey>(rng);
     test_encode_random::<_, Signature>(rng);
     test_encode_random::<_, AggregateSignature>(rng);
@@ -213,7 +211,7 @@ fn test_prepare_qc() {
     let sk2: SecretKey = rng.gen();
     let sk3: SecretKey = rng.gen();
 
-    let view : ViewNumber = rng.gen();
+    let view: ViewNumber = rng.gen();
     let mut msg1: ReplicaPrepare = rng.gen();
     let mut msg2: ReplicaPrepare = rng.gen();
     msg1.view = view;

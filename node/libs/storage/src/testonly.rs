@@ -1,6 +1,6 @@
 //! Test-only utilities.
 
-use crate::types::{Proposal,ReplicaState};
+use crate::types::{Proposal, ReplicaState};
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
 impl Distribution<Proposal> for Standard {
@@ -19,7 +19,7 @@ impl Distribution<ReplicaState> for Standard {
             phase: rng.gen(),
             high_vote: rng.gen(),
             high_qc: rng.gen(),
-            proposals: (0..rng.gen_range(1..11)).map(|_|rng.gen()).collect(),
+            proposals: (0..rng.gen_range(1..11)).map(|_| rng.gen()).collect(),
         }
     }
 }

@@ -5,9 +5,7 @@ use concurrency::ctx;
 use rocksdb::{Direction, IteratorMode};
 use roles::validator::{self, BlockNumber};
 use schema::{proto::storage as proto, read_required, required, ProtoFmt};
-use std::{
-    iter, ops,
-};
+use std::{iter, ops};
 use thiserror::Error;
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
@@ -57,7 +55,7 @@ impl DatabaseKey {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Proposal {
-    pub number: validator::BlockNumber,
+    pub number: BlockNumber,
     pub payload: validator::Payload,
 }
 
@@ -81,7 +79,7 @@ impl ProtoFmt for Proposal {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            number: validator::BlockNumber(*required(&r.number).context("number")?),
+            number: BlockNumber(*required(&r.number).context("number")?),
             payload: validator::Payload(required(&r.payload).context("payload")?.clone()),
         })
     }
@@ -103,7 +101,12 @@ impl ProtoFmt for ReplicaState {
             phase: read_required(&r.phase).context("phase")?,
             high_vote: read_required(&r.high_vote).context("high_vote")?,
             high_qc: read_required(&r.high_qc).context("high_qc")?,
-            proposals: r.proposals.iter().map(|p|ProtoFmt::read(p)).collect::<Result<_,_>>().context("proposals")?,
+            proposals: r
+                .proposals
+                .iter()
+                .map(ProtoFmt::read)
+                .collect::<Result<_, _>>()
+                .context("proposals")?,
         })
     }
 
@@ -113,7 +116,7 @@ impl ProtoFmt for ReplicaState {
             phase: Some(self.phase.build()),
             high_vote: Some(self.high_vote.build()),
             high_qc: Some(self.high_qc.build()),
-            proposals: self.proposals.iter().map(|p|p.build()).collect(),
+            proposals: self.proposals.iter().map(|p| p.build()).collect(),
         }
     }
 }

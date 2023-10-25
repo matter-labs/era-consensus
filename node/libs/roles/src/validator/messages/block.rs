@@ -7,9 +7,7 @@ use std::fmt;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProtocolVersion(pub(crate) u32);
 
-impl ProtocolVersion {
-    pub fn genesis() -> Self { Self(0) }
-}
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion(0);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Payload(pub Vec<u8>);
@@ -19,10 +17,7 @@ pub struct PayloadHash(pub(crate) sha256::Sha256);
 
 impl TextFmt for PayloadHash {
     fn encode(&self) -> String {
-        format!(
-            "payload:sha256:{}",
-            hex::encode(ByteFmt::encode(&self.0))
-        )
+        format!("payload:sha256:{}", hex::encode(ByteFmt::encode(&self.0)))
     }
     fn decode(text: Text) -> anyhow::Result<Self> {
         text.strip("payload:sha256:")?.decode_hex().map(Self)
@@ -90,7 +85,7 @@ impl fmt::Debug for BlockHeaderHash {
 /// A block header.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockHeader {
-    /// 
+    ///
     pub protocol_version: ProtocolVersion,
     /// Hash of the parent block.
     pub parent: BlockHeaderHash,
@@ -109,7 +104,7 @@ impl BlockHeader {
     /// Creates a genesis block.
     pub fn genesis(payload: PayloadHash) -> Self {
         Self {
-            protocol_version: ProtocolVersion::genesis(),
+            protocol_version: CURRENT_VERSION,
             parent: BlockHeaderHash(sha256::Sha256::default()),
             number: BlockNumber(0),
             payload,
@@ -118,7 +113,7 @@ impl BlockHeader {
 
     pub fn new(parent: &BlockHeader, payload: PayloadHash) -> Self {
         Self {
-            protocol_version: parent.protocol_version,
+            protocol_version: CURRENT_VERSION,
             parent: parent.hash(),
             number: parent.number.next(),
             payload,
@@ -137,8 +132,8 @@ pub struct FinalBlock {
 
 impl FinalBlock {
     /// Creates a new finalized block.
-    pub fn new(header: BlockHeader, payload :Payload, justification: CommitQC) -> Self {
-        assert_eq!(header.payload, payload.hash()); 
+    pub fn new(header: BlockHeader, payload: Payload, justification: CommitQC) -> Self {
+        assert_eq!(header.payload, payload.hash());
         assert_eq!(header, justification.message.proposal);
         Self {
             header,

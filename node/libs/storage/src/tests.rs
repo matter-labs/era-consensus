@@ -2,10 +2,9 @@ use super::*;
 use crate::types::ReplicaState;
 use concurrency::ctx;
 use rand::{seq::SliceRandom, Rng};
-use roles::validator::{Payload, BlockNumber, BlockHeader, FinalBlock};
+use roles::validator::{testonly::make_block, BlockHeader, BlockNumber, FinalBlock, Payload};
 use std::iter;
 use tempfile::TempDir;
-use roles::validator::testonly::make_block;
 
 async fn init_store<R: Rng>(ctx: &ctx::Ctx, rng: &mut R) -> (FinalBlock, RocksdbStorage, TempDir) {
     let payload = Payload(vec![]);
@@ -27,7 +26,7 @@ async fn init_store_twice() {
     let rng = &mut ctx.rng();
 
     let (genesis_block, block_store, temp_dir) = init_store(&ctx, rng).await;
-    let block_1 = make_block(rng,&genesis_block.header);
+    let block_1 = make_block(rng, &genesis_block.header);
     block_store.put_block(&ctx, &block_1).await.unwrap();
 
     assert_eq!(block_store.first_block(&ctx).await.unwrap(), genesis_block);
@@ -63,7 +62,7 @@ async fn test_put_block() {
     assert_eq!(*block_subscriber.borrow_and_update(), block_1.header.number);
 
     // Test inserting a block with a valid parent that is not the genesis.
-    let block_2 = make_block(rng,&block_1.header);
+    let block_2 = make_block(rng, &block_1.header);
     block_store.put_block(&ctx, &block_2).await.unwrap();
 
     assert_eq!(block_store.first_block(&ctx).await.unwrap(), genesis_block);
@@ -73,7 +72,7 @@ async fn test_put_block() {
 
 fn gen_blocks(rng: &mut impl Rng, genesis_block: FinalBlock, count: usize) -> Vec<FinalBlock> {
     let blocks = iter::successors(Some(genesis_block), |parent| {
-        Some(make_block(rng,&parent.header))
+        Some(make_block(rng, &parent.header))
     });
     blocks.skip(1).take(count).collect()
 }

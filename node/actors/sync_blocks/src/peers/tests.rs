@@ -4,10 +4,10 @@ use assert_matches::assert_matches;
 use async_trait::async_trait;
 use concurrency::time;
 use rand::{rngs::StdRng, seq::IteratorRandom, Rng};
+use roles::validator;
 use std::{collections::HashSet, fmt};
 use storage::RocksdbStorage;
 use test_casing::{test_casing, Product};
-use roles::validator;
 
 const TEST_TIMEOUT: time::Duration = time::Duration::seconds(5);
 const BLOCK_SLEEP_INTERVAL: time::Duration = time::Duration::milliseconds(5);
@@ -826,26 +826,20 @@ async fn processing_invalid_sync_states() {
 
     let mut invalid_sync_state = test_validators.sync_state(1);
     invalid_sync_state.first_stored_block = test_validators.final_blocks[2].justification.clone();
-    assert!(peer_states
-        .validate_sync_state(invalid_sync_state)
-        .is_err());
+    assert!(peer_states.validate_sync_state(invalid_sync_state).is_err());
 
     let mut invalid_sync_state = test_validators.sync_state(1);
     invalid_sync_state.last_contiguous_stored_block =
         test_validators.final_blocks[2].justification.clone();
-    assert!(peer_states
-        .validate_sync_state(invalid_sync_state)
-        .is_err());
+    assert!(peer_states.validate_sync_state(invalid_sync_state).is_err());
 
     let mut invalid_sync_state = test_validators.sync_state(1);
     invalid_sync_state
         .last_contiguous_stored_block
         .message
-        .proposal.number = BlockNumber(5);
-    invalid_sync_state
-        .last_stored_block
-        .message
-        .proposal.number = BlockNumber(5);
+        .proposal
+        .number = BlockNumber(5);
+    invalid_sync_state.last_stored_block.message.proposal.number = BlockNumber(5);
     assert!(peer_states.validate_sync_state(invalid_sync_state).is_err());
 
     let other_network = TestValidators::new(4, 2, rng);
@@ -866,17 +860,25 @@ async fn processing_invalid_blocks() {
     let (peer_states, _) = PeerStates::new(message_sender, storage, test_validators.test_config());
 
     let invalid_block = &test_validators.final_blocks[0];
-    assert!(peer_states.validate_block(BlockNumber(1), invalid_block).is_err());
+    assert!(peer_states
+        .validate_block(BlockNumber(1), invalid_block)
+        .is_err());
 
     let mut invalid_block = test_validators.final_blocks[1].clone();
     invalid_block.justification = test_validators.final_blocks[0].justification.clone();
-    assert!(peer_states.validate_block(BlockNumber(1), &invalid_block).is_err());
+    assert!(peer_states
+        .validate_block(BlockNumber(1), &invalid_block)
+        .is_err());
 
     let mut invalid_block = test_validators.final_blocks[1].clone();
     invalid_block.payload = validator::Payload(b"invalid".to_vec());
-    assert!(peer_states.validate_block(BlockNumber(1), &invalid_block).is_err());
+    assert!(peer_states
+        .validate_block(BlockNumber(1), &invalid_block)
+        .is_err());
 
     let other_network = TestValidators::new(4, 2, rng);
     let invalid_block = &other_network.final_blocks[1];
-    assert!(peer_states.validate_block(BlockNumber(1), invalid_block).is_err());
+    assert!(peer_states
+        .validate_block(BlockNumber(1), invalid_block)
+        .is_err());
 }

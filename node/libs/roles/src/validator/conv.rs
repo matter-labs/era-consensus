@@ -1,11 +1,11 @@
-use super::*;
-use crate::{node::SessionId};
+use super::{AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg, FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, ViewNumber};
+use crate::node::SessionId;
 use ::schema::{read_required, required, ProtoFmt};
 use anyhow::Context as _;
 use crypto::ByteFmt;
+use schema::proto::roles::validator as proto;
 use std::collections::BTreeMap;
 use utils::enum_util::Variant;
-use schema::proto::roles::validator as proto;
 
 impl ProtoFmt for BlockHeaderHash {
     type Proto = proto::BlockHeaderHash;
@@ -144,7 +144,7 @@ impl ProtoFmt for LeaderPrepare {
         Ok(Self {
             view: ViewNumber(*required(&r.view).context("view")?),
             proposal: read_required(&r.proposal).context("proposal")?,
-            proposal_payload: r.proposal_payload.as_ref().map(|p|Payload(p.clone())),
+            proposal_payload: r.proposal_payload.as_ref().map(|p| Payload(p.clone())),
             justification: read_required(&r.justification).context("justification")?,
         })
     }
@@ -153,7 +153,7 @@ impl ProtoFmt for LeaderPrepare {
         Self::Proto {
             view: Some(self.view.0),
             proposal: Some(self.proposal.build()),
-            proposal_payload: self.proposal_payload.as_ref().map(|p|p.0.clone()),
+            proposal_payload: self.proposal_payload.as_ref().map(|p| p.0.clone()),
             justification: Some(self.justification.build()),
         }
     }
@@ -175,6 +175,18 @@ impl ProtoFmt for LeaderCommit {
     }
 }
 
+impl ProtoFmt for Signers {
+    type Proto = schema::proto::std::BitVector;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ProtoFmt::read(r)?))
+    }
+
+    fn build(&self) -> Self::Proto {
+        self.0.build()
+    }
+}
+
 impl ProtoFmt for PrepareQC {
     type Proto = proto::PrepareQc;
 
@@ -183,8 +195,8 @@ impl ProtoFmt for PrepareQC {
 
         for (msg, signers) in r.msgs.iter().zip(r.signers.iter()) {
             map.insert(
-                read_required::<ReplicaPrepare>(&Some(msg).cloned()).context("msg")?,
-                Signers::decode(signers).context("signers")?,
+                ReplicaPrepare::read(msg).context("msg")?,
+                Signers::read(signers).context("signers")?,
             );
         }
 
@@ -198,7 +210,7 @@ impl ProtoFmt for PrepareQC {
         let (msgs, signers) = self
             .map
             .iter()
-            .map(|(msg, signers)| (msg.clone().build(), signers.encode()))
+            .map(|(msg, signers)| (msg.build(), signers.build()))
             .unzip();
 
         Self::Proto {
@@ -215,7 +227,7 @@ impl ProtoFmt for CommitQC {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             message: read_required(&r.msg).context("msg")?,
-            signers: ByteFmt::decode(required(&r.signers).context("signers")?)?,
+            signers: read_required(&r.signers).context("signers")?,
             signature: read_required(&r.sig).context("sig")?,
         })
     }
@@ -223,7 +235,7 @@ impl ProtoFmt for CommitQC {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             msg: Some(self.message.build()),
-            signers: Some(self.signers.encode()),
+            signers: Some(self.signers.build()),
             sig: Some(self.signature.build()),
         }
     }

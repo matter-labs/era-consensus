@@ -30,9 +30,9 @@ async fn replica_commit() {
     match consensus.leader.process_replica_commit(
         ctx,
         &consensus.inner,
-        test_replica_msg.cast().unwrap()
+        test_replica_msg.cast().unwrap(),
     ) {
-        Err(super::replica_commit::Error::UnexpectedProposal) => {},
+        Err(super::replica_commit::Error::UnexpectedProposal) => {}
         res => panic!("unexpected result {res:?}"),
     }
 }

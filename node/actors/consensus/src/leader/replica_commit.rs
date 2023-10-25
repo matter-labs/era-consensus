@@ -18,7 +18,9 @@ pub(crate) enum Error {
     #[error("we are not a leader for this message's view")]
     WhenNotLeaderInView,
     #[error("duplicate message from a replica (existing message: {existing_message:?}")]
-    DuplicateMessage { existing_message: validator::ReplicaCommit },
+    DuplicateMessage {
+        existing_message: validator::ReplicaCommit,
+    },
     #[error("number of received messages is below threshold. waiting for more (received: {num_messages:?}, threshold: {threshold:?}")]
     NumReceivedBelowThreshold {
         num_messages: usize,
@@ -61,15 +63,15 @@ impl StateMachine {
             .get(&message.view)
             .and_then(|x| x.get(author))
         {
-            return Err(Error::DuplicateMessage { existing_message: existing_message.msg.clone() });
+            return Err(Error::DuplicateMessage {
+                existing_message: existing_message.msg,
+            });
         }
 
         // ----------- Checking the signed part of the message --------------
 
         // Check the signature on the message.
-        signed_message
-            .verify()
-            .map_err(Error::InvalidSignature)?;
+        signed_message.verify().map_err(Error::InvalidSignature)?;
 
         // ----------- Checking the contents of the message --------------
 

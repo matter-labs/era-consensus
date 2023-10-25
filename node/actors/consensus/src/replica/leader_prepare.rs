@@ -1,15 +1,17 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner};
+use crate::inner::ConsensusInner;
+use anyhow::Context as _;
 use concurrency::ctx;
 use network::io::{ConsensusInputMessage, Target};
 use roles::validator;
 use std::collections::HashMap;
 use tracing::instrument;
-use anyhow::Context as _;
 
 #[derive(thiserror::Error, Debug)]
 #[allow(clippy::missing_docs_in_private_items)]
 pub(crate) enum Error {
+    #[error("bad protocol version")]
+    BadProtocolVersion,
     #[error("invalid leader (correct leader: {correct_leader:?}, received leader: {received_leader:?}])")]
     InvalidLeader {
         correct_leader: validator::PublicKey,
@@ -26,7 +28,9 @@ pub(crate) enum Error {
     InvalidPrepareQC(#[source] anyhow::Error),
     #[error("invalid high QC")]
     InvalidHighQC(#[source] anyhow::Error),
-    #[error("high QC of a future view (high QC view: {high_qc_view:?}, current view: {current_view:?}")]
+    #[error(
+        "high QC of a future view (high QC view: {high_qc_view:?}, current view: {current_view:?}"
+    )]
     HighQCOfFutureView {
         high_qc_view: validator::ViewNumber,
         current_view: validator::ViewNumber,
@@ -47,7 +51,9 @@ pub(crate) enum Error {
     },
     #[error("block proposal with mismatched payload")]
     ProposalMismatchedPayload,
-    #[error("block proposal with an oversized payload (payload size: {payload_size}, block: {header:?}")]
+    #[error(
+        "block proposal with an oversized payload (payload size: {payload_size}, block: {header:?}"
+    )]
     ProposalOversizedPayload {
         payload_size: usize,
         header: validator::BlockHeader,
@@ -78,6 +84,11 @@ impl StateMachine {
         let author = &signed_message.key;
         let view = message.view;
 
+        // Check protocol version.
+        if message.proposal.protocol_version != validator::CURRENT_VERSION {
+            return Err(Error::BadProtocolVersion);
+        }
+
         // Check that it comes from the correct leader.
         if author != &consensus.view_leader(view) {
             return Err(Error::InvalidLeader {
@@ -96,9 +107,7 @@ impl StateMachine {
 
         // ----------- Checking the signed part of the message --------------
 
-        signed_message
-            .verify()
-            .map_err(Error::InvalidSignature)?;
+        signed_message.verify().map_err(Error::InvalidSignature)?;
 
         // ----------- Checking the justification of the message --------------
 
@@ -113,19 +122,17 @@ impl StateMachine {
         let mut vote_count: HashMap<_, usize> = HashMap::new();
 
         for (msg, signers) in &message.justification.map {
-            *vote_count
-                .entry(msg.high_vote.proposal)
-                .or_default() += signers.len();
+            *vote_count.entry(msg.high_vote.proposal).or_default() += signers.len();
         }
 
-        let highest_vote : Option<validator::BlockHeader> = vote_count
+        let highest_vote: Option<validator::BlockHeader> = vote_count
             .into_iter()
             // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
             .find(|(_, v)| *v > 2 * consensus.faulty_replicas())
             .map(|(h, _)| h);
 
         // Get the highest CommitQC and verify it.
-        let highest_qc : validator::CommitQC = message
+        let highest_qc: validator::CommitQC = message
             .justification
             .map
             .keys()
@@ -162,7 +169,7 @@ impl StateMachine {
                 if payload.0.len() > ConsensusInner::PAYLOAD_MAX_SIZE {
                     return Err(Error::ProposalOversizedPayload {
                         payload_size: payload.0.len(),
-                        header: message.proposal.clone(),
+                        header: message.proposal,
                     });
                 }
 
@@ -172,7 +179,9 @@ impl StateMachine {
                 }
 
                 // Check that we finalized the previous block.
-                if highest_vote.is_some() && highest_vote.as_ref() != Some(&highest_qc.message.proposal) {
+                if highest_vote.is_some()
+                    && highest_vote.as_ref() != Some(&highest_qc.message.proposal)
+                {
                     return Err(Error::ProposalWhenPreviousNotFinalized);
                 }
 
@@ -181,7 +190,7 @@ impl StateMachine {
                     return Err(Error::ProposalInvalidParentHash {
                         correct_parent_hash: highest_qc.message.proposal.hash(),
                         received_parent_hash: message.proposal.parent,
-                        header: message.proposal.clone(),
+                        header: message.proposal,
                     });
                 }
 
@@ -190,7 +199,7 @@ impl StateMachine {
                     return Err(Error::ProposalNonSequentialNumber {
                         correct_number: highest_qc.message.proposal.number.next(),
                         received_number: message.proposal.number,
-                        header: message.proposal.clone(),
+                        header: message.proposal,
                     });
                 }
             }
@@ -230,7 +239,7 @@ impl StateMachine {
             self.block_proposal_cache
                 .entry(message.proposal.number)
                 .or_default()
-                .insert(payload.hash(),payload.clone());
+                .insert(payload.hash(), payload.clone());
         }
 
         // Backup our state.

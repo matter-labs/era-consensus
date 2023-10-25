@@ -1,13 +1,15 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner};
+use crate::inner::ConsensusInner;
+use anyhow::Context as _;
 use concurrency::ctx;
 use roles::validator;
 use tracing::instrument;
-use anyhow::Context as _;
 
 #[derive(thiserror::Error, Debug)]
 #[allow(clippy::missing_docs_in_private_items)]
 pub(crate) enum Error {
+    #[error("bad protocol version")]
+    BadProtocolVersion,
     #[error("invalid leader (correct leader: {correct_leader:?}, received leader: {received_leader:?})]")]
     InvalidLeader {
         correct_leader: validator::PublicKey,
@@ -43,6 +45,11 @@ impl StateMachine {
         let author = &signed_message.key;
         let view = message.justification.message.view;
 
+        // Check protocol version.
+        if message.justification.message.proposal.protocol_version != validator::CURRENT_VERSION {
+            return Err(Error::BadProtocolVersion);
+        }
+
         // Check that it comes from the correct leader.
         if author != &consensus.view_leader(view) {
             return Err(Error::InvalidLeader {
@@ -62,9 +69,7 @@ impl StateMachine {
         // ----------- Checking the signed part of the message --------------
 
         // Check the signature on the message.
-        signed_message
-            .verify()
-            .map_err(Error::InvalidSignature)?;
+        signed_message.verify().map_err(Error::InvalidSignature)?;
 
         // ----------- Checking the justification of the message --------------
 
@@ -87,7 +92,8 @@ impl StateMachine {
 
         // Start a new view. But first we skip to the view of this message.
         self.view = view;
-        self.start_new_view(ctx, consensus).context("start_new_view()")?;
+        self.start_new_view(ctx, consensus)
+            .context("start_new_view()")?;
 
         Ok(())
     }

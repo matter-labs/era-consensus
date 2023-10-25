@@ -1,10 +1,9 @@
 //! Messages related to the consensus protocol.
 
-use super::*;
+use super::{BlockHeader, Msg, Payload, Signed};
 use crate::validator;
 use anyhow::{bail, Context};
 use bit_vec::BitVec;
-use crypto::ByteFmt;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use utils::enum_util::{ErrBadVariant, Variant};
 
@@ -170,7 +169,12 @@ impl PrepareQC {
     }
 
     /// Verifies the integrity of the PrepareQC.
-    pub fn verify(&self, view: ViewNumber, validators: &ValidatorSet, threshold: usize) -> anyhow::Result<()> {
+    pub fn verify(
+        &self,
+        view: ViewNumber,
+        validators: &ValidatorSet,
+        threshold: usize,
+    ) -> anyhow::Result<()> {
         // First we check that all messages are for the same view number.
         for msg in self.map.keys() {
             if msg.view != view {
@@ -183,10 +187,7 @@ impl PrepareQC {
         let mut num_signers = 0;
 
         for signer_bitmap in self.map.values() {
-            // When we serialize a QC, the signers bitmap may get padded with zeros at the end.
-            // We need to remove those zeros before we can verify the signature.
-            let mut signers = signer_bitmap.0.clone();
-            signers.truncate(validators.len());
+            let signers = signer_bitmap.0.clone();
 
             if signers.len() != validators.len() {
                 bail!("Bit vector in PrepareQC has wrong length!");
@@ -287,10 +288,7 @@ impl CommitQC {
 
     /// Verifies the signature of the CommitQC.
     pub fn verify(&self, validators: &ValidatorSet, threshold: usize) -> anyhow::Result<()> {
-        // When we serialize a QC, the signers bitmap may get padded with zeros at the end.
-        // We need to remove those zeros before we can verify the signature.
-        let mut signers = self.signers.0.clone();
-        signers.truncate(validators.len());
+        let signers = self.signers.0.clone();
 
         // First we to do some checks on the signers bit map.
         if signers.len() != validators.len() {
@@ -341,6 +339,7 @@ impl Signers {
     }
 }
 
+/*
 impl ByteFmt for Signers {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         Ok(Signers(BitVec::from_bytes(bytes)))
@@ -349,7 +348,7 @@ impl ByteFmt for Signers {
     fn encode(&self) -> Vec<u8> {
         self.0.to_bytes()
     }
-}
+}*/
 
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.

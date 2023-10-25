@@ -76,9 +76,7 @@ impl StateMachine {
         // ----------- Checking the signed part of the message --------------
 
         // Check the signature on the message.
-        signed_message
-            .verify()
-            .map_err(Error::InvalidSignature)?;
+        signed_message.verify().map_err(Error::InvalidSignature)?;
 
         // ----------- Checking the contents of the message --------------
 
@@ -121,7 +119,7 @@ impl StateMachine {
         // Get all the replica prepare messages for this view. Note that we consume the
         // messages here. That's purposeful, so that we don't create a new block proposal
         // for this same view if we receive another replica prepare message after this.
-        let replica_messages : Vec<_> = self
+        let replica_messages: Vec<_> = self
             .prepare_message_cache
             .remove(&message.view)
             .unwrap()
@@ -136,11 +134,11 @@ impl StateMachine {
 
         for vote in replica_messages.iter() {
             *count
-                .entry(vote.msg.high_vote.proposal.clone())
+                .entry(vote.msg.high_vote.proposal)
                 .or_default() += 1;
         }
 
-        let highest_vote : Option<validator::BlockHeader> = count
+        let highest_vote: Option<validator::BlockHeader> = count
             .iter()
             // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
             .find(|(_, v)| **v > 2 * consensus.faulty_replicas())
@@ -148,7 +146,7 @@ impl StateMachine {
             .cloned();
 
         // Get the highest CommitQC.
-        let highest_qc : &validator::CommitQC = replica_messages
+        let highest_qc: &validator::CommitQC = replica_messages
             .iter()
             .map(|s| &s.msg.high_qc)
             .max_by_key(|qc| qc.message.view)
@@ -156,7 +154,7 @@ impl StateMachine {
 
         // Create the block proposal to send to the replicas,
         // and the commit vote to store in our block proposal cache.
-        let (proposal,payload) = match highest_vote {
+        let (proposal, payload) = match highest_vote {
             // The previous block was not finalized, so we need to propose it again.
             // For this we only need the header, since we are guaranteed that at least
             // f+1 honest replicas have the block can broadcast when finalized
@@ -172,8 +170,9 @@ impl StateMachine {
                 metrics::METRICS
                     .leader_proposal_payload_size
                     .observe(payload.0.len());
-                let proposal = validator::BlockHeader::new(&highest_qc.message.proposal, payload.hash()); 
-                (proposal,Some(payload))
+                let proposal =
+                    validator::BlockHeader::new(&highest_qc.message.proposal, payload.hash());
+                (proposal, Some(payload))
             }
         };
 
@@ -182,7 +181,7 @@ impl StateMachine {
         self.view = message.view;
         self.phase = validator::Phase::Commit;
         self.phase_start = ctx.now();
-        self.block_proposal_cache = Some(proposal.clone());
+        self.block_proposal_cache = Some(proposal);
 
         // ----------- Prepare our message and send it --------------
 

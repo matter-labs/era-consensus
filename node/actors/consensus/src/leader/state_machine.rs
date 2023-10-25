@@ -70,11 +70,13 @@ impl StateMachine {
         let (label, result) = match &input.msg {
             validator::ConsensusMsg::ReplicaPrepare(_) => (
                 metrics::ConsensusMsgLabel::ReplicaPrepare,
-                self.process_replica_prepare(ctx, consensus, input.cast().unwrap()).map_err(Error::ReplicaPrepare),
+                self.process_replica_prepare(ctx, consensus, input.cast().unwrap())
+                    .map_err(Error::ReplicaPrepare),
             ),
             validator::ConsensusMsg::ReplicaCommit(_) => (
                 metrics::ConsensusMsgLabel::ReplicaCommit,
-                self.process_replica_commit(ctx, consensus, input.cast().unwrap()).map_err(Error::ReplicaCommit),
+                self.process_replica_commit(ctx, consensus, input.cast().unwrap())
+                    .map_err(Error::ReplicaCommit),
             ),
             _ => unreachable!(),
         };

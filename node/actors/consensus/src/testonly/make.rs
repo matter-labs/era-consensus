@@ -54,7 +54,7 @@ pub fn make_genesis(
         .map(|sk| {
             sk.sign_msg(validator::ReplicaCommit {
                 view: validator::ViewNumber(0),
-                proposal: header.clone(),
+                proposal: header,
             })
         })
         .collect();

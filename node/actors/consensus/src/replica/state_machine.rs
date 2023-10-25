@@ -1,4 +1,5 @@
 use crate::{metrics, ConsensusInner};
+use anyhow::Context as _;
 use concurrency::{ctx, metrics::LatencyHistogramExt as _, scope, time};
 use roles::validator;
 use std::{
@@ -7,7 +8,6 @@ use std::{
 };
 use storage::{ReplicaStateStore, StorageError};
 use tracing::instrument;
-use anyhow::Context as _;
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
@@ -47,9 +47,12 @@ impl StateMachine {
     ) -> anyhow::Result<Self> {
         Ok(match storage.replica_state(ctx).await? {
             Some(backup) => {
-                let mut block_proposal_cache : BTreeMap<_, HashMap<_,_>> = BTreeMap::new();
+                let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
                 for p in backup.proposals {
-                    block_proposal_cache.entry(p.number).or_default().insert(p.payload.hash(),p.payload);
+                    block_proposal_cache
+                        .entry(p.number)
+                        .or_default()
+                        .insert(p.payload.hash(), p.payload);
                 }
                 Self {
                     view: backup.view,
@@ -60,7 +63,7 @@ impl StateMachine {
                     timeout_deadline: time::Deadline::Infinite,
                     storage,
                 }
-            },
+            }
             None => {
                 let head = storage.head_block(ctx).await?;
                 Self {
@@ -86,7 +89,8 @@ impl StateMachine {
         consensus: &ConsensusInner,
     ) -> anyhow::Result<()> {
         if self.view == validator::ViewNumber(0) {
-            self.start_new_view(ctx, consensus).context("start_new_view")
+            self.start_new_view(ctx, consensus)
+                .context("start_new_view")
         } else {
             self.reset_timer(ctx);
             Ok(())
@@ -113,33 +117,47 @@ impl StateMachine {
         let now = ctx.now();
         let label = match &signed_msg.msg {
             validator::ConsensusMsg::LeaderPrepare(_) => {
-                let res = match self.process_leader_prepare(ctx, consensus, signed_msg.cast().unwrap()) {
-                    Err(super::leader_prepare::Error::Internal(err)) => return Err(err).context("process_leader_prepare()"),
-                    Err(err) => { tracing::warn!("{err}"); Err(()) },
-                    Ok(()) => Ok(()),
-                };
+                let res =
+                    match self.process_leader_prepare(ctx, consensus, signed_msg.cast().unwrap()) {
+                        Err(super::leader_prepare::Error::Internal(err)) => {
+                            return Err(err).context("process_leader_prepare()")
+                        }
+                        Err(err) => {
+                            tracing::warn!("{err}");
+                            Err(())
+                        }
+                        Ok(()) => Ok(()),
+                    };
                 metrics::ConsensusMsgLabel::LeaderPrepare.with_result(&res)
-            },
+            }
             validator::ConsensusMsg::LeaderCommit(_) => {
-                let res = match self.process_leader_commit(ctx, consensus, signed_msg.cast().unwrap()) {
-                    Err(super::leader_commit::Error::Internal(err)) => return Err(err).context("process_leader_commit()"),
-                    Err(err) => { tracing::warn!("{err}"); Err(()) },
-                    Ok(()) => Ok(()),
-                };
+                let res =
+                    match self.process_leader_commit(ctx, consensus, signed_msg.cast().unwrap()) {
+                        Err(super::leader_commit::Error::Internal(err)) => {
+                            return Err(err).context("process_leader_commit()")
+                        }
+                        Err(err) => {
+                            tracing::warn!("{err}");
+                            Err(())
+                        }
+                        Ok(()) => Ok(()),
+                    };
                 metrics::ConsensusMsgLabel::LeaderCommit.with_result(&res)
-            },
+            }
             _ => unreachable!(),
         };
-        metrics::METRICS.replica_processing_latency[&label]
-            .observe_latency(ctx.now() - now);
+        metrics::METRICS.replica_processing_latency[&label].observe_latency(ctx.now() - now);
         Ok(())
     }
 
     /// Backups the replica state to disk.
     pub(crate) fn backup_state(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let mut proposals = vec![];
-        for (number,payloads) in &self.block_proposal_cache {
-            proposals.extend(payloads.values().map(|p|storage::Proposal { number: *number, payload: p.clone() }));
+        for (number, payloads) in &self.block_proposal_cache {
+            proposals.extend(payloads.values().map(|p| storage::Proposal {
+                number: *number,
+                payload: p.clone(),
+            }));
         }
         let backup = storage::ReplicaState {
             view: self.view,
