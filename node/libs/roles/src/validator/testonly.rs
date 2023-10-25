@@ -8,6 +8,29 @@ use rand::{
 use std::sync::Arc;
 use utils::enum_util::Variant;
 
+pub fn make_genesis_block<R:Rng>(rng: &mut R) -> FinalBlock {
+    let payload : Payload = rng.gen();
+    FinalBlock {
+        header: BlockHeader::genesis(payload.hash()),
+        payload,
+        justification: rng.gen(),
+    }
+}
+
+pub fn make_block<R:Rng>(rng: &mut R, parent: &BlockHeader) -> FinalBlock {
+    let payload : Payload = rng.gen();
+    FinalBlock {
+        header: BlockHeader {
+            protocol_version: parent.protocol_version,
+            parent: parent.hash(),
+            number: parent.number.next(),
+            payload: payload.hash(),
+        },
+        payload,
+        justification: rng.gen(),
+    }
+}
+
 impl Distribution<AggregateSignature> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateSignature {
         AggregateSignature(rng.gen())

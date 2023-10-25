@@ -86,7 +86,7 @@ impl PeerStates {
 
         scope::run!(ctx, |ctx, s| async {
             let start_number = storage.last_contiguous_block_number(ctx).await?;
-            let mut last_block_number = storage.head_block(ctx).await?.block.number;
+            let mut last_block_number = storage.head_block(ctx).await?.header.number;
             let missing_blocks = storage
                 .missing_block_numbers(ctx, start_number..last_block_number)
                 .await?;
@@ -334,16 +334,16 @@ impl PeerStates {
 
     fn validate_block(&self, block_number: BlockNumber, block: &FinalBlock) -> anyhow::Result<()> {
         anyhow::ensure!(
-            block.block.header.number == block_number,
+            block.header.number == block_number,
             "Block does not have requested number"
         );
         anyhow::ensure!(
-            block.block.header.number == block.justification.message.proposal_block_number,
-            "Block numbers in `block` and quorum certificate don't match"
+            block.payload.hash() == block.header.payload,
+            "Block payload doesn't match the block header",
         );
         anyhow::ensure!(
-            block.block.hash() == block.justification.message.proposal_block_hash,
-            "Block hashes in `block` and quorum certificate don't match"
+            block.header == block.justification.message.proposal,
+            "Quorum certificate proposal doesn't match the block header",
         );
 
         block

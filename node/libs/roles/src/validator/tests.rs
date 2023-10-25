@@ -213,9 +213,11 @@ fn test_prepare_qc() {
     let sk2: SecretKey = rng.gen();
     let sk3: SecretKey = rng.gen();
 
+    let view : ViewNumber = rng.gen();
     let mut msg1: ReplicaPrepare = rng.gen();
-    let msg2: ReplicaPrepare = rng.gen();
-    msg1.view = msg2.view;
+    let mut msg2: ReplicaPrepare = rng.gen();
+    msg1.view = view;
+    msg2.view = view;
 
     let validator_set1 = ValidatorSet::new(vec![
         sk1.public(),
@@ -240,14 +242,14 @@ fn test_prepare_qc() {
     .unwrap();
 
     // Matching validator set and enough signers.
-    assert!(agg_qc.verify(&validator_set1, 1).is_ok());
-    assert!(agg_qc.verify(&validator_set1, 2).is_ok());
-    assert!(agg_qc.verify(&validator_set1, 3).is_ok());
+    assert!(agg_qc.verify(view, &validator_set1, 1).is_ok());
+    assert!(agg_qc.verify(view, &validator_set1, 2).is_ok());
+    assert!(agg_qc.verify(view, &validator_set1, 3).is_ok());
 
     // Not enough signers.
-    assert!(agg_qc.verify(&validator_set1, 4).is_err());
+    assert!(agg_qc.verify(view, &validator_set1, 4).is_err());
 
     // Mismatching validator sets.
-    assert!(agg_qc.verify(&validator_set2, 3).is_err());
-    assert!(agg_qc.verify(&validator_set3, 3).is_err());
+    assert!(agg_qc.verify(view, &validator_set2, 3).is_err());
+    assert!(agg_qc.verify(view, &validator_set3, 3).is_err());
 }

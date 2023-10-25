@@ -5,6 +5,7 @@ use rand::{seq::SliceRandom, Rng};
 use roles::validator::{Payload, BlockNumber, BlockHeader, FinalBlock};
 use std::iter;
 use tempfile::TempDir;
+use roles::validator::testonly::make_block;
 
 async fn init_store<R: Rng>(ctx: &ctx::Ctx, rng: &mut R) -> (FinalBlock, RocksdbStorage, TempDir) {
     let payload = Payload(vec![]);
@@ -18,20 +19,6 @@ async fn init_store<R: Rng>(ctx: &ctx::Ctx, rng: &mut R) -> (FinalBlock, Rocksdb
         .await
         .unwrap();
     (genesis_block, block_store, temp_dir)
-}
-
-fn make_block<R:Rng>(rng: &mut R, parent: &BlockHeader) -> FinalBlock {
-    let payload : Payload = rng.gen();
-    FinalBlock {
-        header: BlockHeader {
-            protocol_version: parent.protocol_version,
-            parent: parent.hash(),
-            number: parent.number.next(),
-            payload: payload.hash(),
-        },
-        payload,
-        justification: rng.gen(),
-    }
 }
 
 #[tokio::test]
@@ -73,23 +60,15 @@ async fn test_put_block() {
 
     assert_eq!(block_store.first_block(&ctx).await.unwrap(), genesis_block);
     assert_eq!(block_store.head_block(&ctx).await.unwrap(), block_1);
-    assert_eq!(*block_subscriber.borrow_and_update(), block_1.block.number);
+    assert_eq!(*block_subscriber.borrow_and_update(), block_1.header.number);
 
     // Test inserting a block with a valid parent that is not the genesis.
-    let block_2 = FinalBlock {
-        block: Block {
-            parent: block_1.block.hash(),
-            number: block_1.block.number.next(),
-            payload: Vec::new(),
-        },
-        justification: rng.gen(),
-    };
+    let block_2 = make_block(rng,&block_1.header);
     block_store.put_block(&ctx, &block_2).await.unwrap();
 
     assert_eq!(block_store.first_block(&ctx).await.unwrap(), genesis_block);
     assert_eq!(block_store.head_block(&ctx).await.unwrap(), block_2);
-    assert_eq!(*block_subscriber.borrow_and_update(), block_2.block.number);
->>>>>>> origin/main
+    assert_eq!(*block_subscriber.borrow_and_update(), block_2.header.number);
 }
 
 fn gen_blocks(rng: &mut impl Rng, genesis_block: FinalBlock, count: usize) -> Vec<FinalBlock> {

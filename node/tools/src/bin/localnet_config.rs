@@ -60,7 +60,7 @@ fn main() -> anyhow::Result<()> {
 
     // Generate the genesis block.
     // TODO: generating genesis block shouldn't require knowing the private keys.
-    let (genesis, validator_set) = testonly::make_genesis(&validator_keys, vec![]);
+    let (genesis, validator_set) = testonly::make_genesis(&validator_keys, validator::Payload(vec![]));
 
     // Each node will have `gossip_peers` outbound peers.
     let nodes = addrs.len();
