@@ -9,14 +9,6 @@ use std::{
 use storage::{ReplicaStateStore, StorageError};
 use tracing::instrument;
 
-#[derive(thiserror::Error, Debug)]
-pub(crate) enum Error {
-    #[error("LeaderPrepare: {0}")]
-    LeaderPrepare(#[from] super::leader_prepare::Error),
-    #[error("LeaderCommit: {0}")]
-    LeaderCommit(#[from] super::leader_commit::Error),
-}
-
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
 /// for validating and voting on blocks. When participating in consensus we are always a replica.
 #[derive(Debug)]
@@ -123,7 +115,7 @@ impl StateMachine {
                             return Err(err).context("process_leader_prepare()")
                         }
                         Err(err) => {
-                            tracing::warn!("{err}");
+                            tracing::warn!("{err:#}");
                             Err(())
                         }
                         Ok(()) => Ok(()),
@@ -137,7 +129,7 @@ impl StateMachine {
                             return Err(err).context("process_leader_commit()")
                         }
                         Err(err) => {
-                            tracing::warn!("{err}");
+                            tracing::warn!("{err:#}");
                             Err(())
                         }
                         Ok(()) => Ok(()),

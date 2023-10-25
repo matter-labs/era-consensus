@@ -4,14 +4,31 @@ use super::CommitQC;
 use crypto::{sha256, ByteFmt, Text, TextFmt};
 use std::fmt;
 
+/// Version of the consensus algorithm used by the leader in a given view.
+/// Currently it is stored in the BlockHeader (TODO: consider whether it should be present in every
+/// consensus message).
+/// Currently it also determines the format and semantics of the block payload
+/// (TODO: consider whether the payload should be versioned separately).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProtocolVersion(pub(crate) u32);
 
+/// We use a hardcoded protocol version for now.
+/// Eventually validators should determine which version to use for which block by observing
+/// a relevant L1 contract (controlled by governance).
+///
+/// The validator binary has to support the current and next protocol version whenever
+/// a protocol version update is needed (so that it can dynamically switch from producing
+/// blocks for version X to version X+1).
 pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion(0);
 
+/// Payload of the block. Consensus algorithm does not interpret the payload
+/// (except for imposing a size limit for the payload). Proposing a payload
+/// for a new block and interpreting the payload of the finalized blocks
+/// should be implemented for the specific application of the consensus algorithm.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Payload(pub Vec<u8>);
 
+/// Hash of the Payload.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PayloadHash(pub(crate) sha256::Sha256);
 
@@ -31,6 +48,7 @@ impl fmt::Debug for PayloadHash {
 }
 
 impl Payload {
+    /// Hash of the payload.
     pub fn hash(&self) -> PayloadHash {
         PayloadHash(sha256::Sha256::new(&self.0))
     }
@@ -111,6 +129,7 @@ impl BlockHeader {
         }
     }
 
+    /// Creates a child block for the given parent.
     pub fn new(parent: &BlockHeader, payload: PayloadHash) -> Self {
         Self {
             protocol_version: CURRENT_VERSION,
@@ -124,7 +143,9 @@ impl BlockHeader {
 /// A block that has been finalized by the consensus protocol.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FinalBlock {
+    /// Header of the block.
     pub header: BlockHeader,
+    /// Payload of the block. Should match `header.payload` hash.
     pub payload: Payload,
     /// Justification for the block. What guarantees that the block is final.
     pub justification: CommitQC,

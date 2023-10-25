@@ -1,4 +1,10 @@
-use super::{AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg, FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorSet, ViewNumber};
+//! Test-only utilities.
+use super::{
+    AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
+    FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
+    PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature,
+    Signed, Signers, ValidatorSet, ViewNumber,
+};
 use bit_vec::BitVec;
 use concurrency::time;
 use rand::{
@@ -8,6 +14,8 @@ use rand::{
 use std::sync::Arc;
 use utils::enum_util::Variant;
 
+/// Constructs a CommitQC with `CommitQC.message.proposal` matching header.
+/// WARNING: it is not a fully correct CommitQC.
 pub fn make_justification<R: Rng>(rng: &mut R, header: &BlockHeader) -> CommitQC {
     CommitQC {
         message: ReplicaCommit {
@@ -19,6 +27,8 @@ pub fn make_justification<R: Rng>(rng: &mut R, header: &BlockHeader) -> CommitQC
     }
 }
 
+/// Constructs a genesis block with random payload.
+/// WARNING: it is not a fully correct FinalBlock.
 pub fn make_genesis_block<R: Rng>(rng: &mut R) -> FinalBlock {
     let payload: Payload = rng.gen();
     let header = BlockHeader::genesis(payload.hash());
@@ -30,6 +40,8 @@ pub fn make_genesis_block<R: Rng>(rng: &mut R) -> FinalBlock {
     }
 }
 
+/// Constructs a random block with a given parent.
+/// WARNING: this is not a fully correct FinalBlock.
 pub fn make_block<R: Rng>(rng: &mut R, parent: &BlockHeader) -> FinalBlock {
     let payload: Payload = rng.gen();
     let header = BlockHeader::new(parent, payload.hash());

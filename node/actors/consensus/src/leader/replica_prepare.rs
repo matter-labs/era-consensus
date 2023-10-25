@@ -133,9 +133,7 @@ impl StateMachine {
         let mut count: HashMap<_, usize> = HashMap::new();
 
         for vote in replica_messages.iter() {
-            *count
-                .entry(vote.msg.high_vote.proposal)
-                .or_default() += 1;
+            *count.entry(vote.msg.high_vote.proposal).or_default() += 1;
         }
 
         let highest_vote: Option<validator::BlockHeader> = count

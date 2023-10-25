@@ -100,8 +100,12 @@ pub struct ReplicaCommit {
 /// A Prepare message from a leader.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeaderPrepare {
+    /// The number of the current view.
     pub view: ViewNumber,
+    /// The header of the block that the leader is proposing.
     pub proposal: BlockHeader,
+    /// Payload of the block that the leader is proposing.
+    /// `None` iff this is a reproposal.
     pub proposal_payload: Option<Payload>,
     /// The PrepareQC that justifies this proposal from the leader.
     pub justification: PrepareQC,

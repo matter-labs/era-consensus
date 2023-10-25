@@ -7,14 +7,6 @@ use std::{
 };
 use tracing::instrument;
 
-#[derive(thiserror::Error, Debug)]
-pub(crate) enum Error {
-    #[error("ReplicaPrepare: {0}")]
-    ReplicaPrepare(#[from] super::replica_prepare::Error),
-    #[error("ReplicaCommit: {0}")]
-    ReplicaCommit(#[from] super::replica_commit::Error),
-}
-
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
 /// those messages. When participating in consensus we are not the leader most of the time.
@@ -67,20 +59,30 @@ impl StateMachine {
         input: validator::Signed<validator::ConsensusMsg>,
     ) {
         let now = ctx.now();
-        let (label, result) = match &input.msg {
-            validator::ConsensusMsg::ReplicaPrepare(_) => (
-                metrics::ConsensusMsgLabel::ReplicaPrepare,
-                self.process_replica_prepare(ctx, consensus, input.cast().unwrap())
-                    .map_err(Error::ReplicaPrepare),
-            ),
-            validator::ConsensusMsg::ReplicaCommit(_) => (
-                metrics::ConsensusMsgLabel::ReplicaCommit,
-                self.process_replica_commit(ctx, consensus, input.cast().unwrap())
-                    .map_err(Error::ReplicaCommit),
-            ),
+        let label = match &input.msg {
+            validator::ConsensusMsg::ReplicaPrepare(_) => {
+                let res = match self.process_replica_prepare(ctx, consensus, input.cast().unwrap())
+                {
+                    Err(err) => {
+                        tracing::warn!("{err:#}");
+                        Err(())
+                    }
+                    Ok(()) => Ok(()),
+                };
+                metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
+            }
+            validator::ConsensusMsg::ReplicaCommit(_) => {
+                let res = match self.process_replica_commit(ctx, consensus, input.cast().unwrap()) {
+                    Err(err) => {
+                        tracing::warn!("{err:#}");
+                        Err(())
+                    }
+                    Ok(()) => Ok(()),
+                };
+                metrics::ConsensusMsgLabel::ReplicaCommit.with_result(&res)
+            }
             _ => unreachable!(),
         };
-        metrics::METRICS.leader_processing_latency[&label.with_result(&result)]
-            .observe_latency(ctx.now() - now);
+        metrics::METRICS.leader_processing_latency[&label].observe_latency(ctx.now() - now);
     }
 }
