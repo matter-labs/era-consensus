@@ -1,6 +1,7 @@
 //! run_client routine maintaining outbound connections to validators.
+
 use super::handshake;
-use crate::{io, noise, preface, rpc, State};
+use crate::{gossip, io, noise, preface, rpc};
 use anyhow::Context as _;
 use concurrency::{ctx, ctx::channel, oneshot, scope, sync, time};
 use roles::validator;
@@ -39,12 +40,12 @@ impl rpc::Handler<rpc::consensus::Rpc> for channel::UnboundedSender<io::OutputMe
 /// Closes the stream if there is another inbound stream opened from the same validator.
 pub(crate) async fn run_inbound_stream(
     ctx: &ctx::Ctx,
-    state: &State,
+    state: &super::State,
     sender: &channel::UnboundedSender<io::OutputMessage>,
     mut stream: noise::Stream,
 ) -> anyhow::Result<()> {
-    let peer = handshake::inbound(ctx, &state.cfg.consensus.key, &mut stream).await?;
-    state.consensus.inbound.insert(peer.clone()).await?;
+    let peer = handshake::inbound(ctx, &state.cfg.key, &mut stream).await?;
+    state.inbound.insert(peer.clone()).await?;
     let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx);
     let res = scope::run!(ctx, |ctx, s| async {
         s.spawn(ping_client.ping_loop(ctx, PING_TIMEOUT));
@@ -57,20 +58,20 @@ pub(crate) async fn run_inbound_stream(
         Ok(())
     })
     .await;
-    state.consensus.inbound.remove(&peer).await;
+    state.inbound.remove(&peer).await;
     res
 }
 
 async fn run_outbound_stream(
     ctx: &ctx::Ctx,
-    state: &State,
+    state: &super::State,
     client: &rpc::Client<rpc::consensus::Rpc>,
     peer: &validator::PublicKey,
     addr: std::net::SocketAddr,
 ) -> anyhow::Result<()> {
     let mut stream = preface::connect(ctx, addr, preface::Endpoint::ConsensusNet).await?;
-    handshake::outbound(ctx, &state.cfg.consensus.key, &mut stream, peer).await?;
-    state.consensus.outbound.insert(peer.clone()).await?;
+    handshake::outbound(ctx, &state.cfg.key, &mut stream, peer).await?;
+    state.outbound.insert(peer.clone()).await?;
     let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx);
     let res = scope::run!(ctx, |ctx, s| async {
         s.spawn(ping_client.ping_loop(ctx, PING_TIMEOUT));
@@ -83,19 +84,19 @@ async fn run_outbound_stream(
         Ok(())
     })
     .await;
-    state.consensus.outbound.remove(peer).await;
+    state.outbound.remove(peer).await;
     res
 }
 
 /// Runs an Rpc client trying to maintain 1 outbound connection per validator.
 pub(crate) async fn run_client(
     ctx: &ctx::Ctx,
-    state: &State,
+    state: &super::State,
+    gossip_state: &gossip::State,
     mut receiver: channel::UnboundedReceiver<io::ConsensusInputMessage>,
 ) -> anyhow::Result<()> {
     let clients: HashMap<_, _> = state
         .cfg
-        .consensus
         .validators
         .iter()
         .map(|peer| (peer.clone(), rpc::Client::<rpc::consensus::Rpc>::new(ctx)))
@@ -105,7 +106,7 @@ pub(crate) async fn run_client(
         for (peer, client) in &clients {
             s.spawn::<()>(async {
                 let client = &*client;
-                let addrs = &mut state.gossip.validator_addrs.subscribe();
+                let addrs = &mut gossip_state.validator_addrs.subscribe();
                 let mut addr = None;
                 while ctx.is_active() {
                     if let Ok(new) =

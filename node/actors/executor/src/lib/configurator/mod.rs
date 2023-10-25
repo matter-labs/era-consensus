@@ -15,8 +15,7 @@ pub struct Configs {
     /// This config file describes the environment for the node.
     pub config: node_config::NodeConfig,
     /// The validator secret key for this node.
-    // NOTE: we currently only support validator nodes, but eventually it will be optional.
-    pub validator_key: validator::SecretKey,
+    pub validator_key: Option<validator::SecretKey>,
     /// The node secret key. This key is used by both full nodes and validators to identify themselves
     /// in the P2P network.
     pub node_key: node::SecretKey,
@@ -40,14 +39,14 @@ impl Configs {
         }
     }
 
-    fn consensus_config(&self) -> network::consensus::Config {
-        let consensus = &self.config.consensus;
-        network::consensus::Config {
+    fn consensus_config(&self) -> Option<network::consensus::Config> {
+        let consensus = self.config.consensus.as_ref()?;
+        Some(network::consensus::Config {
             // Consistency of the validator key has been verified in constructor.
-            key: self.validator_key.clone(),
+            key: self.validator_key.clone().unwrap(),
             public_addr: consensus.public_addr,
-            validators: consensus.validators.clone(),
-        }
+            validators: self.config.validators.clone(),
+        })
     }
 
     /// Extracts a network crate config.

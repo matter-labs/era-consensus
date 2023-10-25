@@ -21,6 +21,8 @@ pub struct Config {
 
 /// Consensus network state.
 pub(crate) struct State {
+    /// Consensus configuration.
+    pub(crate) cfg: Config,
     /// Set of the currently open inbound connections.
     pub(crate) inbound: PoolWatch<validator::PublicKey>,
     /// Set of the currently open outbound connections.
@@ -29,9 +31,10 @@ pub(crate) struct State {
 
 impl State {
     /// Constructs a new State.
-    pub(crate) fn new(cfg: &Config) -> Self {
+    pub(crate) fn new(cfg: Config) -> Self {
         let validators: HashSet<_> = cfg.validators.iter().cloned().collect();
         Self {
+            cfg,
             inbound: PoolWatch::new(validators.clone(), 0),
             outbound: PoolWatch::new(validators, 0),
         }

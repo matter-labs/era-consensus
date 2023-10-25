@@ -13,16 +13,16 @@ pub struct Config {
     pub server_addr: net::tcp::ListenerAddr,
     /// Gossip network config.
     pub gossip: gossip::Config,
-    /// Consensus network config.
-    pub consensus: consensus::Config,
+    /// Consensus network config. If not present, the node will not participate in the consensus network.
+    pub consensus: Option<consensus::Config>,
 }
 
 /// State of the network actor observable outside of the actor.
 pub struct State {
     /// Network configuration.
-    pub(crate) cfg: Config,
+    pub(crate) cfg: Config, // FIXME: remove?
     /// Consensus network state.
-    pub(crate) consensus: consensus::State,
+    pub(crate) consensus: Option<consensus::State>,
     /// Gossip network state.
     pub(crate) gossip: gossip::State,
 
@@ -41,7 +41,7 @@ impl State {
     ) -> Arc<Self> {
         Arc::new(Self {
             gossip: gossip::State::new(&cfg.gossip, sync_state),
-            consensus: consensus::State::new(&cfg.consensus),
+            consensus: cfg.consensus.clone().map(consensus::State::new),
             events,
             cfg,
         })
@@ -95,11 +95,13 @@ pub async fn run_network(
                 .context("gossip::run_client")
         });
 
-        s.spawn(async {
-            consensus::run_client(ctx, state.as_ref(), consensus_recv)
-                .await
-                .context("consensus::run_client")
-        });
+        if let Some(consensus_state) = &state.consensus {
+            s.spawn(async {
+                consensus::run_client(ctx, consensus_state, &state.gossip, consensus_recv)
+                    .await
+                    .context("consensus::run_client")
+            });
+        }
 
         // TODO(gprusak): add rate limit and inflight limit for inbound handshakes.
         while let Ok(stream) = metrics::MeteredStream::listen(ctx, &mut listener).await {
@@ -109,9 +111,18 @@ pub async fn run_network(
                     let (stream, endpoint) = preface::accept(ctx, stream).await?;
                     match endpoint {
                         preface::Endpoint::ConsensusNet => {
-                            consensus::run_inbound_stream(ctx, &state, &pipe.send, stream)
+                            if let Some(consensus_state) = &state.consensus {
+                                consensus::run_inbound_stream(
+                                    ctx,
+                                    consensus_state,
+                                    &pipe.send,
+                                    stream,
+                                )
                                 .await
                                 .context("consensus::run_inbound_stream()")
+                            } else {
+                                anyhow::bail!("Node does not accept consensus network connections");
+                            }
                         }
                         preface::Endpoint::GossipNet => {
                             gossip::run_inbound_stream(ctx, &state, &pipe.send, stream)

@@ -1,13 +1,14 @@
 use crate::configurator::Configs;
 use anyhow::Context as _;
 use crypto::Text;
-use tracing::{debug, instrument};
+use std::fs;
+use tracing::instrument;
 
 /// This struct holds the file path to each of the config files.
 #[derive(Debug)]
 pub(crate) struct ConfigPaths {
     config: String,
-    validator_key: String,
+    validator_key: Option<String>,
     node_key: String,
 }
 
@@ -17,6 +18,15 @@ impl ConfigPaths {
     /// it as an environment variable. If that also fails, we just use a default value.
     #[instrument(level = "trace")]
     pub(crate) fn resolve(args: &[String]) -> Self {
+        let validator_key = PathSpec {
+            name: "Validator key",
+            flag: "--validator-key",
+            env: "VALIDATOR_KEY",
+            default: "validator_key",
+        }
+        .resolve(args);
+        let validator_key = (!validator_key.is_empty()).then_some(validator_key);
+
         Self {
             config: PathSpec {
                 name: "Config file",
@@ -25,13 +35,7 @@ impl ConfigPaths {
                 default: "config.json",
             }
             .resolve(args),
-            validator_key: PathSpec {
-                name: "Validator key",
-                flag: "--validator-key",
-                env: "VALIDATOR_KEY",
-                default: "validator_key",
-            }
-            .resolve(args),
+            validator_key,
             node_key: PathSpec {
                 name: "Node key",
                 flag: "--node-key",
@@ -46,27 +50,33 @@ impl ConfigPaths {
     #[instrument(level = "trace", ret)]
     pub(crate) fn read(self) -> anyhow::Result<Configs> {
         let cfg = Configs {
-            config: schema::decode_json(
-                &std::fs::read_to_string(&self.config).context(self.config)?,
-            )?,
-            validator_key: Text::new(
-                &std::fs::read_to_string(&self.validator_key).context(self.validator_key)?,
-            )
-            .decode()?,
+            config: schema::decode_json(&fs::read_to_string(&self.config).context(self.config)?)?,
+            validator_key: self
+                .validator_key
+                .as_ref()
+                .map(|validator_key| {
+                    let read_key =
+                        fs::read_to_string(validator_key).context(validator_key.clone())?;
+                    Text::new(&read_key).decode()
+                })
+                .transpose()?,
             node_key: Text::new(&std::fs::read_to_string(&self.node_key).context(self.node_key)?)
                 .decode()?,
         };
-        if cfg.config.gossip.key != cfg.node_key.public() {
-            anyhow::bail!(
-                "config.gossip.key = {:?} doesn't match the secret key {:?}",
-                cfg.config.gossip.key,
-                cfg.node_key
-            );
-        }
-        let public = cfg.config.consensus.key.clone();
-        let secret = cfg.validator_key.clone();
-        if public != secret.public() {
-            anyhow::bail!(
+        anyhow::ensure!(
+            cfg.config.gossip.key == cfg.node_key.public(),
+            "config.gossip.key = {:?} doesn't match the secret key {:?}",
+            cfg.config.gossip.key,
+            cfg.node_key
+        );
+        if let Some(consensus) = &cfg.config.consensus {
+            let secret = cfg
+                .validator_key
+                .as_ref()
+                .context("Secret key not present for validator node")?;
+            let public = &consensus.key;
+            anyhow::ensure!(
+                *public == secret.public(),
                 "config.consensus.key = {public:?} doesn't match the secret key {secret:?}"
             );
         }
@@ -86,16 +96,16 @@ impl<'a> PathSpec<'a> {
     #[instrument(level = "trace", ret)]
     fn resolve(&self, args: &[String]) -> String {
         if let Some(path) = find_flag(args, self.flag) {
-            debug!("{} path found in command line arguments.", self.name);
+            tracing::debug!("{} path found in command line arguments.", self.name);
             return path.clone();
         }
 
         if let Ok(path) = std::env::var(self.env) {
-            debug!("{} path found in environment variable.", self.name);
+            tracing::debug!("{} path found in environment variable.", self.name);
             return path;
         }
 
-        debug!("Using default {} path.", self.name);
+        tracing::debug!("Using default {} path.", self.name);
         self.default.to_string()
     }
 }

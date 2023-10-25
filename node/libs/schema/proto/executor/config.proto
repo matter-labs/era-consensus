@@ -48,7 +48,6 @@ message NodeAddr {
 message ConsensusConfig {
   optional string key = 1; // [required] ValidatorPublicKey
   optional string public_addr = 2; // [required] IpAddr
-  repeated string validators = 3; // [required] ValidatorPublicKey
 }
 
 // Config of the gossip network.
@@ -78,12 +77,13 @@ message NodeConfig {
   optional string metrics_server_addr = 2; // IpAddr
   
   // Consensus network config.
-  // NOTE: we currently only support validator nodes, but eventually it will be optional.
-  optional ConsensusConfig consensus = 3; // [required]
+  optional ConsensusConfig consensus = 3;
   
   // Gossip network config.
   optional GossipConfig gossip = 4; // [required]
   
   // Genesis block of the blockchain.
   optional string genesis_block = 5; // [required] FinalBlock
+  //
+  repeated string validators = 6; // [required] ValidatorPublicKey
 }

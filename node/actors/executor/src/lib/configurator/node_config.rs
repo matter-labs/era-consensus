@@ -2,7 +2,7 @@
 use anyhow::Context as _;
 use crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use roles::{node, validator};
-use schema::{proto::executor::config as proto, read_required, required, ProtoFmt};
+use schema::{proto::executor::config as proto, read_optional, read_required, required, ProtoFmt};
 use std::{
     collections::{HashMap, HashSet},
     net,
@@ -16,34 +16,23 @@ pub struct ConsensusConfig {
     pub key: validator::PublicKey,
     /// Public TCP address that other validators are expected to connect to.
     /// It is announced over gossip network.
-    pub public_addr: std::net::SocketAddr,
-    /// Static specification of validators for Proof of Authority. Should be deprecated once we move
-    /// to Proof of Stake.
-    pub validators: validator::ValidatorSet,
+    pub public_addr: net::SocketAddr,
 }
 
 impl ProtoFmt for ConsensusConfig {
     type Proto = proto::ConsensusConfig;
+
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let mut validators = vec![];
-        for (i, v) in r.validators.iter().enumerate() {
-            validators.push(
-                Text::new(v)
-                    .decode()
-                    .with_context(|| format!("validators[{i}]"))?,
-            );
-        }
         Ok(Self {
             key: read_required_text(&r.key).context("key")?,
             public_addr: read_required_text(&r.public_addr).context("public_addr")?,
-            validators: validator::ValidatorSet::new(validators).context("validators")?,
         })
     }
+
     fn build(&self) -> Self::Proto {
         Self::Proto {
             key: Some(self.key.encode()),
             public_addr: Some(self.public_addr.encode()),
-            validators: self.validators.iter().map(|v| v.encode()).collect(),
         }
     }
 }
@@ -66,6 +55,7 @@ pub struct GossipConfig {
 
 impl ProtoFmt for GossipConfig {
     type Proto = proto::GossipConfig;
+
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let mut static_inbound = HashSet::new();
         for (i, v) in r.static_inbound.iter().enumerate() {
@@ -91,6 +81,7 @@ impl ProtoFmt for GossipConfig {
             static_outbound,
         })
     }
+
     fn build(&self) -> Self::Proto {
         Self::Proto {
             key: Some(self.key.encode()),
@@ -119,34 +110,48 @@ pub struct NodeConfig {
     pub metrics_server_addr: Option<net::SocketAddr>,
 
     /// Consensus network config.
-    // NOTE: we currently only support validator nodes, but eventually it will be optional.
-    pub consensus: ConsensusConfig,
+    pub consensus: Option<ConsensusConfig>,
     /// Gossip network config.
     pub gossip: GossipConfig,
 
     /// Specifies the genesis block of the blockchain.
     pub genesis_block: validator::FinalBlock,
+    /// Static specification of validators for Proof of Authority. Should be deprecated once we move
+    /// to Proof of Stake.
+    pub validators: validator::ValidatorSet,
 }
 
 impl ProtoFmt for NodeConfig {
     type Proto = proto::NodeConfig;
+
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        let validators = r.validators.iter().enumerate().map(|(i, v)| {
+            Text::new(v)
+                .decode()
+                .with_context(|| format!("validators[{i}]"))
+        });
+        let validators: anyhow::Result<Vec<_>> = validators.collect();
+        let validators = validator::ValidatorSet::new(validators?).context("validators")?;
+
         Ok(Self {
             server_addr: read_required_text(&r.server_addr).context("server_addr")?,
             metrics_server_addr: read_optional_text(&r.metrics_server_addr)
                 .context("metrics_server_addr")?,
-            consensus: read_required(&r.consensus).context("consensus")?,
+            consensus: read_optional(&r.consensus).context("consensus")?,
             gossip: read_required(&r.gossip).context("gossip")?,
             genesis_block: read_required_text(&r.genesis_block).context("genesis_block")?,
+            validators,
         })
     }
+
     fn build(&self) -> Self::Proto {
         Self::Proto {
             server_addr: Some(TextFmt::encode(&self.server_addr)),
             metrics_server_addr: self.metrics_server_addr.as_ref().map(TextFmt::encode),
-            consensus: Some(self.consensus.build()),
+            consensus: self.consensus.as_ref().map(ConsensusConfig::build),
             gossip: Some(self.gossip.build()),
             genesis_block: Some(TextFmt::encode(&self.genesis_block)),
+            validators: self.validators.iter().map(|v| v.encode()).collect(),
         }
     }
 }

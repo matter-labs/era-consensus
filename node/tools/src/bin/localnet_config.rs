@@ -91,15 +91,15 @@ fn main() -> anyhow::Result<()> {
 
     for (i, gossip) in gossip_cfgs.into_iter().enumerate() {
         let node_cfg = NodeConfig {
-            consensus: ConsensusConfig {
+            consensus: Some(ConsensusConfig {
                 key: validator_keys[i].public(),
                 public_addr: addrs[i],
-                validators: validator_set.clone(),
-            },
+            }),
             gossip,
             server_addr: with_unspecified_ip(addrs[i]),
             metrics_server_addr,
             genesis_block: genesis.clone(),
+            validators: validator_set.clone(),
         };
 
         // Recreate the directory for the node's config.

@@ -58,11 +58,11 @@ impl Instance {
                 let addr = net::tcp::testonly::reserve_listener();
                 Config {
                     server_addr: addr,
-                    consensus: consensus::Config {
+                    consensus: Some(consensus::Config {
                         key: keys[i].clone(),
                         public_addr: *addr,
                         validators: validators.clone(),
-                    },
+                    }),
                     gossip: gossip::Config {
                         key: rng.gen(),
                         dynamic_inbound_limit: n as u64,
@@ -107,6 +107,16 @@ impl Instance {
         &self.state
     }
 
+    /// Returns consensus config for this node, assuming it is a validator.
+    pub fn consensus_config(&self) -> &consensus::Config {
+        &self
+            .state
+            .consensus
+            .as_ref()
+            .expect("Node is not a validator")
+            .cfg
+    }
+
     /// Sets a `SyncState` subscriber for the node. Panics if the node state is already shared.
     pub fn set_sync_state_subscriber(&mut self, sync_state: watch::Receiver<SyncState>) {
         let state = Arc::get_mut(&mut self.state).expect("node state is shared");
@@ -140,23 +150,16 @@ impl Instance {
 
     /// Waits for all the consensus connections to be established.
     pub async fn wait_for_consensus_connections(&self) {
-        let want: HashSet<_> = self
-            .state
-            .cfg
-            .consensus
-            .validators
-            .iter()
-            .cloned()
-            .collect();
-        self.state
-            .consensus
+        let consensus_state = self.state.consensus.as_ref().unwrap();
+
+        let want: HashSet<_> = consensus_state.cfg.validators.iter().cloned().collect();
+        consensus_state
             .inbound
             .subscribe()
             .wait_for(|got| got.current() == &want)
             .await
             .unwrap();
-        self.state
-            .consensus
+        consensus_state
             .outbound
             .subscribe()
             .wait_for(|got| got.current() == &want)
@@ -176,9 +179,9 @@ pub async fn instant_network(
     // Collect validator addrs.
     let mut addrs = vec![];
     let nodes: Vec<_> = nodes.collect();
-    for n in &nodes {
-        let key = n.state.cfg.consensus.key.public();
-        let sub = &mut n.state.gossip.validator_addrs.subscribe();
+    for node in &nodes {
+        let key = node.consensus_config().key.public();
+        let sub = &mut node.state.gossip.validator_addrs.subscribe();
         loop {
             if let Some(addr) = sync::changed(ctx, sub).await?.get(&key) {
                 addrs.push(addr.clone());
@@ -187,11 +190,11 @@ pub async fn instant_network(
         }
     }
     // Broadcast validator addrs.
-    for n in &nodes {
-        n.state
+    for node in &nodes {
+        node.state
             .gossip
             .validator_addrs
-            .update(&n.state.cfg.consensus, &addrs)
+            .update(node.consensus_config(), &addrs)
             .await
             .unwrap();
     }

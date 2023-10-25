@@ -40,23 +40,43 @@ async fn test_one_connection_per_node() {
         }
 
         tracing::info!("waiting for all connections to be established");
-        for n in &mut nodes {
-            tracing::info!("node {:?} awaiting connections",n.state.cfg.consensus.key.public());
-            let want = &n.state.cfg.gossip.static_outbound.keys().cloned().collect();
-            n.state.gossip.outbound.subscribe().wait_for(|got|got.current()==want).await.unwrap();
+        for node in &mut nodes {
+            tracing::info!("node {:?} awaiting connections", node.consensus_config().key.public());
+            let want = &node.state.cfg.gossip.static_outbound.keys().cloned().collect();
+            let mut subscription = node.state.gossip.outbound.subscribe();
+            subscription
+                .wait_for(|got| got.current() == want)
+                .await
+                .unwrap();
         }
 
-        tracing::info!("Impersonate a node, and try to establish additional connection to an already connected peer.");
-        let me = &nodes[0];
-        let (peer,addr) = nodes[0].state.cfg.gossip.static_outbound.iter().next().unwrap();
-        let mut stream = preface::connect(ctx,*addr,preface::Endpoint::GossipNet).await.context("preface::connect")?;
-        handshake::outbound(ctx, &me.state.cfg.gossip, &mut stream, peer).await.context("handshake::outbound")?;
+        tracing::info!(
+            "Impersonate a node, and try to establish additional connection to an already connected peer."
+        );
+        let my_gossip_config = &nodes[0].state.cfg.gossip;
+        let (peer, addr) = my_gossip_config.static_outbound.iter().next().unwrap();
+        let mut stream = preface::connect(
+            ctx,
+            *addr,
+            preface::Endpoint::GossipNet,
+        )
+        .await
+        .context("preface::connect")?;
+
+        handshake::outbound(ctx, my_gossip_config, &mut stream, peer)
+            .await
+            .context("handshake::outbound")?;
         tracing::info!("The connection is expected to be closed automatically by peer.");
         // The multiplexer runner should exit gracefully.
-        let _ = rpc::Service::new().run(ctx,stream).await;
-        tracing::info!("Exiting the main task. Context will get canceled, all the nodes are expected to terminate gracefully.");
+        let _ = rpc::Service::new().run(ctx, stream).await;
+        tracing::info!(
+            "Exiting the main task. Context will get canceled, all the nodes are expected \
+             to terminate gracefully."
+        );
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
 fn mk_addr<R: Rng>(rng: &mut R) -> std::net::SocketAddr {
@@ -230,16 +250,16 @@ async fn test_validator_addrs_propagation() {
         }
         let want: HashMap<_, _> = nodes
             .iter()
-            .map(|n| {
+            .map(|node| {
                 (
-                    n.state.cfg.consensus.key.public(),
-                    n.state.cfg.consensus.public_addr,
+                    node.consensus_config().key.public(),
+                    node.consensus_config().public_addr,
                 )
             })
             .collect();
-        for (i, n) in nodes.iter().enumerate() {
+        for (i, node) in nodes.iter().enumerate() {
             tracing::info!("awaiting for node[{i}] to learn validator_addrs");
-            n.state
+            node.state
                 .gossip
                 .validator_addrs
                 .subscribe()
@@ -607,9 +627,10 @@ async fn validator_node_restart() {
         let start = ctx.now_utc();
         for clock_shift in [zero, sec, -2 * sec, 4 * sec, 10 * sec, -30 * sec] {
             // Set the new addr to broadcast.
-            let key0 = cfgs[0].consensus.key.public();
+            let mutated_config = cfgs[0].consensus.as_mut().unwrap();
+            let key0 = mutated_config.key.public();
             let addr0 = mk_addr(rng);
-            cfgs[0].consensus.public_addr = addr0;
+            mutated_config.public_addr = addr0;
             // Shift the UTC clock.
             let now = start + clock_shift;
             assert!(
@@ -677,12 +698,15 @@ async fn rate_limiting() {
     let mut cfgs = testonly::Instance::new_configs(rng, n, 0);
     let want: HashMap<_, _> = cfgs
         .iter()
-        .map(|cfg| (cfg.consensus.key.public(), cfg.consensus.public_addr))
+        .map(|cfg| {
+            let consensus_cfg = cfg.consensus.as_ref().unwrap();
+            (consensus_cfg.key.public(), consensus_cfg.public_addr)
+        })
         .collect();
     for i in 1..n {
         let key = cfgs[i].gossip.key.public().clone();
-        let addr = cfgs[i].consensus.public_addr;
-        cfgs[0].gossip.static_outbound.insert(key, addr);
+        let public_addr = cfgs[i].consensus.as_ref().unwrap().public_addr;
+        cfgs[0].gossip.static_outbound.insert(key, public_addr);
     }
     let mut nodes: Vec<_> = cfgs.into_iter().map(testonly::Instance::from_cfg).collect();
 
@@ -699,7 +723,7 @@ async fn rate_limiting() {
                 .gossip
                 .validator_addrs
                 .subscribe()
-                .wait_for(|got| got.get(&node.state.cfg.consensus.key.public()).is_some())
+                .wait_for(|got| got.get(&node.consensus_config().key.public()).is_some())
                 .await
                 .unwrap();
         }

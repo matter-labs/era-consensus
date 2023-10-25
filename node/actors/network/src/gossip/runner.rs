@@ -1,5 +1,6 @@
 use super::{handshake, ValidatorAddrs};
 use crate::{
+    consensus,
     event::{Event, StreamEvent},
     io, noise, preface, rpc, State,
 };
@@ -187,17 +188,21 @@ async fn run_stream(
             ));
         }
 
-        loop {
-            let resp = sync_validator_addrs_client
-                .call(ctx, &rpc::sync_validator_addrs::Req)
-                .await?;
-            state
-                .gossip
-                .validator_addrs
-                .update(&state.cfg.consensus, &resp.0[..])
-                .await?;
-            state.event(Event::ValidatorAddrsUpdated);
+        // FIXME: this is incorrect; address gossip should run in any case
+        if let Some(consensus_state) = &state.consensus {
+            loop {
+                let resp = sync_validator_addrs_client
+                    .call(ctx, &rpc::sync_validator_addrs::Req)
+                    .await?;
+                state
+                    .gossip
+                    .validator_addrs
+                    .update(&consensus_state.cfg, &resp.0[..])
+                    .await?;
+                state.event(Event::ValidatorAddrsUpdated);
+            }
         }
+        Ok(())
     })
     .await
 }
@@ -289,10 +294,14 @@ async fn run_outbound_stream(
     res
 }
 
-async fn run_address_announcer(ctx: &ctx::Ctx, state: &State) -> ctx::OrCanceled<()> {
-    let key = &state.cfg.consensus.key;
-    let my_addr = state.cfg.consensus.public_addr;
-    let mut sub = state.gossip.validator_addrs.subscribe();
+async fn run_address_announcer(
+    ctx: &ctx::Ctx,
+    gossip_state: &super::State,
+    consensus_state: &consensus::State,
+) -> ctx::OrCanceled<()> {
+    let key = &consensus_state.cfg.key;
+    let my_addr = consensus_state.cfg.public_addr;
+    let mut sub = gossip_state.validator_addrs.subscribe();
     loop {
         if !ctx.is_active() {
             return Err(ctx::Canceled);
@@ -307,11 +316,10 @@ async fn run_address_announcer(ctx: &ctx::Ctx, state: &State) -> ctx::OrCanceled
             .get(&key.public())
             .map(|x| x.msg.version + 1)
             .unwrap_or(0);
-        state
-            .gossip
+        gossip_state
             .validator_addrs
             .update(
-                &state.cfg.consensus,
+                &consensus_state.cfg,
                 &[Arc::new(key.sign_msg(validator::NetAddress {
                     addr: my_addr,
                     version: next_version,
@@ -383,7 +391,11 @@ pub(crate) async fn run_client(
             Ok(())
         });
 
-        run_address_announcer(ctx, state).await
+        if let Some(consensus_state) = &state.consensus {
+            run_address_announcer(ctx, &state.gossip, consensus_state).await
+        } else {
+            Ok(())
+        }
     })
     .await;
 

@@ -44,8 +44,8 @@ impl Test {
             // Get only the honest replicas.
             let honest: HashSet<_> = nodes
                 .iter()
-                .filter(|n| n.behavior == Behavior::Honest)
-                .map(|n| n.net.state().cfg().consensus.key.public())
+                .filter(|node| node.behavior == Behavior::Honest)
+                .map(|node| node.net.consensus_config().key.public())
                 .collect();
             assert!(!honest.is_empty());
 
@@ -83,7 +83,7 @@ async fn run_nodes(
 ) -> anyhow::Result<()> {
     let keys: Vec<_> = nodes
         .iter()
-        .map(|r| r.net.state().cfg().consensus.key.clone())
+        .map(|node| node.net.consensus_config().key.clone())
         .collect();
     let (genesis_block, _) = testonly::make_genesis(&keys, vec![]);
     let network_ready = signal::Once::new();
@@ -91,9 +91,10 @@ async fn run_nodes(
     let mut network_send = HashMap::new();
     let mut network_recv = HashMap::new();
     scope::run!(ctx, |ctx, s| async {
-        for (i, n) in nodes.iter().enumerate() {
-            let validator_key = n.net.state().cfg().consensus.key.clone();
-            let validator_set = n.net.state().cfg().consensus.validators.clone();
+        for (i, node) in nodes.iter().enumerate() {
+            let consensus_config = node.net.consensus_config();
+            let validator_key = consensus_config.key.clone();
+            let validator_set = consensus_config.validators.clone();
 
             let (consensus_actor_pipe, consensus_pipe) = pipe::new();
             let (network_actor_pipe, network_pipe) = pipe::new();
@@ -110,7 +111,7 @@ async fn run_nodes(
                     let consensus = Consensus::new(
                         ctx,
                         consensus_actor_pipe,
-                        n.net.state().cfg().consensus.key.clone(),
+                        node.net.consensus_config().key.clone(),
                         validator_set,
                         storage,
                     )
@@ -120,7 +121,7 @@ async fn run_nodes(
                     scope::run!(ctx, |ctx, s| async {
                         network_ready.recv(ctx).await?;
                         s.spawn_blocking(|| consensus.run(ctx).context("consensus.run()"));
-                        n.run_executor(ctx, consensus_pipe, network_pipe, metrics.clone())
+                        node.run_executor(ctx, consensus_pipe, network_pipe, metrics.clone())
                             .await
                             .context("executor.run()")
                     })
@@ -131,10 +132,10 @@ async fn run_nodes(
         }
         match network {
             Network::Real => {
-                for (i, n) in nodes.iter().enumerate() {
-                    let state = n.net.state().clone();
+                for (i, node) in nodes.iter().enumerate() {
+                    let state = node.net.state().clone();
                     let pipe = network_pipes
-                        .remove(&state.cfg().consensus.key.public())
+                        .remove(&node.net.consensus_config().key.public())
                         .unwrap();
                     s.spawn(
                         async {

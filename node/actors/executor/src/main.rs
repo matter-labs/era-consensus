@@ -87,16 +87,22 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Create each of the actors.
-    let validator_set = &configs.config.consensus.validators;
-    let consensus = Consensus::new(
-        ctx,
-        consensus_actor_pipe,
-        configs.validator_key.clone(),
-        validator_set.clone(),
-        storage.clone(),
-    )
-    .await
-    .context("consensus")?;
+    let validator_set = &configs.config.validators;
+    let consensus = if let Some(validator_key) = &configs.validator_key {
+        Some(
+            Consensus::new(
+                ctx,
+                consensus_actor_pipe,
+                validator_key.clone(),
+                validator_set.clone(),
+                storage.clone(),
+            )
+            .await
+            .context("consensus")?,
+        )
+    } else {
+        None
+    };
 
     let sync_blocks_config = sync_blocks::Config::new(
         validator_set.clone(),
@@ -135,7 +141,9 @@ async fn main() -> anyhow::Result<()> {
                 .context("Network stopped")
         });
 
-        s.spawn_blocking(|| consensus.run(ctx).context("Consensus stopped"));
+        if let Some(consensus) = consensus {
+            s.spawn_blocking(|| consensus.run(ctx).context("Consensus stopped"));
+        }
         s.spawn(async { sync_blocks.run(ctx).await.context("Syncing blocks stopped") });
 
         // if we are in CI mode, we wait for the node to finalize 100 blocks and then we stop it

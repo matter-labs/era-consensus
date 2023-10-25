@@ -149,11 +149,13 @@ impl NetworkGauges {
                 gauges.gossip_inbound_connections.set(len);
                 let len = state.gossip.outbound.subscribe().borrow().current().len();
                 gauges.gossip_outbound_connections.set(len);
-                let len = state.consensus.inbound.subscribe().borrow().current().len();
-                gauges.consensus_inbound_connections.set(len);
-                let subscriber = state.consensus.outbound.subscribe();
-                let len = subscriber.borrow().current().len();
-                gauges.consensus_outbound_connections.set(len);
+                if let Some(consensus_state) = &state.consensus {
+                    let len = consensus_state.inbound.subscribe().borrow().current().len();
+                    gauges.consensus_inbound_connections.set(len);
+                    let subscriber = consensus_state.outbound.subscribe();
+                    let len = subscriber.borrow().current().len();
+                    gauges.consensus_outbound_connections.set(len);
+                }
                 gauges
             })
         });
