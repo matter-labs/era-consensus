@@ -5,6 +5,7 @@ use network::io::{ConsensusInputMessage, Target};
 use roles::validator;
 use std::collections::HashMap;
 use tracing::instrument;
+use anyhow::Context as _;
 
 #[derive(thiserror::Error, Debug)]
 #[allow(clippy::missing_docs_in_private_items)]

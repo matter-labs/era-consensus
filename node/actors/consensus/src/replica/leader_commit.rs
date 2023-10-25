@@ -3,6 +3,7 @@ use crate::{inner::ConsensusInner};
 use concurrency::ctx;
 use roles::validator;
 use tracing::instrument;
+use anyhow::Context as _;
 
 #[derive(thiserror::Error, Debug)]
 #[allow(clippy::missing_docs_in_private_items)]

@@ -4,6 +4,7 @@ use concurrency::ctx;
 use network::io::{ConsensusInputMessage, Target};
 use roles::validator;
 use tracing::instrument;
+use anyhow::Context as _;
 
 impl StateMachine {
     /// This blocking method is used whenever we start a new view.

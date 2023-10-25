@@ -7,6 +7,7 @@ use std::{
 };
 use storage::{ReplicaStateStore, StorageError};
 use tracing::instrument;
+use anyhow::Context as _;
 
 #[derive(thiserror::Error, Debug)]
 pub(crate) enum Error {
@@ -55,7 +56,7 @@ impl StateMachine {
                     phase: backup.phase,
                     high_vote: backup.high_vote,
                     high_qc: backup.high_qc,
-                    block_proposal_cache: backup.block_proposal_cache,
+                    block_proposal_cache,
                     timeout_deadline: time::Deadline::Infinite,
                     storage,
                 }
@@ -83,9 +84,9 @@ impl StateMachine {
         &mut self,
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
-    ) -> Result<(), Error> {
+    ) -> anyhow::Result<()> {
         if self.view == validator::ViewNumber(0) {
-            self.start_new_view(ctx, consensus)
+            self.start_new_view(ctx, consensus).context("start_new_view")
         } else {
             self.reset_timer(ctx);
             Ok(())
@@ -110,29 +111,27 @@ impl StateMachine {
         };
 
         let now = ctx.now();
-        let (label, result) = match &signed_msg.msg {
-            validator::ConsensusMsg::LeaderPrepare(_) => (
-                metrics::ConsensusMsgLabel::LeaderPrepare,
-                match self.process_leader_prepare(ctx, consensus, signed_msg.cast().unwrap()) {
+        let label = match &signed_msg.msg {
+            validator::ConsensusMsg::LeaderPrepare(_) => {
+                let res = match self.process_leader_prepare(ctx, consensus, signed_msg.cast().unwrap()) {
                     Err(super::leader_prepare::Error::Internal(err)) => return Err(err).context("process_leader_prepare()"),
-                    res => res.map_err(Error::LeaderPrepare),
-                },
-            ),
-            validator::ConsensusMsg::LeaderCommit(_) => (
-                metrics::ConsensusMsgLabel::LeaderCommit,
-                match self.process_leader_commit(ctx, consensus, signed_msg.cast().unwrap()) {
+                    Err(err) => { tracing::warn!("{err}"); Err(()) },
+                    Ok(()) => Ok(()),
+                };
+                metrics::ConsensusMsgLabel::LeaderPrepare.with_result(&res)
+            },
+            validator::ConsensusMsg::LeaderCommit(_) => {
+                let res = match self.process_leader_commit(ctx, consensus, signed_msg.cast().unwrap()) {
                     Err(super::leader_commit::Error::Internal(err)) => return Err(err).context("process_leader_commit()"),
-                    res => res.map_err(Error::LeaderCommit),
-                },
-            ),
+                    Err(err) => { tracing::warn!("{err}"); Err(()) },
+                    Ok(()) => Ok(()),
+                };
+                metrics::ConsensusMsgLabel::LeaderCommit.with_result(&res)
+            },
             _ => unreachable!(),
         };
-        metrics::METRICS.replica_processing_latency[&label.with_result(&result)]
+        metrics::METRICS.replica_processing_latency[&label]
             .observe_latency(ctx.now() - now);
-        if let Err(err) = result {
-            // Expected errors from processing inputs are recoverable, so we just log them.
-            tracing::warn!("{}",err);
-        }
         Ok(())
     }
 
