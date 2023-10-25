@@ -1,4 +1,4 @@
-use crate::{consensus, io::SyncState, pool::PoolWatch, rpc, watch::Watch};
+use crate::{io::SyncState, pool::PoolWatch, rpc, watch::Watch};
 use concurrency::sync::{self, watch, Mutex};
 use roles::{node, validator};
 use std::{
@@ -43,7 +43,7 @@ impl ValidatorAddrs {
     /// Returns true iff some new entry was added.
     pub(super) fn update(
         &mut self,
-        cfg: &consensus::Config,
+        validators: &validator::ValidatorSet,
         data: &[Arc<validator::Signed<validator::NetAddress>>],
     ) -> anyhow::Result<bool> {
         let mut changed = false;
@@ -57,7 +57,7 @@ impl ValidatorAddrs {
                 anyhow::bail!("duplicate entry for {:?}", d.key);
             }
             done.insert(d.key.clone());
-            if !cfg.validators.contains(&d.key) {
+            if !validators.contains(&d.key) {
                 // We just skip the entries we are not interested in.
                 // For now the set of validators is static, so we could treat this as an error,
                 // however we eventually want the validator set to be dynamic.
@@ -99,20 +99,20 @@ impl ValidatorAddrsWatch {
     /// invalid entry should be banned.
     pub(crate) async fn update(
         &self,
-        cfg: &consensus::Config,
+        validators: &validator::ValidatorSet,
         data: &[Arc<validator::Signed<validator::NetAddress>>],
     ) -> anyhow::Result<()> {
         let this = self.0.lock().await;
-        let mut m = this.borrow().clone();
-        if m.update(cfg, data)? {
-            this.send(m).ok().unwrap();
+        let mut validator_addrs = this.borrow().clone();
+        if validator_addrs.update(validators, data)? {
+            this.send(validator_addrs).ok().unwrap();
         }
         Ok(())
     }
 }
 
 /// Gossip network configuration.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Config {
     /// Private key of the node, every node should have one.
     pub key: node::SecretKey,
@@ -132,6 +132,8 @@ type ClientMap<R> = Mutex<HashMap<node::PublicKey, Arc<rpc::Client<R>>>>;
 
 /// Gossip network state.
 pub(crate) struct State {
+    /// Gossip network configuration.
+    pub(crate) cfg: Config,
     /// Currently open inbound connections.
     pub(crate) inbound: PoolWatch<node::PublicKey>,
     /// Currently open outbound connections.
@@ -146,7 +148,7 @@ pub(crate) struct State {
 
 impl State {
     /// Constructs a new State.
-    pub(crate) fn new(cfg: &Config, sync_state: Option<watch::Receiver<SyncState>>) -> Self {
+    pub(crate) fn new(cfg: Config, sync_state: Option<watch::Receiver<SyncState>>) -> Self {
         Self {
             inbound: PoolWatch::new(
                 cfg.static_inbound.clone(),
@@ -156,6 +158,7 @@ impl State {
             validator_addrs: ValidatorAddrsWatch::default(),
             sync_state,
             get_block_clients: ClientMap::default(),
+            cfg,
         }
     }
 }

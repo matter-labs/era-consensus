@@ -94,7 +94,7 @@ async fn run_nodes(
         for (i, node) in nodes.iter().enumerate() {
             let consensus_config = node.net.consensus_config();
             let validator_key = consensus_config.key.clone();
-            let validator_set = consensus_config.validators.clone();
+            let validator_set = node.net.to_config().validators;
 
             let (consensus_actor_pipe, consensus_pipe) = pipe::new();
             let (network_actor_pipe, network_pipe) = pipe::new();

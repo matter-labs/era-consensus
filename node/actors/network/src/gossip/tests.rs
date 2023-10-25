@@ -1,5 +1,5 @@
 use super::*;
-use crate::{consensus, event::Event, io, preface, rpc, rpc::Rpc as _, run_network, testonly};
+use crate::{event::Event, io, preface, rpc, rpc::Rpc as _, run_network, testonly};
 use anyhow::Context as _;
 use concurrency::{
     ctx::{self, channel},
@@ -42,7 +42,7 @@ async fn test_one_connection_per_node() {
         tracing::info!("waiting for all connections to be established");
         for node in &mut nodes {
             tracing::info!("node {:?} awaiting connections", node.consensus_config().key.public());
-            let want = &node.state.cfg.gossip.static_outbound.keys().cloned().collect();
+            let want = &node.state.gossip.cfg.static_outbound.keys().cloned().collect();
             let mut subscription = node.state.gossip.outbound.subscribe();
             subscription
                 .wait_for(|got| got.current() == want)
@@ -53,7 +53,7 @@ async fn test_one_connection_per_node() {
         tracing::info!(
             "Impersonate a node, and try to establish additional connection to an already connected peer."
         );
-        let my_gossip_config = &nodes[0].state.cfg.gossip;
+        let my_gossip_config = &nodes[0].state.gossip.cfg;
         let (peer, addr) = my_gossip_config.static_outbound.iter().next().unwrap();
         let mut stream = preface::connect(
             ctx,
@@ -154,12 +154,7 @@ async fn test_validator_addrs() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
 
     let keys: Vec<validator::SecretKey> = (0..8).map(|_| rng.gen()).collect();
-    let cfg = consensus::Config {
-        key: rng.gen(),
-        public_addr: mk_addr(rng),
-        validators: validator::ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap(),
-    };
-
+    let validators = validator::ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap();
     let va = ValidatorAddrsWatch::default();
     let mut sub = va.subscribe();
 
@@ -168,7 +163,7 @@ async fn test_validator_addrs() {
     for k in &keys[0..6] {
         want.insert(random_netaddr(rng, k));
     }
-    va.update(&cfg, &want.as_vec()).await.unwrap();
+    va.update(&validators, &want.as_vec()).await.unwrap();
     assert_eq!(want.0, sub.borrow_and_update().0);
 
     // Update values.
@@ -209,7 +204,7 @@ async fn test_validator_addrs() {
         // no entry at all for keys[7]
         k8v1.clone(),
     ];
-    va.update(&cfg, &update).await.unwrap();
+    va.update(&validators, &update).await.unwrap();
     assert_eq!(want.0, sub.borrow_and_update().0);
 
     // Invalid signature.
@@ -220,11 +215,11 @@ async fn test_validator_addrs() {
         mk_timestamp(rng),
     );
     k0v3.key = keys[0].public();
-    assert!(va.update(&cfg, &[Arc::new(k0v3)]).await.is_err());
+    assert!(va.update(&validators, &[Arc::new(k0v3)]).await.is_err());
     assert_eq!(want.0, sub.borrow_and_update().0);
 
     // Duplicate entry in the update.
-    assert!(va.update(&cfg, &[k8v1.clone(), k8v1]).await.is_err());
+    assert!(va.update(&validators, &[k8v1.clone(), k8v1]).await.is_err());
     assert_eq!(want.0, sub.borrow_and_update().0);
 }
 
@@ -436,7 +431,7 @@ async fn uncoordinated_block_syncing(
         for node in &nodes {
             let (network_pipe, dispatcher_pipe) = pipe::new();
             s.spawn_bg(run_network(ctx, node.state.clone(), network_pipe));
-            let node_key = node.state.cfg.gossip.key.public();
+            let node_key = node.state.gossip.cfg.key.public();
             s.spawn(run_mock_uncoordinated_dispatcher(
                 ctx,
                 dispatcher_pipe,
@@ -499,7 +494,7 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
     }
     let node_keys: Vec<_> = nodes
         .iter()
-        .map(|node| node.state.cfg().gossip.key.public())
+        .map(|node| node.state.gossip.cfg.key.public())
         .collect();
 
     let block: FinalBlock = rng.gen();
@@ -542,7 +537,7 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
                 if response_receiver.recv_or_disconnected(ctx).await?.is_ok() {
                     successful_peer_responses += 1;
                 } else {
-                    let self_key = node.state.cfg().gossip.key.public();
+                    let self_key = node.state.gossip.cfg.key.public();
                     tracing::trace!("Request from {self_key:?} to {peer_key:?} was dropped");
                 }
             }

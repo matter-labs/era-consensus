@@ -116,7 +116,7 @@ async fn test_address_change() {
         // node[0] is expected to connect to its gossip peers.
         // Then it should broadcast its new address and the consensus network
         // should get reconstructed.
-        let mut cfg = nodes[0].state.cfg.clone();
+        let mut cfg = nodes[0].to_config();
         cfg.server_addr = net::tcp::testonly::reserve_listener();
         cfg.consensus.as_mut().unwrap().public_addr = *cfg.server_addr;
         nodes[0] = testonly::Instance::from_cfg(cfg);

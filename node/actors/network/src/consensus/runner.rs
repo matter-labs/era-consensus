@@ -1,7 +1,7 @@
 //! run_client routine maintaining outbound connections to validators.
 
 use super::handshake;
-use crate::{gossip, io, noise, preface, rpc};
+use crate::{io, noise, preface, rpc, State};
 use anyhow::Context as _;
 use concurrency::{ctx, ctx::channel, oneshot, scope, sync, time};
 use roles::validator;
@@ -92,10 +92,10 @@ async fn run_outbound_stream(
 pub(crate) async fn run_client(
     ctx: &ctx::Ctx,
     state: &super::State,
-    gossip_state: &gossip::State,
+    shared_state: &State,
     mut receiver: channel::UnboundedReceiver<io::ConsensusInputMessage>,
 ) -> anyhow::Result<()> {
-    let clients: HashMap<_, _> = state
+    let clients: HashMap<_, _> = shared_state
         .cfg
         .validators
         .iter()
@@ -106,7 +106,7 @@ pub(crate) async fn run_client(
         for (peer, client) in &clients {
             s.spawn::<()>(async {
                 let client = &*client;
-                let addrs = &mut gossip_state.validator_addrs.subscribe();
+                let addrs = &mut shared_state.gossip.validator_addrs.subscribe();
                 let mut addr = None;
                 while ctx.is_active() {
                     if let Ok(new) =

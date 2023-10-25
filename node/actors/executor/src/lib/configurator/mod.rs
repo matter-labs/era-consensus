@@ -45,7 +45,6 @@ impl Configs {
             // Consistency of the validator key has been verified in constructor.
             key: self.validator_key.clone().unwrap(),
             public_addr: consensus.public_addr,
-            validators: self.config.validators.clone(),
         })
     }
 
@@ -53,6 +52,7 @@ impl Configs {
     pub fn network_config(&self) -> network::Config {
         network::Config {
             server_addr: net::tcp::ListenerAddr::new(self.config.server_addr),
+            validators: self.config.validators.clone(),
             gossip: self.gossip_config(),
             consensus: self.consensus_config(),
         }

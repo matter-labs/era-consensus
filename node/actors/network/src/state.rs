@@ -3,24 +3,40 @@ use super::{consensus, event::Event, gossip, metrics, preface};
 use crate::io::{InputMessage, OutputMessage, SyncState};
 use anyhow::Context as _;
 use concurrency::{ctx, ctx::channel, net, scope, sync::watch};
+use roles::validator;
 use std::sync::Arc;
 use utils::pipe::ActorPipe;
 
 /// Network actor config.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Config {
     /// TCP socket address to listen for inbound connections at.
     pub server_addr: net::tcp::ListenerAddr,
+    /// Validators which
+    /// - client should establish outbound connections to.
+    /// - server should accept inbound connections from (1 per validator).
+    pub validators: validator::ValidatorSet,
     /// Gossip network config.
     pub gossip: gossip::Config,
     /// Consensus network config. If not present, the node will not participate in the consensus network.
     pub consensus: Option<consensus::Config>,
 }
 
+/// Part of configuration shared among network modules.
+#[derive(Debug)]
+pub(crate) struct SharedConfig {
+    /// TCP socket address to listen for inbound connections at.
+    pub(crate) server_addr: net::tcp::ListenerAddr,
+    /// Validators which
+    /// - client should establish outbound connections to.
+    /// - server should accept inbound connections from (1 per validator).
+    pub(crate) validators: validator::ValidatorSet,
+}
+
 /// State of the network actor observable outside of the actor.
 pub struct State {
-    /// Network configuration.
-    pub(crate) cfg: Config, // FIXME: remove?
+    /// Configuration shared among network modules.
+    pub(crate) cfg: SharedConfig,
     /// Consensus network state.
     pub(crate) consensus: Option<consensus::State>,
     /// Gossip network state.
@@ -40,16 +56,16 @@ impl State {
         sync_state: Option<watch::Receiver<SyncState>>,
     ) -> Arc<Self> {
         Arc::new(Self {
-            gossip: gossip::State::new(&cfg.gossip, sync_state),
-            consensus: cfg.consensus.clone().map(consensus::State::new),
+            gossip: gossip::State::new(cfg.gossip, sync_state),
+            consensus: cfg
+                .consensus
+                .map(|consensus_cfg| consensus::State::new(consensus_cfg, &cfg.validators)),
             events,
-            cfg,
+            cfg: SharedConfig {
+                server_addr: cfg.server_addr,
+                validators: cfg.validators,
+            },
         })
-    }
-
-    /// Config getter.
-    pub fn cfg(&self) -> &Config {
-        &self.cfg
     }
 
     /// Registers metrics for this state.
@@ -97,7 +113,7 @@ pub async fn run_network(
 
         if let Some(consensus_state) = &state.consensus {
             s.spawn(async {
-                consensus::run_client(ctx, consensus_state, &state.gossip, consensus_recv)
+                consensus::run_client(ctx, consensus_state, state.as_ref(), consensus_recv)
                     .await
                     .context("consensus::run_client")
             });

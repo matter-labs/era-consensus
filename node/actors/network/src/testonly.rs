@@ -58,10 +58,10 @@ impl Instance {
                 let addr = net::tcp::testonly::reserve_listener();
                 Config {
                     server_addr: addr,
+                    validators: validators.clone(),
                     consensus: Some(consensus::Config {
                         key: keys[i].clone(),
                         public_addr: *addr,
-                        validators: validators.clone(),
                     }),
                     gossip: gossip::Config {
                         key: rng.gen(),
@@ -107,7 +107,7 @@ impl Instance {
         &self.state
     }
 
-    /// Returns consensus config for this node, assuming it is a validator.
+    /// Returns the consensus config for this node, assuming it is a validator.
     pub fn consensus_config(&self) -> &consensus::Config {
         &self
             .state
@@ -115,6 +115,25 @@ impl Instance {
             .as_ref()
             .expect("Node is not a validator")
             .cfg
+    }
+
+    /// Returns the gossip config for this node.
+    pub fn gossip_config(&self) -> &gossip::Config {
+        &self.state.gossip.cfg
+    }
+
+    /// Returns the overall config for this node.
+    pub fn to_config(&self) -> Config {
+        Config {
+            server_addr: self.state.cfg.server_addr,
+            validators: self.state.cfg.validators.clone(),
+            gossip: self.state.gossip.cfg.clone(),
+            consensus: self
+                .state
+                .consensus
+                .as_ref()
+                .map(|consensus_state| consensus_state.cfg.clone()),
+        }
     }
 
     /// Sets a `SyncState` subscriber for the node. Panics if the node state is already shared.
@@ -126,21 +145,14 @@ impl Instance {
     /// Disables ping messages over the gossip network.
     pub fn disable_gossip_pings(&mut self) {
         let state = Arc::get_mut(&mut self.state).expect("node state is shared");
-        state.cfg.gossip.enable_pings = false;
+        state.gossip.cfg.enable_pings = false;
     }
 
     /// Wait for static outbound gossip connections to be established.
     pub async fn wait_for_gossip_connections(&self) {
-        let want: HashSet<_> = self
-            .state
-            .cfg
-            .gossip
-            .static_outbound
-            .keys()
-            .cloned()
-            .collect();
-        self.state
-            .gossip
+        let gossip_state = &self.state.gossip;
+        let want: HashSet<_> = gossip_state.cfg.static_outbound.keys().cloned().collect();
+        gossip_state
             .outbound
             .subscribe()
             .wait_for(|got| want.is_subset(got.current()))
@@ -152,7 +164,7 @@ impl Instance {
     pub async fn wait_for_consensus_connections(&self) {
         let consensus_state = self.state.consensus.as_ref().unwrap();
 
-        let want: HashSet<_> = consensus_state.cfg.validators.iter().cloned().collect();
+        let want: HashSet<_> = self.state.cfg.validators.iter().cloned().collect();
         consensus_state
             .inbound
             .subscribe()
@@ -194,7 +206,7 @@ pub async fn instant_network(
         node.state
             .gossip
             .validator_addrs
-            .update(node.consensus_config(), &addrs)
+            .update(&node.state.cfg.validators, &addrs)
             .await
             .unwrap();
     }
