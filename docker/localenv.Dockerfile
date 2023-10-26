@@ -22,7 +22,7 @@ RUN cargo run -p tools --bin localnet_config -- --nodes=$nodes
 
 # Build binary file in release mode and create a main release binary
 WORKDIR /usr/src/myapp/node
-RUN cargo build -p executor --release
+RUN cargo build -p tools --bin executor --release
 
 # Create the artifacts directory
 WORKDIR /usr/src/myapp/node/

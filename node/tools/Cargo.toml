@@ -6,6 +6,7 @@ authors.workspace = true
 homepage.workspace = true
 license.workspace = true
 publish = false
+default-run = "executor"
 
 [dependencies]
 anyhow.workspace = true
@@ -25,3 +26,7 @@ utils = { path = "../libs/utils" }
 
 consensus = { path = "../actors/consensus" }
 executor = { path = "../actors/executor" }
+
+[[bin]]
+name = "executor"
+path = "src/main.rs"
