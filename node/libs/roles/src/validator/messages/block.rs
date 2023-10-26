@@ -13,8 +13,7 @@ use std::fmt;
 pub struct ProtocolVersion(pub(crate) u32);
 
 /// We use a hardcoded protocol version for now.
-/// Eventually validators should determine which version to use for which block by observing
-/// a relevant L1 contract (controlled by governance).
+/// Eventually validators should determine which version to use for which block by observing the relevant L1 contract.
 ///
 /// The validator binary has to support the current and next protocol version whenever
 /// a protocol version update is needed (so that it can dynamically switch from producing
