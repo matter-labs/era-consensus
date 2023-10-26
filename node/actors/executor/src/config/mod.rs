@@ -2,6 +2,7 @@
 
 use anyhow::Context as _;
 use crypto::{read_required_text, Text, TextFmt};
+use network::{consensus, gossip};
 use roles::{node, validator};
 use schema::{proto::executor::config as proto, read_required, required, ProtoFmt};
 use std::{
@@ -21,6 +22,15 @@ pub struct ConsensusConfig {
     /// Public TCP address that other validators are expected to connect to.
     /// It is announced over gossip network.
     pub public_addr: net::SocketAddr,
+}
+
+impl From<consensus::Config> for ConsensusConfig {
+    fn from(config: consensus::Config) -> Self {
+        Self {
+            key: config.key.public(),
+            public_addr: config.public_addr,
+        }
+    }
 }
 
 impl ProtoFmt for ConsensusConfig {
@@ -55,6 +65,17 @@ pub struct GossipConfig {
     /// Outbound connections that the node should actively try to
     /// establish and maintain.
     pub static_outbound: HashMap<node::PublicKey, net::SocketAddr>,
+}
+
+impl From<gossip::Config> for GossipConfig {
+    fn from(config: gossip::Config) -> Self {
+        Self {
+            key: config.key.public(),
+            dynamic_inbound_limit: config.dynamic_inbound_limit,
+            static_inbound: config.static_inbound,
+            static_outbound: config.static_outbound,
+        }
+    }
 }
 
 impl ProtoFmt for GossipConfig {

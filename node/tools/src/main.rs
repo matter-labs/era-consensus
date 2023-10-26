@@ -2,7 +2,10 @@
 //! manages communication between the actors. It is the main executable in this workspace.
 
 use anyhow::Context as _;
-use concurrency::{ctx, scope, time};
+use concurrency::{
+    ctx::{self, channel},
+    scope, time,
+};
 use executor::Executor;
 use std::{fs, io::IsTerminal as _, path::Path, sync::Arc};
 use storage::{BlockStore, RocksdbStorage};
@@ -79,8 +82,14 @@ async fn main() -> anyhow::Result<()> {
     let mut executor = Executor::new(configs.executor, configs.node_key, storage.clone())
         .context("Executor::new()")?;
     if let Some((consensus_config, validator_key)) = configs.consensus {
+        let blocks_sender = channel::unbounded().0; // Just drop finalized blocks
         executor
-            .set_validator(consensus_config, validator_key, storage.clone())
+            .set_validator(
+                consensus_config,
+                validator_key,
+                storage.clone(),
+                blocks_sender,
+            )
             .context("Executor::set_validator()")?;
     }
 

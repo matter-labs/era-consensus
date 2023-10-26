@@ -611,6 +611,8 @@ dependencies = [
  "schema",
  "storage",
  "sync_blocks",
+ "tempfile",
+ "tokio",
  "tracing",
  "utils",
  "vise",

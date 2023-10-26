@@ -50,7 +50,7 @@ pub struct Instance {
 
 impl Instance {
     /// Construct configs for `n` validators of the consensus.
-    pub(crate) fn new_configs<R: Rng>(rng: &mut R, n: usize, gossip_peers: usize) -> Vec<Config> {
+    pub fn new_configs<R: Rng>(rng: &mut R, n: usize, gossip_peers: usize) -> Vec<Config> {
         let keys: Vec<validator::SecretKey> = (0..n).map(|_| rng.gen()).collect();
         let validators = validator::ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap();
         let mut cfgs: Vec<_> = (0..n)

@@ -2,10 +2,10 @@
 
 use crate::io::Dispatcher;
 use anyhow::Context as _;
-use concurrency::{ctx, net, scope};
+use concurrency::{ctx, ctx::channel, net, scope};
 use consensus::Consensus;
-use roles::{node, validator};
-use std::sync::Arc;
+use roles::{node, validator, validator::FinalBlock};
+use std::{mem, sync::Arc};
 use storage::{FallbackReplicaStateStore, ReplicaStateStore, WriteBlockStore};
 use sync_blocks::SyncBlocks;
 use utils::pipe;
@@ -13,6 +13,8 @@ use utils::pipe;
 mod config;
 mod io;
 mod metrics;
+#[cfg(test)]
+mod tests;
 
 pub use self::config::{ConsensusConfig, ExecutorConfig, GossipConfig};
 
@@ -25,6 +27,8 @@ struct ValidatorExecutor {
     key: validator::SecretKey,
     /// Store for replica state.
     replica_state_store: Arc<dyn ReplicaStateStore>,
+    /// Sender of blocks finalized by the consensus algorithm.
+    blocks_sender: channel::UnboundedSender<FinalBlock>,
 }
 
 impl ValidatorExecutor {
@@ -79,6 +83,7 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
         config: ConsensusConfig,
         key: validator::SecretKey,
         replica_state_store: Arc<dyn ReplicaStateStore>,
+        blocks_sender: channel::UnboundedSender<FinalBlock>,
     ) -> anyhow::Result<()> {
         let public = &config.key;
         anyhow::ensure!(
@@ -97,6 +102,7 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
             config,
             key,
             replica_state_store,
+            blocks_sender,
         });
         Ok(())
     }
@@ -127,18 +133,24 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
     }
 
     /// Runs this executor to completion. This should be spawned on a separate task.
-    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let network_config = self.network_config();
 
         // Generate the communication pipes. We have one for each actor.
         let (consensus_actor_pipe, consensus_dispatcher_pipe) = pipe::new();
         let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
         let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
+        let blocks_sender = if let Some(validator) = &mut self.validator {
+            mem::replace(&mut validator.blocks_sender, channel::unbounded().0)
+        } else {
+            channel::unbounded().0
+        };
         // Create the IO dispatcher.
         let mut dispatcher = Dispatcher::new(
             consensus_dispatcher_pipe,
             sync_blocks_dispatcher_pipe,
             network_dispatcher_pipe,
+            blocks_sender,
         );
 
         // Create each of the actors.
