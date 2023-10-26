@@ -5,34 +5,34 @@ package roles.validator;
 import "std.proto";
 
 message PayloadHash {
-  optional bytes sha256 = 1;
+  optional bytes sha256 = 1; // required
 }
 
 message BlockHeaderHash {
-  optional bytes sha256 = 1;
+  optional bytes sha256 = 1; // required
 }
 
 message BlockHeader {
   // Protocol version determines the algorithm
   // according to which this block has been constructed.
   // In particular it defines how payload should be interpreted.
-  optional uint32 protocol_version = 1;
+  optional uint32 protocol_version = 1; // required
   // Hash of the parent Block.  
-  optional BlockHeaderHash parent = 2;
+  optional BlockHeaderHash parent = 2; // required
   // Sequential number of the block = parent.number + 1.
-  optional uint64 number = 3;
+  optional uint64 number = 3; // required
   // Hash of the block payload.
-  optional PayloadHash payload = 4;
+  optional PayloadHash payload = 4; // required
 }
 
 message FinalBlock {
-  optional BlockHeader header = 1;
-  optional bytes payload = 2;
-  optional CommitQC justification = 3;
+  optional BlockHeader header = 1; // required
+  optional bytes payload = 2; // required
+  optional CommitQC justification = 3; // required
 }
 
 message ConsensusMsg {
-  oneof t {
+  oneof t { // required
     ReplicaPrepare replica_prepare = 1;
     ReplicaCommit replica_commit = 2;
     LeaderPrepare leader_prepare = 3;
@@ -41,14 +41,14 @@ message ConsensusMsg {
 }
 
 message ReplicaPrepare {
-  optional uint64 view = 1;
-  optional ReplicaCommit high_vote = 2;
-  optional CommitQC high_qc = 3;
+  optional uint64 view = 1; // required
+  optional ReplicaCommit high_vote = 2; // required
+  optional CommitQC high_qc = 3; // required
 }
 
 message ReplicaCommit {
-  optional uint64 view = 1;
-  optional BlockHeader proposal = 4;
+  optional uint64 view = 1; // required
+  optional BlockHeader proposal = 4; // required
 }
 
 message LeaderPrepare {
@@ -59,19 +59,19 @@ message LeaderPrepare {
 }
 
 message LeaderCommit {
-  optional CommitQC justification = 1;
+  optional CommitQC justification = 1; // required
 }
 
 message PrepareQC {
-  repeated ReplicaPrepare msgs = 1;
-  repeated std.BitVector signers = 2;
-  optional AggregateSignature sig = 3;
+  repeated ReplicaPrepare msgs = 1; // required
+  repeated std.BitVector signers = 2; // required
+  optional AggregateSignature sig = 3; // required
 }
 
 message CommitQC {
-  optional ReplicaCommit msg = 1;
-  optional std.BitVector signers = 2;
-  optional AggregateSignature sig = 3;
+  optional ReplicaCommit msg = 1; // required
+  optional std.BitVector signers = 2; // required
+  optional AggregateSignature sig = 3; // required
 }
 
 message Phase {
@@ -88,7 +88,7 @@ message Phase {
 // network connection to this address.
 message NetAddress {
   // Address of the validator.
-  optional std.SocketAddr addr = 1;
+  optional std.SocketAddr addr = 1; // required
   // Version of the discovery announcement.
   // Newer (higher) version overrides the older version.
   // When a validator gets restarted it broadcasts
@@ -104,7 +104,7 @@ message NetAddress {
   // broadcast a new discovery message), or (mutli)proxy support (a validator
   // may maintain a dynamic set of trusted proxy servers which forward traffic
   // to it - this way validator wouldn't have to have a public IP at all).
-  optional uint64 version = 2;
+  optional uint64 version = 2; // required
   // Time at which this message has been signed.
   // Mostly an informational field:
   // we cannot use it instead of version field,
@@ -125,11 +125,11 @@ message NetAddress {
   // we assume here that it is unlikely for timestamps to collide.
   // To make this reasoning more strict, we should rather use a random "tie breaker"
   // instead (replace timestamp with a random nonce, or use a hash of the entire message).
-  optional std.Timestamp timestamp = 3;
+  optional std.Timestamp timestamp = 3; // required
 }
 
 message Msg {
-  oneof t {
+  oneof t { // required
     ConsensusMsg consensus = 1;
     bytes session_id = 2;
     NetAddress net_address = 3;
@@ -137,23 +137,23 @@ message Msg {
 }
 
 message MsgHash {
-  optional bytes sha256 = 1;
+  optional bytes sha256 = 1; // required
 }
 
 message Signed {
-  optional Msg msg = 1;
-  optional PublicKey key = 2;
-  optional Signature sig = 3;
+  optional Msg msg = 1; // required
+  optional PublicKey key = 2; // required
+  optional Signature sig = 3; // required
 }
 
 message PublicKey {
-  optional bytes bls12381 = 1;
+  optional bytes bls12381 = 1; // required
 }
 
 message Signature {
-  optional bytes bls12381 = 1;
+  optional bytes bls12381 = 1; // required
 }
 
 message AggregateSignature {
-  optional bytes bls12381 = 1;
+  optional bytes bls12381 = 1; // required
 }
