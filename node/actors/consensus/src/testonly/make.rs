@@ -53,6 +53,7 @@ pub fn make_genesis(
         .iter()
         .map(|sk| {
             sk.sign_msg(validator::ReplicaCommit {
+                protocol_version: validator::CURRENT_VERSION,
                 view: validator::ViewNumber(0),
                 proposal: header,
             })

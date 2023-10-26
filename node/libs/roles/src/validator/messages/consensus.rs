@@ -7,6 +7,20 @@ use bit_vec::BitVec;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use utils::enum_util::{ErrBadVariant, Variant};
 
+/// Version of the consensus algorithm that the validator is using.
+/// It allows to prevent misinterpretation of messages signed by validators
+/// using different versions of the binaries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ProtocolVersion(pub(crate) u32);
+
+/// We use a hardcoded protocol version for now.
+/// Eventually validators should determine which version to use for which block by observing the relevant L1 contract.
+///
+/// The validator binary has to support the current and next protocol version whenever
+/// a protocol version update is needed (so that it can dynamically switch from producing
+/// blocks for version X to version X+1).
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion(0);
+
 /// Consensus messages.
 #[allow(missing_docs)]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,6 +39,16 @@ impl ConsensusMsg {
             Self::ReplicaCommit(_) => "ReplicaCommit",
             Self::LeaderPrepare(_) => "LeaderPrepare",
             Self::LeaderCommit(_) => "LeaderCommit",
+        }
+    }
+
+    /// Protocol version of this message.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        match self {
+            Self::ReplicaPrepare(m) => m.protocol_version,
+            Self::ReplicaCommit(m) => m.protocol_version,
+            Self::LeaderPrepare(m) => m.protocol_version,
+            Self::LeaderCommit(m) => m.protocol_version,
         }
     }
 }
@@ -80,6 +104,8 @@ impl Variant<Msg> for LeaderCommit {
 /// A Prepare message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ReplicaPrepare {
+    /// Protocol version.
+    pub protocol_version: ProtocolVersion,
     /// The number of the current view.
     pub view: ViewNumber,
     /// The highest block that the replica has committed to.
@@ -91,6 +117,8 @@ pub struct ReplicaPrepare {
 /// A Commit message from a replica.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReplicaCommit {
+    /// Protocol version.
+    pub protocol_version: ProtocolVersion,
     /// The number of the current view.
     pub view: ViewNumber,
     /// The header of the block that the replica is committing to.
@@ -100,6 +128,8 @@ pub struct ReplicaCommit {
 /// A Prepare message from a leader.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeaderPrepare {
+    /// Protocol version.
+    pub protocol_version: ProtocolVersion,
     /// The number of the current view.
     pub view: ViewNumber,
     /// The header of the block that the leader is proposing.
@@ -114,6 +144,8 @@ pub struct LeaderPrepare {
 /// A Commit message from a leader.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeaderCommit {
+    /// Protocol version.
+    pub protocol_version: ProtocolVersion,
     /// The CommitQC that justifies the message from the leader.
     pub justification: CommitQC,
 }

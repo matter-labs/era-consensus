@@ -35,10 +35,11 @@ impl Fuzz for validator::ConsensusMsg {
 
 impl Fuzz for validator::ReplicaPrepare {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..2) {
+        match rng.gen_range(0..4) {
             0 => self.view = rng.gen(),
             1 => self.high_vote.mutate(rng),
             2 => self.high_qc.mutate(rng),
+            3 => self.protocol_version = rng.gen(),
             _ => unreachable!(),
         }
     }
@@ -46,9 +47,10 @@ impl Fuzz for validator::ReplicaPrepare {
 
 impl Fuzz for validator::ReplicaCommit {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..2) {
+        match rng.gen_range(0..3) {
             0 => self.view = rng.gen(),
             1 => self.proposal.mutate(rng),
+            2 => self.protocol_version = rng.gen(),
             _ => unreachable!(),
         }
     }
@@ -56,9 +58,10 @@ impl Fuzz for validator::ReplicaCommit {
 
 impl Fuzz for validator::LeaderPrepare {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..2) {
+        match rng.gen_range(0..3) {
             0 => self.proposal.mutate(rng),
             1 => self.justification.mutate(rng),
+            2 => self.protocol_version = rng.gen(),
             _ => unreachable!(),
         }
     }
@@ -66,7 +69,11 @@ impl Fuzz for validator::LeaderPrepare {
 
 impl Fuzz for validator::LeaderCommit {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        self.justification.mutate(rng);
+        match rng.gen_range(0..2) {
+            0 => self.justification.mutate(rng),
+            1 => self.protocol_version = rng.gen(),
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -157,11 +164,10 @@ impl Fuzz for validator::Payload {
 
 impl Fuzz for validator::BlockHeader {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..4) {
+        match rng.gen_range(0..3) {
             0 => self.parent = rng.gen(),
             1 => self.number = rng.gen(),
-            2 => self.protocol_version = rng.gen(),
-            3 => self.payload = rng.gen(),
+            2 => self.payload = rng.gen(),
             _ => unreachable!(),
         }
     }

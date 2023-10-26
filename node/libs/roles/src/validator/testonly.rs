@@ -3,7 +3,7 @@ use super::{
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
     FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
     PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature,
-    Signed, Signers, ValidatorSet, ViewNumber,
+    Signed, Signers, ValidatorSet, ViewNumber, CURRENT_VERSION,
 };
 use bit_vec::BitVec;
 use concurrency::time;
@@ -19,6 +19,7 @@ use utils::enum_util::Variant;
 pub fn make_justification<R: Rng>(rng: &mut R, header: &BlockHeader) -> CommitQC {
     CommitQC {
         message: ReplicaCommit {
+            protocol_version: CURRENT_VERSION,
             view: ViewNumber(header.number.0),
             proposal: *header,
         },
@@ -104,7 +105,6 @@ impl Distribution<BlockHeaderHash> for Standard {
 impl Distribution<BlockHeader> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockHeader {
         BlockHeader {
-            protocol_version: ProtocolVersion(rng.gen()),
             parent: rng.gen(),
             number: rng.gen(),
             payload: rng.gen(),
@@ -132,6 +132,7 @@ impl Distribution<FinalBlock> for Standard {
 impl Distribution<ReplicaPrepare> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaPrepare {
         ReplicaPrepare {
+            protocol_version: rng.gen(),
             view: rng.gen(),
             high_vote: rng.gen(),
             high_qc: rng.gen(),
@@ -142,6 +143,7 @@ impl Distribution<ReplicaPrepare> for Standard {
 impl Distribution<ReplicaCommit> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaCommit {
         ReplicaCommit {
+            protocol_version: rng.gen(),
             view: rng.gen(),
             proposal: rng.gen(),
         }
@@ -151,6 +153,7 @@ impl Distribution<ReplicaCommit> for Standard {
 impl Distribution<LeaderPrepare> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderPrepare {
         LeaderPrepare {
+            protocol_version: rng.gen(),
             view: rng.gen(),
             proposal: rng.gen(),
             proposal_payload: rng.gen(),
@@ -162,6 +165,7 @@ impl Distribution<LeaderPrepare> for Standard {
 impl Distribution<LeaderCommit> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderCommit {
         LeaderCommit {
+            protocol_version: rng.gen(),
             justification: rng.gen(),
         }
     }

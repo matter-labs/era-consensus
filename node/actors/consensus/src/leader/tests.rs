@@ -22,6 +22,7 @@ async fn replica_commit() {
             .secret_key
             .sign_msg(validator::ConsensusMsg::ReplicaCommit(
                 validator::ReplicaCommit {
+                    protocol_version: validator::CURRENT_VERSION,
                     view: consensus.leader.view,
                     proposal: rng.gen(),
                 },

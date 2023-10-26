@@ -40,7 +40,6 @@ impl ProtoFmt for BlockHeader {
     type Proto = proto::BlockHeader;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
             parent: read_required(&r.parent).context("parent")?,
             number: BlockNumber(r.number.context("number")?),
             payload: read_required(&r.payload).context("payload")?,
@@ -48,7 +47,6 @@ impl ProtoFmt for BlockHeader {
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            protocol_version: Some(self.protocol_version.0),
             parent: Some(self.parent.build()),
             number: Some(self.number.0),
             payload: Some(self.payload.build()),
@@ -109,6 +107,7 @@ impl ProtoFmt for ReplicaPrepare {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
+            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
             view: ViewNumber(*required(&r.view).context("view")?),
             high_vote: read_required(&r.high_vote).context("high_vote")?,
             high_qc: read_required(&r.high_qc).context("high_qc")?,
@@ -117,6 +116,7 @@ impl ProtoFmt for ReplicaPrepare {
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
+            protocol_version: Some(self.protocol_version.0),
             view: Some(self.view.0),
             high_vote: Some(self.high_vote.build()),
             high_qc: Some(self.high_qc.build()),
@@ -129,6 +129,7 @@ impl ProtoFmt for ReplicaCommit {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
+            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
             view: ViewNumber(*required(&r.view).context("view")?),
             proposal: read_required(&r.proposal).context("proposal")?,
         })
@@ -136,6 +137,7 @@ impl ProtoFmt for ReplicaCommit {
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
+            protocol_version: Some(self.protocol_version.0),
             view: Some(self.view.0),
             proposal: Some(self.proposal.build()),
         }
@@ -147,6 +149,7 @@ impl ProtoFmt for LeaderPrepare {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
+            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
             view: ViewNumber(*required(&r.view).context("view")?),
             proposal: read_required(&r.proposal).context("proposal")?,
             proposal_payload: r.proposal_payload.as_ref().map(|p| Payload(p.clone())),
@@ -156,6 +159,7 @@ impl ProtoFmt for LeaderPrepare {
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
+            protocol_version: Some(self.protocol_version.0),
             view: Some(self.view.0),
             proposal: Some(self.proposal.build()),
             proposal_payload: self.proposal_payload.as_ref().map(|p| p.0.clone()),
@@ -169,12 +173,14 @@ impl ProtoFmt for LeaderCommit {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
+            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
             justification: read_required(&r.justification).context("justification")?,
         })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
+            protocol_version: Some(self.protocol_version.0),
             justification: Some(self.justification.build()),
         }
     }

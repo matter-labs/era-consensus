@@ -4,22 +4,6 @@ use super::CommitQC;
 use crypto::{sha256, ByteFmt, Text, TextFmt};
 use std::fmt;
 
-/// Version of the consensus algorithm used by the leader in a given view.
-/// Currently it is stored in the BlockHeader (TODO: consider whether it should be present in every
-/// consensus message).
-/// Currently it also determines the format and semantics of the block payload
-/// (TODO: consider whether the payload should be versioned separately).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ProtocolVersion(pub(crate) u32);
-
-/// We use a hardcoded protocol version for now.
-/// Eventually validators should determine which version to use for which block by observing the relevant L1 contract.
-///
-/// The validator binary has to support the current and next protocol version whenever
-/// a protocol version update is needed (so that it can dynamically switch from producing
-/// blocks for version X to version X+1).
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion(0);
-
 /// Payload of the block. Consensus algorithm does not interpret the payload
 /// (except for imposing a size limit for the payload). Proposing a payload
 /// for a new block and interpreting the payload of the finalized blocks
@@ -102,8 +86,6 @@ impl fmt::Debug for BlockHeaderHash {
 /// A block header.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockHeader {
-    /// Protocol version according to which this block should be interpreted.
-    pub protocol_version: ProtocolVersion,
     /// Hash of the parent block.
     pub parent: BlockHeaderHash,
     /// Number of the block.
@@ -121,7 +103,6 @@ impl BlockHeader {
     /// Creates a genesis block.
     pub fn genesis(payload: PayloadHash) -> Self {
         Self {
-            protocol_version: CURRENT_VERSION,
             parent: BlockHeaderHash(sha256::Sha256::default()),
             number: BlockNumber(0),
             payload,
@@ -131,7 +112,6 @@ impl BlockHeader {
     /// Creates a child block for the given parent.
     pub fn new(parent: &BlockHeader, payload: PayloadHash) -> Self {
         Self {
-            protocol_version: CURRENT_VERSION,
             parent: parent.hash(),
             number: parent.number.next(),
             payload,

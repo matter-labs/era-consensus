@@ -69,6 +69,7 @@ impl TestValidators {
 
     fn certify_block(&self, proposal: &BlockHeader) -> CommitQC {
         let message_to_sign = validator::ReplicaCommit {
+            protocol_version: validator::CURRENT_VERSION,
             view: validator::ViewNumber(proposal.number.0),
             proposal: *proposal,
         };

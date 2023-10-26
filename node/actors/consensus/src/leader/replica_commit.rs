@@ -133,7 +133,10 @@ impl StateMachine {
             message: consensus
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::LeaderCommit(
-                    validator::LeaderCommit { justification },
+                    validator::LeaderCommit {
+                        protocol_version: validator::CURRENT_VERSION,
+                        justification,
+                    },
                 )),
             recipient: Target::Broadcast,
         };
