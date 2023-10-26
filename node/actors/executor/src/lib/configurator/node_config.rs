@@ -1,8 +1,9 @@
 //! Module that contains the definitions for the config files.
+
 use anyhow::Context as _;
-use crypto::{read_optional_text, read_required_text, Text, TextFmt};
+use crypto::{read_required_text, Text, TextFmt};
 use roles::{node, validator};
-use schema::{proto::executor::config as proto, read_optional, read_required, required, ProtoFmt};
+use schema::{proto::executor::config as proto, read_required, required, ProtoFmt};
 use std::{
     collections::{HashMap, HashSet},
     net,
@@ -105,15 +106,8 @@ pub struct NodeConfig {
     /// IP:port to listen on, for incoming TCP connections.
     /// Use `0.0.0.0:<port>` to listen on all network interfaces (i.e. on all IPs exposed by this VM).
     pub server_addr: net::SocketAddr,
-    /// IP:port to serve metrics data for scraping.
-    /// Use `0.0.0.0:<port>` to listen on all network interfaces.
-    pub metrics_server_addr: Option<net::SocketAddr>,
-
-    /// Consensus network config.
-    pub consensus: Option<ConsensusConfig>,
     /// Gossip network config.
     pub gossip: GossipConfig,
-
     /// Specifies the genesis block of the blockchain.
     pub genesis_block: validator::FinalBlock,
     /// Static specification of validators for Proof of Authority. Should be deprecated once we move
@@ -135,9 +129,6 @@ impl ProtoFmt for NodeConfig {
 
         Ok(Self {
             server_addr: read_required_text(&r.server_addr).context("server_addr")?,
-            metrics_server_addr: read_optional_text(&r.metrics_server_addr)
-                .context("metrics_server_addr")?,
-            consensus: read_optional(&r.consensus).context("consensus")?,
             gossip: read_required(&r.gossip).context("gossip")?,
             genesis_block: read_required_text(&r.genesis_block).context("genesis_block")?,
             validators,
@@ -147,8 +138,6 @@ impl ProtoFmt for NodeConfig {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             server_addr: Some(TextFmt::encode(&self.server_addr)),
-            metrics_server_addr: self.metrics_server_addr.as_ref().map(TextFmt::encode),
-            consensus: self.consensus.as_ref().map(ConsensusConfig::build),
             gossip: Some(self.gossip.build()),
             genesis_block: Some(TextFmt::encode(&self.genesis_block)),
             validators: self.validators.iter().map(|v| v.encode()).collect(),

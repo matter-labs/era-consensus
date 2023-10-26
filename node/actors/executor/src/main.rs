@@ -3,15 +3,11 @@
 
 use anyhow::Context as _;
 use concurrency::{ctx, scope, time};
-use consensus::Consensus;
-use executor::{configurator::Configs, io::Dispatcher};
+use executor::{Configs, Executor};
 use std::{fs, io::IsTerminal as _, path::Path, sync::Arc};
 use storage::{BlockStore, RocksdbStorage};
-use sync_blocks::SyncBlocks;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
-use utils::{no_copy::NoCopy, pipe};
-use vise_exporter::MetricsExporter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -73,78 +69,17 @@ async fn main() -> anyhow::Result<()> {
 
     let storage = RocksdbStorage::new(ctx, &configs.config.genesis_block, Path::new("./database"));
     let storage = Arc::new(storage.await.context("RocksdbStorage::new()")?);
+    let mut executor = Executor::new(configs.config, configs.node_key, storage.clone())
+        .context("Executor::new()")?;
+    if let Some(validator_key) = configs.validator_key {
+        let consensus_config = todo!();
+        executor
+            .set_validator(consensus_config, validator_key)
+            .context("Executor::set_validator()")?;
+    }
 
-    // Generate the communication pipes. We have one for each actor.
-    let (consensus_actor_pipe, consensus_dispatcher_pipe) = pipe::new();
-    let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
-    let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
-
-    // Create the IO dispatcher.
-    let mut dispatcher = Dispatcher::new(
-        consensus_dispatcher_pipe,
-        sync_blocks_dispatcher_pipe,
-        network_dispatcher_pipe,
-    );
-
-    // Create each of the actors.
-    let validator_set = &configs.config.validators;
-    let consensus = if let Some(validator_key) = &configs.validator_key {
-        Some(
-            Consensus::new(
-                ctx,
-                consensus_actor_pipe,
-                validator_key.clone(),
-                validator_set.clone(),
-                storage.clone(),
-            )
-            .await
-            .context("consensus")?,
-        )
-    } else {
-        None
-    };
-
-    let sync_blocks_config = sync_blocks::Config::new(
-        validator_set.clone(),
-        consensus::misc::consensus_threshold(validator_set.len()),
-    )?;
-    let sync_blocks = SyncBlocks::new(
-        ctx,
-        sync_blocks_actor_pipe,
-        storage.clone(),
-        sync_blocks_config,
-    )
-    .await
-    .context("sync_blocks")?;
-
-    tracing::debug!("Starting actors in separate threads.");
     scope::run!(ctx, |ctx, s| async {
-        if let Some(addr) = configs.config.metrics_server_addr {
-            let addr = NoCopy::from(addr);
-            s.spawn_bg(async {
-                let addr = addr;
-                MetricsExporter::default()
-                    .with_graceful_shutdown(ctx.canceled())
-                    .start(*addr)
-                    .await?;
-                Ok(())
-            });
-        }
-
-        s.spawn_blocking(|| dispatcher.run(ctx).context("IO Dispatcher stopped"));
-
-        s.spawn(async {
-            let state = network::State::new(configs.network_config(), None, None);
-            state.register_metrics();
-            network::run_network(ctx, state, network_actor_pipe)
-                .await
-                .context("Network stopped")
-        });
-
-        if let Some(consensus) = consensus {
-            s.spawn_blocking(|| consensus.run(ctx).context("Consensus stopped"));
-        }
-        s.spawn(async { sync_blocks.run(ctx).await.context("Syncing blocks stopped") });
+        s.spawn(executor.run(ctx));
 
         // if we are in CI mode, we wait for the node to finalize 100 blocks and then we stop it
         if ci_mode {
@@ -166,7 +101,6 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!("Cancel all tasks");
             s.cancel();
         }
-
         Ok(())
     })
     .await

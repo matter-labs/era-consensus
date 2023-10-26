@@ -74,10 +74,11 @@ message NodeConfig {
   // IP:port to serve metrics data for scraping.
   // Use `0.0.0.0:<port>` to listen on all network interfaces.
   // If not set, metrics data won't be served.
-  optional string metrics_server_addr = 2; // IpAddr
+  //optional string metrics_server_addr = 2; // IpAddr
+  // FIXME: restore
   
   // Consensus network config.
-  optional ConsensusConfig consensus = 3;
+  //optional ConsensusConfig consensus = 3;
   
   // Gossip network config.
   optional GossipConfig gossip = 4; // [required]

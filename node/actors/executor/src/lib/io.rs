@@ -18,7 +18,7 @@ use utils::pipe::DispatcherPipe;
 /// The IO dispatcher, it is the main struct to handle actor messages. It simply contains a sender and a receiver for
 /// a pair of channels for each actor. This of course allows us to send and receive messages to and from each actor.
 #[derive(Debug)]
-pub struct Dispatcher {
+pub(super) struct Dispatcher {
     consensus_input: channel::UnboundedSender<ConsensusInputMessage>,
     consensus_output: channel::UnboundedReceiver<ConsensusOutputMessage>,
     sync_blocks_input: channel::UnboundedSender<SyncBlocksInputMessage>,
@@ -28,7 +28,7 @@ pub struct Dispatcher {
 
 impl Dispatcher {
     /// Creates a new IO Dispatcher.
-    pub fn new(
+    pub(super) fn new(
         consensus_pipe: DispatcherPipe<ConsensusInputMessage, ConsensusOutputMessage>,
         sync_blocks_pipe: DispatcherPipe<SyncBlocksInputMessage, SyncBlocksOutputMessage>,
         network_pipe: DispatcherPipe<NetworkInputMessage, NetworkOutputMessage>,
@@ -44,7 +44,7 @@ impl Dispatcher {
 
     /// Method to start the IO dispatcher. It is simply a loop to receive messages from the actors and then forward them.
     #[instrument(level = "trace", ret)]
-    pub fn run(&mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub(super) fn run(&mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         scope::run_blocking!(ctx, |ctx, s| {
             // Start a task to handle the messages from the consensus actor.
             s.spawn(async {

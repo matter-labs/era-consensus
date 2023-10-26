@@ -60,26 +60,9 @@ impl ConfigPaths {
                     Text::new(&read_key).decode()
                 })
                 .transpose()?,
-            node_key: Text::new(&std::fs::read_to_string(&self.node_key).context(self.node_key)?)
+            node_key: Text::new(&fs::read_to_string(&self.node_key).context(self.node_key)?)
                 .decode()?,
         };
-        anyhow::ensure!(
-            cfg.config.gossip.key == cfg.node_key.public(),
-            "config.gossip.key = {:?} doesn't match the secret key {:?}",
-            cfg.config.gossip.key,
-            cfg.node_key
-        );
-        if let Some(consensus) = &cfg.config.consensus {
-            let secret = cfg
-                .validator_key
-                .as_ref()
-                .context("Secret key not present for validator node")?;
-            let public = &consensus.key;
-            anyhow::ensure!(
-                *public == secret.public(),
-                "config.consensus.key = {public:?} doesn't match the secret key {secret:?}"
-            );
-        }
         Ok(cfg)
     }
 }

@@ -1,15 +1,16 @@
 //! Module to create the configuration for the consensus node.
-use concurrency::net;
+
 use roles::{node, validator};
 use tracing::instrument;
 
 mod config_paths;
-pub mod node_config;
+pub(super) mod node_config; // FIXME: flatten
 
 #[cfg(test)]
 mod tests;
 
 /// Main struct that holds the config options for the node.
+// FIXME: remove from library
 #[derive(Debug)]
 pub struct Configs {
     /// This config file describes the environment for the node.
@@ -26,35 +27,5 @@ impl Configs {
     #[instrument(level = "trace", ret)]
     pub fn read(args: &[String]) -> anyhow::Result<Self> {
         config_paths::ConfigPaths::resolve(args).read()
-    }
-
-    fn gossip_config(&self) -> network::gossip::Config {
-        let gossip = &self.config.gossip;
-        network::gossip::Config {
-            key: self.node_key.clone(),
-            dynamic_inbound_limit: gossip.dynamic_inbound_limit,
-            static_inbound: gossip.static_inbound.clone(),
-            static_outbound: gossip.static_outbound.clone(),
-            enable_pings: true,
-        }
-    }
-
-    fn consensus_config(&self) -> Option<network::consensus::Config> {
-        let consensus = self.config.consensus.as_ref()?;
-        Some(network::consensus::Config {
-            // Consistency of the validator key has been verified in constructor.
-            key: self.validator_key.clone().unwrap(),
-            public_addr: consensus.public_addr,
-        })
-    }
-
-    /// Extracts a network crate config.
-    pub fn network_config(&self) -> network::Config {
-        network::Config {
-            server_addr: net::tcp::ListenerAddr::new(self.config.server_addr),
-            validators: self.config.validators.clone(),
-            gossip: self.gossip_config(),
-            consensus: self.consensus_config(),
-        }
     }
 }

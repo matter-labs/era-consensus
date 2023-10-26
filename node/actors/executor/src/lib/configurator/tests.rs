@@ -39,8 +39,6 @@ impl Distribution<NodeConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> NodeConfig {
         NodeConfig {
             server_addr: make_addr(rng),
-            metrics_server_addr: Some(make_addr(rng)),
-            consensus: rng.gen(),
             gossip: rng.gen(),
             genesis_block: rng.gen(),
             validators: rng.gen(),
