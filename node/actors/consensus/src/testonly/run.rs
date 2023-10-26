@@ -7,7 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use storage::RocksdbStorage;
+use storage::{FallbackReplicaStateStore, RocksdbStorage};
 use tracing::Instrument as _;
 use utils::pipe;
 
@@ -106,7 +106,7 @@ async fn run_nodes(
                         RocksdbStorage::new(ctx, &genesis_block, &dir.path().join("storage"))
                             .await
                             .context("RocksdbStorage")?;
-                    let storage = Arc::new(storage);
+                    let storage = FallbackReplicaStateStore::from_store(Arc::new(storage));
 
                     let consensus = Consensus::new(
                         ctx,

@@ -6,7 +6,7 @@ use concurrency::{ctx, net, scope};
 use consensus::Consensus;
 use roles::{node, validator};
 use std::sync::Arc;
-use storage::Store;
+use storage::{FallbackReplicaStateStore, ReplicaStateStore, WriteBlockStore};
 use sync_blocks::SyncBlocks;
 use utils::pipe;
 
@@ -23,6 +23,8 @@ struct ValidatorExecutor {
     config: ConsensusConfig,
     /// Validator key.
     key: validator::SecretKey,
+    /// Store for replica state.
+    replica_state_store: Arc<dyn ReplicaStateStore>,
 }
 
 impl ValidatorExecutor {
@@ -49,7 +51,7 @@ pub struct Executor<S> {
     validator: Option<ValidatorExecutor>,
 }
 
-impl<S: Store> Executor<S> {
+impl<S: WriteBlockStore + 'static> Executor<S> {
     /// Creates a new executor with the specified parameters.
     pub fn new(
         node_config: ExecutorConfig,
@@ -76,6 +78,7 @@ impl<S: Store> Executor<S> {
         &mut self,
         config: ConsensusConfig,
         key: validator::SecretKey,
+        replica_state_store: Arc<dyn ReplicaStateStore>,
     ) -> anyhow::Result<()> {
         let public = &config.key;
         anyhow::ensure!(
@@ -90,7 +93,11 @@ impl<S: Store> Executor<S> {
             "Key {public:?} is not a validator per validator set {:?}",
             self.executor_config.validators
         );
-        self.validator = Some(ValidatorExecutor { config, key });
+        self.validator = Some(ValidatorExecutor {
+            config,
+            key,
+            replica_state_store,
+        });
         Ok(())
     }
 
@@ -120,12 +127,13 @@ impl<S: Store> Executor<S> {
     }
 
     /// Runs this executor to completion. This should be spawned on a separate task.
-    pub async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        let network_config = self.network_config();
+
         // Generate the communication pipes. We have one for each actor.
         let (consensus_actor_pipe, consensus_dispatcher_pipe) = pipe::new();
         let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
         let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
-
         // Create the IO dispatcher.
         let mut dispatcher = Dispatcher::new(
             consensus_dispatcher_pipe,
@@ -135,13 +143,15 @@ impl<S: Store> Executor<S> {
 
         // Create each of the actors.
         let validator_set = &self.executor_config.validators;
-        let consensus = if let Some(validator) = &self.validator {
+        let consensus = if let Some(validator) = self.validator {
+            let consensus_storage =
+                FallbackReplicaStateStore::new(validator.replica_state_store, self.storage.clone());
             let consensus = Consensus::new(
                 ctx,
                 consensus_actor_pipe,
                 validator.key.clone(),
                 validator_set.clone(),
-                self.storage.as_replica_state_store(),
+                consensus_storage,
             )
             .await
             .context("consensus")?;
@@ -157,7 +167,7 @@ impl<S: Store> Executor<S> {
         let sync_blocks = SyncBlocks::new(
             ctx,
             sync_blocks_actor_pipe,
-            self.storage.as_block_store(),
+            self.storage,
             sync_blocks_config,
         )
         .await
@@ -167,7 +177,7 @@ impl<S: Store> Executor<S> {
         scope::run!(ctx, |ctx, s| async {
             s.spawn_blocking(|| dispatcher.run(ctx).context("IO Dispatcher stopped"));
             s.spawn(async {
-                let state = network::State::new(self.network_config(), None, None);
+                let state = network::State::new(network_config, None, None);
                 state.register_metrics();
                 network::run_network(ctx, state, network_actor_pipe)
                     .await

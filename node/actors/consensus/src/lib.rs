@@ -20,8 +20,7 @@ use anyhow::Context as _;
 use concurrency::ctx;
 use inner::ConsensusInner;
 use roles::validator;
-use std::sync::Arc;
-use storage::ReplicaStateStore;
+use storage::FallbackReplicaStateStore;
 use tracing::{info, instrument};
 use utils::pipe::ActorPipe;
 
@@ -54,7 +53,7 @@ impl Consensus {
         pipe: ActorPipe<InputMessage, OutputMessage>,
         secret_key: validator::SecretKey,
         validator_set: validator::ValidatorSet,
-        storage: Arc<dyn ReplicaStateStore>,
+        storage: FallbackReplicaStateStore,
     ) -> anyhow::Result<Self> {
         Ok(Consensus {
             inner: ConsensusInner {

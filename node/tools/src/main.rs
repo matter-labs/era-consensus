@@ -80,7 +80,7 @@ async fn main() -> anyhow::Result<()> {
         .context("Executor::new()")?;
     if let Some((consensus_config, validator_key)) = configs.consensus {
         executor
-            .set_validator(consensus_config, validator_key)
+            .set_validator(consensus_config, validator_key, storage.clone())
             .context("Executor::set_validator()")?;
     }
 
