@@ -1,4 +1,4 @@
-//! Module that contains the definitions for the config files.
+//! Module to create the configuration for the consensus node.
 
 use anyhow::Context as _;
 use crypto::{read_required_text, Text, TextFmt};
@@ -8,6 +8,9 @@ use std::{
     collections::{HashMap, HashSet},
     net,
 };
+
+#[cfg(test)]
+mod tests;
 
 /// Consensus network config. See `network::ConsensusConfig`.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -100,9 +103,9 @@ impl ProtoFmt for GossipConfig {
     }
 }
 
-/// Config of the node.
+/// Config of the node executor.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct NodeConfig {
+pub struct ExecutorConfig {
     /// IP:port to listen on, for incoming TCP connections.
     /// Use `0.0.0.0:<port>` to listen on all network interfaces (i.e. on all IPs exposed by this VM).
     pub server_addr: net::SocketAddr,
@@ -115,8 +118,8 @@ pub struct NodeConfig {
     pub validators: validator::ValidatorSet,
 }
 
-impl ProtoFmt for NodeConfig {
-    type Proto = proto::NodeConfig;
+impl ProtoFmt for ExecutorConfig {
+    type Proto = proto::ExecutorConfig;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let validators = r.validators.iter().enumerate().map(|(i, v)| {

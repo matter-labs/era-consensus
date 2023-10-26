@@ -3,11 +3,14 @@
 
 use anyhow::Context as _;
 use concurrency::{ctx, scope, time};
-use executor::{Configs, Executor};
+use executor::Executor;
 use std::{fs, io::IsTerminal as _, path::Path, sync::Arc};
 use storage::{BlockStore, RocksdbStorage};
+use tools::Configs;
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
+use utils::no_copy::NoCopy;
+use vise_exporter::MetricsExporter;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -67,18 +70,33 @@ async fn main() -> anyhow::Result<()> {
     // Initialize the storage.
     tracing::debug!("Initializing storage.");
 
-    let storage = RocksdbStorage::new(ctx, &configs.config.genesis_block, Path::new("./database"));
+    let storage = RocksdbStorage::new(
+        ctx,
+        &configs.executor.genesis_block,
+        Path::new("./database"),
+    );
     let storage = Arc::new(storage.await.context("RocksdbStorage::new()")?);
-    let mut executor = Executor::new(configs.config, configs.node_key, storage.clone())
+    let mut executor = Executor::new(configs.executor, configs.node_key, storage.clone())
         .context("Executor::new()")?;
-    if let Some(validator_key) = configs.validator_key {
-        let consensus_config = todo!();
+    if let Some((consensus_config, validator_key)) = configs.consensus {
         executor
             .set_validator(consensus_config, validator_key)
             .context("Executor::set_validator()")?;
     }
 
     scope::run!(ctx, |ctx, s| async {
+        if let Some(addr) = configs.metrics_server_addr {
+            let addr = NoCopy::from(addr);
+            s.spawn_bg(async {
+                let addr = addr;
+                MetricsExporter::default()
+                    .with_graceful_shutdown(ctx.canceled())
+                    .start(*addr)
+                    .await?;
+                Ok(())
+            });
+        }
+
         s.spawn(executor.run(ctx));
 
         // if we are in CI mode, we wait for the node to finalize 100 blocks and then we stop it

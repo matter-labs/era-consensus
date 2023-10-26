@@ -605,22 +605,15 @@ dependencies = [
  "concurrency",
  "consensus",
  "crypto",
- "hex",
  "network",
- "once_cell",
  "rand",
  "roles",
  "schema",
- "serde",
- "serde_json",
  "storage",
  "sync_blocks",
- "tokio",
  "tracing",
- "tracing-subscriber",
  "utils",
  "vise",
- "vise-exporter",
 ]
 
 [[package]]
@@ -2062,14 +2055,19 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "concurrency",
  "consensus",
  "crypto",
  "executor",
- "hex",
  "rand",
  "roles",
  "schema",
- "serde_json",
+ "storage",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "utils",
+ "vise-exporter",
 ]
 
 [[package]]

@@ -3,10 +3,11 @@ use anyhow::Context as _;
 use clap::Parser;
 use consensus::testonly;
 use crypto::TextFmt;
-use executor::{GossipConfig, NodeConfig};
+use executor::{ConsensusConfig, ExecutorConfig, GossipConfig};
 use rand::Rng;
 use roles::{node, validator};
 use std::{fs, net::SocketAddr, path::PathBuf};
+use tools::NodeConfig;
 
 /// Replaces IP of the address with UNSPECIFIED (aka INADDR_ANY) of the corresponding IP type.
 /// Opening a listener socket with an UNSPECIFIED IP, means that the new connections
@@ -47,6 +48,9 @@ fn main() -> anyhow::Result<()> {
         );
     }
     assert!(!addrs.is_empty(), "at least 1 address has to be specified");
+    let metrics_server_addr = args
+        .metrics_server_port
+        .map(|port| SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), port));
 
     // Generate the keys for all the replicas.
     let rng = &mut rand::thread_rng();
@@ -85,13 +89,20 @@ fn main() -> anyhow::Result<()> {
     }
 
     for (i, gossip) in gossip_cfgs.into_iter().enumerate() {
-        let node_cfg = NodeConfig {
+        let executor_cfg = ExecutorConfig {
             gossip,
             server_addr: with_unspecified_ip(addrs[i]),
             genesis_block: genesis.clone(),
             validators: validator_set.clone(),
         };
-        // FIXME: consensus config
+        let node_cfg = NodeConfig {
+            executor: executor_cfg,
+            metrics_server_addr,
+            consensus: Some(ConsensusConfig {
+                key: validator_keys[i].public(),
+                public_addr: addrs[i],
+            }),
+        };
 
         // Recreate the directory for the node's config.
         let root = args.output_dir.join(addrs[i].to_string());

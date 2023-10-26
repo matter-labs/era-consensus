@@ -10,14 +10,11 @@ use storage::Store;
 use sync_blocks::SyncBlocks;
 use utils::pipe;
 
-mod configurator;
+mod config;
 mod io;
 mod metrics;
 
-pub use self::configurator::{
-    node_config::{ConsensusConfig, GossipConfig, NodeConfig},
-    Configs,
-};
+pub use self::config::{ConsensusConfig, ExecutorConfig, GossipConfig};
 
 /// Validator-related part of [`Executor`].
 #[derive(Debug)]
@@ -42,8 +39,8 @@ impl ValidatorExecutor {
 /// Executor allowing to spin up all actors necessary for a consensus node.
 #[derive(Debug)]
 pub struct Executor<S> {
-    /// General-purpose node configuration.
-    node_config: NodeConfig,
+    /// General-purpose executor configuration.
+    executor_config: ExecutorConfig,
     /// Secret key of the node.
     node_key: node::SecretKey,
     /// Block and replica state storage used by the node.
@@ -55,7 +52,7 @@ pub struct Executor<S> {
 impl<S: Store> Executor<S> {
     /// Creates a new executor with the specified parameters.
     pub fn new(
-        node_config: NodeConfig,
+        node_config: ExecutorConfig,
         node_key: node::SecretKey,
         storage: Arc<S>,
     ) -> anyhow::Result<Self> {
@@ -67,7 +64,7 @@ impl<S: Store> Executor<S> {
         );
 
         Ok(Self {
-            node_config,
+            executor_config: node_config,
             node_key,
             storage,
             validator: None,
@@ -86,12 +83,12 @@ impl<S: Store> Executor<S> {
             "config.consensus.key = {public:?} doesn't match the secret key {key:?}"
         );
         anyhow::ensure!(
-            self.node_config
+            self.executor_config
                 .validators
                 .iter()
                 .any(|validator_key| validator_key == public),
             "Key {public:?} is not a validator per validator set {:?}",
-            self.node_config.validators
+            self.executor_config.validators
         );
         self.validator = Some(ValidatorExecutor { config, key });
         Ok(())
@@ -99,7 +96,7 @@ impl<S: Store> Executor<S> {
 
     /// Returns gossip network configuration.
     fn gossip_config(&self) -> network::gossip::Config {
-        let gossip = &self.node_config.gossip;
+        let gossip = &self.executor_config.gossip;
         network::gossip::Config {
             key: self.node_key.clone(),
             dynamic_inbound_limit: gossip.dynamic_inbound_limit,
@@ -112,8 +109,8 @@ impl<S: Store> Executor<S> {
     /// Extracts a network crate config.
     fn network_config(&self) -> network::Config {
         network::Config {
-            server_addr: net::tcp::ListenerAddr::new(self.node_config.server_addr),
-            validators: self.node_config.validators.clone(),
+            server_addr: net::tcp::ListenerAddr::new(self.executor_config.server_addr),
+            validators: self.executor_config.validators.clone(),
             gossip: self.gossip_config(),
             consensus: self
                 .validator
@@ -137,7 +134,7 @@ impl<S: Store> Executor<S> {
         );
 
         // Create each of the actors.
-        let validator_set = &self.node_config.validators;
+        let validator_set = &self.executor_config.validators;
         let consensus = if let Some(validator) = &self.validator {
             let consensus = Consensus::new(
                 ctx,

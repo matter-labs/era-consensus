@@ -1,6 +1,7 @@
-use crate::configurator::Configs;
+use super::{Configs, NodeConfig};
 use anyhow::Context as _;
 use crypto::Text;
+use roles::validator;
 use std::fs;
 use tracing::instrument;
 
@@ -49,19 +50,30 @@ impl ConfigPaths {
     /// This function parses the config files from the paths given as command line arguments.
     #[instrument(level = "trace", ret)]
     pub(crate) fn read(self) -> anyhow::Result<Configs> {
+        let node_config: NodeConfig =
+            schema::decode_json(&fs::read_to_string(&self.config).context(self.config)?)?;
+        let validator_key: Option<validator::SecretKey> = self
+            .validator_key
+            .as_ref()
+            .map(|validator_key| {
+                let read_key = fs::read_to_string(validator_key).context(validator_key.clone())?;
+                Text::new(&read_key).decode()
+            })
+            .transpose()?;
+        let node_key =
+            Text::new(&fs::read_to_string(&self.node_key).context(self.node_key)?).decode()?;
+
+        anyhow::ensure!(
+            validator_key.is_some() == node_config.consensus.is_some(),
+            "Validator key and consensus config must be specified at the same time"
+        );
+        let consensus = validator_key.and_then(|key| Some((node_config.consensus?, key)));
+
         let cfg = Configs {
-            config: schema::decode_json(&fs::read_to_string(&self.config).context(self.config)?)?,
-            validator_key: self
-                .validator_key
-                .as_ref()
-                .map(|validator_key| {
-                    let read_key =
-                        fs::read_to_string(validator_key).context(validator_key.clone())?;
-                    Text::new(&read_key).decode()
-                })
-                .transpose()?,
-            node_key: Text::new(&fs::read_to_string(&self.node_key).context(self.node_key)?)
-                .decode()?,
+            executor: node_config.executor,
+            metrics_server_addr: node_config.metrics_server_addr,
+            consensus,
+            node_key,
         };
         Ok(cfg)
     }

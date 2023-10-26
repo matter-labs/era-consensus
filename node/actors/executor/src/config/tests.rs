@@ -1,4 +1,4 @@
-use super::node_config::{ConsensusConfig, GossipConfig, NodeConfig};
+use super::{ConsensusConfig, ExecutorConfig, GossipConfig};
 use concurrency::ctx;
 use rand::{
     distributions::{Distribution, Standard},
@@ -35,9 +35,9 @@ impl Distribution<GossipConfig> for Standard {
     }
 }
 
-impl Distribution<NodeConfig> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> NodeConfig {
-        NodeConfig {
+impl Distribution<ExecutorConfig> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ExecutorConfig {
+        ExecutorConfig {
             server_addr: make_addr(rng),
             gossip: rng.gen(),
             genesis_block: rng.gen(),
@@ -52,5 +52,5 @@ fn test_schema_encoding() {
     let rng = &mut ctx.rng();
     test_encode_random::<_, ConsensusConfig>(rng);
     test_encode_random::<_, GossipConfig>(rng);
-    test_encode_random::<_, NodeConfig>(rng);
+    test_encode_random::<_, ExecutorConfig>(rng);
 }
