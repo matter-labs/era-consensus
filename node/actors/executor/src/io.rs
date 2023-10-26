@@ -23,6 +23,7 @@ pub(super) struct Dispatcher {
     consensus_input: channel::UnboundedSender<ConsensusInputMessage>,
     consensus_output: channel::UnboundedReceiver<ConsensusOutputMessage>,
     sync_blocks_input: channel::UnboundedSender<SyncBlocksInputMessage>,
+    sync_blocks_output: channel::UnboundedReceiver<SyncBlocksOutputMessage>,
     network_input: channel::UnboundedSender<NetworkInputMessage>,
     network_output: channel::UnboundedReceiver<NetworkOutputMessage>,
     blocks_sender: channel::UnboundedSender<FinalBlock>,
@@ -40,6 +41,7 @@ impl Dispatcher {
             consensus_input: consensus_pipe.send,
             consensus_output: consensus_pipe.recv,
             sync_blocks_input: sync_blocks_pipe.send,
+            sync_blocks_output: sync_blocks_pipe.recv,
             network_input: network_pipe.send,
             network_output: network_pipe.recv,
             blocks_sender,
@@ -55,7 +57,7 @@ impl Dispatcher {
                 while let Ok(msg) = self.consensus_output.recv(ctx).await {
                     match msg {
                         ConsensusOutputMessage::Network(message) => {
-                            self.network_input.send(message.into())
+                            self.network_input.send(message.into());
                         }
                         ConsensusOutputMessage::FinalizedBlock(block) => {
                             let number_metric = &metrics::METRICS.finalized_block_number;
@@ -65,6 +67,17 @@ impl Dispatcher {
                             // is modified, and there should be a single running `Dispatcher`.
 
                             self.blocks_sender.send(block);
+                        }
+                    }
+                }
+                Ok(())
+            });
+
+            s.spawn(async {
+                while let Ok(msg) = self.sync_blocks_output.recv(ctx).await {
+                    match msg {
+                        SyncBlocksOutputMessage::Network(message) => {
+                            self.network_input.send(message.into());
                         }
                     }
                 }

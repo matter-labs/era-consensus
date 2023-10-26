@@ -185,11 +185,13 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
         .await
         .context("sync_blocks")?;
 
+        let sync_blocks_subscriber = sync_blocks.subscribe_to_state_updates();
+
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
             s.spawn_blocking(|| dispatcher.run(ctx).context("IO Dispatcher stopped"));
             s.spawn(async {
-                let state = network::State::new(network_config, None, None);
+                let state = network::State::new(network_config, None, Some(sync_blocks_subscriber));
                 state.register_metrics();
                 network::run_network(ctx, state, network_actor_pipe)
                     .await
