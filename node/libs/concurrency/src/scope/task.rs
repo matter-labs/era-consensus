@@ -60,6 +60,24 @@ pub(super) enum Task<E: 'static> {
     Background(Arc<scope::TerminateGuard<E>>),
 }
 
+/// Forgets the stored value when dropped.
+/// We use it in the run/run_blocking calls to prevent
+/// reporting a task as completed if a panic occured.
+struct UnwindGuard<T>(Option<T>);
+
+impl<T> Drop for UnwindGuard<T> {
+    fn drop(&mut self) {
+        if let Some(v) = self.0.take() {
+            std::mem::forget(v)
+        }
+    }
+}
+
+impl<T> UnwindGuard<T> {
+    pub fn new(v: T) -> Self { Self(Some(v)) }
+    pub fn defuse(mut self) -> T { self.0.take().unwrap() }
+}
+
 impl<E: 'static + Send> Task<E> {
     /// Getter of the guard owned by the task.
     fn guard(&self) -> &scope::TerminateGuard<E> {
@@ -80,10 +98,13 @@ impl<E: 'static + Send> Task<E> {
         self,
         f: impl Future<Output = Result<T, E>>,
     ) -> Result<T, Terminated> {
-        match f.await {
+        let guard = UnwindGuard::new(self);
+        let res = f.await;
+        let this = guard.defuse();
+        match res {
             Ok(v) => Ok(v),
             Err(err) => {
-                self.guard().set_err(err);
+                this.guard().set_err(err);
                 Err(Terminated)
             }
         }
@@ -92,10 +113,13 @@ impl<E: 'static + Send> Task<E> {
     /// Runs an sync blocking task in the scope. MUST be executed on a dedicated thread.
     /// See `Task::run` for behavior. See module docs for desciption of blocking tasks.
     pub(super) fn run_blocking<T>(self, f: impl FnOnce() -> Result<T, E>) -> Result<T, Terminated> {
-        match f() {
+        let guard = UnwindGuard::new(self);
+        let res = f();
+        let this = guard.defuse();
+        match res {
             Ok(v) => Ok(v),
             Err(err) => {
-                self.guard().set_err(err);
+                this.guard().set_err(err);
                 Err(Terminated)
             }
         }
