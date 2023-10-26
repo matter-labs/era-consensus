@@ -16,7 +16,7 @@ pub(crate) enum Error {
         current_phase: validator::Phase,
     },
     #[error("we are not a leader for this message's view")]
-    WhenNotLeaderInView,
+    NotLeaderInView,
     #[error("duplicate message from a replica (existing message: {existing_message:?}")]
     DuplicateMessage {
         existing_message: validator::ReplicaCommit,
@@ -54,7 +54,7 @@ impl StateMachine {
 
         // If the message is for a view when we are not a leader, we discard it.
         if consensus.view_leader(message.view) != consensus.secret_key.public() {
-            return Err(Error::WhenNotLeaderInView);
+            return Err(Error::NotLeaderInView);
         }
 
         // If we already have a message from the same validator and for the same view, we discard it.

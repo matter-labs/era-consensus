@@ -8,8 +8,11 @@ use tracing::instrument;
 #[derive(thiserror::Error, Debug)]
 #[allow(clippy::missing_docs_in_private_items)]
 pub(crate) enum Error {
-    #[error("bad protocol version")]
-    BadProtocolVersion,
+    #[error("bad protocol version (expected: {expected:?}, received: {received:?})")]
+    BadProtocolVersion {
+        expected: validator::ProtocolVersion,
+        received: validator::ProtocolVersion,
+    },
     #[error("invalid leader (correct leader: {correct_leader:?}, received leader: {received_leader:?})]")]
     InvalidLeader {
         correct_leader: validator::PublicKey,
@@ -47,7 +50,10 @@ impl StateMachine {
 
         // Check protocol version.
         if message.justification.message.proposal.protocol_version != validator::CURRENT_VERSION {
-            return Err(Error::BadProtocolVersion);
+            return Err(Error::BadProtocolVersion {
+                expected: validator::CURRENT_VERSION,
+                received: message.justification.message.proposal.protocol_version,
+            });
         }
 
         // Check that it comes from the correct leader.
