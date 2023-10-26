@@ -115,7 +115,7 @@ impl StateMachine {
                             return Err(err).context("process_leader_prepare()")
                         }
                         Err(err) => {
-                            tracing::warn!("{err:#}");
+                            tracing::warn!("process_leader_prepare(): {err:#}");
                             Err(())
                         }
                         Ok(()) => Ok(()),
@@ -129,7 +129,7 @@ impl StateMachine {
                             return Err(err).context("process_leader_commit()")
                         }
                         Err(err) => {
-                            tracing::warn!("{err:#}");
+                            tracing::warn!("process_leader_commit(): {err:#}");
                             Err(())
                         }
                         Ok(()) => Ok(()),

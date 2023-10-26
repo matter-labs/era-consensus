@@ -86,7 +86,7 @@ impl ProtoFmt for bit_vec::BitVec {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let size = *required(&r.size).context("size")? as usize;
-        let mut this = Self::from_bytes(required(&r.vector).context("vector")?);
+        let mut this = Self::from_bytes(required(&r.bytes).context("bytes_")?);
         if this.len() < size {
             anyhow::bail!("'vector' has less than 'size' bits");
         }
@@ -97,7 +97,7 @@ impl ProtoFmt for bit_vec::BitVec {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             size: Some(self.len() as u64),
-            vector: Some(self.to_bytes()),
+            bytes: Some(self.to_bytes()),
         }
     }
 }

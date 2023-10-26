@@ -102,7 +102,7 @@ impl fmt::Debug for BlockHeaderHash {
 /// A block header.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockHeader {
-    ///
+    /// Protocol version according to which this block should be interpreted.
     pub protocol_version: ProtocolVersion,
     /// Hash of the parent block.
     pub parent: BlockHeaderHash,

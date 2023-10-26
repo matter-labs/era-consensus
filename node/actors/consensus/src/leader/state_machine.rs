@@ -61,24 +61,19 @@ impl StateMachine {
         let now = ctx.now();
         let label = match &input.msg {
             validator::ConsensusMsg::ReplicaPrepare(_) => {
-                let res = match self.process_replica_prepare(ctx, consensus, input.cast().unwrap())
-                {
-                    Err(err) => {
-                        tracing::warn!("{err:#}");
-                        Err(())
-                    }
-                    Ok(()) => Ok(()),
-                };
+                let res = self
+                    .process_replica_prepare(ctx, consensus, input.cast().unwrap())
+                    .map_err(|err| {
+                        tracing::warn!("process_replica_prepare: {err:#}");
+                    });
                 metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
             }
             validator::ConsensusMsg::ReplicaCommit(_) => {
-                let res = match self.process_replica_commit(ctx, consensus, input.cast().unwrap()) {
-                    Err(err) => {
-                        tracing::warn!("{err:#}");
-                        Err(())
-                    }
-                    Ok(()) => Ok(()),
-                };
+                let res = self
+                    .process_replica_commit(ctx, consensus, input.cast().unwrap())
+                    .map_err(|err| {
+                        tracing::warn!("process_replica_commit: {err:#}");
+                    });
                 metrics::ConsensusMsgLabel::ReplicaCommit.with_result(&res)
             }
             _ => unreachable!(),

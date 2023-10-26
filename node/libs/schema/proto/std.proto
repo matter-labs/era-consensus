@@ -38,13 +38,13 @@ message SocketAddr {
 // Note: this is not a highly optimized data structure:
 // - since it is a proto message it requires its length to be stored.
 // - it has 2 fields, which require storing their own tag
-// - the `vector` field requires storing its length, which theoretically
+// - the `bytes_` field requires storing its length, which theoretically
 //   could be derived from `size` field value.
-// If we eventually start caring about the size, we could encode BitVector as
-// a field of type `bytes` with delimiter of the form "01...1".
+// If we eventually start caring about the size, we could encode BitVector
+// directly as a field of type `bytes` with delimiter of the form "01...1".
 message BitVector {
   // Number of bits in the vector.
   optional uint64 size = 1;
   // Vector of bits encoded as bytes in big endian order.
-  optional bytes vector = 2;
+  optional bytes bytes_ = 2;
 }

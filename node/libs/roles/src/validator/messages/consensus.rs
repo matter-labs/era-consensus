@@ -343,17 +343,6 @@ impl Signers {
     }
 }
 
-/*
-impl ByteFmt for Signers {
-    fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        Ok(Signers(BitVec::from_bytes(bytes)))
-    }
-
-    fn encode(&self) -> Vec<u8> {
-        self.0.to_bytes()
-    }
-}*/
-
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.
 #[derive(Clone, Debug, PartialEq, Eq)]
