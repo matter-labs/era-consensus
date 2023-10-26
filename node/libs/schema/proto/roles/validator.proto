@@ -48,7 +48,7 @@ message ReplicaPrepare {
 
 message ReplicaCommit {
   optional uint64 view = 1; // required
-  optional BlockHeader proposal = 4; // required
+  optional BlockHeader proposal = 2; // required
 }
 
 message LeaderPrepare {
