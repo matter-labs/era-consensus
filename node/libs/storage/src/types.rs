@@ -56,9 +56,8 @@ impl DatabaseKey {
 /// A payload of a proposed block which is not known to be finalized yet.
 /// Replicas have to persist such proposed payloads for liveness:
 /// consensus may finalize a block without knowing a payload in case of reproposals.
-/// TODO(gprusak): we do not store the BlockHeader, because it is always
-///   available in the LeaderPrepare message. However for better
-///   visibility we might want to store it anyway.
+/// Currently we do not store the BlockHeader, because it is always
+///   available in the LeaderPrepare message.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Proposal {
     /// Number of a block for which this payload has been proposed.
