@@ -21,7 +21,7 @@ pub(crate) struct StateMachine {
     /// Time when the current phase has started.
     pub(crate) phase_start: time::Instant,
     /// A cache of our latest block proposal. We use it to determine if we accept a replica commit message.
-    pub(crate) block_proposal_cache: Option<validator::ReplicaCommit>,
+    pub(crate) block_proposal_cache: Option<validator::BlockHeader>,
     /// A cache of replica prepare messages indexed by view number and validator.
     pub(crate) prepare_message_cache: BTreeMap<
         validator::ViewNumber,
@@ -59,18 +59,25 @@ impl StateMachine {
         input: validator::Signed<validator::ConsensusMsg>,
     ) {
         let now = ctx.now();
-        let (label, result) = match &input.msg {
-            validator::ConsensusMsg::ReplicaPrepare(_) => (
-                metrics::ConsensusMsgLabel::ReplicaPrepare,
-                self.process_replica_prepare(ctx, consensus, input.cast().unwrap()),
-            ),
-            validator::ConsensusMsg::ReplicaCommit(_) => (
-                metrics::ConsensusMsgLabel::ReplicaCommit,
-                self.process_replica_commit(ctx, consensus, input.cast().unwrap()),
-            ),
+        let label = match &input.msg {
+            validator::ConsensusMsg::ReplicaPrepare(_) => {
+                let res = self
+                    .process_replica_prepare(ctx, consensus, input.cast().unwrap())
+                    .map_err(|err| {
+                        tracing::warn!("process_replica_prepare: {err:#}");
+                    });
+                metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
+            }
+            validator::ConsensusMsg::ReplicaCommit(_) => {
+                let res = self
+                    .process_replica_commit(ctx, consensus, input.cast().unwrap())
+                    .map_err(|err| {
+                        tracing::warn!("process_replica_commit: {err:#}");
+                    });
+                metrics::ConsensusMsgLabel::ReplicaCommit.with_result(&res)
+            }
             _ => unreachable!(),
         };
-        metrics::METRICS.leader_processing_latency[&label.with_result(&result)]
-            .observe_latency(ctx.now() - now);
+        metrics::METRICS.leader_processing_latency[&label].observe_latency(ctx.now() - now);
     }
 }

@@ -11,5 +11,5 @@ mod types;
 pub use crate::{
     rocksdb::RocksdbStorage,
     traits::{BlockStore, ReplicaStateStore, WriteBlockStore},
-    types::{ReplicaState, StorageError, StorageResult},
+    types::{Proposal, ReplicaState, StorageError, StorageResult},
 };

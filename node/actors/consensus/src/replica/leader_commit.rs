@@ -1,8 +1,30 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner, replica::error::Error};
+use crate::inner::ConsensusInner;
+use anyhow::Context as _;
 use concurrency::ctx;
 use roles::validator;
 use tracing::instrument;
+
+#[derive(thiserror::Error, Debug)]
+#[allow(clippy::missing_docs_in_private_items)]
+pub(crate) enum Error {
+    #[error("invalid leader (correct leader: {correct_leader:?}, received leader: {received_leader:?})]")]
+    InvalidLeader {
+        correct_leader: validator::PublicKey,
+        received_leader: validator::PublicKey,
+    },
+    #[error("past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
+    Old {
+        current_view: validator::ViewNumber,
+        current_phase: validator::Phase,
+    },
+    #[error("invalid signature: {0:#}")]
+    InvalidSignature(#[source] crypto::bls12_381::Error),
+    #[error("invalid justification: {0:#}")]
+    InvalidJustification(#[source] anyhow::Error),
+    #[error("internal error: {0:#}")]
+    Internal(#[from] anyhow::Error),
+}
 
 impl StateMachine {
     /// Processes a leader commit message. We can approve this leader message even if we
@@ -23,7 +45,7 @@ impl StateMachine {
 
         // Check that it comes from the correct leader.
         if author != &consensus.view_leader(view) {
-            return Err(Error::LeaderCommitInvalidLeader {
+            return Err(Error::InvalidLeader {
                 correct_leader: consensus.view_leader(view),
                 received_leader: author.clone(),
             });
@@ -31,7 +53,7 @@ impl StateMachine {
 
         // If the message is from the "past", we discard it.
         if (view, validator::Phase::Commit) < (self.view, self.phase) {
-            return Err(Error::LeaderCommitOld {
+            return Err(Error::Old {
                 current_view: self.view,
                 current_phase: self.phase,
             });
@@ -40,9 +62,7 @@ impl StateMachine {
         // ----------- Checking the signed part of the message --------------
 
         // Check the signature on the message.
-        signed_message
-            .verify()
-            .map_err(Error::LeaderCommitInvalidSignature)?;
+        signed_message.verify().map_err(Error::InvalidSignature)?;
 
         // ----------- Checking the justification of the message --------------
 
@@ -50,7 +70,7 @@ impl StateMachine {
         message
             .justification
             .verify(&consensus.validator_set, consensus.threshold())
-            .map_err(Error::LeaderCommitInvalidJustification)?;
+            .map_err(Error::InvalidJustification)?;
 
         // ----------- All checks finished. Now we process the message. --------------
 
@@ -65,7 +85,8 @@ impl StateMachine {
 
         // Start a new view. But first we skip to the view of this message.
         self.view = view;
-        self.start_new_view(ctx, consensus)?;
+        self.start_new_view(ctx, consensus)
+            .context("start_new_view()")?;
 
         Ok(())
     }

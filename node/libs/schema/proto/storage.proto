@@ -4,12 +4,15 @@ package storage;
 
 import "roles/validator.proto";
 
-message Void {}
+message Proposal {
+  optional uint64 number = 1;
+  optional bytes payload = 2;
+}
 
 message ReplicaState {
   optional uint64 view = 1;
   optional roles.validator.Phase phase = 2;
   optional roles.validator.ReplicaCommit high_vote = 3;
   optional roles.validator.CommitQC high_qc = 4;
-  repeated roles.validator.Block blocks = 5;
+  repeated Proposal proposals = 5;
 }

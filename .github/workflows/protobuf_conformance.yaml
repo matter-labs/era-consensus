@@ -18,13 +18,13 @@ jobs:
   conformance:
     runs-on: [ubuntu-22.04-github-hosted-16core]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           path: "this"
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           repository: "protocolbuffers/protobuf"
-          ref: "main"
+          ref: "v24.4"
           path: "protobuf"
       - uses: mozilla-actions/sccache-action@v0.0.3
       - name: build test
