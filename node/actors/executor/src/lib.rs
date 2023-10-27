@@ -90,20 +90,27 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
             *public == key.public(),
             "config.consensus.key = {public:?} doesn't match the secret key {key:?}"
         );
-        anyhow::ensure!(
-            self.executor_config
-                .validators
-                .iter()
-                .any(|validator_key| validator_key == public),
-            "Key {public:?} is not a validator per validator set {:?}",
-            self.executor_config.validators
-        );
-        self.validator = Some(ValidatorExecutor {
-            config,
-            key,
-            replica_state_store,
-            blocks_sender,
-        });
+
+        // TODO: this logic must be refactored once dynamic validator sets are implemented
+        let is_validator = self
+            .executor_config
+            .validators
+            .iter()
+            .any(|validator_key| validator_key == public);
+        if is_validator {
+            self.validator = Some(ValidatorExecutor {
+                config,
+                key,
+                replica_state_store,
+                blocks_sender,
+            });
+        } else {
+            tracing::info!(
+                "Key {public:?} is not a validator per validator set {:?}; the executor will not \
+                 run consensus",
+                self.executor_config.validators
+            );
+        }
         Ok(())
     }
 
