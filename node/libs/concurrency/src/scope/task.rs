@@ -60,12 +60,11 @@ pub(super) enum Task<E: 'static> {
     Background(Arc<scope::TerminateGuard<E>>),
 }
 
-/// Forgets the stored value when dropped.
-/// We use it in the run/run_blocking calls to prevent
-/// reporting a task as completed if a panic occured.
-struct PanicReporter<E:'static+Send>(Option<Task<E>>);
+/// Reports a panic to the scope of the task if the task
+/// panics and unwinds.
+struct PanicReporter<E: 'static + Send>(Option<Task<E>>);
 
-impl<E:'static + Send> Drop for PanicReporter<E> {
+impl<E: 'static + Send> Drop for PanicReporter<E> {
     fn drop(&mut self) {
         if let Some(t) = self.0.take() {
             t.guard().set_err(scope::OrPanic::Panic);
@@ -73,9 +72,16 @@ impl<E:'static + Send> Drop for PanicReporter<E> {
     }
 }
 
-impl<E:'static+Send> PanicReporter<E> {
-    pub fn new(t: Task<E>) -> Self { Self(Some(t)) }
-    pub fn defuse(mut self) -> Task<E> { self.0.take().unwrap() }
+impl<E: 'static + Send> PanicReporter<E> {
+    /// Wraps a task into a PanicReporter.
+    pub(crate) fn new(t: Task<E>) -> Self {
+        Self(Some(t))
+    }
+    /// Silently drops the PanicReporter without reporting a panic.
+    /// Returns the owned task.
+    pub(crate) fn defuse(mut self) -> Task<E> {
+        self.0.take().unwrap()
+    }
 }
 
 impl<E: 'static + Send> Task<E> {

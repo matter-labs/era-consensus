@@ -79,10 +79,9 @@ impl<E: 'static> TerminateGuard<E> {
     /// It has a side effect of canceling the scope.
     pub(super) fn set_err(&self, err: OrPanic<E>) {
         let mut m = self.0.err.lock().unwrap();
-        match (&*m,&err) {
+        match (&*m, &err) {
             // Panic overrides an error, but error doesn't override an error.
-            (Some(OrPanic::Panic),_) |
-            (Some(OrPanic::Err(_)),OrPanic::Err(_)) => return,
+            (Some(OrPanic::Panic), _) | (Some(OrPanic::Err(_)), OrPanic::Err(_)) => return,
             _ => {}
         }
         self.0.ctx.cancel();

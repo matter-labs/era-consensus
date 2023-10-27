@@ -1,5 +1,8 @@
 use crate::{ctx, scope, testonly};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc,
+};
 
 // run a trivial future until completion => OK
 #[tokio::test]
@@ -130,8 +133,7 @@ fn test_access_to_vars_outside_of_scope() {
     testonly::with_runtimes(|| async {
         // Lifetime of `a` is larger than scope's lifetime,
         // so it should be accessible from scope's tasks.
-        let a = AtomicU64::new(0);
-        let a = &a;
+        let a = &AtomicU64::new(0);
         let ctx = &ctx::test_root(&ctx::RealClock);
         scope::run!(ctx, |ctx, s| async {
             s.spawn_blocking(|| {
@@ -164,4 +166,91 @@ fn test_access_to_vars_outside_of_scope() {
         .unwrap();
         assert_eq!(6, a.load(Ordering::Relaxed));
     });
+}
+
+#[tokio::test]
+async fn test_wait_for_completion_after_panic_blocking() {
+    const N: u64 = 10;
+    let a = Arc::new(AtomicU64::new(0));
+    let a2 = a.clone();
+    let res = tokio::task::spawn_blocking(|| {
+        let ctx = &ctx::test_root(&ctx::RealClock);
+        let a = a2;
+        scope::run_blocking!(ctx, |ctx, s| {
+            for _ in 0..N {
+                s.spawn(async {
+                    ctx.canceled().await;
+                    a.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                });
+            }
+            s.spawn::<()>(async {
+                panic!("yolo");
+            });
+            for _ in 0..N {
+                s.spawn_blocking(|| {
+                    ctx.canceled().block();
+                    a.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                });
+            }
+            anyhow::Ok(())
+        })
+    })
+    .await;
+    assert!(res.is_err());
+    assert_eq!(2 * N, a.load(Ordering::Relaxed));
+}
+
+#[tokio::test]
+async fn test_wait_for_completion_after_panic() {
+    const N: u64 = 10;
+    let a = Arc::new(AtomicU64::new(0));
+    let a2 = a.clone();
+    let res = tokio::task::spawn(async {
+        let ctx = &ctx::test_root(&ctx::RealClock);
+        let a = a2;
+        scope::run!(ctx, |ctx, s| async {
+            for _ in 0..N {
+                s.spawn(async {
+                    ctx.canceled().await;
+                    a.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                });
+            }
+            s.spawn::<()>(async {
+                panic!("yolo");
+            });
+            for _ in 0..N {
+                s.spawn_blocking(|| {
+                    ctx.canceled().block();
+                    a.fetch_add(1, Ordering::Relaxed);
+                    Ok(())
+                });
+            }
+            anyhow::Ok(())
+        })
+        .await
+    })
+    .await;
+    assert!(res.is_err());
+    assert_eq!(2 * N, a.load(Ordering::Relaxed));
+}
+
+#[tokio::test]
+async fn test_panic_overrides_error() {
+    let res = tokio::task::spawn(async {
+        let ctx = &ctx::test_root(&ctx::RealClock);
+        let res: anyhow::Result<()> = scope::run!(ctx, |ctx, s| async {
+            s.spawn::<()>(async {
+                anyhow::bail!("simple error");
+            });
+            ctx.canceled().await;
+            panic!("overriding the error")
+        })
+        .await;
+        res
+    })
+    .await;
+    assert!(res.is_err());
 }

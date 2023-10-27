@@ -256,17 +256,11 @@ impl fmt::Debug for RocksdbStorage {
 #[async_trait]
 impl BlockStore for RocksdbStorage {
     async fn head_block(&self, _ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
-        scope::wait_blocking(|| {
-            self.head_block_blocking().map_err(StorageError::Database)
-        })
-        .await
+        scope::wait_blocking(|| self.head_block_blocking().map_err(StorageError::Database)).await
     }
 
     async fn first_block(&self, _ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
-        scope::wait_blocking(|| {
-            self.first_block_blocking().map_err(StorageError::Database)
-        })
-        .await
+        scope::wait_blocking(|| self.first_block_blocking().map_err(StorageError::Database)).await
     }
 
     async fn last_contiguous_block_number(&self, _ctx: &ctx::Ctx) -> StorageResult<BlockNumber> {
@@ -282,10 +276,7 @@ impl BlockStore for RocksdbStorage {
         _ctx: &ctx::Ctx,
         number: BlockNumber,
     ) -> StorageResult<Option<FinalBlock>> {
-        scope::wait_blocking(|| {
-            self.block_blocking(number).map_err(StorageError::Database)
-        })
-        .await
+        scope::wait_blocking(|| self.block_blocking(number).map_err(StorageError::Database)).await
     }
 
     async fn missing_block_numbers(

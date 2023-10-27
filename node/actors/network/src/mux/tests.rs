@@ -293,38 +293,46 @@ async fn test_transport_closed() {
         write_frame_size: 100,
     });
     scope::run!(ctx, |ctx, s| async {
-        let streams = s.spawn(async {
-            let (s1, s2) = noise::testonly::pipe(ctx).await;
-            // Establish a transient stream, then close the transport (s1 and s2).
-            scope::run!(ctx, |ctx, s| async {
-                let outbound = s.spawn(async {
-                    let mut mux = mux::Mux {
-                        cfg: cfg.clone(),
-                        accept: BTreeMap::default(),
-                        connect: BTreeMap::default(),
-                    };
-                    let q = mux::StreamQueue::new(1);
-                    mux.connect.insert(cap, q.clone());
-                    s.spawn_bg(async { expected(mux.run(ctx, s2).await).context("[connect] mux.run()") });
-                    q.open(ctx).await.context("[connect] q.open()")
-                });
-                let inbound = s.spawn(async {
-                    let mut mux = mux::Mux {
-                        cfg: cfg.clone(),
-                        accept: BTreeMap::default(),
-                        connect: BTreeMap::default(),
-                    };
-                    let q = mux::StreamQueue::new(1);
-                    mux.accept.insert(cap, q.clone());
-                    s.spawn_bg(async { expected(mux.run(ctx, s1).await).context("[accept] mux.run()") });
-                    q.open(ctx).await.context("[accept] q.open()")
-                });
-                Ok([
-                   inbound.join(ctx).await.context("inbound")?,
-                   outbound.join(ctx).await.context("outbound")?,
-                ])
-            }).await
-        }).join(ctx).await?;
+        let streams = s
+            .spawn(async {
+                let (s1, s2) = noise::testonly::pipe(ctx).await;
+                // Establish a transient stream, then close the transport (s1 and s2).
+                scope::run!(ctx, |ctx, s| async {
+                    let outbound = s.spawn(async {
+                        let mut mux = mux::Mux {
+                            cfg: cfg.clone(),
+                            accept: BTreeMap::default(),
+                            connect: BTreeMap::default(),
+                        };
+                        let q = mux::StreamQueue::new(1);
+                        mux.connect.insert(cap, q.clone());
+                        s.spawn_bg(async {
+                            expected(mux.run(ctx, s2).await).context("[connect] mux.run()")
+                        });
+                        q.open(ctx).await.context("[connect] q.open()")
+                    });
+                    let inbound = s.spawn(async {
+                        let mut mux = mux::Mux {
+                            cfg: cfg.clone(),
+                            accept: BTreeMap::default(),
+                            connect: BTreeMap::default(),
+                        };
+                        let q = mux::StreamQueue::new(1);
+                        mux.accept.insert(cap, q.clone());
+                        s.spawn_bg(async {
+                            expected(mux.run(ctx, s1).await).context("[accept] mux.run()")
+                        });
+                        q.open(ctx).await.context("[accept] q.open()")
+                    });
+                    Ok([
+                        inbound.join(ctx).await.context("inbound")?,
+                        outbound.join(ctx).await.context("outbound")?,
+                    ])
+                })
+                .await
+            })
+            .join(ctx)
+            .await?;
         // Check how the streams without transport behave.
         for mut s in streams {
             let mut buf = bytes::Buffer::new(100);
