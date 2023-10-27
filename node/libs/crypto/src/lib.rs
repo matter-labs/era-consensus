@@ -6,3 +6,4 @@ pub mod bn254;
 pub mod ed25519;
 mod fmt;
 pub mod sha256;
+mod bn254_2;
