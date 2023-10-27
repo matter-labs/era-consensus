@@ -53,7 +53,7 @@ impl RocksdbStorage {
         options.create_missing_column_families(true);
         options.create_if_missing(true);
 
-        let db = scope::wait_blocking(ctx, || {
+        let db = scope::wait_blocking(|| {
             rocksdb::DB::open(&options, path)
                 .context("Failed opening RocksDB")
                 .map_err(StorageError::Database)
@@ -255,22 +255,22 @@ impl fmt::Debug for RocksdbStorage {
 
 #[async_trait]
 impl BlockStore for RocksdbStorage {
-    async fn head_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
-        scope::wait_blocking(ctx, || {
+    async fn head_block(&self, _ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
+        scope::wait_blocking(|| {
             self.head_block_blocking().map_err(StorageError::Database)
         })
         .await
     }
 
-    async fn first_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
-        scope::wait_blocking(ctx, || {
+    async fn first_block(&self, _ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
+        scope::wait_blocking(|| {
             self.first_block_blocking().map_err(StorageError::Database)
         })
         .await
     }
 
-    async fn last_contiguous_block_number(&self, ctx: &ctx::Ctx) -> StorageResult<BlockNumber> {
-        scope::wait_blocking(ctx, || {
+    async fn last_contiguous_block_number(&self, _ctx: &ctx::Ctx) -> StorageResult<BlockNumber> {
+        scope::wait_blocking(|| {
             self.last_contiguous_block_number_blocking()
                 .map_err(StorageError::Database)
         })
@@ -279,10 +279,10 @@ impl BlockStore for RocksdbStorage {
 
     async fn block(
         &self,
-        ctx: &ctx::Ctx,
+        _ctx: &ctx::Ctx,
         number: BlockNumber,
     ) -> StorageResult<Option<FinalBlock>> {
-        scope::wait_blocking(ctx, || {
+        scope::wait_blocking(|| {
             self.block_blocking(number).map_err(StorageError::Database)
         })
         .await
@@ -290,10 +290,10 @@ impl BlockStore for RocksdbStorage {
 
     async fn missing_block_numbers(
         &self,
-        ctx: &ctx::Ctx,
+        _ctx: &ctx::Ctx,
         range: ops::Range<BlockNumber>,
     ) -> StorageResult<Vec<BlockNumber>> {
-        scope::wait_blocking(ctx, || {
+        scope::wait_blocking(|| {
             self.missing_block_numbers_blocking(range)
                 .map_err(StorageError::Database)
         })
@@ -307,8 +307,8 @@ impl BlockStore for RocksdbStorage {
 
 #[async_trait]
 impl WriteBlockStore for RocksdbStorage {
-    async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()> {
-        scope::wait_blocking(ctx, || {
+    async fn put_block(&self, _ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()> {
+        scope::wait_blocking(|| {
             self.put_block_blocking(block)
                 .map_err(StorageError::Database)
         })
@@ -318,8 +318,8 @@ impl WriteBlockStore for RocksdbStorage {
 
 #[async_trait]
 impl ReplicaStateStore for RocksdbStorage {
-    async fn replica_state(&self, ctx: &ctx::Ctx) -> StorageResult<Option<ReplicaState>> {
-        scope::wait_blocking(ctx, || {
+    async fn replica_state(&self, _ctx: &ctx::Ctx) -> StorageResult<Option<ReplicaState>> {
+        scope::wait_blocking(|| {
             self.replica_state_blocking()
                 .map_err(StorageError::Database)
         })
@@ -328,10 +328,10 @@ impl ReplicaStateStore for RocksdbStorage {
 
     async fn put_replica_state(
         &self,
-        ctx: &ctx::Ctx,
+        _ctx: &ctx::Ctx,
         replica_state: &ReplicaState,
     ) -> StorageResult<()> {
-        scope::wait_blocking(ctx, || {
+        scope::wait_blocking(|| {
             self.put_replica_state_blocking(replica_state)
                 .map_err(StorageError::Database)
         })

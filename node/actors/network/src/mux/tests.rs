@@ -293,53 +293,49 @@ async fn test_transport_closed() {
         write_frame_size: 100,
     });
     scope::run!(ctx, |ctx, s| async {
-        let (s1, s2) = noise::testonly::pipe(ctx).await;
-        // Spawns a peer that establishes the a transient stream and then tries to read from it.
-        // Reading should terminate as soon as we close the transport.
-        s.spawn(async {
-            let mut stream = scope::run!(ctx, |ctx, s| async {
-                let mut mux = mux::Mux {
-                    cfg: cfg.clone(),
-                    accept: BTreeMap::default(),
-                    connect: BTreeMap::default(),
-                };
-                let q = mux::StreamQueue::new(1);
-                mux.connect.insert(cap, q.clone());
-                s.spawn_bg(async { expected(mux.run(ctx, s2).await).context("mux2.run()") });
-                anyhow::Ok(q.open(ctx).await.unwrap())
-            })
-            .await
-            .unwrap();
-
+        let streams = s.spawn(async {
+            let (s1, s2) = noise::testonly::pipe(ctx).await;
+            // Establish a transient stream, then close the transport (s1 and s2).
+            scope::run!(ctx, |ctx, s| async {
+                let outbound = s.spawn(async {
+                    let mut mux = mux::Mux {
+                        cfg: cfg.clone(),
+                        accept: BTreeMap::default(),
+                        connect: BTreeMap::default(),
+                    };
+                    let q = mux::StreamQueue::new(1);
+                    mux.connect.insert(cap, q.clone());
+                    s.spawn_bg(async { expected(mux.run(ctx, s2).await).context("[connect] mux.run()") });
+                    q.open(ctx).await.context("[connect] q.open()")
+                });
+                let inbound = s.spawn(async {
+                    let mut mux = mux::Mux {
+                        cfg: cfg.clone(),
+                        accept: BTreeMap::default(),
+                        connect: BTreeMap::default(),
+                    };
+                    let q = mux::StreamQueue::new(1);
+                    mux.accept.insert(cap, q.clone());
+                    s.spawn_bg(async { expected(mux.run(ctx, s1).await).context("[accept] mux.run()") });
+                    q.open(ctx).await.context("[accept] q.open()")
+                });
+                Ok([
+                   inbound.join(ctx).await.context("inbound")?,
+                   outbound.join(ctx).await.context("outbound")?,
+                ])
+            }).await
+        }).join(ctx).await?;
+        // Check how the streams without transport behave.
+        for mut s in streams {
             let mut buf = bytes::Buffer::new(100);
             // Read is expected to succeed, but no data should be read.
-            stream.read.read_exact(ctx, &mut buf).await.unwrap();
+            s.read.read_exact(ctx, &mut buf).await.unwrap();
             assert_eq!(buf.len(), 0);
             // Writing will succeed (thanks to buffering), but flushing should fail
             // because the transport is closed.
-            stream.write.write_all(ctx, &[1, 2, 3]).await.unwrap();
-            assert!(stream.write.flush(ctx).await.is_err());
-            anyhow::Ok(())
-        });
-
-        let mut mux = mux::Mux {
-            cfg: cfg.clone(),
-            accept: BTreeMap::default(),
-            connect: BTreeMap::default(),
-        };
-        let q = mux::StreamQueue::new(1);
-        mux.accept.insert(cap, q.clone());
-        // Accept the stream and drop the connection completely.
-        s.spawn_bg(async { expected(mux.run(ctx, s1).await).context("mux1.run()") });
-        let mut stream = q.open(ctx).await.unwrap();
-
-        let mut buf = bytes::Buffer::new(100);
-        stream.read.read_exact(ctx, &mut buf).await.unwrap();
-        // The peer multiplexer is dropped to complete `read_exact()`, so we don't have a deadlock here.
-        assert_eq!(buf.len(), 0);
-        stream.write.write_all(ctx, &[1, 2, 3]).await.unwrap();
-        assert!(stream.write.flush(ctx).await.is_err());
-
+            s.write.write_all(ctx, &[1, 2, 3]).await.unwrap();
+            assert!(s.write.flush(ctx).await.is_err());
+        }
         Ok(())
     })
     .await

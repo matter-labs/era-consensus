@@ -4,7 +4,18 @@ use std::sync::atomic::{AtomicU64, Ordering};
 // run a trivial future until completion => OK
 #[tokio::test]
 async fn must_complete_ok() {
-    assert_eq!(5, scope::must_complete(async move { 5 }).await);
+    scope::must_complete::Guard.defuse();
+}
+
+#[tokio::test]
+async fn test_wait_blocking_ok() {
+    assert_eq!(5, scope::wait_blocking(|| 5).await);
+}
+
+#[tokio::test]
+#[should_panic]
+async fn test_wait_blocking_panic() {
+    scope::wait_blocking(|| panic!("inner panic")).await;
 }
 
 type R = Result<(), usize>;

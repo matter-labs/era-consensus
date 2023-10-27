@@ -74,15 +74,19 @@ impl<E: 'static> TerminateGuard<E> {
     }
 
     /// Sets the scope error if it is not already set.
+    /// Panic overrides an error.
     /// Called by scope tasks which resulted with an error.
     /// It has a side effect of canceling the scope.
     pub(super) fn set_err(&self, err: OrPanic<E>) {
         let mut m = self.0.err.lock().unwrap();
-        if m.is_some() {
-            return;
+        match (&*m,&err) {
+            // Panic overrides an error, but error doesn't override an error.
+            (Some(OrPanic::Panic),_) |
+            (Some(OrPanic::Err(_)),OrPanic::Err(_)) => return,
+            _ => {}
         }
-        *m = Some(err);
         self.0.ctx.cancel();
+        *m = Some(err);
     }
 }
 

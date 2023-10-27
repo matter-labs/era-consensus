@@ -63,19 +63,19 @@ pub(super) enum Task<E: 'static> {
 /// Forgets the stored value when dropped.
 /// We use it in the run/run_blocking calls to prevent
 /// reporting a task as completed if a panic occured.
-struct UnwindGuard<T>(Option<T>);
+struct PanicReporter<E:'static+Send>(Option<Task<E>>);
 
-impl<T> Drop for UnwindGuard<T> {
+impl<E:'static + Send> Drop for PanicReporter<E> {
     fn drop(&mut self) {
-        if let Some(v) = self.0.take() {
-            std::mem::forget(v)
+        if let Some(t) = self.0.take() {
+            t.guard().set_err(scope::OrPanic::Panic);
         }
     }
 }
 
-impl<T> UnwindGuard<T> {
-    pub fn new(v: T) -> Self { Self(Some(v)) }
-    pub fn defuse(mut self) -> T { self.0.take().unwrap() }
+impl<E:'static+Send> PanicReporter<E> {
+    pub fn new(t: Task<E>) -> Self { Self(Some(t)) }
+    pub fn defuse(mut self) -> Task<E> { self.0.take().unwrap() }
 }
 
 impl<E: 'static + Send> Task<E> {
@@ -98,13 +98,13 @@ impl<E: 'static + Send> Task<E> {
         self,
         f: impl Future<Output = Result<T, E>>,
     ) -> Result<T, Terminated> {
-        let guard = UnwindGuard::new(self);
+        let panic_reporter = PanicReporter::new(self);
         let res = f.await;
-        let this = guard.defuse();
+        let this = panic_reporter.defuse();
         match res {
             Ok(v) => Ok(v),
             Err(err) => {
-                this.guard().set_err(err);
+                this.guard().set_err(scope::OrPanic::Err(err));
                 Err(Terminated)
             }
         }
@@ -113,13 +113,13 @@ impl<E: 'static + Send> Task<E> {
     /// Runs an sync blocking task in the scope. MUST be executed on a dedicated thread.
     /// See `Task::run` for behavior. See module docs for desciption of blocking tasks.
     pub(super) fn run_blocking<T>(self, f: impl FnOnce() -> Result<T, E>) -> Result<T, Terminated> {
-        let guard = UnwindGuard::new(self);
+        let panic_reporter = PanicReporter::new(self);
         let res = f();
-        let this = guard.defuse();
+        let this = panic_reporter.defuse();
         match res {
             Ok(v) => Ok(v),
             Err(err) => {
-                this.guard().set_err(err);
+                this.guard().set_err(scope::OrPanic::Err(err));
                 Err(Terminated)
             }
         }

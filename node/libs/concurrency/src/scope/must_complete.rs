@@ -7,21 +7,16 @@
 //! that they can be put together into a tokio::select block. All the higher level logic
 //! would greatly benefit (in terms of readability and bug-resistance) from being non-abortable.
 //! Rust doesn't support linear types as of now, so best we can do is a runtime check.
-use std::future::Future;
-
-/// must_complete wraps a future, so that it aborts if it is dropped before completion.
-pub(super) fn must_complete<Fut: Future>(fut: Fut) -> impl Future<Output = Fut::Output> {
-    let guard = Guard;
-    async move {
-        let res = fut.await;
-        std::mem::forget(guard);
-        res
-    }
-}
 
 /// Guard which aborts the process when dropped.
-/// Use std::mem::ManuallyDrop to avoid the drop call.
-struct Guard;
+/// Use `Guard::defuse()` to avoid aborting. 
+pub(super) struct Guard;
+
+impl Guard {
+    pub fn defuse(self) {
+        std::mem::forget(self)
+    }
+}
 
 impl Drop for Guard {
     fn drop(&mut self) {
