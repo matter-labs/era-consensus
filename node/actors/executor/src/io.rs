@@ -62,7 +62,7 @@ impl Dispatcher {
                         ConsensusOutputMessage::FinalizedBlock(block) => {
                             let number_metric = &metrics::METRICS.finalized_block_number;
                             let current_number = number_metric.get();
-                            number_metric.set(current_number.max(block.block.number.0));
+                            number_metric.set(current_number.max(block.header.number.0));
                             // This works because this is the only place where `finalized_block_number`
                             // is modified, and there should be a single running `Dispatcher`.
 

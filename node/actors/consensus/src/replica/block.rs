@@ -16,24 +16,26 @@ impl StateMachine {
         // TODO(gprusak): for availability of finalized blocks,
         //                replicas should be able to broadcast highest quorums without
         //                the corresponding block (same goes for synchronization).
-        if let Some(block) = self
+        let Some(cache) = self
             .block_proposal_cache
-            .get(&commit_qc.message.proposal_block_number)
-            .and_then(|m| m.get(&commit_qc.message.proposal_block_hash))
-        {
-            let final_block = validator::FinalBlock {
-                block: block.clone(),
-                justification: commit_qc.clone(),
-            };
+            .get(&commit_qc.message.proposal.number)
+        else {
+            return;
+        };
+        let Some(payload) = cache.get(&commit_qc.message.proposal.payload) else {
+            return;
+        };
+        let block = validator::FinalBlock {
+            header: commit_qc.message.proposal,
+            payload: payload.clone(),
+            justification: commit_qc.clone(),
+        };
 
-            info!(
-                "Finalized a block!\nFinal block: {:#?}",
-                final_block.block.hash()
-            );
+        info!(
+            "Finalized a block!\nFinal block: {:#?}",
+            block.header.hash()
+        );
 
-            consensus
-                .pipe
-                .send(OutputMessage::FinalizedBlock(final_block));
-        }
+        consensus.pipe.send(OutputMessage::FinalizedBlock(block));
     }
 }

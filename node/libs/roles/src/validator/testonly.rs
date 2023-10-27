@@ -1,7 +1,9 @@
+//! Test-only utilities.
 use super::{
-    AggregateSignature, Block, BlockHash, BlockNumber, CommitQC, ConsensusMsg, FinalBlock,
-    LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Phase, PrepareQC, Proposal, PublicKey,
-    ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorSet, ViewNumber,
+    AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
+    FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
+    PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature,
+    Signed, Signers, ValidatorSet, ViewNumber, CURRENT_VERSION,
 };
 use bit_vec::BitVec;
 use concurrency::time;
@@ -11,6 +13,46 @@ use rand::{
 };
 use std::sync::Arc;
 use utils::enum_util::Variant;
+
+/// Constructs a CommitQC with `CommitQC.message.proposal` matching header.
+/// WARNING: it is not a fully correct CommitQC.
+pub fn make_justification<R: Rng>(rng: &mut R, header: &BlockHeader) -> CommitQC {
+    CommitQC {
+        message: ReplicaCommit {
+            protocol_version: CURRENT_VERSION,
+            view: ViewNumber(header.number.0),
+            proposal: *header,
+        },
+        signers: rng.gen(),
+        signature: rng.gen(),
+    }
+}
+
+/// Constructs a genesis block with random payload.
+/// WARNING: it is not a fully correct FinalBlock.
+pub fn make_genesis_block<R: Rng>(rng: &mut R) -> FinalBlock {
+    let payload: Payload = rng.gen();
+    let header = BlockHeader::genesis(payload.hash());
+    let justification = make_justification(rng, &header);
+    FinalBlock {
+        header,
+        payload,
+        justification,
+    }
+}
+
+/// Constructs a random block with a given parent.
+/// WARNING: this is not a fully correct FinalBlock.
+pub fn make_block<R: Rng>(rng: &mut R, parent: &BlockHeader) -> FinalBlock {
+    let payload: Payload = rng.gen();
+    let header = BlockHeader::new(parent, payload.hash());
+    let justification = make_justification(rng, &header);
+    FinalBlock {
+        header,
+        payload,
+        justification,
+    }
+}
 
 impl Distribution<AggregateSignature> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateSignature {
@@ -42,27 +84,46 @@ impl Distribution<BlockNumber> for Standard {
     }
 }
 
-impl Distribution<BlockHash> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockHash {
-        BlockHash(rng.gen())
+impl Distribution<ProtocolVersion> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ProtocolVersion {
+        ProtocolVersion(rng.gen())
     }
 }
 
-impl Distribution<Block> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Block {
-        let arr_size: usize = rng.gen_range(0..11);
-        Block {
+impl Distribution<PayloadHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PayloadHash {
+        PayloadHash(rng.gen())
+    }
+}
+
+impl Distribution<BlockHeaderHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockHeaderHash {
+        BlockHeaderHash(rng.gen())
+    }
+}
+
+impl Distribution<BlockHeader> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockHeader {
+        BlockHeader {
             parent: rng.gen(),
             number: rng.gen(),
-            payload: (0..arr_size).map(|_| rng.gen()).collect(),
+            payload: rng.gen(),
         }
+    }
+}
+
+impl Distribution<Payload> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Payload {
+        let size: usize = rng.gen_range(0..11);
+        Payload((0..size).map(|_| rng.gen()).collect())
     }
 }
 
 impl Distribution<FinalBlock> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> FinalBlock {
         FinalBlock {
-            block: rng.gen(),
+            header: rng.gen(),
+            payload: rng.gen(),
             justification: rng.gen(),
         }
     }
@@ -71,6 +132,7 @@ impl Distribution<FinalBlock> for Standard {
 impl Distribution<ReplicaPrepare> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaPrepare {
         ReplicaPrepare {
+            protocol_version: rng.gen(),
             view: rng.gen(),
             high_vote: rng.gen(),
             high_qc: rng.gen(),
@@ -81,9 +143,9 @@ impl Distribution<ReplicaPrepare> for Standard {
 impl Distribution<ReplicaCommit> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaCommit {
         ReplicaCommit {
+            protocol_version: rng.gen(),
             view: rng.gen(),
-            proposal_block_hash: rng.gen(),
-            proposal_block_number: rng.gen(),
+            proposal: rng.gen(),
         }
     }
 }
@@ -91,20 +153,11 @@ impl Distribution<ReplicaCommit> for Standard {
 impl Distribution<LeaderPrepare> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderPrepare {
         LeaderPrepare {
+            protocol_version: rng.gen(),
+            view: rng.gen(),
             proposal: rng.gen(),
+            proposal_payload: rng.gen(),
             justification: rng.gen(),
-        }
-    }
-}
-
-impl Distribution<Proposal> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Proposal {
-        let i = rng.gen_range(0..2);
-
-        match i {
-            0 => Proposal::New(rng.gen()),
-            1 => Proposal::Retry(rng.gen()),
-            _ => unreachable!(),
         }
     }
 }
@@ -112,6 +165,7 @@ impl Distribution<Proposal> for Standard {
 impl Distribution<LeaderCommit> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderCommit {
         LeaderCommit {
+            protocol_version: rng.gen(),
             justification: rng.gen(),
         }
     }
@@ -133,8 +187,8 @@ impl Distribution<CommitQC> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> CommitQC {
         CommitQC {
             message: rng.gen(),
-            signers: rng.gen::<Signers>(),
-            signature: rng.gen::<AggregateSignature>(),
+            signers: rng.gen(),
+            signature: rng.gen(),
         }
     }
 }

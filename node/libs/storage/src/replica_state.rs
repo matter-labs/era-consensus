@@ -6,7 +6,7 @@ use crate::{
 };
 use concurrency::ctx;
 use roles::validator;
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
 impl From<validator::CommitQC> for ReplicaState {
     fn from(certificate: validator::CommitQC) -> Self {
@@ -15,7 +15,7 @@ impl From<validator::CommitQC> for ReplicaState {
             phase: validator::Phase::Prepare,
             high_vote: certificate.message,
             high_qc: certificate,
-            block_proposal_cache: BTreeMap::new(),
+            proposals: vec![],
         }
     }
 }

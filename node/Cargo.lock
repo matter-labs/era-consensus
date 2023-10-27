@@ -1673,6 +1673,7 @@ name = "schema"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bit-vec",
  "concurrency",
  "once_cell",
  "prettyplease 0.2.12",

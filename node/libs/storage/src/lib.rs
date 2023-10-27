@@ -13,5 +13,5 @@ pub use crate::{
     replica_state::FallbackReplicaStateStore,
     rocksdb::RocksdbStorage,
     traits::{BlockStore, ReplicaStateStore, WriteBlockStore},
-    types::{ReplicaState, StorageError, StorageResult},
+    types::{Proposal, ReplicaState, StorageError, StorageResult},
 };

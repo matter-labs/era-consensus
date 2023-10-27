@@ -5,7 +5,7 @@ use concurrency::sync;
 use consensus::testonly::make_genesis;
 use network::testonly::Instance;
 use rand::Rng;
-use roles::validator::BlockNumber;
+use roles::validator::{BlockNumber, Payload};
 use std::collections::HashMap;
 use storage::{BlockStore, RocksdbStorage, StorageError};
 
@@ -25,7 +25,7 @@ async fn store_final_blocks(
     storage: Arc<RocksdbStorage>,
 ) -> anyhow::Result<()> {
     while let Ok(block) = blocks_receiver.recv(ctx).await {
-        tracing::trace!(number = %block.block.number, "Finalized new block");
+        tracing::trace!(number = %block.header.number, "Finalized new block");
         if let Err(err) = storage.put_block(ctx, &block).await {
             if matches!(err, StorageError::Canceled(_)) {
                 break;
@@ -54,7 +54,7 @@ impl FullValidatorConfig {
         let validator_key = consensus_config.key.clone();
         let consensus_config = ConsensusConfig::from(consensus_config);
 
-        let (genesis_block, validators) = make_genesis(&[validator_key.clone()], vec![]);
+        let (genesis_block, validators) = make_genesis(&[validator_key.clone()], Payload(vec![]));
         let node_key = net_config.gossip.key.clone();
         let node_config = ExecutorConfig {
             server_addr: *net_config.server_addr,
@@ -111,8 +111,8 @@ async fn executing_single_validator() {
         let mut expected_block_number = BlockNumber(1);
         while expected_block_number < BlockNumber(5) {
             let final_block = blocks_receiver.recv(ctx).await?;
-            tracing::trace!(number = %final_block.block.number, "Finalized new block");
-            assert_eq!(final_block.block.number, expected_block_number);
+            tracing::trace!(number = %final_block.header.number, "Finalized new block");
+            assert_eq!(final_block.header.number, expected_block_number);
             expected_block_number = expected_block_number.next();
         }
         anyhow::Ok(())

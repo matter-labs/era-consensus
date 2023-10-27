@@ -113,7 +113,7 @@ async fn main() -> anyhow::Result<()> {
             let storage = storage.clone();
             loop {
                 let block_finalized = storage.head_block(ctx).await.context("head_block")?;
-                let block_finalized = block_finalized.block.number.0;
+                let block_finalized = block_finalized.header.number.0;
 
                 tracing::info!("current finalized block {}", block_finalized);
                 if block_finalized > 100 {

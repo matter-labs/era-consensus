@@ -11,6 +11,7 @@ name = "conformance_test"
 
 [dependencies]
 anyhow.workspace = true
+bit-vec.workspace = true
 serde.workspace = true
 once_cell.workspace = true
 quick-protobuf.workspace = true

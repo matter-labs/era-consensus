@@ -2,13 +2,15 @@ use super::*;
 use crate::types::ReplicaState;
 use concurrency::ctx;
 use rand::{seq::SliceRandom, Rng};
-use roles::validator::{Block, BlockNumber, FinalBlock};
+use roles::validator::{testonly::make_block, BlockHeader, BlockNumber, FinalBlock, Payload};
 use std::iter;
 use tempfile::TempDir;
 
 async fn init_store<R: Rng>(ctx: &ctx::Ctx, rng: &mut R) -> (FinalBlock, RocksdbStorage, TempDir) {
+    let payload = Payload(vec![]);
     let genesis_block = FinalBlock {
-        block: Block::genesis(vec![]),
+        header: BlockHeader::genesis(payload.hash()),
+        payload,
         justification: rng.gen(),
     };
     let temp_dir = TempDir::new().unwrap();
@@ -24,14 +26,7 @@ async fn init_store_twice() {
     let rng = &mut ctx.rng();
 
     let (genesis_block, block_store, temp_dir) = init_store(&ctx, rng).await;
-    let block_1 = FinalBlock {
-        block: Block {
-            parent: genesis_block.block.hash(),
-            number: genesis_block.block.number.next(),
-            payload: Vec::new(),
-        },
-        justification: rng.gen(),
-    };
+    let block_1 = make_block(rng, &genesis_block.header);
     block_store.put_block(&ctx, &block_1).await.unwrap();
 
     assert_eq!(block_store.first_block(&ctx).await.unwrap(), genesis_block);
@@ -59,47 +54,25 @@ async fn test_put_block() {
     assert_eq!(*block_subscriber.borrow_and_update(), BlockNumber(0));
 
     // Test inserting a block with a valid parent.
-    let block_1 = FinalBlock {
-        block: Block {
-            parent: genesis_block.block.hash(),
-            number: genesis_block.block.number.next(),
-            payload: Vec::new(),
-        },
-        justification: rng.gen(),
-    };
+    let block_1 = make_block(rng, &genesis_block.header);
     block_store.put_block(&ctx, &block_1).await.unwrap();
 
     assert_eq!(block_store.first_block(&ctx).await.unwrap(), genesis_block);
     assert_eq!(block_store.head_block(&ctx).await.unwrap(), block_1);
-    assert_eq!(*block_subscriber.borrow_and_update(), block_1.block.number);
+    assert_eq!(*block_subscriber.borrow_and_update(), block_1.header.number);
 
     // Test inserting a block with a valid parent that is not the genesis.
-    let block_2 = FinalBlock {
-        block: Block {
-            parent: block_1.block.hash(),
-            number: block_1.block.number.next(),
-            payload: Vec::new(),
-        },
-        justification: rng.gen(),
-    };
+    let block_2 = make_block(rng, &block_1.header);
     block_store.put_block(&ctx, &block_2).await.unwrap();
 
     assert_eq!(block_store.first_block(&ctx).await.unwrap(), genesis_block);
     assert_eq!(block_store.head_block(&ctx).await.unwrap(), block_2);
-    assert_eq!(*block_subscriber.borrow_and_update(), block_2.block.number);
+    assert_eq!(*block_subscriber.borrow_and_update(), block_2.header.number);
 }
 
 fn gen_blocks(rng: &mut impl Rng, genesis_block: FinalBlock, count: usize) -> Vec<FinalBlock> {
     let blocks = iter::successors(Some(genesis_block), |parent| {
-        let block = Block {
-            parent: parent.block.hash(),
-            number: parent.block.number.next(),
-            payload: Vec::new(),
-        };
-        Some(FinalBlock {
-            block,
-            justification: rng.gen(),
-        })
+        Some(make_block(rng, &parent.header))
     });
     blocks.skip(1).take(count).collect()
 }
@@ -132,7 +105,7 @@ async fn test_get_missing_block_numbers() {
             .unwrap();
 
         let mut expected_block_numbers: Vec<_> =
-            blocks[(i + 1)..].iter().map(|b| b.block.number).collect();
+            blocks[(i + 1)..].iter().map(|b| b.header.number).collect();
         expected_block_numbers.sort_unstable();
 
         assert_eq!(missing_block_numbers, expected_block_numbers);
