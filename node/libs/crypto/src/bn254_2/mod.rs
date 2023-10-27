@@ -110,17 +110,12 @@ impl Signature {
     pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> Result<(), Error> {
         let hash_point = hash::hash_to_g1(msg);
 
-        let mut vals = Vec::new();
         // First pair: e(H(m): G1, pk: G2)
-        vals.push((hash_point, pk.0));
-        // Second pair: e(sig: G1, -generator: G2)
-        vals.push((self.0, -G2::generator()));
+        let first = Bn254::pairing(hash_point, pk.0);
+        // Second pair: e(sig: G1, generator: G2)
+        let second = Bn254::pairing(self.0, G2::generator());
 
-        let output = multi_pairing(&vals);
-        // println!("{:?}", output);
-        // let a: PairingOutput<Bn254> = PairingOutput::zero();
-        // println!("{:?}", a);
-        if output == PairingOutput::zero() {
+        if first == second {
             Ok(())
         } else {
             Err(Error::SignatureVerificationFailure)
