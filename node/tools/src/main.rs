@@ -32,13 +32,13 @@ struct Args {
     ci_mode: bool,
     /// Path to a validator key file. If set to an empty string, validator key will not be read
     /// (i.e., a node will be initialized as a non-validator node).
-    #[arg(long, env = "VALIDATOR_KEY", default_value = "validator_key")]
+    #[arg(long, default_value = "validator_key")]
     validator_key: PathBuf,
     /// Path to a JSON file with node configuration.
-    #[arg(long, env = "CONFIG_FILE", default_value = "config.json")]
+    #[arg(long, default_value = "config.json")]
     config_file: PathBuf,
     /// Path to a node key file.
-    #[arg(long, env = "NODE_KEY", default_value = "node_key")]
+    #[arg(long, default_value = "node_key")]
     node_key: PathBuf,
 }
 
