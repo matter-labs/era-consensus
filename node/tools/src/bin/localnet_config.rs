@@ -21,7 +21,7 @@ fn with_unspecified_ip(addr: SocketAddr) -> SocketAddr {
 }
 
 /// Command line arguments.
-#[derive(Parser, Debug)]
+#[derive(Debug, Parser)]
 struct Args {
     /// Path to a file with newline separated IP:port addrs of the nodes to configure.
     /// Binary will generate a config for each IP in this file.

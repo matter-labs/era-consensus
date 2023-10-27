@@ -2,4 +2,4 @@
 
 mod config;
 
-pub use self::config::{Configs, NodeConfig};
+pub use self::config::{ConfigPaths, Configs, NodeConfig};

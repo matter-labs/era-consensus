@@ -2,34 +2,65 @@
 //! manages communication between the actors. It is the main executable in this workspace.
 
 use anyhow::Context as _;
+use clap::Parser;
 use concurrency::{
     ctx::{self, channel},
     scope, time,
 };
 use executor::Executor;
-use std::{fs, io::IsTerminal as _, path::Path, sync::Arc};
+use std::{
+    fs,
+    io::IsTerminal as _,
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 use storage::{BlockStore, RocksdbStorage};
-use tools::Configs;
+use tools::{ConfigPaths, Configs};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use utils::no_copy::NoCopy;
 use vise_exporter::MetricsExporter;
 
+/// Command-line application launching a node executor.
+#[derive(Debug, Parser)]
+struct Args {
+    /// Verify configuration instead of launching a node.
+    #[arg(long, conflicts_with_all = ["ci_mode", "validator_key", "config_file", "node_key"])]
+    verify_config: bool,
+    /// Exit after finalizing 100 blocks.
+    #[arg(long)]
+    ci_mode: bool,
+    /// Path to a validator key file. If set to an empty string, validator key will not be read
+    /// (i.e., a node will be initialized as a non-validator node).
+    #[arg(long, env = "VALIDATOR_KEY", default_value = "validator_key")]
+    validator_key: PathBuf,
+    /// Path to a JSON file with node configuration.
+    #[arg(long, env = "CONFIG_FILE", default_value = "config.json")]
+    config_file: PathBuf,
+    /// Path to a node key file.
+    #[arg(long, env = "NODE_KEY", default_value = "node_key")]
+    node_key: PathBuf,
+}
+
+impl Args {
+    /// Extracts configuration paths from these args.
+    fn config_paths(&self) -> ConfigPaths<'_> {
+        ConfigPaths {
+            config: &self.config_file,
+            node_key: &self.node_key,
+            validator_key: (!self.validator_key.as_os_str().is_empty())
+                .then_some(&self.validator_key),
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let args: Args = Args::parse();
+    tracing::trace!(?args, "Starting node");
     let ctx = &ctx::root();
 
-    // Get the command line arguments.
-    let args: Vec<_> = std::env::args().collect();
-
-    // Check if we are in config mode.
-    let config_mode = args.iter().any(|x| x == "--verify-config");
-
-    // Check if we are in CI mode.
-    // If we are in CI mode, we will exit after finalizing more than 100 blocks.
-    let ci_mode = args.iter().any(|x| x == "--ci-mode");
-
-    if !config_mode {
+    if !args.verify_config {
         // Create log file.
         fs::create_dir_all("logs/")?;
         let log_file = fs::File::create("logs/output.log")?;
@@ -63,9 +94,9 @@ async fn main() -> anyhow::Result<()> {
 
     // Load the config files.
     tracing::debug!("Loading config files.");
-    let configs = Configs::read(&args).context("configs.read()")?;
+    let configs = Configs::read(args.config_paths()).context("configs.read()")?;
 
-    if config_mode {
+    if args.verify_config {
         tracing::info!("Configuration verified.");
         return Ok(());
     }
@@ -109,7 +140,7 @@ async fn main() -> anyhow::Result<()> {
         s.spawn(executor.run(ctx));
 
         // if we are in CI mode, we wait for the node to finalize 100 blocks and then we stop it
-        if ci_mode {
+        if args.ci_mode {
             let storage = storage.clone();
             loop {
                 let block_finalized = storage.head_block(ctx).await.context("head_block")?;
