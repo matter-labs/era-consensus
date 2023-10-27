@@ -346,8 +346,7 @@ impl NetworkState {
                         state,
                         response,
                     } => {
-                        let last_block_number =
-                            state.last_stored_block.message.proposal_block_number;
+                        let last_block_number = state.last_stored_block.message.proposal.number;
                         if last_block_number == expected_latest_block_number {
                             // We might receive outdated states, hence this check
                             received_states_by_peer.insert(peer.clone(), *state.clone());
@@ -406,7 +405,7 @@ async fn uncoordinated_block_syncing(
         s.spawn(async {
             for state in states {
                 ctx.sleep(state_generation_interval).await?;
-                let last_block_number = state.last_stored_block.message.proposal_block_number;
+                let last_block_number = state.last_stored_block.message.proposal.number;
                 tracing::debug!("Generated `SyncState` with last block number {last_block_number}");
                 state_sender.send_replace(state);
             }
@@ -445,7 +444,7 @@ async fn run_mock_uncoordinated_dispatcher(
                     state,
                     response,
                 } => {
-                    let last_block_number = state.last_stored_block.message.proposal_block_number;
+                    let last_block_number = state.last_stored_block.message.proposal.number;
                     tracing::debug!(
                         "Node {node_key:?} received update with block number {last_block_number} from {peer:?}"
                     );

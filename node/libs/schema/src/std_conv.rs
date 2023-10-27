@@ -80,3 +80,24 @@ impl ProtoFmt for time::Duration {
         }
     }
 }
+
+impl ProtoFmt for bit_vec::BitVec {
+    type Proto = proto::BitVector;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        let size = *required(&r.size).context("size")? as usize;
+        let mut this = Self::from_bytes(required(&r.bytes).context("bytes_")?);
+        if this.len() < size {
+            anyhow::bail!("'vector' has less than 'size' bits");
+        }
+        this.truncate(size);
+        Ok(this)
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            size: Some(self.len() as u64),
+            bytes: Some(self.to_bytes()),
+        }
+    }
+}

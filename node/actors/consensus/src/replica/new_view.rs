@@ -1,5 +1,6 @@
-use super::{error::Error, StateMachine};
+use super::StateMachine;
 use crate::ConsensusInner;
+use anyhow::Context as _;
 use concurrency::ctx;
 use network::io::{ConsensusInputMessage, Target};
 use roles::validator;
@@ -12,7 +13,7 @@ impl StateMachine {
         &mut self,
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
-    ) -> Result<(), Error> {
+    ) -> anyhow::Result<()> {
         tracing::info!("Starting view {}", self.view.next().0);
 
         // Update the state machine.
@@ -23,10 +24,10 @@ impl StateMachine {
 
         // Clear the block cache.
         self.block_proposal_cache
-            .retain(|k, _| k > &self.high_qc.message.proposal_block_number);
+            .retain(|k, _| k > &self.high_qc.message.proposal.number);
 
         // Backup our state.
-        self.backup_state(ctx).map_err(Error::ReplicaStateSave)?;
+        self.backup_state(ctx).context("backup_state")?;
 
         // Send the replica message to the next leader.
         let output_message = ConsensusInputMessage {
@@ -34,6 +35,7 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaPrepare(
                     validator::ReplicaPrepare {
+                        protocol_version: validator::CURRENT_VERSION,
                         view: next_view,
                         high_vote: self.high_vote,
                         high_qc: self.high_qc.clone(),

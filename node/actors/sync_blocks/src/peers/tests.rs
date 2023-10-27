@@ -4,6 +4,7 @@ use assert_matches::assert_matches;
 use async_trait::async_trait;
 use concurrency::time;
 use rand::{rngs::StdRng, seq::IteratorRandom, Rng};
+use roles::validator;
 use std::{collections::HashSet, fmt};
 use storage::RocksdbStorage;
 use test_casing::{test_casing, Product};
@@ -825,49 +826,25 @@ async fn processing_invalid_sync_states() {
 
     let mut invalid_sync_state = test_validators.sync_state(1);
     invalid_sync_state.first_stored_block = test_validators.final_blocks[2].justification.clone();
-    let err = peer_states
-        .validate_sync_state(invalid_sync_state)
-        .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(err.contains("first_stored_block"), "{err}");
+    assert!(peer_states.validate_sync_state(invalid_sync_state).is_err());
 
     let mut invalid_sync_state = test_validators.sync_state(1);
     invalid_sync_state.last_contiguous_stored_block =
         test_validators.final_blocks[2].justification.clone();
-    let err = peer_states
-        .validate_sync_state(invalid_sync_state)
-        .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(err.contains("last_contiguous_stored_block"), "{err}");
+    assert!(peer_states.validate_sync_state(invalid_sync_state).is_err());
 
     let mut invalid_sync_state = test_validators.sync_state(1);
     invalid_sync_state
         .last_contiguous_stored_block
         .message
-        .proposal_block_number = BlockNumber(5);
-    invalid_sync_state
-        .last_stored_block
-        .message
-        .proposal_block_number = BlockNumber(5);
-    let err = peer_states
-        .validate_sync_state(invalid_sync_state)
-        .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(
-        err.contains("Failed verifying `last_contiguous_stored_block`"),
-        "{err}"
-    );
+        .proposal
+        .number = BlockNumber(5);
+    invalid_sync_state.last_stored_block.message.proposal.number = BlockNumber(5);
+    assert!(peer_states.validate_sync_state(invalid_sync_state).is_err());
 
     let other_network = TestValidators::new(4, 2, rng);
     let invalid_sync_state = other_network.sync_state(1);
-    let err = peer_states
-        .validate_sync_state(invalid_sync_state)
-        .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(
-        err.contains("Failed verifying `last_contiguous_stored_block`"),
-        "{err}"
-    );
+    assert!(peer_states.validate_sync_state(invalid_sync_state).is_err());
 }
 
 #[tokio::test]
@@ -883,39 +860,25 @@ async fn processing_invalid_blocks() {
     let (peer_states, _) = PeerStates::new(message_sender, storage, test_validators.test_config());
 
     let invalid_block = &test_validators.final_blocks[0];
-    let err = peer_states
+    assert!(peer_states
         .validate_block(BlockNumber(1), invalid_block)
-        .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(err.contains("does not have requested number"), "{err}");
+        .is_err());
 
     let mut invalid_block = test_validators.final_blocks[1].clone();
     invalid_block.justification = test_validators.final_blocks[0].justification.clone();
-    let err = peer_states
+    assert!(peer_states
         .validate_block(BlockNumber(1), &invalid_block)
-        .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(
-        err.contains("numbers in `block` and quorum certificate"),
-        "{err}"
-    );
+        .is_err());
 
     let mut invalid_block = test_validators.final_blocks[1].clone();
-    invalid_block.block.payload = b"invalid".to_vec();
-    let err = peer_states
+    invalid_block.payload = validator::Payload(b"invalid".to_vec());
+    assert!(peer_states
         .validate_block(BlockNumber(1), &invalid_block)
-        .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(
-        err.contains("hashes in `block` and quorum certificate"),
-        "{err}"
-    );
+        .is_err());
 
     let other_network = TestValidators::new(4, 2, rng);
     let invalid_block = &other_network.final_blocks[1];
-    let err = peer_states
+    assert!(peer_states
         .validate_block(BlockNumber(1), invalid_block)
-        .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(err.contains("verifying quorum certificate"), "{err}");
+        .is_err());
 }

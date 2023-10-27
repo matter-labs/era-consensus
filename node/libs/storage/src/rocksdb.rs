@@ -63,10 +63,10 @@ impl RocksdbStorage {
         let this = Self {
             inner: RwLock::new(db),
             cached_last_contiguous_block_number: AtomicU64::new(0),
-            block_writes_sender: watch::channel(genesis_block.block.number).0,
+            block_writes_sender: watch::channel(genesis_block.header.number).0,
         };
-        if let Some(stored_genesis_block) = this.block(ctx, genesis_block.block.number).await? {
-            if stored_genesis_block.block != genesis_block.block {
+        if let Some(stored_genesis_block) = this.block(ctx, genesis_block.header.number).await? {
+            if stored_genesis_block.header != genesis_block.header {
                 let err = anyhow::anyhow!("Mismatch between stored and expected genesis block");
                 return Err(StorageError::Database(err));
             }
@@ -207,7 +207,7 @@ impl RocksdbStorage {
     /// Insert a new block into the database.
     fn put_block_blocking(&self, finalized_block: &FinalBlock) -> anyhow::Result<()> {
         let db = self.write();
-        let block_number = finalized_block.block.number;
+        let block_number = finalized_block.header.number;
         tracing::debug!("Inserting new block #{block_number} into the database.");
 
         let mut write_batch = rocksdb::WriteBatch::default();
