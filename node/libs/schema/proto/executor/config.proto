@@ -84,13 +84,13 @@ message ExecutorConfig {
 // and application-specific settings (e.g. metrics scraping).
 message NodeConfig {
   // Executor configuration.
-  optional ExecutorConfig executor = 1;
+  optional ExecutorConfig executor = 1; // [required]
 
   // IP:port to serve metrics data for scraping.
   // Use `0.0.0.0:<port>` to listen on all network interfaces.
   // If not set, metrics data won't be served.
-  optional string metrics_server_addr = 2; // IpAddr
+  optional string metrics_server_addr = 2; // [optional] IpAddr
 
   // Consensus network config.
-  optional ConsensusConfig consensus = 3;
+  optional ConsensusConfig consensus = 3; // [optional]
 }
