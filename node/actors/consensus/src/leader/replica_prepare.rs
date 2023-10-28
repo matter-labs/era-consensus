@@ -7,34 +7,51 @@ use roles::validator;
 use std::collections::HashMap;
 use tracing::instrument;
 
-#[derive(thiserror::Error, Debug)]
-#[allow(clippy::missing_docs_in_private_items)]
+/// Errors that can occur when processing a "replica prepare" message.
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    /// Past view or phase.
     #[error("past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
     Old {
+        /// Current view.
         current_view: validator::ViewNumber,
+        /// Current phase.
         current_phase: validator::Phase,
     },
+    /// The node is not a leader for this message's view.
     #[error("we are not a leader for this message's view")]
     NotLeaderInView,
+    /// Duplicate message from a replica.
     #[error("duplicate message from a replica (existing message: {existing_message:?}")]
     Exists {
+        /// Existing message from the same replica.
         existing_message: validator::ReplicaPrepare,
     },
-    #[error("number of received messages below threshold. waiting for more (received: {num_messages:?}, threshold: {threshold:?}")]
+    /// Number of received messages is below a threshold.
+    #[error(
+        "number of received messages below threshold. waiting for more (received: {num_messages:?}, \
+         threshold: {threshold:?}"
+    )]
     NumReceivedBelowThreshold {
+        /// Number of received messages.
         num_messages: usize,
+        /// Threshold for message count.
         threshold: usize,
     },
+    /// High QC of a future view.
     #[error(
         "high QC of a future view (high QC view: {high_qc_view:?}, current view: {current_view:?}"
     )]
     HighQCOfFutureView {
+        /// Received high QC view.
         high_qc_view: validator::ViewNumber,
+        /// Current view.
         current_view: validator::ViewNumber,
     },
+    /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] crypto::bls12_381::Error),
+    /// Invalid `HighQC` message.
     #[error("invalid high QC: {0:#}")]
     InvalidHighQC(#[source] anyhow::Error),
 }

@@ -143,7 +143,7 @@ impl Mux {
 }
 
 /// Error returned by `Mux::run()`.
-#[derive(thiserror::Error, Debug)]
+#[derive(Debug, thiserror::Error)]
 #[allow(clippy::missing_docs_in_private_items)]
 pub(crate) enum RunError {
     #[error("config: {0:#}")]

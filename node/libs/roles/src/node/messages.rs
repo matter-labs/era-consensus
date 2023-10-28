@@ -1,6 +1,6 @@
 use crate::node;
 use crypto::{sha256, ByteFmt, Text, TextFmt};
-use utils::enum_util::{ErrBadVariant, Variant};
+use utils::enum_util::{BadVariantError, Variant};
 
 /// The ID for an authentication session.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -25,7 +25,7 @@ impl Variant<Msg> for SessionId {
     fn insert(self) -> Msg {
         Msg::SessionId(self)
     }
-    fn extract(msg: Msg) -> Result<Self, ErrBadVariant> {
+    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
         let Msg::SessionId(this) = msg;
         Ok(this)
     }
@@ -45,7 +45,7 @@ pub struct Signed<V: Variant<Msg>> {
 
 impl<V: Variant<Msg> + Clone> Signed<V> {
     /// Verify the signature on the message.
-    pub fn verify(&self) -> Result<(), node::ErrInvalidSignature> {
+    pub fn verify(&self) -> Result<(), node::InvalidSignatureError> {
         self.key
             .verify(&self.msg.clone().insert().hash(), &self.sig)
     }

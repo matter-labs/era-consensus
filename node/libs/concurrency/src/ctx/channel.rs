@@ -83,7 +83,7 @@ pub fn unbounded<T>() -> (UnboundedSender<T>, UnboundedReceiver<T>) {
 }
 
 /// Error returned by try_send when channel is full.
-#[derive(thiserror::Error, Debug)]
+#[derive(Debug, thiserror::Error)]
 #[error("channel is full")]
 pub struct FullError;
 
