@@ -7,61 +7,100 @@ use roles::validator;
 use std::collections::HashMap;
 use tracing::instrument;
 
-#[derive(thiserror::Error, Debug)]
-#[allow(clippy::missing_docs_in_private_items)]
+/// Errors that can occur when processing a "leader prepare" message.
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    #[error("invalid leader (correct leader: {correct_leader:?}, received leader: {received_leader:?}])")]
+    /// Invalid leader.
+    #[error(
+        "invalid leader (correct leader: {correct_leader:?}, received leader: {received_leader:?})"
+    )]
     InvalidLeader {
+        /// Correct leader.
         correct_leader: validator::PublicKey,
+        /// Received leader.
         received_leader: validator::PublicKey,
     },
-    #[error("message for a past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
+    /// Message for a past view or phase.
+    #[error(
+        "message for a past view / phase (current view: {current_view:?}, current phase: {current_phase:?})"
+    )]
     Old {
+        /// Current view.
         current_view: validator::ViewNumber,
+        /// Current phase.
         current_phase: validator::Phase,
     },
+    /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] crypto::bls12_381::Error),
+    /// Invalid `PrepareQC` message.
     #[error("invalid PrepareQC: {0:#}")]
     InvalidPrepareQC(#[source] anyhow::Error),
+    /// Invalid `HighQC` message.
     #[error("invalid high QC: {0:#}")]
     InvalidHighQC(#[source] anyhow::Error),
+    /// High QC of a future view.
     #[error(
         "high QC of a future view (high QC view: {high_qc_view:?}, current view: {current_view:?}"
     )]
     HighQCOfFutureView {
+        /// Received high QC view.
         high_qc_view: validator::ViewNumber,
+        /// Current view.
         current_view: validator::ViewNumber,
     },
+    /// Previous proposal was not finalized.
     #[error("new block proposal when the previous proposal was not finalized")]
     ProposalWhenPreviousNotFinalized,
-    #[error("block proposal with invalid parent hash (correct parent hash: {correct_parent_hash:#?}, received parent hash: {received_parent_hash:#?}, block: {header:?})")]
+    /// Invalid parent hash.
+    #[error(
+        "block proposal with invalid parent hash (correct parent hash: {correct_parent_hash:#?}, \
+         received parent hash: {received_parent_hash:#?}, block: {header:?})"
+    )]
     ProposalInvalidParentHash {
+        /// Correct parent hash.
         correct_parent_hash: validator::BlockHeaderHash,
+        /// Received parent hash.
         received_parent_hash: validator::BlockHeaderHash,
+        /// Header including the incorrect parent hash.
         header: validator::BlockHeader,
     },
-    #[error("block proposal with non-sequential number (correct proposal number: {correct_number}, received proposal number: {received_number}, block: {header:?})")]
+    /// Non-sequential proposal number.
+    #[error(
+        "block proposal with non-sequential number (correct proposal number: {correct_number}, \
+         received proposal number: {received_number}, block: {header:?})"
+    )]
     ProposalNonSequentialNumber {
+        /// Correct proposal number.
         correct_number: validator::BlockNumber,
+        /// Received proposal number.
         received_number: validator::BlockNumber,
+        /// Header including the incorrect proposal number.
         header: validator::BlockHeader,
     },
+    /// Mismatched payload.
     #[error("block proposal with mismatched payload")]
     ProposalMismatchedPayload,
+    /// Oversized payload.
     #[error(
         "block proposal with an oversized payload (payload size: {payload_size}, block: {header:?}"
     )]
     ProposalOversizedPayload {
+        /// Size of the payload.
         payload_size: usize,
+        /// Proposal header corresponding to the payload.
         header: validator::BlockHeader,
     },
+    /// Re-proposal without quorum.
     #[error("block re-proposal without quorum for the re-proposal")]
     ReproposalWithoutQuorum,
+    /// Re-proposal when the previous proposal was finalized.
     #[error("block re-proposal when the previous proposal was finalized")]
     ReproposalWhenFinalized,
+    /// Re-proposal of invalid block.
     #[error("block re-proposal of invalid block")]
     ReproposalInvalidBlock,
+    /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error("internal error: {0:#}")]
     Internal(#[from] anyhow::Error),
 }

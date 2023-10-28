@@ -860,25 +860,35 @@ async fn processing_invalid_blocks() {
     let (peer_states, _) = PeerStates::new(message_sender, storage, test_validators.test_config());
 
     let invalid_block = &test_validators.final_blocks[0];
-    assert!(peer_states
+    let err = peer_states
         .validate_block(BlockNumber(1), invalid_block)
-        .is_err());
+        .unwrap_err();
+    assert_matches!(
+        err,
+        BlockValidationError::NumberMismatch {
+            requested: BlockNumber(1),
+            got: BlockNumber(0),
+        }
+    );
 
     let mut invalid_block = test_validators.final_blocks[1].clone();
     invalid_block.justification = test_validators.final_blocks[0].justification.clone();
-    assert!(peer_states
+    let err = peer_states
         .validate_block(BlockNumber(1), &invalid_block)
-        .is_err());
+        .unwrap_err();
+    assert_matches!(err, BlockValidationError::ProposalMismatch { .. });
 
     let mut invalid_block = test_validators.final_blocks[1].clone();
     invalid_block.payload = validator::Payload(b"invalid".to_vec());
-    assert!(peer_states
+    let err = peer_states
         .validate_block(BlockNumber(1), &invalid_block)
-        .is_err());
+        .unwrap_err();
+    assert_matches!(err, BlockValidationError::HashMismatch { .. });
 
     let other_network = TestValidators::new(4, 2, rng);
     let invalid_block = &other_network.final_blocks[1];
-    assert!(peer_states
+    let err = peer_states
         .validate_block(BlockNumber(1), invalid_block)
-        .is_err());
+        .unwrap_err();
+    assert_matches!(err, BlockValidationError::Justification(_));
 }

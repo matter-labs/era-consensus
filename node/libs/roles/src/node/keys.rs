@@ -4,7 +4,7 @@
 
 use super::{Msg, MsgHash, Signed};
 use crypto::{ed25519, ByteFmt, Text, TextFmt};
-pub use ed25519::ErrInvalidSignature;
+pub use ed25519::InvalidSignatureError;
 use std::{fmt, sync::Arc};
 use utils::enum_util::Variant;
 
@@ -69,7 +69,7 @@ pub struct PublicKey(pub(super) ed25519::PublicKey);
 
 impl PublicKey {
     /// Verify a signed message.
-    pub fn verify(&self, msg_hash: &MsgHash, sig: &Signature) -> Result<(), ErrInvalidSignature> {
+    pub fn verify(&self, msg_hash: &MsgHash, sig: &Signature) -> Result<(), InvalidSignatureError> {
         self.0.verify(&ByteFmt::encode(msg_hash), &sig.0)
     }
 }
