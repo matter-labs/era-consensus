@@ -32,9 +32,7 @@ fn aggregate_signature_smoke() {
     let mut rng = StdRng::seed_from_u64(29483920);
 
     // Use an arbitrary 5 keys for the smoke test
-    let sks: Vec<SecretKey> = repeat_with(|| rng.gen::<SecretKey>())
-        .take(5)
-        .collect();
+    let sks: Vec<SecretKey> = repeat_with(|| rng.gen::<SecretKey>()).take(5).collect();
     let pks: Vec<PublicKey> = sks.iter().map(|k| k.public()).collect();
     let msg = rng.gen::<[u8; 32]>();
 
@@ -76,9 +74,7 @@ fn aggregate_signature_failure_smoke() {
     let mut rng = StdRng::seed_from_u64(29483920);
 
     // Use an arbitrary 5 keys for the smoke test
-    let sks: Vec<SecretKey> = repeat_with(|| rng.gen::<SecretKey>())
-        .take(5)
-        .collect();
+    let sks: Vec<SecretKey> = repeat_with(|| rng.gen::<SecretKey>()).take(5).collect();
     let pks: Vec<PublicKey> = sks.iter().map(|k| k.public()).collect();
     let msg = rng.gen::<[u8; 32]>();
 
