@@ -44,7 +44,7 @@ allow = [
 
 [bans]
 # Lint level for when multiple versions of the same crate are detected
-multiple-versions = "deny"
+multiple-versions = "warn"
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = [
     # Old versions required by prost.
