@@ -1,3 +1,5 @@
+//! Hash operations.
+
 use ark_bn254::{G1Affine, G1Projective};
 use ark_ec::AffineRepr as _;
 use sha2::Digest as _;
@@ -7,7 +9,7 @@ pub(crate) fn hash_to_g1(msg: &[u8]) -> G1Projective {
     for i in 0..100 {
         // Hash the message with the index as suffix.
         let bytes: [u8; 32] = sha2::Sha256::new()
-            .chain_update(&msg)
+            .chain_update(msg)
             .chain_update((i as u32).to_be_bytes())
             .finalize()
             .into();

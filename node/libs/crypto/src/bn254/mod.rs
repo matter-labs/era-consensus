@@ -16,12 +16,16 @@ pub use error::Error;
 
 use crate::ByteFmt;
 
+#[doc(hidden)]
 pub mod error;
-pub mod hash;
-mod testonly;
+
 #[cfg(test)]
 mod tests;
 
+pub mod hash;
+mod testonly;
+
+/// Type safety wrapper around a scalar value.
 pub struct SecretKey(pub Fr);
 
 impl SecretKey {
@@ -53,7 +57,7 @@ impl ByteFmt for SecretKey {
     }
 }
 
-/// Type safety wrapper around a `bn254` public key.
+/// Type safety wrapper around G2.
 #[derive(Clone)]
 pub struct PublicKey(pub G2);
 
@@ -97,10 +101,12 @@ impl Ord for PublicKey {
     }
 }
 
+/// Type safety wrapper around a G1 value.
 #[derive(Clone, Debug)]
 pub struct Signature(pub G1);
 
 impl Signature {
+    /// Verifies a signature against the provided public key
     pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> Result<(), Error> {
         let hash_point = hash::hash_to_g1(msg);
 
@@ -149,25 +155,29 @@ impl Ord for Signature {
         ByteFmt::encode(self).cmp(&ByteFmt::encode(other))
     }
 }
-
+/// Type safety wrapper around [Signature] indicating that it is an aggregated signature.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AggregateSignature(Signature);
 
 impl AggregateSignature {
+    /// Generates an aggregate signature from a list of signatures.
     pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
         let mut agg = G1::zero();
         for sig in sigs {
-            agg = agg + sig.0
+            agg += sig.0
         }
 
         AggregateSignature(Signature(agg))
     }
 
+    /// Verifies an aggregated signature for multiple messages against the provided list of public keys.
+    /// This method expects one public key per message, otherwise it will fail. Note however that
+    /// If there are any duplicate messages, the public keys will be aggregated before verification.
     pub fn verify<'a>(
         &self,
         msgs_and_pks: impl Iterator<Item = (&'a [u8], &'a PublicKey)>,
     ) -> Result<(), Error> {
-        let msgs_and_pks = Self::reduce(msgs_and_pks);
+        let msgs_and_pks = Self::aggregate_pk(msgs_and_pks);
 
         // First pair: e(sig: G1, generator: G2)
         let a = Bn254::pairing(self.0 .0, G2::generator());
@@ -175,7 +185,7 @@ impl AggregateSignature {
         // Second pair: e(H(m1): G1, pk1: G2) * ... * (H(m1000): G1, pk1000: G2)
         let mut b = PairingOutput::zero();
         for (msg, pk) in msgs_and_pks {
-            let hash_point = hash::hash_to_g1(&msg);
+            let hash_point = hash::hash_to_g1(msg);
             b += Bn254::pairing(hash_point, pk.0);
         }
 
@@ -186,7 +196,7 @@ impl AggregateSignature {
         }
     }
 
-    fn reduce<'a>(
+    fn aggregate_pk<'a>(
         msgs_and_pks: impl Iterator<Item = (&'a [u8], &'a PublicKey)>,
     ) -> impl Iterator<Item = (&'a [u8], PublicKey)> {
         // Aggregate public keys if they are signing the same hash. Each public key aggregated
