@@ -1,58 +1,61 @@
-//! BLS signature scheme for BN254 curve.
+//! BLS signature scheme for the BN254 curve.
 
 use std::collections::BTreeMap;
+use std::fmt::Debug;
+use std::hash::Hasher;
 
 use anyhow::anyhow;
-use bn254::{ECDSA, PrivateKey};
-use rand::Rng;
+use ark_bn254::{Bn254, Fr, G1Projective as G1, G2Projective as G2};
+use ark_ec::pairing::Pairing as _;
+use ark_ec::pairing::PairingOutput;
+use ark_ec::Group as _;
+use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
+use num_traits::Zero as _;
 
-pub use crate::bn254::error::Error;
-use crate::bn254_2::hash;
+pub use error::Error;
+
 use crate::ByteFmt;
 
-mod error;
-
+pub mod error;
+pub mod hash;
 mod testonly;
 #[cfg(test)]
 mod tests;
 
-pub struct SecretKey(PrivateKey);
+pub struct SecretKey(pub Fr);
 
 impl SecretKey {
-    /// Generates a random secret key
-    pub fn random<R: Rng>(rng: &mut R) -> Self {
-        let private_key = PrivateKey::random(rng);
-        return Self(private_key);
+    /// Gets the corresponding [`PublicKey`] for this [`SecretKey`]
+    pub fn public(&self) -> PublicKey {
+        let p = G2::generator() * self.0;
+        PublicKey(p)
     }
 
     /// Produces a signature using this [`SecretKey`]
     pub fn sign(&self, msg: &[u8]) -> Signature {
-        let sig = ECDSA::sign(&msg, &self.0).unwrap();
+        let hash_point = hash::hash_to_g1(msg);
+        let sig = hash_point * self.0;
         Signature(sig)
-    }
-
-    /// Gets the corresponding [`PublicKey`] for this [`SecretKey`]
-    pub fn public(&self) -> PublicKey {
-        let pk = bn254::PublicKey::from_private_key(&self.0);
-        PublicKey(pk)
     }
 }
 
 impl ByteFmt for SecretKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        bn254::PrivateKey::try_from(bytes)
+        Fr::deserialize_compressed(bytes)
             .map(Self)
-            .map_err(|e| anyhow!("Failed to decode secret key: {e:?}"))
+            .map_err(|e| anyhow!("failed to decode secret key: {e:?}"))
     }
 
     fn encode(&self) -> Vec<u8> {
-        self.0.to_bytes().unwrap()
+        let mut buf = Vec::new();
+        self.0.serialize_compressed(&mut buf).unwrap();
+        buf
     }
 }
 
 /// Type safety wrapper around a `bn254` public key.
 #[derive(Clone)]
-pub struct PublicKey(bn254::PublicKey);
+pub struct PublicKey(pub G2);
 
 impl PartialEq for PublicKey {
     fn eq(&self, other: &Self) -> bool {
@@ -64,19 +67,21 @@ impl Eq for PublicKey {}
 
 impl ByteFmt for PublicKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        bn254::PublicKey::from_compressed(bytes)
+        G2::deserialize_compressed(bytes)
             .map(Self)
-            .map_err(|err| anyhow!("Error decoding public key: {err:?}"))
+            .map_err(|e| anyhow!("failed to decode public key: {e:?}"))
     }
 
     fn encode(&self) -> Vec<u8> {
-        self.0.to_compressed().unwrap()
+        let mut buf = Vec::new();
+        self.0.serialize_compressed(&mut buf).unwrap();
+        buf
     }
 }
 
 impl std::hash::Hash for PublicKey {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(&self.0.to_compressed().unwrap())
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.0.hash(state);
     }
 }
 
@@ -93,14 +98,21 @@ impl Ord for PublicKey {
 }
 
 #[derive(Clone, Debug)]
-pub struct Signature(bn254::Signature);
+pub struct Signature(pub G1);
 
 impl Signature {
     pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> Result<(), Error> {
-        let result = ECDSA::verify(msg, &self.0, &pk.0);
-        match result {
-            Ok(()) => Ok(()),
-            Err(err) => Err(Error::SignatureVerification(err)),
+        let hash_point = hash::hash_to_g1(msg);
+
+        // First pair: e(H(m): G1, pk: G2)
+        let a = Bn254::pairing(hash_point, pk.0);
+        // Second pair: e(sig: G1, generator: G2)
+        let b = Bn254::pairing(self.0, G2::generator());
+
+        if a == b {
+            Ok(())
+        } else {
+            Err(Error::SignatureVerificationFailure)
         }
     }
 }
@@ -115,12 +127,14 @@ impl Eq for Signature {}
 
 impl ByteFmt for Signature {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        bn254::Signature::from_compressed(bytes)
+        G1::deserialize_compressed(bytes)
             .map(Self)
-            .map_err(|err| anyhow!("Error decoding signature: {err:?}"))
+            .map_err(|e| anyhow!("failed to decode signature: {e:?}"))
     }
     fn encode(&self) -> Vec<u8> {
-        self.0.to_compressed().unwrap()
+        let mut buf = Vec::new();
+        self.0.serialize_compressed(&mut buf).unwrap();
+        buf
     }
 }
 
@@ -141,10 +155,9 @@ pub struct AggregateSignature(Signature);
 
 impl AggregateSignature {
     pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
-        let sigs: Vec<bn254::Signature> = sigs.into_iter().map(|s| s.0).collect();
-        let mut agg = sigs[0];
-        for i in 1..sigs.len() {
-            agg = agg + sigs[i];
+        let mut agg = G1::zero();
+        for sig in sigs {
+            agg = agg + sig.0
         }
 
         AggregateSignature(Signature(agg))
@@ -154,33 +167,48 @@ impl AggregateSignature {
         &self,
         msgs_and_pks: impl Iterator<Item = (&'a [u8], &'a PublicKey)>,
     ) -> Result<(), Error> {
+        let msgs_and_pks = Self::reduce(msgs_and_pks);
+
+        // First pair: e(sig: G1, generator: G2)
+        let a = Bn254::pairing(self.0 .0, G2::generator());
+
+        // Second pair: e(H(m1): G1, pk1: G2) * ... * (H(m1000): G1, pk1000: G2)
+        let mut b = PairingOutput::zero();
+        for (msg, pk) in msgs_and_pks {
+            let hash_point = hash::hash_to_g1(&msg);
+            b += Bn254::pairing(hash_point, pk.0);
+        }
+
+        if a == b {
+            Ok(())
+        } else {
+            Err(Error::AggregateSignatureVerificationFailure)
+        }
+    }
+
+    fn reduce<'a>(
+        msgs_and_pks: impl Iterator<Item = (&'a [u8], &'a PublicKey)>,
+    ) -> impl Iterator<Item = (&'a [u8], PublicKey)> {
         // Aggregate public keys if they are signing the same hash. Each public key aggregated
         // is one fewer pairing to calculate.
-        let mut tree_map: BTreeMap<_, PublicKey> = BTreeMap::new();
+        let mut tree_map: BTreeMap<&[u8], PublicKey> = BTreeMap::new();
 
         for (msg, pk) in msgs_and_pks {
             if let Some(existing_pk) = tree_map.get_mut(msg) {
-                let agg = PublicKey(existing_pk.0 + pk.0);
-                tree_map.insert(msg, agg);
+                existing_pk.0 += pk.0;
             } else {
-                tree_map.insert(msg, (*pk).clone());
+                tree_map.insert(msg, pk.clone());
             }
         }
 
-        for (msg, pk) in tree_map {
-            if let Err(err) = self.0.verify(msg, &pk) {
-                return Err(err);
-            }
-        }
-
-        Ok(())
+        tree_map.into_iter()
     }
 }
 
 impl ByteFmt for AggregateSignature {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        let signature = Signature::decode(bytes)?;
-        Ok(AggregateSignature(signature))
+        let sig = Signature::decode(bytes)?;
+        Ok(AggregateSignature(sig))
     }
 
     fn encode(&self) -> Vec<u8> {

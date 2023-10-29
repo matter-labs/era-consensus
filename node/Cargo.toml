@@ -29,6 +29,7 @@ blst = "0.3.10"
 bn254 = "0.0.1"
 ark-bn254 = "0.4.0"
 ark-ec = "0.4.2"
+ark-serialize = "0.4.2"
 num-traits = "0.2.17"
 clap = { version = "4.3.3", features = ["derive"] }
 ed25519-dalek = { version = "2.0.0", features = ["serde", "rand_core"] }

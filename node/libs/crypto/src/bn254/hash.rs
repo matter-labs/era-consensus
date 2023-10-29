@@ -1,6 +1,6 @@
-use sha2::Digest as _;
-use ark_ec::AffineRepr as _;
 use ark_bn254::{G1Affine, G1Projective};
+use ark_ec::AffineRepr as _;
+use sha2::Digest as _;
 
 /// H(m) as a point in G1.
 pub(crate) fn hash_to_g1(msg: &[u8]) -> G1Projective {
@@ -16,8 +16,7 @@ pub(crate) fn hash_to_g1(msg: &[u8]) -> G1Projective {
         let p = G1Affine::from_random_bytes(&bytes);
 
         if let Some(p) = p {
-            return p.into()
-
+            return p.into();
         }
     }
     // It should be statistically infeasible to finish the loop without finding a point.

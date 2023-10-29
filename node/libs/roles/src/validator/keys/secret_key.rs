@@ -14,7 +14,7 @@ pub struct SecretKey(pub(crate) Arc<bn254::SecretKey>);
 impl SecretKey {
     /// Generate a new secret key.
     pub fn generate<R: Rng>(rng: &mut R) -> Self {
-        Self(Arc::new(bn254::SecretKey::random(rng)))
+        Self(Arc::new(rng.gen()))
     }
 
     /// Public key corresponding to this secret key.

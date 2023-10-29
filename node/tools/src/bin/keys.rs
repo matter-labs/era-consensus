@@ -1,7 +1,6 @@
 //! This tool generates a validator key pair and prints it to stdout.
 #![allow(clippy::print_stdout)]
 
-use rand::Rng;
 use roles::validator;
 
 /// This tool generates a validator key pair and prints it to stdout.

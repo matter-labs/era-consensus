@@ -594,6 +594,7 @@ dependencies = [
  "anyhow",
  "ark-bn254",
  "ark-ec",
+ "ark-serialize",
  "blst",
  "bn254",
  "ed25519-dalek",
