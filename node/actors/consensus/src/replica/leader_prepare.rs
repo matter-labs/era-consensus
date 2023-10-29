@@ -32,7 +32,7 @@ pub(crate) enum Error {
     },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
-    InvalidSignature(#[source] crypto::bls12_381::Error),
+    InvalidSignature(#[source] crypto::bn254::Error),
     /// Invalid `PrepareQC` message.
     #[error("invalid PrepareQC: {0:#}")]
     InvalidPrepareQC(#[source] anyhow::Error),

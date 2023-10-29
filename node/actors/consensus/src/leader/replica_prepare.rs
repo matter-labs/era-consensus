@@ -50,7 +50,7 @@ pub(crate) enum Error {
     },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
-    InvalidSignature(#[source] crypto::bls12_381::Error),
+    InvalidSignature(#[source] crypto::bn254::Error),
     /// Invalid `HighQC` message.
     #[error("invalid high QC: {0:#}")]
     InvalidHighQC(#[source] anyhow::Error),
