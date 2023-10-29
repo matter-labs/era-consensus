@@ -46,7 +46,7 @@ use std::{future::Future, sync::Arc};
 /// Error returned by `Task::run`/`Task::run_blocking` instead of
 /// the actual error returned by the task's routine.
 /// The actual error will be result of the `scope::run!` call.
-#[derive(thiserror::Error, Debug)]
+#[derive(Debug, thiserror::Error)]
 #[error("task terminated with an error")]
 pub(crate) struct Terminated;
 

@@ -36,12 +36,6 @@ fn test_byte_encoding() {
         ByteFmt::decode(&ByteFmt::encode(&final_block)).unwrap()
     );
 
-    let signers: Signers = rng.gen();
-    assert_eq!(
-        signers,
-        ByteFmt::decode(&ByteFmt::encode(&signers)).unwrap()
-    );
-
     let msg_hash: MsgHash = rng.gen();
     assert_eq!(
         msg_hash,
@@ -76,9 +70,12 @@ fn test_text_encoding() {
         Text::new(&t).decode::<AggregateSignature>().unwrap()
     );
 
-    let block_hash: BlockHash = rng.gen();
-    let t = TextFmt::encode(&block_hash);
-    assert_eq!(block_hash, Text::new(&t).decode::<BlockHash>().unwrap());
+    let block_header_hash: BlockHeaderHash = rng.gen();
+    let t = TextFmt::encode(&block_header_hash);
+    assert_eq!(
+        block_header_hash,
+        Text::new(&t).decode::<BlockHeaderHash>().unwrap()
+    );
 
     let final_block: FinalBlock = rng.gen();
     let t = TextFmt::encode(&final_block);
@@ -93,14 +90,16 @@ fn test_text_encoding() {
 fn test_schema_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    test_encode_random::<_, BlockHash>(rng);
-    test_encode_random::<_, Block>(rng);
+    test_encode_random::<_, PayloadHash>(rng);
+    test_encode_random::<_, BlockHeader>(rng);
+    test_encode_random::<_, BlockHeaderHash>(rng);
     test_encode_random::<_, FinalBlock>(rng);
     test_encode_random::<_, Signed<ConsensusMsg>>(rng);
     test_encode_random::<_, PrepareQC>(rng);
     test_encode_random::<_, CommitQC>(rng);
     test_encode_random::<_, Msg>(rng);
     test_encode_random::<_, MsgHash>(rng);
+    test_encode_random::<_, Signers>(rng);
     test_encode_random::<_, PublicKey>(rng);
     test_encode_random::<_, Signature>(rng);
     test_encode_random::<_, AggregateSignature>(rng);
@@ -212,9 +211,11 @@ fn test_prepare_qc() {
     let sk2: SecretKey = rng.gen();
     let sk3: SecretKey = rng.gen();
 
+    let view: ViewNumber = rng.gen();
     let mut msg1: ReplicaPrepare = rng.gen();
-    let msg2: ReplicaPrepare = rng.gen();
-    msg1.view = msg2.view;
+    let mut msg2: ReplicaPrepare = rng.gen();
+    msg1.view = view;
+    msg2.view = view;
 
     let validator_set1 = ValidatorSet::new(vec![
         sk1.public(),
@@ -239,14 +240,14 @@ fn test_prepare_qc() {
     .unwrap();
 
     // Matching validator set and enough signers.
-    assert!(agg_qc.verify(&validator_set1, 1).is_ok());
-    assert!(agg_qc.verify(&validator_set1, 2).is_ok());
-    assert!(agg_qc.verify(&validator_set1, 3).is_ok());
+    assert!(agg_qc.verify(view, &validator_set1, 1).is_ok());
+    assert!(agg_qc.verify(view, &validator_set1, 2).is_ok());
+    assert!(agg_qc.verify(view, &validator_set1, 3).is_ok());
 
     // Not enough signers.
-    assert!(agg_qc.verify(&validator_set1, 4).is_err());
+    assert!(agg_qc.verify(view, &validator_set1, 4).is_err());
 
     // Mismatching validator sets.
-    assert!(agg_qc.verify(&validator_set2, 3).is_err());
-    assert!(agg_qc.verify(&validator_set3, 3).is_err());
+    assert!(agg_qc.verify(view, &validator_set2, 3).is_err());
+    assert!(agg_qc.verify(view, &validator_set3, 3).is_err());
 }

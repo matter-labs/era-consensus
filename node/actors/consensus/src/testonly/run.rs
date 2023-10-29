@@ -7,7 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use storage::Storage;
+use storage::RocksdbStorage;
 use tracing::Instrument as _;
 use utils::pipe;
 
@@ -49,7 +49,7 @@ impl Test {
                 .collect();
             assert!(!honest.is_empty());
 
-            let mut finalized: HashMap<validator::BlockNumber, validator::BlockHash> =
+            let mut finalized: HashMap<validator::BlockNumber, validator::BlockHeaderHash> =
                 HashMap::new();
             let mut observers: HashMap<validator::BlockNumber, HashSet<validator::PublicKey>> =
                 HashMap::new();
@@ -60,10 +60,10 @@ impl Test {
                 if !honest.contains(&metric.validator) {
                     continue;
                 }
-                let block = metric.finalized_block.block;
-                let hash = block.hash();
-                assert_eq!(*finalized.entry(block.number).or_insert(hash), hash);
-                let observers = observers.entry(block.number).or_default();
+                let block = metric.finalized_block;
+                let hash = block.header.hash();
+                assert_eq!(*finalized.entry(block.header.number).or_insert(hash), hash);
+                let observers = observers.entry(block.header.number).or_default();
                 if observers.insert(metric.validator.clone()) && observers.len() == honest.len() {
                     fully_observed += 1;
                 }
@@ -85,7 +85,7 @@ async fn run_nodes(
         .iter()
         .map(|r| r.net.state().cfg().consensus.key.clone())
         .collect();
-    let (genesis_block, _) = testonly::make_genesis(&keys, vec![]);
+    let (genesis_block, _) = testonly::make_genesis(&keys, validator::Payload(vec![]));
     let network_ready = signal::Once::new();
     let mut network_pipes = HashMap::new();
     let mut network_send = HashMap::new();
@@ -100,16 +100,23 @@ async fn run_nodes(
             network_pipes.insert(validator_key.public(), network_actor_pipe);
             s.spawn(
                 async {
-                    let dir = tempfile::tempdir().unwrap();
+                    let dir = tempfile::tempdir().context("tempdir()")?;
                     let storage =
-                        Arc::new(Storage::new(&genesis_block, &dir.path().join("storage")));
+                        RocksdbStorage::new(ctx, &genesis_block, &dir.path().join("storage"))
+                            .await
+                            .context("RocksdbStorage")?;
+                    let storage = Arc::new(storage);
+
                     let consensus = Consensus::new(
                         ctx,
                         consensus_actor_pipe,
                         n.net.state().cfg().consensus.key.clone(),
                         validator_set,
                         storage,
-                    );
+                    )
+                    .await
+                    .context("consensus")?;
+
                     scope::run!(ctx, |ctx, s| async {
                         network_ready.recv(ctx).await?;
                         s.spawn_blocking(|| consensus.run(ctx).context("consensus.run()"));

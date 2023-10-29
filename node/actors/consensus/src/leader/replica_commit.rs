@@ -1,9 +1,48 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner, leader::error::Error, metrics};
+use crate::{inner::ConsensusInner, metrics};
 use concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use network::io::{ConsensusInputMessage, Target};
 use roles::validator;
 use tracing::instrument;
+
+/// Errors that can occur when processing a "replica commit" message.
+#[derive(Debug, thiserror::Error)]
+pub(crate) enum Error {
+    /// Unexpected proposal.
+    #[error("unexpected proposal")]
+    UnexpectedProposal,
+    /// Past view or phase.
+    #[error("past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
+    Old {
+        /// Current view.
+        current_view: validator::ViewNumber,
+        /// Current phase.
+        current_phase: validator::Phase,
+    },
+    /// The processing node is not a lead for this message's view.
+    #[error("we are not a leader for this message's view")]
+    NotLeaderInView,
+    /// Duplicate message from a replica.
+    #[error("duplicate message from a replica (existing message: {existing_message:?}")]
+    DuplicateMessage {
+        /// Existing message from the same replica.
+        existing_message: validator::ReplicaCommit,
+    },
+    /// Number of received messages is below threshold.
+    #[error(
+        "number of received messages is below threshold. waiting for more (received: {num_messages:?}, \
+         threshold: {threshold:?}"
+    )]
+    NumReceivedBelowThreshold {
+        /// Number of received messages.
+        num_messages: usize,
+        /// Threshold for message count.
+        threshold: usize,
+    },
+    /// Invalid message signature.
+    #[error("invalid signature: {0:#}")]
+    InvalidSignature(#[source] crypto::bls12_381::Error),
+}
 
 impl StateMachine {
     #[instrument(level = "trace", ret)]
@@ -21,7 +60,7 @@ impl StateMachine {
 
         // If the message is from the "past", we discard it.
         if (message.view, validator::Phase::Commit) < (self.view, self.phase) {
-            return Err(Error::ReplicaCommitOld {
+            return Err(Error::Old {
                 current_view: self.view,
                 current_phase: self.phase,
             });
@@ -29,7 +68,7 @@ impl StateMachine {
 
         // If the message is for a view when we are not a leader, we discard it.
         if consensus.view_leader(message.view) != consensus.secret_key.public() {
-            return Err(Error::ReplicaCommitWhenNotLeaderInView);
+            return Err(Error::NotLeaderInView);
         }
 
         // If we already have a message from the same validator and for the same view, we discard it.
@@ -38,24 +77,22 @@ impl StateMachine {
             .get(&message.view)
             .and_then(|x| x.get(author))
         {
-            return Err(Error::ReplicaCommitExists {
-                existing_message: format!("{:?}", existing_message),
+            return Err(Error::DuplicateMessage {
+                existing_message: existing_message.msg,
             });
         }
 
         // ----------- Checking the signed part of the message --------------
 
         // Check the signature on the message.
-        signed_message
-            .verify()
-            .map_err(Error::ReplicaCommitInvalidSignature)?;
+        signed_message.verify().map_err(Error::InvalidSignature)?;
 
         // ----------- Checking the contents of the message --------------
 
         // We only accept replica commit messages for proposals that we have cached. That's so
         // we don't need to store replica commit messages for different proposals.
-        if self.block_proposal_cache != Some(message) {
-            return Err(Error::ReplicaCommitMissingProposal);
+        if self.block_proposal_cache != Some(message.proposal) {
+            return Err(Error::UnexpectedProposal);
         }
 
         // ----------- All checks finished. Now we process the message. --------------
@@ -70,7 +107,7 @@ impl StateMachine {
         let num_messages = self.commit_message_cache.get(&message.view).unwrap().len();
 
         if num_messages < consensus.threshold() {
-            return Err(Error::ReplicaCommitNumReceivedBelowThreshold {
+            return Err(Error::NumReceivedBelowThreshold {
                 num_messages,
                 threshold: consensus.threshold(),
             });
@@ -110,7 +147,10 @@ impl StateMachine {
             message: consensus
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::LeaderCommit(
-                    validator::LeaderCommit { justification },
+                    validator::LeaderCommit {
+                        protocol_version: validator::CURRENT_VERSION,
+                        justification,
+                    },
                 )),
             recipient: Target::Broadcast,
         };

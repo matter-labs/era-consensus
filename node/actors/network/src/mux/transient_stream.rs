@@ -20,7 +20,7 @@ pub(crate) struct ReadStream(pub(super) sync::ExclusiveLock<ReadReusableStream>)
 pub(crate) struct WriteStream(pub(super) sync::ExclusiveLock<WriteReusableStream>);
 
 /// Error returned by `ReadStream::read` in case the stream has been closed by peer.
-#[derive(thiserror::Error, Debug)]
+#[derive(Debug, thiserror::Error)]
 #[error("end of stream")]
 pub(crate) struct EndOfStream;
 

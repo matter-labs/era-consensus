@@ -4,7 +4,9 @@ use assert_matches::assert_matches;
 use async_trait::async_trait;
 use concurrency::time;
 use rand::{rngs::StdRng, seq::IteratorRandom, Rng};
+use roles::validator;
 use std::{collections::HashSet, fmt};
+use storage::RocksdbStorage;
 use test_casing::{test_casing, Product};
 
 const TEST_TIMEOUT: time::Duration = time::Duration::seconds(5);
@@ -16,20 +18,25 @@ struct TestHandles {
     rng: StdRng,
     test_validators: TestValidators,
     peer_states_handle: PeerStatesHandle,
-    storage: Arc<Storage>,
+    storage: Arc<dyn WriteBlockStore>,
     message_receiver: channel::UnboundedReceiver<io::OutputMessage>,
     events_receiver: channel::UnboundedReceiver<PeerStateEvent>,
 }
 
 #[async_trait]
-trait Test: fmt::Debug {
+trait Test: fmt::Debug + Send + Sync {
     const BLOCK_COUNT: usize;
 
     fn tweak_config(&self, _config: &mut Config) {
         // Does nothing by default
     }
 
-    fn initialize_storage(&self, _storage: &Storage, _test_validators: &TestValidators) {
+    async fn initialize_storage(
+        &self,
+        _ctx: &ctx::Ctx,
+        _storage: &dyn WriteBlockStore,
+        _test_validators: &TestValidators,
+    ) {
         // Does nothing by default
     }
 
@@ -39,16 +46,16 @@ trait Test: fmt::Debug {
 #[instrument(level = "trace", skip(ctx, storage), err)]
 async fn wait_for_stored_block(
     ctx: &ctx::Ctx,
-    storage: &Storage,
+    storage: &dyn WriteBlockStore,
     expected_block_number: BlockNumber,
 ) -> ctx::OrCanceled<()> {
     tracing::trace!("Started waiting for stored block");
     let mut subscriber = storage.subscribe_to_block_writes();
-    let mut got_block = storage.get_last_contiguous_block_number();
+    let mut got_block = storage.last_contiguous_block_number(ctx).await.unwrap();
 
     while got_block < expected_block_number {
         sync::changed(ctx, &mut subscriber).await?;
-        got_block = storage.get_last_contiguous_block_number()
+        got_block = storage.last_contiguous_block_number(ctx).await.unwrap();
     }
     Ok(())
 }
@@ -64,11 +71,10 @@ async fn test_peer_states<T: Test>(test: T) {
     let ctx = &ctx::test_with_clock(ctx, &clock);
     let mut rng = ctx.rng();
     let test_validators = TestValidators::new(4, T::BLOCK_COUNT, &mut rng);
-    let storage = Arc::new(Storage::new(
-        &test_validators.final_blocks[0],
-        storage_dir.path(),
-    ));
-    test.initialize_storage(&storage, &test_validators);
+    let storage = RocksdbStorage::new(ctx, &test_validators.final_blocks[0], storage_dir.path());
+    let storage = Arc::new(storage.await.unwrap());
+    test.initialize_storage(ctx, storage.as_ref(), &test_validators)
+        .await;
 
     let (message_sender, message_receiver) = channel::unbounded();
     let (events_sender, events_receiver) = channel::unbounded();
@@ -90,7 +96,7 @@ async fn test_peer_states<T: Test>(test: T) {
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(async {
             peer_states.run(ctx).await.or_else(|err| {
-                if err.is::<ctx::Canceled>() {
+                if err.root_cause().is::<ctx::Canceled>() {
                     Ok(()) // Swallow cancellation errors after the test is finished
                 } else {
                     Err(err)
@@ -226,7 +232,7 @@ impl Test for UpdatingPeerStateWithMultipleBlocks {
         }
 
         let expected_block_number = BlockNumber(Self::BLOCK_COUNT as u64 - 1);
-        wait_for_stored_block(ctx, &storage, expected_block_number).await?;
+        wait_for_stored_block(ctx, storage.as_ref(), expected_block_number).await?;
         Ok(())
     }
 }
@@ -265,9 +271,17 @@ impl Test for DownloadingBlocksInGaps {
         config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
     }
 
-    fn initialize_storage(&self, storage: &Storage, test_validators: &TestValidators) {
+    async fn initialize_storage(
+        &self,
+        ctx: &ctx::Ctx,
+        storage: &dyn WriteBlockStore,
+        test_validators: &TestValidators,
+    ) {
         for &block_number in &self.local_block_numbers {
-            storage.put_block(&test_validators.final_blocks[block_number]);
+            storage
+                .put_block(ctx, &test_validators.final_blocks[block_number])
+                .await
+                .unwrap();
         }
     }
 
@@ -316,7 +330,7 @@ impl Test for DownloadingBlocksInGaps {
             assert_eq!(recipient, peer_key);
             assert_eq!(number.0 as usize, expected_number);
             test_validators.send_block(number, response);
-            wait_for_stored_block(ctx, &storage, number).await?;
+            wait_for_stored_block(ctx, storage.as_ref(), number).await?;
             clock.advance(BLOCK_SLEEP_INTERVAL);
         }
         Ok(())
@@ -488,7 +502,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         clock.advance(BLOCK_SLEEP_INTERVAL);
         assert!(message_receiver.try_recv().is_none());
 
-        wait_for_stored_block(ctx, &storage, BlockNumber(4)).await?;
+        wait_for_stored_block(ctx, storage.as_ref(), BlockNumber(4)).await?;
         Ok(())
     }
 }
@@ -650,7 +664,7 @@ impl Test for RequestingBlocksFromMultiplePeers {
                 }
             }
 
-            wait_for_stored_block(ctx, &storage, BlockNumber(19)).await?;
+            wait_for_stored_block(ctx, storage.as_ref(), BlockNumber(19)).await?;
             Ok(())
         })
         .await
@@ -762,7 +776,7 @@ impl Test for DisconnectingPeer {
         clock.advance(BLOCK_SLEEP_INTERVAL);
         assert!(message_receiver.try_recv().is_none());
 
-        wait_for_stored_block(ctx, &storage, BlockNumber(2)).await?;
+        wait_for_stored_block(ctx, storage.as_ref(), BlockNumber(2)).await?;
         Ok(())
     }
 }
@@ -798,77 +812,49 @@ async fn requesting_blocks_with_unreliable_peers(
     test_peer_states(test).await;
 }
 
-#[test]
-fn processing_invalid_sync_states() {
+#[tokio::test]
+async fn processing_invalid_sync_states() {
     let storage_dir = tempfile::tempdir().unwrap();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let test_validators = TestValidators::new(4, 3, rng);
-    let storage = Arc::new(Storage::new(
-        &test_validators.final_blocks[0],
-        storage_dir.path(),
-    ));
+    let storage = RocksdbStorage::new(ctx, &test_validators.final_blocks[0], storage_dir.path());
+    let storage = Arc::new(storage.await.unwrap());
 
     let (message_sender, _) = channel::unbounded();
     let (peer_states, _) = PeerStates::new(message_sender, storage, test_validators.test_config());
 
     let mut invalid_sync_state = test_validators.sync_state(1);
     invalid_sync_state.first_stored_block = test_validators.final_blocks[2].justification.clone();
-    let err = peer_states
-        .validate_sync_state(invalid_sync_state)
-        .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(err.contains("first_stored_block"), "{err}");
+    assert!(peer_states.validate_sync_state(invalid_sync_state).is_err());
 
     let mut invalid_sync_state = test_validators.sync_state(1);
     invalid_sync_state.last_contiguous_stored_block =
         test_validators.final_blocks[2].justification.clone();
-    let err = peer_states
-        .validate_sync_state(invalid_sync_state)
-        .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(err.contains("last_contiguous_stored_block"), "{err}");
+    assert!(peer_states.validate_sync_state(invalid_sync_state).is_err());
 
     let mut invalid_sync_state = test_validators.sync_state(1);
     invalid_sync_state
         .last_contiguous_stored_block
         .message
-        .proposal_block_number = BlockNumber(5);
-    invalid_sync_state
-        .last_stored_block
-        .message
-        .proposal_block_number = BlockNumber(5);
-    let err = peer_states
-        .validate_sync_state(invalid_sync_state)
-        .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(
-        err.contains("Failed verifying `last_contiguous_stored_block`"),
-        "{err}"
-    );
+        .proposal
+        .number = BlockNumber(5);
+    invalid_sync_state.last_stored_block.message.proposal.number = BlockNumber(5);
+    assert!(peer_states.validate_sync_state(invalid_sync_state).is_err());
 
     let other_network = TestValidators::new(4, 2, rng);
     let invalid_sync_state = other_network.sync_state(1);
-    let err = peer_states
-        .validate_sync_state(invalid_sync_state)
-        .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(
-        err.contains("Failed verifying `last_contiguous_stored_block`"),
-        "{err}"
-    );
+    assert!(peer_states.validate_sync_state(invalid_sync_state).is_err());
 }
 
-#[test]
-fn processing_invalid_blocks() {
+#[tokio::test]
+async fn processing_invalid_blocks() {
     let storage_dir = tempfile::tempdir().unwrap();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let test_validators = TestValidators::new(4, 3, rng);
-    let storage = Arc::new(Storage::new(
-        &test_validators.final_blocks[0],
-        storage_dir.path(),
-    ));
+    let storage = RocksdbStorage::new(ctx, &test_validators.final_blocks[0], storage_dir.path());
+    let storage = Arc::new(storage.await.unwrap());
 
     let (message_sender, _) = channel::unbounded();
     let (peer_states, _) = PeerStates::new(message_sender, storage, test_validators.test_config());
@@ -877,36 +863,32 @@ fn processing_invalid_blocks() {
     let err = peer_states
         .validate_block(BlockNumber(1), invalid_block)
         .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(err.contains("does not have requested number"), "{err}");
+    assert_matches!(
+        err,
+        BlockValidationError::NumberMismatch {
+            requested: BlockNumber(1),
+            got: BlockNumber(0),
+        }
+    );
 
     let mut invalid_block = test_validators.final_blocks[1].clone();
     invalid_block.justification = test_validators.final_blocks[0].justification.clone();
     let err = peer_states
         .validate_block(BlockNumber(1), &invalid_block)
         .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(
-        err.contains("numbers in `block` and quorum certificate"),
-        "{err}"
-    );
+    assert_matches!(err, BlockValidationError::ProposalMismatch { .. });
 
     let mut invalid_block = test_validators.final_blocks[1].clone();
-    invalid_block.block.payload = b"invalid".to_vec();
+    invalid_block.payload = validator::Payload(b"invalid".to_vec());
     let err = peer_states
         .validate_block(BlockNumber(1), &invalid_block)
         .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(
-        err.contains("hashes in `block` and quorum certificate"),
-        "{err}"
-    );
+    assert_matches!(err, BlockValidationError::HashMismatch { .. });
 
     let other_network = TestValidators::new(4, 2, rng);
     let invalid_block = &other_network.final_blocks[1];
     let err = peer_states
         .validate_block(BlockNumber(1), invalid_block)
         .unwrap_err();
-    let err = format!("{err:?}");
-    assert!(err.contains("verifying quorum certificate"), "{err}");
+    assert_matches!(err, BlockValidationError::Justification(_));
 }

@@ -1,7 +1,6 @@
 #![allow(missing_docs)]
 use concurrency::oneshot;
 use roles::{node, validator};
-use thiserror::Error;
 
 /// All the messages that other actors can send to the Network actor.
 #[derive(Debug)]
@@ -74,12 +73,9 @@ impl SyncState {
     /// Returns numbers for block QCs contained in this state.
     pub fn numbers(&self) -> SyncStateNumbers {
         SyncStateNumbers {
-            first_stored_block: self.first_stored_block.message.proposal_block_number,
-            last_contiguous_stored_block: self
-                .last_contiguous_stored_block
-                .message
-                .proposal_block_number,
-            last_stored_block: self.last_stored_block.message.proposal_block_number,
+            first_stored_block: self.first_stored_block.message.proposal.number,
+            last_contiguous_stored_block: self.last_contiguous_stored_block.message.proposal.number,
+            last_stored_block: self.last_stored_block.message.proposal.number,
         }
     }
 }
@@ -87,7 +83,7 @@ impl SyncState {
 /// Errors returned from a [`GetBlockResponse`].
 ///
 /// Note that these errors don't include network-level errors, only app-level ones.
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum GetBlockError {
     /// Transient error: the node doesn't have the requested L2 block and plans to get it in the future
     /// by syncing.

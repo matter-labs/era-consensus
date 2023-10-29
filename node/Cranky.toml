@@ -37,3 +37,9 @@ warn = [
   # cargo group
   "clippy::wildcard_dependencies",
 ]
+
+allow = [
+  # Produces too many false positives.
+  "clippy::redundant_locals",
+  "clippy::needless_pass_by_ref_mut",
+]

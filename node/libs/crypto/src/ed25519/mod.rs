@@ -49,8 +49,10 @@ pub struct PublicKey(ed::VerifyingKey);
 
 impl PublicKey {
     /// Verifies a signature of a message against this public key.
-    pub fn verify(&self, msg: &[u8], sig: &Signature) -> Result<(), ErrInvalidSignature> {
-        self.0.verify(msg, &sig.0).map_err(|_| ErrInvalidSignature)
+    pub fn verify(&self, msg: &[u8], sig: &Signature) -> Result<(), InvalidSignatureError> {
+        self.0
+            .verify(msg, &sig.0)
+            .map_err(|_| InvalidSignatureError)
     }
 }
 
@@ -99,6 +101,6 @@ impl ByteFmt for Signature {
 }
 
 /// Error returned when an invalid signature is detected.
-#[derive(thiserror::Error, Debug)]
+#[derive(Debug, thiserror::Error)]
 #[error("invalid signature")]
-pub struct ErrInvalidSignature;
+pub struct InvalidSignatureError;

@@ -11,10 +11,10 @@ use concurrency::{
 use network::io::{SyncBlocksInputMessage, SyncState};
 use roles::{
     node,
-    validator::{BlockNumber, FinalBlock},
+    validator::{BlockHeader, BlockNumber, FinalBlock, PayloadHash},
 };
 use std::{collections::HashMap, sync::Arc};
-use storage::Storage;
+use storage::WriteBlockStore;
 use tracing::instrument;
 
 mod events;
@@ -49,7 +49,7 @@ pub(crate) struct PeerStates {
     events_sender: Option<channel::UnboundedSender<PeerStateEvent>>,
     peers: Mutex<HashMap<node::PublicKey, PeerState>>,
     message_sender: channel::UnboundedSender<io::OutputMessage>,
-    storage: Arc<Storage>,
+    storage: Arc<dyn WriteBlockStore>,
     config: Config,
 }
 
@@ -57,7 +57,7 @@ impl PeerStates {
     /// Creates a new instance together with a handle.
     pub(crate) fn new(
         message_sender: channel::UnboundedSender<io::OutputMessage>,
-        storage: Arc<Storage>,
+        storage: Arc<dyn WriteBlockStore>,
         config: Config,
     ) -> (Self, PeerStatesHandle) {
         let (updates_sender, updates_receiver) = channel::unbounded();
@@ -80,19 +80,16 @@ impl PeerStates {
     /// 3. Spawn a task to get each missing block.
     pub(crate) async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let updates_receiver = self.updates_receiver.take().unwrap();
-        let storage = &self.storage;
+        let storage = self.storage.as_ref();
         let get_block_semaphore = Semaphore::new(self.config.max_concurrent_blocks);
         let (new_blocks_sender, mut new_blocks_subscriber) = watch::channel(BlockNumber(0));
 
         scope::run!(ctx, |ctx, s| async {
-            // `storage` uses blocking I/O, so we spawn it a blocking context for it
-            let blocks_task = s.spawn_blocking(|| {
-                let start_number = storage.get_last_contiguous_block_number();
-                let end_number = storage.get_head_block().block.number;
-                let missing_blocks = storage.get_missing_block_numbers(start_number..end_number);
-                Ok((end_number, missing_blocks))
-            });
-            let (mut last_block_number, missing_blocks) = blocks_task.join(ctx).await?;
+            let start_number = storage.last_contiguous_block_number(ctx).await?;
+            let mut last_block_number = storage.head_block(ctx).await?.header.number;
+            let missing_blocks = storage
+                .missing_block_numbers(ctx, start_number..last_block_number)
+                .await?;
             new_blocks_sender.send_replace(last_block_number);
 
             s.spawn_bg(self.run_updates(ctx, updates_receiver, new_blocks_sender));
@@ -219,7 +216,7 @@ impl PeerStates {
         ctx: &ctx::Ctx,
         block_number: BlockNumber,
         get_block_permit: sync::SemaphorePermit<'_>,
-        storage: &Storage,
+        storage: &dyn WriteBlockStore,
     ) -> anyhow::Result<()> {
         let block = self.get_block(ctx, block_number).await?;
         drop(get_block_permit);
@@ -227,18 +224,7 @@ impl PeerStates {
         if let Some(events_sender) = &self.events_sender {
             events_sender.send(PeerStateEvent::GotBlock(block_number));
         }
-
-        scope::run!(ctx, |ctx, s| async {
-            s.spawn_blocking(|| {
-                let block = block;
-                storage.put_block(&block);
-                Ok(())
-            })
-            .join(ctx)
-            .await
-        })
-        .await?;
-
+        storage.put_block(ctx, &block).await?;
         Ok(())
     }
 
@@ -346,25 +332,35 @@ impl PeerStates {
         Ok(None)
     }
 
-    fn validate_block(&self, block_number: BlockNumber, block: &FinalBlock) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            block.block.number == block_number,
-            "Block does not have requested number"
-        );
-        anyhow::ensure!(
-            block.block.number == block.justification.message.proposal_block_number,
-            "Block numbers in `block` and quorum certificate don't match"
-        );
-        anyhow::ensure!(
-            block.block.hash() == block.justification.message.proposal_block_hash,
-            "Block hashes in `block` and quorum certificate don't match"
-        );
+    fn validate_block(
+        &self,
+        block_number: BlockNumber,
+        block: &FinalBlock,
+    ) -> Result<(), BlockValidationError> {
+        if block.header.number != block_number {
+            return Err(BlockValidationError::NumberMismatch {
+                requested: block_number,
+                got: block.header.number,
+            });
+        }
+        let payload_hash = block.payload.hash();
+        if payload_hash != block.header.payload {
+            return Err(BlockValidationError::HashMismatch {
+                header_hash: block.header.payload,
+                payload_hash,
+            });
+        }
+        if block.header != block.justification.message.proposal {
+            return Err(BlockValidationError::ProposalMismatch {
+                block_header: Box::new(block.header),
+                qc_header: Box::new(block.justification.message.proposal),
+            });
+        }
 
         block
             .justification
             .verify(&self.config.validator_set, self.config.consensus_threshold)
-            .context("Failed verifying quorum certificate")?;
-        Ok(())
+            .map_err(BlockValidationError::Justification)
     }
 
     #[instrument(level = "trace", skip(self, ctx))]
@@ -382,4 +378,32 @@ impl PeerStates {
         }
         Ok(())
     }
+}
+
+/// Errors that can occur validating a `FinalBlock` received from a node.
+#[derive(Debug, thiserror::Error)]
+enum BlockValidationError {
+    #[error("block does not have requested number (requested: {requested}, got: {got})")]
+    NumberMismatch {
+        requested: BlockNumber,
+        got: BlockNumber,
+    },
+    #[error(
+        "block payload doesn't match the block header (hash in header: {header_hash:?}, \
+         payload hash: {payload_hash:?})"
+    )]
+    HashMismatch {
+        header_hash: PayloadHash,
+        payload_hash: PayloadHash,
+    },
+    #[error(
+        "quorum certificate proposal doesn't match the block header (block header: {block_header:?}, \
+         header in QC: {qc_header:?})"
+    )]
+    ProposalMismatch {
+        block_header: Box<BlockHeader>,
+        qc_header: Box<BlockHeader>,
+    },
+    #[error("failed verifying quorum certificate: {0:#?}")]
+    Justification(#[source] anyhow::Error),
 }

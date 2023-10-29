@@ -7,12 +7,12 @@ use crate::{
 use concurrency::ctx;
 use roles::validator;
 use std::sync::Arc;
-use storage::Storage;
+use storage::RocksdbStorage;
 use tempfile::tempdir;
 use utils::pipe::{self, DispatcherPipe};
 
 /// This creates a mock Consensus struct for unit tests.
-pub fn make_consensus(
+pub async fn make_consensus(
     ctx: &ctx::Ctx,
     key: &validator::SecretKey,
     validator_set: &validator::ValidatorSet,
@@ -20,12 +20,11 @@ pub fn make_consensus(
 ) -> (Consensus, DispatcherPipe<InputMessage, OutputMessage>) {
     // Create a temporary folder.
     let temp_dir = tempdir().unwrap();
-
     let temp_file = temp_dir.path().join("block_store");
-
     // Initialize the storage.
-    let storage = Storage::new(genesis_block, &temp_file);
-
+    let storage = RocksdbStorage::new(ctx, genesis_block, &temp_file)
+        .await
+        .unwrap();
     // Create the pipe.
     let (consensus_pipe, dispatcher_pipe) = pipe::new();
 
@@ -36,7 +35,9 @@ pub fn make_consensus(
         validator_set.clone(),
         Arc::new(storage),
     );
-
+    let consensus = consensus
+        .await
+        .expect("Initializing consensus actor failed");
     (consensus, dispatcher_pipe)
 }
 
@@ -44,23 +45,24 @@ pub fn make_consensus(
 /// and a validator set for the chain.
 pub fn make_genesis(
     keys: &[validator::SecretKey],
-    payload: Vec<u8>,
+    payload: validator::Payload,
 ) -> (validator::FinalBlock, validator::ValidatorSet) {
-    let block = validator::Block::genesis(payload);
+    let header = validator::BlockHeader::genesis(payload.hash());
     let validator_set = validator::ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap();
     let signed_messages: Vec<_> = keys
         .iter()
         .map(|sk| {
             sk.sign_msg(validator::ReplicaCommit {
+                protocol_version: validator::CURRENT_VERSION,
                 view: validator::ViewNumber(0),
-                proposal_block_hash: block.hash(),
-                proposal_block_number: validator::BlockNumber(0),
+                proposal: header,
             })
         })
         .collect();
     let final_block = validator::FinalBlock {
+        header,
+        payload,
         justification: validator::CommitQC::from(&signed_messages, &validator_set).unwrap(),
-        block,
     };
     (final_block, validator_set)
 }

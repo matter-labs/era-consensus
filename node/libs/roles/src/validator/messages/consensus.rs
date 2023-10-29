@@ -1,12 +1,25 @@
 //! Messages related to the consensus protocol.
 
-use super::{Block, BlockHash, BlockNumber, Msg, Signed};
+use super::{BlockHeader, Msg, Payload, Signed};
 use crate::validator;
 use anyhow::{bail, Context};
 use bit_vec::BitVec;
-use crypto::ByteFmt;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use utils::enum_util::{ErrBadVariant, Variant};
+use utils::enum_util::{BadVariantError, Variant};
+
+/// Version of the consensus algorithm that the validator is using.
+/// It allows to prevent misinterpretation of messages signed by validators
+/// using different versions of the binaries.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ProtocolVersion(pub(crate) u32);
+
+/// We use a hardcoded protocol version for now.
+/// Eventually validators should determine which version to use for which block by observing the relevant L1 contract.
+///
+/// The validator binary has to support the current and next protocol version whenever
+/// a protocol version update is needed (so that it can dynamically switch from producing
+/// blocks for version X to version X+1).
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion(0);
 
 /// Consensus messages.
 #[allow(missing_docs)]
@@ -28,15 +41,25 @@ impl ConsensusMsg {
             Self::LeaderCommit(_) => "LeaderCommit",
         }
     }
+
+    /// Protocol version of this message.
+    pub fn protocol_version(&self) -> ProtocolVersion {
+        match self {
+            Self::ReplicaPrepare(m) => m.protocol_version,
+            Self::ReplicaCommit(m) => m.protocol_version,
+            Self::LeaderPrepare(m) => m.protocol_version,
+            Self::LeaderCommit(m) => m.protocol_version,
+        }
+    }
 }
 
 impl Variant<Msg> for ReplicaPrepare {
     fn insert(self) -> Msg {
         ConsensusMsg::ReplicaPrepare(self).insert()
     }
-    fn extract(msg: Msg) -> Result<Self, ErrBadVariant> {
+    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
         let ConsensusMsg::ReplicaPrepare(this) = Variant::extract(msg)? else {
-            return Err(ErrBadVariant);
+            return Err(BadVariantError);
         };
         Ok(this)
     }
@@ -46,9 +69,9 @@ impl Variant<Msg> for ReplicaCommit {
     fn insert(self) -> Msg {
         ConsensusMsg::ReplicaCommit(self).insert()
     }
-    fn extract(msg: Msg) -> Result<Self, ErrBadVariant> {
+    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
         let ConsensusMsg::ReplicaCommit(this) = Variant::extract(msg)? else {
-            return Err(ErrBadVariant);
+            return Err(BadVariantError);
         };
         Ok(this)
     }
@@ -58,9 +81,9 @@ impl Variant<Msg> for LeaderPrepare {
     fn insert(self) -> Msg {
         ConsensusMsg::LeaderPrepare(self).insert()
     }
-    fn extract(msg: Msg) -> Result<Self, ErrBadVariant> {
+    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
         let ConsensusMsg::LeaderPrepare(this) = Variant::extract(msg)? else {
-            return Err(ErrBadVariant);
+            return Err(BadVariantError);
         };
         Ok(this)
     }
@@ -70,9 +93,9 @@ impl Variant<Msg> for LeaderCommit {
     fn insert(self) -> Msg {
         ConsensusMsg::LeaderCommit(self).insert()
     }
-    fn extract(msg: Msg) -> Result<Self, ErrBadVariant> {
+    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
         let ConsensusMsg::LeaderCommit(this) = Variant::extract(msg)? else {
-            return Err(ErrBadVariant);
+            return Err(BadVariantError);
         };
         Ok(this)
     }
@@ -81,6 +104,8 @@ impl Variant<Msg> for LeaderCommit {
 /// A Prepare message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ReplicaPrepare {
+    /// Protocol version.
+    pub protocol_version: ProtocolVersion,
     /// The number of the current view.
     pub view: ViewNumber,
     /// The highest block that the replica has committed to.
@@ -90,40 +115,37 @@ pub struct ReplicaPrepare {
 }
 
 /// A Commit message from a replica.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReplicaCommit {
+    /// Protocol version.
+    pub protocol_version: ProtocolVersion,
     /// The number of the current view.
     pub view: ViewNumber,
-    /// The hash of the block that the replica is committing to.
-    pub proposal_block_hash: BlockHash,
-    /// The number of the block that the replica is committing to.
-    pub proposal_block_number: BlockNumber,
+    /// The header of the block that the replica is committing to.
+    pub proposal: BlockHeader,
 }
 
 /// A Prepare message from a leader.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeaderPrepare {
-    /// The proposal from the leader.
-    pub proposal: Proposal,
+    /// Protocol version.
+    pub protocol_version: ProtocolVersion,
+    /// The number of the current view.
+    pub view: ViewNumber,
+    /// The header of the block that the leader is proposing.
+    pub proposal: BlockHeader,
+    /// Payload of the block that the leader is proposing.
+    /// `None` iff this is a reproposal.
+    pub proposal_payload: Option<Payload>,
     /// The PrepareQC that justifies this proposal from the leader.
     pub justification: PrepareQC,
-}
-
-/// A proposal from a leader.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Proposal {
-    /// This is a new proposal, i.e. a new block built by this leader.
-    /// This happens whenever the previous block was finalized.
-    New(Block),
-    /// This a reproposal, i.e. a block that was built and proposed by
-    /// a previous leader but that wasn't finalized. We propose it again
-    /// to try to finalize it.
-    Retry(ReplicaCommit),
 }
 
 /// A Commit message from a leader.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeaderCommit {
+    /// Protocol version.
+    pub protocol_version: ProtocolVersion,
     /// The CommitQC that justifies the message from the leader.
     pub justification: CommitQC,
 }
@@ -183,15 +205,13 @@ impl PrepareQC {
     }
 
     /// Verifies the integrity of the PrepareQC.
-    pub fn verify(&self, validators: &ValidatorSet, threshold: usize) -> anyhow::Result<()> {
+    pub fn verify(
+        &self,
+        view: ViewNumber,
+        validators: &ValidatorSet,
+        threshold: usize,
+    ) -> anyhow::Result<()> {
         // First we check that all messages are for the same view number.
-        let view = self
-            .map
-            .first_key_value()
-            .context("Empty map in PrepareQC!")?
-            .0
-            .view;
-
         for msg in self.map.keys() {
             if msg.view != view {
                 bail!("PrepareQC contains messages for different views!");
@@ -203,10 +223,7 @@ impl PrepareQC {
         let mut num_signers = 0;
 
         for signer_bitmap in self.map.values() {
-            // When we serialize a QC, the signers bitmap may get padded with zeros at the end.
-            // We need to remove those zeros before we can verify the signature.
-            let mut signers = signer_bitmap.0.clone();
-            signers.truncate(validators.len());
+            let signers = signer_bitmap.0.clone();
 
             if signers.len() != validators.len() {
                 bail!("Bit vector in PrepareQC has wrong length!");
@@ -307,10 +324,7 @@ impl CommitQC {
 
     /// Verifies the signature of the CommitQC.
     pub fn verify(&self, validators: &ValidatorSet, threshold: usize) -> anyhow::Result<()> {
-        // When we serialize a QC, the signers bitmap may get padded with zeros at the end.
-        // We need to remove those zeros before we can verify the signature.
-        let mut signers = self.signers.0.clone();
-        signers.truncate(validators.len());
+        let signers = self.signers.0.clone();
 
         // First we to do some checks on the signers bit map.
         if signers.len() != validators.len() {
@@ -358,16 +372,6 @@ impl Signers {
     /// Returns true if there are no signers.
     pub fn is_empty(&self) -> bool {
         self.0.none()
-    }
-}
-
-impl ByteFmt for Signers {
-    fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        Ok(Signers(BitVec::from_bytes(bytes)))
-    }
-
-    fn encode(&self) -> Vec<u8> {
-        self.0.to_bytes()
     }
 }
 

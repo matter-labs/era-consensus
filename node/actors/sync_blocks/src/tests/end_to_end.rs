@@ -8,6 +8,7 @@ use network::testonly::Instance as NetworkInstance;
 use rand::seq::SliceRandom;
 use roles::node;
 use std::{fmt, path::Path};
+use storage::RocksdbStorage;
 use test_casing::test_casing;
 use tracing::Instrument;
 
@@ -108,11 +109,19 @@ impl Node {
         let key = self.key();
         let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
         let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
-        let storage = Arc::new(Storage::new(&test_validators.final_blocks[0], storage_dir));
+        let storage = RocksdbStorage::new(ctx, &test_validators.final_blocks[0], storage_dir);
+        let storage = Arc::new(storage.await.unwrap());
 
         let sync_blocks_config = test_validators.test_config();
-        let sync_blocks =
-            SyncBlocks::new(sync_blocks_actor_pipe, storage.clone(), sync_blocks_config);
+        let sync_blocks = SyncBlocks::new(
+            ctx,
+            sync_blocks_actor_pipe,
+            storage.clone(),
+            sync_blocks_config,
+        )
+        .await
+        .expect("Failed");
+
         let sync_states_subscriber = sync_blocks.subscribe_to_state_updates();
         self.network
             .set_sync_state_subscriber(sync_states_subscriber.clone());
@@ -122,7 +131,7 @@ impl Node {
                 while let Ok(block_number) = self.create_block_receiver.recv(ctx).await {
                     tracing::trace!(?key, %block_number, "Storing new block");
                     let block = &test_validators.final_blocks[block_number.0 as usize];
-                    storage.put_block(block);
+                    storage.put_block(ctx, block).await.unwrap();
                 }
                 Ok(())
             });
@@ -149,7 +158,7 @@ impl Node {
                     .await
                     .with_context(|| format!("executor for {key:?}"))
             });
-            s.spawn_bg_blocking(|| sync_blocks.run(ctx));
+            s.spawn_bg(sync_blocks.run(ctx));
             tracing::trace!("Node is fully started");
 
             self.switch_off_receiver
@@ -245,7 +254,7 @@ async fn test_sync_blocks<T: GossipNetworkTest>(test: T) {
                     .unwrap_err();
 
                 tracing::trace!(?key, "Node task completed");
-                if err.is::<ctx::Canceled>() {
+                if err.root_cause().is::<ctx::Canceled>() {
                     Ok(()) // Test has successfully completed
                 } else {
                     Err(err)

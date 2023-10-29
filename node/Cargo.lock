@@ -1909,6 +1909,7 @@ name = "schema"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bit-vec",
  "concurrency",
  "once_cell",
  "prettyplease 0.2.12",
@@ -2107,12 +2108,17 @@ name = "storage"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "assert_matches",
+ "async-trait",
  "concurrency",
  "rand",
  "rocksdb",
  "roles",
  "schema",
  "tempfile",
+ "test-casing",
+ "thiserror",
+ "tokio",
  "tracing",
 ]
 
@@ -2177,6 +2183,7 @@ dependencies = [
  "storage",
  "tempfile",
  "test-casing",
+ "thiserror",
  "tokio",
  "tracing",
  "utils",

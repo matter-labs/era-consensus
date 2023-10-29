@@ -7,8 +7,13 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use roles::validator::{self, Block, BlockNumber, CommitQC, FinalBlock, ValidatorSet};
+use roles::validator::{
+    self,
+    testonly::{make_block, make_genesis_block},
+    BlockHeader, BlockNumber, CommitQC, FinalBlock, Payload, ValidatorSet,
+};
 use std::iter;
+use storage::RocksdbStorage;
 use utils::pipe;
 
 mod end_to_end;
@@ -43,17 +48,15 @@ impl TestValidators {
             final_blocks: vec![],
         };
 
-        let mut latest_block = Block::genesis(vec![]);
+        let payload = Payload(vec![]);
+        let mut latest_block = BlockHeader::genesis(payload.hash());
         let final_blocks = (0..block_count).map(|_| {
             let final_block = FinalBlock {
-                block: latest_block.clone(),
+                header: latest_block,
+                payload: payload.clone(),
                 justification: this.certify_block(&latest_block),
             };
-            latest_block = Block {
-                parent: latest_block.hash(),
-                number: latest_block.number.next(),
-                payload: vec![],
-            };
+            latest_block = BlockHeader::new(&latest_block, payload.hash());
             final_block
         });
         this.final_blocks = final_blocks.collect();
@@ -64,11 +67,11 @@ impl TestValidators {
         Config::new(self.validator_set.clone(), self.validator_secret_keys.len()).unwrap()
     }
 
-    fn certify_block(&self, block: &Block) -> CommitQC {
+    fn certify_block(&self, proposal: &BlockHeader) -> CommitQC {
         let message_to_sign = validator::ReplicaCommit {
-            view: validator::ViewNumber(block.number.0),
-            proposal_block_hash: block.hash(),
-            proposal_block_number: block.number,
+            protocol_version: validator::CURRENT_VERSION,
+            view: validator::ViewNumber(proposal.number.0),
+            proposal: *proposal,
         };
         let signed_messages: Vec<_> = self
             .validator_secret_keys
@@ -106,21 +109,25 @@ async fn subscribing_to_state_updates() {
     let storage_dir = tempfile::tempdir().unwrap();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let genesis_block = create_block_from_base(Block::genesis(vec![]), rng);
-    let block_1 = create_block(&genesis_block, rng);
-    let block_2 = create_block(&block_1, rng);
-    let block_3 = create_block(&block_2, rng);
+    let genesis_block = make_genesis_block(rng);
+    let block_1 = make_block(rng, &genesis_block.header);
+    let block_2 = make_block(rng, &block_1.header);
+    let block_3 = make_block(rng, &block_2.header);
 
-    let storage = Storage::new(&genesis_block, storage_dir.path());
+    let storage = RocksdbStorage::new(ctx, &genesis_block, storage_dir.path())
+        .await
+        .unwrap();
     let storage = &Arc::new(storage);
     let (actor_pipe, _dispatcher_pipe) = pipe::new();
-    let actor = SyncBlocks::new(actor_pipe, storage.clone(), rng.gen());
+    let actor = SyncBlocks::new(ctx, actor_pipe, storage.clone(), rng.gen())
+        .await
+        .unwrap();
     let mut state_subscriber = actor.subscribe_to_state_updates();
 
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg_blocking(|| {
-            actor.run(ctx).or_else(|err| {
-                if err.is::<ctx::Canceled>() {
+        s.spawn_bg(async {
+            actor.run(ctx).await.or_else(|err| {
+                if err.root_cause().is::<ctx::Canceled>() {
                     Ok(()) // Swallow cancellation errors after the test is finished
                 } else {
                     Err(err)
@@ -144,7 +151,7 @@ async fn subscribing_to_state_updates() {
         assert_eq!(initial_state.last_stored_block, genesis_block.justification);
         drop(initial_state);
 
-        storage.put_block(&block_1);
+        storage.put_block(ctx, &block_1).await.unwrap();
 
         let new_state = sync::changed(ctx, &mut state_subscriber).await?;
         assert_eq!(new_state.first_stored_block, genesis_block.justification);
@@ -155,7 +162,7 @@ async fn subscribing_to_state_updates() {
         assert_eq!(new_state.last_stored_block, block_1.justification);
         drop(new_state);
 
-        storage.put_block(&block_3);
+        storage.put_block(ctx, &block_3).await.unwrap();
 
         let new_state = sync::changed(ctx, &mut state_subscriber).await?;
         assert_eq!(new_state.first_stored_block, genesis_block.justification);
@@ -171,26 +178,6 @@ async fn subscribing_to_state_updates() {
     .unwrap();
 }
 
-fn create_block(parent: &FinalBlock, rng: &mut impl Rng) -> FinalBlock {
-    let block = Block {
-        parent: parent.block.hash(),
-        number: parent.block.number.next(),
-        payload: Vec::new(),
-    };
-    create_block_from_base(block, rng)
-}
-
-fn create_block_from_base(block: Block, rng: &mut impl Rng) -> FinalBlock {
-    let mut justification: CommitQC = rng.gen();
-    justification.message.proposal_block_number = block.number;
-    justification.message.proposal_block_hash = block.hash();
-
-    FinalBlock {
-        block,
-        justification,
-    }
-}
-
 #[tokio::test]
 async fn getting_blocks() {
     concurrency::testonly::abort_on_panic();
@@ -198,25 +185,27 @@ async fn getting_blocks() {
     let storage_dir = tempfile::tempdir().unwrap();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let genesis_block = create_block_from_base(Block::genesis(vec![]), rng);
+    let genesis_block = make_genesis_block(rng);
 
-    let storage = Storage::new(&genesis_block, storage_dir.path());
-    let storage = Arc::new(storage);
+    let storage = RocksdbStorage::new(ctx, &genesis_block, storage_dir.path());
+    let storage = Arc::new(storage.await.unwrap());
     let blocks = iter::successors(Some(genesis_block), |parent| {
-        Some(create_block(parent, rng))
+        Some(make_block(rng, &parent.header))
     });
     let blocks: Vec<_> = blocks.take(5).collect();
     for block in &blocks {
-        storage.put_block(block);
+        storage.put_block(ctx, block).await.unwrap();
     }
 
     let (actor_pipe, dispatcher_pipe) = pipe::new();
-    let actor = SyncBlocks::new(actor_pipe, storage.clone(), rng.gen());
+    let actor = SyncBlocks::new(ctx, actor_pipe, storage.clone(), rng.gen())
+        .await
+        .unwrap();
 
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg_blocking(|| {
-            actor.run(ctx).or_else(|err| {
-                if err.is::<ctx::Canceled>() {
+        s.spawn_bg(async {
+            actor.run(ctx).await.or_else(|err| {
+                if err.root_cause().is::<ctx::Canceled>() {
                     Ok(()) // Swallow cancellation errors after the test is finished
                 } else {
                     Err(err)
