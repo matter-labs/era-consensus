@@ -9,7 +9,6 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 blst.workspace = true
-bn254.workspace = true
 ark-bn254.workspace = true
 ark-ec.workspace = true
 ark-serialize.workspace = true
