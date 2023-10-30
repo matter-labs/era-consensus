@@ -283,7 +283,7 @@ impl<'env, E: 'static + Send> Scope<'env, E> {
         self.terminate_guard = Arc::downgrade(guard.terminate_guard());
         let state = guard.terminate_guard().state().clone();
         // Spawn the root task. We cannot run it directly in this task,
-        // because if thr root task panicked, we wouldn't be able to
+        // because if the root task panicked, we wouldn't be able to
         // wait for other tasks to finish.
         let root_task = self.spawn(root_task(&self.ctx, self));
         // Once we spawned the root task we can drop the guard.
@@ -294,7 +294,6 @@ impl<'env, E: 'static + Send> Scope<'env, E> {
         state.terminated().await;
 
         // All tasks completed.
-        // WARNING: NO `await` IS ALLOWED BELOW THIS LINE.
         must_complete.defuse();
 
         // Return the result of the root_task, the error, or propagate the panic.
@@ -327,7 +326,7 @@ impl<'env, E: 'static + Send> Scope<'env, E> {
         self.terminate_guard = Arc::downgrade(guard.terminate_guard());
         let state = guard.terminate_guard().state().clone();
         // Spawn the root task. We cannot run it directly in this task,
-        // because if thr root task panicked, we wouldn't be able to
+        // because if the root task panicked, we wouldn't be able to
         // wait for other tasks to finish.
         let root_task = self.spawn_blocking(|| root_task(&self.ctx, self));
         // Once we spawned the root task we can drop the guard.
