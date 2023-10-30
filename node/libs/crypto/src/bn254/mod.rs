@@ -58,16 +58,8 @@ impl ByteFmt for SecretKey {
 }
 
 /// Type safety wrapper around G2.
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct PublicKey(pub G2);
-
-impl PartialEq for PublicKey {
-    fn eq(&self, other: &Self) -> bool {
-        ByteFmt::encode(self).eq(&ByteFmt::encode(other))
-    }
-}
-
-impl Eq for PublicKey {}
 
 impl ByteFmt for PublicKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
@@ -102,7 +94,7 @@ impl Ord for PublicKey {
 }
 
 /// Type safety wrapper around a G1 value.
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Signature(pub G1);
 
 impl Signature {
@@ -122,14 +114,6 @@ impl Signature {
         }
     }
 }
-
-impl PartialEq for Signature {
-    fn eq(&self, other: &Self) -> bool {
-        ByteFmt::encode(self).eq(&ByteFmt::encode(other))
-    }
-}
-
-impl Eq for Signature {}
 
 impl ByteFmt for Signature {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
