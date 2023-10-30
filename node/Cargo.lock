@@ -1745,6 +1745,7 @@ dependencies = [
  "prost",
  "prost-reflect",
  "protobuf_build",
+ "protobuf_utils",
  "quick-protobuf",
  "rand",
  "serde",

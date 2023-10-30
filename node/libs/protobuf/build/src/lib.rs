@@ -102,7 +102,7 @@ fn check_canonical_pool(d: &prost_reflect::DescriptorPool) -> anyhow::Result<()>
     Ok(())
 }
 
-pub fn compile(proto_include: &Path, module_name: &str) -> anyhow::Result<()> {
+pub fn compile(proto_include: &Path, module_name: &str, deps: &[&'static [u8]]) -> anyhow::Result<()> {
     println!("cargo:rerun-if-changed={}", proto_include.to_str().unwrap());
     let proto_output = PathBuf::from(env::var("OUT_DIR").unwrap())
         .canonicalize()?
@@ -126,13 +126,19 @@ pub fn compile(proto_include: &Path, module_name: &str) -> anyhow::Result<()> {
     let mut cmd = Command::new(protoc_bin_vendored::protoc_bin_path().unwrap());
     cmd.arg("-o").arg(&descriptor_path);
     cmd.arg("-I").arg(&proto_include);
-        /*.arg("--descriptor_set_in").arg(
-            format!("{}:{}",
-                proto_include.join("b/b.desc").to_str().unwrap(),
-                proto_include.join("c/c.desc").to_str().unwrap(),
-            )
-        )*/
-    
+
+    let mut pool = prost_reflect::DescriptorPool::new();
+    if deps.len() > 0 {
+        let mut deps_list = vec![];
+        for (i,d) in deps.iter().enumerate() {
+            pool.decode_file_descriptor_set(*d).unwrap(); // TODO: make it transitive.
+            let name = proto_output.join(format!("dep{i}.binpb"));
+            fs::write(&name,d)?;
+            deps_list.push(name.to_str().unwrap().to_string());
+        }
+        cmd.arg("--descriptor_set_in").arg(deps_list.join(":"));
+    }
+
     for input in &proto_inputs {
         cmd.arg(&input);
     }
@@ -142,19 +148,26 @@ pub fn compile(proto_include: &Path, module_name: &str) -> anyhow::Result<()> {
     if !out.status.success() {
         anyhow::bail!("protoc_failed:\n{}",String::from_utf8_lossy(&out.stderr));
     }
-
+    
     // Generate protobuf code from schema (with reflection).
-    env::set_var("PROTOC", protoc_bin_vendored::protoc_bin_path().unwrap());
+    let descriptor = fs::read(&descriptor_path)?;
+    pool.decode_file_descriptor_set(&descriptor[..])?;
+    let file_descriptor_set_bytes = format!("{module_name}::DESCRIPTOR_POOL");
+    let pool_attribute = format!(r#"#[prost_reflect(file_descriptor_set_bytes = "{}")]"#,file_descriptor_set_bytes);
+    
+    let empty : &[&Path] = &[];
     let mut config = prost_build::Config::new();
+    for message in pool.all_messages() {
+        let full_name = message.full_name();
+        config
+            .type_attribute(full_name, "#[derive(::prost_reflect::ReflectMessage)]")
+            .type_attribute(full_name, &format!(r#"#[prost_reflect(message_name = "{}")]"#, full_name))
+            .type_attribute(full_name, &pool_attribute);
+    }
+    config.file_descriptor_set_path(&descriptor_path);
     config.skip_protoc_run();
     config.out_dir(&proto_output);
-    prost_reflect_build::Builder::new()
-        .file_descriptor_set_path(&descriptor_path)
-        .file_descriptor_set_bytes(format!("{module_name}::DESCRIPTOR_POOL"))
-        .compile_protos_with_config(config, &proto_inputs, &[&proto_include])
-        .unwrap();
-    let descriptor = fs::read(&descriptor_path)?;
-    let pool = prost_reflect::DescriptorPool::decode(descriptor.as_ref()).unwrap();
+    config.compile_protos(empty,empty).unwrap();
 
     // Check that messages are compatible with `proto_fmt::canonical`.
     check_canonical_pool(&pool)?;
@@ -173,7 +186,7 @@ pub fn compile(proto_include: &Path, module_name: &str) -> anyhow::Result<()> {
     }
     let mut file = m.generate();
 
-    file += &format!("const DESCRIPTOR_POOL: &'static [u8] = include_bytes!({descriptor_path:?});");
+    file += &format!("pub const DESCRIPTOR_POOL: &'static [u8] = include_bytes!({descriptor_path:?});");
 
     let file = syn::parse_str(&file).unwrap();
     fs::write(proto_output.join("mod.rs"), prettyplease::unparse(&file))?;
