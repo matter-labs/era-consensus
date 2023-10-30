@@ -31,15 +31,15 @@ jobs:
 
       - uses: mozilla-actions/sccache-action@v0.0.3
       - name: install nextest
-        uses: baptiste0928/cargo-install@v1
+        uses: baptiste0928/cargo-install@v2
         with:
           crate: cargo-nextest
       - name: install cranky
-        uses: baptiste0928/cargo-install@v1
+        uses: baptiste0928/cargo-install@v2
         with:
           crate: cargo-cranky
       - name: install deny
-        uses: baptiste0928/cargo-install@v1
+        uses: baptiste0928/cargo-install@v2
         with:
           crate: cargo-deny
       - name: deny
