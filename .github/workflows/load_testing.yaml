@@ -26,7 +26,7 @@ env:
 
 jobs:
   run_load_tests:
-    runs-on: ["self-hosted", "matterlabs-deployer-sandbox-infra"]
+    runs-on: ["matterlabs-deployer-sandbox-infra"]
     steps:
       - name: Fail-fast on incorrect inputs
         run: |
