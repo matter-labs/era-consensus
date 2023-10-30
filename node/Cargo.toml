@@ -43,6 +43,7 @@ prost = "0.11.0"
 prost-build = "0.11.0"
 prost-reflect = { version = "0.11.0", features = ["derive","serde"] }
 prost-reflect-build = "0.11.0"
+prost-types = "0.11.0"
 protoc-bin-vendored = "3.0.0"
 prettyplease = "0.2.6"
 pretty_assertions = "1.4.0"

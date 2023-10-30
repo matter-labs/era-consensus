@@ -2,6 +2,14 @@
 use anyhow::Context as _;
 use std::{collections::BTreeMap, env, fs, path::{PathBuf,Path}};
 use std::process::Command;
+use prost::Message as _;
+use std::collections::HashSet;
+use once_cell::sync::Lazy;
+
+pub struct Descriptor {
+    pub crate_name: String,
+    pub module_path: String,
+}
 
 /// Traversed all the files in a directory recursively.
 fn traverse_files(path: &Path, f: &mut dyn FnMut(&Path)) -> std::io::Result<()> {
@@ -61,48 +69,54 @@ impl Module {
     }
 }
 
-/// Checks if field `f` supports canonical encoding.
-fn check_canonical_field(f: &prost_reflect::FieldDescriptor) -> anyhow::Result<()> {
-    if f.is_map() {
-        anyhow::bail!("maps unsupported");
+#[derive(Default)]
+struct CanonicalCheckState(HashSet<String>);
+
+impl CanonicalCheckState {
+    /// Checks if messages of type `m` support canonical encoding.
+    fn check_message(&mut self, m: &prost_reflect::MessageDescriptor, check_nested: bool) -> anyhow::Result<()> { 
+        if self.0.contains(m.full_name()) {
+            return Ok(());
+        }
+        self.0.insert(m.full_name().to_string());
+        for f in m.fields() {
+            self.check_field(&f).with_context(|| f.name().to_string())?;
+        }
+        if check_nested {
+            for m in m.child_messages() {
+                self.check_message(&m,check_nested).with_context(||m.name().to_string())?;
+            }
+        }
+        Ok(())
     }
-    if !f.is_list() && !f.supports_presence() {
-        anyhow::bail!("non-repeated, non-oneof fields have to be marked as optional");
+
+    /// Checks if field `f` supports canonical encoding.
+    fn check_field(&mut self, f: &prost_reflect::FieldDescriptor) -> anyhow::Result<()> {
+        if f.is_map() {
+            anyhow::bail!("maps unsupported");
+        }
+        if !f.is_list() && !f.supports_presence() {
+            anyhow::bail!("non-repeated, non-oneof fields have to be marked as optional");
+        }
+        if let prost_reflect::Kind::Message(msg) = f.kind() {
+            self.check_message(&msg,false).with_context(||msg.name().to_string())?;
+        }
+        Ok(())
     }
-    Ok(())
+
+    /// Checks if message types in file `f` support canonical encoding.
+    fn check_file(&mut self, f: &prost_reflect::FileDescriptor) -> anyhow::Result<()> {
+        if f.syntax() != prost_reflect::Syntax::Proto3 {
+            anyhow::bail!("only proto3 syntax is supported");
+        }
+        for m in f.messages() {
+            self.check_message(&m,true).with_context(|| m.name().to_string())?;
+        }
+        Ok(())
+    }
 }
 
-/// Checks if messages of type `m` support canonical encoding.
-fn check_canonical_message(m: &prost_reflect::MessageDescriptor) -> anyhow::Result<()> {
-    for m in m.child_messages() {
-        check_canonical_message(&m).with_context(|| m.name().to_string())?;
-    }
-    for f in m.fields() {
-        check_canonical_field(&f).with_context(|| f.name().to_string())?;
-    }
-    Ok(())
-}
-
-/// Checks if message types in file `f` support canonical encoding.
-fn check_canonical_file(f: &prost_reflect::FileDescriptor) -> anyhow::Result<()> {
-    if f.syntax() != prost_reflect::Syntax::Proto3 {
-        anyhow::bail!("only proto3 syntax is supported");
-    }
-    for m in f.messages() {
-        check_canonical_message(&m).with_context(|| m.name().to_string())?;
-    }
-    Ok(())
-}
-
-/// Checks if message types in descriptor pool `d` support canonical encoding.
-fn check_canonical_pool(d: &prost_reflect::DescriptorPool) -> anyhow::Result<()> {
-    for f in d.files() {
-        check_canonical_file(&f).with_context(|| f.name().to_string())?;
-    }
-    Ok(())
-}
-
-pub fn compile(proto_include: &Path, module_name: &str, deps: &[(&str,&[u8])]) -> anyhow::Result<()> {
+pub fn compile(proto_include: &Path, module_path: &str, deps: &[&Lazy<Descriptor>]) -> anyhow::Result<()> {
     println!("cargo:rerun-if-changed={}", proto_include.to_str().unwrap());
     let proto_output = PathBuf::from(env::var("OUT_DIR").unwrap())
         .canonicalize()?
@@ -127,17 +141,20 @@ pub fn compile(proto_include: &Path, module_name: &str, deps: &[(&str,&[u8])]) -
     cmd.arg("-o").arg(&descriptor_path);
     cmd.arg("-I").arg(&proto_include);
 
-    let mut pool = prost_reflect::DescriptorPool::new();
-    if deps.len() > 0 {
+    /*if deps.len() > 0 {
         let mut deps_list = vec![];
         for (i,(_,d)) in deps.iter().enumerate() {
-            pool.decode_file_descriptor_set(*d).unwrap(); // TODO: make it transitive.
             let name = proto_output.join(format!("dep{i}.binpb"));
             fs::write(&name,d)?;
             deps_list.push(name.to_str().unwrap().to_string());
         }
         cmd.arg("--descriptor_set_in").arg(deps_list.join(":"));
-    }
+    }*/
+
+    let deps : Vec<_> = deps.iter().map(|d|&***d).collect();
+    let deps_path = proto_output.join("deps.binpb");
+    fs::write(&deps_path,prost_reflect::DescriptorPool::global().encode_to_vec())?;
+    cmd.arg("--descriptor_set_in").arg(&deps_path);
 
     for input in &proto_inputs {
         cmd.arg(&input);
@@ -151,12 +168,15 @@ pub fn compile(proto_include: &Path, module_name: &str, deps: &[(&str,&[u8])]) -
     
     // Generate protobuf code from schema (with reflection).
     let descriptor = fs::read(&descriptor_path)?;
-    pool.decode_file_descriptor_set(&descriptor[..])?;
-    let file_descriptor_set_bytes = format!("{module_name}::DESCRIPTOR_POOL");
-    let pool_attribute = format!(r#"#[prost_reflect(file_descriptor_set_bytes = "{}")]"#,file_descriptor_set_bytes);
+    let descriptor = prost_types::FileDescriptorSet::decode(&descriptor[..]).unwrap();
+    for p in &descriptor.file {
+        prost_reflect::DescriptorPool::add_global_file_descriptor_proto::<&[u8]>(p.clone()).unwrap();
+    }
+    let pool_attribute = format!(r#"#[prost_reflect(descriptor_pool = "crate::{module_path}::DESCRIPTOR_POOL")]"#);
     
     let empty : &[&Path] = &[];
     let mut config = prost_build::Config::new();
+    let pool = prost_reflect::DescriptorPool::global();
     for message in pool.all_messages() {
         let full_name = message.full_name();
         config
@@ -170,7 +190,10 @@ pub fn compile(proto_include: &Path, module_name: &str, deps: &[(&str,&[u8])]) -
     config.compile_protos(empty,empty).unwrap();
 
     // Check that messages are compatible with `proto_fmt::canonical`.
-    check_canonical_pool(&pool)?;
+    let mut check_state = CanonicalCheckState::default();
+    for f in &descriptor.file {
+        check_state.check_file(&pool.get_file_by_name(f.name.as_ref().unwrap()).unwrap())?;
+    }
 
     // Generate mod file collecting all proto-generated code.
     let mut m = Module::default();
@@ -184,10 +207,23 @@ pub fn compile(proto_include: &Path, module_name: &str, deps: &[(&str,&[u8])]) -
         println!("name = {name:?}");
         m.insert(&name, entry.path());
     }
-    let mut file = deps.iter().map(|d|format!("use {}::*;",d.0)).collect::<Vec<_>>().join("\n");
+    let mut file = deps.iter().map(|d|format!("use {}::{}::*;",d.crate_name,d.module_path)).collect::<Vec<_>>().join("\n");
     file += &m.generate();
-    file += &format!("pub const DESCRIPTOR_POOL: &'static [u8] = include_bytes!({descriptor_path:?});");
-
+    let rec = deps.iter().map(|d|format!("&*{}::{}::DESCRIPTOR;",d.crate_name,d.module_path)).collect::<Vec<_>>().join(" ");
+    file += &format!("pub const DESCRIPTOR: once_cell::sync::Lazy<protobuf_build::Descriptor> = once_cell::sync::Lazy::new(|| {{ \
+        {rec} \
+        prost_reflect::DescriptorPool::decode_global_file_descriptor_set(&include_bytes!({descriptor_path:?})[..]).unwrap(); \
+        protobuf_build::Descriptor {{\
+            crate_name: {:?}.to_string(),\
+            module_path: {module_path:?}.to_string(),\
+        }}\
+    }});",std::env::var("CARGO_PKG_NAME").unwrap());
+    file += "pub const DESCRIPTOR_POOL: once_cell::sync::Lazy<prost_reflect::DescriptorPool> = \
+                once_cell::sync::Lazy::new(|| { \
+                    &*DESCRIPTOR; \
+                    prost_reflect::DescriptorPool::global() \
+                }); \
+            ";
     let file = syn::parse_str(&file).unwrap();
     fs::write(proto_output.join("mod.rs"), prettyplease::unparse(&file))?;
     Ok(())
