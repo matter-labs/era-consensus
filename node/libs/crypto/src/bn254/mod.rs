@@ -141,7 +141,7 @@ impl Ord for Signature {
 }
 /// Type safety wrapper around [Signature] indicating that it is an aggregated signature.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AggregateSignature(Signature);
+pub struct AggregateSignature(pub G1);
 
 impl AggregateSignature {
     /// Generates an aggregate signature from a list of signatures.
@@ -151,7 +151,7 @@ impl AggregateSignature {
             agg += sig.0
         }
 
-        AggregateSignature(Signature(agg))
+        AggregateSignature(agg)
     }
 
     /// Verifies an aggregated signature for multiple messages against the provided list of public keys.
@@ -164,7 +164,7 @@ impl AggregateSignature {
         let msgs_and_pks = Self::aggregate_pk(msgs_and_pks);
 
         // First pair: e(sig: G1, generator: G2)
-        let a = Bn254::pairing(self.0 .0, G2::generator());
+        let a = Bn254::pairing(self.0, G2::generator());
 
         // Second pair: e(H(m1): G1, pk1: G2) * ... * (H(m1000): G1, pk1000: G2)
         let mut b = PairingOutput::zero();
@@ -201,12 +201,15 @@ impl AggregateSignature {
 
 impl ByteFmt for AggregateSignature {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        let sig = Signature::decode(bytes)?;
-        Ok(AggregateSignature(sig))
+        G1::deserialize_compressed(bytes)
+            .map(Self)
+            .map_err(|e| anyhow!("failed to decode aggregate signature: {e:?}"))
     }
 
     fn encode(&self) -> Vec<u8> {
-        Signature::encode(&self.0)
+        let mut buf = Vec::new();
+        self.0.serialize_compressed(&mut buf).unwrap();
+        buf
     }
 }
 
