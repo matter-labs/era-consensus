@@ -13,6 +13,7 @@ use utils::pipe;
 mod config;
 mod io;
 mod metrics;
+pub mod testonly;
 #[cfg(test)]
 mod tests;
 
