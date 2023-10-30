@@ -54,18 +54,21 @@ impl State {
         cfg: Config,
         events: Option<channel::UnboundedSender<Event>>,
         sync_state: Option<watch::Receiver<SyncState>>,
-    ) -> Arc<Self> {
-        Arc::new(Self {
+    ) -> anyhow::Result<Arc<Self>> {
+        let consensus = cfg
+            .consensus
+            .map(|consensus_cfg| consensus::State::new(consensus_cfg, &cfg.validators))
+            .transpose()?;
+        let this = Self {
             gossip: gossip::State::new(cfg.gossip, sync_state),
-            consensus: cfg
-                .consensus
-                .map(|consensus_cfg| consensus::State::new(consensus_cfg, &cfg.validators)),
+            consensus,
             events,
             cfg: SharedConfig {
                 server_addr: cfg.server_addr,
                 validators: cfg.validators,
             },
-        })
+        };
+        Ok(Arc::new(this))
     }
 
     /// Registers metrics for this state.

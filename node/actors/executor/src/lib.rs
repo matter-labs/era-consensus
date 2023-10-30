@@ -198,7 +198,8 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
         scope::run!(ctx, |ctx, s| async {
             s.spawn_blocking(|| dispatcher.run(ctx).context("IO Dispatcher stopped"));
             s.spawn(async {
-                let state = network::State::new(network_config, None, Some(sync_blocks_subscriber));
+                let state = network::State::new(network_config, None, Some(sync_blocks_subscriber))
+                    .context("Invalid network config")?;
                 state.register_metrics();
                 network::run_network(ctx, state, network_actor_pipe)
                     .await

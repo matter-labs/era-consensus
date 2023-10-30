@@ -88,7 +88,7 @@ impl Instance {
     pub(crate) fn from_cfg(cfg: Config) -> Self {
         let (events_send, events_recv) = channel::unbounded();
         Self {
-            state: State::new(cfg, Some(events_send), None),
+            state: State::new(cfg, Some(events_send), None).expect("Invalid network config"),
             events: events_recv,
         }
     }

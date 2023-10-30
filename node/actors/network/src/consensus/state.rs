@@ -26,12 +26,20 @@ pub(crate) struct State {
 
 impl State {
     /// Constructs a new State.
-    pub(crate) fn new(cfg: Config, validators: &ValidatorSet) -> Self {
+    pub(crate) fn new(cfg: Config, validators: &ValidatorSet) -> anyhow::Result<Self> {
         let validators: HashSet<_> = validators.iter().cloned().collect();
-        Self {
+        let current_validator_key = cfg.key.public();
+        anyhow::ensure!(
+            validators.contains(&current_validator_key),
+            "Validators' public keys {validators:?} do not contain the current validator \
+             {current_validator_key:?}; this is not yet supported"
+        );
+        // ^ This check will be relaxed once we support dynamic validator membership
+
+        Ok(Self {
             cfg,
             inbound: PoolWatch::new(validators.clone(), 0),
             outbound: PoolWatch::new(validators, 0),
-        }
+        })
     }
 }
