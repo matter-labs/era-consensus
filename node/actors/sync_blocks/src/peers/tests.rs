@@ -6,7 +6,7 @@ use concurrency::time;
 use rand::{rngs::StdRng, seq::IteratorRandom, Rng};
 use roles::validator;
 use std::{collections::HashSet, fmt};
-use storage::RocksdbStorage;
+use storage::InMemoryStorage;
 use test_casing::{test_casing, Product};
 
 const TEST_TIMEOUT: time::Duration = time::Duration::seconds(5);
@@ -64,15 +64,13 @@ async fn wait_for_stored_block(
 async fn test_peer_states<T: Test>(test: T) {
     concurrency::testonly::abort_on_panic();
 
-    let storage_dir = tempfile::tempdir().unwrap();
-
     let ctx = &ctx::test_root(&ctx::RealClock).with_timeout(TEST_TIMEOUT);
     let clock = ctx::ManualClock::new();
     let ctx = &ctx::test_with_clock(ctx, &clock);
     let mut rng = ctx.rng();
     let test_validators = TestValidators::new(4, T::BLOCK_COUNT, &mut rng);
-    let storage = RocksdbStorage::new(ctx, &test_validators.final_blocks[0], storage_dir.path());
-    let storage = Arc::new(storage.await.unwrap());
+    let storage = InMemoryStorage::new(test_validators.final_blocks[0].clone());
+    let storage = Arc::new(storage);
     test.initialize_storage(ctx, storage.as_ref(), &test_validators)
         .await;
 
@@ -814,12 +812,11 @@ async fn requesting_blocks_with_unreliable_peers(
 
 #[tokio::test]
 async fn processing_invalid_sync_states() {
-    let storage_dir = tempfile::tempdir().unwrap();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let test_validators = TestValidators::new(4, 3, rng);
-    let storage = RocksdbStorage::new(ctx, &test_validators.final_blocks[0], storage_dir.path());
-    let storage = Arc::new(storage.await.unwrap());
+    let storage = InMemoryStorage::new(test_validators.final_blocks[0].clone());
+    let storage = Arc::new(storage);
 
     let (message_sender, _) = channel::unbounded();
     let (peer_states, _) = PeerStates::new(message_sender, storage, test_validators.test_config());
@@ -849,12 +846,11 @@ async fn processing_invalid_sync_states() {
 
 #[tokio::test]
 async fn processing_invalid_blocks() {
-    let storage_dir = tempfile::tempdir().unwrap();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let test_validators = TestValidators::new(4, 3, rng);
-    let storage = RocksdbStorage::new(ctx, &test_validators.final_blocks[0], storage_dir.path());
-    let storage = Arc::new(storage.await.unwrap());
+    let storage = InMemoryStorage::new(test_validators.final_blocks[0].clone());
+    let storage = Arc::new(storage);
 
     let (message_sender, _) = channel::unbounded();
     let (peer_states, _) = PeerStates::new(message_sender, storage, test_validators.test_config());

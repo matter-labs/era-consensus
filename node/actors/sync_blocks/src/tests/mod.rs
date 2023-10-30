@@ -13,7 +13,7 @@ use roles::validator::{
     BlockHeader, BlockNumber, CommitQC, FinalBlock, Payload, ValidatorSet,
 };
 use std::iter;
-use storage::RocksdbStorage;
+use storage::InMemoryStorage;
 use utils::pipe;
 
 mod end_to_end;
@@ -106,7 +106,6 @@ impl TestValidators {
 async fn subscribing_to_state_updates() {
     concurrency::testonly::abort_on_panic();
 
-    let storage_dir = tempfile::tempdir().unwrap();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let genesis_block = make_genesis_block(rng);
@@ -114,9 +113,7 @@ async fn subscribing_to_state_updates() {
     let block_2 = make_block(rng, &block_1.header);
     let block_3 = make_block(rng, &block_2.header);
 
-    let storage = RocksdbStorage::new(ctx, &genesis_block, storage_dir.path())
-        .await
-        .unwrap();
+    let storage = InMemoryStorage::new(genesis_block.clone());
     let storage = &Arc::new(storage);
     let (actor_pipe, _dispatcher_pipe) = pipe::new();
     let actor = SyncBlocks::new(ctx, actor_pipe, storage.clone(), rng.gen())
@@ -182,13 +179,12 @@ async fn subscribing_to_state_updates() {
 async fn getting_blocks() {
     concurrency::testonly::abort_on_panic();
 
-    let storage_dir = tempfile::tempdir().unwrap();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let genesis_block = make_genesis_block(rng);
 
-    let storage = RocksdbStorage::new(ctx, &genesis_block, storage_dir.path());
-    let storage = Arc::new(storage.await.unwrap());
+    let storage = InMemoryStorage::new(genesis_block.clone());
+    let storage = Arc::new(storage);
     let blocks = iter::successors(Some(genesis_block), |parent| {
         Some(make_block(rng, &parent.header))
     });
