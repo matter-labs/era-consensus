@@ -14,7 +14,7 @@ pub(crate) fn hash_to_g1(msg: &[u8]) -> G1Projective {
             .finalize()
             .into();
 
-        // Try to get a G1 point from the hash.
+        // Try to get a G1 point from the hash. The probability that this works is around 1/8.
         let p = G1Affine::from_random_bytes(&bytes);
 
         if let Some(p) = p {
