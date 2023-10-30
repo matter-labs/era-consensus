@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "libs/concurrency",
+    "libs/protobuf/build",
     "actors/consensus",
     "libs/crypto",
     "actors/executor",
@@ -8,6 +9,7 @@ members = [
     "actors/sync_blocks",
     "libs/roles",
     "libs/schema",
+    "libs/schema2",
     "libs/storage",
     "tools",
     "libs/utils",
