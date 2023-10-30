@@ -20,6 +20,7 @@ tracing-subscriber.workspace = true
 vise.workspace = true
 vise-exporter.workspace = true
 
+protobuf_utils.workspace = true
 concurrency = { path = "../../libs/concurrency" }
 crypto = { path = "../../libs/crypto" }
 roles = { path = "../../libs/roles" }

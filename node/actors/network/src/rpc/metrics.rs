@@ -86,7 +86,7 @@ pub(super) struct CallLabels {
 }
 
 const MESSAGE_SIZE_BUCKETS: Buckets =
-    Buckets::exponential(schema::kB as f64..=schema::MB as f64, 2.0);
+    Buckets::exponential(protobuf_utils::kB as f64..=protobuf_utils::MB as f64, 2.0);
 
 #[derive(Debug, Metrics)]
 #[metrics(prefix = "network_rpc")]

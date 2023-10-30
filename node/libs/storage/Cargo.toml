@@ -14,6 +14,7 @@ rocksdb.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
+protobuf_utils.workspace = true
 concurrency = { path = "../concurrency" }
 roles = { path = "../roles" }
 schema = { path = "../schema" }

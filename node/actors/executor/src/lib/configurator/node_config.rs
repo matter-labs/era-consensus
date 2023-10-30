@@ -2,7 +2,8 @@
 use anyhow::Context as _;
 use crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use roles::{node, validator};
-use schema::{proto::executor::config as proto, read_required, required, ProtoFmt};
+use schema::proto::executor::config as proto;
+use protobuf_utils::{read_required, required, ProtoFmt};
 use std::{
     collections::{HashMap, HashSet},
     net,

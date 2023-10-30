@@ -24,6 +24,8 @@ homepage = "https://matter-labs.io/"
 license = "MIT"
 
 [workspace.dependencies]
+protobuf_utils = { path = "libs/protobuf/utils" }
+
 anyhow = "1"
 assert_matches = "1.5.0"
 async-trait = "0.1.71"

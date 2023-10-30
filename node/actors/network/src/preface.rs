@@ -9,7 +9,8 @@
 //! and multiplex between mutliple endpoints available on the same TCP port.
 use crate::{frame, metrics, noise};
 use concurrency::{ctx, time};
-use schema::{proto::network::preface as proto, required, ProtoFmt};
+use schema::proto::network::preface as proto;
+use protobuf_utils::{required, ProtoFmt};
 
 /// Timeout on executing the preface protocol.
 const TIMEOUT: time::Duration = time::Duration::seconds(5);
@@ -33,7 +34,7 @@ pub(crate) enum Endpoint {
 impl ProtoFmt for Encryption {
     type Proto = proto::Encryption;
     fn max_size() -> usize {
-        10 * schema::kB
+        10 * protobuf_utils::kB
     }
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         use proto::encryption::T;
@@ -53,7 +54,7 @@ impl ProtoFmt for Encryption {
 impl ProtoFmt for Endpoint {
     type Proto = proto::Endpoint;
     fn max_size() -> usize {
-        10 * schema::kB
+        10 * protobuf_utils::kB
     }
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         use proto::endpoint::T;

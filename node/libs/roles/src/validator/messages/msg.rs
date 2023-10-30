@@ -20,7 +20,7 @@ pub enum Msg {
 impl Msg {
     /// Returns the hash of the message.
     pub fn hash(&self) -> MsgHash {
-        MsgHash(sha256::Sha256::new(&schema::canonical(self)))
+        MsgHash(sha256::Sha256::new(&protobuf_utils::canonical(self)))
     }
 }
 

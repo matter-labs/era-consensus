@@ -1,14 +1,4 @@
-//! Code generated from protobuf schema files and
-//! utilities for serialization.
-
-mod proto_fmt;
-mod std_conv;
-pub mod testonly;
-
-pub use proto_fmt::*;
-
-#[cfg(test)]
-mod tests;
+//! Code generated from protobuf schema files.
 
 #[allow(warnings)]
 pub mod proto {

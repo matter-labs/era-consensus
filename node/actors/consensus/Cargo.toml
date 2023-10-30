@@ -15,6 +15,7 @@ thiserror.workspace = true
 tracing.workspace = true
 vise.workspace = true
 
+protobuf_utils.workspace = true
 concurrency = { path = "../../libs/concurrency" }
 crypto = { path = "../../libs/crypto" }
 roles = { path = "../../libs/roles" }

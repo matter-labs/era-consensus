@@ -4,7 +4,8 @@ use crate::{io, mux};
 use anyhow::Context;
 use concurrency::{limiter, time};
 use roles::validator::{BlockNumber, FinalBlock};
-use schema::{proto::network::gossip as proto, read_required, ProtoFmt};
+use schema::proto::network::gossip as proto;
+use protobuf_utils::{read_required, ProtoFmt};
 
 /// `get_sync_state` RPC.
 #[derive(Debug)]
@@ -47,7 +48,7 @@ impl ProtoFmt for io::SyncState {
 
     fn max_size() -> usize {
         // TODO: estimate maximum size more precisely
-        100 * schema::kB
+        100 * protobuf_utils::kB
     }
 }
 
@@ -67,7 +68,7 @@ impl ProtoFmt for SyncStateResponse {
     }
 
     fn max_size() -> usize {
-        schema::kB
+        protobuf_utils::kB
     }
 }
 
@@ -109,7 +110,7 @@ impl ProtoFmt for GetBlockRequest {
     }
 
     fn max_size() -> usize {
-        schema::kB
+        protobuf_utils::kB
     }
 }
 
@@ -137,7 +138,7 @@ impl ProtoFmt for io::GetBlockError {
     }
 
     fn max_size() -> usize {
-        schema::kB
+        protobuf_utils::kB
     }
 }
 
@@ -178,6 +179,6 @@ impl ProtoFmt for GetBlockResponse {
     }
 
     fn max_size() -> usize {
-        schema::MB
+        protobuf_utils::MB
     }
 }

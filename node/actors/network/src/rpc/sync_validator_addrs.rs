@@ -4,7 +4,8 @@ use crate::mux;
 use anyhow::Context as _;
 use concurrency::{limiter, time};
 use roles::validator;
-use schema::{proto::network::gossip as proto, ProtoFmt};
+use schema::proto::network::gossip as proto;
+use protobuf_utils::{ProtoFmt};
 use std::sync::Arc;
 
 /// SyncValidatorAddrs Rpc.
@@ -45,7 +46,7 @@ impl ProtoFmt for Req {
     }
 
     fn max_size() -> usize {
-        schema::kB
+        protobuf_utils::kB
     }
 }
 
@@ -69,6 +70,6 @@ impl ProtoFmt for Resp {
     }
 
     fn max_size() -> usize {
-        schema::MB
+        protobuf_utils::MB
     }
 }

@@ -46,7 +46,7 @@ impl ConfigPaths {
     #[instrument(level = "trace", ret)]
     pub(crate) fn read(self) -> anyhow::Result<Configs> {
         let cfg = Configs {
-            config: schema::decode_json(
+            config: protobuf_utils::decode_json(
                 &std::fs::read_to_string(&self.config).context(self.config)?,
             )?,
             validator_key: Text::new(

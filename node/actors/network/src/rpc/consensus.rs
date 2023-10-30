@@ -2,7 +2,8 @@
 use crate::mux;
 use concurrency::{limiter, time};
 use roles::validator;
-use schema::{proto::network::consensus as proto, read_required, ProtoFmt};
+use schema::proto::network::consensus as proto;
+use protobuf_utils::{read_required, ProtoFmt};
 
 /// Consensus RPC.
 pub(crate) struct Rpc;
@@ -45,7 +46,7 @@ impl ProtoFmt for Req {
     }
 
     fn max_size() -> usize {
-        schema::MB
+        protobuf_utils::MB
     }
 }
 
@@ -61,6 +62,6 @@ impl ProtoFmt for Resp {
     }
 
     fn max_size() -> usize {
-        schema::kB
+        protobuf_utils::kB
     }
 }

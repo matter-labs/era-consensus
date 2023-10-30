@@ -1,10 +1,10 @@
 //! Defines the schema of the database.
-
 use anyhow::Context as _;
 use concurrency::ctx;
 use rocksdb::{Direction, IteratorMode};
 use roles::validator::{self, BlockNumber};
-use schema::{proto::storage as proto, read_required, required, ProtoFmt};
+use schema::proto::storage as proto;
+use protobuf_utils::{read_required, required, ProtoFmt};
 use std::{iter, ops};
 use thiserror::Error;
 

@@ -13,6 +13,7 @@ rand.workspace = true
 serde_json.workspace = true
 clap.workspace = true
 
+protobuf_utils.workspace = true
 crypto = { path = "../libs/crypto" }
 roles = { path = "../libs/roles" }
 schema = { path = "../libs/schema" }

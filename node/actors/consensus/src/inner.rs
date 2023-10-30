@@ -23,7 +23,7 @@ pub(crate) struct ConsensusInner {
 impl ConsensusInner {
     /// The maximum size of the payload of a block, in bytes. We will
     /// reject blocks with payloads larger than this.
-    pub(crate) const PAYLOAD_MAX_SIZE: usize = 500 * schema::kB;
+    pub(crate) const PAYLOAD_MAX_SIZE: usize = 500 * protobuf_utils::kB;
 
     /// Computes the validator for the given view.
     #[instrument(level = "trace", ret)]

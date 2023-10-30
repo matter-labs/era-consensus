@@ -102,7 +102,7 @@ fn check_canonical_pool(d: &prost_reflect::DescriptorPool) -> anyhow::Result<()>
     Ok(())
 }
 
-pub fn compile(proto_include: &Path, module_name: &str, deps: &[&'static [u8]]) -> anyhow::Result<()> {
+pub fn compile(proto_include: &Path, module_name: &str, deps: &[(&str,&[u8])]) -> anyhow::Result<()> {
     println!("cargo:rerun-if-changed={}", proto_include.to_str().unwrap());
     let proto_output = PathBuf::from(env::var("OUT_DIR").unwrap())
         .canonicalize()?
@@ -130,7 +130,7 @@ pub fn compile(proto_include: &Path, module_name: &str, deps: &[&'static [u8]]) 
     let mut pool = prost_reflect::DescriptorPool::new();
     if deps.len() > 0 {
         let mut deps_list = vec![];
-        for (i,d) in deps.iter().enumerate() {
+        for (i,(_,d)) in deps.iter().enumerate() {
             pool.decode_file_descriptor_set(*d).unwrap(); // TODO: make it transitive.
             let name = proto_output.join(format!("dep{i}.binpb"));
             fs::write(&name,d)?;
@@ -184,8 +184,8 @@ pub fn compile(proto_include: &Path, module_name: &str, deps: &[&'static [u8]]) 
         println!("name = {name:?}");
         m.insert(&name, entry.path());
     }
-    let mut file = m.generate();
-
+    let mut file = deps.iter().map(|d|format!("use {}::*;",d.0)).collect::<Vec<_>>().join("\n");
+    file += &m.generate();
     file += &format!("pub const DESCRIPTOR_POOL: &'static [u8] = include_bytes!({descriptor_path:?});");
 
     let file = syn::parse_str(&file).unwrap();

@@ -100,7 +100,7 @@ impl RocksdbStorage {
             .next()
             .context("Head block not found")?
             .context("RocksDB error reading head block")?;
-        schema::decode(&head_block).context("Failed decoding head block bytes")
+        protobuf_utils::decode(&head_block).context("Failed decoding head block bytes")
     }
 
     /// Returns a block with the least number stored in this database.
@@ -114,7 +114,7 @@ impl RocksdbStorage {
             .next()
             .context("First stored block not found")?
             .context("RocksDB error reading first stored block")?;
-        schema::decode(&first_block).context("Failed decoding first stored block bytes")
+        protobuf_utils::decode(&first_block).context("Failed decoding first stored block bytes")
     }
 
     fn last_contiguous_block_number_blocking(&self) -> anyhow::Result<BlockNumber> {
@@ -174,7 +174,7 @@ impl RocksdbStorage {
         else {
             return Ok(None);
         };
-        let block = schema::decode(&raw_block)
+        let block = protobuf_utils::decode(&raw_block)
             .with_context(|| format!("Failed decoding block #{number}"))?;
         Ok(Some(block))
     }
@@ -213,7 +213,7 @@ impl RocksdbStorage {
         let mut write_batch = rocksdb::WriteBatch::default();
         write_batch.put(
             DatabaseKey::Block(block_number).encode_key(),
-            schema::encode(finalized_block),
+            protobuf_utils::encode(finalized_block),
         );
         // Commit the transaction.
         db.write(write_batch)
@@ -232,7 +232,7 @@ impl RocksdbStorage {
         else {
             return Ok(None);
         };
-        schema::decode(&raw_state)
+        protobuf_utils::decode(&raw_state)
             .map(Some)
             .context("Failed to decode replica state!")
     }
@@ -241,7 +241,7 @@ impl RocksdbStorage {
         self.write()
             .put(
                 DatabaseKey::ReplicaState.encode_key(),
-                schema::encode(replica_state),
+                protobuf_utils::encode(replica_state),
             )
             .context("Failed putting ReplicaState to RocksDB")
     }
