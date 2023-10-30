@@ -389,8 +389,6 @@ name = "concurrency"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "futures",
- "hyper",
  "once_cell",
  "pin-project",
  "rand",
@@ -607,22 +605,17 @@ dependencies = [
  "concurrency",
  "consensus",
  "crypto",
- "hex",
  "network",
- "once_cell",
  "rand",
  "roles",
  "schema",
- "serde",
- "serde_json",
  "storage",
  "sync_blocks",
+ "tempfile",
  "tokio",
  "tracing",
- "tracing-subscriber",
  "utils",
  "vise",
- "vise-exporter",
 ]
 
 [[package]]
@@ -782,25 +775,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2fabcfbdc87f4758337ca535fb41a6d701b65693ce38287d856d1674551ec9b"
 
 [[package]]
-name = "h2"
-version = "0.3.20"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "97ec8491ebaf99c8eaa73058b045fe58073cd6be7f596ac993ced0b0a0c01049"
-dependencies = [
- "bytes",
- "fnv",
- "futures-core",
- "futures-sink",
- "futures-util",
- "http",
- "indexmap",
- "slab",
- "tokio",
- "tokio-util",
- "tracing",
-]
-
-[[package]]
 name = "hashbrown"
 version = "0.12.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -868,7 +842,6 @@ dependencies = [
  "futures-channel",
  "futures-core",
  "futures-util",
- "h2",
  "http",
  "http-body",
  "httparse",
@@ -2081,33 +2054,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "tokio-util"
-version = "0.7.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "806fe8c2c87eccc8b3267cbae29ed3ab2d0bd37fca70ab622e46aaa9375ddb7d"
-dependencies = [
- "bytes",
- "futures-core",
- "futures-sink",
- "pin-project-lite",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "tools"
 version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
+ "concurrency",
  "consensus",
  "crypto",
  "executor",
- "hex",
  "rand",
  "roles",
  "schema",
- "serde_json",
+ "storage",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "utils",
+ "vise-exporter",
 ]
 
 [[package]]
@@ -2241,7 +2205,7 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "vise"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/vise.git?rev=8322ddc4bb115a7d11127626730b94f93b804cbe#8322ddc4bb115a7d11127626730b94f93b804cbe"
+source = "git+https://github.com/matter-labs/vise.git?rev=dd05139b76ab0843443ab3ff730174942c825dae#dd05139b76ab0843443ab3ff730174942c825dae"
 dependencies = [
  "elsa",
  "linkme",
@@ -2253,7 +2217,7 @@ dependencies = [
 [[package]]
 name = "vise-exporter"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/vise.git?rev=8322ddc4bb115a7d11127626730b94f93b804cbe#8322ddc4bb115a7d11127626730b94f93b804cbe"
+source = "git+https://github.com/matter-labs/vise.git?rev=dd05139b76ab0843443ab3ff730174942c825dae#dd05139b76ab0843443ab3ff730174942c825dae"
 dependencies = [
  "hyper",
  "once_cell",
@@ -2265,7 +2229,7 @@ dependencies = [
 [[package]]
 name = "vise-macros"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/vise.git?rev=8322ddc4bb115a7d11127626730b94f93b804cbe#8322ddc4bb115a7d11127626730b94f93b804cbe"
+source = "git+https://github.com/matter-labs/vise.git?rev=dd05139b76ab0843443ab3ff730174942c825dae#dd05139b76ab0843443ab3ff730174942c825dae"
 dependencies = [
  "proc-macro2",
  "quote",

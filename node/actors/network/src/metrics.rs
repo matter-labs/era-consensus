@@ -1,14 +1,16 @@
 //! General-purpose network metrics.
 
 use crate::state::State;
-use concurrency::{ctx, io, metrics::GaugeGuard, net};
+use concurrency::{ctx, io, net};
 use std::{
     net::SocketAddr,
     pin::Pin,
     sync::Weak,
     task::{ready, Context, Poll},
 };
-use vise::{Collector, Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Metrics, Unit};
+use vise::{
+    Collector, Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, GaugeGuard, Metrics, Unit,
+};
 
 /// Metered TCP stream.
 #[pin_project::pin_project]
@@ -49,7 +51,7 @@ impl MeteredStream {
         TCP_METRICS.established[&direction].inc();
         Self {
             stream,
-            _active: GaugeGuard::from(TCP_METRICS.active[&direction].clone()),
+            _active: TCP_METRICS.active[&direction].inc_guard(1),
         }
     }
 }
@@ -147,11 +149,13 @@ impl NetworkGauges {
                 gauges.gossip_inbound_connections.set(len);
                 let len = state.gossip.outbound.subscribe().borrow().current().len();
                 gauges.gossip_outbound_connections.set(len);
-                let len = state.consensus.inbound.subscribe().borrow().current().len();
-                gauges.consensus_inbound_connections.set(len);
-                let subscriber = state.consensus.outbound.subscribe();
-                let len = subscriber.borrow().current().len();
-                gauges.consensus_outbound_connections.set(len);
+                if let Some(consensus_state) = &state.consensus {
+                    let len = consensus_state.inbound.subscribe().borrow().current().len();
+                    gauges.consensus_inbound_connections.set(len);
+                    let subscriber = consensus_state.outbound.subscribe();
+                    let len = subscriber.borrow().current().len();
+                    gauges.consensus_outbound_connections.set(len);
+                }
                 gauges
             })
         });
