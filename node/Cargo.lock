@@ -1928,6 +1928,7 @@ dependencies = [
  "storage",
  "tempfile",
  "test-casing",
+ "thiserror",
  "tokio",
  "tracing",
  "utils",

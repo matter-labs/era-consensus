@@ -6,7 +6,6 @@ use rocksdb::{Direction, IteratorMode};
 use roles::validator::{self, BlockNumber};
 use schema::{proto::storage as proto, read_required, required, ProtoFmt};
 use std::{iter, ops};
-use thiserror::Error;
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -180,7 +179,7 @@ where
 }
 
 /// Storage errors.
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum StorageError {
     /// Operation was canceled by structured concurrency framework.
     #[error("operation was canceled by structured concurrency framework")]

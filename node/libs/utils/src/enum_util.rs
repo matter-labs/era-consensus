@@ -2,9 +2,9 @@
 //! which is generic over the variants of an enum type.
 
 /// Error returned when `Variant::extract` fails.
-#[derive(thiserror::Error, Debug)]
+#[derive(Debug, thiserror::Error)]
 #[error("bad enum variant")]
-pub struct ErrBadVariant;
+pub struct BadVariantError;
 
 /// `impl Variant<E> for A` defines an unique embedding of `A` in `E`.
 /// For example for
@@ -61,5 +61,5 @@ pub trait Variant<Enum: Sized>: Sized {
     /// Constructs an enum value from a value of its variant.
     fn insert(self) -> Enum;
     /// Destructs the enum value expecting a particular variant.
-    fn extract(e: Enum) -> Result<Self, ErrBadVariant>;
+    fn extract(e: Enum) -> Result<Self, BadVariantError>;
 }
