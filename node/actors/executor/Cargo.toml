@@ -24,5 +24,4 @@ sync_blocks = { path = "../sync_blocks" }
 
 [dev-dependencies]
 rand.workspace = true
-tempfile.workspace = true
 tokio.workspace = true
