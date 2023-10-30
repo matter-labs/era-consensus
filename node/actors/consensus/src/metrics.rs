@@ -4,7 +4,7 @@ use std::time::Duration;
 use vise::{Buckets, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Histogram, Metrics, Unit};
 
 const PAYLOAD_SIZE_BUCKETS: Buckets =
-    Buckets::exponential((4 * protobuf_utils::kB) as f64..=(4 * protobuf_utils::MB) as f64, 4.0);
+    Buckets::exponential((4 * protobuf::kB) as f64..=(4 * protobuf::MB) as f64, 4.0);
 
 /// Label for a consensus message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelValue)]

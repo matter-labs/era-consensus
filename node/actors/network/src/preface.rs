@@ -10,7 +10,7 @@
 use crate::{frame, metrics, noise};
 use concurrency::{ctx, time};
 use schema::proto::network::preface as proto;
-use protobuf_utils::{required, ProtoFmt};
+use protobuf::{required, ProtoFmt};
 
 /// Timeout on executing the preface protocol.
 const TIMEOUT: time::Duration = time::Duration::seconds(5);
@@ -34,7 +34,7 @@ pub(crate) enum Endpoint {
 impl ProtoFmt for Encryption {
     type Proto = proto::Encryption;
     fn max_size() -> usize {
-        10 * protobuf_utils::kB
+        10 * protobuf::kB
     }
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         use proto::encryption::T;
@@ -54,7 +54,7 @@ impl ProtoFmt for Encryption {
 impl ProtoFmt for Endpoint {
     type Proto = proto::Endpoint;
     fn max_size() -> usize {
-        10 * protobuf_utils::kB
+        10 * protobuf::kB
     }
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         use proto::endpoint::T;

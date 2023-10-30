@@ -4,7 +4,7 @@ use concurrency::{ctx, time};
 use crypto::{bls12_381, ByteFmt};
 use roles::{node, validator};
 use schema::proto::network::consensus as proto;
-use protobuf_utils::{read_required, ProtoFmt};
+use protobuf::{read_required, ProtoFmt};
 
 #[cfg(test)]
 mod testonly;

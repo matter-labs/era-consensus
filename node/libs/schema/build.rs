@@ -6,6 +6,6 @@ fn main() -> anyhow::Result<()> {
     let proto_include = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?)
         .canonicalize()?
         .join("proto");
-    protobuf_build::compile(&proto_include,"proto", &[&protobuf_utils::proto::DESCRIPTOR])?;
+    protobuf::build::compile(&proto_include,"proto", &[&protobuf::proto::DESCRIPTOR])?;
     Ok(())
 }

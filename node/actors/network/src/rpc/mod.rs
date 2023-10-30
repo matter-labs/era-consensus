@@ -36,10 +36,10 @@ pub(crate) mod testonly;
 mod tests;
 
 const MUX_CONFIG: mux::Config = mux::Config {
-    read_buffer_size: 160 * protobuf_utils::kB as u64,
-    read_frame_size: 16 * protobuf_utils::kB as u64,
+    read_buffer_size: 160 * protobuf::kB as u64,
+    read_frame_size: 16 * protobuf::kB as u64,
     read_frame_count: 100,
-    write_frame_size: 16 * protobuf_utils::kB as u64,
+    write_frame_size: 16 * protobuf::kB as u64,
 };
 
 /// Trait for defining an RPC.
@@ -61,9 +61,9 @@ pub(crate) trait Rpc: Sync + Send + 'static {
     /// Name of the RPC, used in prometheus metrics.
     const METHOD: &'static str;
     /// Type of the request message.
-    type Req: protobuf_utils::ProtoFmt + Send + Sync;
+    type Req: protobuf::ProtoFmt + Send + Sync;
     /// Type of the response message.
-    type Resp: protobuf_utils::ProtoFmt + Send + Sync;
+    type Resp: protobuf::ProtoFmt + Send + Sync;
     /// Name of the variant of the request message type.
     /// Useful for collecting metrics with finer than
     /// per-rpc type granularity.

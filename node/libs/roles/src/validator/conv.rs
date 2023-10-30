@@ -5,7 +5,7 @@ use super::{
     Signers, ViewNumber,
 };
 use crate::node::SessionId;
-use protobuf_utils::{read_required, required, ProtoFmt};
+use protobuf::{read_required, required, ProtoFmt};
 use anyhow::Context as _;
 use crypto::ByteFmt;
 use schema::proto::roles::validator as proto;
@@ -187,7 +187,7 @@ impl ProtoFmt for LeaderCommit {
 }
 
 impl ProtoFmt for Signers {
-    type Proto = protobuf_utils::proto::std::BitVector;
+    type Proto = protobuf::proto::std::BitVector;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(ProtoFmt::read(r)?))
@@ -266,8 +266,8 @@ impl ProtoFmt for Phase {
     fn build(&self) -> Self::Proto {
         use proto::phase::T;
         let t = match self {
-            Self::Prepare => T::Prepare(protobuf_utils::proto::std::Void {}),
-            Self::Commit => T::Commit(protobuf_utils::proto::std::Void {}),
+            Self::Prepare => T::Prepare(protobuf::proto::std::Void {}),
+            Self::Commit => T::Commit(protobuf::proto::std::Void {}),
         };
         Self::Proto { t: Some(t) }
     }

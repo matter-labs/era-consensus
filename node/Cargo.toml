@@ -1,8 +1,8 @@
 [workspace]
 members = [
     "libs/concurrency",
-    "libs/protobuf/build",
-    "libs/protobuf/utils",
+    "libs/protobuf_build",
+    "libs/protobuf",
     "actors/consensus",
     "libs/crypto",
     "actors/executor",
@@ -10,7 +10,6 @@ members = [
     "actors/sync_blocks",
     "libs/roles",
     "libs/schema",
-    "libs/schema2",
     "libs/storage",
     "tools",
     "libs/utils",
@@ -24,7 +23,8 @@ homepage = "https://matter-labs.io/"
 license = "MIT"
 
 [workspace.dependencies]
-protobuf_utils = { path = "libs/protobuf/utils" }
+protobuf_build = { path = "libs/protobuf_build" }
+protobuf = { path = "libs/protobuf" }
 
 anyhow = "1"
 assert_matches = "1.5.0"

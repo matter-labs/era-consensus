@@ -1,5 +1,5 @@
 use crate::node;
-use protobuf_utils::{read_required, required, ProtoFmt};
+use protobuf::{read_required, required, ProtoFmt};
 use anyhow::Context as _;
 use crypto::ByteFmt;
 use utils::enum_util::Variant;

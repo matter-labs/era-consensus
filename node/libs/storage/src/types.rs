@@ -4,7 +4,7 @@ use concurrency::ctx;
 use rocksdb::{Direction, IteratorMode};
 use roles::validator::{self, BlockNumber};
 use schema::proto::storage as proto;
-use protobuf_utils::{read_required, required, ProtoFmt};
+use protobuf::{read_required, required, ProtoFmt};
 use std::{iter, ops};
 use thiserror::Error;
 

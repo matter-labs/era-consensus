@@ -5,7 +5,7 @@ use concurrency::{ctx, time};
 use crypto::ByteFmt;
 use roles::node;
 use schema::proto::network::gossip as proto;
-use protobuf_utils::{read_required, required, ProtoFmt};
+use protobuf::{read_required, required, ProtoFmt};
 
 #[cfg(test)]
 mod testonly;

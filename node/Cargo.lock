@@ -412,7 +412,7 @@ dependencies = [
  "crypto",
  "network",
  "once_cell",
- "protobuf_utils",
+ "protobuf",
  "rand",
  "roles",
  "schema",
@@ -611,7 +611,7 @@ dependencies = [
  "hex",
  "network",
  "once_cell",
- "protobuf_utils",
+ "protobuf",
  "rand",
  "roles",
  "schema",
@@ -1110,7 +1110,7 @@ dependencies = [
  "once_cell",
  "pin-project",
  "pretty_assertions",
- "protobuf_utils",
+ "protobuf",
  "rand",
  "roles",
  "schema",
@@ -1473,30 +1473,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "protobuf_build"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bit-vec",
- "concurrency",
- "once_cell",
- "prettyplease 0.2.12",
- "prost",
- "prost-build",
- "prost-reflect",
- "prost-reflect-build",
- "prost-types",
- "protoc-bin-vendored",
- "quick-protobuf",
- "rand",
- "serde",
- "serde_json",
- "syn 2.0.29",
- "tokio",
-]
-
-[[package]]
-name = "protobuf_utils"
+name = "protobuf"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -1510,6 +1487,28 @@ dependencies = [
  "rand",
  "serde",
  "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "protobuf_build"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bit-vec",
+ "once_cell",
+ "prettyplease 0.2.12",
+ "prost",
+ "prost-build",
+ "prost-reflect",
+ "prost-reflect-build",
+ "prost-types",
+ "protoc-bin-vendored",
+ "quick-protobuf",
+ "rand",
+ "serde",
+ "serde_json",
+ "syn 2.0.29",
  "tokio",
 ]
 
@@ -1692,7 +1691,7 @@ dependencies = [
  "concurrency",
  "crypto",
  "hex",
- "protobuf_utils",
+ "protobuf",
  "rand",
  "schema",
  "serde",
@@ -1750,34 +1749,11 @@ dependencies = [
  "once_cell",
  "prost",
  "prost-reflect",
- "protobuf_build",
- "protobuf_utils",
+ "protobuf",
  "quick-protobuf",
  "rand",
  "serde",
  "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "schema2"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bit-vec",
- "concurrency",
- "once_cell",
- "prettyplease 0.2.12",
- "prost",
- "prost-build",
- "prost-reflect",
- "prost-reflect-build",
- "protoc-bin-vendored",
- "quick-protobuf",
- "rand",
- "serde",
- "serde_json",
- "syn 2.0.29",
  "tokio",
 ]
 
@@ -1960,7 +1936,7 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "concurrency",
- "protobuf_utils",
+ "protobuf",
  "rand",
  "rocksdb",
  "roles",
@@ -2168,7 +2144,7 @@ dependencies = [
  "crypto",
  "executor",
  "hex",
- "protobuf_utils",
+ "protobuf",
  "rand",
  "roles",
  "schema",
