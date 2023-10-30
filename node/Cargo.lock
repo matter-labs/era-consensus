@@ -1492,6 +1492,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "protobuf_utils"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bit-vec",
+ "concurrency",
+ "prost",
+ "prost-reflect",
+ "protobuf_build",
+ "quick-protobuf",
+ "rand",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "protoc-bin-vendored"
 version = "3.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"

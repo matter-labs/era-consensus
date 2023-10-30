@@ -9,7 +9,7 @@ use anyhow::Context as _;
 use concurrency::{ctx, io};
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
-use schema::proto::conformance as proto;
+use protobuf_utils::proto::conformance as proto;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -36,10 +36,10 @@ async fn main() -> anyhow::Result<()> {
 
             // Decode.
             let payload = req.payload.context("missing payload")?;
-            use schema::proto::protobuf_test_messages::proto3::TestAllTypesProto3 as T;
+            use protobuf_utils::proto::protobuf_test_messages::proto3::TestAllTypesProto3 as T;
             let p = match payload {
                 proto::conformance_request::Payload::JsonPayload(payload) => {
-                    match schema::decode_json_proto(&payload) {
+                    match protobuf_utils::decode_json_proto(&payload) {
                         Ok(p) => p,
                         Err(_) => return Ok(R::Skipped("unsupported fields".to_string())),
                     }
@@ -50,7 +50,7 @@ async fn main() -> anyhow::Result<()> {
                         return Ok(R::ParseError("parsing failed".to_string()));
                     };
                     // Then check if there are any unknown fields in the original payload.
-                    if schema::canonical_raw(&payload[..], &p.descriptor()).is_err() {
+                    if protobuf_utils::canonical_raw(&payload[..], &p.descriptor()).is_err() {
                         return Ok(R::Skipped("unsupported fields".to_string()));
                     }
                     p
@@ -64,11 +64,11 @@ async fn main() -> anyhow::Result<()> {
                 .context("missing output format")?;
             match proto::WireFormat::from_i32(format).context("unknown format")? {
                 proto::WireFormat::Json => {
-                    anyhow::Ok(R::JsonPayload(schema::encode_json_proto(&p)))
+                    anyhow::Ok(R::JsonPayload(protobuf_utils::encode_json_proto(&p)))
                 }
                 proto::WireFormat::Protobuf => {
                     // Reencode the parsed proto.
-                    anyhow::Ok(R::ProtobufPayload(schema::canonical_raw(
+                    anyhow::Ok(R::ProtobufPayload(protobuf_utils::canonical_raw(
                         &p.encode_to_vec(),
                         &p.descriptor(),
                     )?))

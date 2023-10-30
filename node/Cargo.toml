@@ -2,6 +2,7 @@
 members = [
     "libs/concurrency",
     "libs/protobuf/build",
+    "libs/protobuf/utils",
     "actors/consensus",
     "libs/crypto",
     "actors/executor",
