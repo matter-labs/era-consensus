@@ -1,8 +1,8 @@
 //! In-memory storage implementation.
 
 use crate::{
-    traits::{BlockStore, WriteBlockStore},
-    types::MissingBlockNumbers,
+    traits::{BlockStore, ReplicaStateStore, WriteBlockStore},
+    types::{MissingBlockNumbers, ReplicaState},
     StorageResult,
 };
 use async_trait::async_trait;
@@ -67,12 +67,13 @@ impl BlocksInMemoryStore {
 
 /// In-memory store.
 #[derive(Debug)]
-pub struct InMemoryStore {
+pub struct InMemoryStorage {
     blocks: Mutex<BlocksInMemoryStore>,
+    replica_state: Mutex<Option<ReplicaState>>,
     blocks_sender: watch::Sender<BlockNumber>,
 }
 
-impl InMemoryStore {
+impl InMemoryStorage {
     /// Creates a new store containing only the specified `genesis_block`.
     pub fn new(genesis_block: FinalBlock) -> Self {
         let genesis_block_number = genesis_block.header.number;
@@ -81,13 +82,14 @@ impl InMemoryStore {
                 blocks: BTreeMap::from([(genesis_block_number, genesis_block)]),
                 last_contiguous_block_number: genesis_block_number,
             }),
+            replica_state: Mutex::default(),
             blocks_sender: watch::channel(genesis_block_number).0,
         }
     }
 }
 
 #[async_trait]
-impl BlockStore for InMemoryStore {
+impl BlockStore for InMemoryStorage {
     async fn head_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
         Ok(sync::lock(ctx, &self.blocks).await?.head_block().clone())
     }
@@ -126,12 +128,28 @@ impl BlockStore for InMemoryStore {
 }
 
 #[async_trait]
-impl WriteBlockStore for InMemoryStore {
+impl WriteBlockStore for InMemoryStorage {
     async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()> {
         sync::lock(ctx, &self.blocks)
             .await?
             .put_block(block.clone());
         self.blocks_sender.send_replace(block.header.number);
+        Ok(())
+    }
+}
+
+#[async_trait]
+impl ReplicaStateStore for InMemoryStorage {
+    async fn replica_state(&self, ctx: &ctx::Ctx) -> StorageResult<Option<ReplicaState>> {
+        Ok(sync::lock(ctx, &self.replica_state).await?.clone())
+    }
+
+    async fn put_replica_state(
+        &self,
+        ctx: &ctx::Ctx,
+        replica_state: &ReplicaState,
+    ) -> StorageResult<()> {
+        *sync::lock(ctx, &self.replica_state).await? = Some(replica_state.clone());
         Ok(())
     }
 }

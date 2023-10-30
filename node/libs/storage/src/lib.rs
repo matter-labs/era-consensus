@@ -3,6 +3,7 @@
 
 mod in_memory;
 mod replica_state;
+#[cfg(feature = "rocksdb")]
 mod rocksdb;
 mod testonly;
 #[cfg(test)]
@@ -10,10 +11,11 @@ mod tests;
 mod traits;
 mod types;
 
+#[cfg(feature = "rocksdb")]
+pub use crate::rocksdb::RocksdbStorage;
 pub use crate::{
-    in_memory::InMemoryStore,
+    in_memory::InMemoryStorage,
     replica_state::FallbackReplicaStateStore,
-    rocksdb::RocksdbStorage,
     traits::{BlockStore, ReplicaStateStore, WriteBlockStore},
     types::{Proposal, ReplicaState, StorageError, StorageResult},
 };
