@@ -46,10 +46,11 @@ jobs:
         run: cargo deny check
       - name: fmt
         run: cargo fmt --all --check
-      - name: cranky
-        run: cargo cranky --all-targets --all-features
+      - name: cranky (all features)
+        run: cargo cranky --workspace --all-targets --all-features
+      - name: cranky (default features)
+        run: cargo cranky --workspace --exclude tools --all-targets
       - name: build
         run: cargo build --all-targets --locked
       - name: test
         run: cargo nextest run --profile ci
-
