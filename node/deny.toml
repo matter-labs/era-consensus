@@ -44,7 +44,7 @@ allow = [
 
 [bans]
 # Lint level for when multiple versions of the same crate are detected
-multiple-versions = "warn"
+multiple-versions = "deny"
 # Certain crates/versions that will be skipped when doing duplicate detection.
 skip = [
     # Old versions required by prost.
@@ -60,6 +60,7 @@ skip = [
 
     # Old versions required by hyper.
     { name = "socket2", version = "=0.4.9" },
+    { name = "hashbrown", version = "=0.12.3" }, # (hyper -> h2 -> indexmap -> hashbrown)
 ]
 
 [sources]
