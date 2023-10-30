@@ -8,6 +8,7 @@ license.workspace = true
 
 [dependencies]
 anyhow.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
 
 concurrency = { path = "../../libs/concurrency" }

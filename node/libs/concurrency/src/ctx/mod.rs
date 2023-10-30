@@ -59,16 +59,16 @@ struct Inner {
 impl Drop for Inner {
     fn drop(&mut self) {
         // Automatically cancel the context when State is dropped.
-        // This wakes the task awaiting parent cancelation, so that it doesn't leak.
+        // This wakes the task awaiting parent cancellation, so that it doesn't leak.
         // Note that since children keep a reference to the parent, no
-        // cascade cancelation will happen here.
+        // cascade cancellation will happen here.
         self.canceled.send();
     }
 }
 
 /// Error returned when the blocking operation was interrupted
 /// due to context getting canceled.
-#[derive(thiserror::Error, Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
 #[error("canceled")]
 pub struct Canceled;
 

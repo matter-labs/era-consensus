@@ -5,27 +5,41 @@ use network::io::{ConsensusInputMessage, Target};
 use roles::validator;
 use tracing::instrument;
 
-#[derive(thiserror::Error, Debug)]
-#[allow(clippy::missing_docs_in_private_items)]
+/// Errors that can occur when processing a "replica commit" message.
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    /// Unexpected proposal.
     #[error("unexpected proposal")]
     UnexpectedProposal,
+    /// Past view or phase.
     #[error("past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
     Old {
+        /// Current view.
         current_view: validator::ViewNumber,
+        /// Current phase.
         current_phase: validator::Phase,
     },
+    /// The processing node is not a lead for this message's view.
     #[error("we are not a leader for this message's view")]
     NotLeaderInView,
+    /// Duplicate message from a replica.
     #[error("duplicate message from a replica (existing message: {existing_message:?}")]
     DuplicateMessage {
+        /// Existing message from the same replica.
         existing_message: validator::ReplicaCommit,
     },
-    #[error("number of received messages is below threshold. waiting for more (received: {num_messages:?}, threshold: {threshold:?}")]
+    /// Number of received messages is below threshold.
+    #[error(
+        "number of received messages is below threshold. waiting for more (received: {num_messages:?}, \
+         threshold: {threshold:?}"
+    )]
     NumReceivedBelowThreshold {
+        /// Number of received messages.
         num_messages: usize,
+        /// Threshold for message count.
         threshold: usize,
     },
+    /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] crypto::bls12_381::Error),
 }
