@@ -60,6 +60,30 @@ pub(super) enum Task<E: 'static> {
     Background(Arc<scope::TerminateGuard<E>>),
 }
 
+/// Reports a panic to the scope of the task if the task
+/// panics and unwinds.
+struct PanicReporter<E: 'static + Send>(Option<Task<E>>);
+
+impl<E: 'static + Send> Drop for PanicReporter<E> {
+    fn drop(&mut self) {
+        if let Some(t) = self.0.take() {
+            t.guard().set_err(scope::OrPanic::Panic);
+        }
+    }
+}
+
+impl<E: 'static + Send> PanicReporter<E> {
+    /// Wraps a task into a PanicReporter.
+    pub(crate) fn new(t: Task<E>) -> Self {
+        Self(Some(t))
+    }
+    /// Silently drops the PanicReporter without reporting a panic.
+    /// Returns the owned task.
+    pub(crate) fn defuse(mut self) -> Task<E> {
+        self.0.take().unwrap()
+    }
+}
+
 impl<E: 'static + Send> Task<E> {
     /// Getter of the guard owned by the task.
     fn guard(&self) -> &scope::TerminateGuard<E> {
@@ -80,10 +104,13 @@ impl<E: 'static + Send> Task<E> {
         self,
         f: impl Future<Output = Result<T, E>>,
     ) -> Result<T, Terminated> {
-        match f.await {
+        let panic_reporter = PanicReporter::new(self);
+        let res = f.await;
+        let this = panic_reporter.defuse();
+        match res {
             Ok(v) => Ok(v),
             Err(err) => {
-                self.guard().set_err(err);
+                this.guard().set_err(scope::OrPanic::Err(err));
                 Err(Terminated)
             }
         }
@@ -92,10 +119,13 @@ impl<E: 'static + Send> Task<E> {
     /// Runs an sync blocking task in the scope. MUST be executed on a dedicated thread.
     /// See `Task::run` for behavior. See module docs for desciption of blocking tasks.
     pub(super) fn run_blocking<T>(self, f: impl FnOnce() -> Result<T, E>) -> Result<T, Terminated> {
-        match f() {
+        let panic_reporter = PanicReporter::new(self);
+        let res = f();
+        let this = panic_reporter.defuse();
+        match res {
             Ok(v) => Ok(v),
             Err(err) => {
-                self.guard().set_err(err);
+                this.guard().set_err(scope::OrPanic::Err(err));
                 Err(Terminated)
             }
         }

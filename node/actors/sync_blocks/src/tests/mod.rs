@@ -139,28 +139,30 @@ async fn subscribing_to_state_updates() {
             anyhow::Ok(())
         });
 
-        let initial_state = state_subscriber.borrow_and_update();
-        assert_eq!(
-            initial_state.first_stored_block,
-            genesis_block.justification
-        );
-        assert_eq!(
-            initial_state.last_contiguous_stored_block,
-            genesis_block.justification
-        );
-        assert_eq!(initial_state.last_stored_block, genesis_block.justification);
-        drop(initial_state);
+        {
+            let initial_state = state_subscriber.borrow_and_update();
+            assert_eq!(
+                initial_state.first_stored_block,
+                genesis_block.justification
+            );
+            assert_eq!(
+                initial_state.last_contiguous_stored_block,
+                genesis_block.justification
+            );
+            assert_eq!(initial_state.last_stored_block, genesis_block.justification);
+        }
 
         storage.put_block(ctx, &block_1).await.unwrap();
 
-        let new_state = sync::changed(ctx, &mut state_subscriber).await?;
-        assert_eq!(new_state.first_stored_block, genesis_block.justification);
-        assert_eq!(
-            new_state.last_contiguous_stored_block,
-            block_1.justification
-        );
-        assert_eq!(new_state.last_stored_block, block_1.justification);
-        drop(new_state);
+        {
+            let new_state = sync::changed(ctx, &mut state_subscriber).await?;
+            assert_eq!(new_state.first_stored_block, genesis_block.justification);
+            assert_eq!(
+                new_state.last_contiguous_stored_block,
+                block_1.justification
+            );
+            assert_eq!(new_state.last_stored_block, block_1.justification);
+        }
 
         storage.put_block(ctx, &block_3).await.unwrap();
 

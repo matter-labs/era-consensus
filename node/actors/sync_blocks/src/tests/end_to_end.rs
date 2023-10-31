@@ -222,7 +222,7 @@ impl GossipNetwork<InitialNodeHandle> {
 }
 
 #[async_trait]
-trait GossipNetworkTest: fmt::Debug {
+trait GossipNetworkTest: fmt::Debug + Send {
     /// Returns the number of nodes in the gossip network and number of peers for each node.
     fn network_params(&self) -> (usize, usize);
 
