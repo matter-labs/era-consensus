@@ -1,7 +1,7 @@
 use crate::{frame, noise};
 use anyhow::Context as _;
 use concurrency::{ctx, time};
-use crypto::{ByteFmt};
+use crypto::ByteFmt;
 use roles::{node, validator};
 use schema::{proto::network::consensus as proto, read_required, ProtoFmt};
 

@@ -3,8 +3,10 @@
 use ark_bn254::{G1Affine, G1Projective};
 use ark_ec::AffineRepr as _;
 use sha2::Digest as _;
+use tracing::instrument;
 
 /// Hashes an arbitrary message and maps it to an elliptic curve point in G1.
+#[instrument(level = "trace", skip_all)]
 pub(crate) fn hash_to_g1(msg: &[u8]) -> G1Projective {
     for i in 0..100 {
         // Hash the message with the index as suffix.

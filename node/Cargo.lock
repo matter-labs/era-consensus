@@ -696,6 +696,7 @@ dependencies = [
  "rand",
  "sha2",
  "thiserror",
+ "tracing",
 ]
 
 [[package]]

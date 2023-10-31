@@ -1,11 +1,8 @@
-use std::fmt;
-
-use crypto::{bn254, ByteFmt, Text, TextFmt};
-use utils::enum_util::Variant;
-
-use crate::validator::messages::{Msg, MsgHash};
-
 use super::{Error, PublicKey, Signature};
+use crate::validator::messages::{Msg, MsgHash};
+use crypto::{bn254, ByteFmt, Text, TextFmt};
+use std::fmt;
+use utils::enum_util::Variant;
 
 /// An aggregate signature from a validator.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]

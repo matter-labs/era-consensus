@@ -1,7 +1,7 @@
 //! Generic message types.
 
 use super::{ConsensusMsg, NetAddress};
-use crate::{validator::Error, node::SessionId, validator};
+use crate::{node::SessionId, validator, validator::Error};
 use crypto::{sha256, ByteFmt, Text, TextFmt};
 use std::fmt;
 use utils::enum_util::{BadVariantError, Variant};

@@ -1,20 +1,16 @@
 //! BLS signature scheme for the BN254 curve.
 
-use std::collections::BTreeMap;
-use std::fmt::Debug;
-use std::hash::Hasher;
-
+use crate::ByteFmt;
 use anyhow::anyhow;
 use ark_bn254::{Bn254, Fr, G1Projective as G1, G2Projective as G2};
-use ark_ec::pairing::Pairing as _;
-use ark_ec::pairing::PairingOutput;
-use ark_ec::Group as _;
+use ark_ec::{
+    pairing::{Pairing as _, PairingOutput},
+    Group as _,
+};
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
-use num_traits::Zero as _;
-
 pub use error::Error;
-
-use crate::ByteFmt;
+use num_traits::Zero as _;
+use std::{collections::HashMap, fmt::Debug, hash::Hasher};
 
 #[doc(hidden)]
 pub mod error;
@@ -99,6 +95,7 @@ pub struct Signature(pub G1);
 
 impl Signature {
     /// Verifies a signature against the provided public key
+    #[inline(never)]
     pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> Result<(), Error> {
         let hash_point = hash::hash_to_g1(msg);
 
@@ -154,23 +151,21 @@ impl AggregateSignature {
         AggregateSignature(agg)
     }
 
-    /// Verifies an aggregated signature for multiple messages against the provided list of public keys.
-    /// This method expects one public key per message, otherwise it will fail. Note however that
-    /// If there are any duplicate messages, the public keys will be aggregated before verification.
-    pub fn verify<'a>(
-        &self,
-        msgs_and_pks: impl Iterator<Item = (&'a [u8], &'a PublicKey)>,
-    ) -> Result<(), Error> {
-        let msgs_and_pks = Self::aggregate_pk(msgs_and_pks);
-
+    #[inline(never)]
+    fn verify_raw(&self, msgs_and_pks: &[(&[u8], &PublicKey)]) -> Result<(), Error> {
+        // Aggregate public keys if they are signing the same hash. Each public key aggregated
+        // is one fewer pairing to calculate.
+        let mut pairs: HashMap<&[u8], G2> = HashMap::new();
+        for (msg, pk) in msgs_and_pks {
+            *pairs.entry(msg).or_default() += pk.0;
+        }
         // First pair: e(sig: G1, generator: G2)
         let a = Bn254::pairing(self.0, G2::generator());
 
-        // Second pair: e(H(m1): G1, pk1: G2) * ... * (H(m1000): G1, pk1000: G2)
+        // Second pair: e(H(m1): G1, pk1: G2) * ... * e(H(m1000): G1, pk1000: G2)
         let mut b = PairingOutput::zero();
-        for (msg, pk) in msgs_and_pks {
-            let hash_point = hash::hash_to_g1(msg);
-            b += Bn254::pairing(hash_point, pk.0);
+        for (msg, pk) in pairs {
+            b += Bn254::pairing(hash::hash_to_g1(msg), pk);
         }
 
         if a == b {
@@ -180,22 +175,14 @@ impl AggregateSignature {
         }
     }
 
-    fn aggregate_pk<'a>(
+    /// Verifies an aggregated signature for multiple messages against the provided list of public keys.
+    /// This method expects one public key per message, otherwise it will fail. Note however that
+    /// If there are any duplicate messages, the public keys will be aggregated before verification.
+    pub fn verify<'a>(
+        &self,
         msgs_and_pks: impl Iterator<Item = (&'a [u8], &'a PublicKey)>,
-    ) -> impl Iterator<Item = (&'a [u8], PublicKey)> {
-        // Aggregate public keys if they are signing the same hash. Each public key aggregated
-        // is one fewer pairing to calculate.
-        let mut tree_map: BTreeMap<&[u8], PublicKey> = BTreeMap::new();
-
-        for (msg, pk) in msgs_and_pks {
-            if let Some(existing_pk) = tree_map.get_mut(msg) {
-                existing_pk.0 += pk.0;
-            } else {
-                tree_map.insert(msg, pk.clone());
-            }
-        }
-
-        tree_map.into_iter()
+    ) -> Result<(), Error> {
+        self.verify_raw(&msgs_and_pks.collect::<Vec<_>>()[..])
     }
 }
 
