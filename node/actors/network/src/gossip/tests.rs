@@ -505,7 +505,7 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
             let (network_pipe, dispatcher_pipe) = pipe::new();
             let (node_stop_sender, node_stop_receiver) = oneshot::channel::<()>();
             s.spawn_bg(async {
-                scope::run!(ctx, |ctx, s| async {
+                let result = scope::run!(ctx, |ctx, s| async {
                     s.spawn_bg(run_network(ctx, node.state.clone(), network_pipe));
                     s.spawn_bg(run_get_block_dispatcher(
                         ctx,
@@ -515,7 +515,14 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
                     node_stop_receiver.recv_or_disconnected(ctx).await?.ok();
                     Ok(())
                 })
-                .await
+                .await;
+
+                match result {
+                    Ok(()) => Ok(()),
+                    Err(err) if err.root_cause().is::<ctx::Canceled>() => Ok(()),
+                    // ^ Test has successfully finished
+                    Err(err) => Err(err),
+                }
             });
             (node, node_stop_sender, dispatcher_pipe.send)
         });
