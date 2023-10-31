@@ -98,11 +98,11 @@ impl<S: WriteBlockStore + ?Sized> WriteBlockStore for Arc<S> {
 ///
 /// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait]
-pub trait ReplicaStateStore: BlockStore {
+pub trait ReplicaStateStore: fmt::Debug + Send + Sync {
     /// Gets the replica state, if it is contained in the database.
     async fn replica_state(&self, ctx: &ctx::Ctx) -> StorageResult<Option<ReplicaState>>;
 
-    /// Store the given replica state into the database.
+    /// Stores the given replica state into the database.
     async fn put_replica_state(
         &self,
         ctx: &ctx::Ctx,

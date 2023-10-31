@@ -5,17 +5,28 @@ edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 license.workspace = true
+publish = false
+default-run = "executor"
 
 [dependencies]
 anyhow.workspace = true
-hex.workspace = true
-rand.workspace = true
-serde_json.workspace = true
 clap.workspace = true
+rand.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+vise-exporter.workspace = true
 
+concurrency = { path = "../libs/concurrency" }
 crypto = { path = "../libs/crypto" }
 roles = { path = "../libs/roles" }
+storage = { path = "../libs/storage" }
 schema = { path = "../libs/schema" }
+utils = { path = "../libs/utils" }
 
 consensus = { path = "../actors/consensus" }
 executor = { path = "../actors/executor" }
+
+[[bin]]
+name = "executor"
+path = "src/main.rs"

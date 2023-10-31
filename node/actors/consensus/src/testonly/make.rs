@@ -7,7 +7,7 @@ use crate::{
 use concurrency::ctx;
 use roles::validator;
 use std::sync::Arc;
-use storage::RocksdbStorage;
+use storage::{FallbackReplicaStateStore, RocksdbStorage};
 use tempfile::tempdir;
 use utils::pipe::{self, DispatcherPipe};
 
@@ -33,7 +33,7 @@ pub async fn make_consensus(
         consensus_pipe,
         key.clone(),
         validator_set.clone(),
-        Arc::new(storage),
+        FallbackReplicaStateStore::from_store(Arc::new(storage)),
     );
     let consensus = consensus
         .await
