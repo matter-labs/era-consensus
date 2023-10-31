@@ -45,8 +45,7 @@ mod state;
 mod task;
 
 pub use macros::*;
-use must_complete::must_complete;
-use state::{CancelGuard, State, TerminateGuard};
+use state::{CancelGuard, OrPanic, State, TerminateGuard};
 use task::{Task, Terminated};
 use tracing::Instrument as _;
 
@@ -100,6 +99,7 @@ impl<'env, T> JoinHandle<'env, T> {
     /// Awaits completion of the task.
     /// Returns the result of the task.
     /// Returns `Canceled` if the context has been canceled before the task.
+    /// Panics if the awaited task panicked.
     ///
     /// Caller is expected to provide their local context as an argument, which
     /// is neccessarily a descendant of the scope's context (because JoinHandle cannot
@@ -125,6 +125,14 @@ impl<'env, T> JoinHandle<'env, T> {
             ctx.canceled().await;
             Err(ctx::Canceled)
         })
+    }
+
+    /// Unconditional join used in run/run_blocking to await the root task.
+    async fn join_raw(self) -> ctx::OrCanceled<T> {
+        match self.0.await {
+            Ok(Ok(v)) => Ok(v),
+            _ => Err(ctx::Canceled),
+        }
     }
 }
 
@@ -244,17 +252,13 @@ impl<'env, E: 'static + Send> Scope<'env, E> {
     /// the lifetime of the call.
     ///
     /// `root_task` is executed as a root task of this scope.
-    /// Although both blocking and async tasks can be executed
-    /// in this scope, the root task is executed inline in the caller's
-    /// thread (i.e. we don't call `tokio::spawn(root_task)`) so it has to
-    /// be async.
     ///
     // Safety:
     // - we are assuming that `run` is only called via `run!` macro
     // - <'env> is exactly equal to the lifetime of the `Scope::new(...).run(...).await` call.
     // - in particular `run(...)` cannot be assigned to a local variable, because
     //   it would reference the temporal `Scope::new(...)` object.
-    // - the returned future is wrapped in `must_complete` so it will abort
+    // - the returned future uses `must_complete::Guard` so it will abort
     //   the whole process if dropped before completion.
     // - before the first `poll()` call of the `run(...)` future may be forgotten (via `std::mem::forget`)
     //   directly or indirectly and that's safe, because no unsafe code has been executed yet.
@@ -266,22 +270,43 @@ impl<'env, E: 'static + Send> Scope<'env, E> {
     //   transitively use references stored in the root task, so they stay valid as well,
     //   until `run()` future is dropped.
     #[doc(hidden)]
-    pub fn run<T, F, Fut>(&'env mut self, root_task: F) -> impl 'env + Future<Output = Result<T, E>>
+    pub async fn run<T: 'static + Send, F, Fut>(&'env mut self, root_task: F) -> Result<T, E>
     where
         F: 'env + FnOnce(&'env ctx::Ctx, &'env Self) -> Fut,
-        Fut: 'env + Future<Output = Result<T, E>>,
+        Fut: 'env + Send + Future<Output = Result<T, E>>,
     {
-        must_complete(async move {
-            let guard = Arc::new(State::make(self.ctx.clone()));
-            self.cancel_guard = Arc::downgrade(&guard);
-            self.terminate_guard = Arc::downgrade(guard.terminate_guard());
-            let state = guard.terminate_guard().state().clone();
-            let root_res = Task::Main(guard).run(root_task(&self.ctx, self)).await;
-            // Wait for the scope termination.
-            state.terminated().await;
-            // Return the error, or the result of the root_task.
-            state.take_err().map_or_else(|| Ok(root_res.unwrap()), Err)
-        })
+        // Abort if run() future is dropped before completion.
+        let must_complete = must_complete::Guard;
+
+        let guard = Arc::new(State::make(self.ctx.clone()));
+        self.cancel_guard = Arc::downgrade(&guard);
+        self.terminate_guard = Arc::downgrade(guard.terminate_guard());
+        let state = guard.terminate_guard().state().clone();
+        // Spawn the root task. We cannot run it directly in this task,
+        // because if the root task panicked, we wouldn't be able to
+        // wait for other tasks to finish.
+        let root_task = self.spawn(root_task(&self.ctx, self));
+        // Once we spawned the root task we can drop the guard.
+        drop(guard);
+        // Await for the completion of the root_task.
+        let root_task_result = root_task.join_raw().await;
+        // Wait for the scope termination.
+        state.terminated().await;
+
+        // All tasks completed.
+        must_complete.defuse();
+
+        // Return the result of the root_task, the error, or propagate the panic.
+        match state.take_err() {
+            // All tasks have completed successfully, so in particular root_task has returned Ok.
+            None => Ok(root_task_result.unwrap()),
+            // One of the tasks returned an error, but no panic occurred.
+            Some(OrPanic::Err(err)) => Err(err),
+            // Note that panic is propagated only once all of the tasks are run to completion.
+            Some(OrPanic::Panic) => {
+                panic!("one of the tasks panicked, look for a stack trace above")
+            }
+        }
     }
 
     /// not public; used by run_blocking! macro.
@@ -291,7 +316,7 @@ impl<'env, E: 'static + Send> Scope<'env, E> {
     /// task (in particular, not from async code).
     /// Behaves analogically to `run`.
     #[doc(hidden)]
-    pub fn run_blocking<T, F>(&'env mut self, root_task: F) -> Result<T, E>
+    pub fn run_blocking<T: 'static + Send, F: Send>(&'env mut self, root_task: F) -> Result<T, E>
     where
         E: 'static + Send,
         F: 'env + FnOnce(&'env ctx::Ctx, &'env Self) -> Result<T, E>,
@@ -300,28 +325,39 @@ impl<'env, E: 'static + Send> Scope<'env, E> {
         self.cancel_guard = Arc::downgrade(&guard);
         self.terminate_guard = Arc::downgrade(guard.terminate_guard());
         let state = guard.terminate_guard().state().clone();
-        let root_res = Task::Main(guard).run_blocking(|| root_task(&self.ctx, self));
+        // Spawn the root task. We cannot run it directly in this task,
+        // because if the root task panicked, we wouldn't be able to
+        // wait for other tasks to finish.
+        let root_task = self.spawn_blocking(|| root_task(&self.ctx, self));
+        // Once we spawned the root task we can drop the guard.
+        drop(guard);
+        // Await for the completion of the root_task.
+        let root_task_result = ctx::block_on(root_task.join_raw());
         // Wait for the scope termination.
         ctx::block_on(state.terminated());
-        // Return the error, or the result of the root_task.
+
+        // Return the result of the root_task, the error, or propagate the panic.
         match state.take_err() {
-            Some(err) => Err(err),
-            None => Ok(root_res.unwrap()),
+            // All tasks have completed successfully, so in particular root_task has returned Ok.
+            None => Ok(root_task_result.unwrap()),
+            // One of the tasks returned an error, but no panic occurred.
+            Some(OrPanic::Err(err)) => Err(err),
+            // Note that panic is propagated only once all of the tasks are run to completion.
+            Some(OrPanic::Panic) => {
+                panic!("one of the tasks panicked, look for a stack trace above")
+            }
         }
     }
 }
 
-/// Spawns the provided blocking closure `f` and waits until it completes or the context gets canceled.
-pub async fn wait_blocking<'a, R, E>(
-    ctx: &'a ctx::Ctx,
-    f: impl FnOnce() -> Result<R, E> + Send + 'a,
-) -> Result<R, E>
-where
-    R: 'static + Send,
-    E: 'static + From<ctx::Canceled> + Send,
-{
-    run!(ctx, |ctx, s| async {
-        Ok(s.spawn_blocking(f).join(ctx).await?)
-    })
-    .await
+/// Spawns the blocking closure `f` and unconditionally awaits for completion.
+/// Panics if `f` panics.
+/// Aborts if dropped before completion.
+pub async fn wait_blocking<'a, T: 'static + Send>(f: impl 'a + Send + FnOnce() -> T) -> T {
+    let must_complete = must_complete::Guard;
+    let res = unsafe { spawn_blocking(Box::new(|| Ok(f()))) }
+        .join_raw()
+        .await;
+    must_complete.defuse();
+    res.expect("awaited task panicked")
 }
