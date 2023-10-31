@@ -20,7 +20,7 @@ vise-exporter.workspace = true
 concurrency = { path = "../libs/concurrency" }
 crypto = { path = "../libs/crypto" }
 roles = { path = "../libs/roles" }
-storage = { path = "../libs/storage" }
+storage = { path = "../libs/storage", features = ["rocksdb"] }
 schema = { path = "../libs/schema" }
 utils = { path = "../libs/utils" }
 
