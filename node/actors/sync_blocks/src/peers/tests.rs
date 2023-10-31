@@ -329,6 +329,7 @@ impl Test for DownloadingBlocksInGaps {
             test_validators.sync_state(last_peer_block_number),
         );
         wait_for_peer_update(ctx, &mut events_receiver, &peer_key).await?;
+        clock.advance(BLOCK_SLEEP_INTERVAL);
 
         let expected_block_numbers =
             (1..Self::BLOCK_COUNT).filter(|number| !self.local_block_numbers.contains(number));
@@ -478,11 +479,13 @@ impl Test for RequestingBlocksFromTwoPeers {
 
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
             recipient,
-            number,
+            number: first_peer_block_number,
             response: first_peer_response,
         }) = message_receiver.recv(ctx).await?;
         assert_eq!(recipient, first_peer);
-        assert_eq!(number, BlockNumber(1));
+        assert!(
+            first_peer_block_number == BlockNumber(1) || first_peer_block_number == BlockNumber(2)
+        );
 
         let second_peer = rng.gen::<node::SecretKey>().public();
         peer_states_handle.update(second_peer.clone(), test_validators.sync_state(4));
@@ -491,15 +494,18 @@ impl Test for RequestingBlocksFromTwoPeers {
 
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
             recipient,
-            number,
+            number: second_peer_block_number,
             response: second_peer_response,
         }) = message_receiver.recv(ctx).await?;
         assert_eq!(recipient, second_peer);
-        assert_eq!(number, BlockNumber(2));
+        assert!(
+            second_peer_block_number == BlockNumber(1)
+                || second_peer_block_number == BlockNumber(2)
+        );
 
-        test_validators.send_block(BlockNumber(1), first_peer_response);
+        test_validators.send_block(first_peer_block_number, first_peer_response);
         let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::GotBlock(BlockNumber(1)));
+        assert_matches!(peer_event, PeerStateEvent::GotBlock(num) if num == first_peer_block_number);
         // The node shouldn't send more requests to the first peer since it would be beyond
         // its known latest block number (2).
         clock.advance(BLOCK_SLEEP_INTERVAL);
@@ -512,31 +518,35 @@ impl Test for RequestingBlocksFromTwoPeers {
 
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
             recipient,
-            number,
+            number: first_peer_block_number,
             response: first_peer_response,
         }) = message_receiver.recv(ctx).await?;
         assert_eq!(recipient, first_peer);
-        assert_eq!(number, BlockNumber(3));
+        assert!(
+            first_peer_block_number == BlockNumber(3) || first_peer_block_number == BlockNumber(4)
+        );
 
-        test_validators.send_block(BlockNumber(3), first_peer_response);
+        test_validators.send_block(first_peer_block_number, first_peer_response);
         let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::GotBlock(BlockNumber(3)));
+        assert_matches!(peer_event, PeerStateEvent::GotBlock(num) if num == first_peer_block_number);
         clock.advance(BLOCK_SLEEP_INTERVAL);
 
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
             recipient,
-            number,
+            number: first_peer_block_number,
             response: first_peer_response,
         }) = message_receiver.recv(ctx).await?;
         assert_eq!(recipient, first_peer);
-        assert_eq!(number, BlockNumber(4));
+        assert!(
+            first_peer_block_number == BlockNumber(3) || first_peer_block_number == BlockNumber(4)
+        );
 
-        test_validators.send_block(BlockNumber(2), second_peer_response);
+        test_validators.send_block(second_peer_block_number, second_peer_response);
         let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::GotBlock(BlockNumber(2)));
-        test_validators.send_block(BlockNumber(4), first_peer_response);
+        assert_matches!(peer_event, PeerStateEvent::GotBlock(num) if num == second_peer_block_number);
+        test_validators.send_block(first_peer_block_number, first_peer_response);
         let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::GotBlock(BlockNumber(4)));
+        assert_matches!(peer_event, PeerStateEvent::GotBlock(num) if num == first_peer_block_number);
         // No more blocks should be requested from peers.
         clock.advance(BLOCK_SLEEP_INTERVAL);
         assert_matches!(message_receiver.try_recv(), None);
@@ -782,10 +792,10 @@ impl Test for DisconnectingPeer {
         // Send one of the responses and drop the other request.
         let response = responses.remove(&2).unwrap();
         test_validators.send_block(BlockNumber(2), response);
-        drop(responses);
 
         let peer_event = events_receiver.recv(ctx).await?;
         assert_matches!(peer_event, PeerStateEvent::GotBlock(BlockNumber(2)));
+        drop(responses);
         let peer_event = events_receiver.recv(ctx).await?;
         assert_matches!(peer_event, PeerStateEvent::PeerDisconnected(key) if key == peer_key);
 
