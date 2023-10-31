@@ -1,7 +1,7 @@
 use crate::{frame, noise};
 use anyhow::Context as _;
 use concurrency::{ctx, time};
-use crypto::{bn254, ByteFmt};
+use crypto::{ByteFmt};
 use roles::{node, validator};
 use schema::{proto::network::consensus as proto, read_required, ProtoFmt};
 
@@ -43,7 +43,7 @@ pub(super) enum Error {
     #[error("unexpected peer")]
     PeerMismatch,
     #[error("validator signature {0}")]
-    Signature(#[from] bn254::Error),
+    Signature(#[from] validator::Error),
     #[error("stream {0}")]
     Stream(#[source] anyhow::Error),
 }

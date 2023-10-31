@@ -80,6 +80,9 @@ panic = 'abort'
 [profile.release]
 panic = 'abort'
 
+[profile.dev.package.crypto]
+opt-level = 3
+
 # Compile all the external dependencies with optimizations, because
 # some of them (especially the cryptographic primitives) are extremely
 # slow when compiled without optimizations, and make the tests run slow.
