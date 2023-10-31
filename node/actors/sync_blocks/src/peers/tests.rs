@@ -6,7 +6,7 @@ use concurrency::time;
 use rand::{rngs::StdRng, seq::IteratorRandom, Rng};
 use roles::validator;
 use std::{collections::HashSet, fmt};
-use storage::RocksdbStorage;
+use storage::{BlockStore, RocksdbStorage};
 use test_casing::{test_casing, Product};
 
 const TEST_TIMEOUT: time::Duration = time::Duration::seconds(5);
@@ -74,8 +74,10 @@ async fn wait_for_peer_update(
                 assert_eq!(key, *expected_peer);
                 return Ok(());
             }
-            PeerStateEvent::PeerDisconnected(_) | PeerStateEvent::GotBlock(_) => { /* Skip update */
+            PeerStateEvent::PeerDisconnected(_) | PeerStateEvent::GotBlock(_) => {
+                // Skip update
             }
+            _ => panic!("Received unexpected peer event: {peer_event:?}"),
         }
     }
 }
@@ -416,7 +418,7 @@ impl Test for LimitingGetBlockConcurrency {
             assert_eq!(recipient, peer_key);
             assert!(message_responses.insert(number.0, response).is_none());
         }
-        assert!(message_receiver.try_recv().is_none());
+        assert_matches!(message_receiver.try_recv(), None);
         assert_eq!(
             message_responses.keys().copied().collect::<HashSet<_>>(),
             HashSet::from([1, 2, 3])
@@ -501,7 +503,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         // The node shouldn't send more requests to the first peer since it would be beyond
         // its known latest block number (2).
         clock.advance(BLOCK_SLEEP_INTERVAL);
-        assert!(message_receiver.try_recv().is_none());
+        assert_matches!(message_receiver.try_recv(), None);
 
         peer_states_handle.update(first_peer.clone(), test_validators.sync_state(4));
         wait_for_peer_update(ctx, &mut events_receiver, &first_peer).await?;
@@ -537,7 +539,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         assert_matches!(peer_event, PeerStateEvent::GotBlock(BlockNumber(4)));
         // No more blocks should be requested from peers.
         clock.advance(BLOCK_SLEEP_INTERVAL);
-        assert!(message_receiver.try_recv().is_none());
+        assert_matches!(message_receiver.try_recv(), None);
 
         wait_for_stored_block(ctx, storage.as_ref(), BlockNumber(4)).await?;
         Ok(())
@@ -698,6 +700,7 @@ impl Test for RequestingBlocksFromMultiplePeers {
                         clock.advance(BLOCK_SLEEP_INTERVAL);
                     }
                     PeerStateEvent::PeerDisconnected(_) => { /* Do nothing */ }
+                    _ => panic!("Unexpected peer event: {peer_event:?}"),
                 }
             }
 
@@ -753,7 +756,7 @@ impl Test for DisconnectingPeer {
 
         // Check that no new requests are sent (there are no peers to send them to).
         clock.advance(BLOCK_SLEEP_INTERVAL);
-        assert!(message_receiver.try_recv().is_none());
+        assert_matches!(message_receiver.try_recv(), None);
 
         // Re-connect the peer with an updated state.
         peer_states_handle.update(peer_key.clone(), test_validators.sync_state(2));
@@ -788,7 +791,7 @@ impl Test for DisconnectingPeer {
 
         // Check that no new requests are sent (there are no peers to send them to).
         clock.advance(BLOCK_SLEEP_INTERVAL);
-        assert!(message_receiver.try_recv().is_none());
+        assert_matches!(message_receiver.try_recv(), None);
 
         // Re-connect the peer with the same state.
         peer_states_handle.update(peer_key.clone(), test_validators.sync_state(2));
@@ -811,7 +814,7 @@ impl Test for DisconnectingPeer {
 
         // Check that no new requests are sent (all blocks are downloaded).
         clock.advance(BLOCK_SLEEP_INTERVAL);
-        assert!(message_receiver.try_recv().is_none());
+        assert_matches!(message_receiver.try_recv(), None);
 
         wait_for_stored_block(ctx, storage.as_ref(), BlockNumber(2)).await?;
         Ok(())
@@ -928,4 +931,108 @@ async fn processing_invalid_blocks() {
         .validate_block(BlockNumber(1), invalid_block)
         .unwrap_err();
     assert_matches!(err, BlockValidationError::Justification(_));
+}
+
+#[derive(Debug)]
+struct PeerWithFakeSyncState;
+
+#[async_trait]
+impl Test for PeerWithFakeSyncState {
+    const BLOCK_COUNT: usize = 10;
+
+    async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
+        let TestHandles {
+            clock,
+            mut rng,
+            test_validators,
+            peer_states_handle,
+            mut events_receiver,
+            ..
+        } = handles;
+
+        let peer_key = rng.gen::<node::SecretKey>().public();
+        let mut fake_sync_state = test_validators.sync_state(1);
+        fake_sync_state
+            .last_contiguous_stored_block
+            .message
+            .proposal
+            .number = BlockNumber(42);
+        peer_states_handle.update(peer_key.clone(), fake_sync_state);
+        let peer_event = events_receiver.recv(ctx).await?;
+        assert_matches!(peer_event, PeerStateEvent::InvalidPeerUpdate(key) if key == peer_key);
+
+        clock.advance(BLOCK_SLEEP_INTERVAL);
+        assert_matches!(events_receiver.try_recv(), None);
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn receiving_fake_sync_state_from_peer() {
+    test_peer_states(PeerWithFakeSyncState).await;
+}
+
+#[derive(Debug)]
+struct PeerWithFakeBlock;
+
+#[async_trait]
+impl Test for PeerWithFakeBlock {
+    const BLOCK_COUNT: usize = 10;
+
+    async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
+        let TestHandles {
+            clock,
+            mut rng,
+            test_validators,
+            peer_states_handle,
+            storage,
+            mut message_receiver,
+            mut events_receiver,
+        } = handles;
+
+        let peer_key = rng.gen::<node::SecretKey>().public();
+        peer_states_handle.update(peer_key.clone(), test_validators.sync_state(1));
+        let peer_event = events_receiver.recv(ctx).await?;
+        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+
+        let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
+            recipient,
+            number,
+            response,
+        }) = message_receiver.recv(ctx).await?;
+        assert_eq!(recipient, peer_key);
+        assert_eq!(number, BlockNumber(1));
+
+        let mut fake_block = test_validators.final_blocks[2].clone();
+        fake_block.header.number = BlockNumber(1);
+        response.send(Ok(fake_block)).unwrap();
+
+        let peer_event = events_receiver.recv(ctx).await?;
+        assert_matches!(
+            peer_event,
+            PeerStateEvent::GotInvalidBlock {
+                block_number: BlockNumber(1),
+                peer_key: key,
+            } if key == peer_key
+        );
+        clock.advance(BLOCK_SLEEP_INTERVAL);
+
+        // The invalid block must not be saved.
+        assert_matches!(events_receiver.try_recv(), None);
+        assert!(storage.block(ctx, BlockNumber(1)).await?.is_none());
+
+        // Since we don't ban misbehaving peers, the node will send a request to the same peer again.
+        let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
+            recipient, number, ..
+        }) = message_receiver.recv(ctx).await?;
+        assert_eq!(recipient, peer_key);
+        assert_eq!(number, BlockNumber(1));
+
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn receiving_fake_block_from_peer() {
+    test_peer_states(PeerWithFakeBlock).await;
 }
