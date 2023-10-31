@@ -22,6 +22,5 @@ network = { path = "../network" }
 assert_matches.workspace = true
 async-trait.workspace = true
 rand.workspace = true
-tempfile.workspace = true
 test-casing.workspace = true
 tokio.workspace = true

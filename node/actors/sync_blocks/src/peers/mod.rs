@@ -156,6 +156,9 @@ impl PeerStates {
             Ok(block_number) => block_number,
             Err(err) => {
                 tracing::warn!(%err, "Invalid `SyncState` received from peer");
+                if let Some(events_sender) = &self.events_sender {
+                    events_sender.send(PeerStateEvent::InvalidPeerUpdate(peer_key));
+                }
                 return Ok(BlockNumber(0));
                 // TODO: ban peer etc.
             }
@@ -254,8 +257,15 @@ impl PeerStates {
                     "Received invalid block #{block_number} from peer {peer_key:?}"
                 );
                 // TODO: ban peer etc.
+                if let Some(events_sender) = &self.events_sender {
+                    events_sender.send(PeerStateEvent::GotInvalidBlock {
+                        peer_key,
+                        block_number,
+                    });
+                }
+            } else {
+                return Ok(block);
             }
-            return Ok(block);
         }
     }
 

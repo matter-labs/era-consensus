@@ -7,9 +7,9 @@ use network::testonly::Instance;
 use rand::Rng;
 use roles::validator::{BlockNumber, Payload};
 use std::collections::HashMap;
-use storage::{BlockStore, RocksdbStorage, StorageError};
+use storage::{BlockStore, InMemoryStorage, StorageError};
 
-async fn run_executor(ctx: &ctx::Ctx, executor: Executor<RocksdbStorage>) -> anyhow::Result<()> {
+async fn run_executor(ctx: &ctx::Ctx, executor: Executor<InMemoryStorage>) -> anyhow::Result<()> {
     executor.run(ctx).await.or_else(|err| {
         if err.root_cause().is::<ctx::Canceled>() {
             Ok(()) // Test has successfully finished
@@ -22,7 +22,7 @@ async fn run_executor(ctx: &ctx::Ctx, executor: Executor<RocksdbStorage>) -> any
 async fn store_final_blocks(
     ctx: &ctx::Ctx,
     mut blocks_receiver: channel::UnboundedReceiver<FinalBlock>,
-    storage: Arc<RocksdbStorage>,
+    storage: Arc<InMemoryStorage>,
 ) -> anyhow::Result<()> {
     while let Ok(block) = blocks_receiver.recv(ctx).await {
         tracing::trace!(number = %block.header.number, "Finalized new block");
@@ -73,9 +73,9 @@ impl FullValidatorConfig {
 
     fn into_executor(
         self,
-        storage: Arc<RocksdbStorage>,
+        storage: Arc<InMemoryStorage>,
     ) -> (
-        Executor<RocksdbStorage>,
+        Executor<InMemoryStorage>,
         channel::UnboundedReceiver<FinalBlock>,
     ) {
         let (blocks_sender, blocks_receiver) = channel::unbounded();
@@ -100,9 +100,8 @@ async fn executing_single_validator() {
 
     let validator = FullValidatorConfig::for_single_validator(rng);
     let genesis_block = &validator.node_config.genesis_block;
-    let temp_dir = tempfile::tempdir().unwrap();
-    let storage = RocksdbStorage::new(ctx, genesis_block, temp_dir.path());
-    let storage = Arc::new(storage.await.unwrap());
+    let storage = InMemoryStorage::new(genesis_block.clone());
+    let storage = Arc::new(storage);
     let (executor, mut blocks_receiver) = validator.into_executor(storage);
 
     scope::run!(ctx, |ctx, s| async {
@@ -151,13 +150,10 @@ async fn executing_validator_and_external_node() {
         .insert(external_node_key.public());
 
     let genesis_block = &validator.node_config.genesis_block;
-    let temp_dir = tempfile::tempdir().unwrap();
-    let validator_storage =
-        RocksdbStorage::new(ctx, genesis_block, &temp_dir.path().join("validator")).await;
-    let validator_storage = Arc::new(validator_storage.unwrap());
-    let external_node_storage =
-        RocksdbStorage::new(ctx, genesis_block, &temp_dir.path().join("en")).await;
-    let external_node_storage = Arc::new(external_node_storage.unwrap());
+    let validator_storage = InMemoryStorage::new(genesis_block.clone());
+    let validator_storage = Arc::new(validator_storage);
+    let external_node_storage = InMemoryStorage::new(genesis_block.clone());
+    let external_node_storage = Arc::new(external_node_storage);
     let mut en_subscriber = external_node_storage.subscribe_to_block_writes();
 
     let (validator, blocks_receiver) = validator.into_executor(validator_storage.clone());

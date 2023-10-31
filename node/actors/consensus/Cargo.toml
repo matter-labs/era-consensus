@@ -10,7 +10,6 @@ license.workspace = true
 anyhow.workspace = true
 once_cell.workspace = true
 rand.workspace = true
-tempfile.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 vise.workspace = true

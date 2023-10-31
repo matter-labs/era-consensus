@@ -7,8 +7,8 @@ use concurrency::ctx::channel;
 use network::testonly::Instance as NetworkInstance;
 use rand::seq::SliceRandom;
 use roles::node;
-use std::{fmt, path::Path};
-use storage::RocksdbStorage;
+use std::fmt;
+use storage::InMemoryStorage;
 use test_casing::test_casing;
 use tracing::Instrument;
 
@@ -99,18 +99,13 @@ impl Node {
         self.network.gossip_config().key.public()
     }
 
-    #[instrument(level = "trace", skip(ctx, test_validators, storage_dir), err)]
-    async fn run(
-        mut self,
-        ctx: &ctx::Ctx,
-        test_validators: &TestValidators,
-        storage_dir: &Path,
-    ) -> anyhow::Result<()> {
+    #[instrument(level = "trace", skip(ctx, test_validators), err)]
+    async fn run(mut self, ctx: &ctx::Ctx, test_validators: &TestValidators) -> anyhow::Result<()> {
         let key = self.key();
         let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
         let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
-        let storage = RocksdbStorage::new(ctx, &test_validators.final_blocks[0], storage_dir);
-        let storage = Arc::new(storage.await.unwrap());
+        let storage = InMemoryStorage::new(test_validators.final_blocks[0].clone());
+        let storage = Arc::new(storage);
 
         let sync_blocks_config = test_validators.test_config();
         let sync_blocks = SyncBlocks::new(
@@ -222,7 +217,7 @@ impl GossipNetwork<InitialNodeHandle> {
 }
 
 #[async_trait]
-trait GossipNetworkTest: fmt::Debug {
+trait GossipNetworkTest: fmt::Debug + Send {
     /// Returns the number of nodes in the gossip network and number of peers for each node.
     fn network_params(&self) -> (usize, usize);
 
@@ -235,23 +230,17 @@ async fn test_sync_blocks<T: GossipNetworkTest>(test: T) {
 
     concurrency::testonly::abort_on_panic();
 
-    let temp_dir = tempfile::TempDir::new().unwrap();
     let ctx = &ctx::test_root(&ctx::AffineClock::new(CLOCK_SPEEDUP as f64))
         .with_timeout(TEST_TIMEOUT * CLOCK_SPEEDUP);
     let (node_count, gossip_peers) = test.network_params();
     let (network, nodes) = GossipNetwork::new(&mut ctx.rng(), node_count, gossip_peers);
     scope::run!(ctx, |ctx, s| async {
-        for (i, node) in nodes.into_iter().enumerate() {
+        for node in nodes {
             let test_validators = network.test_validators.clone();
-            let storage_dir = temp_dir.path().join(i.to_string());
             s.spawn_bg(async {
                 let test_validators = test_validators;
-                let storage_dir = storage_dir;
                 let key = node.key();
-                let err = node
-                    .run(ctx, &test_validators, &storage_dir)
-                    .await
-                    .unwrap_err();
+                let err = node.run(ctx, &test_validators).await.unwrap_err();
 
                 tracing::trace!(?key, "Node task completed");
                 if err.root_cause().is::<ctx::Canceled>() {
