@@ -7,7 +7,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use storage::{FallbackReplicaStateStore, RocksdbStorage};
+use storage::{FallbackReplicaStateStore, InMemoryStorage};
 use tracing::Instrument as _;
 use utils::pipe;
 
@@ -101,11 +101,7 @@ async fn run_nodes(
             network_pipes.insert(validator_key.public(), network_actor_pipe);
             s.spawn(
                 async {
-                    let dir = tempfile::tempdir().context("tempdir()")?;
-                    let storage =
-                        RocksdbStorage::new(ctx, &genesis_block, &dir.path().join("storage"))
-                            .await
-                            .context("RocksdbStorage")?;
+                    let storage = InMemoryStorage::new(genesis_block.clone());
                     let storage = FallbackReplicaStateStore::from_store(Arc::new(storage));
 
                     let consensus = Consensus::new(
