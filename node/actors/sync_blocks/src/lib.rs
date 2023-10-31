@@ -27,6 +27,8 @@ mod tests;
 pub use crate::config::Config;
 use crate::peers::PeerStates;
 
+// FIXME(slowli): when run on validator node, the actor creates unnecessary `GetBlocks` requests
+
 /// Block syncing actor responsible for synchronizing L2 blocks with other nodes.
 #[derive(Debug)]
 pub struct SyncBlocks {

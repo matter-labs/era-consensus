@@ -23,28 +23,45 @@ async fn test_one_connection_per_validator() {
                 ctx,
                 n.state.clone(),
                 network_pipe
-            ).instrument(tracing::info_span!("node",i)));
+            ).instrument(tracing::info_span!("node", i)));
         }
 
         tracing::info!("waiting for all gossip to be established");
-        for n in &mut nodes {
-            n.wait_for_gossip_connections().await;
+        for node in &mut nodes {
+            node.wait_for_gossip_connections().await;
         }
 
         tracing::info!("waiting for all connections to be established");
-        for n in &mut nodes {
-            n.wait_for_consensus_connections().await;
+        for node in &mut nodes {
+            node.wait_for_consensus_connections().await;
         }
 
         tracing::info!("Impersonate node 1, and try to establish additional connection to node 0. It should close automatically after the handshake.");
-        let mut stream = preface::connect(ctx,*nodes[0].state.cfg.server_addr,preface::Endpoint::ConsensusNet).await?;
-        handshake::outbound(ctx, &nodes[1].state.cfg.consensus.key, &mut stream, &nodes[0].state.cfg.consensus.key.public()).await?;
+        let mut stream = preface::connect(
+            ctx,
+            *nodes[0].state.cfg.server_addr,
+            preface::Endpoint::ConsensusNet,
+        )
+        .await?;
+
+        handshake::outbound(
+            ctx,
+            &nodes[1].consensus_config().key,
+            &mut stream,
+            &nodes[0].consensus_config().key.public(),
+        )
+        .await?;
         // The connection is expected to be closed automatically by node 0.
         // The multiplexer runner should exit gracefully.
         let _ = rpc::Service::new().run(ctx, stream).await;
-        tracing::info!("Exiting the main task. Context will get canceled, all the nodes are expected to terminate gracefully.");
+        tracing::info!(
+            "Exiting the main task. Context will get canceled, all the nodes are expected \
+             to terminate gracefully"
+        );
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -77,15 +94,17 @@ async fn test_address_change() {
         .context("run1")?;
 
         // All nodes should lose connection to node[0].
-        let key0 = nodes[0].state.cfg.consensus.key.public();
-        for n in &nodes {
-            let c = &n.state.consensus;
-            c.inbound
+        let key0 = nodes[0].consensus_config().key.public();
+        for node in &nodes {
+            let consensus_state = node.state.consensus.as_ref().unwrap();
+            consensus_state
+                .inbound
                 .subscribe()
                 .wait_for(|got| !got.current().contains(&key0))
                 .await
                 .unwrap();
-            c.outbound
+            consensus_state
+                .outbound
                 .subscribe()
                 .wait_for(|got| !got.current().contains(&key0))
                 .await
@@ -97,9 +116,9 @@ async fn test_address_change() {
         // node[0] is expected to connect to its gossip peers.
         // Then it should broadcast its new address and the consensus network
         // should get reconstructed.
-        let mut cfg = nodes[0].state.cfg.clone();
+        let mut cfg = nodes[0].to_config();
         cfg.server_addr = net::tcp::testonly::reserve_listener();
-        cfg.consensus.public_addr = *cfg.server_addr;
+        cfg.consensus.as_mut().unwrap().public_addr = *cfg.server_addr;
         nodes[0] = testonly::Instance::from_cfg(cfg);
 
         scope::run!(ctx, |ctx, s| async {
@@ -149,7 +168,7 @@ async fn test_transmission() {
             let want: validator::Signed<validator::ConsensusMsg> = rng.gen();
             let in_message = io::ConsensusInputMessage {
                 message: want.clone(),
-                recipient: io::Target::Validator(nodes[1].state.cfg.consensus.key.public()),
+                recipient: io::Target::Validator(nodes[1].consensus_config().key.public()),
             };
             pipes[0].send(in_message.into());
 

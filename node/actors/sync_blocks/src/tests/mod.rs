@@ -40,7 +40,7 @@ impl TestValidators {
         let validator_secret_keys: Vec<validator::SecretKey> =
             (0..validator_count).map(|_| rng.gen()).collect();
         let validator_set = validator_secret_keys.iter().map(|sk| sk.public());
-        let validator_set = validator::ValidatorSet::new(validator_set).unwrap();
+        let validator_set = ValidatorSet::new(validator_set).unwrap();
 
         let mut this = Self {
             validator_secret_keys,

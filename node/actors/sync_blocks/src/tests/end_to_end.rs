@@ -96,7 +96,7 @@ impl Node {
     }
 
     fn key(&self) -> node::PublicKey {
-        self.network.state().cfg().gossip.key.public()
+        self.network.gossip_config().key.public()
     }
 
     #[instrument(level = "trace", skip(ctx, test_validators, storage_dir), err)]

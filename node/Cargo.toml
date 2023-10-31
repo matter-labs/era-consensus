@@ -58,8 +58,8 @@ time = "0.3.23"
 tokio = { version = "1.28.1", features = ["full"] }
 tracing = { version = "0.1.37", features = ["attributes"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter", "fmt"] }
-vise = { version = "0.1.0", git = "https://github.com/matter-labs/vise.git", rev = "8322ddc4bb115a7d11127626730b94f93b804cbe" }
-vise-exporter = { version = "0.1.0", git = "https://github.com/matter-labs/vise.git", rev = "8322ddc4bb115a7d11127626730b94f93b804cbe" }
+vise = { version = "0.1.0", git = "https://github.com/matter-labs/vise.git", rev = "dd05139b76ab0843443ab3ff730174942c825dae" }
+vise-exporter = { version = "0.1.0", git = "https://github.com/matter-labs/vise.git", rev = "dd05139b76ab0843443ab3ff730174942c825dae" }
 
 # Note that "bench" profile inherits from "release" profile and
 # "test" profile inherits from "dev" profile.
