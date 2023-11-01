@@ -10,12 +10,13 @@ license.workspace = true
 anyhow.workspace = true
 heck.workspace = true
 once_cell.workspace = true
+prettyplease.workspace = true
 prost.workspace = true
+prost-build.workspace = true
 prost-types.workspace = true
 prost-reflect.workspace = true
+protox.workspace = true
+protox-parse.workspace = true
 rand.workspace = true
-
 syn.workspace = true
-protoc-bin-vendored.workspace = true
-prost-build.workspace = true
-prettyplease.workspace = true
+

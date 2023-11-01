@@ -121,7 +121,7 @@ impl ProtoFmt for io::GetBlockError {
         use proto::get_block_response::ErrorReason;
 
         let reason = message.reason.context("missing reason")?;
-        let reason = ErrorReason::from_i32(reason).context("reason")?;
+        let reason = ErrorReason::try_from(reason).context("reason")?;
         Ok(match reason {
             ErrorReason::NotSynced => Self::NotSynced,
         })

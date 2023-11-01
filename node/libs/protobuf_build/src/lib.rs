@@ -1,7 +1,6 @@
 //! Generates rust code from the protobuf
 use anyhow::Context as _;
 use std::{collections::BTreeMap, fs, path::{PathBuf,Path}};
-use std::process::Command;
 use prost::Message as _;
 use std::collections::HashSet;
 use std::sync::Mutex;
@@ -13,9 +12,9 @@ pub use once_cell::sync::{Lazy};
 mod ident;
 
 /// Traversed all the files in a directory recursively.
-fn traverse_files(path: &Path, f: &mut dyn FnMut(&Path)) -> std::io::Result<()> {
+fn traverse_files(path: &Path, f: &mut impl FnMut(&Path) -> anyhow::Result<()>) -> anyhow::Result<()> {
     if !path.is_dir() {
-        f(&path);
+        f(path).with_context(||path.to_str().unwrap().to_string())?;
         return Ok(());
     }
     for entry in fs::read_dir(path)? {
@@ -159,6 +158,7 @@ impl Descriptor {
 }
 
 pub struct Config {
+    pub input_path: PathBuf,
     pub proto_path: PathBuf,
     pub proto_package: String,
     pub dependencies: Vec<&'static Descriptor>,
@@ -196,38 +196,35 @@ impl Config {
         println!("cargo:rerun-if-changed={:?}", self.proto_path);
         
         // Find all proto files.
-        let mut inputs : Vec<PathBuf> = vec![];
-        traverse_files(&self.proto_path, &mut |path| {
-            let Some(ext) = path.extension() else { return };
-            let Some(ext) = ext.to_str() else { return };
-            if ext != "proto" {
-                return;
-            };
-            inputs.push(path.into());
-        })?;
-
-        // Compile input files into descriptor.
-        fs::create_dir_all(&self.output_descriptor_path.parent().unwrap()).unwrap();
-        // TODO: use protox instead, to be able to compress the proto paths.
-        let mut cmd = Command::new(protoc_bin_vendored::protoc_bin_path().unwrap());
-        cmd.arg("-o").arg(&self.output_descriptor_path);
-        cmd.arg("-I").arg(&self.proto_path.canonicalize()?);
-
         let mut pool = prost_reflect::DescriptorPool::new();
         for d in &self.dependencies { d.load(&mut pool).unwrap(); }
-        let pool_path = "/tmp/pool.binpb";
-        fs::write(pool_path, pool.encode_to_vec())?;
-        cmd.arg("--descriptor_set_in").arg(pool_path);
-        for input in &inputs { cmd.arg(&input); }
-        let out = cmd.output().context("protoc execution failed")?;
-        if !out.status.success() {
-            anyhow::bail!("protoc_failed:\n{}",String::from_utf8_lossy(&out.stderr));
-        }
+        let mut x = prost_types::FileDescriptorSet::default();
+        x.file = pool.file_descriptor_protos().cloned().collect();
+        let input_path = self.input_path.canonicalize()?;
+        let mut new_paths = vec![];
+        traverse_files(&input_path, &mut |path| {
+            let Some(ext) = path.extension() else { return Ok(()) };
+            let Some(ext) = ext.to_str() else { return Ok(()) };
+            if ext != "proto" { return Ok(()) };
+            let rel_path = self.proto_path.join(path.strip_prefix(&input_path).unwrap());
+            x.file.push(protox_parse::parse(
+                rel_path.to_str().unwrap(),
+                &fs::read_to_string(path).context("fs::read()")?,
+            ).context("protox_parse::parse()")?);
+            new_paths.push(rel_path.clone());
+            Ok(())
+        })?;
+        let mut compiler = protox::Compiler::with_file_resolver(
+            protox::file::DescriptorSetFileResolver::new(x)
+        );
+        compiler.open_files(new_paths).unwrap();
+        let descriptor = compiler.file_descriptor_set();
+        fs::create_dir_all(&self.output_descriptor_path.parent().unwrap()).unwrap();
+        fs::write(&self.output_descriptor_path, &descriptor.encode_to_vec())?;
         
         // Generate protobuf code from schema.
         let mut config = prost_build::Config::new();
         config.prost_path(self.import("prost"));
-        config.file_descriptor_set_path(&self.output_descriptor_path);
         config.skip_protoc_run();
         // TODO: make it relative to d.proto_package.
         for d in &self.dependencies {
@@ -243,7 +240,7 @@ impl Config {
             if !f.package().starts_with(&self.proto_package) {
                 anyhow::bail!("{:?} ({:?}) does not belong to package {:?}",f.package(),f.name(),self.proto_package);
             }
-        }
+        } 
         pool.add_file_descriptor_set(descriptor.clone()).unwrap();
         let new_messages = get_messages(&descriptor,&pool);
         
