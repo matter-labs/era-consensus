@@ -207,10 +207,10 @@ impl Config {
         })?;
 
         // Compile input files into descriptor.
-        let descriptor_path = &self.output_descriptor_path; //.canonicalize().context("output_descriptor_path.canonicalize()")?;
-        fs::create_dir_all(&descriptor_path.parent().unwrap()).unwrap();
+        fs::create_dir_all(&self.output_descriptor_path.parent().unwrap()).unwrap();
+        // TODO: use protox instead, to be able to compress the proto paths.
         let mut cmd = Command::new(protoc_bin_vendored::protoc_bin_path().unwrap());
-        cmd.arg("-o").arg(&descriptor_path);
+        cmd.arg("-o").arg(&self.output_descriptor_path);
         cmd.arg("-I").arg(&self.proto_path.canonicalize()?);
 
         let mut pool = prost_reflect::DescriptorPool::new();
@@ -227,8 +227,9 @@ impl Config {
         // Generate protobuf code from schema.
         let mut config = prost_build::Config::new();
         config.prost_path(self.import("prost"));
-        config.file_descriptor_set_path(&descriptor_path);
+        config.file_descriptor_set_path(&self.output_descriptor_path);
         config.skip_protoc_run();
+        // TODO: make it relative to d.proto_package.
         for d in &self.dependencies {
             for f in &d.descriptor_proto.file {
                 config.extern_path(format!(".{}",f.package()), format!("{}::{}",&d.rust_module,f.package().split(".").map(ident::to_snake).collect::<Vec<_>>().join("::")));
@@ -236,7 +237,7 @@ impl Config {
         }
 
         // Check that messages are compatible with `proto_fmt::canonical`.
-        let descriptor = fs::read(&descriptor_path)?;
+        let descriptor = fs::read(&self.output_descriptor_path)?;
         let descriptor = prost_types::FileDescriptorSet::decode(&descriptor[..]).unwrap();
         for f in &descriptor.file {
             if !f.package().starts_with(&self.proto_package) {
@@ -266,12 +267,13 @@ impl Config {
         let rust_descriptor = self.import("Descriptor");
         file += &format!("\
             pub static DESCRIPTOR : {rust_lazy}<{rust_descriptor}> = {rust_lazy}::new(|| {{\
-                {rust_descriptor}::new(module_path!(), {:?}, vec![{rust_deps}], &include_bytes!({descriptor_path:?}))\
+                {rust_descriptor}::new(module_path!(), {:?}, vec![{rust_deps}], &include_bytes!({:?}))\
             }});\
-        ",self.proto_package);
+        ",self.proto_package,self.output_descriptor_path);
 
         let file = syn::parse_str(&file).unwrap();
         fs::write(&self.output_mod_path, prettyplease::unparse(&file))?;
+        println!("PROTOBUF_DESCRIPTOR={:?}",self.output_descriptor_path);
         Ok(())
     }
 }
