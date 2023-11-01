@@ -8,26 +8,9 @@ use std::sync::Mutex;
 
 pub use prost;
 pub use prost_reflect;
-pub use once_cell::sync::Lazy;
+pub use once_cell::sync::{Lazy};
 
 mod ident;
-
-static POOL : Lazy<Mutex<prost_reflect::DescriptorPool>> = Lazy::new(||Mutex::default());
-
-pub fn global() -> prost_reflect::DescriptorPool { POOL.lock().unwrap().clone() } 
-
-pub struct Descriptor {
-    pub module_path: String,
-}
-
-impl Descriptor {
-    pub fn new(module_path: &str, fds: &impl AsRef<[u8]>) -> Self {
-        POOL.lock().unwrap().decode_file_descriptor_set(fds.as_ref()).unwrap();
-        Descriptor { module_path: module_path.to_string() }
-    }
-
-    pub fn load(&self) {}
-}
 
 /// Traversed all the files in a directory recursively.
 fn traverse_files(path: &Path, f: &mut dyn FnMut(&Path)) -> std::io::Result<()> {
@@ -131,19 +114,54 @@ fn get_messages_from_file(out: &mut Vec<prost_reflect::MessageDescriptor>, f: pr
     }
 }
 
-fn get_messages(fds: prost_types::FileDescriptorSet, mut pool: prost_reflect::DescriptorPool) -> Vec<prost_reflect::MessageDescriptor> {
+fn get_messages(fds: &prost_types::FileDescriptorSet, pool: &prost_reflect::DescriptorPool) -> Vec<prost_reflect::MessageDescriptor> {
     let mut res = vec![];
-    pool.add_file_descriptor_set(fds.clone()).unwrap();
-    for f in fds.file {
-        get_messages_from_file(&mut res,pool.get_file_by_name(f.name.as_ref().unwrap()).unwrap());
+    for f in &fds.file {
+        get_messages_from_file(&mut res,pool.get_file_by_name(f.name()).unwrap());
     }
     res
 }
 
+pub struct Descriptor {
+    pub rust_module : String,
+    pub proto_package : String,
+    pub descriptor_proto : prost_types::FileDescriptorSet,
+    pub dependencies : Vec<&'static Descriptor>,
+}
+
+impl Descriptor {
+    pub fn new(rust_module: &str, proto_package: &str, dependencies: Vec<&'static Descriptor>, descriptor_bytes: &impl AsRef<[u8]>) -> Self {
+        Descriptor {
+            rust_module: rust_module.to_string(),
+            proto_package: proto_package.to_string(),
+            dependencies,
+            descriptor_proto: prost_types::FileDescriptorSet::decode(descriptor_bytes.as_ref()).unwrap(),
+        }
+    }
+
+    pub fn load(&self, pool: &mut prost_reflect::DescriptorPool) -> anyhow::Result<()> {
+        if self.descriptor_proto.file.iter().all(|f| pool.get_file_by_name(f.name()).is_some()) {
+            return Ok(());
+        }
+        for d in &self.dependencies {
+            d.load(pool)?;
+        }
+        pool.add_file_descriptor_set(self.descriptor_proto.clone())?;
+        Ok(())
+    }
+
+    pub fn load_global(&self) -> prost_reflect::DescriptorPool {
+        static POOL : Lazy<Mutex<prost_reflect::DescriptorPool>> = Lazy::new(||Mutex::default());
+        let pool = &mut POOL.lock().unwrap();
+        self.load(pool).unwrap();
+        pool.clone()
+    }
+}
 
 pub struct Config {
-    pub input_root: PathBuf,
-    pub dependencies: Vec<&'static Lazy<Descriptor>>,
+    pub proto_path: PathBuf,
+    pub proto_package: String,
+    pub dependencies: Vec<&'static Descriptor>,
     
     pub output_mod_path: PathBuf,
     pub output_descriptor_path: PathBuf,
@@ -163,24 +181,23 @@ impl Config {
         rust_name.push(ident::to_upper_camel(parts[parts.len()-1]));
         let rust_name = rust_name.join("::");
         let rust_reflect = self.import("prost_reflect");
-        let rust_global = self.import("global");
-        format!("impl {rust_reflect}::ReflectMessage for {rust_name} {{ \
-            fn descriptor(&self) -> {rust_reflect}::MessageDescriptor {{ \
-                &*DESCRIPTOR; \
-                {rust_global}() \
-                    .get_message_by_name(\"{proto_name}\") \
-                    .expect(\"descriptor for message type {proto_name} not found\") \
+        let rust_lazy = self.import("Lazy");
+        format!("impl {rust_reflect}::ReflectMessage for {rust_name} {{\
+            fn descriptor(&self) -> {rust_reflect}::MessageDescriptor {{\
+                static INIT : {rust_lazy}<{rust_reflect}::MessageDescriptor> = {rust_lazy}::new(|| {{\
+                    DESCRIPTOR.load_global().get_message_by_name(\"{proto_name}\").unwrap()\
+                }});\
+                INIT.clone()\
             }}\
         }}")
     }
 
-
     pub fn generate(&self) -> anyhow::Result<()> { 
-        println!("cargo:rerun-if-changed={:?}", self.input_root);
+        println!("cargo:rerun-if-changed={:?}", self.proto_path);
         
         // Find all proto files.
         let mut inputs : Vec<PathBuf> = vec![];
-        traverse_files(&self.input_root, &mut |path| {
+        traverse_files(&self.proto_path, &mut |path| {
             let Some(ext) = path.extension() else { return };
             let Some(ext) = ext.to_str() else { return };
             if ext != "proto" {
@@ -194,27 +211,15 @@ impl Config {
         fs::create_dir_all(&descriptor_path.parent().unwrap()).unwrap();
         let mut cmd = Command::new(protoc_bin_vendored::protoc_bin_path().unwrap());
         cmd.arg("-o").arg(&descriptor_path);
-        cmd.arg("-I").arg(&self.input_root.canonicalize()?);
+        cmd.arg("-I").arg(&self.proto_path.canonicalize()?);
 
-        /*if deps.len() > 0 {
-            let mut deps_list = vec![];
-            for (i,(_,d)) in deps.iter().enumerate() {
-                let name = proto_output.join(format!("dep{i}.binpb"));
-                fs::write(&name,d)?;
-                deps_list.push(name.to_str().unwrap().to_string());
-            }
-            cmd.arg("--descriptor_set_in").arg(deps_list.join(":"));
-        }*/
-
-        let deps : Vec<_> = self.dependencies.iter().map(|d|&***d).collect();
-        let deps_path = "/tmp/deps.binpb";
-        fs::write(deps_path, global().encode_to_vec())?;
-        cmd.arg("--descriptor_set_in").arg(deps_path);
-
+        let mut pool = prost_reflect::DescriptorPool::new();
+        for d in &self.dependencies { d.load(&mut pool).unwrap(); }
+        let pool_path = "/tmp/pool.binpb";
+        fs::write(pool_path, pool.encode_to_vec())?;
+        cmd.arg("--descriptor_set_in").arg(pool_path);
         for input in &inputs { cmd.arg(&input); }
-
         let out = cmd.output().context("protoc execution failed")?;
-
         if !out.status.success() {
             anyhow::bail!("protoc_failed:\n{}",String::from_utf8_lossy(&out.stderr));
         }
@@ -224,11 +229,22 @@ impl Config {
         config.prost_path(self.import("prost"));
         config.file_descriptor_set_path(&descriptor_path);
         config.skip_protoc_run();
-        
+        for d in &self.dependencies {
+            for f in &d.descriptor_proto.file {
+                config.extern_path(format!(".{}",f.package()), format!("{}::{}",&d.rust_module,f.package().split(".").map(ident::to_snake).collect::<Vec<_>>().join("::")));
+            }
+        }
+
         // Check that messages are compatible with `proto_fmt::canonical`.
         let descriptor = fs::read(&descriptor_path)?;
         let descriptor = prost_types::FileDescriptorSet::decode(&descriptor[..]).unwrap();
-        let new_messages = get_messages(descriptor.clone(),global());
+        for f in &descriptor.file {
+            if !f.package().starts_with(&self.proto_package) {
+                anyhow::bail!("{:?} ({:?}) does not belong to package {:?}",f.package(),f.name(),self.proto_package);
+            }
+        }
+        pool.add_file_descriptor_set(descriptor.clone()).unwrap();
+        let new_messages = get_messages(&descriptor,&pool);
         
         let mut check_state = CanonicalCheckState::default();
         for m in &new_messages {
@@ -240,21 +256,19 @@ impl Config {
         for (name,code) in config.generate(modules).unwrap() {
             m.insert(name.parts(),&code);
         }
-        let mut file = deps.iter().map(|d|format!("use {}::*;",d.module_path)).collect::<Vec<_>>().join("\n");
-        file += &m.generate(); 
+        let mut file = m.generate(); 
         for m in &new_messages {
             file += &self.reflect_impl(m.clone());
         }
 
-        let rec = deps.iter().map(|d|format!("&*{}::DESCRIPTOR;",d.module_path)).collect::<Vec<_>>().join(" ");
+        let rust_deps = self.dependencies.iter().map(|d|format!("&::{}::DESCRIPTOR",d.rust_module)).collect::<Vec<_>>().join(",");
         let rust_lazy = self.import("Lazy");
         let rust_descriptor = self.import("Descriptor");
         file += &format!("\
             pub static DESCRIPTOR : {rust_lazy}<{rust_descriptor}> = {rust_lazy}::new(|| {{\
-                {rec}
-                {rust_descriptor}::new(module_path!(), &include_bytes!({descriptor_path:?}))\
+                {rust_descriptor}::new(module_path!(), {:?}, vec![{rust_deps}], &include_bytes!({descriptor_path:?}))\
             }});\
-        ");
+        ",self.proto_package);
 
         let file = syn::parse_str(&file).unwrap();
         fs::write(&self.output_mod_path, prettyplease::unparse(&file))?;
