@@ -3,10 +3,11 @@ use anyhow::Context as _;
 use clap::Parser;
 use consensus::testonly;
 use crypto::TextFmt;
-use executor::configurator::node_config::{ConsensusConfig, GossipConfig, NodeConfig};
+use executor::{ConsensusConfig, ExecutorConfig, GossipConfig};
 use rand::Rng;
 use roles::{node, validator};
 use std::{fs, net::SocketAddr, path::PathBuf};
+use tools::NodeConfig;
 
 /// Replaces IP of the address with UNSPECIFIED (aka INADDR_ANY) of the corresponding IP type.
 /// Opening a listener socket with an UNSPECIFIED IP, means that the new connections
@@ -20,17 +21,15 @@ fn with_unspecified_ip(addr: SocketAddr) -> SocketAddr {
 }
 
 /// Command line arguments.
-#[derive(Parser, Debug)]
+#[derive(Debug, Parser)]
 struct Args {
     /// Path to a file with newline separated IP:port addrs of the nodes to configure.
     /// Binary will generate a config for each IP in this file.
     #[arg(long)]
     input_addrs: PathBuf,
-
     /// TCP port to serve metrics for scraping.
     #[arg(long)]
     metrics_server_port: Option<u16>,
-
     /// Path to a directory in which the configs should be created.
     /// Configs for <ip:port>, will be in directory <output_dir>/<ip:port>/
     #[arg(long)]
@@ -91,16 +90,19 @@ fn main() -> anyhow::Result<()> {
     }
 
     for (i, gossip) in gossip_cfgs.into_iter().enumerate() {
-        let node_cfg = NodeConfig {
-            consensus: ConsensusConfig {
-                key: validator_keys[i].public(),
-                public_addr: addrs[i],
-                validators: validator_set.clone(),
-            },
+        let executor_cfg = ExecutorConfig {
             gossip,
             server_addr: with_unspecified_ip(addrs[i]),
-            metrics_server_addr,
             genesis_block: genesis.clone(),
+            validators: validator_set.clone(),
+        };
+        let node_cfg = NodeConfig {
+            executor: executor_cfg,
+            metrics_server_addr,
+            consensus: Some(ConsensusConfig {
+                key: validator_keys[i].public(),
+                public_addr: addrs[i],
+            }),
         };
 
         // Recreate the directory for the node's config.

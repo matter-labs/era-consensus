@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 #[test]
 fn test_schema_encode_decode() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
-    schema::testonly::test_encode_random::<_, Handshake>(rng);
+    protobuf::testonly::test_encode_random::<_, Handshake>(rng);
 }
 
 fn make_cfg<R: Rng>(rng: &mut R) -> Config {

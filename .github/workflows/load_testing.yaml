@@ -26,7 +26,7 @@ env:
 
 jobs:
   run_load_tests:
-    runs-on: ["self-hosted", "deployer-sandbox", "infra"]
+    runs-on: ["matterlabs-deployer-sandbox-infra"]
     steps:
       - name: Fail-fast on incorrect inputs
         run: |
@@ -113,7 +113,7 @@ jobs:
       - name: Build executor binary
         working-directory: node
         run: |
-          build_output=$(cargo build --release -p executor --bin executor --message-format=json) || exit 1
+          build_output=$(cargo build --release -p tools --bin executor --message-format=json) || exit 1
           echo "$build_output" | jq -r 'select(.executable != null) | .executable' \
           | while read binary; do
             cp "$binary" artifacts/binaries/

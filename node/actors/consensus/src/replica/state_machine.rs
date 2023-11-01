@@ -2,11 +2,8 @@ use crate::{metrics, ConsensusInner};
 use anyhow::Context as _;
 use concurrency::{ctx, metrics::LatencyHistogramExt as _, scope, time};
 use roles::validator;
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
-use storage::{ReplicaStateStore, StorageError};
+use std::collections::{BTreeMap, HashMap};
+use storage::{FallbackReplicaStateStore, StorageError};
 use tracing::instrument;
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
@@ -27,7 +24,7 @@ pub(crate) struct StateMachine {
     /// The deadline to receive an input message.
     pub(crate) timeout_deadline: time::Deadline,
     /// A reference to the storage module. We use it to backup the replica state.
-    pub(crate) storage: Arc<dyn ReplicaStateStore>,
+    pub(crate) storage: FallbackReplicaStateStore,
 }
 
 impl StateMachine {
@@ -35,39 +32,25 @@ impl StateMachine {
     /// otherwise we initialize the state machine with whatever head block we have.
     pub(crate) async fn new(
         ctx: &ctx::Ctx,
-        storage: Arc<dyn ReplicaStateStore>,
+        storage: FallbackReplicaStateStore,
     ) -> anyhow::Result<Self> {
-        Ok(match storage.replica_state(ctx).await? {
-            Some(backup) => {
-                let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
-                for p in backup.proposals {
-                    block_proposal_cache
-                        .entry(p.number)
-                        .or_default()
-                        .insert(p.payload.hash(), p.payload);
-                }
-                Self {
-                    view: backup.view,
-                    phase: backup.phase,
-                    high_vote: backup.high_vote,
-                    high_qc: backup.high_qc,
-                    block_proposal_cache,
-                    timeout_deadline: time::Deadline::Infinite,
-                    storage,
-                }
-            }
-            None => {
-                let head = storage.head_block(ctx).await?;
-                Self {
-                    view: head.justification.message.view,
-                    phase: validator::Phase::Prepare,
-                    high_vote: head.justification.message,
-                    high_qc: head.justification,
-                    block_proposal_cache: BTreeMap::new(),
-                    timeout_deadline: time::Deadline::Infinite,
-                    storage,
-                }
-            }
+        let backup = storage.replica_state(ctx).await?;
+        let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
+        for proposal in backup.proposals {
+            block_proposal_cache
+                .entry(proposal.number)
+                .or_default()
+                .insert(proposal.payload.hash(), proposal.payload);
+        }
+
+        Ok(Self {
+            view: backup.view,
+            phase: backup.phase,
+            high_vote: backup.high_vote,
+            high_qc: backup.high_qc,
+            block_proposal_cache,
+            timeout_deadline: time::Deadline::Infinite,
+            storage,
         })
     }
 

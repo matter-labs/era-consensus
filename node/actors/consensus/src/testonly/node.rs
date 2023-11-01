@@ -43,7 +43,7 @@ impl Node {
         network_pipe: DispatcherPipe<network::io::InputMessage, network::io::OutputMessage>,
         metrics: channel::UnboundedSender<Metrics>,
     ) -> anyhow::Result<()> {
-        let key = self.net.state().cfg().consensus.key.public();
+        let key = self.net.consensus_config().key.public();
         let rng = &mut ctx.rng();
         let mut net_recv = network_pipe.recv;
         let net_send = network_pipe.send;

@@ -1,5 +1,5 @@
 use super::*;
-use ::schema::testonly::{test_encode, test_encode_random};
+use protobuf::testonly::{test_encode, test_encode_random};
 use concurrency::ctx;
 use crypto::{ByteFmt, Text, TextFmt};
 use rand::Rng;

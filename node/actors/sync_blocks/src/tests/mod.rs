@@ -13,7 +13,7 @@ use roles::validator::{
     BlockHeader, BlockNumber, CommitQC, FinalBlock, Payload, ValidatorSet,
 };
 use std::iter;
-use storage::RocksdbStorage;
+use storage::InMemoryStorage;
 use utils::pipe;
 
 mod end_to_end;
@@ -40,7 +40,7 @@ impl TestValidators {
         let validator_secret_keys: Vec<validator::SecretKey> =
             (0..validator_count).map(|_| rng.gen()).collect();
         let validator_set = validator_secret_keys.iter().map(|sk| sk.public());
-        let validator_set = validator::ValidatorSet::new(validator_set).unwrap();
+        let validator_set = ValidatorSet::new(validator_set).unwrap();
 
         let mut this = Self {
             validator_secret_keys,
@@ -106,7 +106,6 @@ impl TestValidators {
 async fn subscribing_to_state_updates() {
     concurrency::testonly::abort_on_panic();
 
-    let storage_dir = tempfile::tempdir().unwrap();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let genesis_block = make_genesis_block(rng);
@@ -114,9 +113,7 @@ async fn subscribing_to_state_updates() {
     let block_2 = make_block(rng, &block_1.header);
     let block_3 = make_block(rng, &block_2.header);
 
-    let storage = RocksdbStorage::new(ctx, &genesis_block, storage_dir.path())
-        .await
-        .unwrap();
+    let storage = InMemoryStorage::new(genesis_block.clone());
     let storage = &Arc::new(storage);
     let (actor_pipe, _dispatcher_pipe) = pipe::new();
     let actor = SyncBlocks::new(ctx, actor_pipe, storage.clone(), rng.gen())
@@ -139,28 +136,30 @@ async fn subscribing_to_state_updates() {
             anyhow::Ok(())
         });
 
-        let initial_state = state_subscriber.borrow_and_update();
-        assert_eq!(
-            initial_state.first_stored_block,
-            genesis_block.justification
-        );
-        assert_eq!(
-            initial_state.last_contiguous_stored_block,
-            genesis_block.justification
-        );
-        assert_eq!(initial_state.last_stored_block, genesis_block.justification);
-        drop(initial_state);
+        {
+            let initial_state = state_subscriber.borrow_and_update();
+            assert_eq!(
+                initial_state.first_stored_block,
+                genesis_block.justification
+            );
+            assert_eq!(
+                initial_state.last_contiguous_stored_block,
+                genesis_block.justification
+            );
+            assert_eq!(initial_state.last_stored_block, genesis_block.justification);
+        }
 
         storage.put_block(ctx, &block_1).await.unwrap();
 
-        let new_state = sync::changed(ctx, &mut state_subscriber).await?;
-        assert_eq!(new_state.first_stored_block, genesis_block.justification);
-        assert_eq!(
-            new_state.last_contiguous_stored_block,
-            block_1.justification
-        );
-        assert_eq!(new_state.last_stored_block, block_1.justification);
-        drop(new_state);
+        {
+            let new_state = sync::changed(ctx, &mut state_subscriber).await?;
+            assert_eq!(new_state.first_stored_block, genesis_block.justification);
+            assert_eq!(
+                new_state.last_contiguous_stored_block,
+                block_1.justification
+            );
+            assert_eq!(new_state.last_stored_block, block_1.justification);
+        }
 
         storage.put_block(ctx, &block_3).await.unwrap();
 
@@ -182,13 +181,12 @@ async fn subscribing_to_state_updates() {
 async fn getting_blocks() {
     concurrency::testonly::abort_on_panic();
 
-    let storage_dir = tempfile::tempdir().unwrap();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let genesis_block = make_genesis_block(rng);
 
-    let storage = RocksdbStorage::new(ctx, &genesis_block, storage_dir.path());
-    let storage = Arc::new(storage.await.unwrap());
+    let storage = InMemoryStorage::new(genesis_block.clone());
+    let storage = Arc::new(storage);
     let blocks = iter::successors(Some(genesis_block), |parent| {
         Some(make_block(rng, &parent.header))
     });

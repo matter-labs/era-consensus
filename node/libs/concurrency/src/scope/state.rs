@@ -14,13 +14,18 @@
 use crate::{ctx, signal};
 use std::sync::{Arc, Mutex};
 
+pub(super) enum OrPanic<E> {
+    Err(E),
+    Panic,
+}
+
 /// Internal representation of the scope.
 pub(super) struct State<E> {
     /// Context of this scope.
     /// All tasks spawned in this scope are provided with this context.
     ctx: ctx::Ctx,
     /// First error returned by any task in the scope.
-    err: Mutex<Option<E>>,
+    err: Mutex<Option<OrPanic<E>>>,
     /// Signal sent once the scope is terminated.
     terminated: signal::Once,
 }
@@ -34,7 +39,7 @@ impl<E> State<E> {
     /// Takes out the error from the scope.
     /// Called after scope termination to return the error to
     /// the `scope::run!` caller.
-    pub(super) fn take_err(&self) -> Option<E> {
+    pub(super) fn take_err(&self) -> Option<OrPanic<E>> {
         debug_assert!(self.terminated.try_recv());
         std::mem::take(&mut *self.err.lock().unwrap())
     }
@@ -69,15 +74,18 @@ impl<E: 'static> TerminateGuard<E> {
     }
 
     /// Sets the scope error if it is not already set.
+    /// Panic overrides an error.
     /// Called by scope tasks which resulted with an error.
     /// It has a side effect of canceling the scope.
-    pub(super) fn set_err(&self, err: E) {
+    pub(super) fn set_err(&self, err: OrPanic<E>) {
         let mut m = self.0.err.lock().unwrap();
-        if m.is_some() {
-            return;
+        match (&*m, &err) {
+            // Panic overrides an error, but error doesn't override an error.
+            (Some(OrPanic::Panic), _) | (Some(OrPanic::Err(_)), OrPanic::Err(_)) => return,
+            _ => {}
         }
-        *m = Some(err);
         self.0.ctx.cancel();
+        *m = Some(err);
     }
 }
 

@@ -62,7 +62,7 @@ async fn main() -> anyhow::Result<()> {
             let format = req
                 .requested_output_format
                 .context("missing output format")?;
-            match proto::WireFormat::from_i32(format).context("unknown format")? {
+            match proto::WireFormat::try_from(format).context("unknown format")? {
                 proto::WireFormat::Json => {
                     anyhow::Ok(R::JsonPayload(protobuf::encode_json_proto(&p)))
                 }

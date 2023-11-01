@@ -4,7 +4,7 @@ use super::{ConsensusMsg, NetAddress};
 use crate::{node::SessionId, validator};
 use crypto::{bls12_381::Error, sha256, ByteFmt, Text, TextFmt};
 use std::fmt;
-use utils::enum_util::{ErrBadVariant, Variant};
+use utils::enum_util::{BadVariantError, Variant};
 
 /// Generic message type for a validator.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -28,9 +28,9 @@ impl Variant<Msg> for ConsensusMsg {
     fn insert(self) -> Msg {
         Msg::Consensus(self)
     }
-    fn extract(msg: Msg) -> Result<Self, ErrBadVariant> {
+    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
         let Msg::Consensus(this) = msg else {
-            return Err(ErrBadVariant);
+            return Err(BadVariantError);
         };
         Ok(this)
     }
@@ -40,9 +40,9 @@ impl Variant<Msg> for SessionId {
     fn insert(self) -> Msg {
         Msg::SessionId(self)
     }
-    fn extract(msg: Msg) -> Result<Self, ErrBadVariant> {
+    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
         let Msg::SessionId(this) = msg else {
-            return Err(ErrBadVariant);
+            return Err(BadVariantError);
         };
         Ok(this)
     }
@@ -52,9 +52,9 @@ impl Variant<Msg> for NetAddress {
     fn insert(self) -> Msg {
         Msg::NetAddress(self)
     }
-    fn extract(msg: Msg) -> Result<Self, ErrBadVariant> {
+    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
         let Msg::NetAddress(this) = msg else {
-            return Err(ErrBadVariant);
+            return Err(BadVariantError);
         };
         Ok(this)
     }
@@ -115,7 +115,7 @@ impl<V: Variant<Msg> + Clone> Signed<V> {
 impl<V: Variant<Msg>> Signed<V> {
     /// Casts a signed message variant to sub/super variant.
     /// It is an equivalent of constructing/deconstructing enum values.
-    pub fn cast<V2: Variant<Msg>>(self) -> Result<Signed<V2>, ErrBadVariant> {
+    pub fn cast<V2: Variant<Msg>>(self) -> Result<Signed<V2>, BadVariantError> {
         Ok(Signed {
             msg: V2::extract(self.msg.insert())?,
             key: self.key,

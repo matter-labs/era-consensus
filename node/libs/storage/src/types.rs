@@ -1,57 +1,10 @@
 //! Defines the schema of the database.
 use anyhow::Context as _;
 use concurrency::ctx;
-use rocksdb::{Direction, IteratorMode};
 use roles::validator::{self, BlockNumber};
 use schema::proto::storage as proto;
 use protobuf::{read_required, required, ProtoFmt};
 use std::{iter, ops};
-use thiserror::Error;
-
-/// Enum used to represent a key in the database. It also acts as a separator between different stores.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) enum DatabaseKey {
-    /// Key used to store the replica state.
-    /// ReplicaState -> ReplicaState
-    ReplicaState,
-    /// Key used to store the finalized blocks.
-    /// Block(BlockNumber) -> FinalBlock
-    Block(BlockNumber),
-}
-
-impl DatabaseKey {
-    /// Starting database key for blocks indexed by number. All other keys in the default column family
-    /// are lower than this value.
-    pub(crate) const BLOCKS_START_KEY: &'static [u8] = &u64::MIN.to_be_bytes();
-
-    /// Iterator mode for the head block (i.e., a block with the greatest number).
-    pub(crate) const BLOCK_HEAD_ITERATOR: IteratorMode<'static> =
-        IteratorMode::From(&u64::MAX.to_be_bytes(), Direction::Reverse);
-
-    /// Encodes this key for usage as a RocksDB key.
-    ///
-    /// # Implementation note
-    ///
-    /// This logic is maintainable only while the amount of non-block keys remains small.
-    /// If more keys are added (especially if their number is not known statically), prefer using
-    /// separate column families for them.
-    pub(crate) fn encode_key(&self) -> Vec<u8> {
-        match self {
-            // Keys for non-block entries must be smaller than all block keys.
-            Self::ReplicaState => vec![0],
-            // Number encoding that monotonically increases with the number
-            Self::Block(number) => number.0.to_be_bytes().to_vec(),
-        }
-    }
-
-    /// Parses the specified bytes as a `Self::Block(_)` key.
-    pub(crate) fn parse_block_key(raw_key: &[u8]) -> anyhow::Result<BlockNumber> {
-        let raw_key = raw_key
-            .try_into()
-            .context("Invalid encoding for block key")?;
-        Ok(BlockNumber(u64::from_be_bytes(raw_key)))
-    }
-}
 
 /// A payload of a proposed block which is not known to be finalized yet.
 /// Replicas have to persist such proposed payloads for liveness:
@@ -180,7 +133,7 @@ where
 }
 
 /// Storage errors.
-#[derive(Debug, Error)]
+#[derive(Debug, thiserror::Error)]
 pub enum StorageError {
     /// Operation was canceled by structured concurrency framework.
     #[error("operation was canceled by structured concurrency framework")]

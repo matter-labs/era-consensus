@@ -14,7 +14,7 @@ pub use tokio::{
 mod tests;
 
 /// Error returned when a channel has been disconnected.
-#[derive(thiserror::Error, Debug)]
+#[derive(Debug, thiserror::Error)]
 #[error("disconnected")]
 pub struct Disconnected;
 

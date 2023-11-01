@@ -5,23 +5,34 @@ use concurrency::ctx;
 use roles::validator;
 use tracing::instrument;
 
-#[derive(thiserror::Error, Debug)]
-#[allow(clippy::missing_docs_in_private_items)]
+/// Errors that can occur when processing a "leader commit" message.
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    #[error("invalid leader (correct leader: {correct_leader:?}, received leader: {received_leader:?})]")]
+    /// Invalid leader.
+    #[error(
+        "invalid leader (correct leader: {correct_leader:?}, received leader: {received_leader:?})"
+    )]
     InvalidLeader {
+        /// Correct leader.
         correct_leader: validator::PublicKey,
+        /// Received leader.
         received_leader: validator::PublicKey,
     },
+    /// Past view of phase.
     #[error("past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
     Old {
+        /// Current view.
         current_view: validator::ViewNumber,
+        /// Current phase.
         current_phase: validator::Phase,
     },
+    /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] crypto::bls12_381::Error),
+    /// Invalid justification for the message.
     #[error("invalid justification: {0:#}")]
     InvalidJustification(#[source] anyhow::Error),
+    /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error("internal error: {0:#}")]
     Internal(#[from] anyhow::Error),
 }

@@ -18,11 +18,7 @@
 use self::metrics::{CallLatencyType, CallType, RPC_METRICS};
 use crate::{frame, mux};
 use anyhow::Context as _;
-use concurrency::{
-    ctx, io, limiter,
-    metrics::{GaugeGuard, LatencyHistogramExt as _},
-    scope,
-};
+use concurrency::{ctx, io, limiter, metrics::LatencyHistogramExt as _, scope};
 use std::{collections::BTreeMap, sync::Arc};
 
 pub(crate) mod consensus;
@@ -92,7 +88,7 @@ impl<'a, R: Rpc> ReservedCall<'a, R> {
         drop(self.permit);
         let res = async {
             let metric_labels = CallType::Client.to_labels::<R>(req);
-            let _guard = GaugeGuard::from(RPC_METRICS.inflight[&metric_labels].clone());
+            let _guard = RPC_METRICS.inflight[&metric_labels].inc_guard(1);
             let msg_size = frame::mux_send_proto(ctx, &mut stream.write, req).await?;
             RPC_METRICS.message_size[&CallType::ReqSent.to_labels::<R>(req)].observe(msg_size);
             drop(stream.write);
@@ -193,8 +189,7 @@ impl<R: Rpc, H: Handler<R>> ServerTrait for Server<R, H> {
                             let resp_size_labels = CallType::RespSent.to_labels::<R>(&req);
                             RPC_METRICS.message_size[&size_labels].observe(msg_size);
                             let inflight_labels = CallType::Server.to_labels::<R>(&req);
-                            let _guard =
-                                GaugeGuard::from(RPC_METRICS.inflight[&inflight_labels].clone());
+                            let _guard = RPC_METRICS.inflight[&inflight_labels].inc_guard(1);
                             let mut server_process_labels =
                                 CallLatencyType::ServerProcess.to_labels::<R>(&req, &Ok(()));
                             let mut recv_send_labels =

@@ -36,8 +36,8 @@ impl ProtoFmt for Handshake {
     }
 }
 
-/// Error returned by AuthStream::handshake.
-#[derive(thiserror::Error, Debug)]
+/// Error returned by handshake logic.
+#[derive(Debug, thiserror::Error)]
 pub(super) enum Error {
     #[error("session id mismatch")]
     SessionIdMismatch,

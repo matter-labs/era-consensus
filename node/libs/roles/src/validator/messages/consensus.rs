@@ -5,7 +5,7 @@ use crate::validator;
 use anyhow::{bail, Context};
 use bit_vec::BitVec;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use utils::enum_util::{ErrBadVariant, Variant};
+use utils::enum_util::{BadVariantError, Variant};
 
 /// Version of the consensus algorithm that the validator is using.
 /// It allows to prevent misinterpretation of messages signed by validators
@@ -57,9 +57,9 @@ impl Variant<Msg> for ReplicaPrepare {
     fn insert(self) -> Msg {
         ConsensusMsg::ReplicaPrepare(self).insert()
     }
-    fn extract(msg: Msg) -> Result<Self, ErrBadVariant> {
+    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
         let ConsensusMsg::ReplicaPrepare(this) = Variant::extract(msg)? else {
-            return Err(ErrBadVariant);
+            return Err(BadVariantError);
         };
         Ok(this)
     }
@@ -69,9 +69,9 @@ impl Variant<Msg> for ReplicaCommit {
     fn insert(self) -> Msg {
         ConsensusMsg::ReplicaCommit(self).insert()
     }
-    fn extract(msg: Msg) -> Result<Self, ErrBadVariant> {
+    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
         let ConsensusMsg::ReplicaCommit(this) = Variant::extract(msg)? else {
-            return Err(ErrBadVariant);
+            return Err(BadVariantError);
         };
         Ok(this)
     }
@@ -81,9 +81,9 @@ impl Variant<Msg> for LeaderPrepare {
     fn insert(self) -> Msg {
         ConsensusMsg::LeaderPrepare(self).insert()
     }
-    fn extract(msg: Msg) -> Result<Self, ErrBadVariant> {
+    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
         let ConsensusMsg::LeaderPrepare(this) = Variant::extract(msg)? else {
-            return Err(ErrBadVariant);
+            return Err(BadVariantError);
         };
         Ok(this)
     }
@@ -93,9 +93,9 @@ impl Variant<Msg> for LeaderCommit {
     fn insert(self) -> Msg {
         ConsensusMsg::LeaderCommit(self).insert()
     }
-    fn extract(msg: Msg) -> Result<Self, ErrBadVariant> {
+    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
         let ConsensusMsg::LeaderCommit(this) = Variant::extract(msg)? else {
-            return Err(ErrBadVariant);
+            return Err(BadVariantError);
         };
         Ok(this)
     }

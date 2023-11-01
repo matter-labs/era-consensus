@@ -11,7 +11,7 @@ use concurrency::{
 use network::io::{SyncBlocksInputMessage, SyncState};
 use roles::{
     node,
-    validator::{BlockNumber, FinalBlock},
+    validator::{BlockHeader, BlockNumber, FinalBlock, PayloadHash},
 };
 use std::{collections::HashMap, sync::Arc};
 use storage::WriteBlockStore;
@@ -156,6 +156,9 @@ impl PeerStates {
             Ok(block_number) => block_number,
             Err(err) => {
                 tracing::warn!(%err, "Invalid `SyncState` received from peer");
+                if let Some(events_sender) = &self.events_sender {
+                    events_sender.send(PeerStateEvent::InvalidPeerUpdate(peer_key));
+                }
                 return Ok(BlockNumber(0));
                 // TODO: ban peer etc.
             }
@@ -254,8 +257,15 @@ impl PeerStates {
                     "Received invalid block #{block_number} from peer {peer_key:?}"
                 );
                 // TODO: ban peer etc.
+                if let Some(events_sender) = &self.events_sender {
+                    events_sender.send(PeerStateEvent::GotInvalidBlock {
+                        peer_key,
+                        block_number,
+                    });
+                }
+            } else {
+                return Ok(block);
             }
-            return Ok(block);
         }
     }
 
@@ -332,25 +342,35 @@ impl PeerStates {
         Ok(None)
     }
 
-    fn validate_block(&self, block_number: BlockNumber, block: &FinalBlock) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            block.header.number == block_number,
-            "Block does not have requested number"
-        );
-        anyhow::ensure!(
-            block.payload.hash() == block.header.payload,
-            "Block payload doesn't match the block header",
-        );
-        anyhow::ensure!(
-            block.header == block.justification.message.proposal,
-            "Quorum certificate proposal doesn't match the block header",
-        );
+    fn validate_block(
+        &self,
+        block_number: BlockNumber,
+        block: &FinalBlock,
+    ) -> Result<(), BlockValidationError> {
+        if block.header.number != block_number {
+            return Err(BlockValidationError::NumberMismatch {
+                requested: block_number,
+                got: block.header.number,
+            });
+        }
+        let payload_hash = block.payload.hash();
+        if payload_hash != block.header.payload {
+            return Err(BlockValidationError::HashMismatch {
+                header_hash: block.header.payload,
+                payload_hash,
+            });
+        }
+        if block.header != block.justification.message.proposal {
+            return Err(BlockValidationError::ProposalMismatch {
+                block_header: Box::new(block.header),
+                qc_header: Box::new(block.justification.message.proposal),
+            });
+        }
 
         block
             .justification
             .verify(&self.config.validator_set, self.config.consensus_threshold)
-            .context("Failed verifying quorum certificate")?;
-        Ok(())
+            .map_err(BlockValidationError::Justification)
     }
 
     #[instrument(level = "trace", skip(self, ctx))]
@@ -368,4 +388,32 @@ impl PeerStates {
         }
         Ok(())
     }
+}
+
+/// Errors that can occur validating a `FinalBlock` received from a node.
+#[derive(Debug, thiserror::Error)]
+enum BlockValidationError {
+    #[error("block does not have requested number (requested: {requested}, got: {got})")]
+    NumberMismatch {
+        requested: BlockNumber,
+        got: BlockNumber,
+    },
+    #[error(
+        "block payload doesn't match the block header (hash in header: {header_hash:?}, \
+         payload hash: {payload_hash:?})"
+    )]
+    HashMismatch {
+        header_hash: PayloadHash,
+        payload_hash: PayloadHash,
+    },
+    #[error(
+        "quorum certificate proposal doesn't match the block header (block header: {block_header:?}, \
+         header in QC: {qc_header:?})"
+    )]
+    ProposalMismatch {
+        block_header: Box<BlockHeader>,
+        qc_header: Box<BlockHeader>,
+    },
+    #[error("failed verifying quorum certificate: {0:#?}")]
+    Justification(#[source] anyhow::Error),
 }

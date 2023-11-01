@@ -48,7 +48,6 @@ message NodeAddr {
 message ConsensusConfig {
   optional string key = 1; // [required] ValidatorPublicKey
   optional string public_addr = 2; // [required] IpAddr
-  repeated string validators = 3; // [required] ValidatorPublicKey
 }
 
 // Config of the gossip network.
@@ -66,24 +65,32 @@ message GossipConfig {
   repeated NodeAddr static_outbound = 4;
 }
 
-// Top-level config. 
-message NodeConfig {
+// Top-level executor config.
+message ExecutorConfig {
   // IP:port to listen on, for incoming TCP connections.
   // Use `0.0.0.0:<port>` to listen on all network interfaces (i.e. on all IPs exposed by this VM).
   optional string server_addr = 1; // [required] IpAddr
-  
-  // IP:port to serve metrics data for scraping.
-  // Use `0.0.0.0:<port>` to listen on all network interfaces.
-  // If not set, metrics data won't be served.
-  optional string metrics_server_addr = 2; // IpAddr
-  
-  // Consensus network config.
-  // NOTE: we currently only support validator nodes, but eventually it will be optional.
-  optional ConsensusConfig consensus = 3; // [required]
   
   // Gossip network config.
   optional GossipConfig gossip = 4; // [required]
   
   // Genesis block of the blockchain.
   optional string genesis_block = 5; // [required] FinalBlock
+  // Public keys of all validators.
+  repeated string validators = 6; // [required] ValidatorPublicKey
+}
+
+// Node configuration including executor configuration, optional validator configuration,
+// and application-specific settings (e.g. metrics scraping).
+message NodeConfig {
+  // Executor configuration.
+  optional ExecutorConfig executor = 1; // [required]
+
+  // IP:port to serve metrics data for scraping.
+  // Use `0.0.0.0:<port>` to listen on all network interfaces.
+  // If not set, metrics data won't be served.
+  optional string metrics_server_addr = 2; // [optional] IpAddr
+
+  // Consensus network config.
+  optional ConsensusConfig consensus = 3; // [optional]
 }

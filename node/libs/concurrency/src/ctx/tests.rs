@@ -77,7 +77,7 @@ async fn channel_recv() {
         recv.recv(ctx).await
     })
     .await;
-    assert_eq!(Err(Canceled), res);
+    assert!(matches!(res, Err(Canceled)));
 }
 
 #[tokio::test]

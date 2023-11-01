@@ -7,7 +7,7 @@ use roles::validator;
 #[test]
 fn test_schema_encode_decode() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
-    schema::testonly::test_encode_random::<_, Handshake>(rng);
+    protobuf::testonly::test_encode_random::<_, Handshake>(rng);
 }
 
 #[tokio::test]

@@ -1,5 +1,6 @@
 use super::{handshake, ValidatorAddrs};
 use crate::{
+    consensus,
     event::{Event, StreamEvent},
     io, noise, preface, rpc, State,
 };
@@ -152,7 +153,7 @@ async fn run_stream(
     let sync_blocks_server = SyncBlocksServer { peer, sender };
     let sync_state_client = rpc::Client::<rpc::sync_blocks::PushSyncStateRpc>::new(ctx);
 
-    let enable_pings = state.cfg.gossip.enable_pings;
+    let enable_pings = state.gossip.cfg.enable_pings;
 
     scope::run!(ctx, |ctx, s| async {
         s.spawn(async {
@@ -194,7 +195,7 @@ async fn run_stream(
             state
                 .gossip
                 .validator_addrs
-                .update(&state.cfg.consensus, &resp.0[..])
+                .update(&state.cfg.validators, &resp.0[..])
                 .await?;
             state.event(Event::ValidatorAddrsUpdated);
         }
@@ -240,7 +241,7 @@ async fn handle_clients_and_run_stream(
     level = "trace",
     skip_all,
     err,
-    fields(my_key = ?state.cfg().gossip.key.public(), peer),
+    fields(my_key = ?state.gossip.cfg.key.public(), peer),
 )]
 pub(crate) async fn run_inbound_stream(
     ctx: &ctx::Ctx,
@@ -248,7 +249,7 @@ pub(crate) async fn run_inbound_stream(
     sender: &channel::UnboundedSender<io::OutputMessage>,
     mut stream: noise::Stream,
 ) -> anyhow::Result<()> {
-    let peer = handshake::inbound(ctx, &state.cfg.gossip, &mut stream).await?;
+    let peer = handshake::inbound(ctx, &state.gossip.cfg, &mut stream).await?;
     tracing::Span::current().record("peer", tracing::field::debug(&peer));
 
     state.gossip.inbound.insert(peer.clone()).await?;
@@ -266,7 +267,7 @@ pub(crate) async fn run_inbound_stream(
     level = "trace",
     skip(ctx, state, sender),
     err,
-    fields(my_key = ?state.cfg().gossip.key.public())
+    fields(my_key = ?state.gossip.cfg.key.public())
 )]
 async fn run_outbound_stream(
     ctx: &ctx::Ctx,
@@ -276,7 +277,7 @@ async fn run_outbound_stream(
     addr: std::net::SocketAddr,
 ) -> anyhow::Result<()> {
     let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet).await?;
-    handshake::outbound(ctx, &state.cfg.gossip, &mut stream, peer).await?;
+    handshake::outbound(ctx, &state.gossip.cfg, &mut stream, peer).await?;
 
     state.gossip.outbound.insert(peer.clone()).await?;
     state.event(Event::Gossip(StreamEvent::OutboundOpened(peer.clone())));
@@ -289,9 +290,13 @@ async fn run_outbound_stream(
     res
 }
 
-async fn run_address_announcer(ctx: &ctx::Ctx, state: &State) -> ctx::OrCanceled<()> {
-    let key = &state.cfg.consensus.key;
-    let my_addr = state.cfg.consensus.public_addr;
+async fn run_address_announcer(
+    ctx: &ctx::Ctx,
+    state: &State,
+    consensus_state: &consensus::State,
+) -> ctx::OrCanceled<()> {
+    let key = &consensus_state.cfg.key;
+    let my_addr = consensus_state.cfg.public_addr;
     let mut sub = state.gossip.validator_addrs.subscribe();
     loop {
         if !ctx.is_active() {
@@ -311,7 +316,7 @@ async fn run_address_announcer(ctx: &ctx::Ctx, state: &State) -> ctx::OrCanceled
             .gossip
             .validator_addrs
             .update(
-                &state.cfg.consensus,
+                &state.cfg.validators,
                 &[Arc::new(key.sign_msg(validator::NetAddress {
                     addr: my_addr,
                     version: next_version,
@@ -359,7 +364,7 @@ pub(crate) async fn run_client(
 ) -> anyhow::Result<()> {
     let res = scope::run!(ctx, |ctx, s| async {
         // Spawn a tasks handling static outbound connections.
-        for (peer, addr) in &state.cfg.gossip.static_outbound {
+        for (peer, addr) in &state.gossip.cfg.static_outbound {
             s.spawn::<()>(async {
                 loop {
                     let run_result = run_outbound_stream(ctx, state, sender, peer, *addr).await;
@@ -383,7 +388,11 @@ pub(crate) async fn run_client(
             Ok(())
         });
 
-        run_address_announcer(ctx, state).await
+        if let Some(consensus_state) = &state.consensus {
+            run_address_announcer(ctx, state, consensus_state).await
+        } else {
+            Ok(())
+        }
     })
     .await;
 

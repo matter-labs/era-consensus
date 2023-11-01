@@ -3,26 +3,42 @@ use super::{consensus, event::Event, gossip, metrics, preface};
 use crate::io::{InputMessage, OutputMessage, SyncState};
 use anyhow::Context as _;
 use concurrency::{ctx, ctx::channel, net, scope, sync::watch};
+use roles::validator;
 use std::sync::Arc;
 use utils::pipe::ActorPipe;
 
 /// Network actor config.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Config {
     /// TCP socket address to listen for inbound connections at.
     pub server_addr: net::tcp::ListenerAddr,
+    /// Validators which
+    /// - client should establish outbound connections to.
+    /// - server should accept inbound connections from (1 per validator).
+    pub validators: validator::ValidatorSet,
     /// Gossip network config.
     pub gossip: gossip::Config,
-    /// Consensus network config.
-    pub consensus: consensus::Config,
+    /// Consensus network config. If not present, the node will not participate in the consensus network.
+    pub consensus: Option<consensus::Config>,
+}
+
+/// Part of configuration shared among network modules.
+#[derive(Debug)]
+pub(crate) struct SharedConfig {
+    /// TCP socket address to listen for inbound connections at.
+    pub(crate) server_addr: net::tcp::ListenerAddr,
+    /// Validators which
+    /// - client should establish outbound connections to.
+    /// - server should accept inbound connections from (1 per validator).
+    pub(crate) validators: validator::ValidatorSet,
 }
 
 /// State of the network actor observable outside of the actor.
 pub struct State {
-    /// Network configuration.
-    pub(crate) cfg: Config,
+    /// Configuration shared among network modules.
+    pub(crate) cfg: SharedConfig,
     /// Consensus network state.
-    pub(crate) consensus: consensus::State,
+    pub(crate) consensus: Option<consensus::State>,
     /// Gossip network state.
     pub(crate) gossip: gossip::State,
 
@@ -38,18 +54,21 @@ impl State {
         cfg: Config,
         events: Option<channel::UnboundedSender<Event>>,
         sync_state: Option<watch::Receiver<SyncState>>,
-    ) -> Arc<Self> {
-        Arc::new(Self {
-            gossip: gossip::State::new(&cfg.gossip, sync_state),
-            consensus: consensus::State::new(&cfg.consensus),
+    ) -> anyhow::Result<Arc<Self>> {
+        let consensus = cfg
+            .consensus
+            .map(|consensus_cfg| consensus::State::new(consensus_cfg, &cfg.validators))
+            .transpose()?;
+        let this = Self {
+            gossip: gossip::State::new(cfg.gossip, sync_state),
+            consensus,
             events,
-            cfg,
-        })
-    }
-
-    /// Config getter.
-    pub fn cfg(&self) -> &Config {
-        &self.cfg
+            cfg: SharedConfig {
+                server_addr: cfg.server_addr,
+                validators: cfg.validators,
+            },
+        };
+        Ok(Arc::new(this))
     }
 
     /// Registers metrics for this state.
@@ -95,11 +114,13 @@ pub async fn run_network(
                 .context("gossip::run_client")
         });
 
-        s.spawn(async {
-            consensus::run_client(ctx, state.as_ref(), consensus_recv)
-                .await
-                .context("consensus::run_client")
-        });
+        if let Some(consensus_state) = &state.consensus {
+            s.spawn(async {
+                consensus::run_client(ctx, consensus_state, state.as_ref(), consensus_recv)
+                    .await
+                    .context("consensus::run_client")
+            });
+        }
 
         // TODO(gprusak): add rate limit and inflight limit for inbound handshakes.
         while let Ok(stream) = metrics::MeteredStream::listen(ctx, &mut listener).await {
@@ -109,9 +130,18 @@ pub async fn run_network(
                     let (stream, endpoint) = preface::accept(ctx, stream).await?;
                     match endpoint {
                         preface::Endpoint::ConsensusNet => {
-                            consensus::run_inbound_stream(ctx, &state, &pipe.send, stream)
+                            if let Some(consensus_state) = &state.consensus {
+                                consensus::run_inbound_stream(
+                                    ctx,
+                                    consensus_state,
+                                    &pipe.send,
+                                    stream,
+                                )
                                 .await
                                 .context("consensus::run_inbound_stream()")
+                            } else {
+                                anyhow::bail!("Node does not accept consensus network connections");
+                            }
                         }
                         preface::Endpoint::GossipNet => {
                             gossip::run_inbound_stream(ctx, &state, &pipe.send, stream)
