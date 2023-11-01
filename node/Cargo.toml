@@ -27,10 +27,8 @@ async-trait = "0.1.71"
 bit-vec = "0.6"
 blst = "0.3.10"
 clap = { version = "4.3.3", features = ["derive"] }
-ed25519-dalek = { version = "2.0.0", features = ["serde", "rand_core"] }
-futures = "0.3.28"
+ed25519-dalek = { version = "2.0.0", features = ["rand_core"] }
 hex = "0.4.3"
-hyper = { version = "0.14.27", features = ["http1", "http2","server","tcp"] }
 im = "15.1.0"
 once_cell = "1.17.1"
 pin-project = "1.1.0"

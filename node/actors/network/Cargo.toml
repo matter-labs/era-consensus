@@ -25,7 +25,6 @@ schema = { path = "../../libs/schema" }
 utils = { path = "../../libs/utils" }
 
 [dev-dependencies]
-futures.workspace = true
 pretty_assertions.workspace = true
 test-casing.workspace = true
 tokio.workspace = true
