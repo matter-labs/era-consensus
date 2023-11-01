@@ -22,7 +22,7 @@ pub mod hash;
 mod testonly;
 
 /// Type safety wrapper around a scalar value.
-pub struct SecretKey(pub Fr);
+pub struct SecretKey(Fr);
 
 impl SecretKey {
     /// Gets the corresponding [`PublicKey`] for this [`SecretKey`]
@@ -55,7 +55,7 @@ impl ByteFmt for SecretKey {
 
 /// Type safety wrapper around G2.
 #[derive(Clone, PartialEq, Eq)]
-pub struct PublicKey(pub G2);
+pub struct PublicKey(G2);
 
 impl ByteFmt for PublicKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
@@ -91,7 +91,7 @@ impl Ord for PublicKey {
 
 /// Type safety wrapper around a G1 value.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Signature(pub G1);
+pub struct Signature(G1);
 
 impl Signature {
     /// Verifies a signature against the provided public key
@@ -138,7 +138,7 @@ impl Ord for Signature {
 }
 /// Type safety wrapper around [Signature] indicating that it is an aggregated signature.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AggregateSignature(pub G1);
+pub struct AggregateSignature(G1);
 
 impl AggregateSignature {
     /// Generates an aggregate signature from a list of signatures.
