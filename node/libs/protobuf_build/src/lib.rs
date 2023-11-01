@@ -1,14 +1,29 @@
-//! Generates rust code from the capnp schema files in the `capnp/` directory.
+//! Generates rust code from the protobuf
 use anyhow::Context as _;
 use std::{collections::BTreeMap, env, fs, path::{PathBuf,Path}};
 use std::process::Command;
 use prost::Message as _;
 use std::collections::HashSet;
-use once_cell::sync::Lazy;
+pub use once_cell::sync::Lazy;
+use std::sync::Mutex;
+
+static POOL : Lazy<Mutex<prost_reflect::DescriptorPool>> = Lazy::new(||Mutex::default());
+
+pub fn global(_:()) -> prost_reflect::DescriptorPool { POOL.lock().unwrap().clone() } 
+
+pub type LazyDescriptor = Lazy<Descriptor>;
 
 pub struct Descriptor {
-    pub crate_name: String,
     pub module_path: String,
+}
+
+impl Descriptor {
+    pub fn new(module_path: String, fds: &impl AsRef<[u8]>) -> Self {
+        POOL.lock().unwrap().decode_file_descriptor_set(fds.as_ref()).unwrap();
+        Descriptor { module_path }
+    }
+
+    pub fn load(&self) {}
 }
 
 /// Traversed all the files in a directory recursively.
@@ -58,12 +73,12 @@ impl Module {
         entries.extend(
             self.nested
                 .iter()
-                .map(|(name, m)| format!("pub mod {name} {{ {} }}", m.generate())),
+                .map(|(name, m)| format!("pub mod {name} {{ use super::{{protobuf,DESCRIPTOR}}; {} }}", m.generate())),
         );
         entries.extend(
             self.include
                 .iter()
-                .map(|(name, path)| format!("pub mod {name} {{ include!({path:?}); }}",)),
+                .map(|(name, path)| format!("pub mod {name} {{ use super::{{protobuf,DESCRIPTOR}}; include!({path:?}); }}",)),
         );
         entries.join("\n")
     }
@@ -104,7 +119,7 @@ impl CanonicalCheckState {
         Ok(())
     }
 
-    /// Checks if message types in file `f` support canonical encoding.
+    /*/// Checks if message types in file `f` support canonical encoding.
     fn check_file(&mut self, f: &prost_reflect::FileDescriptor) -> anyhow::Result<()> {
         if f.syntax() != prost_reflect::Syntax::Proto3 {
             anyhow::bail!("only proto3 syntax is supported");
@@ -113,10 +128,53 @@ impl CanonicalCheckState {
             self.check_message(&m,true).with_context(|| m.name().to_string())?;
         }
         Ok(())
+    }*/
+}
+
+fn get_messages_from_message(out: &mut Vec<prost_reflect::MessageDescriptor>, m: prost_reflect::MessageDescriptor) {
+    for m in m.child_messages() {
+        get_messages_from_message(out,m);
+    }
+    out.push(m);
+}
+
+fn get_messages_from_file(out: &mut Vec<prost_reflect::MessageDescriptor>, f: prost_reflect::FileDescriptor) {
+    for m in f.messages() {
+        get_messages_from_message(out,m);
     }
 }
 
-pub fn compile(proto_include: &Path, module_path: &str, deps: &[&Lazy<Descriptor>]) -> anyhow::Result<()> {
+fn get_messages(fds: prost_types::FileDescriptorSet, mut pool: prost_reflect::DescriptorPool) -> Vec<prost_reflect::MessageDescriptor> {
+    let mut res = vec![];
+    pool.add_file_descriptor_set(fds.clone()).unwrap();
+    for f in fds.file {
+        get_messages_from_file(&mut res,pool.get_file_by_name(f.name.as_ref().unwrap()).unwrap());
+    }
+    res
+}
+
+/*
+fn reflect_impl_msg(m: prost_reflect::MessageDescriptor) -> String {
+    let full_name = m.full_name(); 
+    let mut res = format!("impl prost_reflect::ReflectMessage for {full_name} {{ \
+        fn descriptor(&self) -> ::prost_reflect::MessageDescriptor {{ \
+            &*DESCRIPTOR; \
+            protobuf::build::global() \
+                .get_message_by_name(\"{full_name}\") \
+                .expect(\"descriptor for message type {full_name} not found\") \
+        }}\
+    }}");
+    for m in m.child_messages() {
+        res += &reflect_impl_msg(m);
+    }
+    res
+}
+
+fn reflect_impl_file(f: prost_reflect::FileDescriptor) -> String {
+    f.messages().map(reflect_impl_msg).collect::<Vec<_>>().join("")
+}*/
+
+pub fn compile(proto_include: &Path, deps: &[&Lazy<Descriptor>]) -> anyhow::Result<()> {
     println!("cargo:rerun-if-changed={}", proto_include.to_str().unwrap());
     let proto_output = PathBuf::from(env::var("OUT_DIR").unwrap())
         .canonicalize()?
@@ -166,34 +224,32 @@ pub fn compile(proto_include: &Path, module_path: &str, deps: &[&Lazy<Descriptor
         anyhow::bail!("protoc_failed:\n{}",String::from_utf8_lossy(&out.stderr));
     }
     
-    // Generate protobuf code from schema (with reflection).
-    let descriptor = fs::read(&descriptor_path)?;
-    let descriptor = prost_types::FileDescriptorSet::decode(&descriptor[..]).unwrap();
-    for p in &descriptor.file {
-        prost_reflect::DescriptorPool::add_global_file_descriptor_proto::<&[u8]>(p.clone()).unwrap();
-    }
-    let pool_attribute = format!(r#"#[prost_reflect(descriptor_pool = "crate::{module_path}::DESCRIPTOR_POOL")]"#);
-    
+    // Generate protobuf code from schema.
     let empty : &[&Path] = &[];
     let mut config = prost_build::Config::new();
-    let pool = prost_reflect::DescriptorPool::global();
-    for message in pool.all_messages() {
-        let full_name = message.full_name();
-        config
-            .type_attribute(full_name, "#[derive(::prost_reflect::ReflectMessage)]")
-            .type_attribute(full_name, &format!(r#"#[prost_reflect(message_name = "{}")]"#, full_name))
-            .type_attribute(full_name, &pool_attribute);
-    }
     config.file_descriptor_set_path(&descriptor_path);
     config.skip_protoc_run();
     config.out_dir(&proto_output);
-    config.compile_protos(empty,empty).unwrap();
-
+    
     // Check that messages are compatible with `proto_fmt::canonical`.
+    let descriptor = fs::read(&descriptor_path)?;
+    let descriptor = prost_types::FileDescriptorSet::decode(&descriptor[..]).unwrap();
+    let new_messages = get_messages(descriptor,global(()));
+    
     let mut check_state = CanonicalCheckState::default();
-    for f in &descriptor.file {
-        check_state.check_file(&pool.get_file_by_name(f.name.as_ref().unwrap()).unwrap())?;
+    for m in &new_messages {
+        check_state.check_message(m,false)?;
     }
+
+    let pool_attribute = format!("#[prost_reflect(descriptor_pool = \"protobuf::build::global(DESCRIPTOR.load())\")]");
+    for m in &new_messages {
+        let full_name = m.full_name();
+        config.type_attribute(full_name, "#[derive(::prost_reflect::ReflectMessage)]");
+        config.type_attribute(full_name, &format!("#[prost_reflect(message_name = {full_name:?})]"));
+        config.type_attribute(full_name, &pool_attribute);
+    }
+
+    config.compile_protos(empty,empty).unwrap();
 
     // Generate mod file collecting all proto-generated code.
     let mut m = Module::default();
@@ -207,23 +263,18 @@ pub fn compile(proto_include: &Path, module_path: &str, deps: &[&Lazy<Descriptor
         println!("name = {name:?}");
         m.insert(&name, entry.path());
     }
-    let mut file = deps.iter().map(|d|format!("use {}::{}::*;",d.crate_name,d.module_path)).collect::<Vec<_>>().join("\n");
-    file += &m.generate();
-    let rec = deps.iter().map(|d|format!("&*{}::{}::DESCRIPTOR;",d.crate_name,d.module_path)).collect::<Vec<_>>().join(" ");
-    file += &format!("pub const DESCRIPTOR: once_cell::sync::Lazy<protobuf::build::Descriptor> = once_cell::sync::Lazy::new(|| {{ \
-        {rec} \
-        prost_reflect::DescriptorPool::decode_global_file_descriptor_set(&include_bytes!({descriptor_path:?})[..]).unwrap(); \
-        protobuf::build::Descriptor {{\
-            crate_name: {:?}.to_string(),\
-            module_path: {module_path:?}.to_string(),\
-        }}\
-    }});",std::env::var("CARGO_PKG_NAME").unwrap());
-    file += "pub const DESCRIPTOR_POOL: once_cell::sync::Lazy<prost_reflect::DescriptorPool> = \
-                once_cell::sync::Lazy::new(|| { \
-                    &*DESCRIPTOR; \
-                    prost_reflect::DescriptorPool::global() \
-                }); \
-            ";
+    let mut file = deps.iter().map(|d|format!("use {}::*;",d.module_path)).collect::<Vec<_>>().join("\n");
+    file += &m.generate();  
+    
+    let rec = deps.iter().map(|d|format!("&*{}::DESCRIPTOR;",d.module_path)).collect::<Vec<_>>().join(" ");
+    file += &format!("\
+        static DESCRIPTOR : protobuf::build::LazyDescriptor = protobuf::build::Lazy::new(|| {{\
+            {rec}
+            protobuf::build::Descriptor::new(module_path!(), &include_bytes!({descriptor_path:?}))\
+        }});\
+    ");
+
+    //fs::write(proto_output.join("mod.rs"), file)?;
     let file = syn::parse_str(&file).unwrap();
     fs::write(proto_output.join("mod.rs"), prettyplease::unparse(&file))?;
     Ok(())
