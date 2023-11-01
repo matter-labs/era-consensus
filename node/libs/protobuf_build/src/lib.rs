@@ -176,7 +176,7 @@ impl Config {
 
     fn reflect_impl(&self, m: prost_reflect::MessageDescriptor) -> String {
         let proto_name = m.full_name();
-        let parts : Vec<&str> = proto_name.split(".").collect();
+        let parts : Vec<&str> = proto_name.strip_prefix(&(self.proto_package.clone() + ".")).unwrap().split(".").collect();
         let mut rust_name : Vec<_> = parts[0..parts.len()-1].iter().map(|p|ident::to_snake(*p)).collect();
         rust_name.push(ident::to_upper_camel(parts[parts.len()-1]));
         let rust_name = rust_name.join("::");
@@ -193,7 +193,7 @@ impl Config {
     }
 
     pub fn generate(&self) -> anyhow::Result<()> { 
-        println!("cargo:rerun-if-changed={:?}", self.proto_path);
+        println!("cargo:rerun-if-changed={:?}", self.input_path);
         
         // Find all proto files.
         let mut pool = prost_reflect::DescriptorPool::new();
@@ -226,10 +226,11 @@ impl Config {
         let mut config = prost_build::Config::new();
         config.prost_path(self.import("prost"));
         config.skip_protoc_run();
-        // TODO: make it relative to d.proto_package.
         for d in &self.dependencies {
             for f in &d.descriptor_proto.file {
-                config.extern_path(format!(".{}",f.package()), format!("{}::{}",&d.rust_module,f.package().split(".").map(ident::to_snake).collect::<Vec<_>>().join("::")));
+                let rel = f.package().strip_prefix(&(d.proto_package.clone() + ".")).unwrap();
+                let rust_rel = rel.split(".").map(ident::to_snake).collect::<Vec<_>>().join("::");
+                config.extern_path(format!(".{}",f.package()), format!("{}::{}",d.rust_module,rust_rel));
             }
         }
 
@@ -253,6 +254,10 @@ impl Config {
         let mut m = Module::default();
         for (name,code) in config.generate(modules).unwrap() {
             m.insert(name.parts(),&code);
+        }
+        let mut m = &m;
+        for name in self.proto_package.split(".") {
+            m = &m.modules[name];
         }
         let mut file = m.generate(); 
         for m in &new_messages {

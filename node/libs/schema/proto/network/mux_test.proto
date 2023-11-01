@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package network.mux_test;
+package zksync.schema.network.mux_test;
 
 message Req {
   optional bytes input = 1;

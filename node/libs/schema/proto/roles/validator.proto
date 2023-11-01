@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package roles.validator;
+package zksync.schema.roles.validator;
 
-import "std.proto";
+import "zksync/protobuf/std.proto";
 
 message PayloadHash {
   optional bytes sha256 = 1; // required
@@ -64,20 +64,20 @@ message LeaderCommit {
 
 message PrepareQC {
   repeated ReplicaPrepare msgs = 1; // required
-  repeated std.BitVector signers = 2; // required
+  repeated protobuf.std.BitVector signers = 2; // required
   optional AggregateSignature sig = 3; // required
 }
 
 message CommitQC {
   optional ReplicaCommit msg = 1; // required
-  optional std.BitVector signers = 2; // required
+  optional protobuf.std.BitVector signers = 2; // required
   optional AggregateSignature sig = 3; // required
 }
 
 message Phase {
   oneof t {
-    std.Void prepare = 1;
-    std.Void commit = 2;
+    protobuf.std.Void prepare = 1;
+    protobuf.std.Void commit = 2;
   }
 }
 
@@ -88,7 +88,7 @@ message Phase {
 // network connection to this address.
 message NetAddress {
   // Address of the validator.
-  optional std.SocketAddr addr = 1; // required
+  optional protobuf.std.SocketAddr addr = 1; // required
   // Version of the discovery announcement.
   // Newer (higher) version overrides the older version.
   // When a validator gets restarted it broadcasts
@@ -125,7 +125,7 @@ message NetAddress {
   // we assume here that it is unlikely for timestamps to collide.
   // To make this reasoning more strict, we should rather use a random "tie breaker"
   // instead (replace timestamp with a random nonce, or use a hash of the entire message).
-  optional std.Timestamp timestamp = 3; // required
+  optional protobuf.std.Timestamp timestamp = 3; // required
 }
 
 message Msg {

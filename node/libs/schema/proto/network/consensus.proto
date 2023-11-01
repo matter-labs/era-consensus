@@ -1,9 +1,9 @@
 syntax = "proto3";
 
-package network.consensus;
+package zksync.schema.network.consensus;
 
-import "roles/validator.proto";
-import "std.proto";
+import "zksync/schema/roles/validator.proto";
+import "zksync/protobuf/std.proto";
 
 // First message exchanged in the encrypted session.
 message Handshake {

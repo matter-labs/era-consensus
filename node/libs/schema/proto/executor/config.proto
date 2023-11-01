@@ -36,7 +36,7 @@
 //     the validator set) or move it to a separate config file.
 syntax = "proto3";
 
-package executor.config;
+package zksync.schema.executor.config;
 
 // (public key, ip address) of a gossip network node. 
 message NodeAddr {

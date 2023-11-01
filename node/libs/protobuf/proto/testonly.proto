@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package testonly;
+package zksync.protobuf.testonly;
 
 message B {
   // Recursive union.

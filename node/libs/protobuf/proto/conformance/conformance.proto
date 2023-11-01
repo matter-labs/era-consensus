@@ -33,10 +33,7 @@
 
 syntax = "proto3";
 
-package conformance;
-
-option java_package = "com.google.protobuf.conformance";
-option objc_class_prefix = "Conformance";
+package zksync.protobuf.conformance.conformance;
 
 // This defines the conformance testing protocol.  This protocol exists between
 // the conformance test suite itself and the code being tested.  For each test,

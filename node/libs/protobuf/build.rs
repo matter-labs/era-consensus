@@ -7,8 +7,8 @@ fn main() -> anyhow::Result<()> {
     let output = PathBuf::from(std::env::var("OUT_DIR")?).canonicalize()?;
     protobuf_build::Config {
         input_path: input.join("proto"),
-        proto_path: "".into(),
-        proto_package: "".into(),
+        proto_path: "zksync/protobuf".into(),
+        proto_package: "zksync.protobuf".into(),
         dependencies: vec![],
 
         output_mod_path: output.join("proto/mod.rs"),
