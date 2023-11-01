@@ -1443,16 +1443,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "prost-reflect-build"
-version = "0.11.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6d959f576df574d088e0409c45ef11897f64727158c554ce65edc2d345f8afcf"
-dependencies = [
- "prost-build",
- "prost-reflect",
-]
-
-[[package]]
 name = "prost-reflect-derive"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1495,21 +1485,16 @@ name = "protobuf_build"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bit-vec",
+ "heck",
  "once_cell",
  "prettyplease 0.2.12",
  "prost",
  "prost-build",
  "prost-reflect",
- "prost-reflect-build",
  "prost-types",
  "protoc-bin-vendored",
- "quick-protobuf",
  "rand",
- "serde",
- "serde_json",
  "syn 2.0.29",
- "tokio",
 ]
 
 [[package]]

@@ -34,6 +34,7 @@ blst = "0.3.10"
 clap = { version = "4.3.3", features = ["derive"] }
 ed25519-dalek = { version = "2.0.0", features = ["serde", "rand_core"] }
 futures = "0.3.28"
+heck = "0.4.1"
 hex = "0.4.3"
 hyper = { version = "0.14.27", features = ["http1", "http2","server","tcp"] }
 im = "15.1.0"
