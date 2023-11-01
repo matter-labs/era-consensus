@@ -1,11 +1,17 @@
 //! Generates rust code from the capnp schema files in the `capnp/` directory.
-use std::{env, path::PathBuf};
+use std::{path::PathBuf, env};
+use anyhow::Context as _;
 
 fn main() -> anyhow::Result<()> {
-    // Prepare input and output root dirs.
-    let proto_include = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?)
-        .canonicalize()?
-        .join("proto");
-    protobuf_build::compile(&proto_include,&[])?;
-    Ok(())
+    let input = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?).canonicalize()?;
+    let output = PathBuf::from(std::env::var("OUT_DIR")?).canonicalize()?;
+    protobuf_build::Config {
+        input_root: input.join("proto"),
+        dependencies: vec![],
+
+        output_mod_path: output.join("proto/mod.rs"),
+        output_descriptor_path: output.join("proto/desc.binpb"),
+    
+        protobuf_crate: "crate".to_string(),
+    }.generate().context("protobuf_build::Config::generate()")
 }

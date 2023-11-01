@@ -1,19 +1,20 @@
 //! Generates rust code from the protobuf
 use anyhow::Context as _;
-use std::{collections::BTreeMap, env, fs, path::{PathBuf,Path}};
+use std::{collections::BTreeMap, fs, path::{PathBuf,Path}};
 use std::process::Command;
 use prost::Message as _;
 use std::collections::HashSet;
-pub use once_cell::sync::Lazy;
 use std::sync::Mutex;
+
+pub use prost;
+pub use prost_reflect;
+pub use once_cell::sync::Lazy;
 
 mod ident;
 
 static POOL : Lazy<Mutex<prost_reflect::DescriptorPool>> = Lazy::new(||Mutex::default());
 
 pub fn global() -> prost_reflect::DescriptorPool { POOL.lock().unwrap().clone() } 
-
-pub type LazyDescriptor = Lazy<Descriptor>;
 
 pub struct Descriptor {
     pub module_path: String,
@@ -45,44 +46,28 @@ fn traverse_files(path: &Path, f: &mut dyn FnMut(&Path)) -> std::io::Result<()> 
 #[derive(Default)]
 struct Module {
     /// Nested modules which transitively contain the generated code.
-    nested: BTreeMap<String, Module>,
-    /// Nested modules directly contains the generated code.
-    include: BTreeMap<String, PathBuf>,
+    modules: BTreeMap<String, Module>,
+    /// Code of the module.
+    code: String,
 }
 
 impl Module {
     /// Inserts a nested generated protobuf module.
     /// `name` is a sequence of module names.
-    fn insert(&mut self, name: &[String], file: PathBuf) {
-        println!(" -- {name:?}");
-        match name.len() {
-            0 => panic!("empty module path"),
-            1 => assert!(
-                self.include.insert(name[0].clone(), file).is_none(),
-                "duplicate module"
-            ),
-            _ => self
-                .nested
-                .entry(name[0].clone())
-                .or_default()
-                .insert(&name[1..], file),
+    fn insert<'a>(&mut self, mut name: impl Iterator<Item=&'a str>, code: &str) {
+        match name.next() {
+            None => self.code += code,
+            Some(module) => self.modules.entry(module.to_string()).or_default().insert(name,code),
         }
     }
 
     /// Generates rust code of the module.
     fn generate(&self) -> String {
-        let mut entries = vec![];
+        let mut entries = vec![self.code.clone()];
         entries.extend(
-            self.nested
-                .iter()
-                .map(|(name, m)| format!("pub mod {name} {{ {} }}", m.generate())),
+            self.modules.iter().map(|(name, m)| format!("pub mod {name} {{ {} }}\n", m.generate())),
         );
-        entries.extend(
-            self.include
-                .iter()
-                .map(|(name, path)| format!("pub mod {name} {{ include!({path:?}); }}",)),
-        );
-        entries.join("\n")
+        entries.join("")
     }
 }
 
@@ -156,118 +141,123 @@ fn get_messages(fds: prost_types::FileDescriptorSet, mut pool: prost_reflect::De
 }
 
 
-fn reflect_impl(m: prost_reflect::MessageDescriptor) -> String {
-    let proto_name = m.full_name();
-    let parts : Vec<&str> = proto_name.split(".").collect();
-    let mut rust_name : Vec<_> = parts[0..parts.len()-1].iter().map(|p|ident::to_snake(*p)).collect();
-    rust_name.push(ident::to_upper_camel(parts[parts.len()-1]));
-    let rust_name = rust_name.join("::"); 
-    format!("impl prost_reflect::ReflectMessage for {rust_name} {{ \
-        fn descriptor(&self) -> ::prost_reflect::MessageDescriptor {{ \
-            &*DESCRIPTOR; \
-            protobuf::build::global() \
-                .get_message_by_name(\"{proto_name}\") \
-                .expect(\"descriptor for message type {proto_name} not found\") \
-        }}\
-    }}")
+pub struct Config {
+    pub input_root: PathBuf,
+    pub dependencies: Vec<&'static Lazy<Descriptor>>,
+    
+    pub output_mod_path: PathBuf,
+    pub output_descriptor_path: PathBuf,
+
+    pub protobuf_crate: String,
 }
 
-pub fn compile(proto_include: &Path, deps: &[&Lazy<Descriptor>]) -> anyhow::Result<()> {
-    println!("cargo:rerun-if-changed={}", proto_include.to_str().unwrap());
-    let proto_output = PathBuf::from(env::var("OUT_DIR").unwrap())
-        .canonicalize()?
-        .join("proto");
-    let _ = fs::remove_dir_all(&proto_output);
-    fs::create_dir_all(&proto_output).unwrap();
+impl Config {
+    fn import(&self, elem: &str) -> String {
+        format!("{}::build::{}",self.protobuf_crate,elem)
+    }
 
-    // Find all proto files.
-    let mut proto_inputs : Vec<PathBuf> = vec![];
-    traverse_files(proto_include, &mut |path| {
-        let Some(ext) = path.extension() else { return };
-        let Some(ext) = ext.to_str() else { return };
-        if ext != "proto" {
-            return;
-        };
-        proto_inputs.push(path.into());
-    })?;
+    fn reflect_impl(&self, m: prost_reflect::MessageDescriptor) -> String {
+        let proto_name = m.full_name();
+        let parts : Vec<&str> = proto_name.split(".").collect();
+        let mut rust_name : Vec<_> = parts[0..parts.len()-1].iter().map(|p|ident::to_snake(*p)).collect();
+        rust_name.push(ident::to_upper_camel(parts[parts.len()-1]));
+        let rust_name = rust_name.join("::");
+        let rust_reflect = self.import("prost_reflect");
+        let rust_global = self.import("global");
+        format!("impl {rust_reflect}::ReflectMessage for {rust_name} {{ \
+            fn descriptor(&self) -> {rust_reflect}::MessageDescriptor {{ \
+                &*DESCRIPTOR; \
+                {rust_global}() \
+                    .get_message_by_name(\"{proto_name}\") \
+                    .expect(\"descriptor for message type {proto_name} not found\") \
+            }}\
+        }}")
+    }
 
-    // Compile input files into descriptor.
-    let descriptor_path = proto_output.join("descriptor.binpb");
-    let mut cmd = Command::new(protoc_bin_vendored::protoc_bin_path().unwrap());
-    cmd.arg("-o").arg(&descriptor_path);
-    cmd.arg("-I").arg(&proto_include);
 
-    /*if deps.len() > 0 {
-        let mut deps_list = vec![];
-        for (i,(_,d)) in deps.iter().enumerate() {
-            let name = proto_output.join(format!("dep{i}.binpb"));
-            fs::write(&name,d)?;
-            deps_list.push(name.to_str().unwrap().to_string());
+    pub fn generate(&self) -> anyhow::Result<()> { 
+        println!("cargo:rerun-if-changed={:?}", self.input_root);
+        
+        // Find all proto files.
+        let mut inputs : Vec<PathBuf> = vec![];
+        traverse_files(&self.input_root, &mut |path| {
+            let Some(ext) = path.extension() else { return };
+            let Some(ext) = ext.to_str() else { return };
+            if ext != "proto" {
+                return;
+            };
+            inputs.push(path.into());
+        })?;
+
+        // Compile input files into descriptor.
+        let descriptor_path = &self.output_descriptor_path; //.canonicalize().context("output_descriptor_path.canonicalize()")?;
+        fs::create_dir_all(&descriptor_path.parent().unwrap()).unwrap();
+        let mut cmd = Command::new(protoc_bin_vendored::protoc_bin_path().unwrap());
+        cmd.arg("-o").arg(&descriptor_path);
+        cmd.arg("-I").arg(&self.input_root.canonicalize()?);
+
+        /*if deps.len() > 0 {
+            let mut deps_list = vec![];
+            for (i,(_,d)) in deps.iter().enumerate() {
+                let name = proto_output.join(format!("dep{i}.binpb"));
+                fs::write(&name,d)?;
+                deps_list.push(name.to_str().unwrap().to_string());
+            }
+            cmd.arg("--descriptor_set_in").arg(deps_list.join(":"));
+        }*/
+
+        let deps : Vec<_> = self.dependencies.iter().map(|d|&***d).collect();
+        let deps_path = "/tmp/deps.binpb";
+        fs::write(deps_path, global().encode_to_vec())?;
+        cmd.arg("--descriptor_set_in").arg(deps_path);
+
+        for input in &inputs { cmd.arg(&input); }
+
+        let out = cmd.output().context("protoc execution failed")?;
+
+        if !out.status.success() {
+            anyhow::bail!("protoc_failed:\n{}",String::from_utf8_lossy(&out.stderr));
         }
-        cmd.arg("--descriptor_set_in").arg(deps_list.join(":"));
-    }*/
+        
+        // Generate protobuf code from schema.
+        let mut config = prost_build::Config::new();
+        config.prost_path(self.import("prost"));
+        config.file_descriptor_set_path(&descriptor_path);
+        config.skip_protoc_run();
+        
+        // Check that messages are compatible with `proto_fmt::canonical`.
+        let descriptor = fs::read(&descriptor_path)?;
+        let descriptor = prost_types::FileDescriptorSet::decode(&descriptor[..]).unwrap();
+        let new_messages = get_messages(descriptor.clone(),global());
+        
+        let mut check_state = CanonicalCheckState::default();
+        for m in &new_messages {
+            check_state.check_message(m,false)?;
+        }
 
-    let deps : Vec<_> = deps.iter().map(|d|&***d).collect();
-    let deps_path = proto_output.join("deps.binpb");
-    fs::write(&deps_path,global().encode_to_vec())?;
-    cmd.arg("--descriptor_set_in").arg(&deps_path);
+        let modules : Vec<_> = descriptor.file.iter().map(|d|(prost_build::Module::from_protobuf_package_name(d.package()),d.clone())).collect();
+        let mut m = Module::default();
+        for (name,code) in config.generate(modules).unwrap() {
+            m.insert(name.parts(),&code);
+        }
+        let mut file = deps.iter().map(|d|format!("use {}::*;",d.module_path)).collect::<Vec<_>>().join("\n");
+        file += &m.generate(); 
+        for m in &new_messages {
+            file += &self.reflect_impl(m.clone());
+        }
 
-    for input in &proto_inputs {
-        cmd.arg(&input);
+        let rec = deps.iter().map(|d|format!("&*{}::DESCRIPTOR;",d.module_path)).collect::<Vec<_>>().join(" ");
+        let rust_lazy = self.import("Lazy");
+        let rust_descriptor = self.import("Descriptor");
+        file += &format!("\
+            pub static DESCRIPTOR : {rust_lazy}<{rust_descriptor}> = {rust_lazy}::new(|| {{\
+                {rec}
+                {rust_descriptor}::new(module_path!(), &include_bytes!({descriptor_path:?}))\
+            }});\
+        ");
+
+        let file = syn::parse_str(&file).unwrap();
+        fs::write(&self.output_mod_path, prettyplease::unparse(&file))?;
+        Ok(())
     }
-
-    let out = cmd.output().context("protoc execution failed")?;
-
-    if !out.status.success() {
-        anyhow::bail!("protoc_failed:\n{}",String::from_utf8_lossy(&out.stderr));
-    }
-    
-    // Generate protobuf code from schema.
-    let empty : &[&Path] = &[];
-    let mut config = prost_build::Config::new();
-    config.file_descriptor_set_path(&descriptor_path);
-    config.skip_protoc_run();
-    config.out_dir(&proto_output);
-    
-    // Check that messages are compatible with `proto_fmt::canonical`.
-    let descriptor = fs::read(&descriptor_path)?;
-    let descriptor = prost_types::FileDescriptorSet::decode(&descriptor[..]).unwrap();
-    let new_messages = get_messages(descriptor,global());
-    
-    let mut check_state = CanonicalCheckState::default();
-    for m in &new_messages {
-        check_state.check_message(m,false)?;
-    }
-
-    config.compile_protos(empty,empty).unwrap();
-
-    // Generate mod file collecting all proto-generated code.
-    let mut m = Module::default();
-    for entry in fs::read_dir(&proto_output).unwrap() {
-        let entry = entry.unwrap();
-        let name = entry.file_name().into_string().unwrap();
-        let Some(name) = name.strip_suffix(".rs") else {
-            continue;
-        };
-        let name: Vec<_> = name.split('.').map(String::from).collect();
-        println!("name = {name:?}");
-        m.insert(&name, entry.path());
-    }
-    let mut file = deps.iter().map(|d|format!("use {}::*;",d.module_path)).collect::<Vec<_>>().join("\n");
-    file += &m.generate(); 
-    for m in &new_messages {
-        file += &reflect_impl(m.clone());
-    }
-
-    let rec = deps.iter().map(|d|format!("&*{}::DESCRIPTOR;",d.module_path)).collect::<Vec<_>>().join(" ");
-    file += &format!("\
-        pub static DESCRIPTOR : protobuf::build::LazyDescriptor = protobuf::build::Lazy::new(|| {{\
-            {rec}
-            protobuf::build::Descriptor::new(module_path!(), &include_bytes!({descriptor_path:?}))\
-        }});\
-    ");
-
-    let file = syn::parse_str(&file).unwrap();
-    fs::write(proto_output.join("mod.rs"), prettyplease::unparse(&file))?;
-    Ok(())
 }

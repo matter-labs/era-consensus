@@ -13,6 +13,5 @@ mod tests;
 
 #[allow(warnings)]
 pub mod proto {
-    use crate as protobuf;
     include!(concat!(env!("OUT_DIR"), "/proto/mod.rs"));
 }
