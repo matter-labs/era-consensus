@@ -10,7 +10,7 @@ use ark_ec::{
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 pub use error::Error;
 use num_traits::Zero as _;
-use std::{collections::HashMap, fmt::Debug, hash::Hasher};
+use std::{collections::HashMap, fmt::Debug};
 
 #[doc(hidden)]
 pub mod error;
@@ -54,7 +54,7 @@ impl ByteFmt for SecretKey {
 }
 
 /// Type safety wrapper around G2.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct PublicKey(G2);
 
 impl ByteFmt for PublicKey {
@@ -68,12 +68,6 @@ impl ByteFmt for PublicKey {
         let mut buf = Vec::new();
         self.0.serialize_compressed(&mut buf).unwrap();
         buf
-    }
-}
-
-impl std::hash::Hash for PublicKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.0.hash(state);
     }
 }
 
