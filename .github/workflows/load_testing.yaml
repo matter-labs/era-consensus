@@ -18,11 +18,14 @@ on:
         required: false
         type: number
         default: 8081
+  pull_request:
 
 env:
+  NUM_INSTANCES: ${{ github.event.inputs.num_instances || '100' }}
+  NODE_PORT: ${{ github.event.inputs.node_port || '8080' }}
+  METRICS_PORT: ${{ github.event.inputs.metrics_port || '8081' }}
   VM_AUTH_USERNAME: ${{ secrets.VM_AUTH_USERNAME }}
   VM_AUTH_PASSWORD: ${{ secrets.VM_AUTH_PASSWORD }}
-  METRICS_PORT: ${{ inputs.metrics_port }}
 
 jobs:
   run_load_tests:
@@ -30,14 +33,14 @@ jobs:
     steps:
       - name: Fail-fast on incorrect inputs
         run: |
-          if [[ "${{ github.event.inputs.num_instances }}" -ge 1 && "${{ github.event.inputs.num_instances }}" -le 200 ]]; then
+          if [[ "${{ env.NUM_INSTANCES }}" -ge 1 && "${{ env.NUM_INSTANCES }}" -le 200 ]]; then
             echo "Number of instances is within range."
           else
             echo "Error: Number of instances is not within range 1-200."
             exit 1
           fi
 
-          if [[ "${{ github.event.inputs.node_port }}" == "${{ github.event.inputs.metrics_port }}" ]]; then
+          if [[ "${{ env.NODE_PORT }}" == "${{ env.METRICS_PORT }}" ]]; then
             echo "Error: node_port and metrics_port should not be equal."
             exit 1
           fi
@@ -62,6 +65,7 @@ jobs:
           # to-do pin versions and move to requirements.yaml
           python -m pip install --upgrade pip
           pip install ansible ansible-core google-auth
+          echo "/home/runner/.local/bin" >> $GITHUB_PATH
           ansible-galaxy install -r infrastructure/loadtests/ansible/requirements.yml
 
       - name: Terraform Init And Apply
@@ -69,10 +73,10 @@ jobs:
         run: |
           terraform init
           terraform apply -auto-approve \
-            -parallelism=${{ inputs.num_instances }} \
-            -var="num_instances=${{ inputs.num_instances }}" \
-            -var="node_port=${{ inputs.node_port }}" \
-            -var="metrics_port=${{ inputs.metrics_port }}" \
+            -parallelism=${{ env.NUM_INSTANCES }} \
+            -var="num_instances=${{ env.NUM_INSTANCES }}" \
+            -var="node_port=${{ env.NODE_PORT }}" \
+            -var="metrics_port=${{ env.METRICS_PORT }}" \
             -var="test_id=${{ env.TEST_ID }}"
 
       - name: Generate list of host:port for config generator
@@ -83,7 +87,7 @@ jobs:
           echo "${tmp_inventory}" | envsubst > ../infrastructure/loadtests/ansible/gcp.yml
 
           ansible-inventory -i ../infrastructure/loadtests/ansible/gcp.yml --list  | jq -r '.gcp_loadtest.hosts[]' | \
-          awk -v port=${{ inputs.node_port }} -F\" '{print $1 ":" port}' > ips_prts.txt
+          awk -v port=${{ env.NODE_PORT }} -F\" '{print $1 ":" port}' > ips_prts.txt
 
       - name: Install node build dependencies
         run: sudo apt update && sudo apt install -y clang
@@ -107,7 +111,7 @@ jobs:
           cargo run -p tools \
           --bin localnet_config -- \
           --input-addrs ips_prts.txt \
-          --metrics-server-port ${{ inputs.metrics_port }} \
+          --metrics-server-port ${{ env.METRICS_PORT }} \
           --output-dir artifacts/node_configs
 
       - name: Build executor binary
@@ -126,15 +130,15 @@ jobs:
           ansible-playbook -i gcp.yml \
             --user sa_${sa_name} \
             --private-key .ssh/google_compute_engine playbook.yml \
-            --forks ${{ inputs.num_instances }}
+            --forks ${{ env.NUM_INSTANCES }}
 
       - name: Terraform Destroy
         working-directory: infrastructure/loadtests
         if: always()
         run: |
           terraform destroy -auto-approve \
-            -parallelism=${{ inputs.num_instances }} \
-            -var="num_instances=${{ inputs.num_instances }}" \
-            -var="node_port=${{ inputs.node_port }}" \
-            -var="metrics_port=${{ inputs.metrics_port }}" \
+            -parallelism=${{ env.NUM_INSTANCES }} \
+            -var="num_instances=${{ env.NUM_INSTANCES }}" \
+            -var="node_port=${{ env.NODE_PORT }}" \
+            -var="metrics_port=${{ env.METRICS_PORT }}" \
             -var="test_id=${{ env.TEST_ID }}"
