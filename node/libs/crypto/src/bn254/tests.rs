@@ -1,6 +1,8 @@
-use crate::bn254::{AggregateSignature, PublicKey, SecretKey, Signature};
-use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::iter::repeat_with;
+
+use rand::{rngs::StdRng, Rng, SeedableRng};
+
+use crate::bn254::{AggregateSignature, PublicKey, SecretKey, Signature};
 
 #[test]
 fn signature_smoke() {

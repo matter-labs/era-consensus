@@ -1,7 +1,7 @@
 //! BLS signature scheme for the BN254 curve.
 
 use crate::ByteFmt;
-use anyhow::anyhow;
+use anyhow::Context as _;
 use ark_bn254::{Bn254, Fr, G1Projective as G1, G2Projective as G2};
 use ark_ec::{
     pairing::{Pairing as _, PairingOutput},
@@ -43,7 +43,7 @@ impl ByteFmt for SecretKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         Fr::deserialize_compressed(bytes)
             .map(Self)
-            .map_err(|e| anyhow!("failed to decode secret key: {e:?}"))
+            .context("failed to decode secret key")
     }
 
     fn encode(&self) -> Vec<u8> {
@@ -61,7 +61,7 @@ impl ByteFmt for PublicKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         G2::deserialize_compressed(bytes)
             .map(Self)
-            .map_err(|e| anyhow!("failed to decode public key: {e:?}"))
+            .context("failed to decode public key")
     }
 
     fn encode(&self) -> Vec<u8> {
@@ -110,7 +110,7 @@ impl ByteFmt for Signature {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         G1::deserialize_compressed(bytes)
             .map(Self)
-            .map_err(|e| anyhow!("failed to decode signature: {e:?}"))
+            .context("failed to decode signature")
     }
     fn encode(&self) -> Vec<u8> {
         let mut buf = Vec::new();
@@ -184,7 +184,7 @@ impl ByteFmt for AggregateSignature {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         G1::deserialize_compressed(bytes)
             .map(Self)
-            .map_err(|e| anyhow!("failed to decode aggregate signature: {e:?}"))
+            .context("failed to decode aggregate signature")
     }
 
     fn encode(&self) -> Vec<u8> {
