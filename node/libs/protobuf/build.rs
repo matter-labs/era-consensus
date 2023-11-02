@@ -1,45 +1,22 @@
-//! Generates rust code from the capnp schema files in the `capnp/` directory.
-use std::{path::PathBuf, env};
-use anyhow::Context as _;
-
-fn main() -> anyhow::Result<()> {
-    let input = PathBuf::from(env::var("CARGO_MANIFEST_DIR")?).canonicalize()?;
-    let output = PathBuf::from(std::env::var("OUT_DIR")?).canonicalize()?;
+fn main() {
     protobuf_build::Config {
-        input_path: input.join("src/proto"),
+        input_path: "src/proto".into(),
         proto_path: "zksync".into(),
-        proto_package: "zksync".into(),
         dependencies: vec![],
-
-        output_mod_path: output.join("src/proto.gen.rs"),
-        output_descriptor_path: output.join("src/proto.gen.binpb"),
-    
         protobuf_crate: "crate".into(),
-    }.generate().context("generate(std)")?;
+    }.generate().expect("generate(std)");
 
     protobuf_build::Config {
-        input_path: input.join("src/tests/proto"),
+        input_path: "src/tests/proto".into(),
         proto_path: "zksync/protobuf/tests".into(),
-        proto_package: "zksync.protobuf.tests".into(),
         dependencies: vec![],
-
-        output_mod_path: output.join("src/tests/proto.gen.rs"),
-        output_descriptor_path: output.join("src/tests/proto.gen.binpb"),
-    
         protobuf_crate: "crate".into(),
-    }.generate().context("generate(test)")?;
+    }.generate().expect("generate(test)");
 
     protobuf_build::Config {
-        input_path: input.join("src/bin/conformance_test/proto"),
+        input_path: "src/bin/conformance_test/proto".into(),
         proto_path: "zksync/protobuf/conformance_test".into(),
-        proto_package: "zksync.protobuf.conformance_test".into(),
         dependencies: vec![],
-
-        output_mod_path: output.join("src/bin/conformance_test/proto.gen.rs"),
-        output_descriptor_path: output.join("src/bin/conformance_test/proto.gen.binpb"),
-    
         protobuf_crate: "::protobuf".into(),
-    }.generate().context("generate(conformance)")?;
-
-    Ok(())
+    }.generate().expect("generate(conformance)");
 }

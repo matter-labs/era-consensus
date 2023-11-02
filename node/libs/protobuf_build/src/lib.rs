@@ -159,6 +159,30 @@ impl Descriptor {
     }
 }
 
+/// Path relative to $CARGO_MANIFEST_DIR
+#[derive(Clone,PartialEq,Eq)]
+pub struct InputPath(PathBuf);
+
+impl From<&str> for InputPath {
+    fn from(s:&str) -> Self { Self(PathBuf::from(s)) }
+}
+
+impl InputPath {
+    fn abs(&self) -> PathBuf {
+        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
+            .canonicalize().unwrap().join(&self.0)
+    }
+
+    /// Path relative to $OUT_DIR with the given extenstion
+    fn prepare_output_dir(&self) -> PathBuf {
+        let output = PathBuf::from(std::env::var("OUT_DIR").unwrap())
+            .canonicalize().unwrap().join(&self.0);
+        let _ = fs::remove_dir_all(&output);
+        fs::create_dir_all(&output).unwrap();
+        output
+    }
+}
+
 #[derive(Clone,PartialEq,Eq)]
 pub struct RustName(Vec<String>);
 
@@ -213,26 +237,31 @@ impl From<&str> for ProtoPackage {
     }
 }
 
-pub struct Config {
-    pub input_path: PathBuf,
-    pub proto_path: PathBuf,
-    pub proto_package: ProtoPackage,
-    pub dependencies: Vec<(&'static str, &'static Descriptor)>,
-    
-    pub output_mod_path: PathBuf,
-    pub output_descriptor_path: PathBuf,
+impl From<&Path> for ProtoPackage {
+    fn from(p:&Path) -> Self {
+        Self(p.iter().map(|c|c.to_str().unwrap().to_string()).collect())
+    }
+}
 
+pub struct Config {
+    pub input_path: InputPath,
+    pub proto_path: PathBuf,
+    pub dependencies: Vec<(&'static str, &'static Descriptor)>,
     pub protobuf_crate: RustName,
 }
 
 impl Config {
+    fn proto_package(&self) -> ProtoPackage {
+        ProtoPackage::from(&*self.proto_path)
+    }
+
     fn this_crate(&self) -> RustName {
         self.protobuf_crate.clone().add("build")
     }
 
     fn reflect_impl(&self, m: prost_reflect::MessageDescriptor) -> String {
         let proto_name = m.full_name();
-        let rust_name = ProtoPackage::from(proto_name).strip_prefix(&self.proto_package).unwrap().to_rust_type().to_string();
+        let rust_name = ProtoPackage::from(proto_name).strip_prefix(&self.proto_package()).unwrap().to_rust_type().to_string();
         let this = self.this_crate().to_string();
         format!("impl {this}::prost_reflect::ReflectMessage for {rust_name} {{\
             fn descriptor(&self) -> {this}::prost_reflect::MessageDescriptor {{\
@@ -245,14 +274,15 @@ impl Config {
     }
 
     pub fn generate(&self) -> anyhow::Result<()> { 
-        println!("cargo:rerun-if-changed={:?}", self.input_path);
+        let input_path = self.input_path.abs();
+        assert!(input_path.is_dir());
+        println!("cargo:rerun-if-changed={input_path:?}");
         
         // Find all proto files.
         let mut pool = prost_reflect::DescriptorPool::new();
         for d in &self.dependencies { d.1.load(&mut pool).unwrap(); }
         let mut x = prost_types::FileDescriptorSet::default();
         x.file = pool.file_descriptor_protos().cloned().collect();
-        let input_path = self.input_path.canonicalize()?;
         let mut new_paths = vec![];
         traverse_files(&input_path, &mut |path| {
             let Some(ext) = path.extension() else { return Ok(()) };
@@ -273,10 +303,15 @@ impl Config {
         compiler.open_files(new_paths).unwrap();
         let descriptor = compiler.file_descriptor_set();
         pool.add_file_descriptor_set(descriptor.clone()).unwrap();
-        fs::create_dir_all(&self.output_descriptor_path.parent().unwrap()).unwrap();
-        fs::write(&self.output_descriptor_path, &descriptor.encode_to_vec())?;
         
         // Generate protobuf code from schema.
+        let output_dir = self.input_path.prepare_output_dir();
+        let output_path = output_dir.join("gen.rs");
+        let descriptor_path = output_dir.join("gen.binpb");
+        println!("PROTOBUF_DESCRIPTOR={descriptor_path:?}");
+        
+        fs::write(&descriptor_path, &descriptor.encode_to_vec())?;
+
         let mut config = prost_build::Config::new();
         config.prost_path(self.this_crate().add("prost").to_string());
         config.skip_protoc_run();
@@ -289,9 +324,10 @@ impl Config {
         }
 
         // Check that messages are compatible with `proto_fmt::canonical`.
+        let proto_package = self.proto_package();
         for f in &descriptor.file {
-            if !ProtoPackage::from(f.package()).starts_with(&self.proto_package) {
-                anyhow::bail!("{:?} ({:?}) does not belong to package {:?}",f.package(),f.name(),self.proto_package.to_string());
+            if !ProtoPackage::from(f.package()).starts_with(&proto_package) {
+                anyhow::bail!("{:?} ({:?}) does not belong to package {:?}",f.package(),f.name(),proto_package.to_string());
             }
         } 
         let new_messages = get_messages(&descriptor,&pool);
@@ -307,7 +343,7 @@ impl Config {
             m.insert(name.parts(),&code);
         }
         let mut m = &m;
-        for part in &self.proto_package.0 { m = &m.modules[part]; }
+        for part in &proto_package.0 { m = &m.modules[part]; }
         let mut file = m.generate(); 
         for m in &new_messages {
             file += &self.reflect_impl(m.clone());
@@ -317,13 +353,12 @@ impl Config {
         let this = self.this_crate().to_string();
         file += &format!("\
             pub static DESCRIPTOR : {this}::Lazy<{this}::Descriptor> = {this}::Lazy::new(|| {{\
-                {this}::Descriptor::new({:?}.into(), vec![{rust_deps}], &include_bytes!({:?}))\
+                {this}::Descriptor::new({:?}.into(), vec![{rust_deps}], &include_bytes!({descriptor_path:?}))\
             }});\
-        ",self.proto_package.to_string(),self.output_descriptor_path);
+        ",proto_package.to_string());
 
         let file = syn::parse_str(&file).unwrap();
-        fs::write(&self.output_mod_path, prettyplease::unparse(&file))?;
-        println!("PROTOBUF_DESCRIPTOR={:?}",self.output_descriptor_path);
+        fs::write(&output_path, prettyplease::unparse(&file))?;
         Ok(())
     }
 }
