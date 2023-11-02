@@ -93,6 +93,8 @@ jobs:
           tmp_inventory=$(cat ../infrastructure/loadtests/ansible/gcp.yml)
           echo "${tmp_inventory}" | envsubst > ../infrastructure/loadtests/ansible/gcp.yml
 
+          cat ../infrastructure/loadtests/ansible/gcp.yml
+
           ansible-inventory -i ../infrastructure/loadtests/ansible/gcp.yml --list | \
           tee /tmp/ansible_output.txt | \
           grep -q "No inventory was parsed" && { echo "Error: No inventory was parsed."; exit 1; }
