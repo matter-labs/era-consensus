@@ -62,9 +62,8 @@ jobs:
 
       - name: Install Ansible
         run: |
-          # to-do pin versions and move to requirements.yaml
           python -m pip install --upgrade pip
-          pip install ansible ansible-core google-auth
+          pip install -r infrastructure/loadtests/ansible/requirements.txt
           echo "/home/runner/.local/bin" >> $GITHUB_PATH
           ansible-galaxy install -r infrastructure/loadtests/ansible/requirements.yml
 
