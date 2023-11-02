@@ -55,6 +55,10 @@ jobs:
         with:
           node-version: 16
 
+      - uses: actions/setup-python@65d7f2d534ac1bc67fcd62888c5f4f3d2cb2b236 # v4
+        with:
+          python-version: '3.12'
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
@@ -62,84 +66,82 @@ jobs:
 
       - name: Install Ansible
         run: |
-          python3 --version
-          python --version
-      #     echo "/home/runner/.local/bin" >> $GITHUB_PATH
-      #     python3 -m pip install --upgrade pip
-      #     pip3 install -r infrastructure/loadtests/ansible/requirements.txt
-      #     ansible-galaxy install -r infrastructure/loadtests/ansible/requirements.yml
+          echo "/home/runner/.local/bin" >> $GITHUB_PATH
+          python -m pip install --upgrade pip
+          pip install -r infrastructure/loadtests/ansible/requirements.txt
+          ansible-galaxy install -r infrastructure/loadtests/ansible/requirements.yml
 
-      # - name: Terraform Init And Apply
-      #   working-directory: infrastructure/loadtests
-      #   run: |
-      #     terraform init
-      #     terraform apply -auto-approve \
-      #       -parallelism=${{ env.NUM_INSTANCES }} \
-      #       -var="num_instances=${{ env.NUM_INSTANCES }}" \
-      #       -var="node_port=${{ env.NODE_PORT }}" \
-      #       -var="metrics_port=${{ env.METRICS_PORT }}" \
-      #       -var="test_id=${{ env.TEST_ID }}"
+      - name: Terraform Init And Apply
+        working-directory: infrastructure/loadtests
+        run: |
+          terraform init
+          terraform apply -auto-approve \
+            -parallelism=${{ env.NUM_INSTANCES }} \
+            -var="num_instances=${{ env.NUM_INSTANCES }}" \
+            -var="node_port=${{ env.NODE_PORT }}" \
+            -var="metrics_port=${{ env.METRICS_PORT }}" \
+            -var="test_id=${{ env.TEST_ID }}"
 
-      # - name: Generate list of host:port for config generator
-      #   working-directory: node
-      #   run: |
-      #     sudo apt update && sudo apt install -y gettext-base
-      #     tmp_inventory=$(cat ../infrastructure/loadtests/ansible/gcp.yml)
-      #     echo "${tmp_inventory}" | envsubst > ../infrastructure/loadtests/ansible/gcp.yml
+      - name: Generate list of host:port for config generator
+        working-directory: node
+        run: |
+          sudo apt update && sudo apt install -y gettext-base
+          tmp_inventory=$(cat ../infrastructure/loadtests/ansible/gcp.yml)
+          echo "${tmp_inventory}" | envsubst > ../infrastructure/loadtests/ansible/gcp.yml
 
-      #     ansible-inventory -i ../infrastructure/loadtests/ansible/gcp.yml --list  | jq -r '.gcp_loadtest.hosts[]' | \
-      #     awk -v port=${{ env.NODE_PORT }} -F\" '{print $1 ":" port}' > ips_prts.txt
+          ansible-inventory -i ../infrastructure/loadtests/ansible/gcp.yml --list  | jq -r '.gcp_loadtest.hosts[]' | \
+          awk -v port=${{ env.NODE_PORT }} -F\" '{print $1 ":" port}' > ips_prts.txt
 
-      # - name: Install node build dependencies
-      #   run: sudo apt update && sudo apt install -y clang
+      - name: Install node build dependencies
+        run: sudo apt update && sudo apt install -y clang
 
-      # - uses: actions-rust-lang/setup-rust-toolchain@v1
-      #   id: setup-rust
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        id: setup-rust
 
-      # - name: Print used Rust versions
-      #   run: |
-      #     echo "Rustc version: ${{ steps.setup-rust.outputs.rustc-version }}"
-      #     echo "Cargo version: ${{ steps.setup-rust.outputs.cargo-version }}"
-      #     echo "Rustup version: ${{ steps.setup-rust.outputs.rustup-version }}"
+      - name: Print used Rust versions
+        run: |
+          echo "Rustc version: ${{ steps.setup-rust.outputs.rustc-version }}"
+          echo "Cargo version: ${{ steps.setup-rust.outputs.cargo-version }}"
+          echo "Rustup version: ${{ steps.setup-rust.outputs.rustup-version }}"
 
-      # - name: Pre-create dirs for node artifacts
-      #   working-directory: node
-      #   run: mkdir -p artifacts/{node_configs,binaries}
+      - name: Pre-create dirs for node artifacts
+        working-directory: node
+        run: mkdir -p artifacts/{node_configs,binaries}
 
-      # - name: Generate node configs
-      #   working-directory: node
-      #   run: |
-      #     cargo run -p tools \
-      #     --bin localnet_config -- \
-      #     --input-addrs ips_prts.txt \
-      #     --metrics-server-port ${{ env.METRICS_PORT }} \
-      #     --output-dir artifacts/node_configs
+      - name: Generate node configs
+        working-directory: node
+        run: |
+          cargo run -p tools \
+          --bin localnet_config -- \
+          --input-addrs ips_prts.txt \
+          --metrics-server-port ${{ env.METRICS_PORT }} \
+          --output-dir artifacts/node_configs
 
-      # - name: Build executor binary
-      #   working-directory: node
-      #   run: |
-      #     build_output=$(cargo build --release -p tools --bin executor --message-format=json) || exit 1
-      #     echo "$build_output" | jq -r 'select(.executable != null) | .executable' \
-      #     | while read binary; do
-      #       cp "$binary" artifacts/binaries/
-      #     done
+      - name: Build executor binary
+        working-directory: node
+        run: |
+          build_output=$(cargo build --release -p tools --bin executor --message-format=json) || exit 1
+          echo "$build_output" | jq -r 'select(.executable != null) | .executable' \
+          | while read binary; do
+            cp "$binary" artifacts/binaries/
+          done
 
-      # - name: Run ansible
-      #   working-directory: infrastructure/loadtests/ansible
-      #   run: |
-      #     sa_name=$(gcloud iam service-accounts describe deployer-sandbox@matterlabs-infra.iam.gserviceaccount.com --format='value(uniqueId)')
-      #     ansible-playbook -i gcp.yml \
-      #       --user sa_${sa_name} \
-      #       --private-key .ssh/google_compute_engine playbook.yml \
-      #       --forks ${{ env.NUM_INSTANCES }}
+      - name: Run ansible
+        working-directory: infrastructure/loadtests/ansible
+        run: |
+          sa_name=$(gcloud iam service-accounts describe deployer-sandbox@matterlabs-infra.iam.gserviceaccount.com --format='value(uniqueId)')
+          ansible-playbook -i gcp.yml \
+            --user sa_${sa_name} \
+            --private-key .ssh/google_compute_engine playbook.yml \
+            --forks ${{ env.NUM_INSTANCES }}
 
-      # - name: Terraform Destroy
-      #   working-directory: infrastructure/loadtests
-      #   if: always()
-      #   run: |
-      #     terraform destroy -auto-approve \
-      #       -parallelism=${{ env.NUM_INSTANCES }} \
-      #       -var="num_instances=${{ env.NUM_INSTANCES }}" \
-      #       -var="node_port=${{ env.NODE_PORT }}" \
-      #       -var="metrics_port=${{ env.METRICS_PORT }}" \
-      #       -var="test_id=${{ env.TEST_ID }}"
+      - name: Terraform Destroy
+        working-directory: infrastructure/loadtests
+        if: always()
+        run: |
+          terraform destroy -auto-approve \
+            -parallelism=${{ env.NUM_INSTANCES }} \
+            -var="num_instances=${{ env.NUM_INSTANCES }}" \
+            -var="node_port=${{ env.NODE_PORT }}" \
+            -var="metrics_port=${{ env.METRICS_PORT }}" \
+            -var="test_id=${{ env.TEST_ID }}"
