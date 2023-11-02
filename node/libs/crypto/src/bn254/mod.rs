@@ -88,7 +88,10 @@ impl Ord for PublicKey {
 pub struct Signature(G1);
 
 impl Signature {
-    /// Verifies a signature against the provided public key
+    /// Verifies a signature against the provided public key.
+    ///
+    /// This function is intentionally non-generic and disallow inlining to ensure that compilation optimizations can be effectively applied.
+    /// This optimization is needed for ensuring that tests can run within a reasonable time frame.
     #[inline(never)]
     pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> Result<(), Error> {
         let hash_point = hash::hash_to_g1(msg);
@@ -145,6 +148,8 @@ impl AggregateSignature {
         AggregateSignature(agg)
     }
 
+    /// This function is intentionally non-generic and disallow inlining to ensure that compilation optimizations can be effectively applied.
+    /// This optimization is needed for ensuring that tests can run within a reasonable time frame.
     #[inline(never)]
     fn verify_raw(&self, msgs_and_pks: &[(&[u8], &PublicKey)]) -> Result<(), Error> {
         // Aggregate public keys if they are signing the same hash. Each public key aggregated
