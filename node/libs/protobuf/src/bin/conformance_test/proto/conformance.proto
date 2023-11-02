@@ -33,7 +33,7 @@
 
 syntax = "proto3";
 
-package zksync.protobuf.conformance.conformance;
+package zksync.protobuf.conformance_test;
 
 // This defines the conformance testing protocol.  This protocol exists between
 // the conformance test suite itself and the code being tested.  For each test,

@@ -1,4 +1,8 @@
 //! Generates rust code from the protobuf
+//!
+//! cargo build --all-targets
+//! perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/' `find target/debug/build/*/output -type f` | xargs cat > /tmp/sum.binpb
+//! buf breaking /tmp/sum.binpb --against /tmp/sum.binpb
 use anyhow::Context as _;
 use std::{collections::BTreeMap, fs, path::{PathBuf,Path}};
 use prost::Message as _;
@@ -122,17 +126,15 @@ fn get_messages(fds: &prost_types::FileDescriptorSet, pool: &prost_reflect::Desc
 }
 
 pub struct Descriptor {
-    pub rust_module : String,
-    pub proto_package : String,
-    pub descriptor_proto : prost_types::FileDescriptorSet,
-    pub dependencies : Vec<&'static Descriptor>,
+    pub proto_package: ProtoPackage,
+    pub descriptor_proto: prost_types::FileDescriptorSet,
+    pub dependencies: Vec<&'static Descriptor>,
 }
 
 impl Descriptor {
-    pub fn new(rust_module: &str, proto_package: &str, dependencies: Vec<&'static Descriptor>, descriptor_bytes: &impl AsRef<[u8]>) -> Self {
+    pub fn new(proto_package: ProtoPackage, dependencies: Vec<&'static Descriptor>, descriptor_bytes: &impl AsRef<[u8]>) -> Self {
         Descriptor {
-            rust_module: rust_module.to_string(),
-            proto_package: proto_package.to_string(),
+            proto_package,
             dependencies,
             descriptor_proto: prost_types::FileDescriptorSet::decode(descriptor_bytes.as_ref()).unwrap(),
         }
@@ -157,35 +159,85 @@ impl Descriptor {
     }
 }
 
+#[derive(Clone,PartialEq,Eq)]
+pub struct RustName(Vec<String>);
+
+impl RustName {
+    fn add(mut self, suffix: impl Into<Self>) -> Self {
+        self.0.extend(suffix.into().0.into_iter());
+        self
+    }
+
+    fn to_string(&self) -> String { self.0.join("::") }
+}
+
+impl From<&str> for RustName {
+    fn from(s:&str) -> Self { Self(s.split("::").map(String::from).collect()) }
+}
+
+#[derive(Clone,PartialEq,Eq)]
+pub struct ProtoPackage(Vec<String>);
+
+impl ProtoPackage {
+    fn starts_with(&self, prefix: &Self) -> bool {
+        let n = prefix.0.len();
+        self.0.len() >= n && self.0[0..n] == prefix.0
+    }
+
+    fn strip_prefix(&self, prefix: &Self) -> anyhow::Result<Self> {
+        if !self.starts_with(prefix) {
+            anyhow::bail!("{} is not a prefix of {}",prefix.to_string(),self.to_string());
+        }
+        Ok(Self(self.0[prefix.0.len()..].iter().cloned().collect()))
+    }
+
+    fn to_rust_module(&self) -> RustName {
+        RustName(self.0.iter().map(|s|ident::to_snake(s)).collect())
+    }
+
+    fn to_rust_type(&self) -> RustName {
+        let n = self.0.len();
+        let mut res = self.to_rust_module();
+        res.0[n-1] = ident::to_upper_camel(&self.0[n-1]);
+        res
+    }
+
+    fn to_string(&self) -> String {
+        self.0.join(".")
+    }
+}
+
+impl From<&str> for ProtoPackage {
+    fn from(s:&str) -> Self {
+        Self(s.split(".").map(String::from).collect())
+    }
+}
+
 pub struct Config {
     pub input_path: PathBuf,
     pub proto_path: PathBuf,
-    pub proto_package: String,
-    pub dependencies: Vec<&'static Descriptor>,
+    pub proto_package: ProtoPackage,
+    pub dependencies: Vec<(&'static str, &'static Descriptor)>,
     
     pub output_mod_path: PathBuf,
     pub output_descriptor_path: PathBuf,
 
-    pub protobuf_crate: String,
+    pub protobuf_crate: RustName,
 }
 
 impl Config {
-    fn import(&self, elem: &str) -> String {
-        format!("{}::build::{}",self.protobuf_crate,elem)
+    fn this_crate(&self) -> RustName {
+        self.protobuf_crate.clone().add("build")
     }
 
     fn reflect_impl(&self, m: prost_reflect::MessageDescriptor) -> String {
         let proto_name = m.full_name();
-        let parts : Vec<&str> = proto_name.strip_prefix(&(self.proto_package.clone() + ".")).unwrap().split(".").collect();
-        let mut rust_name : Vec<_> = parts[0..parts.len()-1].iter().map(|p|ident::to_snake(*p)).collect();
-        rust_name.push(ident::to_upper_camel(parts[parts.len()-1]));
-        let rust_name = rust_name.join("::");
-        let rust_reflect = self.import("prost_reflect");
-        let rust_lazy = self.import("Lazy");
-        format!("impl {rust_reflect}::ReflectMessage for {rust_name} {{\
-            fn descriptor(&self) -> {rust_reflect}::MessageDescriptor {{\
-                static INIT : {rust_lazy}<{rust_reflect}::MessageDescriptor> = {rust_lazy}::new(|| {{\
-                    DESCRIPTOR.load_global().get_message_by_name(\"{proto_name}\").unwrap()\
+        let rust_name = ProtoPackage::from(proto_name).strip_prefix(&self.proto_package).unwrap().to_rust_type().to_string();
+        let this = self.this_crate().to_string();
+        format!("impl {this}::prost_reflect::ReflectMessage for {rust_name} {{\
+            fn descriptor(&self) -> {this}::prost_reflect::MessageDescriptor {{\
+                static INIT : {this}::Lazy<{this}::prost_reflect::MessageDescriptor> = {this}::Lazy::new(|| {{\
+                    DESCRIPTOR.load_global().get_message_by_name({proto_name:?}).unwrap()\
                 }});\
                 INIT.clone()\
             }}\
@@ -197,7 +249,7 @@ impl Config {
         
         // Find all proto files.
         let mut pool = prost_reflect::DescriptorPool::new();
-        for d in &self.dependencies { d.load(&mut pool).unwrap(); }
+        for d in &self.dependencies { d.1.load(&mut pool).unwrap(); }
         let mut x = prost_types::FileDescriptorSet::default();
         x.file = pool.file_descriptor_protos().cloned().collect();
         let input_path = self.input_path.canonicalize()?;
@@ -217,32 +269,31 @@ impl Config {
         let mut compiler = protox::Compiler::with_file_resolver(
             protox::file::DescriptorSetFileResolver::new(x)
         );
+        // TODO: nice compilation errors.
         compiler.open_files(new_paths).unwrap();
         let descriptor = compiler.file_descriptor_set();
+        pool.add_file_descriptor_set(descriptor.clone()).unwrap();
         fs::create_dir_all(&self.output_descriptor_path.parent().unwrap()).unwrap();
         fs::write(&self.output_descriptor_path, &descriptor.encode_to_vec())?;
         
         // Generate protobuf code from schema.
         let mut config = prost_build::Config::new();
-        config.prost_path(self.import("prost"));
+        config.prost_path(self.this_crate().add("prost").to_string());
         config.skip_protoc_run();
         for d in &self.dependencies {
-            for f in &d.descriptor_proto.file {
-                let rel = f.package().strip_prefix(&(d.proto_package.clone() + ".")).unwrap();
-                let rust_rel = rel.split(".").map(ident::to_snake).collect::<Vec<_>>().join("::");
-                config.extern_path(format!(".{}",f.package()), format!("{}::{}",d.rust_module,rust_rel));
+            for f in &d.1.descriptor_proto.file {
+                let proto_rel = ProtoPackage::from(f.package()).strip_prefix(&d.1.proto_package).unwrap();
+                let rust_abs = RustName::from(d.0).add(proto_rel.to_rust_module());
+                config.extern_path(format!(".{}",f.package()), rust_abs.to_string());
             }
         }
 
         // Check that messages are compatible with `proto_fmt::canonical`.
-        let descriptor = fs::read(&self.output_descriptor_path)?;
-        let descriptor = prost_types::FileDescriptorSet::decode(&descriptor[..]).unwrap();
         for f in &descriptor.file {
-            if !f.package().starts_with(&self.proto_package) {
-                anyhow::bail!("{:?} ({:?}) does not belong to package {:?}",f.package(),f.name(),self.proto_package);
+            if !ProtoPackage::from(f.package()).starts_with(&self.proto_package) {
+                anyhow::bail!("{:?} ({:?}) does not belong to package {:?}",f.package(),f.name(),self.proto_package.to_string());
             }
         } 
-        pool.add_file_descriptor_set(descriptor.clone()).unwrap();
         let new_messages = get_messages(&descriptor,&pool);
         
         let mut check_state = CanonicalCheckState::default();
@@ -256,22 +307,19 @@ impl Config {
             m.insert(name.parts(),&code);
         }
         let mut m = &m;
-        for name in self.proto_package.split(".") {
-            m = &m.modules[name];
-        }
+        for part in &self.proto_package.0 { m = &m.modules[part]; }
         let mut file = m.generate(); 
         for m in &new_messages {
             file += &self.reflect_impl(m.clone());
         }
 
-        let rust_deps = self.dependencies.iter().map(|d|format!("&::{}::DESCRIPTOR",d.rust_module)).collect::<Vec<_>>().join(",");
-        let rust_lazy = self.import("Lazy");
-        let rust_descriptor = self.import("Descriptor");
+        let rust_deps = self.dependencies.iter().map(|d|format!("&{}::DESCRIPTOR",d.0.to_string())).collect::<Vec<_>>().join(",");
+        let this = self.this_crate().to_string();
         file += &format!("\
-            pub static DESCRIPTOR : {rust_lazy}<{rust_descriptor}> = {rust_lazy}::new(|| {{\
-                {rust_descriptor}::new(module_path!(), {:?}, vec![{rust_deps}], &include_bytes!({:?}))\
+            pub static DESCRIPTOR : {this}::Lazy<{this}::Descriptor> = {this}::Lazy::new(|| {{\
+                {this}::Descriptor::new({:?}.into(), vec![{rust_deps}], &include_bytes!({:?}))\
             }});\
-        ",self.proto_package,self.output_descriptor_path);
+        ",self.proto_package.to_string(),self.output_descriptor_path);
 
         let file = syn::parse_str(&file).unwrap();
         fs::write(&self.output_mod_path, prettyplease::unparse(&file))?;

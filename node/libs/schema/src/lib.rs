@@ -2,5 +2,5 @@
 
 #[allow(warnings)]
 pub mod proto {
-    include!(concat!(env!("OUT_DIR"), "/proto/mod.rs"));
+    include!(concat!(env!("OUT_DIR"), "/proto.gen.rs"));
 }

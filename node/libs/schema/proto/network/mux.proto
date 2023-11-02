@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package zksync.schema.network.mux;
 
-import "zksync/protobuf/std.proto";
+import "zksync/std.proto";
 
 message Handshake {
   message Capability {

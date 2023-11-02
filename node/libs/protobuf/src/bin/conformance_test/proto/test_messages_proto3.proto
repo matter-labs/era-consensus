@@ -40,7 +40,7 @@
 
 syntax = "proto3";
 
-package zksync.protobuf.conformance.test_messages_proto3;
+package zksync.protobuf.conformance_test;
 
 // This proto includes every type of field in both singular and repeated
 // forms.

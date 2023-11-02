@@ -1,11 +1,11 @@
 //! Proto conversion for messages in std package.
-use crate::{proto::std as proto, required, ProtoFmt};
+use crate::{proto, required, ProtoFmt};
 use anyhow::Context as _;
 use concurrency::time;
 use std::net;
 
 impl ProtoFmt for () {
-    type Proto = proto::Void;
+    type Proto = proto::std::Void;
     fn read(_r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(())
     }
@@ -15,7 +15,7 @@ impl ProtoFmt for () {
 }
 
 impl ProtoFmt for std::net::SocketAddr {
-    type Proto = proto::SocketAddr;
+    type Proto = proto::std::SocketAddr;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let ip = required(&r.ip).context("ip")?;
@@ -41,7 +41,7 @@ impl ProtoFmt for std::net::SocketAddr {
 }
 
 impl ProtoFmt for time::Utc {
-    type Proto = proto::Timestamp;
+    type Proto = proto::std::Timestamp;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let seconds = *required(&r.seconds).context("seconds")?;
@@ -59,7 +59,7 @@ impl ProtoFmt for time::Utc {
 }
 
 impl ProtoFmt for time::Duration {
-    type Proto = proto::Duration;
+    type Proto = proto::std::Duration;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let seconds = *required(&r.seconds).context("seconds")?;
@@ -82,7 +82,7 @@ impl ProtoFmt for time::Duration {
 }
 
 impl ProtoFmt for bit_vec::BitVec {
-    type Proto = proto::BitVector;
+    type Proto = proto::std::BitVector;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let size = *required(&r.size).context("size")? as usize;

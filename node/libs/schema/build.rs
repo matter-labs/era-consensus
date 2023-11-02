@@ -9,11 +9,11 @@ fn main() -> anyhow::Result<()> {
         input_path: input.join("proto"),
         proto_path: "zksync/schema".into(),
         proto_package: "zksync.schema".into(),
-        dependencies: vec![&protobuf::proto::DESCRIPTOR],
+        dependencies: vec![("::protobuf::proto",&protobuf::proto::DESCRIPTOR)],
 
-        output_mod_path: output.join("proto/mod.rs"),
-        output_descriptor_path: output.join("proto/desc.binpb"),
+        output_mod_path: output.join("proto.gen.rs"),
+        output_descriptor_path: output.join("proto.gen.binpb"),
     
-        protobuf_crate: "::protobuf".to_string(),
-    }.generate().context("protobuf_build::Config::generate()")
+        protobuf_crate: "::protobuf".into(),
+    }.generate().context("generate()")
 }
