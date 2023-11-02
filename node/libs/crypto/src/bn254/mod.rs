@@ -10,7 +10,7 @@ use ark_ec::{
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 pub use error::Error;
 use num_traits::Zero as _;
-use std::{collections::HashMap};
+use std::collections::HashMap;
 
 #[doc(hidden)]
 pub mod error;
