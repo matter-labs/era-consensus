@@ -67,8 +67,10 @@ jobs:
       - name: Install Ansible
         run: |
           echo "/home/runner/.local/bin" >> $GITHUB_PATH
+          python --version
           python -m pip install --upgrade pip
-          pip install -r infrastructure/loadtests/ansible/requirements.txt
+          pip install ansible ansible-core google-auth
+          # pip install -r infrastructure/loadtests/ansible/requirements.txt
           ansible-galaxy install -r infrastructure/loadtests/ansible/requirements.yml
 
       - name: Terraform Init And Apply
