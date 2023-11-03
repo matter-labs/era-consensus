@@ -1,19 +1,20 @@
 //! Conformance test for our canonical encoding implemented according to
 //! https://github.com/protocolbuffers/zksync_protobuf/blob/main/conformance/conformance.proto
 //! Our implementation supports only a subset of proto functionality, so
-//! `schema/proto/conformance/conformance.proto` and
-//! `schema/proto/conformance/zksync_protobuf_test_messages.proto` contains only a
+//! `proto/conformance.proto` and
+//! `proto/protobuf_test_messages.proto` contains only a
 //! subset of original fields. Also we run only proto3 binary -> binary tests.
-//! conformance_test_failure_list.txt contains tests which are expected to fail.
+//! failure_list.txt contains tests which are expected to fail.
 use anyhow::Context as _;
 use concurrency::{ctx, io};
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
+use std::sync::Mutex;
 
 mod proto;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+/// Runs the test server.
+async fn run() -> anyhow::Result<()> {
     let ctx = &ctx::root();
     let stdin = &mut tokio::io::stdin();
     let stdout = &mut tokio::io::stdout();
@@ -31,7 +32,7 @@ async fn main() -> anyhow::Result<()> {
         let req = proto::ConformanceRequest::decode(&msg[..])?;
         let res = async {
             let t = req.message_type.context("missing message_type")?;
-            if t != *"zksync_protobuf_test_messages.proto3.TestAllTypesProto3" {
+            if t != *"protobuf_test_messages.proto3.TestAllTypesProto3" {
                 return Ok(R::Skipped("unsupported".to_string()));
             }
 
@@ -85,5 +86,26 @@ async fn main() -> anyhow::Result<()> {
         io::write_all(ctx, stdout, &u32::to_le_bytes(msg.len() as u32)).await??;
         io::write_all(ctx, stdout, &msg).await??;
         io::flush(ctx, stdout).await??;
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let sub = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env());
+    match std::env::var("LOG_FILE") {
+        Err(_) => sub.with_writer(std::io::stderr).init(),
+        Ok(path) => sub
+            .with_writer(Mutex::new(
+                std::fs::File::options()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .unwrap(),
+            ))
+            .init(),
+    };
+    if let Err(err) = run().await {
+        tracing::error!("run(): {err:#}");
     }
 }
