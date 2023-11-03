@@ -2,9 +2,9 @@
 use crate::{mux, rpc::Rpc as _};
 use anyhow::Context as _;
 use concurrency::{ctx, limiter, time};
-use zksync_protobuf::{required, ProtoFmt};
 use rand::Rng;
 use schema::proto::network::ping as proto;
+use zksync_protobuf::{required, ProtoFmt};
 
 /// Ping RPC.
 pub(crate) struct Rpc;

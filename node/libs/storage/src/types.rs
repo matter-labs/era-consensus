@@ -1,10 +1,10 @@
 //! Defines the schema of the database.
 use anyhow::Context as _;
 use concurrency::ctx;
-use zksync_protobuf::{read_required, required, ProtoFmt};
 use roles::validator::{self, BlockNumber};
 use schema::proto::storage as proto;
 use std::{iter, ops};
+use zksync_protobuf::{read_required, required, ProtoFmt};
 
 /// A payload of a proposed block which is not known to be finalized yet.
 /// Replicas have to persist such proposed payloads for liveness:

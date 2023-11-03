@@ -1,8 +1,8 @@
 use super::CapabilityId;
 use anyhow::Context as _;
-use zksync_protobuf::required;
 use schema::proto::network::mux as proto;
 use std::collections::HashMap;
+use zksync_protobuf::required;
 
 pub(super) struct Handshake {
     /// Maximal supported number of the accept streams per capability.

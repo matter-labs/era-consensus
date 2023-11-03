@@ -9,8 +9,8 @@
 //! and multiplex between mutliple endpoints available on the same TCP port.
 use crate::{frame, metrics, noise};
 use concurrency::{ctx, time};
-use zksync_protobuf::{required, ProtoFmt};
 use schema::proto::network::preface as proto;
+use zksync_protobuf::{required, ProtoFmt};
 
 /// Timeout on executing the preface protocol.
 const TIMEOUT: time::Duration = time::Duration::seconds(5);

@@ -7,10 +7,10 @@ use super::{
 use crate::node::SessionId;
 use anyhow::Context as _;
 use crypto::ByteFmt;
-use zksync_protobuf::{read_required, required, ProtoFmt};
 use schema::proto::roles::validator as proto;
 use std::collections::BTreeMap;
 use utils::enum_util::Variant;
+use zksync_protobuf::{read_required, required, ProtoFmt};
 
 impl ProtoFmt for BlockHeaderHash {
     type Proto = proto::BlockHeaderHash;

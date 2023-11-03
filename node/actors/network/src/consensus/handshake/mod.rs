@@ -2,9 +2,9 @@ use crate::{frame, noise};
 use anyhow::Context as _;
 use concurrency::{ctx, time};
 use crypto::{bls12_381, ByteFmt};
-use zksync_protobuf::{read_required, ProtoFmt};
 use roles::{node, validator};
 use schema::proto::network::consensus as proto;
+use zksync_protobuf::{read_required, ProtoFmt};
 
 #[cfg(test)]
 mod testonly;

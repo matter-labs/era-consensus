@@ -3,9 +3,9 @@
 use crate::{io, mux};
 use anyhow::Context;
 use concurrency::{limiter, time};
-use zksync_protobuf::{read_required, ProtoFmt};
 use roles::validator::{BlockNumber, FinalBlock};
 use schema::proto::network::gossip as proto;
+use zksync_protobuf::{read_required, ProtoFmt};
 
 /// `get_sync_state` RPC.
 #[derive(Debug)]

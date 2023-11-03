@@ -26,6 +26,7 @@
 //! cargo build --all-targets
 //! perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/' `find target/debug/build/*/output -type f` | xargs cat > /tmp/sum.binpb
 //! buf breaking /tmp/sum.binpb --against /tmp/sum.binpb
+#![allow(clippy::print_stdout)]
 use anyhow::Context as _;
 pub use once_cell::sync::Lazy;
 // Imports accessed from the generated code.
@@ -56,8 +57,12 @@ fn traverse_files(
 
 /// Protobuf descriptor + info about the mapping to rust code.
 pub struct Descriptor {
+    /// Root proto package that all proto files in this descriptor belong to.
+    /// Rust types have been generated relative to this root.
     proto_root: ProtoName,
+    /// Raw descriptor proto.
     descriptor_proto: prost_types::FileDescriptorSet,
+    /// Direct dependencies of this descriptor.
     dependencies: Vec<&'static Descriptor>,
 }
 
@@ -95,6 +100,7 @@ impl Descriptor {
 
     /// Loads the descriptor to the global pool and returns a copy of the global pool.
     pub fn load_global(&self) -> prost_reflect::DescriptorPool {
+        /// Global descriptor pool.
         static POOL: Lazy<Mutex<prost_reflect::DescriptorPool>> = Lazy::new(Mutex::default);
         let pool = &mut POOL.lock().unwrap();
         self.load(pool).unwrap();
@@ -102,6 +108,7 @@ impl Descriptor {
     }
 }
 
+/// Code generation config. Use it in build scripts.
 pub struct Config {
     /// Input directory relative to $CARGO_MANIFEST_DIR with the proto files to be compiled.
     pub input_root: InputPath,
@@ -142,17 +149,20 @@ impl Config {
 
     /// Generates rust code from the proto files according to the config.
     pub fn generate(&self) -> anyhow::Result<()> {
-        assert!(self.input_root.abs().is_dir(), "input_root should be a directory");
-        println!("cargo:rerun-if-changed={}",self.input_root.to_str());
+        assert!(
+            self.input_root.abs().is_dir(),
+            "input_root should be a directory"
+        );
+        println!("cargo:rerun-if-changed={}", self.input_root.to_str());
 
         // Load dependencies.
         let mut pool = prost_reflect::DescriptorPool::new();
         for d in &self.dependencies {
             d.1.load(&mut pool)
-                .with_context(|| format!("failed to load dependency {}", d.0.to_string()))?;
+                .with_context(|| format!("failed to load dependency {}", d.0))?;
         }
         let mut pool_raw = prost_types::FileDescriptorSet::default();
-        pool_raw.file = pool.file_descriptor_protos().cloned().collect();
+        pool_raw.file.extend(pool.file_descriptor_protos().cloned());
 
         // Load proto files.
         let mut proto_paths = vec![];
@@ -251,7 +261,7 @@ impl Config {
         let rust_deps = self
             .dependencies
             .iter()
-            .map(|d| format!("&{}::DESCRIPTOR", d.0.to_string()))
+            .map(|d| format!("&{}::DESCRIPTOR", d.0))
             .collect::<Vec<_>>()
             .join(",");
         let this = self.this_crate().to_string();

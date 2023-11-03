@@ -3,6 +3,7 @@ use super::ident;
 use anyhow::Context as _;
 use std::{
     collections::BTreeMap,
+    fmt,
     path::{Path, PathBuf},
 };
 
@@ -93,13 +94,16 @@ type Part = String;
 pub struct RustName(Vec<Part>);
 
 impl RustName {
+    /// Concatenates 2 rust names.
     pub fn join(mut self, suffix: impl Into<Self>) -> Self {
         self.0.extend(suffix.into().0);
         self
     }
+}
 
-    pub fn to_string(&self) -> String {
-        self.0.join("::")
+impl fmt::Display for RustName {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str(&self.0.join("::"))
     }
 }
 
@@ -199,10 +203,11 @@ impl ProtoName {
         rust.0[n - 1] = ident::to_upper_camel(&self.0[n - 1]);
         rust
     }
+}
 
-    /// Converts ProtoName to string.
-    pub fn to_string(&self) -> String {
-        self.0.join(".")
+impl fmt::Display for ProtoName {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str(&self.0.join("."))
     }
 }
 

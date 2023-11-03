@@ -3,10 +3,10 @@
 use crate::mux;
 use anyhow::Context as _;
 use concurrency::{limiter, time};
-use zksync_protobuf::ProtoFmt;
 use roles::validator;
 use schema::proto::network::gossip as proto;
 use std::sync::Arc;
+use zksync_protobuf::ProtoFmt;
 
 /// SyncValidatorAddrs Rpc.
 pub(crate) struct Rpc;

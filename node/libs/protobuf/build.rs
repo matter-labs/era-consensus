@@ -1,3 +1,4 @@
+//! Generates rust code from protobufs.
 fn main() {
     zksync_protobuf_build::Config {
         input_root: "src/proto".into(),

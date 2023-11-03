@@ -3,9 +3,9 @@ use crate::{frame, noise};
 use anyhow::Context as _;
 use concurrency::{ctx, time};
 use crypto::ByteFmt;
-use zksync_protobuf::{read_required, required, ProtoFmt};
 use roles::node;
 use schema::proto::network::gossip as proto;
+use zksync_protobuf::{read_required, required, ProtoFmt};
 
 #[cfg(test)]
 mod testonly;
