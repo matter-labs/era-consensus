@@ -192,9 +192,10 @@ impl Config {
                 config.extern_path(format!(".{}",f.package()), rust_abs.to_string());
             }
         }
-        let modules : Vec<_> = descriptor.file.iter().map(|d|(prost_build::Module::from_protobuf_package_name(d.package()),d.clone())).collect();
-        for (name,code) in config.generate(modules).expect("generation failed") {
-            output.sub(&name.into()).append(&code);
+        let m = prost_build::Module::from_parts([""]);
+        for f in &descriptor.file {
+            let code = config.generate(vec![(m.clone(),f.clone())]).context("generation failed")?;
+            output.sub(&ProtoName::from(f.package()).to_rust_module()).append(&code[&m]);
         }
 
         // Generate the reflection code.
