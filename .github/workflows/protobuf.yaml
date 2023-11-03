@@ -35,6 +35,11 @@ jobs:
       - name: compile before
         run: cargo build --all-targets
         working-directory: ./before/node
+      - name: build before.binpb
+        run: >
+          perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/'
+          `find ./before/node/target/debug/build/*/output`
+          | xargs cat > ./before.binpb
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.head_ref || github.event.after }}
