@@ -1,4 +1,7 @@
 //! BLS signature scheme for the BN254 curve.
+//!
+//! Disclaimer: the implementation of the pairing-friendly elliptic curve does not run in constant time,
+//! hence it does not protect the secret key from side-channel attacks.
 
 use crate::ByteFmt;
 use anyhow::Context as _;
