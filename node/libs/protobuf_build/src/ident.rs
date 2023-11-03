@@ -1,4 +1,6 @@
-//! Utility functions for working with identifiers.
+//! Copy of https://github.com/tokio-rs/prost/blob/master/prost-build/src/ident.rs.
+//! We need it to compute the proto names -> rust names mapping, which is not directly accessible
+//! via prost_build public API.
 
 use heck::{ToSnakeCase, ToUpperCamelCase};
 
