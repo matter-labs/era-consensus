@@ -57,7 +57,7 @@ jobs:
 
       - uses: actions/setup-python@65d7f2d534ac1bc67fcd62888c5f4f3d2cb2b236 # v4
         with:
-          python-version: '3.12'
+          python-version: '3.11'
 
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
@@ -65,12 +65,12 @@ jobs:
           terraform_version: 1.5.6
 
       - name: Install Ansible
-        env:
-          ANSIBLE_PYTHON_INTERPRETER: /home/runner/_work/_tool/Python/3.12.0/x64/bin/python
+        # env:
+        #   ANSIBLE_PYTHON_INTERPRETER: /home/runner/_work/_tool/Python/3.12.0/x64/bin/python
         run: |
-          /home/runner/_work/_tool/Python/3.12.0/x64/bin/python -m pip install --upgrade pip
-          # pip install ansible ansible-core google-auth
-          /home/runner/_work/_tool/Python/3.12.0/x64/bin/pip install -r infrastructure/loadtests/ansible/requirements.txt
+          python -m pip install --upgrade pip
+          pip install ansible ansible-core google-auth
+          # /home/runner/_work/_tool/Python/3.12.0/x64/bin/pip install -r infrastructure/loadtests/ansible/requirements.txt
           ansible-galaxy install -r infrastructure/loadtests/ansible/requirements.yml
 
       - name: Terraform Init And Apply
