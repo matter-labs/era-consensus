@@ -34,16 +34,14 @@ jobs:
           path: before
       - name: compile before
         run: cargo build --all-targets
-        with:
-          working-directory: ./before/node
+        working-directory: ./before/node
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.head_ref || github.event.after }}
           path: after
       - name: compile after
         run: cargo build --all-targets
-        with:
-          working-directory: ./after/node
+        working-directory: ./after/node
       # - uses: bufbuild/buf-setup-action@v1
       # - uses: bufbuild/buf-breaking-action@v1
       #  with:
