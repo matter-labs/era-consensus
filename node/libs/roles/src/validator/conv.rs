@@ -15,11 +15,11 @@ use utils::enum_util::Variant;
 impl ProtoFmt for BlockHeaderHash {
     type Proto = proto::BlockHeaderHash;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.sha256)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            sha256: Some(self.0.encode()),
+            keccak256: Some(self.0.encode()),
         }
     }
 }
@@ -27,11 +27,11 @@ impl ProtoFmt for BlockHeaderHash {
 impl ProtoFmt for PayloadHash {
     type Proto = proto::PayloadHash;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.sha256)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            sha256: Some(self.0.encode()),
+            keccak256: Some(self.0.encode()),
         }
     }
 }
@@ -322,12 +322,12 @@ impl ProtoFmt for MsgHash {
     type Proto = proto::MsgHash;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.sha256)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            sha256: Some(self.0.encode()),
+            keccak256: Some(self.0.encode()),
         }
     }
 }

@@ -5,11 +5,11 @@ package roles.validator;
 import "std.proto";
 
 message PayloadHash {
-  optional bytes sha256 = 1; // required
+  optional bytes keccak256 = 1; // required
 }
 
 message BlockHeaderHash {
-  optional bytes sha256 = 1; // required
+  optional bytes keccak256 = 1; // required
 }
 
 message BlockHeader {
@@ -137,7 +137,7 @@ message Msg {
 }
 
 message MsgHash {
-  optional bytes sha256 = 1; // required
+  optional bytes keccak256 = 1; // required
 }
 
 message Signed {

@@ -1,7 +1,7 @@
 //! Messages related to blocks.
 
 use super::CommitQC;
-use crypto::{sha256, ByteFmt, Text, TextFmt};
+use crypto::{keccak256, ByteFmt, Text, TextFmt};
 use std::fmt;
 
 /// Payload of the block. Consensus algorithm does not interpret the payload
@@ -13,14 +13,17 @@ pub struct Payload(pub Vec<u8>);
 
 /// Hash of the Payload.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct PayloadHash(pub(crate) sha256::Sha256);
+pub struct PayloadHash(pub(crate) keccak256::Keccak256);
 
 impl TextFmt for PayloadHash {
     fn encode(&self) -> String {
-        format!("payload:sha256:{}", hex::encode(ByteFmt::encode(&self.0)))
+        format!(
+            "payload:keccak256:{}",
+            hex::encode(ByteFmt::encode(&self.0))
+        )
     }
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("payload:sha256:")?.decode_hex().map(Self)
+        text.strip("payload:keccak256:")?.decode_hex().map(Self)
     }
 }
 
@@ -33,7 +36,7 @@ impl fmt::Debug for PayloadHash {
 impl Payload {
     /// Hash of the payload.
     pub fn hash(&self) -> PayloadHash {
-        PayloadHash(sha256::Sha256::new(&self.0))
+        PayloadHash(keccak256::Keccak256::new(&self.0))
     }
 }
 
@@ -63,17 +66,17 @@ impl fmt::Display for BlockNumber {
 
 /// Hash of the block.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BlockHeaderHash(pub(crate) sha256::Sha256);
+pub struct BlockHeaderHash(pub(crate) keccak256::Keccak256);
 
 impl TextFmt for BlockHeaderHash {
     fn encode(&self) -> String {
         format!(
-            "block_hash:sha256:{}",
+            "block_hash:keccak256:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
     }
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("block_hash:sha256:")?.decode_hex().map(Self)
+        text.strip("block_hash:keccak256:")?.decode_hex().map(Self)
     }
 }
 
@@ -97,13 +100,13 @@ pub struct BlockHeader {
 impl BlockHeader {
     /// Returns the hash of the block.
     pub fn hash(&self) -> BlockHeaderHash {
-        BlockHeaderHash(sha256::Sha256::new(&schema::canonical(self)))
+        BlockHeaderHash(keccak256::Keccak256::new(&schema::canonical(self)))
     }
 
     /// Creates a genesis block.
     pub fn genesis(payload: PayloadHash) -> Self {
         Self {
-            parent: BlockHeaderHash(sha256::Sha256::default()),
+            parent: BlockHeaderHash(keccak256::Keccak256::default()),
             number: BlockNumber(0),
             payload,
         }

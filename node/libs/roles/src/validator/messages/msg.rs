@@ -2,7 +2,7 @@
 
 use super::{ConsensusMsg, NetAddress};
 use crate::{node::SessionId, validator};
-use crypto::{bls12_381::Error, sha256, ByteFmt, Text, TextFmt};
+use crypto::{bls12_381::Error, keccak256, ByteFmt, Text, TextFmt};
 use std::fmt;
 use utils::enum_util::{BadVariantError, Variant};
 
@@ -20,7 +20,7 @@ pub enum Msg {
 impl Msg {
     /// Returns the hash of the message.
     pub fn hash(&self) -> MsgHash {
-        MsgHash(sha256::Sha256::new(&schema::canonical(self)))
+        MsgHash(keccak256::Keccak256::new(&schema::canonical(self)))
     }
 }
 
@@ -62,7 +62,7 @@ impl Variant<Msg> for NetAddress {
 
 /// Hash of a message.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub struct MsgHash(pub(crate) sha256::Sha256);
+pub struct MsgHash(pub(crate) keccak256::Keccak256);
 
 impl ByteFmt for MsgHash {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
@@ -76,12 +76,14 @@ impl ByteFmt for MsgHash {
 
 impl TextFmt for MsgHash {
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("validator_msg:sha256:")?.decode_hex().map(Self)
+        text.strip("validator_msg:keccak256:")?
+            .decode_hex()
+            .map(Self)
     }
 
     fn encode(&self) -> String {
         format!(
-            "validator_msg:sha256:{}",
+            "validator_msg:keccak256:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
     }
