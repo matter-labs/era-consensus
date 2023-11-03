@@ -18,8 +18,6 @@ use test_casing::{test_casing, Product};
 use tracing::Instrument as _;
 use utils::pipe;
 
-const TEST_TIMEOUT: time::Duration = time::Duration::seconds(5);
-
 #[tokio::test]
 async fn test_one_connection_per_node() {
     concurrency::testonly::abort_on_panic();
@@ -484,8 +482,7 @@ async fn run_mock_uncoordinated_dispatcher(
 async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
     concurrency::testonly::abort_on_panic();
 
-    let ctx = &ctx::test_root(&ctx::RealClock).with_timeout(TEST_TIMEOUT);
-    let ctx = &ctx::test_with_clock(ctx, &ctx::ManualClock::new());
+    let ctx = &ctx::test_root(&ctx::ManualClock::new());
     let rng = &mut ctx.rng();
     let mut nodes = testonly::Instance::new(rng, node_count, gossip_peers);
     for node in &mut nodes {
@@ -507,12 +504,11 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
             s.spawn_bg(async {
                 scope::run!(ctx, |ctx, s| async {
                     s.spawn_bg(run_network(ctx, node.state.clone(), network_pipe));
-                    s.spawn_bg(run_get_block_dispatcher(
-                        ctx,
-                        dispatcher_pipe.recv,
-                        block.clone(),
-                    ));
-                    node_stop_receiver.recv_or_disconnected(ctx).await?.ok();
+                    s.spawn_bg(async {
+                        run_get_block_dispatcher(ctx, dispatcher_pipe.recv, block.clone()).await;
+                        Ok(())
+                    });
+                    node_stop_receiver.recv_or_disconnected(ctx).await.ok();
                     Ok(())
                 })
                 .await
@@ -578,7 +574,7 @@ async fn run_get_block_dispatcher(
     ctx: &ctx::Ctx,
     mut receiver: channel::UnboundedReceiver<io::OutputMessage>,
     block: FinalBlock,
-) -> anyhow::Result<()> {
+) {
     while let Ok(message) = receiver.recv(ctx).await {
         match message {
             io::OutputMessage::SyncBlocks(io::SyncBlocksRequest::GetBlock {
@@ -591,7 +587,6 @@ async fn run_get_block_dispatcher(
             other => panic!("received unexpected message: {other:?}"),
         }
     }
-    Ok(())
 }
 
 /// When validator node is restarted, it should immediately override
