@@ -148,7 +148,10 @@ impl Config {
 
             let file_raw = fs::read_to_string(path).context("fs::read()")?;
             let path = ProtoPath::from_input_path(&path,&self.input_root,&self.proto_root);
-            pool_raw.file.push(protox_parse::parse(path.to_str(),&file_raw).context("protox_parse::parse()")?);
+            pool_raw.file.push(protox_parse::parse(path.to_str(),&file_raw).map_err(
+                // rewrapping the error, so that source location is included in the error message.
+                |err|anyhow::anyhow!("{:?}",err)
+            )?);
             proto_paths.push(path);
             Ok(())
         })?;
@@ -157,8 +160,10 @@ impl Config {
         let mut compiler = protox::Compiler::with_file_resolver(
             protox::file::DescriptorSetFileResolver::new(pool_raw)
         );
-        // TODO: nice compilation errors.
-        compiler.open_files(proto_paths.iter().map(|p|p.to_path())).unwrap();
+        compiler.include_source_info(true);
+        compiler.open_files(proto_paths.iter().map(|p|p.to_path()))
+            // rewrapping the error, so that source location is included in the error message.
+            .map_err(|err|anyhow::anyhow!("{:?}",err))?;
         let descriptor = compiler.file_descriptor_set();
         pool.add_file_descriptor_set(descriptor.clone()).unwrap();
        
