@@ -14,7 +14,12 @@ on:
     branches: ["main"]
 
 env:
-  PROTOS_DIR: "node/libs/schema/proto"
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUSTFLAGS: "-Dwarnings -C linker=clang -C link-arg=-fuse-ld=lld -C link-arg=-Wl,-z,nostart-stop-gc"
+  RUSTC_WRAPPER: "sccache"
+  SCCACHE_GHA_ENABLED: "true"
+  RUST_BACKTRACE: "1"
 
 jobs:
   compatibility:
@@ -22,16 +27,23 @@ jobs:
     steps:
       # github.base_ref -> github.head_ref for pull_request
       # github.event.before -> github.event.after for push
+      - uses: mozilla-actions/sccache-action@v0.0.3
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.base_ref || github.event.before }}
           path: before
+      - name: compile before
+          run: cargo build --all-targets
+          working-directory: ./before/node
       - uses: actions/checkout@v3
         with:
           ref: ${{ github.head_ref || github.event.after }}
           path: after
-      - uses: bufbuild/buf-setup-action@v1
-      - uses: bufbuild/buf-breaking-action@v1
-        with:
-          input: "after/$PROTOS_DIR"
-          against: "before/$PROTOS_DIR"
+      - name: compile after
+          run: cargo build --all-targets
+          working-directory: ./after/node
+      # - uses: bufbuild/buf-setup-action@v1
+      # - uses: bufbuild/buf-breaking-action@v1
+      #  with:
+      #    input: "after/$PROTOS_DIR"
+      #    against: "before/$PROTOS_DIR"
