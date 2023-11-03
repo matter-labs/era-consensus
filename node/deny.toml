@@ -59,7 +59,7 @@ skip = [
     { name = "regex-syntax", version = "=0.6.29" },
 
     # Old versions required by hyper.
-    { name = "socket2", version = "=0.4.9" },
+    { name = "socket2", version = "=0.4.10" },
 ]
 
 [sources]
