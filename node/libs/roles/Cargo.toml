@@ -14,7 +14,7 @@ rand.workspace = true
 serde.workspace = true
 tracing.workspace = true
 
-protobuf.workspace = true
+zksync_protobuf.workspace = true
 concurrency = { path = "../concurrency" }
 crypto = { path = "../crypto" }
 schema = { path = "../schema" }

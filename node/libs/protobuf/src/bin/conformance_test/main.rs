@@ -1,8 +1,8 @@
 //! Conformance test for our canonical encoding implemented according to
-//! https://github.com/protocolbuffers/protobuf/blob/main/conformance/conformance.proto
+//! https://github.com/protocolbuffers/zksync_protobuf/blob/main/conformance/conformance.proto
 //! Our implementation supports only a subset of proto functionality, so
 //! `schema/proto/conformance/conformance.proto` and
-//! `schema/proto/conformance/protobuf_test_messages.proto` contains only a
+//! `schema/proto/conformance/zksync_protobuf_test_messages.proto` contains only a
 //! subset of original fields. Also we run only proto3 binary -> binary tests.
 //! conformance_test_failure_list.txt contains tests which are expected to fail.
 use anyhow::Context as _;
@@ -31,7 +31,7 @@ async fn main() -> anyhow::Result<()> {
         let req = proto::ConformanceRequest::decode(&msg[..])?;
         let res = async {
             let t = req.message_type.context("missing message_type")?;
-            if t != *"protobuf_test_messages.proto3.TestAllTypesProto3" {
+            if t != *"zksync_protobuf_test_messages.proto3.TestAllTypesProto3" {
                 return Ok(R::Skipped("unsupported".to_string()));
             }
 
@@ -40,7 +40,7 @@ async fn main() -> anyhow::Result<()> {
             use proto::TestAllTypesProto3 as T;
             let p = match payload {
                 proto::conformance_request::Payload::JsonPayload(payload) => {
-                    match protobuf::decode_json_proto(&payload) {
+                    match zksync_protobuf::decode_json_proto(&payload) {
                         Ok(p) => p,
                         Err(_) => return Ok(R::Skipped("unsupported fields".to_string())),
                     }
@@ -51,7 +51,7 @@ async fn main() -> anyhow::Result<()> {
                         return Ok(R::ParseError("parsing failed".to_string()));
                     };
                     // Then check if there are any unknown fields in the original payload.
-                    if protobuf::canonical_raw(&payload[..], &p.descriptor()).is_err() {
+                    if zksync_protobuf::canonical_raw(&payload[..], &p.descriptor()).is_err() {
                         return Ok(R::Skipped("unsupported fields".to_string()));
                     }
                     p
@@ -65,11 +65,11 @@ async fn main() -> anyhow::Result<()> {
                 .context("missing output format")?;
             match proto::WireFormat::try_from(format).context("unknown format")? {
                 proto::WireFormat::Json => {
-                    anyhow::Ok(R::JsonPayload(protobuf::encode_json_proto(&p)))
+                    anyhow::Ok(R::JsonPayload(zksync_protobuf::encode_json_proto(&p)))
                 }
                 proto::WireFormat::Protobuf => {
                     // Reencode the parsed proto.
-                    anyhow::Ok(R::ProtobufPayload(protobuf::canonical_raw(
+                    anyhow::Ok(R::ProtobufPayload(zksync_protobuf::canonical_raw(
                         &p.encode_to_vec(),
                         &p.descriptor(),
                     )?))

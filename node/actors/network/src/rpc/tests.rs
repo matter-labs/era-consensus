@@ -21,8 +21,8 @@ fn test_capability_rpc_correspondence() {
 #[test]
 fn test_schema_encode_decode() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
-    protobuf::testonly::test_encode_random::<_, consensus::Req>(rng);
-    protobuf::testonly::test_encode_random::<_, sync_validator_addrs::Resp>(rng);
+    zksync_protobuf::testonly::test_encode_random::<_, consensus::Req>(rng);
+    zksync_protobuf::testonly::test_encode_random::<_, sync_validator_addrs::Resp>(rng);
 }
 
 fn expected(res: Result<(), mux::RunError>) -> Result<(), mux::RunError> {

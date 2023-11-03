@@ -1,14 +1,13 @@
 //! Code generated from protobuf schema files and
 //! utilities for serialization.
 
+pub mod proto;
 mod proto_fmt;
 mod std_conv;
 pub mod testonly;
-pub mod proto;
 
 pub use proto_fmt::*;
-pub use protobuf_build as build;
+pub use zksync_protobuf_build as build;
 
 #[cfg(test)]
 mod tests;
-

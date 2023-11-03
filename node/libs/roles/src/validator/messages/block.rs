@@ -97,7 +97,7 @@ pub struct BlockHeader {
 impl BlockHeader {
     /// Returns the hash of the block.
     pub fn hash(&self) -> BlockHeaderHash {
-        BlockHeaderHash(sha256::Sha256::new(&protobuf::canonical(self)))
+        BlockHeaderHash(sha256::Sha256::new(&zksync_protobuf::canonical(self)))
     }
 
     /// Creates a genesis block.
@@ -145,10 +145,10 @@ impl FinalBlock {
 
 impl ByteFmt for FinalBlock {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        protobuf::decode(bytes)
+        zksync_protobuf::decode(bytes)
     }
     fn encode(&self) -> Vec<u8> {
-        protobuf::encode(self)
+        zksync_protobuf::encode(self)
     }
 }
 

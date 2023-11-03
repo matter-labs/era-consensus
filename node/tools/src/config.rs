@@ -3,9 +3,9 @@
 use anyhow::Context as _;
 use crypto::{read_optional_text, Text, TextFmt};
 use executor::{ConsensusConfig, ExecutorConfig};
+use zksync_protobuf::{read_optional, read_required, ProtoFmt};
 use roles::{node, validator};
 use schema::proto::executor::config as proto;
-use protobuf::{read_optional, read_required, ProtoFmt};
 use std::{fs, net, path::Path};
 
 /// This struct holds the file path to each of the config files.
@@ -77,7 +77,7 @@ impl Configs {
                 args.config.display()
             )
         })?;
-        let node_config: NodeConfig = protobuf::decode_json(&node_config).with_context(|| {
+        let node_config: NodeConfig = zksync_protobuf::decode_json(&node_config).with_context(|| {
             format!(
                 "failed decoding JSON node config at `{}`",
                 args.config.display()

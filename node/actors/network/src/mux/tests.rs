@@ -72,7 +72,7 @@ struct Resp {
     capability_id: mux::CapabilityId,
 }
 
-impl protobuf::ProtoFmt for Req {
+impl zksync_protobuf::ProtoFmt for Req {
     type Proto = proto::Req;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(r.input.as_ref().unwrap().clone()))
@@ -84,7 +84,7 @@ impl protobuf::ProtoFmt for Req {
     }
 }
 
-impl protobuf::ProtoFmt for Resp {
+impl zksync_protobuf::ProtoFmt for Resp {
     type Proto = proto::Resp;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {

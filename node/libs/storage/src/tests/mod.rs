@@ -127,7 +127,10 @@ fn test_schema_encode_decode() {
     let rng = &mut ctx.rng();
 
     let replica = rng.gen::<ReplicaState>();
-    assert_eq!(replica, protobuf::decode(&protobuf::encode(&replica)).unwrap());
+    assert_eq!(
+        replica,
+        zksync_protobuf::decode(&zksync_protobuf::encode(&replica)).unwrap()
+    );
 }
 
 #[test]

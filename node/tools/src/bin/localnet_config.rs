@@ -110,7 +110,7 @@ fn main() -> anyhow::Result<()> {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
 
-        fs::write(root.join("config.json"), protobuf::encode_json(&node_cfg))
+        fs::write(root.join("config.json"), zksync_protobuf::encode_json(&node_cfg))
             .context("fs::write()")?;
         fs::write(
             root.join("validator_key"),

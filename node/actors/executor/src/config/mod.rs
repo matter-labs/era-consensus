@@ -3,9 +3,9 @@
 use anyhow::Context as _;
 use crypto::{read_required_text, Text, TextFmt};
 use network::{consensus, gossip};
+use zksync_protobuf::{read_required, required, ProtoFmt};
 use roles::{node, validator};
 use schema::proto::executor::config as proto;
-use protobuf::{read_required, required, ProtoFmt};
 use std::{
     collections::{HashMap, HashSet},
     net,

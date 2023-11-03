@@ -2,9 +2,9 @@
 use crate::{mux, rpc::Rpc as _};
 use anyhow::Context as _;
 use concurrency::{ctx, limiter, time};
+use zksync_protobuf::{required, ProtoFmt};
 use rand::Rng;
 use schema::proto::network::ping as proto;
-use protobuf::{required, ProtoFmt};
 
 /// Ping RPC.
 pub(crate) struct Rpc;
@@ -65,7 +65,7 @@ pub(crate) struct Resp(pub(crate) [u8; 32]);
 impl ProtoFmt for Req {
     type Proto = proto::PingReq;
     fn max_size() -> usize {
-        protobuf::kB
+        zksync_protobuf::kB
     }
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(required(&r.data)?[..].try_into()?))
@@ -80,7 +80,7 @@ impl ProtoFmt for Req {
 impl ProtoFmt for Resp {
     type Proto = proto::PingResp;
     fn max_size() -> usize {
-        protobuf::kB
+        zksync_protobuf::kB
     }
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(required(&r.data)?[..].try_into()?))

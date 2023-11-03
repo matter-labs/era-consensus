@@ -1,11 +1,11 @@
 use super::{ConsensusConfig, ExecutorConfig, GossipConfig};
 use concurrency::ctx;
+use zksync_protobuf::testonly::test_encode_random;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
 use roles::{node, validator};
-use protobuf::testonly::test_encode_random;
 
 fn make_addr<R: Rng + ?Sized>(rng: &mut R) -> std::net::SocketAddr {
     std::net::SocketAddr::new(std::net::IpAddr::from(rng.gen::<[u8; 16]>()), rng.gen())

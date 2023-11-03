@@ -416,7 +416,6 @@ dependencies = [
  "crypto",
  "network",
  "once_cell",
- "protobuf",
  "rand",
  "roles",
  "schema",
@@ -426,6 +425,7 @@ dependencies = [
  "tracing",
  "utils",
  "vise",
+ "zksync_protobuf",
 ]
 
 [[package]]
@@ -612,7 +612,6 @@ dependencies = [
  "consensus",
  "crypto",
  "network",
- "protobuf",
  "rand",
  "roles",
  "schema",
@@ -622,6 +621,7 @@ dependencies = [
  "tracing",
  "utils",
  "vise",
+ "zksync_protobuf",
 ]
 
 [[package]]
@@ -1142,7 +1142,6 @@ dependencies = [
  "once_cell",
  "pin-project",
  "pretty_assertions",
- "protobuf",
  "rand",
  "roles",
  "schema",
@@ -1153,6 +1152,7 @@ dependencies = [
  "tracing",
  "utils",
  "vise",
+ "zksync_protobuf",
 ]
 
 [[package]]
@@ -1475,42 +1475,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "protobuf"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bit-vec",
- "concurrency",
- "once_cell",
- "prost",
- "prost-reflect",
- "protobuf_build",
- "quick-protobuf",
- "rand",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "protobuf_build"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "heck",
- "once_cell",
- "prettyplease",
- "prost",
- "prost-build",
- "prost-reflect",
- "prost-types",
- "protox",
- "protox-parse",
- "rand",
- "syn",
-]
-
-[[package]]
 name = "protox"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1666,12 +1630,12 @@ dependencies = [
  "concurrency",
  "crypto",
  "hex",
- "protobuf",
  "rand",
  "schema",
  "serde",
  "tracing",
  "utils",
+ "zksync_protobuf",
 ]
 
 [[package]]
@@ -1723,13 +1687,11 @@ dependencies = [
  "concurrency",
  "once_cell",
  "prost",
- "prost-reflect",
- "protobuf",
- "quick-protobuf",
  "rand",
  "serde",
  "serde_json",
  "tokio",
+ "zksync_protobuf",
 ]
 
 [[package]]
@@ -1911,7 +1873,6 @@ dependencies = [
  "assert_matches",
  "async-trait",
  "concurrency",
- "protobuf",
  "rand",
  "rocksdb",
  "roles",
@@ -1921,6 +1882,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "zksync_protobuf",
 ]
 
 [[package]]
@@ -2094,7 +2056,6 @@ dependencies = [
  "consensus",
  "crypto",
  "executor",
- "protobuf",
  "rand",
  "roles",
  "schema",
@@ -2104,6 +2065,7 @@ dependencies = [
  "tracing-subscriber",
  "utils",
  "vise-exporter",
+ "zksync_protobuf",
 ]
 
 [[package]]
@@ -2411,6 +2373,42 @@ checksum = "ce36e65b0d2999d2aafac989fb249189a141aee1f53c612c1f37d72631959f69"
 dependencies = [
  "proc-macro2",
  "quote",
+ "syn",
+]
+
+[[package]]
+name = "zksync_protobuf"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bit-vec",
+ "concurrency",
+ "once_cell",
+ "prost",
+ "prost-reflect",
+ "quick-protobuf",
+ "rand",
+ "serde",
+ "serde_json",
+ "tokio",
+ "zksync_protobuf_build",
+]
+
+[[package]]
+name = "zksync_protobuf_build"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "heck",
+ "once_cell",
+ "prettyplease",
+ "prost",
+ "prost-build",
+ "prost-reflect",
+ "prost-types",
+ "protox",
+ "protox-parse",
+ "rand",
  "syn",
 ]
 

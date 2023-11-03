@@ -1,9 +1,9 @@
 //! Defines the schema of the database.
 use anyhow::Context as _;
 use concurrency::ctx;
+use zksync_protobuf::{read_required, required, ProtoFmt};
 use roles::validator::{self, BlockNumber};
 use schema::proto::storage as proto;
-use protobuf::{read_required, required, ProtoFmt};
 use std::{iter, ops};
 
 /// A payload of a proposed block which is not known to be finalized yet.

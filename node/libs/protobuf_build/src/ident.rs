@@ -4,7 +4,7 @@ use heck::{ToSnakeCase, ToUpperCamelCase};
 
 /// Converts a `camelCase` or `SCREAMING_SNAKE_CASE` identifier to a `lower_snake` case Rust field
 /// identifier.
-pub fn to_snake(s: &str) -> String {
+pub(crate) fn to_snake(s: &str) -> String {
     let mut ident = s.to_snake_case();
 
     // Use a raw identifier if the identifier matches a Rust keyword:
@@ -30,7 +30,7 @@ pub fn to_snake(s: &str) -> String {
 }
 
 /// Converts a `snake_case` identifier to an `UpperCamel` case Rust type identifier.
-pub fn to_upper_camel(s: &str) -> String {
+pub(crate) fn to_upper_camel(s: &str) -> String {
     let mut ident = s.to_upper_camel_case();
 
     // Suffix an underscore for the `Self` Rust keyword as it is not allowed as raw identifier.

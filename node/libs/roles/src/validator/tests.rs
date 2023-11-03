@@ -1,7 +1,7 @@
 use super::*;
-use protobuf::testonly::test_encode_random;
 use concurrency::ctx;
 use crypto::{ByteFmt, Text, TextFmt};
+use zksync_protobuf::testonly::test_encode_random;
 use rand::Rng;
 use std::vec;
 

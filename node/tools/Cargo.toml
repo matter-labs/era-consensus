@@ -17,7 +17,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 vise-exporter.workspace = true
 
-protobuf.workspace = true
+zksync_protobuf.workspace = true
 concurrency = { path = "../libs/concurrency" }
 crypto = { path = "../libs/crypto" }
 roles = { path = "../libs/roles" }

@@ -27,24 +27,25 @@
 //! perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/' `find target/debug/build/*/output -type f` | xargs cat > /tmp/sum.binpb
 //! buf breaking /tmp/sum.binpb --against /tmp/sum.binpb
 use anyhow::Context as _;
-use std::{fs, path::Path};
-use prost::Message as _;
-use std::sync::Mutex;
-pub use syntax::*;
-
+pub use once_cell::sync::Lazy;
 // Imports accessed from the generated code.
 pub use prost;
+use prost::Message as _;
 pub use prost_reflect;
-pub use once_cell::sync::Lazy;
+use std::{fs, path::Path, sync::Mutex};
+pub use syntax::*;
 
-mod ident;
 mod canonical;
+mod ident;
 mod syntax;
 
 /// Traversed all the files in a directory recursively.
-fn traverse_files(path: &Path, f: &mut impl FnMut(&Path) -> anyhow::Result<()>) -> anyhow::Result<()> {
+fn traverse_files(
+    path: &Path,
+    f: &mut impl FnMut(&Path) -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
     if !path.is_dir() {
-        f(path).with_context(||path.to_str().unwrap().to_string())?;
+        f(path).with_context(|| path.to_str().unwrap().to_string())?;
         return Ok(());
     }
     for entry in fs::read_dir(path)? {
@@ -62,17 +63,27 @@ pub struct Descriptor {
 
 impl Descriptor {
     /// Constructs a Descriptor.
-    pub fn new(proto_root: ProtoName, dependencies: Vec<&'static Descriptor>, descriptor_bytes: &impl AsRef<[u8]>) -> Self {
+    pub fn new(
+        proto_root: ProtoName,
+        dependencies: Vec<&'static Descriptor>,
+        descriptor_bytes: &impl AsRef<[u8]>,
+    ) -> Self {
         Descriptor {
             proto_root,
             dependencies,
-            descriptor_proto: prost_types::FileDescriptorSet::decode(descriptor_bytes.as_ref()).unwrap(),
+            descriptor_proto: prost_types::FileDescriptorSet::decode(descriptor_bytes.as_ref())
+                .unwrap(),
         }
     }
 
     /// Loads the descriptor to the pool, if not already loaded.
     pub fn load(&self, pool: &mut prost_reflect::DescriptorPool) -> anyhow::Result<()> {
-        if self.descriptor_proto.file.iter().all(|f| pool.get_file_by_name(f.name()).is_some()) {
+        if self
+            .descriptor_proto
+            .file
+            .iter()
+            .all(|f| pool.get_file_by_name(f.name()).is_some())
+        {
             return Ok(());
         }
         for d in &self.dependencies {
@@ -84,7 +95,7 @@ impl Descriptor {
 
     /// Loads the descriptor to the global pool and returns a copy of the global pool.
     pub fn load_global(&self) -> prost_reflect::DescriptorPool {
-        static POOL : Lazy<Mutex<prost_reflect::DescriptorPool>> = Lazy::new(||Mutex::default());
+        static POOL: Lazy<Mutex<prost_reflect::DescriptorPool>> = Lazy::new(Mutex::default);
         let pool = &mut POOL.lock().unwrap();
         self.load(pool).unwrap();
         pool.clone()
@@ -106,13 +117,17 @@ pub struct Config {
 impl Config {
     /// Location of the protobuf_build crate, visible from the generated code.
     fn this_crate(&self) -> RustName {
-        self.protobuf_crate.clone().add("build")
+        self.protobuf_crate.clone().join("build")
     }
 
     /// Generates implementation of `prost_reflect::ReflectMessage` for a rust type generated
     /// from a message of the given `proto_name`.
     fn reflect_impl(&self, proto_name: ProtoName) -> String {
-        let rust_name = proto_name.relative_to(&self.proto_root.to_name()).unwrap().to_rust_type().to_string();
+        let rust_name = proto_name
+            .relative_to(&self.proto_root.to_name())
+            .unwrap()
+            .to_rust_type()
+            .to_string();
         let proto_name = proto_name.to_string();
         let this = self.this_crate().to_string();
         format!("impl {this}::prost_reflect::ReflectMessage for {rust_name} {{\
@@ -125,61 +140,78 @@ impl Config {
         }}")
     }
 
-    /// Generates rust code from the proto files according to the config. 
-    pub fn generate(&self) -> anyhow::Result<()> { 
-        let input_root = self.input_root.abs();
-        assert!(input_root.is_dir(),"input_root should be a directory");
-        println!("cargo:rerun-if-changed={input_root:?}");
-        
+    /// Generates rust code from the proto files according to the config.
+    pub fn generate(&self) -> anyhow::Result<()> {
+        assert!(self.input_root.abs().is_dir(), "input_root should be a directory");
+        println!("cargo:rerun-if-changed={}",self.input_root.to_str());
+
         // Load dependencies.
         let mut pool = prost_reflect::DescriptorPool::new();
         for d in &self.dependencies {
-            d.1.load(&mut pool).with_context(||format!("failed to load dependency {}",d.0.to_string()))?;
+            d.1.load(&mut pool)
+                .with_context(|| format!("failed to load dependency {}", d.0.to_string()))?;
         }
         let mut pool_raw = prost_types::FileDescriptorSet::default();
         pool_raw.file = pool.file_descriptor_protos().cloned().collect();
 
         // Load proto files.
         let mut proto_paths = vec![];
-        traverse_files(&input_root, &mut |path| {
-            let Some(ext) = path.extension() else { return Ok(()) };
-            let Some(ext) = ext.to_str() else { return Ok(()) };
-            if ext != "proto" { return Ok(()) };
+        traverse_files(&self.input_root.abs(), &mut |path| {
+            let Some(ext) = path.extension() else {
+                return Ok(());
+            };
+            let Some(ext) = ext.to_str() else {
+                return Ok(());
+            };
+            if ext != "proto" {
+                return Ok(());
+            };
 
             let file_raw = fs::read_to_string(path).context("fs::read()")?;
-            let path = ProtoPath::from_input_path(&path,&self.input_root,&self.proto_root);
-            pool_raw.file.push(protox_parse::parse(path.to_str(),&file_raw).map_err(
-                // rewrapping the error, so that source location is included in the error message.
-                |err|anyhow::anyhow!("{:?}",err)
-            )?);
+            let path = ProtoPath::from_input_path(path, &self.input_root, &self.proto_root);
+            pool_raw
+                .file
+                .push(protox_parse::parse(path.to_str(), &file_raw).map_err(
+                    // rewrapping the error, so that source location is included in the error message.
+                    |err| anyhow::anyhow!("{:?}", err),
+                )?);
             proto_paths.push(path);
             Ok(())
         })?;
 
         // Compile the proto files
         let mut compiler = protox::Compiler::with_file_resolver(
-            protox::file::DescriptorSetFileResolver::new(pool_raw)
+            protox::file::DescriptorSetFileResolver::new(pool_raw),
         );
         compiler.include_source_info(true);
-        compiler.open_files(proto_paths.iter().map(|p|p.to_path()))
+        compiler
+            .open_files(proto_paths.iter().map(|p| p.to_path()))
             // rewrapping the error, so that source location is included in the error message.
-            .map_err(|err|anyhow::anyhow!("{:?}",err))?;
+            .map_err(|err| anyhow::anyhow!("{:?}", err))?;
         let descriptor = compiler.file_descriptor_set();
         pool.add_file_descriptor_set(descriptor.clone()).unwrap();
-       
+
         // Check that the compiled proto files belong to the declared proto package.
         let package_root = self.proto_root.to_name();
         for f in &descriptor.file {
             if !package_root.contains(&f.package().into()) {
-                anyhow::bail!("{:?} ({:?}) does not belong to package {:?}",f.package(),f.name(),package_root.to_string());
+                anyhow::bail!(
+                    "{:?} ({:?}) does not belong to package {:?}",
+                    f.package(),
+                    f.name(),
+                    package_root.to_string()
+                );
             }
         }
 
         // Check that the compiled proto messages support canonical encoding.
-        canonical::check(&descriptor,&pool).context("canonical::check()")?;
+        canonical::check(&descriptor, &pool).context("canonical::check()")?;
 
         // Prepare the output directory.
-        let output_dir = self.input_root.prepare_output_dir().context("prepare_output_dir()")?;
+        let output_dir = self
+            .input_root
+            .prepare_output_dir()
+            .context("prepare_output_dir()")?;
         let output_path = output_dir.join("gen.rs");
         let descriptor_path = output_dir.join("gen.binpb");
         fs::write(&descriptor_path, &descriptor.encode_to_vec())?;
@@ -188,29 +220,40 @@ impl Config {
         // Generate code out of compiled proto files.
         let mut output = RustModule::default();
         let mut config = prost_build::Config::new();
-        config.prost_path(self.this_crate().add("prost").to_string());
+        config.prost_path(self.this_crate().join("prost").to_string());
         config.skip_protoc_run();
         for d in &self.dependencies {
             for f in &d.1.descriptor_proto.file {
-                let proto_rel = ProtoName::from(f.package()).relative_to(&d.1.proto_root).unwrap();
-                let rust_abs = d.0.clone().add(proto_rel.to_rust_module());
-                config.extern_path(format!(".{}",f.package()), rust_abs.to_string());
+                let proto_rel = ProtoName::from(f.package())
+                    .relative_to(&d.1.proto_root)
+                    .unwrap();
+                let rust_abs = d.0.clone().join(proto_rel.to_rust_module());
+                config.extern_path(format!(".{}", f.package()), rust_abs.to_string());
             }
         }
         let m = prost_build::Module::from_parts([""]);
         for f in &descriptor.file {
-            let code = config.generate(vec![(m.clone(),f.clone())]).context("generation failed")?;
-            output.sub(&ProtoName::from(f.package()).to_rust_module()).append(&code[&m]);
+            let code = config
+                .generate(vec![(m.clone(), f.clone())])
+                .context("generation failed")?;
+            output
+                .sub(&ProtoName::from(f.package()).to_rust_module())
+                .append(&code[&m]);
         }
 
         // Generate the reflection code.
-        let output = output.sub(&self.proto_root.to_name().to_rust_module()); 
+        let output = output.sub(&self.proto_root.to_name().to_rust_module());
         for proto_name in extract_message_names(&descriptor) {
             output.append(&self.reflect_impl(proto_name));
         }
 
         // Generate the descriptor.
-        let rust_deps = self.dependencies.iter().map(|d|format!("&{}::DESCRIPTOR",d.0.to_string())).collect::<Vec<_>>().join(",");
+        let rust_deps = self
+            .dependencies
+            .iter()
+            .map(|d| format!("&{}::DESCRIPTOR", d.0.to_string()))
+            .collect::<Vec<_>>()
+            .join(",");
         let this = self.this_crate().to_string();
         output.append(&format!("\
             pub static DESCRIPTOR : {this}::Lazy<{this}::Descriptor> = {this}::Lazy::new(|| {{\
@@ -219,7 +262,7 @@ impl Config {
         ",package_root.to_string()));
 
         // Save output.
-        fs::write(&output_path, output.format().context("output.format()")?)?;
+        fs::write(output_path, output.format().context("output.format()")?)?;
         Ok(())
     }
 }

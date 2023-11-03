@@ -1,7 +1,7 @@
 use super::CapabilityId;
 use anyhow::Context as _;
+use zksync_protobuf::required;
 use schema::proto::network::mux as proto;
-use protobuf::required;
 use std::collections::HashMap;
 
 pub(super) struct Handshake {
@@ -37,11 +37,11 @@ fn build_capabilities(
         .collect()
 }
 
-impl protobuf::ProtoFmt for Handshake {
+impl zksync_protobuf::ProtoFmt for Handshake {
     type Proto = proto::Handshake;
 
     fn max_size() -> usize {
-        protobuf::kB
+        zksync_protobuf::kB
     }
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {

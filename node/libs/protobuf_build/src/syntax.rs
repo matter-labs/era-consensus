@@ -1,30 +1,42 @@
 //! Utilities for handling strings belonging to various namespaces.
-use std::collections::BTreeMap;
-use anyhow::Context as _;
 use super::ident;
-use std::path::{Path,PathBuf};
+use anyhow::Context as _;
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 
 /// Path relative to $CARGO_MANIFEST_DIR.
-#[derive(Clone,PartialEq,Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct InputPath(PathBuf);
 
 impl From<&str> for InputPath {
-    fn from(s:&str) -> Self { Self(PathBuf::from(s)) }
+    fn from(s: &str) -> Self {
+        Self(PathBuf::from(s))
+    }
 }
 
 impl InputPath {
+    /// Converts the relative input path to str
+    pub(super) fn to_str(&self) -> &str {
+        self.0.to_str().unwrap()
+    }
+
     /// Converts the relative input path to an absolute path in the local file system
     /// (under $CARGO_MANIFEST_DIR).
     pub(super) fn abs(&self) -> PathBuf {
         PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
-            .canonicalize().unwrap().join(&self.0)
+            .canonicalize()
+            .unwrap()
+            .join(&self.0)
     }
 
     /// Output directory path derived from the input path by replacing $CARGO_MANIFEST_DIR with $OUT_DIR.
     /// Re-constructs the derived output directory, as a side-effect.
     pub(super) fn prepare_output_dir(&self) -> anyhow::Result<PathBuf> {
         let output = PathBuf::from(std::env::var("OUT_DIR")?)
-            .canonicalize()?.join(&self.0);
+            .canonicalize()?
+            .join(&self.0);
         let _ = std::fs::remove_dir_all(&output);
         std::fs::create_dir_all(&output)?;
         Ok(output)
@@ -32,28 +44,40 @@ impl InputPath {
 }
 
 /// Absolute path of the proto file used for importing other proto files.
-#[derive(Clone,PartialEq,Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ProtoPath(PathBuf);
 
 impl From<&str> for ProtoPath {
-    fn from(s:&str) -> Self { Self(PathBuf::from(s)) }
+    fn from(s: &str) -> Self {
+        Self(PathBuf::from(s))
+    }
 }
 
 impl ProtoPath {
     /// Converts a proto module path to proto package name by replacing all "/" with ".".
     pub(super) fn to_name(&self) -> ProtoName {
-        ProtoName(self.0.iter().map(|p|p.to_str().unwrap().into()).collect())
+        ProtoName(self.0.iter().map(|p| p.to_str().unwrap().into()).collect())
     }
 
     /// Derives a proto path from an input path by replacing the $CARGO_MANIFEST_DIR/<input_root> with <proto_root>.
-    pub(super) fn from_input_path(path: &Path, input_root: &InputPath, proto_root: &ProtoPath) -> ProtoPath {
-        ProtoPath(proto_root.0.join(&path.strip_prefix(&input_root.abs()).unwrap()))
+    pub(super) fn from_input_path(
+        path: &Path,
+        input_root: &InputPath,
+        proto_root: &ProtoPath,
+    ) -> ProtoPath {
+        ProtoPath(
+            proto_root
+                .0
+                .join(path.strip_prefix(&input_root.abs()).unwrap()),
+        )
     }
 
+    /// Converts ProtoPath to str.
     pub(super) fn to_str(&self) -> &str {
         self.0.to_str().unwrap()
     }
 
+    /// Converts ProtoPath to Path.
     pub(super) fn to_path(&self) -> &Path {
         &self.0
     }
@@ -65,24 +89,30 @@ type Part = String;
 /// generated code is location agnostic (it can be embedded in an arbitrary module within the crate),
 /// you need to manually (in the Config) specify the rust modules containing the generated code
 /// of the dependencies, so that it can be referenced from the newly generated code.
-#[derive(Clone,PartialEq,Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct RustName(Vec<Part>);
 
 impl RustName {
-    pub fn add(mut self, suffix: impl Into<Self>) -> Self {
-        self.0.extend(suffix.into().0.into_iter());
+    pub fn join(mut self, suffix: impl Into<Self>) -> Self {
+        self.0.extend(suffix.into().0);
         self
     }
 
-    pub fn to_string(&self) -> String { self.0.join("::") }
+    pub fn to_string(&self) -> String {
+        self.0.join("::")
+    }
 }
 
 impl From<prost_build::Module> for RustName {
-    fn from(s:prost_build::Module) -> Self { Self(s.parts().map(Part::from).collect()) }
+    fn from(s: prost_build::Module) -> Self {
+        Self(s.parts().map(Part::from).collect())
+    }
 }
 
 impl From<&str> for RustName {
-    fn from(s:&str) -> Self { Self(s.split("::").map(Part::from).collect()) }
+    fn from(s: &str) -> Self {
+        Self(s.split("::").map(Part::from).collect())
+    }
 }
 
 /// A rust module representation.
@@ -97,7 +127,7 @@ pub(super) struct RustModule {
 
 impl RustModule {
     /// Returns a reference to a given submodule.
-    pub fn sub(&mut self, path: &RustName) -> &mut Self {
+    pub(crate) fn sub(&mut self, path: &RustName) -> &mut Self {
         let mut m = self;
         for part in &path.0 {
             m = m.modules.entry(part.into()).or_default();
@@ -106,24 +136,27 @@ impl RustModule {
     }
 
     /// Appends code to the module.
-    pub fn append(&mut self, code: &str) {
+    pub(crate) fn append(&mut self, code: &str) {
         self.code += code;
     }
 
     fn collect(&self) -> String {
         let mut entries = vec![self.code.clone()];
         entries.extend(
-            self.modules.iter().map(|(name, m)| format!("pub mod {name} {{ {} }}\n", m.collect())),
+            self.modules
+                .iter()
+                .map(|(name, m)| format!("pub mod {name} {{ {} }}\n", m.collect())),
         );
         entries.join("")
     }
 
     /// Collects the code of the module and formats it.
-    pub fn format(&self) -> anyhow::Result<String> {
-        Ok(prettyplease::unparse(&syn::parse_str(&self.collect()).context("syn::parse_str()")?))
+    pub(crate) fn format(&self) -> anyhow::Result<String> {
+        Ok(prettyplease::unparse(
+            &syn::parse_str(&self.collect()).context("syn::parse_str()")?,
+        ))
     }
 }
-
 
 /// In addition to input paths and proto paths, there are also proto names
 /// which are used to reference message types from different proto files.
@@ -133,7 +166,7 @@ impl RustModule {
 /// a) in a single file "a/b/c.proto", or
 /// b) in a collection of files under "a/b/c/" directory
 /// Option b) is useful for defining large packages, because there is no equivalent of "pub use" in proto syntax.
-#[derive(Clone,PartialEq,Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct ProtoName(Vec<String>);
 
 impl ProtoName {
@@ -145,22 +178,26 @@ impl ProtoName {
     /// Strips a given prefix from the name.
     pub fn relative_to(&self, prefix: &Self) -> anyhow::Result<Self> {
         if !prefix.contains(self) {
-            anyhow::bail!("{} does not contain {}",self.to_string(),prefix.to_string());
+            anyhow::bail!(
+                "{} does not contain {}",
+                self.to_string(),
+                prefix.to_string()
+            );
         }
-        Ok(Self(self.0[prefix.0.len()..].iter().cloned().collect()))
+        Ok(Self(self.0[prefix.0.len()..].to_vec()))
     }
 
     /// Converts proto package name to rust module name according to prost_build rules.
     pub fn to_rust_module(&self) -> RustName {
-        RustName(self.0.iter().map(|s|ident::to_snake(s)).collect())
+        RustName(self.0.iter().map(|s| ident::to_snake(s)).collect())
     }
 
     /// Converts proto message name to rust type name according to prost_build rules.
     pub fn to_rust_type(&self) -> RustName {
         let mut rust = self.to_rust_module();
         let n = rust.0.len();
-        rust.0[n-1] = ident::to_upper_camel(&self.0[n-1]);
-        rust 
+        rust.0[n - 1] = ident::to_upper_camel(&self.0[n - 1]);
+        rust
     }
 
     /// Converts ProtoName to string.
@@ -170,17 +207,16 @@ impl ProtoName {
 }
 
 impl From<&str> for ProtoName {
-    fn from(s:&str) -> Self {
-        Self(s.split(".").map(String::from).collect())
+    fn from(s: &str) -> Self {
+        Self(s.split('.').map(String::from).collect())
     }
 }
 
 impl From<&Path> for ProtoName {
-    fn from(p:&Path) -> Self {
-        Self(p.iter().map(|c|c.to_str().unwrap().to_string()).collect())
+    fn from(p: &Path) -> Self {
+        Self(p.iter().map(|c| c.to_str().unwrap().to_string()).collect())
     }
 }
-
 
 /// Extracts names of proto messages defined in the descriptor.
 pub(super) fn extract_message_names(descriptor: &prost_types::FileDescriptorSet) -> Vec<ProtoName> {
@@ -188,7 +224,7 @@ pub(super) fn extract_message_names(descriptor: &prost_types::FileDescriptorSet)
         let mut name = prefix.clone();
         name.0.push(m.name().to_string());
         for m in &m.nested_type {
-            collect(out,&name,m);
+            collect(out, &name, m);
         }
         out.push(name);
     }

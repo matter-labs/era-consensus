@@ -23,8 +23,8 @@ homepage = "https://matter-labs.io/"
 license = "MIT"
 
 [workspace.dependencies]
-protobuf_build = { path = "libs/protobuf_build" }
-protobuf = { path = "libs/protobuf" }
+zksync_protobuf_build = { path = "libs/protobuf_build" }
+zksync_protobuf = { path = "libs/protobuf" }
 
 anyhow = "1"
 assert_matches = "1.5.0"

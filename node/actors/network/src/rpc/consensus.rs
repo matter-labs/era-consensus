@@ -1,9 +1,9 @@
 //! Defines RPC for passing consensus messages.
 use crate::mux;
 use concurrency::{limiter, time};
+use zksync_protobuf::{read_required, ProtoFmt};
 use roles::validator;
 use schema::proto::network::consensus as proto;
-use protobuf::{read_required, ProtoFmt};
 
 /// Consensus RPC.
 pub(crate) struct Rpc;
@@ -46,7 +46,7 @@ impl ProtoFmt for Req {
     }
 
     fn max_size() -> usize {
-        protobuf::MB
+        zksync_protobuf::MB
     }
 }
 
@@ -62,6 +62,6 @@ impl ProtoFmt for Resp {
     }
 
     fn max_size() -> usize {
-        protobuf::kB
+        zksync_protobuf::kB
     }
 }

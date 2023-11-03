@@ -145,7 +145,7 @@ impl RocksdbStorage {
             .next()
             .context("Head block not found")?
             .context("RocksDB error reading head block")?;
-        protobuf::decode(&head_block).context("Failed decoding head block bytes")
+        zksync_protobuf::decode(&head_block).context("Failed decoding head block bytes")
     }
 
     /// Returns a block with the least number stored in this database.
@@ -159,7 +159,7 @@ impl RocksdbStorage {
             .next()
             .context("First stored block not found")?
             .context("RocksDB error reading first stored block")?;
-        protobuf::decode(&first_block).context("Failed decoding first stored block bytes")
+        zksync_protobuf::decode(&first_block).context("Failed decoding first stored block bytes")
     }
 
     fn last_contiguous_block_number_blocking(&self) -> anyhow::Result<BlockNumber> {
@@ -219,7 +219,7 @@ impl RocksdbStorage {
         else {
             return Ok(None);
         };
-        let block = protobuf::decode(&raw_block)
+        let block = zksync_protobuf::decode(&raw_block)
             .with_context(|| format!("Failed decoding block #{number}"))?;
         Ok(Some(block))
     }
@@ -258,7 +258,7 @@ impl RocksdbStorage {
         let mut write_batch = rocksdb::WriteBatch::default();
         write_batch.put(
             DatabaseKey::Block(block_number).encode_key(),
-            protobuf::encode(finalized_block),
+            zksync_protobuf::encode(finalized_block),
         );
         // Commit the transaction.
         db.write(write_batch)
@@ -277,7 +277,7 @@ impl RocksdbStorage {
         else {
             return Ok(None);
         };
-        protobuf::decode(&raw_state)
+        zksync_protobuf::decode(&raw_state)
             .map(Some)
             .context("Failed to decode replica state!")
     }
@@ -286,7 +286,7 @@ impl RocksdbStorage {
         self.write()
             .put(
                 DatabaseKey::ReplicaState.encode_key(),
-                protobuf::encode(replica_state),
+                zksync_protobuf::encode(replica_state),
             )
             .context("Failed putting ReplicaState to RocksDB")
     }

@@ -1,7 +1,7 @@
 use crate::node;
-use protobuf::{read_required, required, ProtoFmt};
 use anyhow::Context as _;
 use crypto::ByteFmt;
+use zksync_protobuf::{read_required, required, ProtoFmt};
 use utils::enum_util::Variant;
 
 impl ProtoFmt for node::Msg {
