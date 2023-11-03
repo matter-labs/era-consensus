@@ -47,8 +47,13 @@ jobs:
       - name: compile after
         run: cargo build --all-targets
         working-directory: ./after/node
-      # - uses: bufbuild/buf-setup-action@v1
-      # - uses: bufbuild/buf-breaking-action@v1
-      #  with:
-      #    input: "after/$PROTOS_DIR"
-      #    against: "before/$PROTOS_DIR"
+      - name: build after.binpb
+        run: >
+          perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/'
+          `find ./after/node/target/debug/build/*/output`
+          | xargs cat > ./after.binpb
+      - uses: bufbuild/buf-setup-action@v1
+      - uses: bufbuild/buf-breaking-action@v1
+        with:
+          input: "./after.binpb"
+          against: "./before.binpb"
