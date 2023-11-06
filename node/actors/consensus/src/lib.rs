@@ -17,12 +17,12 @@
 
 use crate::io::{InputMessage, OutputMessage};
 use anyhow::Context as _;
-use concurrency::ctx;
+use zksync_concurrency::ctx;
 use inner::ConsensusInner;
-use roles::validator;
-use storage::FallbackReplicaStateStore;
+use zksync_consensus_roles::validator;
+use zksync_consensus_storage::FallbackReplicaStateStore;
 use tracing::{info, instrument};
-use utils::pipe::ActorPipe;
+use zksync_consensus_utils::pipe::ActorPipe;
 
 mod inner;
 pub mod io;

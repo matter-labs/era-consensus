@@ -1,5 +1,5 @@
 use crate::pool::PoolWatch;
-use roles::{validator, validator::ValidatorSet};
+use zksync_consensus_roles::{validator, validator::ValidatorSet};
 use std::collections::HashSet;
 
 /// Configuration of the consensus network.

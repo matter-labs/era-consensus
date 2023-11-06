@@ -1,6 +1,6 @@
 use super::*;
 use anyhow::Context as _;
-use concurrency::{ctx, time};
+use zksync_concurrency::{ctx, time};
 use std::net;
 
 #[derive(Debug, PartialEq, Eq)]

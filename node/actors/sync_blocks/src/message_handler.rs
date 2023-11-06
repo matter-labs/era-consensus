@@ -1,11 +1,11 @@
 //! Inner details of `SyncBlocks` actor.
 
 use crate::{io::InputMessage, peers::PeerStatesHandle};
-use concurrency::ctx::{self, channel};
-use network::io::{GetBlockError, GetBlockResponse, SyncBlocksRequest};
-use roles::validator::BlockNumber;
+use zksync_concurrency::ctx::{self, channel};
+use zksync_consensus_network::io::{GetBlockError, GetBlockResponse, SyncBlocksRequest};
+use zksync_consensus_roles::validator::BlockNumber;
 use std::sync::Arc;
-use storage::WriteBlockStore;
+use zksync_consensus_storage::WriteBlockStore;
 use tracing::instrument;
 
 /// Inner details of `SyncBlocks` actor allowing to process messages.

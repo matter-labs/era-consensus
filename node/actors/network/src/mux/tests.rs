@@ -1,8 +1,8 @@
 use crate::{frame, mux, noise, noise::bytes};
 use anyhow::Context as _;
-use concurrency::{ctx, scope};
+use zksync_concurrency::{ctx, scope};
 use rand::Rng as _;
-use schema::proto::network::mux_test as proto;
+use zksync_consensus_schema::proto::network::mux_test as proto;
 use std::{
     collections::BTreeMap,
     sync::{
@@ -10,7 +10,7 @@ use std::{
         Arc,
     },
 };
-use utils::no_copy::NoCopy;
+use zksync_consensus_utils::no_copy::NoCopy;
 
 fn assert_partition(sets: &[u16]) {
     let mut sum = 0;

@@ -1,7 +1,7 @@
 //! Proto conversion for messages in std package.
 use crate::{proto::std as proto, required, ProtoFmt};
 use anyhow::Context as _;
-use concurrency::time;
+use zksync_concurrency::time;
 use std::net;
 
 impl ProtoFmt for () {

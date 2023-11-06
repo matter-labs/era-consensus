@@ -2,7 +2,6 @@
 //! chain of blocks, not a tree (assuming we have all blocks and not have any gap). It allows for basic functionality like inserting a block,
 //! getting a block, checking if a block is contained in the DB. We also store the head of the chain. Storing it explicitly allows us to fetch
 //! the current head quickly.
-
 use crate::{
     traits::{BlockStore, ReplicaStateStore, WriteBlockStore},
     types::{MissingBlockNumbers, ReplicaState},
@@ -10,9 +9,10 @@ use crate::{
 };
 use anyhow::Context as _;
 use async_trait::async_trait;
-use concurrency::{ctx, scope, sync::watch};
+use zksync_concurrency::{ctx, scope, sync::watch};
 use rocksdb::{Direction, IteratorMode, ReadOptions};
-use roles::validator::{BlockNumber, FinalBlock};
+use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
+use zksync_consensus_schema as schema;
 use std::{
     fmt, ops,
     path::Path,

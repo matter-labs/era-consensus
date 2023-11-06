@@ -3,10 +3,10 @@
 //! Each node must have a different key.
 
 use super::{Msg, MsgHash, Signed};
-use crypto::{ed25519, ByteFmt, Text, TextFmt};
+use zksync_consensus_crypto::{ed25519, ByteFmt, Text, TextFmt};
 pub use ed25519::InvalidSignatureError;
 use std::{fmt, sync::Arc};
-use utils::enum_util::Variant;
+use zksync_consensus_utils::enum_util::Variant;
 
 /// A node's secret key.
 #[derive(Clone)]

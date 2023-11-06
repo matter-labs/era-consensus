@@ -1,4 +1,4 @@
-use crypto::{bn254, ByteFmt, Text, TextFmt};
+use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 use std::fmt;
 
 /// A public key for a validator.

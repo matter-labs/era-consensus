@@ -2,7 +2,7 @@ use crate::{
     misc::consensus_threshold,
     testonly::{Behavior, Network, Test},
 };
-use concurrency::ctx;
+use zksync_concurrency::ctx;
 
 async fn run_test(behavior: Behavior, network: Network) {
     concurrency::testonly::abort_on_panic();

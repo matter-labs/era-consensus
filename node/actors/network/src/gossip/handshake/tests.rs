@@ -1,8 +1,8 @@
 use super::*;
 use crate::{frame, noise, testonly};
-use concurrency::{ctx, io, scope};
+use zksync_concurrency::{ctx, io, scope};
 use rand::Rng;
-use roles::node;
+use zksync_consensus_roles::node;
 use std::collections::{HashMap, HashSet};
 
 #[test]

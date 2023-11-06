@@ -1,9 +1,9 @@
 use super::StateMachine;
 use crate::ConsensusInner;
 use anyhow::Context as _;
-use concurrency::ctx;
-use network::io::{ConsensusInputMessage, Target};
-use roles::validator;
+use zksync_concurrency::ctx;
+use zksync_consensus_network::io::{ConsensusInputMessage, Target};
+use zksync_consensus_roles::validator;
 use tracing::instrument;
 
 impl StateMachine {

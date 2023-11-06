@@ -1,8 +1,8 @@
 use super::*;
 use crate::{frame, noise, testonly};
-use concurrency::{ctx, io, scope};
+use zksync_concurrency::{ctx, io, scope};
 use rand::Rng;
-use roles::validator;
+use zksync_consensus_roles::validator;
 
 #[test]
 fn test_schema_encode_decode() {

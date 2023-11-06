@@ -2,11 +2,11 @@ use super::*;
 use crate::tests::TestValidators;
 use assert_matches::assert_matches;
 use async_trait::async_trait;
-use concurrency::time;
+use zksync_concurrency::time;
 use rand::{rngs::StdRng, seq::IteratorRandom, Rng};
-use roles::validator;
+use zksync_consensus_roles::validator;
 use std::{collections::HashSet, fmt};
-use storage::{BlockStore, InMemoryStorage};
+use zksync_consensus_storage::{BlockStore, InMemoryStorage};
 use test_casing::{test_casing, Product};
 
 const TEST_TIMEOUT: time::Duration = time::Duration::seconds(5);

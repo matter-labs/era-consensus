@@ -1,8 +1,8 @@
 //! This module contains utilities that are only meant for testing purposes.
 
 use crate::io::InputMessage;
-use concurrency::oneshot;
-use network::io::ConsensusReq;
+use zksync_concurrency::oneshot;
+use zksync_consensus_network::io::ConsensusReq;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
 #[cfg(test)]

@@ -1,7 +1,7 @@
 use super::*;
 use crate::{event::Event, io, preface, rpc, rpc::Rpc as _, run_network, testonly};
 use anyhow::Context as _;
-use concurrency::{
+use zksync_concurrency::{
     ctx::{self, channel},
     oneshot, scope,
     sync::{watch, Mutex},
@@ -9,14 +9,14 @@ use concurrency::{
 };
 use pretty_assertions::assert_eq;
 use rand::Rng;
-use roles::validator::{self, BlockNumber, FinalBlock};
+use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
 use test_casing::{test_casing, Product};
 use tracing::Instrument as _;
-use utils::pipe;
+use zksync_consensus_utils::pipe;
 
 #[tokio::test]
 async fn test_one_connection_per_node() {

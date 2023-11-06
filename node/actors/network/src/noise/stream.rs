@@ -1,11 +1,11 @@
 //! `tokio::io` stream using Noise encryption.
 use super::bytes;
 use crate::metrics::MeteredStream;
-use concurrency::{
+use zksync_concurrency::{
     ctx, io,
     io::{AsyncRead as _, AsyncWrite as _},
 };
-use crypto::{sha256::Sha256, ByteFmt};
+use zksync_consensus_crypto::{sha256::Sha256, ByteFmt};
 use std::{
     pin::Pin,
     task::{ready, Context, Poll},

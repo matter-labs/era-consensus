@@ -1,6 +1,6 @@
 use super::{Error, PublicKey};
 use crate::validator::messages::{Msg, MsgHash};
-use crypto::{bn254, ByteFmt, Text, TextFmt};
+use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 use std::fmt;
 
 /// A signature from a validator.

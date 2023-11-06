@@ -1,6 +1,6 @@
 use super::*;
 use crate::noise;
-use concurrency::{ctx, time};
+use zksync_concurrency::{ctx, time};
 use rand::Rng as _;
 use std::{
     collections::HashSet,

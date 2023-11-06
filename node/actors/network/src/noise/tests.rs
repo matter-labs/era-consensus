@@ -1,5 +1,5 @@
 use crate::noise;
-use concurrency::{ctx, io, scope};
+use zksync_concurrency::{ctx, io, scope};
 use rand::Rng;
 use tracing::instrument::Instrument as _;
 

@@ -3,12 +3,12 @@
 use super::*;
 use anyhow::Context as _;
 use async_trait::async_trait;
-use concurrency::ctx::channel;
-use network::testonly::Instance as NetworkInstance;
+use zksync_concurrency::ctx::channel;
+use zksync_consensus_network::testonly::Instance as NetworkInstance;
 use rand::seq::SliceRandom;
-use roles::node;
+use zksync_consensus_roles::node;
 use std::fmt;
-use storage::InMemoryStorage;
+use zksync_consensus_storage::InMemoryStorage;
 use test_casing::test_casing;
 use tracing::Instrument;
 

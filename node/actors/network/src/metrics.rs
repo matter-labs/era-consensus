@@ -1,7 +1,7 @@
 //! General-purpose network metrics.
 
 use crate::state::State;
-use concurrency::{ctx, io, net};
+use zksync_concurrency::{ctx, io, net};
 use std::{
     net::SocketAddr,
     pin::Pin,

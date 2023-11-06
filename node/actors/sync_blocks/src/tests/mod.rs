@@ -1,20 +1,20 @@
 //! Tests for the block syncing actor.
 
 use super::*;
-use concurrency::{oneshot, time};
-use network::io::{GetBlockError, GetBlockResponse, SyncBlocksRequest};
+use zksync_concurrency::{oneshot, time};
+use zksync_consensus_network::io::{GetBlockError, GetBlockResponse, SyncBlocksRequest};
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use roles::validator::{
+use zksync_consensus_roles::validator::{
     self,
     testonly::{make_block, make_genesis_block},
     BlockHeader, BlockNumber, CommitQC, FinalBlock, Payload, ValidatorSet,
 };
 use std::iter;
-use storage::InMemoryStorage;
-use utils::pipe;
+use zksync_consensus_storage::InMemoryStorage;
+use zksync_consensus_utils::pipe;
 
 mod end_to_end;
 

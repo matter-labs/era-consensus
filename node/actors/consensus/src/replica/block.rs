@@ -1,6 +1,6 @@
 use super::StateMachine;
 use crate::{inner::ConsensusInner, io::OutputMessage};
-use roles::validator;
+use zksync_consensus_roles::validator;
 use tracing::{info, instrument};
 
 impl StateMachine {

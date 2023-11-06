@@ -2,13 +2,16 @@
 
 use crate::io::Dispatcher;
 use anyhow::Context as _;
-use concurrency::{ctx, ctx::channel, net, scope};
-use consensus::Consensus;
-use roles::{node, validator, validator::FinalBlock};
+use zksync_concurrency::{ctx, ctx::channel, net, scope};
+use zksync_consensus_consensus::Consensus;
+use zksync_consensus_roles::{node, validator, validator::FinalBlock};
 use std::{mem, sync::Arc};
-use storage::{FallbackReplicaStateStore, ReplicaStateStore, WriteBlockStore};
-use sync_blocks::SyncBlocks;
-use utils::pipe;
+use zksync_consensus_storage::{FallbackReplicaStateStore, ReplicaStateStore, WriteBlockStore};
+use zksync_consensus_sync_blocks::SyncBlocks;
+use zksync_consensus_utils::pipe;
+use zksync_consensus_network as network;
+use zksync_consensus_sync_blocks as sync_blocks;
+use zksync_consensus_consensus as consensus;
 
 mod config;
 mod io;

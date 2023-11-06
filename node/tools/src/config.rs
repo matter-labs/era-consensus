@@ -1,10 +1,10 @@
 //! Node configuration.
-
 use anyhow::Context as _;
-use crypto::{read_optional_text, Text, TextFmt};
-use executor::{ConsensusConfig, ExecutorConfig};
-use roles::{node, validator};
-use schema::{proto::executor::config as proto, read_optional, read_required, ProtoFmt};
+use zksync_consensus_crypto::{read_optional_text, Text, TextFmt};
+use zksync_consensus_executor::{ConsensusConfig, ExecutorConfig};
+use zksync_consensus_roles::{node, validator};
+use zksync_consensus_schema::{proto::executor::config as proto, read_optional, read_required, ProtoFmt};
+use zksync_consensus_schema as schema;
 use std::{fs, net, path::Path};
 
 /// This struct holds the file path to each of the config files.

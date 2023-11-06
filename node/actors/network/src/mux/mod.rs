@@ -79,7 +79,7 @@
 //! both sides of the connection can enforce.
 use crate::{frame, noise::bytes};
 use anyhow::Context as _;
-use concurrency::{ctx, ctx::channel, io, scope, sync};
+use zksync_concurrency::{ctx, ctx::channel, io, scope, sync};
 use std::{collections::BTreeMap, sync::Arc};
 
 mod config;

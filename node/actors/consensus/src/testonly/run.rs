@@ -1,15 +1,15 @@
 use super::{Behavior, Metrics, Node};
 use crate::{testonly, Consensus};
 use anyhow::Context;
-use concurrency::{ctx, ctx::channel, oneshot, scope, signal};
-use roles::validator;
+use zksync_concurrency::{ctx, ctx::channel, oneshot, scope, signal};
+use zksync_consensus_roles::validator;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use storage::{FallbackReplicaStateStore, InMemoryStorage};
+use zksync_consensus_storage::{FallbackReplicaStateStore, InMemoryStorage};
 use tracing::Instrument as _;
-use utils::pipe;
+use zksync_consensus_utils::pipe;
 
 #[derive(Clone, Copy)]
 pub(crate) enum Network {
@@ -154,7 +154,7 @@ async fn run_nodes(
                 for (_, recv) in network_recv {
                     s.spawn(async {
                         let mut recv = recv;
-                        use network::io;
+                        use zksync_consensus_network::io;
 
                         while let Ok(io::InputMessage::Consensus(message)) = recv.recv(ctx).await {
                             let msg = || {

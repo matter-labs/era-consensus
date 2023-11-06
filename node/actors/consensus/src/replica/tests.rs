@@ -1,8 +1,8 @@
 use crate::testonly;
-use concurrency::{ctx, scope, time};
-use network::io::{ConsensusInputMessage, Target};
+use zksync_concurrency::{ctx, scope, time};
+use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use rand::Rng;
-use roles::validator::{self, ViewNumber};
+use zksync_consensus_roles::validator::{self, ViewNumber};
 
 #[tokio::test]
 async fn start_new_view_not_leader() {

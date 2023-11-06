@@ -1,6 +1,6 @@
 use crate::{io::SyncState, pool::PoolWatch, rpc, watch::Watch};
-use concurrency::sync::{self, watch, Mutex};
-use roles::{node, validator};
+use zksync_concurrency::sync::{self, watch, Mutex};
+use zksync_consensus_roles::{node, validator};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,

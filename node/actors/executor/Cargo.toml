@@ -1,5 +1,5 @@
 [package]
-name = "executor"
+name = "zksync_consensus_executor"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
@@ -7,20 +7,19 @@ homepage.workspace = true
 license.workspace = true
 
 [dependencies]
+zksync_concurrency.workspace = true
+zksync_consensus_consensus.workspace = true
+zksync_consensus_crypto.workspace = true
+zksync_consensus_network.workspace = true
+zksync_consensus_roles.workspace = true
+zksync_consensus_schema.workspace = true
+zksync_consensus_storage.workspace = true
+zksync_consensus_sync_blocks.workspace = true
+zksync_consensus_utils.workspace = true
+
 anyhow.workspace = true
 tracing.workspace = true
 vise.workspace = true
-
-concurrency = { path = "../../libs/concurrency" }
-crypto = { path = "../../libs/crypto" }
-roles = { path = "../../libs/roles" }
-schema = { path = "../../libs/schema" }
-storage = { path = "../../libs/storage" }
-utils = { path = "../../libs/utils" }
-
-consensus = { path = "../consensus" }
-network = { path = "../network" }
-sync_blocks = { path = "../sync_blocks" }
 
 [dev-dependencies]
 rand.workspace = true

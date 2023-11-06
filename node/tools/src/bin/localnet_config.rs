@@ -1,13 +1,14 @@
 //! This tool constructs collection of node configs for running tests.
 use anyhow::Context as _;
 use clap::Parser;
-use consensus::testonly;
-use crypto::TextFmt;
-use executor::{ConsensusConfig, ExecutorConfig, GossipConfig};
+use zksync_consensus_consensus::testonly;
+use zksync_consensus_crypto::TextFmt;
+use zksync_consensus_executor::{ConsensusConfig, ExecutorConfig, GossipConfig};
 use rand::Rng;
-use roles::{node, validator};
+use zksync_consensus_roles::{node, validator};
 use std::{fs, net::SocketAddr, path::PathBuf};
-use tools::NodeConfig;
+use zksync_consensus_tools::NodeConfig;
+use zksync_consensus_schema as schema;
 
 /// Replaces IP of the address with UNSPECIFIED (aka INADDR_ANY) of the corresponding IP type.
 /// Opening a listener socket with an UNSPECIFIED IP, means that the new connections

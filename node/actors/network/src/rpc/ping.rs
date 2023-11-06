@@ -1,9 +1,10 @@
 //! Defines an RPC for sending ping messages.
 use crate::{mux, rpc::Rpc as _};
 use anyhow::Context as _;
-use concurrency::{ctx, limiter, time};
+use zksync_concurrency::{ctx, limiter, time};
 use rand::Rng;
-use schema::{proto::network::ping as proto, required, ProtoFmt};
+use zksync_consensus_schema::{proto::network::ping as proto, required, ProtoFmt};
+use zksync_consensus_schema as schema;
 
 /// Ping RPC.
 pub(crate) struct Rpc;

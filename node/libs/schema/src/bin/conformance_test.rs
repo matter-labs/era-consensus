@@ -6,10 +6,11 @@
 //! subset of original fields. Also we run only proto3 binary -> binary tests.
 //! conformance_test_failure_list.txt contains tests which are expected to fail.
 use anyhow::Context as _;
-use concurrency::{ctx, io};
+use zksync_concurrency::{ctx, io};
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
-use schema::proto::conformance as proto;
+use zksync_consensus_schema as schema;
+use zksync_consensus_schema::proto::conformance as proto;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -36,7 +37,7 @@ async fn main() -> anyhow::Result<()> {
 
             // Decode.
             let payload = req.payload.context("missing payload")?;
-            use schema::proto::protobuf_test_messages::proto3::TestAllTypesProto3 as T;
+            use zksync_consensus_schema::proto::protobuf_test_messages::proto3::TestAllTypesProto3 as T;
             let p = match payload {
                 proto::conformance_request::Payload::JsonPayload(payload) => {
                     match schema::decode_json_proto(&payload) {

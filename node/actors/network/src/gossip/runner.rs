@@ -6,13 +6,13 @@ use crate::{
 };
 use anyhow::Context;
 use async_trait::async_trait;
-use concurrency::{
+use zksync_concurrency::{
     ctx::{self, channel},
     oneshot, scope,
     sync::{self, watch},
     time,
 };
-use roles::{node, validator};
+use zksync_consensus_roles::{node, validator};
 use std::sync::Arc;
 use tracing::Instrument as _;
 

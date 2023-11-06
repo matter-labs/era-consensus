@@ -1,6 +1,6 @@
 use super::StateMachine;
 use crate::metrics;
-use concurrency::{ctx, metrics::LatencyGaugeExt as _, time};
+use zksync_concurrency::{ctx, metrics::LatencyGaugeExt as _, time};
 use tracing::instrument;
 
 impl StateMachine {

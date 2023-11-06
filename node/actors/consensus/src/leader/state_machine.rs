@@ -1,6 +1,6 @@
 use crate::{metrics, ConsensusInner};
-use concurrency::{ctx, metrics::LatencyHistogramExt as _, time};
-use roles::validator;
+use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _, time};
+use zksync_consensus_roles::validator;
 use std::{
     collections::{BTreeMap, HashMap},
     unreachable,

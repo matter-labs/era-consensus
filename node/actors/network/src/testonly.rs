@@ -1,14 +1,14 @@
 //! Testonly utilities.
 #![allow(dead_code)]
 use crate::{consensus, event::Event, gossip, io::SyncState, Config, State};
-use concurrency::{
+use zksync_concurrency::{
     ctx,
     ctx::channel,
     io, net,
     sync::{self, watch},
 };
 use rand::Rng;
-use roles::validator;
+use zksync_consensus_roles::validator;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,

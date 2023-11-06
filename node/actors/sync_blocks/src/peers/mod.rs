@@ -3,18 +3,18 @@
 use self::events::PeerStateEvent;
 use crate::{io, Config};
 use anyhow::Context as _;
-use concurrency::{
+use zksync_concurrency::{
     ctx::{self, channel},
     oneshot, scope,
     sync::{self, watch, Mutex, Semaphore},
 };
-use network::io::{SyncBlocksInputMessage, SyncState};
-use roles::{
+use zksync_consensus_network::io::{SyncBlocksInputMessage, SyncState};
+use zksync_consensus_roles::{
     node,
     validator::{BlockHeader, BlockNumber, FinalBlock, PayloadHash},
 };
 use std::{collections::HashMap, sync::Arc};
-use storage::WriteBlockStore;
+use zksync_consensus_storage::WriteBlockStore;
 use tracing::instrument;
 
 mod events;

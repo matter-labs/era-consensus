@@ -4,8 +4,8 @@ use crate::{
     traits::{BlockStore, ReplicaStateStore},
     types::{ReplicaState, StorageResult},
 };
-use concurrency::ctx;
-use roles::validator;
+use zksync_concurrency::ctx;
+use zksync_consensus_roles::validator;
 use std::sync::Arc;
 
 impl From<validator::CommitQC> for ReplicaState {

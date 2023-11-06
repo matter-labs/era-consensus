@@ -3,7 +3,7 @@ use super::{
     Config, FrameKind, Header, ReadStream, RunError, Stream, StreamId, StreamKind, WriteStream,
 };
 use crate::noise::bytes;
-use concurrency::{ctx, ctx::channel, oneshot, scope, sync};
+use zksync_concurrency::{ctx, ctx::channel, oneshot, scope, sync};
 use std::sync::Arc;
 
 /// Read frame allocation permit.

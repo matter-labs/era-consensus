@@ -559,43 +559,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 
 [[package]]
-name = "concurrency"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "once_cell",
- "pin-project",
- "rand",
- "sha2",
- "thiserror",
- "time",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "vise",
-]
-
-[[package]]
-name = "consensus"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "concurrency",
- "crypto",
- "network",
- "once_cell",
- "rand",
- "roles",
- "schema",
- "storage",
- "thiserror",
- "tokio",
- "tracing",
- "utils",
- "vise",
-]
-
-[[package]]
 name = "const-oid"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -677,25 +640,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a22b2d63d4d1dc0b7f1b6b2747dd0088008a9be28b6ddf0b1e7d335e3037294"
 dependencies = [
  "cfg-if",
-]
-
-[[package]]
-name = "crypto"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "ark-bn254",
- "ark-ec",
- "ark-serialize",
- "blst",
- "criterion",
- "ed25519-dalek",
- "hex",
- "num-traits",
- "rand",
- "sha2",
- "thiserror",
- "tracing",
 ]
 
 [[package]]
@@ -854,26 +798,6 @@ checksum = "aa68f1b12764fab894d2755d2518754e71b4fd80ecfb822714a1206c2aab39bf"
 dependencies = [
  "cc",
  "libc",
-]
-
-[[package]]
-name = "executor"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "concurrency",
- "consensus",
- "crypto",
- "network",
- "rand",
- "roles",
- "schema",
- "storage",
- "sync_blocks",
- "tokio",
- "tracing",
- "utils",
- "vise",
 ]
 
 [[package]]
@@ -1358,31 +1282,6 @@ name = "multimap"
 version = "0.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e5ce46fe64a9d73be07dcbe690a38ce1b293be448fd8ce1e6c1b8062c9f72c6a"
-
-[[package]]
-name = "network"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "async-trait",
- "concurrency",
- "crypto",
- "futures",
- "im",
- "once_cell",
- "pin-project",
- "pretty_assertions",
- "rand",
- "roles",
- "schema",
- "snow",
- "test-casing",
- "thiserror",
- "tokio",
- "tracing",
- "utils",
- "vise",
-]
 
 [[package]]
 name = "nom"
@@ -1985,22 +1884,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "roles"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bit-vec",
- "concurrency",
- "crypto",
- "hex",
- "rand",
- "schema",
- "serde",
- "tracing",
- "utils",
-]
-
-[[package]]
 name = "rustc-demangle"
 version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2047,28 +1930,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "93fc1dc3aaa9bfed95e02e6eadabb4baf7e3078b0bd1b4d7b6b0b68378900502"
 dependencies = [
  "winapi-util",
-]
-
-[[package]]
-name = "schema"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bit-vec",
- "concurrency",
- "once_cell",
- "prettyplease 0.2.12",
- "prost",
- "prost-build",
- "prost-reflect",
- "prost-reflect-build",
- "protoc-bin-vendored",
- "quick-protobuf",
- "rand",
- "serde",
- "serde_json",
- "syn 2.0.32",
- "tokio",
 ]
 
 [[package]]
@@ -2243,25 +2104,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a8f112729512f8e442d81f95a8a7ddf2b7c6b8a1a6f509a95864142b30cab2d3"
 
 [[package]]
-name = "storage"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "assert_matches",
- "async-trait",
- "concurrency",
- "rand",
- "rocksdb",
- "roles",
- "schema",
- "tempfile",
- "test-casing",
- "thiserror",
- "tokio",
- "tracing",
-]
-
-[[package]]
 name = "strsim"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2293,25 +2135,6 @@ dependencies = [
  "proc-macro2",
  "quote",
  "unicode-ident",
-]
-
-[[package]]
-name = "sync_blocks"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "assert_matches",
- "async-trait",
- "concurrency",
- "network",
- "rand",
- "roles",
- "storage",
- "test-casing",
- "thiserror",
- "tokio",
- "tracing",
- "utils",
 ]
 
 [[package]]
@@ -2444,27 +2267,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tools"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "concurrency",
- "consensus",
- "crypto",
- "executor",
- "rand",
- "roles",
- "schema",
- "storage",
- "tokio",
- "tracing",
- "tracing-subscriber",
- "utils",
- "vise-exporter",
-]
-
-[[package]]
 name = "tower-service"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2565,14 +2367,6 @@ name = "utf8parse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "711b9620af191e0cdc7468a8d14e709c3dcdb115b36f838e601583af800a370a"
-
-[[package]]
-name = "utils"
-version = "0.1.0"
-dependencies = [
- "concurrency",
- "thiserror",
-]
 
 [[package]]
 name = "valuable"
@@ -2867,6 +2661,212 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.32",
+]
+
+[[package]]
+name = "zksync_concurrency"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "once_cell",
+ "pin-project",
+ "rand",
+ "sha2",
+ "thiserror",
+ "time",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "vise",
+]
+
+[[package]]
+name = "zksync_consensus_consensus"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "once_cell",
+ "rand",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "vise",
+ "zksync_concurrency",
+ "zksync_consensus_crypto",
+ "zksync_consensus_network",
+ "zksync_consensus_roles",
+ "zksync_consensus_schema",
+ "zksync_consensus_storage",
+ "zksync_consensus_utils",
+]
+
+[[package]]
+name = "zksync_consensus_crypto"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "ark-bn254",
+ "ark-ec",
+ "ark-serialize",
+ "blst",
+ "criterion",
+ "ed25519-dalek",
+ "hex",
+ "num-traits",
+ "rand",
+ "sha2",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "zksync_consensus_executor"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rand",
+ "tokio",
+ "tracing",
+ "vise",
+ "zksync_concurrency",
+ "zksync_consensus_consensus",
+ "zksync_consensus_crypto",
+ "zksync_consensus_network",
+ "zksync_consensus_roles",
+ "zksync_consensus_schema",
+ "zksync_consensus_storage",
+ "zksync_consensus_sync_blocks",
+ "zksync_consensus_utils",
+]
+
+[[package]]
+name = "zksync_consensus_network"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "futures",
+ "im",
+ "once_cell",
+ "pin-project",
+ "pretty_assertions",
+ "rand",
+ "snow",
+ "test-casing",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "vise",
+ "zksync_concurrency",
+ "zksync_consensus_crypto",
+ "zksync_consensus_roles",
+ "zksync_consensus_schema",
+ "zksync_consensus_utils",
+]
+
+[[package]]
+name = "zksync_consensus_roles"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bit-vec",
+ "hex",
+ "rand",
+ "serde",
+ "tracing",
+ "zksync_concurrency",
+ "zksync_consensus_crypto",
+ "zksync_consensus_schema",
+ "zksync_consensus_utils",
+]
+
+[[package]]
+name = "zksync_consensus_schema"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bit-vec",
+ "once_cell",
+ "prettyplease 0.2.12",
+ "prost",
+ "prost-build",
+ "prost-reflect",
+ "prost-reflect-build",
+ "protoc-bin-vendored",
+ "quick-protobuf",
+ "rand",
+ "serde",
+ "serde_json",
+ "syn 2.0.32",
+ "tokio",
+ "zksync_concurrency",
+]
+
+[[package]]
+name = "zksync_consensus_storage"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "async-trait",
+ "rand",
+ "rocksdb",
+ "tempfile",
+ "test-casing",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "zksync_concurrency",
+ "zksync_consensus_roles",
+ "zksync_consensus_schema",
+]
+
+[[package]]
+name = "zksync_consensus_sync_blocks"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "async-trait",
+ "rand",
+ "test-casing",
+ "thiserror",
+ "tokio",
+ "tracing",
+ "zksync_concurrency",
+ "zksync_consensus_network",
+ "zksync_consensus_roles",
+ "zksync_consensus_storage",
+ "zksync_consensus_utils",
+]
+
+[[package]]
+name = "zksync_consensus_tools"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "rand",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "vise-exporter",
+ "zksync_concurrency",
+ "zksync_consensus_consensus",
+ "zksync_consensus_crypto",
+ "zksync_consensus_executor",
+ "zksync_consensus_roles",
+ "zksync_consensus_schema",
+ "zksync_consensus_storage",
+ "zksync_consensus_utils",
+]
+
+[[package]]
+name = "zksync_consensus_utils"
+version = "0.1.0"
+dependencies = [
+ "thiserror",
+ "zksync_concurrency",
 ]
 
 [[package]]

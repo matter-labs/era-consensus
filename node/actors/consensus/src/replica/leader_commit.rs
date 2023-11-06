@@ -1,8 +1,8 @@
 use super::StateMachine;
 use crate::inner::ConsensusInner;
 use anyhow::Context as _;
-use concurrency::ctx;
-use roles::validator;
+use zksync_concurrency::ctx;
+use zksync_consensus_roles::validator;
 use tracing::instrument;
 
 /// Errors that can occur when processing a "leader commit" message.
