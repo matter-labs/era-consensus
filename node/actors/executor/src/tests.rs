@@ -6,16 +6,6 @@ use concurrency::sync;
 use roles::validator::{BlockNumber, Payload};
 use storage::{BlockStore, InMemoryStorage, StorageError};
 
-async fn run_executor(ctx: &ctx::Ctx, executor: Executor<InMemoryStorage>) -> anyhow::Result<()> {
-    executor.run(ctx).await.or_else(|err| {
-        if err.root_cause().is::<ctx::Canceled>() {
-            Ok(()) // Test has successfully finished
-        } else {
-            Err(err)
-        }
-    })
-}
-
 async fn store_final_blocks(
     ctx: &ctx::Ctx,
     mut blocks_receiver: channel::UnboundedReceiver<FinalBlock>,
@@ -69,7 +59,7 @@ async fn executing_single_validator() {
     let (executor, mut blocks_receiver) = validator.into_executor(storage);
 
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(run_executor(ctx, executor));
+        s.spawn_bg(executor.run(ctx));
 
         let mut expected_block_number = BlockNumber(1);
         while expected_block_number < BlockNumber(5) {
@@ -109,8 +99,8 @@ async fn executing_validator_and_external_node() {
     .unwrap();
 
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(run_executor(ctx, validator));
-        s.spawn_bg(run_executor(ctx, external_node));
+        s.spawn_bg(validator.run(ctx));
+        s.spawn_bg(external_node.run(ctx));
         s.spawn_bg(store_final_blocks(ctx, blocks_receiver, validator_storage));
 
         for _ in 0..5 {
