@@ -81,12 +81,14 @@ impl BlockHeaderHash {
 
 impl TextFmt for BlockHeaderHash {
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("block_hash:sha256:")?.decode_hex().map(Self)
+        text.strip("block_header_hash:sha256:")?
+            .decode_hex()
+            .map(Self)
     }
 
     fn encode(&self) -> String {
         format!(
-            "block_hash:sha256:{}",
+            "block_header_hash:sha256:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
     }
