@@ -71,7 +71,7 @@ jobs:
           which python
           which pip
           python -m pip install --upgrade pip
-          pip install ansible ansible-core google-auth
+          pip install requests ansible ansible-core google-auth
           # /home/runner/_work/_tool/Python/3.12.0/x64/bin/pip install -r infrastructure/loadtests/ansible/requirements.txt
           ansible-galaxy install -r infrastructure/loadtests/ansible/requirements.yml
 
@@ -88,8 +88,8 @@ jobs:
 
       - name: Generate list of host:port for config generator
         working-directory: node
-        env:
-          ANSIBLE_PYTHON_INTERPRETER: /home/runner/_work/_tool/Python/3.12.0/x64/bin/python
+        # env:
+        #   ANSIBLE_PYTHON_INTERPRETER: /home/runner/_work/_tool/Python/3.12.0/x64/bin/python
         run: |
           set -o pipefail
 
