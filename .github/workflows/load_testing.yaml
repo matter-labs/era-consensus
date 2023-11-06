@@ -66,7 +66,7 @@ jobs:
 
       - name: Install Ansible
         run: |
-          sudo apt update && apt install -y openssh-client
+          sudo apt update && sudo apt install -y openssh-client
           python -m pip install --upgrade pip
           pip install -r infrastructure/loadtests/ansible/requirements.txt
           ansible-galaxy install -r infrastructure/loadtests/ansible/requirements.yml
