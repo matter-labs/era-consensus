@@ -5,7 +5,7 @@ use concurrency::ctx::{self, channel};
 use network::io::{GetBlockError, GetBlockResponse, SyncBlocksRequest};
 use roles::validator::BlockNumber;
 use std::sync::Arc;
-use storage::WriteBlockStore;
+use storage::{StorageResult, WriteBlockStore};
 use tracing::instrument;
 
 /// Inner details of `SyncBlocks` actor allowing to process messages.
@@ -22,9 +22,8 @@ pub(crate) struct SyncBlocksMessageHandler {
 impl SyncBlocksMessageHandler {
     /// Implements the message processing loop.
     #[instrument(level = "trace", skip_all, err)]
-    pub(crate) async fn process_messages(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        loop {
-            let input_message = self.message_receiver.recv(ctx).await?;
+    pub(crate) async fn process_messages(mut self, ctx: &ctx::Ctx) -> StorageResult<()> {
+        while let Ok(input_message) = self.message_receiver.recv(ctx).await {
             match input_message {
                 InputMessage::Network(SyncBlocksRequest::UpdatePeerSyncState {
                     peer,
@@ -42,6 +41,7 @@ impl SyncBlocksMessageHandler {
                 }
             }
         }
+        Ok(())
     }
 
     /// Gets a block with the specified `number` from the storage.
@@ -52,7 +52,7 @@ impl SyncBlocksMessageHandler {
         &self,
         ctx: &ctx::Ctx,
         number: BlockNumber,
-    ) -> anyhow::Result<GetBlockResponse> {
+    ) -> StorageResult<GetBlockResponse> {
         Ok(self
             .storage
             .block(ctx, number)
