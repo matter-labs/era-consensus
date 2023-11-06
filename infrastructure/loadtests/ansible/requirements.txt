@@ -1,3 +1,4 @@
 ansible==8.5.0
 ansible-core==2.15.5
 google-auth==2.23.4
+requests=2.31.0
