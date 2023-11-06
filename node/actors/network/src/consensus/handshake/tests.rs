@@ -1,7 +1,7 @@
 use super::*;
 use crate::{frame, noise, testonly};
 use rand::Rng;
-use zksync_concurrency as concurrency;
+use zksync_concurrency::testonly::abort_on_panic;
 use zksync_concurrency::{ctx, io, scope};
 use zksync_consensus_roles::validator;
 use zksync_consensus_schema as schema;
@@ -14,7 +14,7 @@ fn test_schema_encode_decode() {
 
 #[tokio::test]
 async fn test_session_id_mismatch() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
@@ -81,7 +81,7 @@ async fn test_session_id_mismatch() {
 
 #[tokio::test]
 async fn test_peer_mismatch() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
@@ -111,7 +111,7 @@ async fn test_peer_mismatch() {
 
 #[tokio::test]
 async fn test_invalid_signature() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 

@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use rand::{rngs::StdRng, seq::IteratorRandom, Rng};
 use std::{collections::HashSet, fmt};
 use test_casing::{test_casing, Product};
-use zksync_concurrency as concurrency;
+use zksync_concurrency::testonly::abort_on_panic;
 use zksync_concurrency::time;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{BlockStore, InMemoryStorage};
@@ -85,7 +85,7 @@ async fn wait_for_peer_update(
 
 #[instrument(level = "trace")]
 async fn test_peer_states<T: Test>(test: T) {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
 
     let ctx = &ctx::test_root(&ctx::RealClock).with_timeout(TEST_TIMEOUT);
     let clock = ctx::ManualClock::new();

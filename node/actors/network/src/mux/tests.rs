@@ -8,7 +8,7 @@ use std::{
         Arc,
     },
 };
-use zksync_concurrency as concurrency;
+use zksync_concurrency::testonly::abort_on_panic;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_schema as schema;
 use zksync_consensus_schema::proto::network::mux_test as proto;
@@ -195,8 +195,8 @@ fn expected(res: Result<(), mux::RunError>) -> Result<(), mux::RunError> {
 // checking 1 property at a time should be added.
 #[test]
 fn mux_with_noise() {
-    concurrency::testonly::abort_on_panic();
-    concurrency::testonly::with_runtimes(|| async {
+    abort_on_panic();
+    zksync_concurrency::testonly::with_runtimes(|| async {
         let ctx = &ctx::test_root(&ctx::RealClock);
         let rng = &mut ctx.rng();
 
@@ -285,7 +285,7 @@ fn mux_with_noise() {
 
 #[tokio::test]
 async fn test_transport_closed() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let cap: mux::CapabilityId = 0;
     let cfg = Arc::new(mux::Config {

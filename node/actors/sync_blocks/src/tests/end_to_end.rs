@@ -6,7 +6,7 @@ use rand::seq::SliceRandom;
 use std::fmt;
 use test_casing::test_casing;
 use tracing::Instrument;
-use zksync_concurrency as concurrency;
+use zksync_concurrency::testonly::abort_on_panic;
 use zksync_concurrency::ctx::channel;
 use zksync_consensus_network as network;
 use zksync_consensus_network::testonly::Instance as NetworkInstance;
@@ -229,7 +229,7 @@ trait GossipNetworkTest: fmt::Debug + Send {
 async fn test_sync_blocks<T: GossipNetworkTest>(test: T) {
     const CLOCK_SPEEDUP: u32 = 25;
 
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
 
     let ctx = &ctx::test_root(&ctx::AffineClock::new(CLOCK_SPEEDUP as f64))
         .with_timeout(TEST_TIMEOUT * CLOCK_SPEEDUP);

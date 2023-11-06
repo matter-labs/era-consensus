@@ -3,7 +3,7 @@
 use super::*;
 use rand::Rng;
 use std::collections::HashMap;
-use zksync_concurrency as concurrency;
+use zksync_concurrency::testonly::abort_on_panic;
 use zksync_concurrency::sync;
 use zksync_consensus_consensus::testonly::make_genesis;
 use zksync_consensus_network::testonly::Instance;
@@ -95,7 +95,7 @@ impl FullValidatorConfig {
 
 #[tokio::test]
 async fn executing_single_validator() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::root();
     let rng = &mut ctx.rng();
 
@@ -123,7 +123,7 @@ async fn executing_single_validator() {
 
 #[tokio::test]
 async fn executing_validator_and_external_node() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
 

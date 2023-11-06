@@ -5,7 +5,7 @@ use rand::{
     Rng,
 };
 use std::iter;
-use zksync_concurrency as concurrency;
+use zksync_concurrency::testonly::abort_on_panic;
 use zksync_concurrency::{oneshot, time};
 use zksync_consensus_network::io::{GetBlockError, GetBlockResponse, SyncBlocksRequest};
 use zksync_consensus_roles::validator::{
@@ -104,7 +104,7 @@ impl TestValidators {
 
 #[tokio::test]
 async fn subscribing_to_state_updates() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
 
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
@@ -179,7 +179,7 @@ async fn subscribing_to_state_updates() {
 
 #[tokio::test]
 async fn getting_blocks() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
 
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
