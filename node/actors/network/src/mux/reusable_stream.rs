@@ -3,8 +3,8 @@ use super::{
     Config, FrameKind, Header, ReadStream, RunError, Stream, StreamId, StreamKind, WriteStream,
 };
 use crate::noise::bytes;
-use zksync_concurrency::{ctx, ctx::channel, oneshot, scope, sync};
 use std::sync::Arc;
+use zksync_concurrency::{ctx, ctx::channel, oneshot, scope, sync};
 
 /// Read frame allocation permit.
 #[derive(Debug)]

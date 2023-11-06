@@ -6,9 +6,9 @@
 //! subset of original fields. Also we run only proto3 binary -> binary tests.
 //! conformance_test_failure_list.txt contains tests which are expected to fail.
 use anyhow::Context as _;
-use zksync_concurrency::{ctx, io};
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
+use zksync_concurrency::{ctx, io};
 use zksync_consensus_schema as schema;
 use zksync_consensus_schema::proto::conformance as proto;
 

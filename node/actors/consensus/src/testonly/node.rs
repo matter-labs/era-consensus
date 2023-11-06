@@ -1,8 +1,9 @@
 use super::Fuzz;
 use crate::io;
-use zksync_concurrency::{ctx, ctx::channel, scope};
-use zksync_consensus_network::io::ConsensusInputMessage;
 use rand::Rng;
+use zksync_concurrency::{ctx, ctx::channel, scope};
+use zksync_consensus_network as network;
+use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
 use zksync_consensus_utils::pipe::DispatcherPipe;
 

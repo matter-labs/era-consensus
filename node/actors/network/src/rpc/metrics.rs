@@ -2,11 +2,11 @@
 
 use super::Rpc;
 use std::{any::Any, time::Duration};
-use zksync_consensus_schema as schema;
 use vise::{
     Buckets, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Histogram, LabeledFamily, Metrics,
     Unit,
 };
+use zksync_consensus_schema as schema;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelValue)]
 #[metrics(rename_all = "snake_case")]

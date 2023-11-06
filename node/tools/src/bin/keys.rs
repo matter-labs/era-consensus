@@ -1,8 +1,8 @@
 //! This tool generates a validator key pair and prints it to stdout.
 #![allow(clippy::print_stdout)]
 
-use zksync_consensus_roles::validator;
 use zksync_consensus_crypto as crypto;
+use zksync_consensus_roles::validator;
 
 /// This tool generates a validator key pair and prints it to stdout.
 fn main() {

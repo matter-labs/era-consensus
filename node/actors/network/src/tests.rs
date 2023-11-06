@@ -1,6 +1,7 @@
 use crate::{run_network, testonly};
-use zksync_concurrency::{ctx, scope};
 use tracing::Instrument as _;
+use zksync_concurrency as concurrency;
+use zksync_concurrency::{ctx, scope};
 use zksync_consensus_utils::pipe;
 
 /// Test that metrics are correctly defined

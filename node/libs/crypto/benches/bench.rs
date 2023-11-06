@@ -1,8 +1,6 @@
 #![allow(clippy::missing_docs_in_private_items)]
 #![allow(missing_docs)]
 
-extern crate crypto;
-
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::Rng;
 use std::iter::repeat_with;

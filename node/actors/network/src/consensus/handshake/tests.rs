@@ -1,8 +1,10 @@
 use super::*;
 use crate::{frame, noise, testonly};
-use zksync_concurrency::{ctx, io, scope};
 use rand::Rng;
+use zksync_concurrency as concurrency;
+use zksync_concurrency::{ctx, io, scope};
 use zksync_consensus_roles::validator;
+use zksync_consensus_schema as schema;
 
 #[test]
 fn test_schema_encode_decode() {

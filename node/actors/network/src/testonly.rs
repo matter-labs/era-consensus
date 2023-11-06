@@ -1,18 +1,18 @@
 //! Testonly utilities.
 #![allow(dead_code)]
 use crate::{consensus, event::Event, gossip, io::SyncState, Config, State};
+use rand::Rng;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use zksync_concurrency::{
     ctx,
     ctx::channel,
     io, net,
     sync::{self, watch},
 };
-use rand::Rng;
 use zksync_consensus_roles::validator;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
 
 /// Synchronously forwards data from one stream to another.
 pub(crate) async fn forward(

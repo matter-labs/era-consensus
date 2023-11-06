@@ -6,12 +6,12 @@ use super::{
     Signed, Signers, ValidatorSet, ViewNumber, CURRENT_VERSION,
 };
 use bit_vec::BitVec;
-use zksync_concurrency::time;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
 use std::sync::Arc;
+use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
 
 /// Constructs a CommitQC with `CommitQC.message.proposal` matching header.

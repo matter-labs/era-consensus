@@ -1,9 +1,9 @@
 //! This module contains utilities that are only meant for testing purposes.
 
 use crate::io::InputMessage;
+use rand::{distributions::Standard, prelude::Distribution, Rng};
 use zksync_concurrency::oneshot;
 use zksync_consensus_network::io::ConsensusReq;
-use rand::{distributions::Standard, prelude::Distribution, Rng};
 
 #[cfg(test)]
 mod fuzz;

@@ -17,11 +17,11 @@
 
 use crate::io::{InputMessage, OutputMessage};
 use anyhow::Context as _;
-use zksync_concurrency::ctx;
 use inner::ConsensusInner;
+use tracing::{info, instrument};
+use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::FallbackReplicaStateStore;
-use tracing::{info, instrument};
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod inner;

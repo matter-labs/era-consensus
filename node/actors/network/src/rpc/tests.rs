@@ -1,11 +1,12 @@
 use super::*;
 use crate::noise;
-use zksync_concurrency::{ctx, time};
 use rand::Rng as _;
 use std::{
     collections::HashSet,
     sync::atomic::{AtomicU64, Ordering},
 };
+use zksync_concurrency as concurrency;
+use zksync_concurrency::{ctx, time};
 
 /// CAPABILITY_ID should uniquely identify the RPC.
 #[test]

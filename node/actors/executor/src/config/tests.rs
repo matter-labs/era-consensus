@@ -1,9 +1,9 @@
 use super::{ConsensusConfig, ExecutorConfig, GossipConfig};
-use zksync_concurrency::ctx;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
+use zksync_concurrency::ctx;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_schema::testonly::test_encode_random;
 

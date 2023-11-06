@@ -1,14 +1,15 @@
 use super::{Behavior, Metrics, Node};
 use crate::{testonly, Consensus};
 use anyhow::Context;
-use zksync_concurrency::{ctx, ctx::channel, oneshot, scope, signal};
-use zksync_consensus_roles::validator;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use zksync_consensus_storage::{FallbackReplicaStateStore, InMemoryStorage};
 use tracing::Instrument as _;
+use zksync_concurrency::{ctx, ctx::channel, oneshot, scope, signal};
+use zksync_consensus_network as network;
+use zksync_consensus_roles::validator;
+use zksync_consensus_storage::{FallbackReplicaStateStore, InMemoryStorage};
 use zksync_consensus_utils::pipe;
 
 #[derive(Clone, Copy)]

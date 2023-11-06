@@ -1,10 +1,10 @@
 use crate::{io::SyncState, pool::PoolWatch, rpc, watch::Watch};
-use zksync_concurrency::sync::{self, watch, Mutex};
-use zksync_consensus_roles::{node, validator};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
+use zksync_concurrency::sync::{self, watch, Mutex};
+use zksync_consensus_roles::{node, validator};
 
 /// Mapping from validator::PublicKey to a signed validator::NetAddress.
 /// Represents the currents state of node's knowledge about the validator endpoints.

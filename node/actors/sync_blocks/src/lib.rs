@@ -7,14 +7,14 @@ use crate::{
     io::{InputMessage, OutputMessage},
     message_handler::SyncBlocksMessageHandler,
 };
+use std::sync::Arc;
+use tracing::instrument;
 use zksync_concurrency::{
     ctx, scope,
     sync::{self, watch},
 };
 use zksync_consensus_network::io::SyncState;
-use std::sync::Arc;
 use zksync_consensus_storage::WriteBlockStore;
-use tracing::instrument;
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;

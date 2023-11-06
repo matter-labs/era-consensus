@@ -1,10 +1,11 @@
 use super::*;
 use crate::{io, preface, rpc, run_network, testonly};
 use anyhow::Context as _;
-use zksync_concurrency::{ctx, net, scope};
 use rand::Rng;
-use zksync_consensus_roles::validator;
 use tracing::Instrument as _;
+use zksync_concurrency as concurrency;
+use zksync_concurrency::{ctx, net, scope};
+use zksync_consensus_roles::validator;
 use zksync_consensus_utils::pipe;
 
 #[tokio::test]

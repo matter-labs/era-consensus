@@ -1,10 +1,10 @@
 //! Generic message types.
 use super::{ConsensusMsg, NetAddress};
 use crate::{node::SessionId, validator, validator::Error};
-use zksync_consensus_crypto::{sha256, ByteFmt, Text, TextFmt};
 use std::fmt;
-use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
+use zksync_consensus_crypto::{sha256, ByteFmt, Text, TextFmt};
 use zksync_consensus_schema as schema;
+use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
 /// Generic message type for a validator.
 #[derive(Clone, Debug, PartialEq, Eq)]

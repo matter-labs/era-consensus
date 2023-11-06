@@ -2,9 +2,9 @@
 use super::{consensus, event::Event, gossip, metrics, preface};
 use crate::io::{InputMessage, OutputMessage, SyncState};
 use anyhow::Context as _;
+use std::sync::Arc;
 use zksync_concurrency::{ctx, ctx::channel, net, scope, sync::watch};
 use zksync_consensus_roles::validator;
-use std::sync::Arc;
 use zksync_consensus_utils::pipe::ActorPipe;
 
 /// Network actor config.

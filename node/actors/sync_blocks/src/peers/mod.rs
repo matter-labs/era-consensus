@@ -3,6 +3,8 @@
 use self::events::PeerStateEvent;
 use crate::{io, Config};
 use anyhow::Context as _;
+use std::{collections::HashMap, sync::Arc};
+use tracing::instrument;
 use zksync_concurrency::{
     ctx::{self, channel},
     oneshot, scope,
@@ -13,9 +15,7 @@ use zksync_consensus_roles::{
     node,
     validator::{BlockHeader, BlockNumber, FinalBlock, PayloadHash},
 };
-use std::{collections::HashMap, sync::Arc};
 use zksync_consensus_storage::WriteBlockStore;
-use tracing::instrument;
 
 mod events;
 #[cfg(test)]

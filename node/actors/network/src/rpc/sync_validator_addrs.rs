@@ -1,11 +1,11 @@
 //! Defines an Rpc for synchronizing ValidatorAddrs data.
 use crate::mux;
 use anyhow::Context as _;
+use std::sync::Arc;
 use zksync_concurrency::{limiter, time};
 use zksync_consensus_roles::validator;
-use zksync_consensus_schema::{proto::network::gossip as proto, ProtoFmt};
 use zksync_consensus_schema as schema;
-use std::sync::Arc;
+use zksync_consensus_schema::{proto::network::gossip as proto, ProtoFmt};
 
 /// SyncValidatorAddrs Rpc.
 pub(crate) struct Rpc;

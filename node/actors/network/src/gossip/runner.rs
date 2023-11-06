@@ -6,6 +6,8 @@ use crate::{
 };
 use anyhow::Context;
 use async_trait::async_trait;
+use std::sync::Arc;
+use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx::{self, channel},
     oneshot, scope,
@@ -13,8 +15,6 @@ use zksync_concurrency::{
     time,
 };
 use zksync_consensus_roles::{node, validator};
-use std::sync::Arc;
-use tracing::Instrument as _;
 
 /// How often we should retry to establish a connection to a validator.
 /// TODO(gprusak): once it becomes relevant, choose a more appropriate retry strategy.

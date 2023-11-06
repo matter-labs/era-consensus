@@ -1,16 +1,17 @@
 //! End-to-end tests that launch a network of nodes and the `SyncBlocks` actor for each node.
-
 use super::*;
 use anyhow::Context as _;
 use async_trait::async_trait;
-use zksync_concurrency::ctx::channel;
-use zksync_consensus_network::testonly::Instance as NetworkInstance;
 use rand::seq::SliceRandom;
-use zksync_consensus_roles::node;
 use std::fmt;
-use zksync_consensus_storage::InMemoryStorage;
 use test_casing::test_casing;
 use tracing::Instrument;
+use zksync_concurrency as concurrency;
+use zksync_concurrency::ctx::channel;
+use zksync_consensus_network as network;
+use zksync_consensus_network::testonly::Instance as NetworkInstance;
+use zksync_consensus_roles::node;
+use zksync_consensus_storage::InMemoryStorage;
 
 type NetworkDispatcherPipe =
     pipe::DispatcherPipe<network::io::InputMessage, network::io::OutputMessage>;

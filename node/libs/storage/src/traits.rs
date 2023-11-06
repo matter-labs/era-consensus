@@ -1,9 +1,9 @@
 //! Traits for storage.
 use crate::{types::ReplicaState, StorageResult};
 use async_trait::async_trait;
+use std::{fmt, ops, sync::Arc};
 use zksync_concurrency::{ctx, sync::watch};
 use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
-use std::{fmt, ops, sync::Arc};
 
 /// Storage of L2 blocks.
 ///

@@ -1,9 +1,9 @@
 //! Defines the schema of the database.
 use anyhow::Context as _;
+use std::{iter, ops};
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator::{self, BlockNumber};
 use zksync_consensus_schema::{proto::storage as proto, read_required, required, ProtoFmt};
-use std::{iter, ops};
 
 /// A payload of a proposed block which is not known to be finalized yet.
 /// Replicas have to persist such proposed payloads for liveness:

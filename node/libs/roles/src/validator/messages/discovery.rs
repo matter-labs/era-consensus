@@ -1,5 +1,5 @@
-use zksync_concurrency::time;
 use std::net;
+use zksync_concurrency::time;
 
 /// A message broadcasted by a validator
 /// over the gossip network announcing

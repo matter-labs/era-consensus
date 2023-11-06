@@ -2,23 +2,23 @@
 //! manages communication between the actors. It is the main executable in this workspace.
 use anyhow::Context as _;
 use clap::Parser;
-use zksync_concurrency::{
-    ctx::{self, channel},
-    scope, time,
-};
-use zksync_consensus_executor::Executor;
 use std::{
     fs,
     io::IsTerminal as _,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use zksync_consensus_storage::{BlockStore, RocksdbStorage};
-use zksync_consensus_tools::{ConfigPaths, Configs};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
-use zksync_consensus_utils::no_copy::NoCopy;
 use vise_exporter::MetricsExporter;
+use zksync_concurrency::{
+    ctx::{self, channel},
+    scope, time,
+};
+use zksync_consensus_executor::Executor;
+use zksync_consensus_storage::{BlockStore, RocksdbStorage};
+use zksync_consensus_tools::{ConfigPaths, Configs};
+use zksync_consensus_utils::no_copy::NoCopy;
 
 /// Command-line application launching a node executor.
 #[derive(Debug, Parser)]

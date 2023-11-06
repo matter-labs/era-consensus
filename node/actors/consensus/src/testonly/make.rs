@@ -4,9 +4,9 @@ use crate::{
     io::{InputMessage, OutputMessage},
     Consensus,
 };
+use std::sync::Arc;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
-use std::sync::Arc;
 use zksync_consensus_storage::{FallbackReplicaStateStore, InMemoryStorage};
 use zksync_consensus_utils::pipe::{self, DispatcherPipe};
 

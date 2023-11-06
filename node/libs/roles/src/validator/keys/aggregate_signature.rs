@@ -1,7 +1,7 @@
 use super::{Error, PublicKey, Signature};
 use crate::validator::messages::{Msg, MsgHash};
-use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 use std::fmt;
+use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// An aggregate signature from a validator.

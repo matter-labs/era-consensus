@@ -2,6 +2,7 @@ use crate::{
     misc::consensus_threshold,
     testonly::{Behavior, Network, Test},
 };
+use zksync_concurrency as concurrency;
 use zksync_concurrency::ctx;
 
 async fn run_test(behavior: Behavior, network: Network) {

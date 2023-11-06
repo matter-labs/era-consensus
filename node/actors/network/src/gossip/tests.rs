@@ -1,21 +1,23 @@
 use super::*;
 use crate::{event::Event, io, preface, rpc, rpc::Rpc as _, run_network, testonly};
 use anyhow::Context as _;
-use zksync_concurrency::{
-    ctx::{self, channel},
-    oneshot, scope,
-    sync::{watch, Mutex},
-    time,
-};
 use pretty_assertions::assert_eq;
 use rand::Rng;
-use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
 use test_casing::{test_casing, Product};
 use tracing::Instrument as _;
+use zksync_concurrency as concurrency;
+use zksync_concurrency::{
+    ctx::{self, channel},
+    oneshot, scope,
+    sync::{watch, Mutex},
+    time,
+};
+use zksync_consensus_roles as roles;
+use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock};
 use zksync_consensus_utils::pipe;
 
 #[tokio::test]

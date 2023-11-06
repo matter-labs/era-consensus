@@ -9,10 +9,7 @@ use crate::{
 };
 use anyhow::Context as _;
 use async_trait::async_trait;
-use zksync_concurrency::{ctx, scope, sync::watch};
 use rocksdb::{Direction, IteratorMode, ReadOptions};
-use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
-use zksync_consensus_schema as schema;
 use std::{
     fmt, ops,
     path::Path,
@@ -21,6 +18,9 @@ use std::{
         RwLock,
     },
 };
+use zksync_concurrency::{ctx, scope, sync::watch};
+use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
+use zksync_consensus_schema as schema;
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -18,8 +18,8 @@
 use self::metrics::{CallLatencyType, CallType, RPC_METRICS};
 use crate::{frame, mux};
 use anyhow::Context as _;
-use zksync_concurrency::{ctx, io, limiter, metrics::LatencyHistogramExt as _, scope};
 use std::{collections::BTreeMap, sync::Arc};
+use zksync_concurrency::{ctx, io, limiter, metrics::LatencyHistogramExt as _, scope};
 use zksync_consensus_schema as schema;
 
 pub(crate) mod consensus;

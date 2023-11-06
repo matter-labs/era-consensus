@@ -1,7 +1,8 @@
 use crate::testonly;
+use rand::Rng;
+use zksync_concurrency as concurrency;
 use zksync_concurrency::{ctx, scope, time};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use rand::Rng;
 use zksync_consensus_roles::validator::{self, ViewNumber};
 
 #[tokio::test]

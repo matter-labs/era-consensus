@@ -1,7 +1,7 @@
 use super::*;
 use anyhow::Context as _;
-use zksync_concurrency::{ctx, time};
 use std::net;
+use zksync_concurrency::{ctx, time};
 
 #[derive(Debug, PartialEq, Eq)]
 enum B {

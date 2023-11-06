@@ -1,8 +1,8 @@
 use super::*;
-use ::schema::testonly::{test_encode, test_encode_random};
+use rand::Rng;
 use zksync_concurrency::ctx;
 use zksync_consensus_crypto::{ByteFmt, Text, TextFmt};
-use rand::Rng;
+use zksync_consensus_schema::testonly::{test_encode, test_encode_random};
 
 #[test]
 fn test_byte_encoding() {

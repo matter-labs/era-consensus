@@ -1,12 +1,13 @@
 //! High-level tests for `Executor`.
 
 use super::*;
+use rand::Rng;
+use std::collections::HashMap;
+use zksync_concurrency as concurrency;
 use zksync_concurrency::sync;
 use zksync_consensus_consensus::testonly::make_genesis;
 use zksync_consensus_network::testonly::Instance;
-use rand::Rng;
 use zksync_consensus_roles::validator::{BlockNumber, Payload};
-use std::collections::HashMap;
 use zksync_consensus_storage::{BlockStore, InMemoryStorage, StorageError};
 
 async fn run_executor(ctx: &ctx::Ctx, executor: Executor<InMemoryStorage>) -> anyhow::Result<()> {

@@ -1,8 +1,8 @@
 //! Messages related to blocks.
 
 use super::CommitQC;
-use zksync_consensus_crypto::{sha256, ByteFmt, Text, TextFmt};
 use std::fmt;
+use zksync_consensus_crypto::{sha256, ByteFmt, Text, TextFmt};
 use zksync_consensus_schema as schema;
 
 /// Payload of the block. Consensus algorithm does not interpret the payload
