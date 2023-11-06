@@ -6,6 +6,7 @@ use roles::validator::{self, ViewNumber};
 
 #[tokio::test]
 async fn start_new_view_not_leader() {
+    concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::ManualClock::new());
     let rng = &mut ctx.rng();
 

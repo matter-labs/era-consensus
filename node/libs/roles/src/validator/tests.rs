@@ -113,8 +113,8 @@ fn test_signature_verify() {
     let msg1: MsgHash = rng.gen();
     let msg2: MsgHash = rng.gen();
 
-    let key1 = SecretKey::generate(rng.gen());
-    let key2 = SecretKey::generate(rng.gen());
+    let key1 = SecretKey::generate(rng);
+    let key2 = SecretKey::generate(rng);
 
     let sig1 = key1.sign_hash(&msg1);
 
@@ -136,13 +136,13 @@ fn test_agg_signature_verify() {
     let msg1: MsgHash = rng.gen();
     let msg2: MsgHash = rng.gen();
 
-    let key1 = SecretKey::generate(rng.gen());
-    let key2 = SecretKey::generate(rng.gen());
+    let key1 = SecretKey::generate(rng);
+    let key2 = SecretKey::generate(rng);
 
     let sig1 = key1.sign_hash(&msg1);
     let sig2 = key2.sign_hash(&msg2);
 
-    let agg_sig = AggregateSignature::aggregate(vec![&sig1, &sig2]).unwrap();
+    let agg_sig = AggregateSignature::aggregate(vec![&sig1, &sig2]);
 
     // Matching key and message.
     assert!(agg_sig

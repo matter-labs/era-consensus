@@ -6,7 +6,7 @@ use concurrency::ctx;
 
 async fn run_test(behavior: Behavior, network: Network) {
     concurrency::testonly::abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(4.));
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(1.));
 
     const NODES: usize = 11;
     let mut nodes = vec![behavior; NODES];
