@@ -8,8 +8,7 @@ use std::{
         Arc,
     },
 };
-use zksync_concurrency::testonly::abort_on_panic;
-use zksync_concurrency::{ctx, scope};
+use zksync_concurrency::{ctx, scope, testonly::abort_on_panic};
 use zksync_consensus_schema as schema;
 use zksync_consensus_schema::proto::network::mux_test as proto;
 use zksync_consensus_utils::no_copy::NoCopy;

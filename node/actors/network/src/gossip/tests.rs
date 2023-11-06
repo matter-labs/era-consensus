@@ -9,11 +9,11 @@ use std::{
 };
 use test_casing::{test_casing, Product};
 use tracing::Instrument as _;
-use zksync_concurrency::testonly::abort_on_panic;
 use zksync_concurrency::{
     ctx::{self, channel},
     oneshot, scope,
     sync::{watch, Mutex},
+    testonly::abort_on_panic,
     time,
 };
 use zksync_consensus_roles as roles;

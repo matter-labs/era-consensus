@@ -5,8 +5,7 @@ use rand::{
     Rng,
 };
 use std::iter;
-use zksync_concurrency::testonly::abort_on_panic;
-use zksync_concurrency::{oneshot, time};
+use zksync_concurrency::{oneshot, testonly::abort_on_panic, time};
 use zksync_consensus_network::io::{GetBlockError, GetBlockResponse, SyncBlocksRequest};
 use zksync_consensus_roles::validator::{
     self,

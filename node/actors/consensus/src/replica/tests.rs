@@ -1,7 +1,6 @@
 use crate::testonly;
 use rand::Rng;
-use zksync_concurrency::testonly::abort_on_panic;
-use zksync_concurrency::{ctx, scope, time};
+use zksync_concurrency::{ctx, scope, testonly::abort_on_panic, time};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator::{self, ViewNumber};
 

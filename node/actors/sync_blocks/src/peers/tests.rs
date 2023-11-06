@@ -5,8 +5,7 @@ use async_trait::async_trait;
 use rand::{rngs::StdRng, seq::IteratorRandom, Rng};
 use std::{collections::HashSet, fmt};
 use test_casing::{test_casing, Product};
-use zksync_concurrency::testonly::abort_on_panic;
-use zksync_concurrency::time;
+use zksync_concurrency::{testonly::abort_on_panic, time};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{BlockStore, InMemoryStorage};
 

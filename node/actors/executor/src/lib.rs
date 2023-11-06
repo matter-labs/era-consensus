@@ -4,12 +4,10 @@ use crate::io::Dispatcher;
 use anyhow::Context as _;
 use std::{mem, sync::Arc};
 use zksync_concurrency::{ctx, ctx::channel, net, scope};
-use zksync_consensus_consensus as consensus;
-use zksync_consensus_consensus::Consensus;
+use zksync_consensus_consensus::{misc::consensus_threshold, Consensus};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator, validator::FinalBlock};
 use zksync_consensus_storage::{FallbackReplicaStateStore, ReplicaStateStore, WriteBlockStore};
-use zksync_consensus_sync_blocks as sync_blocks;
 use zksync_consensus_sync_blocks::SyncBlocks;
 use zksync_consensus_utils::pipe;
 
@@ -182,9 +180,9 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
             None
         };
 
-        let sync_blocks_config = sync_blocks::Config::new(
+        let sync_blocks_config = zksync_consensus_sync_blocks::Config::new(
             validator_set.clone(),
-            consensus::misc::consensus_threshold(validator_set.len()),
+            consensus_threshold(validator_set.len()),
         )?;
         let sync_blocks = SyncBlocks::new(
             ctx,

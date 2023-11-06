@@ -5,8 +5,8 @@ use std::{
     collections::HashSet,
     sync::atomic::{AtomicU64, Ordering},
 };
-use zksync_concurrency::testonly::abort_on_panic;
-use zksync_concurrency::{ctx, time};
+use zksync_concurrency::{ctx, testonly::abort_on_panic, time};
+use zksync_consensus_schema::testonly::test_encode_random;
 
 /// CAPABILITY_ID should uniquely identify the RPC.
 #[test]
@@ -22,8 +22,8 @@ fn test_capability_rpc_correspondence() {
 #[test]
 fn test_schema_encode_decode() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
-    schema::testonly::test_encode_random::<_, consensus::Req>(rng);
-    schema::testonly::test_encode_random::<_, sync_validator_addrs::Resp>(rng);
+    test_encode_random::<_, consensus::Req>(rng);
+    test_encode_random::<_, sync_validator_addrs::Resp>(rng);
 }
 
 fn expected(res: Result<(), mux::RunError>) -> Result<(), mux::RunError> {

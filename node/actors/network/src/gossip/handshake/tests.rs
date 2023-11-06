@@ -2,15 +2,14 @@ use super::*;
 use crate::{frame, noise, testonly};
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
-use zksync_concurrency::testonly::abort_on_panic;
-use zksync_concurrency::{ctx, io, scope};
+use zksync_concurrency::{ctx, io, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::node;
-use zksync_consensus_schema as schema;
+use zksync_consensus_schema::testonly::test_encode_random;
 
 #[test]
 fn test_schema_encode_decode() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
-    schema::testonly::test_encode_random::<_, Handshake>(rng);
+    test_encode_random::<_, Handshake>(rng);
 }
 
 fn make_cfg<R: Rng>(rng: &mut R) -> Config {

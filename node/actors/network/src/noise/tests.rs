@@ -1,8 +1,7 @@
 use crate::noise;
 use rand::Rng;
 use tracing::instrument::Instrument as _;
-use zksync_concurrency::testonly::abort_on_panic;
-use zksync_concurrency::{ctx, io, scope};
+use zksync_concurrency::{ctx, io, scope, testonly::abort_on_panic};
 
 #[tokio::test]
 async fn transmit_ok() {

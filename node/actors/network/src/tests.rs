@@ -1,7 +1,6 @@
 use crate::{run_network, testonly};
 use tracing::Instrument as _;
-use zksync_concurrency::testonly::abort_on_panic;
-use zksync_concurrency::{ctx, scope};
+use zksync_concurrency::{ctx, scope, testonly::abort_on_panic};
 use zksync_consensus_utils::pipe;
 
 /// Test that metrics are correctly defined
