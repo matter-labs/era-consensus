@@ -137,6 +137,7 @@ jobs:
       - name: Run ansible
         working-directory: infrastructure/loadtests/ansible
         run: |
+          sleep 3600
           sa_name=$(gcloud iam service-accounts describe deployer-sandbox@matterlabs-infra.iam.gserviceaccount.com --format='value(uniqueId)')
           ansible-playbook -i gcp.yml \
             --user sa_${sa_name} \
