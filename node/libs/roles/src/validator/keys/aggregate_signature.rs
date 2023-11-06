@@ -1,20 +1,18 @@
 use super::{Error, PublicKey, Signature};
 use crate::validator::messages::{Msg, MsgHash};
-use crypto::{bls12_381, ByteFmt, Text, TextFmt};
+use crypto::{bn254, ByteFmt, Text, TextFmt};
 use std::fmt;
 use utils::enum_util::Variant;
 
 /// An aggregate signature from a validator.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
-pub struct AggregateSignature(pub(crate) bls12_381::AggregateSignature);
+pub struct AggregateSignature(pub(crate) bn254::AggregateSignature);
 
 impl AggregateSignature {
     /// Generate  a new aggregate signature from a list of signatures.
-    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> anyhow::Result<Self> {
-        Ok(AggregateSignature(
-            bls12_381::AggregateSignature::aggregate(
-                sigs.into_iter().map(|sig| &sig.0).collect::<Vec<_>>(),
-            )?,
+    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
+        AggregateSignature(bn254::AggregateSignature::aggregate(
+            sigs.into_iter().map(|sig| &sig.0).collect::<Vec<_>>(),
         ))
     }
 
@@ -55,12 +53,12 @@ impl ByteFmt for AggregateSignature {
 impl TextFmt for AggregateSignature {
     fn encode(&self) -> String {
         format!(
-            "validator:aggregate_signature:bls12_381:{}",
+            "validator:aggregate_signature:bn254:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
     }
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("validator:aggregate_signature:bls12_381:")?
+        text.strip("validator:aggregate_signature:bn254:")?
             .decode_hex()
             .map(Self)
     }

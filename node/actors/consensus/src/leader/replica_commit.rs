@@ -41,7 +41,7 @@ pub(crate) enum Error {
     },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
-    InvalidSignature(#[source] crypto::bls12_381::Error),
+    InvalidSignature(#[source] validator::Error),
 }
 
 impl StateMachine {

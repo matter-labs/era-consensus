@@ -1,9 +1,9 @@
-use crypto::{bls12_381, ByteFmt, Text, TextFmt};
+use crypto::{bn254, ByteFmt, Text, TextFmt};
 use std::fmt;
 
 /// A public key for a validator.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PublicKey(pub(crate) bls12_381::PublicKey);
+pub struct PublicKey(pub(crate) bn254::PublicKey);
 
 impl ByteFmt for PublicKey {
     fn encode(&self) -> Vec<u8> {
@@ -17,12 +17,12 @@ impl ByteFmt for PublicKey {
 impl TextFmt for PublicKey {
     fn encode(&self) -> String {
         format!(
-            "validator:public:bls12_381:{}",
+            "validator:public:bn254:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
     }
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("validator:public:bls12_381:")?
+        text.strip("validator:public:bn254:")?
             .decode_hex()
             .map(Self)
     }

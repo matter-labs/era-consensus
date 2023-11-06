@@ -9,8 +9,20 @@ license.workspace = true
 [dependencies]
 anyhow.workspace = true
 blst.workspace = true
+ark-bn254.workspace = true
+ark-ec.workspace = true
+ark-serialize.workspace = true
+num-traits.workspace = true
 ed25519-dalek.workspace = true
 hex.workspace = true
 rand.workspace = true
 sha2.workspace = true
 thiserror.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+criterion = "0.5.1"
+
+[[bench]]
+name = "bench"
+harness = false
