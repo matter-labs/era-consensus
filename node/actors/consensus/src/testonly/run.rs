@@ -154,8 +154,8 @@ async fn run_nodes(
                 }
                 for (_, recv) in network_recv {
                     s.spawn(async {
-                        let mut recv = recv;
                         use zksync_consensus_network::io;
+                        let mut recv = recv;
 
                         while let Ok(io::InputMessage::Consensus(message)) = recv.recv(ctx).await {
                             let msg = || {
