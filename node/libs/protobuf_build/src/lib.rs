@@ -22,31 +22,28 @@
 //! different crates you need to specify them as dependencies in the Config.dependencies.
 //! It is not possible to depend on a different proto bundle within the same crate (because
 //! these are being built simultaneously from the same build script).
-//!
-//! cargo build --all-targets
-//! perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/' `find target/debug/build/*/output -type f` | xargs cat > /tmp/sum.binpb
-//! buf breaking /tmp/sum.binpb --against /tmp/sum.binpb
 #![allow(clippy::print_stdout)]
 use anyhow::Context as _;
-pub use once_cell::sync::Lazy;
-// Imports accessed from the generated code.
-pub use prost;
 use prost::Message as _;
-pub use prost_reflect;
 use std::{fs, path::Path, sync::Mutex};
-pub use syntax::*;
+
+// Imports accessed from the generated code.
+pub use once_cell::sync::Lazy;
+pub use prost;
+pub use prost_reflect;
+pub use self::syntax::*;
 
 mod canonical;
 mod ident;
 mod syntax;
 
-/// Traversed all the files in a directory recursively.
+/// Traverses all the files in a directory recursively.
 fn traverse_files(
     path: &Path,
     f: &mut impl FnMut(&Path) -> anyhow::Result<()>,
 ) -> anyhow::Result<()> {
     if !path.is_dir() {
-        f(path).with_context(|| path.to_str().unwrap().to_string())?;
+        f(path).with_context(|| path.display().to_string())?;
         return Ok(());
     }
     for entry in fs::read_dir(path)? {
@@ -71,7 +68,7 @@ impl Descriptor {
     pub fn new(
         proto_root: ProtoName,
         dependencies: Vec<&'static Descriptor>,
-        descriptor_bytes: &impl AsRef<[u8]>,
+        descriptor_bytes: &[u8],
     ) -> Self {
         Descriptor {
             proto_root,
@@ -149,10 +146,9 @@ impl Config {
 
     /// Generates rust code from the proto files according to the config.
     pub fn generate(&self) -> anyhow::Result<()> {
-        assert!(
-            self.input_root.abs().is_dir(),
-            "input_root should be a directory"
-        );
+        if !self.input_root.abs()?.is_dir() {
+            anyhow::bail!("input_root should be a directory");
+        }
         println!("cargo:rerun-if-changed={}", self.input_root.to_str());
 
         // Load dependencies.
@@ -166,7 +162,7 @@ impl Config {
 
         // Load proto files.
         let mut proto_paths = vec![];
-        traverse_files(&self.input_root.abs(), &mut |path| {
+        traverse_files(&self.input_root.abs()?, &mut |path| {
             let Some(ext) = path.extension() else {
                 return Ok(());
             };
@@ -178,12 +174,12 @@ impl Config {
             };
 
             let file_raw = fs::read_to_string(path).context("fs::read()")?;
-            let path = ProtoPath::from_input_path(path, &self.input_root, &self.proto_root);
+            let path = ProtoPath::from_input_path(path, &self.input_root, &self.proto_root).context("ProtoPath::from_input_path()")?;
             pool_raw
                 .file
-                .push(protox_parse::parse(path.to_str(), &file_raw).map_err(
+                .push(protox_parse::parse(&path.to_string(), &file_raw).map_err(
                     // rewrapping the error, so that source location is included in the error message.
-                    |err| anyhow::anyhow!("{:?}", err),
+                    |err| anyhow::anyhow!("{err:?}"),
                 )?);
             proto_paths.push(path);
             Ok(())
@@ -197,19 +193,18 @@ impl Config {
         compiler
             .open_files(proto_paths.iter().map(|p| p.to_path()))
             // rewrapping the error, so that source location is included in the error message.
-            .map_err(|err| anyhow::anyhow!("{:?}", err))?;
+            .map_err(|err| anyhow::anyhow!("{err:?}"))?;
         let descriptor = compiler.file_descriptor_set();
         pool.add_file_descriptor_set(descriptor.clone()).unwrap();
 
         // Check that the compiled proto files belong to the declared proto package.
         let package_root = self.proto_root.to_name();
         for f in &descriptor.file {
-            if !package_root.contains(&f.package().into()) {
+            if !ProtoName::from(f.package()).starts_with(&package_root) {
                 anyhow::bail!(
-                    "{:?} ({:?}) does not belong to package {:?}",
+                    "{:?} ({:?}) does not belong to package {package_root}",
                     f.package(),
                     f.name(),
-                    package_root.to_string()
                 );
             }
         }
@@ -267,9 +262,9 @@ impl Config {
         let this = self.this_crate().to_string();
         output.append(&format!("\
             pub static DESCRIPTOR : {this}::Lazy<{this}::Descriptor> = {this}::Lazy::new(|| {{\
-                {this}::Descriptor::new({:?}.into(), vec![{rust_deps}], &include_bytes!({descriptor_path:?}))\
+                {this}::Descriptor::new(\"{package_root}\".into(), vec![{rust_deps}], &include_bytes!({descriptor_path:?})[..])\
             }});\
-        ",package_root.to_string()));
+        "));
 
         // Save output.
         fs::write(output_path, output.format().context("output.format()")?)?;

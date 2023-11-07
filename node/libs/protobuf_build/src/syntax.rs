@@ -25,11 +25,10 @@ impl InputPath {
 
     /// Converts the relative input path to an absolute path in the local file system
     /// (under $CARGO_MANIFEST_DIR).
-    pub(super) fn abs(&self) -> PathBuf {
-        PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap())
-            .canonicalize()
-            .unwrap()
-            .join(&self.0)
+    pub(super) fn abs(&self) -> anyhow::Result<PathBuf> {
+        Ok(PathBuf::from(std::env::var("CARGO_MANIFEST_DIR")?)
+            .canonicalize()?
+            .join(&self.0))
     }
 
     /// Output directory path derived from the input path by replacing $CARGO_MANIFEST_DIR with $OUT_DIR.
@@ -57,7 +56,7 @@ impl From<&str> for ProtoPath {
 impl ProtoPath {
     /// Converts a proto module path to proto package name by replacing all "/" with ".".
     pub(super) fn to_name(&self) -> ProtoName {
-        ProtoName(self.0.iter().map(|p| p.to_str().unwrap().into()).collect())
+        ProtoName(self.0.iter().map(|p| p.to_string_lossy().to_string()).collect())
     }
 
     /// Derives a proto path from an input path by replacing the $CARGO_MANIFEST_DIR/<input_root> with <proto_root>.
@@ -65,17 +64,12 @@ impl ProtoPath {
         path: &Path,
         input_root: &InputPath,
         proto_root: &ProtoPath,
-    ) -> ProtoPath {
-        ProtoPath(
+    ) -> anyhow::Result<ProtoPath> {
+        Ok(ProtoPath(
             proto_root
                 .0
-                .join(path.strip_prefix(&input_root.abs()).unwrap()),
-        )
-    }
-
-    /// Converts ProtoPath to str.
-    pub(super) fn to_str(&self) -> &str {
-        self.0.to_str().unwrap()
+                .join(path.strip_prefix(&input_root.abs()?).unwrap()),
+        ))
     }
 
     /// Converts ProtoPath to Path.
@@ -83,6 +77,14 @@ impl ProtoPath {
         &self.0
     }
 }
+
+impl fmt::Display for ProtoPath {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        self.0.display().fmt(fmt)
+    }
+}
+
+
 
 type Part = String;
 
@@ -175,18 +177,14 @@ pub struct ProtoName(Vec<String>);
 
 impl ProtoName {
     /// Checks if package path starts with the given prefix.
-    pub fn contains(&self, elem: &Self) -> bool {
-        elem.0.len() >= self.0.len() && elem.0[0..self.0.len()] == self.0
+    pub fn starts_with(&self, prefix: &Self) -> bool {
+        self.0.len() >= prefix.0.len() && self.0[0..prefix.0.len()] == prefix.0
     }
 
     /// Strips a given prefix from the name.
     pub fn relative_to(&self, prefix: &Self) -> anyhow::Result<Self> {
-        if !prefix.contains(self) {
-            anyhow::bail!(
-                "{} does not contain {}",
-                self.to_string(),
-                prefix.to_string()
-            );
+        if !self.starts_with(prefix) {
+            anyhow::bail!("{self} does not contain {prefix}");
         }
         Ok(Self(self.0[prefix.0.len()..].to_vec()))
     }

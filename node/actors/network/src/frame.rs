@@ -1,5 +1,5 @@
-//! Simple frame encoding format (length ++ value) for zksync_protobuf messages,
-//! since zksync_protobuf messages do not have delimiters.
+//! Simple frame encoding format (length ++ value) for protobuf messages,
+//! since protobuf messages do not have delimiters.
 use crate::{mux, noise::bytes};
 use concurrency::{ctx, io};
 
