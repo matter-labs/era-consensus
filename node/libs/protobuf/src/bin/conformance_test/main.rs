@@ -12,6 +12,7 @@ use prost_reflect::ReflectMessage;
 use std::sync::Mutex;
 
 mod proto;
+use proto::zksync::protobuf::conformance_test as proto_;
 
 /// Runs the test server.
 async fn run() -> anyhow::Result<()> {
@@ -28,8 +29,8 @@ async fn run() -> anyhow::Result<()> {
         let mut msg = vec![0u8; msg_size as usize];
         io::read_exact(ctx, stdin, &mut msg[..]).await??;
 
-        use proto::conformance_response::Result as R;
-        let req = proto::ConformanceRequest::decode(&msg[..])?;
+        use proto_::conformance_response::Result as R;
+        let req = proto_::ConformanceRequest::decode(&msg[..])?;
         let res = async {
             let t = req.message_type.context("missing message_type")?;
             if t != *"protobuf_test_messages.proto3.TestAllTypesProto3" {
@@ -38,15 +39,15 @@ async fn run() -> anyhow::Result<()> {
 
             // Decode.
             let payload = req.payload.context("missing payload")?;
-            use proto::TestAllTypesProto3 as T;
+            use proto_::TestAllTypesProto3 as T;
             let p = match payload {
-                proto::conformance_request::Payload::JsonPayload(payload) => {
+                proto_::conformance_request::Payload::JsonPayload(payload) => {
                     match zksync_protobuf::decode_json_proto(&payload) {
                         Ok(p) => p,
                         Err(_) => return Ok(R::Skipped("unsupported fields".to_string())),
                     }
                 }
-                proto::conformance_request::Payload::ProtobufPayload(payload) => {
+                proto_::conformance_request::Payload::ProtobufPayload(payload) => {
                     // First filter out incorrect encodings.
                     let Ok(p) = T::decode(&payload[..]) else {
                         return Ok(R::ParseError("parsing failed".to_string()));
@@ -64,11 +65,11 @@ async fn run() -> anyhow::Result<()> {
             let format = req
                 .requested_output_format
                 .context("missing output format")?;
-            match proto::WireFormat::try_from(format).context("unknown format")? {
-                proto::WireFormat::Json => {
+            match proto_::WireFormat::try_from(format).context("unknown format")? {
+                proto_::WireFormat::Json => {
                     anyhow::Ok(R::JsonPayload(zksync_protobuf::encode_json_proto(&p)))
                 }
-                proto::WireFormat::Protobuf => {
+                proto_::WireFormat::Protobuf => {
                     // Reencode the parsed proto.
                     anyhow::Ok(R::ProtobufPayload(zksync_protobuf::canonical_raw(
                         &p.encode_to_vec(),
@@ -79,7 +80,7 @@ async fn run() -> anyhow::Result<()> {
             }
         }
         .await?;
-        let resp = proto::ConformanceResponse { result: Some(res) };
+        let resp = proto_::ConformanceResponse { result: Some(res) };
 
         // Write the response.
         let msg = resp.encode_to_vec();

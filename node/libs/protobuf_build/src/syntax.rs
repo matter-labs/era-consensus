@@ -55,21 +55,24 @@ impl From<&str> for ProtoPath {
 
 impl ProtoPath {
     /// Converts a proto module path to proto package name by replacing all "/" with ".".
-    pub(super) fn to_name(&self) -> ProtoName {
-        ProtoName(self.0.iter().map(|p| p.to_string_lossy().to_string()).collect())
+    pub(super) fn to_name(&self) -> anyhow::Result<ProtoName> {
+        let mut parts = vec![];
+        for p in self.0.iter() {
+            parts.push(p.to_str().context("invalid proto path")?.to_string());
+        }
+        Ok(ProtoName(parts))
+    }
+
+    pub(super) fn parent(&self) -> Option<Self> {
+        self.0.parent().map(|p|Self(p.into()))
     }
 
     /// Derives a proto path from an input path by replacing the $CARGO_MANIFEST_DIR/<input_root> with <proto_root>.
     pub(super) fn from_input_path(
         path: &Path,
         input_root: &InputPath,
-        proto_root: &ProtoPath,
     ) -> anyhow::Result<ProtoPath> {
-        Ok(ProtoPath(
-            proto_root
-                .0
-                .join(path.strip_prefix(&input_root.abs()?).unwrap()),
-        ))
+        Ok(ProtoPath(path.strip_prefix(&input_root.abs()?)?.to_path_buf()))
     }
 
     /// Converts ProtoPath to Path.
