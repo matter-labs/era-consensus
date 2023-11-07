@@ -63,6 +63,7 @@ impl ProtoPath {
         Ok(ProtoName(parts))
     }
 
+    /// Returns path to the parent directory.
     pub(super) fn parent(&self) -> Option<Self> {
         self.0.parent().map(|p| Self(p.into()))
     }
