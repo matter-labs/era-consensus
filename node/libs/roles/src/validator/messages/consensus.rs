@@ -5,7 +5,7 @@ use crate::validator;
 use anyhow::{bail, Context};
 use bit_vec::BitVec;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use utils::enum_util::{BadVariantError, Variant};
+use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
 /// Version of the consensus algorithm that the validator is using.
 /// It allows to prevent misinterpretation of messages signed by validators

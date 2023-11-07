@@ -1,11 +1,11 @@
 use crate::{metrics, ConsensusInner};
-use concurrency::{ctx, metrics::LatencyHistogramExt as _, time};
-use roles::validator;
 use std::{
     collections::{BTreeMap, HashMap},
     unreachable,
 };
 use tracing::instrument;
+use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _, time};
+use zksync_consensus_roles::validator;
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for

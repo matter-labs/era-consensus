@@ -4,11 +4,11 @@ use crate::{
     io::{InputMessage, OutputMessage},
     Consensus,
 };
-use concurrency::ctx;
-use roles::validator;
 use std::sync::Arc;
-use storage::{FallbackReplicaStateStore, InMemoryStorage};
-use utils::pipe::{self, DispatcherPipe};
+use zksync_concurrency::ctx;
+use zksync_consensus_roles::validator;
+use zksync_consensus_storage::{FallbackReplicaStateStore, InMemoryStorage};
+use zksync_consensus_utils::pipe::{self, DispatcherPipe};
 
 /// This creates a mock Consensus struct for unit tests.
 pub async fn make_consensus(

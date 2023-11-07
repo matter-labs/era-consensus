@@ -1,10 +1,9 @@
 //! High-level tests for `Executor`.
-
 use super::*;
 use crate::testonly::FullValidatorConfig;
-use concurrency::sync;
-use roles::validator::{BlockNumber, Payload};
-use storage::{BlockStore, InMemoryStorage, StorageError};
+use zksync_concurrency::{sync, testonly::abort_on_panic};
+use zksync_consensus_roles::validator::{BlockNumber, Payload};
+use zksync_consensus_storage::{BlockStore, InMemoryStorage, StorageError};
 
 async fn store_final_blocks(
     ctx: &ctx::Ctx,
@@ -48,7 +47,7 @@ impl FullValidatorConfig {
 
 #[tokio::test]
 async fn executing_single_validator() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::root();
     let rng = &mut ctx.rng();
 
@@ -76,7 +75,7 @@ async fn executing_single_validator() {
 
 #[tokio::test]
 async fn executing_validator_and_external_node() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
 

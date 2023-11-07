@@ -7,7 +7,7 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use roles::validator;
+use zksync_consensus_roles::validator;
 
 impl Distribution<consensus::Req> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> consensus::Req {

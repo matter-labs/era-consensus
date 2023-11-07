@@ -1,11 +1,12 @@
 use super::*;
 use crate::noise;
-use concurrency::{ctx, time};
 use rand::Rng as _;
 use std::{
     collections::HashSet,
     sync::atomic::{AtomicU64, Ordering},
 };
+use zksync_concurrency::{ctx, testonly::abort_on_panic, time};
+use zksync_consensus_schema::testonly::test_encode_random;
 
 /// CAPABILITY_ID should uniquely identify the RPC.
 #[test]
@@ -21,8 +22,8 @@ fn test_capability_rpc_correspondence() {
 #[test]
 fn test_schema_encode_decode() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
-    schema::testonly::test_encode_random::<_, consensus::Req>(rng);
-    schema::testonly::test_encode_random::<_, sync_validator_addrs::Resp>(rng);
+    test_encode_random::<_, consensus::Req>(rng);
+    test_encode_random::<_, sync_validator_addrs::Resp>(rng);
 }
 
 fn expected(res: Result<(), mux::RunError>) -> Result<(), mux::RunError> {
@@ -34,7 +35,7 @@ fn expected(res: Result<(), mux::RunError>) -> Result<(), mux::RunError> {
 
 #[tokio::test]
 async fn test_ping() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let clock = ctx::ManualClock::new();
     let ctx = &ctx::test_root(&clock);
     let (s1, s2) = noise::testonly::pipe(ctx).await;
@@ -86,7 +87,7 @@ impl Handler<ping::Rpc> for PingServer {
 
 #[tokio::test]
 async fn test_ping_loop() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let clock = ctx::ManualClock::new();
     clock.set_advance_on_sleep();
     let ctx = &ctx::test_root(&clock);
@@ -150,7 +151,7 @@ impl Handler<ExampleRpc> for ExampleServer {
 
 #[tokio::test]
 async fn test_inflight() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let (s1, s2) = noise::testonly::pipe(ctx).await;
     let client = Client::<ExampleRpc>::new(ctx);

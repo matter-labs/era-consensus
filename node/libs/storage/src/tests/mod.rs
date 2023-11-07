@@ -1,10 +1,13 @@
 use super::*;
 use crate::types::ReplicaState;
 use async_trait::async_trait;
-use concurrency::ctx;
 use rand::{seq::SliceRandom, Rng};
-use roles::validator::{testonly::make_block, BlockHeader, BlockNumber, FinalBlock, Payload};
 use std::iter;
+use zksync_concurrency::ctx;
+use zksync_consensus_roles::validator::{
+    testonly::make_block, BlockHeader, BlockNumber, FinalBlock, Payload,
+};
+use zksync_consensus_schema as schema;
 
 #[cfg(feature = "rocksdb")]
 mod rocksdb;

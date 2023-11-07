@@ -1,7 +1,7 @@
 //! Mechanism for network State to report internal events.
 //! It is used in tests to await a specific state.
 use crate::State;
-use roles::{node, validator};
+use zksync_consensus_roles::{node, validator};
 
 impl State {
     /// Sends an event to the `self.events` channel.

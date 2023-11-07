@@ -1,10 +1,11 @@
 use crate::{metrics, ConsensusInner};
 use anyhow::Context as _;
-use concurrency::{ctx, metrics::LatencyHistogramExt as _, scope, time};
-use roles::validator;
 use std::collections::{BTreeMap, HashMap};
-use storage::{FallbackReplicaStateStore, StorageError};
 use tracing::instrument;
+use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _, scope, time};
+use zksync_consensus_roles::validator;
+use zksync_consensus_storage as storage;
+use zksync_consensus_storage::{FallbackReplicaStateStore, StorageError};
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
 /// for validating and voting on blocks. When participating in consensus we are always a replica.

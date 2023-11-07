@@ -1,10 +1,11 @@
 use super::Fuzz;
 use crate::io;
-use concurrency::{ctx, ctx::channel, scope};
-use network::io::ConsensusInputMessage;
 use rand::Rng;
-use roles::validator;
-use utils::pipe::DispatcherPipe;
+use zksync_concurrency::{ctx, ctx::channel, scope};
+use zksync_consensus_network as network;
+use zksync_consensus_network::io::ConsensusInputMessage;
+use zksync_consensus_roles::validator;
+use zksync_consensus_utils::pipe::DispatcherPipe;
 
 /// A struct containing metrics information. Right now it's just a finalized block.
 #[derive(Debug)]
