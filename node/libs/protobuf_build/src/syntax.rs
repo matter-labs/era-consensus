@@ -64,7 +64,7 @@ impl ProtoPath {
     }
 
     pub(super) fn parent(&self) -> Option<Self> {
-        self.0.parent().map(|p|Self(p.into()))
+        self.0.parent().map(|p| Self(p.into()))
     }
 
     /// Derives a proto path from an input path by replacing the $CARGO_MANIFEST_DIR/<input_root> with <proto_root>.
@@ -91,8 +91,6 @@ impl fmt::Display for ProtoPath {
         self.0.display().fmt(fmt)
     }
 }
-
-
 
 type Part = String;
 

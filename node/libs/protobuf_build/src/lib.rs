@@ -23,15 +23,14 @@
 //! It is not possible to depend on a different proto bundle within the same crate (because
 //! these are being built simultaneously from the same build script).
 #![allow(clippy::print_stdout)]
+pub use self::syntax::*;
 use anyhow::Context as _;
-use prost::Message as _;
-use std::{fs, path::Path, sync::Mutex};
-
 // Imports accessed from the generated code.
 pub use once_cell::sync::Lazy;
 pub use prost;
+use prost::Message as _;
 pub use prost_reflect;
-pub use self::syntax::*;
+use std::{fs, path::Path, sync::Mutex};
 
 mod canonical;
 mod ident;
@@ -73,7 +72,7 @@ impl Descriptor {
         Descriptor {
             proto_root,
             dependencies,
-            descriptor_proto: prost_types::FileDescriptorSet::decode(descriptor_bytes.as_ref())
+            descriptor_proto: prost_types::FileDescriptorSet::decode(descriptor_bytes)
                 .unwrap(),
         }
     }
@@ -102,6 +101,19 @@ impl Descriptor {
         let pool = &mut POOL.lock().unwrap();
         self.load(pool).unwrap();
         pool.clone()
+    }
+}
+
+#[macro_export]
+macro_rules! declare_descriptor {
+    ($package_root:expr, $descriptor_path:expr, $($rust_deps:path),*) => {
+        pub static DESCRIPTOR : $crate::Lazy<$crate::Descriptor> = $crate::Lazy::new(|| {
+            $crate::Descriptor::new(
+                $package_root.into(),
+                vec![$({ use $rust_deps as dep; &dep::DESCRIPTOR }),*],
+                &include_bytes!($descriptor_path)[..],
+            )
+        });
     }
 }
 
@@ -174,7 +186,8 @@ impl Config {
             };
 
             let file_raw = fs::read_to_string(path).context("fs::read()")?;
-            let path = ProtoPath::from_input_path(path, &self.input_root, &self.proto_root).context("ProtoPath::from_input_path()")?;
+            let path = ProtoPath::from_input_path(path, &self.input_root, &self.proto_root)
+                .context("ProtoPath::from_input_path()")?;
             pool_raw
                 .file
                 .push(protox_parse::parse(&path.to_string(), &file_raw).map_err(
@@ -251,23 +264,24 @@ impl Config {
         let package_root = self.proto_root.to_name().context("invalid proto_root")?;
         let output = output.sub(&package_root.to_rust_module());
         for proto_name in extract_message_names(&descriptor) {
-            output.append(&self.reflect_impl(&proto_name)
-                .with_context(||format!("reflect_impl({proto_name})"))?);
+            output.append(
+                &self
+                    .reflect_impl(&proto_name)
+                    .with_context(|| format!("reflect_impl({proto_name})"))?,
+            );
         }
 
         // Generate the descriptor.
         let rust_deps = self
             .dependencies
             .iter()
-            .map(|d| format!("&{}::DESCRIPTOR", d.0))
+            .map(|d| d.0.to_string())
             .collect::<Vec<_>>()
             .join(",");
         let this = self.this_crate().to_string();
-        output.append(&format!("\
-            pub static DESCRIPTOR : {this}::Lazy<{this}::Descriptor> = {this}::Lazy::new(|| {{\
-                {this}::Descriptor::new(\"{package_root}\".into(), vec![{rust_deps}], &include_bytes!({descriptor_path:?})[..])\
-            }});\
-        "));
+        output.append(&format!(
+            "{this}::declare_descriptor!(\"{package_root}\",{descriptor_path:?},{rust_deps});"
+        ));
 
         // Save output.
         fs::write(output_path, output.format().context("output.format()")?)?;

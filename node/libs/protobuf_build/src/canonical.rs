@@ -28,7 +28,8 @@ impl Check {
             anyhow::bail!("non-repeated, non-oneof fields have to be marked as optional");
         }
         if let prost_reflect::Kind::Message(msg) = &f.kind() {
-            self.check_message(msg).with_context(|| msg.name().to_string())?;
+            self.check_message(msg)
+                .with_context(|| msg.name().to_string())?;
         }
         Ok(())
     }
