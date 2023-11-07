@@ -97,8 +97,8 @@ pub fn root() -> Ctx {
 }
 
 impl fmt::Debug for Ctx {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(fmt, "ctx")
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_struct("Ctx").finish_non_exhaustive()
     }
 }
 
@@ -161,12 +161,12 @@ impl Ctx {
         });
         child
     }
-    /// Cascade cancels the context and all the descendants.
+    /// Cascade cancels this context and all the descendants.
     pub(crate) fn cancel(&self) {
         self.0.canceled.send();
     }
 
-    /// Awaits until the local context gets canceled.
+    /// Awaits until this context gets canceled.
     pub fn canceled(&self) -> CtxAware<impl '_ + Future<Output = ()>> {
         CtxAware(self.0.canceled.cancel_safe_recv())
     }
@@ -178,12 +178,12 @@ impl Ctx {
         async move { canceled.cancel_safe_recv().await }
     }
 
-    /// Checks if the context is still active (i.e., not canceled).
+    /// Checks if this context is still active (i.e., not canceled).
     pub fn is_active(&self) -> bool {
         !self.0.canceled.try_recv()
     }
 
-    /// The time at which the local context will be canceled.
+    /// The time at which this context will be canceled.
     /// The task should use it to schedule its work accordingly.
     /// Remember that this is just a hint, because the local context
     /// may get canceled before the deadline.
@@ -191,22 +191,21 @@ impl Ctx {
         self.0.deadline
     }
 
-    /// Awaits until f completes, or the context gets canceled.
-    /// f is required to be cancel-safe.
-    pub(crate) fn wait<'a, F: 'a + Future>(
+    /// Awaits until the provided future `fut` completes, or the context gets canceled.
+    /// `fut` is required to be cancel-safe. It logically doesn't make sense to call this method
+    /// for context-aware futures, since they can handle context cancellation already.
+    pub fn wait<'a, F: 'a + Future>(
         &'a self,
-        f: F,
+        fut: F,
     ) -> CtxAware<impl 'a + Future<Output = OrCanceled<F::Output>>> {
         CtxAware(async {
             tokio::select! {
-                v = f => Ok(v),
-                _ = self.0.canceled.cancel_safe_recv() => Err(Canceled),
+                output = fut => Ok(output),
+                () = self.0.canceled.cancel_safe_recv() => Err(Canceled),
             }
         })
     }
-}
 
-impl Ctx {
     /// Constructs a sub-context with deadline `d`.
     pub fn with_deadline(&self, d: time::Deadline) -> Self {
         self.child(d)

@@ -1,9 +1,9 @@
 use super::StateMachine;
 use crate::inner::ConsensusInner;
 use anyhow::Context as _;
-use concurrency::ctx;
-use roles::validator;
 use tracing::instrument;
+use zksync_concurrency::ctx;
+use zksync_consensus_roles::validator;
 
 /// Errors that can occur when processing a "leader commit" message.
 #[derive(Debug, thiserror::Error)]
@@ -28,7 +28,7 @@ pub(crate) enum Error {
     },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
-    InvalidSignature(#[source] crypto::bls12_381::Error),
+    InvalidSignature(#[source] validator::Error),
     /// Invalid justification for the message.
     #[error("invalid justification: {0:#}")]
     InvalidJustification(#[source] anyhow::Error),

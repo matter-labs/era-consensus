@@ -1,9 +1,9 @@
 use crate::{frame, noise};
 use anyhow::Context as _;
-use concurrency::{ctx, time};
-use crypto::{bls12_381, ByteFmt};
-use roles::{node, validator};
-use schema::proto::network::consensus as proto;
+use zksync_concurrency::{ctx, time};
+use zksync_consensus_crypto::ByteFmt;
+use zksync_consensus_roles::{node, validator};
+use zksync_consensus_schema::proto::network::consensus as proto;
 use zksync_protobuf::{read_required, ProtoFmt};
 
 #[cfg(test)]
@@ -44,7 +44,7 @@ pub(super) enum Error {
     #[error("unexpected peer")]
     PeerMismatch,
     #[error("validator signature {0}")]
-    Signature(#[from] bls12_381::Error),
+    Signature(#[from] validator::Error),
     #[error("stream {0}")]
     Stream(#[source] anyhow::Error),
 }

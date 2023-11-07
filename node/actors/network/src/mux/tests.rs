@@ -1,8 +1,6 @@
 use crate::{frame, mux, noise, noise::bytes};
 use anyhow::Context as _;
-use concurrency::{ctx, scope};
 use rand::Rng as _;
-use schema::proto::network::mux_test as proto;
 use std::{
     collections::BTreeMap,
     sync::{
@@ -10,7 +8,9 @@ use std::{
         Arc,
     },
 };
-use utils::no_copy::NoCopy;
+use zksync_concurrency::{ctx, scope, testonly::abort_on_panic};
+use zksync_consensus_schema::proto::network::mux_test as proto;
+use zksync_consensus_utils::no_copy::NoCopy;
 
 fn assert_partition(sets: &[u16]) {
     let mut sum = 0;
@@ -193,8 +193,8 @@ fn expected(res: Result<(), mux::RunError>) -> Result<(), mux::RunError> {
 // checking 1 property at a time should be added.
 #[test]
 fn mux_with_noise() {
-    concurrency::testonly::abort_on_panic();
-    concurrency::testonly::with_runtimes(|| async {
+    abort_on_panic();
+    zksync_concurrency::testonly::with_runtimes(|| async {
         let ctx = &ctx::test_root(&ctx::RealClock);
         let rng = &mut ctx.rng();
 
@@ -283,7 +283,7 @@ fn mux_with_noise() {
 
 #[tokio::test]
 async fn test_transport_closed() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let cap: mux::CapabilityId = 0;
     let cfg = Arc::new(mux::Config {

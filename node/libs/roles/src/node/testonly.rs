@@ -4,7 +4,7 @@ use rand::{
     Rng,
 };
 use std::sync::Arc;
-use utils::enum_util::Variant;
+use zksync_consensus_utils::enum_util::Variant;
 
 impl Distribution<MsgHash> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MsgHash {

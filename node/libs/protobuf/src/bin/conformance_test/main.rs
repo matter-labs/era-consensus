@@ -6,10 +6,10 @@
 //! subset of original fields. Also we run only proto3 binary -> binary tests.
 //! failure_list.txt contains tests which are expected to fail.
 use anyhow::Context as _;
-use concurrency::{ctx, io};
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
 use std::sync::Mutex;
+use zksync_concurrency::{ctx, io};
 
 mod proto;
 

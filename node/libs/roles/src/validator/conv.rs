@@ -6,10 +6,10 @@ use super::{
 };
 use crate::node::SessionId;
 use anyhow::Context as _;
-use crypto::ByteFmt;
-use schema::proto::roles::validator as proto;
 use std::collections::BTreeMap;
-use utils::enum_util::Variant;
+use zksync_consensus_crypto::ByteFmt;
+use zksync_consensus_schema::proto::roles::validator as proto;
+use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
 impl ProtoFmt for BlockHeaderHash {
@@ -354,12 +354,12 @@ impl ProtoFmt for PublicKey {
     type Proto = proto::PublicKey;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.bls12381)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            bls12381: Some(self.0.encode()),
+            bn254: Some(self.0.encode()),
         }
     }
 }
@@ -368,12 +368,12 @@ impl ProtoFmt for Signature {
     type Proto = proto::Signature;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.bls12381)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            bls12381: Some(self.0.encode()),
+            bn254: Some(self.0.encode()),
         }
     }
 }
@@ -382,12 +382,12 @@ impl ProtoFmt for AggregateSignature {
     type Proto = proto::AggregateSignature;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.bls12381)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            bls12381: Some(self.0.encode()),
+            bn254: Some(self.0.encode()),
         }
     }
 }

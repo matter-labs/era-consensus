@@ -7,7 +7,7 @@ mod testonly;
 
 pub use keys::*;
 pub use messages::*;
-pub use schema::proto::roles::node as schema;
+pub use zksync_consensus_schema::proto::roles::node as schema;
 
 #[cfg(test)]
 mod tests;

@@ -6,15 +6,15 @@ use crate::{
 };
 use anyhow::Context;
 use async_trait::async_trait;
-use concurrency::{
+use std::sync::Arc;
+use tracing::Instrument as _;
+use zksync_concurrency::{
     ctx::{self, channel},
     oneshot, scope,
     sync::{self, watch},
     time,
 };
-use roles::{node, validator};
-use std::sync::Arc;
-use tracing::Instrument as _;
+use zksync_consensus_roles::{node, validator};
 
 /// How often we should retry to establish a connection to a validator.
 /// TODO(gprusak): once it becomes relevant, choose a more appropriate retry strategy.
@@ -362,7 +362,7 @@ pub(crate) async fn run_client(
     sender: &channel::UnboundedSender<io::OutputMessage>,
     mut receiver: channel::UnboundedReceiver<io::SyncBlocksInputMessage>,
 ) -> anyhow::Result<()> {
-    let res = scope::run!(ctx, |ctx, s| async {
+    scope::run!(ctx, |ctx, s| async {
         // Spawn a tasks handling static outbound connections.
         for (peer, addr) in &state.gossip.cfg.static_outbound {
             s.spawn::<()>(async {
@@ -394,8 +394,8 @@ pub(crate) async fn run_client(
             Ok(())
         }
     })
-    .await;
+    .await
+    .ok();
 
-    assert_eq!(Err(ctx::Canceled), res);
     Ok(())
 }

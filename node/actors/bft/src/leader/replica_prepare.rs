@@ -1,11 +1,11 @@
 use super::StateMachine;
 use crate::{inner::ConsensusInner, metrics};
-use concurrency::ctx;
-use network::io::{ConsensusInputMessage, Target};
 use rand::Rng;
-use roles::validator;
 use std::collections::HashMap;
 use tracing::instrument;
+use zksync_concurrency::ctx;
+use zksync_consensus_network::io::{ConsensusInputMessage, Target};
+use zksync_consensus_roles::validator;
 
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]
@@ -50,7 +50,7 @@ pub(crate) enum Error {
     },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
-    InvalidSignature(#[source] crypto::bls12_381::Error),
+    InvalidSignature(#[source] validator::Error),
     /// Invalid `HighQC` message.
     #[error("invalid high QC: {0:#}")]
     InvalidHighQC(#[source] anyhow::Error),

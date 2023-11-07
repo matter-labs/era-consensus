@@ -72,8 +72,7 @@ impl Descriptor {
         Descriptor {
             proto_root,
             dependencies,
-            descriptor_proto: prost_types::FileDescriptorSet::decode(descriptor_bytes)
-                .unwrap(),
+            descriptor_proto: prost_types::FileDescriptorSet::decode(descriptor_bytes).unwrap(),
         }
     }
 

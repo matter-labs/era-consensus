@@ -1,7 +1,7 @@
 use super::CapabilityId;
 use anyhow::Context as _;
-use schema::proto::network::mux as proto;
 use std::collections::HashMap;
+use zksync_consensus_schema::proto::network::mux as proto;
 use zksync_protobuf::required;
 
 pub(super) struct Handshake {

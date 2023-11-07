@@ -1,10 +1,9 @@
 //! Defines RPC for synchronizing blocks.
-
 use crate::{io, mux};
 use anyhow::Context;
-use concurrency::{limiter, time};
-use roles::validator::{BlockNumber, FinalBlock};
-use schema::proto::network::gossip as proto;
+use zksync_concurrency::{limiter, time};
+use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
+use zksync_consensus_schema::proto::network::gossip as proto;
 use zksync_protobuf::{read_required, ProtoFmt};
 
 /// `get_sync_state` RPC.

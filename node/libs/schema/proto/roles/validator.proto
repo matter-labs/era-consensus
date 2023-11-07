@@ -147,13 +147,13 @@ message Signed {
 }
 
 message PublicKey {
-  optional bytes bls12381 = 1; // required
+  optional bytes bn254 = 1; // required
 }
 
 message Signature {
-  optional bytes bls12381 = 1; // required
+  optional bytes bn254 = 1; // required
 }
 
 message AggregateSignature {
-  optional bytes bls12381 = 1; // required
+  optional bytes bn254 = 1; // required
 }

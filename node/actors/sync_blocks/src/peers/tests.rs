@@ -2,12 +2,12 @@ use super::*;
 use crate::tests::TestValidators;
 use assert_matches::assert_matches;
 use async_trait::async_trait;
-use concurrency::time;
 use rand::{rngs::StdRng, seq::IteratorRandom, Rng};
-use roles::validator;
 use std::{collections::HashSet, fmt};
-use storage::{BlockStore, InMemoryStorage};
 use test_casing::{test_casing, Product};
+use zksync_concurrency::{testonly::abort_on_panic, time};
+use zksync_consensus_roles::validator;
+use zksync_consensus_storage::{BlockStore, InMemoryStorage, StorageError};
 
 const TEST_TIMEOUT: time::Duration = time::Duration::seconds(5);
 const BLOCK_SLEEP_INTERVAL: time::Duration = time::Duration::milliseconds(5);
@@ -84,7 +84,7 @@ async fn wait_for_peer_update(
 
 #[instrument(level = "trace")]
 async fn test_peer_states<T: Test>(test: T) {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
 
     let ctx = &ctx::test_root(&ctx::RealClock).with_timeout(TEST_TIMEOUT);
     let clock = ctx::ManualClock::new();
@@ -115,12 +115,9 @@ async fn test_peer_states<T: Test>(test: T) {
 
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(async {
-            peer_states.run(ctx).await.or_else(|err| {
-                if err.root_cause().is::<ctx::Canceled>() {
-                    Ok(()) // Swallow cancellation errors after the test is finished
-                } else {
-                    Err(err)
-                }
+            peer_states.run(ctx).await.or_else(|err| match err {
+                StorageError::Canceled(_) => Ok(()), // Swallow cancellation errors after the test is finished
+                StorageError::Database(err) => Err(err),
             })
         });
         test.test(ctx, test_handles).await

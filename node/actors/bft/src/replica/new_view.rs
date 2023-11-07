@@ -1,10 +1,10 @@
 use super::StateMachine;
 use crate::ConsensusInner;
 use anyhow::Context as _;
-use concurrency::ctx;
-use network::io::{ConsensusInputMessage, Target};
-use roles::validator;
 use tracing::instrument;
+use zksync_concurrency::ctx;
+use zksync_consensus_network::io::{ConsensusInputMessage, Target};
+use zksync_consensus_roles::validator;
 
 impl StateMachine {
     /// This blocking method is used whenever we start a new view.

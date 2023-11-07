@@ -1,6 +1,6 @@
 use crate::node;
-use crypto::{sha256, ByteFmt, Text, TextFmt};
-use utils::enum_util::{BadVariantError, Variant};
+use zksync_consensus_crypto::{sha256, ByteFmt, Text, TextFmt};
+use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
 /// The ID for an authentication session.
 #[derive(Clone, Debug, PartialEq, Eq)]

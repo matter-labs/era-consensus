@@ -1,5 +1,5 @@
 [package]
-name = "storage"
+name = "zksync_consensus_storage"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
@@ -7,17 +7,17 @@ homepage.workspace = true
 license.workspace = true
 
 [dependencies]
+zksync_concurrency.workspace = true
+zksync_consensus_roles.workspace = true
+zksync_consensus_schema.workspace = true
+zksync_protobuf.workspace = true
+
 anyhow.workspace = true
 async-trait.workspace = true
 rand.workspace = true
 rocksdb = { workspace = true, optional = true }
 thiserror.workspace = true
 tracing.workspace = true
-
-zksync_protobuf.workspace = true
-concurrency = { path = "../concurrency" }
-roles = { path = "../roles" }
-schema = { path = "../schema" }
 
 [dev-dependencies]
 assert_matches.workspace = true

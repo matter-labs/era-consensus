@@ -1,7 +1,7 @@
 use super::StateMachine;
 use crate::metrics;
-use concurrency::{ctx, metrics::LatencyGaugeExt as _, time};
 use tracing::instrument;
+use zksync_concurrency::{ctx, metrics::LatencyGaugeExt as _, time};
 
 impl StateMachine {
     /// The base duration of the timeout.

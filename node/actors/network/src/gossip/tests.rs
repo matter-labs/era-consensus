@@ -1,38 +1,40 @@
 use super::*;
 use crate::{event::Event, io, preface, rpc, rpc::Rpc as _, run_network, testonly};
 use anyhow::Context as _;
-use concurrency::{
-    ctx::{self, channel},
-    oneshot, scope,
-    sync::{watch, Mutex},
-    time,
-};
 use pretty_assertions::assert_eq;
 use rand::Rng;
-use roles::validator::{self, BlockNumber, FinalBlock};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
 use test_casing::{test_casing, Product};
 use tracing::Instrument as _;
-use utils::pipe;
+use zksync_concurrency::{
+    ctx::{self, channel},
+    oneshot, scope,
+    sync::{watch, Mutex},
+    testonly::abort_on_panic,
+    time,
+};
+use zksync_consensus_roles as roles;
+use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock};
+use zksync_consensus_utils::pipe;
 
 #[tokio::test]
 async fn test_one_connection_per_node() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
     let mut nodes: Vec<_> = testonly::Instance::new(rng, 5, 2);
 
     scope::run!(ctx, |ctx,s| async {
-        for n in &nodes {
+        for node in &nodes {
             let (network_pipe, _) = pipe::new();
 
             s.spawn_bg(run_network(
                 ctx,
-                n.state.clone(),
+                node.state.clone(),
                 network_pipe
             ));
         }
@@ -148,7 +150,7 @@ impl View {
 
 #[tokio::test]
 async fn test_validator_addrs() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
 
     let keys: Vec<validator::SecretKey> = (0..8).map(|_| rng.gen()).collect();
@@ -231,7 +233,7 @@ fn to_addr_map(addrs: &ValidatorAddrs) -> HashMap<validator::PublicKey, std::net
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_validator_addrs_propagation() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::AffineClock::new(40.));
     let rng = &mut ctx.rng();
     let nodes: Vec<_> = testonly::Instance::new(rng, 10, 1);
@@ -275,7 +277,7 @@ const NETWORK_CONNECTIVITY_CASES: [(usize, usize); 5] = [(2, 1), (3, 2), (5, 3),
 #[tokio::test(flavor = "multi_thread")]
 #[tracing::instrument(level = "trace")]
 async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
 
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let ctx = &ctx.with_timeout(time::Duration::seconds(200));
@@ -396,7 +398,7 @@ async fn uncoordinated_block_syncing(
     (node_count, gossip_peers): (usize, usize),
     state_generation_interval: time::Duration,
 ) {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
 
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let ctx = &ctx.with_timeout(time::Duration::seconds(200));
@@ -480,7 +482,7 @@ async fn run_mock_uncoordinated_dispatcher(
 #[test_casing(5, NETWORK_CONNECTIVITY_CASES)]
 #[tokio::test]
 async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
 
     let ctx = &ctx::test_root(&ctx::ManualClock::new());
     let rng = &mut ctx.rng();
@@ -593,7 +595,7 @@ async fn run_get_block_dispatcher(
 /// the AccountData that is present in the network from the previous run.
 #[tokio::test]
 async fn validator_node_restart() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let clock = &ctx::ManualClock::new();
     let ctx = &ctx::test_root(clock);
     let rng = &mut ctx.rng();
@@ -677,7 +679,7 @@ async fn validator_node_restart() {
 /// to receive all updates in 2 rounds of communication.
 #[tokio::test]
 async fn rate_limiting() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let clock = &ctx::ManualClock::new();
     let ctx = &ctx::test_root(clock);
     let rng = &mut ctx.rng();

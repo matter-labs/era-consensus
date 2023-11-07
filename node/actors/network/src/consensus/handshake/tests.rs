@@ -1,18 +1,19 @@
 use super::*;
 use crate::{frame, noise, testonly};
-use concurrency::{ctx, io, scope};
 use rand::Rng;
-use roles::validator;
+use zksync_concurrency::{ctx, io, scope, testonly::abort_on_panic};
+use zksync_consensus_roles::validator;
+use zksync_protobuf::testonly::test_encode_random;
 
 #[test]
 fn test_schema_encode_decode() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
-    zksync_protobuf::testonly::test_encode_random::<_, Handshake>(rng);
+    test_encode_random::<_, Handshake>(rng);
 }
 
 #[tokio::test]
 async fn test_session_id_mismatch() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
@@ -79,7 +80,7 @@ async fn test_session_id_mismatch() {
 
 #[tokio::test]
 async fn test_peer_mismatch() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
@@ -109,7 +110,7 @@ async fn test_peer_mismatch() {
 
 #[tokio::test]
 async fn test_invalid_signature() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 

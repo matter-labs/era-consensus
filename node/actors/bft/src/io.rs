@@ -1,7 +1,7 @@
 //! Input and output messages for the Consensus actor. These are processed by the executor actor.
 
-use network::io::{ConsensusInputMessage, ConsensusReq};
-use roles::validator;
+use zksync_consensus_network::io::{ConsensusInputMessage, ConsensusReq};
+use zksync_consensus_roles::validator;
 
 /// All the messages that other actors can send to the Consensus actor.
 #[derive(Debug)]

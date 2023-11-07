@@ -1,8 +1,8 @@
 //! An abstraction for a set of "connections" which constraints
 //! which peers are allowed to connect.
 use crate::watch::Watch;
-use concurrency::sync;
 use std::collections::HashSet;
+use zksync_concurrency::sync;
 
 /// Set of elements of type T.
 /// This set consists of an arbitrary subset of `allowed` + up to `extra_limit` elements outside of

@@ -1,7 +1,6 @@
 //! General-purpose network metrics.
 
 use crate::state::State;
-use concurrency::{ctx, io, net};
 use std::{
     net::SocketAddr,
     pin::Pin,
@@ -11,6 +10,7 @@ use std::{
 use vise::{
     Collector, Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, GaugeGuard, Metrics, Unit,
 };
+use zksync_concurrency::{ctx, io, net};
 
 /// Metered TCP stream.
 #[pin_project::pin_project]

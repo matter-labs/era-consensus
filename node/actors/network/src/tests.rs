@@ -1,21 +1,21 @@
 use crate::{run_network, testonly};
-use concurrency::{ctx, scope};
 use tracing::Instrument as _;
-use utils::pipe;
+use zksync_concurrency::{ctx, scope, testonly::abort_on_panic};
+use zksync_consensus_utils::pipe;
 
 /// Test that metrics are correctly defined
 /// (won't panic during registration).
 #[tokio::test]
 async fn test_metrics() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &mut ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let nodes = testonly::Instance::new(rng, 3, 1);
     scope::run!(ctx, |ctx, s| async {
-        for (i, n) in nodes.iter().enumerate() {
+        for (i, node) in nodes.iter().enumerate() {
             let (network_pipe, _) = pipe::new();
             s.spawn_bg(
-                run_network(ctx, n.state.clone(), network_pipe)
+                run_network(ctx, node.state.clone(), network_pipe)
                     .instrument(tracing::info_span!("node", i)),
             );
         }

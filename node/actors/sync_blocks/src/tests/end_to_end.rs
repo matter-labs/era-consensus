@@ -1,16 +1,16 @@
 //! End-to-end tests that launch a network of nodes and the `SyncBlocks` actor for each node.
-
 use super::*;
 use anyhow::Context as _;
 use async_trait::async_trait;
-use concurrency::ctx::channel;
-use network::testonly::Instance as NetworkInstance;
 use rand::seq::SliceRandom;
-use roles::node;
 use std::fmt;
-use storage::InMemoryStorage;
 use test_casing::test_casing;
 use tracing::Instrument;
+use zksync_concurrency::{ctx::channel, testonly::abort_on_panic};
+use zksync_consensus_network as network;
+use zksync_consensus_network::testonly::Instance as NetworkInstance;
+use zksync_consensus_roles::node;
+use zksync_consensus_storage::InMemoryStorage;
 
 type NetworkDispatcherPipe =
     pipe::DispatcherPipe<network::io::InputMessage, network::io::OutputMessage>;
@@ -115,7 +115,7 @@ impl Node {
             sync_blocks_config,
         )
         .await
-        .expect("Failed");
+        .expect("Failed initializing `sync_blocks` actor");
 
         let sync_states_subscriber = sync_blocks.subscribe_to_state_updates();
         self.network
@@ -158,8 +158,10 @@ impl Node {
 
             self.switch_off_receiver
                 .recv_or_disconnected(ctx)
-                .await?
+                .await
                 .ok();
+            // ^ Unlike with `switch_on_receiver`, the context may get canceled before the receiver
+            // is dropped, so we swallow both cancellation and disconnect errors here.
             tracing::trace!("Node stopped");
             Ok(())
         })
@@ -228,7 +230,7 @@ trait GossipNetworkTest: fmt::Debug + Send {
 async fn test_sync_blocks<T: GossipNetworkTest>(test: T) {
     const CLOCK_SPEEDUP: u32 = 25;
 
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
 
     let ctx = &ctx::test_root(&ctx::AffineClock::new(CLOCK_SPEEDUP as f64))
         .with_timeout(TEST_TIMEOUT * CLOCK_SPEEDUP);
@@ -240,14 +242,9 @@ async fn test_sync_blocks<T: GossipNetworkTest>(test: T) {
             s.spawn_bg(async {
                 let test_validators = test_validators;
                 let key = node.key();
-                let err = node.run(ctx, &test_validators).await.unwrap_err();
-
+                node.run(ctx, &test_validators).await?;
                 tracing::trace!(?key, "Node task completed");
-                if err.root_cause().is::<ctx::Canceled>() {
-                    Ok(()) // Test has successfully completed
-                } else {
-                    Err(err)
-                }
+                Ok(())
             });
         }
 
