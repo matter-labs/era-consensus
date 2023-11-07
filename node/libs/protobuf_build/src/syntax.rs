@@ -71,8 +71,13 @@ impl ProtoPath {
     pub(super) fn from_input_path(
         path: &Path,
         input_root: &InputPath,
+        proto_root: &ProtoPath,
     ) -> anyhow::Result<ProtoPath> {
-        Ok(ProtoPath(path.strip_prefix(&input_root.abs()?)?.to_path_buf()))
+        Ok(ProtoPath(
+            proto_root
+                .0
+                .join(path.strip_prefix(&input_root.abs()?).unwrap()),
+        ))
     }
 
     /// Converts ProtoPath to Path.
