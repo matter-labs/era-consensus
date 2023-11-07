@@ -1,7 +1,7 @@
 [workspace]
 members = [
     "libs/concurrency",
-    "actors/consensus",
+    "actors/bft",
     "libs/crypto",
     "actors/executor",
     "actors/network",
@@ -22,7 +22,7 @@ license = "MIT"
 
 [workspace.dependencies]
 zksync_concurrency = { path = "libs/concurrency" }
-zksync_consensus_consensus = { path = "actors/consensus" }
+zksync_consensus_bft = { path = "actors/bft" }
 zksync_consensus_crypto = { path = "libs/crypto" }
 zksync_consensus_executor = { path = "actors/executor" }
 zksync_consensus_network = { path = "actors/network" }

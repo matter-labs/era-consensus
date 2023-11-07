@@ -8,7 +8,7 @@ The architecture of era-bft loosely follows the [Actor model](https://en.wikiped
 
 The actor crates are where the vast majority of the work is done. Each of them maintains its own separate state and communicate with each other through message passing. We have the following actor crates:
 
-- the `consensus` crate implements the logic for the consensus algorithm.
+- the `bft` crate implements the logic for the consensus algorithm.
 
 - the `executor` crate is responsible for parsing the configuration parameters given by the user, and initializing the actors and the storage. It's basically the bootloader for the node. It also dispatches messages between the rest of the actors. They all send messages to the executor and it then converts and forwards the messages to the desired destination. This improves the encapsulation of the actors.
 
@@ -44,7 +44,7 @@ This section provides a physical map of folders & files in this repository.
 
   - `/actors`: Crates that implement specific actor components.
 
-    - `/consensus`: The consensus actor.
+    - `/bft`: The consensus actor.
     - `/executor`: The actor orchestrator.
     - `/network`: The networking actor.
     - `/sync_blocks`: The block syncing actor.

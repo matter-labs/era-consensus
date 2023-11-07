@@ -2681,7 +2681,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "zksync_consensus_consensus"
+name = "zksync_consensus_bft"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -2729,7 +2729,7 @@ dependencies = [
  "tracing",
  "vise",
  "zksync_concurrency",
- "zksync_consensus_consensus",
+ "zksync_consensus_bft",
  "zksync_consensus_crypto",
  "zksync_consensus_network",
  "zksync_consensus_roles",
@@ -2852,7 +2852,7 @@ dependencies = [
  "tracing-subscriber",
  "vise-exporter",
  "zksync_concurrency",
- "zksync_consensus_consensus",
+ "zksync_consensus_bft",
  "zksync_consensus_crypto",
  "zksync_consensus_executor",
  "zksync_consensus_roles",

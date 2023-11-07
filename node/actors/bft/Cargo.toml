@@ -1,5 +1,5 @@
 [package]
-name = "zksync_consensus_consensus"
+name = "zksync_consensus_bft"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true

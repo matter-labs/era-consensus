@@ -4,7 +4,7 @@ use crate::io::Dispatcher;
 use anyhow::Context as _;
 use std::{mem, sync::Arc};
 use zksync_concurrency::{ctx, ctx::channel, net, scope};
-use zksync_consensus_consensus::{misc::consensus_threshold, Consensus};
+use zksync_consensus_bft::{misc::consensus_threshold, Consensus};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator, validator::FinalBlock};
 use zksync_consensus_storage::{FallbackReplicaStateStore, ReplicaStateStore, WriteBlockStore};

@@ -4,7 +4,7 @@ use super::*;
 use rand::Rng;
 use std::collections::HashMap;
 use zksync_concurrency::{sync, testonly::abort_on_panic};
-use zksync_consensus_consensus::testonly::make_genesis;
+use zksync_consensus_bft::testonly::make_genesis;
 use zksync_consensus_network::testonly::Instance;
 use zksync_consensus_roles::validator::{BlockNumber, Payload};
 use zksync_consensus_storage::{BlockStore, InMemoryStorage, StorageError};

@@ -3,7 +3,7 @@ use anyhow::Context as _;
 use clap::Parser;
 use rand::Rng;
 use std::{fs, net::SocketAddr, path::PathBuf};
-use zksync_consensus_consensus::testonly;
+use zksync_consensus_bft::testonly;
 use zksync_consensus_crypto::TextFmt;
 use zksync_consensus_executor::{ConsensusConfig, ExecutorConfig, GossipConfig};
 use zksync_consensus_roles::{node, validator};

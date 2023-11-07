@@ -6,7 +6,7 @@ use zksync_concurrency::{
     ctx::{self, channel},
     scope,
 };
-use zksync_consensus_consensus::io::{
+use zksync_consensus_bft::io::{
     InputMessage as ConsensusInputMessage, OutputMessage as ConsensusOutputMessage,
 };
 use zksync_consensus_network::io::{
