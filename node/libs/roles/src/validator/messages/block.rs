@@ -1,8 +1,9 @@
 //! Messages related to blocks.
 
 use super::CommitQC;
-use crypto::{sha256, ByteFmt, Text, TextFmt};
 use std::fmt;
+use zksync_consensus_crypto::{sha256, ByteFmt, Text, TextFmt};
+use zksync_consensus_schema as schema;
 
 /// Payload of the block. Consensus algorithm does not interpret the payload
 /// (except for imposing a size limit for the payload). Proposing a payload
@@ -162,11 +163,11 @@ impl FinalBlock {
 
 impl ByteFmt for FinalBlock {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        ::schema::decode(bytes)
+        schema::decode(bytes)
     }
 
     fn encode(&self) -> Vec<u8> {
-        ::schema::encode(self)
+        schema::encode(self)
     }
 }
 

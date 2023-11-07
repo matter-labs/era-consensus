@@ -1,9 +1,9 @@
 use super::StateMachine;
 use crate::{inner::ConsensusInner, metrics};
-use concurrency::{ctx, metrics::LatencyHistogramExt as _};
-use network::io::{ConsensusInputMessage, Target};
-use roles::validator;
 use tracing::instrument;
+use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
+use zksync_consensus_network::io::{ConsensusInputMessage, Target};
+use zksync_consensus_roles::validator;
 
 /// Errors that can occur when processing a "replica commit" message.
 #[derive(Debug, thiserror::Error)]

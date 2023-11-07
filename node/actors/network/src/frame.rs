@@ -1,7 +1,8 @@
 //! Simple frame encoding format (length ++ value) for protobuf messages,
 //! since protobuf messages do not have delimiters.
 use crate::{mux, noise::bytes};
-use concurrency::{ctx, io};
+use zksync_concurrency::{ctx, io};
+use zksync_consensus_schema as schema;
 
 /// Reads a raw frame of bytes from the stream and interprets it as proto.
 /// A `frame : [u8]` is encoded as `L ++ frame`, where `L` is

@@ -1,15 +1,14 @@
 //! Testing extensions for node executor.
-
 use crate::config::{ConsensusConfig, ExecutorConfig, GossipConfig};
-use concurrency::net;
-use consensus::testonly::make_genesis;
-use network::testonly::Instance;
 use rand::Rng;
-use roles::{
+use std::collections::HashMap;
+use zksync_concurrency::net;
+use zksync_consensus_bft::testonly::make_genesis;
+use zksync_consensus_network::testonly::Instance;
+use zksync_consensus_roles::{
     node,
     validator::{self, Payload},
 };
-use std::collections::HashMap;
 
 /// Full validator configuration.
 #[derive(Debug)]

@@ -1,15 +1,15 @@
 use super::*;
 use crate::{io, preface, rpc, run_network, testonly};
 use anyhow::Context as _;
-use concurrency::{ctx, net, scope};
 use rand::Rng;
-use roles::validator;
 use tracing::Instrument as _;
-use utils::pipe;
+use zksync_concurrency::{ctx, net, scope, testonly::abort_on_panic};
+use zksync_consensus_roles::validator;
+use zksync_consensus_utils::pipe;
 
 #[tokio::test]
 async fn test_one_connection_per_validator() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
@@ -66,7 +66,7 @@ async fn test_one_connection_per_validator() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_address_change() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.));
     let rng = &mut ctx.rng();
 
@@ -144,7 +144,7 @@ async fn test_address_change() {
 /// encrypted authenticated multiplexed stream.
 #[tokio::test]
 async fn test_transmission() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 

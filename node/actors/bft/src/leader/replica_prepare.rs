@@ -1,11 +1,11 @@
 use super::StateMachine;
 use crate::{inner::ConsensusInner, metrics};
-use concurrency::ctx;
-use network::io::{ConsensusInputMessage, Target};
 use rand::Rng;
-use roles::validator;
 use std::collections::HashMap;
 use tracing::instrument;
+use zksync_concurrency::ctx;
+use zksync_consensus_network::io::{ConsensusInputMessage, Target};
+use zksync_consensus_roles::validator;
 
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]

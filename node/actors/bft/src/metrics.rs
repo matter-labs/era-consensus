@@ -2,6 +2,7 @@
 
 use std::time::Duration;
 use vise::{Buckets, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Histogram, Metrics, Unit};
+use zksync_consensus_schema as schema;
 
 const PAYLOAD_SIZE_BUCKETS: Buckets =
     Buckets::exponential((4 * schema::kB) as f64..=(4 * schema::MB) as f64, 4.0);

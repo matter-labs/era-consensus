@@ -4,9 +4,10 @@ use crate::{
     io::{InputMessage, OutputMessage},
     misc,
 };
-use roles::validator;
 use tracing::instrument;
-use utils::pipe::ActorPipe;
+use zksync_consensus_roles::validator;
+use zksync_consensus_schema as schema;
+use zksync_consensus_utils::pipe::ActorPipe;
 
 /// The ConsensusInner struct, it contains data to be shared with the state machines. This is never supposed
 /// to be modified, except by the Consensus struct.

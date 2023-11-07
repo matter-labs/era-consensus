@@ -2,10 +2,10 @@ use crate::{
     misc::consensus_threshold,
     testonly::{Behavior, Network, Test},
 };
-use concurrency::ctx;
+use zksync_concurrency::{ctx, testonly::abort_on_panic};
 
 async fn run_test(behavior: Behavior, network: Network) {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::AffineClock::new(1.));
 
     const NODES: usize = 11;

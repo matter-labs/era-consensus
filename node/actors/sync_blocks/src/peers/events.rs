@@ -1,6 +1,6 @@
 //! Events emitted by `PeerStates` actor. Useful for testing.
 
-use roles::{node, validator::BlockNumber};
+use zksync_consensus_roles::{node, validator::BlockNumber};
 
 /// Events emitted by `PeerStates` actor. Only used for tests so far.
 #[derive(Debug)]
