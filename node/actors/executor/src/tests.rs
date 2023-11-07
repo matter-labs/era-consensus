@@ -1,23 +1,9 @@
 //! High-level tests for `Executor`.
-
 use super::*;
-use rand::Rng;
-use std::collections::HashMap;
+use crate::testonly::FullValidatorConfig;
 use zksync_concurrency::{sync, testonly::abort_on_panic};
-use zksync_consensus_bft::testonly::make_genesis;
-use zksync_consensus_network::testonly::Instance;
 use zksync_consensus_roles::validator::{BlockNumber, Payload};
 use zksync_consensus_storage::{BlockStore, InMemoryStorage, StorageError};
-
-async fn run_executor(ctx: &ctx::Ctx, executor: Executor<InMemoryStorage>) -> anyhow::Result<()> {
-    executor.run(ctx).await.or_else(|err| {
-        if err.root_cause().is::<ctx::Canceled>() {
-            Ok(()) // Test has successfully finished
-        } else {
-            Err(err)
-        }
-    })
-}
 
 async fn store_final_blocks(
     ctx: &ctx::Ctx,
@@ -37,40 +23,7 @@ async fn store_final_blocks(
     Ok(())
 }
 
-#[derive(Debug)]
-struct FullValidatorConfig {
-    node_config: ExecutorConfig,
-    node_key: node::SecretKey,
-    consensus_config: ConsensusConfig,
-    validator_key: validator::SecretKey,
-}
-
 impl FullValidatorConfig {
-    fn for_single_validator(rng: &mut impl Rng) -> Self {
-        let mut net_configs = Instance::new_configs(rng, 1, 0);
-        assert_eq!(net_configs.len(), 1);
-        let net_config = net_configs.pop().unwrap();
-        let consensus_config = net_config.consensus.unwrap();
-        let validator_key = consensus_config.key.clone();
-        let consensus_config = ConsensusConfig::from(consensus_config);
-
-        let (genesis_block, validators) = make_genesis(&[validator_key.clone()], Payload(vec![]));
-        let node_key = net_config.gossip.key.clone();
-        let node_config = ExecutorConfig {
-            server_addr: *net_config.server_addr,
-            gossip: net_config.gossip.into(),
-            genesis_block,
-            validators,
-        };
-
-        Self {
-            node_config,
-            node_key,
-            consensus_config,
-            validator_key,
-        }
-    }
-
     fn into_executor(
         self,
         storage: Arc<InMemoryStorage>,
@@ -98,14 +51,14 @@ async fn executing_single_validator() {
     let ctx = &ctx::root();
     let rng = &mut ctx.rng();
 
-    let validator = FullValidatorConfig::for_single_validator(rng);
+    let validator = FullValidatorConfig::for_single_validator(rng, Payload(vec![]));
     let genesis_block = &validator.node_config.genesis_block;
     let storage = InMemoryStorage::new(genesis_block.clone());
     let storage = Arc::new(storage);
     let (executor, mut blocks_receiver) = validator.into_executor(storage);
 
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(run_executor(ctx, executor));
+        s.spawn_bg(executor.run(ctx));
 
         let mut expected_block_number = BlockNumber(1);
         while expected_block_number < BlockNumber(5) {
@@ -126,28 +79,8 @@ async fn executing_validator_and_external_node() {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
 
-    let mut validator = FullValidatorConfig::for_single_validator(rng);
-
-    let external_node_key: node::SecretKey = rng.gen();
-    let external_node_addr = net::tcp::testonly::reserve_listener();
-    let external_node_config = ExecutorConfig {
-        server_addr: *external_node_addr,
-        gossip: GossipConfig {
-            key: external_node_key.public(),
-            static_outbound: HashMap::from([(
-                validator.node_key.public(),
-                validator.node_config.server_addr,
-            )]),
-            ..validator.node_config.gossip.clone()
-        },
-        ..validator.node_config.clone()
-    };
-
-    validator
-        .node_config
-        .gossip
-        .static_inbound
-        .insert(external_node_key.public());
+    let mut validator = FullValidatorConfig::for_single_validator(rng, Payload(vec![]));
+    let external_node = validator.connect_external_node(rng);
 
     let genesis_block = &validator.node_config.genesis_block;
     let validator_storage = InMemoryStorage::new(genesis_block.clone());
@@ -158,15 +91,15 @@ async fn executing_validator_and_external_node() {
 
     let (validator, blocks_receiver) = validator.into_executor(validator_storage.clone());
     let external_node = Executor::new(
-        external_node_config,
-        external_node_key,
+        external_node.node_config,
+        external_node.node_key,
         external_node_storage.clone(),
     )
     .unwrap();
 
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(run_executor(ctx, validator));
-        s.spawn_bg(run_executor(ctx, external_node));
+        s.spawn_bg(validator.run(ctx));
+        s.spawn_bg(external_node.run(ctx));
         s.spawn_bg(store_final_blocks(ctx, blocks_receiver, validator_storage));
 
         for _ in 0..5 {

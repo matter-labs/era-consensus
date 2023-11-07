@@ -2,7 +2,6 @@
 //!
 //! This crate contains an actor implementing block syncing among nodes, which is tied to the gossip
 //! network RPCs.
-
 use crate::{
     io::{InputMessage, OutputMessage},
     message_handler::SyncBlocksMessageHandler,
@@ -14,7 +13,7 @@ use zksync_concurrency::{
     sync::{self, watch},
 };
 use zksync_consensus_network::io::SyncState;
-use zksync_consensus_storage::WriteBlockStore;
+use zksync_consensus_storage::{StorageError, StorageResult, WriteBlockStore};
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;
@@ -72,12 +71,19 @@ impl SyncBlocks {
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let storage = self.message_handler.storage.clone();
 
-        scope::run!(ctx, |ctx, s| async {
+        let result = scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(Self::emit_state_updates(ctx, storage, &self.state_sender));
             s.spawn_bg(self.peer_states.run(ctx));
             self.message_handler.process_messages(ctx).await
         })
-        .await
+        .await;
+
+        // Since we clearly type cancellation errors, it's easier propagate them up to this entry point,
+        // rather than catching in the constituent tasks.
+        result.or_else(|err| match err {
+            StorageError::Canceled(_) => Ok(()), // Cancellation is not propagated as an error
+            StorageError::Database(err) => Err(err),
+        })
     }
 
     #[instrument(level = "trace", skip_all, err)]
@@ -85,7 +91,7 @@ impl SyncBlocks {
         ctx: &ctx::Ctx,
         storage: Arc<dyn WriteBlockStore>,
         state_sender: &watch::Sender<SyncState>,
-    ) -> anyhow::Result<()> {
+    ) -> StorageResult<()> {
         let mut storage_subscriber = storage.subscribe_to_block_writes();
         loop {
             let state = Self::get_sync_state(ctx, storage.as_ref()).await?;
@@ -104,7 +110,7 @@ impl SyncBlocks {
     async fn get_sync_state(
         ctx: &ctx::Ctx,
         storage: &dyn WriteBlockStore,
-    ) -> anyhow::Result<SyncState> {
+    ) -> StorageResult<SyncState> {
         let last_contiguous_block_number = storage.last_contiguous_block_number(ctx).await?;
         let last_contiguous_stored_block = storage
             .block(ctx, last_contiguous_block_number)

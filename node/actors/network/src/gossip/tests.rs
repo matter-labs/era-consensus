@@ -29,12 +29,12 @@ async fn test_one_connection_per_node() {
     let mut nodes: Vec<_> = testonly::Instance::new(rng, 5, 2);
 
     scope::run!(ctx, |ctx,s| async {
-        for n in &nodes {
+        for node in &nodes {
             let (network_pipe, _) = pipe::new();
 
             s.spawn_bg(run_network(
                 ctx,
-                n.state.clone(),
+                node.state.clone(),
                 network_pipe
             ));
         }

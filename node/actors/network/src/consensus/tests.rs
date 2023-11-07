@@ -16,12 +16,12 @@ async fn test_one_connection_per_validator() {
     let mut nodes = testonly::Instance::new(rng, 3, 1);
 
     scope::run!(ctx, |ctx,s| async {
-        for (i,n) in nodes.iter().enumerate() {
+        for (i, node) in nodes.iter().enumerate() {
             let (network_pipe, _) = pipe::new();
 
             s.spawn_bg(run_network(
                 ctx,
-                n.state.clone(),
+                node.state.clone(),
                 network_pipe
             ).instrument(tracing::info_span!("node", i)));
         }

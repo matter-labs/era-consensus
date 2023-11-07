@@ -115,7 +115,7 @@ impl Node {
             sync_blocks_config,
         )
         .await
-        .expect("Failed");
+        .expect("Failed initializing `sync_blocks` actor");
 
         let sync_states_subscriber = sync_blocks.subscribe_to_state_updates();
         self.network
@@ -158,8 +158,10 @@ impl Node {
 
             self.switch_off_receiver
                 .recv_or_disconnected(ctx)
-                .await?
+                .await
                 .ok();
+            // ^ Unlike with `switch_on_receiver`, the context may get canceled before the receiver
+            // is dropped, so we swallow both cancellation and disconnect errors here.
             tracing::trace!("Node stopped");
             Ok(())
         })
@@ -240,14 +242,9 @@ async fn test_sync_blocks<T: GossipNetworkTest>(test: T) {
             s.spawn_bg(async {
                 let test_validators = test_validators;
                 let key = node.key();
-                let err = node.run(ctx, &test_validators).await.unwrap_err();
-
+                node.run(ctx, &test_validators).await?;
                 tracing::trace!(?key, "Node task completed");
-                if err.root_cause().is::<ctx::Canceled>() {
-                    Ok(()) // Test has successfully completed
-                } else {
-                    Err(err)
-                }
+                Ok(())
             });
         }
 

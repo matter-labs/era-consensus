@@ -18,9 +18,9 @@ zksync_consensus_sync_blocks.workspace = true
 zksync_consensus_utils.workspace = true
 
 anyhow.workspace = true
+rand.workspace = true
 tracing.workspace = true
 vise.workspace = true
 
 [dev-dependencies]
-rand.workspace = true
 tokio.workspace = true

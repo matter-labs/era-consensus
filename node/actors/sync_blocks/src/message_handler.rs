@@ -6,7 +6,7 @@ use tracing::instrument;
 use zksync_concurrency::ctx::{self, channel};
 use zksync_consensus_network::io::{GetBlockError, GetBlockResponse, SyncBlocksRequest};
 use zksync_consensus_roles::validator::BlockNumber;
-use zksync_consensus_storage::WriteBlockStore;
+use zksync_consensus_storage::{StorageResult, WriteBlockStore};
 
 /// Inner details of `SyncBlocks` actor allowing to process messages.
 #[derive(Debug)]
@@ -22,9 +22,8 @@ pub(crate) struct SyncBlocksMessageHandler {
 impl SyncBlocksMessageHandler {
     /// Implements the message processing loop.
     #[instrument(level = "trace", skip_all, err)]
-    pub(crate) async fn process_messages(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        loop {
-            let input_message = self.message_receiver.recv(ctx).await?;
+    pub(crate) async fn process_messages(mut self, ctx: &ctx::Ctx) -> StorageResult<()> {
+        while let Ok(input_message) = self.message_receiver.recv(ctx).await {
             match input_message {
                 InputMessage::Network(SyncBlocksRequest::UpdatePeerSyncState {
                     peer,
@@ -42,6 +41,7 @@ impl SyncBlocksMessageHandler {
                 }
             }
         }
+        Ok(())
     }
 
     /// Gets a block with the specified `number` from the storage.
@@ -52,7 +52,7 @@ impl SyncBlocksMessageHandler {
         &self,
         ctx: &ctx::Ctx,
         number: BlockNumber,
-    ) -> anyhow::Result<GetBlockResponse> {
+    ) -> StorageResult<GetBlockResponse> {
         Ok(self
             .storage
             .block(ctx, number)
