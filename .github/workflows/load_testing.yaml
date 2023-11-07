@@ -64,7 +64,7 @@ jobs:
         with:
           terraform_version: 1.5.6
 
-      - name: Install Ansible
+      - name: Install Ansible and deps
         run: |
           sudo apt update && sudo apt install -y openssh-client
           python -m pip install --upgrade pip
