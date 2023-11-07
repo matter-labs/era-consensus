@@ -295,6 +295,9 @@ impl PeerStates {
             storage.put_block(ctx, &block).await?;
         } else {
             tracing::trace!(%block_number, "Getting block canceled");
+            if let Some(events_sender) = &self.events_sender {
+                events_sender.send(PeerStateEvent::CanceledBlock(block_number));
+            }
         }
         Ok(())
     }

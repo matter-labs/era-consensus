@@ -179,6 +179,98 @@ async fn updating_peer_state_with_single_block() {
 }
 
 #[derive(Debug)]
+struct CancelingBlockRetrieval;
+
+#[async_trait]
+impl Test for CancelingBlockRetrieval {
+    const BLOCK_COUNT: usize = 5;
+
+    async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
+        let TestHandles {
+            mut rng,
+            test_validators,
+            peer_states_handle,
+            storage,
+            mut message_receiver,
+            mut events_receiver,
+            ..
+        } = handles;
+
+        let peer_key = rng.gen::<node::SecretKey>().public();
+        peer_states_handle.update(peer_key.clone(), test_validators.sync_state(1));
+        let peer_event = events_receiver.recv(ctx).await?;
+        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+
+        // Check that the actor has sent a `get_block` request to the peer
+        let message = message_receiver.recv(ctx).await?;
+        assert_matches!(
+            message,
+            io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock { .. })
+        );
+
+        // Emulate receiving block using external means.
+        storage
+            .put_block(ctx, &test_validators.final_blocks[1])
+            .await?;
+        // Retrieval of the block must be canceled.
+        let peer_event = events_receiver.recv(ctx).await?;
+        assert_matches!(peer_event, PeerStateEvent::CanceledBlock(BlockNumber(1)));
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn canceling_block_retrieval() {
+    test_peer_states(CancelingBlockRetrieval).await;
+}
+
+#[derive(Debug)]
+struct FilteringBlockRetrieval;
+
+#[async_trait]
+impl Test for FilteringBlockRetrieval {
+    const BLOCK_COUNT: usize = 5;
+
+    async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
+        let TestHandles {
+            mut rng,
+            test_validators,
+            peer_states_handle,
+            storage,
+            mut message_receiver,
+            mut events_receiver,
+            ..
+        } = handles;
+
+        // Emulate receiving block using external means.
+        storage
+            .put_block(ctx, &test_validators.final_blocks[1])
+            .await?;
+
+        let peer_key = rng.gen::<node::SecretKey>().public();
+        peer_states_handle.update(peer_key.clone(), test_validators.sync_state(2));
+        let peer_event = events_receiver.recv(ctx).await?;
+        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+
+        // Check that the actor has sent `get_block` request to the peer, but only for block #2.
+        let message = message_receiver.recv(ctx).await?;
+        let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
+            recipient, number, ..
+        }) = message;
+        assert_eq!(recipient, peer_key);
+        assert_eq!(number, BlockNumber(2));
+
+        assert!(message_receiver.try_recv().is_none());
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn filtering_block_retrieval() {
+    test_peer_states(FilteringBlockRetrieval).await;
+}
+
+#[derive(Debug)]
 struct UpdatingPeerStateWithMultipleBlocks;
 
 impl UpdatingPeerStateWithMultipleBlocks {
