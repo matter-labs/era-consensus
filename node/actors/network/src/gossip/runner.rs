@@ -362,7 +362,7 @@ pub(crate) async fn run_client(
     sender: &channel::UnboundedSender<io::OutputMessage>,
     mut receiver: channel::UnboundedReceiver<io::SyncBlocksInputMessage>,
 ) -> anyhow::Result<()> {
-    let res = scope::run!(ctx, |ctx, s| async {
+    scope::run!(ctx, |ctx, s| async {
         // Spawn a tasks handling static outbound connections.
         for (peer, addr) in &state.gossip.cfg.static_outbound {
             s.spawn::<()>(async {
@@ -394,8 +394,8 @@ pub(crate) async fn run_client(
             Ok(())
         }
     })
-    .await;
+    .await
+    .ok();
 
-    assert_eq!(Err(ctx::Canceled), res);
     Ok(())
 }

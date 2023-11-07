@@ -6,7 +6,7 @@ use concurrency::time;
 use rand::{rngs::StdRng, seq::IteratorRandom, Rng};
 use roles::validator;
 use std::{collections::HashSet, fmt};
-use storage::{BlockStore, InMemoryStorage};
+use storage::{BlockStore, InMemoryStorage, StorageError};
 use test_casing::{test_casing, Product};
 
 const TEST_TIMEOUT: time::Duration = time::Duration::seconds(5);
@@ -115,12 +115,9 @@ async fn test_peer_states<T: Test>(test: T) {
 
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(async {
-            peer_states.run(ctx).await.or_else(|err| {
-                if err.root_cause().is::<ctx::Canceled>() {
-                    Ok(()) // Swallow cancellation errors after the test is finished
-                } else {
-                    Err(err)
-                }
+            peer_states.run(ctx).await.or_else(|err| match err {
+                StorageError::Canceled(_) => Ok(()), // Swallow cancellation errors after the test is finished
+                StorageError::Database(err) => Err(err),
             })
         });
         test.test(ctx, test_handles).await

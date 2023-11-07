@@ -14,7 +14,7 @@ use roles::{
     validator::{BlockHeader, BlockNumber, FinalBlock, PayloadHash},
 };
 use std::{collections::HashMap, sync::Arc};
-use storage::WriteBlockStore;
+use storage::{StorageResult, WriteBlockStore};
 use tracing::instrument;
 
 mod events;
@@ -78,7 +78,7 @@ impl PeerStates {
     /// 1. Get information about missing blocks from the storage.
     /// 2. Spawn a task processing `SyncState`s from peers.
     /// 3. Spawn a task to get each missing block.
-    pub(crate) async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub(crate) async fn run(mut self, ctx: &ctx::Ctx) -> StorageResult<()> {
         let updates_receiver = self.updates_receiver.take().unwrap();
         let storage = self.storage.as_ref();
         let get_block_semaphore = Semaphore::new(self.config.max_concurrent_blocks);
@@ -123,7 +123,7 @@ impl PeerStates {
         ctx: &ctx::Ctx,
         mut updates_receiver: channel::UnboundedReceiver<PeerStateUpdate>,
         new_blocks_sender: watch::Sender<BlockNumber>,
-    ) -> anyhow::Result<()> {
+    ) -> StorageResult<()> {
         loop {
             let (peer_key, sync_state) = updates_receiver.recv(ctx).await?;
             let new_last_block_number = self
@@ -151,7 +151,7 @@ impl PeerStates {
         ctx: &ctx::Ctx,
         peer_key: node::PublicKey,
         state: SyncState,
-    ) -> anyhow::Result<BlockNumber> {
+    ) -> ctx::OrCanceled<BlockNumber> {
         let last_contiguous_stored_block = match self.validate_sync_state(state) {
             Ok(block_number) => block_number,
             Err(err) => {
@@ -220,7 +220,7 @@ impl PeerStates {
         block_number: BlockNumber,
         get_block_permit: sync::SemaphorePermit<'_>,
         storage: &dyn WriteBlockStore,
-    ) -> anyhow::Result<()> {
+    ) -> StorageResult<()> {
         let block = self.get_block(ctx, block_number).await?;
         drop(get_block_permit);
 
@@ -236,7 +236,7 @@ impl PeerStates {
         &self,
         ctx: &ctx::Ctx,
         block_number: BlockNumber,
-    ) -> anyhow::Result<FinalBlock> {
+    ) -> ctx::OrCanceled<FinalBlock> {
         loop {
             let Some((peer_key, _permit)) =
                 Self::acquire_peer_permit(&*sync::lock(ctx, &self.peers).await?, block_number)
@@ -315,7 +315,7 @@ impl PeerStates {
         ctx: &ctx::Ctx,
         recipient: node::PublicKey,
         number: BlockNumber,
-    ) -> anyhow::Result<Option<FinalBlock>> {
+    ) -> ctx::OrCanceled<Option<FinalBlock>> {
         let (response, response_receiver) = oneshot::channel();
         let message = SyncBlocksInputMessage::GetBlock {
             recipient: recipient.clone(),
@@ -378,7 +378,7 @@ impl PeerStates {
         &self,
         ctx: &ctx::Ctx,
         peer_key: &node::PublicKey,
-    ) -> anyhow::Result<()> {
+    ) -> ctx::OrCanceled<()> {
         let mut peers = sync::lock(ctx, &self.peers).await?;
         if let Some(state) = peers.remove(peer_key) {
             tracing::trace!(?state, "Dropping peer connection state");
