@@ -1,5 +1,5 @@
 //! Conformance test for our canonical encoding implemented according to
-//! https://github.com/protocolbuffers/zksync_protobuf/blob/main/conformance/conformance.proto
+//! https://github.com/protocolbuffers/protobuf/blob/main/conformance/conformance.proto
 //! Our implementation supports only a subset of proto functionality, so
 //! `proto/conformance.proto` and
 //! `proto/protobuf_test_messages.proto` contains only a
