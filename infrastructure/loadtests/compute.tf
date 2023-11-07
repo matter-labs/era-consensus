@@ -66,6 +66,10 @@ resource "google_compute_instance" "vmagent" {
   machine_type = "e2-highcpu-4"
   zone         = "us-central1-a"
 
+  metadata = {
+    enable-oslogin : "TRUE"
+  }
+
   labels = {
     repo    = "zksync-bft"
     purpose = "monitoring"
