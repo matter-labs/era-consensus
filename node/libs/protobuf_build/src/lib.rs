@@ -94,15 +94,16 @@ impl Descriptor {
     }
 
     /// Loads the descriptor to the global pool and returns a copy of the global pool.
-    pub fn load_global(&self) -> prost_reflect::DescriptorPool {
+    pub fn get_message_by_name(&self, name: &str) -> Option<prost_reflect::MessageDescriptor> {
         /// Global descriptor pool.
         static POOL: Lazy<Mutex<prost_reflect::DescriptorPool>> = Lazy::new(Mutex::default);
         let pool = &mut POOL.lock().unwrap();
         self.load(pool).unwrap();
-        pool.clone()
+        pool.get_message_by_name(name)
     }
 }
 
+/// Expands to a descriptor declaration.
 #[macro_export]
 macro_rules! declare_descriptor {
     ($package_root:expr, $descriptor_path:expr, $($rust_deps:path),*) => {
@@ -148,7 +149,7 @@ impl Config {
         Ok(format!("impl {this}::prost_reflect::ReflectMessage for {rust_name} {{\
             fn descriptor(&self) -> {this}::prost_reflect::MessageDescriptor {{\
                 static INIT : {this}::Lazy<{this}::prost_reflect::MessageDescriptor> = {this}::Lazy::new(|| {{\
-                    DESCRIPTOR.load_global().get_message_by_name({proto_name:?}).unwrap()\
+                    DESCRIPTOR.get_message_by_name({proto_name:?}).unwrap()\
                 }});\
                 INIT.clone()\
             }}\
