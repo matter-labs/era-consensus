@@ -7,9 +7,9 @@ use std::{
 use zksync_consensus_crypto::{read_required_text, Text, TextFmt};
 use zksync_consensus_network::{consensus, gossip};
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_schema::proto::executor::config as proto;
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
+pub mod proto;
 #[cfg(test)]
 mod tests;
 

@@ -4,11 +4,10 @@ use super::{
     PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, Signature, Signed,
     Signers, ViewNumber,
 };
-use crate::node::SessionId;
+use crate::{node::SessionId, proto::validator as proto};
 use anyhow::Context as _;
 use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
-use zksync_consensus_schema::proto::roles::validator as proto;
 use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_required, required, ProtoFmt};
 

@@ -8,4 +8,5 @@
 //!                every node has this role.
 
 pub mod node;
+pub mod proto;
 pub mod validator;

@@ -2643,7 +2643,6 @@ dependencies = [
  "zksync_consensus_crypto",
  "zksync_consensus_network",
  "zksync_consensus_roles",
- "zksync_consensus_schema",
  "zksync_consensus_storage",
  "zksync_consensus_utils",
  "zksync_protobuf",
@@ -2673,6 +2672,7 @@ name = "zksync_consensus_executor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "prost",
  "rand",
  "tokio",
  "tracing",
@@ -2682,7 +2682,6 @@ dependencies = [
  "zksync_consensus_crypto",
  "zksync_consensus_network",
  "zksync_consensus_roles",
- "zksync_consensus_schema",
  "zksync_consensus_storage",
  "zksync_consensus_sync_blocks",
  "zksync_consensus_utils",
@@ -2699,6 +2698,7 @@ dependencies = [
  "once_cell",
  "pin-project",
  "pretty_assertions",
+ "prost",
  "rand",
  "snow",
  "test-casing",
@@ -2709,7 +2709,6 @@ dependencies = [
  "zksync_concurrency",
  "zksync_consensus_crypto",
  "zksync_consensus_roles",
- "zksync_consensus_schema",
  "zksync_consensus_utils",
  "zksync_protobuf",
 ]
@@ -2721,29 +2720,13 @@ dependencies = [
  "anyhow",
  "bit-vec",
  "hex",
+ "prost",
  "rand",
  "serde",
  "tracing",
  "zksync_concurrency",
  "zksync_consensus_crypto",
- "zksync_consensus_schema",
  "zksync_consensus_utils",
- "zksync_protobuf",
-]
-
-[[package]]
-name = "zksync_consensus_schema"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bit-vec",
- "once_cell",
- "prost",
- "rand",
- "serde",
- "serde_json",
- "tokio",
- "zksync_concurrency",
  "zksync_protobuf",
 ]
 
@@ -2754,6 +2737,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "async-trait",
+ "prost",
  "rand",
  "rocksdb",
  "tempfile",
@@ -2763,7 +2747,6 @@ dependencies = [
  "tracing",
  "zksync_concurrency",
  "zksync_consensus_roles",
- "zksync_consensus_schema",
  "zksync_protobuf",
 ]
 
@@ -2802,7 +2785,6 @@ dependencies = [
  "zksync_consensus_crypto",
  "zksync_consensus_executor",
  "zksync_consensus_roles",
- "zksync_consensus_schema",
  "zksync_consensus_storage",
  "zksync_consensus_utils",
  "zksync_protobuf",
