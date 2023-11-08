@@ -1,12 +1,12 @@
 use crate::testonly;
-use concurrency::{ctx, scope, time};
-use network::io::{ConsensusInputMessage, Target};
 use rand::Rng;
-use roles::validator::{self, ViewNumber};
+use zksync_concurrency::{ctx, scope, testonly::abort_on_panic, time};
+use zksync_consensus_network::io::{ConsensusInputMessage, Target};
+use zksync_consensus_roles::validator::{self, ViewNumber};
 
 #[tokio::test]
 async fn start_new_view_not_leader() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::ManualClock::new());
     let rng = &mut ctx.rng();
 

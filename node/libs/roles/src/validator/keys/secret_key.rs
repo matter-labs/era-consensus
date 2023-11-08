@@ -1,9 +1,9 @@
 use super::{PublicKey, Signature};
 use crate::validator::messages::{Msg, MsgHash, Signed};
-use crypto::{bn254, ByteFmt, Text, TextFmt};
 use rand::Rng;
 use std::{fmt, sync::Arc};
-use utils::enum_util::Variant;
+use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
+use zksync_consensus_utils::enum_util::Variant;
 
 /// A secret key for the validator role.
 /// SecretKey is put into an Arc, so that we can clone it,

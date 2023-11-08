@@ -9,7 +9,7 @@
 //! or convenience of use.
 use super::{FrameKind, ReadReusableStream, WriteReusableStream};
 use crate::noise::bytes;
-use concurrency::{ctx, sync};
+use zksync_concurrency::{ctx, sync};
 
 /// Read half of the transient stream.
 #[derive(Debug)]

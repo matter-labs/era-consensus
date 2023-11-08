@@ -7,7 +7,7 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use roles::{node, validator};
+use zksync_consensus_roles::{node, validator};
 
 impl Distribution<Handshake> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Handshake {

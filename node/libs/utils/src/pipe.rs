@@ -1,8 +1,8 @@
 //! This is a wrapper around channels to make it simpler and less error-prone to connect actors and the dispatcher.
 //! A Pipe is a basically a bi-directional unbounded channel.
 
-use concurrency::ctx::{self, channel, Ctx};
 use std::future::Future;
+use zksync_concurrency::ctx::{self, channel, Ctx};
 
 /// This is the end of the Pipe that should be held by the actor.
 pub type ActorPipe<In, Out> = Pipe<In, Out>;

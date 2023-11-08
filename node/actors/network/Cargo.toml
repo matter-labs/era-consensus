@@ -1,5 +1,5 @@
 [package]
-name = "network"
+name = "zksync_consensus_network"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
@@ -7,6 +7,12 @@ homepage.workspace = true
 license.workspace = true
 
 [dependencies]
+zksync_concurrency.workspace = true
+zksync_consensus_crypto.workspace = true
+zksync_consensus_roles.workspace = true
+zksync_consensus_schema.workspace = true
+zksync_consensus_utils.workspace = true
+
 anyhow.workspace = true
 async-trait.workspace = true
 im.workspace = true
@@ -18,14 +24,7 @@ thiserror.workspace = true
 tracing.workspace = true
 vise.workspace = true
 
-concurrency = { path = "../../libs/concurrency" }
-crypto = { path = "../../libs/crypto" }
-roles = { path = "../../libs/roles" }
-schema = { path = "../../libs/schema" }
-utils = { path = "../../libs/utils" }
-
 [dev-dependencies]
-futures.workspace = true
 pretty_assertions.workspace = true
 test-casing.workspace = true
 tokio.workspace = true

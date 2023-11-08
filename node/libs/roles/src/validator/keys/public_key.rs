@@ -1,5 +1,5 @@
-use crypto::{bn254, ByteFmt, Text, TextFmt};
 use std::fmt;
+use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 
 /// A public key for a validator.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

@@ -1,14 +1,12 @@
 #![allow(clippy::missing_docs_in_private_items)]
 #![allow(missing_docs)]
 
-extern crate crypto;
-
 use criterion::{criterion_group, criterion_main, Criterion};
 use rand::Rng;
 use std::iter::repeat_with;
 
 fn bench_bn254(c: &mut Criterion) {
-    use crypto::bn254::{AggregateSignature, PublicKey, SecretKey, Signature};
+    use zksync_consensus_crypto::bn254::{AggregateSignature, PublicKey, SecretKey, Signature};
     let mut rng = rand::thread_rng();
     let mut group = c.benchmark_group("bn254");
     group.bench_function("100 sig aggregation", |b| {
@@ -27,7 +25,7 @@ fn bench_bn254(c: &mut Criterion) {
 
 #[allow(missing_docs)]
 fn bench_bls12_381(c: &mut Criterion) {
-    use crypto::bls12_381::{AggregateSignature, PublicKey, SecretKey, Signature};
+    use zksync_consensus_crypto::bls12_381::{AggregateSignature, PublicKey, SecretKey, Signature};
     let mut rng = rand::thread_rng();
     let mut group = c.benchmark_group("bls12_381");
     group.bench_function("100 sig aggregation", |b| {

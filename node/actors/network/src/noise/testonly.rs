@@ -1,5 +1,5 @@
 use crate::{metrics, noise};
-use concurrency::{ctx, scope};
+use zksync_concurrency::{ctx, scope};
 
 pub(crate) async fn pipe(ctx: &ctx::Ctx) -> (noise::Stream, noise::Stream) {
     scope::run!(ctx, |ctx, s| async {

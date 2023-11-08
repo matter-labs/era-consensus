@@ -28,7 +28,7 @@ jobs:
           path: "protobuf"
       - uses: mozilla-actions/sccache-action@v0.0.3
       - name: build test
-        run: cargo build -p schema --bin conformance_test
+        run: cargo build -p zksync_consensus_schema --bin conformance_test
         working-directory: "this/node"
       - name: Cache Bazel
         uses: actions/cache@v3

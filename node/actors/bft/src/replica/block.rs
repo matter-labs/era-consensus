@@ -1,7 +1,7 @@
 use super::StateMachine;
 use crate::{inner::ConsensusInner, io::OutputMessage};
-use roles::validator;
 use tracing::{info, instrument};
+use zksync_consensus_roles::validator;
 
 impl StateMachine {
     /// Tries to build a finalized block from the given CommitQC. We simply search our

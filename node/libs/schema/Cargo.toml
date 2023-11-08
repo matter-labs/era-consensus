@@ -1,5 +1,5 @@
 [package]
-name = "schema"
+name = "zksync_consensus_schema"
 version = "0.1.0"
 edition.workspace = true
 authors.workspace = true
@@ -10,6 +10,8 @@ license.workspace = true
 name = "conformance_test"
 
 [dependencies]
+zksync_concurrency.workspace = true
+
 anyhow.workspace = true
 bit-vec.workspace = true
 serde.workspace = true
@@ -20,8 +22,6 @@ prost-reflect.workspace = true
 rand.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
-
-concurrency = { path = "../concurrency" }
 
 [build-dependencies]
 anyhow.workspace = true

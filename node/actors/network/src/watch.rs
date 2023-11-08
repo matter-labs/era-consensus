@@ -1,5 +1,5 @@
 //! Wrapper of the tokio::sync::Watch for easier usage.
-use concurrency::sync;
+use zksync_concurrency::sync;
 
 /// Wrapper of the tokio::sync::Watch.
 pub(crate) struct Watch<T> {

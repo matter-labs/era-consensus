@@ -1,5 +1,5 @@
 use rand::{seq::SliceRandom, Rng};
-use roles::validator;
+use zksync_consensus_roles::validator;
 
 /// Trait that allows us to mutate types. It's an approach to fuzzing that instead of starting with completely random inputs
 /// (which will basically always fail on the first check), starts from a real valid message and modifies a single value to

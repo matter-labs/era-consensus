@@ -1,6 +1,6 @@
 //! Input and output messages for the [`SyncBlocks`](crate::SyncBlocks) actor.
 
-use network::io::{SyncBlocksInputMessage, SyncBlocksRequest};
+use zksync_consensus_network::io::{SyncBlocksInputMessage, SyncBlocksRequest};
 
 /// All the messages that other actors can send to the `SyncBlocks` actor.
 #[derive(Debug)]

@@ -1,18 +1,18 @@
 //! Testonly utilities.
 #![allow(dead_code)]
 use crate::{consensus, event::Event, gossip, io::SyncState, Config, State};
-use concurrency::{
+use rand::Rng;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
+use zksync_concurrency::{
     ctx,
     ctx::channel,
     io, net,
     sync::{self, watch},
 };
-use rand::Rng;
-use roles::validator;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use zksync_consensus_roles::validator;
 
 /// Synchronously forwards data from one stream to another.
 pub(crate) async fn forward(
@@ -53,26 +53,26 @@ impl Instance {
     pub fn new_configs<R: Rng>(rng: &mut R, n: usize, gossip_peers: usize) -> Vec<Config> {
         let keys: Vec<validator::SecretKey> = (0..n).map(|_| rng.gen()).collect();
         let validators = validator::ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap();
-        let mut cfgs: Vec<_> = (0..n)
-            .map(|i| {
-                let addr = net::tcp::testonly::reserve_listener();
-                Config {
-                    server_addr: addr,
-                    validators: validators.clone(),
-                    consensus: Some(consensus::Config {
-                        key: keys[i].clone(),
-                        public_addr: *addr,
-                    }),
-                    gossip: gossip::Config {
-                        key: rng.gen(),
-                        dynamic_inbound_limit: n as u64,
-                        static_inbound: HashSet::default(),
-                        static_outbound: HashMap::default(),
-                        enable_pings: true,
-                    },
-                }
-            })
-            .collect();
+        let configs = keys.iter().map(|key| {
+            let addr = net::tcp::testonly::reserve_listener();
+            Config {
+                server_addr: addr,
+                validators: validators.clone(),
+                consensus: Some(consensus::Config {
+                    key: key.clone(),
+                    public_addr: *addr,
+                }),
+                gossip: gossip::Config {
+                    key: rng.gen(),
+                    dynamic_inbound_limit: n as u64,
+                    static_inbound: HashSet::default(),
+                    static_outbound: HashMap::default(),
+                    enable_pings: true,
+                },
+            }
+        });
+        let mut cfgs: Vec<_> = configs.collect();
+
         for i in 0..cfgs.len() {
             for j in 0..gossip_peers {
                 let j = (i + j + 1) % n;

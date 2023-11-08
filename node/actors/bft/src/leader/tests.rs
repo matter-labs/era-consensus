@@ -1,7 +1,7 @@
 use crate::testonly;
-use concurrency::ctx;
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use roles::validator;
+use zksync_concurrency::ctx;
+use zksync_consensus_roles::validator;
 
 // TODO(bruno): This only tests a particular case, not the whole method.
 #[tokio::test]

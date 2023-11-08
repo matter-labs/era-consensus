@@ -5,12 +5,14 @@ use super::{
     Signers, ViewNumber,
 };
 use crate::node::SessionId;
-use ::schema::{read_required, required, ProtoFmt};
 use anyhow::Context as _;
-use crypto::ByteFmt;
-use schema::proto::roles::validator as proto;
 use std::collections::BTreeMap;
-use utils::enum_util::Variant;
+use zksync_consensus_crypto::ByteFmt;
+use zksync_consensus_schema as schema;
+use zksync_consensus_schema::{
+    proto::roles::validator as proto, read_required, required, ProtoFmt,
+};
+use zksync_consensus_utils::enum_util::Variant;
 
 impl ProtoFmt for BlockHeaderHash {
     type Proto = proto::BlockHeaderHash;

@@ -1,11 +1,11 @@
 use crate::noise;
-use concurrency::{ctx, io, scope};
 use rand::Rng;
 use tracing::instrument::Instrument as _;
+use zksync_concurrency::{ctx, io, scope, testonly::abort_on_panic};
 
 #[tokio::test]
 async fn transmit_ok() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let (mut s1, mut s2) = noise::testonly::pipe(ctx).await;
     let msg = "hello";
@@ -44,7 +44,7 @@ async fn transmit_ok() {
 
 #[tokio::test]
 async fn transmit_sender_dies() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let (mut s1, mut s2) = noise::testonly::pipe(ctx).await;
     let msg = "hello";
@@ -74,7 +74,7 @@ async fn transmit_sender_dies() {
 
 #[tokio::test]
 async fn transmit_receiver_dies() {
-    concurrency::testonly::abort_on_panic();
+    abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let (s1, s2) = noise::testonly::pipe(ctx).await;
