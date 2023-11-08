@@ -8,9 +8,11 @@ use std::hash::{Hash, Hasher};
 use std::io::Cursor;
 
 use ff_ce::Field as _;
-use pairing::{CurveAffine as _, CurveProjective as _, EncodedPoint as _, Engine as _};
-use pairing::bn256::{Bn256, Fq12, Fr, FrRepr, G1, G1Affine, G1Compressed, G2, G2Affine, G2Compressed};
+use pairing::bn256::{
+    Bn256, Fq12, Fr, FrRepr, G1Affine, G1Compressed, G2Affine, G2Compressed, G1, G2,
+};
 use pairing::ff::{PrimeField, PrimeFieldRepr};
+use pairing::{CurveAffine as _, CurveProjective as _, EncodedPoint as _, Engine as _};
 
 pub use error::Error;
 
@@ -159,7 +161,7 @@ pub struct AggregateSignature(G1);
 
 impl AggregateSignature {
     /// Generates an aggregate signature from a list of signatures.
-    pub fn aggregate<'a>(sigs: impl IntoIterator<Item=&'a Signature>) -> Self {
+    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
         let mut agg = G1Affine::zero().into_projective();
         for sig in sigs {
             agg.add_assign(&sig.0)
@@ -199,7 +201,7 @@ impl AggregateSignature {
     /// If there are any duplicate messages, the public keys will be aggregated before verification.
     pub fn verify<'a>(
         &self,
-        msgs_and_pks: impl Iterator<Item=(&'a [u8], &'a PublicKey)>,
+        msgs_and_pks: impl Iterator<Item = (&'a [u8], &'a PublicKey)>,
     ) -> Result<(), Error> {
         self.verify_raw(&msgs_and_pks.collect::<Vec<_>>()[..])
     }
