@@ -1,19 +1,20 @@
 //! Conformance test for our canonical encoding implemented according to
 //! https://github.com/protocolbuffers/protobuf/blob/main/conformance/conformance.proto
 //! Our implementation supports only a subset of proto functionality, so
-//! `schema/proto/conformance/conformance.proto` and
-//! `schema/proto/conformance/protobuf_test_messages.proto` contains only a
+//! `proto/conformance.proto` and
+//! `proto/protobuf_test_messages.proto` contains only a
 //! subset of original fields. Also we run only proto3 binary -> binary tests.
-//! conformance_test_failure_list.txt contains tests which are expected to fail.
+//! failure_list.txt contains tests which are expected to fail.
 use anyhow::Context as _;
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
+use std::sync::Mutex;
 use zksync_concurrency::{ctx, io};
-use zksync_consensus_schema as schema;
-use zksync_consensus_schema::proto::conformance as proto;
 
-#[tokio::main]
-async fn main() -> anyhow::Result<()> {
+mod proto;
+
+/// Runs the test server.
+async fn run() -> anyhow::Result<()> {
     let ctx = &ctx::root();
     let stdin = &mut tokio::io::stdin();
     let stdout = &mut tokio::io::stdout();
@@ -37,10 +38,10 @@ async fn main() -> anyhow::Result<()> {
 
             // Decode.
             let payload = req.payload.context("missing payload")?;
-            use zksync_consensus_schema::proto::protobuf_test_messages::proto3::TestAllTypesProto3 as T;
+            use proto::TestAllTypesProto3 as T;
             let p = match payload {
                 proto::conformance_request::Payload::JsonPayload(payload) => {
-                    match schema::decode_json_proto(&payload) {
+                    match zksync_protobuf::decode_json_proto(&payload) {
                         Ok(p) => p,
                         Err(_) => return Ok(R::Skipped("unsupported fields".to_string())),
                     }
@@ -51,7 +52,7 @@ async fn main() -> anyhow::Result<()> {
                         return Ok(R::ParseError("parsing failed".to_string()));
                     };
                     // Then check if there are any unknown fields in the original payload.
-                    if schema::canonical_raw(&payload[..], &p.descriptor()).is_err() {
+                    if zksync_protobuf::canonical_raw(&payload[..], &p.descriptor()).is_err() {
                         return Ok(R::Skipped("unsupported fields".to_string()));
                     }
                     p
@@ -63,13 +64,13 @@ async fn main() -> anyhow::Result<()> {
             let format = req
                 .requested_output_format
                 .context("missing output format")?;
-            match proto::WireFormat::from_i32(format).context("unknown format")? {
+            match proto::WireFormat::try_from(format).context("unknown format")? {
                 proto::WireFormat::Json => {
-                    anyhow::Ok(R::JsonPayload(schema::encode_json_proto(&p)))
+                    anyhow::Ok(R::JsonPayload(zksync_protobuf::encode_json_proto(&p)))
                 }
                 proto::WireFormat::Protobuf => {
                     // Reencode the parsed proto.
-                    anyhow::Ok(R::ProtobufPayload(schema::canonical_raw(
+                    anyhow::Ok(R::ProtobufPayload(zksync_protobuf::canonical_raw(
                         &p.encode_to_vec(),
                         &p.descriptor(),
                     )?))
@@ -85,5 +86,26 @@ async fn main() -> anyhow::Result<()> {
         io::write_all(ctx, stdout, &u32::to_le_bytes(msg.len() as u32)).await??;
         io::write_all(ctx, stdout, &msg).await??;
         io::flush(ctx, stdout).await??;
+    }
+}
+
+#[tokio::main]
+async fn main() {
+    let sub = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env());
+    match std::env::var("LOG_FILE") {
+        Err(_) => sub.with_writer(std::io::stderr).init(),
+        Ok(path) => sub
+            .with_writer(Mutex::new(
+                std::fs::File::options()
+                    .create(true)
+                    .append(true)
+                    .open(path)
+                    .unwrap(),
+            ))
+            .init(),
+    };
+    if let Err(err) = run().await {
+        tracing::error!("run(): {err:#}");
     }
 }

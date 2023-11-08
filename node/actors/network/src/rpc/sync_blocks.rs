@@ -1,11 +1,10 @@
 //! Defines RPC for synchronizing blocks.
-
 use crate::{io, mux};
 use anyhow::Context;
 use zksync_concurrency::{limiter, time};
 use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
-use zksync_consensus_schema as schema;
-use zksync_consensus_schema::{proto::network::gossip as proto, read_required, ProtoFmt};
+use zksync_consensus_schema::proto::network::gossip as proto;
+use zksync_protobuf::{read_required, ProtoFmt};
 
 /// `get_sync_state` RPC.
 #[derive(Debug)]
@@ -48,7 +47,7 @@ impl ProtoFmt for io::SyncState {
 
     fn max_size() -> usize {
         // TODO: estimate maximum size more precisely
-        100 * schema::kB
+        100 * zksync_protobuf::kB
     }
 }
 
@@ -68,7 +67,7 @@ impl ProtoFmt for SyncStateResponse {
     }
 
     fn max_size() -> usize {
-        schema::kB
+        zksync_protobuf::kB
     }
 }
 
@@ -110,7 +109,7 @@ impl ProtoFmt for GetBlockRequest {
     }
 
     fn max_size() -> usize {
-        schema::kB
+        zksync_protobuf::kB
     }
 }
 
@@ -121,7 +120,7 @@ impl ProtoFmt for io::GetBlockError {
         use proto::get_block_response::ErrorReason;
 
         let reason = message.reason.context("missing reason")?;
-        let reason = ErrorReason::from_i32(reason).context("reason")?;
+        let reason = ErrorReason::try_from(reason).context("reason")?;
         Ok(match reason {
             ErrorReason::NotSynced => Self::NotSynced,
         })
@@ -138,7 +137,7 @@ impl ProtoFmt for io::GetBlockError {
     }
 
     fn max_size() -> usize {
-        schema::kB
+        zksync_protobuf::kB
     }
 }
 
@@ -179,6 +178,6 @@ impl ProtoFmt for GetBlockResponse {
     }
 
     fn max_size() -> usize {
-        schema::MB
+        zksync_protobuf::MB
     }
 }

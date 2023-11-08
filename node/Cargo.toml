@@ -1,6 +1,8 @@
 [workspace]
 members = [
     "libs/concurrency",
+    "libs/protobuf_build",
+    "libs/protobuf",
     "actors/bft",
     "libs/crypto",
     "actors/executor",
@@ -21,6 +23,8 @@ homepage = "https://matter-labs.io/"
 license = "MIT"
 
 [workspace.dependencies]
+zksync_protobuf_build = { path = "libs/protobuf_build" }
+zksync_protobuf = { path = "libs/protobuf" }
 zksync_concurrency = { path = "libs/concurrency" }
 zksync_consensus_bft = { path = "actors/bft" }
 zksync_consensus_crypto = { path = "libs/crypto" }
@@ -43,19 +47,22 @@ ark-ec = "0.4.2"
 ark-serialize = { version = "0.4.2", features = ["std"] }
 num-traits = "0.2.17"
 clap = { version = "4.3.3", features = ["derive"] }
+heck = "0.4.1"
 ed25519-dalek = { version = "2.0.0", features = ["rand_core"] }
 hex = "0.4.3"
 im = "15.1.0"
 once_cell = "1.17.1"
 pin-project = "1.1.0"
-prost = "0.11.0"
-prost-build = "0.11.0"
-prost-reflect = { version = "0.11.0", features = ["derive", "serde"] }
-prost-reflect-build = "0.11.0"
-protoc-bin-vendored = "3.0.0"
+prost = "0.12.0"
+prost-build = "0.12.0"
+prost-reflect = { version = "0.12.0", features = ["serde"] }
+prost-types = "0.12.0"
+protox = "0.5.0"
+protox-parse = "0.5.0"
 prettyplease = "0.2.6"
 pretty_assertions = "1.4.0"
 quick-protobuf = "0.8.1"
+quote = "1.0.33"
 rand = "0.8.0"
 rocksdb = "0.21.0"
 serde = { version = "1.0", features = ["derive"] }

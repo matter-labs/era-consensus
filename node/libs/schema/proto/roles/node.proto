@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package roles.node;
+package zksync.schema.roles.node;
 
 message Msg {
   oneof t {

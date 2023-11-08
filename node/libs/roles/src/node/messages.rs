@@ -1,6 +1,5 @@
 use crate::node;
 use zksync_consensus_crypto::{sha256, ByteFmt, Text, TextFmt};
-use zksync_consensus_schema as schema;
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
 /// The ID for an authentication session.
@@ -18,7 +17,7 @@ pub enum Msg {
 impl Msg {
     /// Get the hash of this message.
     pub fn hash(&self) -> MsgHash {
-        MsgHash(sha256::Sha256::new(&schema::canonical(self)))
+        MsgHash(sha256::Sha256::new(&zksync_protobuf::canonical(self)))
     }
 }
 

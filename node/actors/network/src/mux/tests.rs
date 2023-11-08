@@ -9,7 +9,6 @@ use std::{
     },
 };
 use zksync_concurrency::{ctx, scope, testonly::abort_on_panic};
-use zksync_consensus_schema as schema;
 use zksync_consensus_schema::proto::network::mux_test as proto;
 use zksync_consensus_utils::no_copy::NoCopy;
 
@@ -73,7 +72,7 @@ struct Resp {
     capability_id: mux::CapabilityId,
 }
 
-impl schema::ProtoFmt for Req {
+impl zksync_protobuf::ProtoFmt for Req {
     type Proto = proto::Req;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(r.input.as_ref().unwrap().clone()))
@@ -85,7 +84,7 @@ impl schema::ProtoFmt for Req {
     }
 }
 
-impl schema::ProtoFmt for Resp {
+impl zksync_protobuf::ProtoFmt for Resp {
     type Proto = proto::Resp;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {

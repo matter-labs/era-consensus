@@ -40,15 +40,7 @@
 
 syntax = "proto3";
 
-package protobuf_test_messages.proto3;
-
-option java_package = "com.google.protobuf_test_messages.proto3";
-option objc_class_prefix = "Proto3";
-
-// This is the default, but we specify it here explicitly.
-option optimize_for = SPEED;
-
-option cc_enable_arenas = true;
+package zksync.protobuf.conformance_test;
 
 // This proto includes every type of field in both singular and repeated
 // forms.

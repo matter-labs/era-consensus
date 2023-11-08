@@ -8,11 +8,9 @@ use crate::node::SessionId;
 use anyhow::Context as _;
 use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
-use zksync_consensus_schema as schema;
-use zksync_consensus_schema::{
-    proto::roles::validator as proto, read_required, required, ProtoFmt,
-};
+use zksync_consensus_schema::proto::roles::validator as proto;
 use zksync_consensus_utils::enum_util::Variant;
+use zksync_protobuf::{read_required, required, ProtoFmt};
 
 impl ProtoFmt for BlockHeaderHash {
     type Proto = proto::BlockHeaderHash;
@@ -189,7 +187,7 @@ impl ProtoFmt for LeaderCommit {
 }
 
 impl ProtoFmt for Signers {
-    type Proto = schema::proto::std::BitVector;
+    type Proto = zksync_protobuf::proto::std::BitVector;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(ProtoFmt::read(r)?))
@@ -268,8 +266,8 @@ impl ProtoFmt for Phase {
     fn build(&self) -> Self::Proto {
         use proto::phase::T;
         let t = match self {
-            Self::Prepare => T::Prepare(schema::proto::std::Void {}),
-            Self::Commit => T::Commit(schema::proto::std::Void {}),
+            Self::Prepare => T::Prepare(zksync_protobuf::proto::std::Void {}),
+            Self::Commit => T::Commit(zksync_protobuf::proto::std::Void {}),
         };
         Self::Proto { t: Some(t) }
     }

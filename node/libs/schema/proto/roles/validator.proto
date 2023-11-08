@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package roles.validator;
+package zksync.schema.roles.validator;
 
-import "std.proto";
+import "zksync/std.proto";
 
 message PayloadHash {
   optional bytes sha256 = 1; // required

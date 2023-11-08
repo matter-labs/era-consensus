@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package network.preface;
+package zksync.schema.network.preface;
 
 // Every connection starts with the following preface:
 // 1. client sends Encryption msg to server.

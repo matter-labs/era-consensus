@@ -3,6 +3,8 @@ use anyhow::Context as _;
 use std::net;
 use zksync_concurrency::{ctx, time};
 
+mod proto;
+
 #[derive(Debug, PartialEq, Eq)]
 enum B {
     U(bool),
@@ -10,16 +12,16 @@ enum B {
 }
 
 impl ProtoFmt for B {
-    type Proto = proto::testonly::B;
+    type Proto = proto::B;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        use proto::testonly::b::T;
+        use proto::b::T;
         Ok(match required(&r.t)? {
             T::U(x) => Self::U(*x),
             T::V(x) => Self::V(Box::new(ProtoFmt::read(x.as_ref())?)),
         })
     }
     fn build(&self) -> Self::Proto {
-        use proto::testonly::b::T;
+        use proto::b::T;
         let t = match self {
             Self::U(x) => T::U(*x),
             Self::V(x) => T::V(Box::new(x.build())),
@@ -37,7 +39,7 @@ struct A {
 }
 
 impl ProtoFmt for A {
-    type Proto = proto::testonly::A;
+    type Proto = proto::A;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             x: required(&r.x).context("x")?.clone(),

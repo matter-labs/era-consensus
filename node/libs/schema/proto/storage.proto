@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package storage;
+package zksync.schema.storage;
 
-import "roles/validator.proto";
+import "zksync/schema/roles/validator.proto";
 
 message Proposal {
   optional uint64 number = 1;

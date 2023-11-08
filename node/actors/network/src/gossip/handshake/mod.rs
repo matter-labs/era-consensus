@@ -4,7 +4,8 @@ use anyhow::Context as _;
 use zksync_concurrency::{ctx, time};
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_roles::node;
-use zksync_consensus_schema::{proto::network::gossip as proto, read_required, required, ProtoFmt};
+use zksync_consensus_schema::proto::network::gossip as proto;
+use zksync_protobuf::{read_required, required, ProtoFmt};
 
 #[cfg(test)]
 mod testonly;
