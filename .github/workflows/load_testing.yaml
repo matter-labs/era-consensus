@@ -119,7 +119,7 @@ jobs:
       - name: Generate node configs
         working-directory: node
         run: |
-          cargo run -p tools \
+          cargo run -p zksync_consensus_tools \
           --bin localnet_config -- \
           --input-addrs ips_prts.txt \
           --metrics-server-port ${{ env.METRICS_PORT }} \
@@ -128,7 +128,7 @@ jobs:
       - name: Build executor binary
         working-directory: node
         run: |
-          build_output=$(cargo build --release -p tools --bin executor --message-format=json) || exit 1
+          build_output=$(cargo build --release -p zksync_consensus_tools --bin executor --message-format=json) || exit 1
           echo "$build_output" | jq -r 'select(.executable != null) | .executable' \
           | while read binary; do
             cp "$binary" artifacts/binaries/
