@@ -22,6 +22,7 @@
 //! different crates you need to specify them as dependencies in the Config.dependencies.
 //! It is not possible to depend on a different proto bundle within the same crate (because
 //! these are being built simultaneously from the same build script).
+
 #![allow(clippy::print_stdout)]
 // Imports accessed from the generated code.
 pub use self::syntax::*;
@@ -39,19 +40,20 @@ mod syntax;
 /// Traverses all the files in a directory recursively.
 fn traverse_files(
     path: &Path,
-    f: &mut impl FnMut(&Path) -> anyhow::Result<()>,
+    action: &mut impl FnMut(&Path) -> anyhow::Result<()>,
 ) -> anyhow::Result<()> {
     if !path.is_dir() {
-        f(path).with_context(|| path.display().to_string())?;
+        action(path).with_context(|| path.display().to_string())?;
         return Ok(());
     }
     for entry in fs::read_dir(path)? {
-        traverse_files(&entry?.path(), f)?;
+        traverse_files(&entry?.path(), action)?;
     }
     Ok(())
 }
 
 /// Protobuf descriptor + info about the mapping to rust code.
+#[derive(Debug)]
 pub struct Descriptor {
     /// Root proto package that all proto files in this descriptor belong to.
     /// Rust types have been generated relative to this root.
@@ -86,8 +88,8 @@ impl Descriptor {
         {
             return Ok(());
         }
-        for d in &self.dependencies {
-            d.load(pool)?;
+        for dependency in &self.dependencies {
+            dependency.load(pool)?;
         }
         pool.add_file_descriptor_set(self.descriptor_proto.clone())?;
         Ok(())
@@ -107,11 +109,11 @@ impl Descriptor {
 #[macro_export]
 macro_rules! declare_descriptor {
     ($package_root:expr, $descriptor_path:expr, $($rust_deps:path),*) => {
-        pub static DESCRIPTOR : $crate::Lazy<$crate::Descriptor> = $crate::Lazy::new(|| {
+        pub static DESCRIPTOR: $crate::Lazy<$crate::Descriptor> = $crate::Lazy::new(|| {
             $crate::Descriptor::new(
                 $package_root.into(),
-                vec![$({ use $rust_deps as dep; &dep::DESCRIPTOR }),*],
-                &include_bytes!($descriptor_path)[..],
+                ::std::vec![$({ use $rust_deps as dep; &dep::DESCRIPTOR })*],
+                include_bytes!($descriptor_path),
             )
         });
     }
@@ -150,7 +152,7 @@ impl Config {
         Ok(quote::quote! {
             impl #this::prost_reflect::ReflectMessage for #rust_name {
                 fn descriptor(&self) -> #this::prost_reflect::MessageDescriptor {
-                    static INIT : #this::Lazy<#this::prost_reflect::MessageDescriptor> = #this::Lazy::new(|| {
+                    static INIT: #this::Lazy<#this::prost_reflect::MessageDescriptor> = #this::Lazy::new(|| {
                         DESCRIPTOR.get_message_by_name(#proto_name).unwrap()
                     });
                     INIT.clone()
@@ -168,9 +170,10 @@ impl Config {
 
         // Load dependencies.
         let mut pool = prost_reflect::DescriptorPool::new();
-        for d in &self.dependencies {
-            d.1.load(&mut pool)
-                .with_context(|| format!("failed to load dependency {}", d.0))?;
+        for (name, descriptor) in &self.dependencies {
+            descriptor
+                .load(&mut pool)
+                .with_context(|| format!("failed to load dependency {name}"))?;
         }
         let mut pool_raw = prost_types::FileDescriptorSet::default();
         pool_raw.file.extend(pool.file_descriptor_protos().cloned());
@@ -215,16 +218,15 @@ impl Config {
         pool.add_file_descriptor_set(descriptor.clone()).unwrap();
 
         // Check that the compiled proto files belong to the declared proto package.
-        for f in &descriptor.file {
-            let got = ProtoName::from(f.package());
+        for file in &descriptor.file {
+            let got = ProtoName::from(file.package());
             // Unwrap is ok, because descriptor file here has never an empty name.
-            let want_prefix = ProtoPath::from(f.name()).parent().unwrap().to_name()?;
-            if !got.starts_with(&want_prefix) {
-                anyhow::bail!(
-                    "{got} ({:?}) does not belong to package {want_prefix}",
-                    f.name(),
-                );
-            }
+            let want_prefix = ProtoPath::from(file.name()).parent().unwrap().to_name()?;
+            anyhow::ensure!(
+                got.starts_with(&want_prefix),
+                "{got} ({:?}) does not belong to package {want_prefix}",
+                file.name()
+            );
         }
 
         // Check that the compiled proto messages support canonical encoding.
@@ -245,23 +247,23 @@ impl Config {
         let mut config = prost_build::Config::new();
         config.prost_path(self.this_crate().join("prost").to_string());
         config.skip_protoc_run();
-        for d in &self.dependencies {
-            for f in &d.1.descriptor_proto.file {
-                let proto_rel = ProtoName::from(f.package())
-                    .relative_to(&d.1.proto_root)
+        for (name, descriptor) in &self.dependencies {
+            for file in &descriptor.descriptor_proto.file {
+                let proto_rel = ProtoName::from(file.package())
+                    .relative_to(&descriptor.proto_root)
                     .unwrap();
-                let rust_abs = d.0.clone().join(proto_rel.to_rust_module());
-                config.extern_path(format!(".{}", f.package()), rust_abs.to_string());
+                let rust_abs = name.clone().join(proto_rel.to_rust_module());
+                config.extern_path(format!(".{}", file.package()), rust_abs.to_string());
             }
         }
-        let m = prost_build::Module::from_parts([""]);
-        for f in &descriptor.file {
+        let module = prost_build::Module::from_parts([""]);
+        for file in &descriptor.file {
             let code = config
-                .generate(vec![(m.clone(), f.clone())])
+                .generate(vec![(module.clone(), file.clone())])
                 .context("generation failed")?;
             output
-                .sub(&ProtoName::from(f.package()).to_rust_module())
-                .append(&code[&m]);
+                .sub(&ProtoName::from(file.package()).to_rust_module())
+                .append(&code[&module]);
         }
 
         // Generate the reflection code.
@@ -279,7 +281,7 @@ impl Config {
         let rust_deps = self
             .dependencies
             .iter()
-            .map(|d| syn::parse_str::<syn::Path>(&d.0.to_string()).unwrap());
+            .map(|(name, _)| syn::parse_str::<syn::Path>(&name.to_string()).unwrap());
         let this: syn::Path = syn::parse_str(&self.this_crate().to_string())?;
         let package_root = package_root.to_string();
         let descriptor_path = descriptor_path.display().to_string();

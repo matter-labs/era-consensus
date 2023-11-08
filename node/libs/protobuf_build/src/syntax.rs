@@ -8,7 +8,7 @@ use std::{
 };
 
 /// Path relative to $CARGO_MANIFEST_DIR.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputPath(PathBuf);
 
 impl From<&str> for InputPath {
@@ -44,7 +44,7 @@ impl InputPath {
 }
 
 /// Absolute path of the proto file used for importing other proto files.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProtoPath(PathBuf);
 
 impl From<&str> for ProtoPath {
@@ -56,16 +56,17 @@ impl From<&str> for ProtoPath {
 impl ProtoPath {
     /// Converts a proto module path to proto package name by replacing all "/" with ".".
     pub(super) fn to_name(&self) -> anyhow::Result<ProtoName> {
-        let mut parts = vec![];
-        for p in self.0.iter() {
-            parts.push(p.to_str().context("invalid proto path")?.to_string());
-        }
+        let parts = self
+            .0
+            .iter()
+            .map(|part| Ok(part.to_str().context("non-UTF8 proto path")?.to_string()));
+        let parts = parts.collect::<anyhow::Result<_>>()?;
         Ok(ProtoName(parts))
     }
 
     /// Returns path to the parent directory.
     pub(super) fn parent(&self) -> Option<Self> {
-        self.0.parent().map(|p| Self(p.into()))
+        self.0.parent().map(|path| Self(path.to_owned()))
     }
 
     /// Derives a proto path from an input path by replacing the $CARGO_MANIFEST_DIR/<input_root> with <proto_root>.
@@ -88,7 +89,7 @@ impl ProtoPath {
 }
 
 impl fmt::Display for ProtoPath {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.0.display().fmt(fmt)
     }
 }
@@ -111,7 +112,7 @@ impl RustName {
 }
 
 impl fmt::Display for RustName {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str(&self.0.join("::"))
     }
 }
@@ -124,7 +125,7 @@ impl From<&str> for RustName {
 
 /// A rust module representation.
 /// It is used to collect the generated protobuf code.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(super) struct RustModule {
     /// Nested modules which transitively contain the generated code.
     modules: BTreeMap<Part, RustModule>,
@@ -174,7 +175,7 @@ impl RustModule {
 /// a) in a single file "a/b/c.proto", or
 /// b) in a collection of files under "a/b/c/" directory
 /// Option b) is useful for defining large packages, because there is no equivalent of "pub use" in proto syntax.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProtoName(Vec<String>);
 
 impl ProtoName {
@@ -206,7 +207,7 @@ impl ProtoName {
 }
 
 impl fmt::Display for ProtoName {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str(&self.0.join("."))
     }
 }
@@ -225,20 +226,25 @@ impl From<&Path> for ProtoName {
 
 /// Extracts names of proto messages defined in the descriptor.
 pub(super) fn extract_message_names(descriptor: &prost_types::FileDescriptorSet) -> Vec<ProtoName> {
-    fn collect(out: &mut Vec<ProtoName>, prefix: &ProtoName, m: &prost_types::DescriptorProto) {
+    fn collect(
+        out: &mut Vec<ProtoName>,
+        prefix: &ProtoName,
+        message: &prost_types::DescriptorProto,
+    ) {
         let mut name = prefix.clone();
-        name.0.push(m.name().to_string());
-        for m in &m.nested_type {
-            collect(out, &name, m);
+        name.0.push(message.name().to_string());
+        for nested_message in &message.nested_type {
+            collect(out, &name, nested_message);
         }
         out.push(name);
     }
-    let mut res = vec![];
-    for f in &descriptor.file {
-        let name = ProtoName::from(f.package());
-        for m in &f.message_type {
-            collect(&mut res, &name, m);
+
+    let mut names = vec![];
+    for file in &descriptor.file {
+        let name = ProtoName::from(file.package());
+        for message in &file.message_type {
+            collect(&mut names, &name, message);
         }
     }
-    res
+    names
 }
