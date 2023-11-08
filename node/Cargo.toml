@@ -62,6 +62,7 @@ protox-parse = "0.5.0"
 prettyplease = "0.2.6"
 pretty_assertions = "1.4.0"
 quick-protobuf = "0.8.1"
+quote = "1.0.33"
 rand = "0.8.0"
 rocksdb = "0.21.0"
 serde = { version = "1.0", features = ["derive"] }

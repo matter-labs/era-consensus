@@ -116,12 +116,6 @@ impl fmt::Display for RustName {
     }
 }
 
-impl From<prost_build::Module> for RustName {
-    fn from(s: prost_build::Module) -> Self {
-        Self(s.parts().map(Part::from).collect())
-    }
-}
-
 impl From<&str> for RustName {
     fn from(s: &str) -> Self {
         Self(s.split("::").map(Part::from).collect())
@@ -165,8 +159,9 @@ impl RustModule {
 
     /// Collects the code of the module and formats it.
     pub(crate) fn format(&self) -> anyhow::Result<String> {
+        let s = self.collect();
         Ok(prettyplease::unparse(
-            &syn::parse_str(&self.collect()).context("syn::parse_str()")?,
+            &syn::parse_str(&s).with_context(|| format!("syn::parse_str({s:?})"))?,
         ))
     }
 }

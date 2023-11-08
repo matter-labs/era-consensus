@@ -17,6 +17,7 @@ prost-types.workspace = true
 prost-reflect.workspace = true
 protox.workspace = true
 protox-parse.workspace = true
+quote.workspace = true
 rand.workspace = true
 syn.workspace = true
 

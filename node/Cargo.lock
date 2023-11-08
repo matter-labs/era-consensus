@@ -2850,6 +2850,7 @@ dependencies = [
  "prost-types",
  "protox",
  "protox-parse",
+ "quote",
  "rand",
  "syn 2.0.32",
 ]

@@ -23,9 +23,9 @@
 //! It is not possible to depend on a different proto bundle within the same crate (because
 //! these are being built simultaneously from the same build script).
 #![allow(clippy::print_stdout)]
+// Imports accessed from the generated code.
 pub use self::syntax::*;
 use anyhow::Context as _;
-// Imports accessed from the generated code.
 pub use once_cell::sync::Lazy;
 pub use prost;
 use prost::Message as _;
@@ -144,16 +144,19 @@ impl Config {
             .unwrap()
             .to_rust_type()
             .to_string();
+        let rust_name: syn::Path = syn::parse_str(&rust_name).context("rust_name")?;
         let proto_name = proto_name.to_string();
-        let this = self.this_crate().to_string();
-        Ok(format!("impl {this}::prost_reflect::ReflectMessage for {rust_name} {{\
-            fn descriptor(&self) -> {this}::prost_reflect::MessageDescriptor {{\
-                static INIT : {this}::Lazy<{this}::prost_reflect::MessageDescriptor> = {this}::Lazy::new(|| {{\
-                    DESCRIPTOR.get_message_by_name({proto_name:?}).unwrap()\
-                }});\
-                INIT.clone()\
-            }}\
-        }}"))
+        let this: syn::Path = syn::parse_str(&self.this_crate().to_string()).context("this")?;
+        Ok(quote::quote! {
+            impl #this::prost_reflect::ReflectMessage for #rust_name {
+                fn descriptor(&self) -> #this::prost_reflect::MessageDescriptor {
+                    static INIT : #this::Lazy<#this::prost_reflect::MessageDescriptor> = #this::Lazy::new(|| {
+                        DESCRIPTOR.get_message_by_name(#proto_name).unwrap()
+                    });
+                    INIT.clone()
+                }
+            }
+        }.to_string())
     }
 
     /// Generates rust code from the proto files according to the config.
@@ -208,6 +211,7 @@ impl Config {
             // rewrapping the error, so that source location is included in the error message.
             .map_err(|err| anyhow::anyhow!("{err:?}"))?;
         let descriptor = compiler.file_descriptor_set();
+        // Unwrap is ok, because we add a descriptor from a successful compilation.
         pool.add_file_descriptor_set(descriptor.clone()).unwrap();
 
         // Check that the compiled proto files belong to the declared proto package.
@@ -275,13 +279,16 @@ impl Config {
         let rust_deps = self
             .dependencies
             .iter()
-            .map(|d| d.0.to_string())
-            .collect::<Vec<_>>()
-            .join(",");
-        let this = self.this_crate().to_string();
-        output.append(&format!(
-            "{this}::declare_descriptor!(\"{package_root}\",{descriptor_path:?},{rust_deps});"
-        ));
+            .map(|d| syn::parse_str::<syn::Path>(&d.0.to_string()).unwrap());
+        let this: syn::Path = syn::parse_str(&self.this_crate().to_string())?;
+        let package_root = package_root.to_string();
+        let descriptor_path = descriptor_path.display().to_string();
+        output.append(
+            &quote::quote! {
+                #this::declare_descriptor!(#package_root,#descriptor_path,#(#rust_deps),*);
+            }
+            .to_string(),
+        );
 
         // Save output.
         fs::write(output_path, output.format().context("output.format()")?)?;
