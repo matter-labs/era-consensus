@@ -168,10 +168,10 @@ impl Config {
 
         // Load dependencies.
         let mut pool = prost_reflect::DescriptorPool::new();
-        for (name, descriptor) in &self.dependencies {
+        for (root_path, descriptor) in &self.dependencies {
             descriptor
                 .load(&mut pool)
-                .with_context(|| format!("failed to load dependency {name}"))?;
+                .with_context(|| format!("failed to load dependency `{root_path}`"))?;
         }
         let mut pool_raw = prost_types::FileDescriptorSet::default();
         pool_raw.file.extend(pool.file_descriptor_protos().cloned());
@@ -208,7 +208,7 @@ impl Config {
         );
         compiler.include_source_info(true);
         compiler
-            .open_files(proto_paths.iter().map(|p| p.to_path()))
+            .open_files(proto_paths)
             // rewrapping the error, so that source location is included in the error message.
             .map_err(|err| anyhow::anyhow!("{err:?}"))?;
         let descriptor = compiler.file_descriptor_set();
@@ -246,13 +246,13 @@ impl Config {
         let prost_path = self.this_crate().join(RustName::ident("prost"));
         config.prost_path(prost_path.to_string());
         config.skip_protoc_run();
-        for (name, descriptor) in &self.dependencies {
+        for (root_path, descriptor) in &self.dependencies {
             for file in &descriptor.descriptor_proto.file {
                 let proto_rel = ProtoName::from(file.package())
                     .relative_to(&descriptor.proto_root)
                     .unwrap();
-                let rust_abs = name.clone().join(proto_rel.to_rust_module()?);
-                config.extern_path(format!(".{}", file.package()), rust_abs.to_string());
+                let rust_path = root_path.clone().join(proto_rel.to_rust_module()?);
+                config.extern_path(format!(".{}", file.package()), rust_path.to_string());
             }
         }
         let module = prost_build::Module::from_parts([""]);
@@ -280,15 +280,12 @@ impl Config {
         }
 
         // Generate the descriptor.
-        let rust_deps = self
-            .dependencies
-            .iter()
-            .map(|(name, _)| syn::parse_str::<syn::Path>(&name.to_string()).unwrap());
-        let this: syn::Path = syn::parse_str(&self.this_crate().to_string())?;
+        let root_paths_for_deps = self.dependencies.iter().map(|(root_path, _)| root_path);
+        let this = self.this_crate();
         let package_root = package_root.to_string();
         let descriptor_path = descriptor_path.display().to_string();
         output.append_item(syn::parse_quote! {
-            #this::declare_descriptor!(#package_root, #descriptor_path, #(#rust_deps),*);
+            #this::declare_descriptor!(#package_root, #descriptor_path, #(#root_paths_for_deps),*);
         });
 
         // Save output.

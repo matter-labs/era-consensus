@@ -83,9 +83,10 @@ impl ProtoPath {
                 .join(path.strip_prefix(&input_root.abs()?).unwrap()),
         ))
     }
+}
 
-    /// Converts ProtoPath to Path.
-    pub(super) fn to_path(&self) -> &Path {
+impl AsRef<Path> for ProtoPath {
+    fn as_ref(&self) -> &Path {
         &self.0
     }
 }
