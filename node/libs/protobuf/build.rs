@@ -4,7 +4,7 @@ fn main() {
         input_root: "src/proto".into(),
         proto_root: "zksync".into(),
         dependencies: vec![],
-        protobuf_crate: "crate".into(),
+        protobuf_crate: "crate".parse().expect("protobuf_crate"),
     }
     .generate()
     .expect("generate(std)");
@@ -13,7 +13,7 @@ fn main() {
         input_root: "src/tests/proto".into(),
         proto_root: "zksync/protobuf/tests".into(),
         dependencies: vec![],
-        protobuf_crate: "crate".into(),
+        protobuf_crate: "crate".parse().expect("protobuf_crate"),
     }
     .generate()
     .expect("generate(test)");
@@ -22,7 +22,7 @@ fn main() {
         input_root: "src/bin/conformance_test/proto".into(),
         proto_root: "zksync/protobuf/conformance_test".into(),
         dependencies: vec![],
-        protobuf_crate: "::zksync_protobuf".into(),
+        protobuf_crate: "::zksync_protobuf".parse().expect("protobuf_crate"),
     }
     .generate()
     .expect("generate(conformance)");

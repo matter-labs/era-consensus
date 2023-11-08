@@ -135,21 +135,19 @@ pub struct Config {
 impl Config {
     /// Location of the protobuf_build crate, visible from the generated code.
     fn this_crate(&self) -> RustName {
-        self.protobuf_crate.clone().join("build")
+        self.protobuf_crate.clone().join(RustName::ident("build"))
     }
 
     /// Generates implementation of `prost_reflect::ReflectMessage` for a rust type generated
     /// from a message of the given `proto_name`.
-    fn reflect_impl(&self, proto_name: &ProtoName) -> anyhow::Result<String> {
+    fn reflect_impl(&self, proto_name: &ProtoName) -> anyhow::Result<syn::ItemImpl> {
         let rust_name = proto_name
             .relative_to(&self.proto_root.to_name().context("invalid proto_root")?)
             .unwrap()
-            .to_rust_type()
-            .to_string();
-        let rust_name: syn::Path = syn::parse_str(&rust_name).context("rust_name")?;
+            .to_rust_type()?;
         let proto_name = proto_name.to_string();
-        let this: syn::Path = syn::parse_str(&self.this_crate().to_string()).context("this")?;
-        Ok(quote::quote! {
+        let this = self.this_crate();
+        Ok(syn::parse_quote! {
             impl #this::prost_reflect::ReflectMessage for #rust_name {
                 fn descriptor(&self) -> #this::prost_reflect::MessageDescriptor {
                     static INIT: #this::Lazy<#this::prost_reflect::MessageDescriptor> = #this::Lazy::new(|| {
@@ -158,7 +156,7 @@ impl Config {
                     INIT.clone()
                 }
             }
-        }.to_string())
+        })
     }
 
     /// Generates rust code from the proto files according to the config.
@@ -245,14 +243,15 @@ impl Config {
         // Generate code out of compiled proto files.
         let mut output = RustModule::default();
         let mut config = prost_build::Config::new();
-        config.prost_path(self.this_crate().join("prost").to_string());
+        let prost_path = self.this_crate().join(RustName::ident("prost"));
+        config.prost_path(prost_path.to_string());
         config.skip_protoc_run();
         for (name, descriptor) in &self.dependencies {
             for file in &descriptor.descriptor_proto.file {
                 let proto_rel = ProtoName::from(file.package())
                     .relative_to(&descriptor.proto_root)
                     .unwrap();
-                let rust_abs = name.clone().join(proto_rel.to_rust_module());
+                let rust_abs = name.clone().join(proto_rel.to_rust_module()?);
                 config.extern_path(format!(".{}", file.package()), rust_abs.to_string());
             }
         }
@@ -261,20 +260,23 @@ impl Config {
             let code = config
                 .generate(vec![(module.clone(), file.clone())])
                 .context("generation failed")?;
+            let code = &code[&module];
+            let code = syn::parse_str(code).with_context(|| {
+                format!("prost_build generated invalid code for {}", file.name())
+            })?;
             output
-                .sub(&ProtoName::from(file.package()).to_rust_module())
-                .append(&code[&module]);
+                .submodule(&ProtoName::from(file.package()).to_rust_module()?)
+                .extend(code);
         }
 
         // Generate the reflection code.
         let package_root = self.proto_root.to_name().context("invalid proto_root")?;
-        let output = output.sub(&package_root.to_rust_module());
+        let mut output = output.into_submodule(&package_root.to_rust_module()?);
         for proto_name in extract_message_names(&descriptor) {
-            output.append(
-                &self
-                    .reflect_impl(&proto_name)
-                    .with_context(|| format!("reflect_impl({proto_name})"))?,
-            );
+            let impl_item = self
+                .reflect_impl(&proto_name)
+                .with_context(|| format!("reflect_impl({proto_name})"))?;
+            output.append_item(impl_item.into());
         }
 
         // Generate the descriptor.
@@ -285,15 +287,17 @@ impl Config {
         let this: syn::Path = syn::parse_str(&self.this_crate().to_string())?;
         let package_root = package_root.to_string();
         let descriptor_path = descriptor_path.display().to_string();
-        output.append(
-            &quote::quote! {
-                #this::declare_descriptor!(#package_root,#descriptor_path,#(#rust_deps),*);
-            }
-            .to_string(),
-        );
+        output.append_item(syn::parse_quote! {
+            #this::declare_descriptor!(#package_root, #descriptor_path, #(#rust_deps),*);
+        });
 
         // Save output.
-        fs::write(output_path, output.format().context("output.format()")?)?;
+        fs::write(&output_path, output.format()).with_context(|| {
+            format!(
+                "failed writing generated code to `{}`",
+                output_path.display()
+            )
+        })?;
         Ok(())
     }
 }

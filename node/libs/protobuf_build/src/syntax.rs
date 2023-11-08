@@ -1,13 +1,15 @@
 //! Utilities for handling strings belonging to various namespaces.
+
 use super::ident;
 use anyhow::Context as _;
 use std::{
     collections::BTreeMap,
     fmt,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
-/// Path relative to $CARGO_MANIFEST_DIR.
+/// Path relative to `$CARGO_MANIFEST_DIR`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputPath(PathBuf);
 
@@ -94,76 +96,126 @@ impl fmt::Display for ProtoPath {
     }
 }
 
-type Part = String;
-
 /// A rust module/type name that the generated code is available at. Although
 /// generated code is location agnostic (it can be embedded in an arbitrary module within the crate),
 /// you need to manually (in the Config) specify the rust modules containing the generated code
 /// of the dependencies, so that it can be referenced from the newly generated code.
-#[derive(Clone, PartialEq, Eq)]
-pub struct RustName(Vec<Part>);
+#[derive(Clone)]
+pub struct RustName(syn::Path);
 
 impl RustName {
+    /// Creates a name consisting of a single identifier.
+    pub(crate) fn ident(ident: &str) -> Self {
+        let ident: syn::Ident = syn::parse_str(ident).expect("Invalid identifier");
+        Self(syn::Path::from(ident))
+    }
+
     /// Concatenates 2 rust names.
-    pub fn join(mut self, suffix: impl Into<Self>) -> Self {
-        self.0.extend(suffix.into().0);
+    pub fn join(mut self, suffix: Self) -> Self {
+        self.0.segments.extend(suffix.0.segments);
         self
     }
 }
 
-impl fmt::Display for RustName {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.write_str(&self.0.join("::"))
+impl FromStr for RustName {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let path: syn::Path =
+            syn::parse_str(s).with_context(|| format!("failed parsing path `{s}`"))?;
+        for segment in &path.segments {
+            anyhow::ensure!(
+                segment.arguments.is_empty(),
+                "path must be a plain `::`-delimited path (no path arguments)"
+            );
+        }
+        Ok(Self(path))
     }
 }
 
-impl From<&str> for RustName {
-    fn from(s: &str) -> Self {
-        Self(s.split("::").map(Part::from).collect())
+impl fmt::Display for RustName {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let path = &self.0;
+        fmt::Display::fmt(&quote::quote!(#path), formatter)
+    }
+}
+
+impl quote::ToTokens for RustName {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        self.0.to_tokens(tokens)
     }
 }
 
 /// A rust module representation.
 /// It is used to collect the generated protobuf code.
-#[derive(Debug, Default)]
 pub(super) struct RustModule {
     /// Nested modules which transitively contain the generated code.
-    modules: BTreeMap<Part, RustModule>,
+    submodules: BTreeMap<syn::Ident, RustModule>,
     /// Code of the module.
-    code: String,
+    code: syn::File,
+}
+
+impl Default for RustModule {
+    fn default() -> Self {
+        Self {
+            submodules: BTreeMap::new(),
+            code: syn::File {
+                shebang: None,
+                attrs: vec![],
+                items: vec![],
+            },
+        }
+    }
 }
 
 impl RustModule {
     /// Returns a reference to a given submodule.
-    pub(crate) fn sub(&mut self, path: &RustName) -> &mut Self {
-        let mut m = self;
-        for part in &path.0 {
-            m = m.modules.entry(part.into()).or_default();
+    pub(crate) fn submodule(&mut self, path: &RustName) -> &mut Self {
+        let mut module = self;
+        for part in &path.0.segments {
+            module = module.submodules.entry(part.ident.clone()).or_default();
         }
-        m
+        module
     }
 
-    /// Appends code to the module.
-    pub(crate) fn append(&mut self, code: &str) {
-        self.code += code;
+    /// Converts this module into a submodule at the specified path.
+    pub(crate) fn into_submodule(self, path: &RustName) -> Self {
+        let mut module = self;
+        for part in &path.0.segments {
+            module = module.submodules.remove(&part.ident).unwrap_or_default();
+        }
+        module
     }
 
-    fn collect(&self) -> String {
-        let mut entries = vec![self.code.clone()];
-        entries.extend(
-            self.modules
-                .iter()
-                .map(|(name, m)| format!("pub mod {name} {{ {} }}\n", m.collect())),
-        );
-        entries.join("")
+    /// Extends this module with the specified code.
+    pub(crate) fn extend(&mut self, code: syn::File) {
+        if self.code.items.is_empty() {
+            self.code = code;
+        } else {
+            self.code.items.extend(code.items);
+        }
+    }
+
+    /// Appends the specified item to this module.
+    pub(crate) fn append_item(&mut self, item: syn::Item) {
+        self.code.items.push(item);
+    }
+
+    fn collect(mut self) -> syn::File {
+        for (name, submodule) in self.submodules {
+            let submodule = submodule.collect();
+            self.code.items.push(syn::parse_quote! {
+                pub mod #name {
+                    #submodule
+                }
+            });
+        }
+        self.code
     }
 
     /// Collects the code of the module and formats it.
-    pub(crate) fn format(&self) -> anyhow::Result<String> {
-        let s = self.collect();
-        Ok(prettyplease::unparse(
-            &syn::parse_str(&s).with_context(|| format!("syn::parse_str({s:?})"))?,
-        ))
+    pub(crate) fn format(self) -> String {
+        prettyplease::unparse(&self.collect())
     }
 }
 
@@ -192,17 +244,28 @@ impl ProtoName {
         Ok(Self(self.0[prefix.0.len()..].to_vec()))
     }
 
-    /// Converts proto package name to rust module name according to prost_build rules.
-    pub fn to_rust_module(&self) -> RustName {
-        RustName(self.0.iter().map(|s| ident::to_snake(s)).collect())
+    /// Converts proto package name to rust module name according to `prost_build` rules.
+    pub fn to_rust_module(&self) -> anyhow::Result<RustName> {
+        let segments = self.0.iter().map(|segment| {
+            let ident: syn::Ident = syn::parse_str(&ident::to_snake(segment))
+                .with_context(|| format!("Invalid identifier `{segment}`"))?;
+            Ok(syn::PathSegment::from(ident))
+        });
+        Ok(RustName(syn::Path {
+            leading_colon: None,
+            segments: segments.collect::<anyhow::Result<_>>()?,
+        }))
     }
 
-    /// Converts proto message name to rust type name according to prost_build rules.
-    pub fn to_rust_type(&self) -> RustName {
-        let mut rust = self.to_rust_module();
-        let n = rust.0.len();
-        rust.0[n - 1] = ident::to_upper_camel(&self.0[n - 1]);
-        rust
+    /// Converts proto message name to rust type name according to `prost_build` rules.
+    pub fn to_rust_type(&self) -> anyhow::Result<RustName> {
+        let mut rust = self.to_rust_module()?;
+        let type_name = self.0.last().expect("`ProtoName` cannot be empty");
+        let type_name = ident::to_upper_camel(type_name);
+        let last_segment = rust.0.segments.last_mut().unwrap();
+        *last_segment = syn::parse_str(&type_name)
+            .with_context(|| format!("Invalid identifier `{type_name}`"))?;
+        Ok(rust)
     }
 }
 
