@@ -59,11 +59,14 @@ skip = [
     { name = "regex-syntax", version = "=0.6.29" },
 
     # Old versions required by hyper.
-    { name = "socket2", version = "=0.4.9" },
-    { name = "hashbrown", version = "=0.12.3" }, # (hyper -> h2 -> indexmap -> hashbrown)
+    { name = "socket2", version = "=0.4.10" },
+
+    # Old versions required by pairing_ce & ff_ec.
+    { name = "rand", version = "=0.4.6" },
+
 ]
 
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-org = { github = ["matter-labs"] }
+allow-org = { github = ["matter-labs", "moshababo"] }
