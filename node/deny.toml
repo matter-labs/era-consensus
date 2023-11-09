@@ -61,7 +61,7 @@ skip = [
     # Old versions required by hyper.
     { name = "socket2", version = "=0.4.10" },
 
-    # Old versions required by pairing_ce & ff_ec.
+    # Old versions required by pairing_ce & ff_ce.
     { name = "rand", version = "=0.4.6" },
 
 ]
