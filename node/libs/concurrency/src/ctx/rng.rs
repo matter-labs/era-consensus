@@ -2,7 +2,7 @@ use rand::{
     rngs::{OsRng, StdRng},
     Rng, SeedableRng,
 };
-use sha2::{digest::Update as _, Digest as _};
+use sha3::{digest::Update as _, Digest as _};
 use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Splittable Pseudorandom Number Generators using Cryptographic Hashing
@@ -16,13 +16,13 @@ use std::sync::atomic::{AtomicU64, Ordering};
 /// which is not crypto-secure, but for tests should be good enough.
 pub(super) struct SplitProvider {
     /// Hash builder of the prefix of the ID.
-    builder: sha2::Sha256,
+    builder: sha3::Keccak256,
     /// Child branches constructed so far from this branch.
     branch: AtomicU64,
 }
 
 impl SplitProvider {
-    fn next_builder(&self) -> sha2::Sha256 {
+    fn next_builder(&self) -> sha3::Keccak256 {
         let branch = self.branch.fetch_add(1, Ordering::SeqCst);
         self.builder.clone().chain(branch.to_le_bytes())
     }
@@ -43,7 +43,7 @@ impl Provider {
     pub(super) fn test() -> Provider {
         Self::Split(
             SplitProvider {
-                builder: sha2::Sha256::new().chain("Lzr81nDW8eSOMH".as_bytes()),
+                builder: sha3::Keccak256::new().chain("Lzr81nDW8eSOMH".as_bytes()),
                 branch: 0.into(),
             }
             .into(),

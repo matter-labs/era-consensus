@@ -14,24 +14,46 @@ on:
     branches: ["main"]
 
 env:
-  PROTOS_DIR: "node/libs/schema/proto"
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: "0"
+  RUSTFLAGS: "-Dwarnings -C linker=clang -C link-arg=-fuse-ld=lld -C link-arg=-Wl,-z,nostart-stop-gc"
+  RUSTC_WRAPPER: "sccache"
+  SCCACHE_GHA_ENABLED: "true"
+  RUST_BACKTRACE: "1"
 
 jobs:
   compatibility:
-    runs-on: ubuntu-latest
+    runs-on: [ubuntu-22.04-github-hosted-16core]
     steps:
       # github.base_ref -> github.head_ref for pull_request
       # github.event.before -> github.event.after for push
-      - uses: actions/checkout@v3
+      - uses: mozilla-actions/sccache-action@v0.0.3
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.base_ref || github.event.before }}
           path: before
-      - uses: actions/checkout@v3
+      - name: compile before
+        run: cargo build --all-targets
+        working-directory: ./before/node
+      - name: build before.binpb
+        run: >
+          perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/'
+          `find ./before/node/target/debug/build/*/output`
+          | xargs cat > ./before.binpb
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref || github.event.after }}
           path: after
+      - name: compile after
+        run: cargo build --all-targets
+        working-directory: ./after/node
+      - name: build after.binpb
+        run: >
+          perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/'
+          `find ./after/node/target/debug/build/*/output`
+          | xargs cat > ./after.binpb
       - uses: bufbuild/buf-setup-action@v1
       - uses: bufbuild/buf-breaking-action@v1
         with:
-          input: "after/$PROTOS_DIR"
-          against: "before/$PROTOS_DIR"
+          input: "./after.binpb"
+          against: "./before.binpb"

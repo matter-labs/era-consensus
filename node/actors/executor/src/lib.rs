@@ -18,7 +18,7 @@ pub mod testonly;
 #[cfg(test)]
 mod tests;
 
-pub use self::config::{ConsensusConfig, ExecutorConfig, GossipConfig};
+pub use self::config::{proto, ConsensusConfig, ExecutorConfig, GossipConfig};
 
 /// Validator-related part of [`Executor`].
 #[derive(Debug)]

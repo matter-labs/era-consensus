@@ -5,7 +5,7 @@ use rand::{
 };
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_schema::testonly::test_encode_random;
+use zksync_protobuf::testonly::test_encode_random;
 
 fn make_addr<R: Rng + ?Sized>(rng: &mut R) -> std::net::SocketAddr {
     std::net::SocketAddr::new(std::net::IpAddr::from(rng.gen::<[u8; 16]>()), rng.gen())

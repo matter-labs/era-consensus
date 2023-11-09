@@ -20,7 +20,6 @@ use crate::{frame, mux};
 use anyhow::Context as _;
 use std::{collections::BTreeMap, sync::Arc};
 use zksync_concurrency::{ctx, io, limiter, metrics::LatencyHistogramExt as _, scope};
-use zksync_consensus_schema as schema;
 
 pub(crate) mod consensus;
 mod metrics;
@@ -33,10 +32,10 @@ pub(crate) mod testonly;
 mod tests;
 
 const MUX_CONFIG: mux::Config = mux::Config {
-    read_buffer_size: 160 * schema::kB as u64,
-    read_frame_size: 16 * schema::kB as u64,
+    read_buffer_size: 160 * zksync_protobuf::kB as u64,
+    read_frame_size: 16 * zksync_protobuf::kB as u64,
     read_frame_count: 100,
-    write_frame_size: 16 * schema::kB as u64,
+    write_frame_size: 16 * zksync_protobuf::kB as u64,
 };
 
 /// Trait for defining an RPC.
@@ -58,9 +57,9 @@ pub(crate) trait Rpc: Sync + Send + 'static {
     /// Name of the RPC, used in prometheus metrics.
     const METHOD: &'static str;
     /// Type of the request message.
-    type Req: schema::ProtoFmt + Send + Sync;
+    type Req: zksync_protobuf::ProtoFmt + Send + Sync;
     /// Type of the response message.
-    type Resp: schema::ProtoFmt + Send + Sync;
+    type Resp: zksync_protobuf::ProtoFmt + Send + Sync;
     /// Name of the variant of the request message type.
     /// Useful for collecting metrics with finer than
     /// per-rpc type granularity.

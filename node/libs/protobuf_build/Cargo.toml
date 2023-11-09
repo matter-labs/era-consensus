@@ -1,0 +1,24 @@
+[package]
+name = "zksync_protobuf_build"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+homepage.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+heck.workspace = true
+once_cell.workspace = true
+prettyplease.workspace = true
+proc-macro2.workspace = true
+prost.workspace = true
+prost-build.workspace = true
+prost-types.workspace = true
+prost-reflect.workspace = true
+protox.workspace = true
+protox-parse.workspace = true
+quote.workspace = true
+rand.workspace = true
+syn.workspace = true
+

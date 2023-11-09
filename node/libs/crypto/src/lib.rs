@@ -8,4 +8,4 @@ pub mod bls12_381;
 pub mod bn254;
 pub mod ed25519;
 mod fmt;
-pub mod sha256;
+pub mod keccak256;
