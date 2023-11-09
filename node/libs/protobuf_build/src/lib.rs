@@ -221,11 +221,32 @@ impl Config {
         })
     }
 
-    /// Generates rust code from the proto files according to the config.
-    pub fn generate(self) -> anyhow::Result<()> {
+    /// Validates this configuration.
+    fn validate(&self) -> anyhow::Result<()> {
         if !self.input_root.abs()?.is_dir() {
             anyhow::bail!("input_root should be a directory");
         }
+        if self.is_public {
+            let links = env::var("CARGO_MANIFEST_LINKS").context(
+                "You must specify links = \"${crate_name}_proto\" in the [package] section \
+                 of the built package manifest",
+            )?;
+            let crate_name = env::var("CARGO_PKG_NAME")
+                .context("missing $CARGO_PKG_NAME env variable")?
+                .replace('-', "_");
+            let expected_name = format!("{crate_name}_proto");
+            anyhow::ensure!(
+                links == expected_name,
+                "You must specify links = \"{expected_name}\" in the [package] section \
+                 of the built package manifest (currently set to: `{links}`)"
+            );
+        }
+        Ok(())
+    }
+
+    /// Generates rust code from the proto files according to the config.
+    pub fn generate(self) -> anyhow::Result<()> {
+        self.validate()?;
         println!("cargo:rerun-if-changed={}", self.input_root.to_str());
 
         // Load dependencies.
