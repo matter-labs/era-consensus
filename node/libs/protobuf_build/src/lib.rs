@@ -32,6 +32,7 @@ use std::{
     collections::{HashMap, HashSet},
     env, fs,
     path::Path,
+    sync::atomic::{AtomicBool, Ordering},
 };
 
 mod canonical;
@@ -124,11 +125,13 @@ pub struct Config {
     pub input_root: InputPath,
     /// Implicit prefix that should be prepended to proto paths of the proto files in the input directory.
     pub proto_root: ProtoPath,
-    /// Descriptors of the dependencies and the rust absolute paths under which they will be available from the generated code.
-    pub dependencies: Vec<RustName>, // FIXME: change to `HashSet`?
+    /// Descriptors of the direct dependencies and the rust absolute paths under which they will be available from the generated code.
+    /// Each dependency must be a direct dependency of the built crate. OTOH, it doesn't need to be a build dependency.
+    pub dependencies: Vec<RustName>,
     /// Rust absolute path under which the protobuf crate will be available from the generated code.
     pub protobuf_crate: RustName,
-    /// Can generated Protobuf messages be included as a dependency?
+    /// Can generated Protobuf messages be included as a dependency for other crates (i.e., be mentioned
+    /// in `dependencies`)? Only one public target can be generated per build script.
     pub is_public: bool,
 }
 
@@ -154,22 +157,27 @@ impl Config {
 
     /// Validates this configuration.
     fn validate(&self) -> anyhow::Result<()> {
+        /// Flag set to `true` if a public compilation target was encountered in a build script.
+        static HAS_PUBLIC_TARGET: AtomicBool = AtomicBool::new(false);
+
         if !self.input_root.abs()?.is_dir() {
             anyhow::bail!("input_root should be a directory");
         }
         if self.is_public {
-            let links = env::var("CARGO_MANIFEST_LINKS").context(
-                "You must specify links = \"${crate_name}_proto\" in the [package] section \
-                 of the built package manifest",
-            )?;
+            anyhow::ensure!(
+                !HAS_PUBLIC_TARGET.fetch_or(true, Ordering::SeqCst),
+                "Only one compilation target with `is_public: true` may be specified per build script"
+            );
+
             let crate_name = env::var("CARGO_PKG_NAME")
                 .context("missing $CARGO_PKG_NAME env variable")?
                 .replace('-', "_");
             let expected_name = format!("{crate_name}_proto");
+            let links = env::var("CARGO_MANIFEST_LINKS").ok();
             anyhow::ensure!(
-                links == expected_name,
+                links.as_ref() == Some(&expected_name),
                 "You must specify links = \"{expected_name}\" in the [package] section \
-                 of the built package manifest (currently set to: `{links}`)"
+                 of the built package manifest (currently set to {links:?})"
             );
         }
         Ok(())
@@ -200,15 +208,14 @@ impl Config {
 
         let mut pool = prost_reflect::DescriptorPool::new();
         let mut direct_dependency_descriptors = HashMap::with_capacity(self.dependencies.len());
-        let mut unique_dependencies = HashMap::new();
+        let mut loaded_descriptor_paths = HashSet::new();
+        let mut dependencies = vec![];
         for (proto_root, descriptor_path) in all_dependencies {
-            if unique_dependencies
-                .insert(proto_root.clone(), descriptor_path.clone())
-                .is_some()
-            {
-                // Do not load the same dependency twice.
+            if !loaded_descriptor_paths.insert(descriptor_path) {
+                // Do not load the same descriptor twice.
                 continue;
             }
+            dependencies.push((proto_root.clone(), descriptor_path.clone()));
 
             let descriptor = fs::read(descriptor_path).with_context(|| {
                 format!("failed reading descriptor for `{proto_root}` from {descriptor_path}")
@@ -296,7 +303,7 @@ impl Config {
                     .to_str()
                     .context("non-UTF8 output path")?
                     .to_owned(),
-                dependencies: unique_dependencies.into_iter().collect(),
+                dependencies,
             };
             manifest.print();
         }

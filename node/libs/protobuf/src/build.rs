@@ -52,6 +52,8 @@ impl Descriptor {
     /// Loads the descriptor to the global pool and returns a copy of the global pool.
     pub fn get_message_by_name(&self, name: &str) -> Option<prost_reflect::MessageDescriptor> {
         POOL.read().unwrap().get_message_by_name(name)
+        // ^ This works because this descriptor must have been loaded into the global pool
+        // when the instance was constructed.
     }
 }
 
