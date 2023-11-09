@@ -5,7 +5,10 @@ pub use prost;
 use prost::Message as _;
 pub use prost_reflect;
 use prost_reflect::prost_types;
-use std::sync::Mutex;
+use std::sync::RwLock;
+
+/// Global descriptor pool.
+static POOL: Lazy<RwLock<prost_reflect::DescriptorPool>> = Lazy::new(RwLock::default);
 
 /// Protobuf descriptor + info about the mapping to rust code.
 #[derive(Debug)]
@@ -17,12 +20,16 @@ pub struct Descriptor {
 }
 
 impl Descriptor {
-    /// Constructs a Descriptor.
+    /// Constructs a descriptor and adds it to the global pool.
     pub fn new(dependencies: Vec<&'static Descriptor>, descriptor_bytes: &[u8]) -> Self {
-        Descriptor {
+        let this = Descriptor {
             dependencies,
             descriptor_proto: prost_types::FileDescriptorSet::decode(descriptor_bytes).unwrap(),
-        }
+        };
+        let pool = &mut POOL.write().unwrap();
+        this.load(pool)
+            .expect("failed loading descriptor into global pool");
+        this
     }
 
     /// Loads the descriptor to the pool, if not already loaded.
@@ -44,20 +51,15 @@ impl Descriptor {
 
     /// Loads the descriptor to the global pool and returns a copy of the global pool.
     pub fn get_message_by_name(&self, name: &str) -> Option<prost_reflect::MessageDescriptor> {
-        /// Global descriptor pool.
-        static POOL: Lazy<Mutex<prost_reflect::DescriptorPool>> = Lazy::new(Mutex::default);
-
-        let pool = &mut POOL.lock().unwrap();
-        self.load(pool).unwrap();
-        pool.get_message_by_name(name)
+        POOL.read().unwrap().get_message_by_name(name)
     }
 }
 
 /// Expands to a descriptor declaration.
 #[macro_export]
 macro_rules! declare_descriptor {
-    ($descriptor_path:expr, $($rust_deps:path),*) => {
-        pub static DESCRIPTOR: $crate::build::Lazy<$crate::build::Descriptor> =
+    ($name:ident => $descriptor_path:expr, $($rust_deps:path),*) => {
+        pub static $name: $crate::build::Lazy<$crate::build::Descriptor> =
             $crate::build::Lazy::new(|| {
                 $crate::build::Descriptor::new(
                     ::std::vec![$({ use $rust_deps as dep; &dep::DESCRIPTOR }),*],
@@ -67,4 +69,22 @@ macro_rules! declare_descriptor {
     }
 }
 
+/// Implements `ReflectMessage` for a type based on a provided `Descriptor`.
+#[macro_export]
+macro_rules! impl_reflect_message {
+    ($ty:ty, $descriptor:expr, $proto_name:expr) => {
+        impl $crate::build::prost_reflect::ReflectMessage for $ty {
+            fn descriptor(&self) -> $crate::build::prost_reflect::MessageDescriptor {
+                static INIT: $crate::build::Lazy<$crate::build::prost_reflect::MessageDescriptor> =
+                    $crate::build::Lazy::new(|| {
+                        $crate::build::Descriptor::get_message_by_name($descriptor, $proto_name)
+                            .unwrap()
+                    });
+                INIT.clone()
+            }
+        }
+    };
+}
+
 pub use declare_descriptor;
+pub use impl_reflect_message;

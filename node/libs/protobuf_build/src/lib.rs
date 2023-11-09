@@ -140,7 +140,7 @@ impl Config {
 
     /// Generates implementation of `prost_reflect::ReflectMessage` for a rust type generated
     /// from a message of the given `proto_name`.
-    fn reflect_impl(&self, proto_name: &ProtoName) -> anyhow::Result<syn::ItemImpl> {
+    fn reflect_impl(&self, proto_name: &ProtoName) -> anyhow::Result<syn::Item> {
         let rust_name = proto_name
             .relative_to(&self.proto_root.to_name().context("invalid proto_root")?)
             .unwrap()
@@ -148,14 +148,7 @@ impl Config {
         let proto_name = proto_name.to_string();
         let this = self.this_crate();
         Ok(syn::parse_quote! {
-            impl #this::prost_reflect::ReflectMessage for #rust_name {
-                fn descriptor(&self) -> #this::prost_reflect::MessageDescriptor {
-                    static INIT: #this::Lazy<#this::prost_reflect::MessageDescriptor> = #this::Lazy::new(|| {
-                        DESCRIPTOR.get_message_by_name(#proto_name).unwrap()
-                    });
-                    INIT.clone()
-                }
-            }
+            #this::impl_reflect_message!(#rust_name, &DESCRIPTOR, #proto_name);
         })
     }
 
@@ -340,23 +333,24 @@ impl Config {
                 .extend(code);
         }
 
-        // Generate the reflection code.
         let package_root = self.proto_root.to_name().context("invalid proto_root")?;
         let mut output = output.into_submodule(&package_root.to_rust_module()?);
-        for proto_name in extract_message_names(&descriptor) {
-            let impl_item = self
-                .reflect_impl(&proto_name)
-                .with_context(|| format!("reflect_impl({proto_name})"))?;
-            output.append_item(impl_item.into());
-        }
 
         // Generate the descriptor.
         let root_paths_for_deps = self.dependencies.iter();
         let this = self.this_crate();
         let descriptor_path = descriptor_path.display().to_string();
         output.append_item(syn::parse_quote! {
-            #this::declare_descriptor!(#descriptor_path, #(#root_paths_for_deps),*);
+            #this::declare_descriptor!(DESCRIPTOR => #descriptor_path, #(#root_paths_for_deps),*);
         });
+
+        // Generate the reflection code.
+        for proto_name in extract_message_names(&descriptor) {
+            let impl_item = self
+                .reflect_impl(&proto_name)
+                .with_context(|| format!("reflect_impl({proto_name})"))?;
+            output.append_item(impl_item);
+        }
 
         // Save output.
         fs::write(&output_path, output.format()).with_context(|| {
