@@ -18,7 +18,6 @@ on:
         required: false
         type: number
         default: 8081
-  pull_request:
 
 env:
   NUM_INSTANCES: ${{ github.event.inputs.num_instances || '100' }}
@@ -134,7 +133,7 @@ jobs:
             cp "$binary" artifacts/binaries/
           done
 
-      - name: Run ansible
+      - name: Run Ansible
         working-directory: infrastructure/loadtests/ansible
         run: |
           sa_name=$(gcloud iam service-accounts describe deployer-sandbox@matterlabs-infra.iam.gserviceaccount.com --format='value(uniqueId)')
