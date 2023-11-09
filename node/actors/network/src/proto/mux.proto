@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package zksync.schema.network.mux;
+package zksync.network.mux;
 
 import "zksync/std.proto";
 

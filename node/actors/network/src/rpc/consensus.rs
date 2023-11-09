@@ -1,8 +1,7 @@
 //! Defines RPC for passing consensus messages.
-use crate::mux;
+use crate::{mux, proto::consensus as proto};
 use zksync_concurrency::{limiter, time};
 use zksync_consensus_roles::validator;
-use zksync_consensus_schema::proto::network::consensus as proto;
 use zksync_protobuf::{read_required, ProtoFmt};
 
 /// Consensus RPC.

@@ -9,8 +9,8 @@ use std::{
     },
 };
 use zksync_concurrency::{ctx, scope, testonly::abort_on_panic};
-use zksync_consensus_schema::proto::network::mux_test as proto;
 use zksync_consensus_utils::no_copy::NoCopy;
+mod proto;
 
 fn assert_partition(sets: &[u16]) {
     let mut sum = 0;

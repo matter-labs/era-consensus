@@ -9,13 +9,16 @@ license.workspace = true
 [dependencies]
 zksync_concurrency.workspace = true
 zksync_consensus_crypto.workspace = true
-zksync_consensus_schema.workspace = true
 zksync_consensus_utils.workspace = true
 zksync_protobuf.workspace = true
 
 anyhow.workspace = true
 bit-vec.workspace = true
 hex.workspace = true
+prost.workspace = true
 rand.workspace = true
 serde.workspace = true
 tracing.workspace = true
+
+[build-dependencies]
+zksync_protobuf.workspace = true

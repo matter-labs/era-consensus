@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package zksync.schema.network.consensus;
+package zksync.network.consensus;
 
-import "zksync/schema/roles/validator.proto";
+import "zksync/roles/validator.proto";
 import "zksync/std.proto";
 
 // First message exchanged in the encrypted session.

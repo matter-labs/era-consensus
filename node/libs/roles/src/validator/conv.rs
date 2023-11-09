@@ -4,22 +4,21 @@ use super::{
     PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, Signature, Signed,
     Signers, ViewNumber,
 };
-use crate::node::SessionId;
+use crate::{node::SessionId, proto::validator as proto};
 use anyhow::Context as _;
 use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
-use zksync_consensus_schema::proto::roles::validator as proto;
 use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
 impl ProtoFmt for BlockHeaderHash {
     type Proto = proto::BlockHeaderHash;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.sha256)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            sha256: Some(self.0.encode()),
+            keccak256: Some(self.0.encode()),
         }
     }
 }
@@ -27,11 +26,11 @@ impl ProtoFmt for BlockHeaderHash {
 impl ProtoFmt for PayloadHash {
     type Proto = proto::PayloadHash;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.sha256)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            sha256: Some(self.0.encode()),
+            keccak256: Some(self.0.encode()),
         }
     }
 }
@@ -322,12 +321,12 @@ impl ProtoFmt for MsgHash {
     type Proto = proto::MsgHash;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.sha256)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            sha256: Some(self.0.encode()),
+            keccak256: Some(self.0.encode()),
         }
     }
 }
