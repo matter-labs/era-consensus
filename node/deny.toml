@@ -55,11 +55,12 @@ skip = [
     { name = "regex-syntax", version = "=0.6.29" },
 
     # Old versions required by hyper.
-    { name = "socket2", version = "=0.4.9" },
-    { name = "hashbrown", version = "=0.12.3" }, # (hyper -> h2 -> indexmap -> hashbrown)
+    { name = "socket2", version = "0.4.9" },
 
     # Old versions required by ark-bn254.
-    { name = "syn", version = "=1.0.109" }
+    { name = "hashbrown", version = "0.13.2" },
+    { name = "itertools", version = "0.10.5" },
+    { name = "syn", version = "1.0.109" }
 ]
 
 [sources]

@@ -142,7 +142,7 @@ fn test_agg_signature_verify() {
     let sig1 = key1.sign_hash(&msg1);
     let sig2 = key2.sign_hash(&msg2);
 
-    let agg_sig = AggregateSignature::aggregate(vec![&sig1, &sig2]);
+    let agg_sig = AggregateSignature::aggregate(vec![&sig1, &sig2]).unwrap();
 
     // Matching key and message.
     assert!(agg_sig

@@ -354,12 +354,12 @@ impl ProtoFmt for PublicKey {
     type Proto = proto::PublicKey;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.bls12_381)?)?))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            bn254: Some(self.0.encode()),
+            bls12_381: Some(self.0.encode()),
         }
     }
 }
@@ -368,12 +368,12 @@ impl ProtoFmt for Signature {
     type Proto = proto::Signature;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.bls12_381)?)?))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            bn254: Some(self.0.encode()),
+            bls12_381: Some(self.0.encode()),
         }
     }
 }
@@ -382,12 +382,12 @@ impl ProtoFmt for AggregateSignature {
     type Proto = proto::AggregateSignature;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.bls12_381)?)?))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            bn254: Some(self.0.encode()),
+            bls12_381: Some(self.0.encode()),
         }
     }
 }

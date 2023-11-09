@@ -2,9 +2,8 @@
 
 pub use fmt::*;
 
-/// Currently replaced by [bn254] and unused.
 pub mod bls12_381;
-
+/// Currently replaced by [bls12_381] and unused.
 pub mod bn254;
 pub mod ed25519;
 mod fmt;
