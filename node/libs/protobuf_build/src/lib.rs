@@ -24,18 +24,14 @@
 //! these are being built simultaneously from the same build script).
 
 #![allow(clippy::print_stdout)]
-// Imports accessed from the generated code.
 pub use self::syntax::*;
 use anyhow::Context as _;
-pub use once_cell::sync::Lazy;
-pub use prost;
 use prost::Message as _;
-pub use prost_reflect; // FIXME: move to main crate?
+use prost_reflect::prost_types;
 use std::{
     collections::{HashMap, HashSet},
     env, fs,
     path::Path,
-    sync::Mutex,
 };
 
 mod canonical;
@@ -119,64 +115,6 @@ impl Manifest {
                 acc
             });
         println!("cargo:manifest={proto_root}:{descriptor_path}{dependencies}");
-    }
-}
-
-/// Protobuf descriptor + info about the mapping to rust code.
-#[derive(Debug)]
-pub struct Descriptor {
-    /// Raw descriptor proto.
-    descriptor_proto: prost_types::FileDescriptorSet,
-    /// Direct dependencies of this descriptor.
-    dependencies: Vec<&'static Self>,
-}
-
-impl Descriptor {
-    /// Constructs a Descriptor.
-    pub fn new(dependencies: Vec<&'static Descriptor>, descriptor_bytes: &[u8]) -> Self {
-        Descriptor {
-            dependencies,
-            descriptor_proto: prost_types::FileDescriptorSet::decode(descriptor_bytes).unwrap(),
-        }
-    }
-
-    /// Loads the descriptor to the pool, if not already loaded.
-    fn load(&self, pool: &mut prost_reflect::DescriptorPool) -> anyhow::Result<()> {
-        if self
-            .descriptor_proto
-            .file
-            .iter()
-            .all(|f| pool.get_file_by_name(f.name()).is_some())
-        {
-            return Ok(());
-        }
-        for dependency in &self.dependencies {
-            dependency.load(pool)?;
-        }
-        pool.add_file_descriptor_set(self.descriptor_proto.clone())?;
-        Ok(())
-    }
-
-    /// Loads the descriptor to the global pool and returns a copy of the global pool.
-    pub fn get_message_by_name(&self, name: &str) -> Option<prost_reflect::MessageDescriptor> {
-        /// Global descriptor pool.
-        static POOL: Lazy<Mutex<prost_reflect::DescriptorPool>> = Lazy::new(Mutex::default);
-        let pool = &mut POOL.lock().unwrap();
-        self.load(pool).unwrap();
-        pool.get_message_by_name(name)
-    }
-}
-
-/// Expands to a descriptor declaration.
-#[macro_export]
-macro_rules! declare_descriptor {
-    ($descriptor_path:expr, $($rust_deps:path),*) => {
-        pub static DESCRIPTOR: $crate::Lazy<$crate::Descriptor> = $crate::Lazy::new(|| {
-            $crate::Descriptor::new(
-                ::std::vec![$({ use $rust_deps as dep; &dep::DESCRIPTOR }),*],
-                ::std::include_bytes!($descriptor_path),
-            )
-        });
     }
 }
 

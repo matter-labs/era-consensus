@@ -1,6 +1,7 @@
 //! Checks whether messages in the given file descriptor set support canonical encoding.
 use crate::syntax::extract_message_names;
 use anyhow::Context as _;
+use prost_reflect::prost_types;
 use std::collections::HashSet;
 
 #[derive(Default)]

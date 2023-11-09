@@ -2868,13 +2868,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "heck",
- "once_cell",
  "prettyplease",
  "proc-macro2",
  "prost",
  "prost-build",
  "prost-reflect",
- "prost-types",
  "protox",
  "protox-parse",
  "quote",
