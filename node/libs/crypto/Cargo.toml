@@ -16,7 +16,7 @@ num-traits.workspace = true
 ed25519-dalek.workspace = true
 hex.workspace = true
 rand.workspace = true
-sha2.workspace = true
+sha3.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 
