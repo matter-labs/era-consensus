@@ -21,8 +21,8 @@
 //   examples: "203.0.113.7:3456", "[2001:DB8::1]:4567"
 //
 // ValidatorPublicKey - public key of the validator (consensus participant) of the form "validator:public:<signature scheme>:<hex encoded key material>"
-//   Currently only bls12_381 signature scheme is supported for validators.
-//   example: "validator:public:bls12_381:ad5dae0f91d5bcdd1a0481a6f719bc7188b25b623c51b1988321fe911596c94d0a3717f028d4d9d226a8afe087d7f2ca"
+//   Currently only bn254 signature scheme is supported for validators.
+//   example: "validator:public:bn254:4b0c4697f0a35eab30f63684ae4611f3c1d631eecfd97237e2345a9b3d0c472dbb16c49b793beceaab0cdd89cda6ff1099bd1aaf1ad6cabde9a15793cc09b407"
 //
 // NodePublicKey - public key of the node (gossip network participant) of the form "node:public:<signature scheme>:<hex encoded key material>"
 //   Currently only ed25519 signature scheme is supported for nodes.
@@ -36,7 +36,7 @@
 //     the validator set) or move it to a separate config file.
 syntax = "proto3";
 
-package executor.config;
+package zksync.schema.executor.config;
 
 // (public key, ip address) of a gossip network node. 
 message NodeAddr {

@@ -2,7 +2,6 @@
 //! chain of blocks, not a tree (assuming we have all blocks and not have any gap). It allows for basic functionality like inserting a block,
 //! getting a block, checking if a block is contained in the DB. We also store the head of the chain. Storing it explicitly allows us to fetch
 //! the current head quickly.
-
 use crate::{
     traits::{BlockStore, ReplicaStateStore, WriteBlockStore},
     types::{MissingBlockNumbers, ReplicaState},
@@ -10,9 +9,7 @@ use crate::{
 };
 use anyhow::Context as _;
 use async_trait::async_trait;
-use concurrency::{ctx, scope, sync::watch};
 use rocksdb::{Direction, IteratorMode, ReadOptions};
-use roles::validator::{BlockNumber, FinalBlock};
 use std::{
     fmt, ops,
     path::Path,
@@ -21,6 +18,8 @@ use std::{
         RwLock,
     },
 };
+use zksync_concurrency::{ctx, scope, sync::watch};
+use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,7 +144,7 @@ impl RocksdbStorage {
             .next()
             .context("Head block not found")?
             .context("RocksDB error reading head block")?;
-        schema::decode(&head_block).context("Failed decoding head block bytes")
+        zksync_protobuf::decode(&head_block).context("Failed decoding head block bytes")
     }
 
     /// Returns a block with the least number stored in this database.
@@ -159,7 +158,7 @@ impl RocksdbStorage {
             .next()
             .context("First stored block not found")?
             .context("RocksDB error reading first stored block")?;
-        schema::decode(&first_block).context("Failed decoding first stored block bytes")
+        zksync_protobuf::decode(&first_block).context("Failed decoding first stored block bytes")
     }
 
     fn last_contiguous_block_number_blocking(&self) -> anyhow::Result<BlockNumber> {
@@ -219,7 +218,7 @@ impl RocksdbStorage {
         else {
             return Ok(None);
         };
-        let block = schema::decode(&raw_block)
+        let block = zksync_protobuf::decode(&raw_block)
             .with_context(|| format!("Failed decoding block #{number}"))?;
         Ok(Some(block))
     }
@@ -258,7 +257,7 @@ impl RocksdbStorage {
         let mut write_batch = rocksdb::WriteBatch::default();
         write_batch.put(
             DatabaseKey::Block(block_number).encode_key(),
-            schema::encode(finalized_block),
+            zksync_protobuf::encode(finalized_block),
         );
         // Commit the transaction.
         db.write(write_batch)
@@ -277,7 +276,7 @@ impl RocksdbStorage {
         else {
             return Ok(None);
         };
-        schema::decode(&raw_state)
+        zksync_protobuf::decode(&raw_state)
             .map(Some)
             .context("Failed to decode replica state!")
     }
@@ -286,7 +285,7 @@ impl RocksdbStorage {
         self.write()
             .put(
                 DatabaseKey::ReplicaState.encode_key(),
-                schema::encode(replica_state),
+                zksync_protobuf::encode(replica_state),
             )
             .context("Failed putting ReplicaState to RocksDB")
     }

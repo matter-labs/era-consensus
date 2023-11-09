@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-package network.mux;
+package zksync.schema.network.mux;
 
-import "std.proto";
+import "zksync/std.proto";
 
 message Handshake {
   message Capability {

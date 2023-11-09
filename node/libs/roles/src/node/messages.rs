@@ -1,4 +1,6 @@
 use crate::node;
+use zksync_consensus_crypto::{sha256, ByteFmt, Text, TextFmt};
+use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 use crypto::{keccak256, ByteFmt, Text, TextFmt};
 use utils::enum_util::{BadVariantError, Variant};
 
@@ -17,7 +19,7 @@ pub enum Msg {
 impl Msg {
     /// Get the hash of this message.
     pub fn hash(&self) -> MsgHash {
-        MsgHash(keccak256::Keccak256::new(&schema::canonical(self)))
+        MsgHash(keccak256::Keccak256::new(&zksync_protobuf::canonical(self)))
     }
 }
 

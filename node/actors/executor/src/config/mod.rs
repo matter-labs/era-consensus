@@ -1,14 +1,14 @@
 //! Module to create the configuration for the consensus node.
-
 use anyhow::Context as _;
-use crypto::{read_required_text, Text, TextFmt};
-use network::{consensus, gossip};
-use roles::{node, validator};
-use schema::{proto::executor::config as proto, read_required, required, ProtoFmt};
 use std::{
     collections::{HashMap, HashSet},
     net,
 };
+use zksync_consensus_crypto::{read_required_text, Text, TextFmt};
+use zksync_consensus_network::{consensus, gossip};
+use zksync_consensus_roles::{node, validator};
+use zksync_consensus_schema::proto::executor::config as proto;
+use zksync_protobuf::{read_required, required, ProtoFmt};
 
 #[cfg(test)]
 mod tests;

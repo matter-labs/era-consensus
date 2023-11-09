@@ -1,7 +1,7 @@
 //! Messages related to blocks.
 
 use super::CommitQC;
-use crypto::{keccak256, ByteFmt, Text, TextFmt};
+use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
 use std::fmt;
 
 /// Payload of the block. Consensus algorithm does not interpret the payload
@@ -16,19 +16,17 @@ pub struct Payload(pub Vec<u8>);
 pub struct PayloadHash(pub(crate) keccak256::Keccak256);
 
 impl TextFmt for PayloadHash {
-    fn encode(&self) -> String {
-        format!(
-            "payload:keccak256:{}",
-            hex::encode(ByteFmt::encode(&self.0))
-        )
-    }
     fn decode(text: Text) -> anyhow::Result<Self> {
         text.strip("payload:keccak256:")?.decode_hex().map(Self)
+    }
+
+    fn encode(&self) -> String {
+        format!("payload:keccak256:{}", hex::encode(ByteFmt::encode(&self.0)))
     }
 }
 
 impl fmt::Debug for PayloadHash {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str(&TextFmt::encode(self))
     }
 }
@@ -64,24 +62,40 @@ impl fmt::Display for BlockNumber {
     }
 }
 
-/// Hash of the block.
+/// Hash of the block header.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockHeaderHash(pub(crate) keccak256::Keccak256);
 
+impl BlockHeaderHash {
+    /// Interprets the specified `bytes` as a block header hash digest (i.e., a reverse operation to [`Self::as_bytes()`]).
+    /// It is caller's responsibility to ensure that `bytes` are actually a block header hash digest.
+    pub fn from_bytes(bytes: [u8; 32]) -> Self {
+        Self(sha3::Sha256::from_bytes(bytes))
+    }
+
+    /// Returns a reference to the bytes of this hash.
+    pub fn as_bytes(&self) -> &[u8; 32] {
+        self.0.as_bytes()
+    }
+}
+
 impl TextFmt for BlockHeaderHash {
+    fn decode(text: Text) -> anyhow::Result<Self> {
+        text.strip("block_header_hash:sha256:")?
+            .decode_hex()
+            .map(Self)
+    }
+
     fn encode(&self) -> String {
         format!(
-            "block_hash:keccak256:{}",
+            "block_header_hash:sha256:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
-    }
-    fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("block_hash:keccak256:")?.decode_hex().map(Self)
     }
 }
 
 impl fmt::Debug for BlockHeaderHash {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str(&TextFmt::encode(self))
     }
 }
@@ -100,7 +114,7 @@ pub struct BlockHeader {
 impl BlockHeader {
     /// Returns the hash of the block.
     pub fn hash(&self) -> BlockHeaderHash {
-        BlockHeaderHash(keccak256::Keccak256::new(&schema::canonical(self)))
+        BlockHeaderHash(keccak256::Keccak256::new(&zksync_protobuf::canonical(self)))
     }
 
     /// Creates a genesis block.
@@ -148,18 +162,20 @@ impl FinalBlock {
 
 impl ByteFmt for FinalBlock {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        ::schema::decode(bytes)
+        zksync_protobuf::decode(bytes)
     }
+
     fn encode(&self) -> Vec<u8> {
-        ::schema::encode(self)
+        zksync_protobuf::encode(self)
     }
 }
 
 impl TextFmt for FinalBlock {
-    fn encode(&self) -> String {
-        format!("final_block:{}", hex::encode(ByteFmt::encode(self)))
-    }
     fn decode(text: Text) -> anyhow::Result<Self> {
         text.strip("final_block:")?.decode_hex()
+    }
+
+    fn encode(&self) -> String {
+        format!("final_block:{}", hex::encode(ByteFmt::encode(self)))
     }
 }

@@ -1,25 +1,24 @@
 //! Main binary for the consensus node. It reads the configuration, initializes all parts of the node and
 //! manages communication between the actors. It is the main executable in this workspace.
-
 use anyhow::Context as _;
 use clap::Parser;
-use concurrency::{
-    ctx::{self, channel},
-    scope, time,
-};
-use executor::Executor;
 use std::{
     fs,
     io::IsTerminal as _,
     path::{Path, PathBuf},
     sync::Arc,
 };
-use storage::{BlockStore, RocksdbStorage};
-use tools::{ConfigPaths, Configs};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
-use utils::no_copy::NoCopy;
 use vise_exporter::MetricsExporter;
+use zksync_concurrency::{
+    ctx::{self, channel},
+    scope, time,
+};
+use zksync_consensus_executor::Executor;
+use zksync_consensus_storage::{BlockStore, RocksdbStorage};
+use zksync_consensus_tools::{ConfigPaths, Configs};
+use zksync_consensus_utils::no_copy::NoCopy;
 
 /// Command-line application launching a node executor.
 #[derive(Debug, Parser)]

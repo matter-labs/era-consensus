@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package zksync.protobuf.tests;
+
+message B {
+  // Recursive union.
+  oneof t {
+    bool u = 2;
+    B v = 3;
+  }
+}
+
+enum E {
+  E0 = 0;
+  E1 = 1;
+  E2 = 2;
+}
+
+message A {
+  optional bytes x = 1;
+  optional uint64 y = 2;
+  // Repeated enums are non-packable,
+  // But we pack them in the canonical encoding.
+  repeated E e = 4;
+  // Nested message.
+  optional B b = 5;
+}

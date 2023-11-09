@@ -3,9 +3,9 @@
 use super::handshake;
 use crate::{io, noise, preface, rpc, State};
 use anyhow::Context as _;
-use concurrency::{ctx, ctx::channel, oneshot, scope, sync, time};
-use roles::validator;
 use std::{collections::HashMap, sync::Arc};
+use zksync_concurrency::{ctx, ctx::channel, oneshot, scope, sync, time};
+use zksync_consensus_roles::validator;
 
 /// How often we should retry to establish a connection to a validator.
 /// TODO(gprusak): once it becomes relevant, choose a more appropriate retry strategy.

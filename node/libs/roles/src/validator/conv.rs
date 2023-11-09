@@ -5,12 +5,12 @@ use super::{
     Signers, ViewNumber,
 };
 use crate::node::SessionId;
-use ::schema::{read_required, required, ProtoFmt};
 use anyhow::Context as _;
-use crypto::ByteFmt;
-use schema::proto::roles::validator as proto;
 use std::collections::BTreeMap;
-use utils::enum_util::Variant;
+use zksync_consensus_crypto::ByteFmt;
+use zksync_consensus_schema::proto::roles::validator as proto;
+use zksync_consensus_utils::enum_util::Variant;
+use zksync_protobuf::{read_required, required, ProtoFmt};
 
 impl ProtoFmt for BlockHeaderHash {
     type Proto = proto::BlockHeaderHash;
@@ -187,7 +187,7 @@ impl ProtoFmt for LeaderCommit {
 }
 
 impl ProtoFmt for Signers {
-    type Proto = schema::proto::std::BitVector;
+    type Proto = zksync_protobuf::proto::std::BitVector;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(ProtoFmt::read(r)?))
@@ -266,8 +266,8 @@ impl ProtoFmt for Phase {
     fn build(&self) -> Self::Proto {
         use proto::phase::T;
         let t = match self {
-            Self::Prepare => T::Prepare(schema::proto::std::Void {}),
-            Self::Commit => T::Commit(schema::proto::std::Void {}),
+            Self::Prepare => T::Prepare(zksync_protobuf::proto::std::Void {}),
+            Self::Commit => T::Commit(zksync_protobuf::proto::std::Void {}),
         };
         Self::Proto { t: Some(t) }
     }
@@ -354,12 +354,12 @@ impl ProtoFmt for PublicKey {
     type Proto = proto::PublicKey;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.bls12381)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            bls12381: Some(self.0.encode()),
+            bn254: Some(self.0.encode()),
         }
     }
 }
@@ -368,12 +368,12 @@ impl ProtoFmt for Signature {
     type Proto = proto::Signature;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.bls12381)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            bls12381: Some(self.0.encode()),
+            bn254: Some(self.0.encode()),
         }
     }
 }
@@ -382,12 +382,12 @@ impl ProtoFmt for AggregateSignature {
     type Proto = proto::AggregateSignature;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.bls12381)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            bls12381: Some(self.0.encode()),
+            bn254: Some(self.0.encode()),
         }
     }
 }

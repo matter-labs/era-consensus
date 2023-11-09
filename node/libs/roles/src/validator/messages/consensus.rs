@@ -5,7 +5,7 @@ use crate::validator;
 use anyhow::{bail, Context};
 use bit_vec::BitVec;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use utils::enum_util::{BadVariantError, Variant};
+use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
 /// Version of the consensus algorithm that the validator is using.
 /// It allows to prevent misinterpretation of messages signed by validators
@@ -199,7 +199,7 @@ impl PrepareQC {
 
         // Aggregate the signatures.
         let signature =
-            validator::AggregateSignature::aggregate(signed_messages.iter().map(|v| &v.sig))?;
+            validator::AggregateSignature::aggregate(signed_messages.iter().map(|v| &v.sig));
 
         Ok(Self { map, signature })
     }
@@ -314,7 +314,7 @@ impl CommitQC {
             .collect();
 
         // Aggregate the signatures.
-        let signature = validator::AggregateSignature::aggregate(msg_map.values().copied())?;
+        let signature = validator::AggregateSignature::aggregate(msg_map.values().copied());
         Ok(Self {
             message,
             signers: Signers(bit_vec),
