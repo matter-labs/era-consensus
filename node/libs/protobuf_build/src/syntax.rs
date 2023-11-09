@@ -46,7 +46,7 @@ impl InputPath {
 }
 
 /// Absolute path of the proto file used for importing other proto files.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProtoPath(PathBuf);
 
 impl From<&str> for ProtoPath {

@@ -31,8 +31,12 @@ pub use once_cell::sync::Lazy;
 pub use prost;
 use prost::Message as _;
 pub use prost_reflect; // FIXME: move to main crate?
-use std::{collections::{HashMap, HashSet}, env, fs, path::Path, sync::Mutex};
-use serde::{Serialize, Deserialize};
+use std::{
+    collections::{HashMap, HashSet},
+    env, fs,
+    path::Path,
+    sync::Mutex,
+};
 
 mod canonical;
 mod ident;
@@ -54,15 +58,15 @@ fn traverse_files(
 }
 
 /// Manifest of a Protobuf compilation target containing information about the compilation process.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug)]
 struct Manifest {
     /// Root proto package that all proto files in this descriptor belong to.
-    proto_root: String,
+    proto_root: ProtoPath,
     /// Absolute path to the descriptor.
-    descriptor: String,
+    descriptor_path: String,
     /// Tuples of `proto_root` and absolute paths to the corresponding descriptor for all dependencies
     /// including transitive ones.
-    dependencies: Vec<(String, String)>,
+    dependencies: Vec<(ProtoPath, String)>,
 }
 
 impl Manifest {
@@ -70,20 +74,51 @@ impl Manifest {
     fn from_env(rust_root: &RustName) -> anyhow::Result<Self> {
         let crate_name = rust_root.crate_name().context("empty `rust_root`")?;
         let env_name = format!("DEP_{}_PROTO_MANIFEST", crate_name.to_uppercase());
-        let manifest_path = env::var(env_name).with_context(|| {
-            format!("failed reading path to `{crate_name}` Protobuf manifest")
-        })?;
-        let manifest = fs::read_to_string(&manifest_path).with_context(|| {
-            format!("failed reading `{crate_name}` Protobuf manifest at {manifest_path}")
-        })?;
-        serde_json::from_str(&manifest).with_context(|| {
-            format!("failed deserializing `{crate_name}` Protobuf manifest at {manifest_path}")
+        let manifest = env::var(env_name)
+            .with_context(|| format!("failed reading path to `{crate_name}` Protobuf manifest"))?;
+
+        let mut manifest_parts = manifest.split(':');
+        // ^ ':' is used as a separator since it cannot be present in paths.
+        let proto_root = manifest_parts.next().context("missing `proto_root`")?;
+        let proto_root = ProtoPath::from(proto_root);
+        let descriptor_path = manifest_parts
+            .next()
+            .context("missing `descriptor_path`")?
+            .to_owned();
+
+        let mut dependencies = vec![];
+        while let Some(proto_root) = manifest_parts.next() {
+            let proto_root = ProtoPath::from(proto_root);
+            let descriptor_path = manifest_parts
+                .next()
+                .context("missing `descriptor_path`")?
+                .to_owned();
+            dependencies.push((proto_root, descriptor_path));
+        }
+
+        Ok(Self {
+            proto_root,
+            descriptor_path,
+            dependencies,
         })
     }
 
-    /// Converts `proto_root` to a `ProtoName`.
-    fn proto_root(&self) -> anyhow::Result<ProtoName> {
-        ProtoPath::from(self.proto_root.as_str()).to_name()
+    /// Prints this manifest to an environment variable so that it's available to dependencies.
+    fn print(&self) {
+        use std::fmt::Write as _;
+
+        let Self {
+            proto_root,
+            descriptor_path,
+            dependencies,
+        } = self;
+        let dependencies = dependencies
+            .iter()
+            .fold(String::new(), |mut acc, (root, desc_path)| {
+                write!(&mut acc, ":{root}:{desc_path}").unwrap();
+                acc
+            });
+        println!("cargo:manifest={proto_root}:{descriptor_path}{dependencies}");
     }
 }
 
@@ -98,10 +133,7 @@ pub struct Descriptor {
 
 impl Descriptor {
     /// Constructs a Descriptor.
-    pub fn new(
-        dependencies: Vec<&'static Descriptor>,
-        descriptor_bytes: &[u8],
-    ) -> Self {
+    pub fn new(dependencies: Vec<&'static Descriptor>, descriptor_bytes: &[u8]) -> Self {
         Descriptor {
             dependencies,
             descriptor_proto: prost_types::FileDescriptorSet::decode(descriptor_bytes).unwrap(),
@@ -198,27 +230,30 @@ impl Config {
 
         // Load dependencies.
         let dependency_manifests = self.dependencies.iter().map(Manifest::from_env);
-        let dependency_manifests: Vec<Manifest> = dependency_manifests.collect::<anyhow::Result<_>>()?;
+        let dependency_manifests: Vec<Manifest> =
+            dependency_manifests.collect::<anyhow::Result<_>>()?;
         let direct_dependency_descriptor_paths: HashSet<_> = dependency_manifests
             .iter()
-            .map(|manifest| &manifest.descriptor)
+            .map(|manifest| &manifest.descriptor_path)
             .collect();
 
-        let all_dependencies = dependency_manifests
-            .iter()
-            .flat_map(|manifest| {
-                manifest.dependencies
-                    .iter()
-                    .map(|(root, path)| (root, path))
-                    // ^ Converts a reference to a tuple to a tuple of references
-                    .chain([(&manifest.proto_root, &manifest.descriptor)])
-            });
+        let all_dependencies = dependency_manifests.iter().flat_map(|manifest| {
+            manifest
+                .dependencies
+                .iter()
+                .map(|(root, path)| (root, path))
+                // ^ Converts a reference to a tuple to a tuple of references
+                .chain([(&manifest.proto_root, &manifest.descriptor_path)])
+        });
 
         let mut pool = prost_reflect::DescriptorPool::new();
         let mut direct_dependency_descriptors = HashMap::with_capacity(self.dependencies.len());
         let mut unique_dependencies = HashMap::new();
         for (proto_root, descriptor_path) in all_dependencies {
-            if unique_dependencies.insert(proto_root.clone(), descriptor_path.clone()).is_some() {
+            if unique_dependencies
+                .insert(proto_root.clone(), descriptor_path.clone())
+                .is_some()
+            {
                 // Do not load the same dependency twice.
                 continue;
             }
@@ -304,13 +339,14 @@ impl Config {
 
         if self.is_public {
             let manifest = Manifest {
-                proto_root: self.proto_root.to_string(),
-                descriptor: descriptor_path.to_str().context("non-UTF8 output path")?.to_owned(),
+                proto_root: self.proto_root.clone(),
+                descriptor_path: descriptor_path
+                    .to_str()
+                    .context("non-UTF8 output path")?
+                    .to_owned(),
                 dependencies: unique_dependencies.into_iter().collect(),
             };
-            let manifest_path = output_dir.join("manifest.json");
-            fs::write(&manifest_path, &serde_json::to_string(&manifest)?)?;
-            println!("cargo:manifest={}", manifest_path.to_str().context("non-UTF8 output path")?);
+            manifest.print();
         }
         println!("PROTOBUF_DESCRIPTOR={descriptor_path:?}");
 
@@ -321,11 +357,11 @@ impl Config {
         config.prost_path(prost_path.to_string());
         config.skip_protoc_run();
         for (root_path, manifest) in self.dependencies.iter().zip(&dependency_manifests) {
-            let descriptor = &direct_dependency_descriptors[&manifest.descriptor];
+            let descriptor = &direct_dependency_descriptors[&manifest.descriptor_path];
             // ^ Indexing is safe by construction.
             for file in &descriptor.file {
                 let proto_rel = ProtoName::from(file.package())
-                    .relative_to(&manifest.proto_root()?)
+                    .relative_to(&manifest.proto_root.to_name()?)
                     .unwrap();
                 let rust_path = root_path.clone().join(proto_rel.to_rust_module()?);
                 config.extern_path(format!(".{}", file.package()), rust_path.to_string());
