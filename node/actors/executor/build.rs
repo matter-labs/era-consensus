@@ -4,7 +4,7 @@ fn main() {
         input_root: "src/config/proto".into(),
         proto_root: "zksync/executor/config".into(),
         dependencies: vec![],
-        protobuf_crate: "::zksync_protobuf".into(),
+        protobuf_crate: "::zksync_protobuf".parse().unwrap(),
     }
     .generate()
     .expect("generate(config)");

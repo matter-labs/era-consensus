@@ -112,7 +112,7 @@ macro_rules! declare_descriptor {
         pub static DESCRIPTOR: $crate::Lazy<$crate::Descriptor> = $crate::Lazy::new(|| {
             $crate::Descriptor::new(
                 $package_root.into(),
-                ::std::vec![$({ use $rust_deps as dep; &dep::DESCRIPTOR })*],
+                ::std::vec![$({ use $rust_deps as dep; &dep::DESCRIPTOR }),*],
                 include_bytes!($descriptor_path),
             )
         });

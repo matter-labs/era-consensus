@@ -4,10 +4,10 @@ fn main() {
         input_root: "src/proto".into(),
         proto_root: "zksync/storage".into(),
         dependencies: vec![(
-            "::zksync_consensus_roles::proto".into(),
+            "::zksync_consensus_roles::proto".parse().unwrap(),
             &zksync_consensus_roles::proto::DESCRIPTOR,
         )],
-        protobuf_crate: "::zksync_protobuf".into(),
+        protobuf_crate: "::zksync_protobuf".parse().unwrap(),
     }
     .generate()
     .expect("generate()");
