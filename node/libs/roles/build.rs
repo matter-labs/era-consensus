@@ -4,10 +4,10 @@ fn main() {
         input_root: "src/proto".into(),
         proto_root: "zksync/roles".into(),
         dependencies: vec![(
-            "::zksync_protobuf::proto".into(),
+            "::zksync_protobuf::proto".parse().expect("dependency_path"),
             &zksync_protobuf::proto::DESCRIPTOR,
         )],
-        protobuf_crate: "::zksync_protobuf".into(),
+        protobuf_crate: "::zksync_protobuf".parse().expect("protobuf_crate"),
     }
     .generate()
     .expect("generate()");
