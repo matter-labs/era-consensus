@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package zksync.schema.network.ping;
+package zksync.network.ping;
 
 message PingReq {
   optional bytes data = 1;

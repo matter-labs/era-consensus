@@ -1,9 +1,9 @@
 syntax = "proto3";
 
-package zksync.schema.network.gossip;
+package zksync.network.gossip;
 
-import "zksync/schema/roles/node.proto";
-import "zksync/schema/roles/validator.proto";
+import "zksync/roles/node.proto";
+import "zksync/roles/validator.proto";
 
 // First message exchanged in the encrypted session.
 message Handshake {

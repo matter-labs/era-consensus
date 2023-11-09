@@ -2,6 +2,7 @@
 //! but this crate only exposes an abstraction of a database, so we can easily switch to a different storage engine in the future.
 
 mod in_memory;
+pub mod proto;
 mod replica_state;
 #[cfg(feature = "rocksdb")]
 mod rocksdb;

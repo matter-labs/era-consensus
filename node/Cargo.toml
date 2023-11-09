@@ -9,7 +9,6 @@ members = [
     "actors/network",
     "actors/sync_blocks",
     "libs/roles",
-    "libs/schema",
     "libs/storage",
     "tools",
     "libs/utils",
@@ -32,7 +31,6 @@ zksync_consensus_executor = { path = "actors/executor" }
 zksync_consensus_network = { path = "actors/network" }
 zksync_consensus_sync_blocks = { path = "actors/sync_blocks" }
 zksync_consensus_roles = { path = "libs/roles" }
-zksync_consensus_schema = { path = "libs/schema" }
 zksync_consensus_storage = { path = "libs/storage" }
 zksync_consensus_tools = { path = "tools" }
 zksync_consensus_utils = { path = "libs/utils" }

@@ -23,12 +23,12 @@ env:
 
 jobs:
   compatibility:
-    runs-on: ubuntu-latest
+    runs-on: [ubuntu-22.04-github-hosted-16core]
     steps:
       # github.base_ref -> github.head_ref for pull_request
       # github.event.before -> github.event.after for push
       - uses: mozilla-actions/sccache-action@v0.0.3
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.base_ref || github.event.before }}
           path: before
@@ -40,7 +40,7 @@ jobs:
           perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/'
           `find ./before/node/target/debug/build/*/output`
           | xargs cat > ./before.binpb
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref || github.event.after }}
           path: after
