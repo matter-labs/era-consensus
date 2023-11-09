@@ -691,9 +691,9 @@ dependencies = [
 
 [[package]]
 name = "fiat-crypto"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a481586acf778f1b1455424c343f71124b048ffa5f4fc3f8f6ae9dc432dcb3c7"
+checksum = "f69037fe1b785e84986b4f2cbcf647381876a00671d25ceef715d7812dd7e1dd"
 
 [[package]]
 name = "fixedbitset"
@@ -1030,9 +1030,9 @@ dependencies = [
 
 [[package]]
 name = "linux-raw-sys"
-version = "0.4.10"
+version = "0.4.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "da2479e8c062e40bf0066ffa0bc823de0a9368974af99c9f6df941d2c231e03f"
+checksum = "969488b55f8ac402214f3f5fd243ebb7206cf82de60d3172994707a4bcc2b829"
 
 [[package]]
 name = "lock_api"
@@ -1628,15 +1628,6 @@ dependencies = [
  "libc",
  "rand_chacha",
  "rand_core 0.6.4",
-]
-
-[[package]]
-name = "rand04"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "58595cc8bb12add45412667f9b422d5a9842d61d36e8607bc7c84ff738bf9263"
-dependencies = [
- "rand 0.4.6",
 ]
 
 [[package]]
@@ -2574,8 +2565,8 @@ dependencies = [
  "ff_ce",
  "hex",
  "pairing_ce",
+ "rand 0.4.6",
  "rand 0.8.5",
- "rand04",
  "sha2",
  "thiserror",
  "tracing",

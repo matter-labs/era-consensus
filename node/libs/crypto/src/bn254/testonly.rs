@@ -2,14 +2,16 @@
 
 use pairing::bn256::{Fr, G1, G2};
 use rand::{distributions::Standard, prelude::Distribution, Rng, RngCore};
-use rand04::{Rand};
+use rand04::Rand;
 
 use super::{AggregateSignature, PublicKey, SecretKey, Signature};
 
 struct RngWrapper<R>(R);
 
 impl<R: RngCore> rand04::Rng for RngWrapper<R> {
-    fn next_u32(&mut self) -> u32 { self.0.next_u32() }
+    fn next_u32(&mut self) -> u32 {
+        self.0.next_u32()
+    }
 }
 
 /// Generates a random SecretKey. This is meant for testing purposes.
