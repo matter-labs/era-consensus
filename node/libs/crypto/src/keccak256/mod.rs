@@ -17,7 +17,7 @@ impl Keccak256 {
     }
 
     /// Interprets the specified `bytes` as a hash digest (i.e., a reverse operation to [`Self::as_bytes()`]).
-    /// It is caller's responsibility to ensure that `bytes` are actually a SHA-256 hash digest.
+    /// It is caller's responsibility to ensure that `bytes` are actually a Keccak256 hash digest.
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
         Self(bytes)
     }

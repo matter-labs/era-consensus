@@ -2,13 +2,13 @@
 
 use ark_bn254::{G1Affine, G1Projective};
 use ark_ec::AffineRepr as _;
-use sha2::Digest as _;
+use sha3::Digest as _;
 
 /// Hashes an arbitrary message and maps it to an elliptic curve point in G1.
 pub(crate) fn hash_to_g1(msg: &[u8]) -> G1Projective {
     for i in 0..256 {
         // Hash the message with the index as suffix.
-        let bytes: [u8; 32] = sha2::Sha256::new()
+        let bytes: [u8; 32] = sha3::Keccak256::new()
             .chain_update(msg)
             .chain_update((i as u32).to_be_bytes())
             .finalize()

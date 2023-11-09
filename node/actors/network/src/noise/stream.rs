@@ -9,7 +9,7 @@ use zksync_concurrency::{
     ctx, io,
     io::{AsyncRead as _, AsyncWrite as _},
 };
-use zksync_consensus_crypto::{sha256::Sha256, ByteFmt};
+use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt};
 
 /// Fixed noise configuration. Nodes need to use the same noise
 /// configuration to be able to connect to each other.
