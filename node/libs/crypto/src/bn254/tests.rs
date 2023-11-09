@@ -1,5 +1,7 @@
-use crate::bn254::{AggregateSignature, PublicKey, SecretKey, Signature};
-use crate::ByteFmt;
+use crate::{
+    bn254::{AggregateSignature, PublicKey, SecretKey, Signature},
+    ByteFmt,
+};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::iter::repeat_with;
 

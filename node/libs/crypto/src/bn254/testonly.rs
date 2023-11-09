@@ -1,10 +1,9 @@
 //! Random key generation, intended for use in testing
 
+use super::{AggregateSignature, PublicKey, SecretKey, Signature};
 use pairing::bn256::{Fr, G1, G2};
 use rand::{distributions::Standard, prelude::Distribution, Rng, RngCore};
 use rand04::Rand;
-
-use super::{AggregateSignature, PublicKey, SecretKey, Signature};
 
 struct RngWrapper<R>(R);
 

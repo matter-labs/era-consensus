@@ -3,20 +3,19 @@
 //! Disclaimer: the implementation of the pairing-friendly elliptic curve does not run in constant time,
 //! hence it does not protect the secret key from side-channel attacks.
 
-use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
-use std::io::Cursor;
-
-use ff_ce::Field as _;
-use pairing::bn256::{
-    Bn256, Fq12, Fr, FrRepr, G1Affine, G1Compressed, G2Affine, G2Compressed, G1, G2,
-};
-use pairing::ff::{PrimeField, PrimeFieldRepr};
-use pairing::{CurveAffine as _, CurveProjective as _, EncodedPoint as _, Engine as _};
-
-pub use error::Error;
-
 use crate::ByteFmt;
+pub use error::Error;
+use ff_ce::Field as _;
+use pairing::{
+    bn256::{Bn256, Fq12, Fr, FrRepr, G1Affine, G1Compressed, G2Affine, G2Compressed, G1, G2},
+    ff::{PrimeField, PrimeFieldRepr},
+    CurveAffine as _, CurveProjective as _, EncodedPoint as _, Engine as _,
+};
+use std::{
+    collections::HashMap,
+    hash::{Hash, Hasher},
+    io::Cursor,
+};
 
 #[doc(hidden)]
 pub mod error;
