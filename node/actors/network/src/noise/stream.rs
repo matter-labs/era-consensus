@@ -1,15 +1,15 @@
 //! `tokio::io` stream using Noise encryption.
 use super::bytes;
 use crate::metrics::MeteredStream;
-use concurrency::{
-    ctx, io,
-    io::{AsyncRead as _, AsyncWrite as _},
-};
-use crypto::{sha256::Sha256, ByteFmt};
 use std::{
     pin::Pin,
     task::{ready, Context, Poll},
 };
+use zksync_concurrency::{
+    ctx, io,
+    io::{AsyncRead as _, AsyncWrite as _},
+};
+use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt};
 
 /// Fixed noise configuration. Nodes need to use the same noise
 /// configuration to be able to connect to each other.
@@ -75,7 +75,7 @@ impl Default for Buffer {
 pub(crate) struct Stream<S = MeteredStream> {
     /// Hash of the handshake messages.
     /// Uniquely identifies the noise session.
-    id: Sha256,
+    id: Keccak256,
     /// Underlying TCP stream.
     #[pin]
     inner: S,
@@ -138,7 +138,7 @@ where
 
     /// Returns the noise session id.
     /// See `Stream::id`.
-    pub(crate) fn id(&self) -> Sha256 {
+    pub(crate) fn id(&self) -> Keccak256 {
         self.id
     }
 

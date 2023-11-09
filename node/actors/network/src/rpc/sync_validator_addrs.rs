@@ -1,11 +1,10 @@
 //! Defines an Rpc for synchronizing ValidatorAddrs data.
-
-use crate::mux;
+use crate::{mux, proto::gossip as proto};
 use anyhow::Context as _;
-use concurrency::{limiter, time};
-use roles::validator;
-use schema::{proto::network::gossip as proto, ProtoFmt};
 use std::sync::Arc;
+use zksync_concurrency::{limiter, time};
+use zksync_consensus_roles::validator;
+use zksync_protobuf::ProtoFmt;
 
 /// SyncValidatorAddrs Rpc.
 pub(crate) struct Rpc;
@@ -45,7 +44,7 @@ impl ProtoFmt for Req {
     }
 
     fn max_size() -> usize {
-        schema::kB
+        zksync_protobuf::kB
     }
 }
 
@@ -69,6 +68,6 @@ impl ProtoFmt for Resp {
     }
 
     fn max_size() -> usize {
-        schema::MB
+        zksync_protobuf::MB
     }
 }

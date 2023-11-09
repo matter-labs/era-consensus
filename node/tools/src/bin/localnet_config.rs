@@ -1,13 +1,13 @@
 //! This tool constructs collection of node configs for running tests.
 use anyhow::Context as _;
 use clap::Parser;
-use consensus::testonly;
-use crypto::TextFmt;
-use executor::{ConsensusConfig, ExecutorConfig, GossipConfig};
 use rand::Rng;
-use roles::{node, validator};
 use std::{fs, net::SocketAddr, path::PathBuf};
-use tools::NodeConfig;
+use zksync_consensus_bft::testonly;
+use zksync_consensus_crypto::TextFmt;
+use zksync_consensus_executor::{ConsensusConfig, ExecutorConfig, GossipConfig};
+use zksync_consensus_roles::{node, validator};
+use zksync_consensus_tools::NodeConfig;
 
 /// Replaces IP of the address with UNSPECIFIED (aka INADDR_ANY) of the corresponding IP type.
 /// Opening a listener socket with an UNSPECIFIED IP, means that the new connections
@@ -110,8 +110,11 @@ fn main() -> anyhow::Result<()> {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
 
-        fs::write(root.join("config.json"), schema::encode_json(&node_cfg))
-            .context("fs::write()")?;
+        fs::write(
+            root.join("config.json"),
+            zksync_protobuf::encode_json(&node_cfg),
+        )
+        .context("fs::write()")?;
         fs::write(
             root.join("validator_key"),
             &TextFmt::encode(&validator_keys[i]),

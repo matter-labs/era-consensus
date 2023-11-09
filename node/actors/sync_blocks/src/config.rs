@@ -1,7 +1,7 @@
 //! Configuration for the `SyncBlocks` actor.
 
-use concurrency::time;
-use roles::validator::ValidatorSet;
+use zksync_concurrency::time;
+use zksync_consensus_roles::validator::ValidatorSet;
 
 /// Configuration for the `SyncBlocks` actor.
 #[derive(Debug)]

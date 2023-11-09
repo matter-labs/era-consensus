@@ -1,7 +1,8 @@
 use super::CapabilityId;
+use crate::proto::mux as proto;
 use anyhow::Context as _;
-use schema::{proto::network::mux as proto, required};
 use std::collections::HashMap;
+use zksync_protobuf::required;
 
 pub(super) struct Handshake {
     /// Maximal supported number of the accept streams per capability.
@@ -36,11 +37,11 @@ fn build_capabilities(
         .collect()
 }
 
-impl schema::ProtoFmt for Handshake {
+impl zksync_protobuf::ProtoFmt for Handshake {
     type Proto = proto::Handshake;
 
     fn max_size() -> usize {
-        schema::kB
+        zksync_protobuf::kB
     }
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {

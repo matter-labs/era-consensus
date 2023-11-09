@@ -1,20 +1,22 @@
 //! Module to manage the communication between actors. It simply converts and forwards messages from and to each different actor.
 
 use crate::metrics;
-use concurrency::{
+use tracing::instrument;
+use zksync_concurrency::{
     ctx::{self, channel},
     scope,
 };
-use consensus::io::{
+use zksync_consensus_bft::io::{
     InputMessage as ConsensusInputMessage, OutputMessage as ConsensusOutputMessage,
 };
-use network::io::{InputMessage as NetworkInputMessage, OutputMessage as NetworkOutputMessage};
-use roles::validator::FinalBlock;
-use sync_blocks::io::{
+use zksync_consensus_network::io::{
+    InputMessage as NetworkInputMessage, OutputMessage as NetworkOutputMessage,
+};
+use zksync_consensus_roles::validator::FinalBlock;
+use zksync_consensus_sync_blocks::io::{
     InputMessage as SyncBlocksInputMessage, OutputMessage as SyncBlocksOutputMessage,
 };
-use tracing::instrument;
-use utils::pipe::DispatcherPipe;
+use zksync_consensus_utils::pipe::DispatcherPipe;
 
 /// The IO dispatcher, it is the main struct to handle actor messages. It simply contains a sender and a receiver for
 /// a pair of channels for each actor. This of course allows us to send and receive messages to and from each actor.

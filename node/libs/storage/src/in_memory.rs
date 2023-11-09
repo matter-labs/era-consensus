@@ -6,12 +6,12 @@ use crate::{
     StorageResult,
 };
 use async_trait::async_trait;
-use concurrency::{
+use std::{collections::BTreeMap, ops};
+use zksync_concurrency::{
     ctx,
     sync::{self, watch, Mutex},
 };
-use roles::validator::{BlockNumber, FinalBlock};
-use std::{collections::BTreeMap, ops};
+use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
 
 #[derive(Debug)]
 struct BlocksInMemoryStore {
