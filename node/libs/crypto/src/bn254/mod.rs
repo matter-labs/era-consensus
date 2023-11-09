@@ -184,9 +184,9 @@ impl AggregateSignature {
         let a = Bn256::pairing(self.0, G2::one());
 
         // Second pair: e(H(m1): G1, pk1: G2) * ... * e(H(m1000): G1, pk1000: G2)
-        let mut b = Fq12::zero();
+        let mut b = Fq12::one();
         for (msg, pk) in pairs {
-            b.add_assign(&Bn256::pairing(hash::hash_to_g1(msg), pk.0))
+            b.mul_assign(&Bn256::pairing(hash::hash_to_g1(msg), pk.0))
         }
 
         if a == b {
