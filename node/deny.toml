@@ -65,4 +65,4 @@ skip = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-org = { github = ["matter-labs", "moshababo"] }
+allow-org = { github = ["matter-labs"] }

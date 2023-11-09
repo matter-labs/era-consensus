@@ -1300,7 +1300,7 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 [[package]]
 name = "pairing_ce"
 version = "0.28.5"
-source = "git+https://github.com/moshababo/pairing.git#b0b45f4af3a2f8520245212fb4a40c27ba0508c5"
+source = "git+https://github.com/matter-labs/pairing.git#f55393fd366596eac792d78525d26e9c4d6ed1ca"
 dependencies = [
  "byteorder",
  "cfg-if",
