@@ -11,6 +11,10 @@ impl<R: RngCore> rand04::Rng for RngWrapper<R> {
     fn next_u32(&mut self) -> u32 {
         self.0.next_u32()
     }
+
+    fn next_u64(&mut self) -> u64 {
+        self.0.next_u64()
+    }
 }
 
 /// Generates a random SecretKey. This is meant for testing purposes.
