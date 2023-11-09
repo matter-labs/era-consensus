@@ -2884,6 +2884,7 @@ dependencies = [
  "heck",
  "once_cell",
  "prettyplease",
+ "proc-macro2",
  "prost",
  "prost-build",
  "prost-reflect",

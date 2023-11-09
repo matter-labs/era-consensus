@@ -7,29 +7,30 @@ use std::collections::HashSet;
 struct Check(HashSet<String>);
 
 impl Check {
-    /// Checks if messages of type `m` support canonical encoding.
-    fn check_message(&mut self, m: &prost_reflect::MessageDescriptor) -> anyhow::Result<()> {
-        if self.0.contains(m.full_name()) {
+    /// Checks if messages of type `message` support canonical encoding.
+    fn check_message(&mut self, message: &prost_reflect::MessageDescriptor) -> anyhow::Result<()> {
+        if self.0.contains(message.full_name()) {
             return Ok(());
         }
-        self.0.insert(m.full_name().to_string());
-        for f in m.fields() {
-            self.check_field(&f).with_context(|| f.name().to_string())?;
+        self.0.insert(message.full_name().to_string());
+        for field in message.fields() {
+            self.check_field(&field)
+                .with_context(|| field.name().to_string())?;
         }
         Ok(())
     }
 
-    /// Checks if field `f` supports canonical encoding.
-    fn check_field(&mut self, f: &prost_reflect::FieldDescriptor) -> anyhow::Result<()> {
-        if f.is_map() {
+    /// Checks if field `field` supports canonical encoding.
+    fn check_field(&mut self, field: &prost_reflect::FieldDescriptor) -> anyhow::Result<()> {
+        if field.is_map() {
             anyhow::bail!("maps unsupported");
         }
-        if !f.is_list() && !f.supports_presence() {
+        if !field.is_list() && !field.supports_presence() {
             anyhow::bail!("non-repeated, non-oneof fields have to be marked as optional");
         }
-        if let prost_reflect::Kind::Message(msg) = &f.kind() {
-            self.check_message(msg)
-                .with_context(|| msg.name().to_string())?;
+        if let prost_reflect::Kind::Message(message) = &field.kind() {
+            self.check_message(message)
+                .with_context(|| message.name().to_string())?;
         }
         Ok(())
     }
@@ -41,18 +42,18 @@ pub(crate) fn check(
     descriptor: &prost_types::FileDescriptorSet,
     pool: &prost_reflect::DescriptorPool,
 ) -> anyhow::Result<()> {
-    for f in &descriptor.file {
-        if f.syntax() != "proto3" {
-            anyhow::bail!("{}: only proto3 syntax is supported", f.name());
+    for file in &descriptor.file {
+        if file.syntax() != "proto3" {
+            anyhow::bail!("{}: only proto3 syntax is supported", file.name());
         }
     }
-    let mut c = Check::default();
+    let mut check = Check::default();
     for msg_name in extract_message_names(descriptor) {
-        let msg_name = msg_name.to_string();
-        let msg = pool
-            .get_message_by_name(&msg_name)
+        let message_name = msg_name.to_string();
+        let message = pool
+            .get_message_by_name(&message_name)
             .with_context(|| format!("{msg_name} not found in pool"))?;
-        c.check_message(&msg).with_context(|| msg_name)?;
+        check.check_message(&message).context(message_name)?;
     }
     Ok(())
 }
