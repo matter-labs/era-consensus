@@ -2,6 +2,7 @@
 use crate::ByteFmt;
 use sha3::{digest::Update as _, Digest as _};
 
+#[cfg(test)]
 mod test;
 pub mod testonly;
 
