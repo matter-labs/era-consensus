@@ -58,8 +58,8 @@ skip = [
     { name = "socket2", version = "=0.4.10" },
 
     # Old versions required by pairing_ce & ff_ce.
-    { name = "rand", version = "=0.4.6" },
-
+    { name = "rand", version = "0.4" },
+    { name = "syn", version = "1.0" },
 ]
 
 [sources]
