@@ -2,7 +2,7 @@
 fn test_keccak256() -> Result<(), Box<dyn std::error::Error>> {
     use crate::keccak256::Keccak256;
 
-    // Test vectors obtained from a trusted source
+    // Test vectors obtained from https://emn178.github.io/online-tools/keccak_256.html
     let test_vectors: Vec<(&[u8], [u8; 32])> = vec![
         (
             b"testing",
