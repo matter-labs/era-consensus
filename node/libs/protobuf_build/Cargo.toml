@@ -19,6 +19,6 @@ prost-reflect.workspace = true
 protox.workspace = true
 protox-parse.workspace = true
 quote.workspace = true
-rand.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 syn.workspace = true
-

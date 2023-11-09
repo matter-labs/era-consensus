@@ -5,6 +5,7 @@ fn main() {
         proto_root: "zksync".into(),
         dependencies: vec![],
         protobuf_crate: "crate".parse().expect("protobuf_crate"),
+        is_public: true,
     }
     .generate()
     .expect("generate(std)");
@@ -14,6 +15,7 @@ fn main() {
         proto_root: "zksync/protobuf/tests".into(),
         dependencies: vec![],
         protobuf_crate: "crate".parse().expect("protobuf_crate"),
+        is_public: false,
     }
     .generate()
     .expect("generate(test)");
@@ -23,6 +25,7 @@ fn main() {
         proto_root: "zksync/protobuf/conformance_test".into(),
         dependencies: vec![],
         protobuf_crate: "::zksync_protobuf".parse().expect("protobuf_crate"),
+        is_public: false,
     }
     .generate()
     .expect("generate(conformance)");

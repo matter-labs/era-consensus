@@ -111,6 +111,11 @@ impl RustName {
         Self(syn::Path::from(ident))
     }
 
+    /// Returns the crate name for this name (i.e., its first segment).
+    pub(crate) fn crate_name(&self) -> Option<String> {
+        Some(self.0.segments.first()?.ident.to_string())
+    }
+
     /// Concatenates 2 rust names.
     pub fn join(mut self, suffix: Self) -> Self {
         self.0.segments.extend(suffix.0.segments);
