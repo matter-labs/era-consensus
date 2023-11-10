@@ -12,44 +12,37 @@ static POOL: Lazy<RwLock<prost_reflect::DescriptorPool>> = Lazy::new(RwLock::def
 
 /// Protobuf descriptor + info about the mapping to rust code.
 #[derive(Debug)]
-pub struct Descriptor {
-    /// Raw descriptor proto.
-    descriptor_proto: prost_types::FileDescriptorSet,
-    /// Direct dependencies of this descriptor.
-    dependencies: Vec<&'static Self>,
-}
+pub struct Descriptor(());
 
 impl Descriptor {
     /// Constructs a descriptor and adds it to the global pool.
-    pub fn new(dependencies: Vec<&'static Descriptor>, descriptor_bytes: &[u8]) -> Self {
-        let this = Descriptor {
-            dependencies,
-            descriptor_proto: prost_types::FileDescriptorSet::decode(descriptor_bytes).unwrap(),
-        };
+    pub fn new(_dependencies: &[&'static Self], descriptor_bytes: &[u8]) -> Self {
+        let descriptor = prost_types::FileDescriptorSet::decode(descriptor_bytes).unwrap();
         let pool = &mut POOL.write().unwrap();
-        this.load(pool)
-            .expect("failed loading descriptor into global pool");
-        this
+
+        // Dependencies are already loaded to the global pool on their initialization.
+        // The fact that we have their refs is sufficient to prove that they are already in the global pool.
+        Self::load(pool, descriptor).expect("failed loading descriptor into global pool");
+        Self(())
     }
 
     /// Loads the descriptor to the pool, if not already loaded.
-    fn load(&self, pool: &mut prost_reflect::DescriptorPool) -> anyhow::Result<()> {
-        if self
-            .descriptor_proto
+    fn load(
+        pool: &mut prost_reflect::DescriptorPool,
+        descriptor: prost_types::FileDescriptorSet,
+    ) -> anyhow::Result<()> {
+        let pool_has_all_files = descriptor
             .file
             .iter()
-            .all(|f| pool.get_file_by_name(f.name()).is_some())
-        {
+            .all(|file| pool.get_file_by_name(file.name()).is_some());
+        if pool_has_all_files {
             return Ok(());
         }
-        for dependency in &self.dependencies {
-            dependency.load(pool)?;
-        }
-        pool.add_file_descriptor_set(self.descriptor_proto.clone())?;
+        pool.add_file_descriptor_set(descriptor)?;
         Ok(())
     }
 
-    /// Loads the descriptor to the global pool and returns a copy of the global pool.
+    /// Returns a descriptor by a fully qualified message name.
     pub fn get_message_by_name(&self, name: &str) -> Option<prost_reflect::MessageDescriptor> {
         POOL.read().unwrap().get_message_by_name(name)
         // ^ This works because this descriptor must have been loaded into the global pool
@@ -64,7 +57,7 @@ macro_rules! declare_descriptor {
         pub static $name: $crate::build::Lazy<$crate::build::Descriptor> =
             $crate::build::Lazy::new(|| {
                 $crate::build::Descriptor::new(
-                    ::std::vec![$({ use $rust_deps as dep; &dep::DESCRIPTOR }),*],
+                    &[$({ use $rust_deps as dep; &dep::DESCRIPTOR }),*],
                     ::std::include_bytes!($descriptor_path),
                 )
             });
