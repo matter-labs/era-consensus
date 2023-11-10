@@ -28,7 +28,6 @@ pub mod hash;
 mod testonly;
 
 /// Type safety wrapper around a scalar value.
-#[derive(PartialEq)]
 pub struct SecretKey(Fr);
 
 impl SecretKey {
@@ -64,6 +63,12 @@ impl ByteFmt for SecretKey {
 impl Debug for SecretKey {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(f, "SecretKey({:?})", self.public())
+    }
+}
+
+impl PartialEq for SecretKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.public() == other.public()
     }
 }
 
