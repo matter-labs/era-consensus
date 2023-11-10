@@ -1,6 +1,5 @@
 use crate::node;
-use zksync_consensus_crypto::{sha256, ByteFmt, Text, TextFmt};
-use zksync_consensus_schema as schema;
+use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
 /// The ID for an authentication session.
@@ -18,7 +17,7 @@ pub enum Msg {
 impl Msg {
     /// Get the hash of this message.
     pub fn hash(&self) -> MsgHash {
-        MsgHash(sha256::Sha256::new(&schema::canonical(self)))
+        MsgHash(keccak256::Keccak256::new(&zksync_protobuf::canonical(self)))
     }
 }
 
@@ -53,7 +52,7 @@ impl<V: Variant<Msg> + Clone> Signed<V> {
 }
 
 /// The hash of a message.
-pub struct MsgHash(pub(super) sha256::Sha256);
+pub struct MsgHash(pub(super) keccak256::Keccak256);
 
 impl ByteFmt for MsgHash {
     fn encode(&self) -> Vec<u8> {
@@ -67,11 +66,13 @@ impl ByteFmt for MsgHash {
 impl TextFmt for MsgHash {
     fn encode(&self) -> String {
         format!(
-            "validator_msg:sha256:{}",
+            "validator_msg:keccak256:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
     }
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("validator_msg:sha256:")?.decode_hex().map(Self)
+        text.strip("validator_msg:keccak256:")?
+            .decode_hex()
+            .map(Self)
     }
 }

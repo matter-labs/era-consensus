@@ -6,7 +6,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 use zksync_concurrency::{ctx, testonly::abort_on_panic, time};
-use zksync_consensus_schema::testonly::test_encode_random;
+use zksync_protobuf::testonly::test_encode_random;
 
 /// CAPABILITY_ID should uniquely identify the RPC.
 #[test]

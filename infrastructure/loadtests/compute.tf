@@ -30,6 +30,10 @@ resource "google_compute_instance" "zksync_bft_node" {
   machine_type = "e2-highcpu-8"
   zone         = local.instances_distribution[count.index].zone
 
+  metadata = {
+    enable-oslogin : "TRUE"
+  }
+
   tags = ["allow-zksync-bft-node-port", "allow-zksync-bft-metrics-port"]
 
   labels = {
@@ -61,6 +65,10 @@ resource "google_compute_instance" "vmagent" {
   name         = "zksync-bft-loadtest-${var.test_id}-vmagent"
   machine_type = "e2-highcpu-4"
   zone         = "us-central1-a"
+
+  metadata = {
+    enable-oslogin : "TRUE"
+  }
 
   labels = {
     repo    = "zksync-bft"

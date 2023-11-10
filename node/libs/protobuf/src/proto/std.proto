@@ -1,0 +1,50 @@
+syntax = "proto3";
+
+package zksync.std;
+
+message Void {}
+
+// Timestamp represented as seconds + nanoseconds since UNIX epoch.
+// Equivalent of `google.protobuf.Timestamp` but supports canonical encoding.
+// See `google.protobuf.Timestamp` for more detailed specification.
+message Timestamp {
+  // Represents seconds of UTC time since Unix epoch
+  // 1970-01-01T00:00:00Z. Must be from 0001-01-01T00:00:00Z to
+  // 9999-12-31T23:59:59Z inclusive.
+  optional int64 seconds = 1;
+
+  // Non-negative fractions of a second at nanosecond resolution. Negative
+  // second values with fractions must still have non-negative nanos values
+  // that count forward in time. Must be from 0 to 999,999,999
+  // inclusive.
+  optional int32 nanos = 2;
+}
+
+message Duration {
+  optional int64 seconds = 1;
+  optional int32 nanos = 2;
+}
+
+// IP:port TCP address.
+message SocketAddr {
+  // Ipv4 (4 bytes) or IPv6 (16 bytes) in network byte order.
+  optional bytes ip = 1;
+  // TCP port (actually uint16, however uint32 is smallest supported protobuf type).
+  optional uint32 port = 2;
+}
+
+// Compressed representation of a vector of bits.
+// It occupies n/8 + O(1) bytes.
+// Note: this is not a highly optimized data structure:
+// - since it is a proto message it requires its length to be stored.
+// - it has 2 fields, which require storing their own tag
+// - the `bytes_` field requires storing its length, which theoretically
+//   could be derived from `size` field value.
+// If we eventually start caring about the size, we could encode BitVector
+// directly as a field of type `bytes` with delimiter of the form "01...1".
+message BitVector {
+  // Number of bits in the vector.
+  optional uint64 size = 1;
+  // Vector of bits encoded as bytes in big endian order.
+  optional bytes bytes_ = 2;
+}

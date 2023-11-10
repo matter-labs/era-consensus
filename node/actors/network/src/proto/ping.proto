@@ -1,0 +1,11 @@
+syntax = "proto3";
+
+package zksync.network.ping;
+
+message PingReq {
+  optional bytes data = 1;
+}
+
+message PingResp {
+  optional bytes data = 1;
+}

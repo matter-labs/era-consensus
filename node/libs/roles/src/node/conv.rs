@@ -1,19 +1,19 @@
-use crate::node;
+use crate::{node, proto::node as proto};
 use anyhow::Context as _;
 use zksync_consensus_crypto::ByteFmt;
-use zksync_consensus_schema::{read_required, required, ProtoFmt};
 use zksync_consensus_utils::enum_util::Variant;
+use zksync_protobuf::{read_required, required, ProtoFmt};
 
 impl ProtoFmt for node::Msg {
-    type Proto = node::schema::Msg;
+    type Proto = proto::Msg;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        use node::schema::msg::T;
+        use proto::msg::T;
         Ok(match required(&r.t)? {
             T::SessionId(r) => Self::SessionId(node::SessionId(r.clone())),
         })
     }
     fn build(&self) -> Self::Proto {
-        use node::schema::msg::T;
+        use proto::msg::T;
         let t = match self {
             Self::SessionId(x) => T::SessionId(x.0.clone()),
         };
@@ -22,7 +22,7 @@ impl ProtoFmt for node::Msg {
 }
 
 impl ProtoFmt for node::PublicKey {
-    type Proto = node::schema::PublicKey;
+    type Proto = proto::PublicKey;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(ByteFmt::decode(required(&r.ed25519)?)?))
     }
@@ -34,7 +34,7 @@ impl ProtoFmt for node::PublicKey {
 }
 
 impl ProtoFmt for node::Signature {
-    type Proto = node::schema::Signature;
+    type Proto = proto::Signature;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(ByteFmt::decode(required(&r.ed25519)?)?))
     }
@@ -46,7 +46,7 @@ impl ProtoFmt for node::Signature {
 }
 
 impl<V: Variant<node::Msg> + Clone> ProtoFmt for node::Signed<V> {
-    type Proto = node::schema::Signed;
+    type Proto = proto::Signed;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             msg: V::extract(read_required::<node::Msg>(&r.msg).context("msg")?)?,

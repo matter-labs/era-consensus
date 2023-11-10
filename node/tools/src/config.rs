@@ -2,12 +2,9 @@
 use anyhow::Context as _;
 use std::{fs, net, path::Path};
 use zksync_consensus_crypto::{read_optional_text, Text, TextFmt};
-use zksync_consensus_executor::{ConsensusConfig, ExecutorConfig};
+use zksync_consensus_executor::{proto, ConsensusConfig, ExecutorConfig};
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_schema as schema;
-use zksync_consensus_schema::{
-    proto::executor::config as proto, read_optional, read_required, ProtoFmt,
-};
+use zksync_protobuf::{read_optional, read_required, ProtoFmt};
 
 /// This struct holds the file path to each of the config files.
 #[derive(Debug)]
@@ -78,12 +75,13 @@ impl Configs {
                 args.config.display()
             )
         })?;
-        let node_config: NodeConfig = schema::decode_json(&node_config).with_context(|| {
-            format!(
-                "failed decoding JSON node config at `{}`",
-                args.config.display()
-            )
-        })?;
+        let node_config: NodeConfig =
+            zksync_protobuf::decode_json(&node_config).with_context(|| {
+                format!(
+                    "failed decoding JSON node config at `{}`",
+                    args.config.display()
+                )
+            })?;
 
         let validator_key: Option<validator::SecretKey> = args
             .validator_key

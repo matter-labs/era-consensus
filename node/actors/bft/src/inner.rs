@@ -6,7 +6,6 @@ use crate::{
 };
 use tracing::instrument;
 use zksync_consensus_roles::validator;
-use zksync_consensus_schema as schema;
 use zksync_consensus_utils::pipe::ActorPipe;
 
 /// The ConsensusInner struct, it contains data to be shared with the state machines. This is never supposed
@@ -24,7 +23,7 @@ pub(crate) struct ConsensusInner {
 impl ConsensusInner {
     /// The maximum size of the payload of a block, in bytes. We will
     /// reject blocks with payloads larger than this.
-    pub(crate) const PAYLOAD_MAX_SIZE: usize = 500 * schema::kB;
+    pub(crate) const PAYLOAD_MAX_SIZE: usize = 500 * zksync_protobuf::kB;
 
     /// Computes the validator for the given view.
     #[instrument(level = "trace", ret)]

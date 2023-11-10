@@ -7,7 +7,6 @@ use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator::{
     testonly::make_block, BlockHeader, BlockNumber, FinalBlock, Payload,
 };
-use zksync_consensus_schema as schema;
 
 #[cfg(feature = "rocksdb")]
 mod rocksdb;
@@ -130,7 +129,10 @@ fn test_schema_encode_decode() {
     let rng = &mut ctx.rng();
 
     let replica = rng.gen::<ReplicaState>();
-    assert_eq!(replica, schema::decode(&schema::encode(&replica)).unwrap());
+    assert_eq!(
+        replica,
+        zksync_protobuf::decode(&zksync_protobuf::encode(&replica)).unwrap()
+    );
 }
 
 #[test]
