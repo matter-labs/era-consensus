@@ -31,6 +31,7 @@ pub use once_cell::sync::Lazy;
 pub use prost;
 use prost::Message as _;
 pub use prost_reflect;
+pub use serde;
 use std::{fs, path::Path, sync::Mutex};
 
 mod canonical;
@@ -140,23 +141,39 @@ impl Config {
 
     /// Generates implementation of `prost_reflect::ReflectMessage` for a rust type generated
     /// from a message of the given `proto_name`.
-    fn reflect_impl(&self, proto_name: &ProtoName) -> anyhow::Result<syn::ItemImpl> {
+    fn reflect_impl(&self, proto_name: &ProtoName) -> anyhow::Result<Vec<syn::Item>> {
         let rust_name = proto_name
             .relative_to(&self.proto_root.to_name().context("invalid proto_root")?)
             .unwrap()
             .to_rust_type()?;
         let proto_name = proto_name.to_string();
         let this = self.this_crate();
-        Ok(syn::parse_quote! {
-            impl #this::prost_reflect::ReflectMessage for #rust_name {
-                fn descriptor(&self) -> #this::prost_reflect::MessageDescriptor {
-                    static INIT: #this::Lazy<#this::prost_reflect::MessageDescriptor> = #this::Lazy::new(|| {
-                        DESCRIPTOR.get_message_by_name(#proto_name).unwrap()
-                    });
-                    INIT.clone()
+        Ok(vec![
+            syn::parse_quote! {
+                impl #this::prost_reflect::ReflectMessage for #rust_name {
+                    fn descriptor(&self) -> #this::prost_reflect::MessageDescriptor {
+                        static INIT: #this::Lazy<#this::prost_reflect::MessageDescriptor> = #this::Lazy::new(|| {
+                            DESCRIPTOR.get_message_by_name(#proto_name).unwrap()
+                        });
+                        INIT.clone()
+                    }
                 }
-            }
-        })
+            },
+            syn::parse_quote! {
+                impl #this::serde::Serialize for #rust_name {
+                    fn serialize<S:#this::serde::Serializer>(&self, s:S) -> Result<S::Ok,S::Error> {
+                        #this::serde_serialize(self, s)
+                    }
+                }
+            },
+            syn::parse_quote! {
+                impl<'de> #this::serde::Deserialize<'de> for #rust_name {
+                    fn deserialize<D:#this::serde::Deserializer<'de>>(d:D) -> Result<Self,S::Error> {
+                        #this::serde_deserialize(d)
+                    }
+                }
+            },
+        ])
     }
 
     /// Generates rust code from the proto files according to the config.
@@ -273,10 +290,12 @@ impl Config {
         let package_root = self.proto_root.to_name().context("invalid proto_root")?;
         let mut output = output.into_submodule(&package_root.to_rust_module()?);
         for proto_name in extract_message_names(&descriptor) {
-            let impl_item = self
+            let impls = self
                 .reflect_impl(&proto_name)
                 .with_context(|| format!("reflect_impl({proto_name})"))?;
-            output.append_item(impl_item.into());
+            for i in impls {
+                output.append_item(i);
+            }
         }
 
         // Generate the descriptor.

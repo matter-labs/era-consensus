@@ -2875,6 +2875,7 @@ dependencies = [
  "protox-parse",
  "quote",
  "rand",
+ "serde",
  "syn 2.0.39",
 ]
 
