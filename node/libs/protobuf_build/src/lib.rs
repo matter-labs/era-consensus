@@ -26,8 +26,7 @@
 #![allow(clippy::print_stdout)]
 pub use self::syntax::*;
 use anyhow::Context as _;
-use prost::Message as _;
-use prost_reflect::prost_types;
+use protox::prost_reflect::{self, prost::Message as _, prost_types};
 use std::{
     collections::{HashMap, HashSet},
     env, fs,

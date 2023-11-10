@@ -2,7 +2,7 @@
 
 use super::ident;
 use anyhow::Context as _;
-use prost_reflect::prost_types;
+use protox::prost_reflect::prost_types;
 use std::{
     collections::BTreeMap,
     fmt,
