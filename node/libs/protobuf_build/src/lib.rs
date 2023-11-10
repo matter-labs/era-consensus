@@ -26,7 +26,10 @@
 #![allow(clippy::print_stdout)]
 pub use self::syntax::*;
 use anyhow::Context as _;
-use protox::prost_reflect::{self, prost::Message as _, prost_types};
+use protox::{
+    file::File,
+    prost_reflect::{self, prost::Message as _, prost_types},
+};
 use std::{
     collections::{HashMap, HashSet},
     env, fs,
@@ -245,15 +248,14 @@ impl Config {
                 return Ok(());
             };
 
-            let file_raw = fs::read_to_string(path).context("fs::read()")?;
+            let source = fs::read_to_string(path).context("fs::read()")?;
             let path = ProtoPath::from_input_path(path, &self.input_root, &self.proto_root)
                 .context("ProtoPath::from_input_path()")?;
-            pool_raw
-                .file
-                .push(protox_parse::parse(&path.to_string(), &file_raw).map_err(
-                    // rewrapping the error, so that source location is included in the error message.
-                    |err| anyhow::anyhow!("{err:?}"),
-                )?);
+            let compiled = File::from_source(&path.to_string(), &source).map_err(
+                // rewrapping the error, so that source location is included in the error message.
+                |err| anyhow::anyhow!("{err:?}"),
+            )?;
+            pool_raw.file.push(compiled.into());
             proto_paths.push(path);
             Ok(())
         })?;

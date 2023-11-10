@@ -2872,7 +2872,6 @@ dependencies = [
  "proc-macro2",
  "prost-build",
  "protox",
- "protox-parse",
  "quote",
  "syn 2.0.39",
 ]
