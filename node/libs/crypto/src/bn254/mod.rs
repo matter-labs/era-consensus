@@ -13,6 +13,7 @@ use pairing::{
 };
 use std::{
     collections::HashMap,
+    fmt::{Debug, Formatter},
     hash::{Hash, Hasher},
     io::Cursor,
 };
@@ -27,7 +28,7 @@ pub mod hash;
 mod testonly;
 
 /// Type safety wrapper around a scalar value.
-#[derive(Debug, PartialEq)]
+#[derive(PartialEq)]
 pub struct SecretKey(Fr);
 
 impl SecretKey {
@@ -57,6 +58,12 @@ impl ByteFmt for SecretKey {
         let mut buf = Vec::new();
         self.0.into_repr().write_be(&mut buf).unwrap();
         buf
+    }
+}
+
+impl Debug for SecretKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SecretKey({:?})", self.public())
     }
 }
 
