@@ -40,7 +40,7 @@ assert_matches = "1.5.0"
 async-trait = "0.1.71"
 bit-vec = "0.6"
 blst = "0.3.10"
-pairing = { package = "pairing_ce", git = "https://github.com/matter-labs/pairing.git" }
+pairing = { package = "pairing_ce", git = "https://github.com/matter-labs/pairing.git", rev = "f55393f" }
 ff_ce = "0.14.3"
 clap = { version = "4.3.3", features = ["derive"] }
 heck = "0.4.1"
