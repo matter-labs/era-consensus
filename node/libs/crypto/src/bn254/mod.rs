@@ -4,16 +4,19 @@
 //! hence it does not protect the secret key from side-channel attacks.
 
 use crate::ByteFmt;
-use anyhow::Context as _;
-use ark_bn254::{Bn254, Fr, G1Projective as G1, G2Projective as G2};
-use ark_ec::{
-    pairing::{Pairing as _, PairingOutput},
-    Group as _,
-};
-use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 pub use error::Error;
-use num_traits::Zero as _;
-use std::collections::HashMap;
+use ff_ce::Field as _;
+use pairing::{
+    bn256::{Bn256, Fq12, Fr, FrRepr, G1Affine, G1Compressed, G2Affine, G2Compressed, G1, G2},
+    ff::{PrimeField, PrimeFieldRepr},
+    CurveAffine as _, CurveProjective as _, EncodedPoint as _, Engine as _,
+};
+use std::{
+    collections::HashMap,
+    fmt::{Debug, Formatter},
+    hash::{Hash, Hasher},
+    io::Cursor,
+};
 
 #[doc(hidden)]
 pub mod error;
@@ -30,47 +33,72 @@ pub struct SecretKey(Fr);
 impl SecretKey {
     /// Gets the corresponding [`PublicKey`] for this [`SecretKey`]
     pub fn public(&self) -> PublicKey {
-        let p = G2::generator() * self.0;
+        let p = G2Affine::one().mul(self.0);
         PublicKey(p)
     }
 
     /// Produces a signature using this [`SecretKey`]
     pub fn sign(&self, msg: &[u8]) -> Signature {
         let hash_point = hash::hash_to_g1(msg);
-        let sig = hash_point * self.0;
+        let sig = hash_point.mul(self.0);
         Signature(sig)
     }
 }
 
 impl ByteFmt for SecretKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        Fr::deserialize_compressed(bytes)
-            .map(Self)
-            .context("failed to decode secret key")
+        let mut fr_repr = FrRepr::default();
+        fr_repr.read_be(Cursor::new(bytes))?;
+        let fr = Fr::from_repr(fr_repr)?;
+        Ok(SecretKey(fr))
     }
 
     fn encode(&self) -> Vec<u8> {
         let mut buf = Vec::new();
-        self.0.serialize_compressed(&mut buf).unwrap();
+        self.0.into_repr().write_be(&mut buf).unwrap();
         buf
     }
 }
 
+impl Debug for SecretKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SecretKey({:?})", self.public())
+    }
+}
+
+impl PartialEq for SecretKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.public() == other.public()
+    }
+}
+
 /// Type safety wrapper around G2.
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicKey(G2);
+
+impl Default for PublicKey {
+    fn default() -> Self {
+        PublicKey(G2::zero())
+    }
+}
+
+impl Hash for PublicKey {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        state.write(&self.encode());
+    }
+}
 
 impl ByteFmt for PublicKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        G2::deserialize_compressed(bytes)
-            .map(Self)
-            .context("failed to decode public key")
+        let arr: [u8; 64] = bytes.try_into()?;
+        let p = G2Compressed::from_fixed_bytes(arr)
+            .into_affine()?
+            .into_projective();
+        Ok(PublicKey(p))
     }
 
     fn encode(&self) -> Vec<u8> {
-        let mut buf = Vec::new();
-        self.0.serialize_compressed(&mut buf).unwrap();
-        buf
+        self.0.into_affine().into_compressed().as_ref().to_vec()
     }
 }
 
@@ -100,9 +128,9 @@ impl Signature {
         let hash_point = hash::hash_to_g1(msg);
 
         // First pair: e(H(m): G1, pk: G2)
-        let a = Bn254::pairing(hash_point, pk.0);
+        let a = Bn256::pairing(hash_point, pk.0);
         // Second pair: e(sig: G1, generator: G2)
-        let b = Bn254::pairing(self.0, G2::generator());
+        let b = Bn256::pairing(self.0, G2Affine::one());
 
         if a == b {
             Ok(())
@@ -114,14 +142,15 @@ impl Signature {
 
 impl ByteFmt for Signature {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        G1::deserialize_compressed(bytes)
-            .map(Self)
-            .context("failed to decode signature")
+        let arr: [u8; 32] = bytes.try_into()?;
+        let p = G1Compressed::from_fixed_bytes(arr)
+            .into_affine()?
+            .into_projective();
+        Ok(Signature(p))
     }
+
     fn encode(&self) -> Vec<u8> {
-        let mut buf = Vec::new();
-        self.0.serialize_compressed(&mut buf).unwrap();
-        buf
+        self.0.into_affine().into_compressed().as_ref().to_vec()
     }
 }
 
@@ -136,6 +165,7 @@ impl Ord for Signature {
         ByteFmt::encode(self).cmp(&ByteFmt::encode(other))
     }
 }
+
 /// Type safety wrapper around [Signature] indicating that it is an aggregated signature.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AggregateSignature(G1);
@@ -143,9 +173,9 @@ pub struct AggregateSignature(G1);
 impl AggregateSignature {
     /// Generates an aggregate signature from a list of signatures.
     pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
-        let mut agg = G1::zero();
+        let mut agg = G1Affine::zero().into_projective();
         for sig in sigs {
-            agg += sig.0
+            agg.add_assign(&sig.0)
         }
 
         AggregateSignature(agg)
@@ -157,17 +187,17 @@ impl AggregateSignature {
     fn verify_raw(&self, msgs_and_pks: &[(&[u8], &PublicKey)]) -> Result<(), Error> {
         // Aggregate public keys if they are signing the same hash. Each public key aggregated
         // is one fewer pairing to calculate.
-        let mut pairs: HashMap<&[u8], G2> = HashMap::new();
+        let mut pairs: HashMap<&[u8], PublicKey> = HashMap::new();
         for (msg, pk) in msgs_and_pks {
-            *pairs.entry(msg).or_default() += pk.0;
+            pairs.entry(msg).or_default().0.add_assign(&pk.0);
         }
         // First pair: e(sig: G1, generator: G2)
-        let a = Bn254::pairing(self.0, G2::generator());
+        let a = Bn256::pairing(self.0, G2::one());
 
         // Second pair: e(H(m1): G1, pk1: G2) * ... * e(H(m1000): G1, pk1000: G2)
-        let mut b = PairingOutput::zero();
+        let mut b = Fq12::one();
         for (msg, pk) in pairs {
-            b += Bn254::pairing(hash::hash_to_g1(msg), pk);
+            b.mul_assign(&Bn256::pairing(hash::hash_to_g1(msg), pk.0))
         }
 
         if a == b {
@@ -190,15 +220,15 @@ impl AggregateSignature {
 
 impl ByteFmt for AggregateSignature {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        G1::deserialize_compressed(bytes)
-            .map(Self)
-            .context("failed to decode aggregate signature")
+        let arr: [u8; 32] = bytes.try_into()?;
+        let p = G1Compressed::from_fixed_bytes(arr)
+            .into_affine()?
+            .into_projective();
+        Ok(AggregateSignature(p))
     }
 
     fn encode(&self) -> Vec<u8> {
-        let mut buf = Vec::new();
-        self.0.serialize_compressed(&mut buf).unwrap();
-        buf
+        self.0.into_affine().into_compressed().as_ref().to_vec()
     }
 }
 

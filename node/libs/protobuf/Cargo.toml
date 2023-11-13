@@ -6,6 +6,8 @@ authors.workspace = true
 homepage.workspace = true
 license.workspace = true
 
+links = "zksync_protobuf_proto"
+
 [[bin]]
 name = "conformance_test"
 
@@ -28,5 +30,3 @@ tracing-subscriber.workspace = true
 
 [build-dependencies]
 zksync_protobuf_build.workspace = true
-
-anyhow.workspace = true
