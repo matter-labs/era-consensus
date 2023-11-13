@@ -24,14 +24,17 @@
 //! these are being built simultaneously from the same build script).
 
 #![allow(clippy::print_stdout)]
-// Imports accessed from the generated code.
+
 pub use self::syntax::*;
 use anyhow::Context as _;
-pub use once_cell::sync::Lazy;
-pub use prost;
-use prost::Message as _;
-pub use prost_reflect;
-use std::{fs, path::Path, sync::Mutex};
+use prost_reflect::{prost::Message as _, prost_types};
+use protox::file::File;
+use std::{
+    collections::{HashMap, HashSet},
+    env, fs,
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicBool, Ordering},
+};
 
 mod canonical;
 mod ident;
@@ -52,70 +55,71 @@ fn traverse_files(
     Ok(())
 }
 
-/// Protobuf descriptor + info about the mapping to rust code.
+/// Manifest of a Protobuf compilation target containing information about the compilation process.
 #[derive(Debug)]
-pub struct Descriptor {
+struct Manifest {
     /// Root proto package that all proto files in this descriptor belong to.
-    /// Rust types have been generated relative to this root.
-    proto_root: ProtoName,
-    /// Raw descriptor proto.
-    descriptor_proto: prost_types::FileDescriptorSet,
-    /// Direct dependencies of this descriptor.
-    dependencies: Vec<&'static Descriptor>,
+    proto_root: ProtoPath,
+    /// Absolute path to the descriptor.
+    descriptor_path: PathBuf,
+    /// Tuples of `proto_root` and absolute paths to the corresponding descriptor for all dependencies
+    /// including transitive ones.
+    dependencies: Vec<(ProtoPath, PathBuf)>,
 }
 
-impl Descriptor {
-    /// Constructs a Descriptor.
-    pub fn new(
-        proto_root: ProtoName,
-        dependencies: Vec<&'static Descriptor>,
-        descriptor_bytes: &[u8],
-    ) -> Self {
-        Descriptor {
+impl Manifest {
+    /// Loads manifest from the environment variable.
+    fn from_env(rust_root: &RustName) -> anyhow::Result<Self> {
+        let crate_name = rust_root.crate_name().context("empty `rust_root`")?;
+        let env_name = format!("DEP_{}_PROTO_MANIFEST", crate_name.to_uppercase());
+        let manifest = env::var(env_name)
+            .with_context(|| format!("failed reading path to `{crate_name}` Protobuf manifest"))?;
+
+        let mut manifest_parts = manifest.split(':');
+        // ^ ':' is used as a separator since it cannot be present in paths.
+        let proto_root = manifest_parts.next().context("missing `proto_root`")?;
+        let proto_root = ProtoPath::from(proto_root);
+        let descriptor_path = manifest_parts
+            .next()
+            .context("missing `descriptor_path`")?
+            .into();
+
+        let mut dependencies = vec![];
+        while let Some(proto_root) = manifest_parts.next() {
+            let proto_root = ProtoPath::from(proto_root);
+            let descriptor_path = manifest_parts
+                .next()
+                .context("missing `descriptor_path`")?
+                .into();
+            dependencies.push((proto_root, descriptor_path));
+        }
+
+        Ok(Self {
             proto_root,
+            descriptor_path,
             dependencies,
-            descriptor_proto: prost_types::FileDescriptorSet::decode(descriptor_bytes).unwrap(),
-        }
+        })
     }
 
-    /// Loads the descriptor to the pool, if not already loaded.
-    pub fn load(&self, pool: &mut prost_reflect::DescriptorPool) -> anyhow::Result<()> {
-        if self
-            .descriptor_proto
-            .file
+    /// Prints this manifest to an environment variable so that it's available to dependencies.
+    fn print(&self) {
+        use std::fmt::Write as _;
+
+        let Self {
+            proto_root,
+            descriptor_path,
+            dependencies,
+        } = self;
+        let dependencies = dependencies
             .iter()
-            .all(|f| pool.get_file_by_name(f.name()).is_some())
-        {
-            return Ok(());
-        }
-        for dependency in &self.dependencies {
-            dependency.load(pool)?;
-        }
-        pool.add_file_descriptor_set(self.descriptor_proto.clone())?;
-        Ok(())
-    }
-
-    /// Loads the descriptor to the global pool and returns a copy of the global pool.
-    pub fn get_message_by_name(&self, name: &str) -> Option<prost_reflect::MessageDescriptor> {
-        /// Global descriptor pool.
-        static POOL: Lazy<Mutex<prost_reflect::DescriptorPool>> = Lazy::new(Mutex::default);
-        let pool = &mut POOL.lock().unwrap();
-        self.load(pool).unwrap();
-        pool.get_message_by_name(name)
-    }
-}
-
-/// Expands to a descriptor declaration.
-#[macro_export]
-macro_rules! declare_descriptor {
-    ($package_root:expr, $descriptor_path:expr, $($rust_deps:path),*) => {
-        pub static DESCRIPTOR: $crate::Lazy<$crate::Descriptor> = $crate::Lazy::new(|| {
-            $crate::Descriptor::new(
-                $package_root.into(),
-                ::std::vec![$({ use $rust_deps as dep; &dep::DESCRIPTOR }),*],
-                include_bytes!($descriptor_path),
-            )
-        });
+            .fold(String::new(), |mut acc, (root, desc_path)| {
+                write!(&mut acc, ":{root}:{}", desc_path.display()).unwrap();
+                acc
+            });
+        println!(
+            "cargo:manifest={proto_root}:{}{dependencies}",
+            descriptor_path.display()
+        );
     }
 }
 
@@ -125,11 +129,14 @@ pub struct Config {
     pub input_root: InputPath,
     /// Implicit prefix that should be prepended to proto paths of the proto files in the input directory.
     pub proto_root: ProtoPath,
-    /// Descriptors of the dependencies and the rust absolute paths under which they will be available from the generated code.
-    pub dependencies: Vec<(RustName, &'static Descriptor)>,
-    /// Rust absolute path under which the protobuf crate will be available from the generated
-    /// code.
+    /// Descriptors of the direct dependencies and the rust absolute paths under which they will be available from the generated code.
+    /// Each dependency must be a direct dependency of the built crate. OTOH, it doesn't need to be a build dependency.
+    pub dependencies: Vec<RustName>,
+    /// Rust absolute path under which the protobuf crate will be available from the generated code.
     pub protobuf_crate: RustName,
+    /// Can generated Protobuf messages be included as a dependency for other crates (i.e., be mentioned
+    /// in `dependencies`)? Only one public target can be generated per build script.
+    pub is_public: bool,
 }
 
 impl Config {
@@ -140,7 +147,7 @@ impl Config {
 
     /// Generates implementation of `prost_reflect::ReflectMessage` for a rust type generated
     /// from a message of the given `proto_name`.
-    fn reflect_impl(&self, proto_name: &ProtoName) -> anyhow::Result<syn::ItemImpl> {
+    fn reflect_impl(&self, proto_name: &ProtoName) -> anyhow::Result<syn::Item> {
         let rust_name = proto_name
             .relative_to(&self.proto_root.to_name().context("invalid proto_root")?)
             .unwrap()
@@ -148,31 +155,92 @@ impl Config {
         let proto_name = proto_name.to_string();
         let this = self.this_crate();
         Ok(syn::parse_quote! {
-            impl #this::prost_reflect::ReflectMessage for #rust_name {
-                fn descriptor(&self) -> #this::prost_reflect::MessageDescriptor {
-                    static INIT: #this::Lazy<#this::prost_reflect::MessageDescriptor> = #this::Lazy::new(|| {
-                        DESCRIPTOR.get_message_by_name(#proto_name).unwrap()
-                    });
-                    INIT.clone()
-                }
-            }
+            #this::impl_reflect_message!(#rust_name, &DESCRIPTOR, #proto_name);
         })
     }
 
-    /// Generates rust code from the proto files according to the config.
-    pub fn generate(&self) -> anyhow::Result<()> {
+    /// Validates this configuration.
+    fn validate(&self) -> anyhow::Result<()> {
+        /// Flag set to `true` if a public compilation target was encountered in a build script.
+        static HAS_PUBLIC_TARGET: AtomicBool = AtomicBool::new(false);
+
         if !self.input_root.abs()?.is_dir() {
             anyhow::bail!("input_root should be a directory");
         }
+        if self.is_public {
+            anyhow::ensure!(
+                !HAS_PUBLIC_TARGET.fetch_or(true, Ordering::SeqCst),
+                "Only one compilation target with `is_public: true` may be specified per build script"
+            );
+
+            let crate_name = env::var("CARGO_PKG_NAME")
+                .context("missing $CARGO_PKG_NAME env variable")?
+                .replace('-', "_");
+            let expected_name = format!("{crate_name}_proto");
+            let links = env::var("CARGO_MANIFEST_LINKS").ok();
+            anyhow::ensure!(
+                links.as_ref() == Some(&expected_name),
+                "You must specify links = \"{expected_name}\" in the [package] section \
+                 of the built package manifest (currently set to {links:?})"
+            );
+        }
+        Ok(())
+    }
+
+    /// Generates rust code from the proto files according to the config.
+    pub fn generate(self) -> anyhow::Result<()> {
+        self.validate()?;
         println!("cargo:rerun-if-changed={}", self.input_root.to_str());
 
         // Load dependencies.
+        let dependency_manifests = self.dependencies.iter().map(Manifest::from_env);
+        let dependency_manifests: Vec<Manifest> =
+            dependency_manifests.collect::<anyhow::Result<_>>()?;
+        let direct_dependency_descriptor_paths: HashSet<_> = dependency_manifests
+            .iter()
+            .map(|manifest| &manifest.descriptor_path)
+            .collect();
+
+        let all_dependencies = dependency_manifests.iter().flat_map(|manifest| {
+            manifest
+                .dependencies
+                .iter()
+                .map(|(root, path)| (root, path))
+                // ^ Converts a reference to a tuple to a tuple of references
+                .chain([(&manifest.proto_root, &manifest.descriptor_path)])
+        });
+
         let mut pool = prost_reflect::DescriptorPool::new();
-        for (root_path, descriptor) in &self.dependencies {
-            descriptor
-                .load(&mut pool)
-                .with_context(|| format!("failed to load dependency `{root_path}`"))?;
+        let mut direct_dependency_descriptors = HashMap::with_capacity(self.dependencies.len());
+        let mut loaded_descriptor_paths = HashSet::new();
+        let mut dependencies = vec![];
+        for (proto_root, descriptor_path) in all_dependencies {
+            if !loaded_descriptor_paths.insert(descriptor_path) {
+                // Do not load the same descriptor twice.
+                continue;
+            }
+            dependencies.push((proto_root.clone(), descriptor_path.clone()));
+
+            let descriptor = fs::read(descriptor_path).with_context(|| {
+                format!(
+                    "failed reading descriptor for `{proto_root}` from {}",
+                    descriptor_path.display()
+                )
+            })?;
+            let descriptor =
+                prost_types::FileDescriptorSet::decode(&descriptor[..]).with_context(|| {
+                    format!(
+                        "failed decoding file descriptor set for `{proto_root}` from {}",
+                        descriptor_path.display()
+                    )
+                })?;
+
+            if direct_dependency_descriptor_paths.contains(descriptor_path) {
+                direct_dependency_descriptors.insert(descriptor_path.clone(), descriptor.clone());
+            }
+            pool.add_file_descriptor_set(descriptor)?;
         }
+
         let mut pool_raw = prost_types::FileDescriptorSet::default();
         pool_raw.file.extend(pool.file_descriptor_protos().cloned());
 
@@ -189,15 +257,14 @@ impl Config {
                 return Ok(());
             };
 
-            let file_raw = fs::read_to_string(path).context("fs::read()")?;
+            let source = fs::read_to_string(path).context("fs::read()")?;
             let path = ProtoPath::from_input_path(path, &self.input_root, &self.proto_root)
                 .context("ProtoPath::from_input_path()")?;
-            pool_raw
-                .file
-                .push(protox_parse::parse(&path.to_string(), &file_raw).map_err(
-                    // rewrapping the error, so that source location is included in the error message.
-                    |err| anyhow::anyhow!("{err:?}"),
-                )?);
+            let compiled = File::from_source(&path.to_string(), &source).map_err(
+                // rewrapping the error, so that source location is included in the error message.
+                |err| anyhow::anyhow!("{err:?}"),
+            )?;
+            pool_raw.file.push(compiled.into());
             proto_paths.push(path);
             Ok(())
         })?;
@@ -238,6 +305,15 @@ impl Config {
         let output_path = output_dir.join("gen.rs");
         let descriptor_path = output_dir.join("gen.binpb");
         fs::write(&descriptor_path, &descriptor.encode_to_vec())?;
+
+        if self.is_public {
+            let manifest = Manifest {
+                proto_root: self.proto_root.clone(),
+                descriptor_path: descriptor_path.clone(),
+                dependencies,
+            };
+            manifest.print();
+        }
         println!("PROTOBUF_DESCRIPTOR={descriptor_path:?}");
 
         // Generate code out of compiled proto files.
@@ -246,10 +322,12 @@ impl Config {
         let prost_path = self.this_crate().join(RustName::ident("prost"));
         config.prost_path(prost_path.to_string());
         config.skip_protoc_run();
-        for (root_path, descriptor) in &self.dependencies {
-            for file in &descriptor.descriptor_proto.file {
+        for (root_path, manifest) in self.dependencies.iter().zip(&dependency_manifests) {
+            let descriptor = &direct_dependency_descriptors[&manifest.descriptor_path];
+            // ^ Indexing is safe by construction.
+            for file in &descriptor.file {
                 let proto_rel = ProtoName::from(file.package())
-                    .relative_to(&descriptor.proto_root)
+                    .relative_to(&manifest.proto_root.to_name()?)
                     .unwrap();
                 let rust_path = root_path.clone().join(proto_rel.to_rust_module()?);
                 config.extern_path(format!(".{}", file.package()), rust_path.to_string());
@@ -269,24 +347,24 @@ impl Config {
                 .extend(code);
         }
 
-        // Generate the reflection code.
         let package_root = self.proto_root.to_name().context("invalid proto_root")?;
         let mut output = output.into_submodule(&package_root.to_rust_module()?);
+
+        // Generate the descriptor.
+        let root_paths_for_deps = self.dependencies.iter();
+        let this = self.this_crate();
+        let descriptor_path = descriptor_path.display().to_string();
+        output.append_item(syn::parse_quote! {
+            #this::declare_descriptor!(DESCRIPTOR => #descriptor_path, #(#root_paths_for_deps),*);
+        });
+
+        // Generate the reflection code.
         for proto_name in extract_message_names(&descriptor) {
             let impl_item = self
                 .reflect_impl(&proto_name)
                 .with_context(|| format!("reflect_impl({proto_name})"))?;
-            output.append_item(impl_item.into());
+            output.append_item(impl_item);
         }
-
-        // Generate the descriptor.
-        let root_paths_for_deps = self.dependencies.iter().map(|(root_path, _)| root_path);
-        let this = self.this_crate();
-        let package_root = package_root.to_string();
-        let descriptor_path = descriptor_path.display().to_string();
-        output.append_item(syn::parse_quote! {
-            #this::declare_descriptor!(#package_root, #descriptor_path, #(#root_paths_for_deps),*);
-        });
 
         // Save output.
         fs::write(&output_path, output.format()).with_context(|| {

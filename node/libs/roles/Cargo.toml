@@ -6,6 +6,8 @@ authors.workspace = true
 homepage.workspace = true
 license.workspace = true
 
+links = "zksync_consensus_roles_proto"
+
 [dependencies]
 zksync_concurrency.workspace = true
 zksync_consensus_crypto.workspace = true
@@ -21,4 +23,4 @@ serde.workspace = true
 tracing.workspace = true
 
 [build-dependencies]
-zksync_protobuf.workspace = true
+zksync_protobuf_build.workspace = true

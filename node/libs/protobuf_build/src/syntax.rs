@@ -2,6 +2,7 @@
 
 use super::ident;
 use anyhow::Context as _;
+use prost_reflect::prost_types;
 use std::{
     collections::BTreeMap,
     fmt,
@@ -46,7 +47,7 @@ impl InputPath {
 }
 
 /// Absolute path of the proto file used for importing other proto files.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ProtoPath(PathBuf);
 
 impl From<&str> for ProtoPath {
@@ -109,6 +110,11 @@ impl RustName {
     pub(crate) fn ident(ident: &str) -> Self {
         let ident: syn::Ident = syn::parse_str(ident).expect("Invalid identifier");
         Self(syn::Path::from(ident))
+    }
+
+    /// Returns the crate name for this name (i.e., its first segment).
+    pub(crate) fn crate_name(&self) -> Option<String> {
+        Some(self.0.segments.first()?.ident.to_string())
     }
 
     /// Concatenates 2 rust names.

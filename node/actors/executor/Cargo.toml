@@ -27,4 +27,4 @@ vise.workspace = true
 tokio.workspace = true
 
 [build-dependencies]
-zksync_protobuf.workspace = true
+zksync_protobuf_build.workspace = true

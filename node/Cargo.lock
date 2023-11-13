@@ -2633,6 +2633,7 @@ dependencies = [
  "zksync_consensus_sync_blocks",
  "zksync_consensus_utils",
  "zksync_protobuf",
+ "zksync_protobuf_build",
 ]
 
 [[package]]
@@ -2658,6 +2659,7 @@ dependencies = [
  "zksync_consensus_roles",
  "zksync_consensus_utils",
  "zksync_protobuf",
+ "zksync_protobuf_build",
 ]
 
 [[package]]
@@ -2675,6 +2677,7 @@ dependencies = [
  "zksync_consensus_crypto",
  "zksync_consensus_utils",
  "zksync_protobuf",
+ "zksync_protobuf_build",
 ]
 
 [[package]]
@@ -2695,6 +2698,7 @@ dependencies = [
  "zksync_concurrency",
  "zksync_consensus_roles",
  "zksync_protobuf",
+ "zksync_protobuf_build",
 ]
 
 [[package]]
@@ -2771,17 +2775,12 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "heck",
- "once_cell",
  "prettyplease",
  "proc-macro2",
- "prost",
  "prost-build",
  "prost-reflect",
- "prost-types",
  "protox",
- "protox-parse",
  "quote",
- "rand 0.8.5",
  "syn 2.0.39",
 ]
 
