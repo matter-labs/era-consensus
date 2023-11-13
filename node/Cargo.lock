@@ -2871,6 +2871,7 @@ dependencies = [
  "prettyplease",
  "proc-macro2",
  "prost-build",
+ "prost-reflect",
  "protox",
  "quote",
  "syn 2.0.39",

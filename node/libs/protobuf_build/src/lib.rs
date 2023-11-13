@@ -24,12 +24,11 @@
 //! these are being built simultaneously from the same build script).
 
 #![allow(clippy::print_stdout)]
+
 pub use self::syntax::*;
 use anyhow::Context as _;
-use protox::{
-    file::File,
-    prost_reflect::{self, prost::Message as _, prost_types},
-};
+use prost_reflect::{prost::Message as _, prost_types};
+use protox::file::File;
 use std::{
     collections::{HashMap, HashSet},
     env, fs,
