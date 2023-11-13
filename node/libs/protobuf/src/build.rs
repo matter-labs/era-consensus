@@ -4,6 +4,7 @@ pub use once_cell::sync::Lazy;
 pub use prost;
 use prost::Message as _;
 pub use prost_reflect;
+pub use serde;
 use prost_reflect::prost_types;
 use std::sync::RwLock;
 
@@ -81,5 +82,31 @@ macro_rules! impl_reflect_message {
     };
 }
 
+/// Implements `serde::Serialize` compatible with protobuf json encoding. 
+#[macro_export]
+macro_rules! impl_serde_serialize {
+    ($ty:ty) => {
+        impl $crate::build::serde::Serialize for $ty {
+            fn serialize<S:$crate::build::serde::Serializer>(&self, s:S) -> Result<S::Ok,S::Error> {
+                $crate::serde_serialize(self, s)
+            }
+        }
+    };
+}
+
+/// Implements `serde::Deserialize` compatible with protobuf json encoding. 
+#[macro_export]
+macro_rules! impl_serde_deserialize {
+    ($ty:ty) => {
+        impl<'de> $crate::build::serde::Deserialize<'de> for $ty {
+            fn deserialize<D:$crate::build::serde::Deserializer<'de>>(d:D) -> Result<Self,D::Error> {
+                $crate::serde_deserialize(d)
+            }
+        }
+    };
+}
+
 pub use declare_descriptor;
 pub use impl_reflect_message;
+pub use impl_serde_serialize;
+pub use impl_serde_deserialize;
