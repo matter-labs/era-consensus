@@ -33,7 +33,7 @@ use protox::{
 use std::{
     collections::{HashMap, HashSet},
     env, fs,
-    path::Path,
+    path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
 };
 
@@ -62,10 +62,10 @@ struct Manifest {
     /// Root proto package that all proto files in this descriptor belong to.
     proto_root: ProtoPath,
     /// Absolute path to the descriptor.
-    descriptor_path: String,
+    descriptor_path: PathBuf,
     /// Tuples of `proto_root` and absolute paths to the corresponding descriptor for all dependencies
     /// including transitive ones.
-    dependencies: Vec<(ProtoPath, String)>,
+    dependencies: Vec<(ProtoPath, PathBuf)>,
 }
 
 impl Manifest {
@@ -83,7 +83,7 @@ impl Manifest {
         let descriptor_path = manifest_parts
             .next()
             .context("missing `descriptor_path`")?
-            .to_owned();
+            .into();
 
         let mut dependencies = vec![];
         while let Some(proto_root) = manifest_parts.next() {
@@ -91,7 +91,7 @@ impl Manifest {
             let descriptor_path = manifest_parts
                 .next()
                 .context("missing `descriptor_path`")?
-                .to_owned();
+                .into();
             dependencies.push((proto_root, descriptor_path));
         }
 
@@ -114,10 +114,13 @@ impl Manifest {
         let dependencies = dependencies
             .iter()
             .fold(String::new(), |mut acc, (root, desc_path)| {
-                write!(&mut acc, ":{root}:{desc_path}").unwrap();
+                write!(&mut acc, ":{root}:{}", desc_path.display()).unwrap();
                 acc
             });
-        println!("cargo:manifest={proto_root}:{descriptor_path}{dependencies}");
+        println!(
+            "cargo:manifest={proto_root}:{}{dependencies}",
+            descriptor_path.display()
+        );
     }
 }
 
@@ -220,11 +223,18 @@ impl Config {
             dependencies.push((proto_root.clone(), descriptor_path.clone()));
 
             let descriptor = fs::read(descriptor_path).with_context(|| {
-                format!("failed reading descriptor for `{proto_root}` from {descriptor_path}")
+                format!(
+                    "failed reading descriptor for `{proto_root}` from {}",
+                    descriptor_path.display()
+                )
             })?;
-            let descriptor = prost_types::FileDescriptorSet::decode(&descriptor[..]).with_context(|| {
-                format!("failed decoding file descriptor set for `{proto_root}` from {descriptor_path}")
-            })?;
+            let descriptor =
+                prost_types::FileDescriptorSet::decode(&descriptor[..]).with_context(|| {
+                    format!(
+                        "failed decoding file descriptor set for `{proto_root}` from {}",
+                        descriptor_path.display()
+                    )
+                })?;
 
             if direct_dependency_descriptor_paths.contains(descriptor_path) {
                 direct_dependency_descriptors.insert(descriptor_path.clone(), descriptor.clone());
@@ -300,10 +310,7 @@ impl Config {
         if self.is_public {
             let manifest = Manifest {
                 proto_root: self.proto_root.clone(),
-                descriptor_path: descriptor_path
-                    .to_str()
-                    .context("non-UTF8 output path")?
-                    .to_owned(),
+                descriptor_path: descriptor_path.clone(),
                 dependencies,
             };
             manifest.print();
