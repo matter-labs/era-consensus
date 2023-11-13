@@ -1,4 +1,7 @@
-use crate::bn254::{AggregateSignature, PublicKey, SecretKey, Signature};
+use crate::{
+    bn254::{AggregateSignature, PublicKey, SecretKey, Signature},
+    ByteFmt,
+};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::iter::repeat_with;
 
@@ -84,4 +87,29 @@ fn aggregate_signature_failure_smoke() {
     let agg = AggregateSignature::aggregate(&sigs);
 
     assert!(agg.verify(pks.iter().map(|pk| (&msg[..], pk))).is_err())
+}
+
+#[test]
+fn byte_fmt_correctness() {
+    let mut rng = rand::thread_rng();
+
+    let sk: SecretKey = rng.gen();
+    let bytes = sk.encode();
+    let sk_decoded = SecretKey::decode(&bytes).unwrap();
+    assert_eq!(sk, sk_decoded);
+
+    let pk: PublicKey = rng.gen();
+    let bytes = pk.encode();
+    let pk_decoded = PublicKey::decode(&bytes).unwrap();
+    assert_eq!(pk, pk_decoded);
+
+    let sig: Signature = rng.gen();
+    let bytes = sig.encode();
+    let sig_decoded = Signature::decode(&bytes).unwrap();
+    assert_eq!(sig, sig_decoded);
+
+    let agg: AggregateSignature = rng.gen();
+    let bytes = agg.encode();
+    let agg_decoded = AggregateSignature::decode(&bytes).unwrap();
+    assert_eq!(agg, agg_decoded);
 }
