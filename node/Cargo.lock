@@ -2621,6 +2621,7 @@ dependencies = [
  "anyhow",
  "prost",
  "rand 0.8.5",
+ "test-casing",
  "tokio",
  "tracing",
  "vise",
