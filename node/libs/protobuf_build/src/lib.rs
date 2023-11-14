@@ -316,7 +316,11 @@ impl Config {
         // Generate code out of compiled proto files.
         let mut output = RustModule::default();
         let mut config = prost_build::Config::new();
-        let prost_path = self.protobuf_crate.clone().join(RustName::ident("build")).join(RustName::ident("prost"));
+        let prost_path = self
+            .protobuf_crate
+            .clone()
+            .join(RustName::ident("build"))
+            .join(RustName::ident("prost"));
         config.prost_path(prost_path.to_string());
         config.skip_protoc_run();
         for (root_path, manifest) in self.dependencies.iter().zip(&dependency_manifests) {
