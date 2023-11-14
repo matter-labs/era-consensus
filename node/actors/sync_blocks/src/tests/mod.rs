@@ -4,7 +4,7 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use std::iter;
+use std::{iter, ops};
 use zksync_concurrency::{oneshot, testonly::abort_on_panic, time};
 use zksync_consensus_network::io::{GetBlockError, GetBlockResponse, SyncBlocksRequest};
 use zksync_consensus_roles::validator::{
@@ -81,8 +81,21 @@ impl TestValidators {
     }
 
     pub(crate) fn sync_state(&self, last_block_number: usize) -> SyncState {
-        let first_block = self.final_blocks[0].justification.clone();
-        let last_block = self.final_blocks[last_block_number].justification.clone();
+        self.snapshot_sync_state(1..=last_block_number)
+    }
+
+    pub(crate) fn snapshot_sync_state(
+        &self,
+        block_numbers: ops::RangeInclusive<usize>,
+    ) -> SyncState {
+        assert!(!block_numbers.is_empty());
+
+        let first_block = self.final_blocks[*block_numbers.start()]
+            .justification
+            .clone();
+        let last_block = self.final_blocks[*block_numbers.end()]
+            .justification
+            .clone();
         SyncState {
             first_stored_block: first_block,
             last_contiguous_stored_block: last_block.clone(),

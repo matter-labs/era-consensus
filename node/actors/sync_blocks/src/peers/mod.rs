@@ -272,11 +272,10 @@ impl PeerStates {
             .last_contiguous_stored_block
             .verify(&self.config.validator_set, self.config.consensus_threshold)
             .context("Failed verifying `last_contiguous_stored_block`")?;
-        // FIXME: validate `first_stored_block`?
-
         // We don't verify QCs for the last stored block since it is not used
-        // in the following logic. To reflect this, the method consumes `SyncState` and returns
-        // the validated block number.
+        // in the following logic. The first stored block is not verified as well since it doesn't
+        // extend the set of blocks a peer should have. To reflect this, the method consumes `SyncState`
+        // and returns the validated block numbers.
         Ok((
             numbers.first_stored_block,
             numbers.last_contiguous_stored_block,
