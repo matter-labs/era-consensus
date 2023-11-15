@@ -9,6 +9,7 @@ use zksync_consensus_executor::{ConsensusConfig, ExecutorConfig, GossipConfig};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_tools::NodeConfig;
 
+/// Encodes a generated proto message to json for arbitrary ProtoFmt.
 fn encode_json<T: zksync_protobuf::ProtoFmt>(x: &T) -> String {
     let mut s = serde_json::Serializer::pretty(vec![]);
     zksync_protobuf::serde::serialize(x, &mut s).unwrap();
