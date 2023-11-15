@@ -1,6 +1,7 @@
 //! Tests related to snapshot storage.
 
 use super::*;
+use zksync_consensus_network::io::GetBlockError;
 
 #[derive(Debug)]
 struct UpdatingPeerStateWithStorageSnapshot;
@@ -177,4 +178,142 @@ impl Test for FilteringRequestsForSnapshotPeer {
 #[tokio::test]
 async fn filtering_requests_for_snapshot_peer() {
     test_peer_states(FilteringRequestsForSnapshotPeer).await;
+}
+
+#[derive(Debug)]
+struct PruningPeerHistory;
+
+#[async_trait]
+impl Test for PruningPeerHistory {
+    const BLOCK_COUNT: usize = 5;
+
+    fn tweak_config(&self, config: &mut Config) {
+        config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
+    }
+
+    async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
+        let TestHandles {
+            mut rng,
+            test_validators,
+            peer_states_handle,
+            mut message_receiver,
+            mut events_receiver,
+            clock,
+            ..
+        } = handles;
+
+        let peer_key = rng.gen::<node::SecretKey>().public();
+        peer_states_handle.update(peer_key.clone(), test_validators.sync_state(1));
+        let peer_event = events_receiver.recv(ctx).await?;
+        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+
+        let message = message_receiver.recv(ctx).await?;
+        let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
+            recipient,
+            number,
+            response: block1_response,
+        }) = message;
+        assert_eq!(recipient, peer_key);
+        assert_eq!(number, BlockNumber(1));
+
+        // Emulate peer pruning blocks.
+        peer_states_handle.update(peer_key.clone(), test_validators.snapshot_sync_state(3..=3));
+        let peer_event = events_receiver.recv(ctx).await?;
+        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+
+        let message = message_receiver.recv(ctx).await?;
+        let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
+            recipient,
+            number,
+            response,
+        }) = message;
+        assert_eq!(recipient, peer_key);
+        assert_eq!(number, BlockNumber(3));
+
+        test_validators.send_block(BlockNumber(3), response);
+        let peer_event = events_receiver.recv(ctx).await?;
+        assert_matches!(peer_event, PeerStateEvent::GotBlock(BlockNumber(3)));
+
+        // No new blocks should be requested (the peer has no block #2).
+        clock.advance(BLOCK_SLEEP_INTERVAL);
+        sync::yield_now().await;
+        assert!(message_receiver.try_recv().is_none());
+
+        block1_response.send(Err(GetBlockError::NotSynced)).unwrap();
+        // Block #1 should not be requested again (the peer no longer has it).
+        clock.advance(BLOCK_SLEEP_INTERVAL);
+        sync::yield_now().await;
+        assert!(message_receiver.try_recv().is_none());
+
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn pruning_peer_history() {
+    test_peer_states(PruningPeerHistory).await;
+}
+
+#[derive(Debug)]
+struct BackfillingPeerHistory;
+
+#[async_trait]
+impl Test for BackfillingPeerHistory {
+    const BLOCK_COUNT: usize = 5;
+
+    fn tweak_config(&self, config: &mut Config) {
+        config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
+    }
+
+    async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
+        let TestHandles {
+            mut rng,
+            test_validators,
+            peer_states_handle,
+            mut message_receiver,
+            mut events_receiver,
+            clock,
+            ..
+        } = handles;
+
+        let peer_key = rng.gen::<node::SecretKey>().public();
+        peer_states_handle.update(peer_key.clone(), test_validators.snapshot_sync_state(3..=3));
+        let peer_event = events_receiver.recv(ctx).await?;
+        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+
+        let message = message_receiver.recv(ctx).await?;
+        let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
+            recipient, number, ..
+        }) = message;
+        assert_eq!(recipient, peer_key);
+        assert_eq!(number, BlockNumber(3));
+
+        peer_states_handle.update(peer_key.clone(), test_validators.sync_state(3));
+        let peer_event = events_receiver.recv(ctx).await?;
+        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+
+        clock.advance(BLOCK_SLEEP_INTERVAL);
+        let mut new_requested_numbers = HashSet::new();
+        for _ in 0..2 {
+            let message = message_receiver.recv(ctx).await?;
+            let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
+                recipient,
+                number,
+                ..
+            }) = message;
+            assert_eq!(recipient, peer_key);
+            new_requested_numbers.insert(number);
+        }
+        assert_eq!(
+            new_requested_numbers,
+            HashSet::from([BlockNumber(1), BlockNumber(2)])
+        );
+
+        Ok(())
+    }
+}
+
+#[tokio::test]
+async fn backfilling_peer_history() {
+    test_peer_states(BackfillingPeerHistory).await;
 }
