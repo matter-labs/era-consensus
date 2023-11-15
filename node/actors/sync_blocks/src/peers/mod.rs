@@ -3,7 +3,7 @@
 use self::events::PeerStateEvent;
 use crate::{io, Config};
 use anyhow::Context as _;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, ops, sync::Arc};
 use tracing::instrument;
 use zksync_concurrency::{
     ctx::{self, channel},
@@ -215,7 +215,8 @@ impl PeerStates {
                 // TODO: ban peer etc.
             }
         };
-        let (first_stored_block, last_contiguous_stored_block) = numbers;
+        let first_stored_block = *numbers.start();
+        let last_contiguous_stored_block = *numbers.end();
 
         let mut peers = sync::lock(ctx, &self.peers).await?;
         let permits = self.config.max_concurrent_blocks_per_peer;
@@ -233,15 +234,15 @@ impl PeerStates {
                  ({last_contiguous_stored_block}) is lesser than the old value ({prev_contiguous_stored_block})"
             );
         }
-        let prev_first_stored_block = peer_state.first_stored_block;
-        if prev_first_stored_block < first_stored_block {
-            tracing::warn!(
-                %prev_first_stored_block,
-                %first_stored_block,
-                "Bogus state update from peer: first stored block increased; this shouldn't happen"
-            );
-            peer_state.first_stored_block = first_stored_block;
-        }
+
+        peer_state.first_stored_block = first_stored_block;
+        // If `first_stored_block` increases, we could cancel getting pruned blocks from the peer here.
+        // However, the peer will respond such requests with a "missing block" error anyway,
+        // and new requests won't be routed to it because of updated `PeerState`,
+        // so having no special handling is fine.
+        // Likewise, no specialized handling is required for decreasing `first_stored_block`;
+        // if this leads to an ability to fetch some of the pending blocks, it'll be discovered
+        // after `sleep_interval_for_get_block` (i.e., soon enough).
 
         tracing::trace!(
             %prev_contiguous_stored_block,
@@ -257,7 +258,10 @@ impl PeerStates {
         Ok(last_contiguous_stored_block)
     }
 
-    fn validate_sync_state(&self, state: SyncState) -> anyhow::Result<(BlockNumber, BlockNumber)> {
+    fn validate_sync_state(
+        &self,
+        state: SyncState,
+    ) -> anyhow::Result<ops::RangeInclusive<BlockNumber>> {
         let numbers = state.numbers();
         anyhow::ensure!(
             numbers.first_stored_block <= numbers.last_contiguous_stored_block,
@@ -276,10 +280,7 @@ impl PeerStates {
         // in the following logic. The first stored block is not verified as well since it doesn't
         // extend the set of blocks a peer should have. To reflect this, the method consumes `SyncState`
         // and returns the validated block numbers.
-        Ok((
-            numbers.first_stored_block,
-            numbers.last_contiguous_stored_block,
-        ))
+        Ok(numbers.first_stored_block..=numbers.last_contiguous_stored_block)
     }
 
     async fn get_and_save_block(
