@@ -6,6 +6,14 @@ use zksync_consensus_executor::{proto, ConsensusConfig, ExecutorConfig};
 use zksync_consensus_roles::{node, validator};
 use zksync_protobuf::{read_optional, read_required, ProtoFmt};
 
+/// Decodes a proto message from json for arbitrary ProtoFmt.
+fn decode_json<T: ProtoFmt>(json: &str) -> anyhow::Result<T> {
+    let mut d = serde_json::Deserializer::from_str(json);
+    let p: T = zksync_protobuf::serde::deserialize(&mut d)?;
+    d.end()?;
+    Ok(p)
+}
+
 /// This struct holds the file path to each of the config files.
 #[derive(Debug)]
 pub struct ConfigPaths<'a> {
@@ -75,13 +83,12 @@ impl Configs {
                 args.config.display()
             )
         })?;
-        let node_config: NodeConfig =
-            zksync_protobuf::decode_json(&node_config).with_context(|| {
-                format!(
-                    "failed decoding JSON node config at `{}`",
-                    args.config.display()
-                )
-            })?;
+        let node_config: NodeConfig = decode_json(&node_config).with_context(|| {
+            format!(
+                "failed decoding JSON node config at `{}`",
+                args.config.display()
+            )
+        })?;
 
         let validator_key: Option<validator::SecretKey> = args
             .validator_key
