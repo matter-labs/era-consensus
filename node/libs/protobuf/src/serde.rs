@@ -35,28 +35,3 @@ pub fn deserialize_proto<'de, T: ReflectMessage + Default, D: serde::Deserialize
 pub fn deserialize<'de, T: ProtoFmt, D: serde::Deserializer<'de>>(d: D) -> Result<T, D::Error> {
     T::read(&deserialize_proto(d)?).map_err(serde::de::Error::custom)
 }
-
-/// Encodes a generated proto message to json for arbitrary ReflectMessage.
-pub fn encode_json_proto<T: ReflectMessage>(x: &T) -> String {
-    let mut s = serde_json::Serializer::pretty(vec![]);
-    serialize_proto(x, &mut s).unwrap();
-    String::from_utf8(s.into_inner()).unwrap()
-}
-
-/// Encodes a proto message to json for arbitrary ProtoFmt.
-pub fn encode_json<T: ProtoFmt>(x: &T) -> String {
-    encode_json_proto(&x.build())
-}
-
-/// Decodes a generated proto message from json for arbitrary ReflectMessage.
-pub fn decode_json_proto<T: ReflectMessage + Default>(json: &str) -> anyhow::Result<T> {
-    let mut d = serde_json::Deserializer::from_str(json);
-    let p: T = deserialize_proto(&mut d)?;
-    d.end()?;
-    Ok(p)
-}
-
-/// Decodes a proto message from json for arbitrary ProtoFmt.
-pub fn decode_json<T: ProtoFmt>(json: &str) -> anyhow::Result<T> {
-    T::read(&decode_json_proto(json)?)
-}
