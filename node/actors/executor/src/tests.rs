@@ -2,6 +2,7 @@
 
 use super::*;
 use crate::testonly::FullValidatorConfig;
+use rand::Rng;
 use std::iter;
 use test_casing::test_casing;
 use zksync_concurrency::{sync, testonly::abort_on_panic, time};
@@ -27,11 +28,11 @@ async fn store_final_blocks(
 }
 
 impl FullValidatorConfig {
-    fn gen_blocks(&self, count: usize) -> Vec<FinalBlock> {
+    fn gen_blocks(&self, rng: &mut impl Rng, count: usize) -> Vec<FinalBlock> {
         let genesis_block = self.node_config.genesis_block.clone();
         let validators = &self.node_config.validators;
         let blocks = iter::successors(Some(genesis_block), |parent| {
-            let payload = Payload(vec![]);
+            let payload: Payload = rng.gen();
             let header = validator::BlockHeader {
                 parent: parent.header.hash(),
                 number: parent.header.number.next(),
@@ -147,7 +148,7 @@ async fn syncing_external_node_from_snapshot(delay_block_storage: bool) {
     let external_node = validator.connect_external_node(rng);
 
     let genesis_block = &validator.node_config.genesis_block;
-    let blocks = validator.gen_blocks(10);
+    let blocks = validator.gen_blocks(rng, 10);
     let validator_storage = InMemoryStorage::new(genesis_block.clone());
     let validator_storage = Arc::new(validator_storage);
     if !delay_block_storage {
