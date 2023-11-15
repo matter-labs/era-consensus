@@ -13,6 +13,21 @@ use zksync_concurrency::{ctx, io};
 
 mod proto;
 
+/// Decodes a generated proto message from json for arbitrary ReflectMessage.
+fn decode_json_proto<T: ReflectMessage + Default>(json: &str) -> anyhow::Result<T> {
+    let mut d = serde_json::Deserializer::from_str(json);
+    let p: T = zksync_protobuf::serde::deserialize_proto(&mut d)?;
+    d.end()?;
+    Ok(p)
+}
+
+/// Encodes a generated proto message to json for arbitrary ReflectMessage.
+fn encode_json_proto<T: ReflectMessage>(x: &T) -> String {
+    let mut s = serde_json::Serializer::pretty(vec![]);
+    zksync_protobuf::serde::serialize_proto(x, &mut s).unwrap();
+    String::from_utf8(s.into_inner()).unwrap()
+}
+
 /// Runs the test server.
 async fn run() -> anyhow::Result<()> {
     let ctx = &ctx::root();
@@ -41,7 +56,7 @@ async fn run() -> anyhow::Result<()> {
             use proto::TestAllTypesProto3 as T;
             let p = match payload {
                 proto::conformance_request::Payload::JsonPayload(payload) => {
-                    match zksync_protobuf::decode_json_proto(&payload) {
+                    match decode_json_proto(&payload) {
                         Ok(p) => p,
                         Err(_) => return Ok(R::Skipped("unsupported fields".to_string())),
                     }
@@ -65,9 +80,7 @@ async fn run() -> anyhow::Result<()> {
                 .requested_output_format
                 .context("missing output format")?;
             match proto::WireFormat::try_from(format).context("unknown format")? {
-                proto::WireFormat::Json => {
-                    anyhow::Ok(R::JsonPayload(zksync_protobuf::encode_json_proto(&p)))
-                }
+                proto::WireFormat::Json => anyhow::Ok(R::JsonPayload(encode_json_proto(&p))),
                 proto::WireFormat::Protobuf => {
                     // Reencode the parsed proto.
                     anyhow::Ok(R::ProtobufPayload(zksync_protobuf::canonical_raw(
