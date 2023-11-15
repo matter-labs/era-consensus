@@ -112,7 +112,7 @@ fn main() -> anyhow::Result<()> {
 
         fs::write(
             root.join("config.json"),
-            zksync_protobuf::encode_json(&node_cfg),
+            zksync_protobuf::serde::encode_json(&node_cfg),
         )
         .context("fs::write()")?;
         fs::write(

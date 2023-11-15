@@ -41,7 +41,7 @@ async fn run() -> anyhow::Result<()> {
             use proto::TestAllTypesProto3 as T;
             let p = match payload {
                 proto::conformance_request::Payload::JsonPayload(payload) => {
-                    match zksync_protobuf::decode_json_proto(&payload) {
+                    match zksync_protobuf::serde::decode_json_proto(&payload) {
                         Ok(p) => p,
                         Err(_) => return Ok(R::Skipped("unsupported fields".to_string())),
                     }
@@ -65,9 +65,9 @@ async fn run() -> anyhow::Result<()> {
                 .requested_output_format
                 .context("missing output format")?;
             match proto::WireFormat::try_from(format).context("unknown format")? {
-                proto::WireFormat::Json => {
-                    anyhow::Ok(R::JsonPayload(zksync_protobuf::encode_json_proto(&p)))
-                }
+                proto::WireFormat::Json => anyhow::Ok(R::JsonPayload(
+                    zksync_protobuf::serde::encode_json_proto(&p),
+                )),
                 proto::WireFormat::Protobuf => {
                     // Reencode the parsed proto.
                     anyhow::Ok(R::ProtobufPayload(zksync_protobuf::canonical_raw(

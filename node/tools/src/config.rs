@@ -75,8 +75,8 @@ impl Configs {
                 args.config.display()
             )
         })?;
-        let node_config: NodeConfig =
-            zksync_protobuf::decode_json(&node_config).with_context(|| {
+        let node_config: NodeConfig = zksync_protobuf::serde::decode_json(&node_config)
+            .with_context(|| {
                 format!(
                     "failed decoding JSON node config at `{}`",
                     args.config.display()
