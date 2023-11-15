@@ -13,12 +13,12 @@ zksync_concurrency.workspace = true
 
 anyhow.workspace = true
 bit-vec.workspace = true
-serde.workspace = true
-quick-protobuf.workspace = true
 once_cell.workspace = true
 prost.workspace = true
 prost-reflect.workspace = true
+quick-protobuf.workspace = true
 rand.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 
 [build-dependencies]
