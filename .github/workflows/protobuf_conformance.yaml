@@ -28,7 +28,7 @@ jobs:
           path: "protobuf"
       - uses: mozilla-actions/sccache-action@v0.0.3
       - name: build test
-        run: cargo build -p zksync_protobuf --bin conformance_test
+        run: cargo build -p zksync_consensus_tools --bin conformance_test
         working-directory: "this/node"
       - name: Cache Bazel
         uses: actions/cache@v3
@@ -41,6 +41,6 @@ jobs:
       - name: run test
         run: >
           bazel run //conformance:conformance_test_runner --
-          --failure_list "${{ github.workspace }}/this/node/libs/protobuf/src/bin/conformance_test/failure_list.txt"
+          --failure_list "${{ github.workspace }}/this/node/tools/src/bin/conformance_test/failure_list.txt"
           "${{ github.workspace }}/this/node/target/debug/conformance_test"
         working-directory: "protobuf"
