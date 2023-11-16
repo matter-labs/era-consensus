@@ -9,6 +9,13 @@ use zksync_consensus_executor::{ConsensusConfig, ExecutorConfig, GossipConfig};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_tools::NodeConfig;
 
+/// Encodes a generated proto message to json for arbitrary ProtoFmt.
+fn encode_json<T: zksync_protobuf::ProtoFmt>(x: &T) -> String {
+    let mut s = serde_json::Serializer::pretty(vec![]);
+    zksync_protobuf::serde::serialize(x, &mut s).unwrap();
+    String::from_utf8(s.into_inner()).unwrap()
+}
+
 /// Replaces IP of the address with UNSPECIFIED (aka INADDR_ANY) of the corresponding IP type.
 /// Opening a listener socket with an UNSPECIFIED IP, means that the new connections
 /// on any network interface of the VM will be accepted.
@@ -110,11 +117,7 @@ fn main() -> anyhow::Result<()> {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
 
-        fs::write(
-            root.join("config.json"),
-            zksync_protobuf::encode_json(&node_cfg),
-        )
-        .context("fs::write()")?;
+        fs::write(root.join("config.json"), encode_json(&node_cfg)).context("fs::write()")?;
         fs::write(
             root.join("validator_key"),
             &TextFmt::encode(&validator_keys[i]),

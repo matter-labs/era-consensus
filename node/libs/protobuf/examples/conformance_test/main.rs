@@ -15,6 +15,21 @@ use zksync_concurrency::{ctx, io};
 
 mod proto;
 
+/// Decodes a generated proto message from json for arbitrary ReflectMessage.
+fn decode_json_proto<T: ReflectMessage + Default>(json: &str) -> anyhow::Result<T> {
+    let mut deserializer = serde_json::Deserializer::from_str(json);
+    let proto: T = zksync_protobuf::serde::deserialize_proto(&mut deserializer)?;
+    deserializer.end()?;
+    Ok(proto)
+}
+
+/// Encodes a generated proto message to json for arbitrary ReflectMessage.
+fn encode_json_proto<T: ReflectMessage>(proto: &T) -> String {
+    let mut serializer = serde_json::Serializer::pretty(vec![]);
+    zksync_protobuf::serde::serialize_proto(proto, &mut serializer).unwrap();
+    String::from_utf8(serializer.into_inner()).unwrap()
+}
+
 impl ConformanceResult {
     /// Creates a "skipped" result with the specified message.
     fn skipped(reason: &str) -> Self {
@@ -30,7 +45,7 @@ impl ConformanceResult {
 /// Processes a single conformance request.
 fn process_request(req: proto::ConformanceRequest) -> anyhow::Result<ConformanceResult> {
     let message_type = req.message_type.context("missing message_type")?;
-    if message_type != *"protobuf_test_messages.proto3.TestAllTypesProto3" {
+    if message_type != "protobuf_test_messages.proto3.TestAllTypesProto3" {
         return Ok(ConformanceResult::skipped("unsupported"));
     }
 
@@ -38,7 +53,7 @@ fn process_request(req: proto::ConformanceRequest) -> anyhow::Result<Conformance
     let payload = req.payload.context("missing payload")?;
     let payload = match payload {
         proto::conformance_request::Payload::JsonPayload(payload) => {
-            match zksync_protobuf::decode_json_proto(&payload) {
+            match decode_json_proto(&payload) {
                 Ok(payload) => payload,
                 Err(_) => return Ok(ConformanceResult::skipped("unsupported fields")),
             }
@@ -62,9 +77,7 @@ fn process_request(req: proto::ConformanceRequest) -> anyhow::Result<Conformance
         .requested_output_format
         .context("missing output format")?;
     match proto::WireFormat::try_from(format).context("unknown format")? {
-        proto::WireFormat::Json => Ok(ConformanceResult::JsonPayload(
-            zksync_protobuf::encode_json_proto(&payload),
-        )),
+        proto::WireFormat::Json => Ok(ConformanceResult::JsonPayload(encode_json_proto(&payload))),
         proto::WireFormat::Protobuf => {
             // Re-encode the parsed proto.
             let encoded =
