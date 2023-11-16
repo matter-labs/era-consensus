@@ -13,17 +13,3 @@ sysctl -w net.ipv4.tcp_slow_start_after_idle=0
 ## Running as an application
 
 TBD
-
-## Running as a local testnet (OUTDATED)
-
-You can see localenv.Dockerfile where we build all local configurations and prepare binary file for node
-
-```
-DOCKER_BUILDKIT=1 docker image build --no-cache --build-arg nodes=16 . -f docker/localenv.Dockerfile -t localenvc
-```
-
-Using docker compose we start 16 nodes
-
-```
-docker compose -f composes/docker-compose.local16.yml up
-```
