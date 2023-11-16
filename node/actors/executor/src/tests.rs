@@ -99,37 +99,37 @@ async fn executing_single_validator() {
 }
 
 #[tokio::test]
-async fn executing_validator_and_external_node() {
+async fn executing_validator_and_full_node() {
     abort_on_panic();
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
 
     let mut validator = FullValidatorConfig::for_single_validator(rng, Payload(vec![]));
-    let external_node = validator.connect_external_node(rng);
+    let full_node = validator.connect_full_node(rng);
 
     let genesis_block = &validator.node_config.genesis_block;
     let validator_storage = InMemoryStorage::new(genesis_block.clone());
     let validator_storage = Arc::new(validator_storage);
-    let external_node_storage = InMemoryStorage::new(genesis_block.clone());
-    let external_node_storage = Arc::new(external_node_storage);
-    let mut en_subscriber = external_node_storage.subscribe_to_block_writes();
+    let full_node_storage = InMemoryStorage::new(genesis_block.clone());
+    let full_node_storage = Arc::new(full_node_storage);
+    let mut full_node_subscriber = full_node_storage.subscribe_to_block_writes();
 
     let (validator, blocks_receiver) = validator.into_executor(validator_storage.clone());
-    let external_node = Executor::new(
-        external_node.node_config,
-        external_node.node_key,
-        external_node_storage.clone(),
+    let full_node = Executor::new(
+        full_node.node_config,
+        full_node.node_key,
+        full_node_storage.clone(),
     )
     .unwrap();
 
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(validator.run(ctx));
-        s.spawn_bg(external_node.run(ctx));
+        s.spawn_bg(full_node.run(ctx));
         s.spawn_bg(store_final_blocks(ctx, blocks_receiver, validator_storage));
 
         for _ in 0..5 {
-            let number = *sync::changed(ctx, &mut en_subscriber).await?;
-            tracing::trace!(%number, "External node received block");
+            let number = *sync::changed(ctx, &mut full_node_subscriber).await?;
+            tracing::trace!(%number, "Full node received block");
         }
         anyhow::Ok(())
     })
@@ -139,13 +139,13 @@ async fn executing_validator_and_external_node() {
 
 #[test_casing(2, [false, true])]
 #[tokio::test]
-async fn syncing_external_node_from_snapshot(delay_block_storage: bool) {
+async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
     abort_on_panic();
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
 
     let mut validator = FullValidatorConfig::for_single_validator(rng, Payload(vec![]));
-    let external_node = validator.connect_external_node(rng);
+    let full_node = validator.connect_full_node(rng);
 
     let genesis_block = &validator.node_config.genesis_block;
     let blocks = validator.gen_blocks(rng, 10);
@@ -164,21 +164,21 @@ async fn syncing_external_node_from_snapshot(delay_block_storage: bool) {
     )
     .unwrap();
 
-    // Start an external node from a snapshot.
-    let external_node_storage = InMemoryStorage::new(blocks[3].clone());
-    let external_node_storage = Arc::new(external_node_storage);
-    let mut en_subscriber = external_node_storage.subscribe_to_block_writes();
+    // Start a full node from a snapshot.
+    let full_node_storage = InMemoryStorage::new(blocks[3].clone());
+    let full_node_storage = Arc::new(full_node_storage);
+    let mut full_node_subscriber = full_node_storage.subscribe_to_block_writes();
 
-    let external_node = Executor::new(
-        external_node.node_config,
-        external_node.node_key,
-        external_node_storage.clone(),
+    let full_node = Executor::new(
+        full_node.node_config,
+        full_node.node_key,
+        full_node_storage.clone(),
     )
     .unwrap();
 
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(validator.run(ctx));
-        s.spawn_bg(external_node.run(ctx));
+        s.spawn_bg(full_node.run(ctx));
 
         if delay_block_storage {
             // Emulate the validator gradually adding new blocks to the storage.
@@ -192,21 +192,23 @@ async fn syncing_external_node_from_snapshot(delay_block_storage: bool) {
         }
 
         loop {
-            let last_contiguous_en_block = external_node_storage
-                .last_contiguous_block_number(ctx)
-                .await?;
-            tracing::trace!(%last_contiguous_en_block, "External node has last contiguous block");
-            if last_contiguous_en_block == BlockNumber(10) {
-                break; // The EN has received all blocks!
+            let last_contiguous_full_node_block =
+                full_node_storage.last_contiguous_block_number(ctx).await?;
+            tracing::trace!(
+                %last_contiguous_full_node_block,
+                "Full node updated last contiguous block"
+            );
+            if last_contiguous_full_node_block == BlockNumber(10) {
+                break; // The full node has received all blocks!
             }
-            // Wait until the EN storage is updated.
-            let number = *sync::changed(ctx, &mut en_subscriber).await?;
-            tracing::trace!(%number, "External node received block");
+            // Wait until the node storage is updated.
+            let number = *sync::changed(ctx, &mut full_node_subscriber).await?;
+            tracing::trace!(%number, "Full node received block");
         }
 
         // Check that the node didn't receive any blocks with number lesser than the initial snapshot block.
         for lesser_block_number in 0..3 {
-            let block = external_node_storage
+            let block = full_node_storage
                 .block(ctx, BlockNumber(lesser_block_number))
                 .await?;
             assert!(block.is_none());
