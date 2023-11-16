@@ -42,5 +42,5 @@ jobs:
         run: >
           bazel run //conformance:conformance_test_runner --
           --failure_list "${{ github.workspace }}/this/node/libs/protobuf/examples/conformance_test/failure_list.txt"
-          "${{ github.workspace }}/this/node/target/debug/conformance_test"
+          "${{ github.workspace }}/this/node/target/debug/examples/conformance_test"
         working-directory: "protobuf"
