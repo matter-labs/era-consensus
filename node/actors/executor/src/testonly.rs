@@ -52,33 +52,33 @@ impl FullValidatorConfig {
         }
     }
 
-    /// Creates a new external node and configures this validator to accept incoming connections from it.
-    pub fn connect_external_node(&mut self, rng: &mut impl Rng) -> ExternalNodeConfig {
-        let external_node_config = ExternalNodeConfig::new(rng, self);
+    /// Creates a new full node and configures this validator to accept incoming connections from it.
+    pub fn connect_full_node(&mut self, rng: &mut impl Rng) -> FullNodeConfig {
+        let full_node_config = FullNodeConfig::new(rng, self);
         self.node_config
             .gossip
             .static_inbound
-            .insert(external_node_config.node_key.public());
-        external_node_config
+            .insert(full_node_config.node_key.public());
+        full_node_config
     }
 }
 
-/// Configuration for an external node (i.e., non-validator node).
+/// Configuration for a full non-validator node.
 #[derive(Debug)]
 #[non_exhaustive]
-pub struct ExternalNodeConfig {
+pub struct FullNodeConfig {
     /// Executor configuration.
     pub node_config: ExecutorConfig,
     /// Secret key of the node used for identification in the gossip network.
     pub node_key: node::SecretKey,
 }
 
-impl ExternalNodeConfig {
+impl FullNodeConfig {
     fn new(rng: &mut impl Rng, validator: &FullValidatorConfig) -> Self {
         let node_key: node::SecretKey = rng.gen();
-        let external_node_addr = net::tcp::testonly::reserve_listener();
+        let full_node_addr = net::tcp::testonly::reserve_listener();
         let node_config = ExecutorConfig {
-            server_addr: *external_node_addr,
+            server_addr: *full_node_addr,
             gossip: GossipConfig {
                 key: node_key.public(),
                 static_outbound: HashMap::from([(

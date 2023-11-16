@@ -39,5 +39,11 @@ async fn putting_block_for_rocksdb_store() {
 
 #[tokio::test]
 async fn getting_missing_block_numbers_for_rocksdb_store() {
-    test_get_missing_block_numbers(&TempDir::new().unwrap()).await;
+    test_get_missing_block_numbers(&TempDir::new().unwrap(), 0).await;
+}
+
+#[test_casing(4, [1, 10, 23, 42])]
+#[tokio::test]
+async fn getting_missing_block_numbers_for_rocksdb_snapshot(skip_count: usize) {
+    test_get_missing_block_numbers(&TempDir::new().unwrap(), skip_count).await;
 }
