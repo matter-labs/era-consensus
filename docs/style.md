@@ -22,24 +22,6 @@ And then run tests with:
 cargo nextest run
 ```
 
-### Linting
-
-We use a particular tool called `cargo cranky` in order to be able to apply a set of lints to an entire workspace. You
-just need to install it with:
-
-```
-cargo install cargo-cranky
-```
-
-and then you can run it just like you would run clippy:
-
-```
-cargo cranky --all-targets --all-features
-```
-
-Note: There's a [RFC](https://github.com/rust-lang/rfcs/pull/3389) underway to add lints to `Cargo.toml``. But until that
-happens, we are stuck with cranky.
-
 ## Codebase Layout
 
 We want the files to be relatively small in general (lets say, <500 LoC), so feel free to split the module into multiple files
