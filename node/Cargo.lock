@@ -2581,6 +2581,7 @@ name = "zksync_consensus_bft"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "once_cell",
  "rand 0.8.5",
  "thiserror",

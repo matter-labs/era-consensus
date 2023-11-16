@@ -16,6 +16,7 @@ zksync_consensus_utils.workspace = true
 zksync_protobuf.workspace = true
 
 anyhow.workspace = true
+async-trait.workspace = true
 once_cell.workspace = true
 rand.workspace = true
 thiserror.workspace = true

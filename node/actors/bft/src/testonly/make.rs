@@ -1,14 +1,30 @@
 //! This module contains utilities that are only meant for testing purposes.
-
 use crate::{
     io::{InputMessage, OutputMessage},
-    Consensus,
+    Consensus, ConsensusInner, PayloadSource,
 };
+use rand::Rng as _;
 use std::sync::Arc;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{InMemoryStorage, ReplicaStore};
 use zksync_consensus_utils::pipe::{self, DispatcherPipe};
+
+/// Provides payload consisting of random bytes.
+pub struct RandomPayloadSource;
+
+#[async_trait::async_trait]
+impl PayloadSource for RandomPayloadSource {
+    async fn propose(
+        &self,
+        ctx: &ctx::Ctx,
+        _block_number: validator::BlockNumber,
+    ) -> anyhow::Result<validator::Payload> {
+        let mut payload = validator::Payload(vec![0; ConsensusInner::PAYLOAD_MAX_SIZE]);
+        ctx.rng().fill(&mut payload.0[..]);
+        Ok(payload)
+    }
+}
 
 /// This creates a mock Consensus struct for unit tests.
 pub async fn make_consensus(
@@ -28,6 +44,7 @@ pub async fn make_consensus(
         key.clone(),
         validator_set.clone(),
         ReplicaStore::from_store(Arc::new(storage)),
+        Arc::new(RandomPayloadSource),
     );
     let consensus = consensus
         .await

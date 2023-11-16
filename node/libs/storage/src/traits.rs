@@ -3,7 +3,7 @@ use crate::{types::ReplicaState, StorageResult};
 use async_trait::async_trait;
 use std::{fmt, ops, sync::Arc};
 use zksync_concurrency::{ctx, sync::watch};
-use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
+use zksync_consensus_roles::validator::{BlockNumber, FinalBlock, Payload};
 
 /// Storage of L2 blocks.
 ///
@@ -86,6 +86,15 @@ impl<S: BlockStore + ?Sized> BlockStore for Arc<S> {
 /// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait]
 pub trait WriteBlockStore: BlockStore {
+    /// Verify that `payload` is a correct proposal for the block `block_number`.
+    async fn verify_payload(
+        &self,
+        _ctx: &ctx::Ctx,
+        _block_number: BlockNumber,
+        _payload: &Payload,
+    ) -> anyhow::Result<()> {
+        Ok(())
+    }
     /// Puts a block into this storage.
     async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()>;
 }

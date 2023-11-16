@@ -6,6 +6,7 @@ use rand::Rng;
 use std::iter;
 use test_casing::test_casing;
 use zksync_concurrency::{sync, testonly::abort_on_panic, time};
+use zksync_consensus_bft::testonly::RandomPayloadSource;
 use zksync_consensus_roles::validator::{BlockNumber, FinalBlock, Payload};
 use zksync_consensus_storage::{BlockStore, InMemoryStorage};
 
@@ -34,7 +35,12 @@ impl FullValidatorConfig {
     fn into_executor(self, storage: Arc<InMemoryStorage>) -> Executor<InMemoryStorage> {
         let mut executor = Executor::new(self.node_config, self.node_key, storage.clone()).unwrap();
         executor
-            .set_validator(self.consensus_config, self.validator_key, storage)
+            .set_validator(
+                self.consensus_config,
+                self.validator_key,
+                storage,
+                Arc::new(RandomPayloadSource),
+            )
             .unwrap();
         executor
     }

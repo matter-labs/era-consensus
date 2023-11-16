@@ -45,7 +45,7 @@ pub(crate) enum Error {
 }
 
 impl StateMachine {
-    #[instrument(level = "trace", ret)]
+    #[instrument(level = "trace", skip(self), ret)]
     pub(crate) fn process_replica_commit(
         &mut self,
         ctx: &ctx::Ctx,

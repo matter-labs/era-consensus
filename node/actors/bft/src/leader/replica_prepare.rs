@@ -1,6 +1,5 @@
 use super::StateMachine;
 use crate::{inner::ConsensusInner, metrics};
-use rand::Rng;
 use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::ctx;
@@ -54,11 +53,14 @@ pub(crate) enum Error {
     /// Invalid `HighQC` message.
     #[error("invalid high QC: {0:#}")]
     InvalidHighQC(#[source] anyhow::Error),
+    /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
+    #[error("internal error: {0:#}")]
+    Internal(#[from] anyhow::Error),
 }
 
 impl StateMachine {
-    #[instrument(level = "trace", ret)]
-    pub(crate) fn process_replica_prepare(
+    #[instrument(level = "trace", skip(self), ret)]
+    pub(crate) async fn process_replica_prepare(
         &mut self,
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
@@ -181,11 +183,10 @@ impl StateMachine {
             Some(proposal) if proposal != highest_qc.message.proposal => (proposal, None),
             // The previous block was finalized, so we can propose a new block.
             _ => {
-                // TODO(bruno): For now we just create a block with a random payload. After we integrate with
-                //              the execution layer we should have a call here to the mempool to get a real payload.
-                let mut payload = validator::Payload(vec![0; ConsensusInner::PAYLOAD_MAX_SIZE]);
-                ctx.rng().fill(&mut payload.0[..]);
-
+                let payload = self
+                    .payload_source
+                    .propose(ctx, highest_qc.message.proposal.number.next())
+                    .await?;
                 metrics::METRICS
                     .leader_proposal_payload_size
                     .observe(payload.0.len());

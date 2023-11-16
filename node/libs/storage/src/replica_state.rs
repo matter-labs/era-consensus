@@ -20,7 +20,7 @@ impl From<validator::CommitQC> for ReplicaState {
     }
 }
 
-/// [`ReplicaStateStore`] wrapper that falls back to a specified block store.
+/// ReplicaStorage.
 #[derive(Debug, Clone)]
 pub struct ReplicaStore {
     state: Arc<dyn ReplicaStateStore>,
