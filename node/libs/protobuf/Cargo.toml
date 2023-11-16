@@ -21,5 +21,10 @@ rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
+[dev-dependencies]
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
 [build-dependencies]
 zksync_protobuf_build.workspace = true

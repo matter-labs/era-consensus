@@ -2726,8 +2726,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "clap",
- "prost",
- "prost-reflect",
  "rand 0.8.5",
  "tokio",
  "tracing",
@@ -2741,7 +2739,6 @@ dependencies = [
  "zksync_consensus_storage",
  "zksync_consensus_utils",
  "zksync_protobuf",
- "zksync_protobuf_build",
 ]
 
 [[package]]
@@ -2765,6 +2762,9 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
  "zksync_concurrency",
  "zksync_protobuf_build",
 ]
