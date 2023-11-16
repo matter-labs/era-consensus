@@ -41,6 +41,11 @@ impl StateMachine {
         self.storage
             .put_block(ctx, &block)
             .await
-            .context("store.put_block()")
+            .context("store.put_block()")?;
+
+        let number_metric = &crate::metrics::METRICS.finalized_block_number;
+        let current_number = number_metric.get();
+        number_metric.set(current_number.max(block.header.number.0));
+        Ok(())
     }
 }
