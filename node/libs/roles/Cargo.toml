@@ -5,8 +5,10 @@ edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 license.workspace = true
-
 links = "zksync_consensus_roles_proto"
+
+[lints]
+workspace = true
 
 [dependencies]
 zksync_concurrency.workspace = true

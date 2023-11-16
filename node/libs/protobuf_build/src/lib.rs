@@ -299,7 +299,7 @@ impl Config {
             .context("prepare_output_dir()")?;
         let output_path = output_dir.join("gen.rs");
         let descriptor_path = output_dir.join("gen.binpb");
-        fs::write(&descriptor_path, &descriptor.encode_to_vec())?;
+        fs::write(&descriptor_path, descriptor.encode_to_vec())?;
 
         if self.is_public {
             let manifest = Manifest {

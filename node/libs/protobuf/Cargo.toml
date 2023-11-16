@@ -5,8 +5,10 @@ edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 license.workspace = true
-
 links = "zksync_protobuf_proto"
+
+[lints]
+workspace = true
 
 [[bin]]
 name = "conformance_test"

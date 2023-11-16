@@ -31,7 +31,6 @@
 // TODO(gprusak): add more tests
 // TODO(gprusak): add simple useful real-life examples
 // TODO(gprusak): add a style guide on how to use scopes.
-#![allow(unsafe_code)]
 use crate::{ctx, time};
 use std::{
     future::Future,

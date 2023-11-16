@@ -6,6 +6,9 @@ authors.workspace = true
 homepage.workspace = true
 license.workspace = true
 
+[lints]
+workspace = true
+
 [dependencies]
 zksync_concurrency.workspace = true
 zksync_consensus_crypto.workspace = true
