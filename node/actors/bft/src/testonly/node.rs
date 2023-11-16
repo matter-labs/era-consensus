@@ -1,18 +1,12 @@
 use super::Fuzz;
 use crate::io;
 use rand::Rng;
-use zksync_concurrency::{ctx, ctx::channel, scope};
+use std::sync::Arc;
+use zksync_concurrency::{ctx, scope};
 use zksync_consensus_network as network;
 use zksync_consensus_network::io::ConsensusInputMessage;
-use zksync_consensus_roles::validator;
+use zksync_consensus_storage::InMemoryStorage;
 use zksync_consensus_utils::pipe::DispatcherPipe;
-
-/// A struct containing metrics information. Right now it's just a finalized block.
-#[derive(Debug)]
-pub(super) struct Metrics {
-    pub(crate) validator: validator::PublicKey,
-    pub(crate) finalized_block: validator::FinalBlock,
-}
 
 /// Enum representing the behavior of the node.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -33,6 +27,7 @@ pub(crate) enum Behavior {
 pub(super) struct Node {
     pub(crate) net: network::testonly::Instance,
     pub(crate) behavior: Behavior,
+    pub(crate) storage: Arc<InMemoryStorage>,
 }
 
 impl Node {
@@ -42,15 +37,12 @@ impl Node {
         ctx: &ctx::Ctx,
         consensus_pipe: DispatcherPipe<io::InputMessage, io::OutputMessage>,
         network_pipe: DispatcherPipe<network::io::InputMessage, network::io::OutputMessage>,
-        metrics: channel::UnboundedSender<Metrics>,
     ) -> anyhow::Result<()> {
-        let key = self.net.consensus_config().key.public();
         let rng = &mut ctx.rng();
         let mut net_recv = network_pipe.recv;
         let net_send = network_pipe.send;
         let mut con_recv = consensus_pipe.recv;
         let con_send = consensus_pipe.send;
-
         scope::run!(ctx, |ctx, s| async {
             s.spawn(async {
                 while let Ok(network_message) = net_recv.recv(ctx).await {
@@ -69,13 +61,6 @@ impl Node {
             // Get the next message from the channel. Our response depends on what type of replica we are.
             while let Ok(msg) = con_recv.recv(ctx).await {
                 match msg {
-                    io::OutputMessage::FinalizedBlock(block) => {
-                        // Send the finalized block to the watcher.
-                        metrics.send(Metrics {
-                            validator: key.clone(),
-                            finalized_block: block,
-                        })
-                    }
                     io::OutputMessage::Network(mut message) => {
                         let message_to_send = match self.behavior {
                             Behavior::Offline => continue,

@@ -12,7 +12,7 @@ use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{
-    ctx::{self, channel},
+    ctx::{self},
     scope, time,
 };
 use zksync_consensus_executor::Executor;
@@ -112,14 +112,8 @@ async fn main() -> anyhow::Result<()> {
     let mut executor = Executor::new(configs.executor, configs.node_key, storage.clone())
         .context("Executor::new()")?;
     if let Some((consensus_config, validator_key)) = configs.consensus {
-        let blocks_sender = channel::unbounded().0; // Just drop finalized blocks
         executor
-            .set_validator(
-                consensus_config,
-                validator_key,
-                storage.clone(),
-                blocks_sender,
-            )
+            .set_validator(consensus_config, validator_key, storage.clone())
             .context("Executor::set_validator()")?;
     }
 

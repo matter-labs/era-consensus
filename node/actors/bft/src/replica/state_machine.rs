@@ -2,10 +2,10 @@ use crate::{metrics, ConsensusInner};
 use anyhow::Context as _;
 use std::collections::{BTreeMap, HashMap};
 use tracing::instrument;
-use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _, scope, time};
+use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _, time};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage as storage;
-use zksync_consensus_storage::{FallbackReplicaStateStore, StorageError};
+use zksync_consensus_storage::ReplicaStore;
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
 /// for validating and voting on blocks. When participating in consensus we are always a replica.
@@ -24,17 +24,15 @@ pub(crate) struct StateMachine {
         BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
     /// The deadline to receive an input message.
     pub(crate) timeout_deadline: time::Deadline,
-    /// A reference to the storage module. We use it to backup the replica state.
-    pub(crate) storage: FallbackReplicaStateStore,
+    /// A reference to the storage module. We use it to backup the replica state and store
+    /// finalized blocks.
+    pub(crate) storage: ReplicaStore,
 }
 
 impl StateMachine {
     /// Creates a new StateMachine struct. We try to recover a past state from the storage module,
     /// otherwise we initialize the state machine with whatever head block we have.
-    pub(crate) async fn new(
-        ctx: &ctx::Ctx,
-        storage: FallbackReplicaStateStore,
-    ) -> anyhow::Result<Self> {
+    pub(crate) async fn new(ctx: &ctx::Ctx, storage: ReplicaStore) -> anyhow::Result<Self> {
         let backup = storage.replica_state(ctx).await?;
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
         for proposal in backup.proposals {
@@ -59,13 +57,14 @@ impl StateMachine {
     /// we are able to process inputs. If we are in the genesis block, then we start a new view,
     /// this will kick start the consensus algorithm. Otherwise, we just start the timer.
     #[instrument(level = "trace", ret)]
-    pub(crate) fn start(
+    pub(crate) async fn start(
         &mut self,
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
     ) -> anyhow::Result<()> {
         if self.view == validator::ViewNumber(0) {
             self.start_new_view(ctx, consensus)
+                .await
                 .context("start_new_view")
         } else {
             self.reset_timer(ctx);
@@ -77,7 +76,7 @@ impl StateMachine {
     /// the main entry point for the state machine. We need read-access to the inner consensus struct.
     /// As a result, we can modify our state machine or send a message to the executor.
     #[instrument(level = "trace", ret)]
-    pub(crate) fn process_input(
+    pub(crate) async fn process_input(
         &mut self,
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
@@ -86,38 +85,42 @@ impl StateMachine {
         let Some(signed_msg) = input else {
             tracing::warn!("We timed out before receiving a message.");
             // Start new view.
-            self.start_new_view(ctx, consensus)?;
+            self.start_new_view(ctx, consensus).await?;
             return Ok(());
         };
 
         let now = ctx.now();
         let label = match &signed_msg.msg {
             validator::ConsensusMsg::LeaderPrepare(_) => {
-                let res =
-                    match self.process_leader_prepare(ctx, consensus, signed_msg.cast().unwrap()) {
-                        Err(super::leader_prepare::Error::Internal(err)) => {
-                            return Err(err).context("process_leader_prepare()")
-                        }
-                        Err(err) => {
-                            tracing::warn!("process_leader_prepare(): {err:#}");
-                            Err(())
-                        }
-                        Ok(()) => Ok(()),
-                    };
+                let res = match self
+                    .process_leader_prepare(ctx, consensus, signed_msg.cast().unwrap())
+                    .await
+                {
+                    Err(super::leader_prepare::Error::Internal(err)) => {
+                        return Err(err).context("process_leader_prepare()")
+                    }
+                    Err(err) => {
+                        tracing::warn!("process_leader_prepare(): {err:#}");
+                        Err(())
+                    }
+                    Ok(()) => Ok(()),
+                };
                 metrics::ConsensusMsgLabel::LeaderPrepare.with_result(&res)
             }
             validator::ConsensusMsg::LeaderCommit(_) => {
-                let res =
-                    match self.process_leader_commit(ctx, consensus, signed_msg.cast().unwrap()) {
-                        Err(super::leader_commit::Error::Internal(err)) => {
-                            return Err(err).context("process_leader_commit()")
-                        }
-                        Err(err) => {
-                            tracing::warn!("process_leader_commit(): {err:#}");
-                            Err(())
-                        }
-                        Ok(()) => Ok(()),
-                    };
+                let res = match self
+                    .process_leader_commit(ctx, consensus, signed_msg.cast().unwrap())
+                    .await
+                {
+                    Err(super::leader_commit::Error::Internal(err)) => {
+                        return Err(err).context("process_leader_commit()")
+                    }
+                    Err(err) => {
+                        tracing::warn!("process_leader_commit(): {err:#}");
+                        Err(())
+                    }
+                    Ok(()) => Ok(()),
+                };
                 metrics::ConsensusMsgLabel::LeaderCommit.with_result(&res)
             }
             _ => unreachable!(),
@@ -127,7 +130,7 @@ impl StateMachine {
     }
 
     /// Backups the replica state to disk.
-    pub(crate) fn backup_state(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub(crate) async fn backup_state(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let mut proposals = vec![];
         for (number, payloads) in &self.block_proposal_cache {
             proposals.extend(payloads.values().map(|p| storage::Proposal {
@@ -142,17 +145,7 @@ impl StateMachine {
             high_qc: self.high_qc.clone(),
             proposals,
         };
-
-        let store_result = scope::run_blocking!(ctx, |ctx, s| {
-            let backup_future = self.storage.put_replica_state(ctx, &backup);
-            s.spawn(backup_future).join(ctx).block()?;
-            Ok(())
-        });
-        match store_result {
-            Ok(()) => { /* Everything went fine */ }
-            Err(StorageError::Canceled(_)) => tracing::trace!("Storing replica state was canceled"),
-            Err(StorageError::Database(err)) => return Err(err),
-        }
+        self.storage.put_replica_state(ctx, &backup).await?;
         Ok(())
     }
 }
