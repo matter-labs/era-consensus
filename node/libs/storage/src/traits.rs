@@ -19,6 +19,10 @@ pub trait BlockStore: fmt::Debug + Send + Sync {
     /// Returns the number of the last block in the first contiguous range of blocks stored in this DB.
     /// If there are no missing blocks, this is equal to the number of [`Self::get_head_block()`],
     /// if there *are* missing blocks, the returned number will be lower.
+    ///
+    /// The returned number cannot underflow the [first block](Self::first_block()) stored in the DB;
+    /// all blocks preceding the first block are ignored when computing this number. For example,
+    /// if the storage contains blocks #5, 6 and 9, this method will return 6.
     async fn last_contiguous_block_number(&self, ctx: &ctx::Ctx) -> StorageResult<BlockNumber>;
 
     /// Gets a block by its number.

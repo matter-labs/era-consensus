@@ -3,6 +3,7 @@ use crate::types::ReplicaState;
 use async_trait::async_trait;
 use rand::{seq::SliceRandom, Rng};
 use std::iter;
+use test_casing::test_casing;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator::{
     testonly::make_block, BlockHeader, BlockNumber, FinalBlock, Payload,
@@ -77,26 +78,34 @@ async fn putting_block_for_in_memory_store() {
     test_put_block(&()).await;
 }
 
-async fn test_get_missing_block_numbers(store_factory: &impl InitStore) {
+async fn test_get_missing_block_numbers(store_factory: &impl InitStore, skip_count: usize) {
+    assert!(skip_count < 100);
+
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let genesis_block = genesis_block(rng);
+    let mut genesis_block = genesis_block(rng);
+    let mut blocks = gen_blocks(rng, genesis_block.clone(), 100);
+    if skip_count > 0 {
+        genesis_block = blocks[skip_count - 1].clone();
+        blocks = blocks[skip_count..].to_vec();
+    }
+    let block_range = BlockNumber(skip_count as u64)..BlockNumber(101);
+
     let block_store = store_factory.init_store(ctx, &genesis_block).await;
-    let mut blocks = gen_blocks(rng, genesis_block, 100);
     blocks.shuffle(rng);
 
     assert!(block_store
-        .missing_block_numbers(ctx, BlockNumber(0)..BlockNumber(101))
+        .missing_block_numbers(ctx, block_range.clone())
         .await
         .unwrap()
         .into_iter()
         .map(|number| number.0)
-        .eq(1..101));
+        .eq(skip_count as u64 + 1..101));
 
     for (i, block) in blocks.iter().enumerate() {
         block_store.put_block(ctx, block).await.unwrap();
         let missing_block_numbers = block_store
-            .missing_block_numbers(ctx, BlockNumber(0)..BlockNumber(101))
+            .missing_block_numbers(ctx, block_range.clone())
             .await
             .unwrap();
         let last_contiguous_block_number =
@@ -120,7 +129,13 @@ async fn test_get_missing_block_numbers(store_factory: &impl InitStore) {
 
 #[tokio::test]
 async fn getting_missing_block_numbers_for_in_memory_store() {
-    test_get_missing_block_numbers(&()).await;
+    test_get_missing_block_numbers(&(), 0).await;
+}
+
+#[test_casing(4, [1, 10, 23, 42])]
+#[tokio::test]
+async fn getting_missing_block_numbers_for_snapshot(skip_count: usize) {
+    test_get_missing_block_numbers(&(), skip_count).await;
 }
 
 #[test]

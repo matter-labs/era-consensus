@@ -3,7 +3,7 @@
 use self::events::PeerStateEvent;
 use crate::{io, Config};
 use anyhow::Context as _;
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, ops, sync::Arc};
 use tracing::instrument;
 use zksync_concurrency::{
     ctx::{self, channel},
@@ -25,8 +25,16 @@ type PeerStateUpdate = (node::PublicKey, SyncState);
 
 #[derive(Debug)]
 struct PeerState {
+    first_stored_block: BlockNumber,
     last_contiguous_stored_block: BlockNumber,
     get_block_semaphore: Arc<Semaphore>,
+}
+
+impl PeerState {
+    fn has_block(&self, number: BlockNumber) -> bool {
+        let range = self.first_stored_block..=self.last_contiguous_stored_block;
+        range.contains(&number)
+    }
 }
 
 /// Handle for [`PeerStates`] allowing to send updates to it.
@@ -196,8 +204,8 @@ impl PeerStates {
         peer_key: node::PublicKey,
         state: SyncState,
     ) -> ctx::OrCanceled<BlockNumber> {
-        let last_contiguous_stored_block = match self.validate_sync_state(state) {
-            Ok(block_number) => block_number,
+        let numbers = match self.validate_sync_state(state) {
+            Ok(numbers) => numbers,
             Err(err) => {
                 tracing::warn!(%err, "Invalid `SyncState` received from peer");
                 if let Some(events_sender) = &self.events_sender {
@@ -207,10 +215,13 @@ impl PeerStates {
                 // TODO: ban peer etc.
             }
         };
+        let first_stored_block = *numbers.start();
+        let last_contiguous_stored_block = *numbers.end();
 
         let mut peers = sync::lock(ctx, &self.peers).await?;
         let permits = self.config.max_concurrent_blocks_per_peer;
         let peer_state = peers.entry(peer_key.clone()).or_insert_with(|| PeerState {
+            first_stored_block,
             last_contiguous_stored_block,
             get_block_semaphore: Arc::new(Semaphore::new(permits)),
         });
@@ -223,6 +234,16 @@ impl PeerStates {
                  ({last_contiguous_stored_block}) is lesser than the old value ({prev_contiguous_stored_block})"
             );
         }
+
+        peer_state.first_stored_block = first_stored_block;
+        // If `first_stored_block` increases, we could cancel getting pruned blocks from the peer here.
+        // However, the peer will respond such requests with a "missing block" error anyway,
+        // and new requests won't be routed to it because of updated `PeerState`,
+        // so having no special handling is fine.
+        // Likewise, no specialized handling is required for decreasing `first_stored_block`;
+        // if this leads to an ability to fetch some of the pending blocks, it'll be discovered
+        // after `sleep_interval_for_get_block` (i.e., soon enough).
+
         tracing::trace!(
             %prev_contiguous_stored_block,
             %last_contiguous_stored_block,
@@ -237,7 +258,10 @@ impl PeerStates {
         Ok(last_contiguous_stored_block)
     }
 
-    fn validate_sync_state(&self, state: SyncState) -> anyhow::Result<BlockNumber> {
+    fn validate_sync_state(
+        &self,
+        state: SyncState,
+    ) -> anyhow::Result<ops::RangeInclusive<BlockNumber>> {
         let numbers = state.numbers();
         anyhow::ensure!(
             numbers.first_stored_block <= numbers.last_contiguous_stored_block,
@@ -252,10 +276,11 @@ impl PeerStates {
             .last_contiguous_stored_block
             .verify(&self.config.validator_set, self.config.consensus_threshold)
             .context("Failed verifying `last_contiguous_stored_block`")?;
-        // We don't verify QCs for first and last stored blocks since they are not used
-        // in the following logic. To reflect this, the method consumes `SyncState` and returns
-        // the validated block number.
-        Ok(numbers.last_contiguous_stored_block)
+        // We don't verify QCs for the last stored block since it is not used
+        // in the following logic. The first stored block is not verified as well since it doesn't
+        // extend the set of blocks a peer should have. To reflect this, the method consumes `SyncState`
+        // and returns the validated block numbers.
+        Ok(numbers.first_stored_block..=numbers.last_contiguous_stored_block)
     }
 
     async fn get_and_save_block(
@@ -347,7 +372,7 @@ impl PeerStates {
     ) -> Option<(node::PublicKey, sync::OwnedSemaphorePermit)> {
         let mut peers_with_no_permits = vec![];
         let eligible_peers_info = peers.iter().filter(|(peer_key, state)| {
-            if state.last_contiguous_stored_block < block_number {
+            if !state.has_block(block_number) {
                 return false;
             }
             let available_permits = state.get_block_semaphore.available_permits();

@@ -106,7 +106,7 @@ impl RocksdbStorage {
 
         let this = Self {
             inner: RwLock::new(db),
-            cached_last_contiguous_block_number: AtomicU64::new(0),
+            cached_last_contiguous_block_number: AtomicU64::new(genesis_block.header.number.0),
             block_writes_sender: watch::channel(genesis_block.header.number).0,
         };
         if let Some(stored_genesis_block) = this.block(ctx, genesis_block.header.number).await? {
