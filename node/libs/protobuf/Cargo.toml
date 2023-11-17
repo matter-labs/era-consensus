@@ -8,22 +8,20 @@ license.workspace = true
 
 links = "zksync_protobuf_proto"
 
-[[bin]]
-name = "conformance_test"
-
 [dependencies]
 zksync_concurrency.workspace = true
-zksync_protobuf_build.workspace = true
 
 anyhow.workspace = true
 bit-vec.workspace = true
-serde.workspace = true
-quick-protobuf.workspace = true
 once_cell.workspace = true
 prost.workspace = true
 prost-reflect.workspace = true
+quick-protobuf.workspace = true
 rand.workspace = true
+serde.workspace = true
 serde_json.workspace = true
+
+[dev-dependencies]
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
