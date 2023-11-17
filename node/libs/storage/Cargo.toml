@@ -6,9 +6,6 @@ authors.workspace = true
 homepage.workspace = true
 license.workspace = true
 
-[lints]
-workspace = true
-
 [dependencies]
 zksync_concurrency.workspace = true
 zksync_consensus_roles.workspace = true
@@ -35,3 +32,6 @@ zksync_protobuf_build.workspace = true
 default = []
 # Enables RocksDB-based storage.
 rocksdb = ["dep:rocksdb"]
+
+[lints]
+workspace = true

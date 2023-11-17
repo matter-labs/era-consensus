@@ -6,9 +6,6 @@ authors.workspace = true
 homepage.workspace = true
 license.workspace = true
 
-[lints]
-workspace = true
-
 [dependencies]
 zksync_concurrency.workspace = true
 zksync_consensus_bft.workspace = true
@@ -32,3 +29,6 @@ tokio.workspace = true
 
 [build-dependencies]
 zksync_protobuf_build.workspace = true
+
+[lints]
+workspace = true

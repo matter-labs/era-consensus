@@ -7,9 +7,6 @@ homepage.workspace = true
 license.workspace = true
 links = "zksync_consensus_roles_proto"
 
-[lints]
-workspace = true
-
 [dependencies]
 zksync_concurrency.workspace = true
 zksync_consensus_crypto.workspace = true
@@ -26,3 +23,6 @@ tracing.workspace = true
 
 [build-dependencies]
 zksync_protobuf_build.workspace = true
+
+[lints]
+workspace = true

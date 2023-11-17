@@ -6,9 +6,6 @@ authors.workspace = true
 homepage.workspace = true
 license.workspace = true
 
-[lints]
-workspace = true
-
 [dependencies]
 anyhow.workspace = true
 blst.workspace = true
@@ -23,7 +20,10 @@ tracing.workspace = true
 ff_ce.workspace = true
 
 [dev-dependencies]
-criterion = "0.5.1"
+criterion.workspace = true
+
+[lints]
+workspace = true
 
 [[bench]]
 name = "bench"

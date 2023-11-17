@@ -7,12 +7,6 @@ homepage.workspace = true
 license.workspace = true
 links = "zksync_protobuf_proto"
 
-[lints]
-workspace = true
-
-[[bin]]
-name = "conformance_test"
-
 [dependencies]
 zksync_concurrency.workspace = true
 zksync_protobuf_build.workspace = true
@@ -32,3 +26,9 @@ tracing-subscriber.workspace = true
 
 [build-dependencies]
 zksync_protobuf_build.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "conformance_test"

@@ -8,9 +8,7 @@ targets = [
 unmaintained = "deny"
 # The lint level for crates that have been yanked from their source registry
 yanked = "deny"
-# The lint level for crates with security notices. Note that as of
-# 2019-12-17 there are no security notice advisories in
-# https://github.com/rustsec/advisory-db
+# The lint level for crates with security notices.
 notice = "deny"
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score
 # lower than the range specified will be ignored. Note that ignored advisories
@@ -54,7 +52,7 @@ skip = [
     { name = "regex-automata", version = "0.1.10" },
     { name = "regex-syntax", version = "0.6.29" },
 
-    # Old versions required by hyper.
+    # Old versions required by vise-exporter.
     { name = "socket2", version = "0.4.10" },
 
     # Old versions required by pairing_ce & ff_ce.

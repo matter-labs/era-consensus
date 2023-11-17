@@ -6,6 +6,19 @@ authors.workspace = true
 homepage.workspace = true
 license.workspace = true
 
+[dependencies]
+anyhow.workspace = true
+once_cell.workspace = true
+pin-project.workspace = true
+rand.workspace = true
+sha3.workspace = true
+thiserror.workspace = true
+time.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+vise.workspace = true
+
 [lints.rust]
 noop_method_call = "warn"
 missing_docs = "warn"
@@ -45,16 +58,3 @@ wildcard_dependencies = "warn"
 # Produces too many false positives.
 redundant_locals = "allow"
 needless_pass_by_ref_mut = "allow"
-
-[dependencies]
-anyhow.workspace = true
-once_cell.workspace = true
-pin-project.workspace = true
-rand.workspace = true
-sha3.workspace = true
-thiserror.workspace = true
-time.workspace = true
-tokio.workspace = true
-tracing.workspace = true
-tracing-subscriber.workspace = true
-vise.workspace = true

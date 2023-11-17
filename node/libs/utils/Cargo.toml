@@ -6,11 +6,10 @@ authors.workspace = true
 homepage.workspace = true
 license.workspace = true
 
-[lints]
-workspace = true
-
 [dependencies]
 zksync_concurrency.workspace = true
 
 thiserror.workspace = true
 
+[lints]
+workspace = true

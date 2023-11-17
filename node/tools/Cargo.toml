@@ -5,11 +5,7 @@ edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 license.workspace = true
-publish = false
 default-run = "executor"
-
-[lints]
-workspace = true
 
 [dependencies]
 zksync_concurrency.workspace = true
@@ -29,6 +25,9 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 vise-exporter.workspace = true
+
+[lints]
+workspace = true
 
 [[bin]]
 name = "executor"

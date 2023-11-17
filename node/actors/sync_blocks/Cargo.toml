@@ -6,9 +6,6 @@ authors.workspace = true
 homepage.workspace = true
 license.workspace = true
 
-[lints]
-workspace = true
-
 [dependencies]
 zksync_concurrency.workspace = true
 zksync_consensus_network.workspace = true
@@ -26,3 +23,6 @@ async-trait.workspace = true
 rand.workspace = true
 test-casing.workspace = true
 tokio.workspace = true
+
+[lints]
+workspace = true
