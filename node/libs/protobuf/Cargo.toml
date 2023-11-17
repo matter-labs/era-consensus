@@ -30,6 +30,3 @@ zksync_protobuf_build.workspace = true
 
 [lints]
 workspace = true
-
-[[bin]]
-name = "conformance_test"
