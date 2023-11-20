@@ -1,9 +1,12 @@
 CODEOWNERS @brunoffranca
 
-/node/actors/consensus/ @brunoffranca
-/node/actors/executor/ @brunoffranca @pompon0
+/node/actors/consensus/ @brunoffranca @moshababo
+/node/actors/executor/ @brunoffranca @pompon0 @slowli
 /node/actors/network/ @pompon0
 /node/actors/sync_blocks/ @slowli
 
 /node/libs/concurrency/ @pompon0
 /node/libs/crypto/ @brunoffranca
+/node/libs/protobuf/ @pompon0
+/node/libs/protobuf_build/ @pompon0
+/node/libs/storage/ @slowli
