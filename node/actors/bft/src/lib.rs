@@ -21,7 +21,7 @@ use inner::ConsensusInner;
 use tracing::{info, instrument};
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::FallbackReplicaStateStore;
+use zksync_consensus_storage::ReplicaStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod inner;
@@ -53,7 +53,7 @@ impl Consensus {
         pipe: ActorPipe<InputMessage, OutputMessage>,
         secret_key: validator::SecretKey,
         validator_set: validator::ValidatorSet,
-        storage: FallbackReplicaStateStore,
+        storage: ReplicaStore,
     ) -> anyhow::Result<Self> {
         Ok(Consensus {
             inner: ConsensusInner {
@@ -69,7 +69,7 @@ impl Consensus {
     /// Starts the Consensus actor. It will start running, processing incoming messages and
     /// sending output messages. This is a blocking method.
     #[instrument(level = "trace", ret)]
-    pub fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         info!(
             "Starting consensus actor {:?}",
             self.inner.secret_key.public()
@@ -78,6 +78,7 @@ impl Consensus {
         // We need to start the replica before processing inputs.
         self.replica
             .start(ctx, &self.inner)
+            .await
             .context("replica.start()")?;
 
         // This is the infinite loop where the consensus actually runs. The validator waits for either
@@ -87,7 +88,7 @@ impl Consensus {
                 .inner
                 .pipe
                 .recv(&ctx.with_deadline(self.replica.timeout_deadline))
-                .block()
+                .await
                 .ok();
 
             // We check if the context is active before processing the input. If the context is not active,
@@ -114,7 +115,8 @@ impl Consensus {
                         validator::ConsensusMsg::LeaderPrepare(_)
                         | validator::ConsensusMsg::LeaderCommit(_) => {
                             self.replica
-                                .process_input(ctx, &self.inner, Some(req.msg))?;
+                                .process_input(ctx, &self.inner, Some(req.msg))
+                                .await?;
                         }
                     }
                     // Notify network actor that the message has been processed.
@@ -122,7 +124,7 @@ impl Consensus {
                     let _ = req.ack.send(());
                 }
                 None => {
-                    self.replica.process_input(ctx, &self.inner, None)?;
+                    self.replica.process_input(ctx, &self.inner, None).await?;
                 }
             }
         }

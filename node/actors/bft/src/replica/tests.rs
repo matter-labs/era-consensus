@@ -21,10 +21,11 @@ async fn start_new_view_not_leader() {
     consensus.replica.high_qc.message.view = ViewNumber(0);
 
     scope::run!(ctx, |ctx, s| {
-        s.spawn_blocking(|| {
+        s.spawn(async {
             consensus
                 .replica
                 .start_new_view(ctx, &consensus.inner)
+                .await
                 .unwrap();
             Ok(())
         })

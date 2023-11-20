@@ -1,6 +1,4 @@
 //! Module to manage the communication between actors. It simply converts and forwards messages from and to each different actor.
-
-use crate::metrics;
 use tracing::instrument;
 use zksync_concurrency::{
     ctx::{self, channel},
@@ -12,7 +10,6 @@ use zksync_consensus_bft::io::{
 use zksync_consensus_network::io::{
     InputMessage as NetworkInputMessage, OutputMessage as NetworkOutputMessage,
 };
-use zksync_consensus_roles::validator::FinalBlock;
 use zksync_consensus_sync_blocks::io::{
     InputMessage as SyncBlocksInputMessage, OutputMessage as SyncBlocksOutputMessage,
 };
@@ -28,7 +25,6 @@ pub(super) struct Dispatcher {
     sync_blocks_output: channel::UnboundedReceiver<SyncBlocksOutputMessage>,
     network_input: channel::UnboundedSender<NetworkInputMessage>,
     network_output: channel::UnboundedReceiver<NetworkOutputMessage>,
-    blocks_sender: channel::UnboundedSender<FinalBlock>,
 }
 
 impl Dispatcher {
@@ -37,7 +33,6 @@ impl Dispatcher {
         consensus_pipe: DispatcherPipe<ConsensusInputMessage, ConsensusOutputMessage>,
         sync_blocks_pipe: DispatcherPipe<SyncBlocksInputMessage, SyncBlocksOutputMessage>,
         network_pipe: DispatcherPipe<NetworkInputMessage, NetworkOutputMessage>,
-        blocks_sender: channel::UnboundedSender<FinalBlock>,
     ) -> Self {
         Dispatcher {
             consensus_input: consensus_pipe.send,
@@ -46,7 +41,6 @@ impl Dispatcher {
             sync_blocks_output: sync_blocks_pipe.recv,
             network_input: network_pipe.send,
             network_output: network_pipe.recv,
-            blocks_sender,
         }
     }
 
@@ -60,15 +54,6 @@ impl Dispatcher {
                     match msg {
                         ConsensusOutputMessage::Network(message) => {
                             self.network_input.send(message.into());
-                        }
-                        ConsensusOutputMessage::FinalizedBlock(block) => {
-                            let number_metric = &metrics::METRICS.finalized_block_number;
-                            let current_number = number_metric.get();
-                            number_metric.set(current_number.max(block.header.number.0));
-                            // This works because this is the only place where `finalized_block_number`
-                            // is modified, and there should be a single running `Dispatcher`.
-
-                            self.blocks_sender.send(block);
                         }
                     }
                 }

@@ -9,7 +9,7 @@ use zksync_consensus_roles::validator;
 impl StateMachine {
     /// This blocking method is used whenever we start a new view.
     #[instrument(level = "trace", err)]
-    pub(crate) fn start_new_view(
+    pub(crate) async fn start_new_view(
         &mut self,
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
@@ -27,7 +27,7 @@ impl StateMachine {
             .retain(|k, _| k > &self.high_qc.message.proposal.number);
 
         // Backup our state.
-        self.backup_state(ctx).context("backup_state")?;
+        self.backup_state(ctx).await.context("backup_state")?;
 
         // Send the replica message to the next leader.
         let output_message = ConsensusInputMessage {

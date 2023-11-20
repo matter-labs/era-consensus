@@ -6,26 +6,8 @@ use rand::Rng;
 use std::iter;
 use test_casing::test_casing;
 use zksync_concurrency::{sync, testonly::abort_on_panic, time};
-use zksync_consensus_roles::validator::{BlockNumber, Payload};
-use zksync_consensus_storage::{BlockStore, InMemoryStorage, StorageError};
-
-async fn store_final_blocks(
-    ctx: &ctx::Ctx,
-    mut blocks_receiver: channel::UnboundedReceiver<FinalBlock>,
-    storage: Arc<InMemoryStorage>,
-) -> anyhow::Result<()> {
-    while let Ok(block) = blocks_receiver.recv(ctx).await {
-        tracing::trace!(number = %block.header.number, "Finalized new block");
-        if let Err(err) = storage.put_block(ctx, &block).await {
-            if matches!(err, StorageError::Canceled(_)) {
-                break;
-            } else {
-                return Err(err.into());
-            }
-        }
-    }
-    Ok(())
-}
+use zksync_consensus_roles::validator::{BlockNumber, FinalBlock, Payload};
+use zksync_consensus_storage::{BlockStore, InMemoryStorage};
 
 impl FullValidatorConfig {
     fn gen_blocks(&self, rng: &mut impl Rng, count: usize) -> Vec<FinalBlock> {
@@ -49,24 +31,12 @@ impl FullValidatorConfig {
         blocks.skip(1).take(count).collect()
     }
 
-    fn into_executor(
-        self,
-        storage: Arc<InMemoryStorage>,
-    ) -> (
-        Executor<InMemoryStorage>,
-        channel::UnboundedReceiver<FinalBlock>,
-    ) {
-        let (blocks_sender, blocks_receiver) = channel::unbounded();
+    fn into_executor(self, storage: Arc<InMemoryStorage>) -> Executor<InMemoryStorage> {
         let mut executor = Executor::new(self.node_config, self.node_key, storage.clone()).unwrap();
         executor
-            .set_validator(
-                self.consensus_config,
-                self.validator_key,
-                storage,
-                blocks_sender,
-            )
+            .set_validator(self.consensus_config, self.validator_key, storage)
             .unwrap();
-        (executor, blocks_receiver)
+        executor
     }
 }
 
@@ -80,19 +50,16 @@ async fn executing_single_validator() {
     let genesis_block = &validator.node_config.genesis_block;
     let storage = InMemoryStorage::new(genesis_block.clone());
     let storage = Arc::new(storage);
-    let (executor, mut blocks_receiver) = validator.into_executor(storage);
+    let executor = validator.into_executor(storage.clone());
 
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(executor.run(ctx));
-
-        let mut expected_block_number = BlockNumber(1);
-        while expected_block_number < BlockNumber(5) {
-            let final_block = blocks_receiver.recv(ctx).await?;
-            tracing::trace!(number = %final_block.header.number, "Finalized new block");
-            assert_eq!(final_block.header.number, expected_block_number);
-            expected_block_number = expected_block_number.next();
-        }
-        anyhow::Ok(())
+        let want = BlockNumber(5);
+        sync::wait_for(ctx, &mut storage.subscribe_to_block_writes(), |n| {
+            n >= &want
+        })
+        .await?;
+        Ok(())
     })
     .await
     .unwrap();
@@ -114,7 +81,7 @@ async fn executing_validator_and_full_node() {
     let full_node_storage = Arc::new(full_node_storage);
     let mut full_node_subscriber = full_node_storage.subscribe_to_block_writes();
 
-    let (validator, blocks_receiver) = validator.into_executor(validator_storage.clone());
+    let validator = validator.into_executor(validator_storage.clone());
     let full_node = Executor::new(
         full_node.node_config,
         full_node.node_key,
@@ -125,8 +92,6 @@ async fn executing_validator_and_full_node() {
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(validator.run(ctx));
         s.spawn_bg(full_node.run(ctx));
-        s.spawn_bg(store_final_blocks(ctx, blocks_receiver, validator_storage));
-
         for _ in 0..5 {
             let number = *sync::changed(ctx, &mut full_node_subscriber).await?;
             tracing::trace!(%number, "Full node received block");

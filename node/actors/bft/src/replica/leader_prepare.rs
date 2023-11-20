@@ -108,7 +108,7 @@ pub(crate) enum Error {
 impl StateMachine {
     /// Processes a leader prepare message.
     #[instrument(level = "trace", ret)]
-    pub(crate) fn process_leader_prepare(
+    pub(crate) async fn process_leader_prepare(
         &mut self,
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
@@ -189,7 +189,7 @@ impl StateMachine {
 
         // Try to create a finalized block with this CommitQC and our block proposal cache.
         // This gives us another chance to finalize a block that we may have missed before.
-        self.build_block(consensus, &highest_qc);
+        self.save_block(ctx, consensus, &highest_qc).await?;
 
         // ----------- Checking the block proposal --------------
 
@@ -276,7 +276,7 @@ impl StateMachine {
         }
 
         // Backup our state.
-        self.backup_state(ctx).context("backup_state()")?;
+        self.backup_state(ctx).await.context("backup_state()")?;
 
         // Send the replica message to the leader.
         let output_message = ConsensusInputMessage {
