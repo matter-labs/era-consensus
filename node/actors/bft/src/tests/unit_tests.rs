@@ -72,9 +72,6 @@ use zksync_consensus_roles::validator::{
 async fn replica_prepare_sanity() {
     let mut util = Util::make().await;
 
-    util.set_leader_view(ViewNumber(1));
-    util.set_replica_view(ViewNumber(1));
-
     let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
     assert_eq!(res, Ok(()));
@@ -83,9 +80,6 @@ async fn replica_prepare_sanity() {
 #[tokio::test]
 async fn replica_prepare_sanity_yield_leader_prepare() {
     let mut util = Util::make().await;
-
-    util.set_leader_view(ViewNumber(1));
-    util.set_replica_view(ViewNumber(1));
 
     let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
@@ -117,8 +111,6 @@ async fn replica_prepare_old_view() {
 async fn replica_prepare_during_commit() {
     let mut util = Util::make().await;
 
-    util.set_replica_view(ViewNumber(1));
-    util.set_leader_view(ViewNumber(1));
     util.set_leader_phase(Phase::Commit);
 
     let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
@@ -185,9 +177,6 @@ async fn replica_prepare_num_received_below_threshold() {
 #[tokio::test]
 async fn leader_prepare_sanity() {
     let mut util = Util::make().await;
-
-    util.set_replica_view(ViewNumber(1));
-    util.set_leader_view(ViewNumber(1));
 
     let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
