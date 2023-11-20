@@ -8,4 +8,6 @@ mod state_machine;
 #[cfg(test)]
 mod tests;
 
+pub(crate) use replica_commit::Error as ReplicaCommitError;
+pub(crate) use replica_prepare::Error as ReplicaPrepareError;
 pub(crate) use state_machine::StateMachine;

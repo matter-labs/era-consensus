@@ -56,6 +56,12 @@ pub(crate) enum Error {
     InvalidHighQC(#[source] anyhow::Error),
 }
 
+impl PartialEq for Error {
+    fn eq(&self, other: &Self) -> bool {
+        self.to_string() == other.to_string()
+    }
+}
+
 impl StateMachine {
     #[instrument(level = "trace", ret)]
     pub(crate) fn process_replica_prepare(
