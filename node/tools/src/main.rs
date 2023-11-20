@@ -11,10 +11,7 @@ use std::{
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
-use zksync_concurrency::{
-    ctx::{self},
-    scope, time,
-};
+use zksync_concurrency::{ctx, scope, time};
 use zksync_consensus_executor::Executor;
 use zksync_consensus_storage::{BlockStore, RocksdbStorage};
 use zksync_consensus_tools::{ConfigPaths, Configs};
