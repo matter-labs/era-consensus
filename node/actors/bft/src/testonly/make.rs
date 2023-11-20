@@ -7,7 +7,7 @@ use crate::{
 use std::sync::Arc;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{FallbackReplicaStateStore, InMemoryStorage};
+use zksync_consensus_storage::{InMemoryStorage, ReplicaStore};
 use zksync_consensus_utils::pipe::{self, DispatcherPipe};
 
 /// This creates a mock Consensus struct for unit tests.
@@ -27,7 +27,7 @@ pub async fn make_consensus(
         consensus_pipe,
         key.clone(),
         validator_set.clone(),
-        FallbackReplicaStateStore::from_store(Arc::new(storage)),
+        ReplicaStore::from_store(Arc::new(storage)),
     );
     let consensus = consensus
         .await

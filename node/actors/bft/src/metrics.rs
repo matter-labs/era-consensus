@@ -68,6 +68,8 @@ pub(crate) struct ConsensusMetrics {
     /// Latency of processing messages by the leader.
     #[metrics(buckets = Buckets::LATENCIES, unit = Unit::Seconds)]
     pub(crate) leader_processing_latency: Family<ProcessingLatencyLabels, Histogram<Duration>>,
+    /// Number of the last finalized block observed by the node.
+    pub(crate) finalized_block_number: Gauge<u64>,
 }
 
 /// Global instance of [`ConsensusMetrics`].

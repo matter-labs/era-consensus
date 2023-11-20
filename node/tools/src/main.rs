@@ -11,10 +11,7 @@ use std::{
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
-use zksync_concurrency::{
-    ctx::{self, channel},
-    scope, time,
-};
+use zksync_concurrency::{ctx, scope, time};
 use zksync_consensus_executor::Executor;
 use zksync_consensus_storage::{BlockStore, RocksdbStorage};
 use zksync_consensus_tools::{ConfigPaths, Configs};
@@ -112,14 +109,8 @@ async fn main() -> anyhow::Result<()> {
     let mut executor = Executor::new(configs.executor, configs.node_key, storage.clone())
         .context("Executor::new()")?;
     if let Some((consensus_config, validator_key)) = configs.consensus {
-        let blocks_sender = channel::unbounded().0; // Just drop finalized blocks
         executor
-            .set_validator(
-                consensus_config,
-                validator_key,
-                storage.clone(),
-                blocks_sender,
-            )
+            .set_validator(consensus_config, validator_key, storage.clone())
             .context("Executor::set_validator()")?;
     }
 
