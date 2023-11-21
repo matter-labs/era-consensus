@@ -353,11 +353,11 @@ mod util {
             }
         }
 
-        pub fn own_key(&mut self) -> &SecretKey {
+        pub fn own_key(&self) -> &SecretKey {
             &self.consensus.inner.secret_key
         }
 
-        pub fn key_at(&mut self, index: usize) -> &SecretKey {
+        pub fn key_at(&self, index: usize) -> &SecretKey {
             &self.keys[index]
         }
 
