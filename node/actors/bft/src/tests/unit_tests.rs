@@ -70,18 +70,18 @@ use zksync_consensus_roles::validator::{
 ///
 #[tokio::test]
 async fn replica_prepare_sanity() {
-    let mut util = Util::make().await;
+    let mut util = Util::new().await;
 
-    let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
     assert_matches!(res, Ok(()));
 }
 
 #[tokio::test]
 async fn replica_prepare_sanity_yield_leader_prepare() {
-    let mut util = Util::make().await;
+    let mut util = Util::new().await;
 
-    let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
     assert_matches!(res, Ok(()));
     let _ = util.recv_leader_prepare().await.unwrap();
@@ -89,13 +89,13 @@ async fn replica_prepare_sanity_yield_leader_prepare() {
 
 #[tokio::test]
 async fn replica_prepare_old_view() {
-    let mut util = Util::make().await;
+    let mut util = Util::new().await;
 
     util.set_replica_view(ViewNumber(1));
     util.set_leader_view(ViewNumber(2));
     util.set_leader_phase(Phase::Prepare);
 
-    let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
 
     assert_matches!(
@@ -109,11 +109,11 @@ async fn replica_prepare_old_view() {
 
 #[tokio::test]
 async fn replica_prepare_during_commit() {
-    let mut util = Util::make().await;
+    let mut util = Util::new().await;
 
     util.set_leader_phase(Phase::Commit);
 
-    let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
 
     assert_matches!(
@@ -127,14 +127,14 @@ async fn replica_prepare_during_commit() {
 
 #[tokio::test]
 async fn replica_prepare_already_exists() {
-    let mut util = Util::make_with(2).await;
+    let mut util = Util::new_with(2).await;
 
     let view = ViewNumber(2);
     util.set_replica_view(view);
     util.set_leader_view(view);
 
     assert_eq!(util.view_leader(view), util.own_key().public());
-    let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
 
     let res = util.dispatch_replica_prepare(replica_prepare.clone());
     assert_matches!(
@@ -156,14 +156,14 @@ async fn replica_prepare_already_exists() {
 
 #[tokio::test]
 async fn replica_prepare_num_received_below_threshold() {
-    let mut util = Util::make_with(2).await;
+    let mut util = Util::new_with(2).await;
 
     let view = ViewNumber(2);
     util.set_replica_view(view);
     util.set_leader_view(view);
     assert_eq!(util.view_leader(view), util.own_key().public());
 
-    let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
     assert_matches!(
         res,
@@ -176,9 +176,9 @@ async fn replica_prepare_num_received_below_threshold() {
 
 #[tokio::test]
 async fn leader_prepare_sanity() {
-    let mut util = Util::make().await;
+    let mut util = Util::new().await;
 
-    let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
     assert_matches!(res, Ok(()));
     let leader_prepare = util.recv_signed().await.unwrap();
@@ -189,7 +189,7 @@ async fn leader_prepare_sanity() {
 
 #[tokio::test]
 async fn leader_prepare_invalid_leader() {
-    let mut util = Util::make_with(2).await;
+    let mut util = Util::new_with(2).await;
 
     let view = ViewNumber(2);
     util.set_replica_view(view);
@@ -197,7 +197,7 @@ async fn leader_prepare_invalid_leader() {
 
     assert_eq!(util.view_leader(view), util.key_at(0).public());
 
-    let replica_prepare_one = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare_one = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare_one.clone());
     assert_matches!(
         res,
@@ -233,9 +233,9 @@ async fn leader_prepare_invalid_leader() {
 
 #[tokio::test]
 async fn leader_prepare_invalid_sig() {
-    let mut util = Util::make().await;
+    let mut util = Util::new().await;
 
-    let mut leader_prepare = util.make_leader_prepare(None::<fn(&mut LeaderPrepare)>);
+    let mut leader_prepare = util.new_leader_prepare(None::<fn(&mut LeaderPrepare)>);
     leader_prepare.sig = util.rng().gen();
     let res = util.dispatch_leader_prepare(leader_prepare).await;
 
@@ -249,9 +249,9 @@ async fn leader_prepare_invalid_sig() {
 
 #[tokio::test]
 async fn leader_prepare_invalid_prepare_qc_different_views() {
-    let mut util = Util::make().await;
+    let mut util = Util::new().await;
 
-    let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare.clone());
     assert_matches!(res, Ok(()));
 
@@ -328,11 +328,11 @@ mod util {
     }
 
     impl Util {
-        pub async fn make() -> Util {
-            Util::make_with(1).await
+        pub async fn new() -> Util {
+            Util::new_with(1).await
         }
 
-        pub async fn make_with(num_validators: i32) -> Util {
+        pub async fn new_with(num_validators: i32) -> Util {
             let ctx = ctx::test_root(&ctx::RealClock);
             let mut rng = StdRng::seed_from_u64(6516565651);
             let keys: Vec<_> = (0..num_validators).map(|_| rng.gen()).collect();
@@ -381,7 +381,7 @@ mod util {
             self.consensus.replica.phase = phase
         }
 
-        pub fn make_replica_prepare(
+        pub fn new_replica_prepare(
             &mut self,
             mutate_callback: Option<impl FnOnce(&mut ReplicaPrepare)>,
         ) -> Signed<ConsensusMsg> {
@@ -401,7 +401,7 @@ mod util {
                 .sign_msg(ConsensusMsg::ReplicaPrepare(msg))
         }
 
-        pub(crate) fn make_leader_prepare(
+        pub(crate) fn new_leader_prepare(
             &mut self,
             mutate_callback: Option<impl FnOnce(&mut LeaderPrepare)>,
         ) -> Signed<ConsensusMsg> {
