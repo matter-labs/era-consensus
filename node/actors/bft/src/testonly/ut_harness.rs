@@ -8,9 +8,8 @@ use rand::{rngs::StdRng, Rng};
 use zksync_concurrency::{ctx, ctx::Ctx, scope};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::{
-    validator,
     validator::{
-        BlockHeader, ConsensusMsg, LeaderPrepare, Payload, Phase, ReplicaPrepare, SecretKey,
+        self, BlockHeader, ConsensusMsg, LeaderPrepare, Payload, Phase, ReplicaPrepare, SecretKey,
         Signed, ViewNumber,
     },
 };
