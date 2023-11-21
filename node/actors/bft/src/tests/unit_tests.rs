@@ -325,8 +325,8 @@ mod util {
 
     pub(crate) struct Util {
         ctx: Ctx,
-        consensus: Consensus,
         rng: StdRng,
+        consensus: Consensus,
         pipe: DispatcherPipe<InputMessage, OutputMessage>,
         keys: Vec<SecretKey>,
     }
@@ -338,7 +338,7 @@ mod util {
 
         pub async fn new_with(num_validators: i32) -> Util {
             let ctx = ctx::test_root(&ctx::RealClock);
-            let mut rng = StdRng::seed_from_u64(6516565651);
+            let mut rng = ctx.rng();
             let keys: Vec<_> = (0..num_validators).map(|_| rng.gen()).collect();
             let (genesis, val_set) =
                 crate::testonly::make_genesis(&keys, validator::Payload(vec![]));
@@ -350,8 +350,8 @@ mod util {
 
             Util {
                 ctx,
-                consensus,
                 rng,
+                consensus,
                 pipe,
                 keys,
             }
@@ -408,7 +408,7 @@ mod util {
             &mut self,
             mutate_fn: impl FnOnce(&mut LeaderPrepare),
         ) -> Signed<ConsensusMsg> {
-            let payload: Payload = self.rng.gen();
+            let payload: Payload = self.rng().gen();
             let mut msg = LeaderPrepare {
                 protocol_version: validator::CURRENT_VERSION,
                 view: self.consensus.leader.view,
@@ -418,7 +418,7 @@ mod util {
                     payload: payload.hash(),
                 },
                 proposal_payload: Some(payload),
-                justification: self.rng.gen(),
+                justification: self.rng().gen(),
             };
 
             mutate_fn(&mut msg);
