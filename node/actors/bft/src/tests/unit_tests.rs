@@ -1,11 +1,13 @@
-use crate::{
-    leader::ReplicaPrepareError, replica::LeaderPrepareError, tests::unit_tests::util::Util,
-};
 use assert_matches::assert_matches;
 use rand::Rng;
+
 use zksync_consensus_crypto::bn254::Error::SignatureVerificationFailure;
 use zksync_consensus_roles::validator::{
     ConsensusMsg, LeaderPrepare, Phase, ReplicaPrepare, ViewNumber,
+};
+
+use crate::{
+    leader::ReplicaPrepareError, replica::LeaderPrepareError, tests::unit_tests::util::Util,
 };
 
 /// ## Tests coverage
@@ -72,7 +74,7 @@ use zksync_consensus_roles::validator::{
 async fn replica_prepare_sanity() {
     let mut util = Util::new().await;
 
-    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(|_| {});
     let res = util.dispatch_replica_prepare(replica_prepare);
     assert_matches!(res, Ok(()));
 }
@@ -81,7 +83,7 @@ async fn replica_prepare_sanity() {
 async fn replica_prepare_sanity_yield_leader_prepare() {
     let mut util = Util::new().await;
 
-    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(|_|{});
     let res = util.dispatch_replica_prepare(replica_prepare);
     assert_matches!(res, Ok(()));
     let _ = util.recv_leader_prepare().await.unwrap();
@@ -95,7 +97,7 @@ async fn replica_prepare_old_view() {
     util.set_leader_view(ViewNumber(2));
     util.set_leader_phase(Phase::Prepare);
 
-    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(|_|{});
     let res = util.dispatch_replica_prepare(replica_prepare);
 
     assert_matches!(
@@ -113,7 +115,7 @@ async fn replica_prepare_during_commit() {
 
     util.set_leader_phase(Phase::Commit);
 
-    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(|_|{});
     let res = util.dispatch_replica_prepare(replica_prepare);
 
     assert_matches!(
@@ -134,7 +136,7 @@ async fn replica_prepare_already_exists() {
     util.set_leader_view(view);
 
     assert_eq!(util.view_leader(view), util.own_key().public());
-    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(|_|{});
 
     let res = util.dispatch_replica_prepare(replica_prepare.clone());
     assert_matches!(
@@ -163,7 +165,7 @@ async fn replica_prepare_num_received_below_threshold() {
     util.set_leader_view(view);
     assert_eq!(util.view_leader(view), util.own_key().public());
 
-    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(|_|{});
     let res = util.dispatch_replica_prepare(replica_prepare);
     assert_matches!(
         res,
@@ -178,7 +180,7 @@ async fn replica_prepare_num_received_below_threshold() {
 async fn leader_prepare_sanity() {
     let mut util = Util::new().await;
 
-    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(|_|{});
     let res = util.dispatch_replica_prepare(replica_prepare);
     assert_matches!(res, Ok(()));
     let leader_prepare = util.recv_signed().await.unwrap();
@@ -197,7 +199,7 @@ async fn leader_prepare_invalid_leader() {
 
     assert_eq!(util.view_leader(view), util.key_at(0).public());
 
-    let replica_prepare_one = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare_one = util.new_replica_prepare(|_|{});
     let res = util.dispatch_replica_prepare(replica_prepare_one.clone());
     assert_matches!(
         res,
@@ -235,7 +237,7 @@ async fn leader_prepare_invalid_leader() {
 async fn leader_prepare_invalid_sig() {
     let mut util = Util::new().await;
 
-    let mut leader_prepare = util.new_leader_prepare(None::<fn(&mut LeaderPrepare)>);
+    let mut leader_prepare = util.new_leader_prepare(|_|{});
     leader_prepare.sig = util.rng().gen();
     let res = util.dispatch_leader_prepare(leader_prepare).await;
 
@@ -251,7 +253,7 @@ async fn leader_prepare_invalid_sig() {
 async fn leader_prepare_invalid_prepare_qc_different_views() {
     let mut util = Util::new().await;
 
-    let replica_prepare = util.new_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
+    let replica_prepare = util.new_replica_prepare(|_|{});
     let res = util.dispatch_replica_prepare(replica_prepare.clone());
     assert_matches!(res, Ok(()));
 
@@ -301,13 +303,8 @@ async fn leader_prepare_invalid_prepare_qc_different_views() {
 // }
 
 mod util {
-    use crate::{
-        io::{InputMessage, OutputMessage},
-        leader::ReplicaPrepareError,
-        replica::LeaderPrepareError,
-        Consensus,
-    };
-    use rand::{rngs::StdRng, Rng, SeedableRng};
+    use rand::{Rng, rngs::StdRng, SeedableRng};
+
     use zksync_concurrency::{ctx, ctx::Ctx, scope};
     use zksync_consensus_network::io::ConsensusInputMessage;
     use zksync_consensus_roles::{
@@ -318,6 +315,13 @@ mod util {
         },
     };
     use zksync_consensus_utils::pipe::DispatcherPipe;
+
+    use crate::{
+        Consensus,
+        io::{InputMessage, OutputMessage},
+        leader::ReplicaPrepareError,
+        replica::LeaderPrepareError,
+    };
 
     pub(crate) struct Util {
         ctx: Ctx,
@@ -383,7 +387,7 @@ mod util {
 
         pub fn new_replica_prepare(
             &mut self,
-            mutate_callback: Option<impl FnOnce(&mut ReplicaPrepare)>,
+            mutate_fn: impl FnOnce(&mut ReplicaPrepare),
         ) -> Signed<ConsensusMsg> {
             let mut msg = ReplicaPrepare {
                 protocol_version: validator::CURRENT_VERSION,
@@ -392,9 +396,8 @@ mod util {
                 high_qc: self.consensus.replica.high_qc.clone(),
             };
 
-            if let Some(mutate_callback) = mutate_callback {
-                mutate_callback(&mut msg);
-            }
+            mutate_fn(&mut msg);
+
             self.consensus
                 .inner
                 .secret_key
@@ -403,7 +406,7 @@ mod util {
 
         pub(crate) fn new_leader_prepare(
             &mut self,
-            mutate_callback: Option<impl FnOnce(&mut LeaderPrepare)>,
+            mutate_fn: impl FnOnce(&mut LeaderPrepare),
         ) -> Signed<ConsensusMsg> {
             let payload: Payload = self.rng.gen();
             let mut msg = LeaderPrepare {
@@ -418,9 +421,8 @@ mod util {
                 justification: self.rng.gen(),
             };
 
-            if let Some(mutate_callback) = mutate_callback {
-                mutate_callback(&mut msg);
-            }
+            mutate_fn(&mut msg);
+
             self.consensus
                 .inner
                 .secret_key
@@ -452,15 +454,15 @@ mod util {
                 })
                 .join(ctx)
             })
-            .await
-            .unwrap()
+                .await
+                .unwrap()
         }
 
         pub async fn recv_signed(&mut self) -> Option<Signed<ConsensusMsg>> {
             let msg = self.pipe.recv(&self.ctx).await.unwrap();
             if let OutputMessage::Network(ConsensusInputMessage {
-                message: signed, ..
-            }) = msg
+                                              message: signed, ..
+                                          }) = msg
             {
                 return Some(signed);
             }
@@ -470,13 +472,13 @@ mod util {
         pub async fn recv_leader_prepare(&mut self) -> Option<LeaderPrepare> {
             let msg = self.pipe.recv(&self.ctx).await.unwrap();
             if let OutputMessage::Network(ConsensusInputMessage {
-                message:
-                    Signed {
-                        msg: ConsensusMsg::LeaderPrepare(leader_prepare),
-                        ..
-                    },
-                ..
-            }) = msg
+                                              message:
+                                              Signed {
+                                                  msg: ConsensusMsg::LeaderPrepare(leader_prepare),
+                                                  ..
+                                              },
+                                              ..
+                                          }) = msg
             {
                 return Some(leader_prepare);
             }
