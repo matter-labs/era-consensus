@@ -1,7 +1,7 @@
 use crate::{
     leader::ReplicaPrepareError, replica::LeaderPrepareError, tests::unit_tests::util::Util,
 };
-use anyhow::anyhow;
+use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_consensus_crypto::bn254::Error::SignatureVerificationFailure;
 use zksync_consensus_roles::validator::{
@@ -74,7 +74,7 @@ async fn replica_prepare_sanity() {
 
     let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
-    assert_eq!(res, Ok(()));
+    assert_matches!(res, Ok(()));
 }
 
 #[tokio::test]
@@ -83,7 +83,7 @@ async fn replica_prepare_sanity_yield_leader_prepare() {
 
     let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
-    assert_eq!(res, Ok(()));
+    assert_matches!(res, Ok(()));
     let _ = util.recv_leader_prepare().await.unwrap();
 }
 
@@ -98,7 +98,7 @@ async fn replica_prepare_old_view() {
     let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
 
-    assert_eq!(
+    assert_matches!(
         res,
         Err(ReplicaPrepareError::Old {
             current_view: ViewNumber(2),
@@ -116,7 +116,7 @@ async fn replica_prepare_during_commit() {
     let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
 
-    assert_eq!(
+    assert_matches!(
         res,
         Err(ReplicaPrepareError::Old {
             current_view: ViewNumber(1),
@@ -137,20 +137,20 @@ async fn replica_prepare_already_exists() {
     let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
 
     let res = util.dispatch_replica_prepare(replica_prepare.clone());
-    assert_eq!(
+    assert_matches!(
         res,
         Err(ReplicaPrepareError::NumReceivedBelowThreshold {
             num_messages: 1,
-            threshold: 2,
+            threshold: 2
         })
     );
 
     let res = util.dispatch_replica_prepare(replica_prepare.clone());
-    assert_eq!(
-        res,
-        Err(ReplicaPrepareError::Exists {
-            existing_message: replica_prepare.cast().unwrap().msg
-        })
+    assert_matches!(
+    res,
+    Err(ReplicaPrepareError::Exists {existing_message: msg }) => {
+            assert_eq!(msg, replica_prepare.cast().unwrap().msg);
+        }
     );
 }
 
@@ -165,7 +165,7 @@ async fn replica_prepare_num_received_below_threshold() {
 
     let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
-    assert_eq!(
+    assert_matches!(
         res,
         Err(ReplicaPrepareError::NumReceivedBelowThreshold {
             num_messages: 1,
@@ -180,11 +180,11 @@ async fn leader_prepare_sanity() {
 
     let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare);
-    assert_eq!(res, Ok(()));
+    assert_matches!(res, Ok(()));
     let leader_prepare = util.recv_signed().await.unwrap();
     let res = util.dispatch_leader_prepare(leader_prepare).await;
 
-    assert_eq!(res, Ok(()));
+    assert_matches!(res, Ok(()));
 }
 
 #[tokio::test]
@@ -199,7 +199,7 @@ async fn leader_prepare_invalid_leader() {
 
     let replica_prepare_one = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare_one.clone());
-    assert_eq!(
+    assert_matches!(
         res,
         Err(ReplicaPrepareError::NumReceivedBelowThreshold {
             num_messages: 1,
@@ -209,7 +209,7 @@ async fn leader_prepare_invalid_leader() {
 
     let replica_prepare_two = util.key_at(1).sign_msg(replica_prepare_one.msg);
     let res = util.dispatch_replica_prepare(replica_prepare_two);
-    assert_eq!(res, Ok(()));
+    assert_matches!(res, Ok(()));
 
     let mut leader_prepare = util.recv_leader_prepare().await.unwrap();
     leader_prepare.view = leader_prepare.view.next();
@@ -222,12 +222,12 @@ async fn leader_prepare_invalid_leader() {
         .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare));
     let res = util.dispatch_leader_prepare(leader_prepare).await;
 
-    assert_eq!(
+    assert_matches!(
         res,
-        Err(LeaderPrepareError::InvalidLeader {
-            correct_leader: util.key_at(1).public(),
-            received_leader: util.key_at(0).public(),
-        })
+        Err(LeaderPrepareError::InvalidLeader { correct_leader, received_leader }) => {
+            assert_eq!(correct_leader, util.key_at(1).public());
+            assert_eq!(received_leader, util.key_at(0).public());
+        }
     );
 }
 
@@ -239,7 +239,7 @@ async fn leader_prepare_invalid_sig() {
     leader_prepare.sig = util.rng().gen();
     let res = util.dispatch_leader_prepare(leader_prepare).await;
 
-    assert_eq!(
+    assert_matches!(
         res,
         Err(LeaderPrepareError::InvalidSignature(
             SignatureVerificationFailure
@@ -253,7 +253,7 @@ async fn leader_prepare_invalid_prepare_qc_different_views() {
 
     let replica_prepare = util.make_replica_prepare(None::<fn(&mut ReplicaPrepare)>);
     let res = util.dispatch_replica_prepare(replica_prepare.clone());
-    assert_eq!(res, Ok(()));
+    assert_matches!(res, Ok(()));
 
     let mut leader_prepare = util.recv_leader_prepare().await.unwrap();
     leader_prepare.view = leader_prepare.view.next();
@@ -262,12 +262,12 @@ async fn leader_prepare_invalid_prepare_qc_different_views() {
         .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare));
     let res = util.dispatch_leader_prepare(leader_prepare).await;
 
-    assert_eq!(
-        res,
-        Err(LeaderPrepareError::InvalidPrepareQC(anyhow!(
-            "PrepareQC contains messages for different views!"
-        )))
-    );
+    assert_matches!(
+    res,
+    Err(LeaderPrepareError::InvalidPrepareQC(err)) => {
+        assert_eq!(err.to_string(), "PrepareQC contains messages for different views!")
+        }
+    )
 }
 
 // #[tokio::test]
@@ -276,7 +276,7 @@ async fn leader_prepare_invalid_prepare_qc_different_views() {
 //
 //     let replica_prepare = util::make_replica_prepare(&consensus, None::<fn(&mut ReplicaPrepare)>);
 //     let res = util::dispatch_replica_prepare(&ctx, &mut consensus, replica_prepare);
-//     assert_eq!(res, Ok(()));
+//     assert_matches!(res, Ok(()));
 //     let leader_prepare = util::make_leader_prepare_from_replica_prepare(&consensus, &mut rng, replica_prepare, Some(|msg: &mut LeaderPrepare| {
 //         msg.view = ViewNumber(2);
 //     }));
@@ -294,7 +294,7 @@ async fn leader_prepare_invalid_prepare_qc_different_views() {
 //         .await
 //         .unwrap();
 //
-//     assert_eq!(
+//     assert_matches!(
 //         res,
 //         Err(LeaderPrepareError::InvalidPrepareQC(anyhow!("PrepareQC contains messages for different views!")))
 //     );
@@ -313,8 +313,8 @@ mod util {
     use zksync_consensus_roles::{
         validator,
         validator::{
-            BlockHeader, ConsensusMsg, LeaderPrepare, Payload, Phase, PrepareQC, ReplicaCommit,
-            ReplicaPrepare, SecretKey, Signed, ViewNumber,
+            BlockHeader, ConsensusMsg, LeaderPrepare, Payload, Phase, ReplicaPrepare, SecretKey,
+            Signed, ViewNumber,
         },
     };
     use zksync_consensus_utils::pipe::DispatcherPipe;

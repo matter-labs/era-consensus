@@ -6,7 +6,7 @@ use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator;
 
 /// Errors that can occur when processing a "replica commit" message.
-#[derive(Debug, PartialEq, thiserror::Error)]
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     /// Unexpected proposal.
     #[error("unexpected proposal")]

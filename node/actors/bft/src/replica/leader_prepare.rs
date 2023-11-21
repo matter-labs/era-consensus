@@ -105,12 +105,6 @@ pub(crate) enum Error {
     Internal(#[from] anyhow::Error),
 }
 
-impl PartialEq for Error {
-    fn eq(&self, other: &Self) -> bool {
-        self.to_string() == other.to_string()
-    }
-}
-
 impl StateMachine {
     /// Processes a leader prepare message.
     #[instrument(level = "trace", ret)]
