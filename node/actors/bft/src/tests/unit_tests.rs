@@ -72,8 +72,7 @@ async fn replica_prepare_sanity() {
     let mut util = UTHarness::new().await;
 
     let replica_prepare = util.new_replica_prepare(|_| {});
-    let res = util.dispatch_replica_prepare(replica_prepare);
-    assert_matches!(res, Ok(()));
+    util.dispatch_replica_prepare(replica_prepare).unwrap();
 }
 
 #[tokio::test]
@@ -81,8 +80,7 @@ async fn replica_prepare_sanity_yield_leader_prepare() {
     let mut util = UTHarness::new().await;
 
     let replica_prepare = util.new_replica_prepare(|_| {});
-    let res = util.dispatch_replica_prepare(replica_prepare);
-    assert_matches!(res, Ok(()));
+    util.dispatch_replica_prepare(replica_prepare).unwrap();
     let _ = util.recv_leader_prepare().await.unwrap();
 }
 
@@ -178,12 +176,9 @@ async fn leader_prepare_sanity() {
     let mut util = UTHarness::new().await;
 
     let replica_prepare = util.new_replica_prepare(|_| {});
-    let res = util.dispatch_replica_prepare(replica_prepare);
-    assert_matches!(res, Ok(()));
+    util.dispatch_replica_prepare(replica_prepare).unwrap();
     let leader_prepare = util.recv_signed().await.unwrap();
-    let res = util.dispatch_leader_prepare(leader_prepare).await;
-
-    assert_matches!(res, Ok(()));
+    util.dispatch_leader_prepare(leader_prepare).await.unwrap();
 }
 
 #[tokio::test]
@@ -207,8 +202,7 @@ async fn leader_prepare_invalid_leader() {
     );
 
     let replica_prepare_two = util.key_at(1).sign_msg(replica_prepare_one.msg);
-    let res = util.dispatch_replica_prepare(replica_prepare_two);
-    assert_matches!(res, Ok(()));
+    util.dispatch_replica_prepare(replica_prepare_two).unwrap();
 
     let mut leader_prepare = util.recv_leader_prepare().await.unwrap();
     leader_prepare.view = leader_prepare.view.next();
@@ -251,8 +245,7 @@ async fn leader_prepare_invalid_prepare_qc_different_views() {
     let mut util = UTHarness::new().await;
 
     let replica_prepare = util.new_replica_prepare(|_| {});
-    let res = util.dispatch_replica_prepare(replica_prepare.clone());
-    assert_matches!(res, Ok(()));
+    util.dispatch_replica_prepare(replica_prepare.clone()).unwrap();
 
     let mut leader_prepare = util.recv_leader_prepare().await.unwrap();
     leader_prepare.view = leader_prepare.view.next();
