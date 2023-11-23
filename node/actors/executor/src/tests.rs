@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::testonly::FullValidatorConfig;
-use rand::Rng;
+use rand::{thread_rng, Rng};
 use std::iter;
 use test_casing::test_casing;
 use zksync_concurrency::{sync, testonly::abort_on_panic, time};
@@ -38,6 +38,33 @@ impl FullValidatorConfig {
             .unwrap();
         executor
     }
+}
+
+type BlockMutation = (&'static str, fn(&mut FinalBlock));
+const BLOCK_MUTATIONS: [BlockMutation; 3] = [
+    ("number", |block| {
+        block.header.number = BlockNumber(1);
+    }),
+    ("payload", |block| {
+        block.payload = Payload(b"test".to_vec());
+    }),
+    ("justification", |block| {
+        block.justification = thread_rng().gen();
+    }),
+];
+
+#[test_casing(3, BLOCK_MUTATIONS)]
+fn executor_misconfiguration(name: &str, mutation: fn(&mut FinalBlock)) {
+    abort_on_panic();
+    let _span = tracing::info_span!("executor_misconfiguration", name).entered();
+    let rng = &mut thread_rng();
+
+    let mut validator = FullValidatorConfig::for_single_validator(rng, Payload(vec![]));
+    let genesis_block = &mut validator.node_config.genesis_block;
+    mutation(genesis_block);
+    let storage = Arc::new(InMemoryStorage::new(genesis_block.clone()));
+    let err = Executor::new(validator.node_config, validator.node_key, storage).unwrap_err();
+    tracing::info!(%err, "received expected validation error");
 }
 
 #[tokio::test]

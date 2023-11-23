@@ -61,6 +61,7 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
         node_key: node::SecretKey,
         storage: Arc<S>,
     ) -> anyhow::Result<Self> {
+        node_config.validate()?;
         anyhow::ensure!(
             node_config.gossip.key == node_key.public(),
             "config.gossip.key = {:?} doesn't match the secret key {:?}",
