@@ -7,11 +7,9 @@ use crate::{
 use rand::{rngs::StdRng, Rng};
 use zksync_concurrency::{ctx, ctx::Ctx, scope};
 use zksync_consensus_network::io::ConsensusInputMessage;
-use zksync_consensus_roles::{
-    validator::{
-        self, BlockHeader, ConsensusMsg, LeaderPrepare, Payload, Phase, ReplicaPrepare, SecretKey,
-        Signed, ViewNumber,
-    },
+use zksync_consensus_roles::validator::{
+    self, BlockHeader, CommitQC, ConsensusMsg, LeaderPrepare, Payload, Phase, PrepareQC,
+    ReplicaPrepare, SecretKey, Signed, ViewNumber,
 };
 use zksync_consensus_utils::pipe::DispatcherPipe;
 
@@ -61,6 +59,11 @@ impl UTHarness {
         &mut self.rng
     }
 
+    pub fn set_view(&mut self, view: ViewNumber) {
+        self.set_replica_view(view);
+        self.set_leader_view(view);
+    }
+
     pub fn set_leader_view(&mut self, view: ViewNumber) {
         self.consensus.leader.view = view
     }
@@ -94,6 +97,13 @@ impl UTHarness {
             .inner
             .secret_key
             .sign_msg(ConsensusMsg::ReplicaPrepare(msg))
+    }
+
+    pub async fn new_procedural_leader_prepare(&mut self) -> Signed<ConsensusMsg> {
+        let replica_prepare = self.new_replica_prepare(|_| {});
+        self.dispatch_replica_prepare(replica_prepare.clone())
+            .unwrap();
+        self.recv_signed().await.unwrap()
     }
 
     pub(crate) fn new_leader_prepare(
@@ -152,33 +162,68 @@ impl UTHarness {
 
     pub async fn recv_signed(&mut self) -> Option<Signed<ConsensusMsg>> {
         let msg = self.pipe.recv(&self.ctx).await.unwrap();
-        if let OutputMessage::Network(ConsensusInputMessage {
-            message: signed, ..
-        }) = msg
-        {
-            return Some(signed);
+        match msg {
+            OutputMessage::Network(ConsensusInputMessage {
+                message: signed, ..
+            }) => Some(signed),
+            _ => None,
         }
-        None
     }
 
-    pub async fn recv_leader_prepare(&mut self) -> Option<LeaderPrepare> {
-        let msg = self.pipe.recv(&self.ctx).await.unwrap();
-        if let OutputMessage::Network(ConsensusInputMessage {
-            message:
-                Signed {
-                    msg: ConsensusMsg::LeaderPrepare(leader_prepare),
-                    ..
-                },
-            ..
-        }) = msg
-        {
-            return Some(leader_prepare);
+    pub fn to_leader_prepare(&self, msg: OutputMessage) -> Option<LeaderPrepare> {
+        match msg {
+            OutputMessage::Network(ConsensusInputMessage {
+                message:
+                    Signed {
+                        msg: ConsensusMsg::LeaderPrepare(leader_prepare),
+                        ..
+                    },
+                ..
+            }) => Some(leader_prepare),
+            _ => None,
         }
-        None
+    }
+
+    pub fn current_view(&self) -> ViewNumber {
+        self.consensus.replica.view
+    }
+
+    pub fn current_phase(&self) -> Phase {
+        self.consensus.replica.phase
     }
 
     pub fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
         self.consensus.inner.view_leader(view)
+    }
+
+    pub fn new_commit_qc(&self, view: ViewNumber) -> CommitQC {
+        let validator_set =
+            validator::ValidatorSet::new(self.keys.iter().map(|k| k.public())).unwrap();
+        let signed_messages: Vec<_> = self
+            .keys
+            .iter()
+            .map(|sk| {
+                sk.sign_msg(validator::ReplicaCommit {
+                    protocol_version: validator::CURRENT_VERSION,
+                    view,
+                    proposal: self.consensus.replica.high_qc.message.proposal,
+                })
+            })
+            .collect();
+
+        CommitQC::from(&signed_messages, &validator_set).unwrap()
+    }
+
+    pub fn new_prepare_qc(&self, msg: &ReplicaPrepare) -> PrepareQC {
+        let validator_set =
+            validator::ValidatorSet::new(self.keys.iter().map(|k| k.public())).unwrap();
+        let signed_messages: Vec<_> = self
+            .keys
+            .iter()
+            .map(|sk| sk.sign_msg(msg.clone()))
+            .collect();
+
+        PrepareQC::from(&signed_messages, &validator_set).unwrap()
     }
 }
 
