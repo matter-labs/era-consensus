@@ -8,8 +8,18 @@ use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 /// (except for imposing a size limit for the payload). Proposing a payload
 /// for a new block and interpreting the payload of the finalized blocks
 /// should be implemented for the specific application of the consensus algorithm.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Payload(pub Vec<u8>);
+
+impl fmt::Debug for Payload {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Payload")
+            .field("len", &self.0.len())
+            .field("hash", &self.hash())
+            .finish()
+    }
+}
 
 /// Hash of the Payload.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -161,6 +171,31 @@ impl FinalBlock {
             justification,
         }
     }
+
+    /// Validates internal consistency of this block.
+    pub fn validate(
+        &self,
+        validators: &super::ValidatorSet,
+        consensus_threshold: usize,
+    ) -> Result<(), BlockValidationError> {
+        let payload_hash = self.payload.hash();
+        if payload_hash != self.header.payload {
+            return Err(BlockValidationError::HashMismatch {
+                header_hash: self.header.payload,
+                payload_hash,
+            });
+        }
+        if self.header != self.justification.message.proposal {
+            return Err(BlockValidationError::ProposalMismatch {
+                block_header: Box::new(self.header),
+                qc_header: Box::new(self.justification.message.proposal),
+            });
+        }
+
+        self.justification
+            .verify(validators, consensus_threshold)
+            .map_err(BlockValidationError::Justification)
+    }
 }
 
 impl ByteFmt for FinalBlock {
@@ -181,4 +216,38 @@ impl TextFmt for FinalBlock {
     fn encode(&self) -> String {
         format!("final_block:{}", hex::encode(ByteFmt::encode(self)))
     }
+}
+
+/// Errors that can occur validating a `FinalBlock` received from a node.
+#[derive(Debug, thiserror::Error)]
+#[non_exhaustive]
+pub enum BlockValidationError {
+    /// Block payload doesn't match the block header.
+    #[error(
+        "block payload doesn't match the block header (hash in header: {header_hash:?}, \
+             payload hash: {payload_hash:?})"
+    )]
+    HashMismatch {
+        /// Payload hash in block header.
+        header_hash: PayloadHash,
+        /// Hash of the payload.
+        payload_hash: PayloadHash,
+    },
+    /// Quorum certificate proposal doesn't match the block header.
+    #[error(
+        "quorum certificate proposal doesn't match the block header (block header: {block_header:?}, \
+             header in QC: {qc_header:?})"
+    )]
+    ProposalMismatch {
+        /// Block header field.
+        block_header: Box<BlockHeader>,
+        /// Block header from the quorum certificate.
+        qc_header: Box<BlockHeader>,
+    },
+    /// Failed verifying quorum certificate.
+    #[error("failed verifying quorum certificate: {0:#?}")]
+    Justification(#[source] anyhow::Error),
+    /// Application-specific error.
+    #[error(transparent)]
+    Other(anyhow::Error),
 }

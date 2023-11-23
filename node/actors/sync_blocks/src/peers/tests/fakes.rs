@@ -51,13 +51,7 @@ async fn processing_invalid_blocks() {
     let err = peer_states
         .validate_block(BlockNumber(1), invalid_block)
         .unwrap_err();
-    assert_matches!(
-        err,
-        BlockValidationError::NumberMismatch {
-            requested: BlockNumber(1),
-            got: BlockNumber(0),
-        }
-    );
+    assert_matches!(err, BlockValidationError::Other(_));
 
     let mut invalid_block = test_validators.final_blocks[1].clone();
     invalid_block.justification = test_validators.final_blocks[0].justification.clone();
