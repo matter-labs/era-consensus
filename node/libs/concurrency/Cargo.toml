@@ -19,42 +19,5 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 vise.workspace = true
 
-[lints.rust]
-noop_method_call = "warn"
-missing_docs = "warn"
-unreachable_pub = "warn"
-unused_qualifications = "warn"
-unused_tuple_struct_fields = "warn"
-
-[lints.clippy]
-# restriction group
-create_dir = "warn"
-empty_structs_with_brackets = "warn"
-float_arithmetic = "warn"
-missing_docs_in_private_items = "warn"
-non_ascii_literal = "warn"
-partial_pub_fields = "warn"
-print_stdout = "warn"
-string_to_string = "warn"
-suspicious_xor_used_as_pow = "warn"
-try_err = "warn"
-separated_literal_suffix = "warn"
-
-# pedantic group
-bool_to_int_with_if = "warn"
-default_trait_access = "warn"
-if_not_else = "warn"
-manual_assert = "warn"
-manual_instant_elapsed = "warn"
-manual_let_else = "warn"
-manual_ok_or = "warn"
-manual_string_new = "warn"
-match_bool = "warn"
-wildcard_imports = "warn"
-
-# cargo group
-wildcard_dependencies = "warn"
-
-# Produces too many false positives.
-redundant_locals = "allow"
-needless_pass_by_ref_mut = "allow"
+[lints]
+workspace = true

@@ -111,7 +111,7 @@ opt-level = 3
 opt-level = 3
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+unsafe_code = "deny"
 noop_method_call = "warn"
 missing_docs = "warn"
 unreachable_pub = "warn"
