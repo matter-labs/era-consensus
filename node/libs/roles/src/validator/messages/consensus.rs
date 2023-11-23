@@ -11,7 +11,7 @@ use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 /// It allows to prevent misinterpretation of messages signed by validators
 /// using different versions of the binaries.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ProtocolVersion(pub(crate) u32);
+pub struct ProtocolVersion(pub u32);
 
 /// We use a hardcoded protocol version for now.
 /// Eventually validators should determine which version to use for which block by observing the relevant L1 contract.

@@ -1,6 +1,6 @@
 use crate::{
     io::{InputMessage, OutputMessage},
-    leader::ReplicaPrepareError,
+    leader::{ReplicaCommitError, ReplicaPrepareError},
     replica::LeaderPrepareError,
     Consensus,
 };
@@ -9,7 +9,7 @@ use zksync_concurrency::{ctx, ctx::Ctx, scope};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator::{
     self, BlockHeader, CommitQC, ConsensusMsg, LeaderPrepare, Payload, Phase, PrepareQC,
-    ReplicaPrepare, SecretKey, Signed, ViewNumber,
+    ReplicaCommit, ReplicaPrepare, SecretKey, Signed, ViewNumber,
 };
 use zksync_consensus_utils::pipe::DispatcherPipe;
 
@@ -99,10 +99,36 @@ impl UTHarness {
             .sign_msg(ConsensusMsg::ReplicaPrepare(msg))
     }
 
+    pub(crate) fn new_replica_commit(&self) -> Signed<ConsensusMsg> {
+        let msg = ReplicaCommit {
+            protocol_version: validator::CURRENT_VERSION,
+            view: self.consensus.replica.view,
+            proposal: BlockHeader {
+                parent: self.consensus.replica.high_vote.proposal.hash(),
+                number: self.consensus.replica.high_vote.proposal.number.next(),
+                payload: self.consensus.replica.high_vote.proposal.payload,
+            },
+        };
+
+        self.consensus
+            .inner
+            .secret_key
+            .sign_msg(ConsensusMsg::ReplicaCommit(msg))
+    }
+
     pub async fn new_procedural_leader_prepare(&mut self) -> Signed<ConsensusMsg> {
         let replica_prepare = self.new_replica_prepare(|_| {});
         self.dispatch_replica_prepare(replica_prepare.clone())
             .unwrap();
+        self.recv_signed().await.unwrap()
+    }
+
+    pub async fn new_procedural_replica_commit(&mut self) -> Signed<ConsensusMsg> {
+        let replica_prepare = self.new_replica_prepare(|_| {});
+        self.dispatch_replica_prepare(replica_prepare.clone())
+            .unwrap();
+        let leader_prepare = self.recv_signed().await.unwrap();
+        self.dispatch_leader_prepare(leader_prepare).await.unwrap();
         self.recv_signed().await.unwrap()
     }
 
@@ -136,6 +162,17 @@ impl UTHarness {
         msg: Signed<ConsensusMsg>,
     ) -> Result<(), ReplicaPrepareError> {
         self.consensus.leader.process_replica_prepare(
+            &self.ctx,
+            &self.consensus.inner,
+            msg.cast().unwrap(),
+        )
+    }
+
+    pub fn dispatch_replica_commit(
+        &mut self,
+        msg: Signed<ConsensusMsg>,
+    ) -> Result<(), ReplicaCommitError> {
+        self.consensus.leader.process_replica_commit(
             &self.ctx,
             &self.consensus.inner,
             msg.cast().unwrap(),

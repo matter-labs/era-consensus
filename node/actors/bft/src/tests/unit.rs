@@ -1,18 +1,21 @@
 use crate::{
     inner::ConsensusInner,
     leader::{
-        ReplicaPrepareError,
+        ReplicaCommitError, ReplicaPrepareError,
         ReplicaPrepareError::{HighQCOfFutureView, InvalidHighQC},
     },
     replica::LeaderPrepareError,
-    testonly::ut_harness::UTHarness,
+    testonly::{make_genesis, ut_harness::UTHarness},
 };
 use assert_matches::assert_matches;
 use rand::Rng;
-use zksync_consensus_crypto::bn254::Error::SignatureVerificationFailure;
-use zksync_consensus_roles::validator::{
-    BlockHeaderHash, CommitQC, ConsensusMsg, LeaderPrepare, Payload, Phase, PrepareQC,
-    ReplicaCommit, ReplicaPrepare, ViewNumber,
+use zksync_consensus_crypto::bn254::{Error::SignatureVerificationFailure, SecretKey};
+use zksync_consensus_roles::{
+    validator,
+    validator::{
+        BlockHeaderHash, CommitQC, ConsensusMsg, LeaderCommit, LeaderPrepare, Payload, Phase,
+        PrepareQC, ProtocolVersion, ReplicaCommit, ReplicaPrepare, ViewNumber, CURRENT_VERSION,
+    },
 };
 
 /// ## Tests coverage
@@ -28,6 +31,7 @@ use zksync_consensus_roles::validator::{
 /// - [x] replica_prepare_invalid_commit_qc
 /// - [x] replica_prepare_high_qc_of_current_view
 /// - [x] replica_prepare_high_qc_of_future_view
+/// - [x] replica_prepare_non_validator_signer
 /// -
 /// - [x] leader_prepare_sanity
 /// - [x] leader_prepare_sanity_yield_replica_commit
@@ -45,15 +49,15 @@ use zksync_consensus_roles::validator::{
 /// - [x] leader_prepare_reproposal_when_finalized
 /// - [ ] leader_prepare_reproposal_invalid_block
 /// -
-/// - [ ] replica_commit_sanity
-/// - [ ] replica_commit_sanity_yield_leader_commit
-/// - [ ] replica_commit_old
-/// - [ ] replica_commit_not_leader_in_view
-/// - [ ] replica_commit_already_exists
-/// - [ ] replica_commit_invalid_sig
-/// - [ ] replica_commit_unexpected_proposal
-/// - [ ] replica_commit_num_received_below_threshold
-/// - [ ] replica_commit_make_commit_qc_failure_distinct_messages
+/// - [x] replica_commit_sanity
+/// - [x] replica_commit_sanity_yield_leader_commit
+/// - [x] replica_commit_old
+/// - [x] replica_commit_not_leader_in_view
+/// - [x] replica_commit_already_exists
+/// - [x] replica_commit_num_received_below_threshold
+/// - [x] replica_commit_invalid_sig
+/// - [x] replica_commit_unexpected_proposal
+/// - [x] replica_commit_protocol_version_mismatch
 /// -
 /// - [ ] leader_commit_sanity
 /// - [ ] leader_commit_sanity_yield_replica_prepare
@@ -65,6 +69,7 @@ use zksync_consensus_roles::validator::{
 /// - [ ] leader_commit_invalid_commit_qc_insufficient_signers
 /// - [ ] leader_commit_invalid_commit_qc_invalid_aggregate_sig
 ///
+
 #[tokio::test]
 async fn replica_prepare_sanity() {
     let mut util = UTHarness::new().await;
@@ -144,15 +149,7 @@ async fn replica_prepare_already_exists() {
     assert_eq!(util.view_leader(view), util.own_key().public());
 
     let replica_prepare = util.new_replica_prepare(|_| {});
-    let res = util.dispatch_replica_prepare(replica_prepare.clone());
-    assert_matches!(
-        res,
-        Err(ReplicaPrepareError::NumReceivedBelowThreshold {
-            num_messages: 1,
-            threshold: 2
-        })
-    );
-
+    let _ = util.dispatch_replica_prepare(replica_prepare.clone());
     let res = util.dispatch_replica_prepare(replica_prepare.clone());
     assert_matches!(
     res,
@@ -199,7 +196,7 @@ async fn replica_prepare_invalid_commit_qc() {
     let junk = util.rng().gen::<CommitQC>();
     let replica_prepare = util.new_replica_prepare(|msg| msg.high_qc = junk);
     let res = util.dispatch_replica_prepare(replica_prepare);
-    assert_matches!(res, Err(InvalidHighQC(_)));
+    assert_matches!(res, Err(InvalidHighQC(..)));
 }
 
 #[tokio::test]
@@ -240,6 +237,24 @@ async fn replica_prepare_high_qc_of_future_view() {
             assert_eq!(current_view, view);
         }
     );
+}
+
+#[tokio::test]
+async fn replica_prepare_non_validator_signer() {
+    let mut util = UTHarness::new_with(2).await;
+
+    let view = ViewNumber(2);
+    util.set_view(view);
+    assert_eq!(util.view_leader(view), util.key_at(0).public());
+
+    let replica_prepare = util.new_replica_prepare(|_| {});
+    let _ = util.dispatch_replica_prepare(replica_prepare.clone());
+
+    let non_validator: validator::SecretKey = util.rng().gen();
+    let replica_prepare = non_validator.sign_msg(replica_prepare.msg);
+    util.dispatch_replica_prepare(replica_prepare).unwrap();
+    // PANICS:
+    // "Couldn't create justification from valid replica messages!: Message signer isn't in the validator set"
 }
 
 #[tokio::test]
@@ -606,32 +621,167 @@ async fn leader_prepare_reproposal_invalid_block() {
     assert_matches!(res, Err(LeaderPrepareError::ReproposalInvalidBlock))
 }
 
-// #[tokio::test]
-// async fn replica_commit_sanity() {
-//     let mut util = Util::make().await;
-//
-//     let replica_prepare = util::make_replica_prepare(&consensus, None::<fn(&mut ReplicaPrepare)>);
-//     let res = util::dispatch_replica_prepare(&ctx, &mut consensus, replica_prepare);
-//     assert_matches!(res, Ok(()));
-//     let leader_prepare = util::make_leader_prepare_from_replica_prepare(&consensus, &mut rng, replica_prepare, Some(|msg: &mut LeaderPrepare| {
-//         msg.view = ViewNumber(2);
-//     }));
-//     let replica_commit = util::make_replica_commit(&consensus, leader_prepare.msg., None::<fn(&mut ReplicaCommit)>);
-//
-//     let res = scope::run!(&ctx, |ctx, s| {
-//         s.spawn_blocking(|| {
-//             let res = consensus
-//             .leader
-//             .process_replica_commit(ctx, &consensus.inner, leader_prepare.cast().unwrap());
-//             Ok(res)
-//         })
-//         .join(ctx)
-//     })
-//         .await
-//         .unwrap();
-//
-//     assert_matches!(
-//         res,
-//         Err(LeaderPrepareError::InvalidPrepareQC(anyhow!("PrepareQC contains messages for different views!")))
-//     );
-// }
+#[tokio::test]
+async fn replica_commit_sanity() {
+    let mut util = UTHarness::new().await;
+
+    let leader_prepare = util.new_procedural_replica_commit().await;
+    util.dispatch_replica_commit(leader_prepare).unwrap();
+}
+
+#[tokio::test]
+async fn replica_commit_sanity_yield_leader_commit() {
+    let mut util = UTHarness::new().await;
+
+    let replica_commit = util.new_procedural_replica_commit().await;
+    util.dispatch_replica_commit(replica_commit).unwrap();
+    util.recv_signed()
+        .await
+        .unwrap()
+        .cast::<LeaderCommit>()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn replica_commit_old() {
+    let mut util = UTHarness::new().await;
+
+    let mut replica_commit = util
+        .new_procedural_replica_commit()
+        .await
+        .cast::<ReplicaCommit>()
+        .unwrap()
+        .msg;
+    replica_commit.view = util.current_view().prev();
+    let replica_commit = util
+        .own_key()
+        .sign_msg(ConsensusMsg::ReplicaCommit(replica_commit));
+
+    let res = util.dispatch_replica_commit(replica_commit);
+    assert_matches!(
+    res,
+    Err(ReplicaCommitError::Old { current_view, current_phase }) => {
+        assert_eq!(current_view, util.current_view());
+        assert_eq!(current_phase, util.current_phase());
+    });
+}
+
+#[tokio::test]
+async fn replica_commit_not_leader_in_view() {
+    let mut util = UTHarness::new_with(2).await;
+
+    let current_view_leader = util.view_leader(util.current_view());
+    assert_ne!(current_view_leader, util.own_key().public());
+
+    let replica_commit = util.new_replica_commit();
+    let res = util.dispatch_replica_commit(replica_commit);
+    assert_matches!(res, Err(ReplicaCommitError::NotLeaderInView));
+}
+
+#[tokio::test]
+async fn replica_commit_already_exists() {
+    let mut util = UTHarness::new_with(2).await;
+
+    let view = ViewNumber(2);
+    util.set_replica_view(view);
+    util.set_leader_view(view);
+    assert_eq!(util.view_leader(view), util.own_key().public());
+
+    let replica_prepare_one = util.new_replica_prepare(|_| {});
+    let _ = util.dispatch_replica_prepare(replica_prepare_one.clone());
+    let replica_prepare_two = util.key_at(1).sign_msg(replica_prepare_one.msg);
+    util.dispatch_replica_prepare(replica_prepare_two).unwrap();
+
+    let leader_prepare = util.recv_signed().await.unwrap();
+    util.dispatch_leader_prepare(leader_prepare).await.unwrap();
+
+    let replica_commit = util.recv_signed().await.unwrap();
+    let _ = util.dispatch_replica_commit(replica_commit.clone());
+    let res = util.dispatch_replica_commit(replica_commit.clone());
+    assert_matches!(
+        res,
+        Err(ReplicaCommitError::DuplicateMessage { existing_message }) => {
+            assert_eq!(existing_message, replica_commit.cast::<ReplicaCommit>().unwrap().msg)
+        }
+    );
+}
+
+#[tokio::test]
+async fn replica_commit_num_received_below_threshold() {
+    let mut util = UTHarness::new_with(2).await;
+
+    let view = ViewNumber(2);
+    util.set_replica_view(view);
+    util.set_leader_view(view);
+    assert_eq!(util.view_leader(view), util.own_key().public());
+
+    let replica_prepare_one = util.new_replica_prepare(|_| {});
+    let _ = util.dispatch_replica_prepare(replica_prepare_one.clone());
+    let replica_prepare_two = util.key_at(1).sign_msg(replica_prepare_one.msg);
+    util.dispatch_replica_prepare(replica_prepare_two).unwrap();
+
+    let leader_prepare = util.recv_signed().await.unwrap();
+    util.dispatch_leader_prepare(leader_prepare).await.unwrap();
+
+    let replica_commit = util.recv_signed().await.unwrap();
+    let res = util.dispatch_replica_commit(replica_commit.clone());
+    assert_matches!(
+        res,
+        Err(ReplicaCommitError::NumReceivedBelowThreshold {
+            num_messages: 1,
+            threshold: 2
+        })
+    );
+}
+
+#[tokio::test]
+async fn replica_commit_invalid_sig() {
+    let mut util = UTHarness::new().await;
+
+    let mut replica_commit = util.new_replica_commit();
+    replica_commit.sig = util.rng().gen();
+    let res = util.dispatch_replica_commit(replica_commit);
+    assert_matches!(res, Err(ReplicaCommitError::InvalidSignature(..)));
+}
+
+#[tokio::test]
+async fn replica_commit_unexpected_proposal() {
+    let mut util = UTHarness::new().await;
+
+    let replica_commit = util.new_replica_commit();
+    let res = util.dispatch_replica_commit(replica_commit);
+    assert_matches!(res, Err(ReplicaCommitError::UnexpectedProposal));
+}
+
+#[tokio::test]
+async fn replica_commit_protocol_version_mismatch() {
+    let mut util = UTHarness::new_with(2).await;
+
+    let view = ViewNumber(2);
+    util.set_replica_view(view);
+    util.set_leader_view(view);
+    assert_eq!(util.view_leader(view), util.own_key().public());
+
+    let replica_prepare_one = util.new_replica_prepare(|_| {});
+    let _ = util.dispatch_replica_prepare(replica_prepare_one.clone());
+    let replica_prepare_two = util.key_at(1).sign_msg(replica_prepare_one.msg);
+    util.dispatch_replica_prepare(replica_prepare_two).unwrap();
+
+    let leader_prepare = util.recv_signed().await.unwrap();
+    util.dispatch_leader_prepare(leader_prepare).await.unwrap();
+
+    let replica_commit = util.recv_signed().await.unwrap();
+    let _ = util.dispatch_replica_commit(replica_commit.clone());
+
+    let mut replica_commit_two = replica_commit.cast::<ReplicaCommit>().unwrap().msg;
+    replica_commit_two.protocol_version =
+        ProtocolVersion(replica_commit_two.protocol_version.0 + 1);
+
+    let replica_commit_two = util
+        .key_at(1)
+        .sign_msg(ConsensusMsg::ReplicaCommit(replica_commit_two));
+    util.dispatch_replica_commit(replica_commit_two.into())
+        .unwrap();
+    // PANICS:
+    // "Couldn't create justification from valid replica messages!: CommitQC can only be created from votes for the same message."
+}
