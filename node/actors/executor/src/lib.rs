@@ -2,12 +2,12 @@
 
 use crate::io::Dispatcher;
 use anyhow::Context as _;
-use std::sync::Arc;
+use std::{any, sync::Arc};
 use zksync_concurrency::{ctx, net, scope};
 use zksync_consensus_bft::{misc::consensus_threshold, Consensus};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{ReplicaStateStore, ReplicaStore, WriteBlockStore};
+use zksync_consensus_storage::{BlockStore, ReplicaStateStore, ReplicaStore, WriteBlockStore};
 use zksync_consensus_sync_blocks::SyncBlocks;
 use zksync_consensus_utils::pipe;
 
@@ -56,7 +56,8 @@ pub struct Executor<S> {
 
 impl<S: WriteBlockStore + 'static> Executor<S> {
     /// Creates a new executor with the specified parameters.
-    pub fn new(
+    pub async fn new(
+        ctx: &ctx::Ctx,
         node_config: ExecutorConfig,
         node_key: node::SecretKey,
         storage: Arc<S>,
@@ -67,6 +68,16 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
             "config.gossip.key = {:?} doesn't match the secret key {:?}",
             node_config.gossip.key,
             node_key
+        );
+
+        // While justifications may differ among nodes for an arbitrary block, we assume that
+        // the genesis block has a hardcoded justification.
+        let first_block = storage.first_block(ctx).await.context("first_block")?;
+        anyhow::ensure!(
+            first_block == node_config.genesis_block,
+            "First stored block {first_block:?} in `{}` is not equal to the configured genesis block {:?}",
+            any::type_name::<S>(),
+            node_config.genesis_block
         );
 
         Ok(Self {
