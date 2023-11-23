@@ -8,8 +8,18 @@ use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 /// (except for imposing a size limit for the payload). Proposing a payload
 /// for a new block and interpreting the payload of the finalized blocks
 /// should be implemented for the specific application of the consensus algorithm.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Payload(pub Vec<u8>);
+
+impl fmt::Debug for Payload {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Payload")
+            .field("len", &self.0.len())
+            .field("hash", &self.hash())
+            .finish()
+    }
+}
 
 /// Hash of the Payload.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
