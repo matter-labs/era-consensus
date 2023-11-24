@@ -19,6 +19,7 @@ hex.workspace = true
 prost.workspace = true
 rand.workspace = true
 serde.workspace = true
+thiserror.workspace = true
 tracing.workspace = true
 
 [build-dependencies]

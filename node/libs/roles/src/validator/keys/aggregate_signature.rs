@@ -11,7 +11,7 @@ pub struct AggregateSignature(pub(crate) bn254::AggregateSignature);
 impl AggregateSignature {
     /// Generate  a new aggregate signature from a list of signatures.
     pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
-        AggregateSignature(bn254::AggregateSignature::aggregate(
+        Self(bn254::AggregateSignature::aggregate(
             sigs.into_iter().map(|sig| &sig.0).collect::<Vec<_>>(),
         ))
     }
@@ -42,30 +42,32 @@ impl AggregateSignature {
 }
 
 impl ByteFmt for AggregateSignature {
-    fn encode(&self) -> Vec<u8> {
-        ByteFmt::encode(&self.0)
-    }
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         ByteFmt::decode(bytes).map(Self)
+    }
+
+    fn encode(&self) -> Vec<u8> {
+        ByteFmt::encode(&self.0)
     }
 }
 
 impl TextFmt for AggregateSignature {
+    fn decode(text: Text) -> anyhow::Result<Self> {
+        text.strip("validator:aggregate_signature:bn254:")?
+            .decode_hex()
+            .map(Self)
+    }
+
     fn encode(&self) -> String {
         format!(
             "validator:aggregate_signature:bn254:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
     }
-    fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("validator:aggregate_signature:bn254:")?
-            .decode_hex()
-            .map(Self)
-    }
 }
 
 impl fmt::Debug for AggregateSignature {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        writeln!(fmt, "Signature: {}", hex::encode(ByteFmt::encode(&self.0)))
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&TextFmt::encode(self))
     }
 }

@@ -106,7 +106,8 @@ async fn main() -> anyhow::Result<()> {
         Path::new("./database"),
     );
     let storage = Arc::new(storage.await.context("RocksdbStorage::new()")?);
-    let mut executor = Executor::new(configs.executor, configs.node_key, storage.clone())
+    let mut executor = Executor::new(ctx, configs.executor, configs.node_key, storage.clone())
+        .await
         .context("Executor::new()")?;
     if let Some((consensus_config, validator_key)) = configs.consensus {
         executor
