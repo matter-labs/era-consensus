@@ -8,6 +8,8 @@ mod state_machine;
 #[cfg(test)]
 mod tests;
 
+#[allow(unused_imports)]
 pub(crate) use replica_commit::Error as ReplicaCommitError;
+#[allow(unused_imports)]
 pub(crate) use replica_prepare::Error as ReplicaPrepareError;
 pub(crate) use state_machine::StateMachine;
