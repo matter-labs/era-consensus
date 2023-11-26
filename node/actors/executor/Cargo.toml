@@ -24,6 +24,7 @@ tracing.workspace = true
 vise.workspace = true
 
 [dev-dependencies]
+test-casing.workspace = true
 tokio.workspace = true
 
 [build-dependencies]

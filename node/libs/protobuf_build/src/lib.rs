@@ -140,11 +140,6 @@ pub struct Config {
 }
 
 impl Config {
-    /// Location of the protobuf_build crate, visible from the generated code.
-    fn this_crate(&self) -> RustName {
-        self.protobuf_crate.clone().join(RustName::ident("build"))
-    }
-
     /// Generates implementation of `prost_reflect::ReflectMessage` for a rust type generated
     /// from a message of the given `proto_name`.
     fn reflect_impl(&self, proto_name: &ProtoName) -> anyhow::Result<syn::Item> {
@@ -153,10 +148,10 @@ impl Config {
             .unwrap()
             .to_rust_type()?;
         let proto_name = proto_name.to_string();
-        let this = self.this_crate();
-        Ok(syn::parse_quote! {
-            #this::impl_reflect_message!(#rust_name, &DESCRIPTOR, #proto_name);
-        })
+        let protobuf_crate = &self.protobuf_crate;
+        Ok(
+            syn::parse_quote! { #protobuf_crate::build::impl_reflect_message!(#rust_name, &DESCRIPTOR, #proto_name); },
+        )
     }
 
     /// Validates this configuration.
@@ -319,7 +314,11 @@ impl Config {
         // Generate code out of compiled proto files.
         let mut output = RustModule::default();
         let mut config = prost_build::Config::new();
-        let prost_path = self.this_crate().join(RustName::ident("prost"));
+        let prost_path = self
+            .protobuf_crate
+            .clone()
+            .join(RustName::ident("build"))
+            .join(RustName::ident("prost"));
         config.prost_path(prost_path.to_string());
         config.skip_protoc_run();
         for (root_path, manifest) in self.dependencies.iter().zip(&dependency_manifests) {
@@ -352,18 +351,18 @@ impl Config {
 
         // Generate the descriptor.
         let root_paths_for_deps = self.dependencies.iter();
-        let this = self.this_crate();
+        let protobuf_crate = &self.protobuf_crate;
         let descriptor_path = descriptor_path.display().to_string();
         output.append_item(syn::parse_quote! {
-            #this::declare_descriptor!(DESCRIPTOR => #descriptor_path, #(#root_paths_for_deps),*);
+            #protobuf_crate::build::declare_descriptor!(DESCRIPTOR => #descriptor_path, #(#root_paths_for_deps),*);
         });
 
         // Generate the reflection code.
         for proto_name in extract_message_names(&descriptor) {
-            let impl_item = self
+            let item = self
                 .reflect_impl(&proto_name)
                 .with_context(|| format!("reflect_impl({proto_name})"))?;
-            output.append_item(impl_item);
+            output.append_item(item);
         }
 
         // Save output.

@@ -265,40 +265,6 @@ pub fn decode<T: ProtoFmt>(bytes: &[u8]) -> anyhow::Result<T> {
     T::read(&<T as ProtoFmt>::Proto::decode(bytes)?)
 }
 
-/// Encodes a generated proto message to json.
-/// WARNING: this function uses reflection, so it is not very efficient.
-pub fn encode_json_proto<T: ReflectMessage>(x: &T) -> String {
-    let mut s = serde_json::Serializer::pretty(vec![]);
-    let opts = prost_reflect::SerializeOptions::new();
-    x.transcode_to_dynamic()
-        .serialize_with_options(&mut s, &opts)
-        .unwrap();
-    String::from_utf8(s.into_inner()).unwrap()
-}
-
-/// Encodes a proto message to json.
-/// WARNING: this function uses reflection, so it is not very efficient.
-pub fn encode_json<T: ProtoFmt>(x: &T) -> String {
-    encode_json_proto(&x.build())
-}
-
-/// Decodes a generated proto message from json.
-/// WARNING: this function uses reflection, so it is not very efficient.
-pub fn decode_json_proto<T: ReflectMessage + Default>(json: &str) -> anyhow::Result<T> {
-    let mut d = serde_json::de::Deserializer::from_str(json);
-    let mut p = T::default();
-    let msg = prost_reflect::DynamicMessage::deserialize(p.descriptor(), &mut d)?;
-    d.end()?;
-    p.merge(msg.encode_to_vec().as_slice()).unwrap();
-    Ok(p)
-}
-
-/// Decodes a proto message from json.
-/// WARNING: this function uses reflection, so it is not very efficient.
-pub fn decode_json<T: ProtoFmt>(json: &str) -> anyhow::Result<T> {
-    T::read(&decode_json_proto(json)?)
-}
-
 /// Trait defining a proto representation for a type.
 pub trait ProtoFmt: Sized {
     /// Proto message type representing Self.

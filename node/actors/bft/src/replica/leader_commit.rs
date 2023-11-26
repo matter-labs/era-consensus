@@ -41,7 +41,7 @@ impl StateMachine {
     /// Processes a leader commit message. We can approve this leader message even if we
     /// don't have the block proposal stored. It is enough to see the justification.
     #[instrument(level = "trace", err)]
-    pub(crate) fn process_leader_commit(
+    pub(crate) async fn process_leader_commit(
         &mut self,
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
@@ -86,7 +86,8 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // Try to create a finalized block with this CommitQC and our block proposal cache.
-        self.build_block(consensus, &message.justification);
+        self.save_block(ctx, consensus, &message.justification)
+            .await?;
 
         // Update the state machine. We don't update the view and phase (or backup our state) here
         // because we will do it when we start the new view.
@@ -97,6 +98,7 @@ impl StateMachine {
         // Start a new view. But first we skip to the view of this message.
         self.view = view;
         self.start_new_view(ctx, consensus)
+            .await
             .context("start_new_view()")?;
 
         Ok(())

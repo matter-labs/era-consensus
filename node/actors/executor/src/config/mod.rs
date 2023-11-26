@@ -4,6 +4,7 @@ use std::{
     collections::{HashMap, HashSet},
     net,
 };
+use zksync_consensus_bft::misc::consensus_threshold;
 use zksync_consensus_crypto::{read_required_text, Text, TextFmt};
 use zksync_consensus_network::{consensus, gossip};
 use zksync_consensus_roles::{node, validator};
@@ -137,6 +138,16 @@ pub struct ExecutorConfig {
     /// Static specification of validators for Proof of Authority. Should be deprecated once we move
     /// to Proof of Stake.
     pub validators: validator::ValidatorSet,
+}
+
+impl ExecutorConfig {
+    /// Validates internal consistency of this config.
+    pub(crate) fn validate(&self) -> anyhow::Result<()> {
+        let consensus_threshold = consensus_threshold(self.validators.len());
+        self.genesis_block
+            .validate(&self.validators, consensus_threshold)?;
+        Ok(())
+    }
 }
 
 impl ProtoFmt for ExecutorConfig {
