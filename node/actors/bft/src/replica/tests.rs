@@ -512,14 +512,12 @@ async fn start_new_view_not_leader() {
         message: consensus
             .inner
             .secret_key
-            .sign_msg(ConsensusMsg::ReplicaPrepare(
-                ReplicaPrepare {
-                    protocol_version: validator::CURRENT_VERSION,
-                    view: consensus.replica.view,
-                    high_vote: consensus.replica.high_vote,
-                    high_qc: consensus.replica.high_qc.clone(),
-                },
-            )),
+            .sign_msg(ConsensusMsg::ReplicaPrepare(ReplicaPrepare {
+                protocol_version: validator::CURRENT_VERSION,
+                view: consensus.replica.view,
+                high_vote: consensus.replica.high_vote,
+                high_qc: consensus.replica.high_qc.clone(),
+            })),
         recipient: Target::Validator(consensus.inner.view_leader(consensus.replica.view)),
     };
 
