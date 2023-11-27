@@ -78,8 +78,7 @@ async fn executor_misconfiguration(name: &str, mutation: fn(&mut FinalBlock)) {
     mutation(genesis_block);
     let storage = Arc::new(InMemoryStorage::new(genesis_block.clone()));
     let err = Executor::new(ctx, validator.node_config, validator.node_key, storage)
-        .await
-        .unwrap_err();
+        .await.err().unwrap();
     tracing::info!(%err, "received expected validation error");
 }
 
@@ -95,7 +94,7 @@ async fn genesis_block_mismatch() {
     let storage = Arc::new(InMemoryStorage::new(genesis_block.clone()));
     let err = Executor::new(ctx, validator.node_config, validator.node_key, storage)
         .await
-        .unwrap_err();
+        .err().unwrap();
     tracing::info!(%err, "received expected validation error");
 }
 
