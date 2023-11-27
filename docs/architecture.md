@@ -24,9 +24,9 @@ The library crates are just crates that have some basic functionality that can b
 
 - the `crypto` crate, which provides several cryptographic primitives.
 
-- the `roles` crate, which implements the types necessary for each role in the network. We have just two roles: `Node` and `Validator`.
+- the `protobuf` and `protbuf_build` crates, which contains all the code to create the protobuf schemas used by the other crates.
 
-- the `schema` crate, which contains all the protobuf schemas used by the other crates.
+- the `roles` crate, which implements the types necessary for each role in the network. We have just two roles: `Node` and `Validator`.
 
 - the `storage` crate is responsible for storing the current state of the system and providing an interface to access the stored data. It is a key component of the system that ensures the persistence of data and the ability to retrieve it when needed.
 
@@ -35,8 +35,6 @@ The library crates are just crates that have some basic functionality that can b
 ## Low-Level Overview
 
 This section provides a physical map of folders & files in this repository.
-
-- `/composes` & `/docker`: Project docker files.
 
 - `/infrastructure`: Infrastructure scripts that are needed to test the zkSync Era Consensus Layer.
 
@@ -53,8 +51,9 @@ This section provides a physical map of folders & files in this repository.
 
     - `/concurrency`: Crate with essential primitives for structured concurrency.
     - `/crypto`: Cryptographic primitives used by the other crates.
+    - `/protobuf`: Code generated from protobuf schema files and utilities for serialization.
+    - `/protobuf_build`: Generates rust code from the proto files.
     - `/roles`: Essential types for the different node roles.
-    - `/schema`: Protobuf schemas used by the other crates.
     - `/storage`: Storage layer for the node.
     - `/utils`: Collection of small utilities.
 

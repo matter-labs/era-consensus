@@ -8,5 +8,4 @@ mod keys;
 mod messages;
 pub mod testonly;
 
-pub use keys::*;
-pub use messages::*;
+pub use self::{keys::*, messages::*};

@@ -2674,6 +2674,7 @@ dependencies = [
  "prost",
  "rand 0.8.5",
  "serde",
+ "thiserror",
  "tracing",
  "zksync_concurrency",
  "zksync_consensus_crypto",
