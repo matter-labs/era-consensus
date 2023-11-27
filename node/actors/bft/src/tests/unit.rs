@@ -240,7 +240,7 @@ async fn replica_prepare_high_qc_of_future_view() {
     );
 }
 
-#[ignore = "fails"]
+#[ignore = "fails/unsupported"]
 #[tokio::test]
 async fn replica_prepare_non_validator_signer() {
     let mut util = UTHarness::new_with(2).await;
@@ -461,35 +461,35 @@ async fn leader_prepare_proposal_mismatched_payload() {
     assert_matches!(res, Err(LeaderPrepareError::ProposalMismatchedPayload))
 }
 
-// #[tokio::test]
-// async fn leader_prepare_proposal_when_previous_not_finalized() {
-//     let mut util = UTHarness::new().await;
-//
-//     let replica_prepare = util.new_current_replica_prepare(|_| {});
-//     util.dispatch_replica_prepare(replica_prepare.clone())
-//         .unwrap();
-//     let mut leader_prepare = util
-//         .recv_signed()
-//         .await
-//         .unwrap()
-//         .cast::<LeaderPrepare>()
-//         .unwrap()
-//         .msg;
-//
-//     let mut replica_prepare = replica_prepare.cast::<ReplicaPrepare>().unwrap().msg;
-//     replica_prepare.high_vote = util.rng().gen();
-//     leader_prepare.justification = util.new_prepare_qc(&replica_prepare);
-//
-//     let leader_prepare_signed = util
-//         .own_key()
-//         .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare.clone()));
-//
-//     let res = util.dispatch_leader_prepare(leader_prepare_signed).await;
-//     assert_matches!(
-//         res,
-//         Err(LeaderPrepareError::ProposalWhenPreviousNotFinalized)
-//     )
-// }
+#[tokio::test]
+async fn leader_prepare_proposal_when_previous_not_finalized() {
+    let mut util = UTHarness::new().await;
+
+    let replica_prepare = util.new_current_replica_prepare(|_| {});
+    util.dispatch_replica_prepare(replica_prepare.clone())
+        .unwrap();
+
+    let mut leader_prepare = util
+        .recv_signed()
+        .await
+        .unwrap()
+        .cast::<LeaderPrepare>()
+        .unwrap()
+        .msg;
+
+    let high_vote = util.rng().gen();
+    leader_prepare.justification = util.new_prepare_qc(|msg| msg.high_vote = high_vote);
+
+    let leader_prepare_signed = util
+        .own_key()
+        .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare.clone()));
+
+    let res = util.dispatch_leader_prepare(leader_prepare_signed).await;
+    assert_matches!(
+        res,
+        Err(LeaderPrepareError::ProposalWhenPreviousNotFinalized)
+    )
+}
 
 #[tokio::test]
 async fn leader_prepare_proposal_invalid_parent_hash() {
@@ -757,7 +757,7 @@ async fn replica_commit_unexpected_proposal() {
     assert_matches!(res, Err(ReplicaCommitError::UnexpectedProposal));
 }
 
-#[ignore = "fails"]
+#[ignore = "fails/unsupported"]
 #[tokio::test]
 async fn replica_commit_protocol_version_mismatch() {
     let mut util = UTHarness::new_with(2).await;
