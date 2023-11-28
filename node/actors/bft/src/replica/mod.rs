@@ -7,13 +7,12 @@ mod leader_commit;
 mod leader_prepare;
 mod new_view;
 mod state_machine;
-mod timer;
-
-pub(crate) use state_machine::StateMachine;
-
 #[cfg(test)]
 mod tests;
+mod timer;
+
 #[cfg(test)]
-pub(crate) use leader_commit::Error as LeaderCommitError;
+pub(crate) use self::leader_commit::Error as LeaderCommitError;
 #[cfg(test)]
-pub(crate) use leader_prepare::Error as LeaderPrepareError;
+pub(crate) use self::leader_prepare::Error as LeaderPrepareError;
+pub(crate) use self::state_machine::StateMachine;

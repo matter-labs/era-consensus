@@ -5,12 +5,11 @@
 mod replica_commit;
 mod replica_prepare;
 mod state_machine;
-
-pub(crate) use state_machine::StateMachine;
-
 #[cfg(test)]
 mod tests;
+
 #[cfg(test)]
-pub(crate) use replica_commit::Error as ReplicaCommitError;
+pub(crate) use self::replica_commit::Error as ReplicaCommitError;
 #[cfg(test)]
-pub(crate) use replica_prepare::Error as ReplicaPrepareError;
+pub(crate) use self::replica_prepare::Error as ReplicaPrepareError;
+pub(crate) use self::state_machine::StateMachine;
