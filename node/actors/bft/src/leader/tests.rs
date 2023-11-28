@@ -24,18 +24,15 @@
 //! - [x] replica_commit_protocol_version_mismatch // FAILS
 //!
 
+use super::{
+    replica_commit::Error as ReplicaCommitError, replica_prepare::Error as ReplicaPrepareError,
+};
+use crate::testonly::ut_harness::UTHarness;
 use assert_matches::assert_matches;
 use rand::Rng;
-
 use zksync_consensus_roles::validator::{
     self, CommitQC, ConsensusMsg, LeaderCommit, LeaderPrepare, Phase, ProtocolVersion,
     ReplicaCommit, ViewNumber,
-};
-
-use crate::testonly::ut_harness::UTHarness;
-
-use super::{
-    replica_commit::Error as ReplicaCommitError, replica_prepare::Error as ReplicaPrepareError,
 };
 
 #[tokio::test]

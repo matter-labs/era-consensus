@@ -156,11 +156,11 @@ async fn leader_prepare_invalid_prepare_qc() {
 
     let res = util.dispatch_leader_prepare(leader_prepare).await;
     assert_matches!(
-    res,
-    Err(LeaderPrepareError::InvalidPrepareQC(err)) => {
-        assert_eq!(err.to_string(), "PrepareQC contains messages for different views!")
+        res,
+        Err(LeaderPrepareError::InvalidPrepareQC(err)) => {
+            assert_eq!(err.to_string(), "PrepareQC contains messages for different views!")
         }
-    )
+    );
 }
 
 #[tokio::test]
@@ -188,7 +188,7 @@ async fn leader_prepare_invalid_high_qc() {
         .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare));
 
     let res = util.dispatch_leader_prepare(leader_prepare).await;
-    assert_matches!(res, Err(LeaderPrepareError::InvalidHighQC(_)))
+    assert_matches!(res, Err(LeaderPrepareError::InvalidHighQC(_)));
 }
 
 #[tokio::test]
@@ -215,7 +215,7 @@ async fn leader_prepare_proposal_oversized_payload() {
             assert_eq!(payload_size, payload_oversize);
             assert_eq!(header, leader_prepare.proposal);
         }
-    )
+    );
 }
 
 #[tokio::test]
@@ -234,7 +234,7 @@ async fn leader_prepare_proposal_mismatched_payload() {
         .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare.clone()));
 
     let res = util.dispatch_leader_prepare(leader_prepare_signed).await;
-    assert_matches!(res, Err(LeaderPrepareError::ProposalMismatchedPayload))
+    assert_matches!(res, Err(LeaderPrepareError::ProposalMismatchedPayload));
 }
 
 #[tokio::test]
@@ -264,7 +264,7 @@ async fn leader_prepare_proposal_when_previous_not_finalized() {
     assert_matches!(
         res,
         Err(LeaderPrepareError::ProposalWhenPreviousNotFinalized)
-    )
+    );
 }
 
 #[tokio::test]
@@ -301,7 +301,7 @@ async fn leader_prepare_proposal_invalid_parent_hash() {
             assert_eq!(received_parent_hash, junk);
             assert_eq!(header, leader_prepare.proposal);
         }
-    )
+    );
 }
 
 #[tokio::test]
@@ -341,7 +341,7 @@ async fn leader_prepare_proposal_non_sequential_number() {
             assert_eq!(received_number, non_seq_num);
             assert_eq!(header, leader_prepare.proposal);
         }
-    )
+    );
 }
 
 #[tokio::test]
@@ -377,7 +377,7 @@ async fn leader_prepare_reproposal_without_quorum() {
         .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare));
 
     let res = util.dispatch_leader_prepare(leader_prepare).await;
-    assert_matches!(res, Err(LeaderPrepareError::ReproposalWithoutQuorum))
+    assert_matches!(res, Err(LeaderPrepareError::ReproposalWithoutQuorum));
 }
 
 #[tokio::test]
@@ -396,7 +396,7 @@ async fn leader_prepare_reproposal_when_finalized() {
         .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare.clone()));
 
     let res = util.dispatch_leader_prepare(leader_prepare_signed).await;
-    assert_matches!(res, Err(LeaderPrepareError::ReproposalWhenFinalized))
+    assert_matches!(res, Err(LeaderPrepareError::ReproposalWhenFinalized));
 }
 
 #[tokio::test]
@@ -421,7 +421,7 @@ async fn leader_prepare_reproposal_invalid_block() {
         .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare));
 
     let res = util.dispatch_leader_prepare(leader_prepare).await;
-    assert_matches!(res, Err(LeaderPrepareError::ReproposalInvalidBlock))
+    assert_matches!(res, Err(LeaderPrepareError::ReproposalInvalidBlock));
 }
 
 #[tokio::test]
