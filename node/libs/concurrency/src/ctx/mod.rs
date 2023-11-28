@@ -264,3 +264,23 @@ impl Ctx {
         self.0.rng_provider.rng()
     }
 }
+
+/// anyhow::Error + "canceled" variant.
+/// Useful for working with concurrent code which doesn't need structured errors,
+/// but needs to handle cancelation explicitly.
+#[derive(thiserror::Error,Debug)]
+pub enum Error {
+    #[error(transparent)]
+    Canceled(#[from] Canceled),
+    #[error(transparent)]
+    Internal(#[from] anyhow::Error),
+}
+
+impl crate::error::Wrap for Error {
+    fn with_wrap<C: std::fmt::Display + Send + Sync + 'static, F: FnOnce() -> C>(self, f: F) -> Self {
+        match self {
+            Error::Internal(err) => Error::Internal(err.with_wrap(f)),
+            err => err,
+        }
+    }
+}

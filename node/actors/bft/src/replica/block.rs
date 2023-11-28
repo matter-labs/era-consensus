@@ -2,7 +2,7 @@ use super::StateMachine;
 use crate::inner::ConsensusInner;
 use anyhow::Context as _;
 use tracing::{info, instrument};
-use zksync_concurrency::ctx;
+use zksync_concurrency::{ctx};
 use zksync_consensus_roles::validator;
 
 impl StateMachine {
@@ -15,7 +15,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
         commit_qc: &validator::CommitQC,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(),ctx::Error> {
         // TODO(gprusak): for availability of finalized blocks,
         //                replicas should be able to broadcast highest quorums without
         //                the corresponding block (same goes for synchronization).

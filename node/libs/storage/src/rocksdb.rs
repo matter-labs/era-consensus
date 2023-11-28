@@ -5,7 +5,7 @@
 use crate::{
     traits::{BlockStore, ReplicaStateStore, WriteBlockStore},
     types::{MissingBlockNumbers, ReplicaState},
-    StorageError, StorageResult,
+    StorageResult,
 };
 use anyhow::Context as _;
 use async_trait::async_trait;
@@ -100,7 +100,6 @@ impl RocksdbStorage {
         let db = scope::wait_blocking(|| {
             rocksdb::DB::open(&options, path)
                 .context("Failed opening RocksDB")
-                .map_err(StorageError::Database)
         })
         .await?;
 
@@ -112,7 +111,7 @@ impl RocksdbStorage {
         if let Some(stored_genesis_block) = this.block(ctx, genesis_block.header.number).await? {
             if stored_genesis_block.header != genesis_block.header {
                 let err = anyhow::anyhow!("Mismatch between stored and expected genesis block");
-                return Err(StorageError::Database(err));
+                return Err(err.into());
             }
         } else {
             tracing::debug!(
@@ -300,19 +299,15 @@ impl fmt::Debug for RocksdbStorage {
 #[async_trait]
 impl BlockStore for RocksdbStorage {
     async fn head_block(&self, _ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
-        scope::wait_blocking(|| self.head_block_blocking().map_err(StorageError::Database)).await
+        Ok(scope::wait_blocking(|| self.head_block_blocking()).await?)
     }
 
     async fn first_block(&self, _ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
-        scope::wait_blocking(|| self.first_block_blocking().map_err(StorageError::Database)).await
+        Ok(scope::wait_blocking(|| self.first_block_blocking()).await?)
     }
 
     async fn last_contiguous_block_number(&self, _ctx: &ctx::Ctx) -> StorageResult<BlockNumber> {
-        scope::wait_blocking(|| {
-            self.last_contiguous_block_number_blocking()
-                .map_err(StorageError::Database)
-        })
-        .await
+        Ok(scope::wait_blocking(|| self.last_contiguous_block_number_blocking()).await?)
     }
 
     async fn block(
@@ -320,7 +315,7 @@ impl BlockStore for RocksdbStorage {
         _ctx: &ctx::Ctx,
         number: BlockNumber,
     ) -> StorageResult<Option<FinalBlock>> {
-        scope::wait_blocking(|| self.block_blocking(number).map_err(StorageError::Database)).await
+        Ok(scope::wait_blocking(|| self.block_blocking(number)).await?)
     }
 
     async fn missing_block_numbers(
@@ -328,11 +323,7 @@ impl BlockStore for RocksdbStorage {
         _ctx: &ctx::Ctx,
         range: ops::Range<BlockNumber>,
     ) -> StorageResult<Vec<BlockNumber>> {
-        scope::wait_blocking(|| {
-            self.missing_block_numbers_blocking(range)
-                .map_err(StorageError::Database)
-        })
-        .await
+        Ok(scope::wait_blocking(|| self.missing_block_numbers_blocking(range)).await?)
     }
 
     fn subscribe_to_block_writes(&self) -> watch::Receiver<BlockNumber> {
@@ -343,22 +334,14 @@ impl BlockStore for RocksdbStorage {
 #[async_trait]
 impl WriteBlockStore for RocksdbStorage {
     async fn put_block(&self, _ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()> {
-        scope::wait_blocking(|| {
-            self.put_block_blocking(block)
-                .map_err(StorageError::Database)
-        })
-        .await
+        Ok(scope::wait_blocking(|| self.put_block_blocking(block)).await?)
     }
 }
 
 #[async_trait]
 impl ReplicaStateStore for RocksdbStorage {
     async fn replica_state(&self, _ctx: &ctx::Ctx) -> StorageResult<Option<ReplicaState>> {
-        scope::wait_blocking(|| {
-            self.replica_state_blocking()
-                .map_err(StorageError::Database)
-        })
-        .await
+        Ok(scope::wait_blocking(|| self.replica_state_blocking()).await?)
     }
 
     async fn put_replica_state(
@@ -366,10 +349,6 @@ impl ReplicaStateStore for RocksdbStorage {
         _ctx: &ctx::Ctx,
         replica_state: &ReplicaState,
     ) -> StorageResult<()> {
-        scope::wait_blocking(|| {
-            self.put_replica_state_blocking(replica_state)
-                .map_err(StorageError::Database)
-        })
-        .await
+        Ok(scope::wait_blocking(|| self.put_replica_state_blocking(replica_state)).await?)
     }
 }

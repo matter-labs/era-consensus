@@ -3,7 +3,7 @@ use crate::inner::ConsensusInner;
 use anyhow::Context as _;
 use std::collections::HashMap;
 use tracing::instrument;
-use zksync_concurrency::ctx;
+use zksync_concurrency::{ctx,error::Wrap as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator;
 
@@ -103,6 +103,17 @@ pub(crate) enum Error {
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error("internal error: {0:#}")]
     Internal(#[from] anyhow::Error),
+    #[error(transparent)]
+    Canceled(#[from] ctx::Canceled),
+}
+
+impl From<ctx::Error> for Error {
+    fn from(err: ctx::Error) -> Self {
+        match err {
+            ctx::Error::Canceled(err) => Self::Canceled(err),
+            ctx::Error::Internal(err) => Self::Internal(err),
+        }
+    }
 }
 
 impl StateMachine {
@@ -189,7 +200,7 @@ impl StateMachine {
 
         // Try to create a finalized block with this CommitQC and our block proposal cache.
         // This gives us another chance to finalize a block that we may have missed before.
-        self.save_block(ctx, consensus, &highest_qc).await?;
+        self.save_block(ctx, consensus, &highest_qc).await.wrap("save_block()")?;
 
         // ----------- Checking the block proposal --------------
 

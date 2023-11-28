@@ -149,10 +149,3 @@ fn test_schema_encode_decode() {
         zksync_protobuf::decode(&zksync_protobuf::encode(&replica)).unwrap()
     );
 }
-
-#[test]
-fn cancellation_is_detected_in_storage_errors() {
-    let err = StorageError::from(ctx::Canceled);
-    let err = anyhow::Error::from(err);
-    assert!(err.root_cause().is::<ctx::Canceled>());
-}

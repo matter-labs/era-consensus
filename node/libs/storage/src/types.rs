@@ -2,7 +2,6 @@
 use crate::proto;
 use anyhow::Context as _;
 use std::{iter, ops};
-use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator::{self, BlockNumber};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
@@ -132,16 +131,7 @@ where
     }
 }
 
-/// Storage errors.
-#[derive(Debug, thiserror::Error)]
-pub enum StorageError {
-    /// Operation was canceled by structured concurrency framework.
-    #[error("operation was canceled by structured concurrency framework")]
-    Canceled(#[from] ctx::Canceled),
-    /// Database operation failed.
-    #[error("database operation failed")]
-    Database(#[source] anyhow::Error),
-}
+pub type StorageError = zksync_concurrency::ctx::Error;
 
 /// [`Result`] for fallible storage operations.
 pub type StorageResult<T> = Result<T, StorageError>;

@@ -80,7 +80,7 @@ impl SyncBlocks {
         // rather than catching in the constituent tasks.
         result.or_else(|err| match err {
             StorageError::Canceled(_) => Ok(()), // Cancellation is not propagated as an error
-            StorageError::Database(err) => Err(err),
+            StorageError::Internal(err) => Err(err),
         })
     }
 

@@ -124,7 +124,7 @@ async fn test_peer_states<T: Test>(test: T) {
         s.spawn_bg(async {
             peer_states.run(ctx).await.or_else(|err| match err {
                 StorageError::Canceled(_) => Ok(()), // Swallow cancellation errors after the test is finished
-                StorageError::Database(err) => Err(err),
+                StorageError::Internal(err) => Err(err),
             })
         });
         test.test(ctx, test_handles).await
