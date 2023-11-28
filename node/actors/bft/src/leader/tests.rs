@@ -1,29 +1,3 @@
-//! ## Tests coverage
-//!
-//! - [x] replica_prepare_sanity
-//! - [x] replica_prepare_sanity_yield_leader_prepare
-//! - [x] replica_prepare_old_view
-//! - [x] replica_prepare_during_commit
-//! - [x] replica_prepare_not_leader_in_view
-//! - [x] replica_prepare_already_exists
-//! - [x] replica_prepare_num_received_below_threshold
-//! - [x] replica_prepare_invalid_sig
-//! - [x] replica_prepare_invalid_commit_qc
-//! - [x] replica_prepare_high_qc_of_current_view
-//! - [x] replica_prepare_high_qc_of_future_view
-//! - [x] replica_prepare_non_validator_signer // FAILS
-//!
-//! - [x] replica_commit_sanity
-//! - [x] replica_commit_sanity_yield_leader_commit
-//! - [x] replica_commit_old
-//! - [x] replica_commit_not_leader_in_view
-//! - [x] replica_commit_already_exists
-//! - [x] replica_commit_num_received_below_threshold
-//! - [x] replica_commit_invalid_sig
-//! - [x] replica_commit_unexpected_proposal
-//! - [x] replica_commit_protocol_version_mismatch // FAILS
-//!
-
 use super::{
     replica_commit::Error as ReplicaCommitError, replica_prepare::Error as ReplicaPrepareError,
 };

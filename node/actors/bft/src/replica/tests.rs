@@ -1,28 +1,3 @@
-//! ## Tests coverage
-//!
-//! - [x] leader_prepare_sanity
-//! - [x] leader_prepare_sanity_yield_replica_commit
-//! - [x] leader_prepare_invalid_leader
-//! - [x] leader_prepare_old_view
-//! - [x] leader_prepare_invalid_sig
-//! - [x] leader_prepare_invalid_prepare_qc
-//! - [x] leader_prepare_invalid_high_qc
-//! - [x] leader_prepare_proposal_oversized_payload
-//! - [x] leader_prepare_proposal_mismatched_payload
-//! - [x] leader_prepare_proposal_when_previous_not_finalized
-//! - [x] leader_prepare_proposal_invalid_parent_hash
-//! - [x] leader_prepare_proposal_non_sequential_number
-//! - [x] leader_prepare_reproposal_without_quorum
-//! - [x] leader_prepare_reproposal_when_finalized
-//! - [x] leader_prepare_reproposal_invalid_block
-//!
-//! - [x] leader_commit_sanity
-//! - [x] leader_commit_sanity_yield_replica_prepare
-//! - [x] leader_commit_invalid_leader
-//! - [x] leader_commit_old
-//! - [x] leader_commit_invalid_sig
-//! - [x] leader_commit_invalid_commit_qc
-//!
 use super::{
     leader_commit::Error as LeaderCommitError, leader_prepare::Error as LeaderPrepareError,
 };

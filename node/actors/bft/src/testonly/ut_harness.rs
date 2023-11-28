@@ -278,11 +278,14 @@ impl UTHarness {
     }
 
     pub(crate) async fn recv_signed(&mut self) -> Result<Signed<ConsensusMsg>, Canceled> {
-        self.pipe.recv(&self.ctx).await.map(|output_message| match output_message {
-            OutputMessage::Network(ConsensusInputMessage {
-                message: signed, ..
-            }) => signed,
-        })
+        self.pipe
+            .recv(&self.ctx)
+            .await
+            .map(|output_message| match output_message {
+                OutputMessage::Network(ConsensusInputMessage {
+                    message: signed, ..
+                }) => signed,
+            })
     }
 
     pub(crate) fn current_replica_view(&self) -> ViewNumber {
