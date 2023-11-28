@@ -179,7 +179,7 @@ async fn replica_prepare_high_qc_of_current_view() {
     let res = util.dispatch_replica_prepare(replica_prepare);
     assert_matches!(
         res,
-        Err(ReplicaPrepareError::HighQCOfFutureView{ high_qc_view, current_view }) => {
+        Err(ReplicaPrepareError::HighQCOfFutureView { high_qc_view, current_view }) => {
             assert_eq!(high_qc_view, qc_view);
             assert_eq!(current_view, view);
         }
