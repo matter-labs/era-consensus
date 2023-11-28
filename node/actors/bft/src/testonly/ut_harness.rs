@@ -5,7 +5,11 @@ use crate::{
     Consensus,
 };
 use rand::{rngs::StdRng, Rng};
-use zksync_concurrency::{ctx, ctx::Ctx, scope};
+use zksync_concurrency::{
+    ctx,
+    ctx::{Canceled, Ctx},
+    scope,
+};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator::{
     self, BlockHeader, CommitQC, ConsensusMsg, LeaderCommit, LeaderPrepare, Payload, Phase,
@@ -273,13 +277,12 @@ impl UTHarness {
         .unwrap()
     }
 
-    pub(crate) async fn recv_signed(&mut self) -> Option<Signed<ConsensusMsg>> {
-        let msg = self.pipe.recv(&self.ctx).await.unwrap();
-        match msg {
+    pub(crate) async fn recv_signed(&mut self) -> Result<Signed<ConsensusMsg>, Canceled> {
+        self.pipe.recv(&self.ctx).await.map(|output_message| match output_message {
             OutputMessage::Network(ConsensusInputMessage {
                 message: signed, ..
-            }) => Some(signed),
-        }
+            }) => signed,
+        })
     }
 
     pub(crate) fn current_replica_view(&self) -> ViewNumber {
