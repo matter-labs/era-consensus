@@ -2,14 +2,16 @@ use super::{
     leader_commit::Error as LeaderCommitError, leader_prepare::Error as LeaderPrepareError,
 };
 use crate::{
-    inner::ConsensusInner, leader::ReplicaPrepareError, testonly, testonly::ut_harness::UTHarness,
+    inner::ConsensusInner,
+    leader::ReplicaPrepareError,
+    misc::{consensus_threshold, faulty_replicas},
+    testonly::ut_harness::UTHarness,
 };
 use assert_matches::assert_matches;
 use rand::Rng;
-use zksync_concurrency::{ctx, scope, testonly::abort_on_panic, time};
-use zksync_consensus_network::io::{ConsensusInputMessage, Target};
+use std::cell::RefCell;
 use zksync_consensus_roles::validator::{
-    self, BlockHeaderHash, ConsensusMsg, LeaderPrepare, Payload, PrepareQC, ReplicaCommit,
+    BlockHeaderHash, ConsensusMsg, LeaderPrepare, Payload, PrepareQC, ReplicaCommit,
     ReplicaPrepare, ViewNumber,
 };
 
@@ -40,7 +42,7 @@ use zksync_consensus_roles::validator::{
 /// - [x] leader_prepare_proposal_when_previous_not_finalized
 /// - [x] leader_prepare_proposal_invalid_parent_hash
 /// - [x] leader_prepare_proposal_non_sequential_number
-/// - [ ] leader_prepare_reproposal_without_quorum
+/// - [x] leader_prepare_reproposal_without_quorum
 /// - [x] leader_prepare_reproposal_when_finalized
 /// - [ ] leader_prepare_reproposal_invalid_block
 /// -
@@ -61,7 +63,6 @@ use zksync_consensus_roles::validator::{
 /// - [x] leader_commit_invalid_sig
 /// - [x] leader_commit_invalid_commit_qc
 ///
-
 #[tokio::test]
 async fn leader_prepare_sanity() {
     let mut util = UTHarness::new().await;
@@ -366,25 +367,40 @@ async fn leader_prepare_proposal_non_sequential_number() {
     )
 }
 
-#[ignore = "unimplemented"]
 #[tokio::test]
 async fn leader_prepare_reproposal_without_quorum() {
-    // let mut util = UTHarness::new().await;
-    //
-    // let mut leader_prepare = util
-    //     .new_procedural_leader_prepare()
-    //     .await
-    //     .cast::<LeaderPrepare>()
-    //     .unwrap()
-    //     .msg;
-    // leader_prepare.justification = util.new_empty_prepare_qc();
-    // leader_prepare.proposal_payload = None;
-    // let leader_prepare = util
-    //     .own_key()
-    //     .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare));
-    //
-    // let res = util.dispatch_leader_prepare(leader_prepare).await;
-    // assert_matches!(res, Err(LeaderPrepareError::ReproposalWithoutQuorum))
+    let num_validators = 6;
+    assert_matches!(faulty_replicas(num_validators), res if res > 0);
+
+    let mut util = UTHarness::new_with(num_validators as i32).await;
+
+    let view = ViewNumber(2);
+    util.set_view(view);
+    assert_eq!(util.view_leader(view), util.key_at(0).public());
+
+    let replica_prepare = util.new_current_replica_prepare(|_| {}).cast().unwrap().msg;
+    let res = util.dispatch_replica_prepare_many(
+        vec![replica_prepare; consensus_threshold(num_validators)],
+        util.keys(),
+    );
+    assert_matches!(res, Ok(()));
+
+    let msg = util.recv_signed().await.unwrap();
+    let mut leader_prepare = msg.cast::<LeaderPrepare>().unwrap().msg;
+
+    let rng = RefCell::new(util.new_rng());
+    leader_prepare.justification = util.new_prepare_qc_many(&|msg: &mut ReplicaPrepare| {
+        let mut rng = rng.borrow_mut();
+        msg.high_vote = rng.gen();
+    });
+    leader_prepare.proposal_payload = None;
+
+    let leader_prepare = util
+        .own_key()
+        .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare));
+
+    let res = util.dispatch_leader_prepare(leader_prepare).await;
+    assert_matches!(res, Err(LeaderPrepareError::ReproposalWithoutQuorum))
 }
 
 #[tokio::test]

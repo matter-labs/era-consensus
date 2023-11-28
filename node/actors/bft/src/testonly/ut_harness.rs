@@ -55,8 +55,16 @@ impl UTHarness {
         &self.keys[index]
     }
 
+    pub(crate) fn keys(&self) -> Vec<SecretKey> {
+        self.keys.clone()
+    }
+
     pub(crate) fn rng(&mut self) -> &mut StdRng {
         &mut self.rng
+    }
+
+    pub(crate) fn new_rng(&self) -> StdRng {
+        self.ctx.rng()
     }
 
     pub(crate) fn set_view(&mut self, view: ViewNumber) {
@@ -183,6 +191,23 @@ impl UTHarness {
     }
 
     #[allow(clippy::result_large_err)]
+    pub(crate) fn dispatch_replica_prepare_many(
+        &mut self,
+        messages: Vec<ReplicaPrepare>,
+        keys: Vec<SecretKey>,
+    ) -> Result<(), ReplicaPrepareError> {
+        messages
+            .iter()
+            .enumerate()
+            .map(|(i, msg)| {
+                let signed = keys[i].sign_msg(ConsensusMsg::ReplicaPrepare(msg.clone()));
+                self.dispatch_replica_prepare(signed)
+            })
+            .last()
+            .unwrap()
+    }
+
+    #[allow(clippy::result_large_err)]
     pub(crate) fn dispatch_replica_prepare(
         &mut self,
         msg: Signed<ConsensusMsg>,
@@ -293,6 +318,29 @@ impl UTHarness {
             .keys
             .iter()
             .map(|sk| sk.sign_msg(msg.clone()))
+            .collect();
+
+        PrepareQC::from(&signed_messages, &validator_set).unwrap()
+    }
+
+    pub(crate) fn new_prepare_qc_many(
+        &mut self,
+        mutate_fn: &dyn Fn(&mut ReplicaPrepare),
+    ) -> PrepareQC {
+        let validator_set =
+            validator::ValidatorSet::new(self.keys.iter().map(|k| k.public())).unwrap();
+
+        let signed_messages: Vec<_> = self
+            .keys
+            .iter()
+            .map(|sk| {
+                let msg: ReplicaPrepare = self
+                    .new_current_replica_prepare(|msg| mutate_fn(msg))
+                    .cast()
+                    .unwrap()
+                    .msg;
+                sk.sign_msg(msg.clone())
+            })
             .collect();
 
         PrepareQC::from(&signed_messages, &validator_set).unwrap()
