@@ -31,11 +31,12 @@ impl ProtoFmt for ConsensusConfig {
     type Proto = proto::ConsensusConfig;
 
     fn read(proto: &Self::Proto) -> anyhow::Result<Self> {
-        let protocol_version = proto.protocol_version.context("protocol_version")?;
         Ok(Self {
             key: read_required_text(&proto.key).context("key")?,
             public_addr: read_required_text(&proto.public_addr).context("public_addr")?,
-            protocol_version: validator::ProtocolVersion::try_from(protocol_version)
+            protocol_version: required(&proto.protocol_version)
+                .copied()
+                .and_then(validator::ProtocolVersion::try_from)
                 .context("protocol_version")?,
         })
     }
