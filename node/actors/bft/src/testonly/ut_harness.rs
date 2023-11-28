@@ -13,6 +13,11 @@ use zksync_consensus_roles::validator::{
 };
 use zksync_consensus_utils::pipe::DispatcherPipe;
 
+/// UTHarness provides various utilities for unit tests.
+/// It is designed to simplify the setup and execution of test cases by encapsulating
+/// common testing functionality.
+///
+/// It should be instantiated once for every test case.
 #[cfg(test)]
 pub(crate) struct UTHarness {
     ctx: Ctx,
