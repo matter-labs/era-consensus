@@ -148,7 +148,7 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::LeaderCommit(
                     validator::LeaderCommit {
-                        protocol_version: validator::CURRENT_VERSION,
+                        protocol_version: self.protocol_version,
                         justification,
                     },
                 )),

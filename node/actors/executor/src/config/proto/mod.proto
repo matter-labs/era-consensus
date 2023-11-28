@@ -48,6 +48,8 @@ message NodeAddr {
 message ConsensusConfig {
   optional string key = 1; // [required] ValidatorPublicKey
   optional string public_addr = 2; // [required] IpAddr
+  // Currently used protocol version for consensus messages.
+  optional uint32 protocol_version = 3;
 }
 
 // Config of the gossip network.

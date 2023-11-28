@@ -6,7 +6,7 @@ use std::{
 };
 use zksync_consensus_bft::misc::consensus_threshold;
 use zksync_consensus_crypto::{read_required_text, Text, TextFmt};
-use zksync_consensus_network::{consensus, gossip};
+use zksync_consensus_network::gossip;
 use zksync_consensus_roles::{node, validator};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
@@ -23,24 +23,20 @@ pub struct ConsensusConfig {
     /// Public TCP address that other validators are expected to connect to.
     /// It is announced over gossip network.
     pub public_addr: net::SocketAddr,
-}
-
-impl From<consensus::Config> for ConsensusConfig {
-    fn from(config: consensus::Config) -> Self {
-        Self {
-            key: config.key.public(),
-            public_addr: config.public_addr,
-        }
-    }
+    /// Currently used protocol version for consensus messages.
+    pub protocol_version: validator::ProtocolVersion,
 }
 
 impl ProtoFmt for ConsensusConfig {
     type Proto = proto::ConsensusConfig;
 
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+    fn read(proto: &Self::Proto) -> anyhow::Result<Self> {
+        let protocol_version = proto.protocol_version.context("protocol_version")?;
         Ok(Self {
-            key: read_required_text(&r.key).context("key")?,
-            public_addr: read_required_text(&r.public_addr).context("public_addr")?,
+            key: read_required_text(&proto.key).context("key")?,
+            public_addr: read_required_text(&proto.public_addr).context("public_addr")?,
+            protocol_version: validator::ProtocolVersion::try_from(protocol_version)
+                .context("protocol_version")?,
         })
     }
 
@@ -48,6 +44,7 @@ impl ProtoFmt for ConsensusConfig {
         Self::Proto {
             key: Some(self.key.encode()),
             public_addr: Some(self.public_addr.encode()),
+            protocol_version: Some(self.protocol_version.as_u32()),
         }
     }
 }
