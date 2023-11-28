@@ -353,7 +353,7 @@ async fn leader_prepare_reproposal_without_quorum() {
     let num_validators = 6;
     assert_matches!(faulty_replicas(num_validators), res if res > 0);
 
-    let mut util = UTHarness::new_with(num_validators as i32).await;
+    let mut util = UTHarness::new_with(num_validators).await;
 
     let view = ViewNumber(2);
     util.set_view(view);

@@ -36,7 +36,7 @@ impl UTHarness {
         UTHarness::new_with(1).await
     }
 
-    pub(crate) async fn new_with(num_validators: i32) -> UTHarness {
+    pub(crate) async fn new_with(num_validators: usize) -> UTHarness {
         let ctx = ctx::test_root(&ctx::RealClock);
         let mut rng = ctx.rng();
         let keys: Vec<_> = (0..num_validators).map(|_| rng.gen()).collect();
