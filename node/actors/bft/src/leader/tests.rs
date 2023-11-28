@@ -24,15 +24,18 @@
 //! - [x] replica_commit_protocol_version_mismatch // FAILS
 //!
 
-use super::{
-    replica_commit::Error as ReplicaCommitError, replica_prepare::Error as ReplicaPrepareError,
-};
-use crate::testonly::ut_harness::UTHarness;
 use assert_matches::assert_matches;
 use rand::Rng;
+
 use zksync_consensus_roles::validator::{
     self, CommitQC, ConsensusMsg, LeaderCommit, LeaderPrepare, Phase, ProtocolVersion,
     ReplicaCommit, ViewNumber,
+};
+
+use crate::testonly::ut_harness::UTHarness;
+
+use super::{
+    replica_commit::Error as ReplicaCommitError, replica_prepare::Error as ReplicaPrepareError,
 };
 
 #[tokio::test]
@@ -266,11 +269,12 @@ async fn replica_commit_old() {
 
     let res = util.dispatch_replica_commit(replica_commit);
     assert_matches!(
-    res,
-    Err(ReplicaCommitError::Old { current_view, current_phase }) => {
-        assert_eq!(current_view, util.current_replica_view());
-        assert_eq!(current_phase, util.current_replica_phase());
-    });
+        res,
+        Err(ReplicaCommitError::Old { current_view, current_phase }) => {
+            assert_eq!(current_view, util.current_replica_view());
+            assert_eq!(current_phase, util.current_replica_phase());
+        }
+    );
 }
 
 #[tokio::test]
