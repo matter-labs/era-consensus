@@ -44,7 +44,7 @@ use zksync_consensus_roles::validator::{
 /// - [x] leader_prepare_proposal_non_sequential_number
 /// - [x] leader_prepare_reproposal_without_quorum
 /// - [x] leader_prepare_reproposal_when_finalized
-/// - [ ] leader_prepare_reproposal_invalid_block
+/// - [x] leader_prepare_reproposal_invalid_block
 /// -
 /// - [x] replica_commit_sanity
 /// - [x] replica_commit_sanity_yield_leader_commit
@@ -57,7 +57,7 @@ use zksync_consensus_roles::validator::{
 /// - [x] replica_commit_protocol_version_mismatch // FAILS
 /// -
 /// - [x] leader_commit_sanity
-/// - [x] leader_commit_sanity_yield_replica_prepare // FAILS
+/// - [x] leader_commit_sanity_yield_replica_prepare
 /// - [x] leader_commit_invalid_leader
 /// - [x] leader_commit_old
 /// - [x] leader_commit_invalid_sig
@@ -422,23 +422,28 @@ async fn leader_prepare_reproposal_when_finalized() {
     assert_matches!(res, Err(LeaderPrepareError::ReproposalWhenFinalized))
 }
 
-#[ignore = "unimplemented"]
 #[tokio::test]
 async fn leader_prepare_reproposal_invalid_block() {
     let mut util = UTHarness::new().await;
 
-    let mut leader_prepare = util
+    let mut leader_prepare: LeaderPrepare = util
         .new_procedural_leader_prepare()
         .await
-        .cast::<LeaderPrepare>()
+        .cast()
         .unwrap()
         .msg;
-    leader_prepare.proposal = util.rng().gen();
-    let leader_prepare_signed = util
-        .own_key()
-        .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare.clone()));
 
-    let res = util.dispatch_leader_prepare(leader_prepare_signed).await;
+    let high_vote = util.rng().gen();
+    leader_prepare.justification = util.new_prepare_qc(|msg: &mut ReplicaPrepare| {
+        msg.high_vote = high_vote;
+    });
+    leader_prepare.proposal_payload = None;
+
+    let leader_prepare = util
+        .own_key()
+        .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare));
+
+    let res = util.dispatch_leader_prepare(leader_prepare).await;
     assert_matches!(res, Err(LeaderPrepareError::ReproposalInvalidBlock))
 }
 
@@ -456,7 +461,7 @@ async fn leader_commit_sanity_yield_replica_prepare() {
 
     let leader_commit = util.new_procedural_leader_commit().await;
     util.dispatch_leader_commit(leader_commit).await.unwrap();
-    util.recv_signed() // FAILS
+    util.recv_signed()
         .await
         .unwrap()
         .cast::<ReplicaPrepare>()
