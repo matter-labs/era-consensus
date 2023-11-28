@@ -296,7 +296,11 @@ async fn leader_prepare_proposal_invalid_parent_hash() {
     let res = util.dispatch_leader_prepare(leader_prepare_signed).await;
     assert_matches!(
         res,
-        Err(LeaderPrepareError::ProposalInvalidParentHash { correct_parent_hash, received_parent_hash, header }) => {
+        Err(LeaderPrepareError::ProposalInvalidParentHash {
+            correct_parent_hash,
+            received_parent_hash,
+            header
+        }) => {
             assert_eq!(correct_parent_hash, replica_prepare.high_vote.proposal.hash());
             assert_eq!(received_parent_hash, junk);
             assert_eq!(header, leader_prepare.proposal);
