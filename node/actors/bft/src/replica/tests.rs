@@ -1,3 +1,28 @@
+//! ## Tests coverage
+//!
+//! - [x] leader_prepare_sanity
+//! - [x] leader_prepare_sanity_yield_replica_commit
+//! - [x] leader_prepare_invalid_leader
+//! - [x] leader_prepare_old_view
+//! - [x] leader_prepare_invalid_sig
+//! - [x] leader_prepare_invalid_prepare_qc
+//! - [x] leader_prepare_invalid_high_qc
+//! - [x] leader_prepare_proposal_oversized_payload
+//! - [x] leader_prepare_proposal_mismatched_payload
+//! - [x] leader_prepare_proposal_when_previous_not_finalized
+//! - [x] leader_prepare_proposal_invalid_parent_hash
+//! - [x] leader_prepare_proposal_non_sequential_number
+//! - [x] leader_prepare_reproposal_without_quorum
+//! - [x] leader_prepare_reproposal_when_finalized
+//! - [x] leader_prepare_reproposal_invalid_block
+//!
+//! - [x] leader_commit_sanity
+//! - [x] leader_commit_sanity_yield_replica_prepare
+//! - [x] leader_commit_invalid_leader
+//! - [x] leader_commit_old
+//! - [x] leader_commit_invalid_sig
+//! - [x] leader_commit_invalid_commit_qc
+//!
 use super::{
     leader_commit::Error as LeaderCommitError, leader_prepare::Error as LeaderPrepareError,
 };
@@ -15,54 +40,6 @@ use zksync_consensus_roles::validator::{
     ReplicaPrepare, ViewNumber,
 };
 
-/// ## Tests coverage
-///
-/// - [x] replica_prepare_sanity
-/// - [x] replica_prepare_sanity_yield_leader_prepare
-/// - [x] replica_prepare_old_view
-/// - [x] replica_prepare_during_commit
-/// - [x] replica_prepare_not_leader_in_view
-/// - [x] replica_prepare_already_exists
-/// - [x] replica_prepare_num_received_below_threshold
-/// - [x] replica_prepare_invalid_sig
-/// - [x] replica_prepare_invalid_commit_qc
-/// - [x] replica_prepare_high_qc_of_current_view
-/// - [x] replica_prepare_high_qc_of_future_view
-/// - [x] replica_prepare_non_validator_signer // FAILS
-/// -
-/// - [x] leader_prepare_sanity
-/// - [x] leader_prepare_sanity_yield_replica_commit
-/// - [x] leader_prepare_invalid_leader
-/// - [x] leader_prepare_old_view
-/// - [x] leader_prepare_invalid_sig
-/// - [x] leader_prepare_invalid_prepare_qc
-/// - [x] leader_prepare_invalid_high_qc
-/// - [x] leader_prepare_proposal_oversized_payload
-/// - [x] leader_prepare_proposal_mismatched_payload
-/// - [x] leader_prepare_proposal_when_previous_not_finalized
-/// - [x] leader_prepare_proposal_invalid_parent_hash
-/// - [x] leader_prepare_proposal_non_sequential_number
-/// - [x] leader_prepare_reproposal_without_quorum
-/// - [x] leader_prepare_reproposal_when_finalized
-/// - [x] leader_prepare_reproposal_invalid_block
-/// -
-/// - [x] replica_commit_sanity
-/// - [x] replica_commit_sanity_yield_leader_commit
-/// - [x] replica_commit_old
-/// - [x] replica_commit_not_leader_in_view
-/// - [x] replica_commit_already_exists
-/// - [x] replica_commit_num_received_below_threshold
-/// - [x] replica_commit_invalid_sig
-/// - [x] replica_commit_unexpected_proposal
-/// - [x] replica_commit_protocol_version_mismatch // FAILS
-/// -
-/// - [x] leader_commit_sanity
-/// - [x] leader_commit_sanity_yield_replica_prepare
-/// - [x] leader_commit_invalid_leader
-/// - [x] leader_commit_old
-/// - [x] leader_commit_invalid_sig
-/// - [x] leader_commit_invalid_commit_qc
-///
 #[tokio::test]
 async fn leader_prepare_sanity() {
     let mut util = UTHarness::new().await;
