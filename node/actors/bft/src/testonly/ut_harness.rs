@@ -202,10 +202,10 @@ impl UTHarness {
         keys: Vec<SecretKey>,
     ) -> Result<(), ReplicaPrepareError> {
         messages
-            .iter()
-            .enumerate()
-            .map(|(i, msg)| {
-                let signed = keys[i].sign_msg(ConsensusMsg::ReplicaPrepare(msg.clone()));
+            .into_iter()
+            .zip(keys)
+            .map(|(msg, key)| {
+                let signed = key.sign_msg(ConsensusMsg::ReplicaPrepare(msg));
                 self.dispatch_replica_prepare(signed)
             })
             .last()
