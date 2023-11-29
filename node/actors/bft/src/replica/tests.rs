@@ -26,8 +26,29 @@ async fn leader_prepare_reproposal_sanity() {
 
     util.set_view(util.owner_as_view_leader());
 
-    let leader_prepare = util.new_procedural_leader_prepare_many().await;
-    util.dispatch_leader_prepare(leader_prepare).await.unwrap();
+    let replica_prepare: ReplicaPrepare = util.new_reproposal_replica_prepare().cast().unwrap().msg;
+    util.dispatch_replica_prepare_many(
+        vec![replica_prepare.clone(); util.consensus_threshold()],
+        util.keys(),
+    )
+    .unwrap();
+    let leader_prepare_signed = util.recv_signed().await.unwrap();
+
+    let leader_prepare = leader_prepare_signed
+        .clone()
+        .cast::<LeaderPrepare>()
+        .unwrap()
+        .msg;
+    assert_matches!(
+        leader_prepare,
+        LeaderPrepare {proposal_payload, .. } => {
+            assert_eq!(proposal_payload, None);
+        }
+    );
+
+    util.dispatch_leader_prepare(leader_prepare_signed)
+        .await
+        .unwrap();
 }
 
 #[tokio::test]

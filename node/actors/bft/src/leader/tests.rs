@@ -5,7 +5,7 @@ use crate::testonly::ut_harness::UTHarness;
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_consensus_roles::validator::{
-    self, CommitQC, ConsensusMsg, LeaderCommit, LeaderPrepare, Phase, ProtocolVersion,
+    self, CommitQC, ConsensusMsg, LeaderCommit, LeaderPrepare, Phase, PrepareQC, ProtocolVersion,
     ReplicaCommit, ReplicaPrepare, ViewNumber,
 };
 
@@ -52,6 +52,50 @@ async fn replica_prepare_sanity_yield_leader_prepare() {
             assert_eq!(view, replica_prepare.view);
             assert_eq!(proposal.parent, replica_prepare.high_vote.proposal.hash());
             assert_eq!(justification, util.new_prepare_qc(|msg| *msg = replica_prepare));
+        }
+    );
+}
+
+#[tokio::test]
+async fn replica_prepare_sanity_yield_leader_prepare_reproposal() {
+    let mut util = UTHarness::new_many().await;
+
+    util.set_view(util.owner_as_view_leader());
+
+    let replica_prepare: ReplicaPrepare = util.new_reproposal_replica_prepare().cast().unwrap().msg;
+    util.dispatch_replica_prepare_many(
+        vec![replica_prepare.clone(); util.consensus_threshold()],
+        util.keys(),
+    )
+    .unwrap();
+    let leader_prepare = util
+        .recv_signed()
+        .await
+        .unwrap()
+        .cast::<LeaderPrepare>()
+        .unwrap()
+        .msg;
+
+    assert_matches!(
+        leader_prepare,
+        LeaderPrepare {
+            protocol_version,
+            view,
+            proposal,
+            proposal_payload,
+            justification,
+        } => {
+            assert_eq!(protocol_version, replica_prepare.protocol_version);
+            assert_eq!(view, replica_prepare.view);
+            assert_eq!(proposal, replica_prepare.high_vote.proposal);
+            assert_eq!(proposal_payload, None);
+            assert_matches!(
+                justification,
+                PrepareQC { map, .. } => {
+                    assert_eq!(map.len(), 1);
+                    assert_eq!(*map.first_key_value().unwrap().0, replica_prepare);
+                }
+            );
         }
     );
 }

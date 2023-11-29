@@ -115,6 +115,17 @@ impl UTHarness {
         self.consensus.replica.view = view
     }
 
+    pub(crate) fn new_reproposal_replica_prepare(&self) -> Signed<ConsensusMsg> {
+        self.new_current_replica_prepare(|msg| {
+            msg.high_qc = self.new_commit_qc(|high_qc| {
+                // Set view to the previous view since it needs to belong to an earlier view.
+                high_qc.view = msg.view.prev();
+                // Increment high_qc proposal number to create a discrepancy between the high_qc and the high_vote.
+                high_qc.proposal.number = high_qc.proposal.number.next();
+            });
+        })
+    }
+
     pub(crate) fn new_current_replica_prepare(
         &self,
         mutate_fn: impl FnOnce(&mut ReplicaPrepare),
