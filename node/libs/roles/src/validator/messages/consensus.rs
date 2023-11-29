@@ -13,13 +13,25 @@ use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ProtocolVersion(pub u32);
 
-/// We use a hardcoded protocol version for now.
-/// Eventually validators should determine which version to use for which block by observing the relevant L1 contract.
-///
-/// The validator binary has to support the current and next protocol version whenever
-/// a protocol version update is needed (so that it can dynamically switch from producing
-/// blocks for version X to version X+1).
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion(0);
+impl ProtocolVersion {
+    /// Earliest protocol version.
+    pub const EARLIEST: Self = Self(0);
+
+    /// Returns the integer corresponding to this version.
+    pub fn as_u32(self) -> u32 {
+        self.0
+    }
+}
+
+impl TryFrom<u32> for ProtocolVersion {
+    type Error = anyhow::Error;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        // Currently, consensus doesn't define restrictions on the possible version. Unsupported
+        // versions are filtered out on the BFT actor level instead.
+        Ok(Self(value))
+    }
+}
 
 /// Consensus messages.
 #[allow(missing_docs)]
