@@ -11,15 +11,21 @@ use zksync_consensus_roles::validator::{
 
 #[tokio::test]
 async fn replica_prepare_sanity() {
-    let mut util = UTHarness::new().await;
+    let mut util = UTHarness::new_many().await;
 
-    let replica_prepare = util.new_current_replica_prepare(|_| {});
-    util.dispatch_replica_prepare(replica_prepare).unwrap();
+    util.set_view(util.owner_as_view_leader());
+
+    let replica_prepare = util.new_current_replica_prepare(|_| {}).cast().unwrap().msg;
+    util.dispatch_replica_prepare_many(
+        vec![replica_prepare; util.consensus_threshold()],
+        util.keys(),
+    )
+    .unwrap();
 }
 
 #[tokio::test]
 async fn replica_prepare_sanity_yield_leader_prepare() {
-    let mut util = UTHarness::new().await;
+    let mut util = UTHarness::new_one().await;
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
     util.dispatch_replica_prepare(replica_prepare.clone())
@@ -52,7 +58,7 @@ async fn replica_prepare_sanity_yield_leader_prepare() {
 
 #[tokio::test]
 async fn replica_prepare_old_view() {
-    let mut util = UTHarness::new().await;
+    let mut util = UTHarness::new_one().await;
 
     util.set_replica_view(ViewNumber(1));
     util.set_leader_view(ViewNumber(2));
@@ -71,7 +77,7 @@ async fn replica_prepare_old_view() {
 
 #[tokio::test]
 async fn replica_prepare_during_commit() {
-    let mut util = UTHarness::new().await;
+    let mut util = UTHarness::new_one().await;
 
     util.set_leader_phase(Phase::Commit);
 
@@ -91,7 +97,7 @@ async fn replica_prepare_not_leader_in_view() {
     let mut util = UTHarness::new_with(2).await;
 
     let current_view_leader = util.view_leader(util.current_replica_view());
-    assert_ne!(current_view_leader, util.own_key().public());
+    assert_ne!(current_view_leader, util.owner_key().public());
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
     let res = util.dispatch_replica_prepare(replica_prepare.clone());
@@ -105,7 +111,7 @@ async fn replica_prepare_already_exists() {
     let view = ViewNumber(2);
     util.set_replica_view(view);
     util.set_leader_view(view);
-    assert_eq!(util.view_leader(view), util.own_key().public());
+    assert_eq!(util.view_leader(view), util.owner_key().public());
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
     let _ = util.dispatch_replica_prepare(replica_prepare.clone());
@@ -125,7 +131,7 @@ async fn replica_prepare_num_received_below_threshold() {
     let view = ViewNumber(2);
     util.set_replica_view(view);
     util.set_leader_view(view);
-    assert_eq!(util.view_leader(view), util.own_key().public());
+    assert_eq!(util.view_leader(view), util.owner_key().public());
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
     let res = util.dispatch_replica_prepare(replica_prepare);
@@ -140,7 +146,7 @@ async fn replica_prepare_num_received_below_threshold() {
 
 #[tokio::test]
 async fn replica_prepare_invalid_sig() {
-    let mut util = UTHarness::new().await;
+    let mut util = UTHarness::new_one().await;
 
     let mut replica_prepare = util.new_current_replica_prepare(|_| {});
     replica_prepare.sig = util.rng().gen();
@@ -150,7 +156,7 @@ async fn replica_prepare_invalid_sig() {
 
 #[tokio::test]
 async fn replica_prepare_invalid_commit_qc() {
-    let mut util = UTHarness::new().await;
+    let mut util = UTHarness::new_one().await;
 
     let junk = util.rng().gen::<CommitQC>();
     let replica_prepare = util.new_current_replica_prepare(|msg| msg.high_qc = junk);
@@ -160,7 +166,7 @@ async fn replica_prepare_invalid_commit_qc() {
 
 #[tokio::test]
 async fn replica_prepare_high_qc_of_current_view() {
-    let mut util = UTHarness::new().await;
+    let mut util = UTHarness::new_one().await;
 
     let view = ViewNumber(1);
     let qc_view = ViewNumber(1);
@@ -182,7 +188,7 @@ async fn replica_prepare_high_qc_of_current_view() {
 
 #[tokio::test]
 async fn replica_prepare_high_qc_of_future_view() {
-    let mut util = UTHarness::new().await;
+    let mut util = UTHarness::new_one().await;
 
     let view = ViewNumber(1);
     let qc_view = ViewNumber(2);
@@ -224,15 +230,26 @@ async fn replica_prepare_non_validator_signer() {
 
 #[tokio::test]
 async fn replica_commit_sanity() {
-    let mut util = UTHarness::new().await;
+    let mut util = UTHarness::new_many().await;
 
-    let leader_prepare = util.new_procedural_replica_commit().await;
-    util.dispatch_replica_commit(leader_prepare).unwrap();
+    util.set_view(util.owner_as_view_leader());
+
+    let replica_commit = util
+        .new_procedural_replica_commit_many()
+        .await
+        .cast()
+        .unwrap()
+        .msg;
+    util.dispatch_replica_commit_many(
+        vec![replica_commit; util.consensus_threshold()],
+        util.keys(),
+    )
+    .unwrap();
 }
 
 #[tokio::test]
-async fn replica_commit_yield_leader_commit() {
-    let mut util = UTHarness::new().await;
+async fn replica_commit_sanity_yield_leader_commit() {
+    let mut util = UTHarness::new_one().await;
 
     let replica_commit = util.new_procedural_replica_commit().await;
     util.dispatch_replica_commit(replica_commit.clone())
@@ -260,7 +277,7 @@ async fn replica_commit_yield_leader_commit() {
 
 #[tokio::test]
 async fn replica_commit_old() {
-    let mut util = UTHarness::new().await;
+    let mut util = UTHarness::new_one().await;
 
     let mut replica_commit = util
         .new_procedural_replica_commit()
@@ -270,7 +287,7 @@ async fn replica_commit_old() {
         .msg;
     replica_commit.view = util.current_replica_view().prev();
     let replica_commit = util
-        .own_key()
+        .owner_key()
         .sign_msg(ConsensusMsg::ReplicaCommit(replica_commit));
 
     let res = util.dispatch_replica_commit(replica_commit);
@@ -288,7 +305,7 @@ async fn replica_commit_not_leader_in_view() {
     let mut util = UTHarness::new_with(2).await;
 
     let current_view_leader = util.view_leader(util.current_replica_view());
-    assert_ne!(current_view_leader, util.own_key().public());
+    assert_ne!(current_view_leader, util.owner_key().public());
 
     let replica_commit = util.new_current_replica_commit(|_| {});
     let res = util.dispatch_replica_commit(replica_commit);
@@ -302,7 +319,7 @@ async fn replica_commit_already_exists() {
     let view = ViewNumber(2);
     util.set_replica_view(view);
     util.set_leader_view(view);
-    assert_eq!(util.view_leader(view), util.own_key().public());
+    assert_eq!(util.view_leader(view), util.owner_key().public());
 
     let replica_prepare_one = util.new_current_replica_prepare(|_| {});
     let _ = util.dispatch_replica_prepare(replica_prepare_one.clone());
@@ -330,7 +347,7 @@ async fn replica_commit_num_received_below_threshold() {
     let view = ViewNumber(2);
     util.set_replica_view(view);
     util.set_leader_view(view);
-    assert_eq!(util.view_leader(view), util.own_key().public());
+    assert_eq!(util.view_leader(view), util.owner_key().public());
 
     let replica_prepare_one = util.new_current_replica_prepare(|_| {});
     let _ = util.dispatch_replica_prepare(replica_prepare_one.clone());
@@ -353,7 +370,7 @@ async fn replica_commit_num_received_below_threshold() {
 
 #[tokio::test]
 async fn replica_commit_invalid_sig() {
-    let mut util = UTHarness::new().await;
+    let mut util = UTHarness::new_one().await;
 
     let mut replica_commit = util.new_current_replica_commit(|_| {});
     replica_commit.sig = util.rng().gen();
@@ -363,7 +380,7 @@ async fn replica_commit_invalid_sig() {
 
 #[tokio::test]
 async fn replica_commit_unexpected_proposal() {
-    let mut util = UTHarness::new().await;
+    let mut util = UTHarness::new_one().await;
 
     let replica_commit = util.new_current_replica_commit(|_| {});
     let res = util.dispatch_replica_commit(replica_commit);
@@ -378,7 +395,7 @@ async fn replica_commit_protocol_version_mismatch() {
     let view = ViewNumber(2);
     util.set_replica_view(view);
     util.set_leader_view(view);
-    assert_eq!(util.view_leader(view), util.own_key().public());
+    assert_eq!(util.view_leader(view), util.owner_key().public());
 
     let replica_prepare_one = util.new_current_replica_prepare(|_| {});
     let _ = util.dispatch_replica_prepare(replica_prepare_one.clone());

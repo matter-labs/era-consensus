@@ -4,6 +4,7 @@ use crate::{
     replica::{LeaderCommitError, LeaderPrepareError},
     Consensus,
 };
+use assert_matches::assert_matches;
 use rand::{rngs::StdRng, Rng};
 use zksync_concurrency::{
     ctx,
@@ -17,7 +18,7 @@ use zksync_consensus_roles::validator::{
 };
 use zksync_consensus_utils::pipe::DispatcherPipe;
 
-/// UTHarness provides various utilities for unit tests.
+/// `UTHarness` provides various utilities for unit tests.
 /// It is designed to simplify the setup and execution of test cases by encapsulating
 /// common testing functionality.
 ///
@@ -32,10 +33,19 @@ pub(crate) struct UTHarness {
 }
 
 impl UTHarness {
-    pub(crate) async fn new() -> UTHarness {
+    /// Creates a new `UTHarness` with one validator.
+    pub(crate) async fn new_one() -> UTHarness {
         UTHarness::new_with(1).await
     }
 
+    /// Creates a new `UTHarness` with minimally-significant validator set size.
+    pub(crate) async fn new_many() -> UTHarness {
+        let num_validators = 6;
+        assert_matches!(crate::misc::faulty_replicas(num_validators), res if res > 0);
+        UTHarness::new_with(num_validators).await
+    }
+
+    /// Creates a new `UTHarness` with the specified validator set size.
     pub(crate) async fn new_with(num_validators: usize) -> UTHarness {
         let ctx = ctx::test_root(&ctx::RealClock);
         let mut rng = ctx.rng();
@@ -56,8 +66,20 @@ impl UTHarness {
         }
     }
 
-    pub(crate) fn own_key(&self) -> &SecretKey {
+    pub(crate) fn consensus_threshold(&self) -> usize {
+        crate::misc::consensus_threshold(self.keys.len())
+    }
+
+    pub(crate) fn owner_key(&self) -> &SecretKey {
         &self.consensus.inner.secret_key
+    }
+
+    pub(crate) fn owner_as_view_leader(&self) -> ViewNumber {
+        let mut view = self.current_replica_view();
+        while self.view_leader(view) != self.owner_key().public() {
+            view = view.next();
+        }
+        view
     }
 
     pub(crate) fn key_at(&self, index: usize) -> &SecretKey {
@@ -179,11 +201,27 @@ impl UTHarness {
         self.recv_signed().await.unwrap()
     }
 
+    pub(crate) async fn new_procedural_leader_prepare_many(&mut self) -> Signed<ConsensusMsg> {
+        let replica_prepare = self.new_current_replica_prepare(|_| {}).cast().unwrap().msg;
+        self.dispatch_replica_prepare_many(
+            vec![replica_prepare; self.consensus_threshold()],
+            self.keys(),
+        )
+        .unwrap();
+        self.recv_signed().await.unwrap()
+    }
+
     pub(crate) async fn new_procedural_replica_commit(&mut self) -> Signed<ConsensusMsg> {
         let replica_prepare = self.new_current_replica_prepare(|_| {});
         self.dispatch_replica_prepare(replica_prepare.clone())
             .unwrap();
         let leader_prepare = self.recv_signed().await.unwrap();
+        self.dispatch_leader_prepare(leader_prepare).await.unwrap();
+        self.recv_signed().await.unwrap()
+    }
+
+    pub(crate) async fn new_procedural_replica_commit_many(&mut self) -> Signed<ConsensusMsg> {
+        let leader_prepare = self.new_procedural_leader_prepare_many().await;
         self.dispatch_leader_prepare(leader_prepare).await.unwrap();
         self.recv_signed().await.unwrap()
     }
@@ -199,21 +237,19 @@ impl UTHarness {
         self.recv_signed().await.unwrap()
     }
 
-    #[allow(clippy::result_large_err)]
-    pub(crate) fn dispatch_replica_prepare_many(
-        &mut self,
-        messages: Vec<ReplicaPrepare>,
-        keys: Vec<SecretKey>,
-    ) -> Result<(), ReplicaPrepareError> {
-        messages
-            .into_iter()
-            .zip(keys)
-            .map(|(msg, key)| {
-                let signed = key.sign_msg(ConsensusMsg::ReplicaPrepare(msg));
-                self.dispatch_replica_prepare(signed)
-            })
-            .last()
+    pub(crate) async fn new_procedural_leader_commit_many(&mut self) -> Signed<ConsensusMsg> {
+        let replica_commit = self
+            .new_procedural_replica_commit_many()
+            .await
+            .cast()
             .unwrap()
+            .msg;
+        self.dispatch_replica_commit_many(
+            vec![replica_commit; self.consensus_threshold()],
+            self.keys(),
+        )
+        .unwrap();
+        self.recv_signed().await.unwrap()
     }
 
     #[allow(clippy::result_large_err)]
@@ -228,6 +264,41 @@ impl UTHarness {
         )
     }
 
+    #[allow(clippy::result_large_err)]
+    pub(crate) fn dispatch_replica_prepare_many(
+        &mut self,
+        messages: Vec<ReplicaPrepare>,
+        keys: Vec<SecretKey>,
+    ) -> Result<(), ReplicaPrepareError> {
+        let len = messages.len();
+        let consensus_threshold = self.consensus_threshold();
+        messages
+            .into_iter()
+            .zip(keys)
+            .map(|(msg, key)| {
+                let signed = key.sign_msg(ConsensusMsg::ReplicaPrepare(msg));
+                self.dispatch_replica_prepare(signed)
+            })
+            .fold((0, None), |(i, _), res| {
+                let i = i + 1;
+                if i < len {
+                    assert_matches!(
+                        res,
+                        Err(ReplicaPrepareError::NumReceivedBelowThreshold {
+                            num_messages,
+                            threshold,
+                        }) => {
+                            assert_eq!(num_messages, i);
+                            assert_eq!(threshold, consensus_threshold)
+                        }
+                    );
+                }
+                (i, Some(res))
+            })
+            .1
+            .unwrap()
+    }
+
     pub(crate) fn dispatch_replica_commit(
         &mut self,
         msg: Signed<ConsensusMsg>,
@@ -237,6 +308,40 @@ impl UTHarness {
             &self.consensus.inner,
             msg.cast().unwrap(),
         )
+    }
+
+    pub(crate) fn dispatch_replica_commit_many(
+        &mut self,
+        messages: Vec<ReplicaCommit>,
+        keys: Vec<SecretKey>,
+    ) -> Result<(), ReplicaCommitError> {
+        let len = messages.len();
+        let consensus_threshold = self.consensus_threshold();
+        messages
+            .into_iter()
+            .zip(keys)
+            .map(|(msg, key)| {
+                let signed = key.sign_msg(ConsensusMsg::ReplicaCommit(msg));
+                self.dispatch_replica_commit(signed)
+            })
+            .fold((0, None), |(i, _), res| {
+                let i = i + 1;
+                if i < len {
+                    assert_matches!(
+                        res,
+                        Err(ReplicaCommitError::NumReceivedBelowThreshold {
+                            num_messages,
+                            threshold,
+                        }) => {
+                            assert_eq!(num_messages, i);
+                            assert_eq!(threshold, consensus_threshold)
+                        }
+                    );
+                }
+                (i, Some(res))
+            })
+            .1
+            .unwrap()
     }
 
     pub(crate) async fn dispatch_leader_prepare(
