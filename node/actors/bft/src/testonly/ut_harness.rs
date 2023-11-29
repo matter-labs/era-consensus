@@ -50,7 +50,11 @@ impl UTHarness {
         let ctx = ctx::test_root(&ctx::RealClock);
         let mut rng = ctx.rng();
         let keys: Vec<_> = (0..num_validators).map(|_| rng.gen()).collect();
-        let (genesis, val_set) = crate::testonly::make_genesis(&keys, Payload(vec![]));
+        let (genesis, val_set) = crate::testonly::make_genesis(
+            &keys,
+            validator::ProtocolVersion::EARLIEST,
+            Payload(vec![]),
+        );
         let (mut consensus, pipe) =
             crate::testonly::make_consensus(&ctx, &keys[0], &val_set, &genesis).await;
 
@@ -131,7 +135,7 @@ impl UTHarness {
         mutate_fn: impl FnOnce(&mut ReplicaPrepare),
     ) -> Signed<ConsensusMsg> {
         let mut msg = ReplicaPrepare {
-            protocol_version: validator::CURRENT_VERSION,
+            protocol_version: validator::ProtocolVersion::EARLIEST,
             view: self.consensus.replica.view,
             high_vote: self.consensus.replica.high_vote,
             high_qc: self.consensus.replica.high_qc.clone(),
@@ -151,7 +155,7 @@ impl UTHarness {
     ) -> Signed<ConsensusMsg> {
         let payload: Payload = self.rng().gen();
         let mut msg = LeaderPrepare {
-            protocol_version: validator::CURRENT_VERSION,
+            protocol_version: validator::ProtocolVersion::EARLIEST,
             view: self.consensus.leader.view,
             proposal: BlockHeader {
                 parent: self.consensus.replica.high_vote.proposal.hash(),
@@ -175,7 +179,7 @@ impl UTHarness {
         mutate_fn: impl FnOnce(&mut ReplicaCommit),
     ) -> Signed<ConsensusMsg> {
         let mut msg = ReplicaCommit {
-            protocol_version: validator::CURRENT_VERSION,
+            protocol_version: validator::ProtocolVersion::EARLIEST,
             view: self.consensus.replica.view,
             proposal: self.consensus.replica.high_qc.message.proposal,
         };
@@ -193,7 +197,7 @@ impl UTHarness {
         mutate_fn: impl FnOnce(&mut LeaderCommit),
     ) -> Signed<ConsensusMsg> {
         let mut msg = LeaderCommit {
-            protocol_version: validator::CURRENT_VERSION,
+            protocol_version: validator::ProtocolVersion::EARLIEST,
             justification: self.rng().gen(),
         };
 
