@@ -35,7 +35,7 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaPrepare(
                     validator::ReplicaPrepare {
-                        protocol_version: self.protocol_version,
+                        protocol_version: consensus.protocol_version,
                         view: next_view,
                         high_vote: self.high_vote,
                         high_qc: self.high_qc.clone(),

@@ -61,9 +61,10 @@ impl Consensus {
                 pipe,
                 secret_key,
                 validator_set,
+                protocol_version,
             },
-            replica: replica::StateMachine::new(ctx, storage, protocol_version).await?,
-            leader: leader::StateMachine::new(ctx, protocol_version),
+            replica: replica::StateMachine::new(ctx, storage).await?,
+            leader: leader::StateMachine::new(ctx),
         })
     }
 
@@ -100,10 +101,10 @@ impl Consensus {
 
             match input {
                 Some(InputMessage::Network(req)) => {
-                    if req.msg.msg.protocol_version() != self.replica.protocol_version {
+                    if req.msg.msg.protocol_version() != self.inner.protocol_version {
                         tracing::warn!(
                             "bad protocol version (expected: {:?}, received: {:?})",
-                            self.replica.protocol_version,
+                            self.inner.protocol_version,
                             req.msg.msg.protocol_version()
                         );
                         continue;

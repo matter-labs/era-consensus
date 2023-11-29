@@ -12,8 +12,6 @@ use zksync_consensus_roles::validator;
 /// those messages. When participating in consensus we are not the leader most of the time.
 #[derive(Debug)]
 pub(crate) struct StateMachine {
-    /// Current protocol version for the consensus messages.
-    pub(crate) protocol_version: validator::ProtocolVersion,
     /// The current view number. This might not match the replica's view number, we only have this here
     /// to make the leader advance monotonically in time and stop it from accepting messages from the past.
     pub(crate) view: validator::ViewNumber,
@@ -39,9 +37,8 @@ pub(crate) struct StateMachine {
 impl StateMachine {
     /// Creates a new StateMachine struct.
     #[instrument(level = "trace", ret)]
-    pub fn new(ctx: &ctx::Ctx, protocol_version: validator::ProtocolVersion) -> Self {
+    pub fn new(ctx: &ctx::Ctx) -> Self {
         StateMachine {
-            protocol_version,
             view: validator::ViewNumber(0),
             phase: validator::Phase::Prepare,
             phase_start: ctx.now(),

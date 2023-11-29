@@ -11,8 +11,6 @@ use zksync_consensus_storage::ReplicaStore;
 /// for validating and voting on blocks. When participating in consensus we are always a replica.
 #[derive(Debug)]
 pub(crate) struct StateMachine {
-    /// Current protocol version for the consensus messages.
-    pub(crate) protocol_version: validator::ProtocolVersion,
     /// The current view number.
     pub(crate) view: validator::ViewNumber,
     /// The current phase.
@@ -34,11 +32,7 @@ pub(crate) struct StateMachine {
 impl StateMachine {
     /// Creates a new StateMachine struct. We try to recover a past state from the storage module,
     /// otherwise we initialize the state machine with whatever head block we have.
-    pub(crate) async fn new(
-        ctx: &ctx::Ctx,
-        storage: ReplicaStore,
-        protocol_version: validator::ProtocolVersion,
-    ) -> anyhow::Result<Self> {
+    pub(crate) async fn new(ctx: &ctx::Ctx, storage: ReplicaStore) -> anyhow::Result<Self> {
         let backup = storage.replica_state(ctx).await?;
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
         for proposal in backup.proposals {
@@ -49,7 +43,6 @@ impl StateMachine {
         }
 
         Ok(Self {
-            protocol_version,
             view: backup.view,
             phase: backup.phase,
             high_vote: backup.high_vote,
