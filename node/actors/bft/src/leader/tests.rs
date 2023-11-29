@@ -6,7 +6,7 @@ use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_consensus_roles::validator::{
     self, CommitQC, ConsensusMsg, LeaderCommit, LeaderPrepare, Phase, ProtocolVersion,
-    ReplicaCommit, ViewNumber,
+    ReplicaCommit, ReplicaPrepare, ViewNumber,
 };
 
 #[tokio::test]
@@ -22,12 +22,32 @@ async fn replica_prepare_sanity_yield_leader_prepare() {
     let mut util = UTHarness::new().await;
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
-    util.dispatch_replica_prepare(replica_prepare).unwrap();
-    util.recv_signed()
+    util.dispatch_replica_prepare(replica_prepare.clone())
+        .unwrap();
+    let leader_prepare = util
+        .recv_signed()
         .await
         .unwrap()
         .cast::<LeaderPrepare>()
-        .unwrap();
+        .unwrap()
+        .msg;
+
+    let replica_prepare = replica_prepare.cast::<ReplicaPrepare>().unwrap().msg;
+    assert_matches!(
+        leader_prepare,
+        LeaderPrepare {
+            protocol_version,
+            view,
+            proposal,
+            proposal_payload: _,
+            justification,
+        } => {
+            assert_eq!(protocol_version, replica_prepare.protocol_version);
+            assert_eq!(view, replica_prepare.view);
+            assert_eq!(proposal.parent, replica_prepare.high_vote.proposal.hash());
+            assert_eq!(justification, util.new_prepare_qc(|msg| *msg = replica_prepare));
+        }
+    );
 }
 
 #[tokio::test]
@@ -211,16 +231,31 @@ async fn replica_commit_sanity() {
 }
 
 #[tokio::test]
-async fn replica_commit_sanity_yield_leader_commit() {
+async fn replica_commit_yield_leader_commit() {
     let mut util = UTHarness::new().await;
 
     let replica_commit = util.new_procedural_replica_commit().await;
-    util.dispatch_replica_commit(replica_commit).unwrap();
-    util.recv_signed()
+    util.dispatch_replica_commit(replica_commit.clone())
+        .unwrap();
+    let leader_commit = util
+        .recv_signed()
         .await
         .unwrap()
         .cast::<LeaderCommit>()
-        .unwrap();
+        .unwrap()
+        .msg;
+
+    let replica_commit = replica_commit.cast::<ReplicaCommit>().unwrap().msg;
+    assert_matches!(
+        leader_commit,
+        LeaderCommit {
+            protocol_version,
+            justification,
+        } => {
+            assert_eq!(protocol_version, replica_commit.protocol_version);
+            assert_eq!(justification, util.new_commit_qc(|msg| *msg = replica_commit));
+        }
+    );
 }
 
 #[tokio::test]

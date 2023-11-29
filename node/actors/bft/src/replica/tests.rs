@@ -11,7 +11,7 @@ use assert_matches::assert_matches;
 use rand::Rng;
 use std::cell::RefCell;
 use zksync_consensus_roles::validator::{
-    BlockHeaderHash, ConsensusMsg, LeaderPrepare, Payload, PrepareQC, ReplicaCommit,
+    BlockHeaderHash, ConsensusMsg, LeaderCommit, LeaderPrepare, Payload, PrepareQC, ReplicaCommit,
     ReplicaPrepare, ViewNumber,
 };
 
@@ -28,12 +28,30 @@ async fn leader_prepare_sanity_yield_replica_commit() {
     let mut util = UTHarness::new().await;
 
     let leader_prepare = util.new_procedural_leader_prepare().await;
-    util.dispatch_leader_prepare(leader_prepare).await.unwrap();
-    util.recv_signed()
+    util.dispatch_leader_prepare(leader_prepare.clone())
+        .await
+        .unwrap();
+    let replica_commit = util
+        .recv_signed()
         .await
         .unwrap()
         .cast::<ReplicaCommit>()
-        .unwrap();
+        .unwrap()
+        .msg;
+
+    let leader_prepare = leader_prepare.cast::<LeaderPrepare>().unwrap().msg;
+    assert_matches!(
+        replica_commit,
+        ReplicaCommit {
+            protocol_version,
+            view,
+            proposal,
+        } => {
+            assert_eq!(protocol_version, leader_prepare.protocol_version);
+            assert_eq!(view, leader_prepare.view);
+            assert_eq!(proposal, leader_prepare.proposal);
+        }
+    );
 }
 
 #[tokio::test]
@@ -416,12 +434,32 @@ async fn leader_commit_sanity_yield_replica_prepare() {
     let mut util = UTHarness::new().await;
 
     let leader_commit = util.new_procedural_leader_commit().await;
-    util.dispatch_leader_commit(leader_commit).await.unwrap();
-    util.recv_signed()
+    util.dispatch_leader_commit(leader_commit.clone())
+        .await
+        .unwrap();
+    let replica_prepare = util
+        .recv_signed()
         .await
         .unwrap()
         .cast::<ReplicaPrepare>()
-        .unwrap();
+        .unwrap()
+        .msg;
+
+    let leader_commit = leader_commit.cast::<LeaderCommit>().unwrap().msg;
+    assert_matches!(
+        replica_prepare,
+        ReplicaPrepare {
+            protocol_version,
+            view,
+            high_vote,
+            high_qc,
+        } => {
+            assert_eq!(protocol_version, leader_commit.protocol_version);
+            assert_eq!(view, leader_commit.justification.message.view.next());
+            assert_eq!(high_vote, leader_commit.justification.message);
+            assert_eq!(high_qc, leader_commit.justification)
+        }
+    );
 }
 
 #[tokio::test]
