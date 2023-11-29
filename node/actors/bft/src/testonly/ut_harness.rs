@@ -194,9 +194,9 @@ impl UTHarness {
             .sign_msg(ConsensusMsg::LeaderCommit(msg))
     }
 
-    pub(crate) async fn new_procedural_leader_prepare(&mut self) -> Signed<ConsensusMsg> {
+    pub(crate) async fn new_procedural_leader_prepare_one(&mut self) -> Signed<ConsensusMsg> {
         let replica_prepare = self.new_current_replica_prepare(|_| {});
-        self.dispatch_replica_prepare(replica_prepare.clone())
+        self.dispatch_replica_prepare_one(replica_prepare.clone())
             .unwrap();
         self.recv_signed().await.unwrap()
     }
@@ -211,9 +211,9 @@ impl UTHarness {
         self.recv_signed().await.unwrap()
     }
 
-    pub(crate) async fn new_procedural_replica_commit(&mut self) -> Signed<ConsensusMsg> {
+    pub(crate) async fn new_procedural_replica_commit_one(&mut self) -> Signed<ConsensusMsg> {
         let replica_prepare = self.new_current_replica_prepare(|_| {});
-        self.dispatch_replica_prepare(replica_prepare.clone())
+        self.dispatch_replica_prepare_one(replica_prepare.clone())
             .unwrap();
         let leader_prepare = self.recv_signed().await.unwrap();
         self.dispatch_leader_prepare(leader_prepare).await.unwrap();
@@ -226,14 +226,14 @@ impl UTHarness {
         self.recv_signed().await.unwrap()
     }
 
-    pub(crate) async fn new_procedural_leader_commit(&mut self) -> Signed<ConsensusMsg> {
+    pub(crate) async fn new_procedural_leader_commit_one(&mut self) -> Signed<ConsensusMsg> {
         let replica_prepare = self.new_current_replica_prepare(|_| {});
-        self.dispatch_replica_prepare(replica_prepare.clone())
+        self.dispatch_replica_prepare_one(replica_prepare.clone())
             .unwrap();
         let leader_prepare = self.recv_signed().await.unwrap();
         self.dispatch_leader_prepare(leader_prepare).await.unwrap();
         let replica_commit = self.recv_signed().await.unwrap();
-        self.dispatch_replica_commit(replica_commit).unwrap();
+        self.dispatch_replica_commit_one(replica_commit).unwrap();
         self.recv_signed().await.unwrap()
     }
 
@@ -253,7 +253,7 @@ impl UTHarness {
     }
 
     #[allow(clippy::result_large_err)]
-    pub(crate) fn dispatch_replica_prepare(
+    pub(crate) fn dispatch_replica_prepare_one(
         &mut self,
         msg: Signed<ConsensusMsg>,
     ) -> Result<(), ReplicaPrepareError> {
@@ -277,7 +277,7 @@ impl UTHarness {
             .zip(keys)
             .map(|(msg, key)| {
                 let signed = key.sign_msg(ConsensusMsg::ReplicaPrepare(msg));
-                self.dispatch_replica_prepare(signed)
+                self.dispatch_replica_prepare_one(signed)
             })
             .fold((0, None), |(i, _), res| {
                 let i = i + 1;
@@ -299,7 +299,7 @@ impl UTHarness {
             .unwrap()
     }
 
-    pub(crate) fn dispatch_replica_commit(
+    pub(crate) fn dispatch_replica_commit_one(
         &mut self,
         msg: Signed<ConsensusMsg>,
     ) -> Result<(), ReplicaCommitError> {
@@ -322,7 +322,7 @@ impl UTHarness {
             .zip(keys)
             .map(|(msg, key)| {
                 let signed = key.sign_msg(ConsensusMsg::ReplicaCommit(msg));
-                self.dispatch_replica_commit(signed)
+                self.dispatch_replica_commit_one(signed)
             })
             .fold((0, None), |(i, _), res| {
                 let i = i + 1;

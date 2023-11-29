@@ -28,7 +28,7 @@ async fn replica_prepare_sanity_yield_leader_prepare() {
     let mut util = UTHarness::new_one().await;
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
-    util.dispatch_replica_prepare(replica_prepare.clone())
+    util.dispatch_replica_prepare_one(replica_prepare.clone())
         .unwrap();
     let leader_prepare = util
         .recv_signed()
@@ -65,7 +65,7 @@ async fn replica_prepare_old_view() {
     util.set_leader_phase(Phase::Prepare);
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
-    let res = util.dispatch_replica_prepare(replica_prepare);
+    let res = util.dispatch_replica_prepare_one(replica_prepare);
     assert_matches!(
         res,
         Err(ReplicaPrepareError::Old {
@@ -82,7 +82,7 @@ async fn replica_prepare_during_commit() {
     util.set_leader_phase(Phase::Commit);
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
-    let res = util.dispatch_replica_prepare(replica_prepare);
+    let res = util.dispatch_replica_prepare_one(replica_prepare);
     assert_matches!(
         res,
         Err(ReplicaPrepareError::Old {
@@ -100,7 +100,7 @@ async fn replica_prepare_not_leader_in_view() {
     assert_ne!(current_view_leader, util.owner_key().public());
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
-    let res = util.dispatch_replica_prepare(replica_prepare.clone());
+    let res = util.dispatch_replica_prepare_one(replica_prepare.clone());
     assert_matches!(res, Err(ReplicaPrepareError::NotLeaderInView));
 }
 
@@ -114,8 +114,8 @@ async fn replica_prepare_already_exists() {
     assert_eq!(util.view_leader(view), util.owner_key().public());
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
-    let _ = util.dispatch_replica_prepare(replica_prepare.clone());
-    let res = util.dispatch_replica_prepare(replica_prepare.clone());
+    let _ = util.dispatch_replica_prepare_one(replica_prepare.clone());
+    let res = util.dispatch_replica_prepare_one(replica_prepare.clone());
     assert_matches!(
     res,
     Err(ReplicaPrepareError::Exists { existing_message }) => {
@@ -134,7 +134,7 @@ async fn replica_prepare_num_received_below_threshold() {
     assert_eq!(util.view_leader(view), util.owner_key().public());
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
-    let res = util.dispatch_replica_prepare(replica_prepare);
+    let res = util.dispatch_replica_prepare_one(replica_prepare);
     assert_matches!(
         res,
         Err(ReplicaPrepareError::NumReceivedBelowThreshold {
@@ -150,7 +150,7 @@ async fn replica_prepare_invalid_sig() {
 
     let mut replica_prepare = util.new_current_replica_prepare(|_| {});
     replica_prepare.sig = util.rng().gen();
-    let res = util.dispatch_replica_prepare(replica_prepare);
+    let res = util.dispatch_replica_prepare_one(replica_prepare);
     assert_matches!(res, Err(ReplicaPrepareError::InvalidSignature(_)));
 }
 
@@ -160,7 +160,7 @@ async fn replica_prepare_invalid_commit_qc() {
 
     let junk = util.rng().gen::<CommitQC>();
     let replica_prepare = util.new_current_replica_prepare(|msg| msg.high_qc = junk);
-    let res = util.dispatch_replica_prepare(replica_prepare);
+    let res = util.dispatch_replica_prepare_one(replica_prepare);
     assert_matches!(res, Err(ReplicaPrepareError::InvalidHighQC(..)));
 }
 
@@ -176,7 +176,7 @@ async fn replica_prepare_high_qc_of_current_view() {
         msg.view = qc_view;
     });
     let replica_prepare = util.new_current_replica_prepare(|msg| msg.high_qc = qc);
-    let res = util.dispatch_replica_prepare(replica_prepare);
+    let res = util.dispatch_replica_prepare_one(replica_prepare);
     assert_matches!(
         res,
         Err(ReplicaPrepareError::HighQCOfFutureView { high_qc_view, current_view }) => {
@@ -199,7 +199,7 @@ async fn replica_prepare_high_qc_of_future_view() {
     });
 
     let replica_prepare = util.new_current_replica_prepare(|msg| msg.high_qc = qc);
-    let res = util.dispatch_replica_prepare(replica_prepare);
+    let res = util.dispatch_replica_prepare_one(replica_prepare);
     assert_matches!(
         res,
         Err(ReplicaPrepareError::HighQCOfFutureView{ high_qc_view, current_view }) => {
@@ -219,11 +219,11 @@ async fn replica_prepare_non_validator_signer() {
     assert_eq!(util.view_leader(view), util.key_at(0).public());
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
-    let _ = util.dispatch_replica_prepare(replica_prepare.clone());
+    let _ = util.dispatch_replica_prepare_one(replica_prepare.clone());
 
     let non_validator: validator::SecretKey = util.rng().gen();
     let replica_prepare = non_validator.sign_msg(replica_prepare.msg);
-    util.dispatch_replica_prepare(replica_prepare).unwrap();
+    util.dispatch_replica_prepare_one(replica_prepare).unwrap();
     // PANICS:
     // "Couldn't create justification from valid replica messages!: Message signer isn't in the validator set"
 }
@@ -251,8 +251,8 @@ async fn replica_commit_sanity() {
 async fn replica_commit_sanity_yield_leader_commit() {
     let mut util = UTHarness::new_one().await;
 
-    let replica_commit = util.new_procedural_replica_commit().await;
-    util.dispatch_replica_commit(replica_commit.clone())
+    let replica_commit = util.new_procedural_replica_commit_one().await;
+    util.dispatch_replica_commit_one(replica_commit.clone())
         .unwrap();
     let leader_commit = util
         .recv_signed()
@@ -280,7 +280,7 @@ async fn replica_commit_old() {
     let mut util = UTHarness::new_one().await;
 
     let mut replica_commit = util
-        .new_procedural_replica_commit()
+        .new_procedural_replica_commit_one()
         .await
         .cast::<ReplicaCommit>()
         .unwrap()
@@ -290,7 +290,7 @@ async fn replica_commit_old() {
         .owner_key()
         .sign_msg(ConsensusMsg::ReplicaCommit(replica_commit));
 
-    let res = util.dispatch_replica_commit(replica_commit);
+    let res = util.dispatch_replica_commit_one(replica_commit);
     assert_matches!(
         res,
         Err(ReplicaCommitError::Old { current_view, current_phase }) => {
@@ -308,7 +308,7 @@ async fn replica_commit_not_leader_in_view() {
     assert_ne!(current_view_leader, util.owner_key().public());
 
     let replica_commit = util.new_current_replica_commit(|_| {});
-    let res = util.dispatch_replica_commit(replica_commit);
+    let res = util.dispatch_replica_commit_one(replica_commit);
     assert_matches!(res, Err(ReplicaCommitError::NotLeaderInView));
 }
 
@@ -322,16 +322,17 @@ async fn replica_commit_already_exists() {
     assert_eq!(util.view_leader(view), util.owner_key().public());
 
     let replica_prepare_one = util.new_current_replica_prepare(|_| {});
-    let _ = util.dispatch_replica_prepare(replica_prepare_one.clone());
+    let _ = util.dispatch_replica_prepare_one(replica_prepare_one.clone());
     let replica_prepare_two = util.key_at(1).sign_msg(replica_prepare_one.msg);
-    util.dispatch_replica_prepare(replica_prepare_two).unwrap();
+    util.dispatch_replica_prepare_one(replica_prepare_two)
+        .unwrap();
 
     let leader_prepare = util.recv_signed().await.unwrap();
     util.dispatch_leader_prepare(leader_prepare).await.unwrap();
 
     let replica_commit = util.recv_signed().await.unwrap();
-    let _ = util.dispatch_replica_commit(replica_commit.clone());
-    let res = util.dispatch_replica_commit(replica_commit.clone());
+    let _ = util.dispatch_replica_commit_one(replica_commit.clone());
+    let res = util.dispatch_replica_commit_one(replica_commit.clone());
     assert_matches!(
         res,
         Err(ReplicaCommitError::DuplicateMessage { existing_message }) => {
@@ -350,15 +351,16 @@ async fn replica_commit_num_received_below_threshold() {
     assert_eq!(util.view_leader(view), util.owner_key().public());
 
     let replica_prepare_one = util.new_current_replica_prepare(|_| {});
-    let _ = util.dispatch_replica_prepare(replica_prepare_one.clone());
+    let _ = util.dispatch_replica_prepare_one(replica_prepare_one.clone());
     let replica_prepare_two = util.key_at(1).sign_msg(replica_prepare_one.msg);
-    util.dispatch_replica_prepare(replica_prepare_two).unwrap();
+    util.dispatch_replica_prepare_one(replica_prepare_two)
+        .unwrap();
 
     let leader_prepare = util.recv_signed().await.unwrap();
     util.dispatch_leader_prepare(leader_prepare).await.unwrap();
 
     let replica_commit = util.recv_signed().await.unwrap();
-    let res = util.dispatch_replica_commit(replica_commit.clone());
+    let res = util.dispatch_replica_commit_one(replica_commit.clone());
     assert_matches!(
         res,
         Err(ReplicaCommitError::NumReceivedBelowThreshold {
@@ -374,7 +376,7 @@ async fn replica_commit_invalid_sig() {
 
     let mut replica_commit = util.new_current_replica_commit(|_| {});
     replica_commit.sig = util.rng().gen();
-    let res = util.dispatch_replica_commit(replica_commit);
+    let res = util.dispatch_replica_commit_one(replica_commit);
     assert_matches!(res, Err(ReplicaCommitError::InvalidSignature(..)));
 }
 
@@ -383,7 +385,7 @@ async fn replica_commit_unexpected_proposal() {
     let mut util = UTHarness::new_one().await;
 
     let replica_commit = util.new_current_replica_commit(|_| {});
-    let res = util.dispatch_replica_commit(replica_commit);
+    let res = util.dispatch_replica_commit_one(replica_commit);
     assert_matches!(res, Err(ReplicaCommitError::UnexpectedProposal));
 }
 
@@ -398,15 +400,16 @@ async fn replica_commit_protocol_version_mismatch() {
     assert_eq!(util.view_leader(view), util.owner_key().public());
 
     let replica_prepare_one = util.new_current_replica_prepare(|_| {});
-    let _ = util.dispatch_replica_prepare(replica_prepare_one.clone());
+    let _ = util.dispatch_replica_prepare_one(replica_prepare_one.clone());
     let replica_prepare_two = util.key_at(1).sign_msg(replica_prepare_one.msg);
-    util.dispatch_replica_prepare(replica_prepare_two).unwrap();
+    util.dispatch_replica_prepare_one(replica_prepare_two)
+        .unwrap();
 
     let leader_prepare = util.recv_signed().await.unwrap();
     util.dispatch_leader_prepare(leader_prepare).await.unwrap();
 
     let replica_commit = util.recv_signed().await.unwrap();
-    let _ = util.dispatch_replica_commit(replica_commit.clone());
+    let _ = util.dispatch_replica_commit_one(replica_commit.clone());
 
     let mut replica_commit_two = replica_commit.cast::<ReplicaCommit>().unwrap().msg;
     replica_commit_two.protocol_version =
@@ -415,7 +418,8 @@ async fn replica_commit_protocol_version_mismatch() {
     let replica_commit_two = util
         .key_at(1)
         .sign_msg(ConsensusMsg::ReplicaCommit(replica_commit_two));
-    util.dispatch_replica_commit(replica_commit_two).unwrap();
+    util.dispatch_replica_commit_one(replica_commit_two)
+        .unwrap();
     // PANICS:
     // "Couldn't create justification from valid replica messages!: CommitQC can only be created from votes for the same message."
 }

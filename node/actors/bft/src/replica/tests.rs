@@ -29,7 +29,7 @@ async fn leader_prepare_sanity() {
 async fn leader_prepare_sanity_yield_replica_commit() {
     let mut util = UTHarness::new_one().await;
 
-    let leader_prepare = util.new_procedural_leader_prepare().await;
+    let leader_prepare = util.new_procedural_leader_prepare_one().await;
     util.dispatch_leader_prepare(leader_prepare.clone())
         .await
         .unwrap();
@@ -65,7 +65,7 @@ async fn leader_prepare_invalid_leader() {
     assert_eq!(util.view_leader(view), util.key_at(0).public());
 
     let replica_prepare_one = util.new_current_replica_prepare(|_| {});
-    let res = util.dispatch_replica_prepare(replica_prepare_one.clone());
+    let res = util.dispatch_replica_prepare_one(replica_prepare_one.clone());
     assert_matches!(
         res,
         Err(ReplicaPrepareError::NumReceivedBelowThreshold {
@@ -75,7 +75,8 @@ async fn leader_prepare_invalid_leader() {
     );
 
     let replica_prepare_two = util.key_at(1).sign_msg(replica_prepare_one.msg);
-    util.dispatch_replica_prepare(replica_prepare_two).unwrap();
+    util.dispatch_replica_prepare_one(replica_prepare_two)
+        .unwrap();
     let msg = util.recv_signed().await.unwrap();
     let mut leader_prepare = msg.cast::<LeaderPrepare>().unwrap().msg;
 
@@ -103,7 +104,7 @@ async fn leader_prepare_old_view() {
     let mut util = UTHarness::new_one().await;
 
     let mut leader_prepare = util
-        .new_procedural_leader_prepare()
+        .new_procedural_leader_prepare_one()
         .await
         .cast::<LeaderPrepare>()
         .unwrap()
@@ -139,7 +140,7 @@ async fn leader_prepare_invalid_prepare_qc() {
     let mut util = UTHarness::new_one().await;
 
     let mut leader_prepare = util
-        .new_procedural_leader_prepare()
+        .new_procedural_leader_prepare_one()
         .await
         .cast::<LeaderPrepare>()
         .unwrap()
@@ -170,7 +171,7 @@ async fn leader_prepare_invalid_high_qc() {
     replica_prepare.high_qc = util.rng().gen();
 
     let mut leader_prepare = util
-        .new_procedural_leader_prepare()
+        .new_procedural_leader_prepare_one()
         .await
         .cast::<LeaderPrepare>()
         .unwrap()
@@ -193,7 +194,7 @@ async fn leader_prepare_proposal_oversized_payload() {
     let payload_vec = vec![0; payload_oversize];
 
     let mut leader_prepare = util
-        .new_procedural_leader_prepare()
+        .new_procedural_leader_prepare_one()
         .await
         .cast::<LeaderPrepare>()
         .unwrap()
@@ -218,7 +219,7 @@ async fn leader_prepare_proposal_mismatched_payload() {
     let mut util = UTHarness::new_one().await;
 
     let mut leader_prepare = util
-        .new_procedural_leader_prepare()
+        .new_procedural_leader_prepare_one()
         .await
         .cast::<LeaderPrepare>()
         .unwrap()
@@ -237,7 +238,7 @@ async fn leader_prepare_proposal_when_previous_not_finalized() {
     let mut util = UTHarness::new_one().await;
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
-    util.dispatch_replica_prepare(replica_prepare.clone())
+    util.dispatch_replica_prepare_one(replica_prepare.clone())
         .unwrap();
 
     let mut leader_prepare = util
@@ -272,7 +273,7 @@ async fn leader_prepare_proposal_invalid_parent_hash() {
         .cast::<ReplicaPrepare>()
         .unwrap()
         .msg;
-    util.dispatch_replica_prepare(replica_prepare_signed.clone())
+    util.dispatch_replica_prepare_one(replica_prepare_signed.clone())
         .unwrap();
     let mut leader_prepare = util
         .recv_signed()
@@ -313,7 +314,7 @@ async fn leader_prepare_proposal_non_sequential_number() {
         .cast::<ReplicaPrepare>()
         .unwrap()
         .msg;
-    util.dispatch_replica_prepare(replica_prepare_signed)
+    util.dispatch_replica_prepare_one(replica_prepare_signed)
         .unwrap();
     let mut leader_prepare = util
         .recv_signed()
@@ -384,7 +385,7 @@ async fn leader_prepare_reproposal_when_finalized() {
     let mut util = UTHarness::new_one().await;
 
     let mut leader_prepare = util
-        .new_procedural_leader_prepare()
+        .new_procedural_leader_prepare_one()
         .await
         .cast::<LeaderPrepare>()
         .unwrap()
@@ -403,7 +404,7 @@ async fn leader_prepare_reproposal_invalid_block() {
     let mut util = UTHarness::new_one().await;
 
     let mut leader_prepare: LeaderPrepare = util
-        .new_procedural_leader_prepare()
+        .new_procedural_leader_prepare_one()
         .await
         .cast()
         .unwrap()
@@ -437,7 +438,7 @@ async fn leader_commit_sanity() {
 async fn leader_commit_sanity_yield_replica_prepare() {
     let mut util = UTHarness::new_one().await;
 
-    let leader_commit = util.new_procedural_leader_commit().await;
+    let leader_commit = util.new_procedural_leader_commit_one().await;
     util.dispatch_leader_commit(leader_commit.clone())
         .await
         .unwrap();
