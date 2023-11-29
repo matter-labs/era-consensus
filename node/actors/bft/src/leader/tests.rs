@@ -62,7 +62,8 @@ async fn replica_prepare_sanity_yield_leader_prepare_reproposal() {
 
     util.set_view(util.owner_as_view_leader());
 
-    let replica_prepare: ReplicaPrepare = util.new_reproposal_replica_prepare().cast().unwrap().msg;
+    let replica_prepare: ReplicaPrepare =
+        util.new_unfinalized_replica_prepare().cast().unwrap().msg;
     util.dispatch_replica_prepare_many(
         vec![replica_prepare.clone(); util.consensus_threshold()],
         util.keys(),

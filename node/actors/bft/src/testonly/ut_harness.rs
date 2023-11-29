@@ -119,7 +119,7 @@ impl UTHarness {
         self.consensus.replica.view = view
     }
 
-    pub(crate) fn new_reproposal_replica_prepare(&self) -> Signed<ConsensusMsg> {
+    pub(crate) fn new_unfinalized_replica_prepare(&self) -> Signed<ConsensusMsg> {
         self.new_current_replica_prepare(|msg| {
             msg.high_qc = self.new_commit_qc(|high_qc| {
                 // Set view to the previous view since it needs to belong to an earlier view.
