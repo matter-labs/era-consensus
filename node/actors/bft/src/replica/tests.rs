@@ -1,12 +1,7 @@
 use super::{
     leader_commit::Error as LeaderCommitError, leader_prepare::Error as LeaderPrepareError,
 };
-use crate::{
-    inner::ConsensusInner,
-    leader::ReplicaPrepareError,
-    misc::{consensus_threshold, faulty_replicas},
-    testonly::ut_harness::UTHarness,
-};
+use crate::{inner::ConsensusInner, leader::ReplicaPrepareError, testonly::ut_harness::UTHarness};
 use assert_matches::assert_matches;
 use rand::Rng;
 use std::cell::RefCell;
@@ -17,6 +12,16 @@ use zksync_consensus_roles::validator::{
 
 #[tokio::test]
 async fn leader_prepare_sanity() {
+    let mut util = UTHarness::new_many().await;
+
+    util.set_view(util.owner_as_view_leader());
+
+    let leader_prepare = util.new_procedural_leader_prepare_many().await;
+    util.dispatch_leader_prepare(leader_prepare).await.unwrap();
+}
+
+#[tokio::test]
+async fn leader_prepare_reproposal_sanity() {
     let mut util = UTHarness::new_many().await;
 
     util.set_view(util.owner_as_view_leader());
@@ -346,24 +351,16 @@ async fn leader_prepare_proposal_non_sequential_number() {
 
 #[tokio::test]
 async fn leader_prepare_reproposal_without_quorum() {
-    let num_validators = 6;
-    assert_matches!(faulty_replicas(num_validators), res if res > 0);
+    let mut util = UTHarness::new_many().await;
 
-    let mut util = UTHarness::new_with(num_validators).await;
+    util.set_view(util.owner_as_view_leader());
 
-    let view = ViewNumber(2);
-    util.set_view(view);
-    assert_eq!(util.view_leader(view), util.key_at(0).public());
-
-    let replica_prepare = util.new_current_replica_prepare(|_| {}).cast().unwrap().msg;
-    let res = util.dispatch_replica_prepare_many(
-        vec![replica_prepare; consensus_threshold(num_validators)],
-        util.keys(),
-    );
-    assert_matches!(res, Ok(()));
-
-    let msg = util.recv_signed().await.unwrap();
-    let mut leader_prepare = msg.cast::<LeaderPrepare>().unwrap().msg;
+    let mut leader_prepare = util
+        .new_procedural_leader_prepare_many()
+        .await
+        .cast::<LeaderPrepare>()
+        .unwrap()
+        .msg;
 
     let rng = RefCell::new(util.new_rng());
     leader_prepare.justification = util.new_prepare_qc_many(&|msg: &mut ReplicaPrepare| {
@@ -375,7 +372,6 @@ async fn leader_prepare_reproposal_without_quorum() {
     let leader_prepare = util
         .owner_key()
         .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare));
-
     let res = util.dispatch_leader_prepare(leader_prepare).await;
     assert_matches!(res, Err(LeaderPrepareError::ReproposalWithoutQuorum));
 }
