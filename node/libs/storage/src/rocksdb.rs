@@ -98,8 +98,7 @@ impl RocksdbStorage {
         options.create_if_missing(true);
 
         let db = scope::wait_blocking(|| {
-            rocksdb::DB::open(&options, path)
-                .context("Failed opening RocksDB")
+            rocksdb::DB::open(&options, path).context("Failed opening RocksDB")
         })
         .await?;
 

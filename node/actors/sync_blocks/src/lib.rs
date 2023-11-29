@@ -13,7 +13,7 @@ use zksync_concurrency::{
     sync::{self, watch},
 };
 use zksync_consensus_network::io::SyncState;
-use zksync_consensus_storage::{StorageError, StorageResult, WriteBlockStore};
+use zksync_consensus_storage::{StorageResult, WriteBlockStore};
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;
@@ -79,8 +79,8 @@ impl SyncBlocks {
         // Since we clearly type cancellation errors, it's easier propagate them up to this entry point,
         // rather than catching in the constituent tasks.
         result.or_else(|err| match err {
-            StorageError::Canceled(_) => Ok(()), // Cancellation is not propagated as an error
-            StorageError::Internal(err) => Err(err),
+            ctx::Error::Canceled(_) => Ok(()), // Cancellation is not propagated as an error
+            ctx::Error::Internal(err) => Err(err),
         })
     }
 

@@ -1,9 +1,8 @@
 use super::StateMachine;
 use crate::inner::ConsensusInner;
-use anyhow::Context as _;
 use std::collections::HashMap;
 use tracing::instrument;
-use zksync_concurrency::{ctx,error::Wrap as _};
+use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator;
 
@@ -101,17 +100,18 @@ pub(crate) enum Error {
     #[error("block re-proposal of invalid block")]
     ReproposalInvalidBlock,
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
-    #[error("internal error: {0:#}")]
-    Internal(#[from] anyhow::Error),
     #[error(transparent)]
-    Canceled(#[from] ctx::Canceled),
+    Internal(#[from] ctx::Error),
 }
 
-impl From<ctx::Error> for Error {
-    fn from(err: ctx::Error) -> Self {
-        match err {
-            ctx::Error::Canceled(err) => Self::Canceled(err),
-            ctx::Error::Internal(err) => Self::Internal(err),
+impl Wrap for Error {
+    fn with_wrap<C: std::fmt::Display + Send + Sync + 'static, F: FnOnce() -> C>(
+        self,
+        f: F,
+    ) -> Self {
+        match self {
+            Error::Internal(err) => Error::Internal(err.with_wrap(f)),
+            err => err,
         }
     }
 }
@@ -200,7 +200,9 @@ impl StateMachine {
 
         // Try to create a finalized block with this CommitQC and our block proposal cache.
         // This gives us another chance to finalize a block that we may have missed before.
-        self.save_block(ctx, consensus, &highest_qc).await.wrap("save_block()")?;
+        self.save_block(ctx, consensus, &highest_qc)
+            .await
+            .wrap("save_block()")?;
 
         // ----------- Checking the block proposal --------------
 
@@ -287,7 +289,7 @@ impl StateMachine {
         }
 
         // Backup our state.
-        self.backup_state(ctx).await.context("backup_state()")?;
+        self.backup_state(ctx).await.wrap("backup_state()")?;
 
         // Send the replica message to the leader.
         let output_message = ConsensusInputMessage {

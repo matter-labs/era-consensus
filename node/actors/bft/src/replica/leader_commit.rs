@@ -1,8 +1,7 @@
 use super::StateMachine;
 use crate::inner::ConsensusInner;
-use anyhow::Context as _;
 use tracing::instrument;
-use zksync_concurrency::{ctx,error::Wrap as _};
+use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_roles::validator;
 
 /// Errors that can occur when processing a "leader commit" message.
@@ -33,17 +32,18 @@ pub(crate) enum Error {
     #[error("invalid justification: {0:#}")]
     InvalidJustification(#[source] anyhow::Error),
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
-    #[error("internal error: {0:#}")]
-    Internal(#[from] anyhow::Error),
     #[error(transparent)]
-    Canceled(#[from] ctx::Canceled),
+    Internal(#[from] ctx::Error),
 }
 
-impl From<ctx::Error> for Error {
-    fn from(err: ctx::Error) -> Self {
-        match err {
-            ctx::Error::Canceled(err) => Self::Canceled(err),
-            ctx::Error::Internal(err) => Self::Internal(err),
+impl Wrap for Error {
+    fn with_wrap<C: std::fmt::Display + Send + Sync + 'static, F: FnOnce() -> C>(
+        self,
+        f: F,
+    ) -> Self {
+        match self {
+            Error::Internal(err) => Error::Internal(err.with_wrap(f)),
+            err => err,
         }
     }
 }
@@ -98,7 +98,8 @@ impl StateMachine {
 
         // Try to create a finalized block with this CommitQC and our block proposal cache.
         self.save_block(ctx, consensus, &message.justification)
-            .await.wrap("save_block()")?;
+            .await
+            .wrap("save_block()")?;
 
         // Update the state machine. We don't update the view and phase (or backup our state) here
         // because we will do it when we start the new view.
@@ -110,7 +111,7 @@ impl StateMachine {
         self.view = view;
         self.start_new_view(ctx, consensus)
             .await
-            .context("start_new_view()")?;
+            .wrap("start_new_view()")?;
 
         Ok(())
     }
