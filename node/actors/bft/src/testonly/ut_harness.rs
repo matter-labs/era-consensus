@@ -131,7 +131,6 @@ impl UTHarness {
             high_vote.proposal.number = high_vote.proposal.number.next();
 
             msg.high_vote = high_vote;
-            });
         })
     }
 
