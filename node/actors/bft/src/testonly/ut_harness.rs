@@ -121,11 +121,16 @@ impl UTHarness {
 
     pub(crate) fn new_unfinalized_replica_prepare(&self) -> Signed<ConsensusMsg> {
         self.new_current_replica_prepare(|msg| {
-            msg.high_qc = self.new_commit_qc(|high_qc| {
-                // Set view to the previous view since it needs to belong to an earlier view.
-                high_qc.view = msg.view.prev();
-                // Increment high_qc proposal number to create a discrepancy between the high_qc and the high_vote.
-                high_qc.proposal.number = high_qc.proposal.number.next();
+            let mut high_vote = ReplicaCommit {
+                protocol_version: validator::ProtocolVersion::EARLIEST,
+                view: self.consensus.replica.view.next(),
+                proposal: self.consensus.replica.high_qc.message.proposal,
+            };
+
+            high_vote.proposal.parent = high_vote.proposal.hash();
+            high_vote.proposal.number = high_vote.proposal.number.next();
+
+            msg.high_vote = high_vote;
             });
         })
     }
