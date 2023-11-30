@@ -7,7 +7,7 @@ use std::{collections::HashSet, fmt};
 use test_casing::{test_casing, Product};
 use zksync_concurrency::{testonly::abort_on_panic, time};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{BlockStore, InMemoryStorage, StorageError};
+use zksync_consensus_storage::{BlockStore, InMemoryStorage};
 
 mod basics;
 mod fakes;
@@ -123,8 +123,8 @@ async fn test_peer_states<T: Test>(test: T) {
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(async {
             peer_states.run(ctx).await.or_else(|err| match err {
-                StorageError::Canceled(_) => Ok(()), // Swallow cancellation errors after the test is finished
-                StorageError::Database(err) => Err(err),
+                ctx::Error::Canceled(_) => Ok(()), // Swallow cancellation errors after the test is finished
+                ctx::Error::Internal(err) => Err(err),
             })
         });
         test.test(ctx, test_handles).await

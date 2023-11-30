@@ -3,13 +3,12 @@
 use crate::{
     traits::{BlockStore, ReplicaStateStore, WriteBlockStore},
     types::{MissingBlockNumbers, ReplicaState},
-    StorageResult,
 };
 use async_trait::async_trait;
 use std::{collections::BTreeMap, ops};
 use zksync_concurrency::{
     ctx,
-    sync::{self, watch, Mutex},
+    sync::{watch, Mutex},
 };
 use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
 
@@ -90,36 +89,28 @@ impl InMemoryStorage {
 
 #[async_trait]
 impl BlockStore for InMemoryStorage {
-    async fn head_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
-        Ok(sync::lock(ctx, &self.blocks).await?.head_block().clone())
+    async fn head_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<FinalBlock> {
+        Ok(self.blocks.lock().await.head_block().clone())
     }
 
-    async fn first_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
-        Ok(sync::lock(ctx, &self.blocks).await?.first_block().clone())
+    async fn first_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<FinalBlock> {
+        Ok(self.blocks.lock().await.first_block().clone())
     }
 
-    async fn last_contiguous_block_number(&self, ctx: &ctx::Ctx) -> StorageResult<BlockNumber> {
-        Ok(sync::lock(ctx, &self.blocks)
-            .await?
-            .last_contiguous_block_number)
+    async fn last_contiguous_block_number(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockNumber> {
+        Ok(self.blocks.lock().await.last_contiguous_block_number)
     }
 
-    async fn block(
-        &self,
-        ctx: &ctx::Ctx,
-        number: BlockNumber,
-    ) -> StorageResult<Option<FinalBlock>> {
-        Ok(sync::lock(ctx, &self.blocks).await?.block(number).cloned())
+    async fn block(&self, _ctx: &ctx::Ctx, number: BlockNumber) -> ctx::Result<Option<FinalBlock>> {
+        Ok(self.blocks.lock().await.block(number).cloned())
     }
 
     async fn missing_block_numbers(
         &self,
-        ctx: &ctx::Ctx,
+        _ctx: &ctx::Ctx,
         range: ops::Range<BlockNumber>,
-    ) -> StorageResult<Vec<BlockNumber>> {
-        Ok(sync::lock(ctx, &self.blocks)
-            .await?
-            .missing_block_numbers(range))
+    ) -> ctx::Result<Vec<BlockNumber>> {
+        Ok(self.blocks.lock().await.missing_block_numbers(range))
     }
 
     fn subscribe_to_block_writes(&self) -> watch::Receiver<BlockNumber> {
@@ -129,10 +120,8 @@ impl BlockStore for InMemoryStorage {
 
 #[async_trait]
 impl WriteBlockStore for InMemoryStorage {
-    async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()> {
-        sync::lock(ctx, &self.blocks)
-            .await?
-            .put_block(block.clone());
+    async fn put_block(&self, _ctx: &ctx::Ctx, block: &FinalBlock) -> ctx::Result<()> {
+        self.blocks.lock().await.put_block(block.clone());
         self.blocks_sender.send_replace(block.header.number);
         Ok(())
     }
@@ -140,16 +129,16 @@ impl WriteBlockStore for InMemoryStorage {
 
 #[async_trait]
 impl ReplicaStateStore for InMemoryStorage {
-    async fn replica_state(&self, ctx: &ctx::Ctx) -> StorageResult<Option<ReplicaState>> {
-        Ok(sync::lock(ctx, &self.replica_state).await?.clone())
+    async fn replica_state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>> {
+        Ok(self.replica_state.lock().await.clone())
     }
 
     async fn put_replica_state(
         &self,
-        ctx: &ctx::Ctx,
+        _ctx: &ctx::Ctx,
         replica_state: &ReplicaState,
-    ) -> StorageResult<()> {
-        *sync::lock(ctx, &self.replica_state).await? = Some(replica_state.clone());
+    ) -> ctx::Result<()> {
+        *self.replica_state.lock().await = Some(replica_state.clone());
         Ok(())
     }
 }

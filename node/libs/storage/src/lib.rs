@@ -18,5 +18,5 @@ pub use crate::{
     in_memory::InMemoryStorage,
     replica_state::ReplicaStore,
     traits::{BlockStore, ReplicaStateStore, WriteBlockStore},
-    types::{Proposal, ReplicaState, StorageError, StorageResult},
+    types::{Proposal, ReplicaState},
 };

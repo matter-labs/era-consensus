@@ -31,7 +31,7 @@ fn test_clock_advance() {
 
 #[tokio::test]
 async fn test_sleep_until() {
-    type R<E> = Result<(), E>;
+    type R<E> = std::result::Result<(), E>;
     testonly::abort_on_panic();
     let clock = ManualClock::new();
     let ctx = &test_root(&clock);
