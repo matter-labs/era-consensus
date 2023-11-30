@@ -2,7 +2,6 @@
 use crate::proto;
 use anyhow::Context as _;
 use std::{iter, ops};
-use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator::{self, BlockNumber};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
@@ -131,6 +130,3 @@ where
         Some(Ok(next_number))
     }
 }
-
-/// [`Result`] for fallible storage operations.
-pub type StorageResult<T> = Result<T, ctx::Error>;

@@ -5,7 +5,6 @@
 use crate::{
     traits::{BlockStore, ReplicaStateStore, WriteBlockStore},
     types::{MissingBlockNumbers, ReplicaState},
-    StorageResult,
 };
 use anyhow::Context as _;
 use async_trait::async_trait;
@@ -88,11 +87,7 @@ impl RocksdbStorage {
     /// a new one. We need the genesis block of the chain as input.
     // TODO(bruno): we want to eventually start pruning old blocks, so having the genesis
     //   block might be unnecessary.
-    pub async fn new(
-        ctx: &ctx::Ctx,
-        genesis_block: &FinalBlock,
-        path: &Path,
-    ) -> StorageResult<Self> {
+    pub async fn new(ctx: &ctx::Ctx, genesis_block: &FinalBlock, path: &Path) -> ctx::Result<Self> {
         let mut options = rocksdb::Options::default();
         options.create_missing_column_families(true);
         options.create_if_missing(true);
@@ -297,23 +292,19 @@ impl fmt::Debug for RocksdbStorage {
 
 #[async_trait]
 impl BlockStore for RocksdbStorage {
-    async fn head_block(&self, _ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
+    async fn head_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<FinalBlock> {
         Ok(scope::wait_blocking(|| self.head_block_blocking()).await?)
     }
 
-    async fn first_block(&self, _ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
+    async fn first_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<FinalBlock> {
         Ok(scope::wait_blocking(|| self.first_block_blocking()).await?)
     }
 
-    async fn last_contiguous_block_number(&self, _ctx: &ctx::Ctx) -> StorageResult<BlockNumber> {
+    async fn last_contiguous_block_number(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockNumber> {
         Ok(scope::wait_blocking(|| self.last_contiguous_block_number_blocking()).await?)
     }
 
-    async fn block(
-        &self,
-        _ctx: &ctx::Ctx,
-        number: BlockNumber,
-    ) -> StorageResult<Option<FinalBlock>> {
+    async fn block(&self, _ctx: &ctx::Ctx, number: BlockNumber) -> ctx::Result<Option<FinalBlock>> {
         Ok(scope::wait_blocking(|| self.block_blocking(number)).await?)
     }
 
@@ -321,7 +312,7 @@ impl BlockStore for RocksdbStorage {
         &self,
         _ctx: &ctx::Ctx,
         range: ops::Range<BlockNumber>,
-    ) -> StorageResult<Vec<BlockNumber>> {
+    ) -> ctx::Result<Vec<BlockNumber>> {
         Ok(scope::wait_blocking(|| self.missing_block_numbers_blocking(range)).await?)
     }
 
@@ -332,14 +323,14 @@ impl BlockStore for RocksdbStorage {
 
 #[async_trait]
 impl WriteBlockStore for RocksdbStorage {
-    async fn put_block(&self, _ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()> {
+    async fn put_block(&self, _ctx: &ctx::Ctx, block: &FinalBlock) -> ctx::Result<()> {
         Ok(scope::wait_blocking(|| self.put_block_blocking(block)).await?)
     }
 }
 
 #[async_trait]
 impl ReplicaStateStore for RocksdbStorage {
-    async fn replica_state(&self, _ctx: &ctx::Ctx) -> StorageResult<Option<ReplicaState>> {
+    async fn replica_state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>> {
         Ok(scope::wait_blocking(|| self.replica_state_blocking()).await?)
     }
 
@@ -347,7 +338,7 @@ impl ReplicaStateStore for RocksdbStorage {
         &self,
         _ctx: &ctx::Ctx,
         replica_state: &ReplicaState,
-    ) -> StorageResult<()> {
+    ) -> ctx::Result<()> {
         Ok(scope::wait_blocking(|| self.put_replica_state_blocking(replica_state)).await?)
     }
 }

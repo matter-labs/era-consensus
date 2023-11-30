@@ -15,7 +15,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
         commit_qc: &validator::CommitQC,
-    ) -> Result<(), ctx::Error> {
+    ) -> ctx::Result<()> {
         // TODO(gprusak): for availability of finalized blocks,
         //                replicas should be able to broadcast highest quorums without
         //                the corresponding block (same goes for synchronization).

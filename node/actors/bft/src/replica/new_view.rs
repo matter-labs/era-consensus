@@ -12,7 +12,7 @@ impl StateMachine {
         &mut self,
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
-    ) -> Result<(), ctx::Error> {
+    ) -> ctx::Result<()> {
         tracing::info!("Starting view {}", self.view.next().0);
 
         // Update the state machine.

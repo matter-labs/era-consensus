@@ -73,7 +73,7 @@ impl Drop for Inner {
 pub struct Canceled;
 
 /// Wraps result with ErrCancel as an error.
-pub type OrCanceled<T> = Result<T, Canceled>;
+pub type OrCanceled<T> = std::result::Result<T, Canceled>;
 
 /// Blocks the current thread until future f is completed, using
 /// the local tokio runtime. Use this function to generate a blocking
@@ -277,6 +277,9 @@ pub enum Error {
     #[error(transparent)]
     Internal(#[from] anyhow::Error),
 }
+
+/// Alias for Result with `ctx::Error`.
+pub type Result<T> = std::result::Result<T, Error>;
 
 impl crate::error::Wrap for Error {
     fn with_wrap<C: std::fmt::Display + Send + Sync + 'static, F: FnOnce() -> C>(

@@ -60,7 +60,7 @@ impl StateMachine {
         &mut self,
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
-    ) -> Result<(), ctx::Error> {
+    ) -> ctx::Result<()> {
         if self.view == validator::ViewNumber(0) {
             self.start_new_view(ctx, consensus)
                 .await
@@ -80,7 +80,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
         input: Option<validator::Signed<validator::ConsensusMsg>>,
-    ) -> Result<(), ctx::Error> {
+    ) -> ctx::Result<()> {
         let Some(signed_msg) = input else {
             tracing::warn!("We timed out before receiving a message.");
             // Start new view.
@@ -127,7 +127,7 @@ impl StateMachine {
     }
 
     /// Backups the replica state to disk.
-    pub(crate) async fn backup_state(&self, ctx: &ctx::Ctx) -> Result<(), ctx::Error> {
+    pub(crate) async fn backup_state(&self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         let mut proposals = vec![];
         for (number, payloads) in &self.block_proposal_cache {
             proposals.extend(payloads.values().map(|p| storage::Proposal {

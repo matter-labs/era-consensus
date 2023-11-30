@@ -13,7 +13,7 @@ use zksync_concurrency::{
     sync::{self, watch},
 };
 use zksync_consensus_network::io::SyncState;
-use zksync_consensus_storage::{StorageResult, WriteBlockStore};
+use zksync_consensus_storage::WriteBlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;
@@ -89,7 +89,7 @@ impl SyncBlocks {
         ctx: &ctx::Ctx,
         storage: Arc<dyn WriteBlockStore>,
         state_sender: &watch::Sender<SyncState>,
-    ) -> StorageResult<()> {
+    ) -> ctx::Result<()> {
         let mut storage_subscriber = storage.subscribe_to_block_writes();
         loop {
             let state = Self::get_sync_state(ctx, storage.as_ref()).await?;
@@ -108,7 +108,7 @@ impl SyncBlocks {
     async fn get_sync_state(
         ctx: &ctx::Ctx,
         storage: &dyn WriteBlockStore,
-    ) -> StorageResult<SyncState> {
+    ) -> ctx::Result<SyncState> {
         let last_contiguous_block_number = storage.last_contiguous_block_number(ctx).await?;
         let last_contiguous_stored_block = storage
             .block(ctx, last_contiguous_block_number)
