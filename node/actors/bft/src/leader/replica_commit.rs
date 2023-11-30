@@ -3,11 +3,19 @@ use crate::{inner::ConsensusInner, metrics};
 use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::validator::{self, ProtocolVersion};
 
 /// Errors that can occur when processing a "replica commit" message.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    /// Incompatible protocol version.
+    #[error("incompatible protocol version (message version: {message_version:?}, local version: {local_version:?}")]
+    IncompatibleProtocolVersion {
+        /// Message version.
+        message_version: ProtocolVersion,
+        /// Local version.
+        local_version: ProtocolVersion,
+    },
     /// Unexpected proposal.
     #[error("unexpected proposal")]
     UnexpectedProposal,
@@ -57,6 +65,17 @@ impl StateMachine {
         // Unwrap message.
         let message = signed_message.msg;
         let author = &signed_message.key;
+
+        // Check protocol version compatibility.
+        if !consensus
+            .protocol_version
+            .compatible(&message.protocol_version)
+        {
+            return Err(Error::IncompatibleProtocolVersion {
+                message_version: message.protocol_version,
+                local_version: consensus.protocol_version,
+            });
+        }
 
         // If the message is from the "past", we discard it.
         if (message.view, validator::Phase::Commit) < (self.view, self.phase) {

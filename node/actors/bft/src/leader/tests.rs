@@ -5,8 +5,8 @@ use crate::testonly::ut_harness::UTHarness;
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_consensus_roles::validator::{
-    self, CommitQC, ConsensusMsg, LeaderCommit, LeaderPrepare, Phase, PrepareQC, ProtocolVersion,
-    ReplicaCommit, ReplicaPrepare, ViewNumber,
+    self, CommitQC, ConsensusMsg, LeaderCommit, LeaderPrepare, Phase, PrepareQC, ReplicaCommit,
+    ReplicaPrepare, ViewNumber,
 };
 
 #[tokio::test]
@@ -54,6 +54,24 @@ async fn replica_prepare_sanity_yield_leader_prepare() {
             assert_eq!(justification, util.new_prepare_qc(|msg| *msg = replica_prepare));
         }
     );
+}
+
+#[tokio::test]
+async fn replica_prepare_incompatible_protocol_version() {
+    let mut util = UTHarness::new_one().await;
+
+    let incompatible_protocol_version = util.incompatible_protocol_version();
+    let replica_prepare = util.new_current_replica_prepare(|msg| {
+        msg.protocol_version = incompatible_protocol_version;
+    });
+    let res = util.dispatch_replica_prepare_one(replica_prepare);
+    assert_matches!(
+        res,
+        Err(ReplicaPrepareError::IncompatibleProtocolVersion { message_version, local_version }) => {
+            assert_eq!(message_version, incompatible_protocol_version);
+            assert_eq!(local_version, util.protocol_version());
+        }
+    )
 }
 
 #[tokio::test]
@@ -321,6 +339,24 @@ async fn replica_commit_sanity_yield_leader_commit() {
 }
 
 #[tokio::test]
+async fn replica_commit_incompatible_protocol_version() {
+    let mut util = UTHarness::new_one().await;
+
+    let incompatible_protocol_version = util.incompatible_protocol_version();
+    let replica_commit = util.new_current_replica_commit(|msg| {
+        msg.protocol_version = incompatible_protocol_version;
+    });
+    let res = util.dispatch_replica_commit_one(replica_commit);
+    assert_matches!(
+        res,
+        Err(ReplicaCommitError::IncompatibleProtocolVersion { message_version, local_version }) => {
+            assert_eq!(message_version, incompatible_protocol_version);
+            assert_eq!(local_version, util.protocol_version());
+        }
+    )
+}
+
+#[tokio::test]
 async fn replica_commit_old() {
     let mut util = UTHarness::new_one().await;
 
@@ -434,37 +470,32 @@ async fn replica_commit_unexpected_proposal() {
     assert_matches!(res, Err(ReplicaCommitError::UnexpectedProposal));
 }
 
-#[ignore = "fails/unsupported"]
 #[tokio::test]
-async fn replica_commit_protocol_version_mismatch() {
-    let mut util = UTHarness::new_with(2).await;
+async fn replica_commit_incompatible_protocol_version_one_from_many() {
+    let mut util = UTHarness::new_many().await;
 
-    let view = ViewNumber(2);
-    util.set_replica_view(view);
-    util.set_leader_view(view);
-    assert_eq!(util.view_leader(view), util.owner_key().public());
+    util.set_view(util.owner_as_view_leader());
 
-    let replica_prepare_one = util.new_current_replica_prepare(|_| {});
-    let _ = util.dispatch_replica_prepare_one(replica_prepare_one.clone());
-    let replica_prepare_two = util.key_at(1).sign_msg(replica_prepare_one.msg);
-    util.dispatch_replica_prepare_one(replica_prepare_two)
-        .unwrap();
+    let replica_commit = util
+        .new_procedural_replica_commit_many()
+        .await
+        .cast::<ReplicaCommit>()
+        .unwrap()
+        .msg;
+    let mut messages = vec![replica_commit; util.consensus_threshold() - 1];
+    let incompatible_protocol_version = util.incompatible_protocol_version();
+    messages.push(ReplicaCommit {
+        protocol_version: incompatible_protocol_version,
+        view: replica_commit.view,
+        proposal: replica_commit.proposal,
+    });
 
-    let leader_prepare = util.recv_signed().await.unwrap();
-    util.dispatch_leader_prepare(leader_prepare).await.unwrap();
-
-    let replica_commit = util.recv_signed().await.unwrap();
-    let _ = util.dispatch_replica_commit_one(replica_commit.clone());
-
-    let mut replica_commit_two = replica_commit.cast::<ReplicaCommit>().unwrap().msg;
-    replica_commit_two.protocol_version =
-        ProtocolVersion(replica_commit_two.protocol_version.0 + 1);
-
-    let replica_commit_two = util
-        .key_at(1)
-        .sign_msg(ConsensusMsg::ReplicaCommit(replica_commit_two));
-    util.dispatch_replica_commit_one(replica_commit_two)
-        .unwrap();
-    // PANICS:
-    // "Couldn't create justification from valid replica messages!: CommitQC can only be created from votes for the same message."
+    let res = util.dispatch_replica_commit_many(messages, util.keys());
+    assert_matches!(
+        res,
+        Err(ReplicaCommitError::IncompatibleProtocolVersion { message_version, local_version }) => {
+            assert_eq!(message_version, incompatible_protocol_version);
+            assert_eq!(local_version, util.protocol_version());
+        }
+    )
 }
