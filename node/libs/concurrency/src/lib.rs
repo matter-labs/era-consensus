@@ -2,6 +2,7 @@
 #![allow(unsafe_code)]
 
 pub mod ctx;
+pub mod error;
 pub mod io;
 pub mod limiter;
 pub mod metrics;

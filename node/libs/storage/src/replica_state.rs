@@ -2,7 +2,7 @@
 
 use crate::{
     traits::{ReplicaStateStore, WriteBlockStore},
-    types::{ReplicaState, StorageResult},
+    types::ReplicaState,
 };
 use std::sync::Arc;
 use zksync_concurrency::ctx;
@@ -45,7 +45,7 @@ impl ReplicaStore {
     }
 
     /// Gets the replica state. If it's not present, falls back to recover it from the fallback block store.
-    pub async fn replica_state(&self, ctx: &ctx::Ctx) -> StorageResult<ReplicaState> {
+    pub async fn replica_state(&self, ctx: &ctx::Ctx) -> ctx::Result<ReplicaState> {
         let replica_state = self.state.replica_state(ctx).await?;
         if let Some(replica_state) = replica_state {
             Ok(replica_state)
@@ -60,7 +60,7 @@ impl ReplicaStore {
         &self,
         ctx: &ctx::Ctx,
         replica_state: &ReplicaState,
-    ) -> StorageResult<()> {
+    ) -> ctx::Result<()> {
         self.state.put_replica_state(ctx, replica_state).await
     }
 
@@ -69,7 +69,7 @@ impl ReplicaStore {
         &self,
         ctx: &ctx::Ctx,
         block: &validator::FinalBlock,
-    ) -> StorageResult<()> {
+    ) -> ctx::Result<()> {
         self.blocks.put_block(ctx, block).await
     }
 }

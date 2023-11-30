@@ -1,8 +1,7 @@
 use crate::{metrics, ConsensusInner};
-use anyhow::Context as _;
 use std::collections::{BTreeMap, HashMap};
 use tracing::instrument;
-use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _, time};
+use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, time};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage as storage;
 use zksync_consensus_storage::ReplicaStore;
@@ -61,11 +60,11 @@ impl StateMachine {
         &mut self,
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
-    ) -> anyhow::Result<()> {
+    ) -> ctx::Result<()> {
         if self.view == validator::ViewNumber(0) {
             self.start_new_view(ctx, consensus)
                 .await
-                .context("start_new_view")
+                .wrap("start_new_view()")
         } else {
             self.reset_timer(ctx);
             Ok(())
@@ -81,7 +80,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
         input: Option<validator::Signed<validator::ConsensusMsg>>,
-    ) -> anyhow::Result<()> {
+    ) -> ctx::Result<()> {
         let Some(signed_msg) = input else {
             tracing::warn!("We timed out before receiving a message.");
             // Start new view.
@@ -95,10 +94,9 @@ impl StateMachine {
                 let res = match self
                     .process_leader_prepare(ctx, consensus, signed_msg.cast().unwrap())
                     .await
+                    .wrap("process_leader_prepare()")
                 {
-                    Err(super::leader_prepare::Error::Internal(err)) => {
-                        return Err(err).context("process_leader_prepare()")
-                    }
+                    Err(super::leader_prepare::Error::Internal(err)) => return Err(err),
                     Err(err) => {
                         tracing::warn!("process_leader_prepare(): {err:#}");
                         Err(())
@@ -111,10 +109,9 @@ impl StateMachine {
                 let res = match self
                     .process_leader_commit(ctx, consensus, signed_msg.cast().unwrap())
                     .await
+                    .wrap("process_leader_commit()")
                 {
-                    Err(super::leader_commit::Error::Internal(err)) => {
-                        return Err(err).context("process_leader_commit()")
-                    }
+                    Err(super::leader_commit::Error::Internal(err)) => return Err(err),
                     Err(err) => {
                         tracing::warn!("process_leader_commit(): {err:#}");
                         Err(())
@@ -130,7 +127,7 @@ impl StateMachine {
     }
 
     /// Backups the replica state to disk.
-    pub(crate) async fn backup_state(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub(crate) async fn backup_state(&self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         let mut proposals = vec![];
         for (number, payloads) in &self.block_proposal_cache {
             proposals.extend(payloads.values().map(|p| storage::Proposal {
@@ -145,7 +142,10 @@ impl StateMachine {
             high_qc: self.high_qc.clone(),
             proposals,
         };
-        self.storage.put_replica_state(ctx, &backup).await?;
+        self.storage
+            .put_replica_state(ctx, &backup)
+            .await
+            .wrap("put_replica_state")?;
         Ok(())
     }
 }

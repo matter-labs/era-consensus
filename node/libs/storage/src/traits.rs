@@ -1,5 +1,5 @@
 //! Traits for storage.
-use crate::{types::ReplicaState, StorageResult};
+use crate::types::ReplicaState;
 use async_trait::async_trait;
 use std::{fmt, ops, sync::Arc};
 use zksync_concurrency::{ctx, sync::watch};
@@ -11,10 +11,10 @@ use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
 #[async_trait]
 pub trait BlockStore: fmt::Debug + Send + Sync {
     /// Gets the head block.
-    async fn head_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock>;
+    async fn head_block(&self, ctx: &ctx::Ctx) -> ctx::Result<FinalBlock>;
 
     /// Returns a block with the least number stored in this database.
-    async fn first_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock>;
+    async fn first_block(&self, ctx: &ctx::Ctx) -> ctx::Result<FinalBlock>;
 
     /// Returns the number of the last block in the first contiguous range of blocks stored in this DB.
     /// If there are no missing blocks, this is equal to the number of [`Self::get_head_block()`],
@@ -23,11 +23,10 @@ pub trait BlockStore: fmt::Debug + Send + Sync {
     /// The returned number cannot underflow the [first block](Self::first_block()) stored in the DB;
     /// all blocks preceding the first block are ignored when computing this number. For example,
     /// if the storage contains blocks #5, 6 and 9, this method will return 6.
-    async fn last_contiguous_block_number(&self, ctx: &ctx::Ctx) -> StorageResult<BlockNumber>;
+    async fn last_contiguous_block_number(&self, ctx: &ctx::Ctx) -> ctx::Result<BlockNumber>;
 
     /// Gets a block by its number.
-    async fn block(&self, ctx: &ctx::Ctx, number: BlockNumber)
-        -> StorageResult<Option<FinalBlock>>;
+    async fn block(&self, ctx: &ctx::Ctx, number: BlockNumber) -> ctx::Result<Option<FinalBlock>>;
 
     /// Iterates over block numbers in the specified `range` that the DB *does not* have.
     // TODO(slowli): We might want to limit the length of the vec returned
@@ -35,7 +34,7 @@ pub trait BlockStore: fmt::Debug + Send + Sync {
         &self,
         ctx: &ctx::Ctx,
         range: ops::Range<BlockNumber>,
-    ) -> StorageResult<Vec<BlockNumber>>;
+    ) -> ctx::Result<Vec<BlockNumber>>;
 
     /// Subscribes to block write operations performed using this `Storage`. Note that since
     /// updates are passed using a `watch` channel, only the latest written [`BlockNumber`]
@@ -48,23 +47,19 @@ pub trait BlockStore: fmt::Debug + Send + Sync {
 
 #[async_trait]
 impl<S: BlockStore + ?Sized> BlockStore for Arc<S> {
-    async fn head_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
+    async fn head_block(&self, ctx: &ctx::Ctx) -> ctx::Result<FinalBlock> {
         (**self).head_block(ctx).await
     }
 
-    async fn first_block(&self, ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
+    async fn first_block(&self, ctx: &ctx::Ctx) -> ctx::Result<FinalBlock> {
         (**self).first_block(ctx).await
     }
 
-    async fn last_contiguous_block_number(&self, ctx: &ctx::Ctx) -> StorageResult<BlockNumber> {
+    async fn last_contiguous_block_number(&self, ctx: &ctx::Ctx) -> ctx::Result<BlockNumber> {
         (**self).last_contiguous_block_number(ctx).await
     }
 
-    async fn block(
-        &self,
-        ctx: &ctx::Ctx,
-        number: BlockNumber,
-    ) -> StorageResult<Option<FinalBlock>> {
+    async fn block(&self, ctx: &ctx::Ctx, number: BlockNumber) -> ctx::Result<Option<FinalBlock>> {
         (**self).block(ctx, number).await
     }
 
@@ -72,7 +67,7 @@ impl<S: BlockStore + ?Sized> BlockStore for Arc<S> {
         &self,
         ctx: &ctx::Ctx,
         range: ops::Range<BlockNumber>,
-    ) -> StorageResult<Vec<BlockNumber>> {
+    ) -> ctx::Result<Vec<BlockNumber>> {
         (**self).missing_block_numbers(ctx, range).await
     }
 
@@ -87,12 +82,12 @@ impl<S: BlockStore + ?Sized> BlockStore for Arc<S> {
 #[async_trait]
 pub trait WriteBlockStore: BlockStore {
     /// Puts a block into this storage.
-    async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()>;
+    async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> ctx::Result<()>;
 }
 
 #[async_trait]
 impl<S: WriteBlockStore + ?Sized> WriteBlockStore for Arc<S> {
-    async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()> {
+    async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> ctx::Result<()> {
         (**self).put_block(ctx, block).await
     }
 }
@@ -103,19 +98,19 @@ impl<S: WriteBlockStore + ?Sized> WriteBlockStore for Arc<S> {
 #[async_trait]
 pub trait ReplicaStateStore: fmt::Debug + Send + Sync {
     /// Gets the replica state, if it is contained in the database.
-    async fn replica_state(&self, ctx: &ctx::Ctx) -> StorageResult<Option<ReplicaState>>;
+    async fn replica_state(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>>;
 
     /// Stores the given replica state into the database.
     async fn put_replica_state(
         &self,
         ctx: &ctx::Ctx,
         replica_state: &ReplicaState,
-    ) -> StorageResult<()>;
+    ) -> ctx::Result<()>;
 }
 
 #[async_trait]
 impl<S: ReplicaStateStore + ?Sized> ReplicaStateStore for Arc<S> {
-    async fn replica_state(&self, ctx: &ctx::Ctx) -> StorageResult<Option<ReplicaState>> {
+    async fn replica_state(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>> {
         (**self).replica_state(ctx).await
     }
 
@@ -123,7 +118,7 @@ impl<S: ReplicaStateStore + ?Sized> ReplicaStateStore for Arc<S> {
         &self,
         ctx: &ctx::Ctx,
         replica_state: &ReplicaState,
-    ) -> StorageResult<()> {
+    ) -> ctx::Result<()> {
         (**self).put_replica_state(ctx, replica_state).await
     }
 }

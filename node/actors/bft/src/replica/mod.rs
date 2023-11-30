@@ -11,4 +11,8 @@ mod state_machine;
 mod tests;
 mod timer;
 
-pub(crate) use state_machine::StateMachine;
+#[cfg(test)]
+pub(crate) use self::leader_commit::Error as LeaderCommitError;
+#[cfg(test)]
+pub(crate) use self::leader_prepare::Error as LeaderPrepareError;
+pub(crate) use self::state_machine::StateMachine;

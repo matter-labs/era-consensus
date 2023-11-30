@@ -58,9 +58,6 @@ skip = [
     # Old versions required by pairing_ce & ff_ce.
     { name = "rand", version = "0.4" },
     { name = "syn", version = "1.0" },
-
-    # Old versions required by criterion.
-    { name = "itertools", version = "0.10.5" }
 ]
 
 [sources]
