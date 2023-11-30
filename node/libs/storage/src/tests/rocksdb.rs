@@ -19,7 +19,7 @@ async fn initializing_store_twice() {
     let genesis_block = genesis_block(rng);
     let temp_dir = TempDir::new().unwrap();
     let block_store = temp_dir.init_store(ctx, &genesis_block).await;
-    let block_1 = make_block(rng, &genesis_block.header);
+    let block_1 = make_block(rng, &genesis_block.header, ProtocolVersion::EARLIEST);
     block_store.put_block(ctx, &block_1).await.unwrap();
 
     assert_eq!(block_store.first_block(ctx).await.unwrap(), genesis_block);

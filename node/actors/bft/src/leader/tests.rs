@@ -10,7 +10,11 @@ async fn replica_commit() {
     let rng = &mut StdRng::seed_from_u64(6516565651);
 
     let keys: Vec<_> = (0..1).map(|_| rng.gen()).collect();
-    let (genesis, val_set) = testonly::make_genesis(&keys, validator::Payload(vec![]));
+    let (genesis, val_set) = testonly::make_genesis(
+        &keys,
+        validator::ProtocolVersion::EARLIEST,
+        validator::Payload(vec![]),
+    );
     let (mut consensus, _) = testonly::make_consensus(ctx, &keys[0], &val_set, &genesis).await;
 
     consensus.leader.view = validator::ViewNumber(3);
@@ -22,7 +26,7 @@ async fn replica_commit() {
             .secret_key
             .sign_msg(validator::ConsensusMsg::ReplicaCommit(
                 validator::ReplicaCommit {
-                    protocol_version: validator::CURRENT_VERSION,
+                    protocol_version: validator::ProtocolVersion::EARLIEST,
                     view: consensus.leader.view,
                     proposal: rng.gen(),
                 },

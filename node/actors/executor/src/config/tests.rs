@@ -16,6 +16,7 @@ impl Distribution<ConsensusConfig> for Standard {
         ConsensusConfig {
             key: rng.gen::<validator::SecretKey>().public(),
             public_addr: make_addr(rng),
+            protocol_version: validator::ProtocolVersion::EARLIEST,
         }
     }
 }

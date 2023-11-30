@@ -214,7 +214,7 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::LeaderPrepare(
                     validator::LeaderPrepare {
-                        protocol_version: validator::CURRENT_VERSION,
+                        protocol_version: consensus.protocol_version,
                         view: self.view,
                         proposal,
                         proposal_payload: payload,

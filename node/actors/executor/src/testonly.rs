@@ -4,11 +4,24 @@ use rand::Rng;
 use std::collections::HashMap;
 use zksync_concurrency::net;
 use zksync_consensus_bft::testonly::make_genesis;
-use zksync_consensus_network::testonly::Instance;
+use zksync_consensus_network::{consensus, testonly::Instance};
 use zksync_consensus_roles::{
     node,
     validator::{self, Payload},
 };
+
+impl ConsensusConfig {
+    fn from_network_config(
+        src: consensus::Config,
+        protocol_version: validator::ProtocolVersion,
+    ) -> Self {
+        Self {
+            key: src.key.public(),
+            public_addr: src.public_addr,
+            protocol_version,
+        }
+    }
+}
 
 /// Full validator configuration.
 #[derive(Debug)]
@@ -26,16 +39,26 @@ pub struct FullValidatorConfig {
 
 impl FullValidatorConfig {
     /// Generates a validator config for a network with a single validator.
-    pub fn for_single_validator(rng: &mut impl Rng, genesis_block_payload: Payload) -> Self {
+    ///
+    /// `protocol_version` is used both for the genesis block and as the current protocol version.
+    pub fn for_single_validator(
+        rng: &mut impl Rng,
+        protocol_version: validator::ProtocolVersion,
+        genesis_block_payload: Payload,
+    ) -> Self {
         let mut net_configs = Instance::new_configs(rng, 1, 0);
         assert_eq!(net_configs.len(), 1);
         let net_config = net_configs.pop().unwrap();
         let consensus_config = net_config.consensus.unwrap();
         let validator_key = consensus_config.key.clone();
-        let consensus_config = ConsensusConfig::from(consensus_config);
+        let consensus_config =
+            ConsensusConfig::from_network_config(consensus_config, protocol_version);
 
-        let (genesis_block, validators) =
-            make_genesis(&[validator_key.clone()], genesis_block_payload);
+        let (genesis_block, validators) = make_genesis(
+            &[validator_key.clone()],
+            protocol_version,
+            genesis_block_payload,
+        );
         let node_key = net_config.gossip.key.clone();
         let node_config = ExecutorConfig {
             server_addr: *net_config.server_addr,

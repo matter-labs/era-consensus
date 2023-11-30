@@ -3,7 +3,7 @@ use super::{
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
     FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
     PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature,
-    Signed, Signers, ValidatorSet, ViewNumber, CURRENT_VERSION,
+    Signed, Signers, ValidatorSet, ViewNumber,
 };
 use bit_vec::BitVec;
 use rand::{
@@ -16,10 +16,14 @@ use zksync_consensus_utils::enum_util::Variant;
 
 /// Constructs a CommitQC with `CommitQC.message.proposal` matching header.
 /// WARNING: it is not a fully correct CommitQC.
-pub fn make_justification<R: Rng>(rng: &mut R, header: &BlockHeader) -> CommitQC {
+pub fn make_justification<R: Rng>(
+    rng: &mut R,
+    header: &BlockHeader,
+    protocol_version: ProtocolVersion,
+) -> CommitQC {
     CommitQC {
         message: ReplicaCommit {
-            protocol_version: CURRENT_VERSION,
+            protocol_version,
             view: ViewNumber(header.number.0),
             proposal: *header,
         },
@@ -30,10 +34,10 @@ pub fn make_justification<R: Rng>(rng: &mut R, header: &BlockHeader) -> CommitQC
 
 /// Constructs a genesis block with random payload.
 /// WARNING: it is not a fully correct FinalBlock.
-pub fn make_genesis_block<R: Rng>(rng: &mut R) -> FinalBlock {
+pub fn make_genesis_block<R: Rng>(rng: &mut R, protocol_version: ProtocolVersion) -> FinalBlock {
     let payload: Payload = rng.gen();
     let header = BlockHeader::genesis(payload.hash());
-    let justification = make_justification(rng, &header);
+    let justification = make_justification(rng, &header, protocol_version);
     FinalBlock {
         header,
         payload,
@@ -43,10 +47,14 @@ pub fn make_genesis_block<R: Rng>(rng: &mut R) -> FinalBlock {
 
 /// Constructs a random block with a given parent.
 /// WARNING: this is not a fully correct FinalBlock.
-pub fn make_block<R: Rng>(rng: &mut R, parent: &BlockHeader) -> FinalBlock {
+pub fn make_block<R: Rng>(
+    rng: &mut R,
+    parent: &BlockHeader,
+    protocol_version: ProtocolVersion,
+) -> FinalBlock {
     let payload: Payload = rng.gen();
     let header = BlockHeader::new(parent, payload.hash());
-    let justification = make_justification(rng, &header);
+    let justification = make_justification(rng, &header, protocol_version);
     FinalBlock {
         header,
         payload,

@@ -266,7 +266,7 @@ impl StateMachine {
 
         // Create our commit vote.
         let commit_vote = validator::ReplicaCommit {
-            protocol_version: validator::CURRENT_VERSION,
+            protocol_version: consensus.protocol_version,
             view,
             proposal: message.proposal,
         };
