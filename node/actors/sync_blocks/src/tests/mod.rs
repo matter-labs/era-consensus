@@ -68,7 +68,7 @@ impl TestValidators {
 
     fn certify_block(&self, proposal: &BlockHeader) -> CommitQC {
         let message_to_sign = validator::ReplicaCommit {
-            protocol_version: validator::CURRENT_VERSION,
+            protocol_version: validator::ProtocolVersion::EARLIEST,
             view: validator::ViewNumber(proposal.number.0),
             proposal: *proposal,
         };
@@ -120,10 +120,11 @@ async fn subscribing_to_state_updates() {
 
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let genesis_block = make_genesis_block(rng);
-    let block_1 = make_block(rng, &genesis_block.header);
-    let block_2 = make_block(rng, &block_1.header);
-    let block_3 = make_block(rng, &block_2.header);
+    let protocol_version = validator::ProtocolVersion::EARLIEST;
+    let genesis_block = make_genesis_block(rng, protocol_version);
+    let block_1 = make_block(rng, &genesis_block.header, protocol_version);
+    let block_2 = make_block(rng, &block_1.header, protocol_version);
+    let block_3 = make_block(rng, &block_2.header, protocol_version);
 
     let storage = InMemoryStorage::new(genesis_block.clone());
     let storage = &Arc::new(storage);
@@ -195,12 +196,13 @@ async fn getting_blocks() {
 
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let genesis_block = make_genesis_block(rng);
+    let protocol_version = validator::ProtocolVersion::EARLIEST;
+    let genesis_block = make_genesis_block(rng, protocol_version);
 
     let storage = InMemoryStorage::new(genesis_block.clone());
     let storage = Arc::new(storage);
     let blocks = iter::successors(Some(genesis_block), |parent| {
-        Some(make_block(rng, &parent.header))
+        Some(make_block(rng, &parent.header, protocol_version))
     });
     let blocks: Vec<_> = blocks.take(5).collect();
     for block in &blocks {

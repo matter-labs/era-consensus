@@ -51,6 +51,7 @@ impl Consensus {
     pub async fn new(
         ctx: &ctx::Ctx,
         pipe: ActorPipe<InputMessage, OutputMessage>,
+        protocol_version: validator::ProtocolVersion,
         secret_key: validator::SecretKey,
         validator_set: validator::ValidatorSet,
         storage: ReplicaStore,
@@ -60,6 +61,7 @@ impl Consensus {
                 pipe,
                 secret_key,
                 validator_set,
+                protocol_version,
             },
             replica: replica::StateMachine::new(ctx, storage).await?,
             leader: leader::StateMachine::new(ctx),
@@ -99,10 +101,10 @@ impl Consensus {
 
             match input {
                 Some(InputMessage::Network(req)) => {
-                    if req.msg.msg.protocol_version() != validator::CURRENT_VERSION {
+                    if req.msg.msg.protocol_version() != self.inner.protocol_version {
                         tracing::warn!(
                             "bad protocol version (expected: {:?}, received: {:?})",
-                            validator::CURRENT_VERSION,
+                            self.inner.protocol_version,
                             req.msg.msg.protocol_version()
                         );
                         continue;
