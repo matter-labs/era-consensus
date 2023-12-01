@@ -33,7 +33,7 @@ pub(crate) struct UTHarness {
 }
 
 impl UTHarness {
-    /// Creates a new `UTHarness` with one validator._
+    /// Creates a new `UTHarness` with one validator.
     pub(crate) async fn new_one() -> UTHarness {
         UTHarness::new_with(1).await
     }
