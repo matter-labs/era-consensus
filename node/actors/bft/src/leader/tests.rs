@@ -102,6 +102,23 @@ async fn replica_prepare_sanity_yield_leader_prepare_reproposal() {
 }
 
 #[tokio::test]
+async fn replica_prepare_non_validator_signer() {
+    let mut util = UTHarness::new_one().await;
+
+    let replica_prepare = util.new_current_replica_prepare(|_| {}).cast().unwrap().msg;
+    let non_validator_key: validator::SecretKey = util.rng().gen();
+    let signed = non_validator_key.sign_msg(ConsensusMsg::ReplicaPrepare(replica_prepare));
+
+    let res = util.dispatch_replica_prepare_one(signed);
+    assert_matches!(
+        res,
+        Err(ReplicaPrepareError::NonValidatorSigner { signer }) => {
+            assert_eq!(signer, non_validator_key.public());
+        }
+    );
+}
+
+#[tokio::test]
 async fn replica_prepare_old_view() {
     let mut util = UTHarness::new_one().await;
 
@@ -254,23 +271,25 @@ async fn replica_prepare_high_qc_of_future_view() {
     );
 }
 
-#[ignore = "fails/unsupported"]
 #[tokio::test]
-async fn replica_prepare_non_validator_signer() {
-    let mut util = UTHarness::new_with(2).await;
+async fn replica_prepare_non_validator_signer_one_from_many() {
+    let mut util = UTHarness::new_many().await;
 
-    let view = ViewNumber(2);
-    util.set_view(view);
-    assert_eq!(util.view_leader(view), util.key_at(0).public());
+    util.set_view(util.owner_as_view_leader());
 
-    let replica_prepare = util.new_current_replica_prepare(|_| {});
-    let _ = util.dispatch_replica_prepare_one(replica_prepare.clone());
+    let replica_prepare = util.new_current_replica_prepare(|_| {}).cast().unwrap().msg;
+    let mut keys = util.keys()[0..util.consensus_threshold() - 1].to_vec();
+    let non_validator_key: validator::SecretKey = util.rng().gen();
+    keys.push(non_validator_key.clone());
 
-    let non_validator: validator::SecretKey = util.rng().gen();
-    let replica_prepare = non_validator.sign_msg(replica_prepare.msg);
-    util.dispatch_replica_prepare_one(replica_prepare).unwrap();
-    // PANICS:
-    // "Couldn't create justification from valid replica messages!: Message signer isn't in the validator set"
+    let res =
+        util.dispatch_replica_prepare_many(vec![replica_prepare; util.consensus_threshold()], keys);
+    assert_matches!(
+        res,
+        Err(ReplicaPrepareError::NonValidatorSigner { signer }) => {
+            assert_eq!(signer, non_validator_key.public());
+        }
+    );
 }
 
 #[tokio::test]
@@ -316,6 +335,23 @@ async fn replica_commit_sanity_yield_leader_commit() {
         } => {
             assert_eq!(protocol_version, replica_commit.protocol_version);
             assert_eq!(justification, util.new_commit_qc(|msg| *msg = replica_commit));
+        }
+    );
+}
+
+#[tokio::test]
+async fn replica_commit_non_validator_signer() {
+    let mut util = UTHarness::new_one().await;
+
+    let replica_commit = util.new_current_replica_commit(|_| {}).cast().unwrap().msg;
+    let non_validator_key: validator::SecretKey = util.rng().gen();
+    let signed = non_validator_key.sign_msg(ConsensusMsg::ReplicaCommit(replica_commit));
+
+    let res = util.dispatch_replica_commit_one(signed);
+    assert_matches!(
+        res,
+        Err(ReplicaCommitError::NonValidatorSigner { signer }) => {
+            assert_eq!(signer, non_validator_key.public());
         }
     );
 }

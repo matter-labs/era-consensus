@@ -10,6 +10,12 @@ use zksync_consensus_roles::validator;
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    /// Message signer isn't part of the validator set.
+    #[error("Message signer isn't part of the validator set")]
+    NonValidatorSigner {
+        /// Signer of the message.
+        signer: validator::PublicKey,
+    },
     /// Past view or phase.
     #[error("past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
     Old {
@@ -69,6 +75,13 @@ impl StateMachine {
         // Unwrap message.
         let message = signed_message.msg.clone();
         let author = &signed_message.key;
+
+        consensus
+            .validator_set
+            .index(author)
+            .ok_or(Error::NonValidatorSigner {
+                signer: author.clone(),
+            })?;
 
         // If the message is from the "past", we discard it.
         if (message.view, validator::Phase::Prepare) < (self.view, self.phase) {
