@@ -64,6 +64,7 @@ impl StateMachine {
         let message = signed_message.msg;
         let author = &signed_message.key;
 
+        // Check that the message signer is in the validator set.
         consensus
             .validator_set
             .index(author)
