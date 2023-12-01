@@ -33,16 +33,17 @@ pub(crate) struct UTHarness {
 }
 
 impl UTHarness {
-    /// Creates a new `UTHarness` with one validator.
+    /// Creates a new `UTHarness` with one validator._
     pub(crate) async fn new_one() -> UTHarness {
         UTHarness::new_with(1).await
     }
-
     /// Creates a new `UTHarness` with minimally-significant validator set size.
     pub(crate) async fn new_many() -> UTHarness {
         let num_validators = 6;
         assert_matches!(crate::misc::faulty_replicas(num_validators), res if res > 0);
-        UTHarness::new_with(num_validators).await
+        let mut util = UTHarness::new_with(num_validators).await;
+        util.set_replica_view(util.owner_as_view_leader_next());
+        util
     }
 
     /// Creates a new `UTHarness` with the specified validator set size.
@@ -70,6 +71,28 @@ impl UTHarness {
         }
     }
 
+    pub(crate) fn check_recovery_after_timeout(&mut self) {
+        self.set_replica_view(self.owner_as_view_leader_next());
+
+        let base_replica_view = self.replica_view();
+        let base_leader_view = self.leader_view();
+        assert!(base_leader_view < base_replica_view);
+
+        assert_eq!(self.replica_phase(), Phase::Prepare);
+
+        let replica_prepare = self.new_current_replica_prepare(|_| {}).cast().unwrap().msg;
+        self.dispatch_replica_prepare_many(
+            vec![replica_prepare; self.consensus_threshold()],
+            self.keys(),
+        )
+        .unwrap();
+
+        assert_eq!(self.replica_view(), base_replica_view);
+        assert_eq!(self.leader_view(), base_replica_view);
+        assert_eq!(self.replica_phase(), Phase::Prepare);
+        assert_eq!(self.leader_phase(), Phase::Commit);
+    }
+
     pub(crate) fn consensus_threshold(&self) -> usize {
         crate::misc::consensus_threshold(self.keys.len())
     }
@@ -78,8 +101,8 @@ impl UTHarness {
         &self.consensus.inner.secret_key
     }
 
-    pub(crate) fn owner_as_view_leader(&self) -> ViewNumber {
-        let mut view = self.current_replica_view();
+    pub(crate) fn owner_as_view_leader_next(&self) -> ViewNumber {
+        let mut view = self.replica_view();
         while self.view_leader(view) != self.owner_key().public() {
             view = view.next();
         }
@@ -382,6 +405,22 @@ impl UTHarness {
         .unwrap()
     }
 
+    pub(crate) async fn sim_timeout(&mut self) {
+        scope::run!(&self.ctx, |ctx, s| {
+            s.spawn(async {
+                let _ = self
+                    .consensus
+                    .replica
+                    .process_input(ctx, &self.consensus.inner, None)
+                    .await;
+                Ok(())
+            })
+            .join(ctx)
+        })
+        .await
+        .unwrap()
+    }
+
     pub(crate) async fn dispatch_leader_commit(
         &mut self,
         msg: Signed<ConsensusMsg>,
@@ -412,12 +451,20 @@ impl UTHarness {
             })
     }
 
-    pub(crate) fn current_replica_view(&self) -> ViewNumber {
+    pub(crate) fn replica_view(&self) -> ViewNumber {
         self.consensus.replica.view
     }
 
-    pub(crate) fn current_replica_phase(&self) -> Phase {
+    pub(crate) fn leader_view(&self) -> ViewNumber {
+        self.consensus.leader.view
+    }
+
+    pub(crate) fn replica_phase(&self) -> Phase {
         self.consensus.replica.phase
+    }
+
+    pub(crate) fn leader_phase(&self) -> Phase {
+        self.consensus.leader.phase
     }
 
     pub(crate) fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
