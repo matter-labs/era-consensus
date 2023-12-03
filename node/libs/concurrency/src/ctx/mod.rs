@@ -73,7 +73,7 @@ impl Drop for Inner {
 pub struct Canceled;
 
 /// Wraps result with ErrCancel as an error.
-pub type OrCanceled<T> = Result<T, Canceled>;
+pub type OrCanceled<T> = std::result::Result<T, Canceled>;
 
 /// Blocks the current thread until future f is completed, using
 /// the local tokio runtime. Use this function to generate a blocking
@@ -262,5 +262,33 @@ impl Ctx {
     ///     would need to move the Provider to task-local storage.
     pub fn rng(&self) -> rand::rngs::StdRng {
         self.0.rng_provider.rng()
+    }
+}
+
+/// anyhow::Error + "canceled" variant.
+/// Useful for working with concurrent code which doesn't need structured errors,
+/// but needs to handle cancelation explicitly.
+#[derive(thiserror::Error, Debug)]
+pub enum Error {
+    /// Context has been canceled before call completion.
+    #[error(transparent)]
+    Canceled(#[from] Canceled),
+    /// Other error.
+    #[error(transparent)]
+    Internal(#[from] anyhow::Error),
+}
+
+/// Alias for Result with `ctx::Error`.
+pub type Result<T> = std::result::Result<T, Error>;
+
+impl crate::error::Wrap for Error {
+    fn with_wrap<C: std::fmt::Display + Send + Sync + 'static, F: FnOnce() -> C>(
+        self,
+        f: F,
+    ) -> Self {
+        match self {
+            Error::Internal(err) => Error::Internal(err.context(f())),
+            err => err,
+        }
     }
 }

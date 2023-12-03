@@ -22,7 +22,7 @@ impl FullValidatorConfig {
                 payload: payload.hash(),
             };
             let commit = self.validator_key.sign_msg(validator::ReplicaCommit {
-                protocol_version: validator::CURRENT_VERSION,
+                protocol_version: validator::ProtocolVersion::EARLIEST,
                 view: validator::ViewNumber(header.number.0),
                 proposal: header,
             });
@@ -73,12 +73,18 @@ async fn executor_misconfiguration(name: &str, mutation: fn(&mut FinalBlock)) {
     let ctx = &ctx::root();
     let rng = &mut ctx.rng();
 
-    let mut validator = FullValidatorConfig::for_single_validator(rng, Payload(vec![]));
+    let mut validator = FullValidatorConfig::for_single_validator(
+        rng,
+        validator::ProtocolVersion::EARLIEST,
+        Payload(vec![]),
+    );
     let genesis_block = &mut validator.node_config.genesis_block;
     mutation(genesis_block);
     let storage = Arc::new(InMemoryStorage::new(genesis_block.clone()));
     let err = Executor::new(ctx, validator.node_config, validator.node_key, storage)
-        .await.err().unwrap();
+        .await
+        .err()
+        .unwrap();
     tracing::info!(%err, "received expected validation error");
 }
 
@@ -88,13 +94,18 @@ async fn genesis_block_mismatch() {
     let ctx = &ctx::root();
     let rng = &mut ctx.rng();
 
-    let validator = FullValidatorConfig::for_single_validator(rng, Payload(vec![]));
+    let validator = FullValidatorConfig::for_single_validator(
+        rng,
+        validator::ProtocolVersion::EARLIEST,
+        Payload(vec![]),
+    );
     let mut genesis_block = validator.node_config.genesis_block.clone();
     genesis_block.header.number = BlockNumber(1);
     let storage = Arc::new(InMemoryStorage::new(genesis_block.clone()));
     let err = Executor::new(ctx, validator.node_config, validator.node_key, storage)
         .await
-        .err().unwrap();
+        .err()
+        .unwrap();
     tracing::info!(%err, "received expected validation error");
 }
 
@@ -104,7 +115,11 @@ async fn executing_single_validator() {
     let ctx = &ctx::root();
     let rng = &mut ctx.rng();
 
-    let validator = FullValidatorConfig::for_single_validator(rng, Payload(vec![]));
+    let validator = FullValidatorConfig::for_single_validator(
+        rng,
+        validator::ProtocolVersion::EARLIEST,
+        Payload(vec![]),
+    );
     let genesis_block = &validator.node_config.genesis_block;
     let storage = InMemoryStorage::new(genesis_block.clone());
     let storage = Arc::new(storage);
@@ -129,7 +144,11 @@ async fn executing_validator_and_full_node() {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
 
-    let mut validator = FullValidatorConfig::for_single_validator(rng, Payload(vec![]));
+    let mut validator = FullValidatorConfig::for_single_validator(
+        rng,
+        validator::ProtocolVersion::EARLIEST,
+        Payload(vec![]),
+    );
     let full_node = validator.connect_full_node(rng);
 
     let genesis_block = &validator.node_config.genesis_block;
@@ -171,7 +190,11 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
 
-    let mut validator = FullValidatorConfig::for_single_validator(rng, Payload(vec![]));
+    let mut validator = FullValidatorConfig::for_single_validator(
+        rng,
+        validator::ProtocolVersion::EARLIEST,
+        Payload(vec![]),
+    );
     let mut full_node = validator.connect_full_node(rng);
 
     let genesis_block = &validator.node_config.genesis_block;

@@ -6,7 +6,7 @@ use std::iter;
 use test_casing::test_casing;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator::{
-    testonly::make_block, BlockHeader, BlockNumber, FinalBlock, Payload,
+    testonly::make_block, BlockHeader, BlockNumber, FinalBlock, Payload, ProtocolVersion,
 };
 
 #[cfg(feature = "rocksdb")]
@@ -39,7 +39,7 @@ fn genesis_block(rng: &mut impl Rng) -> FinalBlock {
 
 fn gen_blocks(rng: &mut impl Rng, genesis_block: FinalBlock, count: usize) -> Vec<FinalBlock> {
     let blocks = iter::successors(Some(genesis_block), |parent| {
-        Some(make_block(rng, &parent.header))
+        Some(make_block(rng, &parent.header, ProtocolVersion::EARLIEST))
     });
     blocks.skip(1).take(count).collect()
 }
@@ -57,7 +57,7 @@ async fn test_put_block(store_factory: &impl InitStore) {
     assert_eq!(*block_subscriber.borrow_and_update(), BlockNumber(0));
 
     // Test inserting a block with a valid parent.
-    let block_1 = make_block(rng, &genesis_block.header);
+    let block_1 = make_block(rng, &genesis_block.header, ProtocolVersion::EARLIEST);
     block_store.put_block(ctx, &block_1).await.unwrap();
 
     assert_eq!(block_store.first_block(ctx).await.unwrap(), genesis_block);
@@ -65,7 +65,7 @@ async fn test_put_block(store_factory: &impl InitStore) {
     assert_eq!(*block_subscriber.borrow_and_update(), block_1.header.number);
 
     // Test inserting a block with a valid parent that is not the genesis.
-    let block_2 = make_block(rng, &block_1.header);
+    let block_2 = make_block(rng, &block_1.header, ProtocolVersion::EARLIEST);
     block_store.put_block(ctx, &block_2).await.unwrap();
 
     assert_eq!(block_store.first_block(ctx).await.unwrap(), genesis_block);
@@ -148,11 +148,4 @@ fn test_schema_encode_decode() {
         replica,
         zksync_protobuf::decode(&zksync_protobuf::encode(&replica)).unwrap()
     );
-}
-
-#[test]
-fn cancellation_is_detected_in_storage_errors() {
-    let err = StorageError::from(ctx::Canceled);
-    let err = anyhow::Error::from(err);
-    assert!(err.root_cause().is::<ctx::Canceled>());
 }

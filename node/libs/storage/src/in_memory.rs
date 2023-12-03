@@ -3,7 +3,6 @@
 use crate::{
     traits::{BlockStore, ReplicaStateStore, WriteBlockStore},
     types::{MissingBlockNumbers, ReplicaState},
-    StorageResult,
 };
 use async_trait::async_trait;
 use std::{collections::BTreeMap, ops};
@@ -90,23 +89,19 @@ impl InMemoryStorage {
 
 #[async_trait]
 impl BlockStore for InMemoryStorage {
-    async fn head_block(&self, _ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
+    async fn head_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<FinalBlock> {
         Ok(self.blocks.lock().await.head_block().clone())
     }
 
-    async fn first_block(&self, _ctx: &ctx::Ctx) -> StorageResult<FinalBlock> {
+    async fn first_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<FinalBlock> {
         Ok(self.blocks.lock().await.first_block().clone())
     }
 
-    async fn last_contiguous_block_number(&self, _ctx: &ctx::Ctx) -> StorageResult<BlockNumber> {
+    async fn last_contiguous_block_number(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockNumber> {
         Ok(self.blocks.lock().await.last_contiguous_block_number)
     }
 
-    async fn block(
-        &self,
-        _ctx: &ctx::Ctx,
-        number: BlockNumber,
-    ) -> StorageResult<Option<FinalBlock>> {
+    async fn block(&self, _ctx: &ctx::Ctx, number: BlockNumber) -> ctx::Result<Option<FinalBlock>> {
         Ok(self.blocks.lock().await.block(number).cloned())
     }
 
@@ -114,7 +109,7 @@ impl BlockStore for InMemoryStorage {
         &self,
         _ctx: &ctx::Ctx,
         range: ops::Range<BlockNumber>,
-    ) -> StorageResult<Vec<BlockNumber>> {
+    ) -> ctx::Result<Vec<BlockNumber>> {
         Ok(self.blocks.lock().await.missing_block_numbers(range))
     }
 
@@ -125,7 +120,7 @@ impl BlockStore for InMemoryStorage {
 
 #[async_trait]
 impl WriteBlockStore for InMemoryStorage {
-    async fn put_block(&self, _ctx: &ctx::Ctx, block: &FinalBlock) -> StorageResult<()> {
+    async fn put_block(&self, _ctx: &ctx::Ctx, block: &FinalBlock) -> ctx::Result<()> {
         self.blocks.lock().await.put_block(block.clone());
         self.blocks_sender.send_replace(block.header.number);
         Ok(())
@@ -134,7 +129,7 @@ impl WriteBlockStore for InMemoryStorage {
 
 #[async_trait]
 impl ReplicaStateStore for InMemoryStorage {
-    async fn replica_state(&self, _ctx: &ctx::Ctx) -> StorageResult<Option<ReplicaState>> {
+    async fn replica_state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>> {
         Ok(self.replica_state.lock().await.clone())
     }
 
@@ -142,7 +137,7 @@ impl ReplicaStateStore for InMemoryStorage {
         &self,
         _ctx: &ctx::Ctx,
         replica_state: &ReplicaState,
-    ) -> StorageResult<()> {
+    ) -> ctx::Result<()> {
         *self.replica_state.lock().await = Some(replica_state.clone());
         Ok(())
     }

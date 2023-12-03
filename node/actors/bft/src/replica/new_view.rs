@@ -1,8 +1,7 @@
 use super::StateMachine;
 use crate::ConsensusInner;
-use anyhow::Context as _;
 use tracing::instrument;
-use zksync_concurrency::ctx;
+use zksync_concurrency::{ctx, error::Wrap as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator;
 
@@ -13,7 +12,7 @@ impl StateMachine {
         &mut self,
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
-    ) -> anyhow::Result<()> {
+    ) -> ctx::Result<()> {
         tracing::info!("Starting view {}", self.view.next().0);
 
         // Update the state machine.
@@ -27,7 +26,7 @@ impl StateMachine {
             .retain(|k, _| k > &self.high_qc.message.proposal.number);
 
         // Backup our state.
-        self.backup_state(ctx).await.context("backup_state")?;
+        self.backup_state(ctx).await.wrap("backup_state()")?;
 
         // Send the replica message to the next leader.
         let output_message = ConsensusInputMessage {
@@ -35,7 +34,7 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaPrepare(
                     validator::ReplicaPrepare {
-                        protocol_version: validator::CURRENT_VERSION,
+                        protocol_version: consensus.protocol_version,
                         view: next_view,
                         high_vote: self.high_vote,
                         high_qc: self.high_qc.clone(),

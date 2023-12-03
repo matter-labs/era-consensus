@@ -12,6 +12,8 @@ mod make;
 mod node;
 #[cfg(test)]
 mod run;
+#[cfg(test)]
+pub(crate) mod ut_harness;
 
 #[cfg(test)]
 pub(crate) use fuzz::*;

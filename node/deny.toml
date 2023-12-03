@@ -62,7 +62,7 @@ skip = [
     { name = "syn", version = "1.0" },
 
     # Old versions required by criterion.
-    { name = "itertools", version = "0.10.5" }
+    { name = "itertools", version = "0.10.5" },
 ]
 
 [sources]

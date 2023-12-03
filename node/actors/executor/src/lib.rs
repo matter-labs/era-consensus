@@ -172,6 +172,7 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
             let consensus = Consensus::new(
                 ctx,
                 consensus_actor_pipe,
+                validator.config.protocol_version,
                 validator.key.clone(),
                 validator_set.clone(),
                 consensus_storage,

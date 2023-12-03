@@ -15,7 +15,7 @@ use zksync_consensus_roles::{
     node,
     validator::{BlockNumber, BlockValidationError, FinalBlock},
 };
-use zksync_consensus_storage::{StorageResult, WriteBlockStore};
+use zksync_consensus_storage::WriteBlockStore;
 
 mod events;
 #[cfg(test)]
@@ -90,7 +90,7 @@ impl PeerStates {
     /// 1. Get information about missing blocks from the storage.
     /// 2. Spawn a task processing `SyncState`s from peers.
     /// 3. Spawn a task to get each missing block.
-    pub(crate) async fn run(mut self, ctx: &ctx::Ctx) -> StorageResult<()> {
+    pub(crate) async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         let updates_receiver = self.updates_receiver.take().unwrap();
         let storage = self.storage.as_ref();
         let blocks_subscriber = storage.subscribe_to_block_writes();
@@ -150,7 +150,7 @@ impl PeerStates {
         ctx: &ctx::Ctx,
         mut updates_receiver: channel::UnboundedReceiver<PeerStateUpdate>,
         new_blocks_sender: watch::Sender<BlockNumber>,
-    ) -> StorageResult<()> {
+    ) -> ctx::Result<()> {
         loop {
             let (peer_key, sync_state) = updates_receiver.recv(ctx).await?;
             let new_last_block_number = self
@@ -174,7 +174,7 @@ impl PeerStates {
         &self,
         ctx: &ctx::Ctx,
         mut subscriber: watch::Receiver<BlockNumber>,
-    ) -> StorageResult<()> {
+    ) -> ctx::Result<()> {
         loop {
             let block_number = *sync::changed(ctx, &mut subscriber).await?;
             if sync::lock(ctx, &self.pending_blocks)
@@ -289,7 +289,7 @@ impl PeerStates {
         block_number: BlockNumber,
         get_block_permit: sync::SemaphorePermit<'_>,
         storage: &dyn WriteBlockStore,
-    ) -> StorageResult<()> {
+    ) -> ctx::Result<()> {
         let (stop_sender, stop_receiver) = oneshot::channel();
         sync::lock(ctx, &self.pending_blocks)
             .await?
