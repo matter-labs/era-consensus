@@ -12,24 +12,22 @@ use zksync_consensus_roles::validator::{
 
 #[tokio::test]
 async fn leader_prepare_sanity() {
+    zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new_many(ctx).await;
     util.set_view(util.owner_as_view_leader());
-    let leader_prepare = util.new_procedural_leader_prepare_many(ctx).await;
+    let leader_prepare = util.new_procedural_leader_prepare(ctx).await;
     util.process_leader_prepare(ctx,leader_prepare).await.unwrap();
 }
 
 #[tokio::test]
 async fn leader_prepare_reproposal_sanity() {
+    zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new_many(ctx).await;
     util.set_view(util.owner_as_view_leader());
     let replica_prepare = util.new_unfinalized_replica_prepare().msg;
-    let leader_prepare = util.process_replica_prepare_many(ctx,
-        vec![replica_prepare.clone(); util.consensus_threshold()],
-        util.keys(),
-    )
-    .await.unwrap();
+    let leader_prepare = util.process_replica_prepare_all(ctx,replica_prepare.clone()).await;
 
     assert_matches!(
         &leader_prepare.msg,
@@ -45,6 +43,7 @@ async fn leader_prepare_reproposal_sanity() {
 
 #[tokio::test]
 async fn leader_prepare_sanity_yield_replica_commit() {
+    zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx,1).await;
 
@@ -64,12 +63,13 @@ async fn leader_prepare_sanity_yield_replica_commit() {
 
 #[tokio::test]
 async fn leader_prepare_invalid_leader() {
+    zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx,2).await;
 
     let view = ViewNumber(2);
     util.set_view(view);
-    assert_eq!(util.view_leader(view), util.key_at(0).public());
+    assert_eq!(util.view_leader(view), util.keys[0].public());
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
     let res = util.process_replica_prepare(ctx,replica_prepare.clone()).await;
@@ -81,12 +81,12 @@ async fn leader_prepare_invalid_leader() {
         })
     );
 
-    let replica_prepare = util.key_at(1).sign_msg(replica_prepare.msg);
+    let replica_prepare = util.keys[1].sign_msg(replica_prepare.msg);
     let mut leader_prepare = util.process_replica_prepare(ctx,replica_prepare).await.unwrap().unwrap().msg;
     leader_prepare.view = leader_prepare.view.next();
     assert_ne!(
         util.view_leader(leader_prepare.view),
-        util.key_at(0).public()
+        util.keys[0].public()
     );
 
     let leader_prepare = util.owner_key().sign_msg(leader_prepare);
@@ -94,25 +94,26 @@ async fn leader_prepare_invalid_leader() {
     assert_matches!(
         res,
         Err(LeaderPrepareError::InvalidLeader { correct_leader, received_leader }) => {
-            assert_eq!(correct_leader, util.key_at(1).public());
-            assert_eq!(received_leader, util.key_at(0).public());
+            assert_eq!(correct_leader, util.keys[1].public());
+            assert_eq!(received_leader, util.keys[0].public());
         }
     );
 }
 
 #[tokio::test]
 async fn leader_prepare_old_view() {
+    zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx,1).await;
     let mut leader_prepare = util.new_procedural_leader_prepare(ctx).await.msg;
-    leader_prepare.view = util.current_replica_view().prev();
+    leader_prepare.view = util.consensus.replica.view.prev();
     let leader_prepare = util.owner_key().sign_msg(leader_prepare);
     let res = util.process_leader_prepare(ctx,leader_prepare).await;
     assert_matches!(
         res,
         Err(LeaderPrepareError::Old { current_view, current_phase }) => {
-            assert_eq!(current_view, util.current_replica_view());
-            assert_eq!(current_phase, util.current_replica_phase());
+            assert_eq!(current_view, util.consensus.replica.view);
+            assert_eq!(current_phase, util.consensus.replica.phase);
         }
     );
 }
@@ -143,6 +144,7 @@ async fn leader_prepare_invalid_payload() {
 
 #[tokio::test]
 async fn leader_prepare_invalid_sig() {
+    zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx,1).await;
     let mut leader_prepare = util.new_rnd_leader_prepare(&mut ctx.rng(),|_| {});
@@ -167,6 +169,7 @@ async fn leader_prepare_invalid_prepare_qc() {
 
 #[tokio::test]
 async fn leader_prepare_invalid_high_qc() {
+    zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx,1).await; 
     let mut leader_prepare = util.new_procedural_leader_prepare(ctx).await.msg;
@@ -197,6 +200,7 @@ async fn leader_prepare_proposal_oversized_payload() {
 
 #[tokio::test]
 async fn leader_prepare_proposal_mismatched_payload() {
+    zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx,1).await;
     let mut leader_prepare = util.new_procedural_leader_prepare(ctx).await.msg;
@@ -208,6 +212,7 @@ async fn leader_prepare_proposal_mismatched_payload() {
 
 #[tokio::test]
 async fn leader_prepare_proposal_when_previous_not_finalized() {
+    zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx,1).await;
     let replica_prepare = util.new_current_replica_prepare(|_| {});
@@ -246,6 +251,7 @@ async fn leader_prepare_proposal_invalid_parent_hash() {
 
 #[tokio::test]
 async fn leader_prepare_proposal_non_sequential_number() {
+    zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx,1).await;
     let replica_prepare = util.new_current_replica_prepare(|_| {});
@@ -269,11 +275,12 @@ async fn leader_prepare_proposal_non_sequential_number() {
 
 #[tokio::test]
 async fn leader_prepare_reproposal_without_quorum() {
+    zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut util = UTHarness::new_many(ctx).await;
     util.set_view(util.owner_as_view_leader());
-    let mut leader_prepare = util.new_procedural_leader_prepare_many(ctx).await.msg;
+    let mut leader_prepare = util.new_procedural_leader_prepare(ctx).await.msg;
     leader_prepare.justification = util.new_prepare_qc_many(|msg| msg.high_vote = rng.gen());
     leader_prepare.proposal_payload = None;
     let leader_prepare = util.owner_key().sign_msg(leader_prepare);
@@ -294,6 +301,7 @@ async fn leader_prepare_reproposal_when_finalized() {
 
 #[tokio::test]
 async fn leader_prepare_reproposal_invalid_block() {
+    zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx,1).await;
     let mut leader_prepare = util.new_procedural_leader_prepare(ctx).await.msg;
@@ -309,12 +317,13 @@ async fn leader_commit_sanity() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new_many(ctx).await;
     util.set_view(util.owner_as_view_leader());
-    let leader_commit = util.new_procedural_leader_commit_many(ctx).await;
+    let leader_commit = util.new_procedural_leader_commit(ctx).await;
     util.process_leader_commit(ctx,leader_commit).await.unwrap();
 }
 
 #[tokio::test]
 async fn leader_commit_sanity_yield_replica_prepare() {
+    zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx,1).await;
     let leader_commit = util.new_procedural_leader_commit(ctx).await;
@@ -334,7 +343,7 @@ async fn leader_commit_sanity_yield_replica_prepare() {
 async fn leader_commit_invalid_leader() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx,2).await;
-    let current_view_leader = util.view_leader(util.current_replica_view());
+    let current_view_leader = util.view_leader(util.consensus.replica.view);
     assert_ne!(current_view_leader, util.owner_key().public());
 
     let leader_commit = util.new_rnd_leader_commit(&mut ctx.rng(),|_| {});
@@ -344,6 +353,7 @@ async fn leader_commit_invalid_leader() {
 
 #[tokio::test]
 async fn leader_commit_invalid_sig() {
+    zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut util = UTHarness::new(ctx,1).await;
