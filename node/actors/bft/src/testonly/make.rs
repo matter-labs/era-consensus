@@ -19,7 +19,7 @@ impl PayloadSource for RandomPayloadSource {
         &self,
         ctx: &ctx::Ctx,
         _block_number: validator::BlockNumber,
-    ) -> anyhow::Result<validator::Payload> {
+    ) -> ctx::Result<validator::Payload> {
         let mut payload = validator::Payload(vec![0; ConsensusInner::PAYLOAD_MAX_SIZE]);
         ctx.rng().fill(&mut payload.0[..]);
         Ok(payload)

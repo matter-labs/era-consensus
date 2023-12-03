@@ -2,7 +2,7 @@ use super::StateMachine;
 use crate::{inner::ConsensusInner, metrics};
 use std::collections::HashMap;
 use tracing::instrument;
-use zksync_concurrency::ctx;
+use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator;
 
@@ -54,8 +54,20 @@ pub(crate) enum Error {
     #[error("invalid high QC: {0:#}")]
     InvalidHighQC(#[source] anyhow::Error),
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
-    #[error("internal error: {0:#}")]
-    Internal(#[from] anyhow::Error),
+    #[error(transparent)]
+    Internal(#[from] ctx::Error),
+}
+
+impl Wrap for Error {
+    fn with_wrap<C: std::fmt::Display + Send + Sync + 'static, F: FnOnce() -> C>(
+        self,
+        f: F,
+    ) -> Self {
+        match self {
+            Error::Internal(err) => Error::Internal(err.with_wrap(f)),
+            err => err,
+        }
+    }
 }
 
 impl StateMachine {

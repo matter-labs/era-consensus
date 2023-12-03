@@ -78,16 +78,21 @@ impl<S: BlockStore + ?Sized> BlockStore for Arc<S> {
 
 /// Mutable storage of L2 blocks.
 ///
-/// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
+/// Implementations **must** propagate context cancellation using [`ctx::Error::Canceled`].
 #[async_trait]
 pub trait WriteBlockStore: BlockStore {
     /// Verify that `payload` is a correct proposal for the block `block_number`.
     async fn verify_payload(
         &self,
-        _ctx: &ctx::Ctx,
-        _block_number: BlockNumber,
-        _payload: &Payload,
-    ) -> anyhow::Result<()> {
+        ctx: &ctx::Ctx,
+        block_number: BlockNumber,
+        payload: &Payload,
+    ) -> ctx::Result<()> {
+        if let Some(block) = self.block(ctx,block_number).await? {
+            if &block.payload!=payload {
+                Err(anyhow::anyhow!("block already stored with different payload"))?;
+            }
+        }
         Ok(())
     }
     /// Puts a block into this storage.

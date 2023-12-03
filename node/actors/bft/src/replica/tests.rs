@@ -154,6 +154,30 @@ async fn leader_prepare_old_view() {
     );
 }
 
+/*
+/// Tests that `WriteBlockStore::verify_payload` is applied before signing a vote.
+#[tokio::test]
+async fn leader_prepare_invalid_payload() {
+    let mut util = UTHarness::new_one().await;
+    let leader_prepare = util.new_procedural_leader_prepare_one().await;
+    let mut leader_prepare = util
+        .new_procedural_leader_prepare_one()
+        .await
+        .cast::<LeaderPrepare>()
+        .unwrap()
+        .msg;
+    let leader_prepare = util
+        .owner_key()
+        .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare));
+
+
+    let res = util.dispatch_leader_prepare(leader_prepare).await;
+    assert_matches!(
+        res,
+        Err(LeaderPrepareError::ProposalInvalidPayload(..)),
+    );
+}*/
+
 #[tokio::test]
 async fn leader_prepare_invalid_sig() {
     let mut util = UTHarness::new_one().await;

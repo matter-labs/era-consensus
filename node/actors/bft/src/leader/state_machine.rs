@@ -1,12 +1,11 @@
 use crate::{metrics, ConsensusInner, PayloadSource};
-use anyhow::Context as _;
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
     unreachable,
 };
 use tracing::instrument;
-use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _, time};
+use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _, time, error::Wrap as _};
 use zksync_consensus_roles::validator;
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
@@ -61,17 +60,17 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         consensus: &ConsensusInner,
         input: validator::Signed<validator::ConsensusMsg>,
-    ) -> anyhow::Result<()> {
+    ) -> ctx::Result<()> {
         let now = ctx.now();
         let label = match &input.msg {
             validator::ConsensusMsg::ReplicaPrepare(_) => {
                 let res = match self
                     .process_replica_prepare(ctx, consensus, input.cast().unwrap())
-                    .await
+                    .await.wrap("process_replica_prepare()")
                 {
                     Ok(()) => Ok(()),
                     Err(super::replica_prepare::Error::Internal(err)) => {
-                        return Err(err).context("process_replica_prepare()")
+                        return Err(err);
                     }
                     Err(err) => {
                         tracing::warn!("process_replica_prepare: {err:#}");

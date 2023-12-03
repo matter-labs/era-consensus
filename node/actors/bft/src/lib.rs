@@ -42,7 +42,7 @@ pub trait PayloadSource: Send + Sync + 'static {
         &self,
         ctx: &ctx::Ctx,
         block_number: validator::BlockNumber,
-    ) -> anyhow::Result<validator::Payload>;
+    ) -> ctx::Result<validator::Payload>;
 }
 
 /// The Consensus struct implements the consensus algorithm and is the main entry point for the consensus actor.
@@ -110,7 +110,7 @@ impl Consensus {
                 return Ok(());
             }
 
-            match input {
+            let res = match input {
                 Some(InputMessage::Network(req)) => {
                     if req.msg.msg.protocol_version() != self.inner.protocol_version {
                         tracing::warn!(
@@ -120,25 +120,33 @@ impl Consensus {
                         );
                         continue;
                     }
-                    match &req.msg.msg {
+                    let res = match &req.msg.msg {
                         validator::ConsensusMsg::ReplicaPrepare(_)
                         | validator::ConsensusMsg::ReplicaCommit(_) => {
-                            self.leader.process_input(ctx, &self.inner, req.msg).await?;
+                            self.leader.process_input(ctx, &self.inner, req.msg).await
                         }
                         validator::ConsensusMsg::LeaderPrepare(_)
                         | validator::ConsensusMsg::LeaderCommit(_) => {
                             self.replica
                                 .process_input(ctx, &self.inner, Some(req.msg))
-                                .await?;
+                                .await
                         }
-                    }
+                    };
+                    
                     // Notify network actor that the message has been processed.
                     // Ignore sending error.
                     let _ = req.ack.send(());
+                    res
                 }
                 None => {
-                    self.replica.process_input(ctx, &self.inner, None).await?;
+                    self.replica.process_input(ctx, &self.inner, None).await
                 }
+            };
+            if let Err(err) = res {
+                return match err {
+                    ctx::Error::Canceled(_) => Ok(()),
+                    ctx::Error::Internal(err) => Err(err),
+                };
             }
         }
     }

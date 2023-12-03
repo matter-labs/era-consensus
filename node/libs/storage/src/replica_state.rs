@@ -64,6 +64,11 @@ impl ReplicaStore {
         self.state.put_replica_state(ctx, replica_state).await
     }
 
+    /// Verify that `payload` is a correct proposal for the block `block_number`.
+    pub async fn verify_payload(&self, ctx: &ctx::Ctx, block_number: validator::BlockNumber, payload: &validator::Payload) -> ctx::Result<()> {
+        self.blocks.verify_payload(ctx,block_number,payload).await
+    }
+
     /// Puts a block into this storage.
     pub async fn put_block(
         &self,
