@@ -355,9 +355,8 @@ async fn replica_commit_num_received_below_threshold() {
 async fn replica_commit_invalid_sig() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx,1).await;
-
     let mut replica_commit = util.new_current_replica_commit(|_| {});
-    replica_commit.sig = util.rng().gen();
+    replica_commit.sig = ctx.rng().gen();
     let res = util.process_replica_commit(ctx,replica_commit).await;
     assert_matches!(res, Err(ReplicaCommitError::InvalidSignature(..)));
 }
@@ -392,10 +391,9 @@ async fn replica_commit_protocol_version_mismatch() {
     let replica_commit = util.process_leader_prepare(ctx,leader_prepare).await.unwrap();
     assert!(util.process_replica_commit(ctx,replica_commit.clone()).await.is_err());
 
-    let mut replica_commit2 = replica_commit.msg;
-    replica_commit2.protocol_version = ProtocolVersion(replica_commit.msg.protocol_version.0 + 1);
-
-    let replica_commit2 = util.key_at(1).sign_msg(replica_commit2);
+    let mut replica_commit = replica_commit.msg;
+    replica_commit.protocol_version = ProtocolVersion(replica_commit.protocol_version.0 + 1);
+    let replica_commit = util.key_at(1).sign_msg(replica_commit);
     util.process_replica_commit(ctx,replica_commit).await.unwrap();
     // PANICS:
     // "Couldn't create justification from valid replica messages!: CommitQC can only be created from votes for the same message."

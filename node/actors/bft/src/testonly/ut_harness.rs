@@ -6,12 +6,12 @@ use crate::{
 };
 use zksync_consensus_utils::enum_util::{Variant};
 use assert_matches::assert_matches;
-use rand::{rngs::StdRng, Rng};
+use rand::{Rng};
 use std::cmp::Ordering;
 use zksync_concurrency::ctx;
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator::{
-    self, BlockHeader, CommitQC, ConsensusMsg, LeaderCommit, LeaderPrepare, Payload, Phase,
+    self, BlockHeader, CommitQC, LeaderCommit, LeaderPrepare, Payload, Phase,
     PrepareQC, ReplicaCommit, ReplicaPrepare, SecretKey, Signed, ViewNumber,
 };
 use zksync_consensus_utils::pipe::DispatcherPipe;
@@ -77,14 +77,6 @@ impl UTHarness {
         self.keys.clone()
     }
 
-    pub(crate) fn rng(&mut self) -> &mut StdRng {
-        &mut self.rng
-    }
-
-    pub(crate) fn new_rng(&self) -> StdRng {
-        self.ctx.rng()
-    }
-
     pub(crate) fn set_view(&mut self, view: ViewNumber) {
         self.set_replica_view(view);
         self.set_leader_view(view);
@@ -133,9 +125,10 @@ impl UTHarness {
 
     pub(crate) fn new_rnd_leader_prepare(
         &mut self,
+        rng: &mut impl Rng,
         mutate_fn: impl FnOnce(&mut LeaderPrepare),
-    ) -> Signed<ConsensusMsg> {
-        let payload: Payload = self.rng().gen();
+    ) -> Signed<LeaderPrepare> {
+        let payload: Payload = rng.gen();
         let mut msg = LeaderPrepare {
             protocol_version: validator::ProtocolVersion::EARLIEST,
             view: self.consensus.leader.view,
@@ -145,15 +138,12 @@ impl UTHarness {
                 payload: payload.hash(),
             },
             proposal_payload: Some(payload),
-            justification: self.rng().gen(),
+            justification: rng.gen(),
         };
 
         mutate_fn(&mut msg);
 
-        self.consensus
-            .inner
-            .secret_key
-            .sign_msg(ConsensusMsg::LeaderPrepare(msg))
+        self.consensus.inner.secret_key.sign_msg(msg)
     }
 
     pub(crate) fn new_current_replica_commit(
@@ -171,19 +161,15 @@ impl UTHarness {
 
     pub(crate) fn new_rnd_leader_commit(
         &mut self,
+        rng: &mut impl Rng,
         mutate_fn: impl FnOnce(&mut LeaderCommit),
     ) -> Signed<LeaderCommit> {
         let mut msg = LeaderCommit {
             protocol_version: validator::ProtocolVersion::EARLIEST,
-            justification: self.rng().gen(),
+            justification: rng.gen(),
         };
-
         mutate_fn(&mut msg);
-
-        self.consensus
-            .inner
-            .secret_key
-            .sign_msg(msg)
+        self.consensus.inner.secret_key.sign_msg(msg)
     }
 
     pub(crate) async fn new_procedural_leader_prepare(&mut self, ctx: &ctx::Ctx) -> Signed<LeaderPrepare> {
@@ -242,12 +228,13 @@ impl UTHarness {
         &mut self,
         ctx: &ctx::Ctx,
         msg: Signed<LeaderCommit>,
-    ) -> Result<(), LeaderCommitError> {
+    ) -> Result<Signed<ReplicaPrepare>, LeaderCommitError> {
         self
             .consensus
             .replica
             .process_leader_commit(ctx, &self.consensus.inner, msg)
-            .await
+            .await?;
+        Ok(self.try_recv().unwrap())
     }
 
     #[allow(clippy::result_large_err)]
@@ -370,25 +357,18 @@ impl UTHarness {
     pub(crate) fn new_prepare_qc(&self, mutate_fn: impl FnOnce(&mut ReplicaPrepare)) -> PrepareQC {
         let validator_set =
             validator::ValidatorSet::new(self.keys.iter().map(|k| k.public())).unwrap();
-
-        let msg: ReplicaPrepare = self
-            .new_current_replica_prepare(mutate_fn)
-            .cast()
-            .unwrap()
-            .msg;
-
+        let msg = self.new_current_replica_prepare(mutate_fn).msg;
         let signed_messages: Vec<_> = self
             .keys
             .iter()
             .map(|sk| sk.sign_msg(msg.clone()))
             .collect();
-
         PrepareQC::from(&signed_messages, &validator_set).unwrap()
     }
 
     pub(crate) fn new_prepare_qc_many(
         &mut self,
-        mutate_fn: &dyn Fn(&mut ReplicaPrepare),
+        mutate_fn: impl FnMut(&mut ReplicaPrepare),
     ) -> PrepareQC {
         let validator_set =
             validator::ValidatorSet::new(self.keys.iter().map(|k| k.public())).unwrap();
@@ -397,12 +377,8 @@ impl UTHarness {
             .keys
             .iter()
             .map(|sk| {
-                let msg: ReplicaPrepare = self
-                    .new_current_replica_prepare(|msg| mutate_fn(msg))
-                    .cast()
-                    .unwrap()
-                    .msg;
-                sk.sign_msg(msg.clone())
+                let msg = self.new_current_replica_prepare(|msg| mutate_fn(msg)).msg;
+                sk.sign_msg(msg)
             })
             .collect();
 
