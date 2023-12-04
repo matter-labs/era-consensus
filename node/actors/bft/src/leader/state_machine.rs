@@ -5,7 +5,7 @@ use std::{
     unreachable,
 };
 use tracing::instrument;
-use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _, time, error::Wrap as _};
+use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, time};
 use zksync_consensus_roles::validator;
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
@@ -66,7 +66,8 @@ impl StateMachine {
             validator::ConsensusMsg::ReplicaPrepare(_) => {
                 let res = match self
                     .process_replica_prepare(ctx, consensus, input.cast().unwrap())
-                    .await.wrap("process_replica_prepare()")
+                    .await
+                    .wrap("process_replica_prepare()")
                 {
                     Ok(()) => Ok(()),
                     Err(super::replica_prepare::Error::Internal(err)) => {

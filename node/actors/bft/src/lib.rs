@@ -132,15 +132,13 @@ impl Consensus {
                                 .await
                         }
                     };
-                    
+
                     // Notify network actor that the message has been processed.
                     // Ignore sending error.
                     let _ = req.ack.send(());
                     res
                 }
-                None => {
-                    self.replica.process_input(ctx, &self.inner, None).await
-                }
+                None => self.replica.process_input(ctx, &self.inner, None).await,
             };
             if let Err(err) = res {
                 return match err {

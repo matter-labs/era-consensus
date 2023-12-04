@@ -252,7 +252,11 @@ impl StateMachine {
                 }
 
                 // Payload should be valid.
-                if let Err(err) = self.storage.verify_payload(ctx, message.proposal.number, payload).await {
+                if let Err(err) = self
+                    .storage
+                    .verify_payload(ctx, message.proposal.number, payload)
+                    .await
+                {
                     return Err(match err {
                         err @ ctx::Error::Canceled(_) => Error::Internal(err),
                         ctx::Error::Internal(err) => Error::ProposalInvalidPayload(err),

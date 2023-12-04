@@ -90,7 +90,9 @@ pub trait WriteBlockStore: BlockStore {
     ) -> ctx::Result<()> {
         let head_number = self.head_block(ctx).await?.header.number;
         if head_number >= block_number {
-            Err(anyhow::anyhow!("received proposal for block {block_number:?}, while head is at {head_number:?}"))?;
+            return Err(anyhow::anyhow!(
+                "received proposal for block {block_number:?}, while head is at {head_number:?}"
+            ).into());
         }
         Ok(())
     }

@@ -1,20 +1,19 @@
 use crate::{
     io::{InputMessage, OutputMessage},
     leader::{ReplicaCommitError, ReplicaPrepareError},
-    replica::{LeaderPrepareError, LeaderCommitError},
+    replica::{LeaderCommitError, LeaderPrepareError},
     Consensus,
 };
-use zksync_consensus_utils::enum_util::{Variant};
 use assert_matches::assert_matches;
-use rand::{Rng};
+use rand::Rng;
 use std::cmp::Ordering;
 use zksync_concurrency::ctx;
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator::{
-    self, BlockHeader, CommitQC, LeaderCommit, LeaderPrepare, Payload, Phase,
-    PrepareQC, ReplicaCommit, ReplicaPrepare, SecretKey, Signed, ViewNumber,
+    self, BlockHeader, CommitQC, LeaderCommit, LeaderPrepare, Payload, Phase, PrepareQC,
+    ReplicaCommit, ReplicaPrepare, SecretKey, Signed, ViewNumber,
 };
-use zksync_consensus_utils::pipe::DispatcherPipe;
+use zksync_consensus_utils::{enum_util::Variant, pipe::DispatcherPipe};
 
 /// `UTHarness` provides various utilities for unit tests.
 /// It is designed to simplify the setup and execution of test cases by encapsulating
@@ -23,8 +22,8 @@ use zksync_consensus_utils::pipe::DispatcherPipe;
 /// It should be instantiated once for every test case.
 #[cfg(test)]
 pub(crate) struct UTHarness {
-    pub consensus: Consensus,
-    pub keys: Vec<SecretKey>,
+    pub(crate) consensus: Consensus,
+    pub(crate) keys: Vec<SecretKey>,
     pipe: DispatcherPipe<InputMessage, OutputMessage>,
 }
 
@@ -39,18 +38,22 @@ impl UTHarness {
             Payload(vec![]),
         );
         let (mut consensus, pipe) =
-            crate::testonly::make_consensus(&ctx, &keys[0], &val_set, &genesis).await;
+            crate::testonly::make_consensus(ctx, &keys[0], &val_set, &genesis).await;
 
         consensus.leader.view = ViewNumber(1);
         consensus.replica.view = ViewNumber(1);
-        UTHarness { consensus, pipe, keys }
+        UTHarness {
+            consensus,
+            pipe,
+            keys,
+        }
     }
 
     /// Creates a new `UTHarness` with minimally-significant validator set size.
     pub(crate) async fn new_many(ctx: &ctx::Ctx) -> UTHarness {
         let num_validators = 6;
         assert!(crate::misc::faulty_replicas(num_validators) > 0);
-        UTHarness::new(ctx,num_validators).await
+        UTHarness::new(ctx, num_validators).await
     }
 
     pub(crate) fn consensus_threshold(&self) -> usize {
@@ -61,12 +64,12 @@ impl UTHarness {
         &self.consensus.inner.secret_key
     }
 
-    pub(crate) fn owner_as_view_leader(&self) -> ViewNumber {
+    pub(crate) fn set_owner_as_view_leader(&mut self) {
         let mut view = self.consensus.replica.view;
         while self.view_leader(view) != self.owner_key().public() {
             view = view.next();
         }
-        view
+        self.consensus.replica.view = view;
     }
 
     pub(crate) fn set_view(&mut self, view: ViewNumber) {
@@ -78,33 +81,20 @@ impl UTHarness {
         self.consensus.leader.view = view
     }
 
-    pub(crate) fn set_leader_phase(&mut self, phase: Phase) {
-        self.consensus.leader.phase = phase
-    }
-
     pub(crate) fn set_replica_view(&mut self, view: ViewNumber) {
         self.consensus.replica.view = view
     }
 
-    pub(crate) fn new_unfinalized_replica_prepare(&self) -> Signed<ReplicaPrepare> {
-        self.new_current_replica_prepare(|msg| {
-            let mut high_vote = ReplicaCommit {
-                protocol_version: validator::ProtocolVersion::EARLIEST,
-                view: self.consensus.replica.view.next(),
-                proposal: self.consensus.replica.high_qc.message.proposal,
-            };
-
-            high_vote.proposal.parent = high_vote.proposal.hash();
-            high_vote.proposal.number = high_vote.proposal.number.next();
-
-            msg.high_vote = high_vote;
-        })
+    pub(crate) fn replica_timeout(&mut self) {
+        self.consensus.replica.view = self.consensus.replica.view.next();
+        self.consensus.replica.phase = Phase::Prepare;
     }
 
-    pub(crate) fn new_current_replica_prepare(
-        &self,
+    pub(crate) fn new_replica_prepare(
+        &mut self,
         mutate_fn: impl FnOnce(&mut ReplicaPrepare),
     ) -> Signed<ReplicaPrepare> {
+        self.set_owner_as_view_leader();
         let mut msg = ReplicaPrepare {
             protocol_version: validator::ProtocolVersion::EARLIEST,
             view: self.consensus.replica.view,
@@ -164,19 +154,22 @@ impl UTHarness {
         self.consensus.inner.secret_key.sign_msg(msg)
     }
 
-    pub(crate) async fn new_procedural_leader_prepare(&mut self, ctx: &ctx::Ctx) -> Signed<LeaderPrepare> {
-        let replica_prepare = self.new_current_replica_prepare(|_| {}).msg;
+    pub(crate) async fn new_leader_prepare(&mut self, ctx: &ctx::Ctx) -> Signed<LeaderPrepare> {
+        let replica_prepare = self.new_replica_prepare(|_| {}).msg;
         self.process_replica_prepare_all(ctx, replica_prepare).await
     }
 
-    pub(crate) async fn new_procedural_replica_commit(&mut self, ctx: &ctx::Ctx) -> Signed<ReplicaCommit> {
-        let leader_prepare = self.new_procedural_leader_prepare(ctx).await;
-        self.process_leader_prepare(ctx,leader_prepare).await.unwrap()
+    pub(crate) async fn new_replica_commit(&mut self, ctx: &ctx::Ctx) -> Signed<ReplicaCommit> {
+        let leader_prepare = self.new_leader_prepare(ctx).await;
+        self.process_leader_prepare(ctx, leader_prepare)
+            .await
+            .unwrap()
     }
 
-    pub(crate) async fn new_procedural_leader_commit(&mut self, ctx: &ctx::Ctx) -> Signed<LeaderCommit> {
-        let replica_commit = self.new_procedural_replica_commit(ctx).await;
-        self.process_replica_commit_all(ctx, replica_commit.msg).await
+    pub(crate) async fn new_leader_commit(&mut self, ctx: &ctx::Ctx) -> Signed<LeaderCommit> {
+        let replica_commit = self.new_replica_commit(ctx).await;
+        self.process_replica_commit_all(ctx, replica_commit.msg)
+            .await
     }
 
     pub(crate) async fn process_leader_prepare(
@@ -184,10 +177,9 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: Signed<LeaderPrepare>,
     ) -> Result<Signed<ReplicaCommit>, LeaderPrepareError> {
-        self
-            .consensus
+        self.consensus
             .replica
-            .process_leader_prepare(&ctx, &self.consensus.inner, msg)
+            .process_leader_prepare(ctx, &self.consensus.inner, msg)
             .await?;
         Ok(self.try_recv().unwrap())
     }
@@ -197,8 +189,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: Signed<LeaderCommit>,
     ) -> Result<Signed<ReplicaPrepare>, LeaderCommitError> {
-        self
-            .consensus
+        self.consensus
             .replica
             .process_leader_commit(ctx, &self.consensus.inner, msg)
             .await?;
@@ -218,14 +209,19 @@ impl UTHarness {
         Ok(self.try_recv())
     }
 
-    pub(crate) async fn process_replica_prepare_all(&mut self,ctx: &ctx::Ctx, msg: ReplicaPrepare) -> Signed<LeaderPrepare> {
+    pub(crate) async fn process_replica_prepare_all(
+        &mut self,
+        ctx: &ctx::Ctx,
+        msg: ReplicaPrepare,
+    ) -> Signed<LeaderPrepare> {
         for (i, key) in self.keys.iter().enumerate() {
-            let res = self.consensus
+            let res = self
+                .consensus
                 .leader
                 .process_replica_prepare(ctx, &self.consensus.inner, key.sign_msg(msg.clone()))
                 .await;
             match (i + 1).cmp(&self.consensus_threshold()) {
-                Ordering::Equal => { res.unwrap() },
+                Ordering::Equal => res.unwrap(),
                 Ordering::Less => assert_matches!(
                     res,
                     Err(ReplicaPrepareError::NumReceivedBelowThreshold {
@@ -247,15 +243,25 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: Signed<ReplicaCommit>,
     ) -> Result<Option<Signed<LeaderCommit>>, ReplicaCommitError> {
-        self.consensus.leader.process_replica_commit(&ctx,&self.consensus.inner,msg)?;
+        self.consensus
+            .leader
+            .process_replica_commit(ctx, &self.consensus.inner, msg)?;
         Ok(self.try_recv())
     }
 
-    async fn process_replica_commit_all(&mut self, ctx: &ctx::Ctx, msg: ReplicaCommit) -> Signed<LeaderCommit> {
+    async fn process_replica_commit_all(
+        &mut self,
+        ctx: &ctx::Ctx,
+        msg: ReplicaCommit,
+    ) -> Signed<LeaderCommit> {
         for (i, key) in self.keys.iter().enumerate() {
-            let res = self.consensus.leader.process_replica_commit(&ctx,&self.consensus.inner,key.sign_msg(msg.clone()));
+            let res = self.consensus.leader.process_replica_commit(
+                ctx,
+                &self.consensus.inner,
+                key.sign_msg(msg),
+            );
             match (i + 1).cmp(&self.consensus_threshold()) {
-                Ordering::Equal => { res.unwrap() },
+                Ordering::Equal => res.unwrap(),
                 Ordering::Less => assert_matches!(
                     res,
                     Err(ReplicaCommitError::NumReceivedBelowThreshold {
@@ -272,14 +278,12 @@ impl UTHarness {
         self.try_recv().unwrap()
     }
 
-    fn try_recv<V:Variant<validator::Msg>>(&mut self) -> Option<Signed<V>> {
-        self.pipe
-            .try_recv()
-            .map(|message| match message {
-                OutputMessage::Network(ConsensusInputMessage {
-                    message, ..
-                }) => message.cast().unwrap(),
-            })
+    fn try_recv<V: Variant<validator::Msg>>(&mut self) -> Option<Signed<V>> {
+        self.pipe.try_recv().map(|message| match message {
+            OutputMessage::Network(ConsensusInputMessage { message, .. }) => {
+                message.cast().unwrap()
+            }
+        })
     }
 
     pub(crate) fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
@@ -292,26 +296,16 @@ impl UTHarness {
 
     pub(crate) fn new_commit_qc(&self, mutate_fn: impl FnOnce(&mut ReplicaCommit)) -> CommitQC {
         let msg = self.new_current_replica_commit(mutate_fn).msg;
-        let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
+        let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg)).collect();
         CommitQC::from(&msgs, &self.validator_set()).unwrap()
     }
 
-    pub(crate) fn new_prepare_qc(&self, mutate_fn: impl FnOnce(&mut ReplicaPrepare)) -> PrepareQC {
-        let msg = self.new_current_replica_prepare(mutate_fn).msg;
-        let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
-        PrepareQC::from(&msgs, &self.validator_set()).unwrap()
-    }
-
-    pub(crate) fn new_prepare_qc_many(
+    pub(crate) fn new_prepare_qc(
         &mut self,
-        mut mutate_fn: impl FnMut(&mut ReplicaPrepare),
+        mutate_fn: impl FnOnce(&mut ReplicaPrepare),
     ) -> PrepareQC {
-        let msgs: Vec<_> = self.keys.iter()
-            .map(|sk| {
-                let msg = self.new_current_replica_prepare(|msg| mutate_fn(msg)).msg;
-                sk.sign_msg(msg)
-            })
-            .collect();
+        let msg = self.new_replica_prepare(mutate_fn).msg;
+        let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
         PrepareQC::from(&msgs, &self.validator_set()).unwrap()
     }
 }

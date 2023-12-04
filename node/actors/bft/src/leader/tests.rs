@@ -1,46 +1,45 @@
 use super::{
     replica_commit::Error as ReplicaCommitError, replica_prepare::Error as ReplicaPrepareError,
 };
-use zksync_concurrency::ctx;
 use crate::testonly::ut_harness::UTHarness;
 use assert_matches::assert_matches;
+use pretty_assertions::assert_eq;
 use rand::Rng;
-use zksync_consensus_roles::validator::{
-    self, LeaderCommit, LeaderPrepare, Phase, PrepareQC, ProtocolVersion,
-    ViewNumber,
-};
+use zksync_concurrency::ctx;
+use zksync_consensus_roles::validator::{self, LeaderCommit, Phase, ProtocolVersion, ViewNumber};
 
 #[tokio::test]
 async fn replica_prepare_sanity() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new_many(ctx).await;
-    util.set_view(util.owner_as_view_leader());
-    util.new_procedural_leader_prepare(ctx).await;
+    util.new_leader_prepare(ctx).await;
 }
 
 #[tokio::test]
 async fn replica_prepare_sanity_yield_leader_prepare() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,1).await;
+    let mut util = UTHarness::new(ctx, 1).await;
 
-    let replica_prepare = util.new_current_replica_prepare(|_| {});
-    let leader_prepare = util.process_replica_prepare(ctx,replica_prepare.clone()).await.unwrap().unwrap();
-    assert_matches!(
-        leader_prepare.msg,
-        LeaderPrepare {
-            protocol_version,
-            view,
-            proposal,
-            justification,
-            ..
-        } => {
-            assert_eq!(protocol_version, replica_prepare.msg.protocol_version);
-            assert_eq!(view, replica_prepare.msg.view);
-            assert_eq!(proposal.parent, replica_prepare.msg.high_vote.proposal.hash());
-            assert_eq!(justification, util.new_prepare_qc(|msg| *msg = replica_prepare.msg));
-        }
+    let replica_prepare = util.new_replica_prepare(|_| {});
+    let leader_prepare = util
+        .process_replica_prepare(ctx, replica_prepare.clone())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        leader_prepare.msg.protocol_version,
+        replica_prepare.msg.protocol_version
+    );
+    assert_eq!(leader_prepare.msg.view, replica_prepare.msg.view);
+    assert_eq!(
+        leader_prepare.msg.proposal.parent,
+        replica_prepare.msg.high_vote.proposal.hash()
+    );
+    assert_eq!(
+        leader_prepare.msg.justification,
+        util.new_prepare_qc(|msg| *msg = replica_prepare.msg)
     );
 }
 
@@ -49,46 +48,38 @@ async fn replica_prepare_sanity_yield_leader_prepare_reproposal() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new_many(ctx).await;
-    util.set_view(util.owner_as_view_leader());
+    util.new_replica_commit(ctx).await;
+    util.replica_timeout();
+    let replica_prepare = util.new_replica_prepare(|_| {}).msg;
+    let leader_prepare = util
+        .process_replica_prepare_all(ctx, replica_prepare.clone())
+        .await;
 
-    let replica_prepare = util.new_unfinalized_replica_prepare().msg;
-    let leader_prepare = util.process_replica_prepare_all(ctx, replica_prepare.clone()).await;
-
-    assert_matches!(
-        leader_prepare.msg,
-        LeaderPrepare {
-            protocol_version,
-            view,
-            proposal,
-            proposal_payload,
-            justification,
-        } => {
-            assert_eq!(protocol_version, replica_prepare.protocol_version);
-            assert_eq!(view, replica_prepare.view);
-            assert_eq!(proposal, replica_prepare.high_vote.proposal);
-            assert_eq!(proposal_payload, None);
-            assert_matches!(
-                justification,
-                PrepareQC { map, .. } => {
-                    assert_eq!(map.len(), 1);
-                    assert_eq!(*map.first_key_value().unwrap().0, replica_prepare);
-                }
-            );
-        }
+    assert_eq!(
+        leader_prepare.msg.protocol_version,
+        replica_prepare.protocol_version
     );
+    assert_eq!(leader_prepare.msg.view, replica_prepare.view);
+    assert_eq!(
+        leader_prepare.msg.proposal,
+        replica_prepare.high_vote.proposal
+    );
+    assert_eq!(leader_prepare.msg.proposal_payload, None);
+    let map = leader_prepare.msg.justification.map;
+    assert_eq!(map.len(), 1);
+    assert_eq!(*map.first_key_value().unwrap().0, replica_prepare);
 }
 
 #[tokio::test]
 async fn replica_prepare_old_view() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,1).await;
-    util.set_replica_view(ViewNumber(1));
-    util.set_leader_view(ViewNumber(2));
-    util.set_leader_phase(Phase::Prepare);
+    let mut util = UTHarness::new(ctx, 1).await;
 
-    let replica_prepare = util.new_current_replica_prepare(|_| {});
-    let res = util.process_replica_prepare(ctx,replica_prepare).await;
+    let replica_prepare = util.new_replica_prepare(|_| {});
+    util.consensus.leader.view = util.consensus.leader.view.next();
+    util.consensus.leader.phase = Phase::Prepare;
+    let res = util.process_replica_prepare(ctx, replica_prepare).await;
     assert_matches!(
         res,
         Err(ReplicaPrepareError::Old {
@@ -102,11 +93,11 @@ async fn replica_prepare_old_view() {
 async fn replica_prepare_during_commit() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,1).await;
-    util.set_leader_phase(Phase::Commit);
+    let mut util = UTHarness::new(ctx, 1).await;
+    util.consensus.leader.phase = Phase::Commit;
 
-    let replica_prepare = util.new_current_replica_prepare(|_| {});
-    let res = util.process_replica_prepare(ctx,replica_prepare).await;
+    let replica_prepare = util.new_replica_prepare(|_| {});
+    let res = util.process_replica_prepare(ctx, replica_prepare).await;
     assert_matches!(
         res,
         Err(ReplicaPrepareError::Old {
@@ -120,27 +111,29 @@ async fn replica_prepare_during_commit() {
 async fn replica_prepare_not_leader_in_view() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,2).await;
-    let current_view_leader = util.view_leader(util.consensus.replica.view);
-    assert_ne!(current_view_leader, util.owner_key().public());
-
-    let replica_prepare = util.new_current_replica_prepare(|_| {});
-    let res = util.process_replica_prepare(ctx,replica_prepare).await;
+    let mut util = UTHarness::new(ctx, 2).await;
+    let replica_prepare = util.new_replica_prepare(|msg| {
+        // Moving to the next view changes the leader.
+        msg.view = msg.view.next();
+    });
+    let res = util.process_replica_prepare(ctx, replica_prepare).await;
     assert_matches!(res, Err(ReplicaPrepareError::NotLeaderInView));
 }
 
 #[tokio::test]
 async fn replica_prepare_already_exists() {
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,2).await;
-    let view = ViewNumber(2);
-    util.set_replica_view(view);
-    util.set_leader_view(view);
-    assert_eq!(util.view_leader(view), util.owner_key().public());
+    let mut util = UTHarness::new(ctx, 2).await;
 
-    let replica_prepare = util.new_current_replica_prepare(|_| {});
-    assert!(util.process_replica_prepare(ctx,replica_prepare.clone()).await.is_err());
-    let res = util.process_replica_prepare(ctx,replica_prepare.clone()).await;
+    util.set_owner_as_view_leader();
+    let replica_prepare = util.new_replica_prepare(|_| {});
+    assert!(util
+        .process_replica_prepare(ctx, replica_prepare.clone())
+        .await
+        .is_err());
+    let res = util
+        .process_replica_prepare(ctx, replica_prepare.clone())
+        .await;
     assert_matches!(
         res,
         Err(ReplicaPrepareError::Exists { existing_message }) => {
@@ -154,13 +147,10 @@ async fn replica_prepare_num_received_below_threshold() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx, 2).await;
-    let view = ViewNumber(2);
-    util.set_replica_view(view);
-    util.set_leader_view(view);
-    assert_eq!(util.view_leader(view), util.owner_key().public());
 
-    let replica_prepare = util.new_current_replica_prepare(|_| {});
-    let res = util.process_replica_prepare(ctx,replica_prepare).await;
+    util.set_owner_as_view_leader();
+    let replica_prepare = util.new_replica_prepare(|_| {});
+    let res = util.process_replica_prepare(ctx, replica_prepare).await;
     assert_matches!(
         res,
         Err(ReplicaPrepareError::NumReceivedBelowThreshold {
@@ -174,10 +164,10 @@ async fn replica_prepare_num_received_below_threshold() {
 async fn replica_prepare_invalid_sig() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,1).await;
-    let mut replica_prepare = util.new_current_replica_prepare(|_| {});
+    let mut util = UTHarness::new(ctx, 1).await;
+    let mut replica_prepare = util.new_replica_prepare(|_| {});
     replica_prepare.sig = ctx.rng().gen();
-    let res = util.process_replica_prepare(ctx,replica_prepare).await;
+    let res = util.process_replica_prepare(ctx, replica_prepare).await;
     assert_matches!(res, Err(ReplicaPrepareError::InvalidSignature(_)));
 }
 
@@ -185,8 +175,8 @@ async fn replica_prepare_invalid_sig() {
 async fn replica_prepare_invalid_commit_qc() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,1).await;
-    let replica_prepare = util.new_current_replica_prepare(|msg| msg.high_qc = ctx.rng().gen());
+    let mut util = UTHarness::new(ctx, 1).await;
+    let replica_prepare = util.new_replica_prepare(|msg| msg.high_qc = ctx.rng().gen());
     let res = util.process_replica_prepare(ctx, replica_prepare).await;
     assert_matches!(res, Err(ReplicaPrepareError::InvalidHighQC(..)));
 }
@@ -195,13 +185,13 @@ async fn replica_prepare_invalid_commit_qc() {
 async fn replica_prepare_high_qc_of_current_view() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,1).await;
+    let mut util = UTHarness::new(ctx, 1).await;
     let view = ViewNumber(1);
     let qc_view = ViewNumber(1);
     util.set_view(view);
     let qc = util.new_commit_qc(|msg| msg.view = qc_view);
-    let replica_prepare = util.new_current_replica_prepare(|msg| msg.high_qc = qc);
-    let res = util.process_replica_prepare(ctx,replica_prepare).await;
+    let replica_prepare = util.new_replica_prepare(|msg| msg.high_qc = qc);
+    let res = util.process_replica_prepare(ctx, replica_prepare).await;
     assert_matches!(
         res,
         Err(ReplicaPrepareError::HighQCOfFutureView { high_qc_view, current_view }) => {
@@ -215,14 +205,14 @@ async fn replica_prepare_high_qc_of_current_view() {
 async fn replica_prepare_high_qc_of_future_view() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,1).await;
+    let mut util = UTHarness::new(ctx, 1).await;
 
     let view = ViewNumber(1);
     let qc_view = ViewNumber(2);
     util.set_view(view);
     let qc = util.new_commit_qc(|msg| msg.view = qc_view);
-    let replica_prepare = util.new_current_replica_prepare(|msg| msg.high_qc = qc);
-    let res = util.process_replica_prepare(ctx,replica_prepare).await;
+    let replica_prepare = util.new_replica_prepare(|msg| msg.high_qc = qc);
+    let res = util.process_replica_prepare(ctx, replica_prepare).await;
     assert_matches!(
         res,
         Err(ReplicaPrepareError::HighQCOfFutureView{ high_qc_view, current_view }) => {
@@ -237,20 +227,17 @@ async fn replica_prepare_high_qc_of_future_view() {
 async fn replica_prepare_non_validator_signer() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,2).await;
+    let mut util = UTHarness::new(ctx, 2).await;
 
-    let view = ViewNumber(2);
-    util.set_view(view);
-    assert_eq!(util.view_leader(view), util.keys[0].public());
-    let replica_prepare = util.new_current_replica_prepare(|_| {});
+    let replica_prepare = util.new_replica_prepare(|_| {});
     assert!(util
-        .process_replica_prepare(ctx,replica_prepare.clone())
+        .process_replica_prepare(ctx, replica_prepare.clone())
         .await
         .is_err());
 
     let non_validator: validator::SecretKey = ctx.rng().gen();
     let replica_prepare = non_validator.sign_msg(replica_prepare.msg);
-    util.process_replica_prepare(ctx,replica_prepare)
+    util.process_replica_prepare(ctx, replica_prepare)
         .await
         .unwrap();
     // PANICS:
@@ -262,17 +249,20 @@ async fn replica_commit_sanity() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new_many(ctx).await;
-    util.set_view(util.owner_as_view_leader());
-    util.new_procedural_leader_commit(ctx).await;
+    util.new_leader_commit(ctx).await;
 }
 
 #[tokio::test]
 async fn replica_commit_sanity_yield_leader_commit() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,1).await;
-    let replica_commit = util.new_procedural_replica_commit(ctx).await;
-    let leader_commit = util.process_replica_commit(ctx,replica_commit.clone()).await.unwrap().unwrap();
+    let mut util = UTHarness::new(ctx, 1).await;
+    let replica_commit = util.new_replica_commit(ctx).await;
+    let leader_commit = util
+        .process_replica_commit(ctx, replica_commit.clone())
+        .await
+        .unwrap()
+        .unwrap();
     assert_matches!(
         leader_commit.msg,
         LeaderCommit {
@@ -289,11 +279,11 @@ async fn replica_commit_sanity_yield_leader_commit() {
 async fn replica_commit_old() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,1).await;
-    let mut replica_commit = util.new_procedural_replica_commit(ctx).await.msg;
+    let mut util = UTHarness::new(ctx, 1).await;
+    let mut replica_commit = util.new_replica_commit(ctx).await.msg;
     replica_commit.view = util.consensus.replica.view.prev();
     let replica_commit = util.owner_key().sign_msg(replica_commit);
-    let res = util.process_replica_commit(ctx,replica_commit).await;
+    let res = util.process_replica_commit(ctx, replica_commit).await;
     assert_matches!(
         res,
         Err(ReplicaCommitError::Old { current_view, current_phase }) => {
@@ -306,13 +296,13 @@ async fn replica_commit_old() {
 #[tokio::test]
 async fn replica_commit_not_leader_in_view() {
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,2).await;
+    let mut util = UTHarness::new(ctx, 2).await;
 
     let current_view_leader = util.view_leader(util.consensus.replica.view);
     assert_ne!(current_view_leader, util.owner_key().public());
 
     let replica_commit = util.new_current_replica_commit(|_| {});
-    let res = util.process_replica_commit(ctx,replica_commit).await;
+    let res = util.process_replica_commit(ctx, replica_commit).await;
     assert_matches!(res, Err(ReplicaCommitError::NotLeaderInView));
 }
 
@@ -320,20 +310,20 @@ async fn replica_commit_not_leader_in_view() {
 async fn replica_commit_already_exists() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,2).await;
+    let mut util = UTHarness::new(ctx, 2).await;
 
     let view = ViewNumber(2);
     util.set_replica_view(view);
     util.set_leader_view(view);
     assert_eq!(util.view_leader(view), util.owner_key().public());
-
-    let replica_prepare1 = util.new_current_replica_prepare(|_| {});
-    assert!(util.process_replica_prepare(ctx,replica_prepare1.clone()).await.is_err());
-    let replica_prepare2 = util.keys[1].sign_msg(replica_prepare1.msg);
-    let leader_prepare = util.process_replica_prepare(ctx,replica_prepare2).await.unwrap().unwrap();
-    let replica_commit = util.process_leader_prepare(ctx,leader_prepare).await.unwrap();
-    assert!(util.process_replica_commit(ctx,replica_commit.clone()).await.is_err());
-    let res = util.process_replica_commit(ctx,replica_commit.clone()).await;
+    let replica_commit = util.new_replica_commit(ctx).await;
+    assert!(util
+        .process_replica_commit(ctx, replica_commit.clone())
+        .await
+        .is_err());
+    let res = util
+        .process_replica_commit(ctx, replica_commit.clone())
+        .await;
     assert_matches!(
         res,
         Err(ReplicaCommitError::DuplicateMessage { existing_message }) => {
@@ -346,19 +336,26 @@ async fn replica_commit_already_exists() {
 async fn replica_commit_num_received_below_threshold() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,2).await;
+    let mut util = UTHarness::new(ctx, 2).await;
 
-    let view = ViewNumber(2);
-    util.set_replica_view(view);
-    util.set_leader_view(view);
-    assert_eq!(util.view_leader(view), util.owner_key().public());
-
-    let replica_prepare = util.new_current_replica_prepare(|_| {});
-    assert!(util.process_replica_prepare(ctx,replica_prepare.clone()).await.is_err());
+    let replica_prepare = util.new_replica_prepare(|_| {});
+    assert!(util
+        .process_replica_prepare(ctx, replica_prepare.clone())
+        .await
+        .is_err());
     let replica_prepare = util.keys[1].sign_msg(replica_prepare.msg);
-    let leader_prepare = util.process_replica_prepare(ctx,replica_prepare).await.unwrap().unwrap();
-    let replica_commit = util.process_leader_prepare(ctx,leader_prepare).await.unwrap();
-    let res = util.process_replica_commit(ctx,replica_commit.clone()).await;
+    let leader_prepare = util
+        .process_replica_prepare(ctx, replica_prepare)
+        .await
+        .unwrap()
+        .unwrap();
+    let replica_commit = util
+        .process_leader_prepare(ctx, leader_prepare)
+        .await
+        .unwrap();
+    let res = util
+        .process_replica_commit(ctx, replica_commit.clone())
+        .await;
     assert_matches!(
         res,
         Err(ReplicaCommitError::NumReceivedBelowThreshold {
@@ -372,10 +369,10 @@ async fn replica_commit_num_received_below_threshold() {
 async fn replica_commit_invalid_sig() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,1).await;
+    let mut util = UTHarness::new(ctx, 1).await;
     let mut replica_commit = util.new_current_replica_commit(|_| {});
     replica_commit.sig = ctx.rng().gen();
-    let res = util.process_replica_commit(ctx,replica_commit).await;
+    let res = util.process_replica_commit(ctx, replica_commit).await;
     assert_matches!(res, Err(ReplicaCommitError::InvalidSignature(..)));
 }
 
@@ -383,9 +380,9 @@ async fn replica_commit_invalid_sig() {
 async fn replica_commit_unexpected_proposal() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,1).await;
+    let mut util = UTHarness::new(ctx, 1).await;
     let replica_commit = util.new_current_replica_commit(|_| {});
-    let res = util.process_replica_commit(ctx,replica_commit).await;
+    let res = util.process_replica_commit(ctx, replica_commit).await;
     assert_matches!(res, Err(ReplicaCommitError::UnexpectedProposal));
 }
 
@@ -394,27 +391,34 @@ async fn replica_commit_unexpected_proposal() {
 async fn replica_commit_protocol_version_mismatch() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx,2).await;
+    let mut util = UTHarness::new(ctx, 2).await;
 
-    let view = ViewNumber(2);
-    util.set_replica_view(view);
-    util.set_leader_view(view);
-    assert_eq!(util.view_leader(view), util.owner_key().public());
-
-    let replica_prepare = util.new_current_replica_prepare(|_| {});
+    let replica_prepare = util.new_replica_prepare(|_| {});
     assert!(util
-        .process_replica_prepare(ctx,replica_prepare.clone())
+        .process_replica_prepare(ctx, replica_prepare.clone())
         .await
         .is_err());
     let replica_prepare = util.keys[1].sign_msg(replica_prepare.msg);
-    let leader_prepare = util.process_replica_prepare(ctx,replica_prepare).await.unwrap().unwrap();
-    let replica_commit = util.process_leader_prepare(ctx,leader_prepare).await.unwrap();
-    assert!(util.process_replica_commit(ctx,replica_commit.clone()).await.is_err());
+    let leader_prepare = util
+        .process_replica_prepare(ctx, replica_prepare)
+        .await
+        .unwrap()
+        .unwrap();
+    let replica_commit = util
+        .process_leader_prepare(ctx, leader_prepare)
+        .await
+        .unwrap();
+    assert!(util
+        .process_replica_commit(ctx, replica_commit.clone())
+        .await
+        .is_err());
 
     let mut replica_commit = replica_commit.msg;
     replica_commit.protocol_version = ProtocolVersion(replica_commit.protocol_version.0 + 1);
     let replica_commit = util.keys[1].sign_msg(replica_commit);
-    util.process_replica_commit(ctx,replica_commit).await.unwrap();
+    util.process_replica_commit(ctx, replica_commit)
+        .await
+        .unwrap();
     // PANICS:
     // "Couldn't create justification from valid replica messages!: CommitQC can only be created from votes for the same message."
 }
