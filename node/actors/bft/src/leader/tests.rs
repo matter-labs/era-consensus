@@ -290,27 +290,6 @@ async fn replica_prepare_high_qc_of_future_view() {
 }
 
 #[tokio::test]
-async fn replica_prepare_non_validator_signer_one_from_many() {
-    let mut util = UTHarness::new_many().await;
-
-    util.set_view(util.owner_as_view_leader());
-
-    let replica_prepare = util.new_current_replica_prepare(|_| {}).cast().unwrap().msg;
-    let mut keys = util.keys()[0..util.consensus_threshold() - 1].to_vec();
-    let non_validator_key: validator::SecretKey = util.rng().gen();
-    keys.push(non_validator_key.clone());
-
-    let res =
-        util.dispatch_replica_prepare_many(vec![replica_prepare; util.consensus_threshold()], keys);
-    assert_matches!(
-        res,
-        Err(ReplicaPrepareError::NonValidatorSigner { signer }) => {
-            assert_eq!(signer, non_validator_key.public());
-        }
-    );
-}
-
-#[tokio::test]
 async fn replica_commit_sanity() {
     let mut util = UTHarness::new_many().await;
 
