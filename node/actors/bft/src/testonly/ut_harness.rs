@@ -14,7 +14,7 @@ use zksync_concurrency::{
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator::{
     self, BlockHeader, CommitQC, ConsensusMsg, LeaderCommit, LeaderPrepare, Payload, Phase,
-    PrepareQC, ReplicaCommit, ReplicaPrepare, SecretKey, Signed, ViewNumber,
+    PrepareQC, ProtocolVersion, ReplicaCommit, ReplicaPrepare, SecretKey, Signed, ViewNumber,
 };
 use zksync_consensus_utils::pipe::DispatcherPipe;
 
@@ -50,11 +50,8 @@ impl UTHarness {
         let ctx = ctx::test_root(&ctx::RealClock);
         let mut rng = ctx.rng();
         let keys: Vec<_> = (0..num_validators).map(|_| rng.gen()).collect();
-        let (genesis, val_set) = crate::testonly::make_genesis(
-            &keys,
-            validator::ProtocolVersion::EARLIEST,
-            Payload(vec![]),
-        );
+        let (genesis, val_set) =
+            crate::testonly::make_genesis(&keys, ProtocolVersion::EARLIEST, Payload(vec![]));
         let (mut consensus, pipe) =
             crate::testonly::make_consensus(&ctx, &keys[0], &val_set, &genesis).await;
 
@@ -72,6 +69,14 @@ impl UTHarness {
 
     pub(crate) fn consensus_threshold(&self) -> usize {
         crate::misc::consensus_threshold(self.keys.len())
+    }
+
+    pub(crate) fn protocol_version(&self) -> ProtocolVersion {
+        self.consensus.inner.protocol_version
+    }
+
+    pub(crate) fn incompatible_protocol_version(&self) -> ProtocolVersion {
+        ProtocolVersion(self.protocol_version().0 + 1)
     }
 
     pub(crate) fn owner_key(&self) -> &SecretKey {
@@ -122,7 +127,7 @@ impl UTHarness {
     pub(crate) fn new_unfinalized_replica_prepare(&self) -> Signed<ConsensusMsg> {
         self.new_current_replica_prepare(|msg| {
             let mut high_vote = ReplicaCommit {
-                protocol_version: validator::ProtocolVersion::EARLIEST,
+                protocol_version: self.protocol_version(),
                 view: self.consensus.replica.view.next(),
                 proposal: self.consensus.replica.high_qc.message.proposal,
             };
@@ -139,7 +144,7 @@ impl UTHarness {
         mutate_fn: impl FnOnce(&mut ReplicaPrepare),
     ) -> Signed<ConsensusMsg> {
         let mut msg = ReplicaPrepare {
-            protocol_version: validator::ProtocolVersion::EARLIEST,
+            protocol_version: self.protocol_version(),
             view: self.consensus.replica.view,
             high_vote: self.consensus.replica.high_vote,
             high_qc: self.consensus.replica.high_qc.clone(),
@@ -159,7 +164,7 @@ impl UTHarness {
     ) -> Signed<ConsensusMsg> {
         let payload: Payload = self.rng().gen();
         let mut msg = LeaderPrepare {
-            protocol_version: validator::ProtocolVersion::EARLIEST,
+            protocol_version: self.protocol_version(),
             view: self.consensus.leader.view,
             proposal: BlockHeader {
                 parent: self.consensus.replica.high_vote.proposal.hash(),
@@ -183,7 +188,7 @@ impl UTHarness {
         mutate_fn: impl FnOnce(&mut ReplicaCommit),
     ) -> Signed<ConsensusMsg> {
         let mut msg = ReplicaCommit {
-            protocol_version: validator::ProtocolVersion::EARLIEST,
+            protocol_version: self.protocol_version(),
             view: self.consensus.replica.view,
             proposal: self.consensus.replica.high_qc.message.proposal,
         };
@@ -201,7 +206,7 @@ impl UTHarness {
         mutate_fn: impl FnOnce(&mut LeaderCommit),
     ) -> Signed<ConsensusMsg> {
         let mut msg = LeaderCommit {
-            protocol_version: validator::ProtocolVersion::EARLIEST,
+            protocol_version: self.protocol_version(),
             justification: self.rng().gen(),
         };
 
