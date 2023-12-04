@@ -406,19 +406,11 @@ impl UTHarness {
     }
 
     pub(crate) async fn sim_timeout(&mut self) {
-        scope::run!(&self.ctx, |ctx, s| {
-            s.spawn(async {
-                let _ = self
-                    .consensus
-                    .replica
-                    .process_input(ctx, &self.consensus.inner, None)
-                    .await;
-                Ok(())
-            })
-            .join(ctx)
-        })
-        .await
-        .unwrap()
+        self.consensus
+            .replica
+            .process_input(&self.ctx, &self.consensus.inner, None)
+            .await
+            .unwrap()
     }
 
     pub(crate) async fn dispatch_leader_commit(
