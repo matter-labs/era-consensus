@@ -36,6 +36,7 @@ impl Test {
             &keys,
             validator::ProtocolVersion::EARLIEST,
             validator::Payload(vec![]),
+            validator::BlockNumber(0),
         );
         let nodes: Vec<_> = nodes
             .into_iter()

@@ -77,6 +77,7 @@ async fn executor_misconfiguration(name: &str, mutation: fn(&mut FinalBlock)) {
         rng,
         validator::ProtocolVersion::EARLIEST,
         Payload(vec![]),
+        BlockNumber(0),
     );
     let genesis_block = &mut validator.node_config.genesis_block;
     mutation(genesis_block);
@@ -98,6 +99,7 @@ async fn genesis_block_mismatch() {
         rng,
         validator::ProtocolVersion::EARLIEST,
         Payload(vec![]),
+        BlockNumber(0),
     );
     let mut genesis_block = validator.node_config.genesis_block.clone();
     genesis_block.header.number = BlockNumber(1);
@@ -119,6 +121,7 @@ async fn executing_single_validator() {
         rng,
         validator::ProtocolVersion::EARLIEST,
         Payload(vec![]),
+        BlockNumber(0),
     );
     let genesis_block = &validator.node_config.genesis_block;
     let storage = InMemoryStorage::new(genesis_block.clone());
@@ -148,6 +151,7 @@ async fn executing_validator_and_full_node() {
         rng,
         validator::ProtocolVersion::EARLIEST,
         Payload(vec![]),
+        BlockNumber(0),
     );
     let full_node = validator.connect_full_node(rng);
 
@@ -194,6 +198,7 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
         rng,
         validator::ProtocolVersion::EARLIEST,
         Payload(vec![]),
+        BlockNumber(0),
     );
     let mut full_node = validator.connect_full_node(rng);
 

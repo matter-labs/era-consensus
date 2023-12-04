@@ -59,8 +59,9 @@ pub fn make_genesis(
     keys: &[validator::SecretKey],
     protocol_version: validator::ProtocolVersion,
     payload: validator::Payload,
+    block_number: validator::BlockNumber,
 ) -> (validator::FinalBlock, validator::ValidatorSet) {
-    let header = validator::BlockHeader::genesis(payload.hash());
+    let header = validator::BlockHeader::genesis(payload.hash(), block_number);
     let validator_set = validator::ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap();
     let signed_messages: Vec<_> = keys
         .iter()

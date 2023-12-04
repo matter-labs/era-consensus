@@ -36,6 +36,7 @@ impl UTHarness {
             &keys,
             validator::ProtocolVersion::EARLIEST,
             Payload(vec![]),
+            validator::BlockNumber(0),
         );
         let (mut consensus, pipe) =
             crate::testonly::make_consensus(ctx, &keys[0], &val_set, &genesis).await;
