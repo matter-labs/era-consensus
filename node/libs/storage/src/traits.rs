@@ -1,7 +1,7 @@
 //! Traits for storage.
 use crate::types::ReplicaState;
 use async_trait::async_trait;
-use std::{fmt, ops, sync::Arc};
+use std::{fmt, ops};
 use zksync_concurrency::{ctx, sync::watch};
 use zksync_consensus_roles::validator::{BlockNumber, FinalBlock, Payload};
 
@@ -45,37 +45,6 @@ pub trait BlockStore: fmt::Debug + Send + Sync {
     fn subscribe_to_block_writes(&self) -> watch::Receiver<BlockNumber>;
 }
 
-#[async_trait]
-impl<S: BlockStore + ?Sized> BlockStore for Arc<S> {
-    async fn head_block(&self, ctx: &ctx::Ctx) -> ctx::Result<FinalBlock> {
-        (**self).head_block(ctx).await
-    }
-
-    async fn first_block(&self, ctx: &ctx::Ctx) -> ctx::Result<FinalBlock> {
-        (**self).first_block(ctx).await
-    }
-
-    async fn last_contiguous_block_number(&self, ctx: &ctx::Ctx) -> ctx::Result<BlockNumber> {
-        (**self).last_contiguous_block_number(ctx).await
-    }
-
-    async fn block(&self, ctx: &ctx::Ctx, number: BlockNumber) -> ctx::Result<Option<FinalBlock>> {
-        (**self).block(ctx, number).await
-    }
-
-    async fn missing_block_numbers(
-        &self,
-        ctx: &ctx::Ctx,
-        range: ops::Range<BlockNumber>,
-    ) -> ctx::Result<Vec<BlockNumber>> {
-        (**self).missing_block_numbers(ctx, range).await
-    }
-
-    fn subscribe_to_block_writes(&self) -> watch::Receiver<BlockNumber> {
-        (**self).subscribe_to_block_writes()
-    }
-}
-
 /// Mutable storage of L2 blocks.
 ///
 /// Implementations **must** propagate context cancellation using [`ctx::Error::Canceled`].
@@ -88,6 +57,7 @@ pub trait WriteBlockStore: BlockStore {
         block_number: BlockNumber,
         _payload: &Payload,
     ) -> ctx::Result<()> {
+        tracing::error!("default verify_payload() impl");
         let head_number = self.head_block(ctx).await?.header.number;
         if head_number >= block_number {
             return Err(anyhow::anyhow!(
@@ -99,13 +69,6 @@ pub trait WriteBlockStore: BlockStore {
     }
     /// Puts a block into this storage.
     async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> ctx::Result<()>;
-}
-
-#[async_trait]
-impl<S: WriteBlockStore + ?Sized> WriteBlockStore for Arc<S> {
-    async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> ctx::Result<()> {
-        (**self).put_block(ctx, block).await
-    }
 }
 
 /// Storage for [`ReplicaState`].
@@ -122,19 +85,4 @@ pub trait ReplicaStateStore: fmt::Debug + Send + Sync {
         ctx: &ctx::Ctx,
         replica_state: &ReplicaState,
     ) -> ctx::Result<()>;
-}
-
-#[async_trait]
-impl<S: ReplicaStateStore + ?Sized> ReplicaStateStore for Arc<S> {
-    async fn replica_state(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>> {
-        (**self).replica_state(ctx).await
-    }
-
-    async fn put_replica_state(
-        &self,
-        ctx: &ctx::Ctx,
-        replica_state: &ReplicaState,
-    ) -> ctx::Result<()> {
-        (**self).put_replica_state(ctx, replica_state).await
-    }
 }

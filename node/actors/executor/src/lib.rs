@@ -6,7 +6,7 @@ use zksync_concurrency::{ctx, net, scope};
 use zksync_consensus_bft::{misc::consensus_threshold, Consensus, PayloadSource};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BlockStore, ReplicaStateStore, ReplicaStore, WriteBlockStore};
+use zksync_consensus_storage::{ReplicaStateStore, ReplicaStore, WriteBlockStore};
 use zksync_consensus_sync_blocks::SyncBlocks;
 use zksync_consensus_utils::pipe;
 
