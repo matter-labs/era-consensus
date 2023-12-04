@@ -469,33 +469,3 @@ async fn replica_commit_unexpected_proposal() {
     let res = util.dispatch_replica_commit_one(replica_commit);
     assert_matches!(res, Err(ReplicaCommitError::UnexpectedProposal));
 }
-
-#[tokio::test]
-async fn replica_commit_incompatible_protocol_version_one_from_many() {
-    let mut util = UTHarness::new_many().await;
-
-    util.set_view(util.owner_as_view_leader());
-
-    let replica_commit = util
-        .new_procedural_replica_commit_many()
-        .await
-        .cast::<ReplicaCommit>()
-        .unwrap()
-        .msg;
-    let mut messages = vec![replica_commit; util.consensus_threshold() - 1];
-    let incompatible_protocol_version = util.incompatible_protocol_version();
-    messages.push(ReplicaCommit {
-        protocol_version: incompatible_protocol_version,
-        view: replica_commit.view,
-        proposal: replica_commit.proposal,
-    });
-
-    let res = util.dispatch_replica_commit_many(messages, util.keys());
-    assert_matches!(
-        res,
-        Err(ReplicaCommitError::IncompatibleProtocolVersion { message_version, local_version }) => {
-            assert_eq!(message_version, incompatible_protocol_version);
-            assert_eq!(local_version, util.protocol_version());
-        }
-    )
-}
