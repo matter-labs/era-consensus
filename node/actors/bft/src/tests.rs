@@ -5,7 +5,9 @@ use crate::{
 };
 use assert_matches::assert_matches;
 use zksync_concurrency::{ctx, testonly::abort_on_panic};
-use zksync_consensus_roles::validator::Phase;
+use zksync_consensus_roles::validator::{
+    LeaderCommit, LeaderPrepare, Phase, ReplicaCommit, ReplicaPrepare,
+};
 
 async fn run_test(behavior: Behavior, network: Network) {
     abort_on_panic();
@@ -66,22 +68,25 @@ async fn byzantine_real_network() {
     run_test(Behavior::Byzantine, Network::Real).await
 }
 
-/// Testing liveness after the network becomes idle with leader having no cached prepare messages for the current view.
+// Testing liveness after the network becomes idle with leader having no cached prepare messages for the current view.
 #[tokio::test]
 async fn timeout_leader_no_prepares() {
     let mut util = UTHarness::new_many().await;
 
-    let base_replica_view = util.replica_view();
-    let base_leader_view = util.leader_view();
+    let base_rp = util
+        .new_current_replica_prepare(|_| {})
+        .cast::<ReplicaPrepare>()
+        .unwrap()
+        .msg;
 
     util.sim_timeout().await;
 
-    assert_eq!(util.replica_view(), base_replica_view.next());
-    assert_eq!(util.replica_phase(), Phase::Prepare);
-    assert_eq!(util.leader_view(), base_leader_view);
-    assert_eq!(util.leader_phase(), Phase::Prepare);
-
-    util.check_recovery_after_timeout();
+    util.check_recovery_after_timeout(
+        base_rp.view.next(),
+        base_rp.high_vote.view,
+        base_rp.high_qc.message.view,
+    )
+    .await;
 }
 
 /// Testing liveness after the network becomes idle with leader having some cached prepare messages for the current view.
@@ -90,7 +95,7 @@ async fn timeout_leader_some_prepares() {
     let mut util = UTHarness::new_many().await;
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
-    let res = util.dispatch_replica_prepare_one(replica_prepare);
+    let res = util.dispatch_replica_prepare_one(replica_prepare.clone());
     assert_matches!(
         res,
         Err(ReplicaPrepareError::NumReceivedBelowThreshold {
@@ -101,18 +106,16 @@ async fn timeout_leader_some_prepares() {
             assert_eq!(threshold, util.consensus_threshold())
         }
     );
-
-    let base_replica_view = util.replica_view();
-    let base_leader_view = util.leader_view();
+    let base_rp = replica_prepare.cast::<ReplicaPrepare>().unwrap().msg;
 
     util.sim_timeout().await;
 
-    assert_eq!(util.replica_view(), base_replica_view.next());
-    assert_eq!(util.replica_phase(), Phase::Prepare);
-    assert_eq!(util.leader_view(), base_leader_view);
-    assert_eq!(util.leader_phase(), Phase::Prepare);
-
-    util.check_recovery_after_timeout();
+    util.check_recovery_after_timeout(
+        base_rp.view.next(),
+        base_rp.high_vote.view,
+        base_rp.high_qc.message.view,
+    )
+    .await;
 }
 
 /// Testing liveness after the network becomes idle with leader in commit phase.
@@ -120,25 +123,33 @@ async fn timeout_leader_some_prepares() {
 async fn timeout_leader_in_commit() {
     let mut util = UTHarness::new_many().await;
 
-    let replica_prepare = util.new_current_replica_prepare(|_| {}).cast().unwrap().msg;
+    let base_rp = util
+        .new_current_replica_prepare(|_| {})
+        .cast::<ReplicaPrepare>()
+        .unwrap()
+        .msg;
     util.dispatch_replica_prepare_many(
-        vec![replica_prepare; util.consensus_threshold()],
+        vec![base_rp.clone(); util.consensus_threshold()],
         util.keys(),
     )
     .unwrap();
-
-    let base_replica_view = util.replica_view();
-    let base_leader_view = util.leader_view();
+    util.recv_signed()
+        .await
+        .unwrap()
+        .cast::<LeaderPrepare>()
+        .unwrap();
 
     util.sim_timeout().await;
 
-    assert_eq!(util.replica_view(), base_replica_view.next());
-    assert_eq!(util.replica_phase(), Phase::Prepare);
-    assert_eq!(util.leader_view(), base_leader_view);
     // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
     assert_eq!(util.leader_phase(), Phase::Commit);
 
-    util.check_recovery_after_timeout();
+    util.check_recovery_after_timeout(
+        base_rp.view.next(),
+        base_rp.high_vote.view,
+        base_rp.high_qc.message.view,
+    )
+    .await;
 }
 
 /// Testing liveness after the network becomes idle with replica in commit phase.
@@ -146,28 +157,43 @@ async fn timeout_leader_in_commit() {
 async fn timeout_replica_in_commit() {
     let mut util = UTHarness::new_many().await;
 
+    let base_rp = util
+        .new_current_replica_prepare(|_| {})
+        .cast::<ReplicaPrepare>()
+        .unwrap()
+        .msg;
+
     let leader_prepare = util.new_procedural_leader_prepare_many().await;
     util.dispatch_leader_prepare(leader_prepare).await.unwrap();
-    assert_eq!(util.replica_phase(), Phase::Commit);
-
-    let base_replica_view = util.replica_view();
-    let base_leader_view = util.leader_view();
+    util.recv_signed()
+        .await
+        .unwrap()
+        .cast::<ReplicaCommit>()
+        .unwrap();
 
     util.sim_timeout().await;
 
-    assert_eq!(util.replica_view(), base_replica_view.next());
-    assert_eq!(util.replica_phase(), Phase::Prepare);
-    assert_eq!(util.leader_view(), base_leader_view);
     // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
     assert_eq!(util.leader_phase(), Phase::Commit);
 
-    util.check_recovery_after_timeout();
+    util.check_recovery_after_timeout(
+        base_rp.view.next(),
+        base_rp.view,
+        base_rp.high_qc.message.view,
+    )
+    .await;
 }
 
 /// Testing liveness after the network becomes idle with leader having some cached commit messages for the current view.
 #[tokio::test]
 async fn timeout_leader_some_commits() {
     let mut util = UTHarness::new_many().await;
+
+    let base_rp = util
+        .new_current_replica_prepare(|_| {})
+        .cast::<ReplicaPrepare>()
+        .unwrap()
+        .msg;
 
     let replica_commit = util.new_procedural_replica_commit_many().await;
     let res = util.dispatch_replica_commit_one(replica_commit);
@@ -182,24 +208,29 @@ async fn timeout_leader_some_commits() {
         }
     );
 
-    let base_replica_view = util.replica_view();
-    let base_leader_view = util.leader_view();
-
     util.sim_timeout().await;
 
-    assert_eq!(util.replica_view(), base_replica_view.next());
-    assert_eq!(util.replica_phase(), Phase::Prepare);
-    assert_eq!(util.leader_view(), base_leader_view);
     // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
     assert_eq!(util.leader_phase(), Phase::Commit);
 
-    util.check_recovery_after_timeout();
+    util.check_recovery_after_timeout(
+        base_rp.view.next(),
+        base_rp.view,
+        base_rp.high_qc.message.view,
+    )
+    .await;
 }
 
 /// Testing liveness after the network becomes idle with leader in a consecutive prepare phase.
 #[tokio::test]
 async fn timeout_leader_in_consecutive_prepare() {
     let mut util = UTHarness::new_many().await;
+
+    let base_rp = util
+        .new_current_replica_prepare(|_| {})
+        .cast::<ReplicaPrepare>()
+        .unwrap()
+        .msg;
 
     let replica_commit = util
         .new_procedural_replica_commit_many()
@@ -212,16 +243,18 @@ async fn timeout_leader_in_consecutive_prepare() {
         util.keys(),
     )
     .unwrap();
-
-    let base_replica_view = util.replica_view();
-    let base_leader_view = util.leader_view();
+    util.recv_signed()
+        .await
+        .unwrap()
+        .cast::<LeaderCommit>()
+        .unwrap();
 
     util.sim_timeout().await;
 
-    assert_eq!(util.replica_view(), base_replica_view.next());
-    assert_eq!(util.replica_phase(), Phase::Prepare);
-    assert_eq!(util.leader_view(), base_leader_view);
-    assert_eq!(util.leader_phase(), Phase::Prepare);
-
-    util.check_recovery_after_timeout();
+    util.check_recovery_after_timeout(
+        base_rp.view.next(),
+        base_rp.view,
+        base_rp.high_qc.message.view,
+    )
+    .await;
 }

@@ -42,7 +42,7 @@ impl UTHarness {
         let num_validators = 6;
         assert_matches!(crate::misc::faulty_replicas(num_validators), res if res > 0);
         let mut util = UTHarness::new_with(num_validators).await;
-        util.set_replica_view(util.owner_as_view_leader_next());
+        util.set_view(util.owner_as_view_leader_next());
         util
     }
 
@@ -71,26 +71,46 @@ impl UTHarness {
         }
     }
 
-    pub(crate) fn check_recovery_after_timeout(&mut self) {
+    pub(crate) async fn iterate_next(&mut self) {
+        let leader_commit = self.new_procedural_leader_commit_many().await;
+        self.dispatch_leader_commit(leader_commit).await.unwrap();
+        self.recv_signed()
+            .await
+            .unwrap()
+            .cast::<ReplicaPrepare>()
+            .unwrap();
+    }
+
+    pub(crate) async fn check_recovery_after_timeout(
+        &mut self,
+        view: ViewNumber,
+        high_vote_view: ViewNumber,
+        high_qc_view: ViewNumber,
+    ) {
+        let replica_prepare = self
+            .recv_signed()
+            .await
+            .unwrap()
+            .cast::<ReplicaPrepare>()
+            .unwrap()
+            .msg;
+
+        assert_matches!(
+            replica_prepare,
+            ReplicaPrepare {
+                view: _view,
+                high_vote,
+                high_qc,
+                ..
+            } => {
+                assert_eq!(_view, view);
+                assert_eq!(high_vote.view, high_vote_view);
+                assert_eq!(high_qc.message.view, high_qc_view);
+            }
+        );
+
         self.set_replica_view(self.owner_as_view_leader_next());
-
-        let base_replica_view = self.replica_view();
-        let base_leader_view = self.leader_view();
-        assert!(base_leader_view < base_replica_view);
-
-        assert_eq!(self.replica_phase(), Phase::Prepare);
-
-        let replica_prepare = self.new_current_replica_prepare(|_| {}).cast().unwrap().msg;
-        self.dispatch_replica_prepare_many(
-            vec![replica_prepare; self.consensus_threshold()],
-            self.keys(),
-        )
-        .unwrap();
-
-        assert_eq!(self.replica_view(), base_replica_view);
-        assert_eq!(self.leader_view(), base_replica_view);
-        assert_eq!(self.replica_phase(), Phase::Prepare);
-        assert_eq!(self.leader_phase(), Phase::Commit);
+        self.iterate_next().await;
     }
 
     pub(crate) fn consensus_threshold(&self) -> usize {
@@ -445,10 +465,6 @@ impl UTHarness {
 
     pub(crate) fn replica_view(&self) -> ViewNumber {
         self.consensus.replica.view
-    }
-
-    pub(crate) fn leader_view(&self) -> ViewNumber {
-        self.consensus.leader.view
     }
 
     pub(crate) fn replica_phase(&self) -> Phase {
