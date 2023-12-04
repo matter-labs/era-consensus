@@ -4,11 +4,19 @@ use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::validator::{self, ProtocolVersion};
 
 /// Errors that can occur when processing a "leader prepare" message.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    /// Incompatible protocol version.
+    #[error("incompatible protocol version (message version: {message_version:?}, local version: {local_version:?}")]
+    IncompatibleProtocolVersion {
+        /// Message version.
+        message_version: ProtocolVersion,
+        /// Local version.
+        local_version: ProtocolVersion,
+    },
     /// Invalid leader.
     #[error(
         "invalid leader (correct leader: {correct_leader:?}, received leader: {received_leader:?})"
@@ -131,6 +139,17 @@ impl StateMachine {
         let message = &signed_message.msg;
         let author = &signed_message.key;
         let view = message.view;
+
+        // Check protocol version compatibility.
+        if !consensus
+            .protocol_version
+            .compatible(&message.protocol_version)
+        {
+            return Err(Error::IncompatibleProtocolVersion {
+                message_version: message.protocol_version,
+                local_version: consensus.protocol_version,
+            });
+        }
 
         // Check that it comes from the correct leader.
         if author != &consensus.view_leader(view) {
