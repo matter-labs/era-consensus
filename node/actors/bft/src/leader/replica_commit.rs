@@ -17,7 +17,7 @@ pub(crate) enum Error {
         local_version: ProtocolVersion,
     },
     /// Message signer isn't part of the validator set.
-    #[error("Message signer isn't part of the validator set")]
+    #[error("Message signer isn't part of the validator set (signer: {signer:?})")]
     NonValidatorSigner {
         /// Signer of the message.
         signer: validator::PublicKey,
