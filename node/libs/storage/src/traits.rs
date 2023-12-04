@@ -57,7 +57,6 @@ pub trait WriteBlockStore: BlockStore {
         block_number: BlockNumber,
         _payload: &Payload,
     ) -> ctx::Result<()> {
-        tracing::error!("default verify_payload() impl");
         let head_number = self.head_block(ctx).await?.header.number;
         if head_number >= block_number {
             return Err(anyhow::anyhow!(
