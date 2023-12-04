@@ -1,8 +1,13 @@
 //! This tool constructs collection of node configs for running tests.
-use anyhow::Context as _;
+use anyhow::{Context, Result};
 use clap::Parser;
 use rand::Rng;
-use std::{fs, net::SocketAddr, path::PathBuf};
+use std::{
+    fs,
+    net::SocketAddr,
+    net::{Ipv4Addr, Ipv6Addr},
+    path::PathBuf,
+};
 use zksync_consensus_bft::testonly;
 use zksync_consensus_crypto::TextFmt;
 use zksync_consensus_executor::{ConsensusConfig, ExecutorConfig, GossipConfig};
@@ -21,8 +26,8 @@ fn encode_json<T: zksync_protobuf::ProtoFmt>(x: &T) -> String {
 /// on any network interface of the VM will be accepted.
 fn with_unspecified_ip(addr: SocketAddr) -> SocketAddr {
     let unspecified_ip = match addr {
-        SocketAddr::V4(_) => std::net::Ipv4Addr::UNSPECIFIED.into(),
-        SocketAddr::V6(_) => std::net::Ipv6Addr::UNSPECIFIED.into(),
+        SocketAddr::V4(_) => Ipv4Addr::UNSPECIFIED.into(),
+        SocketAddr::V6(_) => Ipv6Addr::UNSPECIFIED.into(),
     };
     SocketAddr::new(unspecified_ip, addr.port())
 }
@@ -46,18 +51,20 @@ struct Args {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
     let addrs_raw = fs::read_to_string(&args.input_addrs)
-        .with_context(|| args.input_addrs.to_str().unwrap().to_owned())?;
-    let mut addrs = vec![];
-    for a in addrs_raw.split_whitespace() {
-        addrs.push(
-            a.parse::<SocketAddr>()
-                .with_context(|| format!("parse('{}')", a))?,
-        );
+        .with_context(|| format!("Failed to read file: {:?}", args.input_addrs))?;
+    let addrs: Vec<SocketAddr> = addrs_raw
+        .split_whitespace()
+        .map(|a| {
+            a.parse()
+                .with_context(|| format!("Failed to parse address: '{}'", a))
+        })
+        .collect::<Result<_, _>>()?;
+    if addrs.is_empty() {
+        anyhow::bail!("No addresses provided in the input file");
     }
-    assert!(!addrs.is_empty(), "at least 1 address has to be specified");
     let metrics_server_addr = args
         .metrics_server_port
-        .map(|port| SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), port));
+        .map(|port| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port));
 
     // Generate the keys for all the replicas.
     let rng = &mut rand::thread_rng();
@@ -117,18 +124,34 @@ fn main() -> anyhow::Result<()> {
             }),
         };
 
-        // Recreate the directory for the node's config.
-        let root = args.output_dir.join(addrs[i].to_string());
-        let _ = fs::remove_dir_all(&root);
-        fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
-
-        fs::write(root.join("config.json"), encode_json(&node_cfg)).context("fs::write()")?;
-        fs::write(
-            root.join("validator_key"),
-            &TextFmt::encode(&validator_keys[i]),
-        )
-        .context("fs::write()")?;
-        fs::write(root.join("node_key"), &TextFmt::encode(&node_keys[i])).context("fs::write()")?;
+        create_node_config(
+            &args.output_dir,
+            &addrs[i],
+            &node_cfg,
+            &validator_keys[i],
+            &node_keys[i],
+        )?;
     }
+    Ok(())
+}
+
+fn create_node_config(
+    output_dir: &PathBuf,
+    addr: &SocketAddr,
+    node_cfg: &NodeConfig,
+    validator_key: &validator::SecretKey,
+    node_key: &node::SecretKey,
+) -> Result<()> {
+    let root = output_dir.join(addr.to_string());
+    fs::remove_dir_all(&root).with_context(|| format!("Failed to remove directory: {:?}", root))?;
+    fs::create_dir_all(&root).with_context(|| format!("Failed to create directory: {:?}", root))?;
+
+    fs::write(root.join("config.json"), encode_json(node_cfg))
+        .with_context(|| format!("Failed to write to config.json in directory: {:?}", root))?;
+    fs::write(root.join("validator_key"), TextFmt::encode(validator_key))
+        .with_context(|| format!("Failed to write to validator_key in directory: {:?}", root))?;
+    fs::write(root.join("node_key"), TextFmt::encode(node_key))
+        .with_context(|| format!("Failed to write to node_key in directory: {:?}", root))?;
+
     Ok(())
 }
