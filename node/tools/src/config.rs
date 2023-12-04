@@ -90,24 +90,24 @@ impl Configs {
             )
         })?;
 
-        let validator_key: Option<validator::SecretKey> = args
-            .validator_key
-            .as_ref()
-            .map(|validator_key| {
+        let validator_key = match args.validator_key {
+            Some(validator_key) => {
                 let read_key = fs::read_to_string(validator_key).with_context(|| {
                     format!(
                         "failed reading validator key from `{}`",
                         validator_key.display()
                     )
                 })?;
-                Text::new(&read_key).decode().with_context(|| {
+                Some(Text::new(&read_key).decode().with_context(|| {
                     format!(
                         "failed decoding validator key at `{}`",
                         validator_key.display()
                     )
-                })
-            })
-            .transpose()?;
+                })?)
+            }
+            None => None,
+        };
+
         let read_key = fs::read_to_string(args.node_key).with_context(|| {
             format!("failed reading node key from `{}`", args.node_key.display())
         })?;
@@ -119,7 +119,8 @@ impl Configs {
             validator_key.is_some() == node_config.consensus.is_some(),
             "Validator key and consensus config must be specified at the same time"
         );
-        let consensus = validator_key.and_then(|key| Some((node_config.consensus?, key)));
+
+        let consensus = validator_key.map(|key| (node_config.consensus.unwrap(), key));
 
         let cfg = Configs {
             executor: node_config.executor,
