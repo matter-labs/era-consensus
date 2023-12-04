@@ -286,38 +286,32 @@ impl UTHarness {
         self.consensus.inner.view_leader(view)
     }
 
+    pub(crate) fn validator_set(&self) -> validator::ValidatorSet {
+        validator::ValidatorSet::new(self.keys.iter().map(|k| k.public())).unwrap()
+    }
+
     pub(crate) fn new_commit_qc(&self, mutate_fn: impl FnOnce(&mut ReplicaCommit)) -> CommitQC {
-        let validator_set =
-            validator::ValidatorSet::new(self.keys.iter().map(|k| k.public())).unwrap();
         let msg = self.new_current_replica_commit(mutate_fn).msg;
         let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
-        CommitQC::from(&msgs, &validator_set).unwrap()
+        CommitQC::from(&msgs, &self.validator_set()).unwrap()
     }
 
     pub(crate) fn new_prepare_qc(&self, mutate_fn: impl FnOnce(&mut ReplicaPrepare)) -> PrepareQC {
-        let validator_set =
-            validator::ValidatorSet::new(self.keys.iter().map(|k| k.public())).unwrap();
         let msg = self.new_current_replica_prepare(mutate_fn).msg;
         let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
-        PrepareQC::from(&msgs, &validator_set).unwrap()
+        PrepareQC::from(&msgs, &self.validator_set()).unwrap()
     }
 
     pub(crate) fn new_prepare_qc_many(
         &mut self,
         mut mutate_fn: impl FnMut(&mut ReplicaPrepare),
     ) -> PrepareQC {
-        let validator_set =
-            validator::ValidatorSet::new(self.keys.iter().map(|k| k.public())).unwrap();
-
-        let signed_messages: Vec<_> = self
-            .keys
-            .iter()
+        let msgs: Vec<_> = self.keys.iter()
             .map(|sk| {
                 let msg = self.new_current_replica_prepare(|msg| mutate_fn(msg)).msg;
                 sk.sign_msg(msg)
             })
             .collect();
-
-        PrepareQC::from(&signed_messages, &validator_set).unwrap()
+        PrepareQC::from(&msgs, &self.validator_set()).unwrap()
     }
 }

@@ -6,8 +6,9 @@ use crate::{inner::ConsensusInner, leader::ReplicaPrepareError, testonly::ut_har
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_consensus_roles::validator::{
+    self,
     LeaderPrepare, Payload, ReplicaCommit,
-    ReplicaPrepare, ViewNumber,
+    ReplicaPrepare, ViewNumber, CommitQC,
 };
 
 #[tokio::test]
@@ -118,29 +119,34 @@ async fn leader_prepare_old_view() {
     );
 }
 
-/*
 /// Tests that `WriteBlockStore::verify_payload` is applied before signing a vote.
 #[tokio::test]
 async fn leader_prepare_invalid_payload() {
-    let mut util = UTHarness::new_one().await;
-    let leader_prepare = util.new_procedural_leader_prepare_one().await;
-    let mut leader_prepare = util
-        .new_procedural_leader_prepare_one()
-        .await
-        .cast::<LeaderPrepare>()
-        .unwrap()
-        .msg;
-    let leader_prepare = util
-        .owner_key()
-        .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare));
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let mut util = UTHarness::new(ctx,1).await;
+    let leader_prepare = util.new_procedural_leader_prepare(ctx).await;
 
+    // Insert a finalized block to the storage.
+    // Default implementation of verify_payload() fails if
+    // head block number >= proposal block number.
+    let block = validator::FinalBlock {
+        header: leader_prepare.msg.proposal.clone(),
+        payload: leader_prepare.msg.proposal_payload.clone().unwrap(),
+        justification: CommitQC::from(
+            &[util.keys[0].sign_msg(ReplicaCommit {
+                protocol_version: validator::ProtocolVersion::EARLIEST,
+                view: util.consensus.replica.view,
+                proposal: leader_prepare.msg.proposal.clone(),
+            })],
+            &util.validator_set(),
+        ).unwrap(),
+    };
+    util.consensus.replica.storage.put_block(ctx,&block).await.unwrap();
 
     let res = util.process_leader_prepare(ctx,leader_prepare).await;
-    assert_matches!(
-        res,
-        Err(LeaderPrepareError::ProposalInvalidPayload(..)),
-    );
-}*/
+    assert_matches!(res,Err(LeaderPrepareError::ProposalInvalidPayload(..)));
+}
 
 #[tokio::test]
 async fn leader_prepare_invalid_sig() {

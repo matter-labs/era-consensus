@@ -86,12 +86,11 @@ pub trait WriteBlockStore: BlockStore {
         &self,
         ctx: &ctx::Ctx,
         block_number: BlockNumber,
-        payload: &Payload,
+        _payload: &Payload,
     ) -> ctx::Result<()> {
-        if let Some(block) = self.block(ctx,block_number).await? {
-            if &block.payload!=payload {
-                Err(anyhow::anyhow!("block already stored with different payload"))?;
-            }
+        let head_number = self.head_block(ctx).await?.header.number;
+        if head_number >= block_number {
+            Err(anyhow::anyhow!("received proposal for block {block_number:?}, while head is at {head_number:?}"))?;
         }
         Ok(())
     }
