@@ -62,6 +62,9 @@ pub(crate) enum Error {
     /// Invalid `HighQC` message.
     #[error("invalid high QC: {0:#}")]
     InvalidHighQC(#[source] anyhow::Error),
+    /// Unexpected error when creating justification from received messages.
+    #[error("create justification unexpected error: {0:#}")]
+    CreateJustificationUnexpectedError(#[source] anyhow::Error),
 }
 
 impl StateMachine {
@@ -225,7 +228,7 @@ impl StateMachine {
 
         // Create the justification for our message.
         let justification = validator::PrepareQC::from(&replica_messages, &consensus.validator_set)
-            .expect("Couldn't create justification from valid replica messages!");
+            .map_err(Error::CreateJustificationUnexpectedError)?;
 
         // Broadcast the leader prepare message to all replicas (ourselves included).
         let output_message = ConsensusInputMessage {

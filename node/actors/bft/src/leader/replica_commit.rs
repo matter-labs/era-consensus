@@ -50,6 +50,9 @@ pub(crate) enum Error {
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] validator::Error),
+    /// Unexpected error when creating justification from received messages.
+    #[error("create justification unexpected error: {0:#}")]
+    CreateJustificationUnexpectedError(#[source] anyhow::Error),
 }
 
 impl StateMachine {
@@ -157,9 +160,14 @@ impl StateMachine {
             .cloned()
             .collect::<Vec<_>>();
 
+        // Clean the caches.
+        self.block_proposal_cache = None;
+        self.prepare_message_cache.retain(|k, _| k >= &self.view);
+        self.commit_message_cache.retain(|k, _| k >= &self.view);
+
         // Create the justification for our message.
         let justification = validator::CommitQC::from(&replica_messages, &consensus.validator_set)
-            .expect("Couldn't create justification from valid replica messages!");
+            .map_err(Error::CreateJustificationUnexpectedError)?;
 
         // Broadcast the leader commit message to all replicas (ourselves included).
         let output_message = ConsensusInputMessage {
@@ -174,11 +182,6 @@ impl StateMachine {
             recipient: Target::Broadcast,
         };
         consensus.pipe.send(output_message.into());
-
-        // Clean the caches.
-        self.block_proposal_cache = None;
-        self.prepare_message_cache.retain(|k, _| k >= &self.view);
-        self.commit_message_cache.retain(|k, _| k >= &self.view);
 
         Ok(())
     }
