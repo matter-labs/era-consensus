@@ -4,11 +4,25 @@ use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::validator::{self, ProtocolVersion};
 
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
+    /// Incompatible protocol version.
+    #[error("incompatible protocol version (message version: {message_version:?}, local version: {local_version:?}")]
+    IncompatibleProtocolVersion {
+        /// Message version.
+        message_version: ProtocolVersion,
+        /// Local version.
+        local_version: ProtocolVersion,
+    },
+    /// Message signer isn't part of the validator set.
+    #[error("Message signer isn't part of the validator set (signer: {signer:?})")]
+    NonValidatorSigner {
+        /// Signer of the message.
+        signer: validator::PublicKey,
+    },
     /// Past view or phase.
     #[error("past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
     Old {
@@ -83,6 +97,25 @@ impl StateMachine {
         // Unwrap message.
         let message = signed_message.msg.clone();
         let author = &signed_message.key;
+
+        // Check protocol version compatibility.
+        if !consensus
+            .protocol_version
+            .compatible(&message.protocol_version)
+        {
+            return Err(Error::IncompatibleProtocolVersion {
+                message_version: message.protocol_version,
+                local_version: consensus.protocol_version,
+            });
+        }
+
+        // Check that the message signer is in the validator set.
+        consensus
+            .validator_set
+            .index(author)
+            .ok_or(Error::NonValidatorSigner {
+                signer: author.clone(),
+            })?;
 
         // If the message is from the "past", we discard it.
         if (message.view, validator::Phase::Prepare) < (self.view, self.phase) {

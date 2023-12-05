@@ -61,6 +61,14 @@ impl UTHarness {
         crate::misc::consensus_threshold(self.keys.len())
     }
 
+    pub(crate) fn protocol_version(&self) -> validator::ProtocolVersion {
+        self.consensus.inner.protocol_version
+    }
+
+    pub(crate) fn incompatible_protocol_version(&self) -> validator::ProtocolVersion {
+        validator::ProtocolVersion(self.protocol_version().0 + 1)
+    }
+
     pub(crate) fn owner_key(&self) -> &SecretKey {
         &self.consensus.inner.secret_key
     }
@@ -97,7 +105,7 @@ impl UTHarness {
     ) -> Signed<ReplicaPrepare> {
         self.set_owner_as_view_leader();
         let mut msg = ReplicaPrepare {
-            protocol_version: validator::ProtocolVersion::EARLIEST,
+            protocol_version: self.protocol_version(),
             view: self.consensus.replica.view,
             high_vote: self.consensus.replica.high_vote,
             high_qc: self.consensus.replica.high_qc.clone(),
@@ -113,7 +121,7 @@ impl UTHarness {
     ) -> Signed<LeaderPrepare> {
         let payload: Payload = rng.gen();
         let mut msg = LeaderPrepare {
-            protocol_version: validator::ProtocolVersion::EARLIEST,
+            protocol_version: self.protocol_version(),
             view: self.consensus.leader.view,
             proposal: BlockHeader {
                 parent: self.consensus.replica.high_vote.proposal.hash(),
@@ -134,7 +142,7 @@ impl UTHarness {
         mutate_fn: impl FnOnce(&mut ReplicaCommit),
     ) -> Signed<ReplicaCommit> {
         let mut msg = ReplicaCommit {
-            protocol_version: validator::ProtocolVersion::EARLIEST,
+            protocol_version: self.protocol_version(),
             view: self.consensus.replica.view,
             proposal: self.consensus.replica.high_qc.message.proposal,
         };
@@ -148,7 +156,7 @@ impl UTHarness {
         mutate_fn: impl FnOnce(&mut LeaderCommit),
     ) -> Signed<LeaderCommit> {
         let mut msg = LeaderCommit {
-            protocol_version: validator::ProtocolVersion::EARLIEST,
+            protocol_version: self.protocol_version(),
             justification: rng.gen(),
         };
         mutate_fn(&mut msg);

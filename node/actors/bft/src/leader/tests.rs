@@ -6,7 +6,7 @@ use assert_matches::assert_matches;
 use pretty_assertions::assert_eq;
 use rand::Rng;
 use zksync_concurrency::ctx;
-use zksync_consensus_roles::validator::{self, LeaderCommit, Phase, ProtocolVersion, ViewNumber};
+use zksync_consensus_roles::validator::{self, LeaderCommit, Phase, ViewNumber};
 
 #[tokio::test]
 async fn replica_prepare_sanity() {
@@ -68,6 +68,45 @@ async fn replica_prepare_sanity_yield_leader_prepare_reproposal() {
     let map = leader_prepare.msg.justification.map;
     assert_eq!(map.len(), 1);
     assert_eq!(*map.first_key_value().unwrap().0, replica_prepare);
+}
+
+#[tokio::test]
+async fn replica_prepare_incompatible_protocol_version() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let mut util = UTHarness::new(ctx, 1).await;
+
+    let incompatible_protocol_version = util.incompatible_protocol_version();
+    let replica_prepare = util.new_replica_prepare(|msg| {
+        msg.protocol_version = incompatible_protocol_version;
+    });
+    let res = util.process_replica_prepare(ctx, replica_prepare).await;
+    assert_matches!(
+        res,
+        Err(ReplicaPrepareError::IncompatibleProtocolVersion { message_version, local_version }) => {
+            assert_eq!(message_version, incompatible_protocol_version);
+            assert_eq!(local_version, util.protocol_version());
+        }
+    )
+}
+
+#[tokio::test]
+async fn replica_prepare_non_validator_signer() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let mut util = UTHarness::new(ctx, 1).await;
+
+    let replica_prepare = util.new_replica_prepare(|_| {}).msg;
+    let non_validator_key: validator::SecretKey = ctx.rng().gen();
+    let res = util
+        .process_replica_prepare(ctx, non_validator_key.sign_msg(replica_prepare))
+        .await;
+    assert_matches!(
+        res,
+        Err(ReplicaPrepareError::NonValidatorSigner { signer }) => {
+            assert_eq!(signer, non_validator_key.public());
+        }
+    );
 }
 
 #[tokio::test]
@@ -222,28 +261,6 @@ async fn replica_prepare_high_qc_of_future_view() {
     );
 }
 
-#[ignore = "fails/unsupported"]
-#[tokio::test]
-async fn replica_prepare_non_validator_signer() {
-    zksync_concurrency::testonly::abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx, 2).await;
-
-    let replica_prepare = util.new_replica_prepare(|_| {});
-    assert!(util
-        .process_replica_prepare(ctx, replica_prepare.clone())
-        .await
-        .is_err());
-
-    let non_validator: validator::SecretKey = ctx.rng().gen();
-    let replica_prepare = non_validator.sign_msg(replica_prepare.msg);
-    util.process_replica_prepare(ctx, replica_prepare)
-        .await
-        .unwrap();
-    // PANICS:
-    // "Couldn't create justification from valid replica messages!: Message signer isn't in the validator set"
-}
-
 #[tokio::test]
 async fn replica_commit_sanity() {
     zksync_concurrency::testonly::abort_on_panic();
@@ -271,6 +288,44 @@ async fn replica_commit_sanity_yield_leader_commit() {
         } => {
             assert_eq!(protocol_version, replica_commit.msg.protocol_version);
             assert_eq!(justification, util.new_commit_qc(|msg| *msg = replica_commit.msg));
+        }
+    );
+}
+
+#[tokio::test]
+async fn replica_commit_incompatible_protocol_version() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let mut util = UTHarness::new(ctx, 1).await;
+
+    let incompatible_protocol_version = util.incompatible_protocol_version();
+    let replica_commit = util.new_current_replica_commit(|msg| {
+        msg.protocol_version = incompatible_protocol_version;
+    });
+    let res = util.process_replica_commit(ctx, replica_commit).await;
+    assert_matches!(
+        res,
+        Err(ReplicaCommitError::IncompatibleProtocolVersion { message_version, local_version }) => {
+            assert_eq!(message_version, incompatible_protocol_version);
+            assert_eq!(local_version, util.protocol_version());
+        }
+    )
+}
+
+#[tokio::test]
+async fn replica_commit_non_validator_signer() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let mut util = UTHarness::new(ctx, 1).await;
+    let replica_commit = util.new_current_replica_commit(|_| {}).msg;
+    let non_validator_key: validator::SecretKey = ctx.rng().gen();
+    let res = util
+        .process_replica_commit(ctx, non_validator_key.sign_msg(replica_commit))
+        .await;
+    assert_matches!(
+        res,
+        Err(ReplicaCommitError::NonValidatorSigner { signer }) => {
+            assert_eq!(signer, non_validator_key.public());
         }
     );
 }
@@ -384,41 +439,4 @@ async fn replica_commit_unexpected_proposal() {
     let replica_commit = util.new_current_replica_commit(|_| {});
     let res = util.process_replica_commit(ctx, replica_commit).await;
     assert_matches!(res, Err(ReplicaCommitError::UnexpectedProposal));
-}
-
-#[ignore = "fails/unsupported"]
-#[tokio::test]
-async fn replica_commit_protocol_version_mismatch() {
-    zksync_concurrency::testonly::abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    let mut util = UTHarness::new(ctx, 2).await;
-
-    let replica_prepare = util.new_replica_prepare(|_| {});
-    assert!(util
-        .process_replica_prepare(ctx, replica_prepare.clone())
-        .await
-        .is_err());
-    let replica_prepare = util.keys[1].sign_msg(replica_prepare.msg);
-    let leader_prepare = util
-        .process_replica_prepare(ctx, replica_prepare)
-        .await
-        .unwrap()
-        .unwrap();
-    let replica_commit = util
-        .process_leader_prepare(ctx, leader_prepare)
-        .await
-        .unwrap();
-    assert!(util
-        .process_replica_commit(ctx, replica_commit.clone())
-        .await
-        .is_err());
-
-    let mut replica_commit = replica_commit.msg;
-    replica_commit.protocol_version = ProtocolVersion(replica_commit.protocol_version.0 + 1);
-    let replica_commit = util.keys[1].sign_msg(replica_commit);
-    util.process_replica_commit(ctx, replica_commit)
-        .await
-        .unwrap();
-    // PANICS:
-    // "Couldn't create justification from valid replica messages!: CommitQC can only be created from votes for the same message."
 }

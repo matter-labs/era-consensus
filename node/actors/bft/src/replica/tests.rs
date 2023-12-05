@@ -35,6 +35,26 @@ async fn leader_prepare_reproposal_sanity() {
 }
 
 #[tokio::test]
+async fn leader_prepare_incompatible_protocol_version() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let mut util = UTHarness::new(ctx, 1).await;
+
+    let incompatible_protocol_version = util.incompatible_protocol_version();
+    let leader_prepare = util.new_rnd_leader_prepare(&mut ctx.rng(), |msg| {
+        msg.protocol_version = incompatible_protocol_version;
+    });
+    let res = util.process_leader_prepare(ctx, leader_prepare).await;
+    assert_matches!(
+        res,
+        Err(LeaderPrepareError::IncompatibleProtocolVersion { message_version, local_version }) => {
+            assert_eq!(message_version, incompatible_protocol_version);
+            assert_eq!(local_version, util.protocol_version());
+        }
+    )
+}
+
+#[tokio::test]
 async fn leader_prepare_sanity_yield_replica_commit() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
@@ -132,7 +152,7 @@ async fn leader_prepare_invalid_payload() {
         payload: leader_prepare.msg.proposal_payload.clone().unwrap(),
         justification: CommitQC::from(
             &[util.keys[0].sign_msg(ReplicaCommit {
-                protocol_version: validator::ProtocolVersion::EARLIEST,
+                protocol_version: util.protocol_version(),
                 view: util.consensus.replica.view,
                 proposal: leader_prepare.msg.proposal,
             })],
@@ -384,6 +404,26 @@ async fn leader_commit_sanity_yield_replica_prepare() {
             high_qc: leader_commit.msg.justification,
         }
     );
+}
+
+#[tokio::test]
+async fn leader_commit_incompatible_protocol_version() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let mut util = UTHarness::new(ctx, 1).await;
+
+    let incompatible_protocol_version = util.incompatible_protocol_version();
+    let leader_commit = util.new_rnd_leader_commit(&mut ctx.rng(), |msg| {
+        msg.protocol_version = incompatible_protocol_version;
+    });
+    let res = util.process_leader_commit(ctx, leader_commit).await;
+    assert_matches!(
+        res,
+        Err(LeaderCommitError::IncompatibleProtocolVersion { message_version, local_version }) => {
+            assert_eq!(message_version, incompatible_protocol_version);
+            assert_eq!(local_version, util.protocol_version());
+        }
+    )
 }
 
 #[tokio::test]

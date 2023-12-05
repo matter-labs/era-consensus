@@ -112,14 +112,6 @@ impl Consensus {
 
             let res = match input {
                 Some(InputMessage::Network(req)) => {
-                    if req.msg.msg.protocol_version() != self.inner.protocol_version {
-                        tracing::warn!(
-                            "bad protocol version (expected: {:?}, received: {:?})",
-                            self.inner.protocol_version,
-                            req.msg.msg.protocol_version()
-                        );
-                        continue;
-                    }
                     let res = match &req.msg.msg {
                         validator::ConsensusMsg::ReplicaPrepare(_)
                         | validator::ConsensusMsg::ReplicaCommit(_) => {
