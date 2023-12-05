@@ -16,6 +16,12 @@ pub(crate) enum Error {
         /// Local version.
         local_version: ProtocolVersion,
     },
+    /// Message signer isn't part of the validator set.
+    #[error("Message signer isn't part of the validator set (signer: {signer:?})")]
+    NonValidatorSigner {
+        /// Signer of the message.
+        signer: validator::PublicKey,
+    },
     /// Unexpected proposal.
     #[error("unexpected proposal")]
     UnexpectedProposal,
@@ -76,6 +82,14 @@ impl StateMachine {
                 local_version: consensus.protocol_version,
             });
         }
+
+        // Check that the message signer is in the validator set.
+        consensus
+            .validator_set
+            .index(author)
+            .ok_or(Error::NonValidatorSigner {
+                signer: author.clone(),
+            })?;
 
         // If the message is from the "past", we discard it.
         if (message.view, validator::Phase::Commit) < (self.view, self.phase) {

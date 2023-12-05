@@ -323,6 +323,7 @@ impl UTHarness {
             .unwrap()
     }
 
+    #[allow(clippy::result_large_err)]
     pub(crate) fn dispatch_replica_commit_one(
         &mut self,
         msg: Signed<ConsensusMsg>,
@@ -334,6 +335,7 @@ impl UTHarness {
         )
     }
 
+    #[allow(clippy::result_large_err)]
     pub(crate) fn dispatch_replica_commit_many(
         &mut self,
         messages: Vec<ReplicaCommit>,

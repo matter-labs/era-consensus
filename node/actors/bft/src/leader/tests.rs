@@ -57,24 +57,6 @@ async fn replica_prepare_sanity_yield_leader_prepare() {
 }
 
 #[tokio::test]
-async fn replica_prepare_incompatible_protocol_version() {
-    let mut util = UTHarness::new_one().await;
-
-    let incompatible_protocol_version = util.incompatible_protocol_version();
-    let replica_prepare = util.new_current_replica_prepare(|msg| {
-        msg.protocol_version = incompatible_protocol_version;
-    });
-    let res = util.dispatch_replica_prepare_one(replica_prepare);
-    assert_matches!(
-        res,
-        Err(ReplicaPrepareError::IncompatibleProtocolVersion { message_version, local_version }) => {
-            assert_eq!(message_version, incompatible_protocol_version);
-            assert_eq!(local_version, util.protocol_version());
-        }
-    )
-}
-
-#[tokio::test]
 async fn replica_prepare_sanity_yield_leader_prepare_reproposal() {
     let mut util = UTHarness::new_many().await;
 
@@ -115,6 +97,41 @@ async fn replica_prepare_sanity_yield_leader_prepare_reproposal() {
                     assert_eq!(*map.first_key_value().unwrap().0, replica_prepare);
                 }
             );
+        }
+    );
+}
+
+#[tokio::test]
+async fn replica_prepare_incompatible_protocol_version() {
+    let mut util = UTHarness::new_one().await;
+
+    let incompatible_protocol_version = util.incompatible_protocol_version();
+    let replica_prepare = util.new_current_replica_prepare(|msg| {
+        msg.protocol_version = incompatible_protocol_version;
+    });
+    let res = util.dispatch_replica_prepare_one(replica_prepare);
+    assert_matches!(
+        res,
+        Err(ReplicaPrepareError::IncompatibleProtocolVersion { message_version, local_version }) => {
+            assert_eq!(message_version, incompatible_protocol_version);
+            assert_eq!(local_version, util.protocol_version());
+        }
+    )
+}
+
+#[tokio::test]
+async fn replica_prepare_non_validator_signer() {
+    let mut util = UTHarness::new_one().await;
+
+    let replica_prepare = util.new_current_replica_prepare(|_| {}).cast().unwrap().msg;
+    let non_validator_key: validator::SecretKey = util.rng().gen();
+    let signed = non_validator_key.sign_msg(ConsensusMsg::ReplicaPrepare(replica_prepare));
+
+    let res = util.dispatch_replica_prepare_one(signed);
+    assert_matches!(
+        res,
+        Err(ReplicaPrepareError::NonValidatorSigner { signer }) => {
+            assert_eq!(signer, non_validator_key.public());
         }
     );
 }
@@ -272,25 +289,6 @@ async fn replica_prepare_high_qc_of_future_view() {
     );
 }
 
-#[ignore = "fails/unsupported"]
-#[tokio::test]
-async fn replica_prepare_non_validator_signer() {
-    let mut util = UTHarness::new_with(2).await;
-
-    let view = ViewNumber(2);
-    util.set_view(view);
-    assert_eq!(util.view_leader(view), util.key_at(0).public());
-
-    let replica_prepare = util.new_current_replica_prepare(|_| {});
-    let _ = util.dispatch_replica_prepare_one(replica_prepare.clone());
-
-    let non_validator: validator::SecretKey = util.rng().gen();
-    let replica_prepare = non_validator.sign_msg(replica_prepare.msg);
-    util.dispatch_replica_prepare_one(replica_prepare).unwrap();
-    // PANICS:
-    // "Couldn't create justification from valid replica messages!: Message signer isn't in the validator set"
-}
-
 #[tokio::test]
 async fn replica_commit_sanity() {
     let mut util = UTHarness::new_many().await;
@@ -354,6 +352,23 @@ async fn replica_commit_incompatible_protocol_version() {
             assert_eq!(local_version, util.protocol_version());
         }
     )
+}
+
+#[tokio::test]
+async fn replica_commit_non_validator_signer() {
+    let mut util = UTHarness::new_one().await;
+
+    let replica_commit = util.new_current_replica_commit(|_| {}).cast().unwrap().msg;
+    let non_validator_key: validator::SecretKey = util.rng().gen();
+    let signed = non_validator_key.sign_msg(ConsensusMsg::ReplicaCommit(replica_commit));
+
+    let res = util.dispatch_replica_commit_one(signed);
+    assert_matches!(
+        res,
+        Err(ReplicaCommitError::NonValidatorSigner { signer }) => {
+            assert_eq!(signer, non_validator_key.public());
+        }
+    );
 }
 
 #[tokio::test]
