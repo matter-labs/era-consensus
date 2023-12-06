@@ -42,7 +42,7 @@ impl UTHarness {
         let num_validators = 6;
         assert_matches!(crate::misc::faulty_replicas(num_validators), res if res > 0);
         let mut util = UTHarness::new_with(num_validators).await;
-        util.set_view(util.owner_as_view_leader_next());
+        util.set_view(util.owner_as_view_leader_current_or_next());
         util
     }
 
@@ -105,7 +105,7 @@ impl UTHarness {
         assert_eq!(replica_prepare.high_vote.view, high_vote_view);
         assert_eq!(replica_prepare.high_qc.message.view, high_qc_view);
 
-        self.set_replica_view(self.owner_as_view_leader_next());
+        self.set_replica_view(self.owner_as_view_leader_current_or_next());
         self.iterate_next().await;
     }
 
@@ -125,7 +125,7 @@ impl UTHarness {
         &self.consensus.inner.secret_key
     }
 
-    pub(crate) fn owner_as_view_leader_next(&self) -> ViewNumber {
+    pub(crate) fn owner_as_view_leader_current_or_next(&self) -> ViewNumber {
         let mut view = self.replica_view();
         while self.view_leader(view) != self.owner_key().public() {
             view = view.next();
