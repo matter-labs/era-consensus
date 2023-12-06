@@ -101,19 +101,9 @@ impl UTHarness {
             .unwrap()
             .msg;
 
-        assert_matches!(
-            replica_prepare,
-            ReplicaPrepare {
-                view: _view,
-                high_vote,
-                high_qc,
-                ..
-            } => {
-                assert_eq!(_view, view);
-                assert_eq!(high_vote.view, high_vote_view);
-                assert_eq!(high_qc.message.view, high_qc_view);
-            }
-        );
+        assert_eq!(replica_prepare.view, view);
+        assert_eq!(replica_prepare.high_vote.view, high_vote_view);
+        assert_eq!(replica_prepare.high_qc.message.view, high_qc_view);
 
         self.set_replica_view(self.owner_as_view_leader_next());
         self.iterate_next().await;
