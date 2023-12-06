@@ -21,6 +21,13 @@ impl ProtocolVersion {
     pub fn as_u32(self) -> u32 {
         self.0
     }
+
+    /// Checks protocol version compatibility.
+    pub fn compatible(&self, other: &ProtocolVersion) -> bool {
+        // Currently using comparison.
+        // This can be changed later to apply a minimum supported version.
+        self.0 == other.0
+    }
 }
 
 impl TryFrom<u32> for ProtocolVersion {

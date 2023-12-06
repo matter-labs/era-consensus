@@ -49,6 +49,24 @@ async fn leader_prepare_reproposal_sanity() {
 }
 
 #[tokio::test]
+async fn leader_prepare_incompatible_protocol_version() {
+    let mut util = UTHarness::new_one().await;
+
+    let incompatible_protocol_version = util.incompatible_protocol_version();
+    let leader_prepare = util.new_rnd_leader_prepare(|msg| {
+        msg.protocol_version = incompatible_protocol_version;
+    });
+    let res = util.dispatch_leader_prepare(leader_prepare).await;
+    assert_matches!(
+        res,
+        Err(LeaderPrepareError::IncompatibleProtocolVersion { message_version, local_version }) => {
+            assert_eq!(message_version, incompatible_protocol_version);
+            assert_eq!(local_version, util.protocol_version());
+        }
+    )
+}
+
+#[tokio::test]
 async fn leader_prepare_sanity_yield_replica_commit() {
     let mut util = UTHarness::new_one().await;
 
@@ -475,6 +493,24 @@ async fn leader_commit_sanity_yield_replica_prepare() {
             assert_eq!(high_qc, leader_commit.justification)
         }
     );
+}
+
+#[tokio::test]
+async fn leader_commit_incompatible_protocol_version() {
+    let mut util = UTHarness::new_one().await;
+
+    let incompatible_protocol_version = util.incompatible_protocol_version();
+    let leader_commit = util.new_rnd_leader_commit(|msg| {
+        msg.protocol_version = incompatible_protocol_version;
+    });
+    let res = util.dispatch_leader_commit(leader_commit).await;
+    assert_matches!(
+        res,
+        Err(LeaderCommitError::IncompatibleProtocolVersion { message_version, local_version }) => {
+            assert_eq!(message_version, incompatible_protocol_version);
+            assert_eq!(local_version, util.protocol_version());
+        }
+    )
 }
 
 #[tokio::test]
