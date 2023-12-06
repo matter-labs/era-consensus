@@ -81,6 +81,15 @@ impl UTHarness {
             .unwrap();
     }
 
+    /// Validate protocol liveness in the aftermath of a timeout.
+    ///
+    /// Params refer to the expected values in the next produced `ReplicaPrepare`
+    /// messages for the new iteration.
+    ///
+    /// * `view` - the expected view of the next `ReplicaPrepare`.
+    /// * `high_vote_view` - the expected view of the high vote of the next `ReplicaPrepare`.
+    /// * `high_qc_view` - the expected view of the high qc of the next `ReplicaPrepare`.
+    ///
     pub(crate) async fn check_recovery_after_timeout(
         &mut self,
         view: ViewNumber,
