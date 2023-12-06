@@ -32,3 +32,6 @@ zksync_protobuf_build.workspace = true
 default = []
 # Enables RocksDB-based storage.
 rocksdb = ["dep:rocksdb"]
+
+[lints]
+workspace = true

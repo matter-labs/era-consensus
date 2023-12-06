@@ -20,7 +20,10 @@ tracing.workspace = true
 ff_ce.workspace = true
 
 [dev-dependencies]
-criterion = "0.5.1"
+criterion.workspace = true
+
+[lints]
+workspace = true
 
 [[bench]]
 name = "bench"

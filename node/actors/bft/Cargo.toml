@@ -25,3 +25,6 @@ vise.workspace = true
 [dev-dependencies]
 tokio.workspace = true
 assert_matches.workspace = true
+
+[lints]
+workspace = true

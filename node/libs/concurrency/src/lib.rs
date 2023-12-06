@@ -1,4 +1,5 @@
 //! Concurrency primitives.
+#![allow(unsafe_code)]
 
 pub mod ctx;
 pub mod error;
