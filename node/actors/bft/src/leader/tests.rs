@@ -13,8 +13,6 @@ use zksync_consensus_roles::validator::{
 async fn replica_prepare_sanity() {
     let mut util = UTHarness::new_many().await;
 
-    util.set_view(util.owner_as_view_leader());
-
     let replica_prepare = util.new_current_replica_prepare(|_| {}).cast().unwrap().msg;
     util.dispatch_replica_prepare_many(
         vec![replica_prepare; util.consensus_threshold()],
@@ -59,8 +57,6 @@ async fn replica_prepare_sanity_yield_leader_prepare() {
 #[tokio::test]
 async fn replica_prepare_sanity_yield_leader_prepare_reproposal() {
     let mut util = UTHarness::new_many().await;
-
-    util.set_view(util.owner_as_view_leader());
 
     let replica_prepare: ReplicaPrepare =
         util.new_unfinalized_replica_prepare().cast().unwrap().msg;
@@ -176,7 +172,7 @@ async fn replica_prepare_during_commit() {
 async fn replica_prepare_not_leader_in_view() {
     let mut util = UTHarness::new_with(2).await;
 
-    let current_view_leader = util.view_leader(util.current_replica_view());
+    let current_view_leader = util.view_leader(util.replica_view());
     assert_ne!(current_view_leader, util.owner_key().public());
 
     let replica_prepare = util.new_current_replica_prepare(|_| {});
@@ -293,8 +289,6 @@ async fn replica_prepare_high_qc_of_future_view() {
 async fn replica_commit_sanity() {
     let mut util = UTHarness::new_many().await;
 
-    util.set_view(util.owner_as_view_leader());
-
     let replica_commit = util
         .new_procedural_replica_commit_many()
         .await
@@ -381,7 +375,7 @@ async fn replica_commit_old() {
         .cast::<ReplicaCommit>()
         .unwrap()
         .msg;
-    replica_commit.view = util.current_replica_view().prev();
+    replica_commit.view = util.replica_view().prev();
     let replica_commit = util
         .owner_key()
         .sign_msg(ConsensusMsg::ReplicaCommit(replica_commit));
@@ -390,8 +384,8 @@ async fn replica_commit_old() {
     assert_matches!(
         res,
         Err(ReplicaCommitError::Old { current_view, current_phase }) => {
-            assert_eq!(current_view, util.current_replica_view());
-            assert_eq!(current_phase, util.current_replica_phase());
+            assert_eq!(current_view, util.replica_view());
+            assert_eq!(current_phase, util.replica_phase());
         }
     );
 }
@@ -400,7 +394,7 @@ async fn replica_commit_old() {
 async fn replica_commit_not_leader_in_view() {
     let mut util = UTHarness::new_with(2).await;
 
-    let current_view_leader = util.view_leader(util.current_replica_view());
+    let current_view_leader = util.view_leader(util.replica_view());
     assert_ne!(current_view_leader, util.owner_key().public());
 
     let replica_commit = util.new_current_replica_commit(|_| {});

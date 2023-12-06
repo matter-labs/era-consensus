@@ -14,8 +14,6 @@ use zksync_consensus_roles::validator::{
 async fn leader_prepare_sanity() {
     let mut util = UTHarness::new_many().await;
 
-    util.set_view(util.owner_as_view_leader());
-
     let leader_prepare = util.new_procedural_leader_prepare_many().await;
     util.dispatch_leader_prepare(leader_prepare).await.unwrap();
 }
@@ -23,8 +21,6 @@ async fn leader_prepare_sanity() {
 #[tokio::test]
 async fn leader_prepare_reproposal_sanity() {
     let mut util = UTHarness::new_many().await;
-
-    util.set_view(util.owner_as_view_leader());
 
     let replica_prepare: ReplicaPrepare =
         util.new_unfinalized_replica_prepare().cast().unwrap().msg;
@@ -154,7 +150,7 @@ async fn leader_prepare_old_view() {
         .cast::<LeaderPrepare>()
         .unwrap()
         .msg;
-    leader_prepare.view = util.current_replica_view().prev();
+    leader_prepare.view = util.replica_view().prev();
     let leader_prepare = util
         .owner_key()
         .sign_msg(ConsensusMsg::LeaderPrepare(leader_prepare));
@@ -163,8 +159,8 @@ async fn leader_prepare_old_view() {
     assert_matches!(
         res,
         Err(LeaderPrepareError::Old { current_view, current_phase }) => {
-            assert_eq!(current_view, util.current_replica_view());
-            assert_eq!(current_phase, util.current_replica_phase());
+            assert_eq!(current_view, util.replica_view());
+            assert_eq!(current_phase, util.replica_phase());
         }
     );
 }
@@ -393,8 +389,6 @@ async fn leader_prepare_proposal_non_sequential_number() {
 async fn leader_prepare_reproposal_without_quorum() {
     let mut util = UTHarness::new_many().await;
 
-    util.set_view(util.owner_as_view_leader());
-
     let mut leader_prepare = util
         .new_procedural_leader_prepare_many()
         .await
@@ -464,8 +458,6 @@ async fn leader_prepare_reproposal_invalid_block() {
 async fn leader_commit_sanity() {
     let mut util = UTHarness::new_many().await;
 
-    util.set_view(util.owner_as_view_leader());
-
     let leader_commit = util.new_procedural_leader_commit_many().await;
     util.dispatch_leader_commit(leader_commit).await.unwrap();
 }
@@ -525,7 +517,7 @@ async fn leader_commit_incompatible_protocol_version() {
 async fn leader_commit_invalid_leader() {
     let mut util = UTHarness::new_with(2).await;
 
-    let current_view_leader = util.view_leader(util.current_replica_view());
+    let current_view_leader = util.view_leader(util.replica_view());
     assert_ne!(current_view_leader, util.owner_key().public());
 
     let leader_commit = util.new_rnd_leader_commit(|_| {});
