@@ -1,7 +1,7 @@
 //! Library files for the executor. We have it separate from the binary so that we can use these files in the tools crate.
 use crate::io::Dispatcher;
 use anyhow::Context as _;
-use std::{any, sync::Arc};
+use std::{any, fmt, sync::Arc};
 use zksync_concurrency::{ctx, net, scope};
 use zksync_consensus_bft::{misc::consensus_threshold, Consensus, PayloadSource};
 use zksync_consensus_network as network;
@@ -30,6 +30,14 @@ struct ValidatorExecutor {
     payload_source: Arc<dyn PayloadSource>,
 }
 
+impl fmt::Debug for ValidatorExecutor {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.debug_struct("ValidatorExecutor")
+            .field("config", &self.config)
+            .finish()
+    }
+}
+
 impl ValidatorExecutor {
     /// Returns consensus network configuration.
     fn consensus_config(&self) -> network::consensus::Config {
@@ -42,6 +50,7 @@ impl ValidatorExecutor {
 }
 
 /// Executor allowing to spin up all actors necessary for a consensus node.
+#[derive(Debug)]
 pub struct Executor<S> {
     /// General-purpose executor configuration.
     executor_config: ExecutorConfig,

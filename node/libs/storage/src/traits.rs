@@ -56,16 +56,8 @@ pub trait WriteBlockStore: BlockStore {
         ctx: &ctx::Ctx,
         block_number: BlockNumber,
         _payload: &Payload,
-    ) -> ctx::Result<()> {
-        let head_number = self.head_block(ctx).await?.header.number;
-        if head_number >= block_number {
-            return Err(anyhow::anyhow!(
-                "received proposal for block {block_number:?}, while head is at {head_number:?}"
-            )
-            .into());
-        }
-        Ok(())
-    }
+    ) -> ctx::Result<()>;
+
     /// Puts a block into this storage.
     async fn put_block(&self, ctx: &ctx::Ctx, block: &FinalBlock) -> ctx::Result<()>;
 }

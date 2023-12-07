@@ -81,7 +81,7 @@ impl Consensus {
 
     /// Starts the Consensus actor. It will start running, processing incoming messages and
     /// sending output messages. This is a blocking method.
-    #[instrument(level = "trace", skip(self) ret)]
+    #[instrument(level = "trace", skip(self), err)]
     pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         info!(
             "Starting consensus actor {:?}",

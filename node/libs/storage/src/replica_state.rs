@@ -20,7 +20,7 @@ impl From<validator::CommitQC> for ReplicaState {
     }
 }
 
-/// ReplicaStorage.
+/// Storage combining [`ReplicaStateStore`] and [`WriteBlockStore`].
 #[derive(Debug, Clone)]
 pub struct ReplicaStore {
     state: Arc<dyn ReplicaStateStore>,
