@@ -11,3 +11,5 @@ zksync_concurrency.workspace = true
 
 thiserror.workspace = true
 
+[lints]
+workspace = true

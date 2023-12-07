@@ -27,3 +27,6 @@ vise.workspace = true
 tokio.workspace = true
 assert_matches.workspace = true
 pretty_assertions.workspace = true
+
+[lints]
+workspace = true

@@ -57,6 +57,25 @@ impl UTHarness {
         UTHarness::new(ctx, num_validators).await
     }
 
+    /// Triggers replica timeout, validates the new ReplicaPrepare
+    /// then executes the whole new view to make sure that the consensus
+    /// recovers after a timeout.
+    pub(crate) async fn produce_block_after_timeout(&mut self, ctx: &ctx::Ctx) {
+        let want = ReplicaPrepare {
+            protocol_version: self.consensus.inner.protocol_version,
+            view: self.consensus.replica.view.next(),
+            high_qc: self.consensus.replica.high_qc.clone(),
+            high_vote: self.consensus.replica.high_vote,
+        };
+        let replica_prepare = self.process_replica_timeout(ctx).await;
+        assert_eq!(want, replica_prepare.msg);
+
+        let leader_commit = self.new_leader_commit(ctx).await;
+        self.process_leader_commit(ctx, leader_commit)
+            .await
+            .unwrap();
+    }
+
     pub(crate) fn consensus_threshold(&self) -> usize {
         crate::misc::consensus_threshold(self.keys.len())
     }
@@ -92,11 +111,6 @@ impl UTHarness {
 
     pub(crate) fn set_replica_view(&mut self, view: ViewNumber) {
         self.consensus.replica.view = view
-    }
-
-    pub(crate) fn replica_timeout(&mut self) {
-        self.consensus.replica.view = self.consensus.replica.view.next();
-        self.consensus.replica.phase = Phase::Prepare;
     }
 
     pub(crate) fn new_replica_prepare(
@@ -293,6 +307,22 @@ impl UTHarness {
                 message.cast().unwrap()
             }
         })
+    }
+
+    pub(crate) async fn process_replica_timeout(
+        &mut self,
+        ctx: &ctx::Ctx,
+    ) -> Signed<ReplicaPrepare> {
+        self.consensus
+            .replica
+            .process_input(ctx, &self.consensus.inner, None)
+            .await
+            .unwrap();
+        self.try_recv().unwrap()
+    }
+
+    pub(crate) fn leader_phase(&self) -> Phase {
+        self.consensus.leader.phase
     }
 
     pub(crate) fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {

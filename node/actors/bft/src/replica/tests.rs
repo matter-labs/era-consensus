@@ -26,7 +26,7 @@ async fn leader_prepare_reproposal_sanity() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new_many(ctx).await;
     util.new_replica_commit(ctx).await;
-    util.replica_timeout();
+    util.process_replica_timeout(ctx).await;
     let leader_prepare = util.new_leader_prepare(ctx).await;
     assert!(leader_prepare.msg.proposal_payload.is_none());
     util.process_leader_prepare(ctx, leader_prepare)

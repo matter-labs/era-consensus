@@ -49,7 +49,7 @@ async fn replica_prepare_sanity_yield_leader_prepare_reproposal() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new_many(ctx).await;
     util.new_replica_commit(ctx).await;
-    util.replica_timeout();
+    util.process_replica_timeout(ctx).await;
     let replica_prepare = util.new_replica_prepare(|_| {}).msg;
     let leader_prepare = util
         .process_replica_prepare_all(ctx, replica_prepare.clone())
