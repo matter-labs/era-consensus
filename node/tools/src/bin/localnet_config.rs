@@ -71,6 +71,7 @@ fn main() -> anyhow::Result<()> {
         &validator_keys,
         protocol_version,
         validator::Payload(vec![]),
+        validator::BlockNumber(0),
     );
 
     // Each node will have `gossip_peers` outbound peers.

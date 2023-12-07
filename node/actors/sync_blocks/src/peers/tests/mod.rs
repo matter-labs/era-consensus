@@ -7,7 +7,7 @@ use std::{collections::HashSet, fmt};
 use test_casing::{test_casing, Product};
 use zksync_concurrency::{testonly::abort_on_panic, time};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{BlockStore, InMemoryStorage};
+use zksync_consensus_storage::InMemoryStorage;
 
 mod basics;
 mod fakes;

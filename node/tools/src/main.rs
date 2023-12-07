@@ -111,7 +111,12 @@ async fn main() -> anyhow::Result<()> {
         .context("Executor::new()")?;
     if let Some((consensus_config, validator_key)) = configs.consensus {
         executor
-            .set_validator(consensus_config, validator_key, storage.clone())
+            .set_validator(
+                consensus_config,
+                validator_key,
+                storage.clone(),
+                Arc::new(zksync_consensus_bft::testonly::RandomPayloadSource),
+            )
             .context("Executor::set_validator()")?;
     }
 

@@ -5,10 +5,7 @@ use std::collections::HashMap;
 use zksync_concurrency::net;
 use zksync_consensus_bft::testonly::make_genesis;
 use zksync_consensus_network::{consensus, testonly::Instance};
-use zksync_consensus_roles::{
-    node,
-    validator::{self, Payload},
-};
+use zksync_consensus_roles::{node, validator};
 
 impl ConsensusConfig {
     fn from_network_config(
@@ -44,7 +41,8 @@ impl FullValidatorConfig {
     pub fn for_single_validator(
         rng: &mut impl Rng,
         protocol_version: validator::ProtocolVersion,
-        genesis_block_payload: Payload,
+        genesis_block_payload: validator::Payload,
+        genesis_block_number: validator::BlockNumber,
     ) -> Self {
         let mut net_configs = Instance::new_configs(rng, 1, 0);
         assert_eq!(net_configs.len(), 1);
@@ -58,6 +56,7 @@ impl FullValidatorConfig {
             &[validator_key.clone()],
             protocol_version,
             genesis_block_payload,
+            genesis_block_number,
         );
         let node_key = net_config.gossip.key.clone();
         let node_config = ExecutorConfig {

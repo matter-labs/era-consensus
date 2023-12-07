@@ -131,10 +131,10 @@ impl BlockHeader {
     }
 
     /// Creates a genesis block.
-    pub fn genesis(payload: PayloadHash) -> Self {
+    pub fn genesis(payload: PayloadHash, number: BlockNumber) -> Self {
         Self {
             parent: BlockHeaderHash(Keccak256::default()),
-            number: BlockNumber(0),
+            number,
             payload,
         }
     }

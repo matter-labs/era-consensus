@@ -6,6 +6,7 @@ use rand::{thread_rng, Rng};
 use std::iter;
 use test_casing::test_casing;
 use zksync_concurrency::{sync, testonly::abort_on_panic, time};
+use zksync_consensus_bft::testonly::RandomPayloadSource;
 use zksync_consensus_roles::validator::{BlockNumber, FinalBlock, Payload};
 use zksync_consensus_storage::{BlockStore, InMemoryStorage};
 
@@ -40,7 +41,12 @@ impl FullValidatorConfig {
             .await
             .unwrap();
         executor
-            .set_validator(self.consensus_config, self.validator_key, storage)
+            .set_validator(
+                self.consensus_config,
+                self.validator_key,
+                storage,
+                Arc::new(RandomPayloadSource),
+            )
             .unwrap();
         executor
     }
@@ -71,13 +77,15 @@ async fn executor_misconfiguration(name: &str, mutation: fn(&mut FinalBlock)) {
         rng,
         validator::ProtocolVersion::EARLIEST,
         Payload(vec![]),
+        BlockNumber(0),
     );
     let genesis_block = &mut validator.node_config.genesis_block;
     mutation(genesis_block);
     let storage = Arc::new(InMemoryStorage::new(genesis_block.clone()));
     let err = Executor::new(ctx, validator.node_config, validator.node_key, storage)
         .await
-        .unwrap_err();
+        .err()
+        .unwrap();
     tracing::info!(%err, "received expected validation error");
 }
 
@@ -91,13 +99,15 @@ async fn genesis_block_mismatch() {
         rng,
         validator::ProtocolVersion::EARLIEST,
         Payload(vec![]),
+        BlockNumber(0),
     );
     let mut genesis_block = validator.node_config.genesis_block.clone();
     genesis_block.header.number = BlockNumber(1);
     let storage = Arc::new(InMemoryStorage::new(genesis_block.clone()));
     let err = Executor::new(ctx, validator.node_config, validator.node_key, storage)
         .await
-        .unwrap_err();
+        .err()
+        .unwrap();
     tracing::info!(%err, "received expected validation error");
 }
 
@@ -111,6 +121,7 @@ async fn executing_single_validator() {
         rng,
         validator::ProtocolVersion::EARLIEST,
         Payload(vec![]),
+        BlockNumber(0),
     );
     let genesis_block = &validator.node_config.genesis_block;
     let storage = InMemoryStorage::new(genesis_block.clone());
@@ -140,6 +151,7 @@ async fn executing_validator_and_full_node() {
         rng,
         validator::ProtocolVersion::EARLIEST,
         Payload(vec![]),
+        BlockNumber(0),
     );
     let full_node = validator.connect_full_node(rng);
 
@@ -186,6 +198,7 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
         rng,
         validator::ProtocolVersion::EARLIEST,
         Payload(vec![]),
+        BlockNumber(0),
     );
     let mut full_node = validator.connect_full_node(rng);
 

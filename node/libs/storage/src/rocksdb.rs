@@ -18,7 +18,7 @@ use std::{
     },
 };
 use zksync_concurrency::{ctx, scope, sync::watch};
-use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
+use zksync_consensus_roles::validator;
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -27,8 +27,8 @@ enum DatabaseKey {
     /// ReplicaState -> ReplicaState
     ReplicaState,
     /// Key used to store the finalized blocks.
-    /// Block(BlockNumber) -> FinalBlock
-    Block(BlockNumber),
+    /// Block(validator::BlockNumber) -> validator::FinalBlock
+    Block(validator::BlockNumber),
 }
 
 impl DatabaseKey {
@@ -57,11 +57,11 @@ impl DatabaseKey {
     }
 
     /// Parses the specified bytes as a `Self::Block(_)` key.
-    pub(crate) fn parse_block_key(raw_key: &[u8]) -> anyhow::Result<BlockNumber> {
+    pub(crate) fn parse_block_key(raw_key: &[u8]) -> anyhow::Result<validator::BlockNumber> {
         let raw_key = raw_key
             .try_into()
             .context("Invalid encoding for block key")?;
-        Ok(BlockNumber(u64::from_be_bytes(raw_key)))
+        Ok(validator::BlockNumber(u64::from_be_bytes(raw_key)))
     }
 }
 
@@ -79,7 +79,7 @@ pub struct RocksdbStorage {
     /// that blocks are never removed from the DB.
     cached_last_contiguous_block_number: AtomicU64,
     /// Sender of numbers of written blocks.
-    block_writes_sender: watch::Sender<BlockNumber>,
+    block_writes_sender: watch::Sender<validator::BlockNumber>,
 }
 
 impl RocksdbStorage {
@@ -87,7 +87,11 @@ impl RocksdbStorage {
     /// a new one. We need the genesis block of the chain as input.
     // TODO(bruno): we want to eventually start pruning old blocks, so having the genesis
     //   block might be unnecessary.
-    pub async fn new(ctx: &ctx::Ctx, genesis_block: &FinalBlock, path: &Path) -> ctx::Result<Self> {
+    pub async fn new(
+        ctx: &ctx::Ctx,
+        genesis_block: &validator::FinalBlock,
+        path: &Path,
+    ) -> ctx::Result<Self> {
         let mut options = rocksdb::Options::default();
         options.create_missing_column_families(true);
         options.create_if_missing(true);
@@ -127,7 +131,7 @@ impl RocksdbStorage {
         self.inner.write().expect("DB lock is poisoned")
     }
 
-    fn head_block_blocking(&self) -> anyhow::Result<FinalBlock> {
+    fn head_block_blocking(&self) -> anyhow::Result<validator::FinalBlock> {
         let db = self.read();
 
         let mut options = ReadOptions::default();
@@ -141,7 +145,7 @@ impl RocksdbStorage {
     }
 
     /// Returns a block with the least number stored in this database.
-    fn first_block_blocking(&self) -> anyhow::Result<FinalBlock> {
+    fn first_block_blocking(&self) -> anyhow::Result<validator::FinalBlock> {
         let db = self.read();
 
         let mut options = ReadOptions::default();
@@ -154,11 +158,11 @@ impl RocksdbStorage {
         zksync_protobuf::decode(&first_block).context("Failed decoding first stored block bytes")
     }
 
-    fn last_contiguous_block_number_blocking(&self) -> anyhow::Result<BlockNumber> {
+    fn last_contiguous_block_number_blocking(&self) -> anyhow::Result<validator::BlockNumber> {
         let last_contiguous_block_number = self
             .cached_last_contiguous_block_number
             .load(Ordering::Relaxed);
-        let last_contiguous_block_number = BlockNumber(last_contiguous_block_number);
+        let last_contiguous_block_number = validator::BlockNumber(last_contiguous_block_number);
 
         let last_contiguous_block_number =
             self.last_contiguous_block_number_impl(last_contiguous_block_number)?;
@@ -175,8 +179,8 @@ impl RocksdbStorage {
     // is for the `cached_last_contiguous_block_number` to be present in the database.
     fn last_contiguous_block_number_impl(
         &self,
-        cached_last_contiguous_block_number: BlockNumber,
-    ) -> anyhow::Result<BlockNumber> {
+        cached_last_contiguous_block_number: validator::BlockNumber,
+    ) -> anyhow::Result<validator::BlockNumber> {
         let db = self.read();
 
         let mut options = ReadOptions::default();
@@ -202,7 +206,10 @@ impl RocksdbStorage {
     }
 
     /// Gets a block by its number.
-    fn block_blocking(&self, number: BlockNumber) -> anyhow::Result<Option<FinalBlock>> {
+    fn block_blocking(
+        &self,
+        number: validator::BlockNumber,
+    ) -> anyhow::Result<Option<validator::FinalBlock>> {
         let db = self.read();
 
         let Some(raw_block) = db
@@ -219,8 +226,8 @@ impl RocksdbStorage {
     /// Iterates over block numbers in the specified `range` that the DB *does not* have.
     fn missing_block_numbers_blocking(
         &self,
-        range: ops::Range<BlockNumber>,
-    ) -> anyhow::Result<Vec<BlockNumber>> {
+        range: ops::Range<validator::BlockNumber>,
+    ) -> anyhow::Result<Vec<validator::BlockNumber>> {
         let db = self.read();
 
         let mut options = ReadOptions::default();
@@ -242,7 +249,7 @@ impl RocksdbStorage {
     // ---------------- Write methods ----------------
 
     /// Insert a new block into the database.
-    fn put_block_blocking(&self, finalized_block: &FinalBlock) -> anyhow::Result<()> {
+    fn put_block_blocking(&self, finalized_block: &validator::FinalBlock) -> anyhow::Result<()> {
         let db = self.write();
         let block_number = finalized_block.header.number;
         tracing::debug!("Inserting new block #{block_number} into the database.");
@@ -292,38 +299,62 @@ impl fmt::Debug for RocksdbStorage {
 
 #[async_trait]
 impl BlockStore for RocksdbStorage {
-    async fn head_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<FinalBlock> {
+    async fn head_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<validator::FinalBlock> {
         Ok(scope::wait_blocking(|| self.head_block_blocking()).await?)
     }
 
-    async fn first_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<FinalBlock> {
+    async fn first_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<validator::FinalBlock> {
         Ok(scope::wait_blocking(|| self.first_block_blocking()).await?)
     }
 
-    async fn last_contiguous_block_number(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockNumber> {
+    async fn last_contiguous_block_number(
+        &self,
+        _ctx: &ctx::Ctx,
+    ) -> ctx::Result<validator::BlockNumber> {
         Ok(scope::wait_blocking(|| self.last_contiguous_block_number_blocking()).await?)
     }
 
-    async fn block(&self, _ctx: &ctx::Ctx, number: BlockNumber) -> ctx::Result<Option<FinalBlock>> {
+    async fn block(
+        &self,
+        _ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+    ) -> ctx::Result<Option<validator::FinalBlock>> {
         Ok(scope::wait_blocking(|| self.block_blocking(number)).await?)
     }
 
     async fn missing_block_numbers(
         &self,
         _ctx: &ctx::Ctx,
-        range: ops::Range<BlockNumber>,
-    ) -> ctx::Result<Vec<BlockNumber>> {
+        range: ops::Range<validator::BlockNumber>,
+    ) -> ctx::Result<Vec<validator::BlockNumber>> {
         Ok(scope::wait_blocking(|| self.missing_block_numbers_blocking(range)).await?)
     }
 
-    fn subscribe_to_block_writes(&self) -> watch::Receiver<BlockNumber> {
+    fn subscribe_to_block_writes(&self) -> watch::Receiver<validator::BlockNumber> {
         self.block_writes_sender.subscribe()
     }
 }
 
 #[async_trait]
 impl WriteBlockStore for RocksdbStorage {
-    async fn put_block(&self, _ctx: &ctx::Ctx, block: &FinalBlock) -> ctx::Result<()> {
+    /// Just verifies that the payload is for the successor of the current head.
+    async fn verify_payload(
+        &self,
+        ctx: &ctx::Ctx,
+        block_number: validator::BlockNumber,
+        _payload: &validator::Payload,
+    ) -> ctx::Result<()> {
+        let head_number = self.head_block(ctx).await?.header.number;
+        if head_number >= block_number {
+            return Err(anyhow::anyhow!(
+                "received proposal for block {block_number:?}, while head is at {head_number:?}"
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    async fn put_block(&self, _ctx: &ctx::Ctx, block: &validator::FinalBlock) -> ctx::Result<()> {
         Ok(scope::wait_blocking(|| self.put_block_blocking(block)).await?)
     }
 }

@@ -10,30 +10,33 @@ use zksync_concurrency::{
     ctx,
     sync::{watch, Mutex},
 };
-use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
+use zksync_consensus_roles::validator;
 
 #[derive(Debug)]
 struct BlocksInMemoryStore {
-    blocks: BTreeMap<BlockNumber, FinalBlock>,
-    last_contiguous_block_number: BlockNumber,
+    blocks: BTreeMap<validator::BlockNumber, validator::FinalBlock>,
+    last_contiguous_block_number: validator::BlockNumber,
 }
 
 impl BlocksInMemoryStore {
-    fn head_block(&self) -> &FinalBlock {
+    fn head_block(&self) -> &validator::FinalBlock {
         self.blocks.values().next_back().unwrap()
         // ^ `unwrap()` is safe by construction; the storage contains at least the genesis block
     }
 
-    fn first_block(&self) -> &FinalBlock {
+    fn first_block(&self) -> &validator::FinalBlock {
         self.blocks.values().next().unwrap()
         // ^ `unwrap()` is safe by construction; the storage contains at least the genesis block
     }
 
-    fn block(&self, number: BlockNumber) -> Option<&FinalBlock> {
+    fn block(&self, number: validator::BlockNumber) -> Option<&validator::FinalBlock> {
         self.blocks.get(&number)
     }
 
-    fn missing_block_numbers(&self, range: ops::Range<BlockNumber>) -> Vec<BlockNumber> {
+    fn missing_block_numbers(
+        &self,
+        range: ops::Range<validator::BlockNumber>,
+    ) -> Vec<validator::BlockNumber> {
         let existing_numbers = self
             .blocks
             .range(range.clone())
@@ -43,7 +46,7 @@ impl BlocksInMemoryStore {
             .collect()
     }
 
-    fn put_block(&mut self, block: FinalBlock) {
+    fn put_block(&mut self, block: validator::FinalBlock) {
         let block_number = block.header.number;
         tracing::debug!("Inserting block #{block_number} into database");
         if let Some(prev_block) = self.blocks.insert(block_number, block) {
@@ -69,12 +72,12 @@ impl BlocksInMemoryStore {
 pub struct InMemoryStorage {
     blocks: Mutex<BlocksInMemoryStore>,
     replica_state: Mutex<Option<ReplicaState>>,
-    blocks_sender: watch::Sender<BlockNumber>,
+    blocks_sender: watch::Sender<validator::BlockNumber>,
 }
 
 impl InMemoryStorage {
     /// Creates a new store containing only the specified `genesis_block`.
-    pub fn new(genesis_block: FinalBlock) -> Self {
+    pub fn new(genesis_block: validator::FinalBlock) -> Self {
         let genesis_block_number = genesis_block.header.number;
         Self {
             blocks: Mutex::new(BlocksInMemoryStore {
@@ -89,38 +92,62 @@ impl InMemoryStorage {
 
 #[async_trait]
 impl BlockStore for InMemoryStorage {
-    async fn head_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<FinalBlock> {
+    async fn head_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<validator::FinalBlock> {
         Ok(self.blocks.lock().await.head_block().clone())
     }
 
-    async fn first_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<FinalBlock> {
+    async fn first_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<validator::FinalBlock> {
         Ok(self.blocks.lock().await.first_block().clone())
     }
 
-    async fn last_contiguous_block_number(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockNumber> {
+    async fn last_contiguous_block_number(
+        &self,
+        _ctx: &ctx::Ctx,
+    ) -> ctx::Result<validator::BlockNumber> {
         Ok(self.blocks.lock().await.last_contiguous_block_number)
     }
 
-    async fn block(&self, _ctx: &ctx::Ctx, number: BlockNumber) -> ctx::Result<Option<FinalBlock>> {
+    async fn block(
+        &self,
+        _ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+    ) -> ctx::Result<Option<validator::FinalBlock>> {
         Ok(self.blocks.lock().await.block(number).cloned())
     }
 
     async fn missing_block_numbers(
         &self,
         _ctx: &ctx::Ctx,
-        range: ops::Range<BlockNumber>,
-    ) -> ctx::Result<Vec<BlockNumber>> {
+        range: ops::Range<validator::BlockNumber>,
+    ) -> ctx::Result<Vec<validator::BlockNumber>> {
         Ok(self.blocks.lock().await.missing_block_numbers(range))
     }
 
-    fn subscribe_to_block_writes(&self) -> watch::Receiver<BlockNumber> {
+    fn subscribe_to_block_writes(&self) -> watch::Receiver<validator::BlockNumber> {
         self.blocks_sender.subscribe()
     }
 }
 
 #[async_trait]
 impl WriteBlockStore for InMemoryStorage {
-    async fn put_block(&self, _ctx: &ctx::Ctx, block: &FinalBlock) -> ctx::Result<()> {
+    /// Just verifies that the payload is for the successor of the current head.
+    async fn verify_payload(
+        &self,
+        ctx: &ctx::Ctx,
+        block_number: validator::BlockNumber,
+        _payload: &validator::Payload,
+    ) -> ctx::Result<()> {
+        let head_number = self.head_block(ctx).await?.header.number;
+        if head_number >= block_number {
+            return Err(anyhow::anyhow!(
+                "received proposal for block {block_number:?}, while head is at {head_number:?}"
+            )
+            .into());
+        }
+        Ok(())
+    }
+
+    async fn put_block(&self, _ctx: &ctx::Ctx, block: &validator::FinalBlock) -> ctx::Result<()> {
         self.blocks.lock().await.put_block(block.clone());
         self.blocks_sender.send_replace(block.header.number);
         Ok(())

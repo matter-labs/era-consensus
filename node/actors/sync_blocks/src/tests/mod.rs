@@ -48,7 +48,7 @@ impl TestValidators {
         };
 
         let payload = Payload(vec![]);
-        let mut latest_block = BlockHeader::genesis(payload.hash());
+        let mut latest_block = BlockHeader::genesis(payload.hash(), BlockNumber(0));
         let final_blocks = (0..block_count).map(|_| {
             let final_block = FinalBlock {
                 header: latest_block,

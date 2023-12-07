@@ -98,6 +98,9 @@ pub(crate) enum Error {
         /// Proposal header corresponding to the payload.
         header: validator::BlockHeader,
     },
+    /// Invalid payload.
+    #[error("invalid payload: {0:#}")]
+    ProposalInvalidPayload(#[source] anyhow::Error),
     /// Re-proposal without quorum.
     #[error("block re-proposal without quorum for the re-proposal")]
     ReproposalWithoutQuorum,
@@ -264,6 +267,18 @@ impl StateMachine {
                         correct_number: highest_qc.message.proposal.number.next(),
                         received_number: message.proposal.number,
                         header: message.proposal,
+                    });
+                }
+
+                // Payload should be valid.
+                if let Err(err) = self
+                    .storage
+                    .verify_payload(ctx, message.proposal.number, payload)
+                    .await
+                {
+                    return Err(match err {
+                        err @ ctx::Error::Canceled(_) => Error::Internal(err),
+                        ctx::Error::Internal(err) => Error::ProposalInvalidPayload(err),
                     });
                 }
             }

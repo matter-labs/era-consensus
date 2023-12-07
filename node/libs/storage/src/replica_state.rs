@@ -20,7 +20,7 @@ impl From<validator::CommitQC> for ReplicaState {
     }
 }
 
-/// [`ReplicaStateStore`] wrapper that falls back to a specified block store.
+/// Storage combining [`ReplicaStateStore`] and [`WriteBlockStore`].
 #[derive(Debug, Clone)]
 pub struct ReplicaStore {
     state: Arc<dyn ReplicaStateStore>,
@@ -62,6 +62,16 @@ impl ReplicaStore {
         replica_state: &ReplicaState,
     ) -> ctx::Result<()> {
         self.state.put_replica_state(ctx, replica_state).await
+    }
+
+    /// Verify that `payload` is a correct proposal for the block `block_number`.
+    pub async fn verify_payload(
+        &self,
+        ctx: &ctx::Ctx,
+        block_number: validator::BlockNumber,
+        payload: &validator::Payload,
+    ) -> ctx::Result<()> {
+        self.blocks.verify_payload(ctx, block_number, payload).await
     }
 
     /// Puts a block into this storage.

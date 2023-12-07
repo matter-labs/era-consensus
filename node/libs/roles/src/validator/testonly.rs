@@ -36,7 +36,7 @@ pub fn make_justification<R: Rng>(
 /// WARNING: it is not a fully correct FinalBlock.
 pub fn make_genesis_block<R: Rng>(rng: &mut R, protocol_version: ProtocolVersion) -> FinalBlock {
     let payload: Payload = rng.gen();
-    let header = BlockHeader::genesis(payload.hash());
+    let header = BlockHeader::genesis(payload.hash(), BlockNumber(0));
     let justification = make_justification(rng, &header, protocol_version);
     FinalBlock {
         header,

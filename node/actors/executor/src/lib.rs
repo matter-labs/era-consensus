@@ -1,13 +1,12 @@
 //! Library files for the executor. We have it separate from the binary so that we can use these files in the tools crate.
-
 use crate::io::Dispatcher;
 use anyhow::Context as _;
-use std::{any, sync::Arc};
+use std::{any, fmt, sync::Arc};
 use zksync_concurrency::{ctx, net, scope};
-use zksync_consensus_bft::{misc::consensus_threshold, Consensus};
+use zksync_consensus_bft::{misc::consensus_threshold, Consensus, PayloadSource};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BlockStore, ReplicaStateStore, ReplicaStore, WriteBlockStore};
+use zksync_consensus_storage::{ReplicaStateStore, ReplicaStore, WriteBlockStore};
 use zksync_consensus_sync_blocks::SyncBlocks;
 use zksync_consensus_utils::pipe;
 
@@ -20,7 +19,6 @@ mod tests;
 pub use self::config::{proto, ConsensusConfig, ExecutorConfig, GossipConfig};
 
 /// Validator-related part of [`Executor`].
-#[derive(Debug)]
 struct ValidatorExecutor {
     /// Consensus network configuration.
     config: ConsensusConfig,
@@ -28,6 +26,16 @@ struct ValidatorExecutor {
     key: validator::SecretKey,
     /// Store for replica state.
     replica_state_store: Arc<dyn ReplicaStateStore>,
+    /// Payload proposer for new blocks.
+    payload_source: Arc<dyn PayloadSource>,
+}
+
+impl fmt::Debug for ValidatorExecutor {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.debug_struct("ValidatorExecutor")
+            .field("config", &self.config)
+            .finish()
+    }
 }
 
 impl ValidatorExecutor {
@@ -94,6 +102,7 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
         config: ConsensusConfig,
         key: validator::SecretKey,
         replica_state_store: Arc<dyn ReplicaStateStore>,
+        payload_source: Arc<dyn PayloadSource>,
     ) -> anyhow::Result<()> {
         let public = &config.key;
         anyhow::ensure!(
@@ -112,6 +121,7 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
                 config,
                 key,
                 replica_state_store,
+                payload_source,
             });
         } else {
             tracing::info!(
@@ -175,6 +185,7 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
                 validator.key.clone(),
                 validator_set.clone(),
                 consensus_storage,
+                validator.payload_source,
             )
             .await
             .context("consensus")?;

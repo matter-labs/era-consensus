@@ -31,7 +31,7 @@ impl InitStore for () {
 fn genesis_block(rng: &mut impl Rng) -> FinalBlock {
     let payload = Payload(vec![]);
     FinalBlock {
-        header: BlockHeader::genesis(payload.hash()),
+        header: BlockHeader::genesis(payload.hash(), BlockNumber(0)),
         payload,
         justification: rng.gen(),
     }
