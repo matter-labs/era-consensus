@@ -1,5 +1,5 @@
 use super::StateMachine;
-use crate::inner::ConsensusInner;
+use crate::{inner::ConsensusInner, Consensus};
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_roles::validator::{self, ProtocolVersion};
@@ -74,13 +74,10 @@ impl StateMachine {
         let view = message.justification.message.view;
 
         // Check protocol version compatibility.
-        if !consensus
-            .protocol_version
-            .compatible(&message.protocol_version)
-        {
+        if !Consensus::PROTOCOL_VERSION.compatible(&message.protocol_version) {
             return Err(Error::IncompatibleProtocolVersion {
                 message_version: message.protocol_version,
-                local_version: consensus.protocol_version,
+                local_version: Consensus::PROTOCOL_VERSION,
             });
         }
 

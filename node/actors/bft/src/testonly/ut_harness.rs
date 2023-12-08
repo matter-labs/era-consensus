@@ -32,12 +32,8 @@ impl UTHarness {
     pub(crate) async fn new(ctx: &ctx::Ctx, num_validators: usize) -> UTHarness {
         let mut rng = ctx.rng();
         let keys: Vec<_> = (0..num_validators).map(|_| rng.gen()).collect();
-        let (genesis, val_set) = crate::testonly::make_genesis(
-            &keys,
-            validator::ProtocolVersion::EARLIEST,
-            Payload(vec![]),
-            validator::BlockNumber(0),
-        );
+        let (genesis, val_set) =
+            crate::testonly::make_genesis(&keys, Payload(vec![]), validator::BlockNumber(0));
         let (mut consensus, pipe) =
             crate::testonly::make_consensus(ctx, &keys[0], &val_set, &genesis).await;
 
@@ -62,7 +58,7 @@ impl UTHarness {
     /// recovers after a timeout.
     pub(crate) async fn produce_block_after_timeout(&mut self, ctx: &ctx::Ctx) {
         let want = ReplicaPrepare {
-            protocol_version: self.consensus.inner.protocol_version,
+            protocol_version: self.protocol_version(),
             view: self.consensus.replica.view.next(),
             high_qc: self.consensus.replica.high_qc.clone(),
             high_vote: self.consensus.replica.high_vote,
@@ -81,7 +77,7 @@ impl UTHarness {
     }
 
     pub(crate) fn protocol_version(&self) -> validator::ProtocolVersion {
-        self.consensus.inner.protocol_version
+        Consensus::PROTOCOL_VERSION
     }
 
     pub(crate) fn incompatible_protocol_version(&self) -> validator::ProtocolVersion {

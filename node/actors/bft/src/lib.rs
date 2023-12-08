@@ -56,12 +56,14 @@ pub struct Consensus {
 }
 
 impl Consensus {
+    /// Protocol version of this BFT implementation.
+    pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVersion::EARLIEST;
+
     /// Creates a new Consensus struct.
     #[instrument(level = "trace", skip(payload_source))]
     pub async fn new(
         ctx: &ctx::Ctx,
         pipe: ActorPipe<InputMessage, OutputMessage>,
-        protocol_version: validator::ProtocolVersion,
         secret_key: validator::SecretKey,
         validator_set: validator::ValidatorSet,
         storage: ReplicaStore,
@@ -72,7 +74,6 @@ impl Consensus {
                 pipe,
                 secret_key,
                 validator_set,
-                protocol_version,
             },
             replica: replica::StateMachine::new(ctx, storage).await?,
             leader: leader::StateMachine::new(ctx, payload_source),

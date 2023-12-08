@@ -1,5 +1,5 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner, metrics};
+use crate::{inner::ConsensusInner, metrics, Consensus};
 use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
@@ -99,13 +99,10 @@ impl StateMachine {
         let author = &signed_message.key;
 
         // Check protocol version compatibility.
-        if !consensus
-            .protocol_version
-            .compatible(&message.protocol_version)
-        {
+        if !Consensus::PROTOCOL_VERSION.compatible(&message.protocol_version) {
             return Err(Error::IncompatibleProtocolVersion {
                 message_version: message.protocol_version,
-                local_version: consensus.protocol_version,
+                local_version: Consensus::PROTOCOL_VERSION,
             });
         }
 
@@ -260,7 +257,7 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::LeaderPrepare(
                     validator::LeaderPrepare {
-                        protocol_version: consensus.protocol_version,
+                        protocol_version: Consensus::PROTOCOL_VERSION,
                         view: self.view,
                         proposal,
                         proposal_payload: payload,
