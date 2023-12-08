@@ -23,8 +23,6 @@ pub struct ConsensusConfig {
     /// Public TCP address that other validators are expected to connect to.
     /// It is announced over gossip network.
     pub public_addr: net::SocketAddr,
-    /// Currently used protocol version for consensus messages.
-    pub protocol_version: validator::ProtocolVersion,
 }
 
 impl ProtoFmt for ConsensusConfig {
@@ -34,10 +32,6 @@ impl ProtoFmt for ConsensusConfig {
         Ok(Self {
             key: read_required_text(&proto.key).context("key")?,
             public_addr: read_required_text(&proto.public_addr).context("public_addr")?,
-            protocol_version: required(&proto.protocol_version)
-                .copied()
-                .and_then(validator::ProtocolVersion::try_from)
-                .context("protocol_version")?,
         })
     }
 
@@ -45,7 +39,6 @@ impl ProtoFmt for ConsensusConfig {
         Self::Proto {
             key: Some(self.key.encode()),
             public_addr: Some(self.public_addr.encode()),
-            protocol_version: Some(self.protocol_version.as_u32()),
         }
     }
 }

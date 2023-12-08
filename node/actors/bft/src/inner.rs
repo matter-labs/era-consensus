@@ -18,8 +18,6 @@ pub(crate) struct ConsensusInner {
     pub(crate) secret_key: validator::SecretKey,
     /// A vector of public keys for all the validators in the network.
     pub(crate) validator_set: validator::ValidatorSet,
-    /// Current protocol version for the consensus messages.
-    pub(crate) protocol_version: validator::ProtocolVersion,
 }
 
 impl ConsensusInner {

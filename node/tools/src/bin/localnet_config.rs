@@ -65,11 +65,9 @@ fn main() -> anyhow::Result<()> {
     let node_keys: Vec<node::SecretKey> = (0..addrs.len()).map(|_| rng.gen()).collect();
 
     // Generate the genesis block.
-    let protocol_version = validator::ProtocolVersion::EARLIEST;
     // TODO: generating genesis block shouldn't require knowing the private keys.
     let (genesis, validator_set) = testonly::make_genesis(
         &validator_keys,
-        protocol_version,
         validator::Payload(vec![]),
         validator::BlockNumber(0),
     );
@@ -114,7 +112,6 @@ fn main() -> anyhow::Result<()> {
             consensus: Some(ConsensusConfig {
                 key: validator_keys[i].public(),
                 public_addr: addrs[i],
-                protocol_version,
             }),
         };
 

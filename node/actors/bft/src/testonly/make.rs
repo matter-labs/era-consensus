@@ -41,7 +41,6 @@ pub async fn make_consensus(
     let consensus = Consensus::new(
         ctx,
         consensus_pipe,
-        genesis_block.justification.message.protocol_version,
         key.clone(),
         validator_set.clone(),
         ReplicaStore::from_store(Arc::new(storage)),
@@ -57,7 +56,6 @@ pub async fn make_consensus(
 /// and a validator set for the chain.
 pub fn make_genesis(
     keys: &[validator::SecretKey],
-    protocol_version: validator::ProtocolVersion,
     payload: validator::Payload,
     block_number: validator::BlockNumber,
 ) -> (validator::FinalBlock, validator::ValidatorSet) {
@@ -67,7 +65,7 @@ pub fn make_genesis(
         .iter()
         .map(|sk| {
             sk.sign_msg(validator::ReplicaCommit {
-                protocol_version,
+                protocol_version: validator::ProtocolVersion::EARLIEST,
                 view: validator::ViewNumber(0),
                 proposal: header,
             })

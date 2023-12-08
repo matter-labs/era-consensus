@@ -32,12 +32,8 @@ impl Test {
             .iter()
             .map(|node| node.consensus_config().key.clone())
             .collect();
-        let (genesis_block, _) = testonly::make_genesis(
-            &keys,
-            validator::ProtocolVersion::EARLIEST,
-            validator::Payload(vec![]),
-            validator::BlockNumber(0),
-        );
+        let (genesis_block, _) =
+            testonly::make_genesis(&keys, validator::Payload(vec![]), validator::BlockNumber(0));
         let nodes: Vec<_> = nodes
             .into_iter()
             .enumerate()
@@ -107,7 +103,6 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, nodes: &[Node]) -> anyhow::
                     let consensus = Consensus::new(
                         ctx,
                         consensus_actor_pipe,
-                        validator::ProtocolVersion::EARLIEST,
                         node.net.consensus_config().key.clone(),
                         validator_set,
                         storage,

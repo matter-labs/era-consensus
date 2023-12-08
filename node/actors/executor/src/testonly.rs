@@ -8,14 +8,10 @@ use zksync_consensus_network::{consensus, testonly::Instance};
 use zksync_consensus_roles::{node, validator};
 
 impl ConsensusConfig {
-    fn from_network_config(
-        src: consensus::Config,
-        protocol_version: validator::ProtocolVersion,
-    ) -> Self {
+    fn from_network_config(src: consensus::Config) -> Self {
         Self {
             key: src.key.public(),
             public_addr: src.public_addr,
-            protocol_version,
         }
     }
 }
@@ -36,11 +32,8 @@ pub struct FullValidatorConfig {
 
 impl FullValidatorConfig {
     /// Generates a validator config for a network with a single validator.
-    ///
-    /// `protocol_version` is used both for the genesis block and as the current protocol version.
     pub fn for_single_validator(
         rng: &mut impl Rng,
-        protocol_version: validator::ProtocolVersion,
         genesis_block_payload: validator::Payload,
         genesis_block_number: validator::BlockNumber,
     ) -> Self {
@@ -49,12 +42,10 @@ impl FullValidatorConfig {
         let net_config = net_configs.pop().unwrap();
         let consensus_config = net_config.consensus.unwrap();
         let validator_key = consensus_config.key.clone();
-        let consensus_config =
-            ConsensusConfig::from_network_config(consensus_config, protocol_version);
+        let consensus_config = ConsensusConfig::from_network_config(consensus_config);
 
         let (genesis_block, validators) = make_genesis(
             &[validator_key.clone()],
-            protocol_version,
             genesis_block_payload,
             genesis_block_number,
         );
