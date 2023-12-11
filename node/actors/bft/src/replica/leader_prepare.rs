@@ -133,7 +133,6 @@ impl StateMachine {
     pub(crate) async fn process_leader_prepare(
         &mut self,
         ctx: &ctx::Ctx,
-        consensus: &ConsensusInner,
         signed_message: validator::Signed<validator::LeaderPrepare>,
     ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
@@ -152,9 +151,9 @@ impl StateMachine {
         }
 
         // Check that it comes from the correct leader.
-        if author != &consensus.view_leader(view) {
+        if author != &self.inner.view_leader(view) {
             return Err(Error::InvalidLeader {
-                correct_leader: consensus.view_leader(view),
+                correct_leader: self.inner.view_leader(view),
                 received_leader: author.clone(),
             });
         }
@@ -176,7 +175,7 @@ impl StateMachine {
         // Verify the PrepareQC.
         message
             .justification
-            .verify(view, &consensus.validator_set, consensus.threshold())
+            .verify(view, &self.inner.validator_set, self.inner.threshold())
             .map_err(Error::InvalidPrepareQC)?;
 
         // Get the highest block voted and check if there's a quorum of votes for it. To have a quorum
@@ -190,7 +189,7 @@ impl StateMachine {
         let highest_vote: Option<validator::BlockHeader> = vote_count
             .into_iter()
             // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
-            .find(|(_, v)| *v > 2 * consensus.faulty_replicas())
+            .find(|(_, v)| *v > 2 * self.inner.faulty_replicas())
             .map(|(h, _)| h);
 
         // Get the highest CommitQC and verify it.
@@ -204,7 +203,7 @@ impl StateMachine {
             .clone();
 
         highest_qc
-            .verify(&consensus.validator_set, consensus.threshold())
+            .verify(&self.inner.validator_set, self.inner.threshold())
             .map_err(Error::InvalidHighQC)?;
 
         // If the high QC is for a future view, we discard the message.
@@ -219,7 +218,7 @@ impl StateMachine {
 
         // Try to create a finalized block with this CommitQC and our block proposal cache.
         // This gives us another chance to finalize a block that we may have missed before.
-        self.save_block(ctx, consensus, &highest_qc)
+        self.save_block(ctx, &highest_qc)
             .await
             .wrap("save_block()")?;
 
@@ -324,12 +323,13 @@ impl StateMachine {
 
         // Send the replica message to the leader.
         let output_message = ConsensusInputMessage {
-            message: consensus
+            message: self
+                .inner
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaCommit(commit_vote)),
             recipient: Target::Validator(author.clone()),
         };
-        consensus.pipe.send(output_message.into());
+        self.inner.pipe.send(output_message.into());
 
         Ok(())
     }

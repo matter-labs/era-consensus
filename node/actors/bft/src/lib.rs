@@ -19,7 +19,7 @@ use anyhow::Context as _;
 use inner::ConsensusInner;
 use std::sync::Arc;
 use tracing::{info, instrument};
-use zksync_concurrency::ctx;
+use zksync_concurrency::{scope,ctx};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::ReplicaStore;
 use zksync_consensus_utils::pipe::ActorPipe;
@@ -45,63 +45,40 @@ pub trait PayloadSource: Send + Sync + 'static {
     ) -> ctx::Result<validator::Payload>;
 }
 
-/// The Consensus struct implements the consensus algorithm and is the main entry point for the consensus actor.
-pub struct Consensus {
-    /// The inner struct contains the data that is shared between the consensus state machines.
-    pub(crate) inner: ConsensusInner,
-    /// The replica state machine.
-    pub(crate) replica: replica::StateMachine,
-    /// The leader state machine.
-    pub(crate) leader: leader::StateMachine,
-}
+/// Protocol version of this BFT implementation.
+pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVersion::EARLIEST;
 
-impl Consensus {
-    /// Protocol version of this BFT implementation.
-    pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVersion::EARLIEST;
+/// Starts the Consensus actor. It will start running, processing incoming messages and
+/// sending output messages. This is a blocking method.
+#[instrument(level = "trace", err)]
+pub async fn run(
+    ctx: &ctx::Ctx,
+    pipe: ActorPipe<InputMessage, OutputMessage>,
+    secret_key: validator::SecretKey,
+    validator_set: validator::ValidatorSet,
+    storage: ReplicaStore,
+    payload_source: Arc<dyn PayloadSource>,
+) -> anyhow::Result<()> {
+    let inner = Arc::new(ConsensusInner {
+        pipe: pipe.send,
+        secret_key,
+        validator_set,
+    });
+    let res = scope::run!(ctx,|ctx,s| async {
+        let replica = replica::StateMachine::start(ctx, inner.clone(), storage).await?;
+        let leader = leader::StateMachine::new(ctx, inner.clone(), payload_source);
 
-    /// Creates a new Consensus struct.
-    #[instrument(level = "trace", skip(payload_source))]
-    pub async fn new(
-        ctx: &ctx::Ctx,
-        pipe: ActorPipe<InputMessage, OutputMessage>,
-        secret_key: validator::SecretKey,
-        validator_set: validator::ValidatorSet,
-        storage: ReplicaStore,
-        payload_source: Arc<dyn PayloadSource>,
-    ) -> anyhow::Result<Self> {
-        Ok(Consensus {
-            inner: ConsensusInner {
-                pipe,
-                secret_key,
-                validator_set,
-            },
-            replica: replica::StateMachine::new(ctx, storage).await?,
-            leader: leader::StateMachine::new(ctx, payload_source),
-        })
-    }
-
-    /// Starts the Consensus actor. It will start running, processing incoming messages and
-    /// sending output messages. This is a blocking method.
-    #[instrument(level = "trace", skip(self), err)]
-    pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         info!(
             "Starting consensus actor {:?}",
-            self.inner.secret_key.public()
+            inner.secret_key.public()
         );
-
-        // We need to start the replica before processing inputs.
-        self.replica
-            .start(ctx, &self.inner)
-            .await
-            .context("replica.start()")?;
 
         // This is the infinite loop where the consensus actually runs. The validator waits for either
         // a message from the network or for a timeout, and processes each accordingly.
         loop {
-            let input = self
-                .inner
-                .pipe
-                .recv(&ctx.with_deadline(self.replica.timeout_deadline))
+            let input = pipe
+                .recv
+                .recv(&ctx.with_deadline(replica.timeout_deadline))
                 .await
                 .ok();
 
@@ -111,34 +88,28 @@ impl Consensus {
                 return Ok(());
             }
 
-            let res = match input {
-                Some(InputMessage::Network(req)) => {
-                    let res = match &req.msg.msg {
-                        validator::ConsensusMsg::ReplicaPrepare(_)
-                        | validator::ConsensusMsg::ReplicaCommit(_) => {
-                            self.leader.process_input(ctx, &self.inner, req.msg).await
-                        }
-                        validator::ConsensusMsg::LeaderPrepare(_)
-                        | validator::ConsensusMsg::LeaderCommit(_) => {
-                            self.replica
-                                .process_input(ctx, &self.inner, Some(req.msg))
-                                .await
-                        }
-                    };
-
-                    // Notify network actor that the message has been processed.
-                    // Ignore sending error.
-                    let _ = req.ack.send(());
-                    res
-                }
-                None => self.replica.process_input(ctx, &self.inner, None).await,
+            let Some(InputMessage::Network(req)) = input else {
+                replica.start_new_view(ctx).await?;
+                continue;
             };
-            if let Err(err) = res {
-                return match err {
-                    ctx::Error::Canceled(_) => Ok(()),
-                    ctx::Error::Internal(err) => Err(err),
-                };
-            }
+
+            use validator::ConsensusMsg as Msg;
+            let res = match &req.msg.msg {
+                Msg::ReplicaPrepare(_) | Msg::ReplicaCommit(_) => {
+                    leader.process_input(ctx, req.msg).await
+                }
+                Msg::LeaderPrepare(_) | Msg::LeaderCommit(_) => {
+                    replica.process_input(ctx, req.msg).await
+                }
+            };
+            // Notify network actor that the message has been processed.
+            // Ignore sending error.
+            let _ = req.ack.send(());
+            res?;
         }
+    }).await;
+    match res {
+        Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
+        Err(ctx::Error::Internal(err)) => Err(err),
     }
 }

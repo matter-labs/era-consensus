@@ -13,7 +13,6 @@ impl StateMachine {
     pub(crate) async fn save_block(
         &mut self,
         ctx: &ctx::Ctx,
-        consensus: &ConsensusInner,
         commit_qc: &validator::CommitQC,
     ) -> ctx::Result<()> {
         // TODO(gprusak): for availability of finalized blocks,

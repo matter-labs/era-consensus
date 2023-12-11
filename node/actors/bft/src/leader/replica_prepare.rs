@@ -89,7 +89,6 @@ impl StateMachine {
     pub(crate) async fn process_replica_prepare(
         &mut self,
         ctx: &ctx::Ctx,
-        consensus: &ConsensusInner,
         signed_message: validator::Signed<validator::ReplicaPrepare>,
     ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
@@ -107,7 +106,7 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator set.
-        consensus
+        self.inner.
             .validator_set
             .index(author)
             .ok_or(Error::NonValidatorSigner {
@@ -123,7 +122,7 @@ impl StateMachine {
         }
 
         // If the message is for a view when we are not a leader, we discard it.
-        if consensus.view_leader(message.view) != consensus.secret_key.public() {
+        if self.inner.view_leader(message.view) != self.inner.secret_key.public() {
             return Err(Error::NotLeaderInView);
         }
 
@@ -148,7 +147,7 @@ impl StateMachine {
         // Verify the high QC.
         message
             .high_qc
-            .verify(&consensus.validator_set, consensus.threshold())
+            .verify(&self.inner.validator_set, self.inner.threshold())
             .map_err(Error::InvalidHighQC)?;
 
         // If the high QC is for a future view, we discard the message.
@@ -172,10 +171,10 @@ impl StateMachine {
         // Now we check if we have enough messages to continue.
         let num_messages = self.prepare_message_cache.get(&message.view).unwrap().len();
 
-        if num_messages < consensus.threshold() {
+        if num_messages < self.inner.threshold() {
             return Err(Error::NumReceivedBelowThreshold {
                 num_messages,
-                threshold: consensus.threshold(),
+                threshold: self.inner.threshold(),
             });
         }
 
@@ -191,7 +190,7 @@ impl StateMachine {
             .into_values()
             .collect();
 
-        debug_assert!(num_messages == consensus.threshold());
+        debug_assert!(num_messages == self.inner.threshold());
 
         // Get the highest block voted for and check if there's a quorum of votes for it. To have a quorum
         // in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
@@ -204,7 +203,7 @@ impl StateMachine {
         let highest_vote: Option<validator::BlockHeader> = count
             .iter()
             // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
-            .find(|(_, v)| **v > 2 * consensus.faulty_replicas())
+            .find(|(_, v)| **v > 2 * self.inner.faulty_replicas())
             .map(|(h, _)| h)
             .cloned();
 
@@ -248,12 +247,13 @@ impl StateMachine {
         // ----------- Prepare our message and send it --------------
 
         // Create the justification for our message.
-        let justification = validator::PrepareQC::from(&replica_messages, &consensus.validator_set)
+        let justification = validator::PrepareQC::from(&replica_messages, &self.inner.validator_set)
             .expect("Couldn't create justification from valid replica messages!");
 
         // Broadcast the leader prepare message to all replicas (ourselves included).
         let output_message = ConsensusInputMessage {
-            message: consensus
+            message: self
+                .inner
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::LeaderPrepare(
                     validator::LeaderPrepare {
@@ -266,7 +266,7 @@ impl StateMachine {
                 )),
             recipient: Target::Broadcast,
         };
-        consensus.pipe.send(output_message.into());
+        self.inner.pipe.send(output_message.into());
 
         Ok(())
     }

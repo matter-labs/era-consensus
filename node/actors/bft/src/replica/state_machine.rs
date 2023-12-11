@@ -5,11 +5,13 @@ use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as 
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage as storage;
 use zksync_consensus_storage::ReplicaStore;
+use std::sync::Arc;
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
 /// for validating and voting on blocks. When participating in consensus we are always a replica.
 #[derive(Debug)]
 pub(crate) struct StateMachine {
+    pub(crate) inner: Arc<ConsensusInner>,
     /// The current view number.
     pub(crate) view: validator::ViewNumber,
     /// The current phase.
@@ -31,7 +33,7 @@ pub(crate) struct StateMachine {
 impl StateMachine {
     /// Creates a new StateMachine struct. We try to recover a past state from the storage module,
     /// otherwise we initialize the state machine with whatever head block we have.
-    pub(crate) async fn new(ctx: &ctx::Ctx, storage: ReplicaStore) -> anyhow::Result<Self> {
+    pub(crate) async fn start(ctx: &ctx::Ctx, inner: Arc<ConsensusInner>, storage: ReplicaStore) -> ctx::Result<Self> {
         let backup = storage.replica_state(ctx).await?;
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
         for proposal in backup.proposals {
@@ -41,7 +43,8 @@ impl StateMachine {
                 .insert(proposal.payload.hash(), proposal.payload);
         }
 
-        Ok(Self {
+        let this = Self {
+            inner,
             view: backup.view,
             phase: backup.phase,
             high_vote: backup.high_vote,
@@ -49,26 +52,14 @@ impl StateMachine {
             block_proposal_cache,
             timeout_deadline: time::Deadline::Infinite,
             storage,
-        })
-    }
-
-    /// Starts the state machine. The replica state needs to be initialized before
-    /// we are able to process inputs. If we are in the genesis block, then we start a new view,
-    /// this will kick start the consensus algorithm. Otherwise, we just start the timer.
-    #[instrument(level = "trace", ret)]
-    pub(crate) async fn start(
-        &mut self,
-        ctx: &ctx::Ctx,
-        consensus: &ConsensusInner,
-    ) -> ctx::Result<()> {
-        if self.view == validator::ViewNumber(0) {
-            self.start_new_view(ctx, consensus)
-                .await
-                .wrap("start_new_view()")
+        };
+        // We need to start the replica before processing inputs.
+        if this.view == validator::ViewNumber(0) {
+            this.start_new_view(ctx).await.wrap("start_new_view()")?;
         } else {
-            self.reset_timer(ctx);
-            Ok(())
+            this.reset_timer(ctx);
         }
+        Ok(this)
     }
 
     /// Process an input message (it will be None if the channel timed out waiting for a message). This is
@@ -78,21 +69,13 @@ impl StateMachine {
     pub(crate) async fn process_input(
         &mut self,
         ctx: &ctx::Ctx,
-        consensus: &ConsensusInner,
-        input: Option<validator::Signed<validator::ConsensusMsg>>,
+        input: validator::Signed<validator::ConsensusMsg>,
     ) -> ctx::Result<()> {
-        let Some(signed_msg) = input else {
-            tracing::warn!("We timed out before receiving a message.");
-            // Start new view.
-            self.start_new_view(ctx, consensus).await?;
-            return Ok(());
-        };
-
         let now = ctx.now();
         let label = match &signed_msg.msg {
             validator::ConsensusMsg::LeaderPrepare(_) => {
                 let res = match self
-                    .process_leader_prepare(ctx, consensus, signed_msg.cast().unwrap())
+                    .process_leader_prepare(ctx, signed_msg.cast().unwrap())
                     .await
                     .wrap("process_leader_prepare()")
                 {
@@ -107,7 +90,7 @@ impl StateMachine {
             }
             validator::ConsensusMsg::LeaderCommit(_) => {
                 let res = match self
-                    .process_leader_commit(ctx, consensus, signed_msg.cast().unwrap())
+                    .process_leader_commit(ctx, signed_msg.cast().unwrap())
                     .await
                     .wrap("process_leader_commit()")
                 {

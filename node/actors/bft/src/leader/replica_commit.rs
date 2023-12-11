@@ -63,7 +63,6 @@ impl StateMachine {
     pub(crate) fn process_replica_commit(
         &mut self,
         ctx: &ctx::Ctx,
-        consensus: &ConsensusInner,
         signed_message: validator::Signed<validator::ReplicaCommit>,
     ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
@@ -81,7 +80,7 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator set.
-        consensus
+        self.inner 
             .validator_set
             .index(author)
             .ok_or(Error::NonValidatorSigner {
@@ -97,7 +96,7 @@ impl StateMachine {
         }
 
         // If the message is for a view when we are not a leader, we discard it.
-        if consensus.view_leader(message.view) != consensus.secret_key.public() {
+        if self.inner.view_leader(message.view) != self.inner.secret_key.public() {
             return Err(Error::NotLeaderInView);
         }
 
@@ -136,14 +135,14 @@ impl StateMachine {
         // Now we check if we have enough messages to continue.
         let num_messages = self.commit_message_cache.get(&message.view).unwrap().len();
 
-        if num_messages < consensus.threshold() {
+        if num_messages < self.inner.threshold() {
             return Err(Error::NumReceivedBelowThreshold {
                 num_messages,
-                threshold: consensus.threshold(),
+                threshold: self.inner.threshold(),
             });
         }
 
-        debug_assert!(num_messages == consensus.threshold());
+        debug_assert!(num_messages == self.inner.threshold());
 
         // ----------- Update the state machine --------------
 
@@ -169,12 +168,12 @@ impl StateMachine {
             .collect::<Vec<_>>();
 
         // Create the justification for our message.
-        let justification = validator::CommitQC::from(&replica_messages, &consensus.validator_set)
+        let justification = validator::CommitQC::from(&replica_messages, &self.inner.validator_set)
             .expect("Couldn't create justification from valid replica messages!");
 
         // Broadcast the leader commit message to all replicas (ourselves included).
         let output_message = ConsensusInputMessage {
-            message: consensus
+            message: self.inner
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::LeaderCommit(
                     validator::LeaderCommit {
@@ -184,7 +183,7 @@ impl StateMachine {
                 )),
             recipient: Target::Broadcast,
         };
-        consensus.pipe.send(output_message.into());
+        self.inner.pipe.send(output_message.into());
 
         // Clean the caches.
         self.block_proposal_cache = None;

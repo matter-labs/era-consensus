@@ -4,6 +4,7 @@ use crate::{
     io::{InputMessage, OutputMessage},
     misc,
 };
+use zksync_concurrency::{ctx::channel};
 use tracing::instrument;
 use zksync_consensus_roles::validator;
 use zksync_consensus_utils::pipe::ActorPipe;
@@ -13,7 +14,7 @@ use zksync_consensus_utils::pipe::ActorPipe;
 #[derive(Debug)]
 pub(crate) struct ConsensusInner {
     /// The communication pipe. This is used to receive inputs and send outputs.
-    pub(crate) pipe: ActorPipe<InputMessage, OutputMessage>,
+    pub(crate) pipe: channel::UnboundedSender<OutputMessage>,
     /// The validator's secret key.
     pub(crate) secret_key: validator::SecretKey,
     /// A vector of public keys for all the validators in the network.

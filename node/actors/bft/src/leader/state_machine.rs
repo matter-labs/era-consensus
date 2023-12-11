@@ -12,6 +12,7 @@ use zksync_consensus_roles::validator;
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
 /// those messages. When participating in consensus we are not the leader most of the time.
 pub(crate) struct StateMachine {
+    pub(crate) inner: Arc<ConsensusInner>,
     /// Payload provider for the new blocks.
     pub(crate) payload_source: Arc<dyn PayloadSource>,
     /// The current view number. This might not match the replica's view number, we only have this here
@@ -39,8 +40,9 @@ pub(crate) struct StateMachine {
 impl StateMachine {
     /// Creates a new StateMachine struct.
     #[instrument(level = "trace", skip(payload_source))]
-    pub fn new(ctx: &ctx::Ctx, payload_source: Arc<dyn PayloadSource>) -> Self {
+    pub fn new(ctx: &ctx::Ctx, inner: Arc<ConsensusInner>, payload_source: Arc<dyn PayloadSource>) -> Self {
         StateMachine {
+            inner,
             payload_source,
             view: validator::ViewNumber(0),
             phase: validator::Phase::Prepare,

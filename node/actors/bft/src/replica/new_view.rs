@@ -11,7 +11,6 @@ impl StateMachine {
     pub(crate) async fn start_new_view(
         &mut self,
         ctx: &ctx::Ctx,
-        consensus: &ConsensusInner,
     ) -> ctx::Result<()> {
         tracing::info!("Starting view {}", self.view.next().0);
 
@@ -30,7 +29,7 @@ impl StateMachine {
 
         // Send the replica message to the next leader.
         let output_message = ConsensusInputMessage {
-            message: consensus
+            message: self.inner 
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaPrepare(
                     validator::ReplicaPrepare {
@@ -40,9 +39,9 @@ impl StateMachine {
                         high_qc: self.high_qc.clone(),
                     },
                 )),
-            recipient: Target::Validator(consensus.view_leader(next_view)),
+            recipient: Target::Validator(self.inner.view_leader(next_view)),
         };
-        consensus.pipe.send(output_message.into());
+        self.inner.pipe.send(output_message.into());
 
         // Reset the timer.
         self.reset_timer(ctx);
