@@ -1,9 +1,6 @@
 use super::StateMachine;
-use crate::{metrics};
-use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
-use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator::{self, ProtocolVersion};
 
 /// Errors that can occur when processing a "replica prepare" message.
@@ -178,8 +175,6 @@ impl StateMachine {
             });
         }
 
-        // ----------- Creating the block proposal --------------
-
         // Get all the replica prepare messages for this view. Note that we consume the
         // messages here. That's purposeful, so that we don't create a new block proposal
         // for this same view if we receive another replica prepare message after this.
@@ -191,83 +186,17 @@ impl StateMachine {
             .collect();
 
         debug_assert!(num_messages == self.inner.threshold());
-
-        // Get the highest block voted for and check if there's a quorum of votes for it. To have a quorum
-        // in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
-        let mut count: HashMap<_, usize> = HashMap::new();
-
-        for vote in replica_messages.iter() {
-            *count.entry(vote.msg.high_vote.proposal).or_default() += 1;
-        }
-
-        let highest_vote: Option<validator::BlockHeader> = count
-            .iter()
-            // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
-            .find(|(_, v)| **v > 2 * self.inner.faulty_replicas())
-            .map(|(h, _)| h)
-            .cloned();
-
-        // Get the highest CommitQC.
-        let highest_qc: &validator::CommitQC = replica_messages
-            .iter()
-            .map(|s| &s.msg.high_qc)
-            .max_by_key(|qc| qc.message.view)
-            .unwrap();
-
-        // Create the block proposal to send to the replicas,
-        // and the commit vote to store in our block proposal cache.
-        let (proposal, payload) = match highest_vote {
-            // The previous block was not finalized, so we need to propose it again.
-            // For this we only need the header, since we are guaranteed that at least
-            // f+1 honest replicas have the block can broadcast when finalized
-            // (2f+1 have stated that they voted for the block, at most f are malicious).
-            Some(proposal) if proposal != highest_qc.message.proposal => (proposal, None),
-            // The previous block was finalized, so we can propose a new block.
-            _ => {
-                let payload = self
-                    .payload_source
-                    .propose(ctx, highest_qc.message.proposal.number.next())
-                    .await?;
-                metrics::METRICS
-                    .leader_proposal_payload_size
-                    .observe(payload.0.len());
-                let proposal =
-                    validator::BlockHeader::new(&highest_qc.message.proposal, payload.hash());
-                (proposal, Some(payload))
-            }
-        };
-
+        
         // ----------- Update the state machine --------------
 
         self.view = message.view;
         self.phase = validator::Phase::Commit;
         self.phase_start = ctx.now();
-        self.block_proposal_cache = Some(proposal);
-
-        // ----------- Prepare our message and send it --------------
 
         // Create the justification for our message.
         let justification = validator::PrepareQC::from(&replica_messages, &self.inner.validator_set)
             .expect("Couldn't create justification from valid replica messages!");
-
-        // Broadcast the leader prepare message to all replicas (ourselves included).
-        let output_message = ConsensusInputMessage {
-            message: self
-                .inner
-                .secret_key
-                .sign_msg(validator::ConsensusMsg::LeaderPrepare(
-                    validator::LeaderPrepare {
-                        protocol_version: crate::PROTOCOL_VERSION,
-                        view: self.view,
-                        proposal,
-                        proposal_payload: payload,
-                        justification,
-                    },
-                )),
-            recipient: Target::Broadcast,
-        };
-        self.inner.pipe.send(output_message.into());
-
+        self.prepare_qc.send_replace(Some(justification));
         Ok(())
     }
 }

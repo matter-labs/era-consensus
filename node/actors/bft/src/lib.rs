@@ -54,16 +54,19 @@ pub async fn run(
     secret_key: validator::SecretKey,
     validator_set: validator::ValidatorSet,
     storage: ReplicaStore,
-    payload_source: Arc<dyn PayloadSource>,
+    payload_source: &dyn PayloadSource,
+    
 ) -> anyhow::Result<()> {
     let inner = Arc::new(ConsensusInner {
         pipe: pipe.send,
         secret_key,
         validator_set,
     });
-    let res = scope::run!(ctx,|ctx,_s| async {
+    let res = scope::run!(ctx,|ctx,s| async {
         let mut replica = replica::StateMachine::start(ctx, inner.clone(), storage).await?;
-        let mut leader = leader::StateMachine::new(ctx, inner.clone(), payload_source);
+        let mut leader = leader::StateMachine::new(ctx, inner.clone());
+
+        s.spawn_bg(leader::StateMachine::run_proposer(ctx, inner, payload_source, leader.prepare_qc.subscribe()));
 
         tracing::info!(
             "Starting consensus actor {:?}",

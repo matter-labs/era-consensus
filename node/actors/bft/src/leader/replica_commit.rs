@@ -4,6 +4,7 @@ use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator::{self, ProtocolVersion};
+use std::collections::HashMap;
 
 /// Errors that can occur when processing a "replica commit" message.
 #[derive(Debug, thiserror::Error)]
@@ -133,16 +134,14 @@ impl StateMachine {
             .insert(author.clone(), signed_message);
 
         // Now we check if we have enough messages to continue.
-        let num_messages = self.commit_message_cache.get(&message.view).unwrap().len();
-
-        if num_messages < self.inner.threshold() {
-            return Err(Error::NumReceivedBelowThreshold {
-                num_messages,
-                threshold: self.inner.threshold(),
-            });
+        let mut by_proposal: HashMap<_, Vec<_>> = HashMap::new();
+        for msg in self.commit_message_cache.get(&message.view).unwrap().iter() {
+            by_proposal.entry(msg.proposal.clone()).or_default().push(msg);
         }
-
-        debug_assert!(num_messages == self.inner.threshold());
+        let Some((proposal,replica_messages)) = by_proposal.into_iter().find(|(k,v)|v.len()>=self.inner.threshold()) else {
+            return Ok(());
+        };
+        debug_assert!(replica_messages.len() == self.inner.threshold());
 
         // ----------- Update the state machine --------------
 
@@ -156,20 +155,11 @@ impl StateMachine {
 
         // ----------- Prepare our message and send it. --------------
 
-        // Get all the replica commit messages for this view. Note that we consume the
-        // messages here. That's purposeful, so that we don't create a new leader commit
-        // for this same view if we receive another replica commit message after this.
-        let replica_messages = self
-            .commit_message_cache
-            .remove(&message.view)
-            .unwrap()
-            .values()
-            .cloned()
-            .collect::<Vec<_>>();
-
         // Create the justification for our message.
-        let justification = validator::CommitQC::from(&replica_messages, &self.inner.validator_set)
-            .expect("Couldn't create justification from valid replica messages!");
+        let justification = validator::CommitQC::from(
+            &replica_messages.iter().cloned().collect::<Vec<_>>(),
+            &self.inner.validator_set
+        ).expect("Couldn't create justification from valid replica messages!");
 
         // Broadcast the leader commit message to all replicas (ourselves included).
         let output_message = ConsensusInputMessage {
@@ -186,7 +176,6 @@ impl StateMachine {
         self.inner.pipe.send(output_message.into());
 
         // Clean the caches.
-        self.block_proposal_cache = None;
         self.prepare_message_cache.retain(|k, _| k >= &self.view);
         self.commit_message_cache.retain(|k, _| k >= &self.view);
 
