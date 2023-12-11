@@ -1,13 +1,12 @@
 //! The inner data of the consensus state machine. This is shared between the different roles.
 
 use crate::{
-    io::{InputMessage, OutputMessage},
+    io::{OutputMessage},
     misc,
 };
 use zksync_concurrency::{ctx::channel};
 use tracing::instrument;
 use zksync_consensus_roles::validator;
-use zksync_consensus_utils::pipe::ActorPipe;
 
 /// The ConsensusInner struct, it contains data to be shared with the state machines. This is never supposed
 /// to be modified, except by the Consensus struct.

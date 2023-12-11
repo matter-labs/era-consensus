@@ -116,8 +116,8 @@ async fn replica_prepare_old_view() {
     let mut util = UTHarness::new(ctx, 1).await;
 
     let replica_prepare = util.new_replica_prepare(|_| {});
-    util.consensus.leader.view = util.consensus.leader.view.next();
-    util.consensus.leader.phase = Phase::Prepare;
+    util.leader.view = util.replica.view.next();
+    util.leader.phase = Phase::Prepare;
     let res = util.process_replica_prepare(ctx, replica_prepare).await;
     assert_matches!(
         res,
@@ -133,16 +133,19 @@ async fn replica_prepare_during_commit() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx, 1).await;
-    util.consensus.leader.phase = Phase::Commit;
 
     let replica_prepare = util.new_replica_prepare(|_| {});
+    util.leader.view = util.replica.view;
+    util.leader.phase = Phase::Commit;
     let res = util.process_replica_prepare(ctx, replica_prepare).await;
     assert_matches!(
         res,
         Err(ReplicaPrepareError::Old {
-            current_view: ViewNumber(1),
+            current_view,
             current_phase: Phase::Commit,
-        })
+        }) => {
+            assert_eq!(current_view,util.replica.view);
+        }
     );
 }
 
@@ -299,10 +302,9 @@ async fn replica_commit_incompatible_protocol_version() {
     let mut util = UTHarness::new(ctx, 1).await;
 
     let incompatible_protocol_version = util.incompatible_protocol_version();
-    let replica_commit = util.new_current_replica_commit(|msg| {
-        msg.protocol_version = incompatible_protocol_version;
-    });
-    let res = util.process_replica_commit(ctx, replica_commit).await;
+    let mut replica_commit = util.new_replica_commit(ctx).await.msg;
+    replica_commit.protocol_version = incompatible_protocol_version;
+    let res = util.process_replica_commit(ctx, util.owner_key().sign_msg(replica_commit)).await;
     assert_matches!(
         res,
         Err(ReplicaCommitError::IncompatibleProtocolVersion { message_version, local_version }) => {
@@ -317,7 +319,7 @@ async fn replica_commit_non_validator_signer() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx, 1).await;
-    let replica_commit = util.new_current_replica_commit(|_| {}).msg;
+    let replica_commit = util.new_replica_commit(ctx).await.msg;
     let non_validator_key: validator::SecretKey = ctx.rng().gen();
     let res = util
         .process_replica_commit(ctx, non_validator_key.sign_msg(replica_commit))
@@ -336,14 +338,14 @@ async fn replica_commit_old() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx, 1).await;
     let mut replica_commit = util.new_replica_commit(ctx).await.msg;
-    replica_commit.view = util.consensus.replica.view.prev();
+    replica_commit.view = util.replica.view.prev();
     let replica_commit = util.owner_key().sign_msg(replica_commit);
     let res = util.process_replica_commit(ctx, replica_commit).await;
     assert_matches!(
         res,
         Err(ReplicaCommitError::Old { current_view, current_phase }) => {
-            assert_eq!(current_view, util.consensus.replica.view);
-            assert_eq!(current_phase, util.consensus.replica.phase);
+            assert_eq!(current_view, util.replica.view);
+            assert_eq!(current_phase, util.replica.phase);
         }
     );
 }
@@ -353,7 +355,7 @@ async fn replica_commit_not_leader_in_view() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx, 2).await;
 
-    let current_view_leader = util.view_leader(util.consensus.replica.view);
+    let current_view_leader = util.view_leader(util.replica.view);
     assert_ne!(current_view_leader, util.owner_key().public());
 
     let replica_commit = util.new_current_replica_commit(|_| {});

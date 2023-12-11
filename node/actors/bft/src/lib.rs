@@ -15,10 +15,8 @@
 //! - [Blog post comparing several consensus algorithms](https://decentralizedthoughts.github.io/2023-04-01-hotstuff-2/)
 //! - Blog posts explaining [safety](https://seafooler.com/2022/01/24/understanding-safety-hotstuff/) and [responsiveness](https://seafooler.com/2022/04/02/understanding-responsiveness-hotstuff/)
 use crate::io::{InputMessage, OutputMessage};
-use anyhow::Context as _;
 use inner::ConsensusInner;
 use std::sync::Arc;
-use tracing::{info, instrument};
 use zksync_concurrency::{scope,ctx};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::ReplicaStore;
@@ -50,10 +48,9 @@ pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVers
 
 /// Starts the Consensus actor. It will start running, processing incoming messages and
 /// sending output messages. This is a blocking method.
-#[instrument(level = "trace", err)]
 pub async fn run(
     ctx: &ctx::Ctx,
-    pipe: ActorPipe<InputMessage, OutputMessage>,
+    mut pipe: ActorPipe<InputMessage, OutputMessage>,
     secret_key: validator::SecretKey,
     validator_set: validator::ValidatorSet,
     storage: ReplicaStore,
@@ -64,11 +61,11 @@ pub async fn run(
         secret_key,
         validator_set,
     });
-    let res = scope::run!(ctx,|ctx,s| async {
-        let replica = replica::StateMachine::start(ctx, inner.clone(), storage).await?;
-        let leader = leader::StateMachine::new(ctx, inner.clone(), payload_source);
+    let res = scope::run!(ctx,|ctx,_s| async {
+        let mut replica = replica::StateMachine::start(ctx, inner.clone(), storage).await?;
+        let mut leader = leader::StateMachine::new(ctx, inner.clone(), payload_source);
 
-        info!(
+        tracing::info!(
             "Starting consensus actor {:?}",
             inner.secret_key.public()
         );

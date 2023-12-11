@@ -1,5 +1,4 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner, Consensus};
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_roles::validator::{self, ProtocolVersion};
@@ -63,7 +62,6 @@ impl StateMachine {
     pub(crate) async fn process_leader_commit(
         &mut self,
         ctx: &ctx::Ctx,
-        consensus: &ConsensusInner,
         signed_message: validator::Signed<validator::LeaderCommit>,
     ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
@@ -74,17 +72,17 @@ impl StateMachine {
         let view = message.justification.message.view;
 
         // Check protocol version compatibility.
-        if !Consensus::PROTOCOL_VERSION.compatible(&message.protocol_version) {
+        if !crate::PROTOCOL_VERSION.compatible(&message.protocol_version) {
             return Err(Error::IncompatibleProtocolVersion {
                 message_version: message.protocol_version,
-                local_version: Consensus::PROTOCOL_VERSION,
+                local_version: crate::PROTOCOL_VERSION,
             });
         }
 
         // Check that it comes from the correct leader.
-        if author != &consensus.view_leader(view) {
+        if author != &self.inner.view_leader(view) {
             return Err(Error::InvalidLeader {
-                correct_leader: consensus.view_leader(view),
+                correct_leader: self.inner.view_leader(view),
                 received_leader: author.clone(),
             });
         }
@@ -107,13 +105,13 @@ impl StateMachine {
         // Verify the QuorumCertificate.
         message
             .justification
-            .verify(&consensus.validator_set, consensus.threshold())
+            .verify(&self.inner.validator_set, self.inner.threshold())
             .map_err(Error::InvalidJustification)?;
 
         // ----------- All checks finished. Now we process the message. --------------
 
         // Try to create a finalized block with this CommitQC and our block proposal cache.
-        self.save_block(ctx, consensus, &message.justification)
+        self.save_block(ctx, &message.justification)
             .await
             .wrap("save_block()")?;
 
@@ -125,7 +123,7 @@ impl StateMachine {
 
         // Start a new view. But first we skip to the view of this message.
         self.view = view;
-        self.start_new_view(ctx, consensus)
+        self.start_new_view(ctx)
             .await
             .wrap("start_new_view()")?;
 

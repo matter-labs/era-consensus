@@ -1,5 +1,4 @@
 use super::StateMachine;
-use crate::inner::ConsensusInner;
 use anyhow::Context as _;
 use tracing::{info, instrument};
 use zksync_concurrency::ctx;

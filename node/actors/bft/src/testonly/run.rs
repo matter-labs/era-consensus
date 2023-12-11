@@ -1,5 +1,5 @@
 use super::{Behavior, Node, RandomPayloadSource};
-use crate::{testonly, Consensus};
+use crate::{testonly};
 use anyhow::Context;
 use std::{collections::HashMap, sync::Arc};
 use tracing::Instrument as _;
@@ -99,21 +99,16 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, nodes: &[Node]) -> anyhow::
             s.spawn(
                 async {
                     let storage = ReplicaStore::from_store(node.storage.clone());
-
-                    let consensus = Consensus::new(
-                        ctx,
-                        consensus_actor_pipe,
-                        node.net.consensus_config().key.clone(),
-                        validator_set,
-                        storage,
-                        Arc::new(RandomPayloadSource),
-                    )
-                    .await
-                    .context("consensus")?;
-
                     scope::run!(ctx, |ctx, s| async {
                         network_ready.recv(ctx).await?;
-                        s.spawn(async { consensus.run(ctx).await.context("consensus.run()") });
+                        s.spawn(async { crate::run(
+                            ctx,
+                            consensus_actor_pipe,
+                            node.net.consensus_config().key.clone(),
+                            validator_set,
+                            storage,
+                            Arc::new(RandomPayloadSource),
+                        ).await.context("consensus.run()") });
                         node.run_executor(ctx, consensus_pipe, network_pipe)
                             .await
                             .context("executor.run()")

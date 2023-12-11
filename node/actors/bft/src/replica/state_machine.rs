@@ -43,7 +43,7 @@ impl StateMachine {
                 .insert(proposal.payload.hash(), proposal.payload);
         }
 
-        let this = Self {
+        let mut this = Self {
             inner,
             view: backup.view,
             phase: backup.phase,
@@ -54,11 +54,7 @@ impl StateMachine {
             storage,
         };
         // We need to start the replica before processing inputs.
-        if this.view == validator::ViewNumber(0) {
-            this.start_new_view(ctx).await.wrap("start_new_view()")?;
-        } else {
-            this.reset_timer(ctx);
-        }
+        this.start_new_view(ctx).await.wrap("start_new_view()")?;
         Ok(this)
     }
 
@@ -72,10 +68,10 @@ impl StateMachine {
         input: validator::Signed<validator::ConsensusMsg>,
     ) -> ctx::Result<()> {
         let now = ctx.now();
-        let label = match &signed_msg.msg {
+        let label = match &input.msg {
             validator::ConsensusMsg::LeaderPrepare(_) => {
                 let res = match self
-                    .process_leader_prepare(ctx, signed_msg.cast().unwrap())
+                    .process_leader_prepare(ctx, input.cast().unwrap())
                     .await
                     .wrap("process_leader_prepare()")
                 {
@@ -90,7 +86,7 @@ impl StateMachine {
             }
             validator::ConsensusMsg::LeaderCommit(_) => {
                 let res = match self
-                    .process_leader_commit(ctx, signed_msg.cast().unwrap())
+                    .process_leader_commit(ctx, input.cast().unwrap())
                     .await
                     .wrap("process_leader_commit()")
                 {

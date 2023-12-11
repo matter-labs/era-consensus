@@ -1,5 +1,5 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner, metrics, Consensus};
+use crate::{metrics};
 use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
@@ -72,10 +72,10 @@ impl StateMachine {
         let author = &signed_message.key;
 
         // Check protocol version compatibility.
-        if !Consensus::PROTOCOL_VERSION.compatible(&message.protocol_version) {
+        if !crate::PROTOCOL_VERSION.compatible(&message.protocol_version) {
             return Err(Error::IncompatibleProtocolVersion {
                 message_version: message.protocol_version,
-                local_version: Consensus::PROTOCOL_VERSION,
+                local_version: crate::PROTOCOL_VERSION,
             });
         }
 
@@ -177,7 +177,7 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::LeaderCommit(
                     validator::LeaderCommit {
-                        protocol_version: Consensus::PROTOCOL_VERSION,
+                        protocol_version: crate::PROTOCOL_VERSION,
                         justification,
                     },
                 )),

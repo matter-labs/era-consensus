@@ -60,14 +60,13 @@ impl StateMachine {
     pub(crate) async fn process_input(
         &mut self,
         ctx: &ctx::Ctx,
-        consensus: &ConsensusInner,
         input: validator::Signed<validator::ConsensusMsg>,
     ) -> ctx::Result<()> {
         let now = ctx.now();
         let label = match &input.msg {
             validator::ConsensusMsg::ReplicaPrepare(_) => {
                 let res = match self
-                    .process_replica_prepare(ctx, consensus, input.cast().unwrap())
+                    .process_replica_prepare(ctx, input.cast().unwrap())
                     .await
                     .wrap("process_replica_prepare()")
                 {
@@ -84,7 +83,7 @@ impl StateMachine {
             }
             validator::ConsensusMsg::ReplicaCommit(_) => {
                 let res = self
-                    .process_replica_commit(ctx, consensus, input.cast().unwrap())
+                    .process_replica_commit(ctx, input.cast().unwrap())
                     .map_err(|err| {
                         tracing::warn!("process_replica_commit: {err:#}");
                     });

@@ -1,5 +1,5 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner, Consensus};
+use crate::{inner::ConsensusInner};
 use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
@@ -143,10 +143,10 @@ impl StateMachine {
         let view = message.view;
 
         // Check protocol version compatibility.
-        if !Consensus::PROTOCOL_VERSION.compatible(&message.protocol_version) {
+        if !crate::PROTOCOL_VERSION.compatible(&message.protocol_version) {
             return Err(Error::IncompatibleProtocolVersion {
                 message_version: message.protocol_version,
-                local_version: Consensus::PROTOCOL_VERSION,
+                local_version: crate::PROTOCOL_VERSION,
             });
         }
 
@@ -296,7 +296,7 @@ impl StateMachine {
 
         // Create our commit vote.
         let commit_vote = validator::ReplicaCommit {
-            protocol_version: Consensus::PROTOCOL_VERSION,
+            protocol_version: crate::PROTOCOL_VERSION,
             view,
             proposal: message.proposal,
         };

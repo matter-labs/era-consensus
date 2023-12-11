@@ -1,5 +1,4 @@
 use super::StateMachine;
-use crate::{Consensus, ConsensusInner};
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
@@ -33,7 +32,7 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaPrepare(
                     validator::ReplicaPrepare {
-                        protocol_version: Consensus::PROTOCOL_VERSION,
+                        protocol_version: crate::PROTOCOL_VERSION,
                         view: next_view,
                         high_vote: self.high_vote,
                         high_qc: self.high_qc.clone(),

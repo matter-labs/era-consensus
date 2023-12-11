@@ -41,10 +41,9 @@ async fn leader_prepare_incompatible_protocol_version() {
     let mut util = UTHarness::new(ctx, 1).await;
 
     let incompatible_protocol_version = util.incompatible_protocol_version();
-    let leader_prepare = util.new_rnd_leader_prepare(&mut ctx.rng(), |msg| {
-        msg.protocol_version = incompatible_protocol_version;
-    });
-    let res = util.process_leader_prepare(ctx, leader_prepare).await;
+    let mut leader_prepare = util.new_leader_prepare(ctx).await.msg;
+    leader_prepare.protocol_version = incompatible_protocol_version;
+    let res = util.process_leader_prepare(ctx, util.owner_key().sign_msg(leader_prepare)).await;
     assert_matches!(
         res,
         Err(LeaderPrepareError::IncompatibleProtocolVersion { message_version, local_version }) => {
@@ -124,14 +123,14 @@ async fn leader_prepare_old_view() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx, 1).await;
     let mut leader_prepare = util.new_leader_prepare(ctx).await.msg;
-    leader_prepare.view = util.consensus.replica.view.prev();
+    leader_prepare.view = util.replica.view.prev();
     let leader_prepare = util.owner_key().sign_msg(leader_prepare);
     let res = util.process_leader_prepare(ctx, leader_prepare).await;
     assert_matches!(
         res,
         Err(LeaderPrepareError::Old { current_view, current_phase }) => {
-            assert_eq!(current_view, util.consensus.replica.view);
-            assert_eq!(current_phase, util.consensus.replica.phase);
+            assert_eq!(current_view, util.replica.view);
+            assert_eq!(current_phase, util.replica.phase);
         }
     );
 }
@@ -153,14 +152,14 @@ async fn leader_prepare_invalid_payload() {
         justification: CommitQC::from(
             &[util.keys[0].sign_msg(ReplicaCommit {
                 protocol_version: util.protocol_version(),
-                view: util.consensus.replica.view,
+                view: util.replica.view,
                 proposal: leader_prepare.msg.proposal,
             })],
             &util.validator_set(),
         )
         .unwrap(),
     };
-    util.consensus
+    util
         .replica
         .storage
         .put_block(ctx, &block)
@@ -176,7 +175,7 @@ async fn leader_prepare_invalid_sig() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx, 1).await;
-    let mut leader_prepare = util.new_rnd_leader_prepare(&mut ctx.rng(), |_| {});
+    let mut leader_prepare = util.new_leader_prepare(ctx).await;
     leader_prepare.sig = ctx.rng().gen();
     let res = util.process_leader_prepare(ctx, leader_prepare).await;
     assert_matches!(res, Err(LeaderPrepareError::InvalidSignature(..)));
@@ -413,10 +412,9 @@ async fn leader_commit_incompatible_protocol_version() {
     let mut util = UTHarness::new(ctx, 1).await;
 
     let incompatible_protocol_version = util.incompatible_protocol_version();
-    let leader_commit = util.new_rnd_leader_commit(&mut ctx.rng(), |msg| {
-        msg.protocol_version = incompatible_protocol_version;
-    });
-    let res = util.process_leader_commit(ctx, leader_commit).await;
+    let mut leader_commit = util.new_leader_commit(ctx).await.msg;
+    leader_commit.protocol_version = incompatible_protocol_version;
+    let res = util.process_leader_commit(ctx, util.owner_key().sign_msg(leader_commit)).await;
     assert_matches!(
         res,
         Err(LeaderCommitError::IncompatibleProtocolVersion { message_version, local_version }) => {
@@ -430,11 +428,11 @@ async fn leader_commit_incompatible_protocol_version() {
 async fn leader_commit_invalid_leader() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx, 2).await;
-    let current_view_leader = util.view_leader(util.consensus.replica.view);
+    let current_view_leader = util.view_leader(util.replica.view);
     assert_ne!(current_view_leader, util.owner_key().public());
 
-    let leader_commit = util.new_rnd_leader_commit(&mut ctx.rng(), |_| {});
-    let res = util.process_leader_commit(ctx, leader_commit).await;
+    let leader_commit = util.new_leader_commit(ctx).await.msg;
+    let res = util.process_leader_commit(ctx, util.keys[1].sign_msg(leader_commit)).await;
     assert_matches!(res, Err(LeaderCommitError::InvalidLeader { .. }));
 }
 
@@ -444,7 +442,7 @@ async fn leader_commit_invalid_sig() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut util = UTHarness::new(ctx, 1).await;
-    let mut leader_commit = util.new_rnd_leader_commit(rng, |_| {});
+    let mut leader_commit = util.new_leader_commit(ctx).await;
     leader_commit.sig = rng.gen();
     let res = util.process_leader_commit(ctx, leader_commit).await;
     assert_matches!(res, Err(LeaderCommitError::InvalidSignature { .. }));
@@ -455,7 +453,8 @@ async fn leader_commit_invalid_commit_qc() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut util = UTHarness::new(ctx, 1).await;
-    let leader_commit = util.new_rnd_leader_commit(rng, |_| {});
-    let res = util.process_leader_commit(ctx, leader_commit).await;
+    let mut leader_commit = util.new_leader_commit(ctx).await.msg;
+    leader_commit.justification = rng.gen();
+    let res = util.process_leader_commit(ctx, util.owner_key().sign_msg(leader_commit)).await;
     assert_matches!(res, Err(LeaderCommitError::InvalidJustification { .. }));
 }

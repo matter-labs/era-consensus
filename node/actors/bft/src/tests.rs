@@ -99,7 +99,7 @@ async fn timeout_leader_in_commit() {
 
     util.new_leader_prepare(ctx).await;
     // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
-    assert_eq!(util.consensus.leader.phase, Phase::Commit);
+    assert_eq!(util.leader.phase, Phase::Commit);
     util.produce_block_after_timeout(ctx).await;
 }
 
@@ -112,7 +112,7 @@ async fn timeout_replica_in_commit() {
 
     util.new_replica_commit(ctx).await;
     // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
-    assert_eq!(util.consensus.leader.phase, Phase::Commit);
+    assert_eq!(util.leader.phase, Phase::Commit);
     util.produce_block_after_timeout(ctx).await;
 }
 
