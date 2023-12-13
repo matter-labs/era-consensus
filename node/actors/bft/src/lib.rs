@@ -66,7 +66,7 @@ pub async fn run(
         let mut replica = replica::StateMachine::start(ctx, inner.clone(), storage).await?;
         let mut leader = leader::StateMachine::new(ctx, inner.clone());
 
-        s.spawn_bg(leader::StateMachine::run_proposer(ctx, inner, payload_source, leader.prepare_qc.subscribe()));
+        s.spawn_bg(leader::StateMachine::run_proposer(ctx, &*inner, payload_source, leader.prepare_qc.subscribe()));
 
         tracing::info!(
             "Starting consensus actor {:?}",

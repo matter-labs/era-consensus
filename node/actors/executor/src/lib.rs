@@ -3,7 +3,7 @@ use crate::io::Dispatcher;
 use anyhow::Context as _;
 use std::{any, fmt, sync::Arc};
 use zksync_concurrency::{ctx, net, scope};
-use zksync_consensus_bft::{misc::consensus_threshold, Consensus, PayloadSource};
+use zksync_consensus_bft::{misc::consensus_threshold, PayloadSource};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{ReplicaStateStore, ReplicaStore, WriteBlockStore};
@@ -175,24 +175,6 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
 
         // Create each of the actors.
         let validator_set = &self.executor_config.validators;
-        let consensus = if let Some(validator) = self.validator {
-            let consensus_storage =
-                ReplicaStore::new(validator.replica_state_store, self.storage.clone());
-            let consensus = Consensus::new(
-                ctx,
-                consensus_actor_pipe,
-                validator.key.clone(),
-                validator_set.clone(),
-                consensus_storage,
-                validator.payload_source,
-            )
-            .await
-            .context("consensus")?;
-            Some(consensus)
-        } else {
-            None
-        };
-
         let sync_blocks_config = zksync_consensus_sync_blocks::Config::new(
             validator_set.clone(),
             consensus_threshold(validator_set.len()),
@@ -200,7 +182,7 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
         let sync_blocks = SyncBlocks::new(
             ctx,
             sync_blocks_actor_pipe,
-            self.storage,
+            self.storage.clone(),
             sync_blocks_config,
         )
         .await
@@ -219,8 +201,19 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
                     .await
                     .context("Network stopped")
             });
-            if let Some(consensus) = consensus {
-                s.spawn(async { consensus.run(ctx).await.context("Consensus stopped") });
+            if let Some(validator) = self.validator {
+                s.spawn(async {
+                    let validator = validator;
+                    let consensus_storage = ReplicaStore::new(validator.replica_state_store, self.storage.clone());
+                    zksync_consensus_bft::run(
+                        ctx,
+                        consensus_actor_pipe,
+                        validator.key.clone(),
+                        validator_set.clone(),
+                        consensus_storage,
+                        &*validator.payload_source,
+                    ).await.context("Consensus stopped")
+                });
             }
             sync_blocks.run(ctx).await.context("Syncing blocks stopped")
         })

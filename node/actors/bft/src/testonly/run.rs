@@ -107,7 +107,7 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, nodes: &[Node]) -> anyhow::
                             node.net.consensus_config().key.clone(),
                             validator_set,
                             storage,
-                            Arc::new(RandomPayloadSource),
+                            &RandomPayloadSource,
                         ).await.context("consensus.run()") });
                         node.run_executor(ctx, consensus_pipe, network_pipe)
                             .await

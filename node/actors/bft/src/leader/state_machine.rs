@@ -93,7 +93,7 @@ impl StateMachine {
         Ok(())
     }
 
-    pub async fn run_proposer(
+    pub(crate) async fn run_proposer(
         ctx: &ctx::Ctx,
         inner: &ConsensusInner,
         payload_source: &dyn PayloadSource,
@@ -105,7 +105,7 @@ impl StateMachine {
             let Some(prepare_qc) = prepare_qc.borrow_and_update().clone() else { continue };
             if next_view < prepare_qc.view() { continue };
             next_view = prepare_qc.view();
-            let msg = Self::propose(ctx,inner,payload_source, prepare_qc).await?; 
+            Self::propose(ctx,inner,payload_source, prepare_qc).await?; 
         }
     }
 
@@ -173,9 +173,9 @@ impl StateMachine {
                 },
             ));
         inner.pipe.send(ConsensusInputMessage {
-            message: msg.embed().into(),
+            message: msg,
             recipient: Target::Broadcast,
-        });
+        }.into());
         Ok(())
     }
 }

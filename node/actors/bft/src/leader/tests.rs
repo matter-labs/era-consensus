@@ -410,16 +410,9 @@ async fn replica_commit_num_received_below_threshold() {
         .process_leader_prepare(ctx, leader_prepare)
         .await
         .unwrap();
-    let res = util
+    util
         .process_replica_commit(ctx, replica_commit.clone())
-        .await;
-    assert_matches!(
-        res,
-        Err(ReplicaCommitError::NumReceivedBelowThreshold {
-            num_messages: 1,
-            threshold: 2
-        })
-    );
+        .await.unwrap();
 }
 
 #[tokio::test]
@@ -439,6 +432,5 @@ async fn replica_commit_unexpected_proposal() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx, 1).await;
     let replica_commit = util.new_current_replica_commit(|_| {});
-    let res = util.process_replica_commit(ctx, replica_commit).await;
-    assert_matches!(res, Err(ReplicaCommitError::UnexpectedProposal));
+    util.process_replica_commit(ctx, replica_commit).await.unwrap();
 }

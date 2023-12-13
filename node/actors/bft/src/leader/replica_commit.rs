@@ -24,8 +24,8 @@ pub(crate) enum Error {
         signer: validator::PublicKey,
     },
     /// Unexpected proposal.
-    #[error("unexpected proposal")]
-    UnexpectedProposal,
+    //#[error("unexpected proposal")]
+    //UnexpectedProposal,
     /// Past view or phase.
     #[error("past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
     Old {
@@ -44,7 +44,7 @@ pub(crate) enum Error {
         existing_message: validator::ReplicaCommit,
     },
     /// Number of received messages is below threshold.
-    #[error(
+    /*#[error(
         "number of received messages is below threshold. waiting for more (received: {num_messages:?}, \
          threshold: {threshold:?}"
     )]
@@ -53,7 +53,7 @@ pub(crate) enum Error {
         num_messages: usize,
         /// Threshold for message count.
         threshold: usize,
-    },
+    },*/
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] validator::Error),
@@ -117,14 +117,6 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
-        // ----------- Checking the contents of the message --------------
-
-        // We only accept replica commit messages for proposals that we have cached. That's so
-        // we don't need to store replica commit messages for different proposals.
-        if self.block_proposal_cache != Some(message.proposal) {
-            return Err(Error::UnexpectedProposal);
-        }
-
         // ----------- All checks finished. Now we process the message. --------------
 
         // We store the message in our cache.
@@ -135,10 +127,10 @@ impl StateMachine {
 
         // Now we check if we have enough messages to continue.
         let mut by_proposal: HashMap<_, Vec<_>> = HashMap::new();
-        for msg in self.commit_message_cache.get(&message.view).unwrap().iter() {
-            by_proposal.entry(msg.proposal.clone()).or_default().push(msg);
+        for msg in self.commit_message_cache.get(&message.view).unwrap().values() {
+            by_proposal.entry(msg.msg.proposal.clone()).or_default().push(msg);
         }
-        let Some((proposal,replica_messages)) = by_proposal.into_iter().find(|(k,v)|v.len()>=self.inner.threshold()) else {
+        let Some((_,replica_messages)) = by_proposal.into_iter().find(|(_,v)|v.len()>=self.inner.threshold()) else {
             return Ok(());
         };
         debug_assert!(replica_messages.len() == self.inner.threshold());
@@ -157,7 +149,7 @@ impl StateMachine {
 
         // Create the justification for our message.
         let justification = validator::CommitQC::from(
-            &replica_messages.iter().cloned().collect::<Vec<_>>(),
+            &replica_messages.into_iter().cloned().collect::<Vec<_>>()[..],
             &self.inner.validator_set
         ).expect("Couldn't create justification from valid replica messages!");
 

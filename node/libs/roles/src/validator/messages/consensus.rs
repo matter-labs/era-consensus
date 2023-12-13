@@ -181,6 +181,11 @@ pub struct PrepareQC {
 }
 
 impl PrepareQC {
+    /// View of the QC.
+    pub fn view(&self) -> ViewNumber {
+        self.map.keys().map(|k|k.view).next().unwrap_or(ViewNumber(0))
+    }
+
     /// Creates a new PrepareQC from a list of *signed* replica Prepare messages and the current validator set.
     pub fn from(
         signed_messages: &[Signed<ReplicaPrepare>],
