@@ -54,7 +54,7 @@ impl AggregateSignature {
     pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
         let mut agg = Self::default();
         for sig in sigs {
-            agg.add(&sig);
+            agg.add(sig);
         }
         agg
     }
