@@ -1,10 +1,13 @@
 //! Messages related to the consensus protocol.
 
 use super::{BlockHeader, Msg, Payload, Signed};
-use crate::validator;
-use anyhow::{bail, Context};
+use crate::{validator, validator::Signature};
+use anyhow::bail;
 use bit_vec::BitVec;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    mem,
+};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
 /// Version of the consensus algorithm that the validator is using.
@@ -169,10 +172,53 @@ pub struct LeaderCommit {
     pub justification: CommitQC,
 }
 
+/// Utility for incrementally constructing a `PrepareQC` instance .
+pub struct PrepareQCBuilder {
+    instance: PrepareQC,
+    val_set_size: usize,
+}
+
+impl PrepareQCBuilder {
+    /// Create a new builder instance for a given validator set size.
+    pub fn new(val_set_size: usize) -> Self {
+        Self {
+            instance: Default::default(),
+            val_set_size,
+        }
+    }
+
+    /// Add a validator's signed message to the `PrepareQC`.
+    pub fn add(&mut self, signed_message: &Signed<ReplicaPrepare>, validator_index: usize) {
+        // TODO: refactor to cleaner code
+        if self.instance.map.contains_key(&signed_message.msg) {
+            self.instance
+                .map
+                .get_mut(&signed_message.msg)
+                .unwrap()
+                .0
+                .set(validator_index, true);
+        } else {
+            let mut bit_vec = BitVec::from_elem(self.val_set_size, false);
+            bit_vec.set(validator_index, true);
+
+            self.instance
+                .map
+                .insert(signed_message.msg.clone(), Signers(bit_vec));
+        }
+
+        self.instance.signature.add(&signed_message.sig);
+    }
+
+    /// Take the constructed `PrepareQC`, consuming the builder in the process.
+    pub fn take(&mut self) -> PrepareQC {
+        mem::take(&mut self.instance)
+    }
+}
+
 /// A quorum certificate of replica Prepare messages. Since not all Prepare messages are
 /// identical (they have different high blocks and high QCs), we need to keep the high blocks
 /// and high QCs in a map. We can still aggregate the signatures though.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct PrepareQC {
     /// Map from replica Prepare messages to the validators that signed them.
     pub map: BTreeMap<ReplicaPrepare, Signers>,
@@ -181,48 +227,6 @@ pub struct PrepareQC {
 }
 
 impl PrepareQC {
-    /// Creates a new PrepareQC from a list of *signed* replica Prepare messages and the current validator set.
-    pub fn from(
-        signed_messages: &[Signed<ReplicaPrepare>],
-        validators: &ValidatorSet,
-    ) -> anyhow::Result<Self> {
-        // Get the view number from the messages, they must all be equal.
-        let view = signed_messages
-            .get(0)
-            .context("Empty signed messages vector")?
-            .msg
-            .view;
-
-        // Create the messages map.
-        let mut map: BTreeMap<ReplicaPrepare, Signers> = BTreeMap::new();
-
-        for signed_message in signed_messages {
-            if signed_message.msg.view != view {
-                bail!("Signed messages aren't all for the same view.");
-            }
-
-            // Get index of the validator in the validator set.
-            let index = validators
-                .index(&signed_message.key)
-                .context("Message signer isn't in the validator set")?;
-
-            if map.contains_key(&signed_message.msg) {
-                map.get_mut(&signed_message.msg).unwrap().0.set(index, true);
-            } else {
-                let mut bit_vec = BitVec::from_elem(validators.len(), false);
-                bit_vec.set(index, true);
-
-                map.insert(signed_message.msg.clone(), Signers(bit_vec));
-            }
-        }
-
-        // Aggregate the signatures.
-        let signature =
-            validator::AggregateSignature::aggregate(signed_messages.iter().map(|v| &v.sig));
-
-        Ok(Self { map, signature })
-    }
-
     /// Verifies the integrity of the PrepareQC.
     pub fn verify(
         &self,
@@ -286,6 +290,35 @@ impl PrepareQC {
     }
 }
 
+/// Utility for incrementally constructing a `CommitQC` instance .
+pub struct CommitQCBuilder {
+    instance: CommitQC,
+}
+
+impl CommitQCBuilder {
+    /// Create a new builder instance for a given `ReplicaCommit` message and a validator set size.
+    pub fn new(message: ReplicaCommit, validator_set_size: usize) -> Self {
+        Self {
+            instance: CommitQC {
+                message,
+                signers: Signers(BitVec::from_elem(validator_set_size, false)),
+                signature: Default::default(),
+            },
+        }
+    }
+
+    /// Add a validator's signature to the `CommitQC`.
+    pub fn add(&mut self, sig: &Signature, validator_index: usize) {
+        self.instance.signers.0.set(validator_index, true);
+        self.instance.signature.add(sig);
+    }
+
+    /// Take the constructed `CommitQC`.
+    pub fn take(&mut self) -> CommitQC {
+        self.instance.clone()
+    }
+}
+
 /// A Commit Quorum Certificate. It is an aggregate of signed replica Commit messages.
 /// The Quorum Certificate is supposed to be over identical messages, so we only need one message.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -299,48 +332,6 @@ pub struct CommitQC {
 }
 
 impl CommitQC {
-    /// Creates a new CommitQC from a list of *signed* replica Commit messages and the current validator set.
-    pub fn from(
-        signed_messages: &[Signed<ReplicaCommit>],
-        validators: &ValidatorSet,
-    ) -> anyhow::Result<Self> {
-        // Store the signed messages in a Hashmap.
-        let message = signed_messages[0].msg;
-
-        for signed_message in signed_messages {
-            // Check that the votes are all for the same message.
-            if signed_message.msg != message {
-                bail!("CommitQC can only be created from votes for the same message.");
-            }
-        }
-
-        // Store the signed messages in a Hashmap.
-        let msg_map: HashMap<_, _> = signed_messages
-            .iter()
-            .map(|signed_message| {
-                // Check that the votes are all for the same message.
-                if signed_message.msg != message {
-                    bail!("QuorumCertificate can only be created from votes for the same message.");
-                }
-                Ok((&signed_message.key, &signed_message.sig))
-            })
-            .collect::<anyhow::Result<_>>()?;
-
-        // Create the signers bit map.
-        let bit_vec = validators
-            .iter()
-            .map(|validator| msg_map.contains_key(validator))
-            .collect();
-
-        // Aggregate the signatures.
-        let signature = validator::AggregateSignature::aggregate(msg_map.values().copied());
-        Ok(Self {
-            message,
-            signers: Signers(bit_vec),
-            signature,
-        })
-    }
-
     /// Verifies the signature of the CommitQC.
     pub fn verify(&self, validators: &ValidatorSet, threshold: usize) -> anyhow::Result<()> {
         let signers = self.signers.0.clone();

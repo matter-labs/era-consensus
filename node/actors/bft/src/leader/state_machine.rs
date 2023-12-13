@@ -6,7 +6,10 @@ use std::{
 };
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, time};
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::{
+    validator,
+    validator::{CommitQCBuilder, PrepareQCBuilder},
+};
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
@@ -29,11 +32,15 @@ pub(crate) struct StateMachine {
         validator::ViewNumber,
         HashMap<validator::PublicKey, validator::Signed<validator::ReplicaPrepare>>,
     >,
+    /// Prepare QC builders indexed by view number.
+    pub(crate) prepare_qc: BTreeMap<validator::ViewNumber, PrepareQCBuilder>,
     /// A cache of replica commit messages indexed by view number and validator.
     pub(crate) commit_message_cache: BTreeMap<
         validator::ViewNumber,
         HashMap<validator::PublicKey, validator::Signed<validator::ReplicaCommit>>,
     >,
+    /// Commit QC builders indexed by view number.
+    pub(crate) commit_qc: BTreeMap<validator::ViewNumber, CommitQCBuilder>,
 }
 
 impl StateMachine {
@@ -47,7 +54,9 @@ impl StateMachine {
             phase_start: ctx.now(),
             block_proposal_cache: None,
             prepare_message_cache: BTreeMap::new(),
+            prepare_qc: BTreeMap::new(),
             commit_message_cache: BTreeMap::new(),
+            commit_qc: BTreeMap::new(),
         }
     }
 

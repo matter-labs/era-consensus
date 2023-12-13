@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::validator::{self, ProtocolVersion};
+use zksync_consensus_roles::validator::{self, PrepareQCBuilder, ProtocolVersion};
 
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]
@@ -67,6 +67,9 @@ pub(crate) enum Error {
     /// Invalid `HighQC` message.
     #[error("invalid high QC: {0:#}")]
     InvalidHighQC(#[source] anyhow::Error),
+    // /// Unexpected error when attempting to incrementally build the prepare QC.
+    // #[error("prepare QC build unexpected error: {0:#}")]
+    // PrepareQCBuildUnexpectedError(#[source] anyhow::Error),
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error(transparent)]
     Internal(#[from] ctx::Error),
@@ -107,12 +110,13 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator set.
-        consensus
-            .validator_set
-            .index(author)
-            .ok_or(Error::NonValidatorSigner {
-                signer: author.clone(),
-            })?;
+        let validator_index =
+            consensus
+                .validator_set
+                .index(author)
+                .ok_or(Error::NonValidatorSigner {
+                    signer: author.clone(),
+                })?;
 
         // If the message is from the "past", we discard it.
         if (message.view, validator::Phase::Prepare) < (self.view, self.phase) {
@@ -162,6 +166,12 @@ impl StateMachine {
         }
 
         // ----------- All checks finished. Now we process the message. --------------
+
+        // We add the message to the incrementally-constructed QC.
+        self.prepare_qc
+            .entry(message.view)
+            .or_insert(PrepareQCBuilder::new(consensus.validator_set.len()))
+            .add(&signed_message, validator_index);
 
         // We store the message in our cache.
         self.prepare_message_cache
@@ -247,9 +257,8 @@ impl StateMachine {
 
         // ----------- Prepare our message and send it --------------
 
-        // Create the justification for our message.
-        let justification = validator::PrepareQC::from(&replica_messages, &consensus.validator_set)
-            .expect("Couldn't create justification from valid replica messages!");
+        // Consume the incrementally-constructed QC for this view.
+        let justification = self.prepare_qc.remove(&message.view).unwrap().take();
 
         // Broadcast the leader prepare message to all replicas (ourselves included).
         let output_message = ConsensusInputMessage {
