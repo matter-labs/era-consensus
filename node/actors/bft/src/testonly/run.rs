@@ -1,4 +1,4 @@
-use super::{Behavior, Node, RandomPayloadSource};
+use super::{Behavior, Node};
 use crate::testonly;
 use anyhow::Context;
 use std::{collections::HashMap, sync::Arc};
@@ -108,7 +108,7 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, nodes: &[Node]) -> anyhow::
                                 node.net.consensus_config().key.clone(),
                                 validator_set,
                                 storage,
-                                &RandomPayloadSource,
+                                &*node.behavior.payload_source(),
                             )
                             .await
                             .context("consensus.run()")

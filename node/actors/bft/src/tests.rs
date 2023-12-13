@@ -145,3 +145,18 @@ async fn timeout_leader_in_consecutive_prepare() {
     util.new_leader_commit(ctx).await;
     util.produce_block_after_timeout(ctx).await;
 }
+
+/// Not being able to propose a block shouldn't cause a deadlock.
+#[tokio::test]
+async fn non_proposing_leader() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(5.));
+    Test {
+        network: Network::Real,
+        nodes: vec![Behavior::Honest, Behavior::HonestNotProposing],
+        blocks_to_finalize: 10,
+    }
+    .run(ctx)
+    .await
+    .unwrap()
+}

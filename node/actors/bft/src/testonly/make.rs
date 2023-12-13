@@ -20,6 +20,21 @@ impl PayloadSource for RandomPayloadSource {
     }
 }
 
+/// Never provides a payload.
+pub struct InavailablePayloadSource;
+
+#[async_trait::async_trait]
+impl PayloadSource for InavailablePayloadSource {
+    async fn propose(
+        &self,
+        ctx: &ctx::Ctx,
+        _block_number: validator::BlockNumber,
+    ) -> ctx::Result<validator::Payload> {
+        ctx.canceled().await;
+        Err(ctx::Canceled.into())
+    }
+}
+
 /// Creates a genesis block with the given payload
 /// and a validator set for the chain.
 pub fn make_genesis(
