@@ -1,16 +1,19 @@
 use crate::{metrics, ConsensusInner};
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    sync::Arc,
+};
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, time};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage as storage;
 use zksync_consensus_storage::ReplicaStore;
-use std::sync::Arc;
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
 /// for validating and voting on blocks. When participating in consensus we are always a replica.
 #[derive(Debug)]
 pub(crate) struct StateMachine {
+    /// Consensus configuration and output channel.
     pub(crate) inner: Arc<ConsensusInner>,
     /// The current view number.
     pub(crate) view: validator::ViewNumber,
@@ -33,7 +36,11 @@ pub(crate) struct StateMachine {
 impl StateMachine {
     /// Creates a new StateMachine struct. We try to recover a past state from the storage module,
     /// otherwise we initialize the state machine with whatever head block we have.
-    pub(crate) async fn start(ctx: &ctx::Ctx, inner: Arc<ConsensusInner>, storage: ReplicaStore) -> ctx::Result<Self> {
+    pub(crate) async fn start(
+        ctx: &ctx::Ctx,
+        inner: Arc<ConsensusInner>,
+        storage: ReplicaStore,
+    ) -> ctx::Result<Self> {
         let backup = storage.replica_state(ctx).await?;
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
         for proposal in backup.proposals {

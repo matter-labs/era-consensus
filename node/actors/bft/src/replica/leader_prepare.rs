@@ -1,5 +1,5 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner};
+use crate::inner::ConsensusInner;
 use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};

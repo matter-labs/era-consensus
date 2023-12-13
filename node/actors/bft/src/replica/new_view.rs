@@ -7,10 +7,7 @@ use zksync_consensus_roles::validator;
 impl StateMachine {
     /// This blocking method is used whenever we start a new view.
     #[instrument(level = "trace", err)]
-    pub(crate) async fn start_new_view(
-        &mut self,
-        ctx: &ctx::Ctx,
-    ) -> ctx::Result<()> {
+    pub(crate) async fn start_new_view(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         tracing::info!("Starting view {}", self.view.next().0);
 
         // Update the state machine.
@@ -28,7 +25,8 @@ impl StateMachine {
 
         // Send the replica message to the next leader.
         let output_message = ConsensusInputMessage {
-            message: self.inner 
+            message: self
+                .inner
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaPrepare(
                     validator::ReplicaPrepare {

@@ -1,7 +1,5 @@
 //! This module contains utilities that are only meant for testing purposes.
-use crate::{
-    ConsensusInner, PayloadSource,
-};
+use crate::{ConsensusInner, PayloadSource};
 use rand::Rng as _;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;

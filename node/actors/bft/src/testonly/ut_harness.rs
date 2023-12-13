@@ -1,24 +1,23 @@
 use crate::{
-    ConsensusInner,
-    testonly::RandomPayloadSource,
-    io::{OutputMessage},
-    leader, replica,
+    io::OutputMessage,
+    leader,
     leader::{ReplicaCommitError, ReplicaPrepareError},
+    replica,
     replica::{LeaderCommitError, LeaderPrepareError},
+    testonly::RandomPayloadSource,
+    ConsensusInner,
 };
 use assert_matches::assert_matches;
-use zksync_consensus_storage::InMemoryStorage;
 use rand::Rng;
-use std::cmp::Ordering;
+use std::{cmp::Ordering, sync::Arc};
 use zksync_concurrency::ctx;
 use zksync_consensus_network::io::ConsensusInputMessage;
-use zksync_consensus_storage::ReplicaStore;
 use zksync_consensus_roles::validator::{
-    self, CommitQC, LeaderCommit, LeaderPrepare, Payload, Phase, PrepareQC,
-    ReplicaCommit, ReplicaPrepare, SecretKey, Signed, ViewNumber,
+    self, CommitQC, LeaderCommit, LeaderPrepare, Payload, Phase, PrepareQC, ReplicaCommit,
+    ReplicaPrepare, SecretKey, Signed, ViewNumber,
 };
-use zksync_consensus_utils::{enum_util::Variant};
-use std::sync::Arc;
+use zksync_consensus_storage::{InMemoryStorage, ReplicaStore};
+use zksync_consensus_utils::enum_util::Variant;
 
 /// `UTHarness` provides various utilities for unit tests.
 /// It is designed to simplify the setup and execution of test cases by encapsulating
@@ -44,29 +43,28 @@ impl UTHarness {
         // Initialize the storage.
         let storage = InMemoryStorage::new(genesis);
         // Create the pipe.
-        let (send,recv) = ctx::channel::unbounded();
+        let (send, recv) = ctx::channel::unbounded();
 
         let inner = Arc::new(ConsensusInner {
             pipe: send,
             secret_key: keys[0].clone(),
             validator_set,
         });
-        let leader = leader::StateMachine::new(
-            ctx,
-            inner.clone(),
-        );
+        let leader = leader::StateMachine::new(ctx, inner.clone());
         let replica = replica::StateMachine::start(
             ctx,
             inner.clone(),
-            ReplicaStore::from_store(Arc::new(storage))
-        ).await.unwrap();
+            ReplicaStore::from_store(Arc::new(storage)),
+        )
+        .await
+        .unwrap();
         let mut this = UTHarness {
             leader,
             replica,
             pipe: recv,
             keys,
         };
-        let _ : Signed<ReplicaPrepare> = this.try_recv().unwrap();
+        let _: Signed<ReplicaPrepare> = this.try_recv().unwrap();
         this
     }
 
@@ -180,10 +178,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: Signed<LeaderPrepare>,
     ) -> Result<Signed<ReplicaCommit>, LeaderPrepareError> {
-        self
-            .replica
-            .process_leader_prepare(ctx, msg)
-            .await?;
+        self.replica.process_leader_prepare(ctx, msg).await?;
         Ok(self.try_recv().unwrap())
     }
 
@@ -192,10 +187,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: Signed<LeaderCommit>,
     ) -> Result<Signed<ReplicaPrepare>, LeaderCommitError> {
-        self
-            .replica
-            .process_leader_commit(ctx, msg)
-            .await?;
+        self.replica.process_leader_commit(ctx, msg).await?;
         Ok(self.try_recv().unwrap())
     }
 
@@ -205,11 +197,18 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: Signed<ReplicaPrepare>,
     ) -> Result<Option<Signed<LeaderPrepare>>, ReplicaPrepareError> {
-        self
-            .leader
-            .process_replica_prepare(ctx, msg)
-            .await?;
-        self.
+        let prepare_qc = self.leader.prepare_qc.subscribe();
+        self.leader.process_replica_prepare(ctx, msg).await?;
+        if prepare_qc.has_changed().unwrap() {
+            leader::StateMachine::propose(
+                ctx,
+                &self.leader.inner,
+                &RandomPayloadSource,
+                prepare_qc.borrow().clone().unwrap(),
+            )
+            .await
+            .unwrap();
+        }
         Ok(self.try_recv())
     }
 
@@ -218,28 +217,18 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaPrepare,
     ) -> Signed<LeaderPrepare> {
-        for (i, key) in self.keys.iter().enumerate() {
-            let res = self
-                .leader
-                .process_replica_prepare(ctx, key.sign_msg(msg.clone()))
-                .await;
-            let want_threshold = self.replica.inner.threshold();
+        let want_threshold = self.replica.inner.threshold();
+        let mut leader_prepare = None;
+        let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
+        for (i, msg) in msgs.into_iter().enumerate() {
+            let res = self.process_replica_prepare(ctx, msg).await;
             match (i + 1).cmp(&want_threshold) {
-                Ordering::Equal => res.unwrap(),
-                Ordering::Less => assert_matches!(
-                    res,
-                    Err(ReplicaPrepareError::NumReceivedBelowThreshold {
-                        num_messages,
-                        threshold,
-                    }) => {
-                        assert_eq!(num_messages, i+1);
-                        assert_eq!(threshold, want_threshold)
-                    }
-                ),
+                Ordering::Equal => leader_prepare = res.unwrap(),
+                Ordering::Less => assert!(res.unwrap().is_none()),
                 Ordering::Greater => assert_matches!(res, Err(ReplicaPrepareError::Old { .. })),
             }
         }
-        self.try_recv().unwrap()
+        leader_prepare.unwrap()
     }
 
     pub(crate) async fn process_replica_commit(
@@ -247,9 +236,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: Signed<ReplicaCommit>,
     ) -> Result<Option<Signed<LeaderCommit>>, ReplicaCommitError> {
-        self
-            .leader
-            .process_replica_commit(ctx, msg)?;
+        self.leader.process_replica_commit(ctx, msg)?;
         Ok(self.try_recv())
     }
 
@@ -259,10 +246,7 @@ impl UTHarness {
         msg: ReplicaCommit,
     ) -> Signed<LeaderCommit> {
         for (i, key) in self.keys.iter().enumerate() {
-            let res = self.leader.process_replica_commit(
-                ctx,
-                key.sign_msg(msg),
-            );
+            let res = self.leader.process_replica_commit(ctx, key.sign_msg(msg));
             let want_threshold = self.replica.inner.threshold();
             match (i + 1).cmp(&want_threshold) {
                 Ordering::Equal => res.unwrap(),
@@ -295,11 +279,7 @@ impl UTHarness {
         &mut self,
         ctx: &ctx::Ctx,
     ) -> Signed<ReplicaPrepare> {
-        self
-            .replica
-            .start_new_view(ctx)
-            .await
-            .unwrap();
+        self.replica.start_new_view(ctx).await.unwrap();
         self.try_recv().unwrap()
     }
 

@@ -86,7 +86,8 @@ async fn timeout_leader_some_prepares() {
     assert!(util
         .process_replica_prepare(ctx, replica_prepare)
         .await
-        .is_err());
+        .unwrap()
+        .is_none());
     util.produce_block_after_timeout(ctx).await;
 }
 
@@ -127,7 +128,8 @@ async fn timeout_leader_some_commits() {
     assert!(util
         .process_replica_commit(ctx, replica_commit)
         .await
-        .is_err());
+        .unwrap()
+        .is_none());
     // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
     assert_eq!(util.leader_phase(), Phase::Commit);
     util.produce_block_after_timeout(ctx).await;

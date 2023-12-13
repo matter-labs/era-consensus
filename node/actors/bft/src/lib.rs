@@ -17,7 +17,7 @@
 use crate::io::{InputMessage, OutputMessage};
 use inner::ConsensusInner;
 use std::sync::Arc;
-use zksync_concurrency::{scope,ctx};
+use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::ReplicaStore;
 use zksync_consensus_utils::pipe::ActorPipe;
@@ -55,23 +55,24 @@ pub async fn run(
     validator_set: validator::ValidatorSet,
     storage: ReplicaStore,
     payload_source: &dyn PayloadSource,
-    
 ) -> anyhow::Result<()> {
     let inner = Arc::new(ConsensusInner {
         pipe: pipe.send,
         secret_key,
         validator_set,
     });
-    let res = scope::run!(ctx,|ctx,s| async {
+    let res = scope::run!(ctx, |ctx, s| async {
         let mut replica = replica::StateMachine::start(ctx, inner.clone(), storage).await?;
         let mut leader = leader::StateMachine::new(ctx, inner.clone());
 
-        s.spawn_bg(leader::StateMachine::run_proposer(ctx, &*inner, payload_source, leader.prepare_qc.subscribe()));
+        s.spawn_bg(leader::StateMachine::run_proposer(
+            ctx,
+            &inner,
+            payload_source,
+            leader.prepare_qc.subscribe(),
+        ));
 
-        tracing::info!(
-            "Starting consensus actor {:?}",
-            inner.secret_key.public()
-        );
+        tracing::info!("Starting consensus actor {:?}", inner.secret_key.public());
 
         // This is the infinite loop where the consensus actually runs. The validator waits for either
         // a message from the network or for a timeout, and processes each accordingly.
@@ -107,7 +108,8 @@ pub async fn run(
             let _ = req.ack.send(());
             res?;
         }
-    }).await;
+    })
+    .await;
     match res {
         Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
         Err(ctx::Error::Internal(err)) => Err(err),

@@ -123,9 +123,7 @@ impl StateMachine {
 
         // Start a new view. But first we skip to the view of this message.
         self.view = view;
-        self.start_new_view(ctx)
-            .await
-            .wrap("start_new_view()")?;
+        self.start_new_view(ctx).await.wrap("start_new_view()")?;
 
         Ok(())
     }

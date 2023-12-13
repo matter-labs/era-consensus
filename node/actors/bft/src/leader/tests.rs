@@ -172,7 +172,8 @@ async fn replica_prepare_already_exists() {
     assert!(util
         .process_replica_prepare(ctx, replica_prepare.clone())
         .await
-        .is_err());
+        .unwrap()
+        .is_none());
     let res = util
         .process_replica_prepare(ctx, replica_prepare.clone())
         .await;
@@ -192,14 +193,11 @@ async fn replica_prepare_num_received_below_threshold() {
 
     util.set_owner_as_view_leader();
     let replica_prepare = util.new_replica_prepare(|_| {});
-    let res = util.process_replica_prepare(ctx, replica_prepare).await;
-    assert_matches!(
-        res,
-        Err(ReplicaPrepareError::NumReceivedBelowThreshold {
-            num_messages: 1,
-            threshold: 2
-        })
-    );
+    assert!(util
+        .process_replica_prepare(ctx, replica_prepare)
+        .await
+        .unwrap()
+        .is_none());
 }
 
 #[tokio::test]
@@ -304,7 +302,9 @@ async fn replica_commit_incompatible_protocol_version() {
     let incompatible_protocol_version = util.incompatible_protocol_version();
     let mut replica_commit = util.new_replica_commit(ctx).await.msg;
     replica_commit.protocol_version = incompatible_protocol_version;
-    let res = util.process_replica_commit(ctx, util.owner_key().sign_msg(replica_commit)).await;
+    let res = util
+        .process_replica_commit(ctx, util.owner_key().sign_msg(replica_commit))
+        .await;
     assert_matches!(
         res,
         Err(ReplicaCommitError::IncompatibleProtocolVersion { message_version, local_version }) => {
@@ -368,16 +368,12 @@ async fn replica_commit_already_exists() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx, 2).await;
-
-    let view = ViewNumber(2);
-    util.set_replica_view(view);
-    util.set_leader_view(view);
-    assert_eq!(util.view_leader(view), util.owner_key().public());
     let replica_commit = util.new_replica_commit(ctx).await;
     assert!(util
         .process_replica_commit(ctx, replica_commit.clone())
         .await
-        .is_err());
+        .unwrap()
+        .is_none());
     let res = util
         .process_replica_commit(ctx, replica_commit.clone())
         .await;
@@ -399,7 +395,8 @@ async fn replica_commit_num_received_below_threshold() {
     assert!(util
         .process_replica_prepare(ctx, replica_prepare.clone())
         .await
-        .is_err());
+        .unwrap()
+        .is_none());
     let replica_prepare = util.keys[1].sign_msg(replica_prepare.msg);
     let leader_prepare = util
         .process_replica_prepare(ctx, replica_prepare)
@@ -410,9 +407,9 @@ async fn replica_commit_num_received_below_threshold() {
         .process_leader_prepare(ctx, leader_prepare)
         .await
         .unwrap();
-    util
-        .process_replica_commit(ctx, replica_commit.clone())
-        .await.unwrap();
+    util.process_replica_commit(ctx, replica_commit.clone())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -432,5 +429,7 @@ async fn replica_commit_unexpected_proposal() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx, 1).await;
     let replica_commit = util.new_current_replica_commit(|_| {});
-    util.process_replica_commit(ctx, replica_commit).await.unwrap();
+    util.process_replica_commit(ctx, replica_commit)
+        .await
+        .unwrap();
 }

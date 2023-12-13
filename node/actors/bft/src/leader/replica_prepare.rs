@@ -37,17 +37,6 @@ pub(crate) enum Error {
         /// Existing message from the same replica.
         existing_message: validator::ReplicaPrepare,
     },
-    /// Number of received messages is below a threshold.
-    #[error(
-        "number of received messages below threshold. waiting for more (received: {num_messages:?}, \
-         threshold: {threshold:?}"
-    )]
-    NumReceivedBelowThreshold {
-        /// Number of received messages.
-        num_messages: usize,
-        /// Threshold for message count.
-        threshold: usize,
-    },
     /// High QC of a future view.
     #[error(
         "high QC of a future view (high QC view: {high_qc_view:?}, current view: {current_view:?}"
@@ -169,10 +158,7 @@ impl StateMachine {
         let num_messages = self.prepare_message_cache.get(&message.view).unwrap().len();
 
         if num_messages < self.inner.threshold() {
-            return Err(Error::NumReceivedBelowThreshold {
-                num_messages,
-                threshold: self.inner.threshold(),
-            });
+            return Ok(());
         }
 
         // Get all the replica prepare messages for this view. Note that we consume the
@@ -186,7 +172,7 @@ impl StateMachine {
             .collect();
 
         debug_assert!(num_messages == self.inner.threshold());
-        
+
         // ----------- Update the state machine --------------
 
         self.view = message.view;
@@ -194,8 +180,9 @@ impl StateMachine {
         self.phase_start = ctx.now();
 
         // Create the justification for our message.
-        let justification = validator::PrepareQC::from(&replica_messages, &self.inner.validator_set)
-            .expect("Couldn't create justification from valid replica messages!");
+        let justification =
+            validator::PrepareQC::from(&replica_messages, &self.inner.validator_set)
+                .expect("Couldn't create justification from valid replica messages!");
         self.prepare_qc.send_replace(Some(justification));
         Ok(())
     }

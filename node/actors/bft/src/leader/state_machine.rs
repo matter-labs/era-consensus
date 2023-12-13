@@ -5,14 +5,15 @@ use std::{
     unreachable,
 };
 use tracing::instrument;
-use zksync_concurrency::{ctx, sync, error::Wrap as _, metrics::LatencyHistogramExt as _, time};
-use zksync_consensus_roles::validator;
+use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
+use zksync_consensus_roles::validator;
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
 /// those messages. When participating in consensus we are not the leader most of the time.
 pub(crate) struct StateMachine {
+    /// Consensus configuration and output channel.
     pub(crate) inner: Arc<ConsensusInner>,
     /// The current view number. This might not match the replica's view number, we only have this here
     /// to make the leader advance monotonically in time and stop it from accepting messages from the past.
@@ -93,6 +94,10 @@ impl StateMachine {
         Ok(())
     }
 
+    /// In a loop, receives a PrepareQC and sends a LeaderPrepare containing it.
+    /// Every subsequent PrepareQC has to be for a higher view than the previous one (otherwise it
+    /// is skipped). In case payload generation takes too long, some PrepareQC may be elided, so
+    /// that the validator doesn't spend time on generating payloads for already expired views.
     pub(crate) async fn run_proposer(
         ctx: &ctx::Ctx,
         inner: &ConsensusInner,
@@ -101,14 +106,19 @@ impl StateMachine {
     ) -> ctx::Result<()> {
         let mut next_view = validator::ViewNumber(0);
         loop {
-            sync::changed(ctx, &mut prepare_qc).await?;
-            let Some(prepare_qc) = prepare_qc.borrow_and_update().clone() else { continue };
-            if next_view < prepare_qc.view() { continue };
+            let Some(prepare_qc) = sync::changed(ctx, &mut prepare_qc).await?.clone() else {
+                continue;
+            };
+            if prepare_qc.view() < next_view {
+                continue;
+            };
             next_view = prepare_qc.view();
-            Self::propose(ctx,inner,payload_source, prepare_qc).await?; 
+            Self::propose(ctx, inner, payload_source, prepare_qc).await?;
         }
     }
 
+    /// Sends a LeaderPrepare for the given PrepareQC.
+    /// Uses `payload_source` to generate a payload if needed.
     pub(crate) async fn propose(
         ctx: &ctx::Ctx,
         inner: &ConsensusInner,
@@ -119,7 +129,7 @@ impl StateMachine {
         // in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
         let mut count: HashMap<_, usize> = HashMap::new();
 
-        for (vote,signers) in justification.map.iter() {
+        for (vote, signers) in justification.map.iter() {
             *count.entry(vote.high_vote.proposal).or_default() += signers.len();
         }
 
@@ -131,7 +141,9 @@ impl StateMachine {
             .cloned();
 
         // Get the highest CommitQC.
-        let highest_qc: &validator::CommitQC = justification.map.keys()
+        let highest_qc: &validator::CommitQC = justification
+            .map
+            .keys()
             .map(|s| &s.high_qc)
             .max_by_key(|qc| qc.message.view)
             .unwrap();
@@ -172,10 +184,13 @@ impl StateMachine {
                     justification,
                 },
             ));
-        inner.pipe.send(ConsensusInputMessage {
-            message: msg,
-            recipient: Target::Broadcast,
-        }.into());
+        inner.pipe.send(
+            ConsensusInputMessage {
+                message: msg,
+                recipient: Target::Broadcast,
+            }
+            .into(),
+        );
         Ok(())
     }
 }

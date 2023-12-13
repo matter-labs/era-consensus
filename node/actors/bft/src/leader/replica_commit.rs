@@ -1,10 +1,10 @@
 use super::StateMachine;
-use crate::{metrics};
+use crate::metrics;
+use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator::{self, ProtocolVersion};
-use std::collections::HashMap;
 
 /// Errors that can occur when processing a "replica commit" message.
 #[derive(Debug, thiserror::Error)]
@@ -23,9 +23,6 @@ pub(crate) enum Error {
         /// Signer of the message.
         signer: validator::PublicKey,
     },
-    /// Unexpected proposal.
-    //#[error("unexpected proposal")]
-    //UnexpectedProposal,
     /// Past view or phase.
     #[error("past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
     Old {
@@ -43,17 +40,6 @@ pub(crate) enum Error {
         /// Existing message from the same replica.
         existing_message: validator::ReplicaCommit,
     },
-    /// Number of received messages is below threshold.
-    /*#[error(
-        "number of received messages is below threshold. waiting for more (received: {num_messages:?}, \
-         threshold: {threshold:?}"
-    )]
-    NumReceivedBelowThreshold {
-        /// Number of received messages.
-        num_messages: usize,
-        /// Threshold for message count.
-        threshold: usize,
-    },*/
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] validator::Error),
@@ -81,7 +67,7 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator set.
-        self.inner 
+        self.inner
             .validator_set
             .index(author)
             .ok_or(Error::NonValidatorSigner {
@@ -127,10 +113,18 @@ impl StateMachine {
 
         // Now we check if we have enough messages to continue.
         let mut by_proposal: HashMap<_, Vec<_>> = HashMap::new();
-        for msg in self.commit_message_cache.get(&message.view).unwrap().values() {
-            by_proposal.entry(msg.msg.proposal.clone()).or_default().push(msg);
+        for msg in self
+            .commit_message_cache
+            .get(&message.view)
+            .unwrap()
+            .values()
+        {
+            by_proposal.entry(msg.msg.proposal).or_default().push(msg);
         }
-        let Some((_,replica_messages)) = by_proposal.into_iter().find(|(_,v)|v.len()>=self.inner.threshold()) else {
+        let Some((_, replica_messages)) = by_proposal
+            .into_iter()
+            .find(|(_, v)| v.len() >= self.inner.threshold())
+        else {
             return Ok(());
         };
         debug_assert!(replica_messages.len() == self.inner.threshold());
@@ -150,12 +144,14 @@ impl StateMachine {
         // Create the justification for our message.
         let justification = validator::CommitQC::from(
             &replica_messages.into_iter().cloned().collect::<Vec<_>>()[..],
-            &self.inner.validator_set
-        ).expect("Couldn't create justification from valid replica messages!");
+            &self.inner.validator_set,
+        )
+        .expect("Couldn't create justification from valid replica messages!");
 
         // Broadcast the leader commit message to all replicas (ourselves included).
         let output_message = ConsensusInputMessage {
-            message: self.inner
+            message: self
+                .inner
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::LeaderCommit(
                     validator::LeaderCommit {

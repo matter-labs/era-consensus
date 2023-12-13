@@ -204,7 +204,8 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
             if let Some(validator) = self.validator {
                 s.spawn(async {
                     let validator = validator;
-                    let consensus_storage = ReplicaStore::new(validator.replica_state_store, self.storage.clone());
+                    let consensus_storage =
+                        ReplicaStore::new(validator.replica_state_store, self.storage.clone());
                     zksync_consensus_bft::run(
                         ctx,
                         consensus_actor_pipe,
@@ -212,7 +213,9 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
                         validator_set.clone(),
                         consensus_storage,
                         &*validator.payload_source,
-                    ).await.context("Consensus stopped")
+                    )
+                    .await
+                    .context("Consensus stopped")
                 });
             }
             sync_blocks.run(ctx).await.context("Syncing blocks stopped")
