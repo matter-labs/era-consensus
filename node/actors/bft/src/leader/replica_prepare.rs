@@ -171,7 +171,7 @@ impl StateMachine {
             .into_values()
             .collect();
 
-        debug_assert!(num_messages == self.inner.threshold());
+        debug_assert_eq!(num_messages, self.inner.threshold());
 
         // ----------- Update the state machine --------------
 

@@ -106,19 +106,12 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // We store the message in our cache.
-        self.commit_message_cache
-            .entry(message.view)
-            .or_default()
-            .insert(author.clone(), signed_message);
+        let cache_entry = self.commit_message_cache.entry(message.view).or_default();
+        cache_entry.insert(author.clone(), signed_message);
 
         // Now we check if we have enough messages to continue.
         let mut by_proposal: HashMap<_, Vec<_>> = HashMap::new();
-        for msg in self
-            .commit_message_cache
-            .get(&message.view)
-            .unwrap()
-            .values()
-        {
+        for msg in cache_entry.values() {
             by_proposal.entry(msg.msg.proposal).or_default().push(msg);
         }
         let Some((_, replica_messages)) = by_proposal
@@ -127,7 +120,7 @@ impl StateMachine {
         else {
             return Ok(());
         };
-        debug_assert!(replica_messages.len() == self.inner.threshold());
+        debug_assert_eq!(replica_messages.len(), self.inner.threshold());
 
         // ----------- Update the state machine --------------
 
@@ -143,7 +136,7 @@ impl StateMachine {
 
         // Create the justification for our message.
         let justification = validator::CommitQC::from(
-            &replica_messages.into_iter().cloned().collect::<Vec<_>>()[..],
+            &replica_messages.into_iter().cloned().collect::<Vec<_>>(),
             &self.inner.validator_set,
         )
         .expect("Couldn't create justification from valid replica messages!");

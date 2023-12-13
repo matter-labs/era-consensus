@@ -251,16 +251,6 @@ impl UTHarness {
             match (i + 1).cmp(&want_threshold) {
                 Ordering::Equal => res.unwrap(),
                 Ordering::Less => res.unwrap(),
-                /*assert_matches!(
-                    res,
-                    Err(ReplicaCommitError::NumReceivedBelowThreshold {
-                        num_messages,
-                        threshold,
-                    }) => {
-                        assert_eq!(num_messages, i+1);
-                        assert_eq!(threshold, want_threshold)
-                    }
-                ),*/
                 Ordering::Greater => assert_matches!(res, Err(ReplicaCommitError::Old { .. })),
             }
         }

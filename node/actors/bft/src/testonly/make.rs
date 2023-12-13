@@ -21,10 +21,10 @@ impl PayloadSource for RandomPayloadSource {
 }
 
 /// Never provides a payload.
-pub struct InavailablePayloadSource;
+pub struct UnavailablePayloadSource;
 
 #[async_trait::async_trait]
-impl PayloadSource for InavailablePayloadSource {
+impl PayloadSource for UnavailablePayloadSource {
     async fn propose(
         &self,
         ctx: &ctx::Ctx,

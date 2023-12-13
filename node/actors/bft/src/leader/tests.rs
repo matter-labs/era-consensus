@@ -144,7 +144,7 @@ async fn replica_prepare_during_commit() {
             current_view,
             current_phase: Phase::Commit,
         }) => {
-            assert_eq!(current_view,util.replica.view);
+            assert_eq!(current_view, util.replica.view);
         }
     );
 }

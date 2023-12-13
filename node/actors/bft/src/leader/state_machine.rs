@@ -112,7 +112,7 @@ impl StateMachine {
             if prepare_qc.view() < next_view {
                 continue;
             };
-            next_view = prepare_qc.view();
+            next_view = prepare_qc.view().next();
             Self::propose(ctx, inner, payload_source, prepare_qc).await?;
         }
     }
@@ -128,16 +128,14 @@ impl StateMachine {
         // Get the highest block voted for and check if there's a quorum of votes for it. To have a quorum
         // in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
         let mut count: HashMap<_, usize> = HashMap::new();
-
-        for (vote, signers) in justification.map.iter() {
+        for (vote, signers) in &justification.map {
             *count.entry(vote.high_vote.proposal).or_default() += signers.len();
         }
 
         let highest_vote: Option<validator::BlockHeader> = count
             .iter()
             // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
-            .find(|(_, v)| **v > 2 * inner.faulty_replicas())
-            .map(|(h, _)| h)
+            .find_map(|(h, v)| (*v > 2 * inner.faulty_replicas()).then_some(h))
             .cloned();
 
         // Get the highest CommitQC.
