@@ -67,9 +67,6 @@ pub(crate) enum Error {
     /// Invalid `HighQC` message.
     #[error("invalid high QC: {0:#}")]
     InvalidHighQC(#[source] anyhow::Error),
-    // /// Unexpected error when attempting to incrementally build the prepare QC.
-    // #[error("prepare QC build unexpected error: {0:#}")]
-    // PrepareQCBuildUnexpectedError(#[source] anyhow::Error),
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error(transparent)]
     Internal(#[from] ctx::Error),
