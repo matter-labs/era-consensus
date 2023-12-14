@@ -1,5 +1,4 @@
 use super::StateMachine;
-use crate::inner::ConsensusInner;
 use anyhow::Context as _;
 use tracing::{info, instrument};
 use zksync_concurrency::ctx;
@@ -13,7 +12,6 @@ impl StateMachine {
     pub(crate) async fn save_block(
         &mut self,
         ctx: &ctx::Ctx,
-        consensus: &ConsensusInner,
         commit_qc: &validator::CommitQC,
     ) -> ctx::Result<()> {
         // TODO(gprusak): for availability of finalized blocks,

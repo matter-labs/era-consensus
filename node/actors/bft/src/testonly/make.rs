@@ -1,14 +1,8 @@
 //! This module contains utilities that are only meant for testing purposes.
-use crate::{
-    io::{InputMessage, OutputMessage},
-    Consensus, ConsensusInner, PayloadSource,
-};
+use crate::{ConsensusInner, PayloadSource};
 use rand::Rng as _;
-use std::sync::Arc;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{InMemoryStorage, ReplicaStore};
-use zksync_consensus_utils::pipe::{self, DispatcherPipe};
 
 /// Provides payload consisting of random bytes.
 pub struct RandomPayloadSource;
@@ -26,30 +20,19 @@ impl PayloadSource for RandomPayloadSource {
     }
 }
 
-/// This creates a mock Consensus struct for unit tests.
-pub async fn make_consensus(
-    ctx: &ctx::Ctx,
-    key: &validator::SecretKey,
-    validator_set: &validator::ValidatorSet,
-    genesis_block: &validator::FinalBlock,
-) -> (Consensus, DispatcherPipe<InputMessage, OutputMessage>) {
-    // Initialize the storage.
-    let storage = InMemoryStorage::new(genesis_block.clone());
-    // Create the pipe.
-    let (consensus_pipe, dispatcher_pipe) = pipe::new();
+/// Never provides a payload.
+pub struct UnavailablePayloadSource;
 
-    let consensus = Consensus::new(
-        ctx,
-        consensus_pipe,
-        key.clone(),
-        validator_set.clone(),
-        ReplicaStore::from_store(Arc::new(storage)),
-        Arc::new(RandomPayloadSource),
-    );
-    let consensus = consensus
-        .await
-        .expect("Initializing consensus actor failed");
-    (consensus, dispatcher_pipe)
+#[async_trait::async_trait]
+impl PayloadSource for UnavailablePayloadSource {
+    async fn propose(
+        &self,
+        ctx: &ctx::Ctx,
+        _block_number: validator::BlockNumber,
+    ) -> ctx::Result<validator::Payload> {
+        ctx.canceled().await;
+        Err(ctx::Canceled.into())
+    }
 }
 
 /// Creates a genesis block with the given payload

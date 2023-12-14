@@ -1,19 +1,23 @@
 use crate::{
-    io::{InputMessage, OutputMessage},
+    io::OutputMessage,
+    leader,
     leader::{ReplicaCommitError, ReplicaPrepareError},
+    replica,
     replica::{LeaderCommitError, LeaderPrepareError},
-    Consensus,
+    testonly::RandomPayloadSource,
+    ConsensusInner,
 };
 use assert_matches::assert_matches;
 use rand::Rng;
-use std::cmp::Ordering;
+use std::{cmp::Ordering, sync::Arc};
 use zksync_concurrency::ctx;
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator::{
-    self, BlockHeader, CommitQC, LeaderCommit, LeaderPrepare, Payload, Phase, PrepareQC,
-    ReplicaCommit, ReplicaPrepare, SecretKey, Signed, ViewNumber,
+    self, CommitQC, LeaderCommit, LeaderPrepare, Payload, Phase, PrepareQC, ReplicaCommit,
+    ReplicaPrepare, SecretKey, Signed, ViewNumber,
 };
-use zksync_consensus_utils::{enum_util::Variant, pipe::DispatcherPipe};
+use zksync_consensus_storage::{InMemoryStorage, ReplicaStore};
+use zksync_consensus_utils::enum_util::Variant;
 
 /// `UTHarness` provides various utilities for unit tests.
 /// It is designed to simplify the setup and execution of test cases by encapsulating
@@ -22,9 +26,10 @@ use zksync_consensus_utils::{enum_util::Variant, pipe::DispatcherPipe};
 /// It should be instantiated once for every test case.
 #[cfg(test)]
 pub(crate) struct UTHarness {
-    pub(crate) consensus: Consensus,
+    pub(crate) leader: leader::StateMachine,
+    pub(crate) replica: replica::StateMachine,
     pub(crate) keys: Vec<SecretKey>,
-    pipe: DispatcherPipe<InputMessage, OutputMessage>,
+    pipe: ctx::channel::UnboundedReceiver<OutputMessage>,
 }
 
 impl UTHarness {
@@ -32,18 +37,35 @@ impl UTHarness {
     pub(crate) async fn new(ctx: &ctx::Ctx, num_validators: usize) -> UTHarness {
         let mut rng = ctx.rng();
         let keys: Vec<_> = (0..num_validators).map(|_| rng.gen()).collect();
-        let (genesis, val_set) =
+        let (genesis, validator_set) =
             crate::testonly::make_genesis(&keys, Payload(vec![]), validator::BlockNumber(0));
-        let (mut consensus, pipe) =
-            crate::testonly::make_consensus(ctx, &keys[0], &val_set, &genesis).await;
 
-        consensus.leader.view = ViewNumber(1);
-        consensus.replica.view = ViewNumber(1);
-        UTHarness {
-            consensus,
-            pipe,
+        // Initialize the storage.
+        let storage = InMemoryStorage::new(genesis);
+        // Create the pipe.
+        let (send, recv) = ctx::channel::unbounded();
+
+        let inner = Arc::new(ConsensusInner {
+            pipe: send,
+            secret_key: keys[0].clone(),
+            validator_set,
+        });
+        let leader = leader::StateMachine::new(ctx, inner.clone());
+        let replica = replica::StateMachine::start(
+            ctx,
+            inner.clone(),
+            ReplicaStore::from_store(Arc::new(storage)),
+        )
+        .await
+        .unwrap();
+        let mut this = UTHarness {
+            leader,
+            replica,
+            pipe: recv,
             keys,
-        }
+        };
+        let _: Signed<ReplicaPrepare> = this.try_recv().unwrap();
+        this
     }
 
     /// Creates a new `UTHarness` with minimally-significant validator set size.
@@ -59,9 +81,9 @@ impl UTHarness {
     pub(crate) async fn produce_block_after_timeout(&mut self, ctx: &ctx::Ctx) {
         let want = ReplicaPrepare {
             protocol_version: self.protocol_version(),
-            view: self.consensus.replica.view.next(),
-            high_qc: self.consensus.replica.high_qc.clone(),
-            high_vote: self.consensus.replica.high_vote,
+            view: self.replica.view.next(),
+            high_qc: self.replica.high_qc.clone(),
+            high_vote: self.replica.high_vote,
         };
         let replica_prepare = self.process_replica_timeout(ctx).await;
         assert_eq!(want, replica_prepare.msg);
@@ -72,12 +94,8 @@ impl UTHarness {
             .unwrap();
     }
 
-    pub(crate) fn consensus_threshold(&self) -> usize {
-        crate::misc::consensus_threshold(self.keys.len())
-    }
-
     pub(crate) fn protocol_version(&self) -> validator::ProtocolVersion {
-        Consensus::PROTOCOL_VERSION
+        crate::PROTOCOL_VERSION
     }
 
     pub(crate) fn incompatible_protocol_version(&self) -> validator::ProtocolVersion {
@@ -85,15 +103,15 @@ impl UTHarness {
     }
 
     pub(crate) fn owner_key(&self) -> &SecretKey {
-        &self.consensus.inner.secret_key
+        &self.replica.inner.secret_key
     }
 
     pub(crate) fn set_owner_as_view_leader(&mut self) {
-        let mut view = self.consensus.replica.view;
+        let mut view = self.replica.view;
         while self.view_leader(view) != self.owner_key().public() {
             view = view.next();
         }
-        self.consensus.replica.view = view;
+        self.replica.view = view;
     }
 
     pub(crate) fn set_view(&mut self, view: ViewNumber) {
@@ -102,11 +120,11 @@ impl UTHarness {
     }
 
     pub(crate) fn set_leader_view(&mut self, view: ViewNumber) {
-        self.consensus.leader.view = view
+        self.leader.view = view
     }
 
     pub(crate) fn set_replica_view(&mut self, view: ViewNumber) {
-        self.consensus.replica.view = view
+        self.replica.view = view
     }
 
     pub(crate) fn new_replica_prepare(
@@ -116,35 +134,12 @@ impl UTHarness {
         self.set_owner_as_view_leader();
         let mut msg = ReplicaPrepare {
             protocol_version: self.protocol_version(),
-            view: self.consensus.replica.view,
-            high_vote: self.consensus.replica.high_vote,
-            high_qc: self.consensus.replica.high_qc.clone(),
+            view: self.replica.view,
+            high_vote: self.replica.high_vote,
+            high_qc: self.replica.high_qc.clone(),
         };
         mutate_fn(&mut msg);
-        self.consensus.inner.secret_key.sign_msg(msg)
-    }
-
-    pub(crate) fn new_rnd_leader_prepare(
-        &mut self,
-        rng: &mut impl Rng,
-        mutate_fn: impl FnOnce(&mut LeaderPrepare),
-    ) -> Signed<LeaderPrepare> {
-        let payload: Payload = rng.gen();
-        let mut msg = LeaderPrepare {
-            protocol_version: self.protocol_version(),
-            view: self.consensus.leader.view,
-            proposal: BlockHeader {
-                parent: self.consensus.replica.high_vote.proposal.hash(),
-                number: self.consensus.replica.high_vote.proposal.number.next(),
-                payload: payload.hash(),
-            },
-            proposal_payload: Some(payload),
-            justification: rng.gen(),
-        };
-
-        mutate_fn(&mut msg);
-
-        self.consensus.inner.secret_key.sign_msg(msg)
+        self.owner_key().sign_msg(msg)
     }
 
     pub(crate) fn new_current_replica_commit(
@@ -153,24 +148,11 @@ impl UTHarness {
     ) -> Signed<ReplicaCommit> {
         let mut msg = ReplicaCommit {
             protocol_version: self.protocol_version(),
-            view: self.consensus.replica.view,
-            proposal: self.consensus.replica.high_qc.message.proposal,
+            view: self.replica.view,
+            proposal: self.replica.high_qc.message.proposal,
         };
         mutate_fn(&mut msg);
-        self.consensus.inner.secret_key.sign_msg(msg)
-    }
-
-    pub(crate) fn new_rnd_leader_commit(
-        &mut self,
-        rng: &mut impl Rng,
-        mutate_fn: impl FnOnce(&mut LeaderCommit),
-    ) -> Signed<LeaderCommit> {
-        let mut msg = LeaderCommit {
-            protocol_version: self.protocol_version(),
-            justification: rng.gen(),
-        };
-        mutate_fn(&mut msg);
-        self.consensus.inner.secret_key.sign_msg(msg)
+        self.owner_key().sign_msg(msg)
     }
 
     pub(crate) async fn new_leader_prepare(&mut self, ctx: &ctx::Ctx) -> Signed<LeaderPrepare> {
@@ -196,10 +178,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: Signed<LeaderPrepare>,
     ) -> Result<Signed<ReplicaCommit>, LeaderPrepareError> {
-        self.consensus
-            .replica
-            .process_leader_prepare(ctx, &self.consensus.inner, msg)
-            .await?;
+        self.replica.process_leader_prepare(ctx, msg).await?;
         Ok(self.try_recv().unwrap())
     }
 
@@ -208,10 +187,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: Signed<LeaderCommit>,
     ) -> Result<Signed<ReplicaPrepare>, LeaderCommitError> {
-        self.consensus
-            .replica
-            .process_leader_commit(ctx, &self.consensus.inner, msg)
-            .await?;
+        self.replica.process_leader_commit(ctx, msg).await?;
         Ok(self.try_recv().unwrap())
     }
 
@@ -221,10 +197,18 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: Signed<ReplicaPrepare>,
     ) -> Result<Option<Signed<LeaderPrepare>>, ReplicaPrepareError> {
-        self.consensus
-            .leader
-            .process_replica_prepare(ctx, &self.consensus.inner, msg)
-            .await?;
+        let prepare_qc = self.leader.prepare_qc.subscribe();
+        self.leader.process_replica_prepare(ctx, msg).await?;
+        if prepare_qc.has_changed().unwrap() {
+            leader::StateMachine::propose(
+                ctx,
+                &self.leader.inner,
+                &RandomPayloadSource,
+                prepare_qc.borrow().clone().unwrap(),
+            )
+            .await
+            .unwrap();
+        }
         Ok(self.try_recv())
     }
 
@@ -233,28 +217,18 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaPrepare,
     ) -> Signed<LeaderPrepare> {
-        for (i, key) in self.keys.iter().enumerate() {
-            let res = self
-                .consensus
-                .leader
-                .process_replica_prepare(ctx, &self.consensus.inner, key.sign_msg(msg.clone()))
-                .await;
-            match (i + 1).cmp(&self.consensus_threshold()) {
-                Ordering::Equal => res.unwrap(),
-                Ordering::Less => assert_matches!(
-                    res,
-                    Err(ReplicaPrepareError::NumReceivedBelowThreshold {
-                        num_messages,
-                        threshold,
-                    }) => {
-                        assert_eq!(num_messages, i+1);
-                        assert_eq!(threshold, self.consensus_threshold())
-                    }
-                ),
+        let want_threshold = self.replica.inner.threshold();
+        let mut leader_prepare = None;
+        let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
+        for (i, msg) in msgs.into_iter().enumerate() {
+            let res = self.process_replica_prepare(ctx, msg).await;
+            match (i + 1).cmp(&want_threshold) {
+                Ordering::Equal => leader_prepare = res.unwrap(),
+                Ordering::Less => assert!(res.unwrap().is_none()),
                 Ordering::Greater => assert_matches!(res, Err(ReplicaPrepareError::Old { .. })),
             }
         }
-        self.try_recv().unwrap()
+        leader_prepare.unwrap()
     }
 
     pub(crate) async fn process_replica_commit(
@@ -262,9 +236,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: Signed<ReplicaCommit>,
     ) -> Result<Option<Signed<LeaderCommit>>, ReplicaCommitError> {
-        self.consensus
-            .leader
-            .process_replica_commit(ctx, &self.consensus.inner, msg)?;
+        self.leader.process_replica_commit(ctx, msg)?;
         Ok(self.try_recv())
     }
 
@@ -274,23 +246,11 @@ impl UTHarness {
         msg: ReplicaCommit,
     ) -> Signed<LeaderCommit> {
         for (i, key) in self.keys.iter().enumerate() {
-            let res = self.consensus.leader.process_replica_commit(
-                ctx,
-                &self.consensus.inner,
-                key.sign_msg(msg),
-            );
-            match (i + 1).cmp(&self.consensus_threshold()) {
+            let res = self.leader.process_replica_commit(ctx, key.sign_msg(msg));
+            let want_threshold = self.replica.inner.threshold();
+            match (i + 1).cmp(&want_threshold) {
                 Ordering::Equal => res.unwrap(),
-                Ordering::Less => assert_matches!(
-                    res,
-                    Err(ReplicaCommitError::NumReceivedBelowThreshold {
-                        num_messages,
-                        threshold,
-                    }) => {
-                        assert_eq!(num_messages, i+1);
-                        assert_eq!(threshold, self.consensus_threshold())
-                    }
-                ),
+                Ordering::Less => res.unwrap(),
                 Ordering::Greater => assert_matches!(res, Err(ReplicaCommitError::Old { .. })),
             }
         }
@@ -309,20 +269,16 @@ impl UTHarness {
         &mut self,
         ctx: &ctx::Ctx,
     ) -> Signed<ReplicaPrepare> {
-        self.consensus
-            .replica
-            .process_input(ctx, &self.consensus.inner, None)
-            .await
-            .unwrap();
+        self.replica.start_new_view(ctx).await.unwrap();
         self.try_recv().unwrap()
     }
 
     pub(crate) fn leader_phase(&self) -> Phase {
-        self.consensus.leader.phase
+        self.leader.phase
     }
 
     pub(crate) fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
-        self.consensus.inner.view_leader(view)
+        self.replica.inner.view_leader(view)
     }
 
     pub(crate) fn validator_set(&self) -> validator::ValidatorSet {
