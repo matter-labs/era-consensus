@@ -40,7 +40,6 @@ impl Distribution<ExecutorConfig> for Standard {
         ExecutorConfig {
             server_addr: make_addr(rng),
             gossip: rng.gen(),
-            genesis_block: rng.gen(),
             validators: rng.gen(),
         }
     }

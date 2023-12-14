@@ -74,8 +74,6 @@ message ExecutorConfig {
   // Gossip network config.
   optional GossipConfig gossip = 4; // [required]
   
-  // Genesis block of the blockchain.
-  optional string genesis_block = 5; // [required] FinalBlock
   // Public keys of all validators.
   repeated string validators = 6; // [required] ValidatorPublicKey
 }

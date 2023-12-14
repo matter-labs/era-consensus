@@ -12,7 +12,7 @@ use zksync_consensus_storage::{BlockStore, InMemoryStorage};
 
 impl FullValidatorConfig {
     fn gen_blocks(&self, rng: &mut impl Rng, count: usize) -> Vec<FinalBlock> {
-        let genesis_block = self.node_config.genesis_block.clone();
+        let genesis_block = self.genesis_block.clone();
         let validators = &self.node_config.validators;
         let blocks = iter::successors(Some(genesis_block), |parent| {
             let payload: Payload = rng.gen();
@@ -34,11 +34,9 @@ impl FullValidatorConfig {
 
     async fn into_executor(
         self,
-        ctx: &ctx::Ctx,
         storage: Arc<InMemoryStorage>,
     ) -> Executor<InMemoryStorage> {
-        let mut executor = Executor::new(ctx, self.node_config, self.node_key, storage.clone())
-            .await
+        let mut executor = Executor::new(self.node_config, self.node_key, storage.clone())
             .unwrap();
         executor
             .set_validator(
@@ -65,26 +63,6 @@ const BLOCK_MUTATIONS: [BlockMutation; 3] = [
     }),
 ];
 
-#[test_casing(3, BLOCK_MUTATIONS)]
-#[tokio::test]
-async fn executor_misconfiguration(name: &str, mutation: fn(&mut FinalBlock)) {
-    abort_on_panic();
-    let _span = tracing::info_span!("executor_misconfiguration", name).entered();
-    let ctx = &ctx::root();
-    let rng = &mut ctx.rng();
-
-    let mut validator =
-        FullValidatorConfig::for_single_validator(rng, Payload(vec![]), BlockNumber(0));
-    let genesis_block = &mut validator.node_config.genesis_block;
-    mutation(genesis_block);
-    let storage = Arc::new(InMemoryStorage::new(genesis_block.clone()));
-    let err = Executor::new(ctx, validator.node_config, validator.node_key, storage)
-        .await
-        .err()
-        .unwrap();
-    tracing::info!(%err, "received expected validation error");
-}
-
 #[tokio::test]
 async fn genesis_block_mismatch() {
     abort_on_panic();
@@ -92,11 +70,10 @@ async fn genesis_block_mismatch() {
     let rng = &mut ctx.rng();
 
     let validator = FullValidatorConfig::for_single_validator(rng, Payload(vec![]), BlockNumber(0));
-    let mut genesis_block = validator.node_config.genesis_block.clone();
+    let mut genesis_block = validator.genesis_block.clone();
     genesis_block.header.number = BlockNumber(1);
     let storage = Arc::new(InMemoryStorage::new(genesis_block.clone()));
-    let err = Executor::new(ctx, validator.node_config, validator.node_key, storage)
-        .await
+    let err = Executor::new(validator.node_config, validator.node_key, storage)
         .err()
         .unwrap();
     tracing::info!(%err, "received expected validation error");
@@ -109,7 +86,7 @@ async fn executing_single_validator() {
     let rng = &mut ctx.rng();
 
     let validator = FullValidatorConfig::for_single_validator(rng, Payload(vec![]), BlockNumber(0));
-    let genesis_block = &validator.node_config.genesis_block;
+    let genesis_block = &validator.genesis_block;
     let storage = InMemoryStorage::new(genesis_block.clone());
     let storage = Arc::new(storage);
     let executor = validator.into_executor(ctx, storage.clone()).await;
@@ -180,7 +157,7 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
         FullValidatorConfig::for_single_validator(rng, Payload(vec![]), BlockNumber(0));
     let mut full_node = validator.connect_full_node(rng);
 
-    let genesis_block = &validator.node_config.genesis_block;
+    let genesis_block = &validator.genesis_block;
     let blocks = validator.gen_blocks(rng, 10);
     let validator_storage = InMemoryStorage::new(genesis_block.clone());
     let validator_storage = Arc::new(validator_storage);
@@ -191,27 +168,23 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
         }
     }
     let validator = Executor::new(
-        ctx,
         validator.node_config,
         validator.node_key,
         validator_storage.clone(),
     )
-    .await
     .unwrap();
 
     // Start a full node from a snapshot.
-    full_node.node_config.genesis_block = blocks[3].clone();
+    full_node.genesis_block = blocks[3].clone();
     let full_node_storage = InMemoryStorage::new(blocks[3].clone());
     let full_node_storage = Arc::new(full_node_storage);
     let mut full_node_subscriber = full_node_storage.subscribe_to_block_writes();
 
     let full_node = Executor::new(
-        ctx,
         full_node.node_config,
         full_node.node_key,
         full_node_storage.clone(),
     )
-    .await
     .unwrap();
 
     scope::run!(ctx, |ctx, s| async {

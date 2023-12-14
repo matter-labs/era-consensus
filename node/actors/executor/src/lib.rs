@@ -1,7 +1,7 @@
 //! Library files for the executor. We have it separate from the binary so that we can use these files in the tools crate.
 use crate::io::Dispatcher;
 use anyhow::Context as _;
-use std::{any, fmt, sync::Arc};
+use std::{fmt, sync::Arc};
 use zksync_concurrency::{ctx, net, scope};
 use zksync_consensus_bft::{misc::consensus_threshold, PayloadSource};
 use zksync_consensus_network as network;
@@ -16,18 +16,19 @@ pub mod testonly;
 #[cfg(test)]
 mod tests;
 
-pub use self::config::{proto, ConsensusConfig, ExecutorConfig, GossipConfig};
+pub use network::consensus::Config as ConsensusConfig;
+pub use network::gossip::Config as GossipConfig;
+
+pub use self::config::{ExecutorConfig};
 
 /// Validator-related part of [`Executor`].
-struct ValidatorExecutor {
+pub struct ValidatorExecutor {
     /// Consensus network configuration.
-    config: ConsensusConfig,
-    /// Validator key.
-    key: validator::SecretKey,
+    pub config: ConsensusConfig,
     /// Store for replica state.
-    replica_state_store: Arc<dyn ReplicaStateStore>,
+    pub replica_state_store: Arc<dyn ReplicaStateStore>,
     /// Payload proposer for new blocks.
-    payload_source: Arc<dyn PayloadSource>,
+    pub payload_source: Arc<dyn PayloadSource>,
 }
 
 impl fmt::Debug for ValidatorExecutor {
@@ -38,109 +39,25 @@ impl fmt::Debug for ValidatorExecutor {
     }
 }
 
-impl ValidatorExecutor {
-    /// Returns consensus network configuration.
-    fn consensus_config(&self) -> network::consensus::Config {
-        network::consensus::Config {
-            // Consistency of the validator key has been verified in constructor.
-            key: self.key.clone(),
-            public_addr: self.config.public_addr,
-        }
-    }
-}
-
 /// Executor allowing to spin up all actors necessary for a consensus node.
 #[derive(Debug)]
 pub struct Executor<S> {
     /// General-purpose executor configuration.
-    executor_config: ExecutorConfig,
-    /// Secret key of the node.
-    node_key: node::SecretKey,
+    pub config: ExecutorConfig,
     /// Block and replica state storage used by the node.
-    storage: Arc<S>,
+    pub storage: Arc<S>,
     /// Validator-specific node data.
-    validator: Option<ValidatorExecutor>,
+    pub validator: Option<ValidatorExecutor>,
 }
 
 impl<S: WriteBlockStore + 'static> Executor<S> {
-    /// Creates a new executor with the specified parameters.
-    pub async fn new(
-        ctx: &ctx::Ctx,
-        node_config: ExecutorConfig,
-        node_key: node::SecretKey,
-        storage: Arc<S>,
-    ) -> anyhow::Result<Self> {
-        node_config.validate()?;
-        anyhow::ensure!(
-            node_config.gossip.key == node_key.public(),
-            "config.gossip.key = {:?} doesn't match the secret key {:?}",
-            node_config.gossip.key,
-            node_key
-        );
-
-        // While justifications may differ among nodes for an arbitrary block, we assume that
-        // the genesis block has a hardcoded justification.
-        let first_block = storage.first_block(ctx).await.context("first_block")?;
-        anyhow::ensure!(
-            first_block == node_config.genesis_block,
-            "First stored block {first_block:?} in `{}` is not equal to the configured genesis block {:?}",
-            any::type_name::<S>(),
-            node_config.genesis_block
-        );
-
-        Ok(Self {
-            executor_config: node_config,
-            node_key,
-            storage,
-            validator: None,
-        })
-    }
-
-    /// Sets validator-related data for the executor.
-    pub fn set_validator(
-        &mut self,
-        config: ConsensusConfig,
-        key: validator::SecretKey,
-        replica_state_store: Arc<dyn ReplicaStateStore>,
-        payload_source: Arc<dyn PayloadSource>,
-    ) -> anyhow::Result<()> {
-        let public = &config.key;
-        anyhow::ensure!(
-            *public == key.public(),
-            "config.consensus.key = {public:?} doesn't match the secret key {key:?}"
-        );
-
-        // TODO: this logic must be refactored once dynamic validator sets are implemented
-        let is_validator = self
-            .executor_config
-            .validators
-            .iter()
-            .any(|validator_key| validator_key == public);
-        if is_validator {
-            self.validator = Some(ValidatorExecutor {
-                config,
-                key,
-                replica_state_store,
-                payload_source,
-            });
-        } else {
-            tracing::info!(
-                "Key {public:?} is not a validator per validator set {:?}; the executor will not \
-                 run consensus",
-                self.executor_config.validators
-            );
-        }
-        Ok(())
-    }
-
     /// Returns gossip network configuration.
     fn gossip_config(&self) -> network::gossip::Config {
-        let gossip = &self.executor_config.gossip;
         network::gossip::Config {
-            key: self.node_key.clone(),
-            dynamic_inbound_limit: gossip.dynamic_inbound_limit,
-            static_inbound: gossip.static_inbound.clone(),
-            static_outbound: gossip.static_outbound.clone(),
+            key: self.config.node_key.clone(),
+            dynamic_inbound_limit: self.config.gossip_dynamic_inbound_limit,
+            static_inbound: self.config.gossip_static_inbound.clone(),
+            static_outbound: self.config.gossip_static_outbound.clone(),
             enable_pings: true,
         }
     }
@@ -148,14 +65,22 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
     /// Extracts a network crate config.
     fn network_config(&self) -> network::Config {
         network::Config {
-            server_addr: net::tcp::ListenerAddr::new(self.executor_config.server_addr),
-            validators: self.executor_config.validators.clone(),
+            server_addr: net::tcp::ListenerAddr::new(self.config.server_addr),
+            validators: self.config.validators.clone(),
             gossip: self.gossip_config(),
-            consensus: self
-                .validator
-                .as_ref()
-                .map(ValidatorExecutor::consensus_config),
+            consensus: self.active_validator().map(|v|v.config.clone()),
         }
+    }
+
+    fn active_validator(&self) -> Option<&ValidatorExecutor> {
+        // TODO: this logic must be refactored once dynamic validator sets are implemented
+        let validator = self.validator.as_ref()?;
+        if self.config.validators.iter()
+            .any(|key| key == validator.config.key.public())
+        {
+            return Some(validator);
+        }
+        None
     }
 
     /// Runs this executor to completion. This should be spawned on a separate task.
@@ -174,7 +99,7 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
         );
 
         // Create each of the actors.
-        let validator_set = &self.executor_config.validators;
+        let validator_set = &self.config.validators;
         let sync_blocks_config = zksync_consensus_sync_blocks::Config::new(
             validator_set.clone(),
             consensus_threshold(validator_set.len()),
@@ -201,15 +126,14 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
                     .await
                     .context("Network stopped")
             });
-            if let Some(validator) = self.validator {
+            if let Some(validator) = self.active_validator() {
                 s.spawn(async {
                     let validator = validator;
-                    let consensus_storage =
-                        ReplicaStore::new(validator.replica_state_store, self.storage.clone());
+                    let consensus_storage = ReplicaStore::new(validator.replica_state_store.clone(), self.storage.clone());
                     zksync_consensus_bft::run(
                         ctx,
                         consensus_actor_pipe,
-                        validator.key.clone(),
+                        validator.config.key.clone(),
                         validator_set.clone(),
                         consensus_storage,
                         &*validator.payload_source,

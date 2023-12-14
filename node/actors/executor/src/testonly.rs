@@ -28,6 +28,8 @@ pub struct FullValidatorConfig {
     pub consensus_config: ConsensusConfig,
     /// Secret key for consensus.
     pub validator_key: validator::SecretKey,
+    /// Genesis block.
+    pub genesis_block: validator::FinalBlock,
 }
 
 impl FullValidatorConfig {
@@ -53,7 +55,6 @@ impl FullValidatorConfig {
         let node_config = ExecutorConfig {
             server_addr: *net_config.server_addr,
             gossip: net_config.gossip.into(),
-            genesis_block,
             validators,
         };
 
@@ -62,6 +63,7 @@ impl FullValidatorConfig {
             node_key,
             consensus_config,
             validator_key,
+            genesis_block,
         }
     }
 
@@ -84,6 +86,8 @@ pub struct FullNodeConfig {
     pub node_config: ExecutorConfig,
     /// Secret key of the node used for identification in the gossip network.
     pub node_key: node::SecretKey,
+    /// Genesis block.
+    pub genesis_block: validator::FinalBlock,
 }
 
 impl FullNodeConfig {
@@ -106,6 +110,7 @@ impl FullNodeConfig {
         Self {
             node_config,
             node_key,
+            genesis_block: validator.genesis_block.clone(),
         }
     }
 }
