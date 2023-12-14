@@ -9,7 +9,7 @@ use zksync_consensus_roles::validator;
 /// to be modified, except by the Consensus struct.
 #[derive(Debug)]
 pub(crate) struct ConsensusInner {
-    /// The communication pipe. This is used to receive inputs and send outputs.
+    /// The communication pipe. This is used to send outputs.
     pub(crate) pipe: channel::UnboundedSender<OutputMessage>,
     /// The validator's secret key.
     pub(crate) secret_key: validator::SecretKey,
