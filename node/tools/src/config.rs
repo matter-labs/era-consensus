@@ -21,7 +21,7 @@ fn decode_json<T: ProtoFmt>(json: &str) -> anyhow::Result<T> {
 
 /// Node configuration including executor configuration, optional validator configuration,
 /// and application-specific settings (e.g. metrics scraping).
-#[derive(Debug)]
+#[derive(Debug,PartialEq)]
 pub struct AppConfig {
     pub server_addr: std::net::SocketAddr,
     pub public_addr: std::net::SocketAddr,

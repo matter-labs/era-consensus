@@ -9,7 +9,7 @@ use rand::{
 
 /// Test encoding and canonical encoding properties.
 #[track_caller]
-pub fn test_encode<R: Rng, T: ProtoFmt + std::fmt::Debug + Eq>(rng: &mut R, x: &T) {
+pub fn test_encode<R: Rng, T: ProtoFmt + std::fmt::Debug + PartialEq>(rng: &mut R, x: &T) {
     let x_encode = encode(x);
     let x_canonical = canonical(x);
     let x_shuffled = encode_shuffled(rng, x);
@@ -26,7 +26,7 @@ pub fn test_encode<R: Rng, T: ProtoFmt + std::fmt::Debug + Eq>(rng: &mut R, x: &
 /// Syntax sugar for `test_encode`,
 /// because `test_encode(rng,&rng::gen())` doesn't compile.
 #[track_caller]
-pub fn test_encode_random<R: Rng, T: ProtoFmt + std::fmt::Debug + Eq>(rng: &mut R)
+pub fn test_encode_random<R: Rng, T: ProtoFmt + std::fmt::Debug + PartialEq>(rng: &mut R)
 where
     Standard: Distribution<T>,
 {
