@@ -21,6 +21,7 @@ pub struct FullNode {
 #[derive(Debug,Clone)]
 #[non_exhaustive]
 pub struct ValidatorNode {
+    /// Full node configuration.
     pub node: FullNode,
     /// Consensus configuration of the validator.
     pub validator: ValidatorConfig,

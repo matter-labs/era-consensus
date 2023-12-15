@@ -5,15 +5,12 @@ use clap::Parser;
 use std::{
     fs,
     io::IsTerminal as _,
-    path::{Path, PathBuf},
-    sync::Arc,
+    path::{PathBuf},
 };
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope, time};
-use zksync_consensus_executor::Executor;
-use zksync_consensus_storage::{BlockStore, RocksdbStorage};
 use zksync_consensus_tools::{ConfigPaths};
 use zksync_consensus_utils::no_copy::NoCopy;
 
@@ -44,7 +41,7 @@ impl Args {
     /// Extracts configuration paths from these args.
     fn config_paths(&self) -> ConfigPaths<'_> {
         ConfigPaths {
-            config: &self.config_file,
+            app: &self.config_file,
             node_key: &self.node_key,
             validator_key: (!self.validator_key.as_os_str().is_empty())
                 .then_some(&self.validator_key),
@@ -102,7 +99,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {
-        if let Some(addr) = configs.metrics_server_addr {
+        if let Some(addr) = configs.app.metrics_server_addr {
             let addr = NoCopy::from(addr);
             s.spawn_bg(async {
                 let addr = addr;
@@ -114,7 +111,7 @@ async fn main() -> anyhow::Result<()> {
             });
         }
         let executor = configs.into_executor(ctx).await.context("configs.into_executor()")?;
-        let storage = executor.config.storage.clone();
+        let storage = executor.storage.clone();
         s.spawn(executor.run(ctx));
 
         // if we are in CI mode, we wait for the node to finalize 100 blocks and then we stop it

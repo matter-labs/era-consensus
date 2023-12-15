@@ -5,7 +5,6 @@ use rand::Rng;
 use std::{fs, net::SocketAddr, path::PathBuf};
 use zksync_consensus_bft::testonly;
 use zksync_consensus_crypto::TextFmt;
-use zksync_consensus_executor::{ConsensusConfig, ExecutorConfig, GossipConfig};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_tools::AppConfig;
 
@@ -76,13 +75,20 @@ fn main() -> anyhow::Result<()> {
     let nodes = addrs.len();
     let peers = 2;
 
-    let mut gossip_cfgs: Vec<_> = node_keys
-        .iter()
-        .map(|k| GossipConfig {
-            key: k.public(),
-            dynamic_inbound_limit: 0,
-            static_inbound: [].into(),
-            static_outbound: [].into(),
+    let mut cfgs: Vec<_> = (0..nodes)
+        .map(|i| AppConfig {
+            server_addr: with_unspecified_ip(addrs[i]),
+            public_addr: addrs[i],
+            metrics_server_addr,
+
+            validator_key: Some(validator_keys[i].public()),
+            validators: validator_set.clone(),
+            genesis_block: genesis.clone(),
+
+            node_key: node_keys[i].public(),
+            gossip_dynamic_inbound_limit: 0,
+            gossip_static_inbound: [].into(),
+            gossip_static_outbound: [].into(),
         })
         .collect();
 
@@ -90,37 +96,23 @@ fn main() -> anyhow::Result<()> {
     for i in 0..nodes {
         for j in 0..peers {
             let next = (i * peers + j + 1) % nodes;
-            gossip_cfgs[i]
-                .static_outbound
+            cfgs[i]
+                .gossip_static_outbound
                 .insert(node_keys[next].public(), addrs[next]);
-            gossip_cfgs[next]
-                .static_inbound
+            cfgs[next]
+                .gossip_static_inbound
                 .insert(node_keys[i].public());
         }
     }
 
-    for (i, gossip) in gossip_cfgs.into_iter().enumerate() {
-        let executor_cfg = ExecutorConfig {
-            gossip,
-            server_addr: with_unspecified_ip(addrs[i]),
-            genesis_block: genesis.clone(),
-            validators: validator_set.clone(),
-        };
-        let node_cfg = NodeConfig {
-            executor: executor_cfg,
-            metrics_server_addr,
-            consensus: Some(ConsensusConfig {
-                key: validator_keys[i].public(),
-                public_addr: addrs[i],
-            }),
-        };
+    for (i, cfg) in cfgs.into_iter().enumerate() { 
 
         // Recreate the directory for the node's config.
         let root = args.output_dir.join(addrs[i].to_string());
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
 
-        fs::write(root.join("config.json"), config::encode_json(&node_cfg)).context("fs::write()")?;
+        fs::write(root.join("config.json"), encode_json(&cfg)).context("fs::write()")?;
         fs::write(
             root.join("validator_key"),
             &TextFmt::encode(&validator_keys[i]),

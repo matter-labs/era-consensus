@@ -1,17 +1,18 @@
 //! Node configuration.
 use anyhow::Context as _;
 use crate::proto;
-use std::{fs, net, path::{Path,PathBuf}, sync::Arc};
+use std::collections::{HashMap,HashSet};
+use std::{fs, path::{Path,PathBuf}, sync::Arc};
 use zksync_concurrency::ctx;
-use zksync_consensus_crypto::{read_optional_text, Text, TextFmt};
+use zksync_consensus_crypto::{read_required_text, read_optional_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
 use zksync_consensus_bft as bft;
 use zksync_consensus_roles::{node, validator};
-use zksync_protobuf::{read_optional, read_required, ProtoFmt};
+use zksync_protobuf::{required, ProtoFmt};
 use zksync_consensus_storage::{RocksdbStorage};
 
 /// Decodes a proto message from json for arbitrary ProtoFmt.
-pub fn decode_json<T: ProtoFmt>(json: &str) -> anyhow::Result<T> {
+fn decode_json<T: ProtoFmt>(json: &str) -> anyhow::Result<T> {
     let mut d = serde_json::Deserializer::from_str(json);
     let p: T = zksync_protobuf::serde::deserialize(&mut d)?;
     d.end()?;
@@ -32,8 +33,8 @@ pub struct AppConfig {
 
     pub node_key: node::PublicKey,
     pub gossip_dynamic_inbound_limit: u64,
-    pub gossip_static_inbound: HashSet<validator::PublicKey>,
-    pub gossip_static_outbound: HashMap<validator::PublicKey,std::net::SocketAddr>,
+    pub gossip_static_inbound: HashSet<node::PublicKey>,
+    pub gossip_static_outbound: HashMap<node::PublicKey,std::net::SocketAddr>,
 }
 
 impl ProtoFmt for AppConfig {
@@ -56,7 +57,7 @@ impl ProtoFmt for AppConfig {
         }
         
         let mut gossip_static_outbound = HashMap::new();
-        for (i, e) in r.static_outbound.iter().enumerate() {
+        for (i, e) in r.gossip_static_outbound.iter().enumerate() {
             let key = read_required_text(&e.key)
                 .with_context(|| format!("gossip_static_outbound[{i}].key"))?;
             let addr = read_required_text(&e.addr)
@@ -83,16 +84,16 @@ impl ProtoFmt for AppConfig {
         Self::Proto {
             server_addr: Some(self.server_addr.encode()),
             public_addr: Some(self.public_addr.encode()),
-            metrics_server_addr: self.metrics_server_addr.map(TextFmt::encode),
+            metrics_server_addr: self.metrics_server_addr.as_ref().map(TextFmt::encode),
 
-            validator_key: self.validator_key.map(TextFmt::encode),
+            validator_key: self.validator_key.as_ref().map(TextFmt::encode),
             validators: self.validators.iter().map(TextFmt::encode).collect(),
             genesis_block: Some(self.genesis_block.encode()),
 
             node_key: Some(self.node_key.encode()),
-            gossip_dynamic_inbound_limit = Some(self.gossip_dynamic_inbound_limit),
-            gossip_static_inbound = self.gossip_static_inbound.iter().map(TextFmt::encode).collect(),
-            gossip_static_outbound = self
+            gossip_dynamic_inbound_limit: Some(self.gossip_dynamic_inbound_limit),
+            gossip_static_inbound: self.gossip_static_inbound.iter().map(TextFmt::encode).collect(),
+            gossip_static_outbound: self
                 .gossip_static_outbound
                 .iter()
                 .map(|(key, addr)| proto::NodeAddr {
@@ -118,10 +119,10 @@ pub struct ConfigPaths<'a> {
 }
 
 pub struct Configs {
-    app: AppConfig,
-    validator_key: Option<validator::SecretKey>,
-    node_key: node::SecretKey,
-    database: PathBuf,
+    pub app: AppConfig,
+    pub validator_key: Option<validator::SecretKey>,
+    pub node_key: node::SecretKey,
+    pub database: PathBuf,
 }
 
 impl<'a> ConfigPaths<'a> {
@@ -131,27 +132,27 @@ impl<'a> ConfigPaths<'a> {
             app: (||{
                 let app = fs::read_to_string(self.app).context("failed reading file")?;
                 decode_json(&app).context("failed decoding JSON")
-            })().context(self.app.display())?,
+            })().with_context(||self.app.display().to_string())?,
 
             validator_key: self.validator_key.as_ref().map(|file| {
                 (||{
-                    let key = fs::read_to_string(file).context(||"failed reading file")?;
+                    let key = fs::read_to_string(file).context("failed reading file")?;
                     Text::new(&key).decode().context("failed decoding key")
-                })().context(file.display())
+                })().with_context(||file.display().to_string())
             }).transpose()?,
             
             node_key: (||{
-                let key = fs::read_to_string(self.node_key).context(||"failed reading file")?;
+                let key = fs::read_to_string(self.node_key).context("failed reading file")?;
                 Text::new(&key).decode().context("failed decoding key")
-            }).context(self.node_key.display())?,
+            })().with_context(||self.node_key.display().to_string())?,
 
-            database: self.database,
+            database: self.database.into(),
         })
     }
 }
 
 impl Configs {
-    pub fn into_executor(self, ctx: &ctx::Ctx) -> anyhow::Result<executor::Executor> {
+    pub async fn into_executor(self, ctx: &ctx::Ctx) -> anyhow::Result<executor::Executor> {
         anyhow::ensure!(
             self.app.node_key==self.node_key.public(),
             "node secret key has to match the node public key in the app config",

@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::testonly::{FullNode,ValidatorNode};
-use rand::{thread_rng, Rng};
+use rand::{Rng};
 use std::iter;
 use test_casing::test_casing;
 use zksync_concurrency::{sync, testonly::abort_on_panic, time};
