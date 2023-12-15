@@ -4,34 +4,33 @@ use anyhow::Context as _;
 use std::{fmt, sync::Arc};
 use zksync_concurrency::{ctx, net, scope};
 use zksync_consensus_bft::{misc::consensus_threshold, PayloadSource};
-use zksync_consensus_network as network;
-use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{ReplicaStateStore, ReplicaStore, WriteBlockStore};
 use zksync_consensus_sync_blocks::SyncBlocks;
 use zksync_consensus_utils::pipe;
+use zksync_consensus_roles::{node, validator};
+use zksync_consensus_network as network;
+use std::{
+    collections::{HashMap, HashSet},
+};
 
-mod config;
 mod io;
 pub mod testonly;
 #[cfg(test)]
 mod tests;
 
-pub use network::consensus::Config as ConsensusConfig;
-pub use network::gossip::Config as GossipConfig;
-
-pub use self::config::{ExecutorConfig};
+pub use network::consensus::Config as ValidatorConfig;
 
 /// Validator-related part of [`Executor`].
-pub struct ValidatorExecutor {
+pub struct Validator {
     /// Consensus network configuration.
-    pub config: ConsensusConfig,
+    pub config: ValidatorConfig,
     /// Store for replica state.
     pub replica_state_store: Arc<dyn ReplicaStateStore>,
     /// Payload proposer for new blocks.
     pub payload_source: Arc<dyn PayloadSource>,
 }
 
-impl fmt::Debug for ValidatorExecutor {
+impl fmt::Debug for Validator {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("ValidatorExecutor")
             .field("config", &self.config)
@@ -39,44 +38,69 @@ impl fmt::Debug for ValidatorExecutor {
     }
 }
 
-/// Executor allowing to spin up all actors necessary for a consensus node.
-#[derive(Debug)]
-pub struct Executor<S> {
-    /// General-purpose executor configuration.
-    pub config: ExecutorConfig,
-    /// Block and replica state storage used by the node.
-    pub storage: Arc<S>,
-    /// Validator-specific node data.
-    pub validator: Option<ValidatorExecutor>,
+/// Config of the node executor.
+#[derive(Clone, Debug)]
+pub struct Config {
+    /// IP:port to listen on, for incoming TCP connections.
+    /// Use `0.0.0.0:<port>` to listen on all network interfaces (i.e. on all IPs exposed by this VM).
+    pub server_addr: std::net::SocketAddr,
+    /// Static specification of validators for Proof of Authority. Should be deprecated once we move
+    /// to Proof of Stake.
+    pub validators: validator::ValidatorSet,
+
+    /// Key of this node. It uniquely identifies the node.
+    /// It should match the secret key provided in the `node_key` file.
+    pub node_key: node::SecretKey,
+    /// Limit on the number of inbound connections outside
+    /// of the `static_inbound` set.
+    pub gossip_dynamic_inbound_limit: u64,
+    /// Inbound connections that should be unconditionally accepted.
+    pub gossip_static_inbound: HashSet<node::PublicKey>,
+    /// Outbound connections that the node should actively try to
+    /// establish and maintain.
+    pub gossip_static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>,
 }
 
-impl<S: WriteBlockStore + 'static> Executor<S> {
+impl Config {
     /// Returns gossip network configuration.
-    fn gossip_config(&self) -> network::gossip::Config {
+    pub(crate) fn gossip(&self) -> network::gossip::Config {
         network::gossip::Config {
-            key: self.config.node_key.clone(),
-            dynamic_inbound_limit: self.config.gossip_dynamic_inbound_limit,
-            static_inbound: self.config.gossip_static_inbound.clone(),
-            static_outbound: self.config.gossip_static_outbound.clone(),
+            key: self.node_key.clone(),
+            dynamic_inbound_limit: self.gossip_dynamic_inbound_limit,
+            static_inbound: self.gossip_static_inbound.clone(),
+            static_outbound: self.gossip_static_outbound.clone(),
             enable_pings: true,
         }
     }
+}
 
+/// Executor allowing to spin up all actors necessary for a consensus node.
+#[derive(Debug)]
+pub struct Executor {
+    /// General-purpose executor configuration.
+    pub config: Config,
+    /// Block and replica state storage used by the node.
+    pub storage: Arc<dyn WriteBlockStore>,
+    /// Validator-specific node data.
+    pub validator: Option<Validator>,
+}
+
+impl Executor {
     /// Extracts a network crate config.
     fn network_config(&self) -> network::Config {
         network::Config {
             server_addr: net::tcp::ListenerAddr::new(self.config.server_addr),
             validators: self.config.validators.clone(),
-            gossip: self.gossip_config(),
+            gossip: self.config.gossip(),
             consensus: self.active_validator().map(|v|v.config.clone()),
         }
     }
 
-    fn active_validator(&self) -> Option<&ValidatorExecutor> {
+    fn active_validator(&self) -> Option<&Validator> {
         // TODO: this logic must be refactored once dynamic validator sets are implemented
         let validator = self.validator.as_ref()?;
         if self.config.validators.iter()
-            .any(|key| key == validator.config.key.public())
+            .any(|key| key == &validator.config.key.public())
         {
             return Some(validator);
         }
@@ -128,7 +152,6 @@ impl<S: WriteBlockStore + 'static> Executor<S> {
             });
             if let Some(validator) = self.active_validator() {
                 s.spawn(async {
-                    let validator = validator;
                     let consensus_storage = ReplicaStore::new(validator.replica_state_store.clone(), self.storage.clone());
                     zksync_consensus_bft::run(
                         ctx,
