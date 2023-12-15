@@ -14,7 +14,7 @@ use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope, time};
 use zksync_consensus_executor::Executor;
 use zksync_consensus_storage::{BlockStore, RocksdbStorage};
-use zksync_consensus_tools::{ConfigPaths, Configs};
+use zksync_consensus_tools::{ConfigPaths};
 use zksync_consensus_utils::no_copy::NoCopy;
 
 /// Command-line application launching a node executor.
@@ -28,14 +28,16 @@ struct Args {
     ci_mode: bool,
     /// Path to a validator key file. If set to an empty string, validator key will not be read
     /// (i.e., a node will be initialized as a non-validator node).
-    #[arg(long, default_value = "validator_key")]
+    #[arg(long, default_value = "./validator_key")]
     validator_key: PathBuf,
     /// Path to a JSON file with node configuration.
-    #[arg(long, default_value = "config.json")]
+    #[arg(long, default_value = "./config.json")]
     config_file: PathBuf,
     /// Path to a node key file.
-    #[arg(long, default_value = "node_key")]
+    #[arg(long, default_value = "./node_key")]
     node_key: PathBuf,
+    #[arg(long, default_value = "./database")]
+    database: PathBuf, 
 }
 
 impl Args {
@@ -46,6 +48,7 @@ impl Args {
             node_key: &self.node_key,
             validator_key: (!self.validator_key.as_os_str().is_empty())
                 .then_some(&self.validator_key),
+            database: &self.database,
         }
     }
 }
@@ -90,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Load the config files.
     tracing::debug!("Loading config files.");
-    let configs = Configs::read(args.config_paths()).context("configs.read()")?;
+    let configs = args.config_paths().load().context("config_paths().load()")?;
 
     if args.verify_config {
         tracing::info!("Configuration verified.");
@@ -98,28 +101,6 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Initialize the storage.
-    tracing::debug!("Initializing storage.");
-
-    let storage = RocksdbStorage::new(
-        ctx,
-        &configs.executor.genesis_block,
-        Path::new("./database"),
-    );
-    let storage = Arc::new(storage.await.context("RocksdbStorage::new()")?);
-    let mut executor = Executor::new(ctx, configs.executor, configs.node_key, storage.clone())
-        .await
-        .context("Executor::new()")?;
-    if let Some((consensus_config, validator_key)) = configs.consensus {
-        executor
-            .set_validator(
-                consensus_config,
-                validator_key,
-                storage.clone(),
-                Arc::new(zksync_consensus_bft::testonly::RandomPayloadSource),
-            )
-            .context("Executor::set_validator()")?;
-    }
-
     scope::run!(ctx, |ctx, s| async {
         if let Some(addr) = configs.metrics_server_addr {
             let addr = NoCopy::from(addr);
@@ -132,7 +113,8 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             });
         }
-
+        let executor = configs.into_executor(ctx).await.context("configs.into_executor()")?;
+        let storage = executor.config.storage.clone();
         s.spawn(executor.run(ctx));
 
         // if we are in CI mode, we wait for the node to finalize 100 blocks and then we stop it

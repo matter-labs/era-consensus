@@ -7,7 +7,7 @@ use zksync_consensus_bft::testonly;
 use zksync_consensus_crypto::TextFmt;
 use zksync_consensus_executor::{ConsensusConfig, ExecutorConfig, GossipConfig};
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_tools::NodeConfig;
+use zksync_consensus_tools::AppConfig;
 
 /// Encodes a generated proto message to json for arbitrary ProtoFmt.
 fn encode_json<T: zksync_protobuf::ProtoFmt>(x: &T) -> String {
@@ -120,7 +120,7 @@ fn main() -> anyhow::Result<()> {
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
 
-        fs::write(root.join("config.json"), encode_json(&node_cfg)).context("fs::write()")?;
+        fs::write(root.join("config.json"), config::encode_json(&node_cfg)).context("fs::write()")?;
         fs::write(
             root.join("validator_key"),
             &TextFmt::encode(&validator_keys[i]),
