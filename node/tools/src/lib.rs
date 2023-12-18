@@ -6,4 +6,4 @@ mod proto;
 #[cfg(test)]
 mod tests;
 
-pub use config::{ConfigPaths,AppConfig};
+pub use config::{AppConfig, ConfigPaths};

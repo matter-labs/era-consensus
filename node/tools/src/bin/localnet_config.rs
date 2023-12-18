@@ -105,8 +105,7 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    for (i, cfg) in cfgs.into_iter().enumerate() { 
-
+    for (i, cfg) in cfgs.into_iter().enumerate() {
         // Recreate the directory for the node's config.
         let root = args.output_dir.join(addrs[i].to_string());
         let _ = fs::remove_dir_all(&root);

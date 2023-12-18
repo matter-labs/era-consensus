@@ -1,12 +1,12 @@
 //! Testing extensions for node executor.
-use crate::{ValidatorConfig,Config};
+use crate::{Config, ValidatorConfig};
 use rand::Rng;
 use zksync_concurrency::net;
-use zksync_consensus_network::{testonly::Instance};
-use zksync_consensus_roles::{validator};
+use zksync_consensus_network::testonly::Instance;
+use zksync_consensus_roles::validator;
 
 /// Full validator configuration.
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct ValidatorNode {
     /// Full node configuration.
@@ -17,9 +17,7 @@ pub struct ValidatorNode {
 
 impl ValidatorNode {
     /// Generates a validator config for a network with a single validator.
-    pub fn for_single_validator(
-        rng: &mut impl Rng,
-    ) -> Self {
+    pub fn for_single_validator(rng: &mut impl Rng) -> Self {
         let net_config = Instance::new_configs(rng, 1, 0).pop().unwrap();
         let validator = net_config.consensus.unwrap();
         let gossip = net_config.gossip;
@@ -41,11 +39,10 @@ impl ValidatorNode {
         let mut node = self.node.clone();
         node.server_addr = *net::tcp::testonly::reserve_listener();
         node.node_key = rng.gen();
-        node.gossip_static_outbound = [(
-            self.node.node_key.public(),
-            self.node.server_addr,
-        )].into();
-        self.node.gossip_static_inbound.insert(node.node_key.public());
+        node.gossip_static_outbound = [(self.node.node_key.public(), self.node.server_addr)].into();
+        self.node
+            .gossip_static_inbound
+            .insert(node.node_key.public());
         node
     }
 }

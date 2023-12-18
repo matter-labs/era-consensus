@@ -4,7 +4,7 @@ use rand::{
     Rng,
 };
 use zksync_concurrency::ctx;
-use zksync_consensus_roles::{node,validator};
+use zksync_consensus_roles::{node, validator};
 use zksync_protobuf::testonly::test_encode_random;
 
 fn make_addr<R: Rng + ?Sized>(rng: &mut R) -> std::net::SocketAddr {
@@ -21,7 +21,7 @@ impl Distribution<AppConfig> for Standard {
             validator_key: Some(rng.gen::<validator::SecretKey>().public()),
             validators: rng.gen(),
             genesis_block: rng.gen(),
-            
+
             node_key: rng.gen::<node::SecretKey>().public(),
             gossip_dynamic_inbound_limit: rng.gen(),
             gossip_static_inbound: (0..5)

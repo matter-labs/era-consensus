@@ -1,17 +1,18 @@
 //! Library files for the executor. We have it separate from the binary so that we can use these files in the tools crate.
 use crate::io::Dispatcher;
 use anyhow::Context as _;
-use std::{fmt, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fmt,
+    sync::Arc,
+};
 use zksync_concurrency::{ctx, net, scope};
 use zksync_consensus_bft::{misc::consensus_threshold, PayloadSource};
+use zksync_consensus_network as network;
+use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{ReplicaStateStore, ReplicaStore, WriteBlockStore};
 use zksync_consensus_sync_blocks::SyncBlocks;
 use zksync_consensus_utils::pipe;
-use zksync_consensus_roles::{node, validator};
-use zksync_consensus_network as network;
-use std::{
-    collections::{HashMap, HashSet},
-};
 
 mod io;
 pub mod testonly;
@@ -92,14 +93,19 @@ impl Executor {
             server_addr: net::tcp::ListenerAddr::new(self.config.server_addr),
             validators: self.config.validators.clone(),
             gossip: self.config.gossip(),
-            consensus: self.active_validator().map(|v|v.config.clone()),
+            consensus: self.active_validator().map(|v| v.config.clone()),
         }
     }
 
+    /// Returns the validator setup <=> this node is a validator which belongs to
+    /// the consensus (i.e. is in the `validators` set.
     fn active_validator(&self) -> Option<&Validator> {
         // TODO: this logic must be refactored once dynamic validator sets are implemented
         let validator = self.validator.as_ref()?;
-        if self.config.validators.iter()
+        if self
+            .config
+            .validators
+            .iter()
             .any(|key| key == &validator.config.key.public())
         {
             return Some(validator);
@@ -152,7 +158,10 @@ impl Executor {
             });
             if let Some(validator) = self.active_validator() {
                 s.spawn(async {
-                    let consensus_storage = ReplicaStore::new(validator.replica_state_store.clone(), self.storage.clone());
+                    let consensus_storage = ReplicaStore::new(
+                        validator.replica_state_store.clone(),
+                        self.storage.clone(),
+                    );
                     zksync_consensus_bft::run(
                         ctx,
                         consensus_actor_pipe,

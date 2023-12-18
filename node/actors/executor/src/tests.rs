@@ -1,8 +1,8 @@
 //! High-level tests for `Executor`.
 
 use super::*;
-use crate::testonly::{ValidatorNode};
-use rand::{Rng};
+use crate::testonly::ValidatorNode;
+use rand::Rng;
 use std::iter;
 use test_casing::test_casing;
 use zksync_concurrency::{sync, testonly::abort_on_panic, time};
@@ -12,13 +12,21 @@ use zksync_consensus_storage::{BlockStore, InMemoryStorage};
 
 impl Config {
     fn into_executor(self, storage: Arc<InMemoryStorage>) -> Executor {
-        Executor { config: self, storage, validator: None}
+        Executor {
+            config: self,
+            storage,
+            validator: None,
+        }
     }
 }
 
 impl ValidatorNode {
-    fn gen_blocks<'a>(&'a self, rng: &'a mut impl Rng) -> impl 'a + Iterator<Item=FinalBlock> {
-        let (genesis_block,_) = testonly::make_genesis(&[self.validator.key.clone()], Payload(vec![]), BlockNumber(0));
+    fn gen_blocks<'a>(&'a self, rng: &'a mut impl Rng) -> impl 'a + Iterator<Item = FinalBlock> {
+        let (genesis_block, _) = testonly::make_genesis(
+            &[self.validator.key.clone()],
+            Payload(vec![]),
+            BlockNumber(0),
+        );
         let validators = &self.node.validators;
         iter::successors(Some(genesis_block), |parent| {
             let payload: Payload = rng.gen();
@@ -39,7 +47,7 @@ impl ValidatorNode {
 
     fn into_executor(self, storage: Arc<InMemoryStorage>) -> Executor {
         Executor {
-            config: self.node, 
+            config: self.node,
             storage: storage.clone(),
             validator: Some(Validator {
                 config: self.validator,
@@ -84,7 +92,7 @@ async fn executing_validator_and_full_node() {
     let mut validator = ValidatorNode::for_single_validator(rng);
     let full_node = validator.connect_full_node(rng);
 
-    let genesis_block = validator.gen_blocks(rng).next().unwrap(); 
+    let genesis_block = validator.gen_blocks(rng).next().unwrap();
     let validator_storage = Arc::new(InMemoryStorage::new(genesis_block.clone()));
     let full_node_storage = Arc::new(InMemoryStorage::new(genesis_block.clone()));
     let mut full_node_subscriber = full_node_storage.subscribe_to_block_writes();
@@ -115,7 +123,7 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
     let mut validator = ValidatorNode::for_single_validator(rng);
     let full_node = validator.connect_full_node(rng);
 
-    let blocks : Vec<_> = validator.gen_blocks(rng).take(11).collect();
+    let blocks: Vec<_> = validator.gen_blocks(rng).take(11).collect();
     let validator_storage = InMemoryStorage::new(blocks[0].clone());
     let validator_storage = Arc::new(validator_storage);
     if !delay_block_storage {
