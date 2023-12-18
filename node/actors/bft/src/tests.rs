@@ -86,7 +86,8 @@ async fn timeout_leader_some_prepares() {
     assert!(util
         .process_replica_prepare(ctx, replica_prepare)
         .await
-        .is_err());
+        .unwrap()
+        .is_none());
     util.produce_block_after_timeout(ctx).await;
 }
 
@@ -99,7 +100,7 @@ async fn timeout_leader_in_commit() {
 
     util.new_leader_prepare(ctx).await;
     // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
-    assert_eq!(util.consensus.leader.phase, Phase::Commit);
+    assert_eq!(util.leader.phase, Phase::Commit);
     util.produce_block_after_timeout(ctx).await;
 }
 
@@ -112,7 +113,7 @@ async fn timeout_replica_in_commit() {
 
     util.new_replica_commit(ctx).await;
     // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
-    assert_eq!(util.consensus.leader.phase, Phase::Commit);
+    assert_eq!(util.leader.phase, Phase::Commit);
     util.produce_block_after_timeout(ctx).await;
 }
 
@@ -127,7 +128,8 @@ async fn timeout_leader_some_commits() {
     assert!(util
         .process_replica_commit(ctx, replica_commit)
         .await
-        .is_err());
+        .unwrap()
+        .is_none());
     // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
     assert_eq!(util.leader_phase(), Phase::Commit);
     util.produce_block_after_timeout(ctx).await;
@@ -142,4 +144,19 @@ async fn timeout_leader_in_consecutive_prepare() {
 
     util.new_leader_commit(ctx).await;
     util.produce_block_after_timeout(ctx).await;
+}
+
+/// Not being able to propose a block shouldn't cause a deadlock.
+#[tokio::test]
+async fn non_proposing_leader() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(5.));
+    Test {
+        network: Network::Real,
+        nodes: vec![Behavior::Honest, Behavior::HonestNotProposing],
+        blocks_to_finalize: 10,
+    }
+    .run(ctx)
+    .await
+    .unwrap()
 }

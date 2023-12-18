@@ -1,5 +1,6 @@
 use super::StateMachine;
-use crate::{inner::ConsensusInner, metrics, Consensus};
+use crate::metrics;
+use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
@@ -22,9 +23,6 @@ pub(crate) enum Error {
         /// Signer of the message.
         signer: validator::PublicKey,
     },
-    /// Unexpected proposal.
-    #[error("unexpected proposal")]
-    UnexpectedProposal,
     /// Past view or phase.
     #[error("past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
     Old {
@@ -42,17 +40,6 @@ pub(crate) enum Error {
         /// Existing message from the same replica.
         existing_message: validator::ReplicaCommit,
     },
-    /// Number of received messages is below threshold.
-    #[error(
-        "number of received messages is below threshold. waiting for more (received: {num_messages:?}, \
-         threshold: {threshold:?}"
-    )]
-    NumReceivedBelowThreshold {
-        /// Number of received messages.
-        num_messages: usize,
-        /// Threshold for message count.
-        threshold: usize,
-    },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] validator::Error),
@@ -63,7 +50,6 @@ impl StateMachine {
     pub(crate) fn process_replica_commit(
         &mut self,
         ctx: &ctx::Ctx,
-        consensus: &ConsensusInner,
         signed_message: validator::Signed<validator::ReplicaCommit>,
     ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
@@ -73,21 +59,20 @@ impl StateMachine {
         let author = &signed_message.key;
 
         // Check protocol version compatibility.
-        if !Consensus::PROTOCOL_VERSION.compatible(&message.protocol_version) {
+        if !crate::PROTOCOL_VERSION.compatible(&message.protocol_version) {
             return Err(Error::IncompatibleProtocolVersion {
                 message_version: message.protocol_version,
-                local_version: Consensus::PROTOCOL_VERSION,
+                local_version: crate::PROTOCOL_VERSION,
             });
         }
 
         // Check that the message signer is in the validator set.
-        let validator_index =
-            consensus
-                .validator_set
-                .index(author)
-                .ok_or(Error::NonValidatorSigner {
-                    signer: author.clone(),
-                })?;
+        let validator_index = self.inner
+            .validator_set
+            .index(author)
+            .ok_or(Error::NonValidatorSigner {
+                signer: author.clone(),
+            })?;
 
         // If the message is from the "past", we discard it.
         if (message.view, validator::Phase::Commit) < (self.view, self.phase) {
@@ -98,7 +83,7 @@ impl StateMachine {
         }
 
         // If the message is for a view when we are not a leader, we discard it.
-        if consensus.view_leader(message.view) != consensus.secret_key.public() {
+        if self.inner.view_leader(message.view) != self.inner.secret_key.public() {
             return Err(Error::NotLeaderInView);
         }
 
@@ -118,14 +103,6 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
-        // ----------- Checking the contents of the message --------------
-
-        // We only accept replica commit messages for proposals that we have cached. That's so
-        // we don't need to store replica commit messages for different proposals.
-        if self.block_proposal_cache != Some(message.proposal) {
-            return Err(Error::UnexpectedProposal);
-        }
-
         // ----------- All checks finished. Now we process the message. --------------
 
         // We add the message to the incrementally-constructed QC.
@@ -135,22 +112,21 @@ impl StateMachine {
             .add(&signed_message.sig, validator_index);
 
         // We store the message in our cache.
-        self.commit_message_cache
-            .entry(message.view)
-            .or_default()
-            .insert(author.clone(), signed_message);
+        let cache_entry = self.commit_message_cache.entry(message.view).or_default();
+        cache_entry.insert(author.clone(), signed_message);
 
         // Now we check if we have enough messages to continue.
-        let num_messages = self.commit_message_cache.get(&message.view).unwrap().len();
-
-        if num_messages < consensus.threshold() {
-            return Err(Error::NumReceivedBelowThreshold {
-                num_messages,
-                threshold: consensus.threshold(),
-            });
+        let mut by_proposal: HashMap<_, Vec<_>> = HashMap::new();
+        for msg in cache_entry.values() {
+            by_proposal.entry(msg.msg.proposal).or_default().push(msg);
         }
-
-        debug_assert!(num_messages == consensus.threshold());
+        let Some((_, replica_messages)) = by_proposal
+            .into_iter()
+            .find(|(_, v)| v.len() >= self.inner.threshold())
+        else {
+            return Ok(());
+        };
+        debug_assert_eq!(replica_messages.len(), self.inner.threshold());
 
         // ----------- Update the state machine --------------
 
@@ -164,7 +140,15 @@ impl StateMachine {
 
         // ----------- Prepare our message and send it. --------------
 
-        // Remove replica commit messages for this view, so that we don't create a new leader commit
+        // TODO: post-merge fixes
+        // // Create the justification for our message.
+        // let justification = validator::CommitQC::from(
+        //     &replica_messages.into_iter().cloned().collect::<Vec<_>>(),
+        //     &self.inner.validator_set,
+        // )
+        // .expect("Couldn't create justification from valid replica messages!");
+
+        // // Remove replica commit messages for this view, so that we don't create a new leader commit
         // for this same view if we receive another replica commit message after this.
         self.commit_message_cache.remove(&message.view);
 
@@ -173,20 +157,20 @@ impl StateMachine {
 
         // Broadcast the leader commit message to all replicas (ourselves included).
         let output_message = ConsensusInputMessage {
-            message: consensus
+            message: self
+                .inner
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::LeaderCommit(
                     validator::LeaderCommit {
-                        protocol_version: Consensus::PROTOCOL_VERSION,
+                        protocol_version: crate::PROTOCOL_VERSION,
                         justification,
                     },
                 )),
             recipient: Target::Broadcast,
         };
-        consensus.pipe.send(output_message.into());
+        self.inner.pipe.send(output_message.into());
 
         // Clean the caches.
-        self.block_proposal_cache = None;
         self.prepare_message_cache.retain(|k, _| k >= &self.view);
         self.commit_message_cache.retain(|k, _| k >= &self.view);
 

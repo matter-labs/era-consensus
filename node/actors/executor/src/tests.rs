@@ -6,7 +6,7 @@ use rand::{thread_rng, Rng};
 use std::iter;
 use test_casing::test_casing;
 use zksync_concurrency::{sync, testonly::abort_on_panic, time};
-use zksync_consensus_bft::{testonly::RandomPayloadSource, Consensus};
+use zksync_consensus_bft::{testonly::RandomPayloadSource, PROTOCOL_VERSION};
 use zksync_consensus_roles::validator::{BlockNumber, FinalBlock, Payload};
 use zksync_consensus_storage::{BlockStore, InMemoryStorage};
 
@@ -22,7 +22,7 @@ impl FullValidatorConfig {
                 payload: payload.hash(),
             };
             let commit = self.validator_key.sign_msg(validator::ReplicaCommit {
-                protocol_version: Consensus::PROTOCOL_VERSION,
+                protocol_version: PROTOCOL_VERSION,
                 view: validator::ViewNumber(header.number.0),
                 proposal: header,
             });

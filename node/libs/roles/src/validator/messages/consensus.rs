@@ -227,6 +227,15 @@ pub struct PrepareQC {
 }
 
 impl PrepareQC {
+    /// View of the QC.
+    pub fn view(&self) -> ViewNumber {
+        self.map
+            .keys()
+            .map(|k| k.view)
+            .next()
+            .unwrap_or(ViewNumber(0))
+    }
+
     /// Verifies the integrity of the PrepareQC.
     pub fn verify(
         &self,

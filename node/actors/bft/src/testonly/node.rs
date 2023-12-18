@@ -1,5 +1,5 @@
 use super::Fuzz;
-use crate::io;
+use crate::{io, testonly};
 use rand::Rng;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, scope};
@@ -13,6 +13,8 @@ use zksync_consensus_utils::pipe::DispatcherPipe;
 pub(crate) enum Behavior {
     /// A replica that is always online and behaves honestly.
     Honest,
+    /// Same as honest, except that it never proposes a block (which is a legit behavior)
+    HonestNotProposing,
     /// A replica that is always offline and does not produce any messages.
     Offline,
     /// A replica that is always online and behaves randomly. It will produce
@@ -21,6 +23,15 @@ pub(crate) enum Behavior {
     /// A replica that is always online and behaves maliciously. It will produce
     /// realistic but wrong messages.
     Byzantine,
+}
+
+impl Behavior {
+    pub(crate) fn payload_source(&self) -> Box<dyn crate::PayloadSource> {
+        match self {
+            Self::HonestNotProposing => Box::new(testonly::UnavailablePayloadSource),
+            _ => Box::new(testonly::RandomPayloadSource),
+        }
+    }
 }
 
 /// Struct representing a node.
@@ -64,7 +75,7 @@ impl Node {
                     io::OutputMessage::Network(mut message) => {
                         let message_to_send = match self.behavior {
                             Behavior::Offline => continue,
-                            Behavior::Honest => message,
+                            Behavior::Honest | Behavior::HonestNotProposing => message,
                             // Create a random consensus message and broadcast.
                             Behavior::Random => ConsensusInputMessage {
                                 message: rng.gen(),
