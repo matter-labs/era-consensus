@@ -1,7 +1,7 @@
 use super::StateMachine;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
-use zksync_consensus_roles::validator::{self, PrepareQC, ProtocolVersion};
+use zksync_consensus_roles::validator::{self, ProtocolVersion};
 
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]
@@ -150,13 +150,10 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // We add the message to the incrementally-constructed QC.
-        self.prepare_qcs
-            .entry(message.view)
-            .or_insert(PrepareQC::new())
-            .add(
-                &signed_message,
-                (validator_index, self.inner.validator_set.len()),
-            );
+        self.prepare_qcs.entry(message.view).or_default().add(
+            &signed_message,
+            (validator_index, self.inner.validator_set.len()),
+        );
 
         // We store the message in our cache.
         self.prepare_message_cache

@@ -88,7 +88,7 @@ impl PrepareQC {
             .view;
 
         // Create the messages map.
-        let mut prepare_qc = PrepareQC::new();
+        let mut prepare_qc = PrepareQC::default();
 
         for signed_message in signed_messages {
             if signed_message.msg.view != view {

@@ -129,7 +129,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         inner: &ConsensusInner,
         payload_source: &dyn PayloadSource,
-        justification: validator::PrepareQC,
+        justification: PrepareQC,
     ) -> ctx::Result<()> {
         // Get the highest block voted for and check if there's a quorum of votes for it. To have a quorum
         // in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
@@ -145,7 +145,7 @@ impl StateMachine {
             .cloned();
 
         // Get the highest CommitQC.
-        let highest_qc: &validator::CommitQC = justification
+        let highest_qc: &CommitQC = justification
             .map
             .keys()
             .map(|s| &s.high_qc)

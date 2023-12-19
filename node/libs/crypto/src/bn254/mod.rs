@@ -177,7 +177,7 @@ impl Default for AggregateSignature {
 }
 
 impl AggregateSignature {
-    // Add a signature to the aggregation.
+    /// Add a signature to the aggregation.
     pub fn add(&mut self, sig: &Signature) {
         self.0.add_assign(&sig.0)
     }

@@ -181,11 +181,6 @@ pub struct PrepareQC {
 }
 
 impl PrepareQC {
-    /// Create a new empty instance. (added on top of `Default` for compatibility with `CommitQC`.)
-    pub fn new() -> Self {
-        Default::default()
-    }
-
     /// View of the QC.
     pub fn view(&self) -> ViewNumber {
         self.map
@@ -302,7 +297,7 @@ impl CommitQC {
         Self {
             message,
             signers: Signers(BitVec::from_elem(validator_set_size, false)),
-            signature: Default::default(),
+            signature: validator::AggregateSignature::default(),
         }
     }
 

@@ -9,7 +9,7 @@ use zksync_consensus_utils::enum_util::Variant;
 pub struct AggregateSignature(pub(crate) bn254::AggregateSignature);
 
 impl AggregateSignature {
-    // Add a signature to the aggregation.
+    /// Add a signature to the aggregation.
     pub fn add(&mut self, sig: &Signature) {
         self.0.add(&sig.0)
     }
