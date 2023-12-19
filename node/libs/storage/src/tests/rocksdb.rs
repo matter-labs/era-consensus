@@ -16,10 +16,10 @@ impl InitStore for TempDir {
 async fn initializing_store_twice() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let genesis_block = genesis_block(rng);
+    let genesis_block = testonly::make_genesis_block(rng, ProtocolVersion::EARLIEST);
     let temp_dir = TempDir::new().unwrap();
     let block_store = temp_dir.init_store(ctx, &genesis_block).await;
-    let block_1 = make_block(rng, &genesis_block.header, ProtocolVersion::EARLIEST);
+    let block_1 = testonly::make_block(rng, genesis_block.header(), ProtocolVersion::EARLIEST);
     block_store.put_block(ctx, &block_1).await.unwrap();
 
     assert_eq!(block_store.first_block(ctx).await.unwrap(), genesis_block);

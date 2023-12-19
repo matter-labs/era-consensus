@@ -103,11 +103,11 @@ impl RocksdbStorage {
 
         let this = Self {
             inner: RwLock::new(db),
-            cached_last_contiguous_block_number: AtomicU64::new(genesis_block.header.number.0),
-            block_writes_sender: watch::channel(genesis_block.header.number).0,
+            cached_last_contiguous_block_number: AtomicU64::new(genesis_block.header().number.0),
+            block_writes_sender: watch::channel(genesis_block.header().number).0,
         };
-        if let Some(stored_genesis_block) = this.block(ctx, genesis_block.header.number).await? {
-            if stored_genesis_block.header != genesis_block.header {
+        if let Some(stored_genesis_block) = this.block(ctx, genesis_block.header().number).await? {
+            if stored_genesis_block.header() != genesis_block.header() {
                 let err = anyhow::anyhow!("Mismatch between stored and expected genesis block");
                 return Err(err.into());
             }
@@ -251,7 +251,7 @@ impl RocksdbStorage {
     /// Insert a new block into the database.
     fn put_block_blocking(&self, finalized_block: &validator::FinalBlock) -> anyhow::Result<()> {
         let db = self.write();
-        let block_number = finalized_block.header.number;
+        let block_number = finalized_block.header().number;
         tracing::debug!("Inserting new block #{block_number} into the database.");
 
         let mut write_batch = rocksdb::WriteBatch::default();
@@ -344,7 +344,7 @@ impl WriteBlockStore for RocksdbStorage {
         block_number: validator::BlockNumber,
         _payload: &validator::Payload,
     ) -> ctx::Result<()> {
-        let head_number = self.head_block(ctx).await?.header.number;
+        let head_number = self.head_block(ctx).await?.header().number;
         if head_number >= block_number {
             return Err(anyhow::anyhow!(
                 "received proposal for block {block_number:?}, while head is at {head_number:?}"

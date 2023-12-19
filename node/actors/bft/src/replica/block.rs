@@ -27,14 +27,13 @@ impl StateMachine {
             return Ok(());
         };
         let block = validator::FinalBlock {
-            header: commit_qc.message.proposal,
             payload: payload.clone(),
             justification: commit_qc.clone(),
         };
 
         info!(
             "Finalized a block!\nFinal block: {:#?}",
-            block.header.hash()
+            block.header().hash()
         );
         self.storage
             .put_block(ctx, &block)
@@ -43,7 +42,7 @@ impl StateMachine {
 
         let number_metric = &crate::metrics::METRICS.finalized_block_number;
         let current_number = number_metric.get();
-        number_metric.set(current_number.max(block.header.number.0));
+        number_metric.set(current_number.max(block.header().number.0));
         Ok(())
     }
 }

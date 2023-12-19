@@ -55,7 +55,6 @@ pub fn make_genesis(
         })
         .collect();
     let final_block = validator::FinalBlock {
-        header,
         payload,
         justification: validator::CommitQC::from(&signed_messages, &validator_set).unwrap(),
     };

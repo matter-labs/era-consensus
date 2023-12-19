@@ -54,13 +54,6 @@ async fn processing_invalid_blocks() {
     assert_matches!(err, BlockValidationError::Other(_));
 
     let mut invalid_block = test_validators.final_blocks[1].clone();
-    invalid_block.justification = test_validators.final_blocks[0].justification.clone();
-    let err = peer_states
-        .validate_block(BlockNumber(1), &invalid_block)
-        .unwrap_err();
-    assert_matches!(err, BlockValidationError::ProposalMismatch { .. });
-
-    let mut invalid_block = test_validators.final_blocks[1].clone();
     invalid_block.payload = validator::Payload(b"invalid".to_vec());
     let err = peer_states
         .validate_block(BlockNumber(1), &invalid_block)
@@ -146,7 +139,7 @@ impl Test for PeerWithFakeBlock {
         assert_eq!(number, BlockNumber(1));
 
         let mut fake_block = test_validators.final_blocks[2].clone();
-        fake_block.header.number = BlockNumber(1);
+        fake_block.justification.message.proposal.number = BlockNumber(1);
         response.send(Ok(fake_block)).unwrap();
 
         let peer_event = events_receiver.recv(ctx).await?;

@@ -142,7 +142,6 @@ async fn leader_prepare_invalid_payload() {
     // Default implementation of verify_payload() fails if
     // head block number >= proposal block number.
     let block = validator::FinalBlock {
-        header: leader_prepare.msg.proposal,
         payload: leader_prepare.msg.proposal_payload.clone().unwrap(),
         justification: CommitQC::from(
             &[util.keys[0].sign_msg(ReplicaCommit {

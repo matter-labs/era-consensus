@@ -39,7 +39,6 @@ pub fn make_genesis_block<R: Rng>(rng: &mut R, protocol_version: ProtocolVersion
     let header = BlockHeader::genesis(payload.hash(), BlockNumber(0));
     let justification = make_justification(rng, &header, protocol_version);
     FinalBlock {
-        header,
         payload,
         justification,
     }
@@ -56,7 +55,6 @@ pub fn make_block<R: Rng>(
     let header = BlockHeader::new(parent, payload.hash());
     let justification = make_justification(rng, &header, protocol_version);
     FinalBlock {
-        header,
         payload,
         justification,
     }
@@ -130,7 +128,6 @@ impl Distribution<Payload> for Standard {
 impl Distribution<FinalBlock> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> FinalBlock {
         FinalBlock {
-            header: rng.gen(),
             payload: rng.gen(),
             justification: rng.gen(),
         }

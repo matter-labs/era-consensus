@@ -51,7 +51,6 @@ impl TestValidators {
         let mut latest_block = BlockHeader::genesis(payload.hash(), BlockNumber(0));
         let final_blocks = (0..block_count).map(|_| {
             let final_block = FinalBlock {
-                header: latest_block,
                 payload: payload.clone(),
                 justification: this.certify_block(&latest_block),
             };
@@ -122,9 +121,9 @@ async fn subscribing_to_state_updates() {
     let rng = &mut ctx.rng();
     let protocol_version = validator::ProtocolVersion::EARLIEST;
     let genesis_block = make_genesis_block(rng, protocol_version);
-    let block_1 = make_block(rng, &genesis_block.header, protocol_version);
-    let block_2 = make_block(rng, &block_1.header, protocol_version);
-    let block_3 = make_block(rng, &block_2.header, protocol_version);
+    let block_1 = make_block(rng, genesis_block.header(), protocol_version);
+    let block_2 = make_block(rng, block_1.header(), protocol_version);
+    let block_3 = make_block(rng, block_2.header(), protocol_version);
 
     let storage = InMemoryStorage::new(genesis_block.clone());
     let storage = &Arc::new(storage);
@@ -202,7 +201,7 @@ async fn getting_blocks() {
     let storage = InMemoryStorage::new(genesis_block.clone());
     let storage = Arc::new(storage);
     let blocks = iter::successors(Some(genesis_block), |parent| {
-        Some(make_block(rng, &parent.header, protocol_version))
+        Some(make_block(rng, parent.header(), protocol_version))
     });
     let blocks: Vec<_> = blocks.take(5).collect();
     for block in &blocks {

@@ -47,7 +47,7 @@ impl BlocksInMemoryStore {
     }
 
     fn put_block(&mut self, block: validator::FinalBlock) {
-        let block_number = block.header.number;
+        let block_number = block.header().number;
         tracing::debug!("Inserting block #{block_number} into database");
         if let Some(prev_block) = self.blocks.insert(block_number, block) {
             tracing::debug!(?prev_block, "Block #{block_number} is overwritten");
@@ -78,7 +78,7 @@ pub struct InMemoryStorage {
 impl InMemoryStorage {
     /// Creates a new store containing only the specified `genesis_block`.
     pub fn new(genesis_block: validator::FinalBlock) -> Self {
-        let genesis_block_number = genesis_block.header.number;
+        let genesis_block_number = genesis_block.header().number;
         Self {
             blocks: Mutex::new(BlocksInMemoryStore {
                 blocks: BTreeMap::from([(genesis_block_number, genesis_block)]),
@@ -137,7 +137,7 @@ impl WriteBlockStore for InMemoryStorage {
         block_number: validator::BlockNumber,
         _payload: &validator::Payload,
     ) -> ctx::Result<()> {
-        let head_number = self.head_block(ctx).await?.header.number;
+        let head_number = self.head_block(ctx).await?.header().number;
         if head_number >= block_number {
             return Err(anyhow::anyhow!(
                 "received proposal for block {block_number:?}, while head is at {head_number:?}"
@@ -149,7 +149,7 @@ impl WriteBlockStore for InMemoryStorage {
 
     async fn put_block(&self, _ctx: &ctx::Ctx, block: &validator::FinalBlock) -> ctx::Result<()> {
         self.blocks.lock().await.put_block(block.clone());
-        self.blocks_sender.send_replace(block.header.number);
+        self.blocks_sender.send_replace(block.header().number);
         Ok(())
     }
 }

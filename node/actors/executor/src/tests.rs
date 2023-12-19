@@ -31,8 +31,8 @@ impl ValidatorNode {
         iter::successors(Some(genesis_block), |parent| {
             let payload: Payload = rng.gen();
             let header = validator::BlockHeader {
-                parent: parent.header.hash(),
-                number: parent.header.number.next(),
+                parent: parent.header().hash(),
+                number: parent.header().number.next(),
                 payload: payload.hash(),
             };
             let commit = self.validator.key.sign_msg(validator::ReplicaCommit {
@@ -41,7 +41,7 @@ impl ValidatorNode {
                 proposal: header,
             });
             let justification = validator::CommitQC::from(&[commit], validators).unwrap();
-            Some(FinalBlock::new(header, payload, justification))
+            Some(FinalBlock::new(payload, justification))
         })
     }
 

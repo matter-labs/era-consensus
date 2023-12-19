@@ -99,7 +99,7 @@ impl PeerStates {
 
         scope::run!(ctx, |ctx, s| async {
             let start_number = storage.last_contiguous_block_number(ctx).await?;
-            let mut last_block_number = storage.head_block(ctx).await?.header.number;
+            let mut last_block_number = storage.head_block(ctx).await?.header().number;
             let missing_blocks = storage
                 .missing_block_numbers(ctx, start_number..last_block_number)
                 .await?;
@@ -443,10 +443,10 @@ impl PeerStates {
         block_number: BlockNumber,
         block: &FinalBlock,
     ) -> Result<(), BlockValidationError> {
-        if block.header.number != block_number {
+        if block.header().number != block_number {
             let err = anyhow::anyhow!(
                 "block does not have requested number (requested: {block_number}, got: {})",
-                block.header.number
+                block.header().number
             );
             return Err(BlockValidationError::Other(err));
         }

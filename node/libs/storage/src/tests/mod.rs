@@ -5,9 +5,7 @@ use rand::{seq::SliceRandom, Rng};
 use std::iter;
 use test_casing::test_casing;
 use zksync_concurrency::ctx;
-use zksync_consensus_roles::validator::{
-    testonly::make_block, BlockHeader, BlockNumber, FinalBlock, Payload, ProtocolVersion,
-};
+use zksync_consensus_roles::validator::{testonly, BlockNumber, FinalBlock, ProtocolVersion};
 
 #[cfg(feature = "rocksdb")]
 mod rocksdb;
@@ -28,18 +26,13 @@ impl InitStore for () {
     }
 }
 
-fn genesis_block(rng: &mut impl Rng) -> FinalBlock {
-    let payload = Payload(vec![]);
-    FinalBlock {
-        header: BlockHeader::genesis(payload.hash(), BlockNumber(0)),
-        payload,
-        justification: rng.gen(),
-    }
-}
-
 fn gen_blocks(rng: &mut impl Rng, genesis_block: FinalBlock, count: usize) -> Vec<FinalBlock> {
     let blocks = iter::successors(Some(genesis_block), |parent| {
-        Some(make_block(rng, &parent.header, ProtocolVersion::EARLIEST))
+        Some(testonly::make_block(
+            rng,
+            parent.header(),
+            ProtocolVersion::EARLIEST,
+        ))
     });
     blocks.skip(1).take(count).collect()
 }
@@ -47,7 +40,7 @@ fn gen_blocks(rng: &mut impl Rng, genesis_block: FinalBlock, count: usize) -> Ve
 async fn test_put_block(store_factory: &impl InitStore) {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let genesis_block = genesis_block(rng);
+    let genesis_block = testonly::make_genesis_block(rng, ProtocolVersion::EARLIEST);
     let block_store = store_factory.init_store(ctx, &genesis_block).await;
 
     assert_eq!(block_store.first_block(ctx).await.unwrap(), genesis_block);
@@ -57,20 +50,26 @@ async fn test_put_block(store_factory: &impl InitStore) {
     assert_eq!(*block_subscriber.borrow_and_update(), BlockNumber(0));
 
     // Test inserting a block with a valid parent.
-    let block_1 = make_block(rng, &genesis_block.header, ProtocolVersion::EARLIEST);
+    let block_1 = testonly::make_block(rng, genesis_block.header(), ProtocolVersion::EARLIEST);
     block_store.put_block(ctx, &block_1).await.unwrap();
 
     assert_eq!(block_store.first_block(ctx).await.unwrap(), genesis_block);
     assert_eq!(block_store.head_block(ctx).await.unwrap(), block_1);
-    assert_eq!(*block_subscriber.borrow_and_update(), block_1.header.number);
+    assert_eq!(
+        *block_subscriber.borrow_and_update(),
+        block_1.header().number
+    );
 
     // Test inserting a block with a valid parent that is not the genesis.
-    let block_2 = make_block(rng, &block_1.header, ProtocolVersion::EARLIEST);
+    let block_2 = testonly::make_block(rng, block_1.header(), ProtocolVersion::EARLIEST);
     block_store.put_block(ctx, &block_2).await.unwrap();
 
     assert_eq!(block_store.first_block(ctx).await.unwrap(), genesis_block);
     assert_eq!(block_store.head_block(ctx).await.unwrap(), block_2);
-    assert_eq!(*block_subscriber.borrow_and_update(), block_2.header.number);
+    assert_eq!(
+        *block_subscriber.borrow_and_update(),
+        block_2.header().number
+    );
 }
 
 #[tokio::test]
@@ -83,7 +82,7 @@ async fn test_get_missing_block_numbers(store_factory: &impl InitStore, skip_cou
 
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let mut genesis_block = genesis_block(rng);
+    let mut genesis_block = testonly::make_genesis_block(rng, ProtocolVersion::EARLIEST);
     let mut blocks = gen_blocks(rng, genesis_block.clone(), 100);
     if skip_count > 0 {
         genesis_block = blocks[skip_count - 1].clone();
@@ -111,8 +110,10 @@ async fn test_get_missing_block_numbers(store_factory: &impl InitStore, skip_cou
         let last_contiguous_block_number =
             block_store.last_contiguous_block_number(ctx).await.unwrap();
 
-        let mut expected_block_numbers: Vec<_> =
-            blocks[(i + 1)..].iter().map(|b| b.header.number).collect();
+        let mut expected_block_numbers: Vec<_> = blocks[(i + 1)..]
+            .iter()
+            .map(|b| b.header().number)
+            .collect();
         expected_block_numbers.sort_unstable();
 
         assert_eq!(missing_block_numbers, expected_block_numbers);
