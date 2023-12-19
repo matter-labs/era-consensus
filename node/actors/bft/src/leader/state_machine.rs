@@ -7,10 +7,7 @@ use std::{
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::{
-    validator,
-    validator::{CommitQCBuilder, PrepareQCBuilder},
-};
+use zksync_consensus_roles::validator::{self, CommitQC, PrepareQC};
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
@@ -31,17 +28,17 @@ pub(crate) struct StateMachine {
         validator::ViewNumber,
         HashMap<validator::PublicKey, validator::Signed<validator::ReplicaPrepare>>,
     >,
-    /// Prepare QC builders indexed by view number.
-    pub(crate) prepare_qc: BTreeMap<validator::ViewNumber, PrepareQCBuilder>,
+    /// Prepare QCs indexed by view number.
+    pub(crate) prepare_qcs: BTreeMap<validator::ViewNumber, PrepareQC>,
+    /// Newest prepare QC composed from the `ReplicaPrepare` messages.
+    pub(crate) prepare_qc: sync::watch::Sender<Option<PrepareQC>>,
     /// A cache of replica commit messages indexed by view number and validator.
     pub(crate) commit_message_cache: BTreeMap<
         validator::ViewNumber,
         HashMap<validator::PublicKey, validator::Signed<validator::ReplicaCommit>>,
     >,
-    /// Newest quorum certificate composed from the `ReplicaPrepare` messages.
-    pub(crate) prepare_qc: sync::watch::Sender<Option<validator::PrepareQC>>,
-    /// Commit QC builders indexed by view number.
-    pub(crate) commit_qc: BTreeMap<validator::ViewNumber, CommitQCBuilder>,
+    /// Commit QCs indexed by view number.
+    pub(crate) commit_qcs: BTreeMap<validator::ViewNumber, CommitQC>,
 }
 
 impl StateMachine {
@@ -54,10 +51,10 @@ impl StateMachine {
             phase: validator::Phase::Prepare,
             phase_start: ctx.now(),
             prepare_message_cache: BTreeMap::new(),
-            prepare_qc: BTreeMap::new(),
+            prepare_qcs: BTreeMap::new(),
             commit_message_cache: BTreeMap::new(),
             prepare_qc: sync::watch::channel(None).0,
-            commit_qc: BTreeMap::new(),
+            commit_qcs: BTreeMap::new(),
         }
     }
 
@@ -111,7 +108,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         inner: &ConsensusInner,
         payload_source: &dyn PayloadSource,
-        mut prepare_qc: sync::watch::Receiver<Option<validator::PrepareQC>>,
+        mut prepare_qc: sync::watch::Receiver<Option<PrepareQC>>,
     ) -> ctx::Result<()> {
         let mut next_view = validator::ViewNumber(0);
         loop {

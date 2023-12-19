@@ -5,7 +5,6 @@ use super::{
     PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature,
     Signed, Signers, ValidatorSet, ViewNumber,
 };
-use crate::validator::{CommitQCBuilder, PrepareQCBuilder};
 use anyhow::{bail, Context};
 use bit_vec::BitVec;
 use rand::{
@@ -89,7 +88,7 @@ impl PrepareQC {
             .view;
 
         // Create the messages map.
-        let mut builder = PrepareQCBuilder::new(validators.len());
+        let mut prepare_qc = PrepareQC::new();
 
         for signed_message in signed_messages {
             if signed_message.msg.view != view {
@@ -101,10 +100,10 @@ impl PrepareQC {
                 .index(&signed_message.key)
                 .context("Message signer isn't in the validator set")?;
 
-            builder.add(signed_message, index);
+            prepare_qc.add(signed_message, (index, validators.len()));
         }
 
-        Ok(builder.take())
+        Ok(prepare_qc)
     }
 }
 
@@ -116,7 +115,7 @@ impl CommitQC {
     ) -> anyhow::Result<Self> {
         // Store the signed messages in a Hashmap.
         let message = signed_messages[0].msg;
-        let mut builder = CommitQCBuilder::new(message, validators.len());
+        let mut commit_qc = CommitQC::new(message, validators.len());
 
         for signed_message in signed_messages {
             // Check that the votes are all for the same message.
@@ -129,10 +128,10 @@ impl CommitQC {
                 .index(&signed_message.key)
                 .context("Message signer isn't in the validator set")?;
 
-            builder.add(&signed_message.sig, validator_index);
+            commit_qc.add(&signed_message.sig, validator_index);
         }
 
-        Ok(builder.take())
+        Ok(commit_qc)
     }
 }
 

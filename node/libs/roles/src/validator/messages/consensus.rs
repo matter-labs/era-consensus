@@ -4,10 +4,7 @@ use super::{BlockHeader, Msg, Payload, Signed};
 use crate::{validator, validator::Signature};
 use anyhow::bail;
 use bit_vec::BitVec;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    mem,
-};
+use std::collections::{BTreeMap, BTreeSet};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
 /// Version of the consensus algorithm that the validator is using.
@@ -172,49 +169,6 @@ pub struct LeaderCommit {
     pub justification: CommitQC,
 }
 
-/// Utility for incrementally constructing a `PrepareQC` instance .
-pub struct PrepareQCBuilder {
-    instance: PrepareQC,
-    val_set_size: usize,
-}
-
-impl PrepareQCBuilder {
-    /// Create a new builder instance for a given validator set size.
-    pub fn new(val_set_size: usize) -> Self {
-        Self {
-            instance: Default::default(),
-            val_set_size,
-        }
-    }
-
-    /// Add a validator's signed message to the `PrepareQC`.
-    pub fn add(&mut self, signed_message: &Signed<ReplicaPrepare>, validator_index: usize) {
-        // TODO: refactor to cleaner code
-        if self.instance.map.contains_key(&signed_message.msg) {
-            self.instance
-                .map
-                .get_mut(&signed_message.msg)
-                .unwrap()
-                .0
-                .set(validator_index, true);
-        } else {
-            let mut bit_vec = BitVec::from_elem(self.val_set_size, false);
-            bit_vec.set(validator_index, true);
-
-            self.instance
-                .map
-                .insert(signed_message.msg.clone(), Signers(bit_vec));
-        }
-
-        self.instance.signature.add(&signed_message.sig);
-    }
-
-    /// Take the constructed `PrepareQC`, consuming the builder in the process.
-    pub fn take(&mut self) -> PrepareQC {
-        mem::take(&mut self.instance)
-    }
-}
-
 /// A quorum certificate of replica Prepare messages. Since not all Prepare messages are
 /// identical (they have different high blocks and high QCs), we need to keep the high blocks
 /// and high QCs in a map. We can still aggregate the signatures though.
@@ -227,6 +181,11 @@ pub struct PrepareQC {
 }
 
 impl PrepareQC {
+    /// Create a new empty instance. (added on top of `Default` for compatibility with `CommitQC`.)
+    pub fn new() -> Self {
+        Default::default()
+    }
+
     /// View of the QC.
     pub fn view(&self) -> ViewNumber {
         self.map
@@ -234,6 +193,32 @@ impl PrepareQC {
             .map(|k| k.view)
             .next()
             .unwrap_or(ViewNumber(0))
+    }
+
+    /// Add a validator's signed message.
+    /// * `signed_message` - A signed message.
+    /// * `validator_index` - A tuple containing the index of the validator and the total size of the set.
+    pub fn add(
+        &mut self,
+        signed_message: &Signed<ReplicaPrepare>,
+        validator_index: (usize, usize),
+    ) {
+        // TODO: refactor to cleaner code
+        if self.map.contains_key(&signed_message.msg) {
+            self.map
+                .get_mut(&signed_message.msg)
+                .unwrap()
+                .0
+                .set(validator_index.0, true);
+        } else {
+            let mut bit_vec = BitVec::from_elem(validator_index.1, false);
+            bit_vec.set(validator_index.0, true);
+
+            self.map
+                .insert(signed_message.msg.clone(), Signers(bit_vec));
+        }
+
+        self.signature.add(&signed_message.sig);
     }
 
     /// Verifies the integrity of the PrepareQC.
@@ -299,35 +284,6 @@ impl PrepareQC {
     }
 }
 
-/// Utility for incrementally constructing a `CommitQC` instance .
-pub struct CommitQCBuilder {
-    instance: CommitQC,
-}
-
-impl CommitQCBuilder {
-    /// Create a new builder instance for a given `ReplicaCommit` message and a validator set size.
-    pub fn new(message: ReplicaCommit, validator_set_size: usize) -> Self {
-        Self {
-            instance: CommitQC {
-                message,
-                signers: Signers(BitVec::from_elem(validator_set_size, false)),
-                signature: Default::default(),
-            },
-        }
-    }
-
-    /// Add a validator's signature to the `CommitQC`.
-    pub fn add(&mut self, sig: &Signature, validator_index: usize) {
-        self.instance.signers.0.set(validator_index, true);
-        self.instance.signature.add(sig);
-    }
-
-    /// Take the constructed `CommitQC`.
-    pub fn take(&mut self) -> CommitQC {
-        self.instance.clone()
-    }
-}
-
 /// A Commit Quorum Certificate. It is an aggregate of signed replica Commit messages.
 /// The Quorum Certificate is supposed to be over identical messages, so we only need one message.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -341,6 +297,21 @@ pub struct CommitQC {
 }
 
 impl CommitQC {
+    /// Create a new empty instance for a given `ReplicaCommit` message and a validator set size.
+    pub fn new(message: ReplicaCommit, validator_set_size: usize) -> Self {
+        Self {
+            message,
+            signers: Signers(BitVec::from_elem(validator_set_size, false)),
+            signature: Default::default(),
+        }
+    }
+
+    /// Add a validator's signature.
+    pub fn add(&mut self, sig: &Signature, validator_index: usize) {
+        self.signers.0.set(validator_index, true);
+        self.signature.add(sig);
+    }
+
     /// Verifies the signature of the CommitQC.
     pub fn verify(&self, validators: &ValidatorSet, threshold: usize) -> anyhow::Result<()> {
         let signers = self.signers.0.clone();

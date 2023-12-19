@@ -1,9 +1,7 @@
 use super::StateMachine;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
-use zksync_consensus_roles::validator::{self, ProtocolVersion};
-use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::validator::{self, PrepareQCBuilder, ProtocolVersion};
+use zksync_consensus_roles::validator::{self, PrepareQC, ProtocolVersion};
 
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]
@@ -94,12 +92,13 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator set.
-        let validator_index = self.inner
-            .validator_set
-            .index(author)
-            .ok_or(Error::NonValidatorSigner {
-                signer: author.clone(),
-            })?;
+        let validator_index =
+            self.inner
+                .validator_set
+                .index(author)
+                .ok_or(Error::NonValidatorSigner {
+                    signer: author.clone(),
+                })?;
 
         // If the message is from the "past", we discard it.
         if (message.view, validator::Phase::Prepare) < (self.view, self.phase) {
@@ -151,10 +150,13 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // We add the message to the incrementally-constructed QC.
-        self.prepare_qc
+        self.prepare_qcs
             .entry(message.view)
-            .or_insert(PrepareQCBuilder::new(consensus.validator_set.len()))
-            .add(&signed_message, validator_index);
+            .or_insert(PrepareQC::new())
+            .add(
+                &signed_message,
+                (validator_index, self.inner.validator_set.len()),
+            );
 
         // We store the message in our cache.
         self.prepare_message_cache
@@ -169,15 +171,9 @@ impl StateMachine {
             return Ok(());
         }
 
-        // Get all the replica prepare messages for this view. Note that we consume the
-        // messages here. That's purposeful, so that we don't create a new block proposal
+        // Remove replica prepare messages for this view, so that we don't create a new block proposal
         // for this same view if we receive another replica prepare message after this.
-        let replica_messages: Vec<_> = self
-            .prepare_message_cache
-            .remove(&message.view)
-            .unwrap()
-            .into_values()
-            .collect();
+        self.prepare_message_cache.remove(&message.view);
 
         debug_assert_eq!(num_messages, self.inner.threshold());
 
@@ -188,7 +184,7 @@ impl StateMachine {
         self.phase_start = ctx.now();
 
         // Consume the incrementally-constructed QC for this view.
-        let justification = self.prepare_qc.remove(&message.view).unwrap().take();
+        let justification = self.prepare_qcs.remove(&message.view).unwrap();
 
         self.prepare_qc.send_replace(Some(justification));
         Ok(())

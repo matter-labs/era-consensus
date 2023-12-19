@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::validator::{self, CommitQCBuilder, ProtocolVersion};
+use zksync_consensus_roles::validator::{self, CommitQC, ProtocolVersion};
 
 /// Errors that can occur when processing a "replica commit" message.
 #[derive(Debug, thiserror::Error)]
@@ -67,12 +67,13 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator set.
-        let validator_index = self.inner
-            .validator_set
-            .index(author)
-            .ok_or(Error::NonValidatorSigner {
-                signer: author.clone(),
-            })?;
+        let validator_index =
+            self.inner
+                .validator_set
+                .index(author)
+                .ok_or(Error::NonValidatorSigner {
+                    signer: author.clone(),
+                })?;
 
         // If the message is from the "past", we discard it.
         if (message.view, validator::Phase::Commit) < (self.view, self.phase) {
@@ -106,9 +107,9 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // We add the message to the incrementally-constructed QC.
-        self.commit_qc
+        self.commit_qcs
             .entry(message.view)
-            .or_insert(CommitQCBuilder::new(message, consensus.validator_set.len()))
+            .or_insert(CommitQC::new(message, self.inner.validator_set.len()))
             .add(&signed_message.sig, validator_index);
 
         // We store the message in our cache.
@@ -140,20 +141,12 @@ impl StateMachine {
 
         // ----------- Prepare our message and send it. --------------
 
-        // TODO: post-merge fixes
-        // // Create the justification for our message.
-        // let justification = validator::CommitQC::from(
-        //     &replica_messages.into_iter().cloned().collect::<Vec<_>>(),
-        //     &self.inner.validator_set,
-        // )
-        // .expect("Couldn't create justification from valid replica messages!");
-
-        // // Remove replica commit messages for this view, so that we don't create a new leader commit
+        // Remove replica commit messages for this view, so that we don't create a new leader commit
         // for this same view if we receive another replica commit message after this.
         self.commit_message_cache.remove(&message.view);
 
         // Consume the incrementally-constructed QC for this view.
-        let justification = self.commit_qc.remove(&message.view).unwrap().take();
+        let justification = self.commit_qcs.remove(&message.view).unwrap();
 
         // Broadcast the leader commit message to all replicas (ourselves included).
         let output_message = ConsensusInputMessage {
