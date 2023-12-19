@@ -198,20 +198,11 @@ impl PrepareQC {
         signed_message: &Signed<ReplicaPrepare>,
         validator_index: (usize, usize),
     ) {
-        // TODO: refactor to cleaner code
-        if self.map.contains_key(&signed_message.msg) {
-            self.map
-                .get_mut(&signed_message.msg)
-                .unwrap()
-                .0
-                .set(validator_index.0, true);
-        } else {
-            let mut bit_vec = BitVec::from_elem(validator_index.1, false);
-            bit_vec.set(validator_index.0, true);
-
-            self.map
-                .insert(signed_message.msg.clone(), Signers(bit_vec));
-        }
+        self.map
+            .entry(signed_message.msg.clone())
+            .or_insert_with(|| Signers(BitVec::from_elem(validator_index.1, false)))
+            .0
+            .set(validator_index.0, true);
 
         self.signature.add(&signed_message.sig);
     }
