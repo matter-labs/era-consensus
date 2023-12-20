@@ -32,17 +32,6 @@ pub mod testonly;
 #[cfg(test)]
 mod tests;
 
-/// Payload provider for the new blocks.
-#[async_trait::async_trait]
-pub trait PayloadSource: Send + Sync + 'static {
-    /// Propose a payload for the block `block_number`.
-    async fn propose(
-        &self,
-        ctx: &ctx::Ctx,
-        block_number: validator::BlockNumber,
-    ) -> ctx::Result<validator::Payload>;
-}
-
 /// Protocol version of this BFT implementation.
 pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVersion::EARLIEST;
 

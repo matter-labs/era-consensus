@@ -1,7 +1,6 @@
 //! Defines the schema of the database.
 use crate::proto;
 use anyhow::Context as _;
-use std::{iter, ops};
 use zksync_consensus_roles::validator::{self, BlockNumber};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
@@ -77,56 +76,5 @@ impl ProtoFmt for ReplicaState {
             high_qc: Some(self.high_qc.build()),
             proposals: self.proposals.iter().map(|p| p.build()).collect(),
         }
-    }
-}
-
-/// Iterator over missing block numbers.
-pub(crate) struct MissingBlockNumbers<I: Iterator> {
-    range: ops::Range<BlockNumber>,
-    existing_numbers: iter::Peekable<I>,
-}
-
-impl<I> MissingBlockNumbers<I>
-where
-    I: Iterator<Item = anyhow::Result<BlockNumber>>,
-{
-    /// Creates a new iterator based on the provided params.
-    pub(crate) fn new(range: ops::Range<BlockNumber>, existing_numbers: I) -> Self {
-        Self {
-            range,
-            existing_numbers: existing_numbers.peekable(),
-        }
-    }
-}
-
-impl<I> Iterator for MissingBlockNumbers<I>
-where
-    I: Iterator<Item = anyhow::Result<BlockNumber>>,
-{
-    type Item = anyhow::Result<BlockNumber>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        // Loop while existing numbers match the starting numbers from the range. The check
-        // that the range is non-empty is redundant given how `existing_numbers` are constructed
-        // (they are guaranteed to be lesser than the upper range bound); we add it just to be safe.
-        while !self.range.is_empty()
-            && matches!(self.existing_numbers.peek(), Some(&Ok(num)) if num == self.range.start)
-        {
-            self.range.start = self.range.start.next();
-            self.existing_numbers.next(); // Advance to the next number
-        }
-
-        if matches!(self.existing_numbers.peek(), Some(&Err(_))) {
-            let err = self.existing_numbers.next().unwrap().unwrap_err();
-            // ^ Both unwraps are safe due to the check above.
-            return Some(Err(err));
-        }
-
-        if self.range.is_empty() {
-            return None;
-        }
-        let next_number = self.range.start;
-        self.range.start = self.range.start.next();
-        Some(Ok(next_number))
     }
 }

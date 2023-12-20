@@ -3,21 +3,19 @@
 //! getting a block, checking if a block is contained in the DB. We also store the head of the chain. Storing it explicitly allows us to fetch
 //! the current head quickly.
 use crate::{
-    traits::{BlockStore, ReplicaStateStore, WriteBlockStore},
-    types::{MissingBlockNumbers, ReplicaState},
+    PersistentBlockStore,
+    ValidatorStore,
+    types::{ReplicaState},
 };
 use anyhow::Context as _;
-use async_trait::async_trait;
 use rocksdb::{Direction, IteratorMode, ReadOptions};
 use std::{
     fmt, ops,
     path::Path,
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        RwLock,
-    },
+    sync::RwLock,
 };
-use zksync_concurrency::{ctx, scope, sync::watch};
+use rand::Rng as _;
+use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
@@ -55,14 +53,6 @@ impl DatabaseKey {
             Self::Block(number) => number.0.to_be_bytes().to_vec(),
         }
     }
-
-    /// Parses the specified bytes as a `Self::Block(_)` key.
-    pub(crate) fn parse_block_key(raw_key: &[u8]) -> anyhow::Result<validator::BlockNumber> {
-        let raw_key = raw_key
-            .try_into()
-            .context("Invalid encoding for block key")?;
-        Ok(validator::BlockNumber(u64::from_be_bytes(raw_key)))
-    }
 }
 
 /// Main struct for the Storage module, it just contains the database. Provides a set of high-level
@@ -71,223 +61,44 @@ impl DatabaseKey {
 /// - An append-only database of finalized blocks.
 /// - A backup of the consensus replica state.
 pub struct RocksdbStorage {
-    /// Wrapped RocksDB instance. We don't need `RwLock` for synchronization *per se*, just to ensure
-    /// that writes to the DB are linearized.
-    inner: RwLock<rocksdb::DB>,
-    /// In-memory cache for the last contiguous block number stored in the DB. The cache is used
-    /// and updated by `Self::get_last_contiguous_block_number()`. Caching is based on the assumption
-    /// that blocks are never removed from the DB.
-    cached_last_contiguous_block_number: AtomicU64,
-    /// Sender of numbers of written blocks.
-    block_writes_sender: watch::Sender<validator::BlockNumber>,
+    db: RwLock<rocksdb::DB>,
+    payload_size: usize,
 }
 
 impl RocksdbStorage {
     /// Create a new Storage. It first tries to open an existing database, and if that fails it just creates a
     /// a new one. We need the genesis block of the chain as input.
-    // TODO(bruno): we want to eventually start pruning old blocks, so having the genesis
-    //   block might be unnecessary.
-    pub async fn new(
-        ctx: &ctx::Ctx,
-        genesis_block: &validator::FinalBlock,
-        path: &Path,
-    ) -> ctx::Result<Self> {
+    pub async fn new(path: &Path, payload_size: usize) -> ctx::Result<Self> {
         let mut options = rocksdb::Options::default();
         options.create_missing_column_families(true);
         options.create_if_missing(true);
-
-        let db = scope::wait_blocking(|| {
-            rocksdb::DB::open(&options, path).context("Failed opening RocksDB")
+        Ok(Self {
+            db: RwLock::new(scope::wait_blocking(|| {
+                rocksdb::DB::open(&options, path).context("Failed opening RocksDB")
+            }).await?),
+            payload_size,
         })
-        .await?;
-
-        let this = Self {
-            inner: RwLock::new(db),
-            cached_last_contiguous_block_number: AtomicU64::new(genesis_block.header().number.0),
-            block_writes_sender: watch::channel(genesis_block.header().number).0,
-        };
-        if let Some(stored_genesis_block) = this.block(ctx, genesis_block.header().number).await? {
-            if stored_genesis_block.header() != genesis_block.header() {
-                let err = anyhow::anyhow!("Mismatch between stored and expected genesis block");
-                return Err(err.into());
-            }
-        } else {
-            tracing::debug!(
-                "Genesis block not present in RocksDB at `{path}`; saving {genesis_block:?}",
-                path = path.display()
-            );
-            this.put_block(ctx, genesis_block).await?;
-        }
-        Ok(this)
     }
 
-    /// Acquires a read lock on the underlying DB.
-    fn read(&self) -> impl ops::Deref<Target = rocksdb::DB> + '_ {
-        self.inner.read().expect("DB lock is poisoned")
-    }
-
-    /// Acquires a write lock on the underlying DB.
-    fn write(&self) -> impl ops::Deref<Target = rocksdb::DB> + '_ {
-        self.inner.write().expect("DB lock is poisoned")
-    }
-
-    fn head_block_blocking(&self) -> anyhow::Result<validator::FinalBlock> {
-        let db = self.read();
+    fn available_blocks_blocking(&self) -> anyhow::Result<ops::Range<validator::BlockNumber>> {
+        let db = self.db.read().unwrap();
 
         let mut options = ReadOptions::default();
-        options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
-        let mut iter = db.iterator_opt(DatabaseKey::BLOCK_HEAD_ITERATOR, options);
-        let (_, head_block) = iter
+        options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..); 
+        let (_,last) = db.iterator_opt(DatabaseKey::BLOCK_HEAD_ITERATOR, options)
             .next()
             .context("Head block not found")?
             .context("RocksDB error reading head block")?;
-        zksync_protobuf::decode(&head_block).context("Failed decoding head block bytes")
-    }
-
-    /// Returns a block with the least number stored in this database.
-    fn first_block_blocking(&self) -> anyhow::Result<validator::FinalBlock> {
-        let db = self.read();
+        let last : validator::FinalBlock = zksync_protobuf::decode(&last).context("Failed decoding head block bytes")?;
 
         let mut options = ReadOptions::default();
-        options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
-        let mut iter = db.iterator_opt(IteratorMode::Start, options);
-        let (_, first_block) = iter
+        options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..); 
+        let (_, first) = db.iterator_opt(IteratorMode::Start, options)
             .next()
             .context("First stored block not found")?
             .context("RocksDB error reading first stored block")?;
-        zksync_protobuf::decode(&first_block).context("Failed decoding first stored block bytes")
-    }
-
-    fn last_contiguous_block_number_blocking(&self) -> anyhow::Result<validator::BlockNumber> {
-        let last_contiguous_block_number = self
-            .cached_last_contiguous_block_number
-            .load(Ordering::Relaxed);
-        let last_contiguous_block_number = validator::BlockNumber(last_contiguous_block_number);
-
-        let last_contiguous_block_number =
-            self.last_contiguous_block_number_impl(last_contiguous_block_number)?;
-
-        // The cached value may have been updated by the other thread. Fortunately, we have a simple
-        // protection against such "edit conflicts": the greater cached value is always valid and
-        // should win.
-        self.cached_last_contiguous_block_number
-            .fetch_max(last_contiguous_block_number.0, Ordering::Relaxed);
-        Ok(last_contiguous_block_number)
-    }
-
-    // Implementation that is not aware of caching specifics. The only requirement for the method correctness
-    // is for the `cached_last_contiguous_block_number` to be present in the database.
-    fn last_contiguous_block_number_impl(
-        &self,
-        cached_last_contiguous_block_number: validator::BlockNumber,
-    ) -> anyhow::Result<validator::BlockNumber> {
-        let db = self.read();
-
-        let mut options = ReadOptions::default();
-        let start_key = DatabaseKey::Block(cached_last_contiguous_block_number).encode_key();
-        options.set_iterate_range(start_key..);
-        let iter = db.iterator_opt(IteratorMode::Start, options);
-        let iter = iter
-            .map(|bytes| {
-                let (key, _) = bytes.context("RocksDB error iterating over block numbers")?;
-                DatabaseKey::parse_block_key(&key)
-            })
-            .fuse();
-
-        let mut prev_block_number = cached_last_contiguous_block_number;
-        for block_number in iter {
-            let block_number = block_number?;
-            if block_number > prev_block_number.next() {
-                return Ok(prev_block_number);
-            }
-            prev_block_number = block_number;
-        }
-        Ok(prev_block_number)
-    }
-
-    /// Gets a block by its number.
-    fn block_blocking(
-        &self,
-        number: validator::BlockNumber,
-    ) -> anyhow::Result<Option<validator::FinalBlock>> {
-        let db = self.read();
-
-        let Some(raw_block) = db
-            .get(DatabaseKey::Block(number).encode_key())
-            .with_context(|| format!("RocksDB error reading block #{number}"))?
-        else {
-            return Ok(None);
-        };
-        let block = zksync_protobuf::decode(&raw_block)
-            .with_context(|| format!("Failed decoding block #{number}"))?;
-        Ok(Some(block))
-    }
-
-    /// Iterates over block numbers in the specified `range` that the DB *does not* have.
-    fn missing_block_numbers_blocking(
-        &self,
-        range: ops::Range<validator::BlockNumber>,
-    ) -> anyhow::Result<Vec<validator::BlockNumber>> {
-        let db = self.read();
-
-        let mut options = ReadOptions::default();
-        let start_key = DatabaseKey::Block(range.start).encode_key();
-        let end_key = DatabaseKey::Block(range.end).encode_key();
-        options.set_iterate_range(start_key..end_key);
-
-        let iter = db.iterator_opt(IteratorMode::Start, options);
-        let iter = iter
-            .map(|bytes| {
-                let (key, _) = bytes.context("RocksDB error iterating over block numbers")?;
-                DatabaseKey::parse_block_key(&key)
-            })
-            .fuse();
-
-        MissingBlockNumbers::new(range, iter).collect()
-    }
-
-    // ---------------- Write methods ----------------
-
-    /// Insert a new block into the database.
-    fn put_block_blocking(&self, finalized_block: &validator::FinalBlock) -> anyhow::Result<()> {
-        let db = self.write();
-        let block_number = finalized_block.header().number;
-        tracing::debug!("Inserting new block #{block_number} into the database.");
-
-        let mut write_batch = rocksdb::WriteBatch::default();
-        write_batch.put(
-            DatabaseKey::Block(block_number).encode_key(),
-            zksync_protobuf::encode(finalized_block),
-        );
-        // Commit the transaction.
-        db.write(write_batch)
-            .context("Failed writing block to database")?;
-        drop(db);
-
-        self.block_writes_sender.send_replace(block_number);
-        Ok(())
-    }
-
-    fn replica_state_blocking(&self) -> anyhow::Result<Option<ReplicaState>> {
-        let Some(raw_state) = self
-            .read()
-            .get(DatabaseKey::ReplicaState.encode_key())
-            .context("Failed to get ReplicaState from RocksDB")?
-        else {
-            return Ok(None);
-        };
-        zksync_protobuf::decode(&raw_state)
-            .map(Some)
-            .context("Failed to decode replica state!")
-    }
-
-    fn put_replica_state_blocking(&self, replica_state: &ReplicaState) -> anyhow::Result<()> {
-        self.write()
-            .put(
-                DatabaseKey::ReplicaState.encode_key(),
-                zksync_protobuf::encode(replica_state),
-            )
-            .context("Failed putting ReplicaState to RocksDB")
+        let first : validator::FinalBlock = zksync_protobuf::decode(&first).context("Failed decoding first stored block bytes")?;
+        Ok(ops::Range{start:first.header().number, end: last.header().number.next()})
     }
 }
 
@@ -297,79 +108,77 @@ impl fmt::Debug for RocksdbStorage {
     }
 }
 
-#[async_trait]
-impl BlockStore for RocksdbStorage {
-    async fn head_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<validator::FinalBlock> {
-        Ok(scope::wait_blocking(|| self.head_block_blocking()).await?)
+#[async_trait::async_trait]
+impl PersistentBlockStore for RocksdbStorage {
+    async fn available_blocks(&self, _ctx: &ctx::Ctx) -> ctx::Result<ops::Range<validator::BlockNumber>> {
+        Ok(scope::wait_blocking(|| { self.available_blocks_blocking() }).await?)
     }
 
-    async fn first_block(&self, _ctx: &ctx::Ctx) -> ctx::Result<validator::FinalBlock> {
-        Ok(scope::wait_blocking(|| self.first_block_blocking()).await?)
+    async fn block(&self, _ctx: &ctx::Ctx, number: validator::BlockNumber) -> ctx::Result<validator::FinalBlock> {
+        Ok(scope::wait_blocking(|| {
+            let db = self.db.read().unwrap();
+            let block = db
+                .get(DatabaseKey::Block(number).encode_key())
+                .context("RocksDB error")?
+                .context("not found")?;
+            zksync_protobuf::decode(&block)
+                .context("failed decoding block")
+        }).await.context(number)?)
     }
 
-    async fn last_contiguous_block_number(
-        &self,
-        _ctx: &ctx::Ctx,
-    ) -> ctx::Result<validator::BlockNumber> {
-        Ok(scope::wait_blocking(|| self.last_contiguous_block_number_blocking()).await?)
-    }
-
-    async fn block(
-        &self,
-        _ctx: &ctx::Ctx,
-        number: validator::BlockNumber,
-    ) -> ctx::Result<Option<validator::FinalBlock>> {
-        Ok(scope::wait_blocking(|| self.block_blocking(number)).await?)
-    }
-
-    async fn missing_block_numbers(
-        &self,
-        _ctx: &ctx::Ctx,
-        range: ops::Range<validator::BlockNumber>,
-    ) -> ctx::Result<Vec<validator::BlockNumber>> {
-        Ok(scope::wait_blocking(|| self.missing_block_numbers_blocking(range)).await?)
-    }
-
-    fn subscribe_to_block_writes(&self) -> watch::Receiver<validator::BlockNumber> {
-        self.block_writes_sender.subscribe()
+    async fn store_next_block(&self, _ctx: &ctx::Ctx, block: &validator::FinalBlock) -> ctx::Result<()> {
+        Ok(scope::wait_blocking(|| {
+            let db = self.db.write().unwrap();
+            let block_number = block.header().number;
+            let mut write_batch = rocksdb::WriteBatch::default();
+            write_batch.put(
+                DatabaseKey::Block(block_number).encode_key(),
+                zksync_protobuf::encode(block),
+            );
+            // Commit the transaction.
+            db.write(write_batch).context("Failed writing block to database")?;
+            anyhow::Ok(())
+        }).await?)
     }
 }
 
-#[async_trait]
-impl WriteBlockStore for RocksdbStorage {
-    /// Just verifies that the payload is for the successor of the current head.
-    async fn verify_payload(
-        &self,
-        ctx: &ctx::Ctx,
-        block_number: validator::BlockNumber,
-        _payload: &validator::Payload,
-    ) -> ctx::Result<()> {
-        let head_number = self.head_block(ctx).await?.header().number;
-        if head_number >= block_number {
-            return Err(anyhow::anyhow!(
-                "received proposal for block {block_number:?}, while head is at {head_number:?}"
-            )
-            .into());
-        }
-        Ok(())
-    }
-
-    async fn put_block(&self, _ctx: &ctx::Ctx, block: &validator::FinalBlock) -> ctx::Result<()> {
-        Ok(scope::wait_blocking(|| self.put_block_blocking(block)).await?)
-    }
-}
-
-#[async_trait]
-impl ReplicaStateStore for RocksdbStorage {
+#[async_trait::async_trait]
+impl ValidatorStore for RocksdbStorage {
     async fn replica_state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>> {
-        Ok(scope::wait_blocking(|| self.replica_state_blocking()).await?)
+        Ok(scope::wait_blocking(|| { 
+            let Some(raw_state) = self.db
+                .read()
+                .unwrap()
+                .get(DatabaseKey::ReplicaState.encode_key())
+                .context("Failed to get ReplicaState from RocksDB")?
+            else {
+                return Ok(None);
+            };
+            zksync_protobuf::decode(&raw_state)
+                .map(Some)
+                .context("Failed to decode replica state!")
+        }).await?)
     }
 
-    async fn put_replica_state(
-        &self,
-        _ctx: &ctx::Ctx,
-        replica_state: &ReplicaState,
-    ) -> ctx::Result<()> {
-        Ok(scope::wait_blocking(|| self.put_replica_state_blocking(replica_state)).await?)
+    async fn set_replica_state(&self, _ctx: &ctx::Ctx, state: &ReplicaState) -> ctx::Result<()> {
+        Ok(scope::wait_blocking(|| {
+            self.db.write().unwrap()
+                .put(
+                    DatabaseKey::ReplicaState.encode_key(),
+                    zksync_protobuf::encode(state),
+                )
+                .context("Failed putting ReplicaState to RocksDB")
+        }).await?)
+    }
+
+    async fn propose_payload(&self, ctx: &ctx::Ctx, _block_number: validator::BlockNumber) -> ctx::Result<validator::Payload> {
+        let mut payload = validator::Payload(vec![0; self.payload_size]);
+        ctx.rng().fill(&mut payload.0[..]);
+        Ok(payload)
+    }
+
+    /// Just verifies that the payload is for the successor of the current head.
+    async fn verify_payload(&self, _ctx: &ctx::Ctx, _block_number: validator::BlockNumber, _payload: &validator::Payload) -> ctx::Result<()> {
+        Ok(())
     }
 }
