@@ -1,10 +1,11 @@
-use crate::{metrics, ConsensusInner, PayloadSource};
+use crate::{metrics, ConsensusInner};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
     unreachable,
 };
 use tracing::instrument;
+use zksync_consensus_storage::ValidatorStore;
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator;
@@ -101,7 +102,7 @@ impl StateMachine {
     pub(crate) async fn run_proposer(
         ctx: &ctx::Ctx,
         inner: &ConsensusInner,
-        payload_source: &dyn PayloadSource,
+        payload_source: &dyn ValidatorStore,
         mut prepare_qc: sync::watch::Receiver<Option<validator::PrepareQC>>,
     ) -> ctx::Result<()> {
         let mut next_view = validator::ViewNumber(0);
@@ -122,7 +123,7 @@ impl StateMachine {
     pub(crate) async fn propose(
         ctx: &ctx::Ctx,
         inner: &ConsensusInner,
-        payload_source: &dyn PayloadSource,
+        validator_store: &dyn ValidatorStore,
         justification: validator::PrepareQC,
     ) -> ctx::Result<()> {
         // Get the highest block voted for and check if there's a quorum of votes for it. To have a quorum
@@ -156,8 +157,8 @@ impl StateMachine {
             Some(proposal) if proposal != highest_qc.message.proposal => (proposal, None),
             // The previous block was finalized, so we can propose a new block.
             _ => {
-                let payload = payload_source
-                    .propose(ctx, highest_qc.message.proposal.number.next())
+                let payload = validator_store 
+                    .propose_payload(ctx, highest_qc.message.proposal.number.next())
                     .await?;
                 metrics::METRICS
                     .leader_proposal_payload_size

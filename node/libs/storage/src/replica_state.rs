@@ -3,6 +3,7 @@
 use crate::{PersistentBlockStore,
     types::ReplicaState,
 };
+use std::sync::Arc;
 use zksync_concurrency::{ctx,sync};
 use zksync_consensus_roles::validator;
 use std::collections::BTreeMap;
@@ -19,6 +20,7 @@ impl From<validator::CommitQC> for ReplicaState {
     }
 }
 
+#[derive(Debug)]
 struct BlockStoreInner {
     last_inmem: validator::BlockNumber,
     last_persisted: validator::BlockNumber,
@@ -27,14 +29,15 @@ struct BlockStoreInner {
     cache_capacity: usize,
 }
 
+#[derive(Debug)]
 pub struct BlockStore {
     inner: sync::watch::Sender<BlockStoreInner>,
-    persistent: Box<dyn PersistentBlockStore>,
+    persistent: Arc<dyn PersistentBlockStore>,
     first: validator::BlockNumber,
 }
 
 impl BlockStore {
-    pub async fn new(ctx: &ctx::Ctx, cache_capacity: usize, persistent: Box<dyn PersistentBlockStore>) -> ctx::Result<Self> {
+    pub async fn new(ctx: &ctx::Ctx, persistent: Arc<dyn PersistentBlockStore>, cache_capacity: usize) -> ctx::Result<Self> {
         if cache_capacity < 1 {
             return Err(anyhow::anyhow!("cache_capacity has to be >=1").into());
         }
@@ -69,6 +72,11 @@ impl BlockStore {
             }
         }
         Ok(Some(self.persistent.block(ctx,number).await?))
+    }
+
+    pub async fn wait_for_block(&self, ctx: &ctx::Ctx, number: validator::BlockNumber) -> ctx::Result<validator::FinalBlock> {
+        sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| inner.last_inmem >= number).await?;
+        Ok(self.block(ctx,number).await?.unwrap())
     }
 
     pub async fn last_block(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::FinalBlock> {
@@ -122,11 +130,11 @@ impl BlockStore {
 }
 
 /*
-/// Storage combining [`ReplicaStateStore`] and [`WriteBlockStore`].
 #[derive(Debug, Clone)]
 pub struct ValidatorStore {
-    state: Box<dyn ValidatorStore>,
     blocks: Arc<BlockStore>,
+    replica: Arc<dyn ReplicaStore>,
+    leader: Arc<dyn LeaderStore>,
 }
 
 impl ValidatorStore {

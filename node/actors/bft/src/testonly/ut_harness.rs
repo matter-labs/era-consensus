@@ -4,7 +4,6 @@ use crate::{
     leader::{ReplicaCommitError, ReplicaPrepareError},
     replica,
     replica::{LeaderCommitError, LeaderPrepareError},
-    testonly::RandomPayloadSource,
     ConsensusInner,
 };
 use assert_matches::assert_matches;
@@ -16,7 +15,7 @@ use zksync_consensus_roles::validator::{
     self, CommitQC, LeaderCommit, LeaderPrepare, Payload, Phase, PrepareQC, ReplicaCommit,
     ReplicaPrepare, SecretKey, Signed, ViewNumber,
 };
-use zksync_consensus_storage::{InMemoryStorage, ReplicaStore};
+use zksync_consensus_storage::{InMemoryStorage, BlockStore};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// `UTHarness` provides various utilities for unit tests.
@@ -41,7 +40,7 @@ impl UTHarness {
             crate::testonly::make_genesis(&keys, Payload(vec![]), validator::BlockNumber(0));
 
         // Initialize the storage.
-        let storage = InMemoryStorage::new(genesis);
+        let storage = Arc::new(InMemoryStorage::new(genesis,ConsensusInner::PAYLOAD_MAX_SIZE));
         // Create the pipe.
         let (send, recv) = ctx::channel::unbounded();
 
@@ -54,7 +53,8 @@ impl UTHarness {
         let replica = replica::StateMachine::start(
             ctx,
             inner.clone(),
-            ReplicaStore::from_store(Arc::new(storage)),
+            Arc::new(BlockStore::new(ctx,storage.clone(),10).await.unwrap()),
+            storage.clone(),
         )
         .await
         .unwrap();
@@ -203,7 +203,7 @@ impl UTHarness {
             leader::StateMachine::propose(
                 ctx,
                 &self.leader.inner,
-                &RandomPayloadSource,
+                &*self.replica.validator_store,
                 prepare_qc.borrow().clone().unwrap(),
             )
             .await

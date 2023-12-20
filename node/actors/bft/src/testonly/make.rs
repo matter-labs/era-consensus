@@ -1,31 +1,17 @@
 //! This module contains utilities that are only meant for testing purposes.
-use crate::{ConsensusInner, PayloadSource};
-use rand::Rng as _;
+use std::sync::Arc;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
-
-/// Provides payload consisting of random bytes.
-pub struct RandomPayloadSource;
-
-#[async_trait::async_trait]
-impl PayloadSource for RandomPayloadSource {
-    async fn propose(
-        &self,
-        ctx: &ctx::Ctx,
-        _block_number: validator::BlockNumber,
-    ) -> ctx::Result<validator::Payload> {
-        let mut payload = validator::Payload(vec![0; ConsensusInner::PAYLOAD_MAX_SIZE]);
-        ctx.rng().fill(&mut payload.0[..]);
-        Ok(payload)
-    }
-}
+use zksync_consensus_storage::{ValidatorStore,ValidatorStoreDefault};
 
 /// Never provides a payload.
-pub struct UnavailablePayloadSource;
+#[derive(Debug)]
+pub struct UnavailablePayloadSource(pub Arc<dyn ValidatorStore>);
 
 #[async_trait::async_trait]
-impl PayloadSource for UnavailablePayloadSource {
-    async fn propose(
+impl ValidatorStoreDefault for UnavailablePayloadSource {
+    fn inner(&self) -> &dyn ValidatorStore { &*self.0 }
+    async fn propose_payload(
         &self,
         ctx: &ctx::Ctx,
         _block_number: validator::BlockNumber,

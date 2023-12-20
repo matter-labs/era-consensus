@@ -268,7 +268,7 @@ impl StateMachine {
 
                 // Payload should be valid.
                 if let Err(err) = self
-                    .storage
+                    .validator_store
                     .verify_payload(ctx, message.proposal.number, payload)
                     .await
                 {

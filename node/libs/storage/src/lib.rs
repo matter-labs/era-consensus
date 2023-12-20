@@ -18,6 +18,6 @@ pub use crate::rocksdb::RocksdbStorage;
 pub use crate::{
     in_memory::InMemoryStorage,
     replica_state::BlockStore,
-    traits::{PersistentBlockStore,ValidatorStore},
+    traits::{PersistentBlockStore,ValidatorStore,ValidatorStoreDefault},
     types::{Proposal, ReplicaState},
 };

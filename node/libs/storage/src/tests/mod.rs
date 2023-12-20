@@ -23,18 +23,6 @@ impl InitStore for () {
     }
 }
 
-/*
-fn gen_blocks(rng: &mut impl Rng, genesis_block: validator::FinalBlock, count: usize) -> Vec<validator::FinalBlock> {
-    let blocks = iter::successors(Some(genesis_block), |parent| {
-        Some(testonly::make_block(
-            rng,
-            parent.header(),
-            validator::ProtocolVersion::EARLIEST,
-        ))
-    });
-    blocks.skip(1).take(count).collect()
-}*/
-
 async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<validator::FinalBlock> {
     let mut blocks = vec![];
     let range = store.available_blocks(ctx).await.unwrap();

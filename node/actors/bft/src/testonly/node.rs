@@ -5,7 +5,7 @@ use std::sync::Arc;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_network as network;
 use zksync_consensus_network::io::ConsensusInputMessage;
-use zksync_consensus_storage::InMemoryStorage;
+use zksync_consensus_storage::{ValidatorStore,BlockStore};
 use zksync_consensus_utils::pipe::DispatcherPipe;
 
 /// Enum representing the behavior of the node.
@@ -26,10 +26,10 @@ pub(crate) enum Behavior {
 }
 
 impl Behavior {
-    pub(crate) fn payload_source(&self) -> Box<dyn crate::PayloadSource> {
+    pub(crate) fn wrap_store(&self, store: Arc<dyn ValidatorStore>) -> Arc<dyn ValidatorStore> {
         match self {
-            Self::HonestNotProposing => Box::new(testonly::UnavailablePayloadSource),
-            _ => Box::new(testonly::RandomPayloadSource),
+            Self::HonestNotProposing => Arc::new(testonly::UnavailablePayloadSource(store)),
+            _ => store,
         }
     }
 }
@@ -38,7 +38,8 @@ impl Behavior {
 pub(super) struct Node {
     pub(crate) net: network::testonly::Instance,
     pub(crate) behavior: Behavior,
-    pub(crate) storage: Arc<InMemoryStorage>,
+    pub(crate) block_store: Arc<BlockStore>,
+    pub(crate) validator_store: Arc<dyn ValidatorStore>,
 }
 
 impl Node {

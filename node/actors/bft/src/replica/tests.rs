@@ -153,7 +153,7 @@ async fn leader_prepare_invalid_payload() {
         )
         .unwrap(),
     };
-    util.replica.storage.put_block(ctx, &block).await.unwrap();
+    util.replica.block_store.store_block(ctx, block).await.unwrap();
 
     let res = util.process_leader_prepare(ctx, leader_prepare).await;
     assert_matches!(res, Err(leader_prepare::Error::ProposalInvalidPayload(..)));

@@ -19,7 +19,7 @@ use inner::ConsensusInner;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::ReplicaStore;
+use zksync_consensus_storage::{BlockStore,ValidatorStore};
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod inner;
@@ -42,8 +42,8 @@ pub async fn run(
     mut pipe: ActorPipe<InputMessage, OutputMessage>,
     secret_key: validator::SecretKey,
     validator_set: validator::ValidatorSet,
-    storage: ReplicaStore,
-    payload_source: &dyn PayloadSource,
+    block_store: Arc<BlockStore>,
+    validator_store: Arc<dyn ValidatorStore>,
 ) -> anyhow::Result<()> {
     let inner = Arc::new(ConsensusInner {
         pipe: pipe.send,
@@ -51,13 +51,13 @@ pub async fn run(
         validator_set,
     });
     let res = scope::run!(ctx, |ctx, s| async {
-        let mut replica = replica::StateMachine::start(ctx, inner.clone(), storage).await?;
+        let mut replica = replica::StateMachine::start(ctx, inner.clone(), block_store, validator_store.clone()).await?;
         let mut leader = leader::StateMachine::new(ctx, inner.clone());
 
         s.spawn_bg(leader::StateMachine::run_proposer(
             ctx,
             &inner,
-            payload_source,
+            &*validator_store,
             leader.prepare_qc.subscribe(),
         ));
 
