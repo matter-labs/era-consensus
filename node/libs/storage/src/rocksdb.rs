@@ -3,6 +3,7 @@
 //! getting a block, checking if a block is contained in the DB. We also store the head of the chain. Storing it explicitly allows us to fetch
 //! the current head quickly.
 use crate::{ReplicaState,ReplicaStore,PersistentBlockStore};
+use std::sync::Arc;
 use anyhow::Context as _;
 use rocksdb::{Direction, IteratorMode, ReadOptions};
 use std::{
@@ -55,9 +56,9 @@ impl DatabaseKey {
 ///
 /// - An append-only database of finalized blocks.
 /// - A backup of the consensus replica state.
-pub struct RocksDB(RwLock<rocksdb::DB>);
+pub struct Store(RwLock<rocksdb::DB>);
 
-impl RocksDB {
+impl Store {
     /// Create a new Storage. It first tries to open an existing database, and if that fails it just creates a
     /// a new one. We need the genesis block of the chain as input.
     pub async fn new(path: &Path) -> ctx::Result<Self> {
@@ -91,14 +92,14 @@ impl RocksDB {
     }
 }
 
-impl fmt::Debug for RocksDB {
+impl fmt::Debug for Store {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("RocksDB")
     }
 }
 
 #[async_trait::async_trait]
-impl traits::BlockStore for RocksDB {
+impl PersistentBlockStore for Arc<Store> {
     async fn available_blocks(&self, _ctx: &ctx::Ctx) -> ctx::Result<ops::Range<validator::BlockNumber>> {
         Ok(scope::wait_blocking(|| { self.available_blocks_blocking() }).await?)
     }
@@ -132,7 +133,7 @@ impl traits::BlockStore for RocksDB {
 }
 
 #[async_trait::async_trait]
-impl ReplicaStore for Arc<RocksDB> {
+impl ReplicaStore for Arc<Store> {
     async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>> {
         Ok(scope::wait_blocking(|| { 
             let Some(raw_state) = self.0

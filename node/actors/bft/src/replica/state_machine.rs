@@ -1,4 +1,4 @@
-use crate::{metrics, ConsensusInner};
+use crate::{Config, metrics, OutputPipe};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
@@ -13,7 +13,8 @@ use zksync_consensus_storage as storage;
 #[derive(Debug)]
 pub(crate) struct StateMachine {
     /// Consensus configuration and output channel.
-    pub(crate) inner: Arc<ConsensusInner>,
+    pub(crate) config: Arc<Config>,
+    pub(super) pipe: OutputPipe,
     /// The current view number.
     pub(crate) view: validator::ViewNumber,
     /// The current phase.
@@ -27,10 +28,6 @@ pub(crate) struct StateMachine {
         BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
     /// The deadline to receive an input message.
     pub(crate) timeout_deadline: time::Deadline,
-    /// A reference to the storage module. We use it to backup the replica state and store
-    /// finalized blocks.
-    pub(crate) block_store: Arc<storage::BlockStore>,
-    pub(crate) validator_store: Arc<dyn storage::ValidatorStore>,
 }
 
 impl StateMachine {
@@ -38,13 +35,12 @@ impl StateMachine {
     /// otherwise we initialize the state machine with whatever head block we have.
     pub(crate) async fn start(
         ctx: &ctx::Ctx,
-        inner: Arc<ConsensusInner>,
-        block_store: Arc<storage::BlockStore>,
-        validator_store: Arc<dyn storage::ValidatorStore>,
+        config: Arc<Config>,
+        pipe: OutputPipe,
     ) -> ctx::Result<Self> {
-        let backup = match validator_store.replica_state(ctx).await? {
+        let backup = match config.replica_store.state(ctx).await? {
             Some(backup) => backup,
-            None => block_store.last_block(ctx).await?.justification.into(),
+            None => config.block_store.last_block(ctx).await?.justification.into(),
         };
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
         for proposal in backup.proposals {
@@ -55,15 +51,14 @@ impl StateMachine {
         }
 
         let mut this = Self {
-            inner,
+            config,
+            pipe,
             view: backup.view,
             phase: backup.phase,
             high_vote: backup.high_vote,
             high_qc: backup.high_qc,
             block_proposal_cache,
             timeout_deadline: time::Deadline::Infinite,
-            block_store,
-            validator_store,
         };
         // We need to start the replica before processing inputs.
         this.start_new_view(ctx).await.wrap("start_new_view()")?;
@@ -133,8 +128,8 @@ impl StateMachine {
             high_qc: self.high_qc.clone(),
             proposals,
         };
-        self.validator_store
-            .set_replica_state(ctx, &backup)
+        self.config.replica_store
+            .set_state(ctx, &backup)
             .await
             .wrap("put_replica_state")?;
         Ok(())

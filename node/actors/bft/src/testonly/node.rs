@@ -1,11 +1,11 @@
 use super::Fuzz;
-use crate::{io, testonly};
+use crate::{io, testonly,PayloadManager};
 use rand::Rng;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_network as network;
 use zksync_consensus_network::io::ConsensusInputMessage;
-use zksync_consensus_storage::{ValidatorStore,BlockStore};
+use zksync_consensus_storage as storage;
 use zksync_consensus_utils::pipe::DispatcherPipe;
 
 /// Enum representing the behavior of the node.
@@ -26,10 +26,10 @@ pub(crate) enum Behavior {
 }
 
 impl Behavior {
-    pub(crate) fn wrap_store(&self, store: Arc<dyn ValidatorStore>) -> Arc<dyn ValidatorStore> {
+    pub(crate) fn payload_manager(&self) -> Box<dyn PayloadManager> {
         match self {
-            Self::HonestNotProposing => Arc::new(testonly::UnavailablePayloadSource(store)),
-            _ => store,
+            Self::HonestNotProposing => Box::new(testonly::UnavailablePayload),
+            _ => Box::new(testonly::RandomPayload),
         }
     }
 }
@@ -38,8 +38,7 @@ impl Behavior {
 pub(super) struct Node {
     pub(crate) net: network::testonly::Instance,
     pub(crate) behavior: Behavior,
-    pub(crate) block_store: Arc<BlockStore>,
-    pub(crate) validator_store: Arc<dyn ValidatorStore>,
+    pub(crate) block_store: Arc<storage::BlockStore>,
 }
 
 impl Node {

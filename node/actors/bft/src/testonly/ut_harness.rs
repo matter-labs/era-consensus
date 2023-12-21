@@ -1,10 +1,11 @@
 use crate::{
+    testonly,
     io::OutputMessage,
     leader,
     leader::{ReplicaCommitError, ReplicaPrepareError},
     replica,
     replica::{LeaderCommitError, LeaderPrepareError},
-    ConsensusInner,
+    Config,
 };
 use assert_matches::assert_matches;
 use rand::Rng;
@@ -15,7 +16,7 @@ use zksync_consensus_roles::validator::{
     self, CommitQC, LeaderCommit, LeaderPrepare, Payload, Phase, PrepareQC, ReplicaCommit,
     ReplicaPrepare, SecretKey, Signed, ViewNumber,
 };
-use zksync_consensus_storage::{InMemoryStorage, BlockStore};
+use zksync_consensus_storage::{testonly::in_memory, BlockStore};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// `UTHarness` provides various utilities for unit tests.
@@ -40,24 +41,20 @@ impl UTHarness {
             crate::testonly::make_genesis(&keys, Payload(vec![]), validator::BlockNumber(0));
 
         // Initialize the storage.
-        let storage = Arc::new(InMemoryStorage::new(genesis,ConsensusInner::PAYLOAD_MAX_SIZE));
+        let block_store = Box::new(in_memory::BlockStore::new(genesis));
+        let block_store = Arc::new(BlockStore::new(ctx,block_store,10).await.unwrap());
         // Create the pipe.
         let (send, recv) = ctx::channel::unbounded();
 
-        let inner = Arc::new(ConsensusInner {
-            pipe: send,
+        let cfg = Arc::new(Config {
             secret_key: keys[0].clone(),
             validator_set,
+            block_store: block_store,
+            replica_store: Box::new(in_memory::ReplicaStore::default()),
+            payload_manager: Box::new(testonly::RandomPayload),
         });
-        let leader = leader::StateMachine::new(ctx, inner.clone());
-        let replica = replica::StateMachine::start(
-            ctx,
-            inner.clone(),
-            Arc::new(BlockStore::new(ctx,storage.clone(),10).await.unwrap()),
-            storage.clone(),
-        )
-        .await
-        .unwrap();
+        let leader = leader::StateMachine::new(ctx, cfg.clone(), send.clone());
+        let replica = replica::StateMachine::start(ctx, cfg.clone(), send.clone()).await.unwrap();
         let mut this = UTHarness {
             leader,
             replica,
@@ -103,7 +100,7 @@ impl UTHarness {
     }
 
     pub(crate) fn owner_key(&self) -> &SecretKey {
-        &self.replica.inner.secret_key
+        &self.replica.config.secret_key
     }
 
     pub(crate) fn set_owner_as_view_leader(&mut self) {
@@ -202,9 +199,9 @@ impl UTHarness {
         if prepare_qc.has_changed().unwrap() {
             leader::StateMachine::propose(
                 ctx,
-                &self.leader.inner,
-                &*self.replica.validator_store,
+                &self.leader.config,
                 prepare_qc.borrow().clone().unwrap(),
+                &self.leader.pipe,
             )
             .await
             .unwrap();
@@ -217,7 +214,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaPrepare,
     ) -> Signed<LeaderPrepare> {
-        let want_threshold = self.replica.inner.threshold();
+        let want_threshold = self.replica.config.threshold();
         let mut leader_prepare = None;
         let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
         for (i, msg) in msgs.into_iter().enumerate() {
@@ -247,7 +244,7 @@ impl UTHarness {
     ) -> Signed<LeaderCommit> {
         for (i, key) in self.keys.iter().enumerate() {
             let res = self.leader.process_replica_commit(ctx, key.sign_msg(msg));
-            let want_threshold = self.replica.inner.threshold();
+            let want_threshold = self.replica.config.threshold();
             match (i + 1).cmp(&want_threshold) {
                 Ordering::Equal => res.unwrap(),
                 Ordering::Less => res.unwrap(),
@@ -278,7 +275,7 @@ impl UTHarness {
     }
 
     pub(crate) fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
-        self.replica.inner.view_leader(view)
+        self.replica.config.view_leader(view)
     }
 
     pub(crate) fn validator_set(&self) -> validator::ValidatorSet {

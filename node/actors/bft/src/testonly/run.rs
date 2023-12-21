@@ -1,12 +1,12 @@
 use super::{Behavior, Node};
-use crate::{ConsensusInner,testonly};
+use crate::{Config,testonly};
 use anyhow::Context;
 use std::{collections::HashMap, sync::Arc};
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope, signal};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{InMemoryStorage,BlockStore};
+use zksync_consensus_storage::{BlockStore,testonly::in_memory};
 use zksync_consensus_utils::pipe;
 
 #[derive(Clone, Copy)]
@@ -36,12 +36,12 @@ impl Test {
             testonly::make_genesis(&keys, validator::Payload(vec![]), validator::BlockNumber(0));
         let mut nodes = vec![];
         for (i,net) in nets.into_iter().enumerate() {
-            let store = Arc::new(InMemoryStorage::new(genesis_block.clone(),ConsensusInner::PAYLOAD_MAX_SIZE));
+            let block_store = Box::new(in_memory::BlockStore::new(genesis_block.clone()));
+            let block_store = Arc::new(BlockStore::new(ctx,block_store,10).await?);
             nodes.push(Node {
                 net,
                 behavior: self.nodes[i],
-                block_store: Arc::new(BlockStore::new(ctx,store.clone(),10).await?),
-                validator_store: self.nodes[i].wrap_store(store.clone()),
+                block_store,
             });
         }
 
@@ -98,14 +98,14 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, nodes: &[Node]) -> anyhow::
                         network_ready.recv(ctx).await?;
                         s.spawn(node.block_store.run_background_tasks(ctx));
                         s.spawn(async {
-                            crate::run(
-                                ctx,
-                                consensus_actor_pipe,
-                                node.net.consensus_config().key.clone(),
+                            Config {
+                                secret_key: validator_key,
                                 validator_set,
-                                node.block_store.clone(),
-                                node.validator_store.clone(),
-                            )
+                                block_store: node.block_store.clone(),
+                                replica_store: Box::new(in_memory::ReplicaStore::default()),
+                                payload_manager: node.behavior.payload_manager(),
+                            }
+                            .run(ctx, consensus_actor_pipe)
                             .await
                             .context("consensus.run()")
                         });

@@ -35,7 +35,8 @@ impl StateMachine {
             "Finalized a block!\nFinal block: {:#?}",
             block.header().hash()
         );
-        self.block_store
+        self.config
+            .block_store
             .store_block(ctx, block.clone())
             .await
             .context("store.put_block()")?;

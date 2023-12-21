@@ -11,7 +11,7 @@ use zksync_consensus_roles::validator;
 pub struct BlockStore(Mutex<BTreeMap<validator::BlockNumber,validator::FinalBlock>>);
 
 /// In-memory replica store.
-#[derive(Debug)]
+#[derive(Debug,Default)]
 pub struct ReplicaStore(Mutex<Option<ReplicaState>>);
 
 impl BlockStore {

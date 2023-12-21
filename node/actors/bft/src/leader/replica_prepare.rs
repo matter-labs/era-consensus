@@ -92,7 +92,7 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator set.
-        self.inner
+        self.config
             .validator_set
             .index(author)
             .ok_or(Error::NonValidatorSigner {
@@ -108,7 +108,7 @@ impl StateMachine {
         }
 
         // If the message is for a view when we are not a leader, we discard it.
-        if self.inner.view_leader(message.view) != self.inner.secret_key.public() {
+        if self.config.view_leader(message.view) != self.config.secret_key.public() {
             return Err(Error::NotLeaderInView);
         }
 
@@ -133,7 +133,7 @@ impl StateMachine {
         // Verify the high QC.
         message
             .high_qc
-            .verify(&self.inner.validator_set, self.inner.threshold())
+            .verify(&self.config.validator_set, self.config.threshold())
             .map_err(Error::InvalidHighQC)?;
 
         // If the high QC is for a future view, we discard the message.
@@ -157,7 +157,7 @@ impl StateMachine {
         // Now we check if we have enough messages to continue.
         let num_messages = self.prepare_message_cache.get(&message.view).unwrap().len();
 
-        if num_messages < self.inner.threshold() {
+        if num_messages < self.config.threshold() {
             return Ok(());
         }
 
@@ -171,7 +171,7 @@ impl StateMachine {
             .into_values()
             .collect();
 
-        debug_assert_eq!(num_messages, self.inner.threshold());
+        debug_assert_eq!(num_messages, self.config.threshold());
 
         // ----------- Update the state machine --------------
 
@@ -181,7 +181,7 @@ impl StateMachine {
 
         // Create the justification for our message.
         let justification =
-            validator::PrepareQC::from(&replica_messages, &self.inner.validator_set)
+            validator::PrepareQC::from(&replica_messages, &self.config.validator_set)
                 .expect("Couldn't create justification from valid replica messages!");
         self.prepare_qc.send_replace(Some(justification));
         Ok(())

@@ -1,23 +1,26 @@
 //! The inner data of the consensus state machine. This is shared between the different roles.
-
-use crate::{io::OutputMessage, misc};
+use crate::{misc, PayloadManager};
+use std::sync::Arc;
+use zksync_consensus_storage as storage;
 use tracing::instrument;
-use zksync_concurrency::ctx::channel;
 use zksync_consensus_roles::validator;
 
-/// The ConsensusInner struct, it contains data to be shared with the state machines. This is never supposed
-/// to be modified, except by the Consensus struct.
+/// Configuration of the bft actor.
 #[derive(Debug)]
-pub(crate) struct ConsensusInner {
-    /// The communication pipe. This is used to send outputs.
-    pub(crate) pipe: channel::UnboundedSender<OutputMessage>,
+pub struct Config {
     /// The validator's secret key.
-    pub(crate) secret_key: validator::SecretKey,
+    pub secret_key: validator::SecretKey,
     /// A vector of public keys for all the validators in the network.
-    pub(crate) validator_set: validator::ValidatorSet,
+    pub validator_set: validator::ValidatorSet,
+    /// Block store.
+    pub block_store: Arc<storage::BlockStore>,
+    /// Replica store.
+    pub replica_store: Box<dyn storage::ReplicaStore>,
+    /// Payload manager.
+    pub payload_manager: Box<dyn PayloadManager>,
 }
 
-impl ConsensusInner {
+impl Config {
     /// The maximum size of the payload of a block, in bytes. We will
     /// reject blocks with payloads larger than this.
     pub(crate) const PAYLOAD_MAX_SIZE: usize = 500 * zksync_protobuf::kB;
@@ -33,16 +36,12 @@ impl ConsensusInner {
     /// for a given number of replicas.
     #[instrument(level = "trace", ret)]
     pub fn threshold(&self) -> usize {
-        let num_validators = self.validator_set.len();
-
-        misc::consensus_threshold(num_validators)
+        misc::consensus_threshold(self.validator_set.len())
     }
 
     /// Calculate the maximum number of faulty replicas, for a given number of replicas.
     #[instrument(level = "trace", ret)]
     pub fn faulty_replicas(&self) -> usize {
-        let num_validators = self.validator_set.len();
-
-        misc::faulty_replicas(num_validators)
+        misc::faulty_replicas(self.validator_set.len())
     }
 }

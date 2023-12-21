@@ -67,7 +67,7 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator set.
-        self.inner
+        self.config
             .validator_set
             .index(author)
             .ok_or(Error::NonValidatorSigner {
@@ -83,7 +83,7 @@ impl StateMachine {
         }
 
         // If the message is for a view when we are not a leader, we discard it.
-        if self.inner.view_leader(message.view) != self.inner.secret_key.public() {
+        if self.config.view_leader(message.view) != self.config.secret_key.public() {
             return Err(Error::NotLeaderInView);
         }
 
@@ -116,11 +116,11 @@ impl StateMachine {
         }
         let Some((_, replica_messages)) = by_proposal
             .into_iter()
-            .find(|(_, v)| v.len() >= self.inner.threshold())
+            .find(|(_, v)| v.len() >= self.config.threshold())
         else {
             return Ok(());
         };
-        debug_assert_eq!(replica_messages.len(), self.inner.threshold());
+        debug_assert_eq!(replica_messages.len(), self.config.threshold());
 
         // ----------- Update the state machine --------------
 
@@ -137,14 +137,14 @@ impl StateMachine {
         // Create the justification for our message.
         let justification = validator::CommitQC::from(
             &replica_messages.into_iter().cloned().collect::<Vec<_>>(),
-            &self.inner.validator_set,
+            &self.config.validator_set,
         )
         .expect("Couldn't create justification from valid replica messages!");
 
         // Broadcast the leader commit message to all replicas (ourselves included).
         let output_message = ConsensusInputMessage {
             message: self
-                .inner
+                .config
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::LeaderCommit(
                     validator::LeaderCommit {
@@ -154,7 +154,7 @@ impl StateMachine {
                 )),
             recipient: Target::Broadcast,
         };
-        self.inner.pipe.send(output_message.into());
+        self.pipe.send(output_message.into());
 
         // Clean the caches.
         self.prepare_message_cache.retain(|k, _| k >= &self.view);

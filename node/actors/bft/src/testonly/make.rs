@@ -1,24 +1,43 @@
 //! This module contains utilities that are only meant for testing purposes.
-use std::sync::Arc;
+use crate::{PayloadManager,Config};
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{ValidatorStore,ValidatorStoreDefault};
+use rand::Rng as _;
+
+/// Produces random payload.
+#[derive(Debug)]
+pub struct RandomPayload;
+
+#[async_trait::async_trait]
+impl PayloadManager for RandomPayload {
+    async fn propose(
+        &self,
+        ctx: &ctx::Ctx,
+        _number: validator::BlockNumber,
+    ) -> ctx::Result<validator::Payload> {
+        let mut payload = validator::Payload(vec![0;Config::PAYLOAD_MAX_SIZE]);
+        ctx.rng().fill(&mut payload.0[..]);
+        Ok(payload)
+    }
+    async fn verify(&self, _ctx: &ctx::Ctx, _number: validator::BlockNumber, _payload: &validator::Payload) -> ctx::Result<()> { Ok(()) }
+}
 
 /// Never provides a payload.
 #[derive(Debug)]
-pub struct UnavailablePayloadSource(pub Arc<dyn ValidatorStore>);
+pub struct UnavailablePayload;
 
 #[async_trait::async_trait]
-impl ValidatorStoreDefault for UnavailablePayloadSource {
-    fn inner(&self) -> &dyn ValidatorStore { &*self.0 }
-    async fn propose_payload(
+impl PayloadManager for UnavailablePayload {
+    async fn propose(
         &self,
         ctx: &ctx::Ctx,
-        _block_number: validator::BlockNumber,
+        _number: validator::BlockNumber,
     ) -> ctx::Result<validator::Payload> {
         ctx.canceled().await;
         Err(ctx::Canceled.into())
     }
+
+    async fn verify(&self, _ctx: &ctx::Ctx, _number: validator::BlockNumber, _payload: &validator::Payload) -> ctx::Result<()> { Ok(()) }
 }
 
 /// Creates a genesis block with the given payload

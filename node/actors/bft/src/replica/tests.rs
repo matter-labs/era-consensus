@@ -1,5 +1,5 @@
 use super::{leader_commit, leader_prepare};
-use crate::{inner::ConsensusInner, testonly::ut_harness::UTHarness};
+use crate::{Config, testonly::ut_harness::UTHarness};
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::ctx;
@@ -153,7 +153,7 @@ async fn leader_prepare_invalid_payload() {
         )
         .unwrap(),
     };
-    util.replica.block_store.store_block(ctx, block).await.unwrap();
+    util.replica.config.block_store.store_block(ctx, block).await.unwrap();
 
     let res = util.process_leader_prepare(ctx, leader_prepare).await;
     assert_matches!(res, Err(leader_prepare::Error::ProposalInvalidPayload(..)));
@@ -197,7 +197,7 @@ async fn leader_prepare_invalid_high_qc() {
 async fn leader_prepare_proposal_oversized_payload() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let mut util = UTHarness::new(ctx, 1).await;
-    let payload_oversize = ConsensusInner::PAYLOAD_MAX_SIZE + 1;
+    let payload_oversize = Config::PAYLOAD_MAX_SIZE + 1;
     let payload_vec = vec![0; payload_oversize];
     let mut leader_prepare = util.new_leader_prepare(ctx).await.msg;
     leader_prepare.proposal_payload = Some(Payload(payload_vec));
