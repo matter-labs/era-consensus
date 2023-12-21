@@ -3,13 +3,14 @@ use crate::types::ReplicaState;
 use async_trait::async_trait;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator::{self,testonly};
+use crate::traits::BlockStore as _;
 
 #[cfg(feature = "rocksdb")]
 mod rocksdb;
 
 #[async_trait]
 trait InitStore {
-    type Store: PersistentBlockStore + ValidatorStore;
+    type Store: traits::BlockStore;
 
     async fn init_store(&self, ctx: &ctx::Ctx, genesis_block: &validator::FinalBlock) -> Self::Store;
 }
@@ -19,11 +20,11 @@ impl InitStore for () {
     type Store = InMemoryStorage;
 
     async fn init_store(&self, _ctx: &ctx::Ctx, genesis_block: &validator::FinalBlock) -> Self::Store {
-        InMemoryStorage::new(genesis_block.clone(),10)
+        InMemoryStorage::new(genesis_block.clone())
     }
 }
 
-async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<validator::FinalBlock> {
+async fn dump(ctx: &ctx::Ctx, store: &dyn traits::BlockStore) -> Vec<validator::FinalBlock> {
     let mut blocks = vec![];
     let range = store.available_blocks(ctx).await.unwrap();
     for n in range.start.0..range.end.0 {

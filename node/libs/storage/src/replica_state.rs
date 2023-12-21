@@ -1,7 +1,8 @@
 //! `FallbackReplicaStateStore` type.
 
-use crate::{PersistentBlockStore,
+use crate::{
     types::ReplicaState,
+    traits,
 };
 use std::sync::Arc;
 use zksync_concurrency::{ctx,sync};
@@ -32,12 +33,45 @@ struct BlockStoreInner {
 #[derive(Debug)]
 pub struct BlockStore {
     inner: sync::watch::Sender<BlockStoreInner>,
-    persistent: Arc<dyn PersistentBlockStore>,
+    persistent: Arc<dyn traits::BlockStore>,
     first: validator::BlockNumber,
 }
 
+pub struct ValidatorStore {
+    blocks: Arc<BlockStore>,
+    inner: Arc<dyn traits::ValidatorStore>,
+}
+
+impl std::ops::Deref for ValidatorStore {
+    type Target = Arc<BlockStore>;
+    fn deref(&self) -> &Self::Target { &self.blocks }
+}
+
+impl ValidatorStore {
+    pub async fn new(ctx: &ctx::Ctx, inner: Arc<dyn traits::ValidatorStore>, cache_capacity: usize) -> ctx::Result<Self> {
+        Ok(Self {
+            blocks: Arc::new(BlockStore::new(ctx,inner.clone().blocks(),cache_capacity).await?),
+            inner,
+        })
+    }
+
+    pub async fn replica(&self) -> &dyn traits::ReplicaStore {
+        self.inner.replica()
+    }
+
+    pub async fn propose_payload(&self, ctx: &ctx::Ctx, block_number: validator::BlockNumber) -> ctx::Result<validator::Payload> {
+        sync::wait_for(ctx, &mut self.blocks.inner.subscribe(), |inner| inner.last_persisted.next() >= block_number).await?;
+        self.inner.propose_payload(ctx,block_number).await
+    }
+
+    pub async fn verify_payload(&self, ctx: &ctx::Ctx, block_number: validator::BlockNumber, payload: &validator::Payload) -> ctx::Result<()> {
+        sync::wait_for(ctx, &mut self.blocks.inner.subscribe(), |inner| inner.last_persisted.next() >= block_number).await?;
+        self.inner.verify_payload(ctx,block_number,payload).await
+    }
+}
+
 impl BlockStore {
-    pub async fn new(ctx: &ctx::Ctx, persistent: Arc<dyn PersistentBlockStore>, cache_capacity: usize) -> ctx::Result<Self> {
+    pub async fn new(ctx: &ctx::Ctx, persistent: Arc<dyn traits::BlockStore>, cache_capacity: usize) -> ctx::Result<Self> {
         if cache_capacity < 1 {
             return Err(anyhow::anyhow!("cache_capacity has to be >=1").into());
         }

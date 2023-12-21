@@ -3,8 +3,7 @@
 //! getting a block, checking if a block is contained in the DB. We also store the head of the chain. Storing it explicitly allows us to fetch
 //! the current head quickly.
 use crate::{
-    PersistentBlockStore,
-    ValidatorStore,
+    traits,
     types::{ReplicaState},
 };
 use anyhow::Context as _;
@@ -14,7 +13,6 @@ use std::{
     path::Path,
     sync::RwLock,
 };
-use rand::Rng as _;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
 
@@ -60,28 +58,22 @@ impl DatabaseKey {
 ///
 /// - An append-only database of finalized blocks.
 /// - A backup of the consensus replica state.
-pub struct RocksdbStorage {
-    db: RwLock<rocksdb::DB>,
-    payload_size: usize,
-}
+pub struct RocksdbStorage(RwLock<rocksdb::DB>);
 
 impl RocksdbStorage {
     /// Create a new Storage. It first tries to open an existing database, and if that fails it just creates a
     /// a new one. We need the genesis block of the chain as input.
-    pub async fn new(path: &Path, payload_size: usize) -> ctx::Result<Self> {
+    pub async fn new(path: &Path) -> ctx::Result<Self> {
         let mut options = rocksdb::Options::default();
         options.create_missing_column_families(true);
         options.create_if_missing(true);
-        Ok(Self {
-            db: RwLock::new(scope::wait_blocking(|| {
-                rocksdb::DB::open(&options, path).context("Failed opening RocksDB")
-            }).await?),
-            payload_size,
-        })
+        Ok(Self(RwLock::new(scope::wait_blocking(|| {
+            rocksdb::DB::open(&options, path).context("Failed opening RocksDB")
+        }).await?)))
     }
 
     fn available_blocks_blocking(&self) -> anyhow::Result<ops::Range<validator::BlockNumber>> {
-        let db = self.db.read().unwrap();
+        let db = self.0.read().unwrap();
 
         let mut options = ReadOptions::default();
         options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..); 
@@ -109,14 +101,14 @@ impl fmt::Debug for RocksdbStorage {
 }
 
 #[async_trait::async_trait]
-impl PersistentBlockStore for RocksdbStorage {
+impl traits::BlockStore for RocksdbStorage {
     async fn available_blocks(&self, _ctx: &ctx::Ctx) -> ctx::Result<ops::Range<validator::BlockNumber>> {
         Ok(scope::wait_blocking(|| { self.available_blocks_blocking() }).await?)
     }
 
     async fn block(&self, _ctx: &ctx::Ctx, number: validator::BlockNumber) -> ctx::Result<validator::FinalBlock> {
         Ok(scope::wait_blocking(|| {
-            let db = self.db.read().unwrap();
+            let db = self.0.read().unwrap();
             let block = db
                 .get(DatabaseKey::Block(number).encode_key())
                 .context("RocksDB error")?
@@ -128,7 +120,7 @@ impl PersistentBlockStore for RocksdbStorage {
 
     async fn store_next_block(&self, _ctx: &ctx::Ctx, block: &validator::FinalBlock) -> ctx::Result<()> {
         Ok(scope::wait_blocking(|| {
-            let db = self.db.write().unwrap();
+            let db = self.0.write().unwrap();
             let block_number = block.header().number;
             let mut write_batch = rocksdb::WriteBatch::default();
             write_batch.put(
@@ -143,10 +135,10 @@ impl PersistentBlockStore for RocksdbStorage {
 }
 
 #[async_trait::async_trait]
-impl ValidatorStore for RocksdbStorage {
-    async fn replica_state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>> {
+impl traits::ReplicaStore for RocksdbStorage {
+    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>> {
         Ok(scope::wait_blocking(|| { 
-            let Some(raw_state) = self.db
+            let Some(raw_state) = self.0
                 .read()
                 .unwrap()
                 .get(DatabaseKey::ReplicaState.encode_key())
@@ -160,25 +152,14 @@ impl ValidatorStore for RocksdbStorage {
         }).await?)
     }
 
-    async fn set_replica_state(&self, _ctx: &ctx::Ctx, state: &ReplicaState) -> ctx::Result<()> {
+    async fn set_state(&self, _ctx: &ctx::Ctx, state: &ReplicaState) -> ctx::Result<()> {
         Ok(scope::wait_blocking(|| {
-            self.db.write().unwrap()
+            self.0.write().unwrap()
                 .put(
                     DatabaseKey::ReplicaState.encode_key(),
                     zksync_protobuf::encode(state),
                 )
                 .context("Failed putting ReplicaState to RocksDB")
         }).await?)
-    }
-
-    async fn propose_payload(&self, ctx: &ctx::Ctx, _block_number: validator::BlockNumber) -> ctx::Result<validator::Payload> {
-        let mut payload = validator::Payload(vec![0; self.payload_size]);
-        ctx.rng().fill(&mut payload.0[..]);
-        Ok(payload)
-    }
-
-    /// Just verifies that the payload is for the successor of the current head.
-    async fn verify_payload(&self, _ctx: &ctx::Ctx, _block_number: validator::BlockNumber, _payload: &validator::Payload) -> ctx::Result<()> {
-        Ok(())
     }
 }

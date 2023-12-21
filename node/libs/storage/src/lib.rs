@@ -10,7 +10,7 @@ mod rocksdb;
 mod testonly;
 #[cfg(test)]
 mod tests;
-mod traits;
+pub mod traits;
 mod types;
 
 #[cfg(feature = "rocksdb")]
@@ -18,6 +18,5 @@ pub use crate::rocksdb::RocksdbStorage;
 pub use crate::{
     in_memory::InMemoryStorage,
     replica_state::BlockStore,
-    traits::{PersistentBlockStore,ValidatorStore,ValidatorStoreDefault},
     types::{Proposal, ReplicaState},
 };

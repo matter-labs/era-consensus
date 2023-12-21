@@ -1,7 +1,7 @@
 //! Traits for storage.
 use crate::types::ReplicaState;
 use async_trait::async_trait;
-use std::{fmt, ops};
+use std::{sync::Arc, fmt, ops};
 use zksync_concurrency::{ctx};
 use zksync_consensus_roles::validator::{BlockNumber, FinalBlock, Payload};
 
@@ -9,7 +9,7 @@ use zksync_consensus_roles::validator::{BlockNumber, FinalBlock, Payload};
 ///
 /// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait]
-pub trait PersistentBlockStore: fmt::Debug + Send + Sync {
+pub trait BlockStore: fmt::Debug + Send + Sync {
     /// Range of blocks avaliable in storage.
     /// Consensus code calls this method only once and then tracks the
     /// range of avaliable blocks internally.
@@ -30,12 +30,18 @@ pub trait PersistentBlockStore: fmt::Debug + Send + Sync {
 ///
 /// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait]
-pub trait ValidatorStore: fmt::Debug + Send + Sync {
+pub trait ReplicaStore: fmt::Debug + Send + Sync {
     /// Gets the replica state, if it is contained in the database.
-    async fn replica_state(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>>;
+    async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>>;
 
     /// Stores the given replica state into the database.
-    async fn set_replica_state(&self, ctx: &ctx::Ctx, replica_state: &ReplicaState) -> ctx::Result<()>;
+    async fn set_state(&self, ctx: &ctx::Ctx, replica_state: &ReplicaState) -> ctx::Result<()>;
+}
+
+#[async_trait]
+pub trait ValidatorStore {
+    fn blocks(self:Arc<Self>) -> Arc<dyn BlockStore>;
+    fn replica(&self) -> &dyn ReplicaStore;
 
     /// Propose a payload for the block `block_number`.
     async fn propose_payload(&self, ctx: &ctx::Ctx, block_number: BlockNumber) -> ctx::Result<Payload>;
@@ -44,6 +50,7 @@ pub trait ValidatorStore: fmt::Debug + Send + Sync {
     async fn verify_payload(&self, ctx: &ctx::Ctx, block_number: BlockNumber, payload: &Payload) -> ctx::Result<()>;
 }
 
+/*
 #[async_trait]
 pub trait ValidatorStoreDefault : Send + Sync {
     fn inner(&self) -> &dyn ValidatorStore;
@@ -59,4 +66,4 @@ impl<T:ValidatorStoreDefault + fmt::Debug> ValidatorStore for T {
     async fn set_replica_state(&self, ctx: &ctx::Ctx, state: &ReplicaState) -> ctx::Result<()> { ValidatorStoreDefault::set_replica_state(self,ctx,state).await }
     async fn propose_payload(&self, ctx: &ctx::Ctx, block_number: BlockNumber) -> ctx::Result<Payload> { ValidatorStoreDefault::propose_payload(self,ctx,block_number).await }
     async fn verify_payload(&self, ctx: &ctx::Ctx, block_number: BlockNumber, payload: &Payload) -> ctx::Result<()> { ValidatorStoreDefault::verify_payload(self,ctx,block_number,payload).await }
-}
+}*/

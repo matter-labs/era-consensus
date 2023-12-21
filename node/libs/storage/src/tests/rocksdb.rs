@@ -6,7 +6,7 @@ impl InitStore for TempDir {
     type Store = RocksdbStorage;
 
     async fn init_store(&self, ctx: &ctx::Ctx, genesis_block: &validator::FinalBlock) -> Self::Store {
-        let db = RocksdbStorage::new(self.path(),10).await.unwrap();
+        let db = RocksdbStorage::new(self.path()).await.unwrap();
         db.store_next_block(ctx,genesis_block).await.unwrap();
         db
     }
