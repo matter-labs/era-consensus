@@ -1,7 +1,7 @@
 //! Test-only utilities.
-
-use crate::types::{Proposal, ReplicaState};
+use crate::{Proposal, ReplicaState};
 use rand::{distributions::Standard, prelude::Distribution, Rng};
+pub mod in_memory;
 
 impl Distribution<Proposal> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Proposal {
