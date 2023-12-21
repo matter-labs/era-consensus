@@ -32,9 +32,17 @@ pub(crate) struct UTHarness {
     pipe: ctx::channel::UnboundedReceiver<OutputMessage>,
 }
 
+pub(crate) struct Runner(Arc<BlockStore>);
+
+impl Runner {
+    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        self.0.run_background_tasks(ctx).await
+    }
+}
+
 impl UTHarness {
     /// Creates a new `UTHarness` with the specified validator set size.
-    pub(crate) async fn new(ctx: &ctx::Ctx, num_validators: usize) -> UTHarness {
+    pub(crate) async fn new(ctx: &ctx::Ctx, num_validators: usize) -> (UTHarness,Runner) {
         let mut rng = ctx.rng();
         let keys: Vec<_> = (0..num_validators).map(|_| rng.gen()).collect();
         let (genesis, validator_set) =
@@ -49,7 +57,7 @@ impl UTHarness {
         let cfg = Arc::new(Config {
             secret_key: keys[0].clone(),
             validator_set,
-            block_store: block_store,
+            block_store: block_store.clone(),
             replica_store: Box::new(in_memory::ReplicaStore::default()),
             payload_manager: Box::new(testonly::RandomPayload),
         });
@@ -62,11 +70,11 @@ impl UTHarness {
             keys,
         };
         let _: Signed<ReplicaPrepare> = this.try_recv().unwrap();
-        this
+        (this,Runner(block_store))
     }
 
     /// Creates a new `UTHarness` with minimally-significant validator set size.
-    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> UTHarness {
+    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness,Runner) {
         let num_validators = 6;
         assert!(crate::misc::faulty_replicas(num_validators) > 0);
         UTHarness::new(ctx, num_validators).await
@@ -197,10 +205,11 @@ impl UTHarness {
         let prepare_qc = self.leader.prepare_qc.subscribe();
         self.leader.process_replica_prepare(ctx, msg).await?;
         if prepare_qc.has_changed().unwrap() {
+            let prepare_qc = prepare_qc.borrow().clone().unwrap(); 
             leader::StateMachine::propose(
                 ctx,
                 &self.leader.config,
-                prepare_qc.borrow().clone().unwrap(),
+                prepare_qc,
                 &self.leader.pipe,
             )
             .await
