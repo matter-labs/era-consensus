@@ -40,8 +40,8 @@ zksync_protobuf_build = { path = "libs/protobuf_build" }
 
 # Crates from Matter Labs.
 pairing = { package = "pairing_ce", git = "https://github.com/matter-labs/pairing.git", rev = "f55393fd366596eac792d78525d26e9c4d6ed1ca" }
-vise = { version = "0.1.0", git = "https://github.com/matter-labs/vise.git", rev = "dd05139b76ab0843443ab3ff730174942c825dae" }
-vise-exporter = { version = "0.1.0", git = "https://github.com/matter-labs/vise.git", rev = "dd05139b76ab0843443ab3ff730174942c825dae" }
+vise = { version = "0.1.0", git = "https://github.com/matter-labs/vise.git", rev = "1c9cc500e92cf9ea052b230e114a6f9cce4fb2c1" }
+vise-exporter = { version = "0.1.0", git = "https://github.com/matter-labs/vise.git", rev = "1c9cc500e92cf9ea052b230e114a6f9cce4fb2c1" }
 
 # Crates from third-parties.
 anyhow = "1"
