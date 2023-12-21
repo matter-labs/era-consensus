@@ -435,6 +435,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "acbf1af155f9b9ef647e42cdc158db4b64a1b61f743629225fde6f3e0be2a7c7"
 
 [[package]]
+name = "compile-fmt"
+version = "0.1.0"
+source = "git+https://github.com/slowli/compile-fmt.git?rev=c6a41c846c9a6f70cdba4b44c9f3922242ffcf12#c6a41c846c9a6f70cdba4b44c9f3922242ffcf12"
+
+[[package]]
 name = "const-oid"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2319,8 +2324,9 @@ checksum = "49874b5167b65d7193b8aba1567f5c7d93d001cafc34600cee003eda787e483f"
 [[package]]
 name = "vise"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/vise.git?rev=dd05139b76ab0843443ab3ff730174942c825dae#dd05139b76ab0843443ab3ff730174942c825dae"
+source = "git+https://github.com/matter-labs/vise.git?rev=1c9cc500e92cf9ea052b230e114a6f9cce4fb2c1#1c9cc500e92cf9ea052b230e114a6f9cce4fb2c1"
 dependencies = [
+ "compile-fmt",
  "elsa",
  "linkme",
  "once_cell",
@@ -2331,7 +2337,7 @@ dependencies = [
 [[package]]
 name = "vise-exporter"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/vise.git?rev=dd05139b76ab0843443ab3ff730174942c825dae#dd05139b76ab0843443ab3ff730174942c825dae"
+source = "git+https://github.com/matter-labs/vise.git?rev=1c9cc500e92cf9ea052b230e114a6f9cce4fb2c1#1c9cc500e92cf9ea052b230e114a6f9cce4fb2c1"
 dependencies = [
  "hyper",
  "once_cell",
@@ -2343,7 +2349,7 @@ dependencies = [
 [[package]]
 name = "vise-macros"
 version = "0.1.0"
-source = "git+https://github.com/matter-labs/vise.git?rev=dd05139b76ab0843443ab3ff730174942c825dae#dd05139b76ab0843443ab3ff730174942c825dae"
+source = "git+https://github.com/matter-labs/vise.git?rev=1c9cc500e92cf9ea052b230e114a6f9cce4fb2c1#1c9cc500e92cf9ea052b230e114a6f9cce4fb2c1"
 dependencies = [
  "proc-macro2",
  "quote",
