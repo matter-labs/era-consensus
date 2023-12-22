@@ -25,7 +25,7 @@ message SyncState {
   // First L2 block that the node has locally.
   optional roles.validator.CommitQC first_stored_block = 1;
   // Last L2 block that the node has locally.
-  optional roles.validator.CommitQC last_stored_block = 3;
+  optional roles.validator.CommitQC last_stored_block = 2;
 }
 
 // Response to `SyncState` acknowledging its processing.

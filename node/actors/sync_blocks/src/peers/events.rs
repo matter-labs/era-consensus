@@ -15,10 +15,6 @@ pub(super) enum PeerStateEvent {
         peer_key: node::PublicKey,
         block_number: BlockNumber,
     },
-    /// Peer state was updated. Includes creating a state for a newly connected peer.
-    PeerUpdated(node::PublicKey),
-    /// Received invalid `SyncState` from a peer.
-    InvalidPeerUpdate(node::PublicKey),
     /// Peer was disconnected (i.e., it has dropped a request).
     PeerDropped(node::PublicKey),
 }

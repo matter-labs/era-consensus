@@ -9,6 +9,7 @@ use zksync_concurrency::{
     oneshot, scope,
     sync,
 };
+use zksync_consensus_utils::no_copy::NoCopy;
 use zksync_consensus_network::io::{SyncBlocksInputMessage};
 use zksync_consensus_roles::{
     node,
@@ -27,7 +28,7 @@ struct PeerState {
 }
 
 /// Handle for [`PeerStates`] allowing to send updates to it.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(crate) struct PeerStates {
     config: Config,
     storage: Arc<BlockStore>,
@@ -45,8 +46,11 @@ impl PeerStates {
         storage: Arc<BlockStore>,
         message_sender: channel::UnboundedSender<io::OutputMessage>,
     ) -> Self {
-        Self{
+        Self {
             config,
+            storage,
+            message_sender,
+
             peers: Mutex::default(),
             highest: sync::watch::channel(BlockNumber(0)).0,
             events_sender: None,
@@ -55,28 +59,6 @@ impl PeerStates {
 
     pub(crate) fn update(&self, peer: &node::PublicKey, state: BlockStoreState) -> anyhow::Result<()> {
         let last = state.last.header().number;
-        let res = self.update_inner(peer, state);
-        if let Err(err) = res {
-            tracing::warn!(%err, %peer, "Invalid `SyncState` received");
-            // TODO(gprusak): close the connection and ban.
-        }
-        if let Some(events_sender) = &self.events_sender {
-            events_sender.send(match res {
-                Ok(()) => PeerStateEvent::PeerUpdated(peer.clone()),
-                Err(_) =>PeerStateEvent::InvalidPeerUpdate(peer.clone()),
-            });
-        }
-        self.highest.send_if_modified(|highest| {
-            if highest >= last {
-                return false;
-            }
-            *highest = last;
-            return true;
-        });
-    }
-
-    /// Returns the last trusted block number stored by the peer.
-    async fn update_inner(&self, peer: &node::PublicKey, state: BlockStoreState) -> anyhow::Result<()> {
         anyhow::ensure!(state.first.header().number <= state.last.header().number);
         state
             .last
@@ -84,31 +66,41 @@ impl PeerStates {
             .context("state.last.verify()");
         let mut peers = self.peers.lock().unwrap();
         let permits = self.config.max_concurrent_blocks_per_peer;
-        let peer_state = peers.entry(peer.clone()).or_insert_with(|| PeerState {
-            state,
-            get_block_semaphore: Arc::new(sync::Semaphore::new(permits)),
+        use std::collections::hash_map::Entry;
+        match peers.entry(peer.clone()) {
+            Entry::Occupied(mut e) => e.get_mut().state = state,
+            Entry::Vacant(e) => { e.insert(PeerState {
+                state,
+                get_block_semaphore: Arc::new(sync::Semaphore::new(permits)),
+            }); }
+        }
+        self.highest.send_if_modified(|highest| {
+            if *highest >= last {
+                return false;
+            }
+            *highest = last;
+            return true;
         });
-        peer_state.state = state;
         Ok(())
     }
 
     /// Task fetching blocks from peers which are not present in storage.
-    pub(crate) async fn run_block_fetcher(&self, ctx: &ctx::Ctx) {
+    pub(crate) async fn run_block_fetcher(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
         let sem = sync::Semaphore::new(self.config.max_concurrent_blocks);
-        // Ignore cancellation error.
-        let _ = scope::run!(ctx, |ctx, s| async {
+        scope::run!(ctx, |ctx, s| async {
             let mut next = self.storage.subscribe().borrow().next();
             let mut highest = self.highest.subscribe();
             loop {
                 *sync::wait_for(ctx, &mut highest, |highest| highest >= &next).await?;
                 let permit = sync::acquire(ctx, &sem).await?;
-                s.spawn(async {
-                    let permit = permit;
-                    self.fetch_block(ctx, next).await
-                });
+                let block_number = NoCopy::from(next);
                 next = next.next();
+                s.spawn(async {
+                    let _permit = permit;
+                    self.fetch_block(ctx, block_number.into_inner()).await
+                });
             }
-        }).await;
+        }).await
     }
 
     /// Fetches the block from peers and puts it to storage.
@@ -126,7 +118,8 @@ impl PeerStates {
                 Ok(())
             });
             // Observe if the block has appeared in storage.
-            sync::wait_for(ctx, &mut self.storage.subscribe(), |state| state.next() > block_number).await
+            sync::wait_for(ctx, &mut self.storage.subscribe(), |state| state.next() > block_number).await?;
+            Ok(())
         }).await
     }
 
@@ -143,13 +136,13 @@ impl PeerStates {
                 continue;
             };
             match self.fetch_block_from_peer(ctx, &peer, number).await {
-                Ok(block) => return self.storage.queue_block(ctx, &block).await,
+                Ok(block) => return self.storage.queue_block(ctx, block).await,
                 Err(err) => {
-                    tracing::info!(%err, "get_block({peer},{number}) failed, dropping peer");
+                    tracing::info!(%err, "get_block({peer:?},{number}) failed, dropping peer");
                     if let Some(events_sender) = &self.events_sender {
                         events_sender.send(PeerStateEvent::RpcFailed { peer_key: peer.clone(), block_number: number });
                     }
-                    self.forget_peer(&peer);
+                    self.drop_peer(&peer);
                 }
             }
         }
@@ -188,7 +181,7 @@ impl PeerStates {
         let peers = self.peers.lock().unwrap();
         let mut peers_with_no_permits = vec![];
         let eligible_peers_info = peers.iter().filter(|(peer_key, state)| {
-            if !state.has_block(block_number) {
+            if !state.state.contains(block_number) {
                 return false;
             }
             let available_permits = state.get_block_semaphore.available_permits();

@@ -6,8 +6,8 @@ use crate::{
     io::{InputMessage, OutputMessage},
 };
 use std::sync::Arc;
-use zksync_concurrency::{ctx, scope};
-use zksync_consensus_storage::BlockStore;
+use zksync_concurrency::{ctx, scope, error::Wrap as _};
+use zksync_consensus_storage::{BlockStoreState,BlockStore};
 use zksync_consensus_utils::pipe::ActorPipe;
 use zksync_consensus_network::io::{GetBlockError, SyncBlocksRequest};
 
@@ -25,26 +25,30 @@ impl Config {
     pub async fn run(
         self,
         ctx: &ctx::Ctx,
-        pipe: ActorPipe<InputMessage, OutputMessage>,
+        mut pipe: ActorPipe<InputMessage, OutputMessage>,
         storage: Arc<BlockStore>,
-    ) -> anyhow::Result<Self> { 
+    ) -> anyhow::Result<()> { 
         let peer_states = PeerStates::new(self, storage.clone(), pipe.send);
-        let result = scope::run!(ctx, |ctx, s| async {
-            s.spawn_bg(peer_states.run_block_fetcher(ctx));
-            while let Ok(input_message) = pipe.recv.recv(ctx).await {
-                match input_message {
+        let result : ctx::Result<()> = scope::run!(ctx, |ctx, s| async {
+            s.spawn_bg(async { Ok(peer_states.run_block_fetcher(ctx).await?) });
+            loop {
+                match pipe.recv.recv(ctx).await? {
                     InputMessage::Network(SyncBlocksRequest::UpdatePeerSyncState {
                         peer,
                         state,
                         response,
                     }) => {
-                        peer_states.update(&peer, state);
+                        let res = peer_states.update(&peer, BlockStoreState{
+                            first: state.first_stored_block,
+                            last: state.last_stored_block,
+                        });
+                        if let Err(err) = res {
+                            tracing::info!(%err, ?peer, "peer_states.update()");
+                        }
                         response.send(()).ok();
                     }
                     InputMessage::Network(SyncBlocksRequest::GetBlock { block_number, response }) => {
-                        response.send(storage.block(ctx,block_number).await.map_ok(
-                            |b|b.ok_or(GetBlockError::NotSynced)
-                        ));
+                        response.send(storage.block(ctx,block_number).await.wrap("storage.block()")?.ok_or(GetBlockError::NotSynced)).ok();
                     }
                 }
             }
