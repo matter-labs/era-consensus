@@ -33,14 +33,14 @@ fn make_block(rng: &mut impl Rng, parent: &validator::BlockHeader) -> validator:
 
 async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<validator::FinalBlock> {
     let mut blocks = vec![];
-    let range = store.available_blocks(ctx).await.unwrap();
-    for n in range.start.0..range.end.0 {
+    let range = store.state(ctx).await.unwrap();
+    for n in range.first.header().number.0..range.next().0 {
         let n = validator::BlockNumber(n);
         let block = store.block(ctx,n).await.unwrap();
         assert_eq!(block.header().number, n);
         blocks.push(block);
     }
-    assert!(store.block(ctx,range.end).await.is_err());
+    assert!(store.block(ctx,range.next()).await.is_err());
     blocks
 }
 

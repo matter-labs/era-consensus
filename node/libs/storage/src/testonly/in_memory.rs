@@ -1,7 +1,7 @@
 //! In-memory storage implementation.
-use crate::ReplicaState;
+use crate::{BlockStoreState,ReplicaState,PersistentBlockStore};
 use anyhow::Context as _;
-use std::{ops, sync::Mutex};
+use std::{sync::Mutex};
 use std::collections::BTreeMap;
 use zksync_concurrency::{ctx};
 use zksync_consensus_roles::validator;
@@ -22,12 +22,12 @@ impl BlockStore {
 }
 
 #[async_trait::async_trait]
-impl crate::PersistentBlockStore for BlockStore {
-    async fn available_blocks(&self, _ctx :&ctx::Ctx) -> ctx::Result<ops::Range<validator::BlockNumber>> {
+impl PersistentBlockStore for BlockStore {
+    async fn state(&self, _ctx :&ctx::Ctx) -> ctx::Result<BlockStoreState> {
         let blocks = self.0.lock().unwrap();
-        Ok(ops::Range {
-            start: *blocks.first_key_value().unwrap().0,
-            end: blocks.last_key_value().unwrap().0.next(),
+        Ok(BlockStoreState {
+            first: blocks.first_key_value().unwrap().1.justification.clone(),
+            last: blocks.last_key_value().unwrap().1.justification.clone(),
         })
     }
 

@@ -308,6 +308,11 @@ pub struct CommitQC {
 }
 
 impl CommitQC {
+    /// Header of the certified block. 
+    pub fn header(&self) -> &BlockHeader {
+        &self.message.proposal
+    }
+
     /// Creates a new CommitQC from a list of *signed* replica Commit messages and the current validator set.
     pub fn from(
         signed_messages: &[Signed<ReplicaCommit>],

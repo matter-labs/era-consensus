@@ -11,7 +11,7 @@ pub(super) enum PeerStateEvent {
     /// Block retrieval was canceled due to block getting persisted using other means.
     CanceledBlock(BlockNumber),
     /// Received an invalid block from the peer.
-    GotInvalidBlock {
+    RpcFailed {
         peer_key: node::PublicKey,
         block_number: BlockNumber,
     },
@@ -20,5 +20,5 @@ pub(super) enum PeerStateEvent {
     /// Received invalid `SyncState` from a peer.
     InvalidPeerUpdate(node::PublicKey),
     /// Peer was disconnected (i.e., it has dropped a request).
-    PeerDisconnected(node::PublicKey),
+    PeerDropped(node::PublicKey),
 }

@@ -11,5 +11,5 @@ mod tests;
 mod block_store;
 mod replica_store;
 
-pub use crate::block_store::{PersistentBlockStore,BlockStore};
+pub use crate::block_store::{BlockStoreState,PersistentBlockStore,BlockStore};
 pub use crate::replica_store::{ReplicaStore,ReplicaState,Proposal};

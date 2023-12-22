@@ -2,12 +2,12 @@
 //! chain of blocks, not a tree (assuming we have all blocks and not have any gap). It allows for basic functionality like inserting a block,
 //! getting a block, checking if a block is contained in the DB. We also store the head of the chain. Storing it explicitly allows us to fetch
 //! the current head quickly.
-use crate::{ReplicaState,ReplicaStore,PersistentBlockStore};
+use crate::{ReplicaState,ReplicaStore,PersistentBlockStore,BlockStoreState};
 use std::sync::Arc;
 use anyhow::Context as _;
 use rocksdb::{Direction, IteratorMode, ReadOptions};
 use std::{
-    fmt, ops,
+    fmt,
     path::Path,
     sync::RwLock,
 };
@@ -70,7 +70,7 @@ impl Store {
         }).await?)))
     }
 
-    fn available_blocks_blocking(&self) -> anyhow::Result<ops::Range<validator::BlockNumber>> {
+    fn state_blocking(&self) -> anyhow::Result<BlockStoreState> {
         let db = self.0.read().unwrap();
 
         let mut options = ReadOptions::default();
@@ -88,7 +88,10 @@ impl Store {
             .context("First stored block not found")?
             .context("RocksDB error reading first stored block")?;
         let first : validator::FinalBlock = zksync_protobuf::decode(&first).context("Failed decoding first stored block bytes")?;
-        Ok(ops::Range{start:first.header().number, end: last.header().number.next()})
+        Ok(BlockStoreState{
+            first: first.justification,
+            last: last.justification,
+        })
     }
 }
 
@@ -100,8 +103,8 @@ impl fmt::Debug for Store {
 
 #[async_trait::async_trait]
 impl PersistentBlockStore for Arc<Store> {
-    async fn available_blocks(&self, _ctx: &ctx::Ctx) -> ctx::Result<ops::Range<validator::BlockNumber>> {
-        Ok(scope::wait_blocking(|| { self.available_blocks_blocking() }).await?)
+    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
+        Ok(scope::wait_blocking(|| { self.state_blocking() }).await?)
     }
 
     async fn block(&self, _ctx: &ctx::Ctx, number: validator::BlockNumber) -> ctx::Result<validator::FinalBlock> {

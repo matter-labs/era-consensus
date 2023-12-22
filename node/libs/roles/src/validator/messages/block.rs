@@ -230,7 +230,4 @@ pub enum BlockValidationError {
     /// Failed verifying quorum certificate.
     #[error("failed verifying quorum certificate: {0:#?}")]
     Justification(#[source] anyhow::Error),
-    /// Application-specific error.
-    #[error(transparent)]
-    Other(anyhow::Error),
 }
