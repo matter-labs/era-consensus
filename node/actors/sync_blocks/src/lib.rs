@@ -20,8 +20,8 @@ mod tests;
 pub use crate::config::Config;
 use crate::peers::PeerStates;
 
-/// Creates a new actor.
 impl Config {
+    /// Runs the sync_blocks actor.
     pub async fn run(
         self,
         ctx: &ctx::Ctx,

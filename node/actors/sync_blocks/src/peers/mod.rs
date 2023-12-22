@@ -63,7 +63,7 @@ impl PeerStates {
         state
             .last
             .verify(&self.config.validator_set, self.config.consensus_threshold)
-            .context("state.last.verify()");
+            .context("state.last.verify()")?;
         let mut peers = self.peers.lock().unwrap();
         let permits = self.config.max_concurrent_blocks_per_peer;
         use std::collections::hash_map::Entry;
@@ -91,7 +91,7 @@ impl PeerStates {
             let mut next = self.storage.subscribe().borrow().next();
             let mut highest = self.highest.subscribe();
             loop {
-                *sync::wait_for(ctx, &mut highest, |highest| highest >= &next).await?;
+                sync::wait_for(ctx, &mut highest, |highest| highest >= &next).await?;
                 let permit = sync::acquire(ctx, &sem).await?;
                 let block_number = NoCopy::from(next);
                 next = next.next();
@@ -215,7 +215,7 @@ impl PeerStates {
     }
 
     /// Drops peer state.
-    async fn drop_peer(&self, peer: &node::PublicKey) {
+    fn drop_peer(&self, peer: &node::PublicKey) {
         if self.peers.lock().unwrap().remove(peer).is_none() { return }
         tracing::trace!(?peer, "Dropping peer state");
         if let Some(events_sender) = &self.events_sender {

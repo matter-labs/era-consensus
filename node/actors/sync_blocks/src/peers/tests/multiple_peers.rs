@@ -1,6 +1,7 @@
 //! Tests focused on interaction with multiple peers.
 
 use super::*;
+use crate::tests::wait_for_stored_block;
 
 #[derive(Debug)]
 struct RequestingBlocksFromTwoPeers;
@@ -21,15 +22,14 @@ impl Test for RequestingBlocksFromTwoPeers {
             clock,
             mut rng,
             test_validators,
-            peer_states_handle,
+            peer_states,
             storage,
             mut message_receiver,
             mut events_receiver,
         } = handles;
 
         let first_peer = rng.gen::<node::SecretKey>().public();
-        peer_states_handle.update(first_peer.clone(), test_validators.sync_state(2));
-        wait_for_peer_update(ctx, &mut events_receiver, &first_peer).await?;
+        peer_states.update(&first_peer, test_validators.sync_state(2)).unwrap();
 
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
             recipient,
@@ -42,8 +42,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         );
 
         let second_peer = rng.gen::<node::SecretKey>().public();
-        peer_states_handle.update(second_peer.clone(), test_validators.sync_state(4));
-        wait_for_peer_update(ctx, &mut events_receiver, &second_peer).await?;
+        peer_states.update(&second_peer, test_validators.sync_state(4)).unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
 
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
@@ -65,8 +64,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         clock.advance(BLOCK_SLEEP_INTERVAL);
         assert_matches!(message_receiver.try_recv(), None);
 
-        peer_states_handle.update(first_peer.clone(), test_validators.sync_state(4));
-        wait_for_peer_update(ctx, &mut events_receiver, &first_peer).await?;
+        peer_states.update(&first_peer, test_validators.sync_state(4)).unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
         // Now the actor can get block #3 from the peer.
 
@@ -177,7 +175,7 @@ impl Test for RequestingBlocksFromMultiplePeers {
             clock,
             mut rng,
             test_validators,
-            peer_states_handle,
+            peer_states,
             storage,
             mut message_receiver,
             mut events_receiver,
@@ -189,7 +187,7 @@ impl Test for RequestingBlocksFromMultiplePeers {
             // Announce peer states.
             for (peer_key, peer) in peers {
                 let last_block = peer.last_block.0 as usize;
-                peer_states_handle.update(peer_key.clone(), test_validators.sync_state(last_block));
+                peer_states.update(&peer_key, test_validators.sync_state(last_block)).unwrap();
             }
 
             s.spawn_bg(async {
@@ -260,10 +258,7 @@ impl Test for RequestingBlocksFromMultiplePeers {
                         );
                         clock.advance(BLOCK_SLEEP_INTERVAL);
                     }
-                    PeerStateEvent::PeerUpdated(_) => {
-                        clock.advance(BLOCK_SLEEP_INTERVAL);
-                    }
-                    PeerStateEvent::PeerDisconnected(_) => { /* Do nothing */ }
+                    PeerStateEvent::PeerDropped(_) => { /* Do nothing */ }
                     _ => panic!("Unexpected peer event: {peer_event:?}"),
                 }
             }

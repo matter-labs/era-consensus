@@ -1,5 +1,6 @@
 //! Basic tests.
 
+use crate::tests::wait_for_stored_block;
 use super::*;
 
 #[derive(Debug)]
@@ -13,18 +14,15 @@ impl Test for UpdatingPeerStateWithSingleBlock {
         let TestHandles {
             mut rng,
             test_validators,
-            peer_states_handle,
+            peer_states,
             storage,
             mut message_receiver,
             mut events_receiver,
             ..
         } = handles;
-        let mut storage_subscriber = storage.subscribe_to_block_writes();
 
         let peer_key = rng.gen::<node::SecretKey>().public();
-        peer_states_handle.update(peer_key.clone(), test_validators.sync_state(1));
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+        peer_states.update(&peer_key, test_validators.sync_state(1)).unwrap();
 
         // Check that the actor has sent a `get_block` request to the peer
         let message = message_receiver.recv(ctx).await?;
@@ -43,8 +41,7 @@ impl Test for UpdatingPeerStateWithSingleBlock {
         assert_matches!(peer_event, PeerStateEvent::GotBlock(BlockNumber(1)));
 
         // Check that the block has been saved locally.
-        let saved_block = *sync::changed(ctx, &mut storage_subscriber).await?;
-        assert_eq!(saved_block, BlockNumber(1));
+        sync::wait_for(ctx, &mut storage.subscribe(), |state| state.contains(BlockNumber(1))).await?;
         Ok(())
     }
 }
@@ -65,7 +62,7 @@ impl Test for CancelingBlockRetrieval {
         let TestHandles {
             mut rng,
             test_validators,
-            peer_states_handle,
+            peer_states,
             storage,
             mut message_receiver,
             mut events_receiver,
@@ -73,9 +70,7 @@ impl Test for CancelingBlockRetrieval {
         } = handles;
 
         let peer_key = rng.gen::<node::SecretKey>().public();
-        peer_states_handle.update(peer_key.clone(), test_validators.sync_state(1));
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+        peer_states.update(&peer_key, test_validators.sync_state(1)).unwrap();
 
         // Check that the actor has sent a `get_block` request to the peer
         let message = message_receiver.recv(ctx).await?;
@@ -85,9 +80,8 @@ impl Test for CancelingBlockRetrieval {
         );
 
         // Emulate receiving block using external means.
-        storage
-            .put_block(ctx, &test_validators.final_blocks[1])
-            .await?;
+        storage.queue_block(ctx, test_validators.final_blocks[1].clone()).await?;
+        
         // Retrieval of the block must be canceled.
         let peer_event = events_receiver.recv(ctx).await?;
         assert_matches!(peer_event, PeerStateEvent::CanceledBlock(BlockNumber(1)));
@@ -111,22 +105,17 @@ impl Test for FilteringBlockRetrieval {
         let TestHandles {
             mut rng,
             test_validators,
-            peer_states_handle,
+            peer_states,
             storage,
             mut message_receiver,
-            mut events_receiver,
             ..
         } = handles;
 
         // Emulate receiving block using external means.
-        storage
-            .put_block(ctx, &test_validators.final_blocks[1])
-            .await?;
+        storage.queue_block(ctx, test_validators.final_blocks[1].clone()).await?;
 
         let peer_key = rng.gen::<node::SecretKey>().public();
-        peer_states_handle.update(peer_key.clone(), test_validators.sync_state(2));
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+        peer_states.update(&peer_key, test_validators.sync_state(2)).unwrap();
 
         // Check that the actor has sent `get_block` request to the peer, but only for block #2.
         let message = message_receiver.recv(ctx).await?;
@@ -168,19 +157,17 @@ impl Test for UpdatingPeerStateWithMultipleBlocks {
             clock,
             mut rng,
             test_validators,
-            peer_states_handle,
+            peer_states,
             storage,
             mut message_receiver,
             mut events_receiver,
         } = handles;
 
         let peer_key = rng.gen::<node::SecretKey>().public();
-        peer_states_handle.update(
-            peer_key.clone(),
-            test_validators.sync_state(Self::BLOCK_COUNT - 1),
-        );
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+        peer_states.update(
+            &peer_key,
+            test_validators.sync_state(Self::BLOCK_COUNT - 1).clone(),
+        ).unwrap();
 
         let mut requested_blocks = HashMap::with_capacity(Self::MAX_CONCURRENT_BLOCKS);
         for _ in 1..Self::BLOCK_COUNT {
@@ -243,31 +230,27 @@ impl Test for DisconnectingPeer {
             clock,
             mut rng,
             test_validators,
-            peer_states_handle,
+            peer_states,
             storage,
             mut message_receiver,
             mut events_receiver,
         } = handles;
 
         let peer_key = rng.gen::<node::SecretKey>().public();
-        peer_states_handle.update(peer_key.clone(), test_validators.sync_state(1));
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+        peer_states.update(&peer_key, test_validators.sync_state(1)).unwrap();
 
         // Drop the response sender emulating peer disconnect.
         message_receiver.recv(ctx).await?;
 
         let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerDisconnected(key) if key == peer_key);
+        assert_matches!(peer_event, PeerStateEvent::PeerDropped(key) if key == peer_key);
 
         // Check that no new requests are sent (there are no peers to send them to).
         clock.advance(BLOCK_SLEEP_INTERVAL);
         assert_matches!(message_receiver.try_recv(), None);
 
         // Re-connect the peer with an updated state.
-        peer_states_handle.update(peer_key.clone(), test_validators.sync_state(2));
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+        peer_states.update(&peer_key, test_validators.sync_state(2)).unwrap();
         // Ensure that blocks are re-requested.
         clock.advance(BLOCK_SLEEP_INTERVAL);
 
@@ -293,16 +276,14 @@ impl Test for DisconnectingPeer {
         assert_matches!(peer_event, PeerStateEvent::GotBlock(BlockNumber(2)));
         drop(responses);
         let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerDisconnected(key) if key == peer_key);
+        assert_matches!(peer_event, PeerStateEvent::PeerDropped(key) if key == peer_key);
 
         // Check that no new requests are sent (there are no peers to send them to).
         clock.advance(BLOCK_SLEEP_INTERVAL);
         assert_matches!(message_receiver.try_recv(), None);
 
         // Re-connect the peer with the same state.
-        peer_states_handle.update(peer_key.clone(), test_validators.sync_state(2));
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+        peer_states.update(&peer_key, test_validators.sync_state(2)).unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
 
         let message = message_receiver.recv(ctx).await?;
@@ -364,12 +345,12 @@ impl Test for DownloadingBlocksInGaps {
     async fn initialize_storage(
         &self,
         ctx: &ctx::Ctx,
-        storage: &dyn WriteBlockStore,
+        storage: &BlockStore,
         test_validators: &TestValidators,
     ) {
         for &block_number in &self.local_block_numbers {
             storage
-                .put_block(ctx, &test_validators.final_blocks[block_number])
+                .queue_block(ctx, test_validators.final_blocks[block_number].clone())
                 .await
                 .unwrap();
         }
@@ -380,10 +361,10 @@ impl Test for DownloadingBlocksInGaps {
             clock,
             mut rng,
             test_validators,
-            peer_states_handle,
+            peer_states,
             storage,
             mut message_receiver,
-            mut events_receiver,
+            ..
         } = handles;
 
         let peer_key = rng.gen::<node::SecretKey>().public();
@@ -392,11 +373,10 @@ impl Test for DownloadingBlocksInGaps {
         } else {
             Self::BLOCK_COUNT - 1
         };
-        peer_states_handle.update(
-            peer_key.clone(),
+        peer_states.update(
+            &peer_key,
             test_validators.sync_state(last_peer_block_number),
-        );
-        wait_for_peer_update(ctx, &mut events_receiver, &peer_key).await?;
+        ).unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
 
         let expected_block_numbers =
@@ -406,13 +386,7 @@ impl Test for DownloadingBlocksInGaps {
         for expected_number in expected_block_numbers {
             if expected_number > last_peer_block_number {
                 last_peer_block_number = rng.gen_range(expected_number..Self::BLOCK_COUNT);
-                peer_states_handle.update(
-                    peer_key.clone(),
-                    test_validators.sync_state(last_peer_block_number),
-                );
-                // Wait until the update is processed.
-                wait_for_peer_update(ctx, &mut events_receiver, &peer_key).await?;
-
+                peer_states.update(&peer_key, test_validators.sync_state(last_peer_block_number)).unwrap();
                 clock.advance(BLOCK_SLEEP_INTERVAL);
             }
 
@@ -460,20 +434,13 @@ impl Test for LimitingGetBlockConcurrency {
         let TestHandles {
             mut rng,
             test_validators,
-            peer_states_handle,
+            peer_states,
             storage,
             mut message_receiver,
-            mut events_receiver,
             ..
         } = handles;
-        let mut storage_subscriber = storage.subscribe_to_block_writes();
-
         let peer_key = rng.gen::<node::SecretKey>().public();
-        peer_states_handle.update(
-            peer_key.clone(),
-            test_validators.sync_state(Self::BLOCK_COUNT - 1),
-        );
-        wait_for_peer_update(ctx, &mut events_receiver, &peer_key).await?;
+        peer_states.update(&peer_key, test_validators.sync_state(Self::BLOCK_COUNT - 1)).unwrap();
 
         // The actor should request 3 new blocks it's now aware of from the only peer it's currently
         // aware of. Note that blocks may be queried in any order.
@@ -496,9 +463,7 @@ impl Test for LimitingGetBlockConcurrency {
         // Send a correct response out of order.
         let response = message_responses.remove(&3).unwrap();
         test_validators.send_block(BlockNumber(3), response);
-
-        let saved_block = *sync::changed(ctx, &mut storage_subscriber).await?;
-        assert_eq!(saved_block, BlockNumber(3));
+        wait_for_stored_block(ctx, storage.as_ref(), BlockNumber(3)).await?;
 
         // The actor should now request another block.
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
