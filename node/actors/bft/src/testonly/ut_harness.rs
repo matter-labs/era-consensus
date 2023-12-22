@@ -1,5 +1,6 @@
 use crate::{
     testonly,
+    PayloadManager,
     io::OutputMessage,
     leader,
     leader::{ReplicaCommitError, ReplicaPrepareError},
@@ -35,7 +36,7 @@ pub(crate) struct UTHarness {
 pub(crate) struct Runner(Arc<BlockStore>);
 
 impl Runner {
-    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub(crate) async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         self.0.run_background_tasks(ctx).await
     }
 }
@@ -43,6 +44,10 @@ impl Runner {
 impl UTHarness {
     /// Creates a new `UTHarness` with the specified validator set size.
     pub(crate) async fn new(ctx: &ctx::Ctx, num_validators: usize) -> (UTHarness,Runner) {
+        Self::new_with_payload(ctx,num_validators,Box::new(testonly::RandomPayload)).await 
+    }
+
+    pub(crate) async fn new_with_payload(ctx: &ctx::Ctx, num_validators: usize, payload_manager: Box<dyn PayloadManager>) -> (UTHarness,Runner) {
         let mut rng = ctx.rng();
         let keys: Vec<_> = (0..num_validators).map(|_| rng.gen()).collect();
         let (genesis, validator_set) =
@@ -59,7 +64,7 @@ impl UTHarness {
             validator_set,
             block_store: block_store.clone(),
             replica_store: Box::new(in_memory::ReplicaStore::default()),
-            payload_manager: Box::new(testonly::RandomPayload),
+            payload_manager,
         });
         let leader = leader::StateMachine::new(ctx, cfg.clone(), send.clone());
         let replica = replica::StateMachine::start(ctx, cfg.clone(), send.clone()).await.unwrap();

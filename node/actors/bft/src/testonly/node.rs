@@ -28,7 +28,7 @@ pub(crate) enum Behavior {
 impl Behavior {
     pub(crate) fn payload_manager(&self) -> Box<dyn PayloadManager> {
         match self {
-            Self::HonestNotProposing => Box::new(testonly::UnavailablePayload),
+            Self::HonestNotProposing => Box::new(testonly::PendingPayload),
             _ => Box::new(testonly::RandomPayload),
         }
     }

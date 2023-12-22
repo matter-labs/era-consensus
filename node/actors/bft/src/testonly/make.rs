@@ -10,11 +10,7 @@ pub struct RandomPayload;
 
 #[async_trait::async_trait]
 impl PayloadManager for RandomPayload {
-    async fn propose(
-        &self,
-        ctx: &ctx::Ctx,
-        _number: validator::BlockNumber,
-    ) -> ctx::Result<validator::Payload> {
+    async fn propose(&self, ctx: &ctx::Ctx, _number: validator::BlockNumber) -> ctx::Result<validator::Payload> {
         let mut payload = validator::Payload(vec![0;Config::PAYLOAD_MAX_SIZE]);
         ctx.rng().fill(&mut payload.0[..]);
         Ok(payload)
@@ -22,22 +18,33 @@ impl PayloadManager for RandomPayload {
     async fn verify(&self, _ctx: &ctx::Ctx, _number: validator::BlockNumber, _payload: &validator::Payload) -> ctx::Result<()> { Ok(()) }
 }
 
-/// Never provides a payload.
+/// propose() blocks indefinitely.
 #[derive(Debug)]
-pub struct UnavailablePayload;
+pub struct PendingPayload;
 
 #[async_trait::async_trait]
-impl PayloadManager for UnavailablePayload {
-    async fn propose(
-        &self,
-        ctx: &ctx::Ctx,
-        _number: validator::BlockNumber,
-    ) -> ctx::Result<validator::Payload> {
+impl PayloadManager for PendingPayload {
+    async fn propose(&self, ctx: &ctx::Ctx, _number: validator::BlockNumber) -> ctx::Result<validator::Payload> {
         ctx.canceled().await;
         Err(ctx::Canceled.into())
     }
 
     async fn verify(&self, _ctx: &ctx::Ctx, _number: validator::BlockNumber, _payload: &validator::Payload) -> ctx::Result<()> { Ok(()) }
+}
+
+/// verify() doesn't accept any payload.
+#[derive(Debug)]
+pub struct RejectPayload;
+
+#[async_trait::async_trait]
+impl PayloadManager for RejectPayload {
+    async fn propose(&self, _ctx: &ctx::Ctx, _number: validator::BlockNumber) -> ctx::Result<validator::Payload> {
+        Ok(validator::Payload(vec![]))
+    }
+
+    async fn verify(&self, _ctx: &ctx::Ctx, _number: validator::BlockNumber, _payload: &validator::Payload) -> ctx::Result<()> {
+        Err(anyhow::anyhow!("invalid payload").into())
+    }
 }
 
 /// Creates a genesis block with the given payload
