@@ -191,18 +191,17 @@ impl PrepareQC {
     }
 
     /// Add a validator's signed message.
-    /// * `signed_message` - A signed message.
-    /// * `validator_index` - A tuple containing the index of the validator and the total size of the set.
     pub fn add(
         &mut self,
         signed_message: &Signed<ReplicaPrepare>,
-        validator_index: (usize, usize),
+        validator_index: usize,
+        validator_set: &ValidatorSet,
     ) {
         self.map
             .entry(signed_message.msg.clone())
-            .or_insert_with(|| Signers(BitVec::from_elem(validator_index.1, false)))
+            .or_insert_with(|| Signers(BitVec::from_elem(validator_set.len(), false)))
             .0
-            .set(validator_index.0, true);
+            .set(validator_index, true);
 
         self.signature.add(&signed_message.sig);
     }
@@ -284,10 +283,10 @@ pub struct CommitQC {
 
 impl CommitQC {
     /// Create a new empty instance for a given `ReplicaCommit` message and a validator set size.
-    pub fn new(message: ReplicaCommit, validator_set_size: usize) -> Self {
+    pub fn new(message: ReplicaCommit, validator_set: &ValidatorSet) -> Self {
         Self {
             message,
-            signers: Signers(BitVec::from_elem(validator_set_size, false)),
+            signers: Signers(BitVec::from_elem(validator_set.len(), false)),
             signature: validator::AggregateSignature::default(),
         }
     }

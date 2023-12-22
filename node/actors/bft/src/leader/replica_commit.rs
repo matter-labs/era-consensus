@@ -109,7 +109,7 @@ impl StateMachine {
         // We add the message to the incrementally-constructed QC.
         self.commit_qcs
             .entry(message.view)
-            .or_insert(CommitQC::new(message, self.inner.validator_set.len()))
+            .or_insert(CommitQC::new(message, &self.inner.validator_set))
             .add(&signed_message.sig, validator_index);
 
         // We store the message in our cache.

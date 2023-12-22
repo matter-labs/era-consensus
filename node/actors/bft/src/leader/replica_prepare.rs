@@ -152,7 +152,8 @@ impl StateMachine {
         // We add the message to the incrementally-constructed QC.
         self.prepare_qcs.entry(message.view).or_default().add(
             &signed_message,
-            (validator_index, self.inner.validator_set.len()),
+            validator_index,
+            &self.inner.validator_set,
         );
 
         // We store the message in our cache.

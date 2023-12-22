@@ -100,7 +100,7 @@ impl PrepareQC {
                 .index(&signed_message.key)
                 .context("Message signer isn't in the validator set")?;
 
-            prepare_qc.add(signed_message, (index, validators.len()));
+            prepare_qc.add(signed_message, index, validators);
         }
 
         Ok(prepare_qc)
@@ -115,7 +115,7 @@ impl CommitQC {
     ) -> anyhow::Result<Self> {
         // Store the signed messages in a Hashmap.
         let message = signed_messages[0].msg;
-        let mut commit_qc = CommitQC::new(message, validators.len());
+        let mut commit_qc = CommitQC::new(message, &validators);
 
         for signed_message in signed_messages {
             // Check that the votes are all for the same message.
