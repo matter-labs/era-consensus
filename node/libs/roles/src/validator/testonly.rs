@@ -115,7 +115,7 @@ impl CommitQC {
     ) -> anyhow::Result<Self> {
         // Store the signed messages in a Hashmap.
         let message = signed_messages[0].msg;
-        let mut commit_qc = CommitQC::new(message, &validators);
+        let mut commit_qc = CommitQC::new(message, validators);
 
         for signed_message in signed_messages {
             // Check that the votes are all for the same message.
