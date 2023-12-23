@@ -1,5 +1,5 @@
 use super::Fuzz;
-use crate::{io, testonly,PayloadManager};
+use crate::{io, testonly, PayloadManager};
 use rand::Rng;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, scope};

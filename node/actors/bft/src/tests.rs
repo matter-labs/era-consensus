@@ -2,7 +2,7 @@ use crate::{
     misc::consensus_threshold,
     testonly::{ut_harness::UTHarness, Behavior, Network, Test},
 };
-use zksync_concurrency::{ctx,scope};
+use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator::Phase;
 
 async fn run_test(behavior: Behavior, network: Network) {
@@ -69,26 +69,27 @@ async fn byzantine_real_network() {
 async fn timeout_leader_no_prepares() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx,s| async { 
-        let (mut util,runner) = UTHarness::new_many(ctx).await;
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
- 
+
         util.new_replica_prepare(|_| {});
         util.produce_block_after_timeout(ctx).await;
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
-
 
 /// Testing liveness after the network becomes idle with leader having some cached prepare messages for the current view.
 #[tokio::test]
 async fn timeout_leader_some_prepares() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx,s| async { 
-        let (mut util,runner) = UTHarness::new_many(ctx).await;
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
- 
+
         let replica_prepare = util.new_replica_prepare(|_| {});
         assert!(util
             .process_replica_prepare(ctx, replica_prepare)
@@ -97,17 +98,18 @@ async fn timeout_leader_some_prepares() {
             .is_none());
         util.produce_block_after_timeout(ctx).await;
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
-
 
 /// Testing liveness after the network becomes idle with leader in commit phase.
 #[tokio::test]
 async fn timeout_leader_in_commit() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx,s| async { 
-        let (mut util,runner) = UTHarness::new_many(ctx).await;
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         util.new_leader_prepare(ctx).await;
@@ -115,17 +117,18 @@ async fn timeout_leader_in_commit() {
         assert_eq!(util.leader.phase, Phase::Commit);
         util.produce_block_after_timeout(ctx).await;
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
-
 
 /// Testing liveness after the network becomes idle with replica in commit phase.
 #[tokio::test]
 async fn timeout_replica_in_commit() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx,s| async { 
-        let (mut util,runner) = UTHarness::new_many(ctx).await;
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         util.new_replica_commit(ctx).await;
@@ -133,7 +136,9 @@ async fn timeout_replica_in_commit() {
         assert_eq!(util.leader.phase, Phase::Commit);
         util.produce_block_after_timeout(ctx).await;
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
 /// Testing liveness after the network becomes idle with leader having some cached commit messages for the current view.
@@ -141,8 +146,8 @@ async fn timeout_replica_in_commit() {
 async fn timeout_leader_some_commits() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx,s| async { 
-        let (mut util,runner) = UTHarness::new_many(ctx).await;
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         let replica_commit = util.new_replica_commit(ctx).await;
@@ -155,25 +160,27 @@ async fn timeout_leader_some_commits() {
         assert_eq!(util.leader_phase(), Phase::Commit);
         util.produce_block_after_timeout(ctx).await;
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
-
 
 /// Testing liveness after the network becomes idle with leader in a consecutive prepare phase.
 #[tokio::test]
 async fn timeout_leader_in_consecutive_prepare() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx,s| async { 
-        let (mut util,runner) = UTHarness::new_many(ctx).await;
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         util.new_leader_commit(ctx).await;
         util.produce_block_after_timeout(ctx).await;
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
-
 
 /// Not being able to propose a block shouldn't cause a deadlock.
 #[tokio::test]

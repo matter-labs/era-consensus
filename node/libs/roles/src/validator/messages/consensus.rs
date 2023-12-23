@@ -308,7 +308,7 @@ pub struct CommitQC {
 }
 
 impl CommitQC {
-    /// Header of the certified block. 
+    /// Header of the certified block.
     pub fn header(&self) -> &BlockHeader {
         &self.message.proposal
     }

@@ -1,7 +1,7 @@
 //! Defines storage layer for persistent replica state.
 use crate::proto;
-use std::fmt;
 use anyhow::Context as _;
+use std::fmt;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
 use zksync_protobuf::{read_required, required, ProtoFmt};
@@ -104,5 +104,3 @@ impl ProtoFmt for ReplicaState {
         }
     }
 }
-
-

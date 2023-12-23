@@ -104,7 +104,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         config: &Config,
         mut prepare_qc: sync::watch::Receiver<Option<validator::PrepareQC>>,
-        pipe: &OutputPipe,    
+        pipe: &OutputPipe,
     ) -> ctx::Result<()> {
         let mut next_view = validator::ViewNumber(0);
         loop {
@@ -158,7 +158,8 @@ impl StateMachine {
             Some(proposal) if proposal != highest_qc.message.proposal => (proposal, None),
             // The previous block was finalized, so we can propose a new block.
             _ => {
-                let payload = cfg.payload_manager 
+                let payload = cfg
+                    .payload_manager
                     .propose(ctx, highest_qc.message.proposal.number.next())
                     .await?;
                 metrics::METRICS
@@ -173,7 +174,7 @@ impl StateMachine {
         // ----------- Prepare our message and send it --------------
 
         // Broadcast the leader prepare message to all replicas (ourselves included).
-        let msg = cfg 
+        let msg = cfg
             .secret_key
             .sign_msg(validator::ConsensusMsg::LeaderPrepare(
                 validator::LeaderPrepare {

@@ -1,12 +1,12 @@
 use super::{Behavior, Node};
-use crate::{Config,testonly};
+use crate::{testonly, Config};
 use anyhow::Context;
 use std::{collections::HashMap, sync::Arc};
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope, signal};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{BlockStore,testonly::in_memory};
+use zksync_consensus_storage::{testonly::in_memory, BlockStore};
 use zksync_consensus_utils::pipe;
 
 #[derive(Clone, Copy)]
@@ -28,16 +28,16 @@ impl Test {
     pub(crate) async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
         let nets: Vec<_> = network::testonly::Instance::new(rng, self.nodes.len(), 1);
-        let keys: Vec<_> = nets 
+        let keys: Vec<_> = nets
             .iter()
             .map(|node| node.consensus_config().key.clone())
             .collect();
         let (genesis_block, _) =
             testonly::make_genesis(&keys, validator::Payload(vec![]), validator::BlockNumber(0));
         let mut nodes = vec![];
-        for (i,net) in nets.into_iter().enumerate() {
+        for (i, net) in nets.into_iter().enumerate() {
             let block_store = Box::new(in_memory::BlockStore::new(genesis_block.clone()));
-            let block_store = Arc::new(BlockStore::new(ctx,block_store,10).await?);
+            let block_store = Arc::new(BlockStore::new(ctx, block_store, 10).await?);
             nodes.push(Node {
                 net,
                 behavior: self.nodes[i],
@@ -57,7 +57,9 @@ impl Test {
             s.spawn_bg(run_nodes(ctx, self.network, &nodes));
             for n in &honest {
                 s.spawn(async {
-                    n.block_store.wait_for_block(ctx,validator::BlockNumber(self.blocks_to_finalize as u64)).await?;
+                    n.block_store
+                        .wait_for_block(ctx, validator::BlockNumber(self.blocks_to_finalize as u64))
+                        .await?;
                     Ok(())
                 });
             }

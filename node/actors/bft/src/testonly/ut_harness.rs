@@ -1,12 +1,10 @@
 use crate::{
-    testonly,
-    PayloadManager,
     io::OutputMessage,
     leader,
     leader::{ReplicaCommitError, ReplicaPrepareError},
     replica,
     replica::{LeaderCommitError, LeaderPrepareError},
-    Config,
+    testonly, Config, PayloadManager,
 };
 use assert_matches::assert_matches;
 use rand::Rng;
@@ -43,11 +41,15 @@ impl Runner {
 
 impl UTHarness {
     /// Creates a new `UTHarness` with the specified validator set size.
-    pub(crate) async fn new(ctx: &ctx::Ctx, num_validators: usize) -> (UTHarness,Runner) {
-        Self::new_with_payload(ctx,num_validators,Box::new(testonly::RandomPayload)).await 
+    pub(crate) async fn new(ctx: &ctx::Ctx, num_validators: usize) -> (UTHarness, Runner) {
+        Self::new_with_payload(ctx, num_validators, Box::new(testonly::RandomPayload)).await
     }
 
-    pub(crate) async fn new_with_payload(ctx: &ctx::Ctx, num_validators: usize, payload_manager: Box<dyn PayloadManager>) -> (UTHarness,Runner) {
+    pub(crate) async fn new_with_payload(
+        ctx: &ctx::Ctx,
+        num_validators: usize,
+        payload_manager: Box<dyn PayloadManager>,
+    ) -> (UTHarness, Runner) {
         let mut rng = ctx.rng();
         let keys: Vec<_> = (0..num_validators).map(|_| rng.gen()).collect();
         let (genesis, validator_set) =
@@ -55,7 +57,7 @@ impl UTHarness {
 
         // Initialize the storage.
         let block_store = Box::new(in_memory::BlockStore::new(genesis));
-        let block_store = Arc::new(BlockStore::new(ctx,block_store,10).await.unwrap());
+        let block_store = Arc::new(BlockStore::new(ctx, block_store, 10).await.unwrap());
         // Create the pipe.
         let (send, recv) = ctx::channel::unbounded();
 
@@ -67,7 +69,9 @@ impl UTHarness {
             payload_manager,
         });
         let leader = leader::StateMachine::new(ctx, cfg.clone(), send.clone());
-        let replica = replica::StateMachine::start(ctx, cfg.clone(), send.clone()).await.unwrap();
+        let replica = replica::StateMachine::start(ctx, cfg.clone(), send.clone())
+            .await
+            .unwrap();
         let mut this = UTHarness {
             leader,
             replica,
@@ -75,11 +79,11 @@ impl UTHarness {
             keys,
         };
         let _: Signed<ReplicaPrepare> = this.try_recv().unwrap();
-        (this,Runner(block_store))
+        (this, Runner(block_store))
     }
 
     /// Creates a new `UTHarness` with minimally-significant validator set size.
-    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness,Runner) {
+    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, Runner) {
         let num_validators = 6;
         assert!(crate::misc::faulty_replicas(num_validators) > 0);
         UTHarness::new(ctx, num_validators).await
@@ -210,15 +214,10 @@ impl UTHarness {
         let prepare_qc = self.leader.prepare_qc.subscribe();
         self.leader.process_replica_prepare(ctx, msg).await?;
         if prepare_qc.has_changed().unwrap() {
-            let prepare_qc = prepare_qc.borrow().clone().unwrap(); 
-            leader::StateMachine::propose(
-                ctx,
-                &self.leader.config,
-                prepare_qc,
-                &self.leader.pipe,
-            )
-            .await
-            .unwrap();
+            let prepare_qc = prepare_qc.borrow().clone().unwrap();
+            leader::StateMachine::propose(ctx, &self.leader.config, prepare_qc, &self.leader.pipe)
+                .await
+                .unwrap();
         }
         Ok(self.try_recv())
     }

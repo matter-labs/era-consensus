@@ -37,11 +37,20 @@ pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVers
 
 /// Payload proposal and verification trait.
 #[async_trait::async_trait]
-pub trait PayloadManager : std::fmt::Debug + Send + Sync {
+pub trait PayloadManager: std::fmt::Debug + Send + Sync {
     /// Used by leader to propose a payload for the next block.
-    async fn propose(&self, ctx: &ctx::Ctx, number: validator::BlockNumber) -> ctx::Result<validator::Payload>;
+    async fn propose(
+        &self,
+        ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+    ) -> ctx::Result<validator::Payload>;
     /// Used by replica to verify a payload for the next block proposed by the leader.
-    async fn verify(&self, ctx: &ctx::Ctx, number: validator::BlockNumber, payload: &validator::Payload) -> ctx::Result<()>;
+    async fn verify(
+        &self,
+        ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+        payload: &validator::Payload,
+    ) -> ctx::Result<()>;
 }
 
 pub(crate) type OutputPipe = ctx::channel::UnboundedSender<OutputMessage>;
@@ -56,7 +65,8 @@ impl Config {
     ) -> anyhow::Result<()> {
         let cfg = Arc::new(self);
         let res = scope::run!(ctx, |ctx, s| async {
-            let mut replica = replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
+            let mut replica =
+                replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
             let mut leader = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
 
             s.spawn_bg(leader::StateMachine::run_proposer(

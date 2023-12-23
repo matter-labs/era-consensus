@@ -2,15 +2,11 @@
 //! chain of blocks, not a tree (assuming we have all blocks and not have any gap). It allows for basic functionality like inserting a block,
 //! getting a block, checking if a block is contained in the DB. We also store the head of the chain. Storing it explicitly allows us to fetch
 //! the current head quickly.
-use crate::{ReplicaState,ReplicaStore,PersistentBlockStore,BlockStoreState};
-use std::sync::Arc;
+use crate::{BlockStoreState, PersistentBlockStore, ReplicaState, ReplicaStore};
 use anyhow::Context as _;
 use rocksdb::{Direction, IteratorMode, ReadOptions};
-use std::{
-    fmt,
-    path::Path,
-    sync::RwLock,
-};
+use std::sync::Arc;
+use std::{fmt, path::Path, sync::RwLock};
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
 
@@ -65,30 +61,37 @@ impl Store {
         let mut options = rocksdb::Options::default();
         options.create_missing_column_families(true);
         options.create_if_missing(true);
-        Ok(Self(RwLock::new(scope::wait_blocking(|| {
-            rocksdb::DB::open(&options, path).context("Failed opening RocksDB")
-        }).await?)))
+        Ok(Self(RwLock::new(
+            scope::wait_blocking(|| {
+                rocksdb::DB::open(&options, path).context("Failed opening RocksDB")
+            })
+            .await?,
+        )))
     }
 
     fn state_blocking(&self) -> anyhow::Result<BlockStoreState> {
         let db = self.0.read().unwrap();
 
         let mut options = ReadOptions::default();
-        options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..); 
-        let (_,last) = db.iterator_opt(DatabaseKey::BLOCK_HEAD_ITERATOR, options)
+        options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
+        let (_, last) = db
+            .iterator_opt(DatabaseKey::BLOCK_HEAD_ITERATOR, options)
             .next()
             .context("Head block not found")?
             .context("RocksDB error reading head block")?;
-        let last : validator::FinalBlock = zksync_protobuf::decode(&last).context("Failed decoding head block bytes")?;
+        let last: validator::FinalBlock =
+            zksync_protobuf::decode(&last).context("Failed decoding head block bytes")?;
 
         let mut options = ReadOptions::default();
-        options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..); 
-        let (_, first) = db.iterator_opt(IteratorMode::Start, options)
+        options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
+        let (_, first) = db
+            .iterator_opt(IteratorMode::Start, options)
             .next()
             .context("First stored block not found")?
             .context("RocksDB error reading first stored block")?;
-        let first : validator::FinalBlock = zksync_protobuf::decode(&first).context("Failed decoding first stored block bytes")?;
-        Ok(BlockStoreState{
+        let first: validator::FinalBlock =
+            zksync_protobuf::decode(&first).context("Failed decoding first stored block bytes")?;
+        Ok(BlockStoreState {
             first: first.justification,
             last: last.justification,
         })
@@ -104,22 +107,31 @@ impl fmt::Debug for Store {
 #[async_trait::async_trait]
 impl PersistentBlockStore for Arc<Store> {
     async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
-        Ok(scope::wait_blocking(|| { self.state_blocking() }).await?)
+        Ok(scope::wait_blocking(|| self.state_blocking()).await?)
     }
 
-    async fn block(&self, _ctx: &ctx::Ctx, number: validator::BlockNumber) -> ctx::Result<validator::FinalBlock> {
+    async fn block(
+        &self,
+        _ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+    ) -> ctx::Result<validator::FinalBlock> {
         Ok(scope::wait_blocking(|| {
             let db = self.0.read().unwrap();
             let block = db
                 .get(DatabaseKey::Block(number).encode_key())
                 .context("RocksDB error")?
                 .context("not found")?;
-            zksync_protobuf::decode(&block)
-                .context("failed decoding block")
-        }).await.context(number)?)
+            zksync_protobuf::decode(&block).context("failed decoding block")
+        })
+        .await
+        .context(number)?)
     }
 
-    async fn store_next_block(&self, _ctx: &ctx::Ctx, block: &validator::FinalBlock) -> ctx::Result<()> {
+    async fn store_next_block(
+        &self,
+        _ctx: &ctx::Ctx,
+        block: &validator::FinalBlock,
+    ) -> ctx::Result<()> {
         Ok(scope::wait_blocking(|| {
             let db = self.0.write().unwrap();
             let block_number = block.header().number;
@@ -129,17 +141,20 @@ impl PersistentBlockStore for Arc<Store> {
                 zksync_protobuf::encode(block),
             );
             // Commit the transaction.
-            db.write(write_batch).context("Failed writing block to database")?;
+            db.write(write_batch)
+                .context("Failed writing block to database")?;
             anyhow::Ok(())
-        }).await?)
+        })
+        .await?)
     }
 }
 
 #[async_trait::async_trait]
 impl ReplicaStore for Arc<Store> {
     async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>> {
-        Ok(scope::wait_blocking(|| { 
-            let Some(raw_state) = self.0
+        Ok(scope::wait_blocking(|| {
+            let Some(raw_state) = self
+                .0
                 .read()
                 .unwrap()
                 .get(DatabaseKey::ReplicaState.encode_key())
@@ -150,17 +165,21 @@ impl ReplicaStore for Arc<Store> {
             zksync_protobuf::decode(&raw_state)
                 .map(Some)
                 .context("Failed to decode replica state!")
-        }).await?)
+        })
+        .await?)
     }
 
     async fn set_state(&self, _ctx: &ctx::Ctx, state: &ReplicaState) -> ctx::Result<()> {
         Ok(scope::wait_blocking(|| {
-            self.0.write().unwrap()
+            self.0
+                .write()
+                .unwrap()
                 .put(
                     DatabaseKey::ReplicaState.encode_key(),
                     zksync_protobuf::encode(state),
                 )
                 .context("Failed putting ReplicaState to RocksDB")
-        }).await?)
+        })
+        .await?)
     }
 }

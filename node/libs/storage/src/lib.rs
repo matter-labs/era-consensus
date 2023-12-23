@@ -2,14 +2,14 @@
 //! but this crate only exposes an abstraction of a database, so we can easily switch to a different storage engine in the future.
 #![allow(missing_docs)]
 
+mod block_store;
 pub mod proto;
+mod replica_store;
 #[cfg(feature = "rocksdb")]
 pub mod rocksdb;
 pub mod testonly;
 #[cfg(test)]
 mod tests;
-mod block_store;
-mod replica_store;
 
-pub use crate::block_store::{BlockStoreState,PersistentBlockStore,BlockStore};
-pub use crate::replica_store::{ReplicaStore,ReplicaState,Proposal};
+pub use crate::block_store::{BlockStore, BlockStoreState, PersistentBlockStore};
+pub use crate::replica_store::{Proposal, ReplicaState, ReplicaStore};

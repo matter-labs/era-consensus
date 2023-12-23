@@ -7,9 +7,13 @@ use tempfile::TempDir;
 impl InitStore for TempDir {
     type Store = Arc<rocksdb::Store>;
 
-    async fn init_store(&self, ctx: &ctx::Ctx, genesis_block: &validator::FinalBlock) -> Self::Store {
+    async fn init_store(
+        &self,
+        ctx: &ctx::Ctx,
+        genesis_block: &validator::FinalBlock,
+    ) -> Self::Store {
         let db = Arc::new(rocksdb::Store::new(self.path()).await.unwrap());
-        db.store_next_block(ctx,genesis_block).await.unwrap();
+        db.store_next_block(ctx, genesis_block).await.unwrap();
         db
     }
 }
@@ -23,10 +27,10 @@ async fn initializing_store_twice() {
     let store = temp_dir.init_store(ctx, &blocks[0]).await;
     blocks.push(make_block(rng, blocks[0].header()));
     store.store_next_block(ctx, &blocks[1]).await.unwrap();
-    assert_eq!(dump(ctx,&store).await, blocks);
+    assert_eq!(dump(ctx, &store).await, blocks);
     drop(store);
     let store = temp_dir.init_store(ctx, &blocks[0]).await;
-    assert_eq!(dump(ctx,&store).await, blocks);
+    assert_eq!(dump(ctx, &store).await, blocks);
 }
 
 #[tokio::test]

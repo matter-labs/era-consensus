@@ -1,4 +1,4 @@
-use crate::{Config, metrics, OutputPipe};
+use crate::{metrics, Config, OutputPipe};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
@@ -40,7 +40,12 @@ impl StateMachine {
     ) -> ctx::Result<Self> {
         let backup = match config.replica_store.state(ctx).await? {
             Some(backup) => backup,
-            None => config.block_store.last_block(ctx).await?.justification.into(),
+            None => config
+                .block_store
+                .last_block(ctx)
+                .await?
+                .justification
+                .into(),
         };
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
         for proposal in backup.proposals {
@@ -128,7 +133,8 @@ impl StateMachine {
             high_qc: self.high_qc.clone(),
             proposals,
         };
-        self.config.replica_store
+        self.config
+            .replica_store
             .set_state(ctx, &backup)
             .await
             .wrap("put_replica_state")?;
