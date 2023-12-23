@@ -6,12 +6,12 @@ use std::{
     fmt,
     sync::Arc,
 };
-use zksync_concurrency::{ctx, net, scope};
-use zksync_consensus_bft::{misc::consensus_threshold, PayloadSource};
+use zksync_concurrency::{ctx, net, scope, sync};
+use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{ReplicaStateStore, ReplicaStore, WriteBlockStore};
-use zksync_consensus_sync_blocks::SyncBlocks;
+use zksync_consensus_storage::{BlockStore, BlockStoreState, ReplicaStore};
+use zksync_consensus_sync_blocks as sync_blocks;
 use zksync_consensus_utils::pipe;
 
 mod io;
@@ -26,9 +26,9 @@ pub struct Validator {
     /// Consensus network configuration.
     pub config: ValidatorConfig,
     /// Store for replica state.
-    pub replica_state_store: Arc<dyn ReplicaStateStore>,
-    /// Payload proposer for new blocks.
-    pub payload_source: Arc<dyn PayloadSource>,
+    pub replica_store: Box<dyn ReplicaStore>,
+    /// Payload manager.
+    pub payload_manager: Box<dyn bft::PayloadManager>,
 }
 
 impl fmt::Debug for Validator {
@@ -80,10 +80,17 @@ impl Config {
 pub struct Executor {
     /// General-purpose executor configuration.
     pub config: Config,
-    /// Block and replica state storage used by the node.
-    pub storage: Arc<dyn WriteBlockStore>,
+    /// Block storage used by the node.
+    pub block_store: Arc<BlockStore>,
     /// Validator-specific node data.
     pub validator: Option<Validator>,
+}
+
+fn to_sync_state(state: BlockStoreState) -> network::io::SyncState {
+    network::io::SyncState {
+        first_stored_block: state.first,
+        last_stored_block: state.last,
+    }
 }
 
 impl Executor {
@@ -93,28 +100,26 @@ impl Executor {
             server_addr: net::tcp::ListenerAddr::new(self.config.server_addr),
             validators: self.config.validators.clone(),
             gossip: self.config.gossip(),
-            consensus: self.active_validator().map(|v| v.config.clone()),
+            consensus: self.validator.as_ref().map(|v| v.config.clone()),
         }
     }
 
-    /// Returns the validator setup <=> this node is a validator which belongs to
-    /// the consensus (i.e. is in the `validators` set.
-    fn active_validator(&self) -> Option<&Validator> {
-        // TODO: this logic must be refactored once dynamic validator sets are implemented
-        let validator = self.validator.as_ref()?;
-        if self
-            .config
-            .validators
-            .iter()
-            .any(|key| key == &validator.config.key.public())
-        {
-            return Some(validator);
+    fn verify(&self) -> anyhow::Result<()> {
+        if let Some(validator) = self.validator.as_ref() {
+            if !self
+                .config
+                .validators
+                .iter()
+                .any(|key| key == &validator.config.key.public()) {
+                anyhow::bail!("this validator doesn't belong to the consensus");
+            }
         }
-        None
+        Ok(())
     }
 
     /// Runs this executor to completion. This should be spawned on a separate task.
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        self.verify().context("verify()")?;
         let network_config = self.network_config();
 
         // Generate the communication pipes. We have one for each actor.
@@ -129,53 +134,51 @@ impl Executor {
         );
 
         // Create each of the actors.
-        let validator_set = &self.config.validators;
-        let sync_blocks_config = zksync_consensus_sync_blocks::Config::new(
-            validator_set.clone(),
-            consensus_threshold(validator_set.len()),
-        )?;
-        let sync_blocks = SyncBlocks::new(
-            ctx,
-            sync_blocks_actor_pipe,
-            self.storage.clone(),
-            sync_blocks_config,
-        )
-        .await
-        .context("sync_blocks")?;
-
-        let sync_blocks_subscriber = sync_blocks.subscribe_to_state_updates();
+        let validator_set = self.config.validators;
+        let mut block_store_state = self.block_store.subscribe();
+        let sync_state = sync::watch::channel(to_sync_state(block_store_state.borrow().clone())).0;
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
+            s.spawn_bg(async {
+                // Task forwarding changes from block_store_state to sync_state.
+                // Alternatively we can make network depend on the storage directly.
+                while let Ok(state) = sync::changed(ctx, &mut block_store_state).await {
+                    sync_state.send_replace(to_sync_state(state.clone()));
+                }
+                Ok(())
+            });
+
             s.spawn_blocking(|| dispatcher.run(ctx).context("IO Dispatcher stopped"));
             s.spawn(async {
-                let state = network::State::new(network_config, None, Some(sync_blocks_subscriber))
+                let state = network::State::new(network_config, None, Some(sync_state.subscribe()))
                     .context("Invalid network config")?;
                 state.register_metrics();
                 network::run_network(ctx, state, network_actor_pipe)
                     .await
                     .context("Network stopped")
             });
-            if let Some(validator) = self.active_validator() {
+            if let Some(validator) = self.validator {
                 s.spawn(async {
-                    let consensus_storage = ReplicaStore::new(
-                        validator.replica_state_store.clone(),
-                        self.storage.clone(),
-                    );
-                    zksync_consensus_bft::run(
-                        ctx,
-                        consensus_actor_pipe,
-                        validator.config.key.clone(),
-                        validator_set.clone(),
-                        consensus_storage,
-                        &*validator.payload_source,
-                    )
-                    .await
-                    .context("Consensus stopped")
+                    let validator = validator;
+                    bft::Config {
+                        secret_key: validator.config.key.clone(),
+                        validator_set: validator_set.clone(),
+                        block_store: self.block_store.clone(),
+                        replica_store: validator.replica_store,
+                        payload_manager: validator.payload_manager,
+                    }
+                        .run(ctx, consensus_actor_pipe)
+                        .await
+                        .context("Consensus stopped")
                 });
             }
-            sync_blocks.run(ctx).await.context("Syncing blocks stopped")
-        })
-        .await
+            sync_blocks::Config::new(
+                validator_set.clone(),
+                bft::misc::consensus_threshold(validator_set.len()),
+            )?.run(ctx, sync_blocks_actor_pipe, self.block_store.clone())
+                .await
+                .context("Syncing blocks stopped")
+        }).await
     }
 }

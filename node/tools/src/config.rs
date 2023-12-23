@@ -12,7 +12,7 @@ use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::RocksdbStorage;
+use zksync_consensus_storage::{BlockStore, PersistentBlockStore,rocksdb};
 use zksync_protobuf::{required, ProtoFmt};
 
 /// Decodes a proto message from json for arbitrary ProtoFmt.
@@ -180,10 +180,10 @@ impl Configs {
             self.app.validator_key == self.validator_key.as_ref().map(|k| k.public()),
             "validator secret key has to match the validator public key in the app config",
         );
-        let storage = RocksdbStorage::new(ctx, &self.app.genesis_block, &self.database)
-            .await
-            .context("RocksdbStorage::new()")?;
-        let storage = Arc::new(storage);
+        let storage = Arc::new(rocksdb::Store::new(&self.database).await?);
+        let block_store = Arc::new(BlockStore::new(ctx,Box::new(storage.clone()),1000).await?);
+        // TODO: figure out how to insert iff empty.
+        storage.store_next_block(ctx,&self.app.genesis_block,).await.context("store_next_block")?;
         Ok(executor::Executor {
             config: executor::Config {
                 server_addr: self.app.server_addr,
@@ -193,14 +193,14 @@ impl Configs {
                 gossip_static_inbound: self.app.gossip_static_inbound,
                 gossip_static_outbound: self.app.gossip_static_outbound,
             },
-            storage: storage.clone(),
+            block_store: block_store,
             validator: self.validator_key.map(|key| executor::Validator {
                 config: executor::ValidatorConfig {
                     key,
                     public_addr: self.app.public_addr,
                 },
-                replica_state_store: storage,
-                payload_source: Arc::new(bft::testonly::RandomPayloadSource),
+                replica_store: Box::new(storage),
+                payload_manager: Box::new(bft::testonly::RandomPayload),
             }),
         })
     }

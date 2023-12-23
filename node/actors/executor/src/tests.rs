@@ -8,13 +8,17 @@ use test_casing::test_casing;
 use zksync_concurrency::{sync, testonly::abort_on_panic, time};
 use zksync_consensus_bft::{testonly, PROTOCOL_VERSION};
 use zksync_consensus_roles::validator::{BlockNumber, FinalBlock, Payload};
-use zksync_consensus_storage::{BlockStore, InMemoryStorage};
+use zksync_consensus_storage::{BlockStore, testonly::in_memory};
+
+async fn make_store(ctx:&ctx::Ctx, genesis: FinalBlock) -> Arc<BlockStore> {
+   Arc::new(BlockStore::new(ctx,Box::new(in_memory::BlockStore::new(genesis)),10).await.unwrap())
+}
 
 impl Config {
-    fn into_executor(self, storage: Arc<InMemoryStorage>) -> Executor {
+    fn into_executor(self, block_store: Arc<BlockStore>) -> Executor {
         Executor {
             config: self,
-            storage,
+            block_store,
             validator: None,
         }
     }
@@ -45,14 +49,14 @@ impl ValidatorNode {
         })
     }
 
-    fn into_executor(self, storage: Arc<InMemoryStorage>) -> Executor {
+    fn into_executor(self, block_store: Arc<BlockStore>) -> Executor {
         Executor {
             config: self.node,
-            storage: storage.clone(),
+            block_store,
             validator: Some(Validator {
                 config: self.validator,
-                replica_state_store: storage,
-                payload_source: Arc::new(testonly::RandomPayloadSource),
+                replica_store: Box::new(in_memory::ReplicaStore::default()),
+                payload_manager: Box::new(testonly::RandomPayload),
             }),
         }
     }
@@ -66,17 +70,13 @@ async fn executing_single_validator() {
 
     let validator = ValidatorNode::for_single_validator(rng);
     let genesis_block = validator.gen_blocks(rng).next().unwrap();
-    let storage = InMemoryStorage::new(genesis_block.clone());
-    let storage = Arc::new(storage);
+    let storage = make_store(ctx,genesis_block.clone()).await;
     let executor = validator.into_executor(storage.clone());
 
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(executor.run(ctx));
         let want = BlockNumber(5);
-        sync::wait_for(ctx, &mut storage.subscribe_to_block_writes(), |n| {
-            n >= &want
-        })
-        .await?;
+        sync::wait_for(ctx, &mut storage.subscribe(), |state| state.next() > want).await?;
         Ok(())
     })
     .await
@@ -93,9 +93,8 @@ async fn executing_validator_and_full_node() {
     let full_node = validator.connect_full_node(rng);
 
     let genesis_block = validator.gen_blocks(rng).next().unwrap();
-    let validator_storage = Arc::new(InMemoryStorage::new(genesis_block.clone()));
-    let full_node_storage = Arc::new(InMemoryStorage::new(genesis_block.clone()));
-    let mut full_node_subscriber = full_node_storage.subscribe_to_block_writes();
+    let validator_storage = make_store(ctx,genesis_block.clone()).await;
+    let full_node_storage = make_store(ctx,genesis_block.clone()).await;
 
     let validator = validator.into_executor(validator_storage.clone());
     let full_node = full_node.into_executor(full_node_storage.clone());
@@ -103,11 +102,9 @@ async fn executing_validator_and_full_node() {
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(validator.run(ctx));
         s.spawn_bg(full_node.run(ctx));
-        for _ in 0..5 {
-            let number = *sync::changed(ctx, &mut full_node_subscriber).await?;
-            tracing::trace!(%number, "Full node received block");
-        }
-        anyhow::Ok(())
+        let want = BlockNumber(5);
+        sync::wait_for(ctx, &mut full_node_storage.subscribe(), |state| state.next() > want).await?;
+        Ok(())
     })
     .await
     .unwrap();
@@ -124,24 +121,21 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
     let full_node = validator.connect_full_node(rng);
 
     let blocks: Vec<_> = validator.gen_blocks(rng).take(11).collect();
-    let validator_storage = InMemoryStorage::new(blocks[0].clone());
-    let validator_storage = Arc::new(validator_storage);
+    let validator_storage = make_store(ctx,blocks[0].clone()).await;
     if !delay_block_storage {
         // Instead of running consensus on the validator, add the generated blocks manually.
         for block in &blocks {
-            validator_storage.put_block(ctx, block).await.unwrap();
+            validator_storage.store_block(ctx, block.clone()).await.unwrap();
         }
     }
     let validator = validator.node.into_executor(validator_storage.clone());
 
     // Start a full node from a snapshot.
-    let full_node_storage = InMemoryStorage::new(blocks[4].clone());
-    let full_node_storage = Arc::new(full_node_storage);
-    let mut full_node_subscriber = full_node_storage.subscribe_to_block_writes();
+    let full_node_storage = make_store(ctx,blocks[4].clone()).await;
 
     let full_node = Executor {
         config: full_node,
-        storage: full_node_storage.clone(),
+        block_store: full_node_storage.clone(),
         validator: None,
     };
 
@@ -154,27 +148,18 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
             s.spawn_bg(async {
                 for block in &blocks[1..] {
                     ctx.sleep(time::Duration::milliseconds(500)).await?;
-                    validator_storage.put_block(ctx, block).await?;
+                    validator_storage.store_block(ctx, block.clone()).await?;
                 }
                 Ok(())
             });
         }
 
-        loop {
-            let last_contiguous_full_node_block =
-                full_node_storage.last_contiguous_block_number(ctx).await?;
-            tracing::trace!(
-                %last_contiguous_full_node_block,
-                "Full node updated last contiguous block"
-            );
-            if last_contiguous_full_node_block == BlockNumber(10) {
-                break; // The full node has received all blocks!
-            }
-            // Wait until the node storage is updated.
-            let number = *sync::changed(ctx, &mut full_node_subscriber).await?;
-            tracing::trace!(%number, "Full node received block");
-        }
-
+        sync::wait_for(ctx, &mut full_node_storage.subscribe(), |state| {
+            let last = state.last.header().number;
+            tracing::trace!(%last, "Full node updated last block");
+            last >= BlockNumber(10)
+        }).await.unwrap();
+           
         // Check that the node didn't receive any blocks with number lesser than the initial snapshot block.
         for lesser_block_number in 0..3 {
             let block = full_node_storage
