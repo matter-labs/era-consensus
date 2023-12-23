@@ -74,6 +74,7 @@ async fn executing_single_validator() {
     let executor = validator.into_executor(storage.clone());
 
     scope::run!(ctx, |ctx, s| async {
+        s.spawn_bg(storage.run_background_tasks(ctx));
         s.spawn_bg(executor.run(ctx));
         let want = BlockNumber(5);
         sync::wait_for(ctx, &mut storage.subscribe(), |state| state.next() > want).await?;
@@ -100,6 +101,8 @@ async fn executing_validator_and_full_node() {
     let full_node = full_node.into_executor(full_node_storage.clone());
 
     scope::run!(ctx, |ctx, s| async {
+        s.spawn_bg(validator_storage.run_background_tasks(ctx));
+        s.spawn_bg(full_node_storage.run_background_tasks(ctx));
         s.spawn_bg(validator.run(ctx));
         s.spawn_bg(full_node.run(ctx));
         let want = BlockNumber(5);
@@ -121,13 +124,7 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
     let full_node = validator.connect_full_node(rng);
 
     let blocks: Vec<_> = validator.gen_blocks(rng).take(11).collect();
-    let validator_storage = make_store(ctx,blocks[0].clone()).await;
-    if !delay_block_storage {
-        // Instead of running consensus on the validator, add the generated blocks manually.
-        for block in &blocks {
-            validator_storage.store_block(ctx, block.clone()).await.unwrap();
-        }
-    }
+    let validator_storage = make_store(ctx,blocks[0].clone()).await; 
     let validator = validator.node.into_executor(validator_storage.clone());
 
     // Start a full node from a snapshot.
@@ -140,6 +137,14 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
     };
 
     scope::run!(ctx, |ctx, s| async {
+        s.spawn_bg(validator_storage.run_background_tasks(ctx));
+        s.spawn_bg(full_node_storage.run_background_tasks(ctx));
+        if !delay_block_storage {
+            // Instead of running consensus on the validator, add the generated blocks manually.
+            for block in &blocks {
+                validator_storage.store_block(ctx, block.clone()).await.unwrap();
+            }
+        }
         s.spawn_bg(validator.run(ctx));
         s.spawn_bg(full_node.run(ctx));
 
