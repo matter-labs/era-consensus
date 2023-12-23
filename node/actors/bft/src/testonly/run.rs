@@ -3,7 +3,7 @@ use crate::{testonly, Config};
 use anyhow::Context;
 use std::{collections::HashMap, sync::Arc};
 use tracing::Instrument as _;
-use zksync_concurrency::{ctx, oneshot, scope, signal};
+use zksync_concurrency::{ctx, oneshot, sync, scope, signal};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{testonly::in_memory, BlockStore};
@@ -55,13 +55,9 @@ impl Test {
         // Run the nodes until all honest nodes store enough finalized blocks.
         scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(run_nodes(ctx, self.network, &nodes));
+            let want_block = validator::BlockNumber(self.blocks_to_finalize as u64);
             for n in &honest {
-                s.spawn(async {
-                    n.block_store
-                        .wait_for_block(ctx, validator::BlockNumber(self.blocks_to_finalize as u64))
-                        .await?;
-                    Ok(())
-                });
+                sync::wait_for(ctx, &mut n.block_store.subscribe(), |state| state.next() > want_block).await?;
             }
             Ok(())
         })

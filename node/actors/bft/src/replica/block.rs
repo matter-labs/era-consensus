@@ -1,5 +1,4 @@
 use super::StateMachine;
-use anyhow::Context as _;
 use tracing::{info, instrument};
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
@@ -38,8 +37,7 @@ impl StateMachine {
         self.config
             .block_store
             .store_block(ctx, block.clone())
-            .await
-            .context("store.put_block()")?;
+            .await?;
 
         let number_metric = &crate::metrics::METRICS.finalized_block_number;
         let current_number = number_metric.get();

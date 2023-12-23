@@ -1,6 +1,7 @@
 //! Tests focused on handling peers providing fake information to the node.
 
 use super::*;
+use zksync_consensus_roles::validator;
 
 #[tokio::test]
 async fn processing_invalid_sync_states() {
@@ -25,38 +26,6 @@ async fn processing_invalid_sync_states() {
     let invalid_sync_state = other_network.sync_state(1);
     assert!(peer_states.update(peer, invalid_sync_state).is_err());
 }
-
-/* TODO
-#[tokio::test]
-async fn processing_invalid_blocks() {
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    let rng = &mut ctx.rng();
-    let test_validators = TestValidators::new(4, 3, rng);
-    let storage = make_store(ctx,test_validators.final_blocks[0].clone()).await;
-
-    let (message_sender, _) = channel::unbounded();
-    let peer_states = PeerStates::new(test_validators.test_config(), storage, message_sender);
-
-    let invalid_block = &test_validators.final_blocks[0];
-    let err = peer_states
-        .validate_block(BlockNumber(1), invalid_block)
-        .unwrap_err();
-    //assert_matches!(err, BlockValidationError::Other(_));
-
-    let mut invalid_block = test_validators.final_blocks[1].clone();
-    invalid_block.payload = validator::Payload(b"invalid".to_vec());
-    let err = peer_states
-        .validate_block(BlockNumber(1), &invalid_block)
-        .unwrap_err();
-    //assert_matches!(err, BlockValidationError::HashMismatch { .. });
-
-    let other_network = TestValidators::new(4, 2, rng);
-    let invalid_block = &other_network.final_blocks[1];
-    let err = peer_states
-        .validate_block(BlockNumber(1), invalid_block)
-        .unwrap_err();
-    //assert_matches!(err, BlockValidationError::Justification(_));
-}*/
 
 #[derive(Debug)]
 struct PeerWithFakeSyncState;
@@ -98,6 +67,10 @@ struct PeerWithFakeBlock;
 impl Test for PeerWithFakeBlock {
     const BLOCK_COUNT: usize = 10;
 
+    fn tweak_config(&self, cfg: &mut Config) {
+        cfg.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
+    }
+
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
             clock,
@@ -109,33 +82,44 @@ impl Test for PeerWithFakeBlock {
         } = handles;
 
         let rng = &mut ctx.rng();
-        let peer_key = rng.gen::<node::SecretKey>().public();
-        peer_states
-            .update(&peer_key, test_validators.sync_state(1))
-            .unwrap();
+        
+        for fake_block in [
+            // other block than requested
+            test_validators.final_blocks[0].clone(),
+            // block with wrong validator set
+            TestValidators::new(rng, 4, 2).final_blocks[1].clone(),
+            // block with mismatching payload,
+            {
+                let mut block = test_validators.final_blocks[1].clone();
+                block.payload = validator::Payload(b"invalid".to_vec());
+                block
+            },
+        ] {
+            let peer_key = rng.gen::<node::SecretKey>().public();
+            peer_states
+                .update(&peer_key, test_validators.sync_state(1))
+                .unwrap();
+            clock.advance(BLOCK_SLEEP_INTERVAL);
 
-        let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
-            recipient,
-            number,
-            response,
-        }) = message_receiver.recv(ctx).await?;
-        assert_eq!(recipient, peer_key);
-        assert_eq!(number, BlockNumber(1));
+            let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
+                recipient,
+                number,
+                response,
+            }) = message_receiver.recv(ctx).await?;
+            assert_eq!(recipient, peer_key);
+            assert_eq!(number, BlockNumber(1));
+            response.send(Ok(fake_block)).unwrap();
 
-        let mut fake_block = test_validators.final_blocks[2].clone();
-        fake_block.justification.message.proposal.number = BlockNumber(1);
-        response.send(Ok(fake_block)).unwrap();
-
-        wait_for_event(ctx, &mut events_receiver, |ev| {
-            matches!(ev,
-                PeerStateEvent::RpcFailed {
-                    block_number: BlockNumber(1),
-                    peer_key: key,
-                } if key == peer_key
-            )
-        })
-        .await?;
-        clock.advance(BLOCK_SLEEP_INTERVAL);
+            wait_for_event(ctx, &mut events_receiver, |ev| {
+                matches!(ev,
+                    PeerStateEvent::RpcFailed {
+                        block_number: BlockNumber(1),
+                        peer_key: key,
+                    } if key == peer_key
+                )
+            })
+            .await?;
+        }
 
         // The invalid block must not be saved.
         assert!(storage.block(ctx, BlockNumber(1)).await?.is_none());
