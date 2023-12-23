@@ -21,7 +21,7 @@ const TEST_TIMEOUT: time::Duration = time::Duration::seconds(20);
 
 pub(crate) async fn make_store(ctx: &ctx::Ctx, genesis: FinalBlock) -> Arc<BlockStore> {
     let storage = in_memory::BlockStore::new(genesis);
-    Arc::new(BlockStore::new(ctx,Box::new(storage),10).await.unwrap())
+    Arc::new(BlockStore::new(ctx, Box::new(storage), 100).await.unwrap())
 }
 
 pub(crate) async fn wait_for_stored_block(
@@ -30,7 +30,10 @@ pub(crate) async fn wait_for_stored_block(
     block_number: BlockNumber,
 ) -> ctx::OrCanceled<()> {
     tracing::trace!("Started waiting for stored block");
-    sync::wait_for(ctx, &mut storage.subscribe(), |state| state.next() > block_number).await?;
+    sync::wait_for(ctx, &mut storage.subscribe(), |state| {
+        state.next() > block_number
+    })
+    .await?;
     Ok(())
 }
 
@@ -50,7 +53,7 @@ pub(crate) struct TestValidators {
 }
 
 impl TestValidators {
-    pub(crate) fn new(validator_count: usize, block_count: usize, rng: &mut impl Rng) -> Self {
+    pub(crate) fn new(rng: &mut impl Rng, validator_count: usize, block_count: usize) -> Self {
         let validator_secret_keys: Vec<validator::SecretKey> =
             (0..validator_count).map(|_| rng.gen()).collect();
         let validator_set = validator_secret_keys.iter().map(|sk| sk.public());
@@ -119,8 +122,10 @@ impl TestValidators {
         response: oneshot::Sender<GetBlockResponse>,
     ) {
         let final_block = self.final_blocks[number.0 as usize].clone();
-        response.send(Ok(final_block)).unwrap();
-        tracing::trace!("Responded to get_block({number})");
+        match response.send(Ok(final_block)) {
+            Ok(()) => tracing::info!(?number, "responded to get_block()"),
+            Err(_) => tracing::info!(?number, "failed to respond to get_block()"),
+        }
     }
 }
 
@@ -134,11 +139,11 @@ async fn subscribing_to_state_updates() {
     let genesis_block = make_genesis_block(rng, protocol_version);
     let block_1 = make_block(rng, genesis_block.header(), protocol_version);
 
-    let storage = make_store(ctx,genesis_block.clone()).await;
-    let (actor_pipe, _dispatcher_pipe) = pipe::new(); 
+    let storage = make_store(ctx, genesis_block.clone()).await;
+    let (actor_pipe, _dispatcher_pipe) = pipe::new();
     let mut state_subscriber = storage.subscribe();
 
-    let cfg : Config = rng.gen();
+    let cfg: Config = rng.gen();
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(cfg.run(ctx, actor_pipe, storage.clone()));
         s.spawn_bg(async {
@@ -147,11 +152,16 @@ async fn subscribing_to_state_updates() {
         });
 
         let state = state_subscriber.borrow().clone();
-        assert_eq!(state.first,genesis_block.justification);
-        assert_eq!(state.last,genesis_block.justification);
+        assert_eq!(state.first, genesis_block.justification);
+        assert_eq!(state.last, genesis_block.justification);
         storage.queue_block(ctx, block_1.clone()).await.unwrap();
-        
-        let state = sync::wait_for(ctx,&mut state_subscriber, |state| state.next() > block_1.header().number).await.unwrap().clone();
+
+        let state = sync::wait_for(ctx, &mut state_subscriber, |state| {
+            state.next() > block_1.header().number
+        })
+        .await
+        .unwrap()
+        .clone();
         assert_eq!(state.first, genesis_block.justification);
         assert_eq!(state.last, block_1.justification);
         Ok(())
@@ -169,7 +179,7 @@ async fn getting_blocks() {
     let protocol_version = validator::ProtocolVersion::EARLIEST;
     let genesis_block = make_genesis_block(rng, protocol_version);
 
-    let storage = make_store(ctx,genesis_block.clone()).await;
+    let storage = make_store(ctx, genesis_block.clone()).await;
     let blocks = iter::successors(Some(genesis_block), |parent| {
         Some(make_block(rng, parent.header(), protocol_version))
     });
@@ -180,7 +190,7 @@ async fn getting_blocks() {
 
     let (actor_pipe, dispatcher_pipe) = pipe::new();
 
-    let cfg : Config = rng.gen();
+    let cfg: Config = rng.gen();
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(cfg.run(ctx, actor_pipe, storage.clone()));
         s.spawn_bg(async {

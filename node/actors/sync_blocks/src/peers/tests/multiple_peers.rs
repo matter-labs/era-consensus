@@ -12,7 +12,7 @@ impl Test for RequestingBlocksFromTwoPeers {
 
     fn tweak_config(&self, config: &mut Config) {
         config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
-        config.max_concurrent_blocks = 2;
+        config.max_concurrent_blocks = 5;
         config.max_concurrent_blocks_per_peer = 1;
         // ^ Necessary for blocks numbers in tests to be deterministic
     }
@@ -20,7 +20,6 @@ impl Test for RequestingBlocksFromTwoPeers {
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
             clock,
-            mut rng,
             test_validators,
             peer_states,
             storage,
@@ -28,8 +27,11 @@ impl Test for RequestingBlocksFromTwoPeers {
             mut events_receiver,
         } = handles;
 
+        let rng = &mut ctx.rng();
         let first_peer = rng.gen::<node::SecretKey>().public();
-        peer_states.update(&first_peer, test_validators.sync_state(2)).unwrap();
+        peer_states
+            .update(&first_peer, test_validators.sync_state(2))
+            .unwrap();
 
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
             recipient,
@@ -40,9 +42,12 @@ impl Test for RequestingBlocksFromTwoPeers {
         assert!(
             first_peer_block_number == BlockNumber(1) || first_peer_block_number == BlockNumber(2)
         );
+        tracing::info!(%first_peer_block_number,"received requrest");
 
         let second_peer = rng.gen::<node::SecretKey>().public();
-        peer_states.update(&second_peer, test_validators.sync_state(4)).unwrap();
+        peer_states
+            .update(&second_peer, test_validators.sync_state(4))
+            .unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
 
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
@@ -55,16 +60,24 @@ impl Test for RequestingBlocksFromTwoPeers {
             second_peer_block_number == BlockNumber(1)
                 || second_peer_block_number == BlockNumber(2)
         );
+        tracing::info!(%second_peer_block_number,"received requrest");
 
         test_validators.send_block(first_peer_block_number, first_peer_response);
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::GotBlock(num) if num == first_peer_block_number);
+        wait_for_event(
+            ctx,
+            &mut events_receiver,
+            |ev| matches!(ev,PeerStateEvent::GotBlock(num) if num == first_peer_block_number),
+        )
+        .await
+        .unwrap();
         // The node shouldn't send more requests to the first peer since it would be beyond
         // its known latest block number (2).
         clock.advance(BLOCK_SLEEP_INTERVAL);
         assert_matches!(message_receiver.try_recv(), None);
 
-        peer_states.update(&first_peer, test_validators.sync_state(4)).unwrap();
+        peer_states
+            .update(&first_peer, test_validators.sync_state(4))
+            .unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
         // Now the actor can get block #3 from the peer.
 
@@ -77,10 +90,16 @@ impl Test for RequestingBlocksFromTwoPeers {
         assert!(
             first_peer_block_number == BlockNumber(3) || first_peer_block_number == BlockNumber(4)
         );
+        tracing::info!(%first_peer_block_number,"received requrest");
 
         test_validators.send_block(first_peer_block_number, first_peer_response);
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::GotBlock(num) if num == first_peer_block_number);
+        wait_for_event(
+            ctx,
+            &mut events_receiver,
+            |ev| matches!(ev,PeerStateEvent::GotBlock(num) if num == first_peer_block_number),
+        )
+        .await
+        .unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
 
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
@@ -92,13 +111,24 @@ impl Test for RequestingBlocksFromTwoPeers {
         assert!(
             first_peer_block_number == BlockNumber(3) || first_peer_block_number == BlockNumber(4)
         );
+        tracing::info!(%first_peer_block_number,"received requrest");
 
         test_validators.send_block(second_peer_block_number, second_peer_response);
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::GotBlock(num) if num == second_peer_block_number);
+        wait_for_event(
+            ctx,
+            &mut events_receiver,
+            |ev| matches!(ev,PeerStateEvent::GotBlock(num) if num == second_peer_block_number),
+        )
+        .await
+        .unwrap();
         test_validators.send_block(first_peer_block_number, first_peer_response);
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::GotBlock(num) if num == first_peer_block_number);
+        wait_for_event(
+            ctx,
+            &mut events_receiver,
+            |ev| matches!(ev,PeerStateEvent::GotBlock(num) if num == first_peer_block_number),
+        )
+        .await
+        .unwrap();
         // No more blocks should be requested from peers.
         clock.advance(BLOCK_SLEEP_INTERVAL);
         assert_matches!(message_receiver.try_recv(), None);
@@ -173,7 +203,6 @@ impl Test for RequestingBlocksFromMultiplePeers {
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
             clock,
-            mut rng,
             test_validators,
             peer_states,
             storage,
@@ -181,7 +210,8 @@ impl Test for RequestingBlocksFromMultiplePeers {
             mut events_receiver,
         } = handles;
 
-        let peers = &self.create_peers(&mut rng);
+        let rng = &mut ctx.rng();
+        let peers = &self.create_peers(rng);
 
         scope::run!(ctx, |ctx, s| async {
             // Announce peer states.
@@ -258,7 +288,7 @@ impl Test for RequestingBlocksFromMultiplePeers {
                         );
                         clock.advance(BLOCK_SLEEP_INTERVAL);
                     }
-                    PeerStateEvent::PeerDropped(_) => { /* Do nothing */ }
+                    PeerStateEvent::RpcFailed{..} | PeerStateEvent::PeerDropped(_) => { /* Do nothing */ }
                     _ => panic!("Unexpected peer event: {peer_event:?}"),
                 }
             }

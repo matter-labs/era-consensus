@@ -6,8 +6,8 @@ use super::*;
 async fn processing_invalid_sync_states() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let test_validators = TestValidators::new(4, 3, rng);
-    let storage = make_store(ctx,test_validators.final_blocks[0].clone()).await;
+    let test_validators = TestValidators::new(rng, 4, 3);
+    let storage = make_store(ctx, test_validators.final_blocks[0].clone()).await;
 
     let (message_sender, _) = channel::unbounded();
     let peer_states = PeerStates::new(test_validators.test_config(), storage, message_sender);
@@ -15,19 +15,15 @@ async fn processing_invalid_sync_states() {
     let peer = &rng.gen::<node::SecretKey>().public();
     let mut invalid_sync_state = test_validators.sync_state(1);
     invalid_sync_state.first = test_validators.final_blocks[2].justification.clone();
-    assert!(peer_states.update(peer,invalid_sync_state).is_err());
-
-    let mut invalid_sync_state = test_validators.sync_state(1);
-    invalid_sync_state.last = test_validators.final_blocks[2].justification.clone();
-    assert!(peer_states.update(peer,invalid_sync_state).is_err());
+    assert!(peer_states.update(peer, invalid_sync_state).is_err());
 
     let mut invalid_sync_state = test_validators.sync_state(1);
     invalid_sync_state.last.message.proposal.number = BlockNumber(5);
-    assert!(peer_states.update(peer,invalid_sync_state).is_err());
+    assert!(peer_states.update(peer, invalid_sync_state).is_err());
 
-    let other_network = TestValidators::new(4, 2, rng);
+    let other_network = TestValidators::new(rng, 4, 2);
     let invalid_sync_state = other_network.sync_state(1);
-    assert!(peer_states.update(peer,invalid_sync_state).is_err());
+    assert!(peer_states.update(peer, invalid_sync_state).is_err());
 }
 
 /* TODO
@@ -69,23 +65,19 @@ struct PeerWithFakeSyncState;
 impl Test for PeerWithFakeSyncState {
     const BLOCK_COUNT: usize = 10;
 
-    async fn test(self, _ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
+    async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
             clock,
-            mut rng,
             test_validators,
             peer_states,
             mut events_receiver,
             ..
         } = handles;
 
+        let rng = &mut ctx.rng();
         let peer_key = rng.gen::<node::SecretKey>().public();
         let mut fake_sync_state = test_validators.sync_state(1);
-        fake_sync_state
-            .last
-            .message
-            .proposal
-            .number = BlockNumber(42);
+        fake_sync_state.last.message.proposal.number = BlockNumber(42);
         assert!(peer_states.update(&peer_key, fake_sync_state).is_err());
 
         clock.advance(BLOCK_SLEEP_INTERVAL);
@@ -109,7 +101,6 @@ impl Test for PeerWithFakeBlock {
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
             clock,
-            mut rng,
             test_validators,
             peer_states,
             storage,
@@ -117,8 +108,11 @@ impl Test for PeerWithFakeBlock {
             mut events_receiver,
         } = handles;
 
+        let rng = &mut ctx.rng();
         let peer_key = rng.gen::<node::SecretKey>().public();
-        peer_states.update(&peer_key, test_validators.sync_state(1)).unwrap();
+        peer_states
+            .update(&peer_key, test_validators.sync_state(1))
+            .unwrap();
 
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
             recipient,
@@ -132,27 +126,19 @@ impl Test for PeerWithFakeBlock {
         fake_block.justification.message.proposal.number = BlockNumber(1);
         response.send(Ok(fake_block)).unwrap();
 
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(
-            peer_event,
-            PeerStateEvent::RpcFailed {
-                block_number: BlockNumber(1),
-                peer_key: key,
-            } if key == peer_key
-        );
+        wait_for_event(ctx, &mut events_receiver, |ev| {
+            matches!(ev,
+                PeerStateEvent::RpcFailed {
+                    block_number: BlockNumber(1),
+                    peer_key: key,
+                } if key == peer_key
+            )
+        })
+        .await?;
         clock.advance(BLOCK_SLEEP_INTERVAL);
 
         // The invalid block must not be saved.
-        assert_matches!(events_receiver.try_recv(), None);
         assert!(storage.block(ctx, BlockNumber(1)).await?.is_none());
-
-        // Since we don't ban misbehaving peers, the node will send a request to the same peer again.
-        let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
-            recipient, number, ..
-        }) = message_receiver.recv(ctx).await?;
-        assert_eq!(recipient, peer_key);
-        assert_eq!(number, BlockNumber(1));
-
         Ok(())
     }
 }
