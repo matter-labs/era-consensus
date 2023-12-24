@@ -61,11 +61,6 @@ message AppConfig {
   optional string metrics_server_addr = 3; // [optional] IpAddr 
   
   // Consensus
-
-  // Public key of this validator.
-  // Should be set iff this node is a validator.
-  // It should match the secret key provided in the `validator_key` file.
-  optional string validator_key = 4; // [optional] ValidatorPublicKey
   
   // Public keys of all validators.
   repeated string validators = 5; // [required] ValidatorPublicKey
@@ -76,9 +71,6 @@ message AppConfig {
 
   // Gossip network
 
-  // Public key of this node. It uniquely identifies the node.
-  // It should match the secret key provided in the `node_key` file.
-  optional string node_key = 7; // [required] NodePublicKey
   // Limit on the number of gossip network inbound connections outside
   // of the `gossip_static_inbound` set.
   optional uint64 gossip_dynamic_inbound_limit = 8; // [required]

@@ -58,7 +58,7 @@ async fn main() -> anyhow::Result<()> {
         .with_ansi(std::env::var("NO_COLOR").is_err() && std::io::stdout().is_terminal())
         .with_file(false)
         .with_line_number(false)
-        .with_filter(LevelFilter::INFO);
+        .with_filter(tracing_subscriber::EnvFilter::from_default_env());
 
     // Create the logger for the log file. This will produce machine-readable logs for
     // all events of level DEBUG or higher.
@@ -84,6 +84,12 @@ async fn main() -> anyhow::Result<()> {
         .load()
         .context("config_paths().load()")?;
 
+    let executor = configs
+        .make_executor(ctx)
+        .await
+        .context("configs.into_executor()")?;
+    let block_store = executor.block_store.clone();
+    
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {
         if let Some(addr) = configs.app.metrics_server_addr {
@@ -97,10 +103,7 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             });
         }
-        let executor = configs
-            .into_executor(ctx)
-            .await
-            .context("configs.into_executor()")?;
+        s.spawn_bg(block_store.run_background_tasks(ctx));
         s.spawn(executor.run(ctx));
         Ok(())
     })

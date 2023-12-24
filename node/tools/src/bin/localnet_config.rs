@@ -81,11 +81,9 @@ fn main() -> anyhow::Result<()> {
             public_addr: addrs[i],
             metrics_server_addr,
 
-            validator_key: Some(validator_keys[i].public()),
             validators: validator_set.clone(),
             genesis_block: genesis.clone(),
 
-            node_key: node_keys[i].public(),
             gossip_dynamic_inbound_limit: 0,
             gossip_static_inbound: [].into(),
             gossip_static_outbound: [].into(),

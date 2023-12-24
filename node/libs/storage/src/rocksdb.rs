@@ -7,7 +7,7 @@ use anyhow::Context as _;
 use rocksdb::{Direction, IteratorMode, ReadOptions};
 use std::sync::Arc;
 use std::{fmt, path::Path, sync::RwLock};
-use zksync_concurrency::{ctx, scope};
+use zksync_concurrency::{ctx, scope, error::Wrap as _};
 use zksync_consensus_roles::validator;
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
@@ -69,32 +69,33 @@ impl Store {
         )))
     }
 
-    fn state_blocking(&self) -> anyhow::Result<BlockStoreState> {
+    fn state_blocking(&self) -> anyhow::Result<Option<BlockStoreState>> {
         let db = self.0.read().unwrap();
 
+        let mut options = ReadOptions::default();
+        options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
+        let Some(res) = db
+            .iterator_opt(IteratorMode::Start, options)
+            .next()
+        else { return Ok(None) };
+        let (_,first) = res.context("RocksDB error reading first stored block")?;
+        let first: validator::FinalBlock =
+            zksync_protobuf::decode(&first).context("Failed decoding first stored block bytes")?;
+        
         let mut options = ReadOptions::default();
         options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
         let (_, last) = db
             .iterator_opt(DatabaseKey::BLOCK_HEAD_ITERATOR, options)
             .next()
-            .context("Head block not found")?
+            .context("last block not found")?
             .context("RocksDB error reading head block")?;
         let last: validator::FinalBlock =
             zksync_protobuf::decode(&last).context("Failed decoding head block bytes")?;
 
-        let mut options = ReadOptions::default();
-        options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
-        let (_, first) = db
-            .iterator_opt(IteratorMode::Start, options)
-            .next()
-            .context("First stored block not found")?
-            .context("RocksDB error reading first stored block")?;
-        let first: validator::FinalBlock =
-            zksync_protobuf::decode(&first).context("Failed decoding first stored block bytes")?;
-        Ok(BlockStoreState {
+        Ok(Some(BlockStoreState {
             first: first.justification,
             last: last.justification,
-        })
+        }))
     }
 }
 
@@ -106,7 +107,7 @@ impl fmt::Debug for Store {
 
 #[async_trait::async_trait]
 impl PersistentBlockStore for Arc<Store> {
-    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
+    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<BlockStoreState>> {
         Ok(scope::wait_blocking(|| self.state_blocking()).await?)
     }
 
@@ -114,19 +115,18 @@ impl PersistentBlockStore for Arc<Store> {
         &self,
         _ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<validator::FinalBlock> {
-        Ok(scope::wait_blocking(|| {
+    ) -> ctx::Result<Option<validator::FinalBlock>> {
+        scope::wait_blocking(|| {
             let db = self.0.read().unwrap();
-            let block = db
+            let Some(block) = db
                 .get(DatabaseKey::Block(number).encode_key())
                 .context("RocksDB error")?
-                .context("not found")?;
-            zksync_protobuf::decode(&block).context("failed decoding block")
-        })
-        .await
-        .context(number)?)
+            else { return Ok(None) };
+            Ok(Some(zksync_protobuf::decode(&block).context("failed decoding block")?))
+        }).await.wrap(number)
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     async fn store_next_block(
         &self,
         _ctx: &ctx::Ctx,

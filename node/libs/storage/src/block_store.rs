@@ -1,4 +1,5 @@
 //! Defines storage layer for finalized blocks.
+use anyhow::Context as _;
 use std::collections::BTreeMap;
 use std::fmt;
 use zksync_concurrency::{ctx, sync};
@@ -25,17 +26,17 @@ impl BlockStoreState {
 /// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait::async_trait]
 pub trait PersistentBlockStore: fmt::Debug + Send + Sync {
-    /// Range of blocks avaliable in storage.
+    /// Range of blocks avaliable in storage. None iff storage is empty.
     /// Consensus code calls this method only once and then tracks the
     /// range of avaliable blocks internally.
-    async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState>;
+    async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<BlockStoreState>>;
 
-    /// Gets a block by its number. Should return an error if block is missing.
+    /// Gets a block by its number. Returns None if block is missing.
     async fn block(
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<validator::FinalBlock>;
+    ) -> ctx::Result<Option<validator::FinalBlock>>;
 
     /// Persistently store a block.
     /// Implementations are only required to accept a block directly after the current last block,
@@ -73,9 +74,9 @@ impl BlockStore {
         if cache_capacity < 1 {
             return Err(anyhow::anyhow!("cache_capacity has to be >=1").into());
         }
-        let state = persistent.state(ctx).await?;
-        if state.first > state.last {
-            return Err(anyhow::anyhow!("at least 1 block has to be available in storage").into());
+        let state = persistent.state(ctx).await?.context("storage empty, expected at least 1 block")?;
+        if state.first.header().number > state.last.header().number {
+            return Err(anyhow::anyhow!("invalid state").into());
         }
         Ok(Self {
             persistent,
@@ -103,7 +104,7 @@ impl BlockStore {
                 return Ok(Some(block.clone()));
             }
         }
-        Ok(Some(self.persistent.block(ctx, number).await?))
+        Ok(Some(self.persistent.block(ctx, number).await?.context("block disappeared from storage")?))
     }
 
     pub async fn last_block(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::FinalBlock> {
@@ -139,6 +140,7 @@ impl BlockStore {
         Ok(())
     }
 
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn store_block(
         &self,
         ctx: &ctx::Ctx,

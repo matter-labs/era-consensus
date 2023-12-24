@@ -1,6 +1,5 @@
 //! In-memory storage implementation.
 use crate::{BlockStoreState, PersistentBlockStore, ReplicaState};
-use anyhow::Context as _;
 use std::collections::BTreeMap;
 use std::sync::Mutex;
 use zksync_concurrency::ctx;
@@ -23,26 +22,25 @@ impl BlockStore {
 
 #[async_trait::async_trait]
 impl PersistentBlockStore for BlockStore {
-    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
+    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<BlockStoreState>> {
         let blocks = self.0.lock().unwrap();
-        Ok(BlockStoreState {
+        Ok(Some(BlockStoreState {
             first: blocks.first_key_value().unwrap().1.justification.clone(),
             last: blocks.last_key_value().unwrap().1.justification.clone(),
-        })
+        }))
     }
 
     async fn block(
         &self,
         _ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<validator::FinalBlock> {
+    ) -> ctx::Result<Option<validator::FinalBlock>> {
         Ok(self
             .0
             .lock()
             .unwrap()
             .get(&number)
-            .context("not found")?
-            .clone())
+            .cloned())
     }
 
     async fn store_next_block(

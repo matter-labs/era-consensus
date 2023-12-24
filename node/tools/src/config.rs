@@ -31,11 +31,9 @@ pub struct AppConfig {
     pub public_addr: std::net::SocketAddr,
     pub metrics_server_addr: Option<std::net::SocketAddr>,
 
-    pub validator_key: Option<validator::PublicKey>,
     pub validators: validator::ValidatorSet,
     pub genesis_block: validator::FinalBlock,
 
-    pub node_key: node::PublicKey,
     pub gossip_dynamic_inbound_limit: u64,
     pub gossip_static_inbound: HashSet<node::PublicKey>,
     pub gossip_static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>,
@@ -76,11 +74,9 @@ impl ProtoFmt for AppConfig {
             metrics_server_addr: read_optional_text(&r.metrics_server_addr)
                 .context("metrics_server_addr")?,
 
-            validator_key: read_optional_text(&r.validator_key).context("validator_key")?,
             validators,
             genesis_block: read_required_text(&r.genesis_block).context("genesis_block")?,
 
-            node_key: read_required_text(&r.node_key).context("node_key")?,
             gossip_dynamic_inbound_limit: *required(&r.gossip_dynamic_inbound_limit)
                 .context("gossip_dynamic_inbound_limit")?,
             gossip_static_inbound,
@@ -94,11 +90,9 @@ impl ProtoFmt for AppConfig {
             public_addr: Some(self.public_addr.encode()),
             metrics_server_addr: self.metrics_server_addr.as_ref().map(TextFmt::encode),
 
-            validator_key: self.validator_key.as_ref().map(TextFmt::encode),
             validators: self.validators.iter().map(TextFmt::encode).collect(),
             genesis_block: Some(self.genesis_block.encode()),
 
-            node_key: Some(self.node_key.encode()),
             gossip_dynamic_inbound_limit: Some(self.gossip_dynamic_inbound_limit),
             gossip_static_inbound: self
                 .gossip_static_inbound
@@ -171,35 +165,29 @@ impl<'a> ConfigPaths<'a> {
 }
 
 impl Configs {
-    pub async fn into_executor(self, ctx: &ctx::Ctx) -> anyhow::Result<executor::Executor> {
-        anyhow::ensure!(
-            self.app.node_key == self.node_key.public(),
-            "node secret key has to match the node public key in the app config",
-        );
-        anyhow::ensure!(
-            self.app.validator_key == self.validator_key.as_ref().map(|k| k.public()),
-            "validator secret key has to match the validator public key in the app config",
-        );
-        let storage = Arc::new(rocksdb::Store::new(&self.database).await?);
-        let block_store = Arc::new(BlockStore::new(ctx,Box::new(storage.clone()),1000).await?);
-        // TODO: figure out how to insert iff empty.
-        storage.store_next_block(ctx,&self.app.genesis_block,).await.context("store_next_block")?;
+    pub async fn make_executor(&self, ctx: &ctx::Ctx) -> anyhow::Result<executor::Executor> {
+        let store = Arc::new(rocksdb::Store::new(&self.database).await?);
+        // Store genesis if db is empty. 
+        if store.state(ctx).await?.is_none() {
+            store.store_next_block(ctx,&self.app.genesis_block).await.context("store_next_block()")?;
+        }
+        let block_store = Arc::new(BlockStore::new(ctx,Box::new(store.clone()),1000).await?);
         Ok(executor::Executor {
             config: executor::Config {
-                server_addr: self.app.server_addr,
-                validators: self.app.validators,
-                node_key: self.node_key,
+                server_addr: self.app.server_addr.clone(),
+                validators: self.app.validators.clone(),
+                node_key: self.node_key.clone(),
                 gossip_dynamic_inbound_limit: self.app.gossip_dynamic_inbound_limit,
-                gossip_static_inbound: self.app.gossip_static_inbound,
-                gossip_static_outbound: self.app.gossip_static_outbound,
+                gossip_static_inbound: self.app.gossip_static_inbound.clone(),
+                gossip_static_outbound: self.app.gossip_static_outbound.clone(),
             },
             block_store: block_store,
-            validator: self.validator_key.map(|key| executor::Validator {
+            validator: self.validator_key.as_ref().map(|key| executor::Validator {
                 config: executor::ValidatorConfig {
-                    key,
-                    public_addr: self.app.public_addr,
+                    key: key.clone(),
+                    public_addr: self.app.public_addr.clone(),
                 },
-                replica_store: Box::new(storage),
+                replica_store: Box::new(store),
                 payload_manager: Box::new(bft::testonly::RandomPayload),
             }),
         })
