@@ -1,4 +1,4 @@
-///! Tests for the block syncing actor.
+//! Tests for the block syncing actor.
 use super::*;
 use rand::{
     distributions::{Distribution, Standard},
@@ -12,16 +12,19 @@ use zksync_consensus_roles::validator::{
     testonly::{make_block, make_genesis_block},
     BlockHeader, BlockNumber, CommitQC, FinalBlock, Payload, ValidatorSet,
 };
-use zksync_consensus_storage::testonly::in_memory;
+use zksync_consensus_storage::{testonly::in_memory, BlockStore, BlockStoreRunner};
 use zksync_consensus_utils::pipe;
 
 mod end_to_end;
 
 const TEST_TIMEOUT: time::Duration = time::Duration::seconds(20);
 
-pub(crate) async fn make_store(ctx: &ctx::Ctx, genesis: FinalBlock) -> Arc<BlockStore> {
+pub(crate) async fn make_store(
+    ctx: &ctx::Ctx,
+    genesis: FinalBlock,
+) -> (Arc<BlockStore>, BlockStoreRunner) {
     let storage = in_memory::BlockStore::new(genesis);
-    Arc::new(BlockStore::new(ctx, Box::new(storage), 100).await.unwrap())
+    BlockStore::new(ctx, Box::new(storage), 100).await.unwrap()
 }
 
 pub(crate) async fn wait_for_stored_block(
@@ -139,12 +142,13 @@ async fn subscribing_to_state_updates() {
     let genesis_block = make_genesis_block(rng, protocol_version);
     let block_1 = make_block(rng, genesis_block.header(), protocol_version);
 
-    let storage = make_store(ctx, genesis_block.clone()).await;
+    let (storage, runner) = make_store(ctx, genesis_block.clone()).await;
     let (actor_pipe, _dispatcher_pipe) = pipe::new();
     let mut state_subscriber = storage.subscribe();
 
     let cfg: Config = rng.gen();
     scope::run!(ctx, |ctx, s| async {
+        s.spawn_bg(runner.run(ctx));
         s.spawn_bg(cfg.run(ctx, actor_pipe, storage.clone()));
         s.spawn_bg(async {
             assert!(ctx.sleep(TEST_TIMEOUT).await.is_err(), "Test timed out");
@@ -179,7 +183,7 @@ async fn getting_blocks() {
     let protocol_version = validator::ProtocolVersion::EARLIEST;
     let genesis_block = make_genesis_block(rng, protocol_version);
 
-    let storage = make_store(ctx, genesis_block.clone()).await;
+    let (storage, runner) = make_store(ctx, genesis_block.clone()).await;
     let blocks = iter::successors(Some(genesis_block), |parent| {
         Some(make_block(rng, parent.header(), protocol_version))
     });
@@ -192,6 +196,7 @@ async fn getting_blocks() {
 
     let cfg: Config = rng.gen();
     scope::run!(ctx, |ctx, s| async {
+        s.spawn_bg(runner.run(ctx));
         s.spawn_bg(cfg.run(ctx, actor_pipe, storage.clone()));
         s.spawn_bg(async {
             assert!(ctx.sleep(TEST_TIMEOUT).await.is_err(), "Test timed out");

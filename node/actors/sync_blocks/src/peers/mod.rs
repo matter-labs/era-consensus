@@ -3,7 +3,10 @@
 use self::events::PeerStateEvent;
 use crate::{io, Config};
 use anyhow::Context as _;
-use std::{collections::HashMap, sync::Arc, sync::Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 use zksync_concurrency::{
     ctx::{self, channel},
     oneshot, scope, sync,
@@ -56,6 +59,9 @@ impl PeerStates {
         }
     }
 
+    /// Updates the known `BlockStore` state of the given peer.
+    /// This information is used to decide from which peer to fetch
+    /// a given block from.
     pub(crate) fn update(
         &self,
         peer: &node::PublicKey,
@@ -84,7 +90,7 @@ impl PeerStates {
                 return false;
             }
             *highest = last;
-            return true;
+            true
         });
         Ok(())
     }
@@ -167,7 +173,7 @@ impl PeerStates {
                 }
             }
         }
-        Err(ctx::Canceled.into())
+        Err(ctx::Canceled)
     }
 
     /// Fetches a block from the specified peer.

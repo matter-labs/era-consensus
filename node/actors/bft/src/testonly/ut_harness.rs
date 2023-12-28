@@ -15,7 +15,7 @@ use zksync_consensus_roles::validator::{
     self, CommitQC, LeaderCommit, LeaderPrepare, Payload, Phase, PrepareQC, ReplicaCommit,
     ReplicaPrepare, SecretKey, Signed, ViewNumber,
 };
-use zksync_consensus_storage::{testonly::in_memory, BlockStore};
+use zksync_consensus_storage::{testonly::in_memory, BlockStore, BlockStoreRunner};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// `UTHarness` provides various utilities for unit tests.
@@ -31,17 +31,12 @@ pub(crate) struct UTHarness {
     pipe: ctx::channel::UnboundedReceiver<OutputMessage>,
 }
 
-pub(crate) struct Runner(Arc<BlockStore>);
-
-impl Runner {
-    pub(crate) async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        self.0.run_background_tasks(ctx).await
-    }
-}
-
 impl UTHarness {
     /// Creates a new `UTHarness` with the specified validator set size.
-    pub(crate) async fn new(ctx: &ctx::Ctx, num_validators: usize) -> (UTHarness, Runner) {
+    pub(crate) async fn new(
+        ctx: &ctx::Ctx,
+        num_validators: usize,
+    ) -> (UTHarness, BlockStoreRunner) {
         Self::new_with_payload(ctx, num_validators, Box::new(testonly::RandomPayload)).await
     }
 
@@ -49,7 +44,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         num_validators: usize,
         payload_manager: Box<dyn PayloadManager>,
-    ) -> (UTHarness, Runner) {
+    ) -> (UTHarness, BlockStoreRunner) {
         let mut rng = ctx.rng();
         let keys: Vec<_> = (0..num_validators).map(|_| rng.gen()).collect();
         let (genesis, validator_set) =
@@ -57,7 +52,7 @@ impl UTHarness {
 
         // Initialize the storage.
         let block_store = Box::new(in_memory::BlockStore::new(genesis));
-        let block_store = Arc::new(BlockStore::new(ctx, block_store, 10).await.unwrap());
+        let (block_store, runner) = BlockStore::new(ctx, block_store, 10).await.unwrap();
         // Create the pipe.
         let (send, recv) = ctx::channel::unbounded();
 
@@ -79,11 +74,11 @@ impl UTHarness {
             keys,
         };
         let _: Signed<ReplicaPrepare> = this.try_recv().unwrap();
-        (this, Runner(block_store))
+        (this, runner)
     }
 
     /// Creates a new `UTHarness` with minimally-significant validator set size.
-    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, Runner) {
+    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, BlockStoreRunner) {
         let num_validators = 6;
         assert!(crate::misc::faulty_replicas(num_validators) > 0);
         UTHarness::new(ctx, num_validators).await

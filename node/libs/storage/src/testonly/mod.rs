@@ -1,8 +1,8 @@
 //! Test-only utilities.
-use crate::{Proposal, ReplicaState, PersistentBlockStore};
+use crate::{PersistentBlockStore, Proposal, ReplicaState};
 use rand::{distributions::Standard, prelude::Distribution, Rng};
-use zksync_consensus_roles::validator;
 use zksync_concurrency::ctx;
+use zksync_consensus_roles::validator;
 
 pub mod in_memory;
 
@@ -27,8 +27,11 @@ impl Distribution<ReplicaState> for Standard {
     }
 }
 
+/// Dumps all the blocks stored in `store`.
 pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<validator::FinalBlock> {
-    let Some(range) = store.state(ctx).await.unwrap() else { return vec![] };
+    let Some(range) = store.state(ctx).await.unwrap() else {
+        return vec![];
+    };
     let mut blocks = vec![];
     for n in range.first.header().number.0..range.next().0 {
         let n = validator::BlockNumber(n);
@@ -40,11 +43,18 @@ pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<valid
     blocks
 }
 
-pub fn random_blocks(ctx: &ctx::Ctx) -> impl Iterator<Item=validator::FinalBlock> {
+/// A generator of consecutive blocks with random payload, starting with a genesis blocks.
+pub fn random_blocks(ctx: &ctx::Ctx) -> impl Iterator<Item = validator::FinalBlock> {
     let mut rng = ctx.rng();
     let v = validator::ProtocolVersion::EARLIEST;
     std::iter::successors(
         Some(validator::testonly::make_genesis_block(&mut rng, v)),
-        move |parent| Some(validator::testonly::make_block(&mut rng, parent.header(), v)),
+        move |parent| {
+            Some(validator::testonly::make_block(
+                &mut rng,
+                parent.header(),
+                v,
+            ))
+        },
     )
 }

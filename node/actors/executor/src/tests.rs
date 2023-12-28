@@ -8,10 +8,12 @@ use test_casing::test_casing;
 use zksync_concurrency::{sync, testonly::abort_on_panic, time};
 use zksync_consensus_bft::{testonly, PROTOCOL_VERSION};
 use zksync_consensus_roles::validator::{BlockNumber, FinalBlock, Payload};
-use zksync_consensus_storage::{BlockStore, testonly::in_memory};
+use zksync_consensus_storage::{testonly::in_memory, BlockStore, BlockStoreRunner};
 
-async fn make_store(ctx:&ctx::Ctx, genesis: FinalBlock) -> Arc<BlockStore> {
-   Arc::new(BlockStore::new(ctx,Box::new(in_memory::BlockStore::new(genesis)),10).await.unwrap())
+async fn make_store(ctx: &ctx::Ctx, genesis: FinalBlock) -> (Arc<BlockStore>, BlockStoreRunner) {
+    BlockStore::new(ctx, Box::new(in_memory::BlockStore::new(genesis)), 10)
+        .await
+        .unwrap()
 }
 
 impl Config {
@@ -70,11 +72,11 @@ async fn executing_single_validator() {
 
     let validator = ValidatorNode::for_single_validator(rng);
     let genesis_block = validator.gen_blocks(rng).next().unwrap();
-    let storage = make_store(ctx,genesis_block.clone()).await;
+    let (storage, runner) = make_store(ctx, genesis_block.clone()).await;
     let executor = validator.into_executor(storage.clone());
 
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(storage.run_background_tasks(ctx));
+        s.spawn_bg(runner.run(ctx));
         s.spawn_bg(executor.run(ctx));
         let want = BlockNumber(5);
         sync::wait_for(ctx, &mut storage.subscribe(), |state| state.next() > want).await?;
@@ -94,19 +96,22 @@ async fn executing_validator_and_full_node() {
     let full_node = validator.connect_full_node(rng);
 
     let genesis_block = validator.gen_blocks(rng).next().unwrap();
-    let validator_storage = make_store(ctx,genesis_block.clone()).await;
-    let full_node_storage = make_store(ctx,genesis_block.clone()).await;
+    let (validator_storage, validator_runner) = make_store(ctx, genesis_block.clone()).await;
+    let (full_node_storage, full_node_runner) = make_store(ctx, genesis_block.clone()).await;
 
     let validator = validator.into_executor(validator_storage.clone());
     let full_node = full_node.into_executor(full_node_storage.clone());
 
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(validator_storage.run_background_tasks(ctx));
-        s.spawn_bg(full_node_storage.run_background_tasks(ctx));
+        s.spawn_bg(validator_runner.run(ctx));
+        s.spawn_bg(full_node_runner.run(ctx));
         s.spawn_bg(validator.run(ctx));
         s.spawn_bg(full_node.run(ctx));
         let want = BlockNumber(5);
-        sync::wait_for(ctx, &mut full_node_storage.subscribe(), |state| state.next() > want).await?;
+        sync::wait_for(ctx, &mut full_node_storage.subscribe(), |state| {
+            state.next() > want
+        })
+        .await?;
         Ok(())
     })
     .await
@@ -124,11 +129,11 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
     let full_node = validator.connect_full_node(rng);
 
     let blocks: Vec<_> = validator.gen_blocks(rng).take(11).collect();
-    let validator_storage = make_store(ctx,blocks[0].clone()).await; 
+    let (validator_storage, validator_runner) = make_store(ctx, blocks[0].clone()).await;
     let validator = validator.node.into_executor(validator_storage.clone());
 
     // Start a full node from a snapshot.
-    let full_node_storage = make_store(ctx,blocks[4].clone()).await;
+    let (full_node_storage, full_node_runner) = make_store(ctx, blocks[4].clone()).await;
 
     let full_node = Executor {
         config: full_node,
@@ -137,12 +142,15 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
     };
 
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(validator_storage.run_background_tasks(ctx));
-        s.spawn_bg(full_node_storage.run_background_tasks(ctx));
+        s.spawn_bg(validator_runner.run(ctx));
+        s.spawn_bg(full_node_runner.run(ctx));
         if !delay_block_storage {
             // Instead of running consensus on the validator, add the generated blocks manually.
             for block in &blocks {
-                validator_storage.store_block(ctx, block.clone()).await.unwrap();
+                validator_storage
+                    .store_block(ctx, block.clone())
+                    .await
+                    .unwrap();
             }
         }
         s.spawn_bg(validator.run(ctx));
@@ -163,8 +171,10 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
             let last = state.last.header().number;
             tracing::trace!(%last, "Full node updated last block");
             last >= BlockNumber(10)
-        }).await.unwrap();
-           
+        })
+        .await
+        .unwrap();
+
         // Check that the node didn't receive any blocks with number lesser than the initial snapshot block.
         for lesser_block_number in 0..3 {
             let block = full_node_storage

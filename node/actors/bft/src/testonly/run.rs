@@ -1,9 +1,9 @@
 use super::{Behavior, Node};
 use crate::{testonly, Config};
 use anyhow::Context;
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 use tracing::Instrument as _;
-use zksync_concurrency::{ctx, oneshot, sync, scope, signal};
+use zksync_concurrency::{ctx, oneshot, scope, signal, sync};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{testonly::in_memory, BlockStore};
@@ -35,9 +35,11 @@ impl Test {
         let (genesis_block, _) =
             testonly::make_genesis(&keys, validator::Payload(vec![]), validator::BlockNumber(0));
         let mut nodes = vec![];
+        let mut store_runners = vec![];
         for (i, net) in nets.into_iter().enumerate() {
             let block_store = Box::new(in_memory::BlockStore::new(genesis_block.clone()));
-            let block_store = Arc::new(BlockStore::new(ctx, block_store, 10).await?);
+            let (block_store, runner) = BlockStore::new(ctx, block_store, 10).await?;
+            store_runners.push(runner);
             nodes.push(Node {
                 net,
                 behavior: self.nodes[i],
@@ -54,10 +56,16 @@ impl Test {
 
         // Run the nodes until all honest nodes store enough finalized blocks.
         scope::run!(ctx, |ctx, s| async {
+            for runner in store_runners {
+                s.spawn_bg(runner.run(ctx));
+            }
             s.spawn_bg(run_nodes(ctx, self.network, &nodes));
             let want_block = validator::BlockNumber(self.blocks_to_finalize as u64);
             for n in &honest {
-                sync::wait_for(ctx, &mut n.block_store.subscribe(), |state| state.next() > want_block).await?;
+                sync::wait_for(ctx, &mut n.block_store.subscribe(), |state| {
+                    state.next() > want_block
+                })
+                .await?;
             }
             Ok(())
         })
@@ -94,7 +102,6 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, nodes: &[Node]) -> anyhow::
                 async {
                     scope::run!(ctx, |ctx, s| async {
                         network_ready.recv(ctx).await?;
-                        s.spawn(node.block_store.run_background_tasks(ctx));
                         s.spawn(async {
                             Config {
                                 secret_key: validator_key,

@@ -1,6 +1,5 @@
 use super::*;
-use crate::tests::make_store;
-use crate::tests::TestValidators;
+use crate::tests::{make_store, TestValidators};
 use assert_matches::assert_matches;
 use async_trait::async_trait;
 use rand::{seq::IteratorRandom, Rng};
@@ -65,32 +64,32 @@ async fn test_peer_states<T: Test>(test: T) {
     let clock = ctx::ManualClock::new();
     let ctx = &ctx::test_with_clock(ctx, &clock);
     let test_validators = TestValidators::new(&mut ctx.rng(), 4, T::BLOCK_COUNT);
-    let storage = make_store(
+    let (store, store_run) = make_store(
         ctx,
         test_validators.final_blocks[T::GENESIS_BLOCK_NUMBER].clone(),
     )
     .await;
-    test.initialize_storage(ctx, storage.as_ref(), &test_validators)
+    test.initialize_storage(ctx, store.as_ref(), &test_validators)
         .await;
 
     let (message_sender, message_receiver) = channel::unbounded();
     let (events_sender, events_receiver) = channel::unbounded();
     let mut config = test_validators.test_config();
     test.tweak_config(&mut config);
-    let mut peer_states = PeerStates::new(config, storage.clone(), message_sender);
+    let mut peer_states = PeerStates::new(config, store.clone(), message_sender);
     peer_states.events_sender = Some(events_sender);
     let peer_states = Arc::new(peer_states);
     let test_handles = TestHandles {
         clock,
         test_validators,
         peer_states: peer_states.clone(),
-        storage: storage.clone(),
+        storage: store.clone(),
         message_receiver,
         events_receiver,
     };
 
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(storage.run_background_tasks(ctx));
+        s.spawn_bg(store_run.run(ctx));
         s.spawn_bg(async {
             peer_states.run_block_fetcher(ctx).await.ok();
             Ok(())

@@ -84,12 +84,11 @@ async fn main() -> anyhow::Result<()> {
         .load()
         .context("config_paths().load()")?;
 
-    let executor = configs
+    let (executor, runner) = configs
         .make_executor(ctx)
         .await
         .context("configs.into_executor()")?;
-    let block_store = executor.block_store.clone();
-    
+
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {
         if let Some(addr) = configs.app.metrics_server_addr {
@@ -103,7 +102,7 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             });
         }
-        s.spawn_bg(block_store.run_background_tasks(ctx));
+        s.spawn_bg(runner.run(ctx));
         s.spawn(executor.run(ctx));
         Ok(())
     })

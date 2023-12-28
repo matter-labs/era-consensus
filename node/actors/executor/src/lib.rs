@@ -86,6 +86,7 @@ pub struct Executor {
     pub validator: Option<Validator>,
 }
 
+/// Converts BlockStoreState to isomorphic network::io::SyncState.
 fn to_sync_state(state: BlockStoreState) -> network::io::SyncState {
     network::io::SyncState {
         first_stored_block: state.first,
@@ -104,13 +105,15 @@ impl Executor {
         }
     }
 
+    /// Verifies correctness of the Executor.
     fn verify(&self) -> anyhow::Result<()> {
         if let Some(validator) = self.validator.as_ref() {
             if !self
                 .config
                 .validators
                 .iter()
-                .any(|key| key == &validator.config.key.public()) {
+                .any(|key| key == &validator.config.key.public())
+            {
                 anyhow::bail!("this validator doesn't belong to the consensus");
             }
         }
@@ -168,17 +171,19 @@ impl Executor {
                         replica_store: validator.replica_store,
                         payload_manager: validator.payload_manager,
                     }
-                        .run(ctx, consensus_actor_pipe)
-                        .await
-                        .context("Consensus stopped")
+                    .run(ctx, consensus_actor_pipe)
+                    .await
+                    .context("Consensus stopped")
                 });
             }
             sync_blocks::Config::new(
                 validator_set.clone(),
                 bft::misc::consensus_threshold(validator_set.len()),
-            )?.run(ctx, sync_blocks_actor_pipe, self.block_store.clone())
-                .await
-                .context("Syncing blocks stopped")
-        }).await
+            )?
+            .run(ctx, sync_blocks_actor_pipe, self.block_store.clone())
+            .await
+            .context("Syncing blocks stopped")
+        })
+        .await
     }
 }

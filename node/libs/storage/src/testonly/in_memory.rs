@@ -1,12 +1,11 @@
 //! In-memory storage implementation.
 use crate::{BlockStoreState, PersistentBlockStore, ReplicaState};
-use std::collections::BTreeMap;
-use std::sync::Mutex;
+use std::{collections::BTreeMap, sync::Mutex};
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
 
 /// In-memory block store.
-#[derive(Debug,Default)]
+#[derive(Debug, Default)]
 pub struct BlockStore(Mutex<BTreeMap<validator::BlockNumber, validator::FinalBlock>>);
 
 /// In-memory replica store.
@@ -24,7 +23,9 @@ impl BlockStore {
 impl PersistentBlockStore for BlockStore {
     async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<BlockStoreState>> {
         let blocks = self.0.lock().unwrap();
-        if blocks.is_empty() { return Ok(None) } 
+        if blocks.is_empty() {
+            return Ok(None);
+        }
         Ok(Some(BlockStoreState {
             first: blocks.first_key_value().unwrap().1.justification.clone(),
             last: blocks.last_key_value().unwrap().1.justification.clone(),
@@ -36,12 +37,7 @@ impl PersistentBlockStore for BlockStore {
         _ctx: &ctx::Ctx,
         number: validator::BlockNumber,
     ) -> ctx::Result<Option<validator::FinalBlock>> {
-        Ok(self
-            .0
-            .lock()
-            .unwrap()
-            .get(&number)
-            .cloned())
+        Ok(self.0.lock().unwrap().get(&number).cloned())
     }
 
     async fn store_next_block(

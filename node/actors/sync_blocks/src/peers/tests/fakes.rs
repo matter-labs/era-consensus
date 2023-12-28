@@ -8,7 +8,7 @@ async fn processing_invalid_sync_states() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let test_validators = TestValidators::new(rng, 4, 3);
-    let storage = make_store(ctx, test_validators.final_blocks[0].clone()).await;
+    let (storage, _runner) = make_store(ctx, test_validators.final_blocks[0].clone()).await;
 
     let (message_sender, _) = channel::unbounded();
     let peer_states = PeerStates::new(test_validators.test_config(), storage, message_sender);
@@ -82,7 +82,7 @@ impl Test for PeerWithFakeBlock {
         } = handles;
 
         let rng = &mut ctx.rng();
-        
+
         for fake_block in [
             // other block than requested
             test_validators.final_blocks[0].clone(),

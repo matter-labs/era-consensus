@@ -53,6 +53,7 @@ pub trait PayloadManager: std::fmt::Debug + Send + Sync {
     ) -> ctx::Result<()>;
 }
 
+/// Pipe through which bft actor sends network messages.
 pub(crate) type OutputPipe = ctx::channel::UnboundedSender<OutputMessage>;
 
 impl Config {
@@ -71,7 +72,7 @@ impl Config {
 
             s.spawn_bg(leader::StateMachine::run_proposer(
                 ctx,
-                &*cfg,
+                &cfg,
                 leader.prepare_qc.subscribe(),
                 &pipe.send,
             ));

@@ -1,13 +1,12 @@
-use crate::AppConfig;
-use crate::store;
+use crate::{store, AppConfig};
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
 use tempfile::TempDir;
 use zksync_concurrency::ctx;
-use zksync_consensus_roles::{node};
-use zksync_consensus_storage::{PersistentBlockStore,testonly};
+use zksync_consensus_roles::node;
+use zksync_consensus_storage::{testonly, PersistentBlockStore};
 use zksync_protobuf::testonly::test_encode_random;
 
 fn make_addr<R: Rng + ?Sized>(rng: &mut R) -> std::net::SocketAddr {
@@ -50,7 +49,7 @@ async fn test_reopen_rocksdb() {
     for b in testonly::random_blocks(ctx).take(5) {
         let store = store::RocksDB::open(dir.path()).await.unwrap();
         assert_eq!(want, testonly::dump(ctx, &store).await);
-        store.store_next_block(ctx,&b).await.unwrap();
-        want.push(b); 
+        store.store_next_block(ctx, &b).await.unwrap();
+        want.push(b);
     }
 }

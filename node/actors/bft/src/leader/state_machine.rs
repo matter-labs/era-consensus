@@ -15,6 +15,7 @@ use zksync_consensus_roles::validator;
 pub(crate) struct StateMachine {
     /// Consensus configuration and output channel.
     pub(crate) config: Arc<Config>,
+    /// Pipe through with leader sends network messages.
     pub(crate) pipe: OutputPipe,
     /// The current view number. This might not match the replica's view number, we only have this here
     /// to make the leader advance monotonically in time and stop it from accepting messages from the past.

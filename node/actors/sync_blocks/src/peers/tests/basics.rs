@@ -1,8 +1,7 @@
 //! Basic tests.
 
 use super::*;
-use crate::io;
-use crate::tests::wait_for_stored_block;
+use crate::{io, tests::wait_for_stored_block};
 use zksync_consensus_network as network;
 
 #[derive(Debug)]

@@ -217,7 +217,7 @@ impl Test for RequestingBlocksFromMultiplePeers {
             // Announce peer states.
             for (peer_key, peer) in peers {
                 let last_block = peer.last_block.0 as usize;
-                peer_states.update(&peer_key, test_validators.sync_state(last_block)).unwrap();
+                peer_states.update(peer_key, test_validators.sync_state(last_block)).unwrap();
             }
 
             s.spawn_bg(async {

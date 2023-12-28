@@ -14,6 +14,7 @@ use zksync_consensus_storage as storage;
 pub(crate) struct StateMachine {
     /// Consensus configuration and output channel.
     pub(crate) config: Arc<Config>,
+    /// Pipe through with replica sends network messages.
     pub(super) pipe: OutputPipe,
     /// The current view number.
     pub(crate) view: validator::ViewNumber,
@@ -40,12 +41,7 @@ impl StateMachine {
     ) -> ctx::Result<Self> {
         let backup = match config.replica_store.state(ctx).await? {
             Some(backup) => backup,
-            None => config
-                .block_store
-                .last_block(ctx)
-                .await?
-                .justification
-                .into(),
+            None => config.block_store.subscribe().borrow().last.clone().into(),
         };
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
         for proposal in backup.proposals {

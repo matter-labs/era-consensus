@@ -5,8 +5,7 @@ use async_trait::async_trait;
 use rand::seq::SliceRandom;
 use std::fmt;
 use test_casing::test_casing;
-use tracing::instrument;
-use tracing::Instrument;
+use tracing::{instrument, Instrument};
 use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
 use zksync_consensus_network as network;
 use zksync_consensus_network::{io::SyncState, testonly::Instance as NetworkInstance};
@@ -39,6 +38,7 @@ impl NodeHandle {
 struct Node {
     network: NetworkInstance,
     store: Arc<BlockStore>,
+    store_runner: BlockStoreRunner,
     test_validators: Arc<TestValidators>,
     switch_on_receiver: oneshot::Receiver<()>,
     switch_off_receiver: oneshot::Receiver<()>,
@@ -83,7 +83,7 @@ impl Node {
         mut network: NetworkInstance,
         test_validators: Arc<TestValidators>,
     ) -> (NodeHandle, Node) {
-        let store = make_store(ctx, test_validators.final_blocks[0].clone()).await;
+        let (store, store_runner) = make_store(ctx, test_validators.final_blocks[0].clone()).await;
         let (switch_on_sender, switch_on_receiver) = oneshot::channel();
         let (switch_off_sender, switch_off_receiver) = oneshot::channel();
 
@@ -92,6 +92,7 @@ impl Node {
         let this = Self {
             network,
             store: store.clone(),
+            store_runner,
             test_validators: test_validators.clone(),
             switch_on_receiver,
             switch_off_receiver,
@@ -120,7 +121,7 @@ impl Node {
 
         let sync_blocks_config = self.test_validators.test_config();
         scope::run!(ctx, |ctx, s| async {
-            s.spawn_bg(self.store.run_background_tasks(ctx));
+            s.spawn_bg(self.store_runner.run(ctx));
             s.spawn_bg(async {
                 while let Ok(state) = sync::changed(ctx, &mut store_state).await {
                     sync_state.send_replace(to_sync_state(state.clone()));
@@ -321,7 +322,7 @@ impl GossipNetworkTest for SwitchingOffNodes {
         }
 
         let mut block_number = BlockNumber(1);
-        while node_handles.len() > 0 {
+        while !node_handles.is_empty() {
             tracing::info!("{} nodes left", node_handles.len());
 
             let sending_node = node_handles.choose(rng).unwrap();

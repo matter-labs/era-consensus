@@ -1,18 +1,17 @@
 //! Node configuration.
-use crate::{proto,store};
+use crate::{proto, store};
 use anyhow::Context as _;
 use std::{
     collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
-    sync::Arc,
 };
 use zksync_concurrency::ctx;
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BlockStore, PersistentBlockStore};
+use zksync_consensus_storage::{BlockStore, BlockStoreRunner, PersistentBlockStore};
 use zksync_protobuf::{required, ProtoFmt};
 
 /// Decodes a proto message from json for arbitrary ProtoFmt.
@@ -165,31 +164,38 @@ impl<'a> ConfigPaths<'a> {
 }
 
 impl Configs {
-    pub async fn make_executor(&self, ctx: &ctx::Ctx) -> anyhow::Result<executor::Executor> {
+    pub async fn make_executor(
+        &self,
+        ctx: &ctx::Ctx,
+    ) -> ctx::Result<(executor::Executor, BlockStoreRunner)> {
         let store = store::RocksDB::open(&self.database).await?;
-        // Store genesis if db is empty. 
+        // Store genesis if db is empty.
         if store.state(ctx).await?.is_none() {
-            store.store_next_block(ctx,&self.app.genesis_block).await.context("store_next_block()")?;
+            store
+                .store_next_block(ctx, &self.app.genesis_block)
+                .await
+                .context("store_next_block()")?;
         }
-        let block_store = Arc::new(BlockStore::new(ctx,Box::new(store.clone()),1000).await?);
-        Ok(executor::Executor {
+        let (block_store, runner) = BlockStore::new(ctx, Box::new(store.clone()), 1000).await?;
+        let e = executor::Executor {
             config: executor::Config {
-                server_addr: self.app.server_addr.clone(),
+                server_addr: self.app.server_addr,
                 validators: self.app.validators.clone(),
                 node_key: self.node_key.clone(),
                 gossip_dynamic_inbound_limit: self.app.gossip_dynamic_inbound_limit,
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
             },
-            block_store: block_store,
+            block_store,
             validator: self.validator_key.as_ref().map(|key| executor::Validator {
                 config: executor::ValidatorConfig {
                     key: key.clone(),
-                    public_addr: self.app.public_addr.clone(),
+                    public_addr: self.app.public_addr,
                 },
                 replica_store: Box::new(store),
                 payload_manager: Box::new(bft::testonly::RandomPayload),
             }),
-        })
+        };
+        Ok((e, runner))
     }
 }

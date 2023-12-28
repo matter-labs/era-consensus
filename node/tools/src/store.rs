@@ -2,13 +2,16 @@
 //! chain of blocks, not a tree (assuming we have all blocks and not have any gap). It allows for basic functionality like inserting a block,
 //! getting a block, checking if a block is contained in the DB. We also store the head of the chain. Storing it explicitly allows us to fetch
 //! the current head quickly.
-use zksync_consensus_storage::{BlockStoreState, PersistentBlockStore, ReplicaState, ReplicaStore};
 use anyhow::Context as _;
 use rocksdb::{Direction, IteratorMode, ReadOptions};
-use std::sync::Arc;
-use std::{fmt, path::Path, sync::RwLock};
-use zksync_concurrency::{ctx, scope, error::Wrap as _};
+use std::{
+    fmt,
+    path::Path,
+    sync::{Arc, RwLock},
+};
+use zksync_concurrency::{ctx, error::Wrap as _, scope};
 use zksync_consensus_roles::validator;
+use zksync_consensus_storage::{BlockStoreState, PersistentBlockStore, ReplicaState, ReplicaStore};
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -65,7 +68,8 @@ impl RocksDB {
         Ok(Self(Arc::new(RwLock::new(
             scope::wait_blocking(|| {
                 rocksdb::DB::open(&options, path).context("Failed opening RocksDB")
-            }).await?,
+            })
+            .await?,
         ))))
     }
 
@@ -74,14 +78,13 @@ impl RocksDB {
 
         let mut options = ReadOptions::default();
         options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
-        let Some(res) = db
-            .iterator_opt(IteratorMode::Start, options)
-            .next()
-        else { return Ok(None) };
-        let (_,first) = res.context("RocksDB error reading first stored block")?;
+        let Some(res) = db.iterator_opt(IteratorMode::Start, options).next() else {
+            return Ok(None);
+        };
+        let (_, first) = res.context("RocksDB error reading first stored block")?;
         let first: validator::FinalBlock =
             zksync_protobuf::decode(&first).context("Failed decoding first stored block bytes")?;
-        
+
         let mut options = ReadOptions::default();
         options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
         let (_, last) = db
@@ -121,9 +124,15 @@ impl PersistentBlockStore for RocksDB {
             let Some(block) = db
                 .get(DatabaseKey::Block(number).encode_key())
                 .context("RocksDB error")?
-            else { return Ok(None) };
-            Ok(Some(zksync_protobuf::decode(&block).context("failed decoding block")?))
-        }).await.wrap(number)
+            else {
+                return Ok(None);
+            };
+            Ok(Some(
+                zksync_protobuf::decode(&block).context("failed decoding block")?,
+            ))
+        })
+        .await
+        .wrap(number)
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -144,7 +153,9 @@ impl PersistentBlockStore for RocksDB {
             db.write(write_batch)
                 .context("Failed writing block to database")?;
             Ok(())
-        }).await.wrap(block.header().number)
+        })
+        .await
+        .wrap(block.header().number)
     }
 }
 
