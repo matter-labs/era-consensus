@@ -2,6 +2,7 @@
 #![allow(missing_docs)]
 mod config;
 mod proto;
+mod store;
 
 #[cfg(test)]
 mod tests;

@@ -15,7 +15,6 @@ anyhow.workspace = true
 async-trait.workspace = true
 prost.workspace = true
 rand.workspace = true
-rocksdb = { workspace = true, optional = true }
 thiserror.workspace = true
 tracing.workspace = true
 
@@ -27,11 +26,6 @@ tokio.workspace = true
 
 [build-dependencies]
 zksync_protobuf_build.workspace = true
-
-[features]
-default = []
-# Enables RocksDB-based storage.
-rocksdb = ["dep:rocksdb"]
 
 [lints]
 workspace = true

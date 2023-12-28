@@ -2706,7 +2706,6 @@ dependencies = [
  "async-trait",
  "prost",
  "rand 0.8.5",
- "rocksdb",
  "tempfile",
  "test-casing",
  "thiserror",
@@ -2742,10 +2741,13 @@ name = "zksync_consensus_tools"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "clap",
  "prost",
  "rand 0.8.5",
+ "rocksdb",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",

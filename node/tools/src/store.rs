@@ -2,7 +2,7 @@
 //! chain of blocks, not a tree (assuming we have all blocks and not have any gap). It allows for basic functionality like inserting a block,
 //! getting a block, checking if a block is contained in the DB. We also store the head of the chain. Storing it explicitly allows us to fetch
 //! the current head quickly.
-use crate::{BlockStoreState, PersistentBlockStore, ReplicaState, ReplicaStore};
+use zksync_consensus_storage::{BlockStoreState, PersistentBlockStore, ReplicaState, ReplicaStore};
 use anyhow::Context as _;
 use rocksdb::{Direction, IteratorMode, ReadOptions};
 use std::sync::Arc;
@@ -52,21 +52,21 @@ impl DatabaseKey {
 ///
 /// - An append-only database of finalized blocks.
 /// - A backup of the consensus replica state.
-pub struct Store(RwLock<rocksdb::DB>);
+#[derive(Clone)]
+pub(crate) struct RocksDB(Arc<RwLock<rocksdb::DB>>);
 
-impl Store {
+impl RocksDB {
     /// Create a new Storage. It first tries to open an existing database, and if that fails it just creates a
     /// a new one. We need the genesis block of the chain as input.
-    pub async fn new(path: &Path) -> ctx::Result<Self> {
+    pub(crate) async fn open(path: &Path) -> ctx::Result<Self> {
         let mut options = rocksdb::Options::default();
         options.create_missing_column_families(true);
         options.create_if_missing(true);
-        Ok(Self(RwLock::new(
+        Ok(Self(Arc::new(RwLock::new(
             scope::wait_blocking(|| {
                 rocksdb::DB::open(&options, path).context("Failed opening RocksDB")
-            })
-            .await?,
-        )))
+            }).await?,
+        ))))
     }
 
     fn state_blocking(&self) -> anyhow::Result<Option<BlockStoreState>> {
@@ -99,14 +99,14 @@ impl Store {
     }
 }
 
-impl fmt::Debug for Store {
+impl fmt::Debug for RocksDB {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str("RocksDB")
     }
 }
 
 #[async_trait::async_trait]
-impl PersistentBlockStore for Arc<Store> {
+impl PersistentBlockStore for RocksDB {
     async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<BlockStoreState>> {
         Ok(scope::wait_blocking(|| self.state_blocking()).await?)
     }
@@ -132,7 +132,7 @@ impl PersistentBlockStore for Arc<Store> {
         _ctx: &ctx::Ctx,
         block: &validator::FinalBlock,
     ) -> ctx::Result<()> {
-        Ok(scope::wait_blocking(|| {
+        scope::wait_blocking(|| {
             let db = self.0.write().unwrap();
             let block_number = block.header().number;
             let mut write_batch = rocksdb::WriteBatch::default();
@@ -143,14 +143,13 @@ impl PersistentBlockStore for Arc<Store> {
             // Commit the transaction.
             db.write(write_batch)
                 .context("Failed writing block to database")?;
-            anyhow::Ok(())
-        })
-        .await?)
+            Ok(())
+        }).await.wrap(block.header().number)
     }
 }
 
 #[async_trait::async_trait]
-impl ReplicaStore for Arc<Store> {
+impl ReplicaStore for RocksDB {
     async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>> {
         Ok(scope::wait_blocking(|| {
             let Some(raw_state) = self

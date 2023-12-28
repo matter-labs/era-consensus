@@ -5,8 +5,6 @@
 mod block_store;
 pub mod proto;
 mod replica_store;
-#[cfg(feature = "rocksdb")]
-pub mod rocksdb;
 pub mod testonly;
 #[cfg(test)]
 mod tests;

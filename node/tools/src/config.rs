@@ -1,5 +1,5 @@
 //! Node configuration.
-use crate::proto;
+use crate::{proto,store};
 use anyhow::Context as _;
 use std::{
     collections::{HashMap, HashSet},
@@ -12,7 +12,7 @@ use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BlockStore, PersistentBlockStore,rocksdb};
+use zksync_consensus_storage::{BlockStore, PersistentBlockStore};
 use zksync_protobuf::{required, ProtoFmt};
 
 /// Decodes a proto message from json for arbitrary ProtoFmt.
@@ -166,7 +166,7 @@ impl<'a> ConfigPaths<'a> {
 
 impl Configs {
     pub async fn make_executor(&self, ctx: &ctx::Ctx) -> anyhow::Result<executor::Executor> {
-        let store = Arc::new(rocksdb::Store::new(&self.database).await?);
+        let store = store::RocksDB::open(&self.database).await?;
         // Store genesis if db is empty. 
         if store.state(ctx).await?.is_none() {
             store.store_next_block(ctx,&self.app.genesis_block).await.context("store_next_block()")?;
