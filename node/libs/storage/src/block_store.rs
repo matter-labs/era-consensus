@@ -196,23 +196,15 @@ impl BlockStore {
         Ok(())
     }
 
-    /// Inserts a block to cache and synchronously waits for the block
-    /// to be stored persistently.
-    #[tracing::instrument(level = "debug", skip(self))]
-    pub async fn store_block(
-        &self,
-        ctx: &ctx::Ctx,
-        block: validator::FinalBlock,
-    ) -> ctx::OrCanceled<()> {
-        let number = block.header().number;
-        self.queue_block(ctx, block).await?;
+    /// Waits until the given block is stored persistently. 
+    pub async fn wait_until_stored(&self, ctx: &ctx::Ctx, number: validator::BlockNumber) -> ctx::OrCanceled<()> {
         sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
             inner.persisted.contains(number)
         })
         .await?;
         Ok(())
     }
-
+    
     /// Subscribes to the `BlockStoreState` changes.
     /// Note that this state includes both cache AND persistently
     /// stored blocks.

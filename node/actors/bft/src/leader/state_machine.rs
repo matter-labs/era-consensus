@@ -159,9 +159,11 @@ impl StateMachine {
             Some(proposal) if proposal != highest_qc.message.proposal => (proposal, None),
             // The previous block was finalized, so we can propose a new block.
             _ => {
+                // Defensively assume that PayloadManager cannot propose until the previous block is stored.
+                cfg.block_store.wait_until_stored(ctx,highest_qc.header().number).await?;
                 let payload = cfg
                     .payload_manager
-                    .propose(ctx, highest_qc.message.proposal.number.next())
+                    .propose(ctx, highest_qc.header().number.next())
                     .await?;
                 metrics::METRICS
                     .leader_proposal_payload_size

@@ -80,6 +80,9 @@ impl fmt::Display for BlockNumber {
 pub struct BlockHeaderHash(pub(crate) Keccak256);
 
 impl BlockHeaderHash {
+    /// Constant that the parent of the genesis block should be set to.
+    pub fn genesis_parent() -> Self { Self(Keccak256::default()) }
+
     /// Interprets the specified `bytes` as a block header hash digest (i.e., a reverse operation to [`Self::as_bytes()`]).
     /// It is caller's responsibility to ensure that `bytes` are actually a block header hash digest.
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
@@ -133,7 +136,7 @@ impl BlockHeader {
     /// Creates a genesis block.
     pub fn genesis(payload: PayloadHash, number: BlockNumber) -> Self {
         Self {
-            parent: BlockHeaderHash(Keccak256::default()),
+            parent: BlockHeaderHash::genesis_parent(),
             number,
             payload,
         }
