@@ -268,7 +268,11 @@ impl StateMachine {
 
                 // Payload should be valid.
                 // Defensively assume that PayloadManager cannot verify proposal until the previous block is stored.
-                self.config.block_store.wait_until_stored(ctx,message.proposal.number.prev()).await.map_err(ctx::Error::Canceled)?;
+                self.config
+                    .block_store
+                    .wait_until_stored(ctx, highest_qc.header().number)
+                    .await
+                    .map_err(ctx::Error::Canceled)?;
                 if let Err(err) = self
                     .config
                     .payload_manager

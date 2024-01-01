@@ -160,7 +160,9 @@ impl StateMachine {
             // The previous block was finalized, so we can propose a new block.
             _ => {
                 // Defensively assume that PayloadManager cannot propose until the previous block is stored.
-                cfg.block_store.wait_until_stored(ctx,highest_qc.header().number).await?;
+                cfg.block_store
+                    .wait_until_stored(ctx, highest_qc.header().number)
+                    .await?;
                 let payload = cfg
                     .payload_manager
                     .propose(ctx, highest_qc.header().number.next())

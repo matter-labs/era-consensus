@@ -15,6 +15,16 @@ pub struct ValidatorNode {
     pub validator: ValidatorConfig,
 }
 
+/// Creates a new full node and configures this validator to accept incoming connections from it.
+pub fn connect_full_node(rng: &mut impl Rng, node: &mut Config) -> Config {
+    let mut new = node.clone();
+    new.server_addr = *net::tcp::testonly::reserve_listener();
+    new.node_key = rng.gen();
+    new.gossip_static_outbound = [(node.node_key.public(), node.server_addr)].into();
+    node.gossip_static_inbound.insert(new.node_key.public());
+    new
+}
+
 impl ValidatorNode {
     /// Generates a validator config for a network with a single validator.
     pub fn for_single_validator(rng: &mut impl Rng) -> Self {
@@ -32,17 +42,5 @@ impl ValidatorNode {
             },
             validator,
         }
-    }
-
-    /// Creates a new full node and configures this validator to accept incoming connections from it.
-    pub fn connect_full_node(&mut self, rng: &mut impl Rng) -> Config {
-        let mut node = self.node.clone();
-        node.server_addr = *net::tcp::testonly::reserve_listener();
-        node.node_key = rng.gen();
-        node.gossip_static_outbound = [(self.node.node_key.public(), self.node.server_addr)].into();
-        self.node
-            .gossip_static_inbound
-            .insert(node.node_key.public());
-        node
     }
 }

@@ -1,7 +1,7 @@
 //! High-level tests for `Executor`.
 
 use super::*;
-use crate::testonly::ValidatorNode;
+use crate::testonly::{connect_full_node, ValidatorNode};
 use rand::Rng;
 use std::iter;
 use test_casing::test_casing;
@@ -93,7 +93,7 @@ async fn executing_validator_and_full_node() {
     let rng = &mut ctx.rng();
 
     let mut validator = ValidatorNode::for_single_validator(rng);
-    let full_node = validator.connect_full_node(rng);
+    let full_node = connect_full_node(rng, &mut validator.node);
 
     let genesis_block = validator.gen_blocks(rng).next().unwrap();
     let (validator_storage, validator_runner) = make_store(ctx, genesis_block.clone()).await;
@@ -126,7 +126,7 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
     let rng = &mut ctx.rng();
 
     let mut validator = ValidatorNode::for_single_validator(rng);
-    let full_node = validator.connect_full_node(rng);
+    let full_node = connect_full_node(rng, &mut validator.node);
 
     let blocks: Vec<_> = validator.gen_blocks(rng).take(11).collect();
     let (validator_storage, validator_runner) = make_store(ctx, blocks[0].clone()).await;

@@ -81,7 +81,9 @@ pub struct BlockHeaderHash(pub(crate) Keccak256);
 
 impl BlockHeaderHash {
     /// Constant that the parent of the genesis block should be set to.
-    pub fn genesis_parent() -> Self { Self(Keccak256::default()) }
+    pub fn genesis_parent() -> Self {
+        Self(Keccak256::default())
+    }
 
     /// Interprets the specified `bytes` as a block header hash digest (i.e., a reverse operation to [`Self::as_bytes()`]).
     /// It is caller's responsibility to ensure that `bytes` are actually a block header hash digest.

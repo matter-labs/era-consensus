@@ -196,15 +196,19 @@ impl BlockStore {
         Ok(())
     }
 
-    /// Waits until the given block is stored persistently. 
-    pub async fn wait_until_stored(&self, ctx: &ctx::Ctx, number: validator::BlockNumber) -> ctx::OrCanceled<()> {
+    /// Waits until the given block is stored persistently.
+    pub async fn wait_until_stored(
+        &self,
+        ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+    ) -> ctx::OrCanceled<()> {
         sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
             inner.persisted.contains(number)
         })
         .await?;
         Ok(())
     }
-    
+
     /// Subscribes to the `BlockStoreState` changes.
     /// Note that this state includes both cache AND persistently
     /// stored blocks.

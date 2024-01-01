@@ -34,9 +34,15 @@ impl StateMachine {
             "Finalized a block!\nFinal block: {:#?}",
             block.header().hash()
         );
-        self.config.block_store.queue_block(ctx, block.clone()).await?;
+        self.config
+            .block_store
+            .queue_block(ctx, block.clone())
+            .await?;
         // For availability, replica should not proceed until it stores the block persistently.
-        self.config.block_store.wait_until_stored(ctx, block.header().number).await?;
+        self.config
+            .block_store
+            .wait_until_stored(ctx, block.header().number)
+            .await?;
 
         let number_metric = &crate::metrics::METRICS.finalized_block_number;
         let current_number = number_metric.get();
