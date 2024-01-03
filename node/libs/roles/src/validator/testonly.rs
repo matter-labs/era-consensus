@@ -109,6 +109,8 @@ impl PrepareQC {
 
 impl CommitQC {
     /// Creates a new CommitQC from a list of *signed* replica Commit messages and the current validator set.
+    /// * `signed_messages` - A list of valid `ReplicaCommit` signed messages. Must contain at least one item.
+    /// * `validators` - The validator set.
     pub fn from(
         signed_messages: &[Signed<ReplicaCommit>],
         validators: &ValidatorSet,

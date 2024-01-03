@@ -191,6 +191,9 @@ impl PrepareQC {
     }
 
     /// Add a validator's signed message.
+    /// * `signed_message` - A valid signed `ReplicaPrepare` message.
+    /// * `validator_index` - The signer index in the validator set.
+    /// * `validator_set` - The validator set.
     pub fn add(
         &mut self,
         signed_message: &Signed<ReplicaPrepare>,
@@ -292,6 +295,8 @@ impl CommitQC {
     }
 
     /// Add a validator's signature.
+    /// * `sig` - A valid signature.
+    /// * `validator_index` - The signer index in the validator set.
     pub fn add(&mut self, sig: &Signature, validator_index: usize) {
         self.signers.0.set(validator_index, true);
         self.signature.add(sig);
