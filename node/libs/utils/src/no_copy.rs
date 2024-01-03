@@ -3,7 +3,7 @@
 use std::ops;
 
 /// No-copy wrapper allowing to carry a `Copy` type into a closure or an `async` block.
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct NoCopy<T>(T);
 
 impl<T: Copy> NoCopy<T> {
