@@ -183,7 +183,7 @@ async fn getting_blocks() {
     let protocol_version = validator::ProtocolVersion::EARLIEST;
     let genesis_block = make_genesis_block(rng, protocol_version);
 
-    let (storage, runner) = make_store(ctx, genesis_block.clone()).await; 
+    let (storage, runner) = make_store(ctx, genesis_block.clone()).await;
     let (actor_pipe, dispatcher_pipe) = pipe::new();
 
     let cfg: Config = rng.gen();

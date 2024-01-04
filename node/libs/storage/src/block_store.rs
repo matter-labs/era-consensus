@@ -104,7 +104,7 @@ impl BlockStore {
     /// Constructs a BlockStore.
     /// BlockStore takes ownership of the passed PersistentBlockStore,
     /// i.e. caller should modify the underlying persistent storage
-    /// (add/remove blocks) ONLY through the constructed BlockStore.
+    /// ONLY through the constructed BlockStore.
     pub async fn new(
         ctx: &ctx::Ctx,
         persistent: Box<dyn PersistentBlockStore>,
@@ -187,7 +187,7 @@ impl BlockStore {
             inner.queue.push_back(block);
             true
         });
-        self.wait_until_stored(ctx,number).await
+        self.wait_until_stored(ctx, number).await
     }
 
     /// Waits until the given block is queued to be stored.

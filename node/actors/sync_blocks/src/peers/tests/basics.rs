@@ -80,7 +80,7 @@ impl Test for CancelingBlockRetrieval {
             .unwrap();
 
         // Check that the actor has sent a `get_block` request to the peer
-        let io::OutputMessage::Network(..) = message_receiver.recv(ctx).await?; 
+        let io::OutputMessage::Network(..) = message_receiver.recv(ctx).await?;
 
         // Emulate receiving block using external means.
         storage
@@ -257,11 +257,13 @@ impl Test for DisconnectingPeer {
         // Drop the response sender emulating peer disconnect.
         let msg = message_receiver.recv(ctx).await?;
         {
-            let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock{
-                recipient, number, ..
+            let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
+                recipient,
+                number,
+                ..
             }) = &msg;
-            assert_eq!(recipient,&peer_key);
-            assert_eq!(number,&BlockNumber(1));
+            assert_eq!(recipient, &peer_key);
+            assert_eq!(number, &BlockNumber(1));
         }
         drop(msg);
 

@@ -1,12 +1,12 @@
 //! In-memory storage implementation.
 use crate::{BlockStoreState, PersistentBlockStore, ReplicaState};
-use std::{collections::BTreeMap, sync::Mutex};
+use std::{collections::VecDeque, sync::Mutex};
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
 
 /// In-memory block store.
 #[derive(Debug, Default)]
-pub struct BlockStore(Mutex<BTreeMap<validator::BlockNumber, validator::FinalBlock>>);
+pub struct BlockStore(Mutex<VecDeque<validator::FinalBlock>>);
 
 /// In-memory replica store.
 #[derive(Debug, Default)]
@@ -15,7 +15,7 @@ pub struct ReplicaStore(Mutex<Option<ReplicaState>>);
 impl BlockStore {
     /// Creates a new store containing only the specified `genesis_block`.
     pub fn new(genesis: validator::FinalBlock) -> Self {
-        Self(Mutex::new([(genesis.header().number, genesis)].into()))
+        Self(Mutex::new([genesis].into()))
     }
 }
 
@@ -27,8 +27,8 @@ impl PersistentBlockStore for BlockStore {
             return Ok(None);
         }
         Ok(Some(BlockStoreState {
-            first: blocks.first_key_value().unwrap().1.justification.clone(),
-            last: blocks.last_key_value().unwrap().1.justification.clone(),
+            first: blocks.front().unwrap().justification.clone(),
+            last: blocks.back().unwrap().justification.clone(),
         }))
     }
 
@@ -37,7 +37,12 @@ impl PersistentBlockStore for BlockStore {
         _ctx: &ctx::Ctx,
         number: validator::BlockNumber,
     ) -> ctx::Result<Option<validator::FinalBlock>> {
-        Ok(self.0.lock().unwrap().get(&number).cloned())
+        let blocks = self.0.lock().unwrap();
+        let Some(front) = blocks.front() else {
+            return Ok(None);
+        };
+        let idx = number.0 - front.header().number.0;
+        Ok(blocks.get(idx as usize).cloned())
     }
 
     async fn store_next_block(
@@ -48,12 +53,12 @@ impl PersistentBlockStore for BlockStore {
         let mut blocks = self.0.lock().unwrap();
         let got = block.header().number;
         if !blocks.is_empty() {
-            let want = blocks.last_key_value().unwrap().0.next();
+            let want = blocks.back().unwrap().header().number.next();
             if got != want {
                 return Err(anyhow::anyhow!("got block {got:?}, while expected {want:?}").into());
             }
         }
-        blocks.insert(got, block.clone());
+        blocks.push_back(block.clone());
         Ok(())
     }
 }
