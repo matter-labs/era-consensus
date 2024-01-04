@@ -48,3 +48,14 @@ impl Distribution<AggregateSignature> for Standard {
         AggregateSignature(p)
     }
 }
+
+impl AggregateSignature {
+    /// Generate a new aggregate signature from a list of signatures.
+    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
+        let mut agg = Self::default();
+        for sig in sigs {
+            agg.add(sig);
+        }
+        agg
+    }
+}

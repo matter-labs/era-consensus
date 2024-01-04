@@ -92,12 +92,13 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator set.
-        self.config
-            .validator_set
-            .index(author)
-            .ok_or(Error::NonValidatorSigner {
-                signer: author.clone(),
-            })?;
+        let validator_index =
+            self.config
+                .validator_set
+                .index(author)
+                .ok_or(Error::NonValidatorSigner {
+                    signer: author.clone(),
+                })?;
 
         // If the message is from the "past", we discard it.
         if (message.view, validator::Phase::Prepare) < (self.view, self.phase) {
@@ -148,6 +149,13 @@ impl StateMachine {
 
         // ----------- All checks finished. Now we process the message. --------------
 
+        // We add the message to the incrementally-constructed QC.
+        self.prepare_qcs.entry(message.view).or_default().add(
+            &signed_message,
+            validator_index,
+            &self.config.validator_set,
+        );
+
         // We store the message in our cache.
         self.prepare_message_cache
             .entry(message.view)
@@ -161,15 +169,9 @@ impl StateMachine {
             return Ok(());
         }
 
-        // Get all the replica prepare messages for this view. Note that we consume the
-        // messages here. That's purposeful, so that we don't create a new block proposal
+        // Remove replica prepare messages for this view, so that we don't create a new block proposal
         // for this same view if we receive another replica prepare message after this.
-        let replica_messages: Vec<_> = self
-            .prepare_message_cache
-            .remove(&message.view)
-            .unwrap()
-            .into_values()
-            .collect();
+        self.prepare_message_cache.remove(&message.view);
 
         debug_assert_eq!(num_messages, self.config.threshold());
 
@@ -179,10 +181,9 @@ impl StateMachine {
         self.phase = validator::Phase::Commit;
         self.phase_start = ctx.now();
 
-        // Create the justification for our message.
-        let justification =
-            validator::PrepareQC::from(&replica_messages, &self.config.validator_set)
-                .expect("Couldn't create justification from valid replica messages!");
+        // Consume the incrementally-constructed QC for this view.
+        let justification = self.prepare_qcs.remove(&message.view).unwrap();
+
         self.prepare_qc.send_replace(Some(justification));
         Ok(())
     }

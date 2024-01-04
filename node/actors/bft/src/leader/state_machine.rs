@@ -30,13 +30,17 @@ pub(crate) struct StateMachine {
         validator::ViewNumber,
         HashMap<validator::PublicKey, validator::Signed<validator::ReplicaPrepare>>,
     >,
+    /// Prepare QCs indexed by view number.
+    pub(crate) prepare_qcs: BTreeMap<validator::ViewNumber, validator::PrepareQC>,
+    /// Newest prepare QC composed from the `ReplicaPrepare` messages.
+    pub(crate) prepare_qc: sync::watch::Sender<Option<validator::PrepareQC>>,
     /// A cache of replica commit messages indexed by view number and validator.
     pub(crate) commit_message_cache: BTreeMap<
         validator::ViewNumber,
         HashMap<validator::PublicKey, validator::Signed<validator::ReplicaCommit>>,
     >,
-    /// Newest quorum certificate composed from the `ReplicaPrepare` messages.
-    pub(crate) prepare_qc: sync::watch::Sender<Option<validator::PrepareQC>>,
+    /// Commit QCs indexed by view number.
+    pub(crate) commit_qcs: BTreeMap<validator::ViewNumber, validator::CommitQC>,
 }
 
 impl StateMachine {
@@ -50,8 +54,10 @@ impl StateMachine {
             phase: validator::Phase::Prepare,
             phase_start: ctx.now(),
             prepare_message_cache: BTreeMap::new(),
+            prepare_qcs: BTreeMap::new(),
             commit_message_cache: BTreeMap::new(),
             prepare_qc: sync::watch::channel(None).0,
+            commit_qcs: BTreeMap::new(),
         }
     }
 
@@ -141,7 +147,7 @@ impl StateMachine {
             .find_map(|(h, v)| (*v > 2 * cfg.faulty_replicas()).then_some(h))
             .cloned();
 
-        // Get the highest CommitQC.
+        // Get the highest validator::CommitQC.
         let highest_qc: &validator::CommitQC = justification
             .map
             .keys()

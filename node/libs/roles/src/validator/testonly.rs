@@ -5,6 +5,7 @@ use super::{
     PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature,
     Signed, Signers, ValidatorSet, ViewNumber,
 };
+use anyhow::{bail, Context};
 use bit_vec::BitVec;
 use rand::{
     distributions::{Distribution, Standard},
@@ -57,6 +58,80 @@ pub fn make_block<R: Rng>(
     FinalBlock {
         payload,
         justification,
+    }
+}
+
+impl AggregateSignature {
+    /// Generate a new aggregate signature from a list of signatures.
+    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
+        let mut agg = Self::default();
+        for sig in sigs {
+            agg.add(sig);
+        }
+        agg
+    }
+}
+
+impl PrepareQC {
+    /// Creates a new PrepareQC from a list of *signed* replica Prepare messages and the current validator set.
+    pub fn from(
+        signed_messages: &[Signed<ReplicaPrepare>],
+        validators: &ValidatorSet,
+    ) -> anyhow::Result<Self> {
+        // Get the view number from the messages, they must all be equal.
+        let view = signed_messages
+            .get(0)
+            .context("Empty signed messages vector")?
+            .msg
+            .view;
+
+        // Create the messages map.
+        let mut prepare_qc = PrepareQC::default();
+
+        for signed_message in signed_messages {
+            if signed_message.msg.view != view {
+                bail!("Signed messages aren't all for the same view.");
+            }
+
+            // Get index of the validator in the validator set.
+            let index = validators
+                .index(&signed_message.key)
+                .context("Message signer isn't in the validator set")?;
+
+            prepare_qc.add(signed_message, index, validators);
+        }
+
+        Ok(prepare_qc)
+    }
+}
+
+impl CommitQC {
+    /// Creates a new CommitQC from a list of *signed* replica Commit messages and the current validator set.
+    /// * `signed_messages` - A list of valid `ReplicaCommit` signed messages. Must contain at least one item.
+    /// * `validators` - The validator set.
+    pub fn from(
+        signed_messages: &[Signed<ReplicaCommit>],
+        validators: &ValidatorSet,
+    ) -> anyhow::Result<Self> {
+        // Store the signed messages in a Hashmap.
+        let message = signed_messages[0].msg;
+        let mut commit_qc = CommitQC::new(message, validators);
+
+        for signed_message in signed_messages {
+            // Check that the votes are all for the same message.
+            if signed_message.msg != message {
+                bail!("CommitQC can only be created from votes for the same message.");
+            }
+
+            // Get index of the validator in the validator set.
+            let validator_index = validators
+                .index(&signed_message.key)
+                .context("Message signer isn't in the validator set")?;
+
+            commit_qc.add(&signed_message.sig, validator_index);
+        }
+
+        Ok(commit_qc)
     }
 }
 
