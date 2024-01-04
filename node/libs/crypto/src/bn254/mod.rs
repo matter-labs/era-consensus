@@ -170,15 +170,16 @@ impl Ord for Signature {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AggregateSignature(G1);
 
-impl AggregateSignature {
-    /// Generates an aggregate signature from a list of signatures.
-    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
-        let mut agg = G1Affine::zero().into_projective();
-        for sig in sigs {
-            agg.add_assign(&sig.0)
-        }
+impl Default for AggregateSignature {
+    fn default() -> Self {
+        Self(G1Affine::zero().into_projective())
+    }
+}
 
-        AggregateSignature(agg)
+impl AggregateSignature {
+    /// Add a signature to the aggregation.
+    pub fn add(&mut self, sig: &Signature) {
+        self.0.add_assign(&sig.0)
     }
 
     /// This function is intentionally non-generic and disallow inlining to ensure that compilation optimizations can be effectively applied.

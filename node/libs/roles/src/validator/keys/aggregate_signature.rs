@@ -5,15 +5,13 @@ use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// An aggregate signature from a validator.
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct AggregateSignature(pub(crate) bn254::AggregateSignature);
 
 impl AggregateSignature {
-    /// Generate  a new aggregate signature from a list of signatures.
-    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
-        Self(bn254::AggregateSignature::aggregate(
-            sigs.into_iter().map(|sig| &sig.0).collect::<Vec<_>>(),
-        ))
+    /// Add a signature to the aggregation.
+    pub fn add(&mut self, sig: &Signature) {
+        self.0.add(&sig.0)
     }
 
     /// Verify a list of messages against a list of public keys.
