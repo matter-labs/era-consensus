@@ -148,7 +148,7 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
             // Instead of running consensus on the validator, add the generated blocks manually.
             for block in &blocks {
                 validator_storage
-                    .store_block(ctx, block.clone())
+                    .queue_block(ctx, block.clone())
                     .await
                     .unwrap();
             }
@@ -161,7 +161,7 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
             s.spawn_bg(async {
                 for block in &blocks[1..] {
                     ctx.sleep(time::Duration::milliseconds(500)).await?;
-                    validator_storage.store_block(ctx, block.clone()).await?;
+                    validator_storage.queue_block(ctx, block.clone()).await?;
                 }
                 Ok(())
             });

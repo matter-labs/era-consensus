@@ -158,7 +158,7 @@ async fn subscribing_to_state_updates() {
         let state = state_subscriber.borrow().clone();
         assert_eq!(state.first, genesis_block.justification);
         assert_eq!(state.last, genesis_block.justification);
-        storage.store_block(ctx, block_1.clone()).await.unwrap();
+        storage.queue_block(ctx, block_1.clone()).await.unwrap();
 
         let state = sync::wait_for(ctx, &mut state_subscriber, |state| {
             state.next() > block_1.header().number
@@ -194,7 +194,7 @@ async fn getting_blocks() {
         });
         let blocks: Vec<_> = blocks.take(5).collect();
         for block in &blocks {
-            storage.store_block(ctx, block.clone()).await.unwrap();
+            storage.queue_block(ctx, block.clone()).await.unwrap();
         }
         s.spawn_bg(cfg.run(ctx, actor_pipe, storage.clone()));
         s.spawn_bg(async {

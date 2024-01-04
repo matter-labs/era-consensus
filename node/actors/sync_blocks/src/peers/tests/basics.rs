@@ -69,7 +69,6 @@ impl Test for CancelingBlockRetrieval {
             peer_states,
             storage,
             mut message_receiver,
-            mut events_receiver,
             ..
         } = handles;
 
@@ -80,18 +79,16 @@ impl Test for CancelingBlockRetrieval {
             .unwrap();
 
         // Check that the actor has sent a `get_block` request to the peer
-        let io::OutputMessage::Network(..) = message_receiver.recv(ctx).await?;
+        let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock { mut response, .. }) =
+            message_receiver.recv(ctx).await?;
 
         // Emulate receiving block using external means.
         storage
-            .store_block(ctx, test_validators.final_blocks[1].clone())
+            .queue_block(ctx, test_validators.final_blocks[1].clone())
             .await?;
 
         // Retrieval of the block must be canceled.
-        wait_for_event(ctx, &mut events_receiver, |ev| {
-            matches!(ev, PeerStateEvent::CanceledBlock(BlockNumber(1)))
-        })
-        .await?;
+        response.closed().await;
         Ok(())
     }
 }
@@ -119,7 +116,7 @@ impl Test for FilteringBlockRetrieval {
 
         // Emulate receiving block using external means.
         storage
-            .store_block(ctx, test_validators.final_blocks[1].clone())
+            .queue_block(ctx, test_validators.final_blocks[1].clone())
             .await?;
 
         let rng = &mut ctx.rng();
@@ -395,7 +392,7 @@ impl Test for DownloadingBlocksInGaps {
         scope::run!(ctx, |ctx, s| async {
             for &block_number in &self.local_block_numbers {
                 s.spawn(
-                    storage.store_block(ctx, test_validators.final_blocks[block_number].clone()),
+                    storage.queue_block(ctx, test_validators.final_blocks[block_number].clone()),
                 );
             }
             let rng = &mut ctx.rng();

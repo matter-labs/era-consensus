@@ -289,7 +289,6 @@ impl Test for RequestingBlocksFromMultiplePeers {
                         clock.advance(BLOCK_SLEEP_INTERVAL);
                     }
                     PeerStateEvent::RpcFailed{..} | PeerStateEvent::PeerDropped(_) => { /* Do nothing */ }
-                    _ => panic!("Unexpected peer event: {peer_event:?}"),
                 }
             }
 

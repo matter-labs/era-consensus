@@ -8,8 +8,6 @@ use zksync_consensus_roles::{node, validator::BlockNumber};
 pub(super) enum PeerStateEvent {
     /// Node has successfully downloaded the specified block.
     GotBlock(BlockNumber),
-    /// Block retrieval was canceled due to block getting persisted using other means.
-    CanceledBlock(BlockNumber),
     /// Received an invalid block from the peer.
     RpcFailed {
         peer_key: node::PublicKey,

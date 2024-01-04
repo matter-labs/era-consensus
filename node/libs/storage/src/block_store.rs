@@ -57,7 +57,7 @@ pub trait PersistentBlockStore: fmt::Debug + Send + Sync {
 
 #[derive(Debug)]
 struct Inner {
-    inmem: sync::watch::Sender<BlockStoreState>,
+    queued: sync::watch::Sender<BlockStoreState>,
     persisted: BlockStoreState,
     queue: VecDeque<validator::FinalBlock>,
 }
@@ -119,7 +119,7 @@ impl BlockStore {
         let this = Arc::new(Self {
             persistent,
             inner: sync::watch::channel(Inner {
-                inmem: sync::watch::channel(state.clone()).0,
+                queued: sync::watch::channel(state.clone()).0,
                 persisted: state,
                 queue: VecDeque::new(),
             })
@@ -136,7 +136,7 @@ impl BlockStore {
     ) -> ctx::Result<Option<validator::FinalBlock>> {
         {
             let inner = self.inner.borrow();
-            if !inner.inmem.borrow().contains(number) {
+            if !inner.queued.borrow().contains(number) {
                 return Ok(None);
             }
             if !inner.persisted.contains(number) {
@@ -152,33 +152,26 @@ impl BlockStore {
         ))
     }
 
-    /// Stores a block persistently.
-    /// Since storage always contains a continuous range of blocks,
-    /// `store_block()` synchronously waits until all intermediate blocks
-    /// are stored.
-    ///
+    /// Insert block to a queue to be persisted eventually.
     /// Since persisting a block may take a significant amount of time,
-    /// BlockStore also contains a queue of blocks waiting to be stored.
+    /// BlockStore a contains a queue of blocks waiting to be stored.
     /// store_block() adds a block to the queue as soon as all intermediate
-    /// blocks are queued as well.
-    ///
-    /// Block is available for fetching via `block()` as soon as it is
-    /// queued (i.e. before `store_block()` finishes which waits for
-    /// the block to be stored persistently).
-    pub async fn store_block(
+    /// blocks are queued as well. Queue is unbounded, so it is caller's
+    /// responsibility to manage the queue size.
+    pub async fn queue_block(
         &self,
         ctx: &ctx::Ctx,
         block: validator::FinalBlock,
     ) -> ctx::OrCanceled<()> {
         let number = block.header().number;
-        sync::wait_for(ctx, &mut self.subscribe(), |inmem| inmem.next() >= number).await?;
+        sync::wait_for(ctx, &mut self.subscribe(), |queued| queued.next() >= number).await?;
         self.inner.send_if_modified(|inner| {
-            let modified = inner.inmem.send_if_modified(|inmem| {
+            let modified = inner.queued.send_if_modified(|queued| {
                 // It may happen that the same block is queued by 2 calls.
-                if inmem.next() != number {
+                if queued.next() != number {
                     return false;
                 }
-                inmem.last = block.justification.clone();
+                queued.last = block.justification.clone();
                 true
             });
             if !modified {
@@ -187,7 +180,7 @@ impl BlockStore {
             inner.queue.push_back(block);
             true
         });
-        self.wait_until_stored(ctx, number).await
+        Ok(())
     }
 
     /// Waits until the given block is queued to be stored.
@@ -196,7 +189,7 @@ impl BlockStore {
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
     ) -> ctx::OrCanceled<()> {
-        sync::wait_for(ctx, &mut self.subscribe(), |inmem| inmem.contains(number)).await?;
+        sync::wait_for(ctx, &mut self.subscribe(), |queued| queued.contains(number)).await?;
         Ok(())
     }
 
@@ -216,6 +209,6 @@ impl BlockStore {
     /// Subscribes to the `BlockStoreState` changes.
     /// Note that this state includes both queue AND stored blocks.
     pub fn subscribe(&self) -> sync::watch::Receiver<BlockStoreState> {
-        self.inner.borrow().inmem.subscribe()
+        self.inner.borrow().queued.subscribe()
     }
 }

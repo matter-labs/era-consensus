@@ -123,24 +123,15 @@ impl PeerStates {
     /// Fetches the block from peers and puts it to storage.
     /// Early exits if the block appeared in storage from other source.
     async fn fetch_block(&self, ctx: &ctx::Ctx, block_number: BlockNumber) -> ctx::OrCanceled<()> {
-        scope::run!(ctx, |ctx, s| async {
+        let _ = scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(async {
-                match self.fetch_block_from_peers(ctx, block_number).await {
-                    Ok(block) => {
-                        let _ = self.storage.store_block(ctx, block).await;
-                    }
-                    Err(ctx::Canceled) => {
-                        if let Some(send) = &self.events_sender {
-                            send.send(PeerStateEvent::CanceledBlock(block_number));
-                        }
-                    }
-                }
-                Ok(())
+                let block = self.fetch_block_from_peers(ctx, block_number).await?;
+                self.storage.queue_block(ctx, block).await
             });
             // Cancel fetching as soon as block is queued for storage.
             self.storage.wait_until_queued(ctx, block_number).await
         })
-        .await?;
+        .await;
         self.storage.wait_until_stored(ctx, block_number).await
     }
 
