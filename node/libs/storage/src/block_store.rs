@@ -1,6 +1,6 @@
 //! Defines storage layer for finalized blocks.
 use anyhow::Context as _;
-use std::{collections::BTreeMap, fmt, sync::Arc};
+use std::{collections::VecDeque, fmt, sync::Arc};
 use zksync_concurrency::{ctx, sync};
 use zksync_consensus_roles::validator;
 
@@ -59,8 +59,7 @@ pub trait PersistentBlockStore: fmt::Debug + Send + Sync {
 struct Inner {
     inmem: sync::watch::Sender<BlockStoreState>,
     persisted: BlockStoreState,
-    // TODO: this data structure can be optimized to a VecDeque (or even just a cyclical buffer).
-    queue: BTreeMap<validator::BlockNumber, validator::FinalBlock>,
+    queue: VecDeque<validator::FinalBlock>,
 }
 
 /// A wrapper around a PersistentBlockStore which adds caching blocks in-memory
@@ -83,16 +82,13 @@ impl BlockStoreRunner {
             loop {
                 let block = sync::wait_for(ctx, inner, |inner| !inner.queue.is_empty())
                     .await?
-                    .queue
-                    .first_key_value()
-                    .unwrap()
-                    .1
+                    .queue[0]
                     .clone();
                 self.0.persistent.store_next_block(ctx, &block).await?;
                 self.0.inner.send_modify(|inner| {
                     debug_assert_eq!(inner.persisted.next(), block.header().number);
                     inner.persisted.last = block.justification.clone();
-                    inner.queue.remove(&block.header().number);
+                    inner.queue.pop_front();
                 });
             }
         }
@@ -125,7 +121,7 @@ impl BlockStore {
             inner: sync::watch::channel(Inner {
                 inmem: sync::watch::channel(state.clone()).0,
                 persisted: state,
-                queue: BTreeMap::new(),
+                queue: VecDeque::new(),
             })
             .0,
         });
@@ -143,8 +139,9 @@ impl BlockStore {
             if !inner.inmem.borrow().contains(number) {
                 return Ok(None);
             }
-            if let Some(block) = inner.queue.get(&number) {
-                return Ok(Some(block.clone()));
+            if !inner.persisted.contains(number) {
+                let idx = number.0 - inner.persisted.next().0;
+                return Ok(Some(inner.queue[idx as usize].clone()));
             }
         }
         Ok(Some(
@@ -187,7 +184,7 @@ impl BlockStore {
             if !modified {
                 return false;
             }
-            inner.queue.insert(number, block);
+            inner.queue.push_back(block);
             true
         });
         self.wait_until_stored(ctx,number).await
