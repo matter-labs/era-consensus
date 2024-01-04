@@ -37,7 +37,7 @@ pub(crate) struct PeerStates {
     message_sender: channel::UnboundedSender<io::OutputMessage>,
 
     peers: Mutex<HashMap<node::PublicKey, PeerState>>,
-    highest: sync::watch::Sender<BlockNumber>,
+    highest_peer_block: sync::watch::Sender<BlockNumber>,
     events_sender: Option<channel::UnboundedSender<PeerStateEvent>>,
 }
 
@@ -54,7 +54,7 @@ impl PeerStates {
             message_sender,
 
             peers: Mutex::default(),
-            highest: sync::watch::channel(BlockNumber(0)).0,
+            highest_peer_block: sync::watch::channel(BlockNumber(0)).0,
             events_sender: None,
         }
     }
@@ -67,29 +67,30 @@ impl PeerStates {
         peer: &node::PublicKey,
         state: BlockStoreState,
     ) -> anyhow::Result<()> {
+        use std::collections::hash_map::Entry;
+        
         let last = state.last.header().number;
         anyhow::ensure!(state.first.header().number <= state.last.header().number);
         state
             .last
             .verify(&self.config.validator_set, self.config.consensus_threshold)
             .context("state.last.verify()")?;
-        let mut peers = self.peers.lock().unwrap();
-        let permits = self.config.max_concurrent_blocks_per_peer;
-        use std::collections::hash_map::Entry;
+        let mut peers = self.peers.lock().unwrap(); 
         match peers.entry(peer.clone()) {
             Entry::Occupied(mut e) => e.get_mut().state = state,
             Entry::Vacant(e) => {
+                let permits = self.config.max_concurrent_blocks_per_peer;
                 e.insert(PeerState {
                     state,
                     get_block_semaphore: Arc::new(sync::Semaphore::new(permits)),
                 });
             }
         }
-        self.highest.send_if_modified(|highest| {
-            if *highest >= last {
+        self.highest_peer_block.send_if_modified(|highest_peer_block| {
+            if *highest_peer_block >= last {
                 return false;
             }
-            *highest = last;
+            *highest_peer_block = last;
             true
         });
         Ok(())
@@ -100,9 +101,9 @@ impl PeerStates {
         let sem = sync::Semaphore::new(self.config.max_concurrent_blocks);
         scope::run!(ctx, |ctx, s| async {
             let mut next = self.storage.subscribe().borrow().next();
-            let mut highest = self.highest.subscribe();
+            let mut highest_peer_block = self.highest_peer_block.subscribe();
             loop {
-                sync::wait_for(ctx, &mut highest, |highest| highest >= &next).await?;
+                sync::wait_for(ctx, &mut highest_peer_block, |highest_peer_block| highest_peer_block >= &next).await?;
                 let permit = sync::acquire(ctx, &sem).await?;
                 let block_number = NoCopy::from(next);
                 next = next.next();
@@ -118,31 +119,30 @@ impl PeerStates {
     /// Fetches the block from peers and puts it to storage.
     /// Early exits if the block appeared in storage from other source.
     async fn fetch_block(&self, ctx: &ctx::Ctx, block_number: BlockNumber) -> ctx::OrCanceled<()> {
-        scope::run!(ctx, |ctx, s| async {
+        scope::run!(ctx, |ctx,s| async {
             s.spawn_bg(async {
-                if let Err(ctx::Canceled) = self.fetch_block_from_peers(ctx, block_number).await {
-                    if let Some(send) = &self.events_sender {
-                        send.send(PeerStateEvent::CanceledBlock(block_number));
+                match self.fetch_block_from_peers(ctx, block_number).await {
+                    Ok(block) => { let _ = self.storage.store_block(ctx,block).await; }
+                    Err(ctx::Canceled) => {
+                        if let Some(send) = &self.events_sender {
+                            send.send(PeerStateEvent::CanceledBlock(block_number));
+                        }
                     }
                 }
                 Ok(())
             });
-            // Observe if the block has appeared in storage.
-            sync::wait_for(ctx, &mut self.storage.subscribe(), |state| {
-                state.next() > block_number
-            })
-            .await?;
-            Ok(())
-        })
-        .await
+            // Cancel fetching as soon as block is queued for storage.
+            self.storage.wait_until_queued(ctx,block_number).await
+        }).await?;
+        self.storage.wait_until_stored(ctx,block_number).await
     }
 
-    /// Fetches the block from peers and puts it to storage.
+    /// Fetches the block from peers.
     async fn fetch_block_from_peers(
         &self,
         ctx: &ctx::Ctx,
         number: BlockNumber,
-    ) -> ctx::OrCanceled<()> {
+    ) -> ctx::OrCanceled<FinalBlock> {
         while ctx.is_active() {
             let Some((peer, permit)) = self.try_acquire_peer_permit(number) else {
                 let sleep_interval = self.config.sleep_interval_for_get_block;
@@ -156,7 +156,7 @@ impl PeerStates {
                     if let Some(send) = &self.events_sender {
                         send.send(PeerStateEvent::GotBlock(number));
                     }
-                    return self.storage.queue_block(ctx, block).await;
+                    return Ok(block);
                 }
                 Err(ctx::Error::Canceled(_)) => {
                     tracing::info!(%number, ?peer, "get_block() call canceled");

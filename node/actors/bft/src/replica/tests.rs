@@ -195,7 +195,7 @@ async fn leader_prepare_invalid_payload() {
         util.replica
             .config
             .block_store
-            .queue_block(ctx, block)
+            .store_block(ctx, block)
             .await
             .unwrap();
 

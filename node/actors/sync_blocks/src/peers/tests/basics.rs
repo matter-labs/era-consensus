@@ -2,7 +2,6 @@
 
 use super::*;
 use crate::{io, tests::wait_for_stored_block};
-use zksync_consensus_network as network;
 
 #[derive(Debug)]
 struct UpdatingPeerStateWithSingleBlock;
@@ -81,15 +80,11 @@ impl Test for CancelingBlockRetrieval {
             .unwrap();
 
         // Check that the actor has sent a `get_block` request to the peer
-        let message = message_receiver.recv(ctx).await?;
-        assert_matches!(
-            message,
-            io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock { .. })
-        );
+        let io::OutputMessage::Network(..) = message_receiver.recv(ctx).await?; 
 
         // Emulate receiving block using external means.
         storage
-            .queue_block(ctx, test_validators.final_blocks[1].clone())
+            .store_block(ctx, test_validators.final_blocks[1].clone())
             .await?;
 
         // Retrieval of the block must be canceled.
@@ -124,7 +119,7 @@ impl Test for FilteringBlockRetrieval {
 
         // Emulate receiving block using external means.
         storage
-            .queue_block(ctx, test_validators.final_blocks[1].clone())
+            .store_block(ctx, test_validators.final_blocks[1].clone())
             .await?;
 
         let rng = &mut ctx.rng();
@@ -261,12 +256,13 @@ impl Test for DisconnectingPeer {
 
         // Drop the response sender emulating peer disconnect.
         let msg = message_receiver.recv(ctx).await?;
-        assert_matches!(&msg, io::OutputMessage::Network(network::io::SyncBlocksInputMessage::GetBlock{
-           recipient, number, ..
-        }) => {
+        {
+            let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock{
+                recipient, number, ..
+            }) = &msg;
             assert_eq!(recipient,&peer_key);
             assert_eq!(number,&BlockNumber(1));
-        });
+        }
         drop(msg);
 
         wait_for_event(
@@ -397,7 +393,7 @@ impl Test for DownloadingBlocksInGaps {
         scope::run!(ctx, |ctx, s| async {
             for &block_number in &self.local_block_numbers {
                 s.spawn(
-                    storage.queue_block(ctx, test_validators.final_blocks[block_number].clone()),
+                    storage.store_block(ctx, test_validators.final_blocks[block_number].clone()),
                 );
             }
             let rng = &mut ctx.rng();

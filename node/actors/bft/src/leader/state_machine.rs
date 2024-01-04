@@ -1,4 +1,4 @@
-use crate::{metrics, Config, OutputPipe};
+use crate::{metrics, Config, OutputSender};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
@@ -16,7 +16,7 @@ pub(crate) struct StateMachine {
     /// Consensus configuration and output channel.
     pub(crate) config: Arc<Config>,
     /// Pipe through with leader sends network messages.
-    pub(crate) pipe: OutputPipe,
+    pub(crate) pipe: OutputSender,
     /// The current view number. This might not match the replica's view number, we only have this here
     /// to make the leader advance monotonically in time and stop it from accepting messages from the past.
     pub(crate) view: validator::ViewNumber,
@@ -42,7 +42,7 @@ pub(crate) struct StateMachine {
 impl StateMachine {
     /// Creates a new StateMachine struct.
     #[instrument(level = "trace")]
-    pub fn new(ctx: &ctx::Ctx, config: Arc<Config>, pipe: OutputPipe) -> Self {
+    pub fn new(ctx: &ctx::Ctx, config: Arc<Config>, pipe: OutputSender) -> Self {
         StateMachine {
             config,
             pipe,
@@ -105,7 +105,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         config: &Config,
         mut prepare_qc: sync::watch::Receiver<Option<validator::PrepareQC>>,
-        pipe: &OutputPipe,
+        pipe: &OutputSender,
     ) -> ctx::Result<()> {
         let mut next_view = validator::ViewNumber(0);
         loop {
@@ -126,7 +126,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         cfg: &Config,
         justification: validator::PrepareQC,
-        pipe: &OutputPipe,
+        pipe: &OutputSender,
     ) -> ctx::Result<()> {
         // Get the highest block voted for and check if there's a quorum of votes for it. To have a quorum
         // in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.

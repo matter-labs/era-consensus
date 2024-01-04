@@ -24,7 +24,7 @@ pub(crate) async fn make_store(
     genesis: FinalBlock,
 ) -> (Arc<BlockStore>, BlockStoreRunner) {
     let storage = in_memory::BlockStore::new(genesis);
-    BlockStore::new(ctx, Box::new(storage), 100).await.unwrap()
+    BlockStore::new(ctx, Box::new(storage)).await.unwrap()
 }
 
 pub(crate) async fn wait_for_stored_block(
@@ -158,7 +158,7 @@ async fn subscribing_to_state_updates() {
         let state = state_subscriber.borrow().clone();
         assert_eq!(state.first, genesis_block.justification);
         assert_eq!(state.last, genesis_block.justification);
-        storage.queue_block(ctx, block_1.clone()).await.unwrap();
+        storage.store_block(ctx, block_1.clone()).await.unwrap();
 
         let state = sync::wait_for(ctx, &mut state_subscriber, |state| {
             state.next() > block_1.header().number
@@ -183,20 +183,19 @@ async fn getting_blocks() {
     let protocol_version = validator::ProtocolVersion::EARLIEST;
     let genesis_block = make_genesis_block(rng, protocol_version);
 
-    let (storage, runner) = make_store(ctx, genesis_block.clone()).await;
-    let blocks = iter::successors(Some(genesis_block), |parent| {
-        Some(make_block(rng, parent.header(), protocol_version))
-    });
-    let blocks: Vec<_> = blocks.take(5).collect();
-    for block in &blocks {
-        storage.queue_block(ctx, block.clone()).await.unwrap();
-    }
-
+    let (storage, runner) = make_store(ctx, genesis_block.clone()).await; 
     let (actor_pipe, dispatcher_pipe) = pipe::new();
 
     let cfg: Config = rng.gen();
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(runner.run(ctx));
+        let blocks = iter::successors(Some(genesis_block), |parent| {
+            Some(make_block(rng, parent.header(), protocol_version))
+        });
+        let blocks: Vec<_> = blocks.take(5).collect();
+        for block in &blocks {
+            storage.store_block(ctx, block.clone()).await.unwrap();
+        }
         s.spawn_bg(cfg.run(ctx, actor_pipe, storage.clone()));
         s.spawn_bg(async {
             assert!(ctx.sleep(TEST_TIMEOUT).await.is_err(), "Test timed out");

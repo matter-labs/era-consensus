@@ -38,7 +38,7 @@ impl Test {
         let mut store_runners = vec![];
         for (i, net) in nets.into_iter().enumerate() {
             let block_store = Box::new(in_memory::BlockStore::new(genesis_block.clone()));
-            let (block_store, runner) = BlockStore::new(ctx, block_store, 10).await?;
+            let (block_store, runner) = BlockStore::new(ctx, block_store).await?;
             store_runners.push(runner);
             nodes.push(Node {
                 net,

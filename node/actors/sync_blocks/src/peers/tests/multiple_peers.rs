@@ -42,7 +42,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         assert!(
             first_peer_block_number == BlockNumber(1) || first_peer_block_number == BlockNumber(2)
         );
-        tracing::info!(%first_peer_block_number,"received requrest");
+        tracing::info!(%first_peer_block_number, "received requrest");
 
         let second_peer = rng.gen::<node::SecretKey>().public();
         peer_states
@@ -60,13 +60,13 @@ impl Test for RequestingBlocksFromTwoPeers {
             second_peer_block_number == BlockNumber(1)
                 || second_peer_block_number == BlockNumber(2)
         );
-        tracing::info!(%second_peer_block_number,"received requrest");
+        tracing::info!(%second_peer_block_number, "received requrest");
 
         test_validators.send_block(first_peer_block_number, first_peer_response);
         wait_for_event(
             ctx,
             &mut events_receiver,
-            |ev| matches!(ev,PeerStateEvent::GotBlock(num) if num == first_peer_block_number),
+            |ev| matches!(ev, PeerStateEvent::GotBlock(num) if num == first_peer_block_number),
         )
         .await
         .unwrap();
@@ -90,13 +90,13 @@ impl Test for RequestingBlocksFromTwoPeers {
         assert!(
             first_peer_block_number == BlockNumber(3) || first_peer_block_number == BlockNumber(4)
         );
-        tracing::info!(%first_peer_block_number,"received requrest");
+        tracing::info!(%first_peer_block_number, "received requrest");
 
         test_validators.send_block(first_peer_block_number, first_peer_response);
         wait_for_event(
             ctx,
             &mut events_receiver,
-            |ev| matches!(ev,PeerStateEvent::GotBlock(num) if num == first_peer_block_number),
+            |ev| matches!(ev, PeerStateEvent::GotBlock(num) if num == first_peer_block_number),
         )
         .await
         .unwrap();
@@ -111,13 +111,13 @@ impl Test for RequestingBlocksFromTwoPeers {
         assert!(
             first_peer_block_number == BlockNumber(3) || first_peer_block_number == BlockNumber(4)
         );
-        tracing::info!(%first_peer_block_number,"received requrest");
+        tracing::info!(%first_peer_block_number, "received requrest");
 
         test_validators.send_block(second_peer_block_number, second_peer_response);
         wait_for_event(
             ctx,
             &mut events_receiver,
-            |ev| matches!(ev,PeerStateEvent::GotBlock(num) if num == second_peer_block_number),
+            |ev| matches!(ev, PeerStateEvent::GotBlock(num) if num == second_peer_block_number),
         )
         .await
         .unwrap();
@@ -125,7 +125,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         wait_for_event(
             ctx,
             &mut events_receiver,
-            |ev| matches!(ev,PeerStateEvent::GotBlock(num) if num == first_peer_block_number),
+            |ev| matches!(ev, PeerStateEvent::GotBlock(num) if num == first_peer_block_number),
         )
         .await
         .unwrap();

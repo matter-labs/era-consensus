@@ -52,7 +52,7 @@ impl UTHarness {
 
         // Initialize the storage.
         let block_store = Box::new(in_memory::BlockStore::new(genesis));
-        let (block_store, runner) = BlockStore::new(ctx, block_store, 10).await.unwrap();
+        let (block_store, runner) = BlockStore::new(ctx, block_store).await.unwrap();
         // Create the pipe.
         let (send, recv) = ctx::channel::unbounded();
 

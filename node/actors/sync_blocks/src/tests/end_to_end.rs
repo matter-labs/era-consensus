@@ -31,7 +31,7 @@ impl NodeHandle {
     async fn put_block(&self, ctx: &ctx::Ctx, block_number: BlockNumber) {
         tracing::trace!(%block_number, "Storing new block");
         let block = &self.test_validators.final_blocks[block_number.0 as usize];
-        self.store.queue_block(ctx, block.clone()).await.unwrap();
+        self.store.store_block(ctx, block.clone()).await.unwrap();
     }
 }
 

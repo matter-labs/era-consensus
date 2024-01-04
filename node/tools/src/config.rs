@@ -176,7 +176,7 @@ impl Configs {
                 .await
                 .context("store_next_block()")?;
         }
-        let (block_store, runner) = BlockStore::new(ctx, Box::new(store.clone()), 1000).await?;
+        let (block_store, runner) = BlockStore::new(ctx, Box::new(store.clone())).await?;
         let e = executor::Executor {
             config: executor::Config {
                 server_addr: self.app.server_addr,

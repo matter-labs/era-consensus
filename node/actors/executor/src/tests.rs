@@ -11,7 +11,7 @@ use zksync_consensus_roles::validator::{BlockNumber, FinalBlock, Payload};
 use zksync_consensus_storage::{testonly::in_memory, BlockStore, BlockStoreRunner};
 
 async fn make_store(ctx: &ctx::Ctx, genesis: FinalBlock) -> (Arc<BlockStore>, BlockStoreRunner) {
-    BlockStore::new(ctx, Box::new(in_memory::BlockStore::new(genesis)), 10)
+    BlockStore::new(ctx, Box::new(in_memory::BlockStore::new(genesis)))
         .await
         .unwrap()
 }
@@ -148,7 +148,7 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
             // Instead of running consensus on the validator, add the generated blocks manually.
             for block in &blocks {
                 validator_storage
-                    .queue_block(ctx, block.clone())
+                    .store_block(ctx, block.clone())
                     .await
                     .unwrap();
             }
@@ -161,7 +161,7 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
             s.spawn_bg(async {
                 for block in &blocks[1..] {
                     ctx.sleep(time::Duration::milliseconds(500)).await?;
-                    validator_storage.queue_block(ctx, block.clone()).await?;
+                    validator_storage.store_block(ctx, block.clone()).await?;
                 }
                 Ok(())
             });

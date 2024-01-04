@@ -53,8 +53,8 @@ pub trait PayloadManager: std::fmt::Debug + Send + Sync {
     ) -> ctx::Result<()>;
 }
 
-/// Pipe through which bft actor sends network messages.
-pub(crate) type OutputPipe = ctx::channel::UnboundedSender<OutputMessage>;
+/// Channel through which bft actor sends network messages.
+pub(crate) type OutputSender = ctx::channel::UnboundedSender<OutputMessage>;
 
 impl Config {
     /// Starts the bft actor. It will start running, processing incoming messages and

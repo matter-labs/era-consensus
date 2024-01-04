@@ -60,8 +60,7 @@ struct Inner {
     inmem: sync::watch::Sender<BlockStoreState>,
     persisted: BlockStoreState,
     // TODO: this data structure can be optimized to a VecDeque (or even just a cyclical buffer).
-    cache: BTreeMap<validator::BlockNumber, validator::FinalBlock>,
-    cache_capacity: usize,
+    queue: BTreeMap<validator::BlockNumber, validator::FinalBlock>,
 }
 
 /// A wrapper around a PersistentBlockStore which adds caching blocks in-memory
@@ -82,18 +81,18 @@ impl BlockStoreRunner {
         let res = async {
             let inner = &mut self.0.inner.subscribe();
             loop {
-                let block = sync::wait_for(ctx, inner, |inner| !inner.cache.is_empty())
+                let block = sync::wait_for(ctx, inner, |inner| !inner.queue.is_empty())
                     .await?
-                    .cache
+                    .queue
                     .first_key_value()
                     .unwrap()
                     .1
                     .clone();
                 self.0.persistent.store_next_block(ctx, &block).await?;
                 self.0.inner.send_modify(|inner| {
-                    debug_assert!(inner.persisted.next() == block.header().number);
+                    debug_assert_eq!(inner.persisted.next(), block.header().number);
                     inner.persisted.last = block.justification.clone();
-                    inner.cache.remove(&block.header().number);
+                    inner.queue.remove(&block.header().number);
                 });
             }
         }
@@ -113,11 +112,7 @@ impl BlockStore {
     pub async fn new(
         ctx: &ctx::Ctx,
         persistent: Box<dyn PersistentBlockStore>,
-        cache_capacity: usize,
     ) -> ctx::Result<(Arc<Self>, BlockStoreRunner)> {
-        if cache_capacity < 1 {
-            return Err(anyhow::anyhow!("cache_capacity has to be >=1").into());
-        }
         let state = persistent
             .state(ctx)
             .await?
@@ -130,15 +125,14 @@ impl BlockStore {
             inner: sync::watch::channel(Inner {
                 inmem: sync::watch::channel(state.clone()).0,
                 persisted: state,
-                cache: BTreeMap::new(),
-                cache_capacity,
+                queue: BTreeMap::new(),
             })
             .0,
         });
         Ok((this.clone(), BlockStoreRunner(this)))
     }
 
-    /// Fetches a block (from cache or persistent storage).
+    /// Fetches a block (from queue or persistent storage).
     pub async fn block(
         &self,
         ctx: &ctx::Ctx,
@@ -149,7 +143,7 @@ impl BlockStore {
             if !inner.inmem.borrow().contains(number) {
                 return Ok(None);
             }
-            if let Some(block) = inner.cache.get(&number) {
+            if let Some(block) = inner.queue.get(&number) {
                 return Ok(Some(block.clone()));
             }
         }
@@ -161,23 +155,26 @@ impl BlockStore {
         ))
     }
 
-    /// Inserts a block to cache.
-    /// Since cache is a continuous range of blocks, `queue_block()`
-    /// synchronously waits until all intermediate blocks are added
-    /// to cache AND cache is not full.
-    /// Blocks in cache are asynchronously moved to persistent storage.
-    /// Duplicate blocks are silently discarded.
-    pub async fn queue_block(
+    /// Stores a block persistently.
+    /// Since storage always contains a continuous range of blocks,
+    /// `store_block()` synchronously waits until all intermediate blocks
+    /// are stored.
+    ///
+    /// Since persisting a block may take a significant amount of time,
+    /// BlockStore also contains a queue of blocks waiting to be stored.
+    /// store_block() adds a block to the queue as soon as all intermediate
+    /// blocks are queued as well.
+    ///
+    /// Block is available for fetching via `block()` as soon as it is
+    /// queued (i.e. before `store_block()` finishes which waits for
+    /// the block to be stored persistently).
+    pub async fn store_block(
         &self,
         ctx: &ctx::Ctx,
         block: validator::FinalBlock,
     ) -> ctx::OrCanceled<()> {
         let number = block.header().number;
         sync::wait_for(ctx, &mut self.subscribe(), |inmem| inmem.next() >= number).await?;
-        sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
-            inner.cache.len() < inner.cache_capacity
-        })
-        .await?;
         self.inner.send_if_modified(|inner| {
             let modified = inner.inmem.send_if_modified(|inmem| {
                 // It may happen that the same block is queued by 2 calls.
@@ -190,9 +187,19 @@ impl BlockStore {
             if !modified {
                 return false;
             }
-            inner.cache.insert(number, block);
+            inner.queue.insert(number, block);
             true
         });
+        self.wait_until_stored(ctx,number).await
+    }
+
+    /// Waits until the given block is queued to be stored.
+    pub async fn wait_until_queued(
+        &self,
+        ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+    ) -> ctx::OrCanceled<()> {
+        sync::wait_for(ctx, &mut self.subscribe(), |inmem| inmem.contains(number)).await?;
         Ok(())
     }
 
@@ -210,8 +217,7 @@ impl BlockStore {
     }
 
     /// Subscribes to the `BlockStoreState` changes.
-    /// Note that this state includes both cache AND persistently
-    /// stored blocks.
+    /// Note that this state includes both queue AND stored blocks.
     pub fn subscribe(&self) -> sync::watch::Receiver<BlockStoreState> {
         self.inner.borrow().inmem.subscribe()
     }

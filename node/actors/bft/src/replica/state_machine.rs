@@ -1,4 +1,4 @@
-use crate::{metrics, Config, OutputPipe};
+use crate::{metrics, Config, OutputSender};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
@@ -15,7 +15,7 @@ pub(crate) struct StateMachine {
     /// Consensus configuration and output channel.
     pub(crate) config: Arc<Config>,
     /// Pipe through with replica sends network messages.
-    pub(super) pipe: OutputPipe,
+    pub(super) pipe: OutputSender,
     /// The current view number.
     pub(crate) view: validator::ViewNumber,
     /// The current phase.
@@ -37,7 +37,7 @@ impl StateMachine {
     pub(crate) async fn start(
         ctx: &ctx::Ctx,
         config: Arc<Config>,
-        pipe: OutputPipe,
+        pipe: OutputSender,
     ) -> ctx::Result<Self> {
         let backup = match config.replica_store.state(ctx).await? {
             Some(backup) => backup,
