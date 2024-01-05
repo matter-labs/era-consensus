@@ -14,7 +14,7 @@ use zksync_consensus_storage as storage;
 pub(crate) struct StateMachine {
     /// Consensus configuration and output channel.
     pub(crate) config: Arc<Config>,
-    /// Pipe through with replica sends network messages.
+    /// Pipe through which replica sends network messages.
     pub(super) pipe: OutputSender,
     /// The current view number.
     pub(crate) view: validator::ViewNumber,
