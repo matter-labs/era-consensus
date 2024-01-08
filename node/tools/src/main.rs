@@ -106,11 +106,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         Path::new("database").join(configs.executor.server_addr.to_string())
     };
-    let storage = RocksdbStorage::new(
-        ctx,
-        &configs.executor.genesis_block,
-        &database_path,
-    );
+    let storage = RocksdbStorage::new(ctx, &configs.executor.genesis_block, &database_path);
     let storage = Arc::new(storage.await.context("RocksdbStorage::new()")?);
     let mut executor = Executor::new(ctx, configs.executor, configs.node_key, storage.clone())
         .await
