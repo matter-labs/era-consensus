@@ -170,7 +170,7 @@ impl Configs {
     ) -> ctx::Result<(executor::Executor, BlockStoreRunner)> {
         let store = store::RocksDB::open(&self.database).await?;
         // Store genesis if db is empty.
-        if store.state(ctx).await?.is_none() {
+        if store.is_empty().await? {
             store
                 .store_next_block(ctx, &self.app.genesis_block)
                 .await

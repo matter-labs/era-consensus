@@ -48,8 +48,8 @@ async fn test_reopen_rocksdb() {
     let mut want = vec![];
     for b in testonly::random_blocks(ctx).take(5) {
         let store = store::RocksDB::open(dir.path()).await.unwrap();
-        assert_eq!(want, testonly::dump(ctx, &store).await);
         store.store_next_block(ctx, &b).await.unwrap();
         want.push(b);
+        assert_eq!(want, testonly::dump(ctx, &store).await);
     }
 }

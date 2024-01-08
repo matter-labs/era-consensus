@@ -8,9 +8,9 @@ async fn test_inmemory_block_store() {
     let store = &testonly::in_memory::BlockStore::default();
     let mut want = vec![];
     for block in testonly::random_blocks(ctx).take(5) {
-        assert_eq!(want, testonly::dump(ctx, store).await);
         store.store_next_block(ctx, &block).await.unwrap();
         want.push(block);
+        assert_eq!(want, testonly::dump(ctx, store).await);
     }
 }
 

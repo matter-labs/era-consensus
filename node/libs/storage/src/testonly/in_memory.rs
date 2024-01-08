@@ -1,5 +1,6 @@
 //! In-memory storage implementation.
 use crate::{BlockStoreState, PersistentBlockStore, ReplicaState};
+use anyhow::Context as _;
 use std::{collections::VecDeque, sync::Mutex};
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
@@ -21,28 +22,26 @@ impl BlockStore {
 
 #[async_trait::async_trait]
 impl PersistentBlockStore for BlockStore {
-    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<BlockStoreState>> {
+    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
         let blocks = self.0.lock().unwrap();
         if blocks.is_empty() {
-            return Ok(None);
+            return Err(anyhow::anyhow!("store is empty").into());
         }
-        Ok(Some(BlockStoreState {
+        Ok(BlockStoreState {
             first: blocks.front().unwrap().justification.clone(),
             last: blocks.back().unwrap().justification.clone(),
-        }))
+        })
     }
 
     async fn block(
         &self,
         _ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<Option<validator::FinalBlock>> {
+    ) -> ctx::Result<validator::FinalBlock> {
         let blocks = self.0.lock().unwrap();
-        let Some(front) = blocks.front() else {
-            return Ok(None);
-        };
+        let front = blocks.front().context("not found")?;
         let idx = number.0 - front.header().number.0;
-        Ok(blocks.get(idx as usize).cloned())
+        Ok(blocks.get(idx as usize).context("not found")?.clone())
     }
 
     async fn store_next_block(

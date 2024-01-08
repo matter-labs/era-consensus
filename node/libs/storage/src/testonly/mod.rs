@@ -29,17 +29,15 @@ impl Distribution<ReplicaState> for Standard {
 
 /// Dumps all the blocks stored in `store`.
 pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<validator::FinalBlock> {
-    let Some(range) = store.state(ctx).await.unwrap() else {
-        return vec![];
-    };
+    let range = store.state(ctx).await.unwrap();
     let mut blocks = vec![];
     for n in range.first.header().number.0..range.next().0 {
         let n = validator::BlockNumber(n);
-        let block = store.block(ctx, n).await.unwrap().unwrap();
+        let block = store.block(ctx, n).await.unwrap();
         assert_eq!(block.header().number, n);
         blocks.push(block);
     }
-    assert!(store.block(ctx, range.next()).await.unwrap().is_none());
+    assert!(store.block(ctx, range.next()).await.is_err());
     blocks
 }
 

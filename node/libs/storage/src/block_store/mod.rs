@@ -1,7 +1,6 @@
 //! Defines storage layer for finalized blocks.
-use anyhow::Context as _;
 use std::{collections::VecDeque, fmt, sync::Arc};
-use zksync_concurrency::{ctx, sync};
+use zksync_concurrency::{ctx, error::Wrap as _, sync};
 use zksync_consensus_roles::validator;
 
 mod metrics;
@@ -33,17 +32,19 @@ impl BlockStoreState {
 /// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait::async_trait]
 pub trait PersistentBlockStore: fmt::Debug + Send + Sync {
-    /// Range of blocks avaliable in storage. None iff storage is empty.
+    /// Range of blocks avaliable in storage.
+    /// PersistentBlockStore is expected to always contain at least 1 block.
     /// Consensus code calls this method only once and then tracks the
     /// range of avaliable blocks internally.
-    async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<BlockStoreState>>;
+    async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState>;
 
-    /// Gets a block by its number. Returns None if block is missing.
+    /// Gets a block by its number.
+    /// Returns error if block is missing.
     async fn block(
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<Option<validator::FinalBlock>>;
+    ) -> ctx::Result<validator::FinalBlock>;
 
     /// Persistently store a block.
     /// Implementations are only required to accept a block directly after the current last block,
@@ -124,10 +125,7 @@ impl BlockStore {
         persistent: Box<dyn PersistentBlockStore>,
     ) -> ctx::Result<(Arc<Self>, BlockStoreRunner)> {
         let t = metrics::PERSISTENT_BLOCK_STORE.state_latency.start();
-        let state = persistent
-            .state(ctx)
-            .await?
-            .context("storage empty, expected at least 1 block")?;
+        let state = persistent.state(ctx).await.wrap("persistent.state()")?;
         t.observe();
         if state.first.header().number > state.last.header().number {
             return Err(anyhow::anyhow!("invalid state").into());
@@ -164,16 +162,16 @@ impl BlockStore {
         let block = self
             .persistent
             .block(ctx, number)
-            .await?
-            .context("block disappeared from storage")?;
+            .await
+            .wrap("persistent.block()")?;
         t.observe();
         Ok(Some(block))
     }
 
-    /// Insert block to a queue to be persisted_state eventually.
+    /// Insert block to a queue to be persisted eventually.
     /// Since persisting a block may take a significant amount of time,
-    /// BlockStore a contains a queue of blocks waiting to be stored.
-    /// store_block() adds a block to the queue as soon as all intermediate
+    /// BlockStore contains a queue of blocks waiting to be persisted.
+    /// `queue_block()` adds a block to the queue as soon as all intermediate
     /// blocks are queued_state as well. Queue is unbounded, so it is caller's
     /// responsibility to manage the queue size.
     pub async fn queue_block(

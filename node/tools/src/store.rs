@@ -100,6 +100,13 @@ impl RocksDB {
             last: last.justification,
         }))
     }
+
+    /// Checks if BlockStore is empty.
+    pub(crate) async fn is_empty(&self) -> anyhow::Result<bool> {
+        Ok(scope::wait_blocking(|| self.state_blocking())
+            .await?
+            .is_none())
+    }
 }
 
 impl fmt::Debug for RocksDB {
@@ -110,26 +117,24 @@ impl fmt::Debug for RocksDB {
 
 #[async_trait::async_trait]
 impl PersistentBlockStore for RocksDB {
-    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<BlockStoreState>> {
-        Ok(scope::wait_blocking(|| self.state_blocking()).await?)
+    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
+        Ok(scope::wait_blocking(|| self.state_blocking())
+            .await?
+            .context("storage is empty")?)
     }
 
     async fn block(
         &self,
         _ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<Option<validator::FinalBlock>> {
+    ) -> ctx::Result<validator::FinalBlock> {
         scope::wait_blocking(|| {
             let db = self.0.read().unwrap();
-            let Some(block) = db
+            let block = db
                 .get(DatabaseKey::Block(number).encode_key())
                 .context("RocksDB error")?
-            else {
-                return Ok(None);
-            };
-            Ok(Some(
-                zksync_protobuf::decode(&block).context("failed decoding block")?,
-            ))
+                .context("not found")?;
+            Ok(zksync_protobuf::decode(&block).context("failed decoding block")?)
         })
         .await
         .wrap(number)
