@@ -14,7 +14,6 @@ impl Test for RequestingBlocksFromTwoPeers {
         config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
         config.max_concurrent_blocks = 5;
         config.max_concurrent_blocks_per_peer = 1;
-        // ^ Necessary for blocks numbers in tests to be deterministic
     }
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
@@ -42,7 +41,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         assert!(
             first_peer_block_number == BlockNumber(1) || first_peer_block_number == BlockNumber(2)
         );
-        tracing::info!(%first_peer_block_number, "received requrest");
+        tracing::info!(%first_peer_block_number, "received request");
 
         let second_peer = rng.gen::<node::SecretKey>().public();
         peer_states

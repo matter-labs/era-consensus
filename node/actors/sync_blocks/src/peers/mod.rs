@@ -132,7 +132,7 @@ impl PeerStates {
             self.storage.wait_until_queued(ctx, block_number).await
         })
         .await;
-        self.storage.wait_until_stored(ctx, block_number).await
+        self.storage.wait_until_persisted(ctx, block_number).await
     }
 
     /// Fetches the block from peers.
