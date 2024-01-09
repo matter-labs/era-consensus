@@ -5,7 +5,7 @@ run-node:
 	export RUST_LOG=INFO && cd node-configs/${IP} && cargo run -- --database ./database/${IP} 
 
 node-configs:
-	cargo run --bin localnet_config -- --input-addrs config.txt --output-dir node-configs
+	cargo run --bin localnet_config -- --input-addrs addresses.txt --output-dir node-configs
 
 clean:
 	rm -rf node-configs
