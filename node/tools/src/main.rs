@@ -51,8 +51,8 @@ async fn main() -> anyhow::Result<()> {
     fs::create_dir_all("logs/")?;
     let log_file = fs::File::create("logs/output.log")?;
 
-    // Create the logger for stdout. This will produce human-readable logs for
-    // all events of level INFO or higher.
+    // Create the logger for stdout. This will produce human-readable logs for ERROR events.
+    // To see logs for other events, set the RUST_LOG environment to the desired level.
     let stdout_log = tracing_subscriber::fmt::layer()
         .pretty()
         .with_ansi(std::env::var("NO_COLOR").is_err() && std::io::stdout().is_terminal())
