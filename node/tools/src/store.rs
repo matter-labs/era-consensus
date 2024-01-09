@@ -1,7 +1,4 @@
-//! This module contains the methods to handle an append-only database of finalized blocks. Since we only store finalized blocks, this forms a
-//! chain of blocks, not a tree (assuming we have all blocks and not have any gap). It allows for basic functionality like inserting a block,
-//! getting a block, checking if a block is contained in the DB. We also store the head of the chain. Storing it explicitly allows us to fetch
-//! the current head quickly.
+//! RocksDB-based implementation of PersistentBlockStore and ReplicaStore.
 use anyhow::Context as _;
 use rocksdb::{Direction, IteratorMode, ReadOptions};
 use std::{

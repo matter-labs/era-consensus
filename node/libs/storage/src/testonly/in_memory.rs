@@ -40,7 +40,10 @@ impl PersistentBlockStore for BlockStore {
     ) -> ctx::Result<validator::FinalBlock> {
         let blocks = self.0.lock().unwrap();
         let front = blocks.front().context("not found")?;
-        let idx = number.0 - front.header().number.0;
+        let idx = number
+            .0
+            .checked_sub(front.header().number.0)
+            .context("not found")?;
         Ok(blocks.get(idx as usize).context("not found")?.clone())
     }
 
@@ -51,8 +54,8 @@ impl PersistentBlockStore for BlockStore {
     ) -> ctx::Result<()> {
         let mut blocks = self.0.lock().unwrap();
         let got = block.header().number;
-        if !blocks.is_empty() {
-            let want = blocks.back().unwrap().header().number.next();
+        if let Some(last) = blocks.back() {
+            let want = last.header().number.next();
             if got != want {
                 return Err(anyhow::anyhow!("got block {got:?}, while expected {want:?}").into());
             }

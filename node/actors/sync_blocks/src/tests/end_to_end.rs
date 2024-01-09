@@ -16,14 +16,59 @@ type NetworkDispatcherPipe =
     pipe::DispatcherPipe<network::io::InputMessage, network::io::OutputMessage>;
 
 #[derive(Debug)]
-struct NodeHandle {
+struct Node {
     store: Arc<BlockStore>,
     test_validators: Arc<TestValidators>,
     switch_on_sender: Option<oneshot::Sender<()>>,
     _switch_off_sender: oneshot::Sender<()>,
 }
 
-impl NodeHandle {
+impl Node {
+    async fn new_network(
+        ctx: &ctx::Ctx,
+        node_count: usize,
+        gossip_peers: usize,
+    ) -> (Vec<Node>, Vec<NodeRunner>) {
+        let rng = &mut ctx.rng();
+        let test_validators = Arc::new(TestValidators::new(rng, 4, 20));
+        let mut nodes = vec![];
+        let mut runners = vec![];
+        for net in NetworkInstance::new(rng, node_count, gossip_peers) {
+            let (n, r) = Node::new(ctx, net, test_validators.clone()).await;
+            nodes.push(n);
+            runners.push(r);
+        }
+        (nodes, runners)
+    }
+
+    async fn new(
+        ctx: &ctx::Ctx,
+        mut network: NetworkInstance,
+        test_validators: Arc<TestValidators>,
+    ) -> (Self, NodeRunner) {
+        let (store, store_runner) = make_store(ctx, test_validators.final_blocks[0].clone()).await;
+        let (switch_on_sender, switch_on_receiver) = oneshot::channel();
+        let (switch_off_sender, switch_off_receiver) = oneshot::channel();
+
+        network.disable_gossip_pings();
+
+        let runner = NodeRunner {
+            network,
+            store: store.clone(),
+            store_runner,
+            test_validators: test_validators.clone(),
+            switch_on_receiver,
+            switch_off_receiver,
+        };
+        let this = Self {
+            store,
+            test_validators,
+            switch_on_sender: Some(switch_on_sender),
+            _switch_off_sender: switch_off_sender,
+        };
+        (this, runner)
+    }
+
     fn switch_on(&mut self) {
         self.switch_on_sender.take();
     }
@@ -35,7 +80,8 @@ impl NodeHandle {
     }
 }
 
-struct Node {
+#[must_use]
+struct NodeRunner {
     network: NetworkInstance,
     store: Arc<BlockStore>,
     store_runner: BlockStoreRunner,
@@ -44,10 +90,10 @@ struct Node {
     switch_off_receiver: oneshot::Receiver<()>,
 }
 
-impl fmt::Debug for Node {
+impl fmt::Debug for NodeRunner {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
-            .debug_struct("Node")
+            .debug_struct("NodeRunner")
             .field("key", &self.key())
             .finish()
     }
@@ -60,52 +106,7 @@ fn to_sync_state(state: BlockStoreState) -> SyncState {
     }
 }
 
-impl Node {
-    async fn new_network(
-        ctx: &ctx::Ctx,
-        node_count: usize,
-        gossip_peers: usize,
-    ) -> (Vec<NodeHandle>, Vec<Node>) {
-        let rng = &mut ctx.rng();
-        let test_validators = Arc::new(TestValidators::new(rng, 4, 20));
-        let mut nodes = vec![];
-        let mut node_handles = vec![];
-        for net in NetworkInstance::new(rng, node_count, gossip_peers) {
-            let (nh, n) = Node::new(ctx, net, test_validators.clone()).await;
-            nodes.push(n);
-            node_handles.push(nh);
-        }
-        (node_handles, nodes)
-    }
-
-    async fn new(
-        ctx: &ctx::Ctx,
-        mut network: NetworkInstance,
-        test_validators: Arc<TestValidators>,
-    ) -> (NodeHandle, Node) {
-        let (store, store_runner) = make_store(ctx, test_validators.final_blocks[0].clone()).await;
-        let (switch_on_sender, switch_on_receiver) = oneshot::channel();
-        let (switch_off_sender, switch_off_receiver) = oneshot::channel();
-
-        network.disable_gossip_pings();
-
-        let this = Self {
-            network,
-            store: store.clone(),
-            store_runner,
-            test_validators: test_validators.clone(),
-            switch_on_receiver,
-            switch_off_receiver,
-        };
-        let handle = NodeHandle {
-            store,
-            test_validators,
-            switch_on_sender: Some(switch_on_sender),
-            _switch_off_sender: switch_off_sender,
-        };
-        (handle, this)
-    }
-
+impl NodeRunner {
     fn key(&self) -> node::PublicKey {
         self.network.gossip_config().key.public()
     }
@@ -196,7 +197,7 @@ impl Node {
 trait GossipNetworkTest: fmt::Debug + Send {
     /// Returns the number of nodes in the gossip network and number of peers for each node.
     fn network_params(&self) -> (usize, usize);
-    async fn test(self, ctx: &ctx::Ctx, network: Vec<NodeHandle>) -> anyhow::Result<()>;
+    async fn test(self, ctx: &ctx::Ctx, network: Vec<Node>) -> anyhow::Result<()>;
 }
 
 #[instrument(level = "trace")]
@@ -208,20 +209,12 @@ async fn test_sync_blocks<T: GossipNetworkTest>(test: T) {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(CLOCK_SPEEDUP as f64))
         .with_timeout(TEST_TIMEOUT * CLOCK_SPEEDUP);
     let (node_count, gossip_peers) = test.network_params();
-    let (network, nodes) = Node::new_network(ctx, node_count, gossip_peers).await;
+    let (nodes, runners) = Node::new_network(ctx, node_count, gossip_peers).await;
     scope::run!(ctx, |ctx, s| async {
-        for (i, node) in nodes.into_iter().enumerate() {
-            s.spawn_bg(
-                async {
-                    let key = node.key();
-                    node.run(ctx).await?;
-                    tracing::trace!(?key, "Node task completed");
-                    Ok(())
-                }
-                .instrument(tracing::info_span!("node", i)),
-            );
+        for (i, runner) in runners.into_iter().enumerate() {
+            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
         }
-        test.test(ctx, network).await
+        test.test(ctx, nodes).await
     })
     .await
     .unwrap();
@@ -239,7 +232,7 @@ impl GossipNetworkTest for BasicSynchronization {
         (self.node_count, self.gossip_peers)
     }
 
-    async fn test(self, ctx: &ctx::Ctx, mut node_handles: Vec<NodeHandle>) -> anyhow::Result<()> {
+    async fn test(self, ctx: &ctx::Ctx, mut node_handles: Vec<Node>) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
 
         // Check initial node states.
@@ -314,7 +307,7 @@ impl GossipNetworkTest for SwitchingOffNodes {
         (self.node_count, self.node_count / 2)
     }
 
-    async fn test(self, ctx: &ctx::Ctx, mut node_handles: Vec<NodeHandle>) -> anyhow::Result<()> {
+    async fn test(self, ctx: &ctx::Ctx, mut node_handles: Vec<Node>) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
 
         for node_handle in &mut node_handles {
@@ -363,7 +356,7 @@ impl GossipNetworkTest for SwitchingOnNodes {
         (self.node_count, self.node_count / 2)
     }
 
-    async fn test(self, ctx: &ctx::Ctx, mut node_handles: Vec<NodeHandle>) -> anyhow::Result<()> {
+    async fn test(self, ctx: &ctx::Ctx, mut node_handles: Vec<Node>) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
 
         let mut switched_on_nodes = Vec::with_capacity(self.node_count);

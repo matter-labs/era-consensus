@@ -33,13 +33,16 @@ impl BlockStoreState {
 #[async_trait::async_trait]
 pub trait PersistentBlockStore: fmt::Debug + Send + Sync {
     /// Range of blocks avaliable in storage.
-    /// PersistentBlockStore is expected to always contain at least 1 block.
+    /// PersistentBlockStore is expected to always contain at least 1 block,
+    /// and be append-only storage (never delete blocks).
     /// Consensus code calls this method only once and then tracks the
     /// range of avaliable blocks internally.
     async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState>;
 
     /// Gets a block by its number.
     /// Returns error if block is missing.
+    /// Caller is expected to know the state (by calling `state()`)
+    /// and only request the blocks contained in the state.
     async fn block(
         &self,
         ctx: &ctx::Ctx,
@@ -154,8 +157,10 @@ impl BlockStore {
                 return Ok(None);
             }
             if !inner.persisted_state.contains(number) {
+                // Subtraction is safe, because we know that the block
+                // is in inner.queue at this point.
                 let idx = number.0 - inner.persisted_state.next().0;
-                return Ok(Some(inner.queue[idx as usize].clone()));
+                return Ok(inner.queue.get(idx as usize).cloned());
             }
         }
         let t = metrics::PERSISTENT_BLOCK_STORE.block_latency.start();
