@@ -1,5 +1,5 @@
 .PHONY: run-node node-configs clean
-IP?=127.0.0.1:8000
+IP?=127.0.0.1:3054
 
 run-node:
 	export RUST_LOG=INFO && cd node-configs/${IP} && cargo run -- --database ./database/${IP} 
