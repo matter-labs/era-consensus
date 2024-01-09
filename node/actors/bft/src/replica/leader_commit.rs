@@ -80,9 +80,9 @@ impl StateMachine {
         }
 
         // Check that it comes from the correct leader.
-        if author != &self.inner.view_leader(view) {
+        if author != &self.config.view_leader(view) {
             return Err(Error::InvalidLeader {
-                correct_leader: self.inner.view_leader(view),
+                correct_leader: self.config.view_leader(view),
                 received_leader: author.clone(),
             });
         }
@@ -105,7 +105,7 @@ impl StateMachine {
         // Verify the QuorumCertificate.
         message
             .justification
-            .verify(&self.inner.validator_set, self.inner.threshold())
+            .verify(&self.config.validator_set, self.config.threshold())
             .map_err(Error::InvalidJustification)?;
 
         // ----------- All checks finished. Now we process the message. --------------

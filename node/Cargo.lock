@@ -2643,7 +2643,6 @@ name = "zksync_consensus_executor"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "prost",
  "rand 0.8.5",
  "test-casing",
  "tokio",
@@ -2657,8 +2656,6 @@ dependencies = [
  "zksync_consensus_storage",
  "zksync_consensus_sync_blocks",
  "zksync_consensus_utils",
- "zksync_protobuf",
- "zksync_protobuf_build",
 ]
 
 [[package]]
@@ -2715,12 +2712,12 @@ dependencies = [
  "async-trait",
  "prost",
  "rand 0.8.5",
- "rocksdb",
  "tempfile",
  "test-casing",
  "thiserror",
  "tokio",
  "tracing",
+ "vise",
  "zksync_concurrency",
  "zksync_consensus_roles",
  "zksync_protobuf",
@@ -2751,9 +2748,13 @@ name = "zksync_consensus_tools"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "clap",
+ "prost",
  "rand 0.8.5",
+ "rocksdb",
  "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
  "tracing-subscriber",
@@ -2766,6 +2767,7 @@ dependencies = [
  "zksync_consensus_storage",
  "zksync_consensus_utils",
  "zksync_protobuf",
+ "zksync_protobuf_build",
 ]
 
 [[package]]

@@ -1,4 +1,4 @@
-use crate::{metrics, ConsensusInner};
+use crate::{metrics, Config, OutputSender};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
@@ -7,14 +7,15 @@ use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, time};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage as storage;
-use zksync_consensus_storage::ReplicaStore;
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
 /// for validating and voting on blocks. When participating in consensus we are always a replica.
 #[derive(Debug)]
 pub(crate) struct StateMachine {
     /// Consensus configuration and output channel.
-    pub(crate) inner: Arc<ConsensusInner>,
+    pub(crate) config: Arc<Config>,
+    /// Pipe through which replica sends network messages.
+    pub(super) pipe: OutputSender,
     /// The current view number.
     pub(crate) view: validator::ViewNumber,
     /// The current phase.
@@ -28,9 +29,6 @@ pub(crate) struct StateMachine {
         BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
     /// The deadline to receive an input message.
     pub(crate) timeout_deadline: time::Deadline,
-    /// A reference to the storage module. We use it to backup the replica state and store
-    /// finalized blocks.
-    pub(crate) storage: ReplicaStore,
 }
 
 impl StateMachine {
@@ -38,10 +36,13 @@ impl StateMachine {
     /// otherwise we initialize the state machine with whatever head block we have.
     pub(crate) async fn start(
         ctx: &ctx::Ctx,
-        inner: Arc<ConsensusInner>,
-        storage: ReplicaStore,
+        config: Arc<Config>,
+        pipe: OutputSender,
     ) -> ctx::Result<Self> {
-        let backup = storage.replica_state(ctx).await?;
+        let backup = match config.replica_store.state(ctx).await? {
+            Some(backup) => backup,
+            None => config.block_store.subscribe().borrow().last.clone().into(),
+        };
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
         for proposal in backup.proposals {
             block_proposal_cache
@@ -51,14 +52,14 @@ impl StateMachine {
         }
 
         let mut this = Self {
-            inner,
+            config,
+            pipe,
             view: backup.view,
             phase: backup.phase,
             high_vote: backup.high_vote,
             high_qc: backup.high_qc,
             block_proposal_cache,
             timeout_deadline: time::Deadline::Infinite,
-            storage,
         };
         // We need to start the replica before processing inputs.
         this.start_new_view(ctx).await.wrap("start_new_view()")?;
@@ -128,8 +129,9 @@ impl StateMachine {
             high_qc: self.high_qc.clone(),
             proposals,
         };
-        self.storage
-            .put_replica_state(ctx, &backup)
+        self.config
+            .replica_store
+            .set_state(ctx, &backup)
             .await
             .wrap("put_replica_state")?;
         Ok(())

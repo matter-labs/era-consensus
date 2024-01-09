@@ -57,7 +57,6 @@ impl ProtoFmt for FinalBlock {
     type Proto = proto::FinalBlock;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            header: read_required(&r.header).context("header")?,
             payload: Payload(required(&r.payload).context("payload")?.clone()),
             justification: read_required(&r.justification).context("justification")?,
         })
@@ -65,7 +64,6 @@ impl ProtoFmt for FinalBlock {
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            header: Some(self.header.build()),
             payload: Some(self.payload.0.clone()),
             justification: Some(self.justification.build()),
         }

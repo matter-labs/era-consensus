@@ -26,7 +26,7 @@ impl StateMachine {
         // Send the replica message to the next leader.
         let output_message = ConsensusInputMessage {
             message: self
-                .inner
+                .config
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaPrepare(
                     validator::ReplicaPrepare {
@@ -36,9 +36,9 @@ impl StateMachine {
                         high_qc: self.high_qc.clone(),
                     },
                 )),
-            recipient: Target::Validator(self.inner.view_leader(next_view)),
+            recipient: Target::Validator(self.config.view_leader(next_view)),
         };
-        self.inner.pipe.send(output_message.into());
+        self.pipe.send(output_message.into());
 
         // Reset the timer.
         self.reset_timer(ctx);

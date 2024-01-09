@@ -1,4 +1,4 @@
-use crate::{metrics, ConsensusInner, PayloadSource};
+use crate::{metrics, Config, OutputSender};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
@@ -7,14 +7,16 @@ use std::{
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::validator::{self, CommitQC, PrepareQC};
+use zksync_consensus_roles::validator;
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
 /// those messages. When participating in consensus we are not the leader most of the time.
 pub(crate) struct StateMachine {
     /// Consensus configuration and output channel.
-    pub(crate) inner: Arc<ConsensusInner>,
+    pub(crate) config: Arc<Config>,
+    /// Pipe through with leader sends network messages.
+    pub(crate) pipe: OutputSender,
     /// The current view number. This might not match the replica's view number, we only have this here
     /// to make the leader advance monotonically in time and stop it from accepting messages from the past.
     pub(crate) view: validator::ViewNumber,
@@ -29,24 +31,25 @@ pub(crate) struct StateMachine {
         HashMap<validator::PublicKey, validator::Signed<validator::ReplicaPrepare>>,
     >,
     /// Prepare QCs indexed by view number.
-    pub(crate) prepare_qcs: BTreeMap<validator::ViewNumber, PrepareQC>,
+    pub(crate) prepare_qcs: BTreeMap<validator::ViewNumber, validator::PrepareQC>,
     /// Newest prepare QC composed from the `ReplicaPrepare` messages.
-    pub(crate) prepare_qc: sync::watch::Sender<Option<PrepareQC>>,
+    pub(crate) prepare_qc: sync::watch::Sender<Option<validator::PrepareQC>>,
     /// A cache of replica commit messages indexed by view number and validator.
     pub(crate) commit_message_cache: BTreeMap<
         validator::ViewNumber,
         HashMap<validator::PublicKey, validator::Signed<validator::ReplicaCommit>>,
     >,
     /// Commit QCs indexed by view number.
-    pub(crate) commit_qcs: BTreeMap<validator::ViewNumber, CommitQC>,
+    pub(crate) commit_qcs: BTreeMap<validator::ViewNumber, validator::CommitQC>,
 }
 
 impl StateMachine {
     /// Creates a new StateMachine struct.
     #[instrument(level = "trace")]
-    pub fn new(ctx: &ctx::Ctx, inner: Arc<ConsensusInner>) -> Self {
+    pub fn new(ctx: &ctx::Ctx, config: Arc<Config>, pipe: OutputSender) -> Self {
         StateMachine {
-            inner,
+            config,
+            pipe,
             view: validator::ViewNumber(0),
             phase: validator::Phase::Prepare,
             phase_start: ctx.now(),
@@ -106,9 +109,9 @@ impl StateMachine {
     /// that the validator doesn't spend time on generating payloads for already expired views.
     pub(crate) async fn run_proposer(
         ctx: &ctx::Ctx,
-        inner: &ConsensusInner,
-        payload_source: &dyn PayloadSource,
-        mut prepare_qc: sync::watch::Receiver<Option<PrepareQC>>,
+        config: &Config,
+        mut prepare_qc: sync::watch::Receiver<Option<validator::PrepareQC>>,
+        pipe: &OutputSender,
     ) -> ctx::Result<()> {
         let mut next_view = validator::ViewNumber(0);
         loop {
@@ -119,7 +122,7 @@ impl StateMachine {
                 continue;
             };
             next_view = prepare_qc.view().next();
-            Self::propose(ctx, inner, payload_source, prepare_qc).await?;
+            Self::propose(ctx, config, prepare_qc, pipe).await?;
         }
     }
 
@@ -127,9 +130,9 @@ impl StateMachine {
     /// Uses `payload_source` to generate a payload if needed.
     pub(crate) async fn propose(
         ctx: &ctx::Ctx,
-        inner: &ConsensusInner,
-        payload_source: &dyn PayloadSource,
-        justification: PrepareQC,
+        cfg: &Config,
+        justification: validator::PrepareQC,
+        pipe: &OutputSender,
     ) -> ctx::Result<()> {
         // Get the highest block voted for and check if there's a quorum of votes for it. To have a quorum
         // in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
@@ -141,11 +144,11 @@ impl StateMachine {
         let highest_vote: Option<validator::BlockHeader> = count
             .iter()
             // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
-            .find_map(|(h, v)| (*v > 2 * inner.faulty_replicas()).then_some(h))
+            .find_map(|(h, v)| (*v > 2 * cfg.faulty_replicas()).then_some(h))
             .cloned();
 
-        // Get the highest CommitQC.
-        let highest_qc: &CommitQC = justification
+        // Get the highest validator::CommitQC.
+        let highest_qc: &validator::CommitQC = justification
             .map
             .keys()
             .map(|s| &s.high_qc)
@@ -162,8 +165,13 @@ impl StateMachine {
             Some(proposal) if proposal != highest_qc.message.proposal => (proposal, None),
             // The previous block was finalized, so we can propose a new block.
             _ => {
-                let payload = payload_source
-                    .propose(ctx, highest_qc.message.proposal.number.next())
+                // Defensively assume that PayloadManager cannot propose until the previous block is stored.
+                cfg.block_store
+                    .wait_until_persisted(ctx, highest_qc.header().number)
+                    .await?;
+                let payload = cfg
+                    .payload_manager
+                    .propose(ctx, highest_qc.header().number.next())
                     .await?;
                 metrics::METRICS
                     .leader_proposal_payload_size
@@ -177,7 +185,7 @@ impl StateMachine {
         // ----------- Prepare our message and send it --------------
 
         // Broadcast the leader prepare message to all replicas (ourselves included).
-        let msg = inner
+        let msg = cfg
             .secret_key
             .sign_msg(validator::ConsensusMsg::LeaderPrepare(
                 validator::LeaderPrepare {
@@ -188,7 +196,7 @@ impl StateMachine {
                     justification,
                 },
             ));
-        inner.pipe.send(
+        pipe.send(
             ConsensusInputMessage {
                 message: msg,
                 recipient: Target::Broadcast,

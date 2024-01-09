@@ -22,9 +22,8 @@ message BlockHeader {
 }
 
 message FinalBlock {
-  optional BlockHeader header = 1; // required
-  optional bytes payload = 2; // required
-  optional CommitQC justification = 3; // required
+  optional bytes payload = 1; // required
+  optional CommitQC justification = 2; // required
 }
 
 message ConsensusMsg {

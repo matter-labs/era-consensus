@@ -1,5 +1,5 @@
 use super::StateMachine;
-use crate::inner::ConsensusInner;
+use crate::Config;
 use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
@@ -151,9 +151,9 @@ impl StateMachine {
         }
 
         // Check that it comes from the correct leader.
-        if author != &self.inner.view_leader(view) {
+        if author != &self.config.view_leader(view) {
             return Err(Error::InvalidLeader {
-                correct_leader: self.inner.view_leader(view),
+                correct_leader: self.config.view_leader(view),
                 received_leader: author.clone(),
             });
         }
@@ -175,7 +175,7 @@ impl StateMachine {
         // Verify the PrepareQC.
         message
             .justification
-            .verify(view, &self.inner.validator_set, self.inner.threshold())
+            .verify(view, &self.config.validator_set, self.config.threshold())
             .map_err(Error::InvalidPrepareQC)?;
 
         // Get the highest block voted and check if there's a quorum of votes for it. To have a quorum
@@ -189,7 +189,7 @@ impl StateMachine {
         let highest_vote: Option<validator::BlockHeader> = vote_count
             .into_iter()
             // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
-            .find(|(_, v)| *v > 2 * self.inner.faulty_replicas())
+            .find(|(_, v)| *v > 2 * self.config.faulty_replicas())
             .map(|(h, _)| h);
 
         // Get the highest CommitQC and verify it.
@@ -203,7 +203,7 @@ impl StateMachine {
             .clone();
 
         highest_qc
-            .verify(&self.inner.validator_set, self.inner.threshold())
+            .verify(&self.config.validator_set, self.config.threshold())
             .map_err(Error::InvalidHighQC)?;
 
         // If the high QC is for a future view, we discard the message.
@@ -229,7 +229,7 @@ impl StateMachine {
             // The leader proposed a new block.
             Some(payload) => {
                 // Check that the payload doesn't exceed the maximum size.
-                if payload.0.len() > ConsensusInner::PAYLOAD_MAX_SIZE {
+                if payload.0.len() > Config::PAYLOAD_MAX_SIZE {
                     return Err(Error::ProposalOversizedPayload {
                         payload_size: payload.0.len(),
                         header: message.proposal,
@@ -267,9 +267,16 @@ impl StateMachine {
                 }
 
                 // Payload should be valid.
+                // Defensively assume that PayloadManager cannot verify proposal until the previous block is stored.
+                self.config
+                    .block_store
+                    .wait_until_persisted(ctx, highest_qc.header().number)
+                    .await
+                    .map_err(ctx::Error::Canceled)?;
                 if let Err(err) = self
-                    .storage
-                    .verify_payload(ctx, message.proposal.number, payload)
+                    .config
+                    .payload_manager
+                    .verify(ctx, message.proposal.number, payload)
                     .await
                 {
                     return Err(match err {
@@ -324,12 +331,12 @@ impl StateMachine {
         // Send the replica message to the leader.
         let output_message = ConsensusInputMessage {
             message: self
-                .inner
+                .config
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaCommit(commit_vote)),
             recipient: Target::Validator(author.clone()),
         };
-        self.inner.pipe.send(output_message.into());
+        self.pipe.send(output_message.into());
 
         Ok(())
     }

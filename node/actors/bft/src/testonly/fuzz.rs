@@ -155,10 +155,10 @@ impl Fuzz for validator::Signers {
 impl Fuzz for validator::Payload {
     fn mutate(&mut self, rng: &mut impl Rng) {
         // Push bytes into the payload until it exceeds the limit.
-        let num_bytes = crate::ConsensusInner::PAYLOAD_MAX_SIZE + 1 - self.0.len();
+        let num_bytes = crate::Config::PAYLOAD_MAX_SIZE + 1 - self.0.len();
         let bytes: Vec<u8> = (0..num_bytes).map(|_| rng.gen()).collect();
         self.0.extend_from_slice(&bytes);
-        assert!(self.0.len() > crate::ConsensusInner::PAYLOAD_MAX_SIZE);
+        assert!(self.0.len() > crate::Config::PAYLOAD_MAX_SIZE);
     }
 }
 

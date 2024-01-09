@@ -1,5 +1,4 @@
 use super::StateMachine;
-use anyhow::Context as _;
 use tracing::{info, instrument};
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
@@ -8,7 +7,7 @@ impl StateMachine {
     /// Tries to build a finalized block from the given CommitQC. We simply search our
     /// block proposal cache for the matching block, and if we find it we build the block.
     /// If this method succeeds, it sends the finalized block to the executor.
-    #[instrument(level = "trace", ret)]
+    #[instrument(level = "debug", skip(self), ret)]
     pub(crate) async fn save_block(
         &mut self,
         ctx: &ctx::Ctx,
@@ -27,23 +26,27 @@ impl StateMachine {
             return Ok(());
         };
         let block = validator::FinalBlock {
-            header: commit_qc.message.proposal,
             payload: payload.clone(),
             justification: commit_qc.clone(),
         };
 
         info!(
             "Finalized a block!\nFinal block: {:#?}",
-            block.header.hash()
+            block.header().hash()
         );
-        self.storage
-            .put_block(ctx, &block)
-            .await
-            .context("store.put_block()")?;
+        self.config
+            .block_store
+            .queue_block(ctx, block.clone())
+            .await?;
+        // For availability, replica should not proceed until it stores the block persistently.
+        self.config
+            .block_store
+            .wait_until_persisted(ctx, block.header().number)
+            .await?;
 
         let number_metric = &crate::metrics::METRICS.finalized_block_number;
         let current_number = number_metric.get();
-        number_metric.set(current_number.max(block.header.number.0));
+        number_metric.set(current_number.max(block.header().number.0));
         Ok(())
     }
 }

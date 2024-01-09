@@ -1,6 +1,7 @@
 //! Tests related to snapshot storage.
 
 use super::*;
+use crate::tests::wait_for_stored_block;
 use zksync_consensus_network::io::GetBlockError;
 
 #[derive(Debug)]
@@ -17,24 +18,19 @@ impl Test for UpdatingPeerStateWithStorageSnapshot {
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
-            mut rng,
             test_validators,
-            peer_states_handle,
+            peer_states,
             storage,
             mut message_receiver,
             mut events_receiver,
             clock,
         } = handles;
-        let mut storage_subscriber = storage.subscribe_to_block_writes();
-
+        let rng = &mut ctx.rng();
         let peer_key = rng.gen::<node::SecretKey>().public();
         for stale_block_number in [1, 2] {
-            peer_states_handle.update(
-                peer_key.clone(),
-                test_validators.sync_state(stale_block_number),
-            );
-            let peer_event = events_receiver.recv(ctx).await?;
-            assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+            peer_states
+                .update(&peer_key, test_validators.sync_state(stale_block_number))
+                .unwrap();
 
             // No new block requests should be issued.
             clock.advance(BLOCK_SLEEP_INTERVAL);
@@ -42,9 +38,9 @@ impl Test for UpdatingPeerStateWithStorageSnapshot {
             assert!(message_receiver.try_recv().is_none());
         }
 
-        peer_states_handle.update(peer_key.clone(), test_validators.sync_state(3));
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+        peer_states
+            .update(&peer_key, test_validators.sync_state(3))
+            .unwrap();
 
         // Check that the actor has sent a `get_block` request to the peer
         let message = message_receiver.recv(ctx).await?;
@@ -59,12 +55,14 @@ impl Test for UpdatingPeerStateWithStorageSnapshot {
         // Emulate the peer sending a correct response.
         test_validators.send_block(BlockNumber(3), response);
 
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::GotBlock(BlockNumber(3)));
+        wait_for_event(ctx, &mut events_receiver, |ev| {
+            matches!(ev, PeerStateEvent::GotBlock(BlockNumber(3)))
+        })
+        .await
+        .unwrap();
 
         // Check that the block has been saved locally.
-        let saved_block = *sync::changed(ctx, &mut storage_subscriber).await?;
-        assert_eq!(saved_block, BlockNumber(3));
+        wait_for_stored_block(ctx, &storage, BlockNumber(3)).await?;
         Ok(())
     }
 }
@@ -87,19 +85,19 @@ impl Test for FilteringRequestsForSnapshotPeer {
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
-            mut rng,
             test_validators,
-            peer_states_handle,
+            peer_states,
             mut message_receiver,
             mut events_receiver,
             clock,
             ..
         } = handles;
 
+        let rng = &mut ctx.rng();
         let peer_key = rng.gen::<node::SecretKey>().public();
-        peer_states_handle.update(peer_key.clone(), test_validators.snapshot_sync_state(2..=2));
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+        peer_states
+            .update(&peer_key, test_validators.snapshot_sync_state(2..=2))
+            .unwrap();
 
         // The peer should only be queried for blocks that it actually has (#2 in this case).
         let message = message_receiver.recv(ctx).await?;
@@ -113,8 +111,11 @@ impl Test for FilteringRequestsForSnapshotPeer {
 
         // Emulate the peer sending a correct response.
         test_validators.send_block(BlockNumber(2), response);
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::GotBlock(BlockNumber(2)));
+        wait_for_event(ctx, &mut events_receiver, |ev| {
+            matches!(ev, PeerStateEvent::GotBlock(BlockNumber(2)))
+        })
+        .await
+        .unwrap();
 
         // No further requests should be made.
         clock.advance(BLOCK_SLEEP_INTERVAL);
@@ -122,9 +123,9 @@ impl Test for FilteringRequestsForSnapshotPeer {
         assert!(message_receiver.try_recv().is_none());
 
         // Emulate peer receiving / producing a new block.
-        peer_states_handle.update(peer_key.clone(), test_validators.snapshot_sync_state(2..=3));
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+        peer_states
+            .update(&peer_key, test_validators.snapshot_sync_state(2..=3))
+            .unwrap();
 
         let message = message_receiver.recv(ctx).await?;
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
@@ -137,10 +138,9 @@ impl Test for FilteringRequestsForSnapshotPeer {
 
         // Emulate another peer with full history.
         let full_peer_key = rng.gen::<node::SecretKey>().public();
-        peer_states_handle.update(full_peer_key.clone(), test_validators.sync_state(3));
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == full_peer_key);
-
+        peer_states
+            .update(&full_peer_key, test_validators.sync_state(3))
+            .unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
 
         // A node should only request block #1 from the peer; block #3 is already requested,
@@ -155,12 +155,20 @@ impl Test for FilteringRequestsForSnapshotPeer {
         assert_eq!(number, BlockNumber(1));
 
         test_validators.send_block(BlockNumber(1), response);
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::GotBlock(BlockNumber(1)));
+        wait_for_event(ctx, &mut events_receiver, |ev| {
+            matches!(ev, PeerStateEvent::GotBlock(BlockNumber(1)))
+        })
+        .await
+        .unwrap();
 
         drop(block3_response); // Emulate first peer disconnecting.
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerDisconnected(key) if key == peer_key);
+        wait_for_event(
+            ctx,
+            &mut events_receiver,
+            |ev| matches!(ev,PeerStateEvent::PeerDropped(key) if key == peer_key),
+        )
+        .await
+        .unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
 
         // Now, block #3 will be requested from the peer with full history.
@@ -193,19 +201,19 @@ impl Test for PruningPeerHistory {
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
-            mut rng,
             test_validators,
-            peer_states_handle,
+            peer_states,
             mut message_receiver,
             mut events_receiver,
             clock,
             ..
         } = handles;
 
+        let rng = &mut ctx.rng();
         let peer_key = rng.gen::<node::SecretKey>().public();
-        peer_states_handle.update(peer_key.clone(), test_validators.sync_state(1));
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+        peer_states
+            .update(&peer_key, test_validators.sync_state(1))
+            .unwrap();
 
         let message = message_receiver.recv(ctx).await?;
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
@@ -217,9 +225,9 @@ impl Test for PruningPeerHistory {
         assert_eq!(number, BlockNumber(1));
 
         // Emulate peer pruning blocks.
-        peer_states_handle.update(peer_key.clone(), test_validators.snapshot_sync_state(3..=3));
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+        peer_states
+            .update(&peer_key, test_validators.snapshot_sync_state(3..=3))
+            .unwrap();
 
         let message = message_receiver.recv(ctx).await?;
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
@@ -231,8 +239,11 @@ impl Test for PruningPeerHistory {
         assert_eq!(number, BlockNumber(3));
 
         test_validators.send_block(BlockNumber(3), response);
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::GotBlock(BlockNumber(3)));
+        wait_for_event(ctx, &mut events_receiver, |ev| {
+            matches!(ev, PeerStateEvent::GotBlock(BlockNumber(3)))
+        })
+        .await
+        .unwrap();
 
         // No new blocks should be requested (the peer has no block #2).
         clock.advance(BLOCK_SLEEP_INTERVAL);
@@ -267,19 +278,18 @@ impl Test for BackfillingPeerHistory {
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
-            mut rng,
             test_validators,
-            peer_states_handle,
+            peer_states,
             mut message_receiver,
-            mut events_receiver,
             clock,
             ..
         } = handles;
 
+        let rng = &mut ctx.rng();
         let peer_key = rng.gen::<node::SecretKey>().public();
-        peer_states_handle.update(peer_key.clone(), test_validators.snapshot_sync_state(3..=3));
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
+        peer_states
+            .update(&peer_key, test_validators.snapshot_sync_state(3..=3))
+            .unwrap();
 
         let message = message_receiver.recv(ctx).await?;
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
@@ -288,10 +298,9 @@ impl Test for BackfillingPeerHistory {
         assert_eq!(recipient, peer_key);
         assert_eq!(number, BlockNumber(3));
 
-        peer_states_handle.update(peer_key.clone(), test_validators.sync_state(3));
-        let peer_event = events_receiver.recv(ctx).await?;
-        assert_matches!(peer_event, PeerStateEvent::PeerUpdated(key) if key == peer_key);
-
+        peer_states
+            .update(&peer_key, test_validators.sync_state(3))
+            .unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
         let mut new_requested_numbers = HashSet::new();
         for _ in 0..2 {

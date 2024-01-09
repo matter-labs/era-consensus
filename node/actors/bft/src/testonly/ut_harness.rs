@@ -4,8 +4,7 @@ use crate::{
     leader::{ReplicaCommitError, ReplicaPrepareError},
     replica,
     replica::{LeaderCommitError, LeaderPrepareError},
-    testonly::RandomPayloadSource,
-    ConsensusInner,
+    testonly, Config, PayloadManager,
 };
 use assert_matches::assert_matches;
 use rand::Rng;
@@ -16,7 +15,7 @@ use zksync_consensus_roles::validator::{
     self, CommitQC, LeaderCommit, LeaderPrepare, Payload, Phase, PrepareQC, ReplicaCommit,
     ReplicaPrepare, SecretKey, Signed, ViewNumber,
 };
-use zksync_consensus_storage::{InMemoryStorage, ReplicaStore};
+use zksync_consensus_storage::{testonly::in_memory, BlockStore, BlockStoreRunner};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// `UTHarness` provides various utilities for unit tests.
@@ -34,30 +33,40 @@ pub(crate) struct UTHarness {
 
 impl UTHarness {
     /// Creates a new `UTHarness` with the specified validator set size.
-    pub(crate) async fn new(ctx: &ctx::Ctx, num_validators: usize) -> UTHarness {
+    pub(crate) async fn new(
+        ctx: &ctx::Ctx,
+        num_validators: usize,
+    ) -> (UTHarness, BlockStoreRunner) {
+        Self::new_with_payload(ctx, num_validators, Box::new(testonly::RandomPayload)).await
+    }
+
+    pub(crate) async fn new_with_payload(
+        ctx: &ctx::Ctx,
+        num_validators: usize,
+        payload_manager: Box<dyn PayloadManager>,
+    ) -> (UTHarness, BlockStoreRunner) {
         let mut rng = ctx.rng();
         let keys: Vec<_> = (0..num_validators).map(|_| rng.gen()).collect();
         let (genesis, validator_set) =
             crate::testonly::make_genesis(&keys, Payload(vec![]), validator::BlockNumber(0));
 
         // Initialize the storage.
-        let storage = InMemoryStorage::new(genesis);
+        let block_store = Box::new(in_memory::BlockStore::new(genesis));
+        let (block_store, runner) = BlockStore::new(ctx, block_store).await.unwrap();
         // Create the pipe.
         let (send, recv) = ctx::channel::unbounded();
 
-        let inner = Arc::new(ConsensusInner {
-            pipe: send,
+        let cfg = Arc::new(Config {
             secret_key: keys[0].clone(),
             validator_set,
+            block_store: block_store.clone(),
+            replica_store: Box::new(in_memory::ReplicaStore::default()),
+            payload_manager,
         });
-        let leader = leader::StateMachine::new(ctx, inner.clone());
-        let replica = replica::StateMachine::start(
-            ctx,
-            inner.clone(),
-            ReplicaStore::from_store(Arc::new(storage)),
-        )
-        .await
-        .unwrap();
+        let leader = leader::StateMachine::new(ctx, cfg.clone(), send.clone());
+        let replica = replica::StateMachine::start(ctx, cfg.clone(), send.clone())
+            .await
+            .unwrap();
         let mut this = UTHarness {
             leader,
             replica,
@@ -65,11 +74,11 @@ impl UTHarness {
             keys,
         };
         let _: Signed<ReplicaPrepare> = this.try_recv().unwrap();
-        this
+        (this, runner)
     }
 
     /// Creates a new `UTHarness` with minimally-significant validator set size.
-    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> UTHarness {
+    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, BlockStoreRunner) {
         let num_validators = 6;
         assert!(crate::misc::faulty_replicas(num_validators) > 0);
         UTHarness::new(ctx, num_validators).await
@@ -103,7 +112,7 @@ impl UTHarness {
     }
 
     pub(crate) fn owner_key(&self) -> &SecretKey {
-        &self.replica.inner.secret_key
+        &self.replica.config.secret_key
     }
 
     pub(crate) fn set_owner_as_view_leader(&mut self) {
@@ -200,14 +209,10 @@ impl UTHarness {
         let prepare_qc = self.leader.prepare_qc.subscribe();
         self.leader.process_replica_prepare(ctx, msg).await?;
         if prepare_qc.has_changed().unwrap() {
-            leader::StateMachine::propose(
-                ctx,
-                &self.leader.inner,
-                &RandomPayloadSource,
-                prepare_qc.borrow().clone().unwrap(),
-            )
-            .await
-            .unwrap();
+            let prepare_qc = prepare_qc.borrow().clone().unwrap();
+            leader::StateMachine::propose(ctx, &self.leader.config, prepare_qc, &self.leader.pipe)
+                .await
+                .unwrap();
         }
         Ok(self.try_recv())
     }
@@ -217,7 +222,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaPrepare,
     ) -> Signed<LeaderPrepare> {
-        let want_threshold = self.replica.inner.threshold();
+        let want_threshold = self.replica.config.threshold();
         let mut leader_prepare = None;
         let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
         for (i, msg) in msgs.into_iter().enumerate() {
@@ -247,7 +252,7 @@ impl UTHarness {
     ) -> Signed<LeaderCommit> {
         for (i, key) in self.keys.iter().enumerate() {
             let res = self.leader.process_replica_commit(ctx, key.sign_msg(msg));
-            let want_threshold = self.replica.inner.threshold();
+            let want_threshold = self.replica.config.threshold();
             match (i + 1).cmp(&want_threshold) {
                 Ordering::Equal => res.unwrap(),
                 Ordering::Less => res.unwrap(),
@@ -278,7 +283,7 @@ impl UTHarness {
     }
 
     pub(crate) fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
-        self.replica.inner.view_leader(view)
+        self.replica.config.view_leader(view)
     }
 
     pub(crate) fn validator_set(&self) -> validator::ValidatorSet {

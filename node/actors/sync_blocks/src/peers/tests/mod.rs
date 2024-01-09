@@ -1,13 +1,12 @@
 use super::*;
-use crate::tests::TestValidators;
+use crate::tests::{make_store, TestValidators};
 use assert_matches::assert_matches;
 use async_trait::async_trait;
-use rand::{rngs::StdRng, seq::IteratorRandom, Rng};
+use rand::{seq::IteratorRandom, Rng};
 use std::{collections::HashSet, fmt};
 use test_casing::{test_casing, Product};
+use tracing::instrument;
 use zksync_concurrency::{testonly::abort_on_panic, time};
-use zksync_consensus_roles::validator;
-use zksync_consensus_storage::InMemoryStorage;
 
 mod basics;
 mod fakes;
@@ -17,13 +16,21 @@ mod snapshots;
 const TEST_TIMEOUT: time::Duration = time::Duration::seconds(5);
 const BLOCK_SLEEP_INTERVAL: time::Duration = time::Duration::milliseconds(5);
 
+async fn wait_for_event(
+    ctx: &ctx::Ctx,
+    events: &mut channel::UnboundedReceiver<PeerStateEvent>,
+    pred: impl Fn(PeerStateEvent) -> bool,
+) -> ctx::OrCanceled<()> {
+    while !pred(events.recv(ctx).await?) {}
+    Ok(())
+}
+
 #[derive(Debug)]
 struct TestHandles {
     clock: ctx::ManualClock,
-    rng: StdRng,
     test_validators: TestValidators,
-    peer_states_handle: PeerStatesHandle,
-    storage: Arc<dyn WriteBlockStore>,
+    peer_states: Arc<PeerStates>,
+    storage: Arc<BlockStore>,
     message_receiver: channel::UnboundedReceiver<io::OutputMessage>,
     events_receiver: channel::UnboundedReceiver<PeerStateEvent>,
 }
@@ -40,52 +47,13 @@ trait Test: fmt::Debug + Send + Sync {
     async fn initialize_storage(
         &self,
         _ctx: &ctx::Ctx,
-        _storage: &dyn WriteBlockStore,
+        _storage: &BlockStore,
         _test_validators: &TestValidators,
     ) {
         // Does nothing by default
     }
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()>;
-}
-
-#[instrument(level = "trace", skip(ctx, storage), err)]
-async fn wait_for_stored_block(
-    ctx: &ctx::Ctx,
-    storage: &dyn WriteBlockStore,
-    expected_block_number: BlockNumber,
-) -> ctx::OrCanceled<()> {
-    tracing::trace!("Started waiting for stored block");
-    let mut subscriber = storage.subscribe_to_block_writes();
-    let mut got_block = storage.last_contiguous_block_number(ctx).await.unwrap();
-
-    while got_block < expected_block_number {
-        sync::changed(ctx, &mut subscriber).await?;
-        got_block = storage.last_contiguous_block_number(ctx).await.unwrap();
-    }
-    Ok(())
-}
-
-#[instrument(level = "trace", skip(ctx, events_receiver))]
-async fn wait_for_peer_update(
-    ctx: &ctx::Ctx,
-    events_receiver: &mut channel::UnboundedReceiver<PeerStateEvent>,
-    expected_peer: &node::PublicKey,
-) -> ctx::OrCanceled<()> {
-    loop {
-        let peer_event = events_receiver.recv(ctx).await?;
-        tracing::trace!(?peer_event, "received peer event");
-        match peer_event {
-            PeerStateEvent::PeerUpdated(key) => {
-                assert_eq!(key, *expected_peer);
-                return Ok(());
-            }
-            PeerStateEvent::PeerDisconnected(_) | PeerStateEvent::GotBlock(_) => {
-                // Skip update
-            }
-            _ => panic!("Received unexpected peer event: {peer_event:?}"),
-        }
-    }
 }
 
 #[instrument(level = "trace")]
@@ -95,37 +63,36 @@ async fn test_peer_states<T: Test>(test: T) {
     let ctx = &ctx::test_root(&ctx::RealClock).with_timeout(TEST_TIMEOUT);
     let clock = ctx::ManualClock::new();
     let ctx = &ctx::test_with_clock(ctx, &clock);
-    let mut rng = ctx.rng();
-    let test_validators = TestValidators::new(4, T::BLOCK_COUNT, &mut rng);
-    let storage =
-        InMemoryStorage::new(test_validators.final_blocks[T::GENESIS_BLOCK_NUMBER].clone());
-    let storage = Arc::new(storage);
-    test.initialize_storage(ctx, storage.as_ref(), &test_validators)
+    let test_validators = TestValidators::new(&mut ctx.rng(), 4, T::BLOCK_COUNT);
+    let (store, store_run) = make_store(
+        ctx,
+        test_validators.final_blocks[T::GENESIS_BLOCK_NUMBER].clone(),
+    )
+    .await;
+    test.initialize_storage(ctx, store.as_ref(), &test_validators)
         .await;
 
     let (message_sender, message_receiver) = channel::unbounded();
     let (events_sender, events_receiver) = channel::unbounded();
     let mut config = test_validators.test_config();
     test.tweak_config(&mut config);
-    let (mut peer_states, peer_states_handle) =
-        PeerStates::new(message_sender, storage.clone(), config);
+    let mut peer_states = PeerStates::new(config, store.clone(), message_sender);
     peer_states.events_sender = Some(events_sender);
+    let peer_states = Arc::new(peer_states);
     let test_handles = TestHandles {
         clock,
-        rng,
         test_validators,
-        peer_states_handle,
-        storage,
+        peer_states: peer_states.clone(),
+        storage: store.clone(),
         message_receiver,
         events_receiver,
     };
 
     scope::run!(ctx, |ctx, s| async {
+        s.spawn_bg(store_run.run(ctx));
         s.spawn_bg(async {
-            peer_states.run(ctx).await.or_else(|err| match err {
-                ctx::Error::Canceled(_) => Ok(()), // Swallow cancellation errors after the test is finished
-                ctx::Error::Internal(err) => Err(err),
-            })
+            peer_states.run_block_fetcher(ctx).await.ok();
+            Ok(())
         });
         test.test(ctx, test_handles).await
     })

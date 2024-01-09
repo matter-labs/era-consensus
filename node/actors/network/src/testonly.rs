@@ -224,7 +224,6 @@ impl SyncState {
     pub(crate) fn gen(rng: &mut impl Rng, number: validator::BlockNumber) -> Self {
         let mut this = Self {
             first_stored_block: rng.gen(),
-            last_contiguous_stored_block: rng.gen(),
             last_stored_block: rng.gen(),
         };
         this.last_stored_block.message.proposal.number = number;
