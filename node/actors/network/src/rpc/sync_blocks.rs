@@ -29,8 +29,6 @@ impl ProtoFmt for io::SyncState {
         Ok(Self {
             first_stored_block: read_required(&message.first_stored_block)
                 .context("first_stored_block")?,
-            last_contiguous_stored_block: read_required(&message.last_contiguous_stored_block)
-                .context("last_contiguous_stored_block")?,
             last_stored_block: read_required(&message.last_stored_block)
                 .context("last_stored_block")?,
         })
@@ -39,7 +37,6 @@ impl ProtoFmt for io::SyncState {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             first_stored_block: Some(self.first_stored_block.build()),
-            last_contiguous_stored_block: Some(self.last_contiguous_stored_block.build()),
             last_stored_block: Some(self.last_stored_block.build()),
         }
     }

@@ -8,17 +8,11 @@ use zksync_consensus_roles::{node, validator::BlockNumber};
 pub(super) enum PeerStateEvent {
     /// Node has successfully downloaded the specified block.
     GotBlock(BlockNumber),
-    /// Block retrieval was canceled due to block getting persisted using other means.
-    CanceledBlock(BlockNumber),
     /// Received an invalid block from the peer.
-    GotInvalidBlock {
+    RpcFailed {
         peer_key: node::PublicKey,
         block_number: BlockNumber,
     },
-    /// Peer state was updated. Includes creating a state for a newly connected peer.
-    PeerUpdated(node::PublicKey),
-    /// Received invalid `SyncState` from a peer.
-    InvalidPeerUpdate(node::PublicKey),
     /// Peer was disconnected (i.e., it has dropped a request).
-    PeerDisconnected(node::PublicKey),
+    PeerDropped(node::PublicKey),
 }

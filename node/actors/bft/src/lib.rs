@@ -15,14 +15,12 @@
 //! - [Blog post comparing several consensus algorithms](https://decentralizedthoughts.github.io/2023-04-01-hotstuff-2/)
 //! - Blog posts explaining [safety](https://seafooler.com/2022/01/24/understanding-safety-hotstuff/) and [responsiveness](https://seafooler.com/2022/04/02/understanding-responsiveness-hotstuff/)
 use crate::io::{InputMessage, OutputMessage};
-use inner::ConsensusInner;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::ReplicaStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
-mod inner;
+mod config;
 pub mod io;
 mod leader;
 mod metrics;
@@ -32,86 +30,94 @@ pub mod testonly;
 #[cfg(test)]
 mod tests;
 
-/// Payload provider for the new blocks.
-#[async_trait::async_trait]
-pub trait PayloadSource: Send + Sync + 'static {
-    /// Propose a payload for the block `block_number`.
-    async fn propose(
-        &self,
-        ctx: &ctx::Ctx,
-        block_number: validator::BlockNumber,
-    ) -> ctx::Result<validator::Payload>;
-}
+pub use config::Config;
 
 /// Protocol version of this BFT implementation.
 pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVersion::EARLIEST;
 
-/// Starts the Consensus actor. It will start running, processing incoming messages and
-/// sending output messages. This is a blocking method.
-pub async fn run(
-    ctx: &ctx::Ctx,
-    mut pipe: ActorPipe<InputMessage, OutputMessage>,
-    secret_key: validator::SecretKey,
-    validator_set: validator::ValidatorSet,
-    storage: ReplicaStore,
-    payload_source: &dyn PayloadSource,
-) -> anyhow::Result<()> {
-    let inner = Arc::new(ConsensusInner {
-        pipe: pipe.send,
-        secret_key,
-        validator_set,
-    });
-    let res = scope::run!(ctx, |ctx, s| async {
-        let mut replica = replica::StateMachine::start(ctx, inner.clone(), storage).await?;
-        let mut leader = leader::StateMachine::new(ctx, inner.clone());
+/// Payload proposal and verification trait.
+#[async_trait::async_trait]
+pub trait PayloadManager: std::fmt::Debug + Send + Sync {
+    /// Used by leader to propose a payload for the next block.
+    async fn propose(
+        &self,
+        ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+    ) -> ctx::Result<validator::Payload>;
+    /// Used by replica to verify a payload for the next block proposed by the leader.
+    async fn verify(
+        &self,
+        ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+        payload: &validator::Payload,
+    ) -> ctx::Result<()>;
+}
 
-        s.spawn_bg(leader::StateMachine::run_proposer(
-            ctx,
-            &inner,
-            payload_source,
-            leader.prepare_qc.subscribe(),
-        ));
+/// Channel through which bft actor sends network messages.
+pub(crate) type OutputSender = ctx::channel::UnboundedSender<OutputMessage>;
 
-        tracing::info!("Starting consensus actor {:?}", inner.secret_key.public());
+impl Config {
+    /// Starts the bft actor. It will start running, processing incoming messages and
+    /// sending output messages.
+    pub async fn run(
+        self,
+        ctx: &ctx::Ctx,
+        mut pipe: ActorPipe<InputMessage, OutputMessage>,
+    ) -> anyhow::Result<()> {
+        let cfg = Arc::new(self);
+        let res = scope::run!(ctx, |ctx, s| async {
+            let mut replica =
+                replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
+            let mut leader = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
 
-        // This is the infinite loop where the consensus actually runs. The validator waits for either
-        // a message from the network or for a timeout, and processes each accordingly.
-        loop {
-            let input = pipe
-                .recv
-                .recv(&ctx.with_deadline(replica.timeout_deadline))
-                .await
-                .ok();
+            s.spawn_bg(leader::StateMachine::run_proposer(
+                ctx,
+                &cfg,
+                leader.prepare_qc.subscribe(),
+                &pipe.send,
+            ));
 
-            // We check if the context is active before processing the input. If the context is not active,
-            // we stop.
-            if !ctx.is_active() {
-                return Ok(());
+            tracing::info!("Starting consensus actor {:?}", cfg.secret_key.public());
+
+            // This is the infinite loop where the consensus actually runs. The validator waits for either
+            // a message from the network or for a timeout, and processes each accordingly.
+            loop {
+                let input = pipe
+                    .recv
+                    .recv(&ctx.with_deadline(replica.timeout_deadline))
+                    .await
+                    .ok();
+
+                // We check if the context is active before processing the input. If the context is not active,
+                // we stop.
+                if !ctx.is_active() {
+                    return Ok(());
+                }
+
+                let Some(InputMessage::Network(req)) = input else {
+                    replica.start_new_view(ctx).await?;
+                    continue;
+                };
+
+                use validator::ConsensusMsg as Msg;
+                let res = match &req.msg.msg {
+                    Msg::ReplicaPrepare(_) | Msg::ReplicaCommit(_) => {
+                        leader.process_input(ctx, req.msg).await
+                    }
+                    Msg::LeaderPrepare(_) | Msg::LeaderCommit(_) => {
+                        replica.process_input(ctx, req.msg).await
+                    }
+                };
+                // Notify network actor that the message has been processed.
+                // Ignore sending error.
+                let _ = req.ack.send(());
+                res?;
             }
-
-            let Some(InputMessage::Network(req)) = input else {
-                replica.start_new_view(ctx).await?;
-                continue;
-            };
-
-            use validator::ConsensusMsg as Msg;
-            let res = match &req.msg.msg {
-                Msg::ReplicaPrepare(_) | Msg::ReplicaCommit(_) => {
-                    leader.process_input(ctx, req.msg).await
-                }
-                Msg::LeaderPrepare(_) | Msg::LeaderCommit(_) => {
-                    replica.process_input(ctx, req.msg).await
-                }
-            };
-            // Notify network actor that the message has been processed.
-            // Ignore sending error.
-            let _ = req.ack.send(());
-            res?;
+        })
+        .await;
+        match res {
+            Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
+            Err(ctx::Error::Internal(err)) => Err(err),
         }
-    })
-    .await;
-    match res {
-        Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
-        Err(ctx::Error::Internal(err)) => Err(err),
     }
 }

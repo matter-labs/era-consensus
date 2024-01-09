@@ -57,7 +57,6 @@ pub struct ConsensusReq {
 #[derive(Debug, Clone, PartialEq)]
 pub struct SyncState {
     pub first_stored_block: validator::CommitQC,
-    pub last_contiguous_stored_block: validator::CommitQC,
     pub last_stored_block: validator::CommitQC,
 }
 
@@ -65,7 +64,6 @@ pub struct SyncState {
 #[derive(Debug, Clone, Copy)]
 pub struct SyncStateNumbers {
     pub first_stored_block: validator::BlockNumber,
-    pub last_contiguous_stored_block: validator::BlockNumber,
     pub last_stored_block: validator::BlockNumber,
 }
 
@@ -74,7 +72,6 @@ impl SyncState {
     pub fn numbers(&self) -> SyncStateNumbers {
         SyncStateNumbers {
             first_stored_block: self.first_stored_block.message.proposal.number,
-            last_contiguous_stored_block: self.last_contiguous_stored_block.message.proposal.number,
             last_stored_block: self.last_stored_block.message.proposal.number,
         }
     }

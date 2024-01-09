@@ -36,7 +36,7 @@
 //     the validator set) or move it to a separate config file.
 syntax = "proto3";
 
-package zksync.executor.config;
+package zksync.tools;
 
 // (public key, ip address) of a gossip network node. 
 message NodeAddr {
@@ -44,53 +44,39 @@ message NodeAddr {
   optional string addr = 2; // [required] IpAddr
 }
 
-// Config of the consensus network.
-message ConsensusConfig {
-  optional string key = 1; // [required] ValidatorPublicKey
-  optional string public_addr = 2; // [required] IpAddr
-}
+// Application configuration. 
+message AppConfig {
+  // Ports
 
-// Config of the gossip network.
-message GossipConfig {
-  // Public key of this node. It uniquely identifies the node.
-  // It should match the secret key provided in the `node_key` file.
-  optional string key = 1; // [required] NodePublicKey
-  // Limit on the number of inbound connections outside
-  // of the `static_inbound` set.
-  optional uint64 dynamic_inbound_limit = 2; // [required]
-  // Inbound connections that should be unconditionally accepted.
-  repeated string static_inbound = 3; // NodePublicKey
-  // Outbound connections that the node should actively try to
-  // establish and maintain.
-  repeated NodeAddr static_outbound = 4;
-}
-
-// Top-level executor config.
-message ExecutorConfig {
   // IP:port to listen on, for incoming TCP connections.
   // Use `0.0.0.0:<port>` to listen on all network interfaces (i.e. on all IPs exposed by this VM).
   optional string server_addr = 1; // [required] IpAddr
+ 
+  // Public IP:port to advertise, should forward to server_addr.
+  optional string public_addr = 2; // [required] IpAddr
   
-  // Gossip network config.
-  optional GossipConfig gossip = 4; // [required]
-  
-  // Genesis block of the blockchain.
-  optional string genesis_block = 5; // [required] FinalBlock
-  // Public keys of all validators.
-  repeated string validators = 6; // [required] ValidatorPublicKey
-}
-
-// Node configuration including executor configuration, optional validator configuration,
-// and application-specific settings (e.g. metrics scraping).
-message NodeConfig {
-  // Executor configuration.
-  optional ExecutorConfig executor = 1; // [required]
-
   // IP:port to serve metrics data for scraping.
   // Use `0.0.0.0:<port>` to listen on all network interfaces.
   // If not set, metrics data won't be served.
-  optional string metrics_server_addr = 2; // [optional] IpAddr
+  optional string metrics_server_addr = 3; // [optional] IpAddr 
+  
+  // Consensus
+  
+  // Public keys of all validators.
+  repeated string validators = 5; // [required] ValidatorPublicKey
 
-  // Consensus network config.
-  optional ConsensusConfig consensus = 3; // [optional]
+  // Genesis block of the blockchain.
+  // Will be inserted to storage if not already present.
+  optional string genesis_block = 6; // [required] FinalBlock
+
+  // Gossip network
+
+  // Limit on the number of gossip network inbound connections outside
+  // of the `gossip_static_inbound` set.
+  optional uint64 gossip_dynamic_inbound_limit = 8; // [required]
+  // Inbound connections that should be unconditionally accepted on the gossip network.
+  repeated string gossip_static_inbound = 9; // NodePublicKey
+  // Outbound gossip network connections that the node should actively try to
+  // establish and maintain.
+  repeated NodeAddr gossip_static_outbound = 10;
 }

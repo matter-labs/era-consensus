@@ -1,5 +1,10 @@
 //! CLI tools for the consensus node.
-
+#![allow(missing_docs)]
 mod config;
+mod proto;
+mod store;
 
-pub use self::config::{ConfigPaths, Configs, NodeConfig};
+#[cfg(test)]
+mod tests;
+
+pub use config::{AppConfig, ConfigPaths};

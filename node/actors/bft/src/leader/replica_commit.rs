@@ -68,7 +68,7 @@ impl StateMachine {
 
         // Check that the message signer is in the validator set.
         let validator_index =
-            self.inner
+            self.config
                 .validator_set
                 .index(author)
                 .ok_or(Error::NonValidatorSigner {
@@ -84,7 +84,7 @@ impl StateMachine {
         }
 
         // If the message is for a view when we are not a leader, we discard it.
-        if self.inner.view_leader(message.view) != self.inner.secret_key.public() {
+        if self.config.view_leader(message.view) != self.config.secret_key.public() {
             return Err(Error::NotLeaderInView);
         }
 
@@ -109,7 +109,7 @@ impl StateMachine {
         // We add the message to the incrementally-constructed QC.
         self.commit_qcs
             .entry(message.view)
-            .or_insert(CommitQC::new(message, &self.inner.validator_set))
+            .or_insert(CommitQC::new(message, &self.config.validator_set))
             .add(&signed_message.sig, validator_index);
 
         // We store the message in our cache.
@@ -123,11 +123,11 @@ impl StateMachine {
         }
         let Some((_, replica_messages)) = by_proposal
             .into_iter()
-            .find(|(_, v)| v.len() >= self.inner.threshold())
+            .find(|(_, v)| v.len() >= self.config.threshold())
         else {
             return Ok(());
         };
-        debug_assert_eq!(replica_messages.len(), self.inner.threshold());
+        debug_assert_eq!(replica_messages.len(), self.config.threshold());
 
         // ----------- Update the state machine --------------
 
@@ -151,7 +151,7 @@ impl StateMachine {
         // Broadcast the leader commit message to all replicas (ourselves included).
         let output_message = ConsensusInputMessage {
             message: self
-                .inner
+                .config
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::LeaderCommit(
                     validator::LeaderCommit {
@@ -161,7 +161,7 @@ impl StateMachine {
                 )),
             recipient: Target::Broadcast,
         };
-        self.inner.pipe.send(output_message.into());
+        self.pipe.send(output_message.into());
 
         // Clean the caches.
         self.prepare_message_cache.retain(|k, _| k >= &self.view);

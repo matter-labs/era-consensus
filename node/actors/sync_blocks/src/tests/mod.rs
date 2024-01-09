@@ -5,19 +5,40 @@ use rand::{
     Rng,
 };
 use std::{iter, ops};
-use zksync_concurrency::{oneshot, testonly::abort_on_panic, time};
+use zksync_concurrency::{oneshot, sync, testonly::abort_on_panic, time};
 use zksync_consensus_network::io::{GetBlockError, GetBlockResponse, SyncBlocksRequest};
 use zksync_consensus_roles::validator::{
     self,
     testonly::{make_block, make_genesis_block},
     BlockHeader, BlockNumber, CommitQC, FinalBlock, Payload, ValidatorSet,
 };
-use zksync_consensus_storage::InMemoryStorage;
+use zksync_consensus_storage::{testonly::in_memory, BlockStore, BlockStoreRunner};
 use zksync_consensus_utils::pipe;
 
 mod end_to_end;
 
 const TEST_TIMEOUT: time::Duration = time::Duration::seconds(20);
+
+pub(crate) async fn make_store(
+    ctx: &ctx::Ctx,
+    genesis: FinalBlock,
+) -> (Arc<BlockStore>, BlockStoreRunner) {
+    let storage = in_memory::BlockStore::new(genesis);
+    BlockStore::new(ctx, Box::new(storage)).await.unwrap()
+}
+
+pub(crate) async fn wait_for_stored_block(
+    ctx: &ctx::Ctx,
+    storage: &BlockStore,
+    block_number: BlockNumber,
+) -> ctx::OrCanceled<()> {
+    tracing::trace!("Started waiting for stored block");
+    sync::wait_for(ctx, &mut storage.subscribe(), |state| {
+        state.next() > block_number
+    })
+    .await?;
+    Ok(())
+}
 
 impl Distribution<Config> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Config {
@@ -35,7 +56,7 @@ pub(crate) struct TestValidators {
 }
 
 impl TestValidators {
-    pub(crate) fn new(validator_count: usize, block_count: usize, rng: &mut impl Rng) -> Self {
+    pub(crate) fn new(rng: &mut impl Rng, validator_count: usize, block_count: usize) -> Self {
         let validator_secret_keys: Vec<validator::SecretKey> =
             (0..validator_count).map(|_| rng.gen()).collect();
         let validator_set = validator_secret_keys.iter().map(|sk| sk.public());
@@ -51,7 +72,6 @@ impl TestValidators {
         let mut latest_block = BlockHeader::genesis(payload.hash(), BlockNumber(0));
         let final_blocks = (0..block_count).map(|_| {
             let final_block = FinalBlock {
-                header: latest_block,
                 payload: payload.clone(),
                 justification: this.certify_block(&latest_block),
             };
@@ -80,26 +100,22 @@ impl TestValidators {
         CommitQC::from(&signed_messages, &self.validator_set).unwrap()
     }
 
-    pub(crate) fn sync_state(&self, last_block_number: usize) -> SyncState {
+    pub(crate) fn sync_state(&self, last_block_number: usize) -> BlockStoreState {
         self.snapshot_sync_state(1..=last_block_number)
     }
 
     pub(crate) fn snapshot_sync_state(
         &self,
         block_numbers: ops::RangeInclusive<usize>,
-    ) -> SyncState {
+    ) -> BlockStoreState {
         assert!(!block_numbers.is_empty());
-
-        let first_block = self.final_blocks[*block_numbers.start()]
-            .justification
-            .clone();
-        let last_block = self.final_blocks[*block_numbers.end()]
-            .justification
-            .clone();
-        SyncState {
-            first_stored_block: first_block,
-            last_contiguous_stored_block: last_block.clone(),
-            last_stored_block: last_block,
+        BlockStoreState {
+            first: self.final_blocks[*block_numbers.start()]
+                .justification
+                .clone(),
+            last: self.final_blocks[*block_numbers.end()]
+                .justification
+                .clone(),
         }
     }
 
@@ -109,8 +125,10 @@ impl TestValidators {
         response: oneshot::Sender<GetBlockResponse>,
     ) {
         let final_block = self.final_blocks[number.0 as usize].clone();
-        response.send(Ok(final_block)).unwrap();
-        tracing::trace!("Responded to get_block({number})");
+        match response.send(Ok(final_block)) {
+            Ok(()) => tracing::info!(?number, "responded to get_block()"),
+            Err(_) => tracing::info!(?number, "failed to respond to get_block()"),
+        }
     }
 }
 
@@ -122,68 +140,34 @@ async fn subscribing_to_state_updates() {
     let rng = &mut ctx.rng();
     let protocol_version = validator::ProtocolVersion::EARLIEST;
     let genesis_block = make_genesis_block(rng, protocol_version);
-    let block_1 = make_block(rng, &genesis_block.header, protocol_version);
-    let block_2 = make_block(rng, &block_1.header, protocol_version);
-    let block_3 = make_block(rng, &block_2.header, protocol_version);
+    let block_1 = make_block(rng, genesis_block.header(), protocol_version);
 
-    let storage = InMemoryStorage::new(genesis_block.clone());
-    let storage = &Arc::new(storage);
+    let (storage, runner) = make_store(ctx, genesis_block.clone()).await;
     let (actor_pipe, _dispatcher_pipe) = pipe::new();
-    let actor = SyncBlocks::new(ctx, actor_pipe, storage.clone(), rng.gen())
-        .await
-        .unwrap();
-    let mut state_subscriber = actor.subscribe_to_state_updates();
+    let mut state_subscriber = storage.subscribe();
 
+    let cfg: Config = rng.gen();
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(async {
-            actor.run(ctx).await.or_else(|err| {
-                if err.root_cause().is::<ctx::Canceled>() {
-                    Ok(()) // Swallow cancellation errors after the test is finished
-                } else {
-                    Err(err)
-                }
-            })
-        });
+        s.spawn_bg(runner.run(ctx));
+        s.spawn_bg(cfg.run(ctx, actor_pipe, storage.clone()));
         s.spawn_bg(async {
             assert!(ctx.sleep(TEST_TIMEOUT).await.is_err(), "Test timed out");
             anyhow::Ok(())
         });
 
-        {
-            let initial_state = state_subscriber.borrow_and_update();
-            assert_eq!(
-                initial_state.first_stored_block,
-                genesis_block.justification
-            );
-            assert_eq!(
-                initial_state.last_contiguous_stored_block,
-                genesis_block.justification
-            );
-            assert_eq!(initial_state.last_stored_block, genesis_block.justification);
-        }
+        let state = state_subscriber.borrow().clone();
+        assert_eq!(state.first, genesis_block.justification);
+        assert_eq!(state.last, genesis_block.justification);
+        storage.queue_block(ctx, block_1.clone()).await.unwrap();
 
-        storage.put_block(ctx, &block_1).await.unwrap();
-
-        {
-            let new_state = sync::changed(ctx, &mut state_subscriber).await?;
-            assert_eq!(new_state.first_stored_block, genesis_block.justification);
-            assert_eq!(
-                new_state.last_contiguous_stored_block,
-                block_1.justification
-            );
-            assert_eq!(new_state.last_stored_block, block_1.justification);
-        }
-
-        storage.put_block(ctx, &block_3).await.unwrap();
-
-        let new_state = sync::changed(ctx, &mut state_subscriber).await?;
-        assert_eq!(new_state.first_stored_block, genesis_block.justification);
-        assert_eq!(
-            new_state.last_contiguous_stored_block,
-            block_1.justification
-        );
-        assert_eq!(new_state.last_stored_block, block_3.justification);
-
+        let state = sync::wait_for(ctx, &mut state_subscriber, |state| {
+            state.next() > block_1.header().number
+        })
+        .await
+        .unwrap()
+        .clone();
+        assert_eq!(state.first, genesis_block.justification);
+        assert_eq!(state.last, block_1.justification);
         Ok(())
     })
     .await
@@ -199,31 +183,20 @@ async fn getting_blocks() {
     let protocol_version = validator::ProtocolVersion::EARLIEST;
     let genesis_block = make_genesis_block(rng, protocol_version);
 
-    let storage = InMemoryStorage::new(genesis_block.clone());
-    let storage = Arc::new(storage);
-    let blocks = iter::successors(Some(genesis_block), |parent| {
-        Some(make_block(rng, &parent.header, protocol_version))
-    });
-    let blocks: Vec<_> = blocks.take(5).collect();
-    for block in &blocks {
-        storage.put_block(ctx, block).await.unwrap();
-    }
-
+    let (storage, runner) = make_store(ctx, genesis_block.clone()).await;
     let (actor_pipe, dispatcher_pipe) = pipe::new();
-    let actor = SyncBlocks::new(ctx, actor_pipe, storage.clone(), rng.gen())
-        .await
-        .unwrap();
 
+    let cfg: Config = rng.gen();
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(async {
-            actor.run(ctx).await.or_else(|err| {
-                if err.root_cause().is::<ctx::Canceled>() {
-                    Ok(()) // Swallow cancellation errors after the test is finished
-                } else {
-                    Err(err)
-                }
-            })
+        s.spawn_bg(runner.run(ctx));
+        let blocks = iter::successors(Some(genesis_block), |parent| {
+            Some(make_block(rng, parent.header(), protocol_version))
         });
+        let blocks: Vec<_> = blocks.take(5).collect();
+        for block in &blocks {
+            storage.queue_block(ctx, block.clone()).await.unwrap();
+        }
+        s.spawn_bg(cfg.run(ctx, actor_pipe, storage.clone()));
         s.spawn_bg(async {
             assert!(ctx.sleep(TEST_TIMEOUT).await.is_err(), "Test timed out");
             anyhow::Ok(())

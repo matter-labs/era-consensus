@@ -2,50 +2,41 @@
 //! manages communication between the actors. It is the main executable in this workspace.
 use anyhow::Context as _;
 use clap::Parser;
-use std::{
-    fs,
-    io::IsTerminal as _,
-    path::{Path, PathBuf},
-    sync::Arc,
-};
+use std::{fs, io::IsTerminal as _, path::PathBuf};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
-use zksync_concurrency::{ctx, scope, time};
-use zksync_consensus_executor::Executor;
-use zksync_consensus_storage::{BlockStore, RocksdbStorage};
-use zksync_consensus_tools::{ConfigPaths, Configs};
+use zksync_concurrency::{ctx, scope};
+use zksync_consensus_tools::ConfigPaths;
 use zksync_consensus_utils::no_copy::NoCopy;
 
 /// Command-line application launching a node executor.
 #[derive(Debug, Parser)]
 struct Args {
-    /// Verify configuration instead of launching a node.
-    #[arg(long, conflicts_with_all = ["ci_mode", "validator_key", "config_file", "node_key"])]
-    verify_config: bool,
-    /// Exit after finalizing 100 blocks.
-    #[arg(long)]
-    ci_mode: bool,
     /// Path to a validator key file. If set to an empty string, validator key will not be read
     /// (i.e., a node will be initialized as a non-validator node).
-    #[arg(long, default_value = "validator_key")]
+    #[arg(long, default_value = "./validator_key")]
     validator_key: PathBuf,
     /// Path to a JSON file with node configuration.
-    #[arg(long, default_value = "config.json")]
+    #[arg(long, default_value = "./config.json")]
     config_file: PathBuf,
     /// Path to a node key file.
-    #[arg(long, default_value = "node_key")]
+    #[arg(long, default_value = "./node_key")]
     node_key: PathBuf,
+    /// Path to the rocksdb database of the node.
+    #[arg(long, default_value = "./database")]
+    database: PathBuf,
 }
 
 impl Args {
     /// Extracts configuration paths from these args.
     fn config_paths(&self) -> ConfigPaths<'_> {
         ConfigPaths {
-            config: &self.config_file,
+            app: &self.config_file,
             node_key: &self.node_key,
             validator_key: (!self.validator_key.as_os_str().is_empty())
                 .then_some(&self.validator_key),
+            database: &self.database,
         }
     }
 }
@@ -56,74 +47,51 @@ async fn main() -> anyhow::Result<()> {
     tracing::trace!(?args, "Starting node");
     let ctx = &ctx::root();
 
-    if !args.verify_config {
-        // Create log file.
-        fs::create_dir_all("logs/")?;
-        let log_file = fs::File::create("logs/output.log")?;
+    // Create log file.
+    fs::create_dir_all("logs/")?;
+    let log_file = fs::File::create("logs/output.log")?;
 
-        // Create the logger for stdout. This will produce human-readable logs for
-        // all events of level INFO or higher.
-        let stdout_log = tracing_subscriber::fmt::layer()
-            .pretty()
-            .with_ansi(std::env::var("NO_COLOR").is_err() && std::io::stdout().is_terminal())
-            .with_file(false)
-            .with_line_number(false)
-            .with_filter(LevelFilter::INFO);
+    // Create the logger for stdout. This will produce human-readable logs for
+    // all events of level INFO or higher.
+    let stdout_log = tracing_subscriber::fmt::layer()
+        .pretty()
+        .with_ansi(std::env::var("NO_COLOR").is_err() && std::io::stdout().is_terminal())
+        .with_file(false)
+        .with_line_number(false)
+        .with_filter(tracing_subscriber::EnvFilter::from_default_env());
 
-        // Create the logger for the log file. This will produce machine-readable logs for
-        // all events of level DEBUG or higher.
-        let file_log = tracing_subscriber::fmt::layer()
-            .with_ansi(false)
-            .with_writer(log_file)
-            .with_filter(LevelFilter::DEBUG);
+    // Create the logger for the log file. This will produce machine-readable logs for
+    // all events of level DEBUG or higher.
+    let file_log = tracing_subscriber::fmt::layer()
+        .with_ansi(false)
+        .with_writer(log_file)
+        .with_filter(LevelFilter::DEBUG);
 
-        // Create the subscriber. This will combine the two loggers.
-        let subscriber = Registry::default().with(stdout_log).with(file_log);
+    // Create the subscriber. This will combine the two loggers.
+    let subscriber = Registry::default().with(stdout_log).with(file_log);
 
-        // Set the subscriber as the global default. This will cause all events in all threads
-        // to be logged by the subscriber.
-        tracing::subscriber::set_global_default(subscriber).unwrap();
+    // Set the subscriber as the global default. This will cause all events in all threads
+    // to be logged by the subscriber.
+    tracing::subscriber::set_global_default(subscriber).unwrap();
 
-        // Start the node.
-        tracing::info!("Starting node.");
-    }
+    // Start the node.
+    tracing::info!("Starting node.");
 
     // Load the config files.
     tracing::debug!("Loading config files.");
-    let configs = Configs::read(args.config_paths()).context("configs.read()")?;
+    let configs = args
+        .config_paths()
+        .load()
+        .context("config_paths().load()")?;
 
-    if args.verify_config {
-        tracing::info!("Configuration verified.");
-        return Ok(());
-    }
+    let (executor, runner) = configs
+        .make_executor(ctx)
+        .await
+        .context("configs.into_executor()")?;
 
     // Initialize the storage.
-    tracing::debug!("Initializing storage.");
-
-    // Creates a database directory for each node, this allows to run multiple nodes on the same machine.
-    let database_path = if let Some((consensus_config, _)) = &configs.consensus {
-        Path::new("database").join(consensus_config.public_addr.to_string())
-    } else {
-        Path::new("database").join(configs.executor.server_addr.to_string())
-    };
-    let storage = RocksdbStorage::new(ctx, &configs.executor.genesis_block, &database_path);
-    let storage = Arc::new(storage.await.context("RocksdbStorage::new()")?);
-    let mut executor = Executor::new(ctx, configs.executor, configs.node_key, storage.clone())
-        .await
-        .context("Executor::new()")?;
-    if let Some((consensus_config, validator_key)) = configs.consensus {
-        executor
-            .set_validator(
-                consensus_config,
-                validator_key,
-                storage.clone(),
-                Arc::new(zksync_consensus_bft::testonly::RandomPayloadSource),
-            )
-            .context("Executor::set_validator()")?;
-    }
-
     scope::run!(ctx, |ctx, s| async {
-        if let Some(addr) = configs.metrics_server_addr {
+        if let Some(addr) = configs.app.metrics_server_addr {
             let addr = NoCopy::from(addr);
             s.spawn_bg(async {
                 let addr = addr;
@@ -134,31 +102,9 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             });
         }
-
+        s.spawn_bg(runner.run(ctx));
         s.spawn(executor.run(ctx));
-
-        // if we are in CI mode, we wait for the node to finalize 100 blocks and then we stop it
-        if args.ci_mode {
-            let storage = storage.clone();
-            loop {
-                let block_finalized = storage.head_block(ctx).await.context("head_block")?;
-                let block_finalized = block_finalized.header.number.0;
-
-                tracing::info!("current finalized block {}", block_finalized);
-                if block_finalized > 100 {
-                    // we wait for 10 seconds to make sure that we send enough messages to other nodes
-                    // and other nodes have enough messages to finalize 100+ blocks
-                    ctx.sleep(time::Duration::seconds(10)).await?;
-                    break;
-                }
-                ctx.sleep(time::Duration::seconds(1)).await?;
-            }
-
-            tracing::info!("Cancel all tasks");
-            s.cancel();
-        }
         Ok(())
     })
     .await
-    .context("node stopped")
 }

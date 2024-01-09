@@ -52,8 +52,8 @@ impl Payload {
 }
 
 /// Sequential number of the block.
-/// Genesis block has number 0.
-/// For other blocks: block.number = block.parent.number + 1.
+/// Genesis block can have an arbitrary block number.
+/// For blocks other than genesis: block.number = block.parent.number + 1.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockNumber(pub u64);
 
@@ -80,6 +80,11 @@ impl fmt::Display for BlockNumber {
 pub struct BlockHeaderHash(pub(crate) Keccak256);
 
 impl BlockHeaderHash {
+    /// Constant that the parent of the genesis block should be set to.
+    pub fn genesis_parent() -> Self {
+        Self(Keccak256::default())
+    }
+
     /// Interprets the specified `bytes` as a block header hash digest (i.e., a reverse operation to [`Self::as_bytes()`]).
     /// It is caller's responsibility to ensure that `bytes` are actually a block header hash digest.
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
@@ -133,7 +138,7 @@ impl BlockHeader {
     /// Creates a genesis block.
     pub fn genesis(payload: PayloadHash, number: BlockNumber) -> Self {
         Self {
-            parent: BlockHeaderHash(Keccak256::default()),
+            parent: BlockHeaderHash::genesis_parent(),
             number,
             payload,
         }
@@ -152,8 +157,6 @@ impl BlockHeader {
 /// A block that has been finalized by the consensus protocol.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct FinalBlock {
-    /// Header of the block.
-    pub header: BlockHeader,
     /// Payload of the block. Should match `header.payload` hash.
     pub payload: Payload,
     /// Justification for the block. What guarantees that the block is final.
@@ -162,14 +165,17 @@ pub struct FinalBlock {
 
 impl FinalBlock {
     /// Creates a new finalized block.
-    pub fn new(header: BlockHeader, payload: Payload, justification: CommitQC) -> Self {
-        assert_eq!(header.payload, payload.hash());
-        assert_eq!(header, justification.message.proposal);
+    pub fn new(payload: Payload, justification: CommitQC) -> Self {
+        assert_eq!(justification.message.proposal.payload, payload.hash());
         Self {
-            header,
             payload,
             justification,
         }
+    }
+
+    /// Header fo the block.
+    pub fn header(&self) -> &BlockHeader {
+        &self.justification.message.proposal
     }
 
     /// Validates internal consistency of this block.
@@ -179,19 +185,12 @@ impl FinalBlock {
         consensus_threshold: usize,
     ) -> Result<(), BlockValidationError> {
         let payload_hash = self.payload.hash();
-        if payload_hash != self.header.payload {
+        if payload_hash != self.header().payload {
             return Err(BlockValidationError::HashMismatch {
-                header_hash: self.header.payload,
+                header_hash: self.header().payload,
                 payload_hash,
             });
         }
-        if self.header != self.justification.message.proposal {
-            return Err(BlockValidationError::ProposalMismatch {
-                block_header: Box::new(self.header),
-                qc_header: Box::new(self.justification.message.proposal),
-            });
-        }
-
         self.justification
             .verify(validators, consensus_threshold)
             .map_err(BlockValidationError::Justification)
@@ -233,21 +232,7 @@ pub enum BlockValidationError {
         /// Hash of the payload.
         payload_hash: PayloadHash,
     },
-    /// Quorum certificate proposal doesn't match the block header.
-    #[error(
-        "quorum certificate proposal doesn't match the block header (block header: {block_header:?}, \
-             header in QC: {qc_header:?})"
-    )]
-    ProposalMismatch {
-        /// Block header field.
-        block_header: Box<BlockHeader>,
-        /// Block header from the quorum certificate.
-        qc_header: Box<BlockHeader>,
-    },
     /// Failed verifying quorum certificate.
     #[error("failed verifying quorum certificate: {0:#?}")]
     Justification(#[source] anyhow::Error),
-    /// Application-specific error.
-    #[error(transparent)]
-    Other(anyhow::Error),
 }

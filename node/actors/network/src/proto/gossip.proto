@@ -18,17 +18,14 @@ message SyncValidatorAddrsResp {
   repeated roles.validator.Signed net_addresses = 1;
 }
 
-// Current block sync state of a node periodically sent by a node.
+// State of the local block store.
+// A node is expected to store a continuous range of blocks at all times
+// and actively fetch newest blocks.
 message SyncState {
   // First L2 block that the node has locally.
-  // Will be always 0 until state pruning is introduced.
   optional roles.validator.CommitQC first_stored_block = 1;
-  // The upper bound (inclusive) of the contiguous L2 block range
-  // starting from first_stored_block_number. The node has all L2 blocks
-  // in this range, but misses some L2 blocks beyond it.
-  optional roles.validator.CommitQC last_contiguous_stored_block = 2;
-  // Certified header of the last L2 block that the node has locally.
-  optional roles.validator.CommitQC last_stored_block = 3;
+  // Last L2 block that the node has locally.
+  optional roles.validator.CommitQC last_stored_block = 2;
 }
 
 // Response to `SyncState` acknowledging its processing.

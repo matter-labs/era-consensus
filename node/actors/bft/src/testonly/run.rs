@@ -1,12 +1,12 @@
 use super::{Behavior, Node};
-use crate::testonly;
+use crate::{testonly, Config};
 use anyhow::Context;
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope, signal, sync};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{BlockStore, InMemoryStorage, ReplicaStore};
+use zksync_consensus_storage::{testonly::in_memory, BlockStore};
 use zksync_consensus_utils::pipe;
 
 #[derive(Clone, Copy)]
@@ -27,22 +27,25 @@ impl Test {
     /// Run a test with the given parameters.
     pub(crate) async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
-        let nodes: Vec<_> = network::testonly::Instance::new(rng, self.nodes.len(), 1);
-        let keys: Vec<_> = nodes
+        let nets: Vec<_> = network::testonly::Instance::new(rng, self.nodes.len(), 1);
+        let keys: Vec<_> = nets
             .iter()
             .map(|node| node.consensus_config().key.clone())
             .collect();
         let (genesis_block, _) =
             testonly::make_genesis(&keys, validator::Payload(vec![]), validator::BlockNumber(0));
-        let nodes: Vec<_> = nodes
-            .into_iter()
-            .enumerate()
-            .map(|(i, net)| Node {
+        let mut nodes = vec![];
+        let mut store_runners = vec![];
+        for (i, net) in nets.into_iter().enumerate() {
+            let block_store = Box::new(in_memory::BlockStore::new(genesis_block.clone()));
+            let (block_store, runner) = BlockStore::new(ctx, block_store).await?;
+            store_runners.push(runner);
+            nodes.push(Node {
                 net,
                 behavior: self.nodes[i],
-                storage: Arc::new(InMemoryStorage::new(genesis_block.clone())),
-            })
-            .collect();
+                block_store,
+            });
+        }
 
         // Get only the honest replicas.
         let honest: Vec<_> = nodes
@@ -53,17 +56,16 @@ impl Test {
 
         // Run the nodes until all honest nodes store enough finalized blocks.
         scope::run!(ctx, |ctx, s| async {
+            for runner in store_runners {
+                s.spawn_bg(runner.run(ctx));
+            }
             s.spawn_bg(run_nodes(ctx, self.network, &nodes));
+            let want_block = validator::BlockNumber(self.blocks_to_finalize as u64);
             for n in &honest {
-                s.spawn(async {
-                    sync::wait_for(
-                        ctx,
-                        &mut n.storage.subscribe_to_block_writes(),
-                        |block_number| block_number.0 >= self.blocks_to_finalize as u64,
-                    )
-                    .await?;
-                    Ok(())
-                });
+                sync::wait_for(ctx, &mut n.block_store.subscribe(), |state| {
+                    state.next() > want_block
+                })
+                .await?;
             }
             Ok(())
         })
@@ -72,9 +74,9 @@ impl Test {
         // Check that the stored blocks are consistent.
         for i in 0..self.blocks_to_finalize as u64 + 1 {
             let i = validator::BlockNumber(i);
-            let want = honest[0].storage.block(ctx, i).await?;
+            let want = honest[0].block_store.block(ctx, i).await?;
             for n in &honest[1..] {
-                assert_eq!(want, n.storage.block(ctx, i).await?);
+                assert_eq!(want, n.block_store.block(ctx, i).await?);
             }
         }
         Ok(())
@@ -98,18 +100,17 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, nodes: &[Node]) -> anyhow::
             network_pipes.insert(validator_key.public(), network_actor_pipe);
             s.spawn(
                 async {
-                    let storage = ReplicaStore::from_store(node.storage.clone());
                     scope::run!(ctx, |ctx, s| async {
                         network_ready.recv(ctx).await?;
                         s.spawn(async {
-                            crate::run(
-                                ctx,
-                                consensus_actor_pipe,
-                                node.net.consensus_config().key.clone(),
+                            Config {
+                                secret_key: validator_key,
                                 validator_set,
-                                storage,
-                                &*node.behavior.payload_source(),
-                            )
+                                block_store: node.block_store.clone(),
+                                replica_store: Box::new(in_memory::ReplicaStore::default()),
+                                payload_manager: node.behavior.payload_manager(),
+                            }
+                            .run(ctx, consensus_actor_pipe)
                             .await
                             .context("consensus.run()")
                         });

@@ -285,6 +285,11 @@ pub struct CommitQC {
 }
 
 impl CommitQC {
+    /// Header of the certified block.
+    pub fn header(&self) -> &BlockHeader {
+        &self.message.proposal
+    }
+
     /// Create a new empty instance for a given `ReplicaCommit` message and a validator set size.
     pub fn new(message: ReplicaCommit, validator_set: &ValidatorSet) -> Self {
         Self {

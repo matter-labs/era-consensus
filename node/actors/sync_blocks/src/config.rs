@@ -36,7 +36,7 @@ impl Config {
         Ok(Self {
             validator_set,
             consensus_threshold,
-            max_concurrent_blocks: 10,
+            max_concurrent_blocks: 20,
             max_concurrent_blocks_per_peer: 5,
             sleep_interval_for_get_block: time::Duration::seconds(10),
         })

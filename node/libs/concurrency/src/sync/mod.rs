@@ -48,7 +48,8 @@ impl<T> ops::DerefMut for LocalMutexGuard<'_, T> {
     }
 }
 
-/// Locks a mutex.
+/// Locks a mutex, returning a guard which is NOT Send
+/// (useful for ensuring that mutex is not held across await point).
 /// Note that depending on a use case you might
 /// want to wait unconditionally for a mutex to be locked
 /// (when a mutex is guaranteed to be unlocked fast).
