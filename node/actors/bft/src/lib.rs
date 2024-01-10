@@ -14,11 +14,18 @@
 //! - [Notes on modern consensus algorithms](https://timroughgarden.github.io/fob21/andy.pdf)
 //! - [Blog post comparing several consensus algorithms](https://decentralizedthoughts.github.io/2023-04-01-hotstuff-2/)
 //! - Blog posts explaining [safety](https://seafooler.com/2022/01/24/understanding-safety-hotstuff/) and [responsiveness](https://seafooler.com/2022/04/02/understanding-responsiveness-hotstuff/)
-use crate::io::{InputMessage, OutputMessage};
-use std::sync::Arc;
+use std::collections::VecDeque;
+use std::sync::{Arc, Mutex};
+
+pub use config::Config;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
+use zksync_consensus_roles::validator::{ConsensusMsg, Signed};
+use zksync_consensus_storage::ReplicaStore;
 use zksync_consensus_utils::pipe::ActorPipe;
+
+use crate::deduper::Deduper;
+use crate::io::{InputMessage, OutputMessage};
 
 mod config;
 pub mod io;
@@ -29,8 +36,7 @@ mod replica;
 pub mod testonly;
 #[cfg(test)]
 mod tests;
-
-pub use config::Config;
+mod deduper;
 
 /// Protocol version of this BFT implementation.
 pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVersion::EARLIEST;
@@ -65,15 +71,23 @@ impl Config {
         mut pipe: ActorPipe<InputMessage, OutputMessage>,
     ) -> anyhow::Result<()> {
         let cfg = Arc::new(self);
+        let mut leader = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
+        let leader_queue = Deduper::new(
+            Mutex::new(VecDeque::<Signed<ConsensusMsg>>::new()),
+            Box::new(|_, _| { true }), // TODO: apply actual dedup predicate
+        );
+
         let res = scope::run!(ctx, |ctx, s| async {
-            let mut replica =
-                replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
-            let mut leader = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
+            let mut replica = replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
+
+            let prepare_qc_receiver = leader.prepare_qc.subscribe();
+
+            s.spawn_bg(leader.run_process_queue(ctx, &leader_queue));
 
             s.spawn_bg(leader::StateMachine::run_proposer(
                 ctx,
                 &cfg,
-                leader.prepare_qc.subscribe(),
+                prepare_qc_receiver,
                 &pipe.send,
             ));
 
@@ -102,19 +116,22 @@ impl Config {
                 use validator::ConsensusMsg as Msg;
                 let res = match &req.msg.msg {
                     Msg::ReplicaPrepare(_) | Msg::ReplicaCommit(_) => {
-                        leader.process_input(ctx, req.msg).await
+                        leader_queue.enqueue(req.msg);
+                        //leader.process_input_debug(ctx, req.msg).await;
+                        ()
                     }
                     Msg::LeaderPrepare(_) | Msg::LeaderCommit(_) => {
-                        replica.process_input(ctx, req.msg).await
+                        let _ = replica.process_input(ctx, req.msg).await;
+                        ()
                     }
                 };
                 // Notify network actor that the message has been processed.
                 // Ignore sending error.
                 let _ = req.ack.send(());
-                res?;
+               // res?;
             }
         })
-        .await;
+            .await;
         match res {
             Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
             Err(ctx::Error::Internal(err)) => Err(err),

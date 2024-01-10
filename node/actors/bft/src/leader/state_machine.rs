@@ -4,10 +4,15 @@ use std::{
     sync::Arc,
     unreachable,
 };
+use std::time::Duration;
+
 use tracing::instrument;
+
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator;
+
+use crate::deduper::Deduper;
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
@@ -59,6 +64,48 @@ impl StateMachine {
             prepare_qc: sync::watch::channel(None).0,
             commit_qcs: BTreeMap::new(),
         }
+    }
+
+    pub async fn run_process_queue(&mut self, ctx: &ctx::Ctx, queue: &Deduper<validator::Signed<validator::ConsensusMsg>>) -> ctx::Result<()> {
+        loop {
+            let signed_message = queue.dequeue().await;
+            let Some(signed_message) = signed_message else {
+                // println!("None");
+                tokio::time::sleep(Duration::from_millis(100)).await; // temp solution for rate limiting until a blocking solution will be implemented for `queue.dequeue()`
+                continue;
+            };
+
+            println!("{:?}", signed_message);
+
+            match signed_message.msg {
+                validator::ConsensusMsg::ReplicaPrepare(_) => {
+                    let _ = self.process_replica_prepare(ctx, signed_message.cast().unwrap()).await;
+                }
+                validator::ConsensusMsg::ReplicaCommit(_) => {
+                    let _ = self.process_replica_commit(ctx, signed_message.cast().unwrap());
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    // temp: minimal debuggable version of `process_input`
+    pub(crate) async fn process_input_debug(
+        &mut self,
+        ctx: &ctx::Ctx,
+        input: validator::Signed<validator::ConsensusMsg>,
+    ) -> ctx::Result<()> {
+        println!("{:?}", input);
+        match &input.msg {
+            validator::ConsensusMsg::ReplicaPrepare(_) => {
+                let _ = self.process_replica_prepare(ctx, input.cast().unwrap()).await;
+            }
+            validator::ConsensusMsg::ReplicaCommit(_) => {
+                let _ = self.process_replica_commit(ctx, input.cast().unwrap());
+            }
+            _ => unreachable!(),
+        };
+        Ok(())
     }
 
     /// Process an input message (leaders don't time out waiting for a message). This is the
@@ -201,7 +248,7 @@ impl StateMachine {
                 message: msg,
                 recipient: Target::Broadcast,
             }
-            .into(),
+                .into(),
         );
         Ok(())
     }
