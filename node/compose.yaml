@@ -1,0 +1,21 @@
+version: "3.9"
+
+services:
+  node-1:
+    build: .
+    networks:
+      node_net:
+        ipv4_address: 172.12.0.10
+  node-2:
+    build: .
+    networks:
+      node_net:
+        ipv4_address: 172.12.0.11
+
+networks:
+  node_net:
+    name: node_net
+    ipam:
+      config:
+        - subnet: "172.12.0.0/24"
+          gateway: "172.12.0.1"
