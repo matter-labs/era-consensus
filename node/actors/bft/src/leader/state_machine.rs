@@ -1,10 +1,8 @@
-use crate::{metrics, Config, OutputSender};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
     unreachable,
 };
-use std::time::Duration;
 
 use tracing::instrument;
 
@@ -12,7 +10,7 @@ use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as 
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator;
 
-use crate::deduper::Deduper;
+use crate::{Config, metrics, OutputSender};
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
@@ -66,14 +64,9 @@ impl StateMachine {
         }
     }
 
-    pub async fn run_process_queue(&mut self, ctx: &ctx::Ctx, queue: &Deduper<validator::Signed<validator::ConsensusMsg>>) -> ctx::Result<()> {
+    pub async fn run_process_queue(&mut self, ctx: &ctx::Ctx, mut queue: sync::prunable_queue::Receiver<validator::Signed<validator::ConsensusMsg>>) -> ctx::Result<()> {
         loop {
-            let signed_message = queue.dequeue().await;
-            let Some(signed_message) = signed_message else {
-                // println!("None");
-                tokio::time::sleep(Duration::from_millis(100)).await; // temp solution for rate limiting until a blocking solution will be implemented for `queue.dequeue()`
-                continue;
-            };
+            let signed_message = queue.dequeue(ctx).await?;
 
             println!("{:?}", signed_message);
 

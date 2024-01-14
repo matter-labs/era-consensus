@@ -18,13 +18,12 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
 pub use config::Config;
-use zksync_concurrency::{ctx, scope};
+use zksync_concurrency::{ctx, scope, sync};
 use zksync_consensus_roles::validator;
 use zksync_consensus_roles::validator::{ConsensusMsg, Signed};
 use zksync_consensus_storage::ReplicaStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
-use crate::deduper::Deduper;
 use crate::io::{InputMessage, OutputMessage};
 
 mod config;
@@ -36,7 +35,6 @@ mod replica;
 pub mod testonly;
 #[cfg(test)]
 mod tests;
-mod deduper;
 
 /// Protocol version of this BFT implementation.
 pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVersion::EARLIEST;
@@ -72,8 +70,7 @@ impl Config {
     ) -> anyhow::Result<()> {
         let cfg = Arc::new(self);
         let mut leader = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
-        let leader_queue = Deduper::new(
-            Mutex::new(VecDeque::<Signed<ConsensusMsg>>::new()),
+        let (sender, receiver) = sync::prunable_queue::new(
             Box::new(|_, _| { true }), // TODO: apply actual dedup predicate
         );
 
@@ -82,7 +79,7 @@ impl Config {
 
             let prepare_qc_receiver = leader.prepare_qc.subscribe();
 
-            s.spawn_bg(leader.run_process_queue(ctx, &leader_queue));
+            s.spawn_bg(leader.run_process_queue(ctx, receiver));
 
             s.spawn_bg(leader::StateMachine::run_proposer(
                 ctx,
@@ -116,8 +113,7 @@ impl Config {
                 use validator::ConsensusMsg as Msg;
                 let res = match &req.msg.msg {
                     Msg::ReplicaPrepare(_) | Msg::ReplicaCommit(_) => {
-                        leader_queue.enqueue(req.msg);
-                        //leader.process_input_debug(ctx, req.msg).await;
+                       sender.enqueue(req.msg).await;
                         ()
                     }
                     Msg::LeaderPrepare(_) | Msg::LeaderCommit(_) => {
