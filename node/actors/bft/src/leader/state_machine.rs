@@ -1,16 +1,13 @@
+use crate::{metrics, Config, OutputSender};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
     unreachable,
 };
-
 use tracing::instrument;
-
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator;
-
-use crate::{Config, metrics, OutputSender};
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
@@ -64,83 +61,53 @@ impl StateMachine {
         }
     }
 
-    pub async fn run_process_queue(&mut self, ctx: &ctx::Ctx, mut queue: sync::prunable_queue::Receiver<validator::Signed<validator::ConsensusMsg>>) -> ctx::Result<()> {
-        loop {
-            let signed_message = queue.dequeue(ctx).await?;
-
-            println!("{:?}", signed_message);
-
-            match signed_message.msg {
-                validator::ConsensusMsg::ReplicaPrepare(_) => {
-                    let _ = self.process_replica_prepare(ctx, signed_message.cast().unwrap()).await;
-                }
-                validator::ConsensusMsg::ReplicaCommit(_) => {
-                    let _ = self.process_replica_commit(ctx, signed_message.cast().unwrap());
-                }
-                _ => unreachable!(),
-            }
-        }
-    }
-
-    // temp: minimal debuggable version of `process_input`
-    pub(crate) async fn process_input_debug(
-        &mut self,
-        ctx: &ctx::Ctx,
-        input: validator::Signed<validator::ConsensusMsg>,
-    ) -> ctx::Result<()> {
-        println!("{:?}", input);
-        match &input.msg {
-            validator::ConsensusMsg::ReplicaPrepare(_) => {
-                let _ = self.process_replica_prepare(ctx, input.cast().unwrap()).await;
-            }
-            validator::ConsensusMsg::ReplicaCommit(_) => {
-                let _ = self.process_replica_commit(ctx, input.cast().unwrap());
-            }
-            _ => unreachable!(),
-        };
-        Ok(())
-    }
-
     /// Process an input message (leaders don't time out waiting for a message). This is the
     /// main entry point for the state machine. We need read-access to the inner consensus struct.
-    /// As a result, we can modify our state machine or send a message to the executor.  
-    #[instrument(level = "trace", skip(self), ret)]
-    pub(crate) async fn process_input(
+    /// As a result, we can modify our state machine or send a message to the executor.
+    // #[instrument(level = "trace", skip(self), ret)]
+    pub async fn run(
         &mut self,
         ctx: &ctx::Ctx,
-        input: validator::Signed<validator::ConsensusMsg>,
+        mut queue: sync::prunable_queue::Receiver<
+            validator::Signed<validator::ConsensusMsg>,
+            ctx::Result<()>,
+        >,
     ) -> ctx::Result<()> {
-        let now = ctx.now();
-        let label = match &input.msg {
-            validator::ConsensusMsg::ReplicaPrepare(_) => {
-                let res = match self
-                    .process_replica_prepare(ctx, input.cast().unwrap())
-                    .await
-                    .wrap("process_replica_prepare()")
-                {
-                    Ok(()) => Ok(()),
-                    Err(super::replica_prepare::Error::Internal(err)) => {
-                        return Err(err);
-                    }
-                    Err(err) => {
-                        tracing::warn!("process_replica_prepare: {err:#}");
-                        Err(())
-                    }
-                };
-                metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
-            }
-            validator::ConsensusMsg::ReplicaCommit(_) => {
-                let res = self
-                    .process_replica_commit(ctx, input.cast().unwrap())
-                    .map_err(|err| {
-                        tracing::warn!("process_replica_commit: {err:#}");
-                    });
-                metrics::ConsensusMsgLabel::ReplicaCommit.with_result(&res)
-            }
-            _ => unreachable!(),
-        };
-        metrics::METRICS.leader_processing_latency[&label].observe_latency(ctx.now() - now);
-        Ok(())
+        loop {
+            let (signed_message, res_sender) = queue.dequeue(ctx).await?;
+
+            let now = ctx.now();
+            let label = match &signed_message.msg {
+                validator::ConsensusMsg::ReplicaPrepare(_) => {
+                    let res = match self
+                        .process_replica_prepare(ctx, signed_message.cast().unwrap())
+                        .await
+                        .wrap("process_replica_prepare()")
+                    {
+                        Ok(()) => Ok(()),
+                        Err(super::replica_prepare::Error::Internal(err)) => {
+                            return Err(err);
+                        }
+                        Err(err) => {
+                            tracing::warn!("process_replica_prepare: {err:#}");
+                            Err(())
+                        }
+                    };
+                    metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
+                }
+                validator::ConsensusMsg::ReplicaCommit(_) => {
+                    let res = self
+                        .process_replica_commit(ctx, signed_message.cast().unwrap())
+                        .map_err(|err| {
+                            tracing::warn!("process_replica_commit: {err:#}");
+                        });
+                    metrics::ConsensusMsgLabel::ReplicaCommit.with_result(&res)
+                }
+                _ => unreachable!(),
+            };
+            metrics::METRICS.leader_processing_latency[&label].observe_latency(ctx.now() - now);
+            let _ = res_sender.send(Ok(()));
+        }
     }
 
     /// In a loop, receives a PrepareQC and sends a LeaderPrepare containing it.
@@ -241,7 +208,7 @@ impl StateMachine {
                 message: msg,
                 recipient: Target::Broadcast,
             }
-                .into(),
+            .into(),
         );
         Ok(())
     }

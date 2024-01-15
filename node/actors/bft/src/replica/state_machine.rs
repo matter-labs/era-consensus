@@ -3,8 +3,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
-use tracing::instrument;
-use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, time};
+use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage as storage;
 
@@ -28,7 +27,7 @@ pub(crate) struct StateMachine {
     pub(crate) block_proposal_cache:
         BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
     /// The deadline to receive an input message.
-    pub(crate) timeout_deadline: time::Deadline,
+    pub(crate) timeout_deadline: sync::watch::Sender<time::Deadline>,
 }
 
 impl StateMachine {
@@ -59,7 +58,7 @@ impl StateMachine {
             high_vote: backup.high_vote,
             high_qc: backup.high_qc,
             block_proposal_cache,
-            timeout_deadline: time::Deadline::Infinite,
+            timeout_deadline: sync::watch::channel(time::Deadline::Infinite).0,
         };
         // We need to start the replica before processing inputs.
         this.start_new_view(ctx).await.wrap("start_new_view()")?;
@@ -69,48 +68,62 @@ impl StateMachine {
     /// Process an input message (it will be None if the channel timed out waiting for a message). This is
     /// the main entry point for the state machine. We need read-access to the inner consensus struct.
     /// As a result, we can modify our state machine or send a message to the executor.
-    #[instrument(level = "trace", ret)]
-    pub(crate) async fn process_input(
+    //#[instrument(level = "trace", ret)]
+    pub async fn run(
         &mut self,
         ctx: &ctx::Ctx,
-        input: validator::Signed<validator::ConsensusMsg>,
+        mut queue: sync::prunable_queue::Receiver<
+            Option<validator::Signed<validator::ConsensusMsg>>,
+            ctx::Result<()>,
+        >,
     ) -> ctx::Result<()> {
-        let now = ctx.now();
-        let label = match &input.msg {
-            validator::ConsensusMsg::LeaderPrepare(_) => {
-                let res = match self
-                    .process_leader_prepare(ctx, input.cast().unwrap())
-                    .await
-                    .wrap("process_leader_prepare()")
-                {
-                    Err(super::leader_prepare::Error::Internal(err)) => return Err(err),
-                    Err(err) => {
-                        tracing::warn!("process_leader_prepare(): {err:#}");
-                        Err(())
-                    }
-                    Ok(()) => Ok(()),
-                };
-                metrics::ConsensusMsgLabel::LeaderPrepare.with_result(&res)
-            }
-            validator::ConsensusMsg::LeaderCommit(_) => {
-                let res = match self
-                    .process_leader_commit(ctx, input.cast().unwrap())
-                    .await
-                    .wrap("process_leader_commit()")
-                {
-                    Err(super::leader_commit::Error::Internal(err)) => return Err(err),
-                    Err(err) => {
-                        tracing::warn!("process_leader_commit(): {err:#}");
-                        Err(())
-                    }
-                    Ok(()) => Ok(()),
-                };
-                metrics::ConsensusMsgLabel::LeaderCommit.with_result(&res)
-            }
-            _ => unreachable!(),
-        };
-        metrics::METRICS.replica_processing_latency[&label].observe_latency(ctx.now() - now);
-        Ok(())
+        loop {
+            let (signed_message, res_sender) = queue.dequeue(ctx).await?;
+
+            let Some(signed_message) = signed_message else {
+                let res = self.start_new_view(ctx).await;
+                let _ = res_sender.send(res);
+                continue;
+            };
+
+            let now = ctx.now();
+            let label = match &signed_message.msg {
+                validator::ConsensusMsg::LeaderPrepare(_) => {
+                    let res = match self
+                        .process_leader_prepare(ctx, signed_message.cast().unwrap())
+                        .await
+                        .wrap("process_leader_prepare()")
+                    {
+                        Err(super::leader_prepare::Error::Internal(err)) => return Err(err),
+                        Err(err) => {
+                            tracing::warn!("process_leader_prepare(): {err:#}");
+                            Err(())
+                        }
+                        Ok(()) => Ok(()),
+                    };
+                    metrics::ConsensusMsgLabel::LeaderPrepare.with_result(&res)
+                }
+                validator::ConsensusMsg::LeaderCommit(_) => {
+                    let res = match self
+                        .process_leader_commit(ctx, signed_message.cast().unwrap())
+                        .await
+                        .wrap("process_leader_commit()")
+                    {
+                        Err(super::leader_commit::Error::Internal(err)) => return Err(err),
+                        Err(err) => {
+                            tracing::warn!("process_leader_commit(): {err:#}");
+                            Err(())
+                        }
+                        Ok(()) => Ok(()),
+                    };
+                    metrics::ConsensusMsgLabel::LeaderCommit.with_result(&res)
+                }
+                _ => unreachable!(),
+            };
+            metrics::METRICS.replica_processing_latency[&label].observe_latency(ctx.now() - now);
+
+            let _ = res_sender.send(Ok(()));
+        }
     }
 
     /// Backups the replica state to disk.

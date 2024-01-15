@@ -10,9 +10,9 @@ pub use tokio::{
     task::yield_now,
 };
 
+pub mod prunable_queue;
 #[cfg(test)]
 mod tests;
-pub mod prunable_queue;
 
 /// Error returned when a channel has been disconnected.
 #[derive(Debug, thiserror::Error)]
