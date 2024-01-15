@@ -13,10 +13,8 @@ docker_node_configs:
 
 node_docker:
 	mkdir -p docker-config
-	cd docker-config && rm -rf addresses.txt && touch addresses.txt && echo ${DOCKER_IP}:3054 >> addresses.txt
-	docker build -t consensus-node ..
-	docker network create --subnet=172.12.0.0/16 node-net
-	docker run --name test-consensus-node --net node-net --ip ${DOCKER_IP} -itd consensus-node
+	cd docker-config && rm -rf addresses.txt && echo ${DOCKER_IP}:3054 >> addresses.txt
+	cd .. && docker-compose up -d node-1
 
 consenus_docker_example:
 	mkdir -p docker-config
