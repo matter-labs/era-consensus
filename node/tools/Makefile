@@ -27,8 +27,8 @@ clean: clean_docker
 
 clean_docker:
 	rm -rf docker-config
-	docker rm test-consensus-node
-	docker rm consensus-node-1
-	docker rm consensus-node-2
-	docker network rm node-net
-	docker image rm consensus-node
+	docker rm -f consensus-node
+	docker rm -f consensus-node-1
+	docker rm -f consensus-node-2
+	docker network rm -f node-net
+	docker image rm -f consensus-node
