@@ -14,7 +14,7 @@ node_docker:
 	echo ${DOCKER_IP}:3054 >> addresses.txt
 	docker build -t consensus-node ../
 	docker network create --subnet=172.12.0.0/16 node-net
-	docker run --name test-node-consensus --net node-net --ip ${DOCKER_IP} -itd consensus-node
+	docker run --name test-consensus-node --net node-net --ip ${DOCKER_IP} -itd consensus-node
 
 consenus_docker_example:
 	rm -rf addresses.txt
@@ -28,7 +28,7 @@ clean: clean_docker
 
 clean_docker:
 	docker rm test-consensus-node
-	docker rm node-node-1-1
-	docker rm node-node-2-1
+	docker rm consensus-node-1
+	docker rm consensus-node-2
 	docker network rm node-net
 	docker image rm consensus-node
