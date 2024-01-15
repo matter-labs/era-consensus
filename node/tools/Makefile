@@ -12,9 +12,9 @@ node_docker:
 	rm -rf addresses.txt
 	touch addresses.txt
 	echo ${DOCKER_IP}:3054 >> addresses.txt
-	docker build -t test-node ../
+	docker build -t consensus-node ../
 	docker network create --subnet=172.12.0.0/16 node-net
-	docker run --name test-node-consensus --net node-net --ip ${DOCKER_IP} -itd test-node
+	docker run --name test-node-consensus --net node-net --ip ${DOCKER_IP} -itd consensus-node
 
 consenus_docker_example:
 	rm -rf addresses.txt
@@ -31,4 +31,4 @@ clean_docker:
 	docker rm node-node-1-1
 	docker rm node-node-2-1
 	docker network rm node-net
-	docker image rm test-node
+	docker image rm consensus-node
