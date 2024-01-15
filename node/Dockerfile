@@ -4,7 +4,7 @@ COPY . /node/
 WORKDIR /node
 RUN apt-get update && apt-get install -y libclang-dev
 RUN cargo build --release
-RUN cd tools && make node_configs
+RUN cd tools && make docker_node_configs
 
 # Runtime Stage
 FROM debian:stable-slim as runtime
@@ -12,7 +12,7 @@ FROM debian:stable-slim as runtime
 COPY --from=build /node/target/release/localnet_config /node/
 COPY --from=build /node/target/release/executor /node/
 COPY --from=build /node/tools/addresses.txt /node/
-COPY --from=build /node/tools/node-configs /node/
+COPY --from=build /node/tools/docker-config/node-configs /node/
 COPY --from=build /node/entrypoint.sh /node/
 
 WORKDIR /node
