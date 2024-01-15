@@ -20,7 +20,7 @@ node_docker:
 
 consenus_docker_example:
 	mkdir -p docker-config
-	cd docker-config && touch addresses.txt && echo 172.12.0.10:3054 >> addresses.txt &&  echo 172.12.0.11:3054 >> addresses.txt
+	cd docker-config && rm -rf addresses.txt && touch addresses.txt && echo 172.12.0.10:3054 >> addresses.txt &&  echo 172.12.0.11:3054 >> addresses.txt
 	cd .. && docker-compose up -d
 
 clean: clean_docker
