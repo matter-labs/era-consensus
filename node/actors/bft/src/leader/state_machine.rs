@@ -7,7 +7,7 @@ use std::{
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::{validator, validator::ConsensusMsg};
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
@@ -61,12 +61,11 @@ impl StateMachine {
         }
     }
 
-    /// Process an input message (leaders don't time out waiting for a message). This is the
-    /// main entry point for the state machine. We need read-access to the inner consensus struct.
-    /// As a result, we can modify our state machine or send a message to the executor.
-    // #[instrument(level = "trace", skip(self), ret)]
+    /// Runs a loop to process incoming messages.
+    /// This is the main entry point for the state machine,
+    /// potentially triggering state modifications and message sending to the executor.
     pub async fn run(
-        &mut self,
+        mut self,
         ctx: &ctx::Ctx,
         mut queue: sync::prunable_queue::Receiver<
             validator::Signed<validator::ConsensusMsg>,
@@ -211,5 +210,24 @@ impl StateMachine {
             .into(),
         );
         Ok(())
+    }
+
+    pub fn queue_pruning_predicate(
+        existing_msg: &validator::Signed<ConsensusMsg>,
+        new_msg: &validator::Signed<ConsensusMsg>,
+    ) -> bool {
+        if existing_msg.key != new_msg.key {
+            return false;
+        }
+
+        match (&existing_msg.msg, &new_msg.msg) {
+            (ConsensusMsg::ReplicaPrepare(existing_msg), ConsensusMsg::ReplicaPrepare(new_msg)) => {
+                new_msg.view > existing_msg.view
+            }
+            (ConsensusMsg::ReplicaCommit(existing_msg), ConsensusMsg::ReplicaCommit(new_msg)) => {
+                new_msg.view > existing_msg.view
+            }
+            _ => false,
+        }
     }
 }

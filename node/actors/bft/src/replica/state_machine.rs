@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::{validator, validator::ConsensusMsg};
 use zksync_consensus_storage as storage;
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
@@ -65,12 +65,11 @@ impl StateMachine {
         Ok(this)
     }
 
-    /// Process an input message (it will be None if the channel timed out waiting for a message). This is
-    /// the main entry point for the state machine. We need read-access to the inner consensus struct.
-    /// As a result, we can modify our state machine or send a message to the executor.
-    //#[instrument(level = "trace", ret)]
+    /// Runs a loop to process incoming messages (may be `None` if the channel times out while waiting for a message).
+    /// This is the main entry point for the state machine,
+    /// potentially triggering state modifications and message sending to the executor.
     pub async fn run(
-        &mut self,
+        mut self,
         ctx: &ctx::Ctx,
         mut queue: sync::prunable_queue::Receiver<
             Option<validator::Signed<validator::ConsensusMsg>>,
@@ -78,11 +77,10 @@ impl StateMachine {
         >,
     ) -> ctx::Result<()> {
         loop {
-            let (signed_message, res_sender) = queue.dequeue(ctx).await?;
-
+            let (signed_message, res_send) = queue.dequeue(ctx).await?;
             let Some(signed_message) = signed_message else {
                 let res = self.start_new_view(ctx).await;
-                let _ = res_sender.send(res);
+                let _ = res_send.send(res);
                 continue;
             };
 
@@ -122,7 +120,7 @@ impl StateMachine {
             };
             metrics::METRICS.replica_processing_latency[&label].observe_latency(ctx.now() - now);
 
-            let _ = res_sender.send(Ok(()));
+            let _ = res_send.send(Ok(()));
         }
     }
 
@@ -148,5 +146,29 @@ impl StateMachine {
             .await
             .wrap("put_replica_state")?;
         Ok(())
+    }
+
+    pub fn queue_pruning_predicate(
+        existing_msg: &Option<validator::Signed<ConsensusMsg>>,
+        new_msg: &Option<validator::Signed<ConsensusMsg>>,
+    ) -> bool {
+        if existing_msg.is_none() || new_msg.is_none() {
+            return false;
+        }
+        let (existing_msg, new_msg) = (existing_msg.as_ref().unwrap(), new_msg.as_ref().unwrap());
+
+        if existing_msg.key != new_msg.key {
+            return false;
+        }
+
+        match (&existing_msg.msg, &new_msg.msg) {
+            (ConsensusMsg::LeaderPrepare(existing_msg), ConsensusMsg::LeaderPrepare(new_msg)) => {
+               new_msg.view > existing_msg.view
+            }
+            (ConsensusMsg::LeaderCommit(existing_msg), ConsensusMsg::LeaderCommit(new_msg)) => {
+                new_msg.justification.message.view > existing_msg.justification.message.view
+            }
+            _ => false,
+        }
     }
 }

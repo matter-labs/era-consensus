@@ -17,7 +17,7 @@ use std::{collections::VecDeque, sync::Arc};
 use tokio::sync::Mutex;
 
 pub fn new<T, U>(
-    predicate: Box<dyn Sync + Send + Fn(&T, &T) -> bool>,
+    pruning_predicate: Box<dyn Sync + Send + Fn(&T, &T) -> bool>,
 ) -> (Sender<T, U>, Receiver<T, U>) {
     let queue: Mutex<VecDeque<(T, oneshot::Sender<U>)>> = Mutex::new(VecDeque::new());
     // Internal signaling, to enable waiting on the receiver side for new items.
@@ -30,7 +30,7 @@ pub fn new<T, U>(
 
     let sender = Sender {
         shared: shared.clone(),
-        predicate,
+        pruning_predicate: pruning_predicate,
     };
 
     let receiver = Receiver {
@@ -48,22 +48,22 @@ pub struct Shared<T, U> {
 
 pub struct Sender<T, U> {
     shared: Arc<Shared<T, U>>,
-    predicate: Box<dyn Sync + Send + Fn(&T, &T) -> bool>,
+    pruning_predicate: Box<dyn Sync + Send + Fn(&T, &T) -> bool>,
 }
 
 impl<T, U> Sender<T, U> {
     pub async fn enqueue(&self, item: T) -> oneshot::Receiver<U> {
         // Create oneshot channel for returning result asynchronously.
-        let (res_sender, res_receiver) = oneshot::channel();
+        let (res_send, res_recv) = oneshot::channel();
 
         let mut queue = self.shared.queue.lock().await;
-        queue.retain(|existing_item| (self.predicate)(&existing_item.0, &item));
-        queue.push_back((item, res_sender));
+        queue.retain(|existing_item| !(self.pruning_predicate)(&existing_item.0, &item));
+        queue.push_back((item, res_send));
 
         // Ignore sending error.
         let _ = self.shared.has_items_send.send(true);
 
-        res_receiver
+        res_recv
     }
 }
 

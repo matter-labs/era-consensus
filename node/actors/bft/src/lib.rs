@@ -18,8 +18,9 @@
 use crate::io::{InputMessage, OutputMessage};
 pub use config::Config;
 use std::sync::Arc;
-use zksync_concurrency::{ctx, scope, sync};
-use zksync_consensus_roles::validator;
+use tokio::sync::mpsc;
+use zksync_concurrency::{ctx, oneshot::Receiver, scope, sync};
+use zksync_consensus_roles::validator::{self, ConsensusMsg};
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;
@@ -65,28 +66,28 @@ impl Config {
         mut pipe: ActorPipe<InputMessage, OutputMessage>,
     ) -> anyhow::Result<()> {
         let cfg = Arc::new(self);
-        let mut leader = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
-        let mut replica = replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
+        let leader = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
+        let replica = replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
 
-        let (leader_sender, leader_receiver) = sync::prunable_queue::new(
-            Box::new(|_, _| true), // TODO: apply actual dedup predicate
-        );
-        let (replica_sender, replica_receiver) = sync::prunable_queue::new(
-            Box::new(|_, _| true), // TODO: apply actual dedup predicate
-        );
+        let (leader_send, leader_recv) =
+            sync::prunable_queue::new(Box::new(leader::StateMachine::queue_pruning_predicate));
+
+        let (replica_send, replica_recv) =
+            sync::prunable_queue::new(Box::new(replica::StateMachine::queue_pruning_predicate));
+
         // mpsc channel for returning error asynchronously.
-        let (err_sender, mut err_receiver) = tokio::sync::mpsc::channel::<ctx::Result<()>>(1);
+        let (err_send, mut err_recv) = mpsc::channel::<ctx::Result<()>>(1);
 
         let res = scope::run!(ctx, |ctx, s| async {
-            let prepare_qc_receiver = leader.prepare_qc.subscribe();
-            let timeout_deadline = replica.timeout_deadline.subscribe();
+            let prepare_qc_recv = leader.prepare_qc.subscribe();
+            let deadline_recv = replica.timeout_deadline.subscribe();
 
-            s.spawn_bg(replica.run(ctx, replica_receiver));
-            s.spawn_bg(leader.run(ctx, leader_receiver));
+            s.spawn_bg(replica.run(ctx, replica_recv));
+            s.spawn_bg(leader.run(ctx, leader_recv));
             s.spawn_bg(leader::StateMachine::run_proposer(
                 ctx,
                 &cfg,
-                prepare_qc_receiver,
+                prepare_qc_recv,
                 &pipe.send,
             ));
 
@@ -95,7 +96,7 @@ impl Config {
             // This is the infinite loop where the consensus actually runs. The validator waits for either
             // a message from the network or for a timeout, and processes each accordingly.
             loop {
-                let deadline = *timeout_deadline.borrow();
+                let deadline = *deadline_recv.borrow();
                 let input = pipe.recv.recv(&ctx.with_deadline(deadline)).await.ok();
 
                 // We check if the context is active before processing the input. If the context is not active,
@@ -104,60 +105,64 @@ impl Config {
                     return Ok(());
                 }
 
-                if let Ok(err) = err_receiver.try_recv() {
-                    return Err(err.err().unwrap());
+                // Check if an asynchronous error was received.
+                if let Ok(res) = err_recv.try_recv() {
+                    return Err(res.err().unwrap());
                 }
 
                 let Some(InputMessage::Network(req)) = input else {
-                    let res = replica_sender.enqueue(None).await;
-                    // Await for result before proceeding, allowing deadline value to be updated.
-                    res.recv_or_disconnected(ctx)
-                        .await
-                        .unwrap()
-                        .unwrap()
-                        .unwrap();
+                    let res_recv = replica_send.enqueue(None).await;
+                    // Wait for result before proceeding, allowing timeout deadline value to get updated.
+                    handle_result(ctx, res_recv, &err_send).await;
                     continue;
                 };
 
-                use validator::ConsensusMsg as Msg;
+                let res_recv;
                 match &req.msg.msg {
-                    Msg::ReplicaPrepare(_) | Msg::ReplicaCommit(_) => {
-                        let res = leader_sender.enqueue(req.msg).await;
-                        s.spawn_bg(async {
-                            let res = res.recv_or_disconnected(ctx).await;
-                            // Notify network actor that the message has been processed.
-                            // Ignore sending error.
-                            let _ = req.ack.send(());
-                            // Notify if result is Err.
-                            if let Ok(Ok(Err(err))) = res {
-                                err_sender.clone().send(Err(err)).await.unwrap();
-                            }
-
-                            Ok(())
-                        });
+                    ConsensusMsg::ReplicaPrepare(_) | ConsensusMsg::ReplicaCommit(_) => {
+                        res_recv = leader_send.enqueue(req.msg).await;
                     }
-                    Msg::LeaderPrepare(_) | Msg::LeaderCommit(_) => {
-                        let res = replica_sender.enqueue(Some(req.msg)).await;
-                        s.spawn_bg(async {
-                            let res = res.recv_or_disconnected(ctx).await;
-                            // Notify network actor that the message has been processed.
-                            // Ignore sending error.
-                            let _ = req.ack.send(());
-                            // Notify if result is Err.
-                            if let Ok(Ok(Err(err))) = res {
-                                err_sender.clone().send(Err(err)).await.unwrap();
-                            }
-
-                            Ok(())
-                        });
+                    ConsensusMsg::LeaderPrepare(_) | ConsensusMsg::LeaderCommit(_) => {
+                        res_recv = replica_send.enqueue(Some(req.msg)).await;
                     }
-                };
+                }
+
+                s.spawn_bg(async {
+                    handle_result(ctx, res_recv, &err_send).await;
+
+                    // Notify network actor that the message has been processed.
+                    // Ignore sending error.
+                    let _ = req.ack.send(());
+
+                    Ok(())
+                });
             }
         })
         .await;
         match res {
             Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
             Err(ctx::Error::Internal(err)) => Err(err),
+        }
+    }
+}
+
+async fn handle_result(
+    ctx: &ctx::Ctx,
+    res_recv: Receiver<ctx::Result<()>>,
+    err_send: &mpsc::Sender<ctx::Result<()>>,
+) {
+    let res = res_recv.recv_or_disconnected(ctx).await;
+
+    // Ignore the outer `Canceled` (should be handled elsewhere)
+    // and `Disconnected` (expected in the case of inbound message queue pruning) errors.
+    if let Ok(Ok(Err(err))) = res {
+        match err {
+            // Ignore inner `Canceled` as well, for the same reason.
+            ctx::Error::Canceled(_) => {}
+            // Notify internal error.
+            ctx::Error::Internal(_) => {
+                err_send.send(Err(err)).await.unwrap();
+            }
         }
     }
 }

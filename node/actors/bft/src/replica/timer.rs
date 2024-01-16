@@ -13,9 +13,8 @@ impl StateMachine {
     pub(crate) fn reset_timer(&mut self, ctx: &ctx::Ctx) {
         let timeout =
             Self::BASE_DURATION * 2u32.pow((self.view.0 - self.high_qc.message.view.0) as u32);
+
         metrics::METRICS.replica_view_timeout.set_latency(timeout);
-        let _ = self
-            .timeout_deadline
-            .send(time::Deadline::Finite(ctx.now() + timeout));
+        self.timeout_deadline.send_replace(time::Deadline::Finite(ctx.now() + timeout));
     }
 }
