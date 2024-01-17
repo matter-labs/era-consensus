@@ -16,7 +16,7 @@ This will create a container running a single node advancing views and finalizin
 
 To set up a simple example with two different nodes communicating with each other in running in different containers run the following command:
 
-`make consenus_docker_example`
+`make consensus_docker_example`
 
 This will set up two distinct containers, each hosting a consensus node. These nodes will be interlinked, progressing through views and finalizing blocks achieving consensus between them.
 
