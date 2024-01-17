@@ -1,4 +1,4 @@
-.PHONY: node node_configs docker_node_configs node_docker consenus_docker_example clean clean_docker  
+.PHONY: node node_configs docker_node_configs node_docker consensus_docker_example clean clean_docker
 IP?=127.0.0.1:3054
 DOCKER_IP=172.12.0.10
 EXECUTABLE_NODE_DIR=node/tools
@@ -21,7 +21,7 @@ node_docker:
 	cd ${EXECUTABLE_NODE_DIR}/docker-config && rm -rf addresses.txt && echo ${DOCKER_IP}:3054 >> addresses.txt
 	docker-compose up -d node-1
 
-consenus_docker_example:
+consensus_docker_example:
 	mkdir -p ${EXECUTABLE_NODE_DIR}/docker-config
 	cd ${EXECUTABLE_NODE_DIR}/docker-config && rm -rf addresses.txt && touch addresses.txt && echo 172.12.0.10:3054 >> addresses.txt &&  echo 172.12.0.11:3054 >> addresses.txt
 	docker-compose up -d
