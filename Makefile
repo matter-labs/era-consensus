@@ -14,7 +14,7 @@ node_configs:
 # Docker commands
 
 docker_node_configs:
-	cd tools && cargo run --release --bin localnet_config -- --input-addrs docker-config/addresses.txt --output-dir docker-config/node-configs
+	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin localnet_config -- --input-addrs docker-config/addresses.txt --output-dir docker-config/node-configs
 
 node_docker:
 	mkdir -p ${EXECUTABLE_NODE_DIR}/docker-config

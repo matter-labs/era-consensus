@@ -1,10 +1,11 @@
 # Build Stage
 FROM rust:1.72.1 as build
-COPY /node/ Makefile /node/
+COPY /node/ /node/
+COPY Makefile .
 WORKDIR /node
 RUN apt-get update && apt-get install -y libclang-dev
 RUN cargo build --release
-RUN make docker_node_configs
+RUN cd .. && make docker_node_configs
 
 # Runtime Stage
 FROM debian:stable-slim as runtime
