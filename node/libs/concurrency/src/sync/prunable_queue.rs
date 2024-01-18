@@ -60,8 +60,7 @@ impl<T, U> Sender<T, U> {
         queue.retain(|existing_item| !(self.pruning_predicate)(&existing_item.0, &item));
         queue.push_back((item, res_send));
 
-        // Ignore sending error.
-        let _ = self.shared.has_items_send.send(true);
+        self.shared.has_items_send.send_replace(true);
 
         res_recv
     }
@@ -80,8 +79,7 @@ impl<T, U> Receiver<T, U> {
         let item = queue.pop_front().unwrap();
 
         if queue.len() == 0 {
-            // Send error is unexpected because `self` holds the receiver.
-            self.shared.has_items_send.send(false).unwrap();
+            self.shared.has_items_send.send_replace(false);
         }
 
         Ok(item)
