@@ -77,7 +77,7 @@ impl StateMachine {
         >,
     ) -> ctx::Result<()> {
         loop {
-            let (signed_message, res_send) = queue.dequeue(ctx).await?;
+            let (signed_message, res_send) = queue.recv(ctx).await?;
             let Some(signed_message) = signed_message else {
                 let res = self.start_new_view(ctx).await;
                 let _ = res_send.send(res);

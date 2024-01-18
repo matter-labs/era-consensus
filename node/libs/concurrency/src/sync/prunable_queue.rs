@@ -16,7 +16,7 @@ use crate::{
 };
 use std::{collections::VecDeque, sync::Arc};
 
-pub fn new<T, U>(
+pub fn channel<T, U>(
     pruning_predicate: impl 'static + Sync + Send + Fn(&T, &T) -> bool,
 ) -> (Sender<T, U>, Receiver<T, U>) {
     let queue: Mutex<VecDeque<(T, oneshot::Sender<U>)>> = Mutex::new(VecDeque::new());
@@ -52,7 +52,7 @@ pub struct Sender<T, U> {
 }
 
 impl<T, U> Sender<T, U> {
-    pub async fn enqueue(&self, item: T) -> oneshot::Receiver<U> {
+    pub async fn send(&self, item: T) -> oneshot::Receiver<U> {
         // Create oneshot channel for returning result asynchronously.
         let (res_send, res_recv) = oneshot::channel();
 
@@ -73,7 +73,7 @@ pub struct Receiver<T, U> {
 }
 
 impl<T, U> Receiver<T, U> {
-    pub async fn dequeue(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<(T, oneshot::Sender<U>)> {
+    pub async fn recv(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<(T, oneshot::Sender<U>)> {
         sync::wait_for(ctx, &mut self.has_items_recv, |has_items| *has_items).await?;
         let mut queue = self.shared.queue.lock().await;
         // `None` is unexpected because we waited for new items.
@@ -89,9 +89,9 @@ impl<T, U> Receiver<T, U> {
 }
 
 // Test scenario:
-// Enqueue two sets of 0..1000 items, in conjunction, while pruning
+// Send two sets of 0..1000 items, in conjunction, while pruning
 // so that only one 0..1000 set is expected to remain in queue.
-// Then, dequeue to assert the queue's content.
+// Then, recv to assert the queue's content.
 #[tokio::test]
 async fn test_prunable_queue() {
     use tokio::time::{timeout, Duration};
@@ -101,7 +101,7 @@ async fn test_prunable_queue() {
 
     let ctx = ctx::test_root(&ctx::RealClock);
 
-    let (sender, mut receiver) = new(|a: &ItemType, b: &ItemType| a.0 != b.0);
+    let (sender, mut receiver) = channel(|a: &ItemType, b: &ItemType| a.0 != b.0);
 
     let sender1 = Arc::new(sender);
     let sender2 = sender1.clone();
@@ -110,7 +110,7 @@ async fn test_prunable_queue() {
         let set = 1;
         let items = (0..1000).map(|i| ItemType(i, set));
         for item in items {
-            let _ = sender1.enqueue(item).await;
+            let _ = sender1.send(item).await;
             tokio::task::yield_now().await;
         }
     });
@@ -118,7 +118,7 @@ async fn test_prunable_queue() {
         let set = 2;
         let items = (0..1000).map(|i| ItemType(i, set));
         for item in items {
-            let _ = sender2.enqueue(item).await;
+            let _ = sender2.send(item).await;
             tokio::task::yield_now().await;
         }
     });
@@ -127,16 +127,16 @@ async fn test_prunable_queue() {
     tokio::spawn(async move {
         let mut i = 0;
         loop {
-            let (item, sender) = receiver.dequeue(&ctx).await.unwrap();
+            let (item, sender) = receiver.recv(&ctx).await.unwrap();
             assert_eq!(item.0, i);
             let _ = sender.send(());
 
             i = i + 1;
             if i == 1000 {
-                match timeout(Duration::from_secs(0), receiver.dequeue(&ctx)).await {
+                match timeout(Duration::from_secs(0), receiver.recv(&ctx)).await {
                     Ok(_) => assert!(
                         false,
-                        "dequeue() is expected to hang since all items have been exhausted"
+                        "recv() is expected to hang since all items have been exhausted"
                     ),
                     Err(_) => break,
                 }

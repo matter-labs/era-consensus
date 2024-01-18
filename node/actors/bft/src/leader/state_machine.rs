@@ -73,7 +73,7 @@ impl StateMachine {
         >,
     ) -> ctx::Result<()> {
         loop {
-            let (signed_message, res_sender) = queue.dequeue(ctx).await?;
+            let (signed_message, res_sender) = queue.recv(ctx).await?;
 
             let now = ctx.now();
             let label = match &signed_message.msg {

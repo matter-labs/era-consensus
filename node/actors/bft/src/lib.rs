@@ -70,10 +70,10 @@ impl Config {
         let replica = replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
 
         let (leader_send, leader_recv) =
-            sync::prunable_queue::new(leader::StateMachine::queue_pruning_predicate);
+            sync::prunable_queue::channel(leader::StateMachine::queue_pruning_predicate);
 
         let (replica_send, replica_recv) =
-            sync::prunable_queue::new(replica::StateMachine::queue_pruning_predicate);
+            sync::prunable_queue::channel(replica::StateMachine::queue_pruning_predicate);
 
         // mpsc channel for returning error asynchronously.
         let (err_send, mut err_recv) = mpsc::channel::<ctx::Result<()>>(1);
@@ -111,7 +111,7 @@ impl Config {
                 }
 
                 let Some(InputMessage::Network(req)) = input else {
-                    let res_recv = replica_send.enqueue(None).await;
+                    let res_recv = replica_send.send(None).await;
                     // Wait for result before proceeding, allowing timeout deadline value to get updated.
                     handle_result(ctx, res_recv, &err_send).await;
                     continue;
@@ -120,10 +120,10 @@ impl Config {
                 let res_recv;
                 match &req.msg.msg {
                     ConsensusMsg::ReplicaPrepare(_) | ConsensusMsg::ReplicaCommit(_) => {
-                        res_recv = leader_send.enqueue(req.msg).await;
+                        res_recv = leader_send.send(req.msg).await;
                     }
                     ConsensusMsg::LeaderPrepare(_) | ConsensusMsg::LeaderCommit(_) => {
-                        res_recv = replica_send.enqueue(Some(req.msg)).await;
+                        res_recv = replica_send.send(Some(req.msg)).await;
                     }
                 }
 
