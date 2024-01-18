@@ -58,7 +58,7 @@ impl ValidatorNode {
             validator: Some(Validator {
                 config: self.validator,
                 replica_store: Box::new(in_memory::ReplicaStore::default()),
-                payload_manager: Box::new(testonly::RandomPayload),
+                payload_manager: Box::new(testonly::RandomPayload(1000)),
             }),
         }
     }

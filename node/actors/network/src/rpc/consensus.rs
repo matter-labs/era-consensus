@@ -45,7 +45,7 @@ impl ProtoFmt for Req {
     }
 
     fn max_size() -> usize {
-        zksync_protobuf::MB
+        3200 * zksync_protobuf::kB
     }
 }
 

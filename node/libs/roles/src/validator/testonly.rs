@@ -79,8 +79,7 @@ impl PrepareQC {
         validators: &ValidatorSet,
     ) -> anyhow::Result<Self> {
         // Get the view number from the messages, they must all be equal.
-        let view = signed_messages
-            .get(0)
+        let view = signed_messages.first()
             .context("Empty signed messages vector")?
             .msg
             .view;

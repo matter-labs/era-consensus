@@ -193,7 +193,9 @@ impl Configs {
                     public_addr: self.app.public_addr,
                 },
                 replica_store: Box::new(store),
-                payload_manager: Box::new(bft::testonly::RandomPayload),
+                payload_manager: Box::new(bft::testonly::RandomPayload(
+                    bft::Config::PAYLOAD_MAX_SIZE,
+                )),
             }),
         };
         Ok((e, runner))

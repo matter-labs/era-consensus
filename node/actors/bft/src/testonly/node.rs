@@ -29,7 +29,7 @@ impl Behavior {
     pub(crate) fn payload_manager(&self) -> Box<dyn PayloadManager> {
         match self {
             Self::HonestNotProposing => Box::new(testonly::PendingPayload),
-            _ => Box::new(testonly::RandomPayload),
+            _ => Box::new(testonly::RandomPayload(1000)),
         }
     }
 }

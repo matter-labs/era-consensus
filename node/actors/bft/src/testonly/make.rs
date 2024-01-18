@@ -1,12 +1,12 @@
 //! This module contains utilities that are only meant for testing purposes.
-use crate::{Config, PayloadManager};
+use crate::PayloadManager;
 use rand::Rng as _;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
 
-/// Produces random payload.
+/// Produces random payload of a given size.
 #[derive(Debug)]
-pub struct RandomPayload;
+pub struct RandomPayload(pub usize);
 
 #[async_trait::async_trait]
 impl PayloadManager for RandomPayload {
@@ -15,7 +15,7 @@ impl PayloadManager for RandomPayload {
         ctx: &ctx::Ctx,
         _number: validator::BlockNumber,
     ) -> ctx::Result<validator::Payload> {
-        let mut payload = validator::Payload(vec![0; Config::PAYLOAD_MAX_SIZE]);
+        let mut payload = validator::Payload(vec![0; self.0]);
         ctx.rng().fill(&mut payload.0[..]);
         Ok(payload)
     }

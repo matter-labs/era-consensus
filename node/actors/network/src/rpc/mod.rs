@@ -89,7 +89,9 @@ impl<'a, R: Rpc> ReservedCall<'a, R> {
         let res = async {
             let metric_labels = CallType::Client.to_labels::<R>(req);
             let _guard = RPC_METRICS.inflight[&metric_labels].inc_guard(1);
-            let msg_size = frame::mux_send_proto(ctx, &mut stream.write, req).await?;
+            let msg_size = frame::mux_send_proto(ctx, &mut stream.write, req)
+                .await
+                .context("mux_send_proto(req)")?;
             RPC_METRICS.message_size[&CallType::ReqSent.to_labels::<R>(req)].observe(msg_size);
             drop(stream.write);
             frame::mux_recv_proto(ctx, &mut stream.read).await
@@ -99,7 +101,7 @@ impl<'a, R: Rpc> ReservedCall<'a, R> {
         let now = ctx.now();
         let metric_labels = CallLatencyType::ClientSendRecv.to_labels::<R>(req, &res);
         RPC_METRICS.latency[&metric_labels].observe_latency(now - send_time);
-        let (res, msg_size) = res?;
+        let (res, msg_size) = res.context(R::METHOD)?;
         RPC_METRICS.message_size[&CallType::RespRecv.to_labels::<R>(req)].observe(msg_size);
         Ok(res)
     }

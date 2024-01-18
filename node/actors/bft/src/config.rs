@@ -23,7 +23,7 @@ pub struct Config {
 impl Config {
     /// The maximum size of the payload of a block, in bytes. We will
     /// reject blocks with payloads larger than this.
-    pub(crate) const PAYLOAD_MAX_SIZE: usize = 500 * zksync_protobuf::kB;
+    pub const PAYLOAD_MAX_SIZE: usize = 3 * zksync_protobuf::MB;
 
     /// Computes the validator for the given view.
     #[instrument(level = "trace", ret)]

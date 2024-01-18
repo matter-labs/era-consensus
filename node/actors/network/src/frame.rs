@@ -18,7 +18,10 @@ pub(crate) async fn mux_recv_proto<T: zksync_protobuf::ProtoFmt>(
     }
     let msg_size = u32::from_le_bytes(msg_size.prefix()) as usize;
     if msg_size > T::max_size() {
-        anyhow::bail!("message too large");
+        anyhow::bail!(
+            "message too large: max = {}B, got {msg_size}B",
+            T::max_size()
+        );
     }
     let mut msg = bytes::Buffer::new(msg_size);
     stream.read_exact(ctx, &mut msg).await?;
@@ -38,7 +41,12 @@ pub(crate) async fn mux_send_proto<T: zksync_protobuf::ProtoFmt>(
     msg: &T,
 ) -> anyhow::Result<usize> {
     let msg = zksync_protobuf::encode(msg);
-    assert!(msg.len() <= T::max_size(), "message too large");
+    anyhow::ensure!(
+        msg.len() <= T::max_size(),
+        "message too large: max = {}, got {}",
+        T::max_size(),
+        msg.len()
+    );
     stream
         .write_all(ctx, &u32::to_le_bytes(msg.len() as u32))
         .await?;
@@ -56,9 +64,12 @@ pub(crate) async fn recv_proto<T: zksync_protobuf::ProtoFmt, S: io::AsyncRead + 
     let mut msg_size = [0u8; 4];
     io::read_exact(ctx, stream, &mut msg_size).await??;
     let msg_size = u32::from_le_bytes(msg_size);
-    if msg_size as usize > T::max_size() {
-        anyhow::bail!("message too large");
-    }
+    anyhow::ensure!(
+        msg_size as usize <= T::max_size(),
+        "message too large: max = {}, got {}",
+        T::max_size(),
+        msg_size
+    );
     let mut msg = vec![0u8; msg_size as usize];
     io::read_exact(ctx, stream, &mut msg[..]).await??;
     zksync_protobuf::decode(&msg)
@@ -71,7 +82,12 @@ pub(crate) async fn send_proto<T: zksync_protobuf::ProtoFmt, S: io::AsyncWrite +
     msg: &T,
 ) -> anyhow::Result<()> {
     let msg = zksync_protobuf::encode(msg);
-    assert!(msg.len() <= T::max_size(), "message too large");
+    anyhow::ensure!(
+        msg.len() <= T::max_size(),
+        "message too large: max = {}, got {}",
+        T::max_size(),
+        msg.len()
+    );
     io::write_all(ctx, stream, &u32::to_le_bytes(msg.len() as u32)).await??;
     io::write_all(ctx, stream, &msg).await??;
     io::flush(ctx, stream).await??;

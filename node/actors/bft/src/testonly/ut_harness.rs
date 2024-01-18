@@ -37,7 +37,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         num_validators: usize,
     ) -> (UTHarness, BlockStoreRunner) {
-        Self::new_with_payload(ctx, num_validators, Box::new(testonly::RandomPayload)).await
+        Self::new_with_payload(ctx, num_validators, Box::new(testonly::RandomPayload(1000))).await
     }
 
     pub(crate) async fn new_with_payload(
