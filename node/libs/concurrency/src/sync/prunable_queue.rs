@@ -17,7 +17,7 @@ use crate::{
 use std::{collections::VecDeque, sync::Arc};
 
 pub fn new<T, U>(
-    pruning_predicate: Box<dyn Sync + Send + Fn(&T, &T) -> bool>,
+    pruning_predicate: impl 'static + Sync + Send + Fn(&T, &T) -> bool,
 ) -> (Sender<T, U>, Receiver<T, U>) {
     let queue: Mutex<VecDeque<(T, oneshot::Sender<U>)>> = Mutex::new(VecDeque::new());
     // Internal signaling, to enable waiting on the receiver side for new items.
@@ -30,7 +30,7 @@ pub fn new<T, U>(
 
     let sender = Sender {
         shared: shared.clone(),
-        pruning_predicate: pruning_predicate,
+        pruning_predicate: Box::new(pruning_predicate),
     };
 
     let receiver = Receiver {
@@ -101,7 +101,7 @@ async fn test_prunable_queue() {
 
     let ctx = ctx::test_root(&ctx::RealClock);
 
-    let (sender, mut receiver) = new(Box::new(|a: &ItemType, b: &ItemType| a.0 != b.0));
+    let (sender, mut receiver) = new(|a: &ItemType, b: &ItemType| a.0 != b.0);
 
     let sender1 = Arc::new(sender);
     let sender2 = sender1.clone();

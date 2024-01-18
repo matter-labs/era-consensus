@@ -70,10 +70,10 @@ impl Config {
         let replica = replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
 
         let (leader_send, leader_recv) =
-            sync::prunable_queue::new(Box::new(leader::StateMachine::queue_pruning_predicate));
+            sync::prunable_queue::new(leader::StateMachine::queue_pruning_predicate);
 
         let (replica_send, replica_recv) =
-            sync::prunable_queue::new(Box::new(replica::StateMachine::queue_pruning_predicate));
+            sync::prunable_queue::new(replica::StateMachine::queue_pruning_predicate);
 
         // mpsc channel for returning error asynchronously.
         let (err_send, mut err_recv) = mpsc::channel::<ctx::Result<()>>(1);
