@@ -31,8 +31,7 @@ pub enum SyncBlocksInputMessage {
     GetBlock {
         recipient: node::PublicKey,
         number: validator::BlockNumber,
-        /// If the peer is unavailable, `response` will be dropped.
-        response: oneshot::Sender<GetBlockResponse>,
+        response: oneshot::Sender<Result<validator::FinalBlock,GetBlockError>>,
     },
 }
 
@@ -77,20 +76,17 @@ impl SyncState {
     }
 }
 
-/// Errors returned from a [`GetBlockResponse`].
+/// Error returned in response to [`GetBlock`] call.
 ///
 /// Note that these errors don't include network-level errors, only app-level ones.
 #[derive(Debug, thiserror::Error)]
 pub enum GetBlockError {
-    /// Transient error: the node doesn't have the requested L2 block and plans to get it in the future
-    /// by syncing.
-    #[error(
-        "node doesn't have the requested L2 block and plans to get it in the future by syncing"
-    )]
-    NotSynced,
+    /// Transient error: the node doesn't have the requested L2 block.
+    #[error("node doesn't have the requested L2 block")]
+    NotAvailable,
+    #[error(transparent)]
+    Internal(#[from] anyhow::Error),
 }
-
-pub type GetBlockResponse = Result<validator::FinalBlock, GetBlockError>;
 
 #[derive(Debug)]
 pub enum SyncBlocksRequest {
@@ -109,7 +105,7 @@ pub enum SyncBlocksRequest {
         /// Number of the block.
         block_number: validator::BlockNumber,
         /// Block returned by the block syncing actor.
-        response: oneshot::Sender<GetBlockResponse>,
+        response: oneshot::Sender<Result<validator::FinalBlock,GetBlockError>>,
     },
 }
 

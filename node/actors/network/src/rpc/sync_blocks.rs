@@ -3,7 +3,7 @@ use crate::{io, mux, proto::gossip as proto};
 use anyhow::Context;
 use zksync_concurrency::{limiter, time};
 use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
-use zksync_protobuf::{read_required, ProtoFmt};
+use zksync_protobuf::{read_optional, read_required, ProtoFmt};
 
 /// `get_sync_state` RPC.
 #[derive(Debug)]
@@ -109,71 +109,24 @@ impl ProtoFmt for GetBlockRequest {
     }
 }
 
-impl ProtoFmt for io::GetBlockError {
-    type Proto = proto::get_block_response::Error;
-
-    fn read(message: &Self::Proto) -> anyhow::Result<Self> {
-        use proto::get_block_response::ErrorReason;
-
-        let reason = message.reason.context("missing reason")?;
-        let reason = ErrorReason::try_from(reason).context("reason")?;
-        Ok(match reason {
-            ErrorReason::NotSynced => Self::NotSynced,
-        })
-    }
-
-    fn build(&self) -> Self::Proto {
-        use proto::get_block_response::ErrorReason;
-
-        Self::Proto {
-            reason: Some(match self {
-                Self::NotSynced => ErrorReason::NotSynced as i32,
-            }),
-        }
-    }
-
-    fn max_size() -> usize {
-        zksync_protobuf::kB
-    }
-}
-
 /// Response to a [`GetBlockRequest`] containing a block or a reason it cannot be retrieved.
 #[derive(Debug)]
-pub(crate) struct GetBlockResponse(pub(crate) io::GetBlockResponse);
-
-impl From<io::GetBlockResponse> for GetBlockResponse {
-    fn from(response: io::GetBlockResponse) -> Self {
-        Self(response)
-    }
-}
+pub(crate) struct GetBlockResponse(pub(crate) Option<FinalBlock>);
 
 impl ProtoFmt for GetBlockResponse {
     type Proto = proto::GetBlockResponse;
 
-    fn read(message: &Self::Proto) -> anyhow::Result<Self> {
-        use proto::get_block_response::Result as GetBlockResult;
-
-        let result = message.result.as_ref().context("missing result")?;
-        let result = match result {
-            GetBlockResult::Block(block) => Ok(FinalBlock::read(block).context("block")?),
-            GetBlockResult::Error(error) => Err(io::GetBlockError::read(error).context("error")?),
-        };
-        Ok(Self(result))
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(read_optional(&r.block).context("block")?))
     }
 
     fn build(&self) -> Self::Proto {
-        use proto::get_block_response::Result as GetBlockResult;
-
-        let result = match &self.0 {
-            Ok(block) => GetBlockResult::Block(block.build()),
-            Err(err) => GetBlockResult::Error(err.build()),
-        };
         Self::Proto {
-            result: Some(result),
+            block: self.0.as_ref().map(ProtoFmt::build),
         }
     }
 
     fn max_size() -> usize {
-        zksync_protobuf::MB
+        4 * zksync_protobuf::MB
     }
 }

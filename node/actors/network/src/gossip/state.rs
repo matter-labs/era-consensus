@@ -1,9 +1,10 @@
-use crate::{io::SyncState, pool::PoolWatch, rpc, watch::Watch};
+use crate::{io, pool::PoolWatch, rpc, watch::Watch};
+use anyhow::Context as _;
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{Arc,Mutex},
 };
-use zksync_concurrency::sync::{self, watch, Mutex};
+use zksync_concurrency::{ctx,sync};
 use zksync_consensus_roles::{node, validator};
 
 /// Mapping from validator::PublicKey to a signed validator::NetAddress.
@@ -128,7 +129,33 @@ pub struct Config {
     pub enable_pings: bool,
 }
 
-type ClientMap<R> = Mutex<HashMap<node::PublicKey, Arc<rpc::Client<R>>>>;
+pub(crate) struct ArcMap<T>(Mutex<HashMap<node::PublicKey, Vec<Arc<T>>>>);
+
+impl<T> Default for ArcMap<T> {
+    fn default() -> Self {
+        Self(Mutex::default())
+    }
+}
+
+impl<T> ArcMap<T> {
+    pub(crate) fn get_any(&self, key: &node::PublicKey) -> Option<Arc<T>> {
+        self.0.lock().unwrap().get(key)?.first().cloned()
+    }
+
+    pub(crate) fn insert(&self, key: node::PublicKey, client: Arc<T>) {
+        self.0.lock().unwrap().entry(key).or_default().push(client);
+    }
+
+    pub(crate) fn remove(&self, key: node::PublicKey, client: Arc<T>) {
+        let mut this = self.0.lock().unwrap();
+        use std::collections::hash_map::Entry;
+        let Entry::Occupied(mut e) = this.entry(key) else { return };
+        e.get_mut().retain(|c|!Arc::ptr_eq(&client,c));
+        if e.get_mut().is_empty() {
+            e.remove();
+        }
+    }
+}
 
 /// Gossip network state.
 pub(crate) struct State {
@@ -141,14 +168,14 @@ pub(crate) struct State {
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
     /// Subscriber for `SyncState` updates.
-    pub(crate) sync_state: Option<watch::Receiver<SyncState>>,
+    pub(crate) sync_state: Option<sync::watch::Receiver<io::SyncState>>,
     /// Clients for `get_block` requests for each currently active peer.
-    pub(crate) get_block_clients: ClientMap<rpc::sync_blocks::GetBlockRpc>,
+    pub(crate) get_block_clients: ArcMap<rpc::Client<rpc::sync_blocks::GetBlockRpc>>,
 }
 
 impl State {
     /// Constructs a new State.
-    pub(crate) fn new(cfg: Config, sync_state: Option<watch::Receiver<SyncState>>) -> Self {
+    pub(crate) fn new(cfg: Config, sync_state: Option<sync::watch::Receiver<io::SyncState>>) -> Self {
         Self {
             inbound: PoolWatch::new(
                 cfg.static_inbound.clone(),
@@ -157,8 +184,21 @@ impl State {
             outbound: PoolWatch::new(cfg.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
             sync_state,
-            get_block_clients: ClientMap::default(),
+            get_block_clients: ArcMap::default(),
             cfg,
         }
+    }
+
+    pub(super) async fn get_block(
+        &self,
+        ctx: &ctx::Ctx,
+        recipient: &node::PublicKey,
+        number: validator::BlockNumber,
+    ) -> anyhow::Result<Option<validator::FinalBlock>> {
+        Ok(self.get_block_clients
+            .get_any(recipient)
+            .context("recipient is unreachable")?
+            .call(ctx, &rpc::sync_blocks::GetBlockRequest(number))
+            .await?.0)
     }
 }

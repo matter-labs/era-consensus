@@ -73,12 +73,6 @@ struct SyncBlocksServer<'a> {
 
 #[async_trait]
 impl rpc::Handler<rpc::sync_blocks::PushSyncStateRpc> for SyncBlocksServer<'_> {
-    #[tracing::instrument(
-        level = "trace",
-        skip_all,
-        err,
-        fields(update = ?req.numbers()),
-    )]
     async fn handle(
         &self,
         ctx: &ctx::Ctx,
@@ -107,12 +101,10 @@ async fn run_sync_blocks_client(
     loop {
         let span = tracing::trace_span!("push_sync_state", update = ?updated_state.numbers());
         let push_sync_state = async {
-            tracing::trace!("sending");
             client
                 .call(ctx, &updated_state)
                 .await
                 .context("sync_blocks_client")?;
-            tracing::trace!("sent");
             updated_state = sync::changed(ctx, &mut sync_state_subscriber)
                 .await
                 .context("sync_blocks_client update")?
@@ -137,7 +129,7 @@ impl rpc::Handler<rpc::sync_blocks::GetBlockRpc> for SyncBlocksServer<'_> {
         };
         self.sender.send(message.into());
         let response = response_receiver.recv_or_disconnected(ctx).await??;
-        Ok(response.into())
+        Ok(rpc::sync_blocks::GetBlockResponse(response))
     }
 }
 
@@ -210,28 +202,12 @@ async fn handle_clients_and_run_stream(
     sender: &channel::UnboundedSender<io::OutputMessage>,
     stream: noise::Stream,
 ) -> anyhow::Result<()> {
-    let clients = &state.gossip.get_block_clients;
-    let get_blocks_client = rpc::Client::<rpc::sync_blocks::GetBlockRpc>::new(ctx);
-    let get_blocks_client = Arc::new(get_blocks_client);
-    sync::lock(ctx, clients)
-        .await
-        .context("get_block_clients")?
-        .insert(peer.clone(), get_blocks_client.clone());
+    let get_blocks_client = Arc::new(rpc::Client::<rpc::sync_blocks::GetBlockRpc>::new(ctx));
+    state.gossip.get_block_clients.insert(peer.clone(), get_blocks_client.clone());
 
-    let res = run_stream(ctx, state, peer, sender, &get_blocks_client, stream).await;
+    let res = run_stream(ctx, state, peer, sender, &get_blocks_client, stream).await.context("run_stream()");
 
-    // We remove the peer client unconditionally, even if the context is cancelled, so that the state
-    // is consistent.
-    let mut client_map = clients.lock().await;
-    // The get_blocks client might have been replaced because we might have both an inbound and outbound
-    // connections to the same peer, and we utilize only one of them to send `get_block` requests.
-    // Thus, we need to check it before removing from the map.
-    let is_same_client = client_map
-        .get(peer)
-        .map_or(false, |client| Arc::ptr_eq(client, &get_blocks_client));
-    if is_same_client {
-        client_map.remove(peer);
-    }
+    state.gossip.get_block_clients.remove(peer.clone(), get_blocks_client.clone());
     res
 }
 
@@ -328,33 +304,6 @@ async fn run_address_announcer(
     }
 }
 
-#[tracing::instrument(level = "trace", skip_all, err, fields(recipient, number))]
-async fn handle_sync_blocks_message(
-    ctx: &ctx::Ctx,
-    state: &State,
-    message: io::SyncBlocksInputMessage,
-) -> anyhow::Result<()> {
-    let io::SyncBlocksInputMessage::GetBlock {
-        recipient,
-        number,
-        response,
-    } = message;
-
-    tracing::Span::current()
-        .record("recipient", tracing::field::debug(&recipient))
-        .record("number", number.0);
-
-    let clients = &state.gossip.get_block_clients;
-    let recipient_client = sync::lock(ctx, clients).await?.get(&recipient).cloned();
-    let recipient_client = recipient_client.context("recipient is unreachable")?;
-    let request = rpc::sync_blocks::GetBlockRequest(number);
-    let peer_response = recipient_client.call(ctx, &request).await?.0;
-
-    response
-        .send(peer_response)
-        .map_err(|_| anyhow::anyhow!("cannot send response to request to request initiator"))
-}
-
 /// Runs an RPC client trying to maintain 1 outbound connection per validator.
 pub(crate) async fn run_client(
     ctx: &ctx::Ctx,
@@ -379,9 +328,17 @@ pub(crate) async fn run_client(
         s.spawn(async {
             while let Ok(message) = receiver.recv(ctx).await {
                 s.spawn(async {
-                    handle_sync_blocks_message(ctx, state, message).await.ok();
-                    // ^ The client errors are logged by the method instrumentation wrapper,
-                    // so we don't need logging here.
+                    let message = message;
+                    let io::SyncBlocksInputMessage::GetBlock {
+                        recipient,
+                        number,
+                        response,
+                    } = message;
+                    let _ = response.send(match state.gossip.get_block(ctx,&recipient,number).await {
+                        Ok(Some(block)) => Ok(block),
+                        Ok(None) => Err(io::GetBlockError::NotAvailable),
+                        Err(err) => Err(io::GetBlockError::Internal(err)),
+                    });
                     Ok(())
                 });
             }

@@ -122,7 +122,7 @@ impl TestValidators {
     pub(crate) fn send_block(
         &self,
         number: BlockNumber,
-        response: oneshot::Sender<GetBlockResponse>,
+        response: oneshot::Sender<anyhow::Result<GetBlockResponse>>,
     ) {
         let final_block = self.final_blocks[number.0 as usize].clone();
         match response.send(Ok(final_block)) {
