@@ -10,11 +10,11 @@
 
 use crate::{
     ctx,
+    sync::{Mutex},
     oneshot,
     sync::{self, watch},
 };
 use std::{collections::VecDeque, sync::Arc};
-use tokio::sync::Mutex;
 
 pub fn new<T, U>(
     pruning_predicate: Box<dyn Sync + Send + Fn(&T, &T) -> bool>,
