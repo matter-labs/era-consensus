@@ -1,27 +1,53 @@
-# Running a test consensus node
+# Running Test Consensus Nodes
 
-## Local
+## Local Setup
 
-1. Generate a file named `addresses.txt` in the root directory of the tools crate, containing node addresses in the format `IP:PORT`, with each address on a separate line.
-2. Run `make node_configs`. This command will establish a directory named `node-configs` and create a folder for each address listed in the `.txt` file, providing the necessary configuration files for the respective node.
-3. Execute `make node IP=<NODE_IP>`. The default value for this command would be `127.0.0.1:3054`. Note that running this command will take control of the terminal.
+1. Edit the `addresses.txt` file located in the root directory of the tools crate. This file contains node addresses in the format `IP:PORT`. For a single node, use the example file. To run multiple nodes communicating with each other, write each node address on a separate line. This will run one node per address.
+   
+2. Move to the project root (era-consensus) and execute the following commands:
 
-## Dockerized
+    ```bash
+    make nodes_config
+    ```
 
-To get up a standalone consensus node running in a docker container just run the following command inside the tools crate:
+    This command establishes a directory named `nodes-config` and creates a folder for each address listed in the `.txt` file, providing necessary configuration files for the respective node.
+    
+    ```bash
+    make node IP=<NODE_IP>
+    ```
 
-`make node_docker`
+    The default value for this command is `127.0.0.1:3054`. Note that running this command will take control of the terminal.
 
-This will create a container running a single node advancing views and finalizing blocks.
+## Dockerized Setup
 
-To set up a simple example with two different nodes communicating with each other in running in different containers run the following command:
+To launch a standalone consensus node in a Docker container, run the following command in the project root (era-consensus):
 
-`make consensus_docker_example`
+```bash
+make node_docker
+```
 
-This will set up two distinct containers, each hosting a consensus node. These nodes will be interlinked, progressing through views and finalizing blocks achieving consensus between them.
+This command creates a container running a single node that advances views and finalizes blocks.
 
-To clean all the state after running these commands use:
+For a simple example with two nodes communicating in different containers, use:
 
-`make clean_docker`
+```bash
+make consensus_docker_example
+```
 
-> This will delete the generated images and containers, requiring them to be regenerated.
+This sets up two containers, each hosting a consensus node, interlinked and progressing through views to finalize blocks, achieving consensus between them.
+
+To stop the node containers, use:
+
+```bash
+make stop_docker_nodes
+```
+
+The node will resume the last viewed block from the previous session when initiated again.
+
+To clean all states after running these commands, use:
+
+```bash
+make clean_docker
+```
+
+> This deletes the generated images and containers, requiring regeneration.
