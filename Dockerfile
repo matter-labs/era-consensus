@@ -11,7 +11,7 @@ RUN cd .. && make docker_node_configs
 FROM debian:stable-slim as runtime
 
 COPY --from=build /node/target/release/executor /node/
-COPY --from=build /node/tools/docker-config/node-configs /node/
+COPY --from=build /node/tools/docker-config/nodes-config /node/
 COPY docker-entrypoint.sh /node/
 
 WORKDIR /node
