@@ -1,5 +1,7 @@
 # Running Test Consensus Nodes
 
+These instructions guide you through the process of setting up and running a test consensus node in both local and Dockerized environments. Additionally, examples are provided to demonstrate how to run two or more nodes, communicating and doing consensus between them.
+
 ## Local Setup
 
 1. Edit the `addresses.txt` file located in the root directory of the tools crate. This file contains node addresses in the format `IP:PORT`. For a single node, use the example file. To run multiple nodes communicating with each other, write each node address on a separate line. This will run one node per address.
