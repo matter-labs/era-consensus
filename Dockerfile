@@ -12,11 +12,11 @@ FROM debian:stable-slim as runtime
 
 COPY --from=build /node/target/release/executor /node/
 COPY --from=build /node/tools/docker-config/node-configs /node/
-COPY entrypoint.sh /node/
+COPY docker-entrypoint.sh /node/
 
 WORKDIR /node
-RUN chmod +x entrypoint.sh
+RUN chmod +x docker-entrypoint.sh
 
-ENTRYPOINT ["./entrypoint.sh"]
+ENTRYPOINT ["./docker-entrypoint.sh"]
 
 EXPOSE 3054
