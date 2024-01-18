@@ -9,7 +9,7 @@
 //! be used in conjunction.
 
 use crate::{
-    ctx::{self, Ctx},
+    ctx,
     oneshot,
     sync::{self, watch},
 };
@@ -73,7 +73,7 @@ pub struct Receiver<T, U> {
 }
 
 impl<T, U> Receiver<T, U> {
-    pub async fn dequeue(&mut self, ctx: &Ctx) -> ctx::OrCanceled<(T, oneshot::Sender<U>)> {
+    pub async fn dequeue(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<(T, oneshot::Sender<U>)> {
         sync::wait_for(ctx, &mut self.has_items_recv, |has_items| *has_items).await?;
         let mut queue = self.shared.queue.lock().await;
         // `None` is unexpected because we waited for new items.
