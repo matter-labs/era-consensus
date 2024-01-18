@@ -27,6 +27,9 @@ consensus_docker_example:
 	cd ${EXECUTABLE_NODE_DIR}/docker-config && rm -rf addresses.txt && touch addresses.txt && echo 172.12.0.10:3054 >> addresses.txt &&  echo 172.12.0.11:3054 >> addresses.txt
 	docker-compose up -d
 
+stop_docker_nodes:
+	docker stop consensus-node-1 consensus-node-2
+
 # Clean commands
 
 clean: clean_docker
