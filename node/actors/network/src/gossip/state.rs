@@ -4,6 +4,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::{Arc,Mutex},
 };
+use zksync_consensus_storage::BlockStore;
 use zksync_concurrency::{ctx,sync};
 use zksync_consensus_roles::{node, validator};
 
@@ -167,15 +168,15 @@ pub(crate) struct State {
     pub(crate) outbound: PoolWatch<node::PublicKey>,
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
-    /// Subscriber for `SyncState` updates.
-    pub(crate) sync_state: Option<sync::watch::Receiver<io::SyncState>>,
+    /// Block store to serve `get_block` requests from.
+    pub(crate) block_store: Arc<BlockStore>,
     /// Clients for `get_block` requests for each currently active peer.
-    pub(crate) get_block_clients: ArcMap<rpc::Client<rpc::sync_blocks::GetBlockRpc>>,
+    pub(crate) get_block_clients: ArcMap<rpc::Client<rpc::get_block::Rpc>>,
 }
 
 impl State {
     /// Constructs a new State.
-    pub(crate) fn new(cfg: Config, sync_state: Option<sync::watch::Receiver<io::SyncState>>) -> Self {
+    pub(crate) fn new(cfg: Config, block_store: Arc<BlockStore>) -> Self {
         Self {
             inbound: PoolWatch::new(
                 cfg.static_inbound.clone(),
@@ -183,7 +184,7 @@ impl State {
             ),
             outbound: PoolWatch::new(cfg.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
-            sync_state,
+            block_store,
             get_block_clients: ArcMap::default(),
             cfg,
         }
@@ -198,7 +199,7 @@ impl State {
         Ok(self.get_block_clients
             .get_any(recipient)
             .context("recipient is unreachable")?
-            .call(ctx, &rpc::sync_blocks::GetBlockRequest(number))
+            .call(ctx, &rpc::get_block::Req(number))
             .await?.0)
     }
 }

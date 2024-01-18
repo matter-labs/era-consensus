@@ -16,40 +16,19 @@ impl super::Rpc for Rpc {
         burst: 1,
         refresh: time::Duration::seconds(5),
     };
-    const METHOD: &'static str = "sync_validator_addrs";
+    const METHOD: &'static str = "push_validator_addrs";
 
     type Req = Req;
-    type Resp = Resp;
+    type Resp = ();
 }
 
-/// Ask server to send ValidatorAddrs update.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Req;
-
-/// Response to SyncValidatorAddrsReq.
 /// Contains a batch of new ValidatorAddrs that server
 /// learned since the client's last SyncValidatorAddrs Rpc.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Resp(pub(crate) Vec<Arc<validator::Signed<validator::NetAddress>>>);
+pub(crate) struct Req(pub(crate) Vec<Arc<validator::Signed<validator::NetAddress>>>);
 
 impl ProtoFmt for Req {
-    type Proto = proto::SyncValidatorAddrsReq;
-
-    fn read(_r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self)
-    }
-
-    fn build(&self) -> Self::Proto {
-        Self::Proto {}
-    }
-
-    fn max_size() -> usize {
-        zksync_protobuf::kB
-    }
-}
-
-impl ProtoFmt for Resp {
-    type Proto = proto::SyncValidatorAddrsResp;
+    type Proto = proto::PushValidatorAddrs;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let mut addrs = vec![];

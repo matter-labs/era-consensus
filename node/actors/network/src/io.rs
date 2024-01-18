@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 use zksync_concurrency::oneshot;
 use zksync_consensus_roles::{node, validator};
+use zksync_consensus_storage::BlockStoreState;
 
 /// All the messages that other actors can send to the Network actor.
 #[derive(Debug)]
@@ -52,30 +53,6 @@ pub struct ConsensusReq {
     pub ack: oneshot::Sender<()>,
 }
 
-/// Current block sync state of a node sent in response to [`GetSyncStateRequest`].
-#[derive(Debug, Clone, PartialEq)]
-pub struct SyncState {
-    pub first_stored_block: validator::CommitQC,
-    pub last_stored_block: validator::CommitQC,
-}
-
-/// Projection of [`SyncState`] comprised of block numbers.
-#[derive(Debug, Clone, Copy)]
-pub struct SyncStateNumbers {
-    pub first_stored_block: validator::BlockNumber,
-    pub last_stored_block: validator::BlockNumber,
-}
-
-impl SyncState {
-    /// Returns numbers for block QCs contained in this state.
-    pub fn numbers(&self) -> SyncStateNumbers {
-        SyncStateNumbers {
-            first_stored_block: self.first_stored_block.message.proposal.number,
-            last_stored_block: self.last_stored_block.message.proposal.number,
-        }
-    }
-}
-
 /// Error returned in response to [`GetBlock`] call.
 ///
 /// Note that these errors don't include network-level errors, only app-level ones.
@@ -95,7 +72,7 @@ pub enum SyncBlocksRequest {
         /// Peer that has reported the update.
         peer: node::PublicKey,
         /// Updated peer syncing state.
-        state: Box<SyncState>,
+        state: BlockStoreState,
         /// Acknowledgement response returned by the block syncing actor.
         // TODO: return an error in case of invalid `SyncState`?
         response: oneshot::Sender<()>,

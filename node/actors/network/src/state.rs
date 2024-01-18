@@ -1,10 +1,11 @@
 //! Network actor maintaining a pool of outbound and inbound connections to other nodes.
 use super::{consensus, event::Event, gossip, metrics, preface};
-use crate::io::{InputMessage, OutputMessage, SyncState};
+use crate::io::{InputMessage, OutputMessage};
 use anyhow::Context as _;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, ctx::channel, net, scope, sync::watch};
 use zksync_consensus_roles::validator;
+use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
 /// Network actor config.
@@ -53,14 +54,14 @@ impl State {
     pub fn new(
         cfg: Config,
         events: Option<channel::UnboundedSender<Event>>,
-        sync_state: Option<watch::Receiver<SyncState>>,
+        block_store: Arc<BlockStore>,
     ) -> anyhow::Result<Arc<Self>> {
         let consensus = cfg
             .consensus
             .map(|consensus_cfg| consensus::State::new(consensus_cfg, &cfg.validators))
             .transpose()?;
         let this = Self {
-            gossip: gossip::State::new(cfg.gossip, sync_state),
+            gossip: gossip::State::new(cfg.gossip, block_store),
             consensus,
             events,
             cfg: SharedConfig {

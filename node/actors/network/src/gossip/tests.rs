@@ -16,6 +16,7 @@ use zksync_concurrency::{
     testonly::abort_on_panic,
     time,
 };
+use zksync_consensus_storage::BlockStoreState;
 use zksync_consensus_roles as roles;
 use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock};
 use zksync_consensus_utils::pipe;
@@ -301,7 +302,7 @@ async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
 struct NetworkStateInner {
     node_count: usize,
     updated_node_count: usize,
-    state_sender: watch::Sender<io::SyncState>,
+    state_sender: watch::Sender<BlockStoreState>,
     future_states: Vec<io::SyncState>,
 }
 
@@ -332,7 +333,7 @@ impl NetworkState {
         Self(Mutex::new(inner))
     }
 
-    async fn update_node_state(&self, received_state: &io::SyncState) {
+    async fn update_node_state(&self, received_state: &BlockStoreState) {
         let mut inner = self.0.lock().await;
         assert_eq!(*received_state, *inner.state_sender.borrow());
 
@@ -361,10 +362,10 @@ impl NetworkState {
                         state,
                         response,
                     } => {
-                        let last_block_number = state.last_stored_block.message.proposal.number;
+                        let last_block_number = state.last.header().number;
                         if last_block_number == expected_latest_block_number {
                             // We might receive outdated states, hence this check
-                            received_states_by_peer.insert(peer.clone(), *state.clone());
+                            received_states_by_peer.insert(peer.clone(), state.clone());
                         }
 
                         if received_states_by_peer.len() == peer_count {
@@ -644,7 +645,7 @@ async fn validator_node_restart() {
                     // by setting refresh time to 0 in tests.
                     while let Ok(ev) = node1.events.recv(ctx).await {
                         if let Event::ValidatorAddrsUpdated = ev {
-                            clock.advance(rpc::sync_validator_addrs::Rpc::RATE.refresh);
+                            clock.advance(rpc::push_validator_addrs::Rpc::RATE.refresh);
                         }
                     }
                     Ok(())
@@ -734,7 +735,7 @@ async fn rate_limiting() {
             .await
             .unwrap();
         // Advance time and wait for all other nodes to receive validator addrs.
-        clock.advance(rpc::sync_validator_addrs::Rpc::RATE.refresh);
+        clock.advance(rpc::push_validator_addrs::Rpc::RATE.refresh);
         for node in &nodes[1..n] {
             node.state
                 .gossip

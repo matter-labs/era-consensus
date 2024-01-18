@@ -24,8 +24,9 @@ use zksync_concurrency::{ctx, io, limiter, metrics::LatencyHistogramExt as _, sc
 pub(crate) mod consensus;
 mod metrics;
 pub(crate) mod ping;
-pub(crate) mod sync_blocks;
-pub(crate) mod sync_validator_addrs;
+pub(crate) mod get_block;
+pub(crate) mod push_block_store_state;
+pub(crate) mod push_validator_addrs;
 #[cfg(test)]
 pub(crate) mod testonly;
 #[cfg(test)]
@@ -128,14 +129,13 @@ impl<R: Rpc> Client<R> {
     pub(crate) async fn reserve<'a>(
         &'a self,
         ctx: &'a ctx::Ctx,
-    ) -> anyhow::Result<ReservedCall<'a, R>> {
+    ) -> ctx::OrCanceled<ReservedCall<'a, R>> {
         let reserve_time = ctx.now();
-        let permit = self.limiter.acquire(ctx, 1).await.context("limiter")?;
+        let permit = self.limiter.acquire(ctx, 1).await?;
         let stream = self
             .queue
             .reserve(ctx)
-            .await
-            .context("StreamQueue::open()")?;
+            .await?;
         RPC_METRICS.call_reserve_latency[&R::METHOD].observe_latency(ctx.now() - reserve_time);
         Ok(ReservedCall {
             stream,
@@ -145,8 +145,8 @@ impl<R: Rpc> Client<R> {
     }
 
     /// Performs an RPC.
-    pub(crate) async fn call(&self, ctx: &ctx::Ctx, req: &R::Req) -> anyhow::Result<R::Resp> {
-        self.reserve(ctx).await?.call(ctx, req).await
+    pub(crate) async fn call(&self, ctx: &ctx::Ctx, req: &R::Req) -> ctx::Result<R::Resp> {
+        Ok(self.reserve(ctx).await?.call(ctx, req).await?)
     }
 }
 

@@ -11,9 +11,7 @@ message Handshake {
   optional bool is_static = 2;
 }
 
-message SyncValidatorAddrsReq {}
-
-message SyncValidatorAddrsResp {
+message PushValidatorAddrs {
   // Signed roles.validator.Msg.net_address.
   repeated roles.validator.Signed net_addresses = 1;
 }
@@ -21,16 +19,11 @@ message SyncValidatorAddrsResp {
 // State of the local block store.
 // A node is expected to store a continuous range of blocks at all times
 // and actively fetch newest blocks.
-message SyncState {
+message PushBlockStoreState {
   // First L2 block that the node has locally.
-  optional roles.validator.CommitQC first_stored_block = 1;
+  optional roles.validator.CommitQC first = 1;
   // Last L2 block that the node has locally.
-  optional roles.validator.CommitQC last_stored_block = 2;
-}
-
-// Response to `SyncState` acknowledging its processing.
-message SyncStateResponse {
-  // intentionally empty
+  optional roles.validator.CommitQC last = 2;
 }
 
 // Asks the server to send an L2 block (including its transactions).

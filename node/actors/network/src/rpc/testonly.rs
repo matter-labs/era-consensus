@@ -2,7 +2,7 @@
 //! Implementations of Distribution are supposed to generate realistic data,
 //! but in fact they are "best-effort realistic" - they might need an upgrade,
 //! if tests require stricter properties of the generated data.
-use super::{consensus, sync_validator_addrs, Arc};
+use super::{consensus, push_validator_addrs, Arc};
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -15,8 +15,8 @@ impl Distribution<consensus::Req> for Standard {
     }
 }
 
-impl Distribution<sync_validator_addrs::Resp> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> sync_validator_addrs::Resp {
+impl Distribution<push_validator_addrs::Req> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> push_validator_addrs::Req {
         let n = rng.gen_range(5..10);
         sync_validator_addrs::Resp(
             (0..n)

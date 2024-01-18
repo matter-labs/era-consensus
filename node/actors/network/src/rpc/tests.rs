@@ -13,7 +13,9 @@ use zksync_protobuf::testonly::test_encode_random;
 fn test_capability_rpc_correspondence() {
     let ids = [
         consensus::Rpc::CAPABILITY_ID,
-        sync_validator_addrs::Rpc::CAPABILITY_ID,
+        push_validator_addrs::Rpc::CAPABILITY_ID,
+        push_block_store_state::Rpc::CAPABILITY_ID,
+        get_block::Rpc::CAPABILITY_ID,
         ping::Rpc::CAPABILITY_ID,
     ];
     assert_eq!(ids.len(), HashSet::from(ids).len());
@@ -23,7 +25,10 @@ fn test_capability_rpc_correspondence() {
 fn test_schema_encode_decode() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
     test_encode_random::<_, consensus::Req>(rng);
-    test_encode_random::<_, sync_validator_addrs::Resp>(rng);
+    test_encode_random::<_, push_validator_addrs::Req>(rng);
+    test_encode_random::<_, push_block_store_state::Req>(rng);
+    test_encode_random::<_, get_block::Req>(rng);
+    test_encode_random::<_, get_block::Resp>(rng);
 }
 
 fn expected(res: Result<(), mux::RunError>) -> Result<(), mux::RunError> {

@@ -4,14 +4,13 @@ use crate::{
     event::{Event, StreamEvent},
     io, noise, preface, rpc, State,
 };
-use anyhow::Context;
+use zksync_consensus_storage::{BlockStore};
 use async_trait::async_trait;
 use std::sync::Arc;
-use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx::{self, channel},
     oneshot, scope,
-    sync::{self, watch},
+    sync,
     time,
 };
 use zksync_consensus_roles::{node, validator};
@@ -28,108 +27,50 @@ const PING_TIMEOUT: time::Duration = time::Duration::seconds(5);
 /// is down.
 const ADDRESS_ANNOUNCER_INTERVAL: time::Duration = time::Duration::minutes(10);
 
-struct ValidatorAddrsServer<'a> {
-    state: &'a State,
-    peer_validator_addrs: sync::Mutex<ValidatorAddrs>,
-}
-
-impl<'a> ValidatorAddrsServer<'a> {
-    fn new(state: &'a State) -> Self {
-        Self {
-            state,
-            peer_validator_addrs: sync::Mutex::default(),
-        }
-    }
-}
+struct PushValidatorAddrsServer<'a>(&'a State);
 
 #[async_trait]
-impl rpc::Handler<rpc::sync_validator_addrs::Rpc> for ValidatorAddrsServer<'_> {
-    async fn handle(
-        &self,
-        ctx: &ctx::Ctx,
-        _req: rpc::sync_validator_addrs::Req,
-    ) -> anyhow::Result<rpc::sync_validator_addrs::Resp> {
-        let mut old = sync::lock(ctx, &self.peer_validator_addrs)
-            .await?
-            .into_async();
-        let mut sub = self.state.gossip.validator_addrs.subscribe();
-        loop {
-            let new = sync::changed(ctx, &mut sub).await?.clone();
-            let diff = new.get_newer(&old);
-            if diff.is_empty() {
-                continue;
-            }
-            *old = new;
-            return Ok(rpc::sync_validator_addrs::Resp(diff));
-        }
+impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'_> {
+    async fn handle(&self, ctx: &ctx::Ctx, req: rpc::push_validator_addrs::Req) -> anyhow::Result<()> {
+        self.0.event(Event::ValidatorAddrsUpdated);
+        self.0.gossip.validator_addrs.update(&self.0.cfg.validators, &req.0[..]).await?;
+        Ok(())
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-struct SyncBlocksServer<'a> {
+struct PushBlockStoreStateServer<'a> {
     peer: &'a node::PublicKey,
     sender: &'a channel::UnboundedSender<io::OutputMessage>,
 }
 
 #[async_trait]
-impl rpc::Handler<rpc::sync_blocks::PushSyncStateRpc> for SyncBlocksServer<'_> {
+impl rpc::Handler<rpc::push_block_store_state::Rpc> for PushBlockStoreStateServer<'_> {
     async fn handle(
         &self,
         ctx: &ctx::Ctx,
-        req: io::SyncState,
-    ) -> anyhow::Result<rpc::sync_blocks::SyncStateResponse> {
+        req: rpc::push_block_store_state::Req,
+    ) -> anyhow::Result<()> {
         let (response, response_receiver) = oneshot::channel();
         let message = io::SyncBlocksRequest::UpdatePeerSyncState {
             peer: self.peer.clone(),
-            state: Box::new(req),
+            state: req.0,
             response,
         };
         self.sender.send(message.into());
         response_receiver.recv_or_disconnected(ctx).await??;
-        Ok(rpc::sync_blocks::SyncStateResponse)
-    }
-}
-
-#[tracing::instrument(level = "trace", skip_all, err)]
-async fn run_sync_blocks_client(
-    ctx: &ctx::Ctx,
-    client: &rpc::Client<rpc::sync_blocks::PushSyncStateRpc>,
-    mut sync_state_subscriber: watch::Receiver<io::SyncState>,
-) -> anyhow::Result<()> {
-    // Send the initial value immediately.
-    let mut updated_state = sync_state_subscriber.borrow_and_update().clone();
-    loop {
-        let span = tracing::trace_span!("push_sync_state", update = ?updated_state.numbers());
-        let push_sync_state = async {
-            client
-                .call(ctx, &updated_state)
-                .await
-                .context("sync_blocks_client")?;
-            updated_state = sync::changed(ctx, &mut sync_state_subscriber)
-                .await
-                .context("sync_blocks_client update")?
-                .clone();
-            anyhow::Ok(())
-        };
-        push_sync_state.instrument(span).await?;
+        Ok(())
     }
 }
 
 #[async_trait]
-impl rpc::Handler<rpc::sync_blocks::GetBlockRpc> for SyncBlocksServer<'_> {
+impl rpc::Handler<rpc::get_block::Rpc> for &BlockStore {
     async fn handle(
         &self,
         ctx: &ctx::Ctx,
-        req: rpc::sync_blocks::GetBlockRequest,
-    ) -> anyhow::Result<rpc::sync_blocks::GetBlockResponse> {
-        let (response, response_receiver) = oneshot::channel();
-        let message = io::SyncBlocksRequest::GetBlock {
-            block_number: req.0,
-            response,
-        };
-        self.sender.send(message.into());
-        let response = response_receiver.recv_or_disconnected(ctx).await??;
-        Ok(rpc::sync_blocks::GetBlockResponse(response))
+        req: rpc::get_block::Req,
+    ) -> anyhow::Result<rpc::get_block::Resp> {
+        Ok(rpc::get_block::Resp(self.block(ctx, req.0).await?))
     }
 }
 
@@ -138,76 +79,69 @@ async fn run_stream(
     state: &State,
     peer: &node::PublicKey,
     sender: &channel::UnboundedSender<io::OutputMessage>,
-    get_blocks_client: &rpc::Client<rpc::sync_blocks::GetBlockRpc>,
     stream: noise::Stream,
 ) -> anyhow::Result<()> {
-    let sync_validator_addrs_client = rpc::Client::<rpc::sync_validator_addrs::Rpc>::new(ctx);
-    let sync_blocks_server = SyncBlocksServer { peer, sender };
-    let sync_state_client = rpc::Client::<rpc::sync_blocks::PushSyncStateRpc>::new(ctx);
+    let push_validator_addrs_client = rpc::Client::<rpc::push_validator_addrs::Rpc>::new(ctx);
+    let push_validator_addrs_server = PushValidatorAddrsServer(state); 
+    let push_block_store_state_client = rpc::Client::<rpc::push_block_store_state::Rpc>::new(ctx);
+    let push_block_store_state_server = PushBlockStoreStateServer { peer, sender };
 
-    let enable_pings = state.gossip.cfg.enable_pings;
+    let get_block_client = Arc::new(rpc::Client::<rpc::get_block::Rpc>::new(ctx));
+    state.gossip.get_block_clients.insert(peer.clone(), get_block_client.clone());
+    
+    let res = scope::run!(ctx, |ctx, s| async {
+        let mut service = rpc::Service::new()
+            .add_client(&push_validator_addrs_client)
+            .add_server(push_validator_addrs_server)
+            .add_client(&push_block_store_state_client)
+            .add_server(push_block_store_state_server)
+            .add_client(&get_block_client)
+            .add_server(&*state.gossip.block_store)
+            .add_server(rpc::ping::Server);
 
-    scope::run!(ctx, |ctx, s| async {
-        s.spawn(async {
-            let mut service = rpc::Service::new()
-                .add_client(&sync_validator_addrs_client)
-                .add_server(ValidatorAddrsServer::new(state))
-                .add_client(&sync_state_client)
-                .add_server::<rpc::sync_blocks::PushSyncStateRpc>(sync_blocks_server)
-                .add_client(get_blocks_client)
-                .add_server::<rpc::sync_blocks::GetBlockRpc>(sync_blocks_server)
-                .add_server(rpc::ping::Server);
+        if state.gossip.cfg.enable_pings {
+            let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx);
+            service = service.add_client(&ping_client);
+            s.spawn(async {
+                let ping_client = ping_client;
+                ping_client.ping_loop(ctx, PING_TIMEOUT).await
+            });
+        }
 
-            if enable_pings {
-                let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx);
-                service = service.add_client(&ping_client);
-                let ctx = &*ctx;
-                s.spawn(async {
-                    let ping_client = ping_client;
-                    ping_client.ping_loop(ctx, PING_TIMEOUT).await
-                });
+        // Push block store state updates to peer.
+        s.spawn::<()>(async { 
+            let mut sub = state.gossip.block_store.subscribe();
+            sub.mark_changed();
+            loop {
+                let state = sync::changed(ctx, &mut sub).await?.clone();
+                let req = rpc::push_block_store_state::Req(state);
+                push_block_store_state_client.call(ctx,&req).await?;
             }
-
-            service.run(ctx, stream).await?;
-            Ok(())
         });
 
-        if let Some(sync_state_subscriber) = state.gossip.sync_state.clone() {
-            s.spawn(run_sync_blocks_client(
-                ctx,
-                &sync_state_client,
-                sync_state_subscriber,
-            ));
-        }
+        s.spawn::<()>(async {
+            // Push validator addrs updates to peer.
+            let mut old = ValidatorAddrs::default();
+            let mut sub = state.gossip.validator_addrs.subscribe();
+            sub.mark_changed();
+            loop {
+                let new = sync::changed(ctx, &mut sub).await?.clone();
+                let diff = new.get_newer(&old);
+                if diff.is_empty() {
+                    continue;
+                }
+                old = new;
+                let req = rpc::push_validator_addrs::Req(diff);
+                push_validator_addrs_client.call(ctx,&req).await?;
+            }
+        });
 
-        loop {
-            let resp = sync_validator_addrs_client
-                .call(ctx, &rpc::sync_validator_addrs::Req)
-                .await?;
-            state
-                .gossip
-                .validator_addrs
-                .update(&state.cfg.validators, &resp.0[..])
-                .await?;
-            state.event(Event::ValidatorAddrsUpdated);
-        }
+        service.run(ctx, stream).await?;
+        Ok(())
     })
-    .await
-}
+    .await;
 
-async fn handle_clients_and_run_stream(
-    ctx: &ctx::Ctx,
-    state: &State,
-    peer: &node::PublicKey,
-    sender: &channel::UnboundedSender<io::OutputMessage>,
-    stream: noise::Stream,
-) -> anyhow::Result<()> {
-    let get_blocks_client = Arc::new(rpc::Client::<rpc::sync_blocks::GetBlockRpc>::new(ctx));
-    state.gossip.get_block_clients.insert(peer.clone(), get_blocks_client.clone());
-
-    let res = run_stream(ctx, state, peer, sender, &get_blocks_client, stream).await.context("run_stream()");
-
-    state.gossip.get_block_clients.remove(peer.clone(), get_blocks_client.clone());
+    state.gossip.get_block_clients.remove(peer.clone(), get_block_client);
     res
 }
 
@@ -231,7 +165,7 @@ pub(crate) async fn run_inbound_stream(
     state.gossip.inbound.insert(peer.clone()).await?;
     state.event(Event::Gossip(StreamEvent::InboundOpened(peer.clone())));
 
-    let res = handle_clients_and_run_stream(ctx, state, &peer, sender, stream).await;
+    let res = run_stream(ctx, state, &peer, sender, stream).await;
 
     state.gossip.inbound.remove(&peer).await;
     state.event(Event::Gossip(StreamEvent::InboundClosed(peer)));
@@ -258,7 +192,7 @@ async fn run_outbound_stream(
     state.gossip.outbound.insert(peer.clone()).await?;
     state.event(Event::Gossip(StreamEvent::OutboundOpened(peer.clone())));
 
-    let res = handle_clients_and_run_stream(ctx, state, peer, sender, stream).await;
+    let res = run_stream(ctx, state, peer, sender, stream).await;
 
     state.gossip.outbound.remove(peer).await;
     state.event(Event::Gossip(StreamEvent::OutboundClosed(peer.clone())));

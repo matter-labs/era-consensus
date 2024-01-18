@@ -1,6 +1,6 @@
 //! Testonly utilities.
 #![allow(dead_code)]
-use crate::{consensus, event::Event, gossip, io::SyncState, Config, State};
+use crate::{consensus, event::Event, gossip, Config, State};
 use rand::Rng;
 use std::{
     collections::{HashMap, HashSet},
@@ -136,12 +136,6 @@ impl Instance {
         }
     }
 
-    /// Sets a `SyncState` subscriber for the node. Panics if the node state is already shared.
-    pub fn set_sync_state_subscriber(&mut self, sync_state: watch::Receiver<SyncState>) {
-        let state = Arc::get_mut(&mut self.state).expect("node state is shared");
-        state.gossip.sync_state = Some(sync_state);
-    }
-
     /// Disables ping messages over the gossip network.
     pub fn disable_gossip_pings(&mut self) {
         let state = Arc::get_mut(&mut self.state).expect("node state is shared");
@@ -216,17 +210,4 @@ pub async fn instant_network(
     }
     tracing::info!("consensus network established");
     Ok(())
-}
-
-impl SyncState {
-    /// Generates a random state based on the provided RNG and with the specified `last_stored_block`
-    /// number.
-    pub(crate) fn gen(rng: &mut impl Rng, number: validator::BlockNumber) -> Self {
-        let mut this = Self {
-            first_stored_block: rng.gen(),
-            last_stored_block: rng.gen(),
-        };
-        this.last_stored_block.message.proposal.number = number;
-        this
-    }
 }
