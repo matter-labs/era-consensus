@@ -1,5 +1,5 @@
 # Build Stage
-FROM rust:1.72.1 as build
+FROM rust:latest as build
 COPY /node/ /node/
 COPY Makefile .
 WORKDIR /node
