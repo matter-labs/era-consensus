@@ -19,7 +19,7 @@ use crate::io::{InputMessage, OutputMessage};
 pub use config::Config;
 use std::sync::Arc;
 use tokio::sync::mpsc;
-use zksync_concurrency::{ctx, oneshot::Receiver, scope, sync};
+use zksync_concurrency::{ctx, oneshot::Receiver, scope};
 use zksync_consensus_roles::validator::{self, ConsensusMsg};
 use zksync_consensus_utils::pipe::ActorPipe;
 
