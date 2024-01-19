@@ -6,11 +6,12 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
+use zksync_consensus_storage::{BlockStore,BlockStoreRunner,testonly::in_memory};
 use zksync_concurrency::{
     ctx,
     ctx::channel,
     io, net,
-    sync::{self, watch},
+    sync::{self},
 };
 use zksync_consensus_roles::validator;
 
@@ -48,47 +49,50 @@ pub struct Instance {
     pub(crate) events: channel::UnboundedReceiver<Event>,
 }
 
-impl Instance {
-    /// Construct configs for `n` validators of the consensus.
-    pub fn new_configs<R: Rng>(rng: &mut R, n: usize, gossip_peers: usize) -> Vec<Config> {
-        let keys: Vec<validator::SecretKey> = (0..n).map(|_| rng.gen()).collect();
-        let validators = validator::ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap();
-        let configs = keys.iter().map(|key| {
-            let addr = net::tcp::testonly::reserve_listener();
-            Config {
-                server_addr: addr,
-                validators: validators.clone(),
-                consensus: Some(consensus::Config {
-                    key: key.clone(),
-                    public_addr: *addr,
-                }),
-                gossip: gossip::Config {
-                    key: rng.gen(),
-                    dynamic_inbound_limit: n as u64,
-                    static_inbound: HashSet::default(),
-                    static_outbound: HashMap::default(),
-                    enable_pings: true,
-                },
-            }
-        });
-        let mut cfgs: Vec<_> = configs.collect();
+pub async fn new_store(ctx: &ctx::Ctx, genesis: &validator::FinalBlock) -> (Arc<BlockStore>,BlockStoreRunner) {
+    BlockStore::new(ctx,Box::new(in_memory::BlockStore::new(genesis.clone()))).await.unwrap()
+}
 
-        for i in 0..cfgs.len() {
-            for j in 0..gossip_peers {
-                let j = (i + j + 1) % n;
-                let peer = cfgs[j].gossip.key.public();
-                let addr = *cfgs[j].server_addr;
-                cfgs[i].gossip.static_outbound.insert(peer, addr);
-            }
+/// Construct configs for `n` validators of the consensus.
+pub fn new_configs<R: Rng>(rng: &mut R, setup: &validator::testonly::GenesisSetup, gossip_peers: usize) -> Vec<Config> {
+    let configs = setup.keys.iter().map(|key| {
+        let addr = net::tcp::testonly::reserve_listener();
+        Config {
+            server_addr: addr,
+            validators: setup.validator_set(),
+            consensus: Some(consensus::Config {
+                key: key.clone(),
+                public_addr: *addr,
+            }),
+            gossip: gossip::Config {
+                key: rng.gen(),
+                dynamic_inbound_limit: setup.keys.len() as u64,
+                static_inbound: HashSet::default(),
+                static_outbound: HashMap::default(),
+                enable_pings: true,
+            },
         }
-        cfgs
-    }
+    });
+    let mut cfgs: Vec<_> = configs.collect();
 
+    let n = cfgs.len();
+    for i in 0..n {
+        for j in 0..gossip_peers {
+            let j = (i + j + 1) % n;
+            let peer = cfgs[j].gossip.key.public();
+            let addr = *cfgs[j].server_addr;
+            cfgs[i].gossip.static_outbound.insert(peer, addr);
+        }
+    }
+    cfgs
+}
+
+impl Instance {
     /// Construct an instance for a given config.
-    pub(crate) fn from_cfg(cfg: Config) -> Self {
+    pub(crate) fn from_cfg(cfg: Config, block_store: Arc<BlockStore>) -> Self {
         let (events_send, events_recv) = channel::unbounded();
         Self {
-            state: State::new(cfg, Some(events_send), None).expect("Invalid network config"),
+            state: State::new(cfg, Some(events_send), block_store).expect("Invalid network config"),
             events: events_recv,
         }
     }
@@ -96,7 +100,7 @@ impl Instance {
     /// Constructs `n` node instances, configured to connect to each other.
     /// Non-blocking (it doesn't run the network actors).
     pub fn new<R: Rng>(rng: &mut R, n: usize, gossip_peers: usize) -> Vec<Self> {
-        Self::new_configs(rng, n, gossip_peers)
+        new_configs(rng, n, gossip_peers)
             .into_iter()
             .map(Self::from_cfg)
             .collect()

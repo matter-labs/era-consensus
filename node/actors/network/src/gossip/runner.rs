@@ -1,7 +1,7 @@
 use super::{handshake, ValidatorAddrs};
 use crate::{
     consensus,
-    event::{Event, StreamEvent},
+    event::{Event},
     io, noise, preface, rpc, State,
 };
 use zksync_consensus_storage::{BlockStore};
@@ -161,15 +161,9 @@ pub(crate) async fn run_inbound_stream(
 ) -> anyhow::Result<()> {
     let peer = handshake::inbound(ctx, &state.gossip.cfg, &mut stream).await?;
     tracing::Span::current().record("peer", tracing::field::debug(&peer));
-
     state.gossip.inbound.insert(peer.clone()).await?;
-    state.event(Event::Gossip(StreamEvent::InboundOpened(peer.clone())));
-
     let res = run_stream(ctx, state, &peer, sender, stream).await;
-
     state.gossip.inbound.remove(&peer).await;
-    state.event(Event::Gossip(StreamEvent::InboundClosed(peer)));
-
     res
 }
 
@@ -190,13 +184,8 @@ async fn run_outbound_stream(
     handshake::outbound(ctx, &state.gossip.cfg, &mut stream, peer).await?;
 
     state.gossip.outbound.insert(peer.clone()).await?;
-    state.event(Event::Gossip(StreamEvent::OutboundOpened(peer.clone())));
-
     let res = run_stream(ctx, state, peer, sender, stream).await;
-
     state.gossip.outbound.remove(peer).await;
-    state.event(Event::Gossip(StreamEvent::OutboundClosed(peer.clone())));
-
     res
 }
 

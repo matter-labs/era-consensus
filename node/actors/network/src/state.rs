@@ -3,7 +3,7 @@ use super::{consensus, event::Event, gossip, metrics, preface};
 use crate::io::{InputMessage, OutputMessage};
 use anyhow::Context as _;
 use std::sync::Arc;
-use zksync_concurrency::{ctx, ctx::channel, net, scope, sync::watch};
+use zksync_concurrency::{ctx, ctx::channel, net, scope};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
@@ -53,8 +53,8 @@ impl State {
     /// Call `run_network` to run the actor.
     pub fn new(
         cfg: Config,
-        events: Option<channel::UnboundedSender<Event>>,
         block_store: Arc<BlockStore>,
+        events: Option<channel::UnboundedSender<Event>>,
     ) -> anyhow::Result<Arc<Self>> {
         let consensus = cfg
             .consensus

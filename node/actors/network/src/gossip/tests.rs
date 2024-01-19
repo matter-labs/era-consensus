@@ -12,12 +12,9 @@ use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx::{self, channel},
     oneshot, scope,
-    sync::{watch, Mutex},
     testonly::abort_on_panic,
     time,
 };
-use zksync_consensus_storage::BlockStoreState;
-use zksync_consensus_roles as roles;
 use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock};
 use zksync_consensus_utils::pipe;
 
@@ -27,7 +24,7 @@ async fn test_one_connection_per_node() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let mut nodes: Vec<_> = testonly::Instance::new(rng, 5, 2);
+    let mut nodes = testonly::Instance::new(rng, 5, 2);
 
     scope::run!(ctx, |ctx,s| async {
         for node in &nodes {
@@ -269,7 +266,7 @@ async fn test_validator_addrs_propagation() {
     .unwrap();
 }
 
-const EXCHANGED_STATE_COUNT: u64 = 5;
+const EXCHANGED_STATE_COUNT: usize = 5;
 const NETWORK_CONNECTIVITY_CASES: [(usize, usize); 5] = [(2, 1), (3, 2), (5, 3), (10, 4), (10, 7)];
 
 /// Tests block syncing with global network synchronization (a next block becoming available
@@ -283,14 +280,19 @@ async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let ctx = &ctx.with_timeout(time::Duration::seconds(200));
     let rng = &mut ctx.rng();
-    let mut nodes = testonly::Instance::new(rng, node_count, gossip_peers);
-    let network_state = NetworkState::new(rng, &mut nodes);
-
-    scope::run!(ctx, |ctx, s| async {
-        for node in nodes {
-            let (network_pipe, dispatcher_pipe) = pipe::new();
-            s.spawn_bg(run_network(ctx, node.state.clone(), network_pipe));
-            s.spawn(network_state.run_mock_dispatcher(ctx, dispatcher_pipe, gossip_peers));
+    let mut setup = validator::testonly::GenesisSetup::empty(rng, node_count);
+    setup.push_blocks(rng,EXCHANGED_STATE_COUNT);
+    scope::run!(ctx, |ctx, s| async { 
+        for mut cfg in testonly::new_configs(rng, &setup, gossip_peers) {
+            s.spawn(async {
+                let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+                s.spawn_bg(runner.run(ctx));
+                cfg.gossip.enable_pings = false;
+                let state = crate::State::new(cfg,store.clone(),None)?; 
+                let (network_pipe, dispatcher_pipe) = pipe::new();
+                s.spawn_bg(run_network(ctx, state.clone(), network_pipe));
+                run_mock_dispatcher(ctx, &*state, dispatcher_pipe, gossip_peers, &setup.blocks).await
+            });
         }
         Ok(())
     })
@@ -298,92 +300,30 @@ async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
     .unwrap();
 }
 
-#[derive(Debug)]
-struct NetworkStateInner {
-    node_count: usize,
-    updated_node_count: usize,
-    state_sender: watch::Sender<BlockStoreState>,
-    future_states: Vec<io::SyncState>,
-}
-
-/// Network state shared among all nodes in order to coordinate new block generation.
-#[derive(Debug)]
-struct NetworkState(Mutex<NetworkStateInner>);
-
-impl NetworkState {
-    fn new(rng: &mut impl Rng, nodes: &mut [testonly::Instance]) -> Self {
-        let node_count = nodes.len();
-        let first_state = io::SyncState::gen(rng, BlockNumber(0));
-        let future_states = (1..EXCHANGED_STATE_COUNT)
-            .map(|i| io::SyncState::gen(rng, BlockNumber(i)))
-            .rev() // We `pop()` states, so their ordering should be reversed
-            .collect();
-        let (state_sender, state_subscriber) = watch::channel(first_state);
-        for node in nodes {
-            node.disable_gossip_pings();
-            node.set_sync_state_subscriber(state_subscriber.clone());
-        }
-
-        let inner = NetworkStateInner {
-            node_count,
-            updated_node_count: 0,
-            state_sender,
-            future_states,
-        };
-        Self(Mutex::new(inner))
-    }
-
-    async fn update_node_state(&self, received_state: &BlockStoreState) {
-        let mut inner = self.0.lock().await;
-        assert_eq!(*received_state, *inner.state_sender.borrow());
-
-        inner.updated_node_count += 1;
-        if inner.updated_node_count == inner.node_count {
-            inner.updated_node_count = 0;
-            if let Some(next_state) = inner.future_states.pop() {
-                inner.state_sender.send_replace(next_state);
+async fn run_mock_dispatcher(
+    ctx: &ctx::Ctx,
+    node: &crate::State,
+    mut pipe: pipe::DispatcherPipe<io::InputMessage, io::OutputMessage>,
+    peer_count: usize,
+    blocks: &[FinalBlock],
+) -> anyhow::Result<()> {
+    for block in blocks {
+        let mut updated_peers = HashSet::new();
+        node.gossip.block_store.queue_block(ctx,block.clone()).await?;
+        while updated_peers.len() < peer_count {
+            let io::OutputMessage::SyncBlocks(io::SyncBlocksRequest::UpdatePeerSyncState {
+                peer,
+                state,
+                response,
+            }) = pipe.recv(ctx).await? else { continue };
+            if state.last == block.justification {
+                // We might receive outdated states, hence this check
+                updated_peers.insert(peer);
             }
+            response.send(()).ok();
         }
     }
-
-    async fn run_mock_dispatcher(
-        &self,
-        ctx: &ctx::Ctx,
-        mut pipe: pipe::DispatcherPipe<io::InputMessage, io::OutputMessage>,
-        peer_count: usize,
-    ) -> anyhow::Result<()> {
-        let mut received_states_by_peer = HashMap::new();
-        let mut expected_latest_block_number = BlockNumber(0);
-        loop {
-            if let io::OutputMessage::SyncBlocks(req) = pipe.recv(ctx).await? {
-                match req {
-                    io::SyncBlocksRequest::UpdatePeerSyncState {
-                        peer,
-                        state,
-                        response,
-                    } => {
-                        let last_block_number = state.last.header().number;
-                        if last_block_number == expected_latest_block_number {
-                            // We might receive outdated states, hence this check
-                            received_states_by_peer.insert(peer.clone(), state.clone());
-                        }
-
-                        if received_states_by_peer.len() == peer_count {
-                            received_states_by_peer.clear();
-                            expected_latest_block_number = expected_latest_block_number.next();
-                            if expected_latest_block_number == BlockNumber(EXCHANGED_STATE_COUNT) {
-                                // The node has received all generated blocks.
-                                return Ok(());
-                            }
-                            self.update_node_state(&state).await;
-                        }
-                        response.send(()).ok();
-                    }
-                    _ => unreachable!(),
-                }
-            }
-        }
-    }
+    Ok(())
 }
 
 /// Tests block syncing in an uncoordinated network, in which new blocks arrive at a schedule.
@@ -404,40 +344,32 @@ async fn uncoordinated_block_syncing(
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let ctx = &ctx.with_timeout(time::Duration::seconds(200));
     let rng = &mut ctx.rng();
-    let mut nodes = testonly::Instance::new(rng, node_count, gossip_peers);
-
-    let mut states: Vec<_> = (0..EXCHANGED_STATE_COUNT)
-        .map(|i| io::SyncState::gen(rng, BlockNumber(i)))
-        .collect();
-    let first_state = states.remove(0);
-    let (state_sender, state_subscriber) = watch::channel(first_state);
-
-    for node in &mut nodes {
-        node.disable_gossip_pings();
-        node.set_sync_state_subscriber(state_subscriber.clone());
-    }
-
+    let mut setup = validator::testonly::GenesisSetup::empty(rng, node_count);
+    setup.push_blocks(rng,EXCHANGED_STATE_COUNT);
     scope::run!(ctx, |ctx, s| async {
-        s.spawn(async {
-            for state in states {
-                ctx.sleep(state_generation_interval).await?;
-                let last_block_number = state.last_stored_block.message.proposal.number;
-                tracing::debug!("Generated `SyncState` with last block number {last_block_number}");
-                state_sender.send_replace(state);
-            }
-            Ok(())
-        });
-
-        for node in &nodes {
-            let (network_pipe, dispatcher_pipe) = pipe::new();
-            s.spawn_bg(run_network(ctx, node.state.clone(), network_pipe));
-            let node_key = node.state.gossip.cfg.key.public();
-            s.spawn(run_mock_uncoordinated_dispatcher(
-                ctx,
-                dispatcher_pipe,
-                node_key,
-                gossip_peers,
-            ));
+        for mut cfg in testonly::new_configs(rng, &setup, gossip_peers) {
+            s.spawn(async {
+                let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+                s.spawn_bg(runner.run(ctx));
+                cfg.gossip.enable_pings = false;
+                let state = crate::State::new(cfg,store,None)?; 
+                let (network_pipe, dispatcher_pipe) = pipe::new();
+                s.spawn_bg(run_network(ctx, state.clone(), network_pipe));
+                s.spawn_bg(async {
+                    let state = state;
+                    for block in &setup.blocks[1..] {
+                        ctx.sleep(state_generation_interval).await?;
+                        state.gossip.block_store.queue_block(ctx,block.clone()).await.unwrap();
+                    }
+                    Ok(())
+                });
+                run_mock_uncoordinated_dispatcher(
+                    ctx,
+                    dispatcher_pipe,
+                    gossip_peers,
+                    setup.blocks.last().unwrap().header().number,
+                ).await  
+            });
         }
         Ok(())
     })
@@ -448,36 +380,24 @@ async fn uncoordinated_block_syncing(
 async fn run_mock_uncoordinated_dispatcher(
     ctx: &ctx::Ctx,
     mut pipe: pipe::DispatcherPipe<io::InputMessage, io::OutputMessage>,
-    node_key: roles::node::PublicKey,
     peer_count: usize,
+    want_last: BlockNumber,
 ) -> anyhow::Result<()> {
     let mut peers_with_final_state = HashSet::new();
-    loop {
-        if let io::OutputMessage::SyncBlocks(req) = pipe.recv(ctx).await? {
-            match req {
-                io::SyncBlocksRequest::UpdatePeerSyncState {
-                    peer,
-                    state,
-                    response,
-                } => {
-                    let last_block_number = state.last_stored_block.message.proposal.number;
-                    tracing::debug!(
-                        "Node {node_key:?} received update with block number {last_block_number} from {peer:?}"
-                    );
-                    assert!(last_block_number < BlockNumber(EXCHANGED_STATE_COUNT));
-                    if last_block_number == BlockNumber(EXCHANGED_STATE_COUNT - 1) {
-                        peers_with_final_state.insert(peer.clone());
-                        if peers_with_final_state.len() == peer_count {
-                            tracing::debug!("Node {node_key:?} received latest state from peers {peers_with_final_state:?}");
-                            return Ok(());
-                        }
-                    }
-                    response.send(()).ok();
-                }
-                _ => unreachable!(),
-            }
+    while peers_with_final_state.len() < peer_count {
+        let io::OutputMessage::SyncBlocks(io::SyncBlocksRequest::UpdatePeerSyncState {
+            peer,
+            state,
+            response,
+        }) = pipe.recv(ctx).await? else { continue };
+        let got_last = state.last.header().number;
+        assert!(got_last <= want_last);
+        if got_last == want_last {
+            peers_with_final_state.insert(peer.clone());
         }
+        response.send(()).ok();
     }
+    Ok(())
 }
 
 #[test_casing(5, NETWORK_CONNECTIVITY_CASES)]

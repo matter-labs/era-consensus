@@ -40,19 +40,3 @@ pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<valid
     assert!(store.block(ctx, range.next()).await.is_err());
     blocks
 }
-
-/// A generator of consecutive blocks with random payload, starting with a genesis blocks.
-pub fn random_blocks(ctx: &ctx::Ctx) -> impl Iterator<Item = validator::FinalBlock> {
-    let mut rng = ctx.rng();
-    let v = validator::ProtocolVersion::EARLIEST;
-    std::iter::successors(
-        Some(validator::testonly::make_genesis_block(&mut rng, v)),
-        move |parent| {
-            Some(validator::testonly::make_block(
-                &mut rng,
-                parent.header(),
-                v,
-            ))
-        },
-    )
-}

@@ -32,8 +32,7 @@ impl Test {
             .iter()
             .map(|node| node.consensus_config().key.clone())
             .collect();
-        let (genesis_block, _) =
-            testonly::make_genesis(&keys, validator::Payload(vec![]), validator::BlockNumber(0));
+        let (genesis_block, _) = testonly::make_genesis(&keys, validator::Payload(vec![]), validator::BlockNumber(0));
         let mut nodes = vec![];
         let mut store_runners = vec![];
         for (i, net) in nets.into_iter().enumerate() {
