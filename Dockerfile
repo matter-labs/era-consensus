@@ -3,7 +3,7 @@ FROM rust:latest as build
 COPY /node/ /node/
 COPY Makefile .
 WORKDIR /node
-RUN apt-get update && apt-get install -y libclang-dev
+RUN apt-get update && apt-get install -y libclang-dev protobuf-compiler libprotobuf-dev
 RUN cargo build --release
 RUN cd .. && make docker_node_configs
 
@@ -20,3 +20,4 @@ RUN chmod +x docker-entrypoint.sh
 ENTRYPOINT ["./docker-entrypoint.sh"]
 
 EXPOSE 3054
+EXPOSE 3051
