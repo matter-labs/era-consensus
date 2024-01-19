@@ -62,6 +62,9 @@ pub struct Sender<T, U> {
 }
 
 impl<T, U> Sender<T, U> {
+    /// Sends a value.
+    /// This initiates the pruning procedure which operates in O(N) time complexity
+    /// on the buffer of pending values.
     pub async fn send(&self, value: T) -> oneshot::Receiver<U> {
         // Create oneshot channel for returning result asynchronously.
         let (res_send, res_recv) = oneshot::channel();
