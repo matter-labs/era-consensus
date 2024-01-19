@@ -94,7 +94,7 @@ impl<T, U> Receiver<T, U> {
     pub async fn recv(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<(T, oneshot::Sender<U>)> {
         sync::wait_for(ctx, &mut self.has_values_recv, |has_values| *has_values).await?;
         let mut buffer = self.shared.buffer.lock().await;
-        // `None` is unexpected because we waited for new values.
+        // `None` is unexpected because we waited for new values, and there's only a single receiver.
         let value = buffer.pop_front().unwrap();
 
         if buffer.len() == 0 {
