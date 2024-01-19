@@ -21,7 +21,7 @@ pub(crate) struct StateMachine {
     /// Pipe through which leader sends network messages.
     pub(crate) outbound_pipe: OutputSender,
     /// Pipe through which leader receives network messages.
-    inbound_pipe: sync::prunable_queue::Receiver<
+    inbound_pipe: sync::prunable_mpsc::Receiver<
         Signed<ConsensusMsg>,
         ctx::Result<()>
     >,
@@ -57,10 +57,10 @@ impl StateMachine {
     pub fn new(ctx: &ctx::Ctx, config: Arc<Config>, outbound_pipe: OutputSender)
                -> (
                    Self,
-                   sync::prunable_queue::Sender<Signed<ConsensusMsg>, ctx::Result<()>>
+                   sync::prunable_mpsc::Sender<Signed<ConsensusMsg>, ctx::Result<()>>
                ) {
         let (send, recv) =
-            sync::prunable_queue::channel(StateMachine::queue_pruning_predicate);
+            sync::prunable_mpsc::channel(StateMachine::inbound_pruning_predicate);
 
         let this = StateMachine {
             config,
@@ -226,15 +226,15 @@ impl StateMachine {
         Ok(())
     }
 
-    pub fn queue_pruning_predicate(
-        existing_msg: &Signed<ConsensusMsg>,
+    pub fn inbound_pruning_predicate(
+        pending_msg: &Signed<ConsensusMsg>,
         new_msg: &Signed<ConsensusMsg>,
     ) -> bool {
-        if existing_msg.key != new_msg.key {
+        if pending_msg.key != new_msg.key {
             return false;
         }
 
-        match (&existing_msg.msg, &new_msg.msg) {
+        match (&pending_msg.msg, &new_msg.msg) {
             (ConsensusMsg::ReplicaPrepare(existing_msg), ConsensusMsg::ReplicaPrepare(new_msg)) => {
                 new_msg.view > existing_msg.view
             }

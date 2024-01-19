@@ -19,7 +19,7 @@ pub(crate) struct StateMachine {
     /// Pipe through which replica sends network messages.
     pub(super) outbound_pipe: OutputSender,
     /// Pipe through which replica receives network messages.
-    inbound_pipe: sync::prunable_queue::Receiver<
+    inbound_pipe: sync::prunable_mpsc::Receiver<
         Option<Signed<ConsensusMsg>>,
         ctx::Result<()>
     >,
@@ -44,7 +44,7 @@ impl StateMachine {
     pub(crate) async fn start(ctx: &ctx::Ctx, config: Arc<Config>, outbound_pipe: OutputSender)
         -> ctx::Result<(
             Self,
-            sync::prunable_queue::Sender<Option<Signed<ConsensusMsg>>, ctx::Result<()>>
+            sync::prunable_mpsc::Sender<Option<Signed<ConsensusMsg>>, ctx::Result<()>>
         )> {
         let backup = match config.replica_store.state(ctx).await? {
             Some(backup) => backup,
@@ -59,7 +59,7 @@ impl StateMachine {
         }
 
         let (send, recv) =
-            sync::prunable_queue::channel(StateMachine::queue_pruning_predicate);
+            sync::prunable_mpsc::channel(StateMachine::inbound_pruning_predicate);
 
         let mut this = Self {
             config,
@@ -155,14 +155,14 @@ impl StateMachine {
         Ok(())
     }
 
-    pub fn queue_pruning_predicate(
-        existing_msg: &Option<Signed<ConsensusMsg>>,
+    pub fn inbound_pruning_predicate(
+        pending_msg: &Option<Signed<ConsensusMsg>>,
         new_msg: &Option<Signed<ConsensusMsg>>,
     ) -> bool {
-        if existing_msg.is_none() || new_msg.is_none() {
+        if pending_msg.is_none() || new_msg.is_none() {
             return false;
         }
-        let (existing_msg, new_msg) = (existing_msg.as_ref().unwrap(), new_msg.as_ref().unwrap());
+        let (existing_msg, new_msg) = (pending_msg.as_ref().unwrap(), new_msg.as_ref().unwrap());
 
         if existing_msg.key != new_msg.key {
             return false;

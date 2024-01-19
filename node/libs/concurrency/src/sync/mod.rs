@@ -10,7 +10,7 @@ pub use tokio::{
     task::yield_now,
 };
 
-pub mod prunable_queue;
+pub mod prunable_mpsc;
 #[cfg(test)]
 mod tests;
 
