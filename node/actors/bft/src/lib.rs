@@ -66,14 +66,8 @@ impl Config {
         mut pipe: ActorPipe<InputMessage, OutputMessage>,
     ) -> anyhow::Result<()> {
         let cfg = Arc::new(self);
-        let leader = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
-        let replica = replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
-
-        let (leader_send, leader_recv) =
-            sync::prunable_queue::channel(leader::StateMachine::queue_pruning_predicate);
-
-        let (replica_send, replica_recv) =
-            sync::prunable_queue::channel(replica::StateMachine::queue_pruning_predicate);
+        let (leader, leader_send) = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
+        let (replica, replica_send) = replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
 
         // mpsc channel for returning error asynchronously.
         let (err_send, mut err_recv) = mpsc::channel::<ctx::Result<()>>(1);
@@ -82,8 +76,8 @@ impl Config {
             let prepare_qc_recv = leader.prepare_qc.subscribe();
             let deadline_recv = replica.timeout_deadline.subscribe();
 
-            s.spawn_bg(replica.run(ctx, replica_recv));
-            s.spawn_bg(leader.run(ctx, leader_recv));
+            s.spawn_bg(replica.run(ctx));
+            s.spawn_bg(leader.run(ctx));
             s.spawn_bg(leader::StateMachine::run_proposer(
                 ctx,
                 &cfg,

@@ -1,13 +1,16 @@
-use crate::{metrics, Config, OutputSender};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
     unreachable,
 };
+
 use tracing::instrument;
+
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::{validator, validator::ConsensusMsg};
+use zksync_consensus_roles::{validator::{self, ConsensusMsg, Signed}};
+
+use crate::{Config, metrics, OutputSender};
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
@@ -15,8 +18,13 @@ use zksync_consensus_roles::{validator, validator::ConsensusMsg};
 pub(crate) struct StateMachine {
     /// Consensus configuration and output channel.
     pub(crate) config: Arc<Config>,
-    /// Pipe through with leader sends network messages.
-    pub(crate) pipe: OutputSender,
+    /// Pipe through which leader sends network messages.
+    pub(crate) outbound_pipe: OutputSender,
+    /// Pipe through which leader receives network messages.
+    inbound_pipe: sync::prunable_queue::Receiver<
+        Signed<ConsensusMsg>,
+        ctx::Result<()>
+    >,
     /// The current view number. This might not match the replica's view number, we only have this here
     /// to make the leader advance monotonically in time and stop it from accepting messages from the past.
     pub(crate) view: validator::ViewNumber,
@@ -28,7 +36,7 @@ pub(crate) struct StateMachine {
     /// A cache of replica prepare messages indexed by view number and validator.
     pub(crate) prepare_message_cache: BTreeMap<
         validator::ViewNumber,
-        HashMap<validator::PublicKey, validator::Signed<validator::ReplicaPrepare>>,
+        HashMap<validator::PublicKey, Signed<validator::ReplicaPrepare>>,
     >,
     /// Prepare QCs indexed by view number.
     pub(crate) prepare_qcs: BTreeMap<validator::ViewNumber, validator::PrepareQC>,
@@ -37,7 +45,7 @@ pub(crate) struct StateMachine {
     /// A cache of replica commit messages indexed by view number and validator.
     pub(crate) commit_message_cache: BTreeMap<
         validator::ViewNumber,
-        HashMap<validator::PublicKey, validator::Signed<validator::ReplicaCommit>>,
+        HashMap<validator::PublicKey, Signed<validator::ReplicaCommit>>,
     >,
     /// Commit QCs indexed by view number.
     pub(crate) commit_qcs: BTreeMap<validator::ViewNumber, validator::CommitQC>,
@@ -46,10 +54,17 @@ pub(crate) struct StateMachine {
 impl StateMachine {
     /// Creates a new StateMachine struct.
     #[instrument(level = "trace")]
-    pub fn new(ctx: &ctx::Ctx, config: Arc<Config>, pipe: OutputSender) -> Self {
-        StateMachine {
+    pub fn new(ctx: &ctx::Ctx, config: Arc<Config>, outbound_pipe: OutputSender)
+               -> (
+                   Self,
+                   sync::prunable_queue::Sender<Signed<ConsensusMsg>, ctx::Result<()>>
+               ) {
+        let (send, recv) =
+            sync::prunable_queue::channel(StateMachine::queue_pruning_predicate);
+
+        let this = StateMachine {
             config,
-            pipe,
+            outbound_pipe,
             view: validator::ViewNumber(0),
             phase: validator::Phase::Prepare,
             phase_start: ctx.now(),
@@ -58,7 +73,10 @@ impl StateMachine {
             commit_message_cache: BTreeMap::new(),
             prepare_qc: sync::watch::channel(None).0,
             commit_qcs: BTreeMap::new(),
-        }
+            inbound_pipe: recv,
+        };
+
+        (this, send)
     }
 
     /// Runs a loop to process incoming messages.
@@ -67,17 +85,13 @@ impl StateMachine {
     pub async fn run(
         mut self,
         ctx: &ctx::Ctx,
-        mut queue: sync::prunable_queue::Receiver<
-            validator::Signed<validator::ConsensusMsg>,
-            ctx::Result<()>,
-        >,
     ) -> ctx::Result<()> {
         loop {
-            let (signed_message, res_sender) = queue.recv(ctx).await?;
+            let (signed_message, res_send) = self.inbound_pipe.recv(ctx).await?;
 
             let now = ctx.now();
             let label = match &signed_message.msg {
-                validator::ConsensusMsg::ReplicaPrepare(_) => {
+                ConsensusMsg::ReplicaPrepare(_) => {
                     let res = match self
                         .process_replica_prepare(ctx, signed_message.cast().unwrap())
                         .await
@@ -94,7 +108,7 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
                 }
-                validator::ConsensusMsg::ReplicaCommit(_) => {
+                ConsensusMsg::ReplicaCommit(_) => {
                     let res = self
                         .process_replica_commit(ctx, signed_message.cast().unwrap())
                         .map_err(|err| {
@@ -105,7 +119,7 @@ impl StateMachine {
                 _ => unreachable!(),
             };
             metrics::METRICS.leader_processing_latency[&label].observe_latency(ctx.now() - now);
-            let _ = res_sender.send(Ok(()));
+            let _ = res_send.send(Ok(()));
         }
     }
 
@@ -207,14 +221,14 @@ impl StateMachine {
                 message: msg,
                 recipient: Target::Broadcast,
             }
-            .into(),
+                .into(),
         );
         Ok(())
     }
 
     pub fn queue_pruning_predicate(
-        existing_msg: &validator::Signed<ConsensusMsg>,
-        new_msg: &validator::Signed<ConsensusMsg>,
+        existing_msg: &Signed<ConsensusMsg>,
+        new_msg: &Signed<ConsensusMsg>,
     ) -> bool {
         if existing_msg.key != new_msg.key {
             return false;

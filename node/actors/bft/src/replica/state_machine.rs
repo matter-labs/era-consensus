@@ -1,11 +1,14 @@
-use crate::{metrics, Config, OutputSender};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
+
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_roles::{validator, validator::ConsensusMsg};
+use zksync_consensus_roles::validator::Signed;
 use zksync_consensus_storage as storage;
+
+use crate::{Config, metrics, OutputSender};
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
 /// for validating and voting on blocks. When participating in consensus we are always a replica.
@@ -14,7 +17,12 @@ pub(crate) struct StateMachine {
     /// Consensus configuration and output channel.
     pub(crate) config: Arc<Config>,
     /// Pipe through which replica sends network messages.
-    pub(super) pipe: OutputSender,
+    pub(super) outbound_pipe: OutputSender,
+    /// Pipe through which replica receives network messages.
+    inbound_pipe: sync::prunable_queue::Receiver<
+        Option<Signed<ConsensusMsg>>,
+        ctx::Result<()>
+    >,
     /// The current view number.
     pub(crate) view: validator::ViewNumber,
     /// The current phase.
@@ -25,7 +33,7 @@ pub(crate) struct StateMachine {
     pub(crate) high_qc: validator::CommitQC,
     /// A cache of the received block proposals.
     pub(crate) block_proposal_cache:
-        BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
+    BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
     /// The deadline to receive an input message.
     pub(crate) timeout_deadline: sync::watch::Sender<time::Deadline>,
 }
@@ -33,11 +41,11 @@ pub(crate) struct StateMachine {
 impl StateMachine {
     /// Creates a new StateMachine struct. We try to recover a past state from the storage module,
     /// otherwise we initialize the state machine with whatever head block we have.
-    pub(crate) async fn start(
-        ctx: &ctx::Ctx,
-        config: Arc<Config>,
-        pipe: OutputSender,
-    ) -> ctx::Result<Self> {
+    pub(crate) async fn start(ctx: &ctx::Ctx, config: Arc<Config>, outbound_pipe: OutputSender)
+        -> ctx::Result<(
+            Self,
+            sync::prunable_queue::Sender<Option<Signed<ConsensusMsg>>, ctx::Result<()>>
+        )> {
         let backup = match config.replica_store.state(ctx).await? {
             Some(backup) => backup,
             None => config.block_store.subscribe().borrow().last.clone().into(),
@@ -50,9 +58,13 @@ impl StateMachine {
                 .insert(proposal.payload.hash(), proposal.payload);
         }
 
+        let (send, recv) =
+            sync::prunable_queue::channel(StateMachine::queue_pruning_predicate);
+
         let mut this = Self {
             config,
-            pipe,
+            outbound_pipe,
+            inbound_pipe: recv,
             view: backup.view,
             phase: backup.phase,
             high_vote: backup.high_vote,
@@ -60,24 +72,19 @@ impl StateMachine {
             block_proposal_cache,
             timeout_deadline: sync::watch::channel(time::Deadline::Infinite).0,
         };
+
         // We need to start the replica before processing inputs.
         this.start_new_view(ctx).await.wrap("start_new_view()")?;
-        Ok(this)
+
+        Ok((this, send))
     }
 
     /// Runs a loop to process incoming messages (may be `None` if the channel times out while waiting for a message).
     /// This is the main entry point for the state machine,
     /// potentially triggering state modifications and message sending to the executor.
-    pub async fn run(
-        mut self,
-        ctx: &ctx::Ctx,
-        mut queue: sync::prunable_queue::Receiver<
-            Option<validator::Signed<validator::ConsensusMsg>>,
-            ctx::Result<()>,
-        >,
-    ) -> ctx::Result<()> {
+    pub async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         loop {
-            let (signed_message, res_send) = queue.recv(ctx).await?;
+            let (signed_message, res_send) = self.inbound_pipe.recv(ctx).await?;
             let Some(signed_message) = signed_message else {
                 let res = self.start_new_view(ctx).await;
                 let _ = res_send.send(res);
@@ -86,7 +93,7 @@ impl StateMachine {
 
             let now = ctx.now();
             let label = match &signed_message.msg {
-                validator::ConsensusMsg::LeaderPrepare(_) => {
+                ConsensusMsg::LeaderPrepare(_) => {
                     let res = match self
                         .process_leader_prepare(ctx, signed_message.cast().unwrap())
                         .await
@@ -101,7 +108,7 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::LeaderPrepare.with_result(&res)
                 }
-                validator::ConsensusMsg::LeaderCommit(_) => {
+                ConsensusMsg::LeaderCommit(_) => {
                     let res = match self
                         .process_leader_commit(ctx, signed_message.cast().unwrap())
                         .await
@@ -149,8 +156,8 @@ impl StateMachine {
     }
 
     pub fn queue_pruning_predicate(
-        existing_msg: &Option<validator::Signed<ConsensusMsg>>,
-        new_msg: &Option<validator::Signed<ConsensusMsg>>,
+        existing_msg: &Option<Signed<ConsensusMsg>>,
+        new_msg: &Option<Signed<ConsensusMsg>>,
     ) -> bool {
         if existing_msg.is_none() || new_msg.is_none() {
             return false;

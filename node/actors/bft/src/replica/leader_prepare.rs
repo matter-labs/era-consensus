@@ -336,7 +336,7 @@ impl StateMachine {
                 .sign_msg(validator::ConsensusMsg::ReplicaCommit(commit_vote)),
             recipient: Target::Validator(author.clone()),
         };
-        self.pipe.send(output_message.into());
+        self.outbound_pipe.send(output_message.into());
 
         Ok(())
     }

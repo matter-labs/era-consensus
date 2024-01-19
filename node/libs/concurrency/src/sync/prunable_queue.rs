@@ -14,7 +14,7 @@ use crate::{
     oneshot,
     sync::{self, watch},
 };
-use std::{collections::VecDeque, sync::Arc};
+use std::{collections::VecDeque, fmt, sync::Arc};
 
 pub fn channel<T, U>(
     pruning_predicate: impl 'static + Sync + Send + Fn(&T, &T) -> bool,
@@ -66,6 +66,12 @@ impl<T, U> Sender<T, U> {
     }
 }
 
+impl<T, U> fmt::Debug for Sender<T, U> {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.debug_struct("Sender").finish()
+    }
+}
+
 pub struct Receiver<T, U> {
     shared: Arc<Shared<T, U>>,
     has_items_recv: watch::Receiver<bool>,
@@ -83,6 +89,12 @@ impl<T, U> Receiver<T, U> {
         }
 
         Ok(item)
+    }
+}
+
+impl<T, U> fmt::Debug for Receiver<T, U> {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.debug_struct("Receiver").finish()
     }
 }
 

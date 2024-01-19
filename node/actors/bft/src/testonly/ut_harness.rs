@@ -63,8 +63,8 @@ impl UTHarness {
             replica_store: Box::new(in_memory::ReplicaStore::default()),
             payload_manager,
         });
-        let leader = leader::StateMachine::new(ctx, cfg.clone(), send.clone());
-        let replica = replica::StateMachine::start(ctx, cfg.clone(), send.clone())
+        let (leader, _) = leader::StateMachine::new(ctx, cfg.clone(), send.clone());
+        let (replica, _) = replica::StateMachine::start(ctx, cfg.clone(), send.clone())
             .await
             .unwrap();
         let mut this = UTHarness {
@@ -210,7 +210,7 @@ impl UTHarness {
         self.leader.process_replica_prepare(ctx, msg).await?;
         if prepare_qc.has_changed().unwrap() {
             let prepare_qc = prepare_qc.borrow().clone().unwrap();
-            leader::StateMachine::propose(ctx, &self.leader.config, prepare_qc, &self.leader.pipe)
+            leader::StateMachine::propose(ctx, &self.leader.config, prepare_qc, &self.leader.outbound_pipe)
                 .await
                 .unwrap();
         }
