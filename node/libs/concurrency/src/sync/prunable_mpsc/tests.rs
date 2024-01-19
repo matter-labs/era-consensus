@@ -46,13 +46,11 @@ async fn test_prunable_mpsc() {
 
             i = i + 1;
             if i == 1000 {
-                match timeout(Duration::from_secs(0), receiver.recv(&ctx)).await {
-                    Ok(_) => assert!(
-                        false,
-                        "recv() is expected to hang since all values have been exhausted"
-                    ),
-                    Err(_) => break,
-                }
+                assert!(
+                    timeout(Duration::from_secs(0), receiver.recv(&ctx)).await.is_err(),
+                    "recv() is expected to hang since all values have been exhausted"
+                );
+                break;
             }
         }
     })
