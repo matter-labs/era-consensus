@@ -7,7 +7,7 @@ use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_tools::ConfigPaths;
+use zksync_consensus_tools::{server, ConfigPaths};
 use zksync_consensus_utils::no_copy::NoCopy;
 
 /// Command-line application launching a node executor.
@@ -89,6 +89,11 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("configs.into_executor()")?;
 
+    // Config for the RPC server.
+    let mut rpc_addr = configs.app.public_addr.to_string();
+    rpc_addr.replace_range(rpc_addr.find(":").unwrap().., ":3051");
+    let rpc_server = server::NodeRpcServer::new(rpc_addr.clone());
+
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {
         if let Some(addr) = configs.app.metrics_server_addr {
@@ -104,6 +109,7 @@ async fn main() -> anyhow::Result<()> {
         }
         s.spawn_bg(runner.run(ctx));
         s.spawn(executor.run(ctx));
+        s.spawn(rpc_server.run());
         Ok(())
     })
     .await
