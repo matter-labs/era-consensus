@@ -1,0 +1,13 @@
+syntax = "proto3";
+package node;
+
+service Node {
+  rpc HealthCheck (HealthCheckRequest) returns (HealthCheckResponse);
+}
+
+message HealthCheckRequest {
+}
+
+message HealthCheckResponse {
+  string message = 1;
+}
