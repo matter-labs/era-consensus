@@ -82,6 +82,8 @@ time = "0.3.23"
 tokio = { version = "1.34.0", features = ["full"] }
 tracing = { version = "0.1.37", features = ["attributes"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter", "fmt"] }
+tonic = "0.10.2"
+tonic-build = "0.10"
 
 # Note that "bench" profile inherits from "release" profile and
 # "test" profile inherits from "dev" profile.
