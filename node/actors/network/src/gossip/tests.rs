@@ -272,11 +272,16 @@ async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
     abort_on_panic();
 
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
-    let ctx = &ctx.with_timeout(time::Duration::seconds(200));
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::GenesisSetup::empty(rng, node_count);
     setup.push_blocks(rng,EXCHANGED_STATE_COUNT);
     scope::run!(ctx, |ctx, s| async { 
+        s.spawn_bg(async {
+            match ctx.sleep(time::Duration::seconds(200)).await {
+                Ok(()) => panic!("TIMEOUT"),
+                Err(_) => Ok(())
+            }
+        });
         for (i,cfg) in testonly::new_configs(rng, &setup, gossip_peers).into_iter().enumerate() {
             s.spawn(async {
                 let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
