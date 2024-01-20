@@ -31,7 +31,7 @@ struct PushValidatorAddrsServer<'a>(&'a State);
 
 #[async_trait]
 impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'_> {
-    async fn handle(&self, ctx: &ctx::Ctx, req: rpc::push_validator_addrs::Req) -> anyhow::Result<()> {
+    async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::push_validator_addrs::Req) -> anyhow::Result<()> {
         self.0.event(Event::ValidatorAddrsUpdated);
         self.0.gossip.validator_addrs.update(&self.0.cfg.validators, &req.0[..]).await?;
         Ok(())
@@ -99,7 +99,7 @@ async fn run_stream(
             .add_server(&*state.gossip.block_store)
             .add_server(rpc::ping::Server);
 
-        if state.gossip.cfg.enable_pings {
+        if state.cfg.enable_pings {
             let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx);
             service = service.add_client(&ping_client);
             s.spawn(async {
@@ -147,12 +147,6 @@ async fn run_stream(
 
 /// Handles an inbound stream.
 /// Closes the stream if there is another inbound stream opened from the same peer.
-#[tracing::instrument(
-    level = "trace",
-    skip_all,
-    err,
-    fields(my_key = ?state.gossip.cfg.key.public(), peer),
-)]
 pub(crate) async fn run_inbound_stream(
     ctx: &ctx::Ctx,
     state: &State,
@@ -167,12 +161,6 @@ pub(crate) async fn run_inbound_stream(
     res
 }
 
-#[tracing::instrument(
-    level = "trace",
-    skip(ctx, state, sender),
-    err,
-    fields(my_key = ?state.gossip.cfg.key.public())
-)]
 async fn run_outbound_stream(
     ctx: &ctx::Ctx,
     state: &State,

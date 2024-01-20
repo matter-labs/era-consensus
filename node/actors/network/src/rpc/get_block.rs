@@ -24,7 +24,7 @@ impl super::Rpc for Rpc {
 }
 
 /// Asks the server to send a block (including its transactions).
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct Req(pub(crate) BlockNumber);
 
 impl ProtoFmt for Req {
@@ -48,7 +48,7 @@ impl ProtoFmt for Req {
 }
 
 /// Response to a [`GetBlockRequest`] containing a block or a reason it cannot be retrieved.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub(crate) struct Resp(pub(crate) Option<FinalBlock>);
 
 impl ProtoFmt for Resp {

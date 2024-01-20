@@ -8,12 +8,15 @@ use std::{
 };
 use zksync_consensus_storage::{BlockStore,BlockStoreRunner,testonly::in_memory};
 use zksync_concurrency::{
+    signal,
     ctx,
     ctx::channel,
+    scope,
     io, net,
     sync::{self},
 };
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::{validator,node};
+use zksync_consensus_utils::pipe;
 
 /// Synchronously forwards data from one stream to another.
 pub(crate) async fn forward(
@@ -47,8 +50,11 @@ pub struct Instance {
     pub(crate) state: Arc<State>,
     /// Stream of events.
     pub(crate) events: channel::UnboundedReceiver<Event>,
+    pub(crate) terminate: Arc<signal::Once>,
+    pub(crate) pipe: pipe::DispatcherPipe<crate::io::InputMessage, crate::io::OutputMessage>,
 }
 
+/// Constructs a new store with a genesis block.
 pub async fn new_store(ctx: &ctx::Ctx, genesis: &validator::FinalBlock) -> (Arc<BlockStore>,BlockStoreRunner) {
     BlockStore::new(ctx,Box::new(in_memory::BlockStore::new(genesis.clone()))).await.unwrap()
 }
@@ -60,6 +66,9 @@ pub fn new_configs<R: Rng>(rng: &mut R, setup: &validator::testonly::GenesisSetu
         Config {
             server_addr: addr,
             validators: setup.validator_set(),
+            // Pings are disabled in tests by default to avoid dropping connections
+            // due to timeouts.
+            enable_pings: false,
             consensus: Some(consensus::Config {
                 key: key.clone(),
                 public_addr: *addr,
@@ -68,8 +77,7 @@ pub fn new_configs<R: Rng>(rng: &mut R, setup: &validator::testonly::GenesisSetu
                 key: rng.gen(),
                 dynamic_inbound_limit: setup.keys.len() as u64,
                 static_inbound: HashSet::default(),
-                static_outbound: HashMap::default(),
-                enable_pings: true,
+                static_outbound: HashMap::default(), 
             },
         }
     });
@@ -87,23 +95,44 @@ pub fn new_configs<R: Rng>(rng: &mut R, setup: &validator::testonly::GenesisSetu
     cfgs
 }
 
+/// Runner for Instance.
+pub struct InstanceRunner {
+    state: Arc<State>,
+    terminate: Arc<signal::Once>,
+    pipe: pipe::ActorPipe<crate::io::InputMessage, crate::io::OutputMessage>,
+}
+
+impl InstanceRunner {
+    /// Runs the instance background processes.
+    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        scope::run!(ctx, |ctx,s| async {
+            s.spawn_bg(async {
+                crate::run_network(ctx, self.state, self.pipe).await?;
+                Ok(())
+            }); 
+            let _ = self.terminate.recv(ctx).await;
+            Ok(())
+        }).await
+    }  
+}
+
 impl Instance {
     /// Construct an instance for a given config.
-    pub(crate) fn from_cfg(cfg: Config, block_store: Arc<BlockStore>) -> Self {
+    pub(crate) fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self,InstanceRunner) {
         let (events_send, events_recv) = channel::unbounded();
-        Self {
-            state: State::new(cfg, Some(events_send), block_store).expect("Invalid network config"),
+        let (actor_pipe, dispatcher_pipe) = pipe::new();
+        let state = State::new(cfg, block_store, Some(events_send)).expect("Invalid network config");
+        let terminate = Arc::new(signal::Once::new());
+        (Self {
+            state: state.clone(), 
             events: events_recv,
-        }
-    }
-
-    /// Constructs `n` node instances, configured to connect to each other.
-    /// Non-blocking (it doesn't run the network actors).
-    pub fn new<R: Rng>(rng: &mut R, n: usize, gossip_peers: usize) -> Vec<Self> {
-        new_configs(rng, n, gossip_peers)
-            .into_iter()
-            .map(Self::from_cfg)
-            .collect()
+            pipe: dispatcher_pipe,
+            terminate: terminate.clone(),
+        }, InstanceRunner {
+            state: state.clone(),
+            pipe: actor_pipe,
+            terminate,
+        })
     }
 
     /// State getter.
@@ -124,26 +153,6 @@ impl Instance {
     /// Returns the gossip config for this node.
     pub fn gossip_config(&self) -> &gossip::Config {
         &self.state.gossip.cfg
-    }
-
-    /// Returns the overall config for this node.
-    pub fn to_config(&self) -> Config {
-        Config {
-            server_addr: self.state.cfg.server_addr,
-            validators: self.state.cfg.validators.clone(),
-            gossip: self.state.gossip.cfg.clone(),
-            consensus: self
-                .state
-                .consensus
-                .as_ref()
-                .map(|consensus_state| consensus_state.cfg.clone()),
-        }
-    }
-
-    /// Disables ping messages over the gossip network.
-    pub fn disable_gossip_pings(&mut self) {
-        let state = Arc::get_mut(&mut self.state).expect("node state is shared");
-        state.gossip.cfg.enable_pings = false;
     }
 
     /// Wait for static outbound gossip connections to be established.
@@ -175,6 +184,36 @@ impl Instance {
             .wait_for(|got| got.current() == &want)
             .await
             .unwrap();
+    }
+
+    /// Waits for node to be disconnected from the given gossip peer.
+    pub async fn wait_for_gossip_disconnect(&self, ctx: &ctx::Ctx, peer: &node::PublicKey) -> ctx::OrCanceled<()> {
+        let state = &self.state.gossip;
+        sync::wait_for(ctx, &mut state.inbound.subscribe(), |got| !got.current().contains(peer)).await?;
+        sync::wait_for(ctx, &mut state.outbound.subscribe(), |got| !got.current().contains(peer)).await?;
+        Ok(())
+    }
+
+    /// Waits for node to be disconnected from the given consensus peer.
+    pub async fn wait_for_consensus_disconnect(&self, ctx: &ctx::Ctx, peer: &validator::PublicKey) -> ctx::OrCanceled<()> {
+        let state = self.state.consensus.as_ref().unwrap();
+        sync::wait_for(ctx, &mut state.inbound.subscribe(), |got| !got.current().contains(peer)).await?;
+        sync::wait_for(ctx, &mut state.outbound.subscribe(), |got| !got.current().contains(peer)).await?;
+        Ok(())
+    }
+
+    /// Automatically responds to push messages received from the network.
+    pub async fn auto_ack(&mut self, ctx: &ctx::Ctx) {
+        use crate::io::OutputMessage as Msg;
+        while let Ok(msg) = self.pipe.recv(ctx).await {
+            let _ = match msg {
+                Msg::SyncBlocks(crate::io::SyncBlocksRequest::UpdatePeerSyncState{
+                    response,
+                    ..
+                }) => response.send(()),
+                Msg::Consensus(req) => req.ack.send(()), 
+            };
+        }
     }
 }
 

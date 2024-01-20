@@ -77,13 +77,6 @@ pub enum SyncBlocksRequest {
         // TODO: return an error in case of invalid `SyncState`?
         response: oneshot::Sender<()>,
     },
-    /// Requests an L2 block with the specified number.
-    GetBlock {
-        /// Number of the block.
-        block_number: validator::BlockNumber,
-        /// Block returned by the block syncing actor.
-        response: oneshot::Sender<Result<validator::FinalBlock,GetBlockError>>,
-    },
 }
 
 /// All the messages that the Network actor sends to other actors.

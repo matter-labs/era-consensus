@@ -6,7 +6,7 @@ use zksync_consensus_roles::validator;
 mod metrics;
 
 /// State of the `BlockStore`: continuous range of blocks.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockStoreState {
     /// Stored block with the lowest number.
     pub first: validator::CommitQC,

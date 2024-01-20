@@ -18,7 +18,6 @@ fn make_cfg<R: Rng>(rng: &mut R) -> Config {
         dynamic_inbound_limit: 0,
         static_inbound: HashSet::default(),
         static_outbound: HashMap::default(),
-        enable_pings: true,
     }
 }
 

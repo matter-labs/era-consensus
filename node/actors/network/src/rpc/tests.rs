@@ -25,6 +25,7 @@ fn test_capability_rpc_correspondence() {
 fn test_schema_encode_decode() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
     test_encode_random::<_, consensus::Req>(rng);
+    test_encode_random::<_, consensus::Resp>(rng);
     test_encode_random::<_, push_validator_addrs::Req>(rng);
     test_encode_random::<_, push_block_store_state::Req>(rng);
     test_encode_random::<_, get_block::Req>(rng);

@@ -21,6 +21,8 @@ pub struct Config {
     pub gossip: gossip::Config,
     /// Consensus network config. If not present, the node will not participate in the consensus network.
     pub consensus: Option<consensus::Config>,
+    /// Enables pinging the peers to make sure that they are alive.
+    pub enable_pings: bool,
 }
 
 /// Part of configuration shared among network modules.
@@ -32,6 +34,8 @@ pub(crate) struct SharedConfig {
     /// - client should establish outbound connections to.
     /// - server should accept inbound connections from (1 per validator).
     pub(crate) validators: validator::ValidatorSet,
+    /// Enables pinging the peers to make sure that they are alive.
+    pub(crate) enable_pings: bool,
 }
 
 /// State of the network actor observable outside of the actor.
@@ -67,6 +71,7 @@ impl State {
             cfg: SharedConfig {
                 server_addr: cfg.server_addr,
                 validators: cfg.validators,
+                enable_pings: cfg.enable_pings,
             },
         };
         Ok(Arc::new(this))
@@ -131,18 +136,9 @@ pub async fn run_network(
                     let (stream, endpoint) = preface::accept(ctx, stream).await?;
                     match endpoint {
                         preface::Endpoint::ConsensusNet => {
-                            if let Some(consensus_state) = &state.consensus {
-                                consensus::run_inbound_stream(
-                                    ctx,
-                                    consensus_state,
-                                    &pipe.send,
-                                    stream,
-                                )
+                            consensus::run_inbound_stream(ctx,&state,&pipe.send,stream)
                                 .await
                                 .context("consensus::run_inbound_stream()")
-                            } else {
-                                anyhow::bail!("Node does not accept consensus network connections");
-                            }
                         }
                         preface::Endpoint::GossipNet => {
                             gossip::run_inbound_stream(ctx, &state, &pipe.send, stream)

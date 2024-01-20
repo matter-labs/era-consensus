@@ -14,6 +14,7 @@ pub fn abort_on_panic() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_test_writer()
         .with_ansi(std::env::var("NO_COLOR").is_err() && std::io::stdout().is_terminal())
+        .with_line_number(true)
         .try_init();
 
     // I don't know a way to set panic=abort for nextest builds in compilation time, so we set it

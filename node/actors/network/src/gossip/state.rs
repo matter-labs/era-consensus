@@ -126,8 +126,6 @@ pub struct Config {
     /// Outbound connections that the node should actively try to
     /// establish and maintain.
     pub static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>,
-    /// Enables pings sent over the gossip network.
-    pub enable_pings: bool,
 }
 
 pub(crate) struct ArcMap<T>(Mutex<HashMap<node::PublicKey, Vec<Arc<T>>>>);
