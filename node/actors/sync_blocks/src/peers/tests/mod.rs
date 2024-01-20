@@ -7,7 +7,7 @@ use test_casing::{test_casing, Product};
 use tracing::instrument;
 use zksync_consensus_roles::validator;
 use zksync_consensus_network as network;
-use zksync_concurrency::{testonly::abort_on_panic, time};
+use zksync_concurrency::{testonly::{set_timeout,abort_on_panic}, time};
 use crate::tests::test_config;
 
 mod basics;
@@ -61,10 +61,10 @@ trait Test: fmt::Debug + Send + Sync {
 #[instrument(level = "trace")]
 async fn test_peer_states<T: Test>(test: T) {
     abort_on_panic();
+    let _guard = set_timeout(TEST_TIMEOUT);
 
-    let ctx = &ctx::test_root(&ctx::RealClock).with_timeout(TEST_TIMEOUT);
     let clock = ctx::ManualClock::new();
-    let ctx = &ctx::test_with_clock(ctx, &clock);
+    let ctx = &ctx::test_root(&clock);
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::GenesisSetup::new(rng,4);
     setup.push_blocks(rng, T::BLOCK_COUNT);

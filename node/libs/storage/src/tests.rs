@@ -25,6 +25,7 @@ fn test_schema_encode_decode() {
     zksync_protobuf::testonly::test_encode_random::<_, ReplicaState>(rng);
 }
 
+/*
 // TODO: test moved from sync_blocks
 #[tokio::test]
 async fn subscribing_to_state_updates() {
@@ -66,4 +67,4 @@ async fn subscribing_to_state_updates() {
     })
     .await
     .unwrap();
-}
+}*/

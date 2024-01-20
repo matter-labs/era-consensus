@@ -62,6 +62,7 @@ impl<'a> BlockBuilder<'a> {
 }
 
 /// GenesisSetup.
+#[derive(Debug, Clone)]
 pub struct GenesisSetup {
     /// Validators' secret keys.
     pub keys: Vec<SecretKey>,

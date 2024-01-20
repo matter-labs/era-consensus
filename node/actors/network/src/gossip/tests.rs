@@ -13,7 +13,7 @@ use zksync_concurrency::{
     ctx,
     sync,
     oneshot, scope,
-    testonly::abort_on_panic,
+    testonly::{set_timeout,abort_on_panic},
     time,
 };
 use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock};
@@ -261,13 +261,6 @@ async fn test_validator_addrs_propagation() {
 const EXCHANGED_STATE_COUNT: usize = 5;
 const NETWORK_CONNECTIVITY_CASES: [(usize, usize); 5] = [(2, 1), (3, 2), (5, 3), (10, 4), (10, 7)];
 
-async fn set_timeout<E>(ctx: &ctx::Ctx, timeout: time::Duration) -> Result<(),E> {
-    match ctx.wait(tokio::time::sleep(timeout.try_into().unwrap())).await {
-        Ok(()) => panic!("TIMEOUT"),
-        Err(_) => Ok(()),
-    }
-}
-
 /// Tests block syncing with global network synchronization (a next block becoming available
 /// to all nodes only after all nodes have received previous `SyncState` updates from peers).
 #[test_casing(5, NETWORK_CONNECTIVITY_CASES)]
@@ -275,13 +268,13 @@ async fn set_timeout<E>(ctx: &ctx::Ctx, timeout: time::Duration) -> Result<(),E>
 #[tracing::instrument(level = "trace")]
 async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
     abort_on_panic();
+    let _guard = set_timeout(time::Duration::seconds(5));
 
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::GenesisSetup::new(rng, node_count);
     let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
     scope::run!(ctx, |ctx, s| async { 
-        s.spawn_bg(set_timeout(ctx,time::Duration::seconds(5)));
         let mut nodes = vec![];
         for (i,cfg) in cfgs.into_iter().enumerate() {
             let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
@@ -340,13 +333,13 @@ async fn uncoordinated_block_syncing(
     state_generation_interval: time::Duration,
 ) {
     abort_on_panic();
+    let _guard = set_timeout(time::Duration::seconds(5));
 
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::GenesisSetup::empty(rng, node_count);
     setup.push_blocks(rng,EXCHANGED_STATE_COUNT);
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(set_timeout(ctx,time::Duration::seconds(5)));
         for (i,cfg) in testonly::new_configs(rng, &setup, gossip_peers).into_iter().enumerate() {
             let i = i;
             let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
@@ -445,6 +438,8 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
 #[tokio::test]
 async fn validator_node_restart() {
     abort_on_panic();
+    let _guard = set_timeout(time::Duration::seconds(5));
+    
     let clock = &ctx::ManualClock::new();
     let ctx = &ctx::test_root(clock);
     let rng = &mut ctx.rng();
@@ -457,7 +452,6 @@ async fn validator_node_restart() {
     let (store,store_runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
     let (mut node1,node1_runner) = testonly::Instance::new(cfgs[1].clone(),store.clone());
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(set_timeout(ctx,time::Duration::seconds(5)));
         s.spawn_bg(store_runner.run(ctx));
         s.spawn_bg(node1_runner.run(ctx).instrument(tracing::info_span!("node1")));
         s.spawn_bg(async {

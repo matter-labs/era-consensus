@@ -1,7 +1,7 @@
 //! Tests focused on interaction with multiple peers.
 
 use super::*;
-use crate::tests::wait_for_stored_block;
+use crate::tests::{send_block, sync_state};
 
 #[derive(Debug)]
 struct RequestingBlocksFromTwoPeers;
@@ -19,7 +19,7 @@ impl Test for RequestingBlocksFromTwoPeers {
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
             clock,
-            test_validators,
+            setup,
             peer_states,
             storage,
             mut message_receiver,
@@ -29,7 +29,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         let rng = &mut ctx.rng();
         let first_peer = rng.gen::<node::SecretKey>().public();
         peer_states
-            .update(&first_peer, test_validators.sync_state(2))
+            .update(&first_peer, sync_state(&setup,2))
             .unwrap();
 
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
@@ -45,7 +45,7 @@ impl Test for RequestingBlocksFromTwoPeers {
 
         let second_peer = rng.gen::<node::SecretKey>().public();
         peer_states
-            .update(&second_peer, test_validators.sync_state(4))
+            .update(&second_peer, sync_state(&setup, 4))
             .unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
 
@@ -61,7 +61,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         );
         tracing::info!(%second_peer_block_number, "received requrest");
 
-        test_validators.send_block(first_peer_block_number, first_peer_response);
+        send_block(&setup, first_peer_block_number, first_peer_response);
         wait_for_event(
             ctx,
             &mut events_receiver,
@@ -75,7 +75,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         assert_matches!(message_receiver.try_recv(), None);
 
         peer_states
-            .update(&first_peer, test_validators.sync_state(4))
+            .update(&first_peer, sync_state(&setup, 4))
             .unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
         // Now the actor can get block #3 from the peer.
@@ -91,7 +91,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         );
         tracing::info!(%first_peer_block_number, "received requrest");
 
-        test_validators.send_block(first_peer_block_number, first_peer_response);
+        send_block(&setup, first_peer_block_number, first_peer_response);
         wait_for_event(
             ctx,
             &mut events_receiver,
@@ -112,7 +112,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         );
         tracing::info!(%first_peer_block_number, "received requrest");
 
-        test_validators.send_block(second_peer_block_number, second_peer_response);
+        send_block(&setup, second_peer_block_number, second_peer_response);
         wait_for_event(
             ctx,
             &mut events_receiver,
@@ -120,7 +120,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         )
         .await
         .unwrap();
-        test_validators.send_block(first_peer_block_number, first_peer_response);
+        send_block(&setup, first_peer_block_number, first_peer_response);
         wait_for_event(
             ctx,
             &mut events_receiver,
@@ -132,7 +132,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         clock.advance(BLOCK_SLEEP_INTERVAL);
         assert_matches!(message_receiver.try_recv(), None);
 
-        wait_for_stored_block(ctx, storage.as_ref(), BlockNumber(4)).await?;
+        storage.wait_until_persisted(ctx, BlockNumber(4)).await?;
         Ok(())
     }
 }
@@ -202,7 +202,7 @@ impl Test for RequestingBlocksFromMultiplePeers {
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
             clock,
-            test_validators,
+            setup,
             peer_states,
             storage,
             mut message_receiver,
@@ -216,7 +216,7 @@ impl Test for RequestingBlocksFromMultiplePeers {
             // Announce peer states.
             for (peer_key, peer) in peers {
                 let last_block = peer.last_block.0 as usize;
-                peer_states.update(peer_key, test_validators.sync_state(last_block)).unwrap();
+                peer_states.update(peer_key, sync_state(&setup, last_block)).unwrap();
             }
 
             s.spawn_bg(async {
@@ -251,7 +251,7 @@ impl Test for RequestingBlocksFromMultiplePeers {
                         // Peer is at capacity, respond to a random request in order to progress
                         let idx = rng.gen_range(0..peer_responses.len());
                         let (number, response) = peer_responses.remove(idx);
-                        test_validators.send_block(number, response);
+                        send_block(&setup, number, response);
                     }
 
                     // Respond to some other random requests.
@@ -262,14 +262,14 @@ impl Test for RequestingBlocksFromMultiplePeers {
                                 continue;
                             }
                             let (number, response) = peer_responses.remove(idx);
-                            test_validators.send_block(number, response);
+                            send_block(&setup, number, response);
                         }
                     }
                 }
 
                 // Answer to all remaining responses
                 for (number, response) in responses_by_peer.into_values().flatten() {
-                    test_validators.send_block(number, response);
+                    send_block(&setup, number, response);
                 }
                 Ok(())
             });
@@ -291,7 +291,7 @@ impl Test for RequestingBlocksFromMultiplePeers {
                 }
             }
 
-            wait_for_stored_block(ctx, storage.as_ref(), BlockNumber(19)).await?;
+            storage.wait_until_persisted(ctx,BlockNumber(19)).await?;
             Ok(())
         })
         .await

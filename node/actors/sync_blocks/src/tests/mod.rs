@@ -5,31 +5,19 @@ use rand::{
     Rng,
 };
 use std::{ops};
-use zksync_concurrency::{oneshot, sync, time};
+use zksync_concurrency::{oneshot, time};
 use zksync_consensus_roles::validator::{
     self,
     BlockNumber, ValidatorSet,
     testonly::GenesisSetup,
 };
+use zksync_consensus_network::{io::GetBlockError};
 use zksync_consensus_storage::{BlockStore, BlockStoreState, BlockStoreRunner};
 use zksync_consensus_utils::pipe;
 
 mod end_to_end;
 
 const TEST_TIMEOUT: time::Duration = time::Duration::seconds(20);
-
-pub(crate) async fn wait_for_stored_block(
-    ctx: &ctx::Ctx,
-    storage: &BlockStore,
-    block_number: BlockNumber,
-) -> ctx::OrCanceled<()> {
-    tracing::trace!("Started waiting for stored block");
-    sync::wait_for(ctx, &mut storage.subscribe(), |state| {
-        state.next() > block_number
-    })
-    .await?;
-    Ok(())
-}
 
 impl Distribution<Config> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Config {
@@ -59,6 +47,15 @@ pub(crate) fn snapshot_sync_state(setup: &GenesisSetup, range: ops::RangeInclusi
     }
 }
 
+pub(crate) fn send_block(
+    setup: &GenesisSetup,
+    number: BlockNumber,
+    response: oneshot::Sender<Result<validator::FinalBlock,GetBlockError>>,
+) {
+    let block = setup.blocks.get(number.0 as usize).cloned().ok_or(GetBlockError::NotAvailable);
+    response.send(block).ok();
+}
+
     /*fn certify_block(&self, proposal: &BlockHeader) -> CommitQC {
         let message_to_sign = validator::ReplicaCommit {
             protocol_version: validator::ProtocolVersion::EARLIEST,
@@ -72,8 +69,4 @@ pub(crate) fn snapshot_sync_state(setup: &GenesisSetup, range: ops::RangeInclusi
             .collect();
         CommitQC::from(&signed_messages, &self.validator_set).unwrap()
     }
-
-    
-
-    
     */

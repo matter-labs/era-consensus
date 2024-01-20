@@ -2,28 +2,32 @@
 
 use super::*;
 use zksync_consensus_roles::validator;
+use zksync_consensus_roles::validator::testonly::GenesisSetup;
+use crate::tests::sync_state;
 
 #[tokio::test]
 async fn processing_invalid_sync_states() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let test_validators = TestValidators::new(rng, 4, 3);
-    let (storage, _runner) = make_store(ctx, test_validators.final_blocks[0].clone()).await;
+    let mut setup = GenesisSetup::empty(rng,4);
+    setup.push_blocks(rng,3); 
+    let (storage, _runner) = network::testonly::new_store(ctx, &setup.blocks[0]).await;
 
     let (message_sender, _) = channel::unbounded();
-    let peer_states = PeerStates::new(test_validators.test_config(), storage, message_sender);
+    let peer_states = PeerStates::new(test_config(&setup), storage, message_sender);
 
     let peer = &rng.gen::<node::SecretKey>().public();
-    let mut invalid_sync_state = test_validators.sync_state(1);
-    invalid_sync_state.first = test_validators.final_blocks[2].justification.clone();
+    let mut invalid_sync_state = sync_state(&setup,1);
+    invalid_sync_state.first = setup.blocks[2].justification.clone();
     assert!(peer_states.update(peer, invalid_sync_state).is_err());
 
-    let mut invalid_sync_state = test_validators.sync_state(1);
+    let mut invalid_sync_state = sync_state(&setup,1);
     invalid_sync_state.last.message.proposal.number = BlockNumber(5);
     assert!(peer_states.update(peer, invalid_sync_state).is_err());
 
-    let other_network = TestValidators::new(rng, 4, 2);
-    let invalid_sync_state = other_network.sync_state(1);
+    let mut other_network = GenesisSetup::empty(rng, 4);
+    other_network.push_blocks(rng,2);
+    let invalid_sync_state = sync_state(&other_network,1);
     assert!(peer_states.update(peer, invalid_sync_state).is_err());
 }
 
@@ -37,7 +41,7 @@ impl Test for PeerWithFakeSyncState {
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
             clock,
-            test_validators,
+            setup,
             peer_states,
             mut events_receiver,
             ..
@@ -45,7 +49,7 @@ impl Test for PeerWithFakeSyncState {
 
         let rng = &mut ctx.rng();
         let peer_key = rng.gen::<node::SecretKey>().public();
-        let mut fake_sync_state = test_validators.sync_state(1);
+        let mut fake_sync_state = sync_state(&setup,1);
         fake_sync_state.last.message.proposal.number = BlockNumber(42);
         assert!(peer_states.update(&peer_key, fake_sync_state).is_err());
 
@@ -74,7 +78,7 @@ impl Test for PeerWithFakeBlock {
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
             clock,
-            test_validators,
+            setup,
             peer_states,
             storage,
             mut message_receiver,
@@ -85,19 +89,23 @@ impl Test for PeerWithFakeBlock {
 
         for fake_block in [
             // other block than requested
-            test_validators.final_blocks[0].clone(),
+            setup.blocks[0].clone(),
             // block with wrong validator set
-            TestValidators::new(rng, 4, 2).final_blocks[1].clone(),
+            {
+                let mut setup = GenesisSetup::empty(rng, 4);
+                setup.push_blocks(rng,2);
+                setup.blocks[1].clone()
+            },
             // block with mismatching payload,
             {
-                let mut block = test_validators.final_blocks[1].clone();
+                let mut block = setup.blocks[1].clone();
                 block.payload = validator::Payload(b"invalid".to_vec());
                 block
             },
         ] {
             let peer_key = rng.gen::<node::SecretKey>().public();
             peer_states
-                .update(&peer_key, test_validators.sync_state(1))
+                .update(&peer_key, sync_state(&setup,1))
                 .unwrap();
             clock.advance(BLOCK_SLEEP_INTERVAL);
 

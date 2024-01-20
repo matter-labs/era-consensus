@@ -6,7 +6,7 @@ use rand::seq::SliceRandom;
 use std::fmt;
 use test_casing::test_casing;
 use tracing::{instrument, Instrument};
-use zksync_concurrency::{ctx, scope, testonly::abort_on_panic};
+use zksync_concurrency::{ctx, scope, testonly::{set_timeout,abort_on_panic}};
 use zksync_consensus_network as network;
 use zksync_consensus_utils::no_copy::NoCopy;
 
@@ -91,6 +91,7 @@ struct NodeRunner {
 
 impl NodeRunner {
     async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        tracing::info!("NodeRunner::run()");
         let key = self.network.gossip.key.public();
         let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
         let (mut network, network_runner) = network::testonly::Instance::new(self.network.clone(), self.store.clone());
@@ -99,9 +100,10 @@ impl NodeRunner {
             s.spawn_bg(self.store_runner.run(ctx));
             s.spawn_bg(network_runner.run(ctx));
             network.wait_for_gossip_connections().await;
-            tracing::trace!("Node connected to peers");
+            tracing::info!("Node connected to peers");
 
-            self.switch_on_receiver.recv(ctx).await?;
+            self.switch_on_receiver.recv_or_disconnected(ctx).await?.ok();
+            tracing::info!("switch_on");
             s.spawn_bg(async {
                 Self::run_executor(ctx, sync_blocks_dispatcher_pipe, &mut network.pipe).await
                     .with_context(|| format!("executor for {key:?}"))
@@ -109,9 +111,7 @@ impl NodeRunner {
             s.spawn_bg(sync_blocks_config.run(ctx, sync_blocks_actor_pipe, self.store.clone()));
             tracing::info!("Node is fully started");
 
-            let _ = self.switch_off_receiver.recv(ctx).await;
-            // ^ Unlike with `switch_on_receiver`, the context may get canceled before the receiver
-            // is dropped, so we swallow both cancellation and disconnect errors here.
+            let _ = self.switch_off_receiver.recv_or_disconnected(ctx).await;
             tracing::info!("Node stopped");
             Ok(())
         })
@@ -157,12 +157,9 @@ trait GossipNetworkTest: fmt::Debug + Send {
 
 #[instrument(level = "trace")]
 async fn test_sync_blocks<T: GossipNetworkTest>(test: T) {
-    const CLOCK_SPEEDUP: u32 = 25;
-
     abort_on_panic();
-
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(CLOCK_SPEEDUP as f64))
-        .with_timeout(TEST_TIMEOUT * CLOCK_SPEEDUP);
+    let _guard = set_timeout(TEST_TIMEOUT);
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(25.));
     let (node_count, gossip_peers) = test.network_params();
     let (nodes, runners) = Node::new_network(ctx, node_count, gossip_peers).await;
     scope::run!(ctx, |ctx, s| async {
@@ -190,7 +187,7 @@ impl GossipNetworkTest for BasicSynchronization {
     async fn test(self, ctx: &ctx::Ctx, mut node_handles: Vec<Node>) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
 
-        // Check initial node states.
+        tracing::info!("Check initial node states");
         for node_handle in &mut node_handles {
             node_handle.switch_on();
             let state = node_handle.store.subscribe().borrow().clone();
@@ -202,11 +199,11 @@ impl GossipNetworkTest for BasicSynchronization {
             let sending_node = node_handles.choose(rng).unwrap();
             sending_node.put_block(ctx, block_number).await;
 
-            // Wait until all nodes get this block.
+            tracing::info!("Wait until all nodes get block #{block_number}");
             for node_handle in &mut node_handles {
-                wait_for_stored_block(ctx, &node_handle.store, block_number).await?;
+                node_handle.store.wait_until_persisted(ctx, block_number).await?;
+                tracing::info!("OK");
             }
-            tracing::trace!("All nodes received block #{block_number}");
         }
 
         let sending_node = node_handles.choose(rng).unwrap();
@@ -222,7 +219,7 @@ impl GossipNetworkTest for BasicSynchronization {
 
             // Wait until nodes get all new blocks.
             for node_handle in &node_handles {
-                wait_for_stored_block(ctx, &node_handle.store, BlockNumber(9)).await?;
+                node_handle.store.wait_until_persisted(ctx, BlockNumber(9)).await?;
             }
             Ok(())
         })
@@ -279,7 +276,7 @@ impl GossipNetworkTest for SwitchingOffNodes {
 
             // Wait until all remaining nodes get the new block.
             for node_handle in &node_handles {
-                wait_for_stored_block(ctx, &node_handle.store, block_number).await?;
+                node_handle.store.wait_until_persisted(ctx, block_number).await?;
             }
             tracing::trace!("All nodes received block #{block_number}");
             block_number = block_number.next();
@@ -328,7 +325,7 @@ impl GossipNetworkTest for SwitchingOnNodes {
 
             // Wait until all switched on nodes get the new block.
             for node_handle in &mut switched_on_nodes {
-                wait_for_stored_block(ctx, &node_handle.store, block_number).await?;
+                node_handle.store.wait_until_persisted(ctx, block_number).await?;
             }
             tracing::trace!("All nodes received block #{block_number}");
             block_number = block_number.next();
