@@ -51,7 +51,8 @@ pub struct Instance {
     /// Stream of events.
     pub(crate) events: channel::UnboundedReceiver<Event>,
     pub(crate) terminate: Arc<signal::Once>,
-    pub(crate) pipe: pipe::DispatcherPipe<crate::io::InputMessage, crate::io::OutputMessage>,
+    /// Dispatcher end of the network pipe.
+    pub pipe: pipe::DispatcherPipe<crate::io::InputMessage, crate::io::OutputMessage>,
 }
 
 /// Constructs a new store with a genesis block.
@@ -118,7 +119,7 @@ impl InstanceRunner {
 
 impl Instance {
     /// Construct an instance for a given config.
-    pub(crate) fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self,InstanceRunner) {
+    pub fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self,InstanceRunner) {
         let (events_send, events_recv) = channel::unbounded();
         let (actor_pipe, dispatcher_pipe) = pipe::new();
         let state = State::new(cfg, block_store, Some(events_send)).expect("Invalid network config");
