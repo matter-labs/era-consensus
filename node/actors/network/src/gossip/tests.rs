@@ -11,12 +11,12 @@ use test_casing::{test_casing, Product};
 use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx,
+    sync,
     oneshot, scope,
     testonly::abort_on_panic,
     time,
 };
 use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock};
-use zksync_consensus_utils::no_copy::NoCopy;
 
 #[tokio::test]
 async fn test_one_connection_per_node() {
@@ -246,13 +246,11 @@ async fn test_validator_addrs_propagation() {
             .collect();
         for (i, node) in nodes.iter().enumerate() {
             tracing::info!("awaiting for node[{i}] to learn validator_addrs");
-            node.state
+            let sub = &mut node.state
                 .gossip
                 .validator_addrs
-                .subscribe()
-                .wait_for(|got| want == to_addr_map(got))
-                .await
-                .unwrap();
+                .subscribe();
+            sync::wait_for(ctx,sub, |got| want == to_addr_map(got)).await?;
         }
         Ok(())
     })
@@ -262,6 +260,13 @@ async fn test_validator_addrs_propagation() {
 
 const EXCHANGED_STATE_COUNT: usize = 5;
 const NETWORK_CONNECTIVITY_CASES: [(usize, usize); 5] = [(2, 1), (3, 2), (5, 3), (10, 4), (10, 7)];
+
+async fn set_timeout<E>(ctx: &ctx::Ctx, timeout: time::Duration) -> Result<(),E> {
+    match ctx.wait(tokio::time::sleep(timeout.try_into().unwrap())).await {
+        Ok(()) => panic!("TIMEOUT"),
+        Err(_) => Ok(()),
+    }
+}
 
 /// Tests block syncing with global network synchronization (a next block becoming available
 /// to all nodes only after all nodes have received previous `SyncState` updates from peers).
@@ -273,31 +278,26 @@ async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
 
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::GenesisSetup::empty(rng, node_count);
-    setup.push_blocks(rng,EXCHANGED_STATE_COUNT);
+    let mut setup = validator::testonly::GenesisSetup::new(rng, node_count);
+    let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
     scope::run!(ctx, |ctx, s| async { 
-        s.spawn_bg(async {
-            match ctx.sleep(time::Duration::seconds(200)).await {
-                Ok(()) => panic!("TIMEOUT"),
-                Err(_) => Ok(())
+        s.spawn_bg(set_timeout(ctx,time::Duration::seconds(5)));
+        let mut nodes = vec![];
+        for (i,cfg) in cfgs.into_iter().enumerate() {
+            let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+            s.spawn_bg(runner.run(ctx));
+            let (node,runner) = testonly::Instance::new(cfg, store);
+            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node",i)));
+            nodes.push(node);
+        }
+        setup.push_blocks(rng,EXCHANGED_STATE_COUNT);
+        for block in &setup.blocks {
+            for node in &nodes {
+                node.state.gossip.block_store.queue_block(ctx,block.clone()).await.context("queue_block()")?;
             }
-        });
-        for (i,cfg) in testonly::new_configs(rng, &setup, gossip_peers).into_iter().enumerate() {
-            s.spawn(async {
-                let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
-                s.spawn_bg(runner.run(ctx));
-                let (mut node,runner) = testonly::Instance::new(cfg, store);
-                s.spawn_bg(runner.run(ctx));
-                run_mock_dispatcher(ctx, &mut node, gossip_peers, &setup.blocks).await
-                    .context("run_mock_dispatcher()")?;
-                s.spawn_bg(async {
-                    let mut node = node;
-                    node.auto_ack(ctx).await;
-                    Ok(())
-                });
-                tracing::info!("received all updates");
-                Ok(())
-            }.instrument(tracing::info_span!("node",i)));
+            for node in &mut nodes {
+                wait_for_updates(ctx, node, gossip_peers, block).await?;
+            }
         }
         Ok(())
     })
@@ -305,28 +305,23 @@ async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
     .unwrap();
 }
 
-async fn run_mock_dispatcher(
+async fn wait_for_updates(
     ctx: &ctx::Ctx,
     node: &mut testonly::Instance,
     peer_count: usize,
-    blocks: &[FinalBlock],
+    block: &FinalBlock,
 ) -> anyhow::Result<()> {
-    for (i,block) in blocks.iter().enumerate() {
-        tracing::info!("block {i}");
-        let mut updated_peers = HashSet::new();
-        node.state.gossip.block_store.queue_block(ctx,block.clone()).await.context("queue_block()")?;
-        while updated_peers.len() < peer_count {
-            let io::OutputMessage::SyncBlocks(io::SyncBlocksRequest::UpdatePeerSyncState {
-                peer,
-                state,
-                response,
-            }) = node.pipe.recv(ctx).await.context("pipe.recv()")? else { continue };
-            if state.last == block.justification {
-                // We might receive outdated states, hence this check
-                updated_peers.insert(peer);
-            }
-            response.send(()).ok();
+    let mut updates = HashSet::new();
+    while updates.len() < peer_count {
+        let io::OutputMessage::SyncBlocks(io::SyncBlocksRequest::UpdatePeerSyncState {
+            peer,
+            state,
+            response,
+        }) = node.pipe.recv(ctx).await.context("pipe.recv()")? else { continue };
+        if state.last == block.justification {
+            updates.insert(peer);
         }
+        response.send(()).ok();
     }
     Ok(())
 }
@@ -351,57 +346,30 @@ async fn uncoordinated_block_syncing(
     let mut setup = validator::testonly::GenesisSetup::empty(rng, node_count);
     setup.push_blocks(rng,EXCHANGED_STATE_COUNT);
     scope::run!(ctx, |ctx, s| async {
+        s.spawn_bg(set_timeout(ctx,time::Duration::seconds(5)));
         for (i,cfg) in testonly::new_configs(rng, &setup, gossip_peers).into_iter().enumerate() {
-            let i = NoCopy::from(i);
+            let i = i;
+            let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+            s.spawn_bg(runner.run(ctx));
+            let (node,runner) = testonly::Instance::new(cfg,store.clone());
+            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node",i)));
             s.spawn(async {
-                let i = i;
-                let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
-                s.spawn_bg(runner.run(ctx));
-                let (mut node,runner) = testonly::Instance::new(cfg,store.clone());
-                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node",i=*i)));
-                s.spawn_bg(async {
-                    let store = store;
-                    for block in &setup.blocks[1..] {
-                        ctx.sleep(state_generation_interval).await?;
-                        store.queue_block(ctx,block.clone()).await.unwrap();
-                    }
-                    Ok(())
-                });
-                run_mock_uncoordinated_dispatcher(
-                    ctx,
-                    &mut node,
-                    gossip_peers,
-                    setup.blocks.last().unwrap().header().number,
-                ).await.context("run_mock_uncoordinated_dispatcher()")  
+                let store = store;
+                for block in &setup.blocks[1..] {
+                    ctx.sleep(state_generation_interval).await?;
+                    store.queue_block(ctx,block.clone()).await.unwrap();
+                }
+                Ok(())
+            });
+            s.spawn(async {
+                let mut node = node;
+                wait_for_updates(ctx, &mut node, gossip_peers, setup.blocks.last().unwrap()).await
             });
         }
         Ok(())
     })
     .await
     .unwrap();
-}
-
-async fn run_mock_uncoordinated_dispatcher(
-    ctx: &ctx::Ctx,
-    node: &mut testonly::Instance,
-    peer_count: usize,
-    want_last: BlockNumber,
-) -> anyhow::Result<()> {
-    let mut peers_with_final_state = HashSet::new();
-    while peers_with_final_state.len() < peer_count {
-        let io::OutputMessage::SyncBlocks(io::SyncBlocksRequest::UpdatePeerSyncState {
-            peer,
-            state,
-            response,
-        }) = node.pipe.recv(ctx).await? else { continue };
-        let got_last = state.last.header().number;
-        assert!(got_last <= want_last);
-        if got_last == want_last {
-            peers_with_final_state.insert(peer.clone());
-        }
-        response.send(()).ok();
-    }
-    Ok(())
 }
 
 #[test_casing(5, NETWORK_CONNECTIVITY_CASES)]
@@ -484,13 +452,23 @@ async fn validator_node_restart() {
     let zero = time::Duration::ZERO;
     let sec = time::Duration::seconds(1);
 
+    let setup = validator::testonly::GenesisSetup::new(rng, 2);
+    let mut cfgs = testonly::new_configs(rng, &setup, 1);
+    let (store,store_runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+    let (mut node1,node1_runner) = testonly::Instance::new(cfgs[1].clone(),store.clone());
     scope::run!(ctx, |ctx, s| async {
-        let setup = validator::testonly::GenesisSetup::new(rng, 2);
-        let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
-        s.spawn_bg(runner.run(ctx));
-        let mut cfgs = testonly::new_configs(rng, &setup, 1);
-        let (mut node1,runner) = testonly::Instance::new(cfgs[1].clone(),store.clone());
-        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node1")));
+        s.spawn_bg(set_timeout(ctx,time::Duration::seconds(5)));
+        s.spawn_bg(store_runner.run(ctx));
+        s.spawn_bg(node1_runner.run(ctx).instrument(tracing::info_span!("node1")));
+        s.spawn_bg(async {
+            // Progress time whenever node1 receives an update.
+            // TODO(gprusak): alternatively we could entirely disable time progress
+            // by setting refresh time to 0 in tests.
+            while let Ok(Event::ValidatorAddrsUpdated) = node1.events.recv(ctx).await {
+                clock.advance(rpc::push_validator_addrs::Rpc::RATE.refresh);
+            }
+            Ok(())
+        });
 
         // We restart the node0 after shifting the UTC clock back and forth.
         // node0 is expected to learn what was is the currently broadcasted
@@ -498,9 +476,9 @@ async fn validator_node_restart() {
         let mut utc_times = HashSet::new();
         let start = ctx.now_utc();
         for clock_shift in [zero, sec, -2 * sec, 4 * sec, 10 * sec, -30 * sec] {
+            tracing::error!("DUPA {clock_shift}");
             // Set the new addr to broadcast.
             let mutated_config = cfgs[0].consensus.as_mut().unwrap();
-            let key0 = mutated_config.key.public();
             let addr0 = mk_addr(rng);
             mutated_config.public_addr = addr0;
             // Shift the UTC clock.
@@ -513,31 +491,23 @@ async fn validator_node_restart() {
             tracing::info!("now = {now:?}");
 
             scope::run!(ctx, |ctx, s| async {
-                let (_,runner) = testonly::Instance::new(cfgs[0].clone(),store.clone());
+                // _node0 contains pipe, which has to exist to prevent the connection from dying
+                // early.
+                let (_node0,runner) = testonly::Instance::new(cfgs[0].clone(),store.clone());
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
-                s.spawn_bg(async {
-                    // Progress time whenever node1 receives an update.
-                    // TODO(gprusak): alternatively we could entirely disable time progress
-                    // by setting refresh time to 0 in tests.
-                    while let Ok(Event::ValidatorAddrsUpdated) = node1.events.recv(ctx).await {
-                        clock.advance(rpc::push_validator_addrs::Rpc::RATE.refresh);
-                    }
-                    Ok(())
-                });
-                node1
+                tracing::info!("wait for the update to arrive to node1");
+                let sub = &mut node1
                     .state
                     .gossip
                     .validator_addrs
-                    .subscribe()
-                    .wait_for(|got| {
-                        let Some(got) = got.get(&key0) else {
-                            return false;
-                        };
-                        tracing::info!("got.addr = {}", got.msg.addr);
-                        got.msg.addr == addr0
-                    })
-                    .await
-                    .unwrap();
+                    .subscribe();
+                sync::wait_for(ctx, sub, |got| {
+                    let Some(got) = got.get(&setup.keys[0].public()) else {
+                        return false;
+                    };
+                    tracing::info!("got.addr = {}", got.msg.addr);
+                    got.msg.addr == addr0
+                }).await?;
                 Ok(())
             })
             .await?;
@@ -584,13 +554,11 @@ async fn rate_limiting() {
         for (i,cfg) in cfgs[1..].iter().enumerate() {
             let (node,runner) = testonly::Instance::new(cfg.clone(),store.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
-            node.state
+            let sub = &mut node.state
                 .gossip
                 .validator_addrs
-                .subscribe()
-                .wait_for(|got| got.get(&node.consensus_config().key.public()).is_some())
-                .await
-                .unwrap();
+                .subscribe();
+            sync::wait_for(ctx,sub, |got| got.get(&node.consensus_config().key.public()).is_some()).await.unwrap();
             nodes.push(node);
         }
         
@@ -598,24 +566,20 @@ async fn rate_limiting() {
         let (center,runner) = testonly::Instance::new(cfgs[0].clone(),store.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node[0]")));
         // Await for the center to receive all validator addrs.
-        center
+        let sub = &mut center
             .state
             .gossip
             .validator_addrs
-            .subscribe()
-            .wait_for(|got| want == to_addr_map(got))
-            .await
-            .unwrap();
+            .subscribe();
+        sync::wait_for(ctx,sub, |got| want == to_addr_map(got)).await?;
         // Advance time and wait for all other nodes to receive validator addrs.
         clock.advance(rpc::push_validator_addrs::Rpc::RATE.refresh);
         for node in &nodes {
-            node.state
+            let sub = &mut node.state
                 .gossip
                 .validator_addrs
-                .subscribe()
-                .wait_for(|got| want == to_addr_map(got))
-                .await
-                .unwrap();
+                .subscribe();
+            sync::wait_for(ctx, sub, |got| want == to_addr_map(got)).await?;
         }
         Ok(())
     })
