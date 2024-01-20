@@ -6,10 +6,8 @@ use rand::seq::SliceRandom;
 use std::fmt;
 use test_casing::test_casing;
 use tracing::{instrument, Instrument};
-use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
+use zksync_concurrency::{ctx, scope, testonly::abort_on_panic};
 use zksync_consensus_network as network;
-use zksync_consensus_network::{io::SyncState, testonly::Instance as NetworkInstance};
-use zksync_consensus_roles::node;
 use zksync_consensus_utils::no_copy::NoCopy;
 
 type NetworkDispatcherPipe =
@@ -18,7 +16,7 @@ type NetworkDispatcherPipe =
 #[derive(Debug)]
 struct Node {
     store: Arc<BlockStore>,
-    test_validators: Arc<TestValidators>,
+    setup: Arc<GenesisSetup>,
     switch_on_sender: Option<oneshot::Sender<()>>,
     _switch_off_sender: oneshot::Sender<()>,
 }
@@ -30,11 +28,14 @@ impl Node {
         gossip_peers: usize,
     ) -> (Vec<Node>, Vec<NodeRunner>) {
         let rng = &mut ctx.rng();
-        let test_validators = Arc::new(TestValidators::new(rng, 4, 20));
+        // NOTE: originally there were only 4 consensus nodes.
+        let mut setup = validator::testonly::GenesisSetup::new(rng, node_count);
+        setup.push_blocks(rng,20);
+        let setup = Arc::new(setup);
         let mut nodes = vec![];
         let mut runners = vec![];
-        for net in NetworkInstance::new(rng, node_count, gossip_peers) {
-            let (n, r) = Node::new(ctx, net, test_validators.clone()).await;
+        for net in network::testonly::new_configs(rng, &setup, gossip_peers) {
+            let (n, r) = Node::new(ctx, net, setup.clone()).await;
             nodes.push(n);
             runners.push(r);
         }
@@ -43,26 +44,24 @@ impl Node {
 
     async fn new(
         ctx: &ctx::Ctx,
-        mut network: NetworkInstance,
-        test_validators: Arc<TestValidators>,
+        network: network::Config,
+        setup: Arc<GenesisSetup>,
     ) -> (Self, NodeRunner) {
-        let (store, store_runner) = make_store(ctx, test_validators.final_blocks[0].clone()).await;
+        let (store, store_runner) = network::testonly::new_store(ctx, &setup.blocks[0]).await;
         let (switch_on_sender, switch_on_receiver) = oneshot::channel();
         let (switch_off_sender, switch_off_receiver) = oneshot::channel();
-
-        network.disable_gossip_pings();
 
         let runner = NodeRunner {
             network,
             store: store.clone(),
             store_runner,
-            test_validators: test_validators.clone(),
+            setup: setup.clone(),
             switch_on_receiver,
             switch_off_receiver,
         };
         let this = Self {
             store,
-            test_validators,
+            setup,
             switch_on_sender: Some(switch_on_sender),
             _switch_off_sender: switch_off_sender,
         };
@@ -75,86 +74,42 @@ impl Node {
 
     async fn put_block(&self, ctx: &ctx::Ctx, block_number: BlockNumber) {
         tracing::trace!(%block_number, "Storing new block");
-        let block = &self.test_validators.final_blocks[block_number.0 as usize];
+        let block = &self.setup.blocks[block_number.0 as usize];
         self.store.queue_block(ctx, block.clone()).await.unwrap();
     }
 }
 
 #[must_use]
 struct NodeRunner {
-    network: NetworkInstance,
+    network: network::Config,
     store: Arc<BlockStore>,
     store_runner: BlockStoreRunner,
-    test_validators: Arc<TestValidators>,
+    setup: Arc<GenesisSetup>,
     switch_on_receiver: oneshot::Receiver<()>,
     switch_off_receiver: oneshot::Receiver<()>,
 }
 
-impl fmt::Debug for NodeRunner {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter
-            .debug_struct("NodeRunner")
-            .field("key", &self.key())
-            .finish()
-    }
-}
-
-fn to_sync_state(state: BlockStoreState) -> SyncState {
-    SyncState {
-        first_stored_block: state.first,
-        last_stored_block: state.last,
-    }
-}
-
 impl NodeRunner {
-    fn key(&self) -> node::PublicKey {
-        self.network.gossip_config().key.public()
-    }
-
-    async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        let key = self.key();
+    async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        let key = self.network.gossip.key.public();
         let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
-        let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
-        let mut store_state = self.store.subscribe();
-        let sync_state = sync::watch::channel(to_sync_state(store_state.borrow().clone())).0;
-        self.network
-            .set_sync_state_subscriber(sync_state.subscribe());
-
-        let sync_blocks_config = self.test_validators.test_config();
+        let (mut network, network_runner) = network::testonly::Instance::new(self.network.clone(), self.store.clone());
+        let sync_blocks_config = test_config(&self.setup);
         scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(self.store_runner.run(ctx));
-            s.spawn_bg(async {
-                while let Ok(state) = sync::changed(ctx, &mut store_state).await {
-                    sync_state.send_replace(to_sync_state(state.clone()));
-                }
-                Ok(())
-            });
-            s.spawn_bg(async {
-                network::run_network(ctx, self.network.state().clone(), network_actor_pipe)
-                    .instrument(tracing::trace_span!("network", ?key))
-                    .await
-                    .with_context(|| format!("network for {key:?}"))
-            });
-            self.network.wait_for_gossip_connections().await;
+            s.spawn_bg(network_runner.run(ctx));
+            network.wait_for_gossip_connections().await;
             tracing::trace!("Node connected to peers");
 
-            self.switch_on_receiver
-                .recv_or_disconnected(ctx)
-                .await?
-                .ok();
+            self.switch_on_receiver.recv(ctx).await?;
             s.spawn_bg(async {
-                Self::run_executor(ctx, sync_blocks_dispatcher_pipe, network_dispatcher_pipe)
-                    .instrument(tracing::trace_span!("mock_executor", ?key))
-                    .await
+                Self::run_executor(ctx, sync_blocks_dispatcher_pipe, &mut network.pipe).await
                     .with_context(|| format!("executor for {key:?}"))
-            });
+            }.instrument(tracing::info_span!("mock_executor", ?key)));
             s.spawn_bg(sync_blocks_config.run(ctx, sync_blocks_actor_pipe, self.store.clone()));
             tracing::info!("Node is fully started");
 
-            self.switch_off_receiver
-                .recv_or_disconnected(ctx)
-                .await
-                .ok();
+            let _ = self.switch_off_receiver.recv(ctx).await;
             // ^ Unlike with `switch_on_receiver`, the context may get canceled before the receiver
             // is dropped, so we swallow both cancellation and disconnect errors here.
             tracing::info!("Node stopped");
@@ -166,7 +121,7 @@ impl NodeRunner {
     async fn run_executor(
         ctx: &ctx::Ctx,
         mut sync_blocks_dispatcher_pipe: pipe::DispatcherPipe<InputMessage, OutputMessage>,
-        mut network_dispatcher_pipe: NetworkDispatcherPipe,
+        network_dispatcher_pipe: &mut NetworkDispatcherPipe,
     ) -> anyhow::Result<()> {
         scope::run!(ctx, |ctx, s| async {
             s.spawn(async {

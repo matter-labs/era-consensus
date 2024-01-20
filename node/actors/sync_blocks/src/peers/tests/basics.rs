@@ -1,7 +1,7 @@
 //! Basic tests.
 
 use super::*;
-use crate::{io, tests::wait_for_stored_block};
+use crate::{io, tests::{sync_state,wait_for_stored_block}};
 
 #[derive(Debug)]
 struct UpdatingPeerStateWithSingleBlock;
@@ -12,7 +12,7 @@ impl Test for UpdatingPeerStateWithSingleBlock {
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
-            test_validators,
+            setup,
             peer_states,
             storage,
             mut message_receiver,
@@ -23,7 +23,7 @@ impl Test for UpdatingPeerStateWithSingleBlock {
         let rng = &mut ctx.rng();
         let peer_key = rng.gen::<node::SecretKey>().public();
         peer_states
-            .update(&peer_key, test_validators.sync_state(1))
+            .update(&peer_key, sync_state(&setup,1))
             .unwrap();
 
         // Check that the actor has sent a `get_block` request to the peer
@@ -35,9 +35,6 @@ impl Test for UpdatingPeerStateWithSingleBlock {
         }) = message;
         assert_eq!(recipient, peer_key);
         assert_eq!(number, BlockNumber(1));
-
-        // Emulate the peer sending a correct response.
-        test_validators.send_block(BlockNumber(1), response);
 
         let peer_event = events_receiver.recv(ctx).await?;
         assert_matches!(peer_event, PeerStateEvent::GotBlock(BlockNumber(1)));
@@ -65,7 +62,7 @@ impl Test for CancelingBlockRetrieval {
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
-            test_validators,
+            setup,
             peer_states,
             storage,
             mut message_receiver,
@@ -75,7 +72,7 @@ impl Test for CancelingBlockRetrieval {
         let rng = &mut ctx.rng();
         let peer_key = rng.gen::<node::SecretKey>().public();
         peer_states
-            .update(&peer_key, test_validators.sync_state(1))
+            .update(&peer_key, sync_state(&setup, 1))
             .unwrap();
 
         // Check that the actor has sent a `get_block` request to the peer
@@ -84,7 +81,7 @@ impl Test for CancelingBlockRetrieval {
 
         // Emulate receiving block using external means.
         storage
-            .queue_block(ctx, test_validators.final_blocks[1].clone())
+            .queue_block(ctx, setup.blocks[1].clone())
             .await?;
 
         // Retrieval of the block must be canceled.
@@ -107,7 +104,7 @@ impl Test for FilteringBlockRetrieval {
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
-            test_validators,
+            setup,
             peer_states,
             storage,
             mut message_receiver,
@@ -116,13 +113,13 @@ impl Test for FilteringBlockRetrieval {
 
         // Emulate receiving block using external means.
         storage
-            .queue_block(ctx, test_validators.final_blocks[1].clone())
+            .queue_block(ctx, setup.blocks[1].clone())
             .await?;
 
         let rng = &mut ctx.rng();
         let peer_key = rng.gen::<node::SecretKey>().public();
         peer_states
-            .update(&peer_key, test_validators.sync_state(2))
+            .update(&peer_key, sync_state(&setup, 2))
             .unwrap();
 
         // Check that the actor has sent `get_block` request to the peer, but only for block #2.
@@ -163,7 +160,7 @@ impl Test for UpdatingPeerStateWithMultipleBlocks {
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
         let TestHandles {
             clock,
-            test_validators,
+            setup,
             peer_states,
             storage,
             mut message_receiver,
@@ -175,7 +172,7 @@ impl Test for UpdatingPeerStateWithMultipleBlocks {
         peer_states
             .update(
                 &peer_key,
-                test_validators.sync_state(Self::BLOCK_COUNT - 1).clone(),
+                sync_state(&setup, Self::BLOCK_COUNT - 1).clone(),
             )
             .unwrap();
 
