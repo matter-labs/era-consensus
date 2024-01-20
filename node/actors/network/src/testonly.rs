@@ -201,20 +201,6 @@ impl Instance {
         sync::wait_for(ctx, &mut state.outbound.subscribe(), |got| !got.current().contains(peer)).await?;
         Ok(())
     }
-
-    /// Automatically responds to push messages received from the network.
-    pub async fn auto_ack(&mut self, ctx: &ctx::Ctx) {
-        use crate::io::OutputMessage as Msg;
-        while let Ok(msg) = self.pipe.recv(ctx).await {
-            let _ = match msg {
-                Msg::SyncBlocks(crate::io::SyncBlocksRequest::UpdatePeerSyncState{
-                    response,
-                    ..
-                }) => response.send(()),
-                Msg::Consensus(req) => req.ack.send(()), 
-            };
-        }
-    }
 }
 
 /// Instantly broadcasts the ValidatorAddrs off-band
