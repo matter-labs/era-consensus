@@ -159,9 +159,8 @@ pub(crate) async fn run_client(
                     let client = clients.get(&val).context("unknown validator")?;
                     s.spawn(async {
                         let req = rpc::consensus::Req(msg.message);
-                        if let Err(err) = client
-                            .call(&ctx.with_timeout(MSG_TIMEOUT), &req, kB)
-                            .await
+                        if let Err(err) =
+                            client.call(&ctx.with_timeout(MSG_TIMEOUT), &req, kB).await
                         {
                             tracing::info!("client.consensus(): {err:#}");
                         }
@@ -174,9 +173,8 @@ pub(crate) async fn run_client(
                         let req = req.clone();
                         s.spawn(async {
                             let req = req;
-                            if let Err(err) = client
-                                .call(&ctx.with_timeout(MSG_TIMEOUT), &req, kB)
-                                .await
+                            if let Err(err) =
+                                client.call(&ctx.with_timeout(MSG_TIMEOUT), &req, kB).await
                             {
                                 tracing::info!("client.consensus(): {err:#}");
                             }

@@ -10,6 +10,8 @@ use zksync_consensus_storage as storage;
 use zksync_consensus_storage::testonly::in_memory;
 use zksync_consensus_utils::pipe;
 
+pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
+
 /// Enum representing the behavior of the node.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Behavior {
@@ -31,7 +33,7 @@ impl Behavior {
     pub(crate) fn payload_manager(&self) -> Box<dyn PayloadManager> {
         match self {
             Self::HonestNotProposing => Box::new(testonly::PendingPayload),
-            _ => Box::new(testonly::RandomPayload(1000)),
+            _ => Box::new(testonly::RandomPayload(MAX_PAYLOAD_SIZE)),
         }
     }
 }
@@ -69,6 +71,7 @@ impl Node {
                     block_store: self.block_store.clone(),
                     replica_store: Box::new(in_memory::ReplicaStore::default()),
                     payload_manager: self.behavior.payload_manager(),
+                    max_payload_size: MAX_PAYLOAD_SIZE,
                 }
                 .run(ctx, consensus_actor_pipe)
                 .await

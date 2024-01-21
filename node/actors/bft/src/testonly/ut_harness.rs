@@ -20,6 +20,8 @@ use zksync_consensus_storage::{
 };
 use zksync_consensus_utils::enum_util::Variant;
 
+pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
+
 /// `UTHarness` provides various utilities for unit tests.
 /// It is designed to simplify the setup and execution of test cases by encapsulating
 /// common testing functionality.
@@ -39,7 +41,12 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         num_validators: usize,
     ) -> (UTHarness, BlockStoreRunner) {
-        Self::new_with_payload(ctx, num_validators, Box::new(testonly::RandomPayload(1000))).await
+        Self::new_with_payload(
+            ctx,
+            num_validators,
+            Box::new(testonly::RandomPayload(MAX_PAYLOAD_SIZE)),
+        )
+        .await
     }
 
     pub(crate) async fn new_with_payload(
@@ -58,6 +65,7 @@ impl UTHarness {
             block_store: block_store.clone(),
             replica_store: Box::new(in_memory::ReplicaStore::default()),
             payload_manager,
+            max_payload_size: MAX_PAYLOAD_SIZE,
         });
         let leader = leader::StateMachine::new(ctx, cfg.clone(), send.clone());
         let replica = replica::StateMachine::start(ctx, cfg.clone(), send.clone())

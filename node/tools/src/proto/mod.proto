@@ -69,6 +69,9 @@ message AppConfig {
   // Will be inserted to storage if not already present.
   optional string genesis_block = 6; // [required] FinalBlock
 
+  // Maximal size of the block payload.
+  optional uint64 max_payload_size = 11; // [required] B
+
   // Gossip network
 
   // Limit on the number of gossip network inbound connections outside

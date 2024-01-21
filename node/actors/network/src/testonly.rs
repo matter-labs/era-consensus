@@ -74,7 +74,7 @@ pub fn new_configs<R: Rng>(
             }),
             gossip: gossip::Config {
                 key: rng.gen(),
-                dynamic_inbound_limit: setup.keys.len() as u64,
+                dynamic_inbound_limit: setup.keys.len(),
                 static_inbound: HashSet::default(),
                 static_outbound: HashMap::default(),
             },

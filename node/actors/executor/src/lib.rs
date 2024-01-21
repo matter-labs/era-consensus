@@ -57,7 +57,7 @@ pub struct Config {
     pub node_key: node::SecretKey,
     /// Limit on the number of inbound connections outside
     /// of the `static_inbound` set.
-    pub gossip_dynamic_inbound_limit: u64,
+    pub gossip_dynamic_inbound_limit: usize,
     /// Inbound connections that should be unconditionally accepted.
     pub gossip_static_inbound: HashSet<node::PublicKey>,
     /// Outbound connections that the node should actively try to
@@ -155,6 +155,7 @@ impl Executor {
                         block_store: self.block_store.clone(),
                         replica_store: validator.replica_store,
                         payload_manager: validator.payload_manager,
+                        max_payload_size: self.config.max_payload_size,
                     }
                     .run(ctx, consensus_actor_pipe)
                     .await

@@ -121,7 +121,7 @@ pub struct Config {
     pub key: node::SecretKey,
     /// Limit on the number of inbound connections outside
     /// of the `static_inbound` set.
-    pub dynamic_inbound_limit: u64,
+    pub dynamic_inbound_limit: usize,
     /// Inbound connections that should be unconditionally accepted.
     pub static_inbound: HashSet<node::PublicKey>,
     /// Outbound connections that the node should actively try to
@@ -187,7 +187,7 @@ impl State {
         Self {
             inbound: PoolWatch::new(
                 cfg.static_inbound.clone(),
-                cfg.dynamic_inbound_limit as usize,
+                cfg.dynamic_inbound_limit,
             ),
             outbound: PoolWatch::new(cfg.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),

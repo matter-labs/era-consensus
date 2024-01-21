@@ -30,6 +30,7 @@ impl Distribution<AppConfig> for Standard {
             gossip_static_outbound: (0..6)
                 .map(|_| (rng.gen::<node::SecretKey>().public(), make_addr(rng)))
                 .collect(),
+            max_payload_size: rng.gen(),
         }
     }
 }

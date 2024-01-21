@@ -130,9 +130,7 @@ async fn run_stream(
             loop {
                 let state = sync::changed(ctx, &mut sub).await?.clone();
                 let req = rpc::push_block_store_state::Req(state);
-                push_block_store_state_client
-                    .call(ctx, &req, kB)
-                    .await?;
+                push_block_store_state_client.call(ctx, &req, kB).await?;
             }
         });
 

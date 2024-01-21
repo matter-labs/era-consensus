@@ -32,8 +32,9 @@ pub struct AppConfig {
 
     pub validators: validator::ValidatorSet,
     pub genesis_block: validator::FinalBlock,
+    pub max_payload_size: usize,
 
-    pub gossip_dynamic_inbound_limit: u64,
+    pub gossip_dynamic_inbound_limit: usize,
     pub gossip_static_inbound: HashSet<node::PublicKey>,
     pub gossip_static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>,
 }
@@ -75,8 +76,12 @@ impl ProtoFmt for AppConfig {
 
             validators,
             genesis_block: read_required_text(&r.genesis_block).context("genesis_block")?,
+            max_payload_size: required(&r.max_payload_size)
+                .and_then(|x| Ok((*x).try_into()?))
+                .context("max_payload_size")?,
 
-            gossip_dynamic_inbound_limit: *required(&r.gossip_dynamic_inbound_limit)
+            gossip_dynamic_inbound_limit: required(&r.gossip_dynamic_inbound_limit)
+                .and_then(|x| Ok((*x).try_into()?))
                 .context("gossip_dynamic_inbound_limit")?,
             gossip_static_inbound,
             gossip_static_outbound,
@@ -91,8 +96,11 @@ impl ProtoFmt for AppConfig {
 
             validators: self.validators.iter().map(TextFmt::encode).collect(),
             genesis_block: Some(self.genesis_block.encode()),
+            max_payload_size: Some(self.max_payload_size.try_into().unwrap()),
 
-            gossip_dynamic_inbound_limit: Some(self.gossip_dynamic_inbound_limit),
+            gossip_dynamic_inbound_limit: Some(
+                self.gossip_dynamic_inbound_limit.try_into().unwrap(),
+            ),
             gossip_static_inbound: self
                 .gossip_static_inbound
                 .iter()
@@ -185,7 +193,7 @@ impl Configs {
                 gossip_dynamic_inbound_limit: self.app.gossip_dynamic_inbound_limit,
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
-                max_payload_size: usize::MAX,
+                max_payload_size: self.app.max_payload_size,
             },
             block_store,
             validator: self.validator_key.as_ref().map(|key| executor::Validator {
@@ -194,9 +202,7 @@ impl Configs {
                     public_addr: self.app.public_addr,
                 },
                 replica_store: Box::new(store),
-                payload_manager: Box::new(bft::testonly::RandomPayload(
-                    bft::Config::PAYLOAD_MAX_SIZE,
-                )),
+                payload_manager: Box::new(bft::testonly::RandomPayload(self.app.max_payload_size)),
             }),
         };
         Ok((e, runner))
