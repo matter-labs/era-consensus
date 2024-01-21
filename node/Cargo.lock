@@ -2656,6 +2656,7 @@ dependencies = [
  "zksync_consensus_storage",
  "zksync_consensus_sync_blocks",
  "zksync_consensus_utils",
+ "zksync_protobuf",
 ]
 
 [[package]]

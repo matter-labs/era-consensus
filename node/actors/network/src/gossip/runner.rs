@@ -8,6 +8,7 @@ use zksync_concurrency::{
 };
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
+use zksync_protobuf::kB;
 
 /// How often we should retry to establish a connection to a validator.
 /// TODO(gprusak): once it becomes relevant, choose a more appropriate retry strategy.
@@ -25,6 +26,9 @@ struct PushValidatorAddrsServer<'a>(&'a State);
 
 #[async_trait]
 impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'_> {
+    fn max_req_size(&self) -> usize {
+        100 * kB
+    }
     async fn handle(
         &self,
         _ctx: &ctx::Ctx,
@@ -48,6 +52,9 @@ struct PushBlockStoreStateServer<'a> {
 
 #[async_trait]
 impl rpc::Handler<rpc::push_block_store_state::Rpc> for PushBlockStoreStateServer<'_> {
+    fn max_req_size(&self) -> usize {
+        10 * kB
+    }
     async fn handle(
         &self,
         ctx: &ctx::Ctx,
@@ -67,6 +74,9 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for PushBlockStoreStateServe
 
 #[async_trait]
 impl rpc::Handler<rpc::get_block::Rpc> for &BlockStore {
+    fn max_req_size(&self) -> usize {
+        kB
+    }
     async fn handle(
         &self,
         ctx: &ctx::Ctx,
@@ -120,7 +130,9 @@ async fn run_stream(
             loop {
                 let state = sync::changed(ctx, &mut sub).await?.clone();
                 let req = rpc::push_block_store_state::Req(state);
-                push_block_store_state_client.call(ctx, &req).await?;
+                push_block_store_state_client
+                    .call(ctx, &req, kB)
+                    .await?;
             }
         });
 
@@ -137,7 +149,7 @@ async fn run_stream(
                 }
                 old = new;
                 let req = rpc::push_validator_addrs::Req(diff);
-                push_validator_addrs_client.call(ctx, &req).await?;
+                push_validator_addrs_client.call(ctx, &req, kB).await?;
             }
         });
 
@@ -254,7 +266,11 @@ pub(crate) async fn run_client(
                         response,
                     } = message;
                     let _ = response.send(
-                        match state.gossip.get_block(ctx, &recipient, number).await {
+                        match state
+                            .gossip
+                            .get_block(ctx, &recipient, number, state.cfg.max_block_size)
+                            .await
+                        {
                             Ok(Some(block)) => Ok(block),
                             Ok(None) => Err(io::GetBlockError::NotAvailable),
                             Err(err) => Err(io::GetBlockError::Internal(err)),

@@ -7,6 +7,7 @@ use std::{
 use zksync_concurrency::{ctx, sync};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
+use zksync_protobuf::kB;
 
 /// Mapping from validator::PublicKey to a signed validator::NetAddress.
 /// Represents the currents state of node's knowledge about the validator endpoints.
@@ -201,12 +202,17 @@ impl State {
         ctx: &ctx::Ctx,
         recipient: &node::PublicKey,
         number: validator::BlockNumber,
+        max_block_size: usize,
     ) -> anyhow::Result<Option<validator::FinalBlock>> {
         Ok(self
             .get_block_clients
             .get_any(recipient)
             .context("recipient is unreachable")?
-            .call(ctx, &rpc::get_block::Req(number))
+            .call(
+                ctx,
+                &rpc::get_block::Req(number),
+                max_block_size.saturating_add(kB),
+            )
             .await?
             .0)
     }

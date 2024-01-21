@@ -68,7 +68,7 @@ async fn test_session_id_mismatch() {
         let (mut s1, s2) = noise::testonly::pipe(ctx).await;
         s.spawn_bg(async {
             let mut s2 = s2;
-            let _: Handshake = frame::recv_proto(ctx, &mut s2).await?;
+            let _: Handshake = frame::recv_proto(ctx, &mut s2, Handshake::max_size()).await?;
             frame::send_proto(
                 ctx,
                 &mut s2,
@@ -133,7 +133,7 @@ async fn test_invalid_signature() {
         let (mut s0, s1) = noise::testonly::pipe(ctx).await;
         s.spawn_bg(async {
             let mut s1 = s1;
-            let mut h: Handshake = frame::recv_proto(ctx, &mut s1).await?;
+            let mut h: Handshake = frame::recv_proto(ctx, &mut s1, Handshake::max_size()).await?;
             h.session_id.key = cfg1.key.public();
             frame::send_proto(ctx, &mut s1, &h).await?;
             Ok(())

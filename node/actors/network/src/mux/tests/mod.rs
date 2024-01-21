@@ -10,6 +10,8 @@ use std::{
 };
 use zksync_concurrency::{ctx, scope, testonly::abort_on_panic};
 use zksync_consensus_utils::no_copy::NoCopy;
+use zksync_protobuf::ProtoFmt as _;
+
 mod proto;
 
 fn assert_partition(sets: &[u16]) {
@@ -120,7 +122,9 @@ async fn run_server(
             assert!(count.fetch_add(1, Ordering::SeqCst) < queue.max_streams as usize);
             s.spawn(async {
                 let mut stream = stream;
-                while let Ok((req, _)) = frame::mux_recv_proto::<Req>(ctx, &mut stream.read).await {
+                while let Ok((req, _)) =
+                    frame::mux_recv_proto::<Req>(ctx, &mut stream.read, Req::max_size()).await
+                {
                     let resp = Resp {
                         output: rpc_handler(req.0),
                         capability_id: cap,
@@ -160,7 +164,9 @@ async fn run_client(
                     rng.fill(&mut req[..]);
                     frame::mux_send_proto(ctx, &mut stream.write, &Req(req.clone())).await?;
                     stream.write.flush(ctx).await?;
-                    let (resp, _) = frame::mux_recv_proto::<Resp>(ctx, &mut stream.read).await?;
+                    let (resp, _) =
+                        frame::mux_recv_proto::<Resp>(ctx, &mut stream.read, Resp::max_size())
+                            .await?;
                     assert_eq!(resp.output, rpc_handler(req));
                     assert_eq!(resp.capability_id, cap);
                 }

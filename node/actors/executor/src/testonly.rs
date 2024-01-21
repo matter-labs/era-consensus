@@ -44,6 +44,7 @@ impl ValidatorNode {
                 gossip_dynamic_inbound_limit: gossip.dynamic_inbound_limit,
                 gossip_static_inbound: gossip.static_inbound,
                 gossip_static_outbound: gossip.static_outbound,
+                max_payload_size: usize::MAX,
             },
             validator,
             setup,

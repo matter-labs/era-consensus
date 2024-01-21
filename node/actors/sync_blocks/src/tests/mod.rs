@@ -54,18 +54,3 @@ pub(crate) fn send_block(
         .ok_or(GetBlockError::NotAvailable);
     response.send(block).ok();
 }
-
-/*fn certify_block(&self, proposal: &BlockHeader) -> CommitQC {
-    let message_to_sign = validator::ReplicaCommit {
-        protocol_version: validator::ProtocolVersion::EARLIEST,
-        view: validator::ViewNumber(proposal.number.0),
-        proposal: *proposal,
-    };
-    let signed_messages: Vec<_> = self
-        .validator_secret_keys
-        .iter()
-        .map(|sk| sk.sign_msg(message_to_sign))
-        .collect();
-    CommitQC::from(&signed_messages, &self.validator_set).unwrap()
-}
-*/

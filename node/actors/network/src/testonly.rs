@@ -78,6 +78,7 @@ pub fn new_configs<R: Rng>(
                 static_inbound: HashSet::default(),
                 static_outbound: HashMap::default(),
             },
+            max_block_size: usize::MAX,
         }
     });
     let mut cfgs: Vec<_> = configs.collect();

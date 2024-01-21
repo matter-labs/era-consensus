@@ -13,6 +13,7 @@ use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BlockStore, ReplicaStore};
 use zksync_consensus_sync_blocks as sync_blocks;
 use zksync_consensus_utils::pipe;
+use zksync_protobuf::kB;
 
 mod io;
 pub mod testonly;
@@ -48,6 +49,8 @@ pub struct Config {
     /// Static specification of validators for Proof of Authority. Should be deprecated once we move
     /// to Proof of Stake.
     pub validators: validator::ValidatorSet,
+    /// Maximal size of the block payload.
+    pub max_payload_size: usize,
 
     /// Key of this node. It uniquely identifies the node.
     /// It should match the secret key provided in the `node_key` file.
@@ -94,6 +97,7 @@ impl Executor {
             gossip: self.config.gossip(),
             consensus: self.validator.as_ref().map(|v| v.config.clone()),
             enable_pings: true,
+            max_block_size: self.config.max_payload_size.saturating_add(kB),
         }
     }
 

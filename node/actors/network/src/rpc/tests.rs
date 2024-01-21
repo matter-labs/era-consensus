@@ -6,7 +6,7 @@ use std::{
     sync::atomic::{AtomicU64, Ordering},
 };
 use zksync_concurrency::{ctx, testonly::abort_on_panic, time};
-use zksync_protobuf::testonly::test_encode_random;
+use zksync_protobuf::{kB, testonly::test_encode_random};
 
 /// CAPABILITY_ID should uniquely identify the RPC.
 #[test]
@@ -55,13 +55,13 @@ async fn test_ping() {
         });
         for _ in 0..ping::Rpc::RATE.burst {
             let req = ping::Req(ctx.rng().gen());
-            let resp = client.call(ctx, &req).await?;
+            let resp = client.call(ctx, &req, kB).await?;
             assert_eq!(req.0, resp.0);
         }
         let now = ctx.now();
         clock.set_advance_on_sleep();
         let req = ping::Req(ctx.rng().gen());
-        let resp = client.call(ctx, &req).await?;
+        let resp = client.call(ctx, &req, kB).await?;
         assert_eq!(req.0, resp.0);
         assert!(ctx.now() >= now + ping::Rpc::RATE.refresh);
         Ok(())
@@ -80,6 +80,9 @@ const PING_TIMEOUT: time::Duration = time::Duration::seconds(3);
 
 #[async_trait::async_trait]
 impl Handler<ping::Rpc> for PingServer {
+    fn max_req_size(&self) -> usize {
+        kB
+    }
     async fn handle(&self, ctx: &ctx::Ctx, req: ping::Req) -> anyhow::Result<ping::Resp> {
         if self.pings.fetch_add(1, Ordering::Relaxed) >= PING_COUNT {
             self.clock.advance(PING_TIMEOUT);
@@ -149,6 +152,9 @@ struct ExampleServer;
 
 #[async_trait::async_trait]
 impl Handler<ExampleRpc> for ExampleServer {
+    fn max_req_size(&self) -> usize {
+        kB
+    }
     async fn handle(&self, ctx: &ctx::Ctx, _req: ()) -> anyhow::Result<()> {
         ctx.canceled().await;
         anyhow::bail!("terminated");

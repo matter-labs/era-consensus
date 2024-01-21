@@ -21,6 +21,8 @@ pub struct Config {
     pub gossip: gossip::Config,
     /// Consensus network config. If not present, the node will not participate in the consensus network.
     pub consensus: Option<consensus::Config>,
+    /// Maximal size of the proto-encoded `validator::FinalBlock` in bytes.
+    pub max_block_size: usize,
     /// Enables pinging the peers to make sure that they are alive.
     pub enable_pings: bool,
 }
@@ -36,6 +38,8 @@ pub(crate) struct SharedConfig {
     pub(crate) validators: validator::ValidatorSet,
     /// Enables pinging the peers to make sure that they are alive.
     pub(crate) enable_pings: bool,
+    /// Maximal size of the proto-encoded `validator::FinalBlock` in bytes.
+    pub(crate) max_block_size: usize,
 }
 
 /// State of the network actor observable outside of the actor.
@@ -72,6 +76,7 @@ impl State {
                 server_addr: cfg.server_addr,
                 validators: cfg.validators,
                 enable_pings: cfg.enable_pings,
+                max_block_size: cfg.max_block_size,
             },
         };
         Ok(Arc::new(this))

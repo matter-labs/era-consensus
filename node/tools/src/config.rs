@@ -185,6 +185,7 @@ impl Configs {
                 gossip_dynamic_inbound_limit: self.app.gossip_dynamic_inbound_limit,
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
+                max_payload_size: usize::MAX,
             },
             block_store,
             validator: self.validator_key.as_ref().map(|key| executor::Validator {

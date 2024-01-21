@@ -3,7 +3,7 @@ use crate::{mux, proto::ping as proto, rpc::Rpc as _};
 use anyhow::Context as _;
 use rand::Rng;
 use zksync_concurrency::{ctx, limiter, time};
-use zksync_protobuf::{required, ProtoFmt};
+use zksync_protobuf::{kB, required, ProtoFmt};
 
 /// Ping RPC.
 pub(crate) struct Rpc;
@@ -26,6 +26,9 @@ pub(crate) struct Server;
 
 #[async_trait::async_trait]
 impl super::Handler<Rpc> for Server {
+    fn max_req_size(&self) -> usize {
+        kB
+    }
     async fn handle(&self, _ctx: &ctx::Ctx, req: Req) -> anyhow::Result<Resp> {
         Ok(Resp(req.0))
     }
@@ -44,7 +47,7 @@ impl super::Client<Rpc> {
             ctx.sleep(Rpc::RATE.refresh).await?;
             let ctx = &ctx.with_timeout(timeout);
             let req = Req(ctx.rng().gen());
-            let resp = self.call(ctx, &req).await.context("ping")?;
+            let resp = self.call(ctx, &req, kB).await.context("ping")?;
             if req.0 != resp.0 {
                 anyhow::bail!("bad ping response");
             }
@@ -63,9 +66,6 @@ pub(crate) struct Resp(pub(crate) [u8; 32]);
 
 impl ProtoFmt for Req {
     type Proto = proto::PingReq;
-    fn max_size() -> usize {
-        zksync_protobuf::kB
-    }
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(required(&r.data)?[..].try_into()?))
     }
@@ -78,9 +78,6 @@ impl ProtoFmt for Req {
 
 impl ProtoFmt for Resp {
     type Proto = proto::PingResp;
-    fn max_size() -> usize {
-        zksync_protobuf::kB
-    }
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(required(&r.data)?[..].try_into()?))
     }

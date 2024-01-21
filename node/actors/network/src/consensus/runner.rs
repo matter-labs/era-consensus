@@ -6,6 +6,7 @@ use anyhow::Context as _;
 use std::{collections::HashMap, sync::Arc};
 use zksync_concurrency::{ctx, ctx::channel, oneshot, scope, sync, time};
 use zksync_consensus_roles::validator;
+use zksync_protobuf::kB;
 
 /// How often we should retry to establish a connection to a validator.
 /// TODO(gprusak): once it becomes relevant, choose a more appropriate retry strategy.
@@ -19,18 +20,29 @@ const PING_TIMEOUT: time::Duration = time::Duration::seconds(10);
 /// changes. That requires tighter integration with the consensus.
 const MSG_TIMEOUT: time::Duration = time::Duration::seconds(10);
 
+struct Server {
+    out: channel::UnboundedSender<io::OutputMessage>,
+    max_block_size: usize,
+}
+
 #[async_trait::async_trait]
-impl rpc::Handler<rpc::consensus::Rpc> for channel::UnboundedSender<io::OutputMessage> {
+impl rpc::Handler<rpc::consensus::Rpc> for Server {
+    /// Here we bound the buffering of incoming consensus messages.
+    fn max_req_size(&self) -> usize {
+        self.max_block_size.saturating_add(kB)
+    }
+
     async fn handle(
         &self,
         ctx: &ctx::Ctx,
         req: rpc::consensus::Req,
     ) -> anyhow::Result<rpc::consensus::Resp> {
         let (send, recv) = oneshot::channel();
-        self.send(io::OutputMessage::Consensus(io::ConsensusReq {
-            msg: req.0,
-            ack: send,
-        }));
+        self.out
+            .send(io::OutputMessage::Consensus(io::ConsensusReq {
+                msg: req.0,
+                ack: send,
+            }));
         recv.recv_or_disconnected(ctx).await??;
         Ok(rpc::consensus::Resp)
     }
@@ -53,7 +65,10 @@ pub(crate) async fn run_inbound_stream(
     let res = scope::run!(ctx, |ctx, s| async {
         let mut service = rpc::Service::new()
             .add_server(rpc::ping::Server)
-            .add_server(sender.clone());
+            .add_server(Server {
+                out: sender.clone(),
+                max_block_size: state.cfg.max_block_size,
+            });
         if state.cfg.enable_pings {
             let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx);
             service = service.add_client(&ping_client);
@@ -109,6 +124,7 @@ pub(crate) async fn run_client(
         .iter()
         .map(|peer| (peer.clone(), rpc::Client::<rpc::consensus::Rpc>::new(ctx)))
         .collect();
+
     scope::run!(ctx, |ctx, s| async {
         // Spawn outbound connections.
         for (peer, client) in &clients {
@@ -143,7 +159,10 @@ pub(crate) async fn run_client(
                     let client = clients.get(&val).context("unknown validator")?;
                     s.spawn(async {
                         let req = rpc::consensus::Req(msg.message);
-                        if let Err(err) = client.call(&ctx.with_timeout(MSG_TIMEOUT), &req).await {
+                        if let Err(err) = client
+                            .call(&ctx.with_timeout(MSG_TIMEOUT), &req, kB)
+                            .await
+                        {
                             tracing::info!("client.consensus(): {err:#}");
                         }
                         Ok(())
@@ -155,8 +174,9 @@ pub(crate) async fn run_client(
                         let req = req.clone();
                         s.spawn(async {
                             let req = req;
-                            if let Err(err) =
-                                client.call(&ctx.with_timeout(MSG_TIMEOUT), &req).await
+                            if let Err(err) = client
+                                .call(&ctx.with_timeout(MSG_TIMEOUT), &req, kB)
+                                .await
                             {
                                 tracing::info!("client.consensus(): {err:#}");
                             }
