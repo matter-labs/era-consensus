@@ -24,7 +24,8 @@ impl<T> Receiver<T> {
                 Ok(v) => v,
                 Err(_) => std::future::pending().await,
             }
-        }).await
+        })
+        .await
     }
 
     /// Awaits for a message from the channel.

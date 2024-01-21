@@ -5,6 +5,7 @@ use zksync_concurrency::{limiter, time};
 use zksync_consensus_storage::BlockStoreState;
 use zksync_protobuf::{read_required, ProtoFmt};
 
+/// PushBlockStoreState RPC.
 #[derive(Debug)]
 pub(crate) struct Rpc;
 
@@ -21,6 +22,7 @@ impl super::Rpc for Rpc {
     type Resp = ();
 }
 
+/// Contains the freshest state of the sender's block store.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Req(pub(crate) BlockStoreState);
 
@@ -28,7 +30,7 @@ impl ProtoFmt for Req {
     type Proto = proto::PushBlockStoreState;
 
     fn read(message: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(BlockStoreState{
+        Ok(Self(BlockStoreState {
             first: read_required(&message.first).context("first")?,
             last: read_required(&message.last).context("last")?,
         }))

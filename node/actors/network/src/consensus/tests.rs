@@ -70,18 +70,21 @@ async fn test_address_change() {
     let setup = validator::testonly::GenesisSetup::new(rng, 5);
     let mut cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
-        let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
+        let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
         s.spawn_bg(runner.run(ctx));
-        let mut nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
-            let (node,runner) = testonly::Instance::new(cfg.clone(), store.clone());
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
-            node
-        }).collect();
+        let mut nodes: Vec<_> = cfgs
+            .iter()
+            .enumerate()
+            .map(|(i, cfg)| {
+                let (node, runner) = testonly::Instance::new(cfg.clone(), store.clone());
+                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+                node
+            })
+            .collect();
         for n in &nodes {
             n.wait_for_consensus_connections().await;
         }
-        // TODO: make it wait for the termination.
-        nodes[0].terminate.send();
+        nodes[0].terminate(ctx).await?;
 
         // All nodes should lose connection to node[0].
         let key0 = nodes[0].consensus_config().key.public();
@@ -96,7 +99,7 @@ async fn test_address_change() {
         // should get reconstructed.
         cfgs[0].server_addr = net::tcp::testonly::reserve_listener();
         cfgs[0].consensus.as_mut().unwrap().public_addr = *cfgs[0].server_addr;
-        let (node0,runner) = testonly::Instance::new(cfgs[0].clone(),store.clone());
+        let (node0, runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
         nodes[0] = node0;
         for n in &nodes {
@@ -120,14 +123,18 @@ async fn test_transmission() {
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
-        let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
+        let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
         s.spawn_bg(runner.run(ctx));
-        let mut nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
-            let (node,runner) = testonly::Instance::new(cfg.clone(), store.clone());
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
-            node
-        }).collect();
-        
+        let mut nodes: Vec<_> = cfgs
+            .iter()
+            .enumerate()
+            .map(|(i, cfg)| {
+                let (node, runner) = testonly::Instance::new(cfg.clone(), store.clone());
+                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+                node
+            })
+            .collect();
+
         tracing::info!("waiting for all connections to be established");
         for n in &mut nodes {
             n.wait_for_consensus_connections().await;

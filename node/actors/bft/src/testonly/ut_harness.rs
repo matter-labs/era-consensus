@@ -11,10 +11,13 @@ use std::{cmp::Ordering, sync::Arc};
 use zksync_concurrency::ctx;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator::{
-    self, CommitQC, LeaderCommit, LeaderPrepare, Phase, PrepareQC, ReplicaCommit,
-    ReplicaPrepare, SecretKey, Signed, ViewNumber,
+    self, CommitQC, LeaderCommit, LeaderPrepare, Phase, PrepareQC, ReplicaCommit, ReplicaPrepare,
+    SecretKey, Signed, ViewNumber,
 };
-use zksync_consensus_storage::{testonly::{in_memory,new_store}, BlockStoreRunner};
+use zksync_consensus_storage::{
+    testonly::{in_memory, new_store},
+    BlockStoreRunner,
+};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// `UTHarness` provides various utilities for unit tests.

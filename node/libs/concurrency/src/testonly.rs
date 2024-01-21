@@ -40,15 +40,15 @@ pub fn abort_on_panic() {
 #[allow(unused_tuple_struct_fields)]
 pub struct TimeoutGuard(std::sync::mpsc::Sender<()>);
 
-
 /// Panics if (real time) timeout is reached before ctx is canceled.
 /// Implemented without using tokio, so that it cannot delay the timeout
 /// evaluation.
 pub fn set_timeout(timeout: time::Duration) -> TimeoutGuard {
     use std::sync::mpsc;
-    let (send,recv) = mpsc::channel();
+    let (send, recv) = mpsc::channel();
     std::thread::spawn(move || {
-        if let Err(mpsc::RecvTimeoutError::Timeout) = recv.recv_timeout(timeout.try_into().unwrap()) {
+        if let Err(mpsc::RecvTimeoutError::Timeout) = recv.recv_timeout(timeout.try_into().unwrap())
+        {
             panic!("TIMEOUT");
         }
     });

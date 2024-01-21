@@ -4,8 +4,8 @@ use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope, sync};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator;
-use zksync_consensus_utils::pipe;
 use zksync_consensus_storage::testonly::new_store;
+use zksync_consensus_utils::pipe;
 
 #[derive(Clone, Copy)]
 pub(crate) enum Network {
@@ -29,9 +29,9 @@ impl Test {
         let nets: Vec<_> = network::testonly::new_configs(rng, &setup, 1);
         let mut nodes = vec![];
         let mut honest = vec![];
-        scope::run!(ctx, |ctx,s| async {
-           for (i, net) in nets.into_iter().enumerate() {
-                let (store, runner) = new_store(ctx,&setup.blocks[0]).await;
+        scope::run!(ctx, |ctx, s| async {
+            for (i, net) in nets.into_iter().enumerate() {
+                let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
                 s.spawn_bg(runner.run(ctx));
                 if self.nodes[i] == Behavior::Honest {
                     honest.push(store.clone());
@@ -53,7 +53,7 @@ impl Test {
                 })
                 .await?;
             }
-        
+
             // Check that the stored blocks are consistent.
             for i in 0..self.blocks_to_finalize as u64 + 1 {
                 let i = validator::BlockNumber(i);
@@ -63,7 +63,8 @@ impl Test {
                 }
             }
             Ok(())
-        }).await
+        })
+        .await
     }
 }
 
@@ -73,39 +74,50 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, specs: &[Node]) -> anyhow::
         match network {
             Network::Real => {
                 let mut nodes = vec![];
-                for (i,spec) in specs.iter().enumerate() {
-                    let (node,runner) = network::testonly::Instance::new(spec.net.clone(),spec.block_store.clone());
+                for (i, spec) in specs.iter().enumerate() {
+                    let (node, runner) = network::testonly::Instance::new(
+                        spec.net.clone(),
+                        spec.block_store.clone(),
+                    );
                     s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                     nodes.push(node);
                 }
                 network::testonly::instant_network(ctx, nodes.iter()).await?;
-                for (i,node) in nodes.into_iter().enumerate() {
+                for (i, node) in nodes.into_iter().enumerate() {
                     let spec = &specs[i];
-                    s.spawn(async {
-                        let mut node = node;
-                        spec.run(ctx, &mut node.pipe).await
-                    }.instrument(tracing::info_span!("node", i)));
+                    s.spawn(
+                        async {
+                            let mut node = node;
+                            spec.run(ctx, node.pipe()).await
+                        }
+                        .instrument(tracing::info_span!("node", i)),
+                    );
                 }
             }
             Network::Mock => {
                 let mut sends = HashMap::new();
                 let mut recvs = vec![];
-                for (i,spec) in specs.iter().enumerate() {
+                for (i, spec) in specs.iter().enumerate() {
                     let (actor_pipe, pipe) = pipe::new();
                     let key = spec.net.consensus.as_ref().unwrap().key.public();
-                    sends.insert(key,actor_pipe.send);
+                    sends.insert(key, actor_pipe.send);
                     recvs.push(actor_pipe.recv);
-                    s.spawn(async {
-                        let mut pipe = pipe;
-                        spec.run(ctx, &mut pipe).await
-                    }.instrument(tracing::info_span!("node", i)));
+                    s.spawn(
+                        async {
+                            let mut pipe = pipe;
+                            spec.run(ctx, &mut pipe).await
+                        }
+                        .instrument(tracing::info_span!("node", i)),
+                    );
                 }
-                scope::run!(ctx, |ctx,s| async {
+                scope::run!(ctx, |ctx, s| async {
                     for recv in recvs {
                         s.spawn(async {
                             use zksync_consensus_network::io;
                             let mut recv = recv;
-                            while let Ok(io::InputMessage::Consensus(message)) = recv.recv(ctx).await {
+                            while let Ok(io::InputMessage::Consensus(message)) =
+                                recv.recv(ctx).await
+                            {
                                 let msg = || {
                                     io::OutputMessage::Consensus(io::ConsensusReq {
                                         msg: message.message.clone(),
@@ -113,9 +125,7 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, specs: &[Node]) -> anyhow::
                                     })
                                 };
                                 match message.recipient {
-                                    io::Target::Validator(v) => {
-                                        sends.get(&v).unwrap().send(msg())
-                                    }
+                                    io::Target::Validator(v) => sends.get(&v).unwrap().send(msg()),
                                     io::Target::Broadcast => {
                                         sends.values().for_each(|s| s.send(msg()))
                                     }
@@ -125,10 +135,11 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, specs: &[Node]) -> anyhow::
                         });
                     }
                     anyhow::Ok(())
-                }).await?;
+                })
+                .await?;
             }
         }
-        Ok(()) 
+        Ok(())
     })
     .await
 }

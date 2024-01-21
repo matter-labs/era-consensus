@@ -30,8 +30,10 @@ pub fn connect_full_node(rng: &mut impl Rng, node: &mut Config) -> Config {
 impl ValidatorNode {
     /// Generates a validator config for a network with a single validator.
     pub fn new(rng: &mut impl Rng) -> Self {
-        let setup = GenesisSetup::new(rng,1);
-        let net_config = network::testonly::new_configs(rng, &setup, 0).pop().unwrap();
+        let setup = GenesisSetup::new(rng, 1);
+        let net_config = network::testonly::new_configs(rng, &setup, 0)
+            .pop()
+            .unwrap();
         let validator = net_config.consensus.unwrap();
         let gossip = net_config.gossip;
         Self {

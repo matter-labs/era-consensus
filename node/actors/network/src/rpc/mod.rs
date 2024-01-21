@@ -22,9 +22,9 @@ use std::{collections::BTreeMap, sync::Arc};
 use zksync_concurrency::{ctx, io, limiter, metrics::LatencyHistogramExt as _, scope};
 
 pub(crate) mod consensus;
+pub(crate) mod get_block;
 mod metrics;
 pub(crate) mod ping;
-pub(crate) mod get_block;
 pub(crate) mod push_block_store_state;
 pub(crate) mod push_validator_addrs;
 #[cfg(test)]
@@ -132,10 +132,7 @@ impl<R: Rpc> Client<R> {
     ) -> ctx::OrCanceled<ReservedCall<'a, R>> {
         let reserve_time = ctx.now();
         let permit = self.limiter.acquire(ctx, 1).await?;
-        let stream = self
-            .queue
-            .reserve(ctx)
-            .await?;
+        let stream = self.queue.reserve(ctx).await?;
         RPC_METRICS.call_reserve_latency[&R::METHOD].observe_latency(ctx.now() - reserve_time);
         Ok(ReservedCall {
             stream,

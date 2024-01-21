@@ -29,7 +29,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         let rng = &mut ctx.rng();
         let first_peer = rng.gen::<node::SecretKey>().public();
         peer_states
-            .update(&first_peer, sync_state(&setup,2))
+            .update(&first_peer, sync_state(&setup, 2))
             .unwrap();
 
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {

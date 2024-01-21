@@ -38,8 +38,11 @@ impl Once {
     }
 
     /// Waits for the signal to be sent.
-    pub fn recv<'a>(&'a self, ctx: &'a ctx::Ctx) -> ctx::CtxAware<impl 'a + Future<Output = ctx::OrCanceled<()>>> {
-        ctx::CtxAware(ctx.wait(self.cancel_safe_recv()))
+    pub fn recv<'a>(
+        &'a self,
+        ctx: &'a ctx::Ctx,
+    ) -> ctx::CtxAware<impl 'a + Future<Output = ctx::OrCanceled<()>>> {
+        ctx.wait(self.cancel_safe_recv())
     }
 
     /// Checks if send() was already called.

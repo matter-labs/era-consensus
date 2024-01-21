@@ -136,7 +136,7 @@ pub async fn run_network(
                     let (stream, endpoint) = preface::accept(ctx, stream).await?;
                     match endpoint {
                         preface::Endpoint::ConsensusNet => {
-                            consensus::run_inbound_stream(ctx,&state,&pipe.send,stream)
+                            consensus::run_inbound_stream(ctx, &state, &pipe.send, stream)
                                 .await
                                 .context("consensus::run_inbound_stream()")
                         }

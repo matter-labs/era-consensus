@@ -1,5 +1,6 @@
 use super::Fuzz;
 use crate::{io, testonly, PayloadManager};
+use anyhow::Context as _;
 use rand::Rng;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, scope};
@@ -8,7 +9,6 @@ use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_storage as storage;
 use zksync_consensus_storage::testonly::in_memory;
 use zksync_consensus_utils::pipe;
-use anyhow::Context as _;
 
 /// Enum representing the behavior of the node.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -48,7 +48,10 @@ impl Node {
     pub(crate) async fn run(
         &self,
         ctx: &ctx::Ctx,
-        network_pipe: &mut pipe::DispatcherPipe<network::io::InputMessage, network::io::OutputMessage>,
+        network_pipe: &mut pipe::DispatcherPipe<
+            network::io::InputMessage,
+            network::io::OutputMessage,
+        >,
     ) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
         let net_recv = &mut network_pipe.recv;

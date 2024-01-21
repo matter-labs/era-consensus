@@ -1,14 +1,17 @@
 use super::*;
+use crate::tests::test_config;
 use assert_matches::assert_matches;
 use async_trait::async_trait;
 use rand::{seq::IteratorRandom, Rng};
 use std::{collections::HashSet, fmt};
 use test_casing::{test_casing, Product};
 use tracing::instrument;
+use zksync_concurrency::{
+    testonly::{abort_on_panic, set_timeout},
+    time,
+};
 use zksync_consensus_roles::validator;
-use zksync_concurrency::{testonly::{set_timeout,abort_on_panic}, time};
 use zksync_consensus_storage::testonly::new_store;
-use crate::tests::test_config;
 
 mod basics;
 mod fakes;
@@ -66,9 +69,9 @@ async fn test_peer_states<T: Test>(test: T) {
     let clock = ctx::ManualClock::new();
     let ctx = &ctx::test_root(&clock);
     let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::GenesisSetup::new(rng,4);
+    let mut setup = validator::testonly::GenesisSetup::new(rng, 4);
     setup.push_blocks(rng, T::BLOCK_COUNT);
-    let (store, store_run) = new_store(ctx,&setup.blocks[T::GENESIS_BLOCK_NUMBER]).await;
+    let (store, store_run) = new_store(ctx, &setup.blocks[T::GENESIS_BLOCK_NUMBER]).await;
     test.initialize_storage(ctx, store.as_ref(), &setup).await;
 
     let (message_sender, message_receiver) = channel::unbounded();

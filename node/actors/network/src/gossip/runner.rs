@@ -1,19 +1,13 @@
 use super::{handshake, ValidatorAddrs};
-use crate::{
-    consensus,
-    event::{Event},
-    io, noise, preface, rpc, State,
-};
-use zksync_consensus_storage::{BlockStore};
+use crate::{consensus, event::Event, io, noise, preface, rpc, State};
 use async_trait::async_trait;
 use std::sync::Arc;
 use zksync_concurrency::{
     ctx::{self, channel},
-    oneshot, scope,
-    sync,
-    time,
+    oneshot, scope, sync, time,
 };
 use zksync_consensus_roles::{node, validator};
+use zksync_consensus_storage::BlockStore;
 
 /// How often we should retry to establish a connection to a validator.
 /// TODO(gprusak): once it becomes relevant, choose a more appropriate retry strategy.
@@ -31,9 +25,17 @@ struct PushValidatorAddrsServer<'a>(&'a State);
 
 #[async_trait]
 impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'_> {
-    async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::push_validator_addrs::Req) -> anyhow::Result<()> {
+    async fn handle(
+        &self,
+        _ctx: &ctx::Ctx,
+        req: rpc::push_validator_addrs::Req,
+    ) -> anyhow::Result<()> {
         self.0.event(Event::ValidatorAddrsUpdated);
-        self.0.gossip.validator_addrs.update(&self.0.cfg.validators, &req.0[..]).await?;
+        self.0
+            .gossip
+            .validator_addrs
+            .update(&self.0.cfg.validators, &req.0[..])
+            .await?;
         Ok(())
     }
 }
@@ -82,13 +84,16 @@ async fn run_stream(
     stream: noise::Stream,
 ) -> anyhow::Result<()> {
     let push_validator_addrs_client = rpc::Client::<rpc::push_validator_addrs::Rpc>::new(ctx);
-    let push_validator_addrs_server = PushValidatorAddrsServer(state); 
+    let push_validator_addrs_server = PushValidatorAddrsServer(state);
     let push_block_store_state_client = rpc::Client::<rpc::push_block_store_state::Rpc>::new(ctx);
     let push_block_store_state_server = PushBlockStoreStateServer { peer, sender };
 
     let get_block_client = Arc::new(rpc::Client::<rpc::get_block::Rpc>::new(ctx));
-    state.gossip.get_block_clients.insert(peer.clone(), get_block_client.clone());
-    
+    state
+        .gossip
+        .get_block_clients
+        .insert(peer.clone(), get_block_client.clone());
+
     let res = scope::run!(ctx, |ctx, s| async {
         let mut service = rpc::Service::new()
             .add_client(&push_validator_addrs_client)
@@ -109,13 +114,13 @@ async fn run_stream(
         }
 
         // Push block store state updates to peer.
-        s.spawn::<()>(async { 
+        s.spawn::<()>(async {
             let mut sub = state.gossip.block_store.subscribe();
             sub.mark_changed();
             loop {
                 let state = sync::changed(ctx, &mut sub).await?.clone();
                 let req = rpc::push_block_store_state::Req(state);
-                push_block_store_state_client.call(ctx,&req).await?;
+                push_block_store_state_client.call(ctx, &req).await?;
             }
         });
 
@@ -132,7 +137,7 @@ async fn run_stream(
                 }
                 old = new;
                 let req = rpc::push_validator_addrs::Req(diff);
-                push_validator_addrs_client.call(ctx,&req).await?;
+                push_validator_addrs_client.call(ctx, &req).await?;
             }
         });
 
@@ -141,7 +146,10 @@ async fn run_stream(
     })
     .await;
 
-    state.gossip.get_block_clients.remove(peer.clone(), get_block_client);
+    state
+        .gossip
+        .get_block_clients
+        .remove(peer.clone(), get_block_client);
     res
 }
 
@@ -245,11 +253,13 @@ pub(crate) async fn run_client(
                         number,
                         response,
                     } = message;
-                    let _ = response.send(match state.gossip.get_block(ctx,&recipient,number).await {
-                        Ok(Some(block)) => Ok(block),
-                        Ok(None) => Err(io::GetBlockError::NotAvailable),
-                        Err(err) => Err(io::GetBlockError::Internal(err)),
-                    });
+                    let _ = response.send(
+                        match state.gossip.get_block(ctx, &recipient, number).await {
+                            Ok(Some(block)) => Ok(block),
+                            Ok(None) => Err(io::GetBlockError::NotAvailable),
+                            Err(err) => Err(io::GetBlockError::Internal(err)),
+                        },
+                    );
                     Ok(())
                 });
             }

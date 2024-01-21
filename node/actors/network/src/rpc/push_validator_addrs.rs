@@ -1,4 +1,4 @@
-//! Defines an Rpc for synchronizing ValidatorAddrs data.
+//! RPC for synchronizing ValidatorAddrs data.
 use crate::{mux, proto::gossip as proto};
 use anyhow::Context as _;
 use std::sync::Arc;
@@ -6,7 +6,7 @@ use zksync_concurrency::{limiter, time};
 use zksync_consensus_roles::validator;
 use zksync_protobuf::ProtoFmt;
 
-/// SyncValidatorAddrs Rpc.
+/// PushValidatorAddrs RPC.
 pub(crate) struct Rpc;
 
 impl super::Rpc for Rpc {
@@ -22,8 +22,7 @@ impl super::Rpc for Rpc {
     type Resp = ();
 }
 
-/// Contains a batch of new ValidatorAddrs that server
-/// learned since the client's last SyncValidatorAddrs Rpc.
+/// Contains a batch of new ValidatorAddrs that the sender has learned about.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Req(pub(crate) Vec<Arc<validator::Signed<validator::NetAddress>>>);
 

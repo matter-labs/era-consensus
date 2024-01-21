@@ -44,14 +44,17 @@ pub(crate) async fn run_inbound_stream(
     sender: &channel::UnboundedSender<io::OutputMessage>,
     mut stream: noise::Stream,
 ) -> anyhow::Result<()> {
-    let consensus_state = state.consensus.as_ref().context("Node does not accept consensus network connections")?;
+    let consensus_state = state
+        .consensus
+        .as_ref()
+        .context("Node does not accept consensus network connections")?;
     let peer = handshake::inbound(ctx, &consensus_state.cfg.key, &mut stream).await?;
     consensus_state.inbound.insert(peer.clone()).await?;
     let res = scope::run!(ctx, |ctx, s| async {
         let mut service = rpc::Service::new()
             .add_server(rpc::ping::Server)
             .add_server(sender.clone());
-        if state.cfg.enable_pings { 
+        if state.cfg.enable_pings {
             let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx);
             service = service.add_client(&ping_client);
             s.spawn(async {

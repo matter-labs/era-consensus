@@ -2,11 +2,11 @@ use crate::{pool::PoolWatch, rpc, watch::Watch};
 use anyhow::Context as _;
 use std::{
     collections::{HashMap, HashSet},
-    sync::{Arc,Mutex},
+    sync::{Arc, Mutex},
 };
-use zksync_consensus_storage::BlockStore;
-use zksync_concurrency::{ctx,sync};
+use zksync_concurrency::{ctx, sync};
 use zksync_consensus_roles::{node, validator};
+use zksync_consensus_storage::BlockStore;
 
 /// Mapping from validator::PublicKey to a signed validator::NetAddress.
 /// Represents the currents state of node's knowledge about the validator endpoints.
@@ -128,6 +128,9 @@ pub struct Config {
     pub static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>,
 }
 
+/// Multimap of pointers indexed by `node::PublicKey`.
+/// Used to maintain a collection GetBlock rpc clients.
+/// TODO(gprusak): consider upgrading PoolWatch instead.
 pub(crate) struct ArcMap<T>(Mutex<HashMap<node::PublicKey, Vec<Arc<T>>>>);
 
 impl<T> Default for ArcMap<T> {
@@ -137,19 +140,24 @@ impl<T> Default for ArcMap<T> {
 }
 
 impl<T> ArcMap<T> {
+    /// Fetches any pointer for the given key.
     pub(crate) fn get_any(&self, key: &node::PublicKey) -> Option<Arc<T>> {
         self.0.lock().unwrap().get(key)?.first().cloned()
     }
 
-    pub(crate) fn insert(&self, key: node::PublicKey, client: Arc<T>) {
-        self.0.lock().unwrap().entry(key).or_default().push(client);
+    /// Insert a pointer.
+    pub(crate) fn insert(&self, key: node::PublicKey, p: Arc<T>) {
+        self.0.lock().unwrap().entry(key).or_default().push(p);
     }
 
-    pub(crate) fn remove(&self, key: node::PublicKey, client: Arc<T>) {
+    /// Removes a pointer.
+    pub(crate) fn remove(&self, key: node::PublicKey, p: Arc<T>) {
         let mut this = self.0.lock().unwrap();
         use std::collections::hash_map::Entry;
-        let Entry::Occupied(mut e) = this.entry(key) else { return };
-        e.get_mut().retain(|c|!Arc::ptr_eq(&client,c));
+        let Entry::Occupied(mut e) = this.entry(key) else {
+            return;
+        };
+        e.get_mut().retain(|c| !Arc::ptr_eq(&p, c));
         if e.get_mut().is_empty() {
             e.remove();
         }
@@ -194,10 +202,12 @@ impl State {
         recipient: &node::PublicKey,
         number: validator::BlockNumber,
     ) -> anyhow::Result<Option<validator::FinalBlock>> {
-        Ok(self.get_block_clients
+        Ok(self
+            .get_block_clients
             .get_any(recipient)
             .context("recipient is unreachable")?
             .call(ctx, &rpc::get_block::Req(number))
-            .await?.0)
+            .await?
+            .0)
     }
 }

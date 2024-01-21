@@ -60,7 +60,7 @@ fn main() -> anyhow::Result<()> {
     // Generate the keys for all the replicas.
     let rng = &mut rand::thread_rng();
 
-    let mut genesis = validator::testonly::GenesisSetup::empty(rng,addrs.len());
+    let mut genesis = validator::testonly::GenesisSetup::empty(rng, addrs.len());
     genesis.next_block().push();
     let validator_keys = genesis.keys.clone();
     let node_keys: Vec<node::SecretKey> = (0..addrs.len()).map(|_| rng.gen()).collect();

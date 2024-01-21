@@ -36,9 +36,17 @@ pub fn make_justification<R: Rng>(
 impl<'a> BlockBuilder<'a> {
     /// Builds `GenesisSetup`.
     pub fn push(self) {
-        let msgs: Vec<_> = self.setup.keys.iter().map(|sk| sk.sign_msg(self.msg.clone())).collect();
-        let justification = CommitQC::from(&msgs,&self.setup.validator_set()).unwrap();
-        self.setup.blocks.push(FinalBlock { payload: self.payload, justification });
+        let msgs: Vec<_> = self
+            .setup
+            .keys
+            .iter()
+            .map(|sk| sk.sign_msg(self.msg))
+            .collect();
+        let justification = CommitQC::from(&msgs, &self.setup.validator_set()).unwrap();
+        self.setup.blocks.push(FinalBlock {
+            payload: self.payload,
+            justification,
+        });
     }
 
     /// Sets `protocol_version`.
@@ -77,35 +85,36 @@ pub struct BlockBuilder<'a> {
     payload: Payload,
 }
 
-
 impl GenesisSetup {
     /// Constructs GenesisSetup with no blocks.
     pub fn empty(rng: &mut impl Rng, validators: usize) -> Self {
         Self {
-            keys: (0..validators).map(|_|rng.gen()).collect(),
+            keys: (0..validators).map(|_| rng.gen()).collect(),
             blocks: vec![],
         }
     }
 
     /// Constructs GenesisSetup with genesis block.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
-        let mut this = Self::empty(rng,validators);
+        let mut this = Self::empty(rng, validators);
         this.push_block(rng.gen());
         this
     }
 
     /// Returns a builder for the next block.
     pub fn next_block(&mut self) -> BlockBuilder {
-        let parent = self.blocks.last().map(|b|b.justification.message.clone());
+        let parent = self.blocks.last().map(|b| b.justification.message);
         let payload = Payload(vec![]);
         BlockBuilder {
             setup: self,
             msg: ReplicaCommit {
-                protocol_version: parent.map(|m|m.protocol_version).unwrap_or(ProtocolVersion::EARLIEST),
-                view: parent.map(|m|m.view.next()).unwrap_or(ViewNumber(0)),
+                protocol_version: parent
+                    .map(|m| m.protocol_version)
+                    .unwrap_or(ProtocolVersion::EARLIEST),
+                view: parent.map(|m| m.view.next()).unwrap_or(ViewNumber(0)),
                 proposal: parent
-                    .map(|m|BlockHeader::new(&m.proposal,payload.hash()))
-                    .unwrap_or(BlockHeader::genesis(payload.hash(),BlockNumber(0))),
+                    .map(|m| BlockHeader::new(&m.proposal, payload.hash()))
+                    .unwrap_or(BlockHeader::genesis(payload.hash(), BlockNumber(0))),
             },
             payload,
         }
@@ -125,15 +134,15 @@ impl GenesisSetup {
 
     /// ValidatorSet.
     pub fn validator_set(&self) -> ValidatorSet {
-        ValidatorSet::new(self.keys.iter().map(|k|k.public())).unwrap()
+        ValidatorSet::new(self.keys.iter().map(|k| k.public())).unwrap()
     }
 }
 
-
 /// Constructs a genesis block with random payload.
 pub fn make_genesis_block(rng: &mut impl Rng, protocol_version: ProtocolVersion) -> FinalBlock {
-    let mut setup = GenesisSetup::new(rng,3);
-    setup.next_block()
+    let mut setup = GenesisSetup::new(rng, 3);
+    setup
+        .next_block()
         .protocol_version(protocol_version)
         .payload(rng.gen())
         .push();
@@ -174,7 +183,8 @@ impl PrepareQC {
         validators: &ValidatorSet,
     ) -> anyhow::Result<Self> {
         // Get the view number from the messages, they must all be equal.
-        let view = signed_messages.first()
+        let view = signed_messages
+            .first()
             .context("Empty signed messages vector")?
             .msg
             .view;

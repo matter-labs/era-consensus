@@ -5,8 +5,8 @@
 use crate::io::{InputMessage, OutputMessage};
 use std::sync::Arc;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_network::io::{SyncBlocksRequest};
-use zksync_consensus_storage::{BlockStore};
+use zksync_consensus_network::io::SyncBlocksRequest;
+use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;
@@ -36,10 +36,7 @@ impl Config {
                         state,
                         response,
                     }) => {
-                        let res = peer_states.update(
-                            &peer,
-                            state,
-                        );
+                        let res = peer_states.update(&peer, state);
                         if let Err(err) = res {
                             tracing::info!(%err, ?peer, "peer_states.update()");
                         }

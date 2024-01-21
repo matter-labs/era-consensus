@@ -6,16 +6,14 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use zksync_consensus_storage::{BlockStore};
 use zksync_concurrency::{
-    signal,
     ctx,
     ctx::channel,
-    scope,
-    io, net,
+    io, net, scope,
     sync::{self},
 };
-use zksync_consensus_roles::{validator,node};
+use zksync_consensus_roles::{node, validator};
+use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe;
 
 /// Synchronously forwards data from one stream to another.
@@ -50,13 +48,18 @@ pub struct Instance {
     pub(crate) state: Arc<State>,
     /// Stream of events.
     pub(crate) events: channel::UnboundedReceiver<Event>,
-    pub(crate) terminate: Arc<signal::Once>,
+    /// Termination signal that can be sent to the node.
+    pub(crate) terminate: channel::Sender<()>,
     /// Dispatcher end of the network pipe.
-    pub pipe: pipe::DispatcherPipe<crate::io::InputMessage, crate::io::OutputMessage>,
+    pub(crate) pipe: pipe::DispatcherPipe<crate::io::InputMessage, crate::io::OutputMessage>,
 }
 
 /// Construct configs for `n` validators of the consensus.
-pub fn new_configs<R: Rng>(rng: &mut R, setup: &validator::testonly::GenesisSetup, gossip_peers: usize) -> Vec<Config> {
+pub fn new_configs<R: Rng>(
+    rng: &mut R,
+    setup: &validator::testonly::GenesisSetup,
+    gossip_peers: usize,
+) -> Vec<Config> {
     let configs = setup.keys.iter().map(|key| {
         let addr = net::tcp::testonly::reserve_listener();
         Config {
@@ -73,7 +76,7 @@ pub fn new_configs<R: Rng>(rng: &mut R, setup: &validator::testonly::GenesisSetu
                 key: rng.gen(),
                 dynamic_inbound_limit: setup.keys.len() as u64,
                 static_inbound: HashSet::default(),
-                static_outbound: HashMap::default(), 
+                static_outbound: HashMap::default(),
             },
         }
     });
@@ -94,41 +97,59 @@ pub fn new_configs<R: Rng>(rng: &mut R, setup: &validator::testonly::GenesisSetu
 /// Runner for Instance.
 pub struct InstanceRunner {
     state: Arc<State>,
-    terminate: Arc<signal::Once>,
+    terminate: channel::Receiver<()>,
     pipe: pipe::ActorPipe<crate::io::InputMessage, crate::io::OutputMessage>,
 }
 
 impl InstanceRunner {
     /// Runs the instance background processes.
-    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        scope::run!(ctx, |ctx,s| async {
-            s.spawn_bg(async {
-                crate::run_network(ctx, self.state, self.pipe).await?;
-                Ok(())
-            }); 
+    pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        scope::run!(ctx, |ctx, s| async {
+            s.spawn_bg(crate::run_network(ctx, self.state, self.pipe));
             let _ = self.terminate.recv(ctx).await;
             Ok(())
-        }).await
-    }  
+        })
+        .await?;
+        drop(self.terminate);
+        Ok(())
+    }
 }
 
 impl Instance {
     /// Construct an instance for a given config.
-    pub fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self,InstanceRunner) {
+    pub fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self, InstanceRunner) {
         let (events_send, events_recv) = channel::unbounded();
         let (actor_pipe, dispatcher_pipe) = pipe::new();
-        let state = State::new(cfg, block_store, Some(events_send)).expect("Invalid network config");
-        let terminate = Arc::new(signal::Once::new());
-        (Self {
-            state: state.clone(), 
-            events: events_recv,
-            pipe: dispatcher_pipe,
-            terminate: terminate.clone(),
-        }, InstanceRunner {
-            state: state.clone(),
-            pipe: actor_pipe,
-            terminate,
-        })
+        let state =
+            State::new(cfg, block_store, Some(events_send)).expect("Invalid network config");
+        let (terminate_send, terminate_recv) = channel::bounded(1);
+        (
+            Self {
+                state: state.clone(),
+                events: events_recv,
+                pipe: dispatcher_pipe,
+                terminate: terminate_send,
+            },
+            InstanceRunner {
+                state: state.clone(),
+                pipe: actor_pipe,
+                terminate: terminate_recv,
+            },
+        )
+    }
+
+    /// Sends a termination signal to a node
+    /// and waits for it to terminate.
+    pub async fn terminate(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
+        let _ = self.terminate.try_send(());
+        self.terminate.closed(ctx).await
+    }
+
+    /// Pipe getter.
+    pub fn pipe(
+        &mut self,
+    ) -> &mut pipe::DispatcherPipe<crate::io::InputMessage, crate::io::OutputMessage> {
+        &mut self.pipe
     }
 
     /// State getter.
@@ -183,18 +204,38 @@ impl Instance {
     }
 
     /// Waits for node to be disconnected from the given gossip peer.
-    pub async fn wait_for_gossip_disconnect(&self, ctx: &ctx::Ctx, peer: &node::PublicKey) -> ctx::OrCanceled<()> {
+    pub async fn wait_for_gossip_disconnect(
+        &self,
+        ctx: &ctx::Ctx,
+        peer: &node::PublicKey,
+    ) -> ctx::OrCanceled<()> {
         let state = &self.state.gossip;
-        sync::wait_for(ctx, &mut state.inbound.subscribe(), |got| !got.current().contains(peer)).await?;
-        sync::wait_for(ctx, &mut state.outbound.subscribe(), |got| !got.current().contains(peer)).await?;
+        sync::wait_for(ctx, &mut state.inbound.subscribe(), |got| {
+            !got.current().contains(peer)
+        })
+        .await?;
+        sync::wait_for(ctx, &mut state.outbound.subscribe(), |got| {
+            !got.current().contains(peer)
+        })
+        .await?;
         Ok(())
     }
 
     /// Waits for node to be disconnected from the given consensus peer.
-    pub async fn wait_for_consensus_disconnect(&self, ctx: &ctx::Ctx, peer: &validator::PublicKey) -> ctx::OrCanceled<()> {
+    pub async fn wait_for_consensus_disconnect(
+        &self,
+        ctx: &ctx::Ctx,
+        peer: &validator::PublicKey,
+    ) -> ctx::OrCanceled<()> {
         let state = self.state.consensus.as_ref().unwrap();
-        sync::wait_for(ctx, &mut state.inbound.subscribe(), |got| !got.current().contains(peer)).await?;
-        sync::wait_for(ctx, &mut state.outbound.subscribe(), |got| !got.current().contains(peer)).await?;
+        sync::wait_for(ctx, &mut state.inbound.subscribe(), |got| {
+            !got.current().contains(peer)
+        })
+        .await?;
+        sync::wait_for(ctx, &mut state.outbound.subscribe(), |got| {
+            !got.current().contains(peer)
+        })
+        .await?;
         Ok(())
     }
 }

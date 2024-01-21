@@ -32,7 +32,7 @@ pub enum SyncBlocksInputMessage {
     GetBlock {
         recipient: node::PublicKey,
         number: validator::BlockNumber,
-        response: oneshot::Sender<Result<validator::FinalBlock,GetBlockError>>,
+        response: oneshot::Sender<Result<validator::FinalBlock, GetBlockError>>,
     },
 }
 

@@ -8,8 +8,8 @@ use rand::{
     Rng,
 };
 use std::sync::Arc;
-use zksync_consensus_storage::BlockStoreState;
 use zksync_consensus_roles::validator;
+use zksync_consensus_storage::BlockStoreState;
 
 impl Distribution<rpc::consensus::Req> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> rpc::consensus::Req {

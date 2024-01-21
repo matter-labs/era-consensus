@@ -5,7 +5,7 @@ use rand::{
 };
 use tempfile::TempDir;
 use zksync_concurrency::ctx;
-use zksync_consensus_roles::{node,validator::testonly::GenesisSetup};
+use zksync_consensus_roles::{node, validator::testonly::GenesisSetup};
 use zksync_consensus_storage::{testonly, PersistentBlockStore};
 use zksync_protobuf::testonly::test_encode_random;
 
@@ -46,8 +46,8 @@ async fn test_reopen_rocksdb() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let dir = TempDir::new().unwrap();
-    let mut setup = GenesisSetup::empty(rng,3);
-    setup.push_blocks(rng,5);
+    let mut setup = GenesisSetup::empty(rng, 3);
+    setup.push_blocks(rng, 5);
     let mut want = vec![];
     for b in &setup.blocks {
         let store = store::RocksDB::open(dir.path()).await.unwrap();

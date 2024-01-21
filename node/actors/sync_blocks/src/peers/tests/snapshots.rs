@@ -1,8 +1,8 @@
 //! Tests related to snapshot storage.
 
 use super::*;
-use zksync_consensus_network::io::GetBlockError;
 use crate::tests::{send_block, snapshot_sync_state, sync_state};
+use zksync_consensus_network::io::GetBlockError;
 
 #[derive(Debug)]
 struct UpdatingPeerStateWithStorageSnapshot;
@@ -39,7 +39,7 @@ impl Test for UpdatingPeerStateWithStorageSnapshot {
         }
 
         peer_states
-            .update(&peer_key, sync_state(&setup,3))
+            .update(&peer_key, sync_state(&setup, 3))
             .unwrap();
 
         // Check that the actor has sent a `get_block` request to the peer
@@ -250,7 +250,9 @@ impl Test for PruningPeerHistory {
         sync::yield_now().await;
         assert!(message_receiver.try_recv().is_none());
 
-        block1_response.send(Err(GetBlockError::NotAvailable)).unwrap();
+        block1_response
+            .send(Err(GetBlockError::NotAvailable))
+            .unwrap();
         // Block #1 should not be requested again (the peer no longer has it).
         clock.advance(BLOCK_SLEEP_INTERVAL);
         sync::yield_now().await;

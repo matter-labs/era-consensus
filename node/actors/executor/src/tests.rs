@@ -3,11 +3,17 @@
 use super::*;
 use crate::testonly::{connect_full_node, ValidatorNode};
 use test_casing::test_casing;
-use zksync_concurrency::{sync, testonly::{abort_on_panic, set_timeout}, time};
-use zksync_consensus_storage::testonly::new_store;
+use zksync_concurrency::{
+    sync,
+    testonly::{abort_on_panic, set_timeout},
+    time,
+};
 use zksync_consensus_bft as bft;
-use zksync_consensus_roles::validator::{BlockNumber};
-use zksync_consensus_storage::{testonly::in_memory, BlockStore};
+use zksync_consensus_roles::validator::BlockNumber;
+use zksync_consensus_storage::{
+    testonly::{in_memory, new_store},
+    BlockStore,
+};
 
 impl Config {
     fn into_executor(self, block_store: Arc<BlockStore>) -> Executor {
@@ -73,7 +79,9 @@ async fn executing_validator_and_full_node() {
         s.spawn_bg(full_node_runner.run(ctx));
         s.spawn_bg(validator.run(ctx));
         s.spawn_bg(full_node.run(ctx));
-        full_node_storage.wait_until_persisted(ctx,BlockNumber(5)).await?;
+        full_node_storage
+            .wait_until_persisted(ctx, BlockNumber(5))
+            .await?;
         Ok(())
     })
     .await
@@ -90,13 +98,13 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
     let rng = &mut ctx.rng();
 
     let mut validator = ValidatorNode::new(rng);
-    validator.setup.push_blocks(rng,10);
+    validator.setup.push_blocks(rng, 10);
     let node2 = connect_full_node(rng, &mut validator.node);
 
     let (store1, store1_runner) = new_store(ctx, &validator.setup.blocks[0]).await;
     // Node2 will start from a snapshot.
     let (store2, store2_runner) = new_store(ctx, &validator.setup.blocks[4]).await;
-    
+
     // We spawn 2 non-validator nodes. We will simulate blocks appearing in storage of node1,
     // and will expect them to be propagated to node2.
     let node1 = validator.node.into_executor(store1.clone());
@@ -112,10 +120,7 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
         if !delay_block_storage {
             // Instead of running consensus on the validator, add the generated blocks manually.
             for block in &validator.setup.blocks[1..] {
-                store1
-                    .queue_block(ctx, block.clone())
-                    .await
-                    .unwrap();
+                store1.queue_block(ctx, block.clone()).await.unwrap();
             }
         }
         s.spawn_bg(node1.run(ctx));
@@ -132,13 +137,11 @@ async fn syncing_full_node_from_snapshot(delay_block_storage: bool) {
             });
         }
 
-        store2.wait_until_persisted(ctx,BlockNumber(10)).await?;
+        store2.wait_until_persisted(ctx, BlockNumber(10)).await?;
 
         // Check that the node didn't receive any blocks with number lesser than the initial snapshot block.
         for lesser_block_number in 0..3 {
-            let block = store2 
-                .block(ctx, BlockNumber(lesser_block_number))
-                .await?;
+            let block = store2.block(ctx, BlockNumber(lesser_block_number)).await?;
             assert!(block.is_none());
         }
         anyhow::Ok(())

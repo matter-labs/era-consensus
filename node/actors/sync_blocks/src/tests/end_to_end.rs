@@ -6,10 +6,13 @@ use rand::seq::SliceRandom;
 use std::fmt;
 use test_casing::test_casing;
 use tracing::{instrument, Instrument};
-use zksync_concurrency::{ctx, scope, testonly::{set_timeout,abort_on_panic}};
+use zksync_concurrency::{
+    ctx, scope,
+    testonly::{abort_on_panic, set_timeout},
+};
 use zksync_consensus_network as network;
-use zksync_consensus_utils::no_copy::NoCopy;
 use zksync_consensus_storage::testonly::new_store;
+use zksync_consensus_utils::no_copy::NoCopy;
 
 type NetworkDispatcherPipe =
     pipe::DispatcherPipe<network::io::InputMessage, network::io::OutputMessage>;
@@ -31,7 +34,7 @@ impl Node {
         let rng = &mut ctx.rng();
         // NOTE: originally there were only 4 consensus nodes.
         let mut setup = validator::testonly::GenesisSetup::new(rng, node_count);
-        setup.push_blocks(rng,20);
+        setup.push_blocks(rng, 20);
         let setup = Arc::new(setup);
         let mut nodes = vec![];
         let mut runners = vec![];
@@ -95,7 +98,8 @@ impl NodeRunner {
         tracing::info!("NodeRunner::run()");
         let key = self.network.gossip.key.public();
         let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
-        let (mut network, network_runner) = network::testonly::Instance::new(self.network.clone(), self.store.clone());
+        let (mut network, network_runner) =
+            network::testonly::Instance::new(self.network.clone(), self.store.clone());
         let sync_blocks_config = test_config(&self.setup);
         scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(self.store_runner.run(ctx));
@@ -103,12 +107,19 @@ impl NodeRunner {
             network.wait_for_gossip_connections().await;
             tracing::info!("Node connected to peers");
 
-            self.switch_on_receiver.recv_or_disconnected(ctx).await?.ok();
+            self.switch_on_receiver
+                .recv_or_disconnected(ctx)
+                .await?
+                .ok();
             tracing::info!("switch_on");
-            s.spawn_bg(async {
-                Self::run_executor(ctx, sync_blocks_dispatcher_pipe, &mut network.pipe).await
-                    .with_context(|| format!("executor for {key:?}"))
-            }.instrument(tracing::info_span!("mock_executor", ?key)));
+            s.spawn_bg(
+                async {
+                    Self::run_executor(ctx, sync_blocks_dispatcher_pipe, network.pipe())
+                        .await
+                        .with_context(|| format!("executor for {key:?}"))
+                }
+                .instrument(tracing::info_span!("mock_executor", ?key)),
+            );
             s.spawn_bg(sync_blocks_config.run(ctx, sync_blocks_actor_pipe, self.store.clone()));
             tracing::info!("Node is fully started");
 
@@ -202,7 +213,10 @@ impl GossipNetworkTest for BasicSynchronization {
 
             tracing::info!("Wait until all nodes get block #{block_number}");
             for node_handle in &mut node_handles {
-                node_handle.store.wait_until_persisted(ctx, block_number).await?;
+                node_handle
+                    .store
+                    .wait_until_persisted(ctx, block_number)
+                    .await?;
                 tracing::info!("OK");
             }
         }
@@ -220,7 +234,10 @@ impl GossipNetworkTest for BasicSynchronization {
 
             // Wait until nodes get all new blocks.
             for node_handle in &node_handles {
-                node_handle.store.wait_until_persisted(ctx, BlockNumber(9)).await?;
+                node_handle
+                    .store
+                    .wait_until_persisted(ctx, BlockNumber(9))
+                    .await?;
             }
             Ok(())
         })
@@ -277,7 +294,10 @@ impl GossipNetworkTest for SwitchingOffNodes {
 
             // Wait until all remaining nodes get the new block.
             for node_handle in &node_handles {
-                node_handle.store.wait_until_persisted(ctx, block_number).await?;
+                node_handle
+                    .store
+                    .wait_until_persisted(ctx, block_number)
+                    .await?;
             }
             tracing::trace!("All nodes received block #{block_number}");
             block_number = block_number.next();
@@ -326,7 +346,10 @@ impl GossipNetworkTest for SwitchingOnNodes {
 
             // Wait until all switched on nodes get the new block.
             for node_handle in &mut switched_on_nodes {
-                node_handle.store.wait_until_persisted(ctx, block_number).await?;
+                node_handle
+                    .store
+                    .wait_until_persisted(ctx, block_number)
+                    .await?;
             }
             tracing::trace!("All nodes received block #{block_number}");
             block_number = block_number.next();
