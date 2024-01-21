@@ -22,7 +22,7 @@ async fn test_inmemory_block_store() {
 fn test_schema_encode_decode() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    zksync_protobuf::testonly::test_encode_random::<_, ReplicaState>(rng);
+    zksync_protobuf::testonly::test_encode_random::<ReplicaState>(rng);
 }
 
 #[tokio::test]

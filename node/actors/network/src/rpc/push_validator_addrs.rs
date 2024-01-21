@@ -44,8 +44,4 @@ impl ProtoFmt for Req {
             net_addresses: self.0.iter().map(|a| ProtoFmt::build(a.as_ref())).collect(),
         }
     }
-
-    fn max_size() -> usize {
-        zksync_protobuf::MB
-    }
 }

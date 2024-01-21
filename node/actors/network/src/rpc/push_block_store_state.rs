@@ -42,9 +42,4 @@ impl ProtoFmt for Req {
             last: Some(self.0.last.build()),
         }
     }
-
-    fn max_size() -> usize {
-        // TODO: estimate maximum size more precisely
-        100 * zksync_protobuf::kB
-    }
 }

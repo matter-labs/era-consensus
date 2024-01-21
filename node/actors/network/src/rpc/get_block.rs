@@ -41,10 +41,6 @@ impl ProtoFmt for Req {
             number: Some(number),
         }
     }
-
-    fn max_size() -> usize {
-        zksync_protobuf::kB
-    }
 }
 
 /// Response to a [`GetBlockRequest`] containing a block or a reason it cannot be retrieved.
@@ -62,9 +58,5 @@ impl ProtoFmt for Resp {
         Self::Proto {
             block: self.0.as_ref().map(ProtoFmt::build),
         }
-    }
-
-    fn max_size() -> usize {
-        4 * zksync_protobuf::MB
     }
 }

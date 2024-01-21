@@ -185,10 +185,7 @@ impl State {
     /// Constructs a new State.
     pub(crate) fn new(cfg: Config, block_store: Arc<BlockStore>) -> Self {
         Self {
-            inbound: PoolWatch::new(
-                cfg.static_inbound.clone(),
-                cfg.dynamic_inbound_limit,
-            ),
+            inbound: PoolWatch::new(cfg.static_inbound.clone(), cfg.dynamic_inbound_limit),
             outbound: PoolWatch::new(cfg.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
             block_store,

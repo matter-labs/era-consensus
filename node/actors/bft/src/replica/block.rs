@@ -1,5 +1,5 @@
 use super::StateMachine;
-use tracing::{info, instrument};
+use tracing::instrument;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
 
@@ -30,9 +30,10 @@ impl StateMachine {
             justification: commit_qc.clone(),
         };
 
-        info!(
-            "Finalized a block!\nFinal block: {:#?}",
-            block.header().hash()
+        tracing::info!(
+            "Finalized block {}: {:#?}",
+            block.header().number,
+            block.header().hash(),
         );
         self.config
             .block_store

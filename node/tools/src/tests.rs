@@ -39,7 +39,7 @@ impl Distribution<AppConfig> for Standard {
 fn test_schema_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    test_encode_random::<_, AppConfig>(rng);
+    test_encode_random::<AppConfig>(rng);
 }
 
 #[tokio::test]
