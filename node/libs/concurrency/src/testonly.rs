@@ -1,8 +1,5 @@
 //! Testonly utilities for concurrent tests.
 use std::{future::Future, io::IsTerminal as _};
-use crate::ctx;
-use crate::signal;
-use std::sync::Arc;
 
 /// Iff the current process is executed under
 /// nextest in process-per-test mode, changes the behavior of the process to [panic=abort].
@@ -40,24 +37,22 @@ pub fn abort_on_panic() {
 
 /// Guard which has to be dropped before timeout is reached.
 /// Otherwise the test will panic.
-pub struct TimeoutGuard(Arc<signal::Once>);
+#[allow(unused_tuple_struct_fields)]
+pub struct TimeoutGuard(std::sync::mpsc::Sender<()>);
 
-impl Drop for TimeoutGuard {
-    fn drop(&mut self) {
-        self.0.send();
-    }
-}
 
 /// Panics if (real time) timeout is reached before ctx is canceled.
+/// Implemented without using tokio, so that it cannot delay the timeout
+/// evaluation.
 pub fn set_timeout(timeout: time::Duration) -> TimeoutGuard {
-    let done = Arc::new(signal::Once::new());
-    let guard = TimeoutGuard(done.clone());
-    tokio::task::spawn_blocking(move || {
-        if let Err(ctx::Canceled) = done.recv(&ctx::root().with_timeout(timeout)).block() {
+    use std::sync::mpsc;
+    let (send,recv) = mpsc::channel();
+    std::thread::spawn(move || {
+        if let Err(mpsc::RecvTimeoutError::Timeout) = recv.recv_timeout(timeout.try_into().unwrap()) {
             panic!("TIMEOUT");
         }
     });
-    guard
+    TimeoutGuard(send)
 }
 
 /// Executes a test under multiple configurations of the tokio runtime.

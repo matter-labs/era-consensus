@@ -5,6 +5,7 @@ use zksync_concurrency::{ctx, oneshot, scope, sync};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator;
 use zksync_consensus_utils::pipe;
+use zksync_consensus_storage::testonly::new_store;
 
 #[derive(Clone, Copy)]
 pub(crate) enum Network {
@@ -30,7 +31,7 @@ impl Test {
         let mut honest = vec![];
         scope::run!(ctx, |ctx,s| async {
            for (i, net) in nets.into_iter().enumerate() {
-                let (store, runner) = network::testonly::new_store(ctx,&setup.blocks[0]).await;
+                let (store, runner) = new_store(ctx,&setup.blocks[0]).await;
                 s.spawn_bg(runner.run(ctx));
                 if self.nodes[i] == Behavior::Honest {
                     honest.push(store.clone());

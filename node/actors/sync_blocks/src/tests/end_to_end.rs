@@ -9,6 +9,7 @@ use tracing::{instrument, Instrument};
 use zksync_concurrency::{ctx, scope, testonly::{set_timeout,abort_on_panic}};
 use zksync_consensus_network as network;
 use zksync_consensus_utils::no_copy::NoCopy;
+use zksync_consensus_storage::testonly::new_store;
 
 type NetworkDispatcherPipe =
     pipe::DispatcherPipe<network::io::InputMessage, network::io::OutputMessage>;
@@ -47,7 +48,7 @@ impl Node {
         network: network::Config,
         setup: Arc<GenesisSetup>,
     ) -> (Self, NodeRunner) {
-        let (store, store_runner) = network::testonly::new_store(ctx, &setup.blocks[0]).await;
+        let (store, store_runner) = new_store(ctx, &setup.blocks[0]).await;
         let (switch_on_sender, switch_on_receiver) = oneshot::channel();
         let (switch_off_sender, switch_off_receiver) = oneshot::channel();
 

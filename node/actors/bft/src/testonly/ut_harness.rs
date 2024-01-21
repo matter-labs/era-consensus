@@ -14,7 +14,7 @@ use zksync_consensus_roles::validator::{
     self, CommitQC, LeaderCommit, LeaderPrepare, Phase, PrepareQC, ReplicaCommit,
     ReplicaPrepare, SecretKey, Signed, ViewNumber,
 };
-use zksync_consensus_storage::{testonly::in_memory, BlockStoreRunner};
+use zksync_consensus_storage::{testonly::{in_memory,new_store}, BlockStoreRunner};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// `UTHarness` provides various utilities for unit tests.
@@ -46,7 +46,7 @@ impl UTHarness {
     ) -> (UTHarness, BlockStoreRunner) {
         let rng = &mut ctx.rng();
         let setup = validator::testonly::GenesisSetup::new(rng, num_validators);
-        let (block_store, runner) = network::testonly::new_store(ctx, &setup.blocks[0]).await;
+        let (block_store, runner) = new_store(ctx, &setup.blocks[0]).await;
         let (send, recv) = ctx::channel::unbounded();
 
         let cfg = Arc::new(Config {

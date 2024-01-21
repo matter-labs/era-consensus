@@ -1,8 +1,9 @@
 //! Test-only utilities.
-use crate::{PersistentBlockStore, Proposal, ReplicaState};
+use crate::{PersistentBlockStore, BlockStore, BlockStoreRunner, Proposal, ReplicaState};
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
+use std::sync::Arc;
 
 pub mod in_memory;
 
@@ -25,6 +26,11 @@ impl Distribution<ReplicaState> for Standard {
             proposals: (0..rng.gen_range(1..11)).map(|_| rng.gen()).collect(),
         }
     }
+}
+
+/// Constructs a new in-memory store with a genesis block.
+pub async fn new_store(ctx: &ctx::Ctx, genesis: &validator::FinalBlock) -> (Arc<BlockStore>,BlockStoreRunner) {
+    BlockStore::new(ctx,Box::new(in_memory::BlockStore::new(genesis.clone()))).await.unwrap()
 }
 
 /// Dumps all the blocks stored in `store`.

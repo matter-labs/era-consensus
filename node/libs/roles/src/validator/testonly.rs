@@ -289,7 +289,7 @@ impl Distribution<BlockHeader> for Standard {
 
 impl Distribution<Payload> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Payload {
-        let size: usize = rng.gen_range(0..11);
+        let size: usize = rng.gen_range(500..1000);
         Payload((0..size).map(|_| rng.gen()).collect())
     }
 }

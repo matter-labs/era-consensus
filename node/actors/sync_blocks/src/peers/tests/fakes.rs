@@ -3,6 +3,7 @@
 use super::*;
 use zksync_consensus_roles::validator;
 use zksync_consensus_roles::validator::testonly::GenesisSetup;
+use zksync_consensus_storage::testonly::new_store;
 use crate::tests::sync_state;
 
 #[tokio::test]
@@ -11,7 +12,7 @@ async fn processing_invalid_sync_states() {
     let rng = &mut ctx.rng();
     let mut setup = GenesisSetup::empty(rng,4);
     setup.push_blocks(rng,3); 
-    let (storage, _runner) = network::testonly::new_store(ctx, &setup.blocks[0]).await;
+    let (storage, _runner) = new_store(ctx, &setup.blocks[0]).await;
 
     let (message_sender, _) = channel::unbounded();
     let peer_states = PeerStates::new(test_config(&setup), storage, message_sender);

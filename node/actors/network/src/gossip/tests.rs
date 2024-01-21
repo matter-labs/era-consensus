@@ -17,6 +17,7 @@ use zksync_concurrency::{
     time,
 };
 use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock};
+use zksync_consensus_storage::testonly::new_store;
 
 #[tokio::test]
 async fn test_one_connection_per_node() {
@@ -28,7 +29,7 @@ async fn test_one_connection_per_node() {
     let cfgs = testonly::new_configs(rng, &setup, 2);
 
     scope::run!(ctx, |ctx,s| async {
-        let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+        let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
         s.spawn_bg(runner.run(ctx));
         let mut nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
             let (node,runner) = testonly::Instance::new(cfg.clone(), store.clone());
@@ -230,7 +231,7 @@ async fn test_validator_addrs_propagation() {
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
-        let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+        let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
         s.spawn_bg(runner.run(ctx));
         let nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
             let (node,runner) = testonly::Instance::new(cfg.clone(), store.clone());
@@ -277,7 +278,7 @@ async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
     scope::run!(ctx, |ctx, s| async { 
         let mut nodes = vec![];
         for (i,cfg) in cfgs.into_iter().enumerate() {
-            let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+            let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
             s.spawn_bg(runner.run(ctx));
             let (node,runner) = testonly::Instance::new(cfg, store);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node",i)));
@@ -342,7 +343,7 @@ async fn uncoordinated_block_syncing(
     scope::run!(ctx, |ctx, s| async {
         for (i,cfg) in testonly::new_configs(rng, &setup, gossip_peers).into_iter().enumerate() {
             let i = i;
-            let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+            let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
             s.spawn_bg(runner.run(ctx));
             let (node,runner) = testonly::Instance::new(cfg,store.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node",i)));
@@ -378,7 +379,7 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
     // All inbound and outbound peers should answer the request.
     let expected_successful_responses = (2 * gossip_peers).min(node_count - 1);
 
-    let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+    let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(runner.run(ctx));
         let mut nodes : Vec<_> = cfgs.into_iter().enumerate().map(|(i,cfg)| {
@@ -449,7 +450,7 @@ async fn validator_node_restart() {
 
     let setup = validator::testonly::GenesisSetup::new(rng, 2);
     let mut cfgs = testonly::new_configs(rng, &setup, 1);
-    let (store,store_runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+    let (store,store_runner) = new_store(ctx,&setup.blocks[0]).await;
     let (mut node1,node1_runner) = testonly::Instance::new(cfgs[1].clone(),store.clone());
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(store_runner.run(ctx));
@@ -541,7 +542,7 @@ async fn rate_limiting() {
     }
     let mut nodes = vec![];
     scope::run!(ctx, |ctx, s| async {
-        let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+        let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
         s.spawn_bg(runner.run(ctx));
         // Spawn the satellite nodes and wait until they register
         // their own address.

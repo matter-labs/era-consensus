@@ -6,7 +6,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use zksync_consensus_storage::{BlockStore,BlockStoreRunner,testonly::in_memory};
+use zksync_consensus_storage::{BlockStore};
 use zksync_concurrency::{
     signal,
     ctx,
@@ -53,11 +53,6 @@ pub struct Instance {
     pub(crate) terminate: Arc<signal::Once>,
     /// Dispatcher end of the network pipe.
     pub pipe: pipe::DispatcherPipe<crate::io::InputMessage, crate::io::OutputMessage>,
-}
-
-/// Constructs a new store with a genesis block.
-pub async fn new_store(ctx: &ctx::Ctx, genesis: &validator::FinalBlock) -> (Arc<BlockStore>,BlockStoreRunner) {
-    BlockStore::new(ctx,Box::new(in_memory::BlockStore::new(genesis.clone()))).await.unwrap()
 }
 
 /// Construct configs for `n` validators of the consensus.

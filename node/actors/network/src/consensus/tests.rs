@@ -4,6 +4,7 @@ use rand::Rng;
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, net, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
+use zksync_consensus_storage::testonly::new_store;
 
 #[tokio::test]
 async fn test_one_connection_per_validator() {
@@ -14,7 +15,7 @@ async fn test_one_connection_per_validator() {
     let nodes = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx,s| async {
-        let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+        let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
         s.spawn_bg(runner.run(ctx));
         let nodes : Vec<_> = nodes.into_iter().enumerate().map(|(i,node)| {
             let (node,runner) = testonly::Instance::new(node, store.clone());
@@ -69,7 +70,7 @@ async fn test_address_change() {
     let setup = validator::testonly::GenesisSetup::new(rng, 5);
     let mut cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
-        let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+        let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
         s.spawn_bg(runner.run(ctx));
         let mut nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
             let (node,runner) = testonly::Instance::new(cfg.clone(), store.clone());
@@ -119,7 +120,7 @@ async fn test_transmission() {
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
-        let (store,runner) = testonly::new_store(ctx,&setup.blocks[0]).await;
+        let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
         s.spawn_bg(runner.run(ctx));
         let mut nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
             let (node,runner) = testonly::Instance::new(cfg.clone(), store.clone());
