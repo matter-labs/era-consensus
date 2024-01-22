@@ -19,7 +19,7 @@ pub(crate) struct StateMachine {
     /// Pipe through which replica sends network messages.
     pub(super) outbound_pipe: OutputSender,
     /// Pipe through which replica receives network messages.
-    inbound_pipe: sync::prunable_mpsc::Receiver<Option<Signed<ConsensusMsg>>, ctx::Result<()>>,
+    inbound_pipe: sync::prunable_mpsc::Receiver<Signed<ConsensusMsg>, ctx::Result<()>>,
     /// The current view number.
     pub(crate) view: validator::ViewNumber,
     /// The current phase.
@@ -32,7 +32,7 @@ pub(crate) struct StateMachine {
     pub(crate) block_proposal_cache:
         BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
     /// The deadline to receive an input message.
-    pub(crate) timeout_deadline: sync::watch::Sender<time::Deadline>,
+    pub(crate) timeout_deadline: time::Deadline,
 }
 
 impl StateMachine {
@@ -44,7 +44,7 @@ impl StateMachine {
         outbound_pipe: OutputSender,
     ) -> ctx::Result<(
         Self,
-        sync::prunable_mpsc::Sender<Option<Signed<ConsensusMsg>>, ctx::Result<()>>,
+        sync::prunable_mpsc::Sender<Signed<ConsensusMsg>, ctx::Result<()>>,
     )> {
         let backup = match config.replica_store.state(ctx).await? {
             Some(backup) => backup,
@@ -69,7 +69,7 @@ impl StateMachine {
             high_vote: backup.high_vote,
             high_qc: backup.high_qc,
             block_proposal_cache,
-            timeout_deadline: sync::watch::channel(time::Deadline::Infinite).0,
+            timeout_deadline: time::Deadline::Infinite,
         };
 
         // We need to start the replica before processing inputs.
@@ -83,10 +83,19 @@ impl StateMachine {
     /// potentially triggering state modifications and message sending to the executor.
     pub async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         loop {
-            let (signed_message, res_send) = self.inbound_pipe.recv(ctx).await?;
-            let Some(signed_message) = signed_message else {
-                let res = self.start_new_view(ctx).await;
-                let _ = res_send.send(res);
+            let recv = self
+                .inbound_pipe
+                .recv(&ctx.with_deadline(self.timeout_deadline))
+                .await;
+
+            // Check for non-timeout cancellation.
+            if !ctx.is_active() {
+                return Ok(());
+            }
+
+            // Check for timeout.
+            let Some((signed_message, res_send)) = recv.ok() else {
+                let _ = self.start_new_view(ctx).await;
                 continue;
             };
 
@@ -155,19 +164,13 @@ impl StateMachine {
     }
 
     pub fn inbound_pruning_predicate(
-        pending_msg: &Option<Signed<ConsensusMsg>>,
-        new_msg: &Option<Signed<ConsensusMsg>>,
+        pending_msg: &Signed<ConsensusMsg>,
+        new_msg: &Signed<ConsensusMsg>,
     ) -> bool {
-        if pending_msg.is_none() || new_msg.is_none() {
+        if pending_msg.key != new_msg.key {
             return false;
         }
-        let (existing_msg, new_msg) = (pending_msg.as_ref().unwrap(), new_msg.as_ref().unwrap());
-
-        if existing_msg.key != new_msg.key {
-            return false;
-        }
-
-        match (&existing_msg.msg, &new_msg.msg) {
+        match (&pending_msg.msg, &new_msg.msg) {
             (ConsensusMsg::LeaderPrepare(existing_msg), ConsensusMsg::LeaderPrepare(new_msg)) => {
                 new_msg.view > existing_msg.view
             }

@@ -75,7 +75,6 @@ impl Config {
 
         let res = scope::run!(ctx, |ctx, s| async {
             let prepare_qc_recv = leader.prepare_qc.subscribe();
-            let deadline_recv = replica.timeout_deadline.subscribe();
 
             s.spawn_bg(replica.run(ctx));
             s.spawn_bg(leader.run(ctx));
@@ -91,8 +90,7 @@ impl Config {
             // This is the infinite loop where the consensus actually runs. The validator waits for either
             // a message from the network or for a timeout, and processes each accordingly.
             loop {
-                let deadline = *deadline_recv.borrow();
-                let input = pipe.recv.recv(&ctx.with_deadline(deadline)).await.ok();
+                let input = pipe.recv.recv(ctx).await;
 
                 // We check if the context is active before processing the input. If the context is not active,
                 // we stop.
@@ -100,25 +98,19 @@ impl Config {
                     return Ok(());
                 }
 
-                // Check if an asynchronous error was received.
+                // Check if an asynchronous error was returned.
                 if let Ok(res) = err_recv.try_recv() {
                     return Err(res.err().unwrap());
                 }
 
-                let Some(InputMessage::Network(req)) = input else {
-                    let res_recv = replica_send.send(None).await;
-                    // Wait for result before proceeding, allowing timeout deadline value to get updated.
-                    handle_result(ctx, res_recv, &err_send).await;
-                    continue;
-                };
-
+                let InputMessage::Network(req) = input.unwrap();
                 let res_recv;
                 match &req.msg.msg {
                     ConsensusMsg::ReplicaPrepare(_) | ConsensusMsg::ReplicaCommit(_) => {
                         res_recv = leader_send.send(req.msg).await;
                     }
                     ConsensusMsg::LeaderPrepare(_) | ConsensusMsg::LeaderCommit(_) => {
-                        res_recv = replica_send.send(Some(req.msg)).await;
+                        res_recv = replica_send.send(req.msg).await;
                     }
                 }
 
