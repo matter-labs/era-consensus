@@ -183,6 +183,7 @@ impl Config {
     }
 
     /// Generates rust code from the proto files according to the config.
+    #[allow(clippy::map_identity)]
     pub fn generate(self) -> anyhow::Result<()> {
         self.validate()?;
         println!("cargo:rerun-if-changed={}", self.input_root.to_str());
