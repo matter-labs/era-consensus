@@ -4,6 +4,7 @@ use std::{
     sync::Arc,
 };
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
+use zksync_consensus_network::io::ConsensusReq;
 use zksync_consensus_roles::{
     validator,
     validator::{ConsensusMsg, Signed},
@@ -18,8 +19,8 @@ pub(crate) struct StateMachine {
     pub(crate) config: Arc<Config>,
     /// Pipe through which replica sends network messages.
     pub(super) outbound_pipe: OutputSender,
-    /// Pipe through which replica receives network messages.
-    inbound_pipe: sync::prunable_mpsc::Receiver<Signed<ConsensusMsg>, ctx::Result<()>>,
+    /// Pipe through which replica receives network requests.
+    inbound_pipe: sync::prunable_mpsc::Receiver<ConsensusReq>,
     /// The current view number.
     pub(crate) view: validator::ViewNumber,
     /// The current phase.
@@ -42,10 +43,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         config: Arc<Config>,
         outbound_pipe: OutputSender,
-    ) -> ctx::Result<(
-        Self,
-        sync::prunable_mpsc::Sender<Signed<ConsensusMsg>, ctx::Result<()>>,
-    )> {
+    ) -> ctx::Result<(Self, sync::prunable_mpsc::Sender<ConsensusReq>)> {
         let backup = match config.replica_store.state(ctx).await? {
             Some(backup) => backup,
             None => config.block_store.subscribe().borrow().last.clone().into(),
@@ -94,16 +92,16 @@ impl StateMachine {
             }
 
             // Check for timeout.
-            let Some((signed_message, res_send)) = recv.ok() else {
-                let _ = self.start_new_view(ctx).await;
+            let Some(req) = recv.ok() else {
+                self.start_new_view(ctx).await?;
                 continue;
             };
 
             let now = ctx.now();
-            let label = match &signed_message.msg {
+            let label = match &req.msg.msg {
                 ConsensusMsg::LeaderPrepare(_) => {
                     let res = match self
-                        .process_leader_prepare(ctx, signed_message.cast().unwrap())
+                        .process_leader_prepare(ctx, req.msg.cast().unwrap())
                         .await
                         .wrap("process_leader_prepare()")
                     {
@@ -118,7 +116,7 @@ impl StateMachine {
                 }
                 ConsensusMsg::LeaderCommit(_) => {
                     let res = match self
-                        .process_leader_commit(ctx, signed_message.cast().unwrap())
+                        .process_leader_commit(ctx, req.msg.cast().unwrap())
                         .await
                         .wrap("process_leader_commit()")
                     {
@@ -135,7 +133,9 @@ impl StateMachine {
             };
             metrics::METRICS.replica_processing_latency[&label].observe_latency(ctx.now() - now);
 
-            let _ = res_send.send(Ok(()));
+            // Notify network actor that the message has been processed.
+            // Ignore sending error.
+            let _ = req.ack.send(());
         }
     }
 
@@ -163,14 +163,11 @@ impl StateMachine {
         Ok(())
     }
 
-    pub fn inbound_pruning_predicate(
-        pending_msg: &Signed<ConsensusMsg>,
-        new_msg: &Signed<ConsensusMsg>,
-    ) -> bool {
-        if pending_msg.key != new_msg.key {
+    pub fn inbound_pruning_predicate(pending_req: &ConsensusReq, new_req: &ConsensusReq) -> bool {
+        if pending_req.msg.key != new_req.msg.key {
             return false;
         }
-        match (&pending_msg.msg, &new_msg.msg) {
+        match (&pending_req.msg.msg, &new_req.msg.msg) {
             (ConsensusMsg::LeaderPrepare(existing_msg), ConsensusMsg::LeaderPrepare(new_msg)) => {
                 new_msg.view > existing_msg.view
             }

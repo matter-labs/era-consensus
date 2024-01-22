@@ -70,9 +70,6 @@ impl Config {
         let (replica, replica_send) =
             replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
 
-        // mpsc channel for returning error asynchronously.
-        let (err_send, mut err_recv) = mpsc::channel::<ctx::Result<()>>(1);
-
         let res = scope::run!(ctx, |ctx, s| async {
             let prepare_qc_recv = leader.prepare_qc.subscribe();
 
@@ -98,58 +95,21 @@ impl Config {
                     return Ok(());
                 }
 
-                // Check if an asynchronous error was returned.
-                if let Ok(res) = err_recv.try_recv() {
-                    return Err(res.err().unwrap());
-                }
-
                 let InputMessage::Network(req) = input.unwrap();
-                let res_recv;
                 match &req.msg.msg {
                     ConsensusMsg::ReplicaPrepare(_) | ConsensusMsg::ReplicaCommit(_) => {
-                        res_recv = leader_send.send(req.msg).await;
+                        leader_send.send(req).await;
                     }
                     ConsensusMsg::LeaderPrepare(_) | ConsensusMsg::LeaderCommit(_) => {
-                        res_recv = replica_send.send(req.msg).await;
+                        replica_send.send(req).await;
                     }
                 }
-
-                s.spawn_bg(async {
-                    handle_result(ctx, res_recv, &err_send).await;
-
-                    // Notify network actor that the message has been processed.
-                    // Ignore sending error.
-                    let _ = req.ack.send(());
-
-                    Ok(())
-                });
             }
         })
         .await;
         match res {
             Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
             Err(ctx::Error::Internal(err)) => Err(err),
-        }
-    }
-}
-
-async fn handle_result(
-    ctx: &ctx::Ctx,
-    res_recv: Receiver<ctx::Result<()>>,
-    err_send: &mpsc::Sender<ctx::Result<()>>,
-) {
-    let res = res_recv.recv_or_disconnected(ctx).await;
-
-    // Ignore the outer `Canceled` (should be handled elsewhere)
-    // and `Disconnected` (expected in the case of inbound message queue pruning) errors.
-    if let Ok(Ok(Err(err))) = res {
-        match err {
-            // Ignore inner `Canceled` as well, for the same reason.
-            ctx::Error::Canceled(_) => {}
-            // Notify internal error.
-            ctx::Error::Internal(_) => {
-                err_send.send(Err(err)).await.unwrap();
-            }
         }
     }
 }

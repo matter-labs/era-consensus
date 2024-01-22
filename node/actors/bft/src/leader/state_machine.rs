@@ -6,7 +6,7 @@ use std::{
 };
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
-use zksync_consensus_network::io::{ConsensusInputMessage, Target};
+use zksync_consensus_network::io::{ConsensusInputMessage, ConsensusReq, Target};
 use zksync_consensus_roles::validator::{self, ConsensusMsg, Signed};
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
@@ -17,8 +17,8 @@ pub(crate) struct StateMachine {
     pub(crate) config: Arc<Config>,
     /// Pipe through which leader sends network messages.
     pub(crate) outbound_pipe: OutputSender,
-    /// Pipe through which leader receives network messages.
-    inbound_pipe: sync::prunable_mpsc::Receiver<Signed<ConsensusMsg>, ctx::Result<()>>,
+    /// Pipe through which leader receives network requests.
+    inbound_pipe: sync::prunable_mpsc::Receiver<ConsensusReq>,
     /// The current view number. This might not match the replica's view number, we only have this here
     /// to make the leader advance monotonically in time and stop it from accepting messages from the past.
     pub(crate) view: validator::ViewNumber,
@@ -52,10 +52,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         config: Arc<Config>,
         outbound_pipe: OutputSender,
-    ) -> (
-        Self,
-        sync::prunable_mpsc::Sender<Signed<ConsensusMsg>, ctx::Result<()>>,
-    ) {
+    ) -> (Self, sync::prunable_mpsc::Sender<ConsensusReq>) {
         let (send, recv) = sync::prunable_mpsc::channel(StateMachine::inbound_pruning_predicate);
 
         let this = StateMachine {
@@ -80,13 +77,13 @@ impl StateMachine {
     /// potentially triggering state modifications and message sending to the executor.
     pub async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         loop {
-            let (signed_message, res_send) = self.inbound_pipe.recv(ctx).await?;
+            let req = self.inbound_pipe.recv(ctx).await?;
 
             let now = ctx.now();
-            let label = match &signed_message.msg {
+            let label = match &req.msg.msg {
                 ConsensusMsg::ReplicaPrepare(_) => {
                     let res = match self
-                        .process_replica_prepare(ctx, signed_message.cast().unwrap())
+                        .process_replica_prepare(ctx, req.msg.cast().unwrap())
                         .await
                         .wrap("process_replica_prepare()")
                     {
@@ -103,7 +100,7 @@ impl StateMachine {
                 }
                 ConsensusMsg::ReplicaCommit(_) => {
                     let res = self
-                        .process_replica_commit(ctx, signed_message.cast().unwrap())
+                        .process_replica_commit(ctx, req.msg.cast().unwrap())
                         .map_err(|err| {
                             tracing::warn!("process_replica_commit: {err:#}");
                         });
@@ -112,7 +109,10 @@ impl StateMachine {
                 _ => unreachable!(),
             };
             metrics::METRICS.leader_processing_latency[&label].observe_latency(ctx.now() - now);
-            let _ = res_send.send(Ok(()));
+
+            // Notify network actor that the message has been processed.
+            // Ignore sending error.
+            let _ = req.ack.send(());
         }
     }
 
@@ -219,15 +219,12 @@ impl StateMachine {
         Ok(())
     }
 
-    pub fn inbound_pruning_predicate(
-        pending_msg: &Signed<ConsensusMsg>,
-        new_msg: &Signed<ConsensusMsg>,
-    ) -> bool {
-        if pending_msg.key != new_msg.key {
+    pub fn inbound_pruning_predicate(pending_req: &ConsensusReq, new_req: &ConsensusReq) -> bool {
+        if pending_req.msg.key != new_req.msg.key {
             return false;
         }
 
-        match (&pending_msg.msg, &new_msg.msg) {
+        match (&pending_req.msg.msg, &new_req.msg.msg) {
             (ConsensusMsg::ReplicaPrepare(existing_msg), ConsensusMsg::ReplicaPrepare(new_msg)) => {
                 new_msg.view > existing_msg.view
             }

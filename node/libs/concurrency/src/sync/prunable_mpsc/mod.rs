@@ -1,13 +1,12 @@
 //! Prunable, multi-producer, single-consumer, unbounded FIFO queue for communicating between asynchronous tasks.
 //! The pruning takes place whenever a new value is sent, based on a specified predicate.
-//! The channel also facilitates the asynchronous returning of result associated with the processing of values received from the channel.
 //!
 //! The separation of [`Sender`] and [`Receiver`] is employed primarily because [`Receiver`] requires
 //! a mutable reference to the signaling channel, unlike [`Sender`], hence making it undesirable to
 //! be used in conjunction.
 //!
 use crate::{
-    ctx, oneshot,
+    ctx,
     sync::{self, watch, Mutex},
 };
 use std::{collections::VecDeque, fmt, sync::Arc};
@@ -21,13 +20,12 @@ mod tests;
 /// The Sender can be cloned to send to the same channel from multiple code locations. Only one Receiver is supported.
 ///
 /// * [`T`]: The type of data that will be sent through the channel.
-/// * [`U`]: The type of the asynchronous returning of result associated with the processing of values received from the channel.
 /// * [`pruning_predicate`]: A function that determines whether an unreceived, pending value in the buffer should be pruned based on a newly sent value.
 ///
-pub fn channel<T, U>(
+pub fn channel<T>(
     pruning_predicate: impl 'static + Sync + Send + Fn(&T, &T) -> bool,
-) -> (Sender<T, U>, Receiver<T, U>) {
-    let queue: Mutex<VecDeque<(T, oneshot::Sender<U>)>> = Mutex::new(VecDeque::new());
+) -> (Sender<T>, Receiver<T>) {
+    let queue: Mutex<VecDeque<T>> = Mutex::new(VecDeque::new());
     // Internal watch, to enable waiting on the receiver side for new values.
     let (has_values_send, has_values_recv) = watch::channel(false);
 
@@ -49,38 +47,33 @@ pub fn channel<T, U>(
     (send, recv)
 }
 
-struct Shared<T, U> {
-    buffer: Mutex<VecDeque<(T, oneshot::Sender<U>)>>,
+struct Shared<T> {
+    buffer: Mutex<VecDeque<T>>,
     has_values_send: watch::Sender<bool>,
 }
 
 /// Sends values to the associated [`Receiver`].
 /// Instances are created by the [`channel`] function.
 #[allow(clippy::type_complexity)]
-pub struct Sender<T, U> {
-    shared: Arc<Shared<T, U>>,
+pub struct Sender<T> {
+    shared: Arc<Shared<T>>,
     pruning_predicate: Box<dyn Sync + Send + Fn(&T, &T) -> bool>,
 }
 
-impl<T, U> Sender<T, U> {
+impl<T> Sender<T> {
     /// Sends a value.
     /// This initiates the pruning procedure which operates in O(N) time complexity
     /// on the buffer of pending values.
-    pub async fn send(&self, value: T) -> oneshot::Receiver<U> {
-        // Create oneshot channel for returning result asynchronously.
-        let (res_send, res_recv) = oneshot::channel();
-
+    pub async fn send(&self, value: T) {
         let mut buffer = self.shared.buffer.lock().await;
-        buffer.retain(|pending_value| !(self.pruning_predicate)(&pending_value.0, &value));
-        buffer.push_back((value, res_send));
+        buffer.retain(|pending_value| !(self.pruning_predicate)(&pending_value, &value));
+        buffer.push_back(value);
 
         self.shared.has_values_send.send_replace(true);
-
-        res_recv
     }
 }
 
-impl<T, U> fmt::Debug for Sender<T, U> {
+impl<T> fmt::Debug for Sender<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("Sender").finish()
     }
@@ -88,15 +81,15 @@ impl<T, U> fmt::Debug for Sender<T, U> {
 
 /// Receives values from the associated [`Sender`].
 /// Instances are created by the [`channel`] function.
-pub struct Receiver<T, U> {
-    shared: Arc<Shared<T, U>>,
+pub struct Receiver<T> {
+    shared: Arc<Shared<T>>,
     has_values_recv: watch::Receiver<bool>,
 }
 
-impl<T, U> Receiver<T, U> {
+impl<T> Receiver<T> {
     /// Receives the next value for this receiver.
     /// If there are no messages in the buffer, this method will hang until a message is sent.
-    pub async fn recv(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<(T, oneshot::Sender<U>)> {
+    pub async fn recv(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<T> {
         sync::wait_for(ctx, &mut self.has_values_recv, |has_values| *has_values).await?;
         let mut buffer = self.shared.buffer.lock().await;
         // `None` is unexpected because we waited for new values, and there's only a single receiver.
@@ -110,7 +103,7 @@ impl<T, U> Receiver<T, U> {
     }
 }
 
-impl<T, U> fmt::Debug for Receiver<T, U> {
+impl<T> fmt::Debug for Receiver<T> {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("Receiver").finish()
     }

@@ -1,5 +1,4 @@
 use crate::ctx;
-use assert_matches::assert_matches;
 use tokio::time::{timeout, Duration};
 
 // Test scenario:
@@ -13,49 +12,24 @@ async fn test_prunable_mpsc() {
     struct ValueType(usize, usize);
 
     #[allow(clippy::type_complexity)]
-    let (send, mut recv): (
-        super::Sender<ValueType, Result<(), usize>>,
-        super::Receiver<ValueType, Result<(), usize>>,
-    ) = super::channel(|a: &ValueType, b: &ValueType| {
-        // Prune values with the same i.
-        a.1 == b.1
-    });
+    let (send, mut recv): (super::Sender<ValueType>, super::Receiver<ValueType>) =
+        super::channel(|a: &ValueType, b: &ValueType| {
+            // Prune values with the same i.
+            a.1 == b.1
+        });
 
     let res: Result<(), ctx::Canceled> = crate::scope::run!(&ctx, |ctx, s| async move {
         // Pre-send sets 0 and 1, 1000 values each.
         // Set 0 is expected to be pruned and dropped.
         let values = (0..2000).map(|i| ValueType(i / 1000, i % 1000));
         for val in values {
-            let res_recv = send.send(val.clone()).await;
-            s.spawn(async move {
-                let res = res_recv.recv_or_disconnected(ctx).await;
-                match val.0 {
-                    // set 0 values are expected to be pruned and dropped.
-                    0 => assert_matches!(res, Ok(Err(crate::sync::Disconnected))),
-                    // set 1 values are expected to return `Ok(())`.
-                    1 => assert_matches!(res, Ok(Ok(Ok(())))),
-                    _ => unreachable!(),
-                }
-                Ok(())
-            });
+            send.send(val.clone()).await;
         }
         // Send set 2.
         s.spawn(async move {
             let values = (1000..2000).map(|i| ValueType(2, i));
             for val in values {
-                let res_recv = send.send(val.clone()).await;
-                s.spawn(async move {
-                    let res = res_recv.recv_or_disconnected(ctx).await;
-                    let i = val.1;
-                    match val.0 {
-                        // set 2 values are expected to return `Err(i)`.
-                        2 => assert_matches!(res, Ok(Ok(Err(err))) => {
-                            assert_eq!(err, i);
-                        }),
-                        _ => unreachable!(),
-                    };
-                    Ok(())
-                });
+                send.send(val.clone()).await;
             }
             Ok(())
         });
@@ -63,15 +37,12 @@ async fn test_prunable_mpsc() {
         s.spawn(async move {
             let mut i = 0;
             loop {
-                let (val, res_send) = recv.recv(ctx).await.unwrap();
+                let val = recv.recv(ctx).await.unwrap();
                 assert_eq!(val.1, i);
-                match val.0 {
-                    // set 0 is expected to be pruned and dropped.
-                    0 => unreachable!(),
-                    // Return `Ok(())` for set 1.
-                    1 => res_send.send(Ok(())).unwrap(),
-                    // Return `Err(i)` for set 2.
-                    2 => res_send.send(Err(i)).unwrap(),
+                // Assert the expected set.
+                match val.1 {
+                    0..=999 => assert_eq!(val.0, 1),
+                    1000..=1999 => assert_eq!(val.0, 2),
                     _ => unreachable!(),
                 };
                 i += 1;
