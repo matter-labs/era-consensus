@@ -101,7 +101,7 @@ impl<'env, T> JoinHandle<'env, T> {
     /// Panics if the awaited task panicked.
     ///
     /// Caller is expected to provide their local context as an argument, which
-    /// is neccessarily a descendant of the scope's context (because JoinHandle cannot
+    /// is necessarily a descendant of the scope's context (because JoinHandle cannot
     /// leave the scope's lifetime). There might arise a race condition between
     /// the cancelation of `ctx` and termination of the task, in which case
     /// we await cancelation of `ctx` explicitly, so that the race condition is not
@@ -219,7 +219,7 @@ impl<'env, E: 'static + Send> Scope<'env, E> {
     /// before the context is canceled.
     /// You can use this method if you want to cancel immediately without
     /// returning an error (so that the whole scope can actually terminate
-    /// succesfully).
+    /// successfully).
     pub fn cancel(&self) {
         self.ctx.cancel();
     }
