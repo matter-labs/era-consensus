@@ -32,11 +32,11 @@ impl BlockStoreState {
 /// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait::async_trait]
 pub trait PersistentBlockStore: fmt::Debug + Send + Sync {
-    /// Range of blocks avaliable in storage.
+    /// Range of blocks available in storage.
     /// PersistentBlockStore is expected to always contain at least 1 block,
     /// and be append-only storage (never delete blocks).
     /// Consensus code calls this method only once and then tracks the
-    /// range of avaliable blocks internally.
+    /// range of available blocks internally.
     async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState>;
 
     /// Gets a block by its number.

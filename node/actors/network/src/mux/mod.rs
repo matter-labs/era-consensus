@@ -2,7 +2,7 @@
 //! over a single transport stream. Single multiplexer may define multiple internal endpoints (aka
 //! "capabilities"). When establishing a new transient substream (via accept/connect methods)
 //! you need to specify a capability: if peer A calls `mux.connect(ctx,x)` then peer B needs to
-//! call `mux.accept(ctx,x)` to accept A's substream (x is the capabilitiy and it has
+//! call `mux.accept(ctx,x)` to accept A's substream (x is the capability and it has
 //! to match on both sides of the connection).
 //!
 //! It currently doesn't prevent head-of-line blocking,

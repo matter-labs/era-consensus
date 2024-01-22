@@ -18,7 +18,7 @@
 //!
 //! NOTE: although background tasks are not considered to be doing the "work of the scope" they
 //! are still required to complete gracefully once the scope gets canceled: if all main tasks
-//! complete succesfully, and one of the background tasks returns an error afterwards,
+//! complete successfully, and one of the background tasks returns an error afterwards,
 //! `scope::run!` will still return an error.
 //!
 //! NOTE: although background tasks shouldn't spawn main tasks, the current API of `Scope`
