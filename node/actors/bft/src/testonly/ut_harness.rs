@@ -210,9 +210,14 @@ impl UTHarness {
         self.leader.process_replica_prepare(ctx, msg).await?;
         if prepare_qc.has_changed().unwrap() {
             let prepare_qc = prepare_qc.borrow().clone().unwrap();
-            leader::StateMachine::propose(ctx, &self.leader.config, prepare_qc, &self.leader.outbound_pipe)
-                .await
-                .unwrap();
+            leader::StateMachine::propose(
+                ctx,
+                &self.leader.config,
+                prepare_qc,
+                &self.leader.outbound_pipe,
+            )
+            .await
+            .unwrap();
         }
         Ok(self.try_recv())
     }

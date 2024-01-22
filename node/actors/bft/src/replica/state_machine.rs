@@ -1,14 +1,14 @@
+use crate::{metrics, Config, OutputSender};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
-
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
-use zksync_consensus_roles::{validator, validator::ConsensusMsg};
-use zksync_consensus_roles::validator::Signed;
+use zksync_consensus_roles::{
+    validator,
+    validator::{ConsensusMsg, Signed},
+};
 use zksync_consensus_storage as storage;
-
-use crate::{Config, metrics, OutputSender};
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
 /// for validating and voting on blocks. When participating in consensus we are always a replica.
@@ -19,10 +19,7 @@ pub(crate) struct StateMachine {
     /// Pipe through which replica sends network messages.
     pub(super) outbound_pipe: OutputSender,
     /// Pipe through which replica receives network messages.
-    inbound_pipe: sync::prunable_mpsc::Receiver<
-        Option<Signed<ConsensusMsg>>,
-        ctx::Result<()>
-    >,
+    inbound_pipe: sync::prunable_mpsc::Receiver<Option<Signed<ConsensusMsg>>, ctx::Result<()>>,
     /// The current view number.
     pub(crate) view: validator::ViewNumber,
     /// The current phase.
@@ -33,7 +30,7 @@ pub(crate) struct StateMachine {
     pub(crate) high_qc: validator::CommitQC,
     /// A cache of the received block proposals.
     pub(crate) block_proposal_cache:
-    BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
+        BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
     /// The deadline to receive an input message.
     pub(crate) timeout_deadline: sync::watch::Sender<time::Deadline>,
 }
@@ -41,11 +38,14 @@ pub(crate) struct StateMachine {
 impl StateMachine {
     /// Creates a new StateMachine struct. We try to recover a past state from the storage module,
     /// otherwise we initialize the state machine with whatever head block we have.
-    pub(crate) async fn start(ctx: &ctx::Ctx, config: Arc<Config>, outbound_pipe: OutputSender)
-        -> ctx::Result<(
-            Self,
-            sync::prunable_mpsc::Sender<Option<Signed<ConsensusMsg>>, ctx::Result<()>>
-        )> {
+    pub(crate) async fn start(
+        ctx: &ctx::Ctx,
+        config: Arc<Config>,
+        outbound_pipe: OutputSender,
+    ) -> ctx::Result<(
+        Self,
+        sync::prunable_mpsc::Sender<Option<Signed<ConsensusMsg>>, ctx::Result<()>>,
+    )> {
         let backup = match config.replica_store.state(ctx).await? {
             Some(backup) => backup,
             None => config.block_store.subscribe().borrow().last.clone().into(),
@@ -58,8 +58,7 @@ impl StateMachine {
                 .insert(proposal.payload.hash(), proposal.payload);
         }
 
-        let (send, recv) =
-            sync::prunable_mpsc::channel(StateMachine::inbound_pruning_predicate);
+        let (send, recv) = sync::prunable_mpsc::channel(StateMachine::inbound_pruning_predicate);
 
         let mut this = Self {
             config,
@@ -170,7 +169,7 @@ impl StateMachine {
 
         match (&existing_msg.msg, &new_msg.msg) {
             (ConsensusMsg::LeaderPrepare(existing_msg), ConsensusMsg::LeaderPrepare(new_msg)) => {
-               new_msg.view > existing_msg.view
+                new_msg.view > existing_msg.view
             }
             (ConsensusMsg::LeaderCommit(existing_msg), ConsensusMsg::LeaderCommit(new_msg)) => {
                 new_msg.justification.message.view > existing_msg.justification.message.view

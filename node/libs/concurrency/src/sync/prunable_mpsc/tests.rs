@@ -1,6 +1,6 @@
-use tokio::time::{Duration, timeout};
 use crate::ctx;
 use assert_matches::assert_matches;
+use tokio::time::{timeout, Duration};
 
 // Test scenario:
 // 1. Pre-send two sets of 1000 values, so that the first set is expected to be pruned.
@@ -23,9 +23,7 @@ async fn test_prunable_mpsc() {
     let res: Result<(), ctx::Canceled> = crate::scope::run!(&ctx, |ctx, s| async move {
         // Pre-send sets 0 and 1, 1000 values each.
         // Set 0 is expected to be pruned and dropped.
-        let values = (0..2000).map(|i| {
-            ValueType(i/1000, i%1000)
-        });
+        let values = (0..2000).map(|i| ValueType(i / 1000, i % 1000));
         for val in values {
             let res_recv = send.send(val.clone()).await;
             s.spawn(async move {
@@ -35,7 +33,7 @@ async fn test_prunable_mpsc() {
                     0 => assert_matches!(res, Ok(Err(crate::sync::Disconnected))),
                     // set 1 values are expected to return `Ok(())`.
                     1 => assert_matches!(res, Ok(Ok(Ok(())))),
-                    _ => unreachable!()
+                    _ => unreachable!(),
                 }
                 Ok(())
             });
@@ -53,7 +51,7 @@ async fn test_prunable_mpsc() {
                         2 => assert_matches!(res, Ok(Ok(Err(err))) => {
                             assert_eq!(err, i);
                         }),
-                        _ => unreachable!()
+                        _ => unreachable!(),
                     };
                     Ok(())
                 });
@@ -78,7 +76,9 @@ async fn test_prunable_mpsc() {
                 i = i + 1;
                 if i == 2000 {
                     assert!(
-                        timeout(Duration::from_secs(0), recv.recv(ctx)).await.is_err(),
+                        timeout(Duration::from_secs(0), recv.recv(ctx))
+                            .await
+                            .is_err(),
                         "recv() is expected to hang since all values have been exhausted"
                     );
                     break;
@@ -87,6 +87,7 @@ async fn test_prunable_mpsc() {
             Ok(())
         });
         Ok(())
-    }).await;
+    })
+    .await;
     assert_eq!(Ok(()), res);
 }

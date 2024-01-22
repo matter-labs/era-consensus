@@ -67,7 +67,8 @@ impl Config {
     ) -> anyhow::Result<()> {
         let cfg = Arc::new(self);
         let (leader, leader_send) = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
-        let (replica, replica_send) = replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
+        let (replica, replica_send) =
+            replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
 
         // mpsc channel for returning error asynchronously.
         let (err_send, mut err_recv) = mpsc::channel::<ctx::Result<()>>(1);

@@ -7,10 +7,8 @@
 //! be used in conjunction.
 //!
 use crate::{
-    ctx,
-    sync::{Mutex},
-    oneshot,
-    sync::{self, watch},
+    ctx, oneshot,
+    sync::{self, watch, Mutex},
 };
 use std::{collections::VecDeque, fmt, sync::Arc};
 

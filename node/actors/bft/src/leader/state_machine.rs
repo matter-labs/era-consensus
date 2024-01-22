@@ -1,16 +1,13 @@
+use crate::{metrics, Config, OutputSender};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
     unreachable,
 };
-
 use tracing::instrument;
-
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::{validator::{self, ConsensusMsg, Signed}};
-
-use crate::{Config, metrics, OutputSender};
+use zksync_consensus_roles::validator::{self, ConsensusMsg, Signed};
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
@@ -21,10 +18,7 @@ pub(crate) struct StateMachine {
     /// Pipe through which leader sends network messages.
     pub(crate) outbound_pipe: OutputSender,
     /// Pipe through which leader receives network messages.
-    inbound_pipe: sync::prunable_mpsc::Receiver<
-        Signed<ConsensusMsg>,
-        ctx::Result<()>
-    >,
+    inbound_pipe: sync::prunable_mpsc::Receiver<Signed<ConsensusMsg>, ctx::Result<()>>,
     /// The current view number. This might not match the replica's view number, we only have this here
     /// to make the leader advance monotonically in time and stop it from accepting messages from the past.
     pub(crate) view: validator::ViewNumber,
@@ -54,13 +48,15 @@ pub(crate) struct StateMachine {
 impl StateMachine {
     /// Creates a new StateMachine struct.
     #[instrument(level = "trace")]
-    pub fn new(ctx: &ctx::Ctx, config: Arc<Config>, outbound_pipe: OutputSender)
-               -> (
-                   Self,
-                   sync::prunable_mpsc::Sender<Signed<ConsensusMsg>, ctx::Result<()>>
-               ) {
-        let (send, recv) =
-            sync::prunable_mpsc::channel(StateMachine::inbound_pruning_predicate);
+    pub fn new(
+        ctx: &ctx::Ctx,
+        config: Arc<Config>,
+        outbound_pipe: OutputSender,
+    ) -> (
+        Self,
+        sync::prunable_mpsc::Sender<Signed<ConsensusMsg>, ctx::Result<()>>,
+    ) {
+        let (send, recv) = sync::prunable_mpsc::channel(StateMachine::inbound_pruning_predicate);
 
         let this = StateMachine {
             config,
@@ -82,10 +78,7 @@ impl StateMachine {
     /// Runs a loop to process incoming messages.
     /// This is the main entry point for the state machine,
     /// potentially triggering state modifications and message sending to the executor.
-    pub async fn run(
-        mut self,
-        ctx: &ctx::Ctx,
-    ) -> ctx::Result<()> {
+    pub async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         loop {
             let (signed_message, res_send) = self.inbound_pipe.recv(ctx).await?;
 
@@ -221,7 +214,7 @@ impl StateMachine {
                 message: msg,
                 recipient: Target::Broadcast,
             }
-                .into(),
+            .into(),
         );
         Ok(())
     }
