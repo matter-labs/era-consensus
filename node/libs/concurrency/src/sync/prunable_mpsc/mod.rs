@@ -2,8 +2,8 @@
 //! The pruning takes place whenever a new value is sent, based on a specified predicate.
 //! The channel also facilitates the asynchronous returning of result associated with the processing of values received from the channel.
 //!
-//! The separation of `Sender` and `Receiver` is employed primarily because `Receiver` requires
-//! a mutable reference to the signaling channel, unlike `Sender`, hence making it undesirable to
+//! The separation of [`Sender`] and [`Receiver`] is employed primarily because [`Receiver`] requires
+//! a mutable reference to the signaling channel, unlike [`Sender`], hence making it undesirable to
 //! be used in conjunction.
 //!
 use crate::{
@@ -15,45 +15,48 @@ use std::{collections::VecDeque, fmt, sync::Arc};
 #[cfg(test)]
 mod tests;
 
-/// Creates a channel and returns the `Sender` and `Receiver` handles.
-/// All values sent on `Sender` will become available on `Receiver` in the same order as it was sent,
+/// Creates a channel and returns the [`Sender`] and [`Receiver`] handles.
+/// All values sent on [`Sender`] will become available on [`Receiver`] in the same order as it was sent,
 /// unless will be pruned before received.
 /// The Sender can be cloned to send to the same channel from multiple code locations. Only one Receiver is supported.
 ///
-/// * `T`: The type of data that will be sent through the channel.
-/// * `U`: The type of the asynchronous returning of result associated with the processing of values received from the channel.
-/// * `pruning_predicate`: A function that determines whether an unreceived, pending value in the buffer should be pruned based on a newly sent value.
+/// * [`T`]: The type of data that will be sent through the channel.
+/// * [`U`]: The type of the asynchronous returning of result associated with the processing of values received from the channel.
+/// * [`pruning_predicate`]: A function that determines whether an unreceived, pending value in the buffer should be pruned based on a newly sent value.
 ///
 pub fn channel<T, U>(
     pruning_predicate: impl 'static + Sync + Send + Fn(&T, &T) -> bool,
 ) -> (Sender<T, U>, Receiver<T, U>) {
     let queue: Mutex<VecDeque<(T, oneshot::Sender<U>)>> = Mutex::new(VecDeque::new());
-    // Internal signaling, to enable waiting on the receiver side for new values.
-    let (send, recv) = watch::channel(false);
+    // Internal watch, to enable waiting on the receiver side for new values.
+    let (has_values_send, has_values_recv) = watch::channel(false);
 
     let shared = Arc::new(Shared {
         buffer: queue,
-        has_values_send: send,
+        has_values_send,
     });
 
-    let sender = Sender {
+    let send = Sender {
         shared: shared.clone(),
         pruning_predicate: Box::new(pruning_predicate),
     };
 
-    let receiver = Receiver {
+    let recv = Receiver {
         shared: shared.clone(),
-        has_values_recv: recv,
+        has_values_recv,
     };
 
-    return (sender, receiver);
+    (send, recv)
 }
 
-pub struct Shared<T, U> {
+struct Shared<T, U> {
     buffer: Mutex<VecDeque<(T, oneshot::Sender<U>)>>,
     has_values_send: watch::Sender<bool>,
 }
 
+/// Sends values to the associated [`Receiver`].
+/// Instances are created by the [`channel`] function.
+#[allow(clippy::type_complexity)]
 pub struct Sender<T, U> {
     shared: Arc<Shared<T, U>>,
     pruning_predicate: Box<dyn Sync + Send + Fn(&T, &T) -> bool>,
@@ -83,12 +86,16 @@ impl<T, U> fmt::Debug for Sender<T, U> {
     }
 }
 
+/// Receives values from the associated [`Sender`].
+/// Instances are created by the [`channel`] function.
 pub struct Receiver<T, U> {
     shared: Arc<Shared<T, U>>,
     has_values_recv: watch::Receiver<bool>,
 }
 
 impl<T, U> Receiver<T, U> {
+    /// Receives the next value for this receiver.
+    /// If there are no messages in the buffer, this method will hang until a message is sent.
     pub async fn recv(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<(T, oneshot::Sender<U>)> {
         sync::wait_for(ctx, &mut self.has_values_recv, |has_values| *has_values).await?;
         let mut buffer = self.shared.buffer.lock().await;

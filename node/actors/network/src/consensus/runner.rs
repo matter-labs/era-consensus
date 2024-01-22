@@ -141,6 +141,7 @@ pub(crate) async fn run_client(
                         Ok(())
                     });
                 }
+                #[allow(clippy::redundant_locals)]
                 io::Target::Broadcast => {
                     let req = Arc::new(rpc::consensus::Req(msg.message));
                     for client in clients.values() {

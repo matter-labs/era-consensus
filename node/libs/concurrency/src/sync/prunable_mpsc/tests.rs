@@ -12,6 +12,7 @@ async fn test_prunable_mpsc() {
     #[derive(Debug, Clone)]
     struct ValueType(usize, usize);
 
+    #[allow(clippy::type_complexity)]
     let (send, mut recv): (
         super::Sender<ValueType, Result<(), usize>>,
         super::Receiver<ValueType, Result<(), usize>>,
@@ -73,7 +74,7 @@ async fn test_prunable_mpsc() {
                     2 => res_send.send(Err(i)).unwrap(),
                     _ => unreachable!(),
                 };
-                i = i + 1;
+                i += 1;
                 if i == 2000 {
                     assert!(
                         timeout(Duration::from_secs(0), recv.recv(ctx))
