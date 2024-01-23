@@ -3,7 +3,7 @@ FROM rust:latest as build
 COPY /node/ /node/
 COPY Makefile .
 WORKDIR /node
-RUN apt-get update && apt-get install -y libclang-dev protobuf-compiler libprotobuf-dev
+RUN apt-get update && apt-get install -y libclang-dev
 RUN cargo build --release
 RUN cd .. && make docker_node_configs
 
