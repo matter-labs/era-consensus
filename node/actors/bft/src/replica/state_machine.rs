@@ -5,10 +5,7 @@ use std::{
 };
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_network::io::ConsensusReq;
-use zksync_consensus_roles::{
-    validator,
-    validator::{ConsensusMsg, Signed},
-};
+use zksync_consensus_roles::{validator, validator::ConsensusMsg};
 use zksync_consensus_storage as storage;
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
@@ -83,7 +80,7 @@ impl StateMachine {
     /// Runs a loop to process incoming messages (may be `None` if the channel times out while waiting for a message).
     /// This is the main entry point for the state machine,
     /// potentially triggering state modifications and message sending to the executor.
-    pub async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
+    pub(crate) async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         loop {
             let recv = self
                 .inbound_pipe
@@ -167,7 +164,8 @@ impl StateMachine {
         Ok(())
     }
 
-    pub fn inbound_pruning_predicate(pending_req: &ConsensusReq, new_req: &ConsensusReq) -> bool {
+    #[allow(clippy::match_like_matches_macro)]
+    fn inbound_pruning_predicate(pending_req: &ConsensusReq, new_req: &ConsensusReq) -> bool {
         if pending_req.msg.key != new_req.msg.key {
             return false;
         }

@@ -66,7 +66,7 @@ impl<T> Sender<T> {
     /// on the buffer of pending values.
     pub async fn send(&self, value: T) {
         let mut buffer = self.shared.buffer.lock().await;
-        buffer.retain(|pending_value| !(self.pruning_predicate)(&pending_value, &value));
+        buffer.retain(|pending_value| !(self.pruning_predicate)(pending_value, &value));
         buffer.push_back(value);
 
         self.shared.has_values_send.send_replace(true);

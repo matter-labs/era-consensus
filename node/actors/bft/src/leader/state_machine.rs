@@ -79,7 +79,7 @@ impl StateMachine {
     /// Runs a loop to process incoming messages.
     /// This is the main entry point for the state machine,
     /// potentially triggering state modifications and message sending to the executor.
-    pub async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
+    pub(crate) async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         loop {
             let req = self.inbound_pipe.recv(ctx).await?;
 
@@ -223,7 +223,8 @@ impl StateMachine {
         Ok(())
     }
 
-    pub fn inbound_pruning_predicate(pending_req: &ConsensusReq, new_req: &ConsensusReq) -> bool {
+    #[allow(clippy::match_like_matches_macro)]
+    fn inbound_pruning_predicate(pending_req: &ConsensusReq, new_req: &ConsensusReq) -> bool {
         if pending_req.msg.key != new_req.msg.key {
             return false;
         }
