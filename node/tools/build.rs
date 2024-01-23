@@ -1,5 +1,5 @@
 //! Generates rust code from protobufs.
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() {
     zksync_protobuf_build::Config {
         input_root: "src/proto".into(),
         proto_root: "zksync/tools".into(),
@@ -9,7 +9,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     .generate()
     .unwrap();
-
-    tonic_build::compile_protos("src/proto_test/node.proto")?;
-    Ok(())
 }
