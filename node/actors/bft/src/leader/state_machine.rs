@@ -227,14 +227,9 @@ impl StateMachine {
         if pending_req.msg.key != new_req.msg.key {
             return false;
         }
-
         match (&pending_req.msg.msg, &new_req.msg.msg) {
-            (ConsensusMsg::ReplicaPrepare(existing_msg), ConsensusMsg::ReplicaPrepare(new_msg)) => {
-                new_msg.view > existing_msg.view
-            }
-            (ConsensusMsg::ReplicaCommit(existing_msg), ConsensusMsg::ReplicaCommit(new_msg)) => {
-                new_msg.view > existing_msg.view
-            }
+            (ConsensusMsg::ReplicaPrepare(_), ConsensusMsg::ReplicaPrepare(_)) => true,
+            (ConsensusMsg::ReplicaCommit(_), ConsensusMsg::ReplicaCommit(_)) => true,
             _ => false,
         }
     }

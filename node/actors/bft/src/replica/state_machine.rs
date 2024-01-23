@@ -172,12 +172,8 @@ impl StateMachine {
             return false;
         }
         match (&pending_req.msg.msg, &new_req.msg.msg) {
-            (ConsensusMsg::LeaderPrepare(existing_msg), ConsensusMsg::LeaderPrepare(new_msg)) => {
-                new_msg.view > existing_msg.view
-            }
-            (ConsensusMsg::LeaderCommit(existing_msg), ConsensusMsg::LeaderCommit(new_msg)) => {
-                new_msg.justification.message.view > existing_msg.justification.message.view
-            }
+            (ConsensusMsg::LeaderPrepare(_), ConsensusMsg::LeaderPrepare(_)) => true,
+            (ConsensusMsg::LeaderCommit(_), ConsensusMsg::LeaderCommit(_)) => true,
             _ => false,
         }
     }
