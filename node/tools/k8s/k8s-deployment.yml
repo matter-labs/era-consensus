@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: consensus-node-01
+  namespace: consensus
+spec:
+  selector:
+    matchLabels:
+      app: consensus-node-01
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: consensus-node-01
+    spec:
+      containers:
+        - name: consensus-node-01
+          image: consensus-node-01
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 3054
+          livenessProbe:
+            httpGet:
+              path: /greeting
+              port: 3054
+          readinessProbe:
+            httpGet:
+              path: /greeting
+              port: 3054
