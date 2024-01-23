@@ -7,6 +7,7 @@ use tokio::time::{timeout, Duration};
 // 2. Send a third set of 1000 values in parallel to receiving.
 #[tokio::test]
 async fn test_prunable_mpsc() {
+    crate::testonly::abort_on_panic();
     let ctx = ctx::test_root(&ctx::RealClock);
 
     #[derive(Debug, Clone)]
