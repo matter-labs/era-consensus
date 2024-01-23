@@ -28,14 +28,14 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 vise-exporter.workspace = true
-tonic.workspace = true
+jsonrpsee.workspace = true
+tower.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
 
 [build-dependencies]
 zksync_protobuf_build.workspace = true
-tonic-build.workspace = true
 
 [lints]
 workspace = true
@@ -43,7 +43,3 @@ workspace = true
 [[bin]]
 name = "executor"
 path = "src/main.rs"
-
-[[bin]]
-name = "client"
-path = "src/rpc/client.rs"
