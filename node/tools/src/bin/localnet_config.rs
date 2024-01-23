@@ -63,7 +63,7 @@ fn main() -> anyhow::Result<()> {
     // Generate the keys for all the replicas.
     let rng = &mut rand::thread_rng();
 
-    let mut genesis = validator::testonly::GenesisSetup::empty(rng, addrs.len());
+    let mut genesis = validator::GenesisSetup::empty(rng, addrs.len());
     genesis
         .next_block()
         .payload(validator::Payload(vec![]))
