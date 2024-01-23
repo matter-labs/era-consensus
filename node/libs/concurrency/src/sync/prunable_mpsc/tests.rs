@@ -25,14 +25,14 @@ async fn test_prunable_mpsc() {
         // Set 0 is expected to be pruned and dropped.
         let values = (0..2000).map(|i| ValueType(i / 1000, i % 1000));
         for val in values {
-            send.send(val).await;
+            send.send(val);
         }
         // Send set 2.
         s.spawn(async {
             let send = send;
             let values = (1000..2000).map(|i| ValueType(2, i));
             for val in values {
-                send.send(val.clone()).await;
+                send.send(val.clone());
             }
             Ok(())
         });

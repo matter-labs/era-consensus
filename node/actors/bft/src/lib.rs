@@ -97,10 +97,10 @@ impl Config {
                 let InputMessage::Network(req) = input.unwrap();
                 match &req.msg.msg {
                     ConsensusMsg::ReplicaPrepare(_) | ConsensusMsg::ReplicaCommit(_) => {
-                        leader_send.send(req).await;
+                        leader_send.send(req);
                     }
                     ConsensusMsg::LeaderPrepare(_) | ConsensusMsg::LeaderCommit(_) => {
-                        replica_send.send(req).await;
+                        replica_send.send(req);
                     }
                 }
             }

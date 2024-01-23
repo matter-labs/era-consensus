@@ -7,9 +7,13 @@
 //!
 use crate::{
     ctx,
-    sync::{self, watch, Mutex},
+    sync::{self, watch},
 };
-use std::{collections::VecDeque, fmt, sync::Arc};
+use std::{
+    collections::VecDeque,
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 #[cfg(test)]
 mod tests;
@@ -64,8 +68,8 @@ impl<T> Sender<T> {
     /// Sends a value.
     /// This initiates the pruning procedure which operates in O(N) time complexity
     /// on the buffer of pending values.
-    pub async fn send(&self, value: T) {
-        let mut buffer = self.shared.buffer.lock().await;
+    pub fn send(&self, value: T) {
+        let mut buffer = self.shared.buffer.lock().unwrap();
         buffer.retain(|pending_value| !(self.pruning_predicate)(pending_value, &value));
         buffer.push_back(value);
 
@@ -91,7 +95,7 @@ impl<T> Receiver<T> {
     /// If there are no messages in the buffer, this method will hang until a message is sent.
     pub async fn recv(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<T> {
         sync::wait_for(ctx, &mut self.has_values_recv, |has_values| *has_values).await?;
-        let mut buffer = self.shared.buffer.lock().await;
+        let mut buffer = self.shared.buffer.lock().unwrap();
         // `None` is unexpected because we waited for new values, and there's only a single receiver.
         let value = buffer.pop_front().unwrap();
 
