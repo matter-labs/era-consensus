@@ -13,8 +13,8 @@ impl super::Rpc for Rpc {
     const CAPABILITY_ID: mux::CapabilityId = 3;
     const INFLIGHT: u32 = 1;
     const RATE: limiter::Rate = limiter::Rate {
-        burst: 1,
-        refresh: time::Duration::seconds(5),
+        burst: 2,
+        refresh: time::Duration::milliseconds(500),
     };
     const METHOD: &'static str = "push_block_store_state";
 
