@@ -1,7 +1,7 @@
 use std::net::SocketAddr;
 
-use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
 use super::methods::health_check;
+use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
 
 pub async fn run_server(ip_address: String) -> anyhow::Result<()> {
     let ip_address: SocketAddr = ip_address.parse()?;

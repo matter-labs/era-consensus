@@ -91,7 +91,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Config for the RPC server.
     let mut rpc_addr = configs.app.public_addr.to_string();
-    rpc_addr.replace_range(rpc_addr.find(":").unwrap().., ":3051");
+    rpc_addr.replace_range(rpc_addr.find(':').unwrap().., ":3051");
 
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {
