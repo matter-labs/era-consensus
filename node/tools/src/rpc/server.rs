@@ -1,47 +1,32 @@
-use tonic::{transport::Server, Request, Response, Status};
+use std::net::SocketAddr;
 
-use node::node_server::{Node, NodeServer};
-use node::{HealthCheckRequest, HealthCheckResponse};
+use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
+use super::methods::health_check;
 
-pub mod node {
-    tonic::include_proto!("node");
-}
+pub async fn run_server(ip_address: String) -> anyhow::Result<()> {
+    let ip_address: SocketAddr = ip_address.parse()?;
+    // Custom tower service to handle the RPC requests
+    let service_builder = tower::ServiceBuilder::new()
+        // Proxy `GET /health` requests to internal `system_health` method.
+        .layer(ProxyGetRequestLayer::new(
+            "/health",
+            health_check::method(),
+        )?);
 
-#[derive(Debug, Default)]
-pub struct MyNode {}
+    let server = Server::builder()
+        .set_http_middleware(service_builder)
+        .build(ip_address)
+        .await?;
+    let mut module = RpcModule::new(());
+    module.register_method(health_check::method(), |params, _| {
+        health_check::callback(params)
+    })?;
 
-#[tonic::async_trait]
-impl Node for MyNode {
-    async fn health_check(
-        &self,
-        _request: Request<HealthCheckRequest>,
-    ) -> Result<Response<HealthCheckResponse>, Status> {
-        let reply = HealthCheckResponse {
-            message: format!("Live").into(),
-        };
+    let handle = server.start(module);
 
-        Ok(Response::new(reply))
-    }
-}
+    // In this example we don't care about doing shutdown so let's it run forever.
+    // You may use the `ServerHandle` to shut it down or manage it yourself.
+    tokio::spawn(handle.stopped());
 
-pub struct NodeRpcServer {
-    ip_address: String,
-}
-
-impl NodeRpcServer {
-    pub fn new(ip_address: String) -> Self {
-        Self { ip_address }
-    }
-
-    pub async fn run(&self) -> anyhow::Result<()> {
-        let addr = self.ip_address.parse()?;
-        let node = MyNode::default();
-    
-        Server::builder()
-            .add_service(NodeServer::new(node))
-            .serve(addr)
-            .await?;
-    
-        Ok(())
-    }
+    Ok(())
 }

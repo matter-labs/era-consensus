@@ -92,7 +92,6 @@ async fn main() -> anyhow::Result<()> {
     // Config for the RPC server.
     let mut rpc_addr = configs.app.public_addr.to_string();
     rpc_addr.replace_range(rpc_addr.find(":").unwrap().., ":3051");
-    let rpc_server = server::NodeRpcServer::new(rpc_addr.clone());
 
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {
@@ -109,7 +108,7 @@ async fn main() -> anyhow::Result<()> {
         }
         s.spawn_bg(runner.run(ctx));
         s.spawn(executor.run(ctx));
-        s.spawn(rpc_server.run());
+        s.spawn(server::run_server(rpc_addr));
         Ok(())
     })
     .await
