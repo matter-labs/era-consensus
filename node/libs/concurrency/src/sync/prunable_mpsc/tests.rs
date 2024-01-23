@@ -14,7 +14,7 @@ async fn test_prunable_mpsc() {
     struct ValueType(usize, usize);
 
     #[allow(clippy::type_complexity)]
-    let (send, mut recv): (Sender<ValueType>, Receiver<ValueType>) =
+    let (send, recv): (Sender<ValueType>, Receiver<ValueType>) =
         channel(|a: &ValueType, b: &ValueType| {
             // Prune values with the same i.
             a.1 == b.1
@@ -25,10 +25,11 @@ async fn test_prunable_mpsc() {
         // Set 0 is expected to be pruned and dropped.
         let values = (0..2000).map(|i| ValueType(i / 1000, i % 1000));
         for val in values {
-            send.send(val.clone()).await;
+            send.send(val).await;
         }
         // Send set 2.
-        s.spawn(async move {
+        s.spawn(async {
+            let send = send;
             let values = (1000..2000).map(|i| ValueType(2, i));
             for val in values {
                 send.send(val.clone()).await;
@@ -36,7 +37,8 @@ async fn test_prunable_mpsc() {
             Ok(())
         });
         // Receive.
-        s.spawn(async move {
+        s.spawn(async {
+            let mut recv = recv;
             let mut i = 0;
             loop {
                 let val = recv.recv(ctx).await.unwrap();
