@@ -1,3 +1,4 @@
+use super::*;
 use crate::ctx;
 use tokio::time::{timeout, Duration};
 
@@ -12,8 +13,8 @@ async fn test_prunable_mpsc() {
     struct ValueType(usize, usize);
 
     #[allow(clippy::type_complexity)]
-    let (send, mut recv): (super::Sender<ValueType>, super::Receiver<ValueType>) =
-        super::channel(|a: &ValueType, b: &ValueType| {
+    let (send, mut recv): (Sender<ValueType>, Receiver<ValueType>) =
+        channel(|a: &ValueType, b: &ValueType| {
             // Prune values with the same i.
             a.1 == b.1
         });
