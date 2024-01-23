@@ -37,8 +37,12 @@ pub(crate) struct StateMachine {
 }
 
 impl StateMachine {
-    /// Creates a new StateMachine struct. We try to recover a past state from the storage module,
-    /// otherwise we initialize the state machine with whatever head block we have.
+    /// Creates a new [`StateMachine`] instance, attempting to recover a past state from the storage module,
+    /// otherwise initializes the state machine with the current head block.
+    ///
+    /// Returns a tuple containing:
+    /// * The newly created [`StateMachine`] instance.
+    /// * A sender handle that should be used to send values to be processed by the instance, asynchronously.
     pub(crate) async fn start(
         ctx: &ctx::Ctx,
         config: Arc<Config>,

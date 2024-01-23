@@ -46,7 +46,11 @@ pub(crate) struct StateMachine {
 }
 
 impl StateMachine {
-    /// Creates a new StateMachine struct.
+    /// Creates a new [`StateMachine`] instance.
+    ///
+    /// Returns a tuple containing:
+    /// * The newly created [`StateMachine`] instance.
+    /// * A sender handle that should be used to send values to be processed by the instance, asynchronously.
     #[instrument(level = "trace")]
     pub fn new(
         ctx: &ctx::Ctx,
