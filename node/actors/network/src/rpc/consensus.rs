@@ -43,10 +43,6 @@ impl ProtoFmt for Req {
             msg: Some(self.0.build()),
         }
     }
-
-    fn max_size() -> usize {
-        zksync_protobuf::MB
-    }
 }
 
 impl ProtoFmt for Resp {
@@ -58,9 +54,5 @@ impl ProtoFmt for Resp {
 
     fn build(&self) -> Self::Proto {
         Self::Proto {}
-    }
-
-    fn max_size() -> usize {
-        zksync_protobuf::kB
     }
 }

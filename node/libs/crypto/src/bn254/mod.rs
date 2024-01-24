@@ -31,6 +31,11 @@ mod testonly;
 pub struct SecretKey(Fr);
 
 impl SecretKey {
+    /// Generates a secret key from a cryptographically-secure entropy source.
+    pub fn generate() -> Self {
+        Self(rand04::Rand::rand(&mut rand04::OsRng::new().unwrap()))
+    }
+
     /// Gets the corresponding [`PublicKey`] for this [`SecretKey`]
     pub fn public(&self) -> PublicKey {
         let p = G2Affine::one().mul(self.0);

@@ -1,38 +1,35 @@
 use super::*;
-use crate::{io, preface, rpc, run_network, testonly};
-use anyhow::Context as _;
+use crate::{io, preface, rpc, testonly};
 use rand::Rng;
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, net, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
-use zksync_consensus_utils::pipe;
+use zksync_consensus_storage::testonly::new_store;
 
 #[tokio::test]
 async fn test_one_connection_per_validator() {
     abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-
-    let mut nodes = testonly::Instance::new(rng, 3, 1);
+    let setup = validator::testonly::GenesisSetup::new(rng, 3);
+    let nodes = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx,s| async {
-        for (i, node) in nodes.iter().enumerate() {
-            let (network_pipe, _) = pipe::new();
-
-            s.spawn_bg(run_network(
-                ctx,
-                node.state.clone(),
-                network_pipe
-            ).instrument(tracing::info_span!("node", i)));
-        }
+        let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
+        s.spawn_bg(runner.run(ctx));
+        let nodes : Vec<_> = nodes.into_iter().enumerate().map(|(i,node)| {
+            let (node,runner) = testonly::Instance::new(node, store.clone());
+            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            node
+        }).collect();
 
         tracing::info!("waiting for all gossip to be established");
-        for node in &mut nodes {
+        for node in &nodes {
             node.wait_for_gossip_connections().await;
         }
 
         tracing::info!("waiting for all connections to be established");
-        for node in &mut nodes {
+        for node in &nodes {
             node.wait_for_consensus_connections().await;
         }
 
@@ -70,45 +67,29 @@ async fn test_address_change() {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.));
     let rng = &mut ctx.rng();
 
-    let mut nodes = testonly::Instance::new(rng, 5, 1);
+    let setup = validator::testonly::GenesisSetup::new(rng, 5);
+    let mut cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
-        for (i, n) in nodes.iter().enumerate().skip(1) {
-            let (pipe, _) = pipe::new();
-            s.spawn_bg(
-                run_network(ctx, n.state.clone(), pipe).instrument(tracing::info_span!("node", i)),
-            );
+        let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
+        s.spawn_bg(runner.run(ctx));
+        let mut nodes: Vec<_> = cfgs
+            .iter()
+            .enumerate()
+            .map(|(i, cfg)| {
+                let (node, runner) = testonly::Instance::new(cfg.clone(), store.clone());
+                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+                node
+            })
+            .collect();
+        for n in &nodes {
+            n.wait_for_consensus_connections().await;
         }
-
-        scope::run!(ctx, |ctx, s| async {
-            let (pipe, _) = pipe::new();
-            s.spawn_bg(
-                run_network(ctx, nodes[0].state.clone(), pipe)
-                    .instrument(tracing::info_span!("node0")),
-            );
-            for n in &nodes {
-                n.wait_for_consensus_connections().await;
-            }
-            Ok(())
-        })
-        .await
-        .context("run1")?;
+        nodes[0].terminate(ctx).await?;
 
         // All nodes should lose connection to node[0].
         let key0 = nodes[0].consensus_config().key.public();
         for node in &nodes {
-            let consensus_state = node.state.consensus.as_ref().unwrap();
-            consensus_state
-                .inbound
-                .subscribe()
-                .wait_for(|got| !got.current().contains(&key0))
-                .await
-                .unwrap();
-            consensus_state
-                .outbound
-                .subscribe()
-                .wait_for(|got| !got.current().contains(&key0))
-                .await
-                .unwrap();
+            node.wait_for_consensus_disconnect(ctx, &key0).await?;
         }
 
         // Change the address of node[0].
@@ -116,24 +97,14 @@ async fn test_address_change() {
         // node[0] is expected to connect to its gossip peers.
         // Then it should broadcast its new address and the consensus network
         // should get reconstructed.
-        let mut cfg = nodes[0].to_config();
-        cfg.server_addr = net::tcp::testonly::reserve_listener();
-        cfg.consensus.as_mut().unwrap().public_addr = *cfg.server_addr;
-        nodes[0] = testonly::Instance::from_cfg(cfg);
-
-        scope::run!(ctx, |ctx, s| async {
-            let (pipe, _) = pipe::new();
-            s.spawn_bg(
-                run_network(ctx, nodes[0].state.clone(), pipe)
-                    .instrument(tracing::info_span!("node0")),
-            );
-            for n in &nodes {
-                n.wait_for_consensus_connections().await;
-            }
-            Ok(())
-        })
-        .await
-        .context("run2")?;
+        cfgs[0].server_addr = net::tcp::testonly::reserve_listener();
+        cfgs[0].consensus.as_mut().unwrap().public_addr = *cfgs[0].server_addr;
+        let (node0, runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
+        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
+        nodes[0] = node0;
+        for n in &nodes {
+            n.wait_for_consensus_connections().await;
+        }
         Ok(())
     })
     .await
@@ -148,18 +119,22 @@ async fn test_transmission() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let mut nodes = testonly::Instance::new(rng, 2, 1);
+    let setup = validator::testonly::GenesisSetup::new(rng, 2);
+    let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
-        let mut pipes = vec![];
-        for (i, n) in nodes.iter().enumerate() {
-            let (network_pipe, pipe) = pipe::new();
-            pipes.push(pipe);
-            s.spawn_bg(
-                run_network(ctx, n.state.clone(), network_pipe)
-                    .instrument(tracing::info_span!("node", i)),
-            );
-        }
+        let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
+        s.spawn_bg(runner.run(ctx));
+        let mut nodes: Vec<_> = cfgs
+            .iter()
+            .enumerate()
+            .map(|(i, cfg)| {
+                let (node, runner) = testonly::Instance::new(cfg.clone(), store.clone());
+                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+                node
+            })
+            .collect();
+
         tracing::info!("waiting for all connections to be established");
         for n in &mut nodes {
             n.wait_for_consensus_connections().await;
@@ -170,10 +145,10 @@ async fn test_transmission() {
                 message: want.clone(),
                 recipient: io::Target::Validator(nodes[1].consensus_config().key.public()),
             };
-            pipes[0].send(in_message.into());
+            nodes[0].pipe.send(in_message.into());
 
             let got = loop {
-                let output_message = pipes[1].recv(ctx).await.unwrap();
+                let output_message = nodes[1].pipe.recv(ctx).await.unwrap();
                 let io::OutputMessage::Consensus(got) = output_message else {
                     continue;
                 };

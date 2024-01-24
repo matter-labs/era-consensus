@@ -1,6 +1,5 @@
 use super::{PublicKey, Signature};
 use crate::validator::messages::{Msg, MsgHash, Signed};
-use rand::Rng;
 use std::{fmt, sync::Arc};
 use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
@@ -12,9 +11,9 @@ use zksync_consensus_utils::enum_util::Variant;
 pub struct SecretKey(pub(crate) Arc<bn254::SecretKey>);
 
 impl SecretKey {
-    /// Generate a new secret key.
-    pub fn generate<R: Rng>(rng: &mut R) -> Self {
-        Self(Arc::new(rng.gen()))
+    /// Generates a secret key from a cryptographically-secure entropy source.
+    pub fn generate() -> Self {
+        Self(Arc::new(bn254::SecretKey::generate()))
     }
 
     /// Public key corresponding to this secret key.

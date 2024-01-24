@@ -1,5 +1,4 @@
-//! Testonly utilities for concurrency crate.
-#![doc(hidden)]
+//! Testonly utilities for concurrent tests.
 use std::{future::Future, io::IsTerminal as _};
 
 /// Iff the current process is executed under
@@ -14,6 +13,7 @@ pub fn abort_on_panic() {
         .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
         .with_test_writer()
         .with_ansi(std::env::var("NO_COLOR").is_err() && std::io::stdout().is_terminal())
+        .with_line_number(true)
         .try_init();
 
     // I don't know a way to set panic=abort for nextest builds in compilation time, so we set it
@@ -33,6 +33,26 @@ pub fn abort_on_panic() {
         orig_hook(panic_info);
         std::process::abort();
     }));
+}
+
+/// Guard which has to be dropped before timeout is reached.
+/// Otherwise the test will panic.
+#[allow(unused_tuple_struct_fields)]
+pub struct TimeoutGuard(std::sync::mpsc::Sender<()>);
+
+/// Panics if (real time) timeout is reached before ctx is canceled.
+/// Implemented without using tokio, so that it cannot delay the timeout
+/// evaluation.
+pub fn set_timeout(timeout: time::Duration) -> TimeoutGuard {
+    use std::sync::mpsc;
+    let (send, recv) = mpsc::channel();
+    std::thread::spawn(move || {
+        if let Err(mpsc::RecvTimeoutError::Timeout) = recv.recv_timeout(timeout.try_into().unwrap())
+        {
+            panic!("TIMEOUT");
+        }
+    });
+    TimeoutGuard(send)
 }
 
 /// Executes a test under multiple configurations of the tokio runtime.

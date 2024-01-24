@@ -1,10 +1,13 @@
-use crate::{io::SyncState, pool::PoolWatch, rpc, watch::Watch};
+use crate::{pool::PoolWatch, rpc, watch::Watch};
+use anyhow::Context as _;
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{Arc, Mutex},
 };
-use zksync_concurrency::sync::{self, watch, Mutex};
+use zksync_concurrency::{ctx, sync};
 use zksync_consensus_roles::{node, validator};
+use zksync_consensus_storage::BlockStore;
+use zksync_protobuf::kB;
 
 /// Mapping from validator::PublicKey to a signed validator::NetAddress.
 /// Represents the currents state of node's knowledge about the validator endpoints.
@@ -118,17 +121,49 @@ pub struct Config {
     pub key: node::SecretKey,
     /// Limit on the number of inbound connections outside
     /// of the `static_inbound` set.
-    pub dynamic_inbound_limit: u64,
+    pub dynamic_inbound_limit: usize,
     /// Inbound connections that should be unconditionally accepted.
     pub static_inbound: HashSet<node::PublicKey>,
     /// Outbound connections that the node should actively try to
     /// establish and maintain.
     pub static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>,
-    /// Enables pings sent over the gossip network.
-    pub enable_pings: bool,
 }
 
-type ClientMap<R> = Mutex<HashMap<node::PublicKey, Arc<rpc::Client<R>>>>;
+/// Multimap of pointers indexed by `node::PublicKey`.
+/// Used to maintain a collection GetBlock rpc clients.
+/// TODO(gprusak): consider upgrading PoolWatch instead.
+pub(crate) struct ArcMap<T>(Mutex<HashMap<node::PublicKey, Vec<Arc<T>>>>);
+
+impl<T> Default for ArcMap<T> {
+    fn default() -> Self {
+        Self(Mutex::default())
+    }
+}
+
+impl<T> ArcMap<T> {
+    /// Fetches any pointer for the given key.
+    pub(crate) fn get_any(&self, key: &node::PublicKey) -> Option<Arc<T>> {
+        self.0.lock().unwrap().get(key)?.first().cloned()
+    }
+
+    /// Insert a pointer.
+    pub(crate) fn insert(&self, key: node::PublicKey, p: Arc<T>) {
+        self.0.lock().unwrap().entry(key).or_default().push(p);
+    }
+
+    /// Removes a pointer.
+    pub(crate) fn remove(&self, key: node::PublicKey, p: Arc<T>) {
+        let mut this = self.0.lock().unwrap();
+        use std::collections::hash_map::Entry;
+        let Entry::Occupied(mut e) = this.entry(key) else {
+            return;
+        };
+        e.get_mut().retain(|c| !Arc::ptr_eq(&p, c));
+        if e.get_mut().is_empty() {
+            e.remove();
+        }
+    }
+}
 
 /// Gossip network state.
 pub(crate) struct State {
@@ -140,25 +175,42 @@ pub(crate) struct State {
     pub(crate) outbound: PoolWatch<node::PublicKey>,
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
-    /// Subscriber for `SyncState` updates.
-    pub(crate) sync_state: Option<watch::Receiver<SyncState>>,
+    /// Block store to serve `get_block` requests from.
+    pub(crate) block_store: Arc<BlockStore>,
     /// Clients for `get_block` requests for each currently active peer.
-    pub(crate) get_block_clients: ClientMap<rpc::sync_blocks::GetBlockRpc>,
+    pub(crate) get_block_clients: ArcMap<rpc::Client<rpc::get_block::Rpc>>,
 }
 
 impl State {
     /// Constructs a new State.
-    pub(crate) fn new(cfg: Config, sync_state: Option<watch::Receiver<SyncState>>) -> Self {
+    pub(crate) fn new(cfg: Config, block_store: Arc<BlockStore>) -> Self {
         Self {
-            inbound: PoolWatch::new(
-                cfg.static_inbound.clone(),
-                cfg.dynamic_inbound_limit as usize,
-            ),
+            inbound: PoolWatch::new(cfg.static_inbound.clone(), cfg.dynamic_inbound_limit),
             outbound: PoolWatch::new(cfg.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
-            sync_state,
-            get_block_clients: ClientMap::default(),
+            block_store,
+            get_block_clients: ArcMap::default(),
             cfg,
         }
+    }
+
+    pub(super) async fn get_block(
+        &self,
+        ctx: &ctx::Ctx,
+        recipient: &node::PublicKey,
+        number: validator::BlockNumber,
+        max_block_size: usize,
+    ) -> anyhow::Result<Option<validator::FinalBlock>> {
+        Ok(self
+            .get_block_clients
+            .get_any(recipient)
+            .context("recipient is unreachable")?
+            .call(
+                ctx,
+                &rpc::get_block::Req(number),
+                max_block_size.saturating_add(kB),
+            )
+            .await?
+            .0)
     }
 }

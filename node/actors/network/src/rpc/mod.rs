@@ -22,10 +22,11 @@ use std::{collections::BTreeMap, sync::Arc};
 use zksync_concurrency::{ctx, io, limiter, metrics::LatencyHistogramExt as _, scope};
 
 pub(crate) mod consensus;
+pub(crate) mod get_block;
 mod metrics;
 pub(crate) mod ping;
-pub(crate) mod sync_blocks;
-pub(crate) mod sync_validator_addrs;
+pub(crate) mod push_block_store_state;
+pub(crate) mod push_validator_addrs;
 #[cfg(test)]
 pub(crate) mod testonly;
 #[cfg(test)]
@@ -82,24 +83,31 @@ pub(crate) struct ReservedCall<'a, R: Rpc> {
 
 impl<'a, R: Rpc> ReservedCall<'a, R> {
     /// Performs the call.
-    pub(crate) async fn call(self, ctx: &ctx::Ctx, req: &R::Req) -> anyhow::Result<R::Resp> {
+    pub(crate) async fn call(
+        self,
+        ctx: &ctx::Ctx,
+        req: &R::Req,
+        max_resp_size: usize,
+    ) -> anyhow::Result<R::Resp> {
         let send_time = ctx.now();
         let mut stream = self.stream.open(ctx).await??;
         drop(self.permit);
         let res = async {
             let metric_labels = CallType::Client.to_labels::<R>(req);
             let _guard = RPC_METRICS.inflight[&metric_labels].inc_guard(1);
-            let msg_size = frame::mux_send_proto(ctx, &mut stream.write, req).await?;
+            let msg_size = frame::mux_send_proto(ctx, &mut stream.write, req)
+                .await
+                .context("mux_send_proto(req)")?;
             RPC_METRICS.message_size[&CallType::ReqSent.to_labels::<R>(req)].observe(msg_size);
             drop(stream.write);
-            frame::mux_recv_proto(ctx, &mut stream.read).await
+            frame::mux_recv_proto(ctx, &mut stream.read, max_resp_size).await
         }
         .await;
 
         let now = ctx.now();
         let metric_labels = CallLatencyType::ClientSendRecv.to_labels::<R>(req, &res);
         RPC_METRICS.latency[&metric_labels].observe_latency(now - send_time);
-        let (res, msg_size) = res?;
+        let (res, msg_size) = res.context(R::METHOD)?;
         RPC_METRICS.message_size[&CallType::RespRecv.to_labels::<R>(req)].observe(msg_size);
         Ok(res)
     }
@@ -126,14 +134,10 @@ impl<R: Rpc> Client<R> {
     pub(crate) async fn reserve<'a>(
         &'a self,
         ctx: &'a ctx::Ctx,
-    ) -> anyhow::Result<ReservedCall<'a, R>> {
+    ) -> ctx::OrCanceled<ReservedCall<'a, R>> {
         let reserve_time = ctx.now();
-        let permit = self.limiter.acquire(ctx, 1).await.context("limiter")?;
-        let stream = self
-            .queue
-            .reserve(ctx)
-            .await
-            .context("StreamQueue::open()")?;
+        let permit = self.limiter.acquire(ctx, 1).await?;
+        let stream = self.queue.reserve(ctx).await?;
         RPC_METRICS.call_reserve_latency[&R::METHOD].observe_latency(ctx.now() - reserve_time);
         Ok(ReservedCall {
             stream,
@@ -143,8 +147,17 @@ impl<R: Rpc> Client<R> {
     }
 
     /// Performs an RPC.
-    pub(crate) async fn call(&self, ctx: &ctx::Ctx, req: &R::Req) -> anyhow::Result<R::Resp> {
-        self.reserve(ctx).await?.call(ctx, req).await
+    pub(crate) async fn call(
+        &self,
+        ctx: &ctx::Ctx,
+        req: &R::Req,
+        max_resp_size: usize,
+    ) -> ctx::Result<R::Resp> {
+        Ok(self
+            .reserve(ctx)
+            .await?
+            .call(ctx, req, max_resp_size)
+            .await?)
     }
 }
 
@@ -153,6 +166,9 @@ impl<R: Rpc> Client<R> {
 pub(crate) trait Handler<R: Rpc>: Sync + Send {
     /// Processes the request and returns the response.
     async fn handle(&self, ctx: &ctx::Ctx, req: R::Req) -> anyhow::Result<R::Resp>;
+    /// Upper bound on the proto-encoded request size.
+    /// It protects us from buffering maliciously large messages.
+    fn max_req_size(&self) -> usize;
 }
 
 /// Internal: an RPC server which wraps the Handler.
@@ -182,8 +198,12 @@ impl<R: Rpc, H: Handler<R>> ServerTrait for Server<R, H> {
                         drop(permit);
                         let res = async {
                             let recv_time = ctx.now();
-                            let (req, msg_size) =
-                                frame::mux_recv_proto::<R::Req>(ctx, &mut stream.read).await?;
+                            let (req, msg_size) = frame::mux_recv_proto::<R::Req>(
+                                ctx,
+                                &mut stream.read,
+                                self.handler.max_req_size(),
+                            )
+                            .await?;
 
                             let size_labels = CallType::ReqRecv.to_labels::<R>(&req);
                             let resp_size_labels = CallType::RespSent.to_labels::<R>(&req);
