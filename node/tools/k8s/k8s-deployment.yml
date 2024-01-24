@@ -16,6 +16,9 @@ spec:
       containers:
         - name: consensus-node-01
           image: consensus-node-01
+          env:
+            - name: NODE_ID
+              value: "node_0"
           imagePullPolicy: Never
           ports:
             - containerPort: 3054
