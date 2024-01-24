@@ -1,12 +1,12 @@
 .PHONY: node nodes_config docker_node_configs node_docker consensus_docker_example clean clean_docker
-IP?=127.0.0.1:3054
+NODE?=0
 DOCKER_IP=172.12.0.10
 EXECUTABLE_NODE_DIR=node/tools
 
 # Locally run commands
 
 node:
-	export RUST_LOG=INFO && cd ${EXECUTABLE_NODE_DIR}/nodes-config/${IP} && cargo run -- --database ../../database/${IP}
+	export RUST_LOG=INFO && cd ${EXECUTABLE_NODE_DIR}/nodes-config/node_${NODE} && cargo run -- --database ../../database/node_${NODE}
 
 nodes_config:
 	cd ${EXECUTABLE_NODE_DIR} && cargo run --bin localnet_config -- --input-addrs addresses.txt --output-dir nodes-config

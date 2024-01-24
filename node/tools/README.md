@@ -12,13 +12,13 @@ These instructions guide you through the process of setting up and running a tes
     make nodes_config
     ```
 
-    This command establishes a directory named `nodes-config` and creates a folder for each address listed in the `.txt` file, providing necessary configuration files for the respective node.
+    This command creates a directory named `nodes-config` and generates a folder for each address listed in the `.txt` file with the name `node_{NODE_NUMBER}`, providing essential configuration files for the corresponding node. The `NODE_NUMBER` is simply a numerical identifier for each node.
     
     ```bash
-    make node IP=<NODE_IP>
+    make node NODE=<NODE_NUMBER>
     ```
 
-    The default value for this command is `127.0.0.1:3054`. Note that running this command will take control of the terminal.
+    The default value for this command is set to `0` for launching the initial node, and you can increment the number for subsequent nodes. Note that running this command will take control of the terminal.
 
 ## Dockerized Setup
 
