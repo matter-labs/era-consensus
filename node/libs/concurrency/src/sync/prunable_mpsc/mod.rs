@@ -9,11 +9,7 @@ use crate::{
     ctx,
     sync::{self, watch},
 };
-use std::{
-    collections::VecDeque,
-    fmt,
-    sync::{Arc, Mutex},
-};
+use std::{collections::VecDeque, fmt, sync::Arc};
 
 #[cfg(test)]
 mod tests;
@@ -29,14 +25,10 @@ mod tests;
 pub fn channel<T>(
     pruning_predicate: impl 'static + Sync + Send + Fn(&T, &T) -> bool,
 ) -> (Sender<T>, Receiver<T>) {
-    let queue: Mutex<VecDeque<T>> = Mutex::new(VecDeque::new());
-    // Internal watch, to enable waiting on the receiver side for new values.
-    let (has_values_send, has_values_recv) = watch::channel(false);
+    let buf = VecDeque::new();
+    let (send, recv) = watch::channel(buf);
 
-    let shared = Arc::new(Shared {
-        buffer: queue,
-        has_values_send,
-    });
+    let shared = Arc::new(Shared { send });
 
     let send = Sender {
         shared: shared.clone(),
@@ -45,15 +37,14 @@ pub fn channel<T>(
 
     let recv = Receiver {
         shared: shared.clone(),
-        has_values_recv,
+        recv,
     };
 
     (send, recv)
 }
 
 struct Shared<T> {
-    buffer: Mutex<VecDeque<T>>,
-    has_values_send: watch::Sender<bool>,
+    send: watch::Sender<VecDeque<T>>,
 }
 
 /// Sends values to the associated [`Receiver`].
@@ -69,11 +60,10 @@ impl<T> Sender<T> {
     /// This initiates the pruning procedure which operates in O(N) time complexity
     /// on the buffer of pending values.
     pub fn send(&self, value: T) {
-        let mut buffer = self.shared.buffer.lock().unwrap();
-        buffer.retain(|pending_value| !(self.pruning_predicate)(pending_value, &value));
-        buffer.push_back(value);
-
-        self.shared.has_values_send.send_replace(true);
+        self.shared.send.send_modify(|buf| {
+            buf.retain(|pending_value| !(self.pruning_predicate)(pending_value, &value));
+            buf.push_back(value);
+        });
     }
 }
 
@@ -87,23 +77,20 @@ impl<T> fmt::Debug for Sender<T> {
 /// Instances are created by the [`channel`] function.
 pub struct Receiver<T> {
     shared: Arc<Shared<T>>,
-    has_values_recv: watch::Receiver<bool>,
+    recv: watch::Receiver<VecDeque<T>>,
 }
 
 impl<T> Receiver<T> {
     /// Receives the next value for this receiver.
     /// If there are no messages in the buffer, this method will hang until a message is sent.
     pub async fn recv(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<T> {
-        sync::wait_for(ctx, &mut self.has_values_recv, |has_values| *has_values).await?;
-        let mut buffer = self.shared.buffer.lock().unwrap();
+        sync::wait_for(ctx, &mut self.recv, |buf| !buf.is_empty()).await?;
+
+        let mut value: Option<T> = None;
+        self.shared.send.send_modify(|buf| value = buf.pop_front());
+
         // `None` is unexpected because we waited for new values, and there's only a single receiver.
-        let value = buffer.pop_front().unwrap();
-
-        if buffer.len() == 0 {
-            self.shared.has_values_send.send_replace(false);
-        }
-
-        Ok(value)
+        Ok(value.unwrap())
     }
 }
 
