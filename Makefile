@@ -43,7 +43,7 @@ clean: clean_docker
 	rm -rf ${EXECUTABLE_NODE_DIR}/database
 
 clean_docker:
-	rm -rf ${EXECUTABLE_NODE_DIR}/docker-config
+	rm -rf ${EXECUTABLE_NODE_DIR}/docker-config/nodes-config
 	rm -rf ${EXECUTABLE_NODE_DIR}/docker_binaries
 	docker rm -f consensus-node-1
 	docker rm -f consensus-node-2
