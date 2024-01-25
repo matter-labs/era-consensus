@@ -1,7 +1,8 @@
-.PHONY: node nodes_config docker_nodes_config docker_node consensus_docker_example clean clean_docker
+.PHONY: node nodes_config docker_node_configs node_docker consensus_docker_example clean clean_docker addresses_file blank_configs
 NODE?=0
 DOCKER_IP=172.12.0.10
 EXECUTABLE_NODE_DIR=node/tools
+NODES=4
 
 # Locally run commands
 
@@ -49,3 +50,17 @@ clean_docker:
 	docker rm -f consensus-node-2
 	docker network rm -f node-net
 	docker image rm -f consensus-node
+
+addresses_file:
+	mkdir -p ${EXECUTABLE_NODE_DIR}/docker-config
+	cd ${EXECUTABLE_NODE_DIR}/docker-config && \
+	rm -rf addresses.txt && \
+	touch addresses.txt && \
+	for n in $$(seq 0 $$((${NODES} - 1))); do echo 0.0.0.$$n:3054 >> addresses.txt; done
+
+blank_configs: addresses_file docker_node_configs
+	for n in $$(seq 0 $$((${NODES} - 1))); do \
+	   jq '.publicAddr = "0.0.0.0:3054"' node/tools/docker-config/nodes-config/node_$$n/config.json | \
+	   jq '.gossipStaticOutbound = "[]"' > node/tools/docker-config/nodes-config/node_$$n/config.tmp && \
+	   mv -f node/tools/docker-config/nodes-config/node_$$n/config.tmp node/tools/docker-config/nodes-config/node_$$n/config.json; \
+	done
