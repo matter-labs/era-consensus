@@ -20,8 +20,8 @@ mod tests;
 /// The Sender can be cloned to send to the same channel from multiple code locations. Only one Receiver is supported.
 ///
 /// * [`T`]: The type of data that will be sent through the channel.
-/// * [`pruning_predicate`]: A function that determines whether an unreceived, pending value in the buffer should be pruned based on a newly sent value.
-///
+/// * [`pruning_predicate`]: A function that determines whether an unreceived, pending value in the buffer (represented by the first `T`) should be pruned
+/// based on a newly sent value (represented by the second `T`).
 pub fn channel<T>(
     pruning_predicate: impl 'static + Sync + Send + Fn(&T, &T) -> bool,
 ) -> (Sender<T>, Receiver<T>) {
