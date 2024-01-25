@@ -43,3 +43,7 @@ workspace = true
 [[bin]]
 name = "executor"
 path = "src/main.rs"
+
+[[bin]]
+name = "deployer"
+path = "src/bin/deployer.rs"
