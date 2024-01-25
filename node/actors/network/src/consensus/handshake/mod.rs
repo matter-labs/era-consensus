@@ -65,7 +65,7 @@ pub(super) async fn outbound(
     )
     .await
     .map_err(Error::Stream)?;
-    let h: Handshake = frame::recv_proto(ctx, stream)
+    let h: Handshake = frame::recv_proto(ctx, stream, Handshake::max_size())
         .await
         .map_err(Error::Stream)?;
     if h.session_id.msg != session_id {
@@ -85,7 +85,7 @@ pub(super) async fn inbound(
 ) -> Result<validator::PublicKey, Error> {
     let ctx = &ctx.with_timeout(TIMEOUT);
     let session_id = node::SessionId(stream.id().encode());
-    let h: Handshake = frame::recv_proto(ctx, stream)
+    let h: Handshake = frame::recv_proto(ctx, stream, Handshake::max_size())
         .await
         .map_err(Error::Stream)?;
     if h.session_id.msg != session_id.clone() {

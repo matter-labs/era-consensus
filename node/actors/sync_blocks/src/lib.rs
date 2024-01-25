@@ -4,9 +4,9 @@
 //! network RPCs.
 use crate::io::{InputMessage, OutputMessage};
 use std::sync::Arc;
-use zksync_concurrency::{ctx, error::Wrap as _, scope};
-use zksync_consensus_network::io::{GetBlockError, SyncBlocksRequest};
-use zksync_consensus_storage::{BlockStore, BlockStoreState};
+use zksync_concurrency::{ctx, scope};
+use zksync_consensus_network::io::SyncBlocksRequest;
+use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;
@@ -36,31 +36,11 @@ impl Config {
                         state,
                         response,
                     }) => {
-                        let res = peer_states.update(
-                            &peer,
-                            BlockStoreState {
-                                first: state.first_stored_block,
-                                last: state.last_stored_block,
-                            },
-                        );
+                        let res = peer_states.update(&peer, state);
                         if let Err(err) = res {
                             tracing::info!(%err, ?peer, "peer_states.update()");
                         }
                         response.send(()).ok();
-                    }
-                    InputMessage::Network(SyncBlocksRequest::GetBlock {
-                        block_number,
-                        response,
-                    }) => {
-                        response
-                            .send(
-                                storage
-                                    .block(ctx, block_number)
-                                    .await
-                                    .wrap("storage.block()")?
-                                    .ok_or(GetBlockError::NotSynced),
-                            )
-                            .ok();
                     }
                 }
             }

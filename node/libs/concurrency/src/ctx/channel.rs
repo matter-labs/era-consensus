@@ -120,6 +120,11 @@ impl<T> Sender<T> {
     pub fn try_send(&self, v: T) -> Result<(), FullError> {
         self.0.try_send(v).map_err(|_| FullError)
     }
+
+    /// Waits until receiver is dropped.
+    pub async fn closed(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
+        ctx.wait(self.0.closed()).await
+    }
 }
 
 impl<T> Receiver<T> {

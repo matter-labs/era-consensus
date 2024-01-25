@@ -1,5 +1,4 @@
 use super::StateMachine;
-use crate::Config;
 use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
@@ -229,7 +228,7 @@ impl StateMachine {
             // The leader proposed a new block.
             Some(payload) => {
                 // Check that the payload doesn't exceed the maximum size.
-                if payload.0.len() > Config::PAYLOAD_MAX_SIZE {
+                if payload.0.len() > self.config.max_payload_size {
                     return Err(Error::ProposalOversizedPayload {
                         payload_size: payload.0.len(),
                         header: message.proposal,

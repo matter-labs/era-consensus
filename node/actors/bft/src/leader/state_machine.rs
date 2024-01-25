@@ -190,6 +190,14 @@ impl StateMachine {
                     .payload_manager
                     .propose(ctx, highest_qc.header().number.next())
                     .await?;
+                if payload.0.len() > cfg.max_payload_size {
+                    return Err(anyhow::format_err!(
+                        "proposed payload too large: got {}B, max {}B",
+                        payload.0.len(),
+                        cfg.max_payload_size
+                    )
+                    .into());
+                }
                 metrics::METRICS
                     .leader_proposal_payload_size
                     .observe(payload.0.len());

@@ -5,7 +5,7 @@ use rand::{
 };
 use tempfile::TempDir;
 use zksync_concurrency::ctx;
-use zksync_consensus_roles::node;
+use zksync_consensus_roles::{node, validator::testonly::GenesisSetup};
 use zksync_consensus_storage::{testonly, PersistentBlockStore};
 use zksync_protobuf::testonly::test_encode_random;
 
@@ -30,6 +30,7 @@ impl Distribution<AppConfig> for Standard {
             gossip_static_outbound: (0..6)
                 .map(|_| (rng.gen::<node::SecretKey>().public(), make_addr(rng)))
                 .collect(),
+            max_payload_size: rng.gen(),
         }
     }
 }
@@ -38,18 +39,21 @@ impl Distribution<AppConfig> for Standard {
 fn test_schema_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    test_encode_random::<_, AppConfig>(rng);
+    test_encode_random::<AppConfig>(rng);
 }
 
 #[tokio::test]
 async fn test_reopen_rocksdb() {
     let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
     let dir = TempDir::new().unwrap();
+    let mut setup = GenesisSetup::empty(rng, 3);
+    setup.push_blocks(rng, 5);
     let mut want = vec![];
-    for b in testonly::random_blocks(ctx).take(5) {
+    for b in &setup.blocks {
         let store = store::RocksDB::open(dir.path()).await.unwrap();
-        store.store_next_block(ctx, &b).await.unwrap();
-        want.push(b);
+        store.store_next_block(ctx, b).await.unwrap();
+        want.push(b.clone());
         assert_eq!(want, testonly::dump(ctx, &store).await);
     }
 }

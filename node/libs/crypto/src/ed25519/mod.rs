@@ -65,13 +65,13 @@ impl ByteFmt for PublicKey {
     }
 
     fn encode(&self) -> Vec<u8> {
-        self.0.to_bytes().to_vec()
+        self.0.as_bytes().to_vec()
     }
 }
 
 impl std::hash::Hash for PublicKey {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(&self.0.to_bytes());
+        state.write(self.0.as_bytes());
     }
 }
 
@@ -84,6 +84,18 @@ impl PartialEq for PublicKey {
 }
 
 impl Eq for PublicKey {}
+
+impl PartialOrd for PublicKey {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for PublicKey {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.as_bytes().cmp(other.0.as_bytes())
+    }
+}
 
 /// ed25519 signature.
 #[derive(Clone, Debug, PartialEq, Eq)]

@@ -33,16 +33,120 @@ pub fn make_justification<R: Rng>(
     }
 }
 
-/// Constructs a genesis block with random payload.
-/// WARNING: it is not a fully correct FinalBlock.
-pub fn make_genesis_block<R: Rng>(rng: &mut R, protocol_version: ProtocolVersion) -> FinalBlock {
-    let payload: Payload = rng.gen();
-    let header = BlockHeader::genesis(payload.hash(), BlockNumber(0));
-    let justification = make_justification(rng, &header, protocol_version);
-    FinalBlock {
-        payload,
-        justification,
+impl<'a> BlockBuilder<'a> {
+    /// Builds `GenesisSetup`.
+    pub fn push(self) {
+        let msgs: Vec<_> = self
+            .setup
+            .keys
+            .iter()
+            .map(|sk| sk.sign_msg(self.msg))
+            .collect();
+        let justification = CommitQC::from(&msgs, &self.setup.validator_set()).unwrap();
+        self.setup.blocks.push(FinalBlock {
+            payload: self.payload,
+            justification,
+        });
     }
+
+    /// Sets `protocol_version`.
+    pub fn protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
+        self.msg.protocol_version = protocol_version;
+        self
+    }
+
+    /// Sets `block_number`.
+    pub fn block_number(mut self, block_number: BlockNumber) -> Self {
+        self.msg.proposal.number = block_number;
+        self
+    }
+
+    /// Sets `payload`.
+    pub fn payload(mut self, payload: Payload) -> Self {
+        self.msg.proposal.payload = payload.hash();
+        self.payload = payload;
+        self
+    }
+}
+
+/// GenesisSetup.
+#[derive(Debug, Clone)]
+pub struct GenesisSetup {
+    /// Validators' secret keys.
+    pub keys: Vec<SecretKey>,
+    /// Initial blocks.
+    pub blocks: Vec<FinalBlock>,
+}
+
+/// Builder of GenesisSetup.
+pub struct BlockBuilder<'a> {
+    setup: &'a mut GenesisSetup,
+    msg: ReplicaCommit,
+    payload: Payload,
+}
+
+impl GenesisSetup {
+    /// Constructs GenesisSetup with no blocks.
+    pub fn empty(rng: &mut impl Rng, validators: usize) -> Self {
+        Self {
+            keys: (0..validators).map(|_| rng.gen()).collect(),
+            blocks: vec![],
+        }
+    }
+
+    /// Constructs GenesisSetup with genesis block.
+    pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
+        let mut this = Self::empty(rng, validators);
+        this.push_block(rng.gen());
+        this
+    }
+
+    /// Returns a builder for the next block.
+    pub fn next_block(&mut self) -> BlockBuilder {
+        let parent = self.blocks.last().map(|b| b.justification.message);
+        let payload = Payload(vec![]);
+        BlockBuilder {
+            setup: self,
+            msg: ReplicaCommit {
+                protocol_version: parent
+                    .map(|m| m.protocol_version)
+                    .unwrap_or(ProtocolVersion::EARLIEST),
+                view: parent.map(|m| m.view.next()).unwrap_or(ViewNumber(0)),
+                proposal: parent
+                    .map(|m| BlockHeader::new(&m.proposal, payload.hash()))
+                    .unwrap_or(BlockHeader::genesis(payload.hash(), BlockNumber(0))),
+            },
+            payload,
+        }
+    }
+
+    /// Pushes the next block with the given payload.
+    pub fn push_block(&mut self, payload: Payload) {
+        self.next_block().payload(payload).push();
+    }
+
+    /// Pushes `count` blocks with a random payload.
+    pub fn push_blocks(&mut self, rng: &mut impl Rng, count: usize) {
+        for _ in 0..count {
+            self.push_block(rng.gen());
+        }
+    }
+
+    /// ValidatorSet.
+    pub fn validator_set(&self) -> ValidatorSet {
+        ValidatorSet::new(self.keys.iter().map(|k| k.public())).unwrap()
+    }
+}
+
+/// Constructs a genesis block with random payload.
+pub fn make_genesis_block(rng: &mut impl Rng, protocol_version: ProtocolVersion) -> FinalBlock {
+    let mut setup = GenesisSetup::new(rng, 3);
+    setup
+        .next_block()
+        .protocol_version(protocol_version)
+        .payload(rng.gen())
+        .push();
+    setup.blocks[0].clone()
 }
 
 /// Constructs a random block with a given parent.
@@ -195,7 +299,7 @@ impl Distribution<BlockHeader> for Standard {
 
 impl Distribution<Payload> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Payload {
-        let size: usize = rng.gen_range(0..11);
+        let size: usize = rng.gen_range(500..1000);
         Payload((0..size).map(|_| rng.gen()).collect())
     }
 }
