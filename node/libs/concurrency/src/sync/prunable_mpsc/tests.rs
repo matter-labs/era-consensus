@@ -1,6 +1,6 @@
 use super::*;
 use crate::ctx;
-use tokio::time::{timeout, Duration};
+use assert_matches::assert_matches;
 
 // Test scenario:
 // 1. Pre-send two sets of 1000 values, so that the first set is expected to be pruned.
@@ -51,11 +51,10 @@ async fn test_prunable_mpsc() {
                 };
                 i += 1;
                 if i == 2000 {
-                    assert!(
-                        timeout(Duration::from_secs(0), recv.recv(ctx))
-                            .await
-                            .is_err(),
-                        "recv() is expected to hang since all values have been exhausted"
+                    assert_matches!(
+                        recv.recv(&ctx.with_timeout(time::Duration::milliseconds(10))).await,
+                        Err(ctx::Canceled),
+                        "recv() is expected to hang and be canceled since all values have been exhausted"
                     );
                     break;
                 }
