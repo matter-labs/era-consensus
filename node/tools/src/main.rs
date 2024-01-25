@@ -26,6 +26,9 @@ struct Args {
     /// Path to the rocksdb database of the node.
     #[arg(long, default_value = "./database")]
     database: PathBuf,
+    /// Port for the RPC server.
+    #[arg(long)]
+    rpc_port: Option<u16>,
 }
 
 impl Args {
@@ -89,9 +92,12 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("configs.into_executor()")?;
 
-    // Config for the RPC server.
-    let mut rpc_addr = configs.app.public_addr.to_string();
-    rpc_addr.replace_range(rpc_addr.find(':').unwrap().., ":3051");
+    let mut rpc_addr = configs.app.public_addr;
+    if let Some(port) = args.rpc_port {
+        rpc_addr.set_port(port);
+    } else {
+        rpc_addr.set_port(rpc_addr.port() + 100);
+    }
 
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {
