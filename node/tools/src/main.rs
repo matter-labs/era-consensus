@@ -2,11 +2,13 @@
 //! manages communication between the actors. It is the main executable in this workspace.
 use anyhow::Context as _;
 use clap::Parser;
-use std::{fs, io::IsTerminal as _, path::PathBuf};
+use std::{error::Error, fs, io::IsTerminal as _, path::PathBuf};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
+use zksync_consensus_crypto::read_required_text;
+use zksync_consensus_roles::node;
 use zksync_consensus_tools::ConfigPaths;
 use zksync_consensus_utils::no_copy::NoCopy;
 
@@ -26,6 +28,9 @@ struct Args {
     /// Path to the rocksdb database of the node.
     #[arg(long, default_value = "./database")]
     database: PathBuf,
+    /// IP address and key of the seed peers.
+    #[arg(long="seed", value_parser = parse_seed_peer)]
+    seed_peers: Vec<(std::net::SocketAddr, node::PublicKey)>,
 }
 
 impl Args {
@@ -39,6 +44,19 @@ impl Args {
             database: &self.database,
         }
     }
+}
+
+/// Parse a single (SocketAddr,node key) pair
+fn parse_seed_peer(
+    s: &str,
+) -> Result<(std::net::SocketAddr, node::PublicKey), Box<dyn Error + Send + Sync>> {
+    let pos = s
+        .find(',')
+        .ok_or_else(|| format!("expected format: <IP>:<Port>,<key>"))?;
+    Ok((
+        s[..pos].parse()?,
+        read_required_text(&Some(s[pos + 1..].parse()?))?,
+    ))
 }
 
 #[tokio::main]
@@ -79,10 +97,13 @@ async fn main() -> anyhow::Result<()> {
 
     // Load the config files.
     tracing::debug!("Loading config files.");
-    let configs = args
+    let mut configs = args
         .config_paths()
         .load()
         .context("config_paths().load()")?;
+
+    // Add gossipStaticOutbound pairs from cli to config
+    configs.app.add_seed_peers(args.seed_peers);
 
     let (executor, runner) = configs
         .make_executor(ctx)
