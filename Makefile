@@ -39,9 +39,12 @@ stop_docker_nodes:
 
 # Clean commands
 
-clean: clean_docker
+clean: clean_docker clean_k8s
 	rm -rf ${EXECUTABLE_NODE_DIR}/nodes-config
 	rm -rf ${EXECUTABLE_NODE_DIR}/database
+
+clean_k8s:
+	rm -rf ${EXECUTABLE_NODE_DIR}/k8s_configs
 
 clean_docker:
 	rm -rf ${EXECUTABLE_NODE_DIR}/docker-config/nodes-config
