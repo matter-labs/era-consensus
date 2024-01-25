@@ -3,8 +3,7 @@ use std::net::SocketAddr;
 use super::methods::health_check;
 use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
 
-pub async fn run_server(ip_address: String) -> anyhow::Result<()> {
-    let ip_address: SocketAddr = ip_address.parse()?;
+pub async fn run_server(ip_address: SocketAddr) -> anyhow::Result<()> {
     // Custom tower service to handle the RPC requests
     let service_builder = tower::ServiceBuilder::new()
         // Proxy `GET /health` requests to internal `system_health` method.
