@@ -118,13 +118,6 @@ impl ProtoFmt for AppConfig {
     }
 }
 
-impl AppConfig {
-    pub fn add_seed_peers(&mut self, seed_peers: Vec<(std::net::SocketAddr, node::PublicKey)>) {
-        for (addr, key) in seed_peers.iter() {
-            self.gossip_static_outbound.insert(key.clone(), *addr);
-        }
-    }
-}
 /// This struct holds the file path to each of the config files.
 #[derive(Debug)]
 pub struct ConfigPaths<'a> {

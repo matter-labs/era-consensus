@@ -29,8 +29,8 @@ struct Args {
     #[arg(long, default_value = "./database")]
     database: PathBuf,
     /// IP address and key of the seed peers.
-    #[arg(long="seed", value_parser = parse_seed_peer)]
-    seed_peers: Vec<(std::net::SocketAddr, node::PublicKey)>,
+    #[arg(long="add_gossip_static_outbound", value_parser = parse_gossip_static_outbound)]
+    gossip_static_outbound: Vec<(node::PublicKey, std::net::SocketAddr)>,
 }
 
 impl Args {
@@ -47,15 +47,15 @@ impl Args {
 }
 
 /// Parse a single (SocketAddr,node key) pair
-fn parse_seed_peer(
+fn parse_gossip_static_outbound(
     s: &str,
-) -> Result<(std::net::SocketAddr, node::PublicKey), Box<dyn Error + Send + Sync>> {
+) -> Result<( node::PublicKey,std::net::SocketAddr), Box<dyn Error + Send + Sync>> {
     let pos = s
         .find(',')
-        .ok_or_else(|| "expected format: <IP>:<Port>,<key>")?;
+        .ok_or("expected format: <key>,<IP>:<Port>")?;
     Ok((
-        s[..pos].parse()?,
-        read_required_text(&Some(s[pos + 1..].parse()?))?,
+        read_required_text(&Some(s[..pos].parse()?))?,
+        s[pos + 1..].parse()?,
     ))
 }
 
@@ -103,7 +103,7 @@ async fn main() -> anyhow::Result<()> {
         .context("config_paths().load()")?;
 
     // Add gossipStaticOutbound pairs from cli to config
-    configs.app.add_seed_peers(args.seed_peers);
+    configs.app.gossip_static_outbound.extend(args.gossip_static_outbound);
 
     let (executor, runner) = configs
         .make_executor(ctx)
