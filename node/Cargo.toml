@@ -84,6 +84,7 @@ tracing = { version = "0.1.37", features = ["attributes"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter", "fmt"] }
 jsonrpsee = { version = "0.21.0", features = ["server", "http-client", "ws-client", "macros", "client-ws-transport-native-tls"]  }
 tower = { version = "0.4.13", features = ["full"] }
+kube = { version = "0.88.1", features = ["runtime", "derive"] }
 
 # Note that "bench" profile inherits from "release" profile and
 # "test" profile inherits from "dev" profile.

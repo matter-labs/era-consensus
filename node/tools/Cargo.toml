@@ -30,6 +30,7 @@ tracing-subscriber.workspace = true
 vise-exporter.workspace = true
 jsonrpsee.workspace = true
 tower.workspace = true
+kube.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
