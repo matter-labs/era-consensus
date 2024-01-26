@@ -3,28 +3,9 @@ use anyhow::Context as _;
 use clap::Parser;
 use rand::Rng;
 use std::{fs, net::SocketAddr, path::PathBuf};
-use zksync_consensus_bft::testonly;
 use zksync_consensus_crypto::TextFmt;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_tools::AppConfig;
-
-/// Encodes a generated proto message to json for arbitrary ProtoFmt.
-fn encode_json<T: zksync_protobuf::ProtoFmt>(x: &T) -> String {
-    let mut s = serde_json::Serializer::pretty(vec![]);
-    zksync_protobuf::serde::serialize(x, &mut s).unwrap();
-    String::from_utf8(s.into_inner()).unwrap()
-}
-
-/// Replaces IP of the address with UNSPECIFIED (aka INADDR_ANY) of the corresponding IP type.
-/// Opening a listener socket with an UNSPECIFIED IP, means that the new connections
-/// on any network interface of the VM will be accepted.
-fn with_unspecified_ip(addr: SocketAddr) -> SocketAddr {
-    let unspecified_ip = match addr {
-        SocketAddr::V4(_) => std::net::Ipv4Addr::UNSPECIFIED.into(),
-        SocketAddr::V6(_) => std::net::Ipv6Addr::UNSPECIFIED.into(),
-    };
-    SocketAddr::new(unspecified_ip, addr.port())
-}
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
@@ -54,6 +35,7 @@ fn main() -> anyhow::Result<()> {
         );
     }
     assert!(!addrs.is_empty(), "at least 1 address has to be specified");
+
     let metrics_server_addr = args
         .metrics_server_port
         .map(|port| SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), port));
@@ -63,43 +45,25 @@ fn main() -> anyhow::Result<()> {
     let validator_keys: Vec<validator::SecretKey> = (0..addrs.len()).map(|_| rng.gen()).collect();
     let node_keys: Vec<node::SecretKey> = (0..addrs.len()).map(|_| rng.gen()).collect();
 
-    // Generate the genesis block.
-    // TODO: generating genesis block shouldn't require knowing the private keys.
-    let (genesis, validator_set) = testonly::make_genesis(
-        &validator_keys,
-        validator::Payload(vec![]),
-        validator::BlockNumber(0),
-    );
-
     // Each node will have `gossip_peers` outbound peers.
     let nodes = addrs.len();
     let peers = 2;
 
+    let mut default_config = AppConfig::default_for(nodes as u64);
+
+    if let Some(metrics_server_addr) = metrics_server_addr {
+        default_config.with_metrics_server_addr(metrics_server_addr);
+    }
     let mut cfgs: Vec<_> = (0..nodes)
-        .map(|i| AppConfig {
-            server_addr: with_unspecified_ip(addrs[i]),
-            public_addr: addrs[i],
-            metrics_server_addr,
-
-            validators: validator_set.clone(),
-            genesis_block: genesis.clone(),
-
-            gossip_dynamic_inbound_limit: 0,
-            gossip_static_inbound: [].into(),
-            gossip_static_outbound: [].into(),
-        })
+        .map(|i| default_config.with_public_addr(addrs[i]).clone())
         .collect();
 
     // Construct a gossip network with optimal diameter.
     for i in 0..nodes {
         for j in 0..peers {
             let next = (i * peers + j + 1) % nodes;
-            cfgs[i]
-                .gossip_static_outbound
-                .insert(node_keys[next].public(), addrs[next]);
-            cfgs[next]
-                .gossip_static_inbound
-                .insert(node_keys[i].public());
+            cfgs[i].add_gossip_static_outbound(node_keys[next].public(), addrs[next]);
+            cfgs[next].add_gossip_static_inbound(node_keys[i].public());
         }
     }
 
@@ -108,8 +72,7 @@ fn main() -> anyhow::Result<()> {
         let root = args.output_dir.join(format!("node_{}", i));
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
-
-        fs::write(root.join("config.json"), encode_json(&cfg)).context("fs::write()")?;
+        cfg.write_to_file(&root)?;
         fs::write(
             root.join("validator_key"),
             &TextFmt::encode(&validator_keys[i]),
