@@ -1,18 +1,27 @@
 //! Node configuration.
 use crate::{proto, store};
 use anyhow::Context as _;
+use bft::testonly;
+use rand::Rng;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{hash_map::RandomState, HashMap, HashSet},
     fs,
+    net::SocketAddr,
     path::{Path, PathBuf},
 };
 use zksync_concurrency::ctx;
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
-use zksync_consensus_roles::{node, validator};
+use zksync_consensus_roles::{
+    node::{self, PublicKey},
+    validator,
+};
 use zksync_consensus_storage::{BlockStore, BlockStoreRunner, PersistentBlockStore};
 use zksync_protobuf::{required, ProtoFmt};
+
+/// Ports for the nodes to listen on kubernetes pod.
+const NODES_PORT: u16 = 3054;
 
 /// Decodes a proto message from json for arbitrary ProtoFmt.
 fn decode_json<T: ProtoFmt>(json: &str) -> anyhow::Result<T> {
@@ -22,20 +31,27 @@ fn decode_json<T: ProtoFmt>(json: &str) -> anyhow::Result<T> {
     Ok(p)
 }
 
+/// Encodes a generated proto message to json for arbitrary ProtoFmt.
+fn encode_json<T: ProtoFmt>(x: &T) -> String {
+    let mut s = serde_json::Serializer::pretty(vec![]);
+    zksync_protobuf::serde::serialize(x, &mut s).unwrap();
+    String::from_utf8(s.into_inner()).unwrap()
+}
+
 /// Node configuration including executor configuration, optional validator configuration,
 /// and application-specific settings (e.g. metrics scraping).
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct AppConfig {
-    pub server_addr: std::net::SocketAddr,
-    pub public_addr: std::net::SocketAddr,
-    pub metrics_server_addr: Option<std::net::SocketAddr>,
+    pub server_addr: SocketAddr,
+    pub public_addr: SocketAddr,
+    pub metrics_server_addr: Option<SocketAddr>,
 
     pub validators: validator::ValidatorSet,
     pub genesis_block: validator::FinalBlock,
 
     pub gossip_dynamic_inbound_limit: u64,
-    pub gossip_static_inbound: HashSet<node::PublicKey>,
-    pub gossip_static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>,
+    pub gossip_static_inbound: HashSet<PublicKey>,
+    pub gossip_static_outbound: HashMap<PublicKey, SocketAddr>,
 }
 
 impl ProtoFmt for AppConfig {
@@ -160,6 +176,82 @@ impl<'a> ConfigPaths<'a> {
 
             database: self.database.into(),
         })
+    }
+}
+
+impl AppConfig {
+    pub fn default_for(nodes_amount: u64) -> AppConfig {
+        // Generate the keys for all the replicas.
+        let rng = &mut rand::thread_rng();
+        let validator_keys: Vec<validator::SecretKey> =
+            (0..nodes_amount).map(|_| rng.gen()).collect();
+
+        let (genesis, validator_set) = testonly::make_genesis(
+            &validator_keys,
+            validator::Payload(vec![]),
+            validator::BlockNumber(0),
+        );
+
+        Self {
+            server_addr: SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
+            public_addr: SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
+            metrics_server_addr: None,
+
+            validators: validator_set.clone(),
+            genesis_block: genesis.clone(),
+
+            gossip_dynamic_inbound_limit: 2,
+            gossip_static_inbound: [].into(),
+            gossip_static_outbound: [].into(),
+        }
+    }
+
+    pub fn with_public_addr(&mut self, public_addr: SocketAddr) -> &mut Self {
+        self.public_addr = public_addr;
+        self
+    }
+
+    pub fn with_metrics_server_addr(&mut self, metrics_server_addr: SocketAddr) -> &mut Self {
+        self.metrics_server_addr = Some(metrics_server_addr);
+        self
+    }
+
+    pub fn with_gossip_dynamic_inbound_limit(
+        &mut self,
+        gossip_dynamic_inbound_limit: u64,
+    ) -> &mut Self {
+        self.gossip_dynamic_inbound_limit = gossip_dynamic_inbound_limit;
+        self
+    }
+
+    pub fn with_gossip_static_inbound(
+        &mut self,
+        gossip_static_inbound: HashSet<PublicKey, RandomState>,
+    ) -> &mut Self {
+        self.gossip_static_inbound = gossip_static_inbound;
+        self
+    }
+
+    pub fn with_gossip_static_outbound(
+        &mut self,
+        gossip_static_outbound: HashMap<PublicKey, SocketAddr, RandomState>,
+    ) -> &mut Self {
+        self.gossip_static_outbound = gossip_static_outbound;
+        self
+    }
+
+    pub fn add_gossip_static_outbound(&mut self, key: PublicKey, addr: SocketAddr) -> &mut Self {
+        self.gossip_static_outbound.insert(key, addr);
+        self
+    }
+
+    pub fn add_gossip_static_inbound(&mut self, key: PublicKey) -> &mut Self {
+        self.gossip_static_inbound.insert(key);
+        self
+    }
+
+    pub fn write_to_file(&self, path: &Path) -> anyhow::Result<()> {
+        fs::write(path.join("config.json"), encode_json(self)).context("fs::write()")
     }
 }
 
