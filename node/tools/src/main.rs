@@ -13,9 +13,10 @@ use zksync_consensus_tools::ConfigPaths;
 use zksync_consensus_utils::no_copy::NoCopy;
 
 #[derive(Debug, Clone)]
-struct NodeAddr(Vec<(node::PublicKey, std::net::SocketAddr)>);
+// Utility struct to parse json value from cli arg
+struct NodeAddresses(Vec<(node::PublicKey, std::net::SocketAddr)>);
 
-impl FromStr for NodeAddr {
+impl FromStr for NodeAddresses {
     type Err = String;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -32,7 +33,7 @@ impl FromStr for NodeAddr {
                 (key, addr)
             })
             .collect();
-        Ok(NodeAddr(result))
+        Ok(NodeAddresses(result))
     }
 }
 
@@ -54,7 +55,7 @@ struct Args {
     database: PathBuf,
     /// IP address and key of the seed peers.
     #[arg(long = "add_gossip_static_outbound")]
-    gossip_static_outbound: NodeAddr,
+    gossip_static_outbound: NodeAddresses,
 }
 
 impl Args {
