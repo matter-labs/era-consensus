@@ -52,7 +52,7 @@ fn parse_seed_peer(
 ) -> Result<(std::net::SocketAddr, node::PublicKey), Box<dyn Error + Send + Sync>> {
     let pos = s
         .find(',')
-        .ok_or_else(|| format!("expected format: <IP>:<Port>,<key>"))?;
+        .ok_or_else(|| "expected format: <IP>:<Port>,<key>")?;
     Ok((
         s[..pos].parse()?,
         read_required_text(&Some(s[pos + 1..].parse()?))?,
