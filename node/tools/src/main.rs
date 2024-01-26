@@ -12,8 +12,8 @@ use zksync_consensus_roles::node;
 use zksync_consensus_tools::ConfigPaths;
 use zksync_consensus_utils::no_copy::NoCopy;
 
-#[derive(Debug, Clone)]
 // Utility struct to parse json value from cli arg
+#[derive(Debug, Clone)]
 struct NodeAddresses(Vec<(node::PublicKey, std::net::SocketAddr)>);
 
 impl FromStr for NodeAddresses {
