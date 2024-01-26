@@ -2,7 +2,7 @@
 //! manages communication between the actors. It is the main executable in this workspace.
 use anyhow::Context as _;
 use clap::Parser;
-use std::{error::Error, fs, io::IsTerminal as _, path::PathBuf};
+use std::{fs, io::IsTerminal as _, path::PathBuf, str::FromStr};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
@@ -11,6 +11,30 @@ use zksync_consensus_crypto::read_required_text;
 use zksync_consensus_roles::node;
 use zksync_consensus_tools::ConfigPaths;
 use zksync_consensus_utils::no_copy::NoCopy;
+
+#[derive(Debug, Clone)]
+struct NodeAddr(Vec<(node::PublicKey, std::net::SocketAddr)>);
+
+impl FromStr for NodeAddr {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let value: serde_json::Value =
+            serde_json::from_str(s).map_err(|e| format!("Malformed json: {}", e))?;
+        let array = value.as_array().ok_or("Array expected")?;
+        let result = array
+            .iter()
+            .map(|e| {
+                let key = read_required_text(&e["key"].as_str().map(|s| s.to_string()))
+                    .expect("Invalid key");
+                let addr = read_required_text(&e["addr"].as_str().map(|s| s.to_string()))
+                    .expect("Invalid address");
+                (key, addr)
+            })
+            .collect();
+        Ok(NodeAddr(result))
+    }
+}
 
 /// Command-line application launching a node executor.
 #[derive(Debug, Parser)]
@@ -29,8 +53,8 @@ struct Args {
     #[arg(long, default_value = "./database")]
     database: PathBuf,
     /// IP address and key of the seed peers.
-    #[arg(long="add_gossip_static_outbound", value_parser = parse_gossip_static_outbound)]
-    gossip_static_outbound: Vec<(node::PublicKey, std::net::SocketAddr)>,
+    #[arg(long = "add_gossip_static_outbound")]
+    gossip_static_outbound: NodeAddr,
 }
 
 impl Args {
@@ -44,19 +68,6 @@ impl Args {
             database: &self.database,
         }
     }
-}
-
-/// Parse a single (SocketAddr,node key) pair
-fn parse_gossip_static_outbound(
-    s: &str,
-) -> Result<( node::PublicKey,std::net::SocketAddr), Box<dyn Error + Send + Sync>> {
-    let pos = s
-        .find(',')
-        .ok_or("expected format: <key>,<IP>:<Port>")?;
-    Ok((
-        read_required_text(&Some(s[..pos].parse()?))?,
-        s[pos + 1..].parse()?,
-    ))
 }
 
 #[tokio::main]
@@ -103,7 +114,10 @@ async fn main() -> anyhow::Result<()> {
         .context("config_paths().load()")?;
 
     // Add gossipStaticOutbound pairs from cli to config
-    configs.app.gossip_static_outbound.extend(args.gossip_static_outbound);
+    configs
+        .app
+        .gossip_static_outbound
+        .extend(args.gossip_static_outbound.0);
 
     let (executor, runner) = configs
         .make_executor(ctx)
