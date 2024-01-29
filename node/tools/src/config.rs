@@ -5,6 +5,7 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 use zksync_concurrency::ctx;
 use zksync_consensus_bft as bft;
@@ -20,6 +21,38 @@ fn decode_json<T: ProtoFmt>(json: &str) -> anyhow::Result<T> {
     let p: T = zksync_protobuf::serde::deserialize(&mut d)?;
     d.end()?;
     Ok(p)
+}
+
+/// Pair of (public key, ip address) for a gossip network node.
+#[derive(Debug, Clone)]
+pub struct NodeAddr {
+    pub key: node::PublicKey,
+    pub addr: std::net::SocketAddr,
+}
+
+impl ProtoFmt for NodeAddr {
+    type Proto = proto::NodeAddr;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        let key = read_required_text(&r.key)?;
+        let addr = read_required_text(&r.addr)?;
+        Ok(Self { addr, key })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            key: Some(TextFmt::encode(&self.key)),
+            addr: Some(TextFmt::encode(&self.addr)),
+        }
+    }
+}
+
+impl FromStr for NodeAddr {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        decode_json(s)
+    }
 }
 
 /// Node configuration including executor configuration, optional validator configuration,
@@ -62,11 +95,9 @@ impl ProtoFmt for AppConfig {
 
         let mut gossip_static_outbound = HashMap::new();
         for (i, e) in r.gossip_static_outbound.iter().enumerate() {
-            let key = read_required_text(&e.key)
-                .with_context(|| format!("gossip_static_outbound[{i}].key"))?;
-            let addr = read_required_text(&e.addr)
-                .with_context(|| format!("gossip_static_outbound[{i}].addr"))?;
-            gossip_static_outbound.insert(key, addr);
+            let node_addr: NodeAddr =
+                ProtoFmt::read(e).with_context(|| format!("gossip_static_outbound[{i}]"))?;
+            gossip_static_outbound.insert(node_addr.key, node_addr.addr);
         }
         Ok(Self {
             server_addr: read_required_text(&r.server_addr).context("server_addr")?,

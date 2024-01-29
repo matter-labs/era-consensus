@@ -2,40 +2,13 @@
 //! manages communication between the actors. It is the main executable in this workspace.
 use anyhow::Context as _;
 use clap::Parser;
-use std::{fs, io::IsTerminal as _, path::PathBuf, str::FromStr};
+use std::{fs, io::IsTerminal as _, path::PathBuf};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_crypto::read_required_text;
-use zksync_consensus_roles::node;
-use zksync_consensus_tools::ConfigPaths;
+use zksync_consensus_tools::{ConfigPaths, NodeAddr};
 use zksync_consensus_utils::no_copy::NoCopy;
-
-/// Utility struct to parse json value from cli arg
-#[derive(Debug, Clone)]
-struct NodeAddresses(Vec<(node::PublicKey, std::net::SocketAddr)>);
-
-impl FromStr for NodeAddresses {
-    type Err = String;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let value: serde_json::Value =
-            serde_json::from_str(s).map_err(|e| format!("Malformed json: {}", e))?;
-        let array = value.as_array().ok_or("Array expected")?;
-        let result = array
-            .iter()
-            .map(|e| {
-                let key = read_required_text(&e["key"].as_str().map(|s| s.to_string()))
-                    .expect("Invalid key");
-                let addr = read_required_text(&e["addr"].as_str().map(|s| s.to_string()))
-                    .expect("Invalid address");
-                (key, addr)
-            })
-            .collect();
-        Ok(NodeAddresses(result))
-    }
-}
 
 /// Command-line application launching a node executor.
 #[derive(Debug, Parser)]
@@ -54,8 +27,8 @@ struct Args {
     #[arg(long, default_value = "./database")]
     database: PathBuf,
     /// IP address and key of the seed peers.
-    #[arg(long = "add_gossip_static_outbound")]
-    gossip_static_outbound: NodeAddresses,
+    #[arg(long)]
+    add_gossip_static_outbound: Vec<NodeAddr>,
 }
 
 impl Args {
@@ -115,10 +88,11 @@ async fn main() -> anyhow::Result<()> {
         .context("config_paths().load()")?;
 
     // Add gossipStaticOutbound pairs from cli to config
-    configs
-        .app
-        .gossip_static_outbound
-        .extend(args.gossip_static_outbound.0);
+    configs.app.gossip_static_outbound.extend(
+        args.add_gossip_static_outbound
+            .into_iter()
+            .map(|e| (e.key, e.addr)),
+    );
 
     let (executor, runner) = configs
         .make_executor(ctx)

@@ -7,4 +7,4 @@ mod store;
 #[cfg(test)]
 mod tests;
 
-pub use config::{AppConfig, ConfigPaths};
+pub use config::{AppConfig, ConfigPaths, NodeAddr};
