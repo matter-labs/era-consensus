@@ -16,22 +16,20 @@ struct Args {
     nodes: usize,
 }
 
-fn main() -> anyhow::Result<()> {
+fn generate_config() -> anyhow::Result<Vec<validator::SecretKey>> {
     let args = Args::parse();
     let nodes = args.nodes;
     assert!(nodes > 0, "at least 1 node has to be specified");
 
     // Generate the keys for all the replicas.
     let rng = &mut rand::thread_rng();
-    let validator_keys: Vec<validator::SecretKey> = (0..nodes).map(|_| rng.gen()).collect();
     let node_keys: Vec<node::SecretKey> = (0..nodes).map(|_| rng.gen()).collect();
 
     // Each node will have `gossip_peers` outbound peers.
     let peers = 2;
 
-    let mut cfgs: Vec<_> = (0..args.nodes)
-        .map(|_| AppConfig::default_for(nodes as u64))
-        .collect();
+    let (default_config, validator_keys) = AppConfig::default_for(nodes as u64);
+    let mut cfgs: Vec<_> = (0..args.nodes).map(|_| default_config.clone()).collect();
 
     // Construct a gossip network with optimal diameter.
     for (i, node_key) in node_keys.iter().enumerate() {

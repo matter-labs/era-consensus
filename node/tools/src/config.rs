@@ -180,7 +180,7 @@ impl<'a> ConfigPaths<'a> {
 }
 
 impl AppConfig {
-    pub fn default_for(nodes_amount: u64) -> AppConfig {
+    pub fn default_for(nodes_amount: u64) -> (AppConfig, Vec<validator::SecretKey>) {
         // Generate the keys for all the replicas.
         let rng = &mut rand::thread_rng();
         let validator_keys: Vec<validator::SecretKey> =
@@ -192,18 +192,21 @@ impl AppConfig {
             validator::BlockNumber(0),
         );
 
-        Self {
-            server_addr: SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
-            public_addr: SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
-            metrics_server_addr: None,
+        (
+            Self {
+                server_addr: SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
+                public_addr: SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
+                metrics_server_addr: None,
 
-            validators: validator_set.clone(),
-            genesis_block: genesis.clone(),
+                validators: validator_set.clone(),
+                genesis_block: genesis.clone(),
 
-            gossip_dynamic_inbound_limit: 2,
-            gossip_static_inbound: [].into(),
-            gossip_static_outbound: [].into(),
-        }
+                gossip_dynamic_inbound_limit: 2,
+                gossip_static_inbound: [].into(),
+                gossip_static_outbound: [].into(),
+            },
+            validator_keys,
+        )
     }
 
     pub fn with_public_addr(&mut self, public_addr: SocketAddr) -> &mut Self {

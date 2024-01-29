@@ -40,16 +40,14 @@ fn main() -> anyhow::Result<()> {
         .metrics_server_port
         .map(|port| SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), port));
 
-    // Generate the keys for all the replicas.
-    let rng = &mut rand::thread_rng();
-    let validator_keys: Vec<validator::SecretKey> = (0..addrs.len()).map(|_| rng.gen()).collect();
-    let node_keys: Vec<node::SecretKey> = (0..addrs.len()).map(|_| rng.gen()).collect();
-
     // Each node will have `gossip_peers` outbound peers.
     let nodes = addrs.len();
     let peers = 2;
 
-    let mut default_config = AppConfig::default_for(nodes as u64);
+    let rng = &mut rand::thread_rng();
+    let node_keys: Vec<node::SecretKey> = (0..nodes).map(|_| rng.gen()).collect();
+
+    let (mut default_config, validator_keys) = AppConfig::default_for(nodes as u64);
 
     if let Some(metrics_server_addr) = metrics_server_addr {
         default_config.with_metrics_server_addr(metrics_server_addr);
