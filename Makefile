@@ -37,6 +37,12 @@ consensus_docker_example:
 stop_docker_nodes:
 	docker stop consensus-node-1 consensus-node-2
 
+start_k8s_nodes:
+	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer generate-config --nodes ${NODES}
+	$(MAKE) docker_node_image
+	minikube image load consensus-node:latest
+	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer deploy --nodes ${NODES}
+
 # Clean commands
 
 clean: clean_docker clean_k8s
@@ -49,7 +55,6 @@ clean_k8s:
 	kubectl delete pods --all
 
 clean_docker:
-	rm -rf ${EXECUTABLE_NODE_DIR}/docker-config
 	docker rm -f consensus-node-1
 	docker rm -f consensus-node-2
 	docker network rm -f node-net
