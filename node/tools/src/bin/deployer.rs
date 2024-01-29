@@ -143,6 +143,7 @@ async fn deploy(nodes: usize) -> anyhow::Result<()> {
                             "value": format!("node_{}", i)
                           }
                         ],
+                        "command": ["./k8s_entrypoint.sh"],
                         "imagePullPolicy": "Never",
                         "ports": [
                           {

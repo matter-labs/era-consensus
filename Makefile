@@ -1,4 +1,4 @@
-.PHONY: node nodes_config docker_node_configs node_docker consensus_docker_example clean clean_docker addresses_file blank_configs
+.PHONY: node nodes_config docker_nodes_config node_docker consensus_docker_example clean clean_docker addresses_file blank_configs
 NODE?=0
 DOCKER_IP=172.12.0.10
 EXECUTABLE_NODE_DIR=node/tools
@@ -21,7 +21,7 @@ docker_node_image:
 	docker build -t consensus-node --target=runtime .
 
 docker_nodes_config:
-	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin localnet_config -- --input-addrs docker-config/addresses.txt --output-dir docker-config/nodes-config
+	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin localnet_config -- --input-addrs docker-config/addresses.txt --output-dir docker-config
 
 docker_node:
 	$(MAKE) docker_node_image
@@ -45,10 +45,11 @@ clean: clean_docker clean_k8s
 
 clean_k8s:
 	rm -rf ${EXECUTABLE_NODE_DIR}/k8s_configs
+	kubectl delete deployments --all
+	kubectl delete pods --all
 
 clean_docker:
-	rm -rf ${EXECUTABLE_NODE_DIR}/docker-config/nodes-config
-	rm -rf ${EXECUTABLE_NODE_DIR}/docker_binaries
+	rm -rf ${EXECUTABLE_NODE_DIR}/docker-config
 	docker rm -f consensus-node-1
 	docker rm -f consensus-node-2
 	docker network rm -f node-net
