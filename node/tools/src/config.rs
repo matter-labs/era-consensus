@@ -5,7 +5,6 @@ use std::{
     collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
-    str::FromStr,
 };
 use zksync_concurrency::ctx;
 use zksync_consensus_bft as bft;
@@ -13,12 +12,12 @@ use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, Text
 use zksync_consensus_executor as executor;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BlockStore, BlockStoreRunner, PersistentBlockStore};
-use zksync_protobuf::{required, ProtoFmt};
+use zksync_protobuf::{required, serde::Serde, ProtoFmt};
 
 /// Decodes a proto message from json for arbitrary ProtoFmt.
-fn decode_json<T: ProtoFmt>(json: &str) -> anyhow::Result<T> {
+pub fn decode_json<T: serde::de::DeserializeOwned>(json: &str) -> anyhow::Result<T> {
     let mut d = serde_json::Deserializer::from_str(json);
-    let p: T = zksync_protobuf::serde::deserialize(&mut d)?;
+    let p = T::deserialize(&mut d)?;
     d.end()?;
     Ok(p)
 }
@@ -34,8 +33,8 @@ impl ProtoFmt for NodeAddr {
     type Proto = proto::NodeAddr;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let key = read_required_text(&r.key)?;
-        let addr = read_required_text(&r.addr)?;
+        let key = read_required_text(&r.key).context("key")?;
+        let addr = read_required_text(&r.addr).context("addr")?;
         Ok(Self { addr, key })
     }
 
@@ -44,14 +43,6 @@ impl ProtoFmt for NodeAddr {
             key: Some(TextFmt::encode(&self.key)),
             addr: Some(TextFmt::encode(&self.addr)),
         }
-    }
-}
-
-impl FromStr for NodeAddr {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        decode_json(s)
     }
 }
 
@@ -175,9 +166,10 @@ impl<'a> ConfigPaths<'a> {
         Ok(Configs {
             app: (|| {
                 let app = fs::read_to_string(self.app).context("failed reading file")?;
-                decode_json(&app).context("failed decoding JSON")
+                decode_json::<Serde<AppConfig>>(&app).context("failed decoding JSON")
             })()
-            .with_context(|| self.app.display().to_string())?,
+            .with_context(|| self.app.display().to_string())?
+            .0,
 
             validator_key: self
                 .validator_key

@@ -7,6 +7,22 @@ use crate::ProtoFmt;
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
 
+/// ProtoFmt wrapper which implements serde Serialize/Deserialize.
+#[derive(Debug, Clone)]
+pub struct Serde<T>(pub T);
+
+impl<T: ProtoFmt> serde::Serialize for Serde<T> {
+    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        serialize(&self.0, s)
+    }
+}
+
+impl<'de, T: ProtoFmt> serde::Deserialize<'de> for Serde<T> {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        Ok(Self(deserialize(d)?))
+    }
+}
+
 /// Implementation of serde::Serialize for arbitrary ReflectMessage.
 pub fn serialize_proto<T: ReflectMessage, S: serde::Serializer>(
     x: &T,
