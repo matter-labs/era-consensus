@@ -7,7 +7,7 @@ use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_tools::{server, decode_json, ConfigPaths, NodeAddr};
+use zksync_consensus_tools::{decode_json, ConfigPaths, NodeAddr, RPCServer};
 use zksync_consensus_utils::no_copy::NoCopy;
 use zksync_protobuf::serde::Serde;
 
@@ -43,7 +43,7 @@ struct Args {
     rpc_port: Option<u16>,
     /// IP address and key of the seed peers.
     #[arg(long)]
-    add_gossip_static_outbound: NodeAddrs,
+    add_gossip_static_outbound: Option<NodeAddrs>,
 }
 
 impl Args {
@@ -103,12 +103,14 @@ async fn main() -> anyhow::Result<()> {
         .context("config_paths().load()")?;
 
     // Add gossipStaticOutbound pairs from cli to config
-    configs.app.gossip_static_outbound.extend(
-        args.add_gossip_static_outbound
-            .0
-            .into_iter()
-            .map(|e| (e.0.key, e.0.addr)),
-    );
+    if let Some(gossip_static_outbound) = args.add_gossip_static_outbound {
+        configs.app.gossip_static_outbound.extend(
+            gossip_static_outbound
+                .0
+                .into_iter()
+                .map(|e| (e.0.key, e.0.addr)),
+        );
+    }
 
     let (executor, runner) = configs
         .make_executor(ctx)
@@ -121,6 +123,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         rpc_addr.set_port(rpc_addr.port() + 100);
     }
+    let rpc_server = RPCServer::new(rpc_addr);
 
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {
@@ -137,7 +140,7 @@ async fn main() -> anyhow::Result<()> {
         }
         s.spawn_bg(runner.run(ctx));
         s.spawn(executor.run(ctx));
-        s.spawn(server::run_server(rpc_addr));
+        s.spawn(rpc_server.run());
         Ok(())
     })
     .await

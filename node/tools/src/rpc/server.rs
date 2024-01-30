@@ -1,31 +1,45 @@
 use std::net::SocketAddr;
 
-use super::methods::health_check;
+use super::methods::{health_check::HealthCheck, RPCMethod};
 use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
+use zksync_concurrency::ctx::Ctx;
 
-pub async fn run_server(ip_address: SocketAddr) -> anyhow::Result<()> {
-    // Custom tower service to handle the RPC requests
-    let service_builder = tower::ServiceBuilder::new()
-        // Proxy `GET /health` requests to internal `system_health` method.
-        .layer(ProxyGetRequestLayer::new(
-            "/health",
-            health_check::method(),
-        )?);
+/// RPC server.
+pub struct RPCServer {
+    /// IP address to bind to.
+    ip_address: SocketAddr,
+}
 
-    let server = Server::builder()
-        .set_http_middleware(service_builder)
-        .build(ip_address)
-        .await?;
-    let mut module = RpcModule::new(());
-    module.register_method(health_check::method(), |params, _| {
-        health_check::callback(params)
-    })?;
+impl RPCServer {
+    pub fn new(ip_address: SocketAddr) -> Self {
+        Self { ip_address }
+    }
 
-    let handle = server.start(module);
+    /// Runs the RPC server.
+    pub async fn run(&self) -> anyhow::Result<()> {
+        // Custom tower service to handle the RPC requests
+        let service_builder = tower::ServiceBuilder::new()
+            // Proxy `GET /health` requests to internal `system_health` method.
+            .layer(ProxyGetRequestLayer::new(
+                HealthCheck::path(),
+                HealthCheck::method(),
+            )?);
 
-    // In this example we don't care about doing shutdown so let's it run forever.
-    // You may use the `ServerHandle` to shut it down or manage it yourself.
-    tokio::spawn(handle.stopped());
+        let server = Server::builder()
+            .set_http_middleware(service_builder)
+            .build(self.ip_address)
+            .await?;
 
-    Ok(())
+        let mut module = RpcModule::new(());
+        module.register_method(HealthCheck::method(), |params, _| {
+            HealthCheck::callback(params)
+        })?;
+
+        let handle = server.start(module);
+
+        // In this example we don't care about doing shutdown so let's it run forever.
+        // You may use the `ServerHandle` to shut it down or manage it yourself.
+        tokio::spawn(handle.stopped());
+        Ok(())
+    }
 }

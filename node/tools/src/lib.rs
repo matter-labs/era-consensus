@@ -8,5 +8,5 @@ mod store;
 #[cfg(test)]
 mod tests;
 
-pub use rpc::server;
 pub use config::{decode_json, AppConfig, ConfigPaths, NodeAddr};
+pub use rpc::server::RPCServer;
