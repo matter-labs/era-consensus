@@ -12,6 +12,9 @@ pub struct Config {
     pub secret_key: validator::SecretKey,
     /// A vector of public keys for all the validators in the network.
     pub validator_set: validator::ValidatorSet,
+    /// The maximum size of the payload of a block, in bytes. We will
+    /// reject blocks with payloads larger than this.
+    pub max_payload_size: usize,
     /// Block store.
     pub block_store: Arc<storage::BlockStore>,
     /// Replica store.
@@ -21,10 +24,6 @@ pub struct Config {
 }
 
 impl Config {
-    /// The maximum size of the payload of a block, in bytes. We will
-    /// reject blocks with payloads larger than this.
-    pub(crate) const PAYLOAD_MAX_SIZE: usize = 500 * zksync_protobuf::kB;
-
     /// Computes the validator for the given view.
     #[instrument(level = "trace", ret)]
     pub fn view_leader(&self, view_number: validator::ViewNumber) -> validator::PublicKey {

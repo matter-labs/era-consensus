@@ -11,9 +11,7 @@ message Handshake {
   optional bool is_static = 2;
 }
 
-message SyncValidatorAddrsReq {}
-
-message SyncValidatorAddrsResp {
+message PushValidatorAddrs {
   // Signed roles.validator.Msg.net_address.
   repeated roles.validator.Signed net_addresses = 1;
 }
@@ -21,16 +19,11 @@ message SyncValidatorAddrsResp {
 // State of the local block store.
 // A node is expected to store a continuous range of blocks at all times
 // and actively fetch newest blocks.
-message SyncState {
+message PushBlockStoreState {
   // First L2 block that the node has locally.
-  optional roles.validator.CommitQC first_stored_block = 1;
+  optional roles.validator.CommitQC first = 1;
   // Last L2 block that the node has locally.
-  optional roles.validator.CommitQC last_stored_block = 2;
-}
-
-// Response to `SyncState` acknowledging its processing.
-message SyncStateResponse {
-  // intentionally empty
+  optional roles.validator.CommitQC last = 2;
 }
 
 // Asks the server to send an L2 block (including its transactions).
@@ -39,28 +32,7 @@ message GetBlockRequest {
   optional uint64 number = 1;
 }
 
-// Response to a `GetBlockRequest` containing a block or a reason it cannot be retrieved.
+// Response to a `GetBlockRequest`.
 message GetBlockResponse {
-  // Errors returned from a `GetBlockResponse`.
-  //
-  // Note that these errors don't include network-level errors, only app-level ones.
-  message Error {
-    // Reason processing the request has failed.
-    optional ErrorReason reason = 1;
-  }
-
-  // Reason processing a `GetBlockRequest` has failed.
-  enum ErrorReason {
-    // Transient error: the node doesn't have the requested L2 block,
-    // but plans to get it in the future by syncing.
-    NOT_SYNCED = 0;
-  }
-
-  // Result of processing a `GetBlockRequest`.
-  oneof result {
-    // The request was successfully processed.
-    roles.validator.FinalBlock block = 1;
-    // The request resulted in an error.
-    Error error = 2;
-  }
+  optional roles.validator.FinalBlock block = 1; // optional; missing if block is not available
 }

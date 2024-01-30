@@ -13,6 +13,11 @@ use zksync_consensus_utils::enum_util::Variant;
 pub struct SecretKey(pub(super) Arc<ed25519::SecretKey>);
 
 impl SecretKey {
+    /// Generates a secret key from a cryptographically-secure entropy source.
+    pub fn generate() -> Self {
+        Self(Arc::new(ed25519::SecretKey::generate()))
+    }
+
     /// Sign a message hash.
     pub fn sign(&self, msg_hash: &MsgHash) -> Signature {
         Signature(self.0.sign(&ByteFmt::encode(msg_hash)))
@@ -26,11 +31,6 @@ impl SecretKey {
             sig: self.sign(&msg.hash()),
             msg: V::extract(msg).unwrap(),
         }
-    }
-
-    /// Generate a new random secret key.
-    pub fn generate() -> Self {
-        Self(Arc::new(ed25519::SecretKey::generate()))
     }
 
     /// Get the public key corresponding to this secret key.
@@ -64,7 +64,7 @@ impl fmt::Debug for SecretKey {
 }
 
 /// A node's public key.
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PublicKey(pub(super) ed25519::PublicKey);
 
 impl PublicKey {

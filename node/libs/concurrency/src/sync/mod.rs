@@ -10,6 +10,7 @@ pub use tokio::{
     task::yield_now,
 };
 
+pub mod prunable_mpsc;
 #[cfg(test)]
 mod tests;
 
@@ -128,7 +129,11 @@ pub async fn wait_for<'a, T>(
     recv: &'a mut watch::Receiver<T>,
     pred: impl Fn(&T) -> bool,
 ) -> ctx::OrCanceled<watch::Ref<'a, T>> {
-    Ok(ctx.wait(recv.wait_for(pred)).await?.unwrap())
+    if let Ok(res) = ctx.wait(recv.wait_for(pred)).await? {
+        return Ok(res);
+    }
+    ctx.canceled().await;
+    Err(ctx::Canceled)
 }
 
 struct ExclusiveLockInner<T> {

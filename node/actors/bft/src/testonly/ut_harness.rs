@@ -7,16 +7,20 @@ use crate::{
     testonly, Config, PayloadManager,
 };
 use assert_matches::assert_matches;
-use rand::Rng;
 use std::{cmp::Ordering, sync::Arc};
 use zksync_concurrency::ctx;
-use zksync_consensus_network::io::ConsensusInputMessage;
+use zksync_consensus_network as network;
 use zksync_consensus_roles::validator::{
-    self, CommitQC, LeaderCommit, LeaderPrepare, Payload, Phase, PrepareQC, ReplicaCommit,
-    ReplicaPrepare, SecretKey, Signed, ViewNumber,
+    self, CommitQC, LeaderCommit, LeaderPrepare, Phase, PrepareQC, ReplicaCommit, ReplicaPrepare,
+    SecretKey, Signed, ViewNumber,
 };
-use zksync_consensus_storage::{testonly::in_memory, BlockStore, BlockStoreRunner};
+use zksync_consensus_storage::{
+    testonly::{in_memory, new_store},
+    BlockStoreRunner,
+};
 use zksync_consensus_utils::enum_util::Variant;
+
+pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
 
 /// `UTHarness` provides various utilities for unit tests.
 /// It is designed to simplify the setup and execution of test cases by encapsulating
@@ -37,7 +41,12 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         num_validators: usize,
     ) -> (UTHarness, BlockStoreRunner) {
-        Self::new_with_payload(ctx, num_validators, Box::new(testonly::RandomPayload)).await
+        Self::new_with_payload(
+            ctx,
+            num_validators,
+            Box::new(testonly::RandomPayload(MAX_PAYLOAD_SIZE)),
+        )
+        .await
     }
 
     pub(crate) async fn new_with_payload(
@@ -45,33 +54,28 @@ impl UTHarness {
         num_validators: usize,
         payload_manager: Box<dyn PayloadManager>,
     ) -> (UTHarness, BlockStoreRunner) {
-        let mut rng = ctx.rng();
-        let keys: Vec<_> = (0..num_validators).map(|_| rng.gen()).collect();
-        let (genesis, validator_set) =
-            crate::testonly::make_genesis(&keys, Payload(vec![]), validator::BlockNumber(0));
-
-        // Initialize the storage.
-        let block_store = Box::new(in_memory::BlockStore::new(genesis));
-        let (block_store, runner) = BlockStore::new(ctx, block_store).await.unwrap();
-        // Create the pipe.
+        let rng = &mut ctx.rng();
+        let setup = validator::testonly::GenesisSetup::new(rng, num_validators);
+        let (block_store, runner) = new_store(ctx, &setup.blocks[0]).await;
         let (send, recv) = ctx::channel::unbounded();
 
         let cfg = Arc::new(Config {
-            secret_key: keys[0].clone(),
-            validator_set,
+            secret_key: setup.keys[0].clone(),
+            validator_set: setup.validator_set(),
             block_store: block_store.clone(),
             replica_store: Box::new(in_memory::ReplicaStore::default()),
             payload_manager,
+            max_payload_size: MAX_PAYLOAD_SIZE,
         });
-        let leader = leader::StateMachine::new(ctx, cfg.clone(), send.clone());
-        let replica = replica::StateMachine::start(ctx, cfg.clone(), send.clone())
+        let (leader, _) = leader::StateMachine::new(ctx, cfg.clone(), send.clone());
+        let (replica, _) = replica::StateMachine::start(ctx, cfg.clone(), send.clone())
             .await
             .unwrap();
         let mut this = UTHarness {
             leader,
             replica,
             pipe: recv,
-            keys,
+            keys: setup.keys,
         };
         let _: Signed<ReplicaPrepare> = this.try_recv().unwrap();
         (this, runner)
@@ -210,9 +214,14 @@ impl UTHarness {
         self.leader.process_replica_prepare(ctx, msg).await?;
         if prepare_qc.has_changed().unwrap() {
             let prepare_qc = prepare_qc.borrow().clone().unwrap();
-            leader::StateMachine::propose(ctx, &self.leader.config, prepare_qc, &self.leader.pipe)
-                .await
-                .unwrap();
+            leader::StateMachine::propose(
+                ctx,
+                &self.leader.config,
+                prepare_qc,
+                &self.leader.outbound_pipe,
+            )
+            .await
+            .unwrap();
         }
         Ok(self.try_recv())
     }
@@ -264,7 +273,7 @@ impl UTHarness {
 
     fn try_recv<V: Variant<validator::Msg>>(&mut self) -> Option<Signed<V>> {
         self.pipe.try_recv().map(|message| match message {
-            OutputMessage::Network(ConsensusInputMessage { message, .. }) => {
+            OutputMessage::Network(network::io::ConsensusInputMessage { message, .. }) => {
                 message.cast().unwrap()
             }
         })

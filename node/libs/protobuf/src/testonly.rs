@@ -26,7 +26,7 @@ pub fn test_encode<R: Rng, T: ProtoFmt + std::fmt::Debug + PartialEq>(rng: &mut 
 /// Syntax sugar for `test_encode`,
 /// because `test_encode(rng,&rng::gen())` doesn't compile.
 #[track_caller]
-pub fn test_encode_random<R: Rng, T: ProtoFmt + std::fmt::Debug + PartialEq>(rng: &mut R)
+pub fn test_encode_random<T: ProtoFmt + std::fmt::Debug + PartialEq>(rng: &mut impl Rng)
 where
     Standard: Distribution<T>,
 {

@@ -1,10 +1,11 @@
 //! Network actor maintaining a pool of outbound and inbound connections to other nodes.
 use super::{consensus, event::Event, gossip, metrics, preface};
-use crate::io::{InputMessage, OutputMessage, SyncState};
+use crate::io::{InputMessage, OutputMessage};
 use anyhow::Context as _;
 use std::sync::Arc;
-use zksync_concurrency::{ctx, ctx::channel, net, scope, sync::watch};
+use zksync_concurrency::{ctx, ctx::channel, net, scope};
 use zksync_consensus_roles::validator;
+use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
 /// Network actor config.
@@ -20,6 +21,10 @@ pub struct Config {
     pub gossip: gossip::Config,
     /// Consensus network config. If not present, the node will not participate in the consensus network.
     pub consensus: Option<consensus::Config>,
+    /// Maximal size of the proto-encoded `validator::FinalBlock` in bytes.
+    pub max_block_size: usize,
+    /// Enables pinging the peers to make sure that they are alive.
+    pub enable_pings: bool,
 }
 
 /// Part of configuration shared among network modules.
@@ -31,6 +36,10 @@ pub(crate) struct SharedConfig {
     /// - client should establish outbound connections to.
     /// - server should accept inbound connections from (1 per validator).
     pub(crate) validators: validator::ValidatorSet,
+    /// Enables pinging the peers to make sure that they are alive.
+    pub(crate) enable_pings: bool,
+    /// Maximal size of the proto-encoded `validator::FinalBlock` in bytes.
+    pub(crate) max_block_size: usize,
 }
 
 /// State of the network actor observable outside of the actor.
@@ -52,20 +61,22 @@ impl State {
     /// Call `run_network` to run the actor.
     pub fn new(
         cfg: Config,
+        block_store: Arc<BlockStore>,
         events: Option<channel::UnboundedSender<Event>>,
-        sync_state: Option<watch::Receiver<SyncState>>,
     ) -> anyhow::Result<Arc<Self>> {
         let consensus = cfg
             .consensus
             .map(|consensus_cfg| consensus::State::new(consensus_cfg, &cfg.validators))
             .transpose()?;
         let this = Self {
-            gossip: gossip::State::new(cfg.gossip, sync_state),
+            gossip: gossip::State::new(cfg.gossip, block_store),
             consensus,
             events,
             cfg: SharedConfig {
                 server_addr: cfg.server_addr,
                 validators: cfg.validators,
+                enable_pings: cfg.enable_pings,
+                max_block_size: cfg.max_block_size,
             },
         };
         Ok(Arc::new(this))
@@ -130,18 +141,9 @@ pub async fn run_network(
                     let (stream, endpoint) = preface::accept(ctx, stream).await?;
                     match endpoint {
                         preface::Endpoint::ConsensusNet => {
-                            if let Some(consensus_state) = &state.consensus {
-                                consensus::run_inbound_stream(
-                                    ctx,
-                                    consensus_state,
-                                    &pipe.send,
-                                    stream,
-                                )
+                            consensus::run_inbound_stream(ctx, &state, &pipe.send, stream)
                                 .await
                                 .context("consensus::run_inbound_stream()")
-                            } else {
-                                anyhow::bail!("Node does not accept consensus network connections");
-                            }
                         }
                         preface::Endpoint::GossipNet => {
                             gossip::run_inbound_stream(ctx, &state, &pipe.send, stream)

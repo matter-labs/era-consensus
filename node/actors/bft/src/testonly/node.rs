@@ -1,12 +1,16 @@
 use super::Fuzz;
 use crate::{io, testonly, PayloadManager};
+use anyhow::Context as _;
 use rand::Rng;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_network as network;
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_storage as storage;
-use zksync_consensus_utils::pipe::DispatcherPipe;
+use zksync_consensus_storage::testonly::in_memory;
+use zksync_consensus_utils::pipe;
+
+pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
 
 /// Enum representing the behavior of the node.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -29,32 +33,50 @@ impl Behavior {
     pub(crate) fn payload_manager(&self) -> Box<dyn PayloadManager> {
         match self {
             Self::HonestNotProposing => Box::new(testonly::PendingPayload),
-            _ => Box::new(testonly::RandomPayload),
+            _ => Box::new(testonly::RandomPayload(MAX_PAYLOAD_SIZE)),
         }
     }
 }
 
 /// Struct representing a node.
 pub(super) struct Node {
-    pub(crate) net: network::testonly::Instance,
+    pub(crate) net: network::Config,
     pub(crate) behavior: Behavior,
     pub(crate) block_store: Arc<storage::BlockStore>,
 }
 
 impl Node {
     /// Runs a mock executor.
-    pub(crate) async fn run_executor(
+    pub(crate) async fn run(
         &self,
         ctx: &ctx::Ctx,
-        consensus_pipe: DispatcherPipe<io::InputMessage, io::OutputMessage>,
-        network_pipe: DispatcherPipe<network::io::InputMessage, network::io::OutputMessage>,
+        network_pipe: &mut pipe::DispatcherPipe<
+            network::io::InputMessage,
+            network::io::OutputMessage,
+        >,
     ) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
-        let mut net_recv = network_pipe.recv;
-        let net_send = network_pipe.send;
+        let net_recv = &mut network_pipe.recv;
+        let net_send = &mut network_pipe.send;
+        let (consensus_actor_pipe, consensus_pipe) = pipe::new();
         let mut con_recv = consensus_pipe.recv;
         let con_send = consensus_pipe.send;
         scope::run!(ctx, |ctx, s| async {
+            s.spawn(async {
+                let validator_key = self.net.consensus.as_ref().unwrap().key.clone();
+                let validator_set = self.net.validators.clone();
+                crate::Config {
+                    secret_key: validator_key.clone(),
+                    validator_set,
+                    block_store: self.block_store.clone(),
+                    replica_store: Box::new(in_memory::ReplicaStore::default()),
+                    payload_manager: self.behavior.payload_manager(),
+                    max_payload_size: MAX_PAYLOAD_SIZE,
+                }
+                .run(ctx, consensus_actor_pipe)
+                .await
+                .context("consensus.run()")
+            });
             s.spawn(async {
                 while let Ok(network_message) = net_recv.recv(ctx).await {
                     match network_message {

@@ -3,7 +3,6 @@ use anyhow::Context as _;
 use clap::Parser;
 use rand::Rng;
 use std::{fs, net::SocketAddr, path::PathBuf};
-use zksync_consensus_bft::testonly;
 use zksync_consensus_crypto::TextFmt;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_tools::AppConfig;
@@ -40,6 +39,9 @@ struct Args {
     /// Configs for <ip:port>, will be in directory <output_dir>/<ip:port>/
     #[arg(long)]
     output_dir: PathBuf,
+    /// Block payload size in bytes.
+    #[arg(long, default_value_t = 1000000)]
+    payload_size: usize,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -60,16 +62,14 @@ fn main() -> anyhow::Result<()> {
 
     // Generate the keys for all the replicas.
     let rng = &mut rand::thread_rng();
-    let validator_keys: Vec<validator::SecretKey> = (0..addrs.len()).map(|_| rng.gen()).collect();
-    let node_keys: Vec<node::SecretKey> = (0..addrs.len()).map(|_| rng.gen()).collect();
 
-    // Generate the genesis block.
-    // TODO: generating genesis block shouldn't require knowing the private keys.
-    let (genesis, validator_set) = testonly::make_genesis(
-        &validator_keys,
-        validator::Payload(vec![]),
-        validator::BlockNumber(0),
-    );
+    let mut genesis = validator::GenesisSetup::empty(rng, addrs.len());
+    genesis
+        .next_block()
+        .payload(validator::Payload(vec![]))
+        .push();
+    let validator_keys = genesis.keys.clone();
+    let node_keys: Vec<node::SecretKey> = (0..addrs.len()).map(|_| rng.gen()).collect();
 
     // Each node will have `gossip_peers` outbound peers.
     let nodes = addrs.len();
@@ -81,8 +81,9 @@ fn main() -> anyhow::Result<()> {
             public_addr: addrs[i],
             metrics_server_addr,
 
-            validators: validator_set.clone(),
-            genesis_block: genesis.clone(),
+            validators: genesis.validator_set(),
+            genesis_block: genesis.blocks[0].clone(),
+            max_payload_size: args.payload_size,
 
             gossip_dynamic_inbound_limit: 0,
             gossip_static_inbound: [].into(),

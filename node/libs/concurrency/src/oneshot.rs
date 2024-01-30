@@ -17,6 +17,18 @@ pub fn channel<T>() -> (Sender<T>, Receiver<T>) {
 
 impl<T> Receiver<T> {
     /// Awaits for a message from the channel.
+    /// Waits for cancelation if the channel has been disconnected.
+    pub async fn recv(self, ctx: &ctx::Ctx) -> ctx::OrCanceled<T> {
+        ctx.wait(async move {
+            match self.0.await {
+                Ok(v) => v,
+                Err(_) => std::future::pending().await,
+            }
+        })
+        .await
+    }
+
+    /// Awaits for a message from the channel.
     /// Returns an error if channel is empty and disconnected.
     pub async fn recv_or_disconnected(
         self,

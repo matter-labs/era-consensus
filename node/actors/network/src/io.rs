@@ -1,6 +1,7 @@
 #![allow(missing_docs)]
 use zksync_concurrency::oneshot;
 use zksync_consensus_roles::{node, validator};
+use zksync_consensus_storage::BlockStoreState;
 
 /// All the messages that other actors can send to the Network actor.
 #[derive(Debug)]
@@ -31,8 +32,7 @@ pub enum SyncBlocksInputMessage {
     GetBlock {
         recipient: node::PublicKey,
         number: validator::BlockNumber,
-        /// If the peer is unavailable, `response` will be dropped.
-        response: oneshot::Sender<GetBlockResponse>,
+        response: oneshot::Sender<Result<validator::FinalBlock, GetBlockError>>,
     },
 }
 
@@ -53,44 +53,17 @@ pub struct ConsensusReq {
     pub ack: oneshot::Sender<()>,
 }
 
-/// Current block sync state of a node sent in response to [`GetSyncStateRequest`].
-#[derive(Debug, Clone, PartialEq)]
-pub struct SyncState {
-    pub first_stored_block: validator::CommitQC,
-    pub last_stored_block: validator::CommitQC,
-}
-
-/// Projection of [`SyncState`] comprised of block numbers.
-#[derive(Debug, Clone, Copy)]
-pub struct SyncStateNumbers {
-    pub first_stored_block: validator::BlockNumber,
-    pub last_stored_block: validator::BlockNumber,
-}
-
-impl SyncState {
-    /// Returns numbers for block QCs contained in this state.
-    pub fn numbers(&self) -> SyncStateNumbers {
-        SyncStateNumbers {
-            first_stored_block: self.first_stored_block.message.proposal.number,
-            last_stored_block: self.last_stored_block.message.proposal.number,
-        }
-    }
-}
-
-/// Errors returned from a [`GetBlockResponse`].
+/// Error returned in response to [`GetBlock`] call.
 ///
 /// Note that these errors don't include network-level errors, only app-level ones.
 #[derive(Debug, thiserror::Error)]
 pub enum GetBlockError {
-    /// Transient error: the node doesn't have the requested L2 block and plans to get it in the future
-    /// by syncing.
-    #[error(
-        "node doesn't have the requested L2 block and plans to get it in the future by syncing"
-    )]
-    NotSynced,
+    /// Transient error: the node doesn't have the requested L2 block.
+    #[error("node doesn't have the requested L2 block")]
+    NotAvailable,
+    #[error(transparent)]
+    Internal(#[from] anyhow::Error),
 }
-
-pub type GetBlockResponse = Result<validator::FinalBlock, GetBlockError>;
 
 #[derive(Debug)]
 pub enum SyncBlocksRequest {
@@ -99,17 +72,10 @@ pub enum SyncBlocksRequest {
         /// Peer that has reported the update.
         peer: node::PublicKey,
         /// Updated peer syncing state.
-        state: Box<SyncState>,
+        state: BlockStoreState,
         /// Acknowledgement response returned by the block syncing actor.
         // TODO: return an error in case of invalid `SyncState`?
         response: oneshot::Sender<()>,
-    },
-    /// Requests an L2 block with the specified number.
-    GetBlock {
-        /// Number of the block.
-        block_number: validator::BlockNumber,
-        /// Block returned by the block syncing actor.
-        response: oneshot::Sender<GetBlockResponse>,
     },
 }
 
