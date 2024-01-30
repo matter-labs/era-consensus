@@ -3,6 +3,7 @@ use jsonrpsee::types::Params;
 
 use super::RPCMethod;
 
+/// Health check method for RPC server.
 pub(crate) struct HealthCheck;
 
 impl RPCMethod for HealthCheck {
