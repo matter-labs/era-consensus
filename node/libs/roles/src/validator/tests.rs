@@ -90,19 +90,19 @@ fn test_text_encoding() {
 fn test_schema_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    test_encode_random::<_, PayloadHash>(rng);
-    test_encode_random::<_, BlockHeader>(rng);
-    test_encode_random::<_, BlockHeaderHash>(rng);
-    test_encode_random::<_, FinalBlock>(rng);
-    test_encode_random::<_, Signed<ConsensusMsg>>(rng);
-    test_encode_random::<_, PrepareQC>(rng);
-    test_encode_random::<_, CommitQC>(rng);
-    test_encode_random::<_, Msg>(rng);
-    test_encode_random::<_, MsgHash>(rng);
-    test_encode_random::<_, Signers>(rng);
-    test_encode_random::<_, PublicKey>(rng);
-    test_encode_random::<_, Signature>(rng);
-    test_encode_random::<_, AggregateSignature>(rng);
+    test_encode_random::<PayloadHash>(rng);
+    test_encode_random::<BlockHeader>(rng);
+    test_encode_random::<BlockHeaderHash>(rng);
+    test_encode_random::<FinalBlock>(rng);
+    test_encode_random::<Signed<ConsensusMsg>>(rng);
+    test_encode_random::<PrepareQC>(rng);
+    test_encode_random::<CommitQC>(rng);
+    test_encode_random::<Msg>(rng);
+    test_encode_random::<MsgHash>(rng);
+    test_encode_random::<Signers>(rng);
+    test_encode_random::<PublicKey>(rng);
+    test_encode_random::<Signature>(rng);
+    test_encode_random::<AggregateSignature>(rng);
 }
 
 #[test]
@@ -113,8 +113,8 @@ fn test_signature_verify() {
     let msg1: MsgHash = rng.gen();
     let msg2: MsgHash = rng.gen();
 
-    let key1 = SecretKey::generate(rng);
-    let key2 = SecretKey::generate(rng);
+    let key1: SecretKey = rng.gen();
+    let key2: SecretKey = rng.gen();
 
     let sig1 = key1.sign_hash(&msg1);
 
@@ -136,8 +136,8 @@ fn test_agg_signature_verify() {
     let msg1: MsgHash = rng.gen();
     let msg2: MsgHash = rng.gen();
 
-    let key1 = SecretKey::generate(rng);
-    let key2 = SecretKey::generate(rng);
+    let key1: SecretKey = rng.gen();
+    let key2: SecretKey = rng.gen();
 
     let sig1 = key1.sign_hash(&msg1);
     let sig2 = key2.sign_hash(&msg2);

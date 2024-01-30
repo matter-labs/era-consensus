@@ -38,7 +38,7 @@ impl StateMachine {
                 )),
             recipient: Target::Validator(self.config.view_leader(next_view)),
         };
-        self.pipe.send(output_message.into());
+        self.outbound_pipe.send(output_message.into());
 
         // Reset the timer.
         self.reset_timer(ctx);

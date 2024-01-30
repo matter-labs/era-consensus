@@ -1,6 +1,7 @@
 //! Test-only utilities.
-use crate::{PersistentBlockStore, Proposal, ReplicaState};
+use crate::{BlockStore, BlockStoreRunner, PersistentBlockStore, Proposal, ReplicaState};
 use rand::{distributions::Standard, prelude::Distribution, Rng};
+use std::sync::Arc;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
 
@@ -27,6 +28,16 @@ impl Distribution<ReplicaState> for Standard {
     }
 }
 
+/// Constructs a new in-memory store with a genesis block.
+pub async fn new_store(
+    ctx: &ctx::Ctx,
+    genesis: &validator::FinalBlock,
+) -> (Arc<BlockStore>, BlockStoreRunner) {
+    BlockStore::new(ctx, Box::new(in_memory::BlockStore::new(genesis.clone())))
+        .await
+        .unwrap()
+}
+
 /// Dumps all the blocks stored in `store`.
 pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<validator::FinalBlock> {
     let range = store.state(ctx).await.unwrap();
@@ -39,20 +50,4 @@ pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<valid
     }
     assert!(store.block(ctx, range.next()).await.is_err());
     blocks
-}
-
-/// A generator of consecutive blocks with random payload, starting with a genesis blocks.
-pub fn random_blocks(ctx: &ctx::Ctx) -> impl Iterator<Item = validator::FinalBlock> {
-    let mut rng = ctx.rng();
-    let v = validator::ProtocolVersion::EARLIEST;
-    std::iter::successors(
-        Some(validator::testonly::make_genesis_block(&mut rng, v)),
-        move |parent| {
-            Some(validator::testonly::make_block(
-                &mut rng,
-                parent.header(),
-                v,
-            ))
-        },
-    )
 }

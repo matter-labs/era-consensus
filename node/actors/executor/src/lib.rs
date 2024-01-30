@@ -6,13 +6,14 @@ use std::{
     fmt,
     sync::Arc,
 };
-use zksync_concurrency::{ctx, net, scope, sync};
+use zksync_concurrency::{ctx, net, scope};
 use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BlockStore, BlockStoreState, ReplicaStore};
+use zksync_consensus_storage::{BlockStore, ReplicaStore};
 use zksync_consensus_sync_blocks as sync_blocks;
 use zksync_consensus_utils::pipe;
+use zksync_protobuf::kB;
 
 mod io;
 pub mod testonly;
@@ -48,13 +49,15 @@ pub struct Config {
     /// Static specification of validators for Proof of Authority. Should be deprecated once we move
     /// to Proof of Stake.
     pub validators: validator::ValidatorSet,
+    /// Maximal size of the block payload.
+    pub max_payload_size: usize,
 
     /// Key of this node. It uniquely identifies the node.
     /// It should match the secret key provided in the `node_key` file.
     pub node_key: node::SecretKey,
     /// Limit on the number of inbound connections outside
     /// of the `static_inbound` set.
-    pub gossip_dynamic_inbound_limit: u64,
+    pub gossip_dynamic_inbound_limit: usize,
     /// Inbound connections that should be unconditionally accepted.
     pub gossip_static_inbound: HashSet<node::PublicKey>,
     /// Outbound connections that the node should actively try to
@@ -70,7 +73,6 @@ impl Config {
             dynamic_inbound_limit: self.gossip_dynamic_inbound_limit,
             static_inbound: self.gossip_static_inbound.clone(),
             static_outbound: self.gossip_static_outbound.clone(),
-            enable_pings: true,
         }
     }
 }
@@ -86,14 +88,6 @@ pub struct Executor {
     pub validator: Option<Validator>,
 }
 
-/// Converts BlockStoreState to isomorphic network::io::SyncState.
-fn to_sync_state(state: BlockStoreState) -> network::io::SyncState {
-    network::io::SyncState {
-        first_stored_block: state.first,
-        last_stored_block: state.last,
-    }
-}
-
 impl Executor {
     /// Extracts a network crate config.
     fn network_config(&self) -> network::Config {
@@ -102,6 +96,8 @@ impl Executor {
             validators: self.config.validators.clone(),
             gossip: self.config.gossip(),
             consensus: self.validator.as_ref().map(|v| v.config.clone()),
+            enable_pings: true,
+            max_block_size: self.config.max_payload_size.saturating_add(kB),
         }
     }
 
@@ -138,23 +134,12 @@ impl Executor {
 
         // Create each of the actors.
         let validator_set = self.config.validators;
-        let mut block_store_state = self.block_store.subscribe();
-        let sync_state = sync::watch::channel(to_sync_state(block_store_state.borrow().clone())).0;
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
-            s.spawn_bg(async {
-                // Task forwarding changes from block_store_state to sync_state.
-                // Alternatively we can make network depend on the storage directly.
-                while let Ok(state) = sync::changed(ctx, &mut block_store_state).await {
-                    sync_state.send_replace(to_sync_state(state.clone()));
-                }
-                Ok(())
-            });
-
             s.spawn_blocking(|| dispatcher.run(ctx).context("IO Dispatcher stopped"));
             s.spawn(async {
-                let state = network::State::new(network_config, None, Some(sync_state.subscribe()))
+                let state = network::State::new(network_config, self.block_store.clone(), None)
                     .context("Invalid network config")?;
                 state.register_metrics();
                 network::run_network(ctx, state, network_actor_pipe)
@@ -170,6 +155,7 @@ impl Executor {
                         block_store: self.block_store.clone(),
                         replica_store: validator.replica_store,
                         payload_manager: validator.payload_manager,
+                        max_payload_size: self.config.max_payload_size,
                     }
                     .run(ctx, consensus_actor_pipe)
                     .await

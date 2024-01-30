@@ -3892,6 +3892,7 @@ name = "zksync_concurrency"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "assert_matches",
  "once_cell",
  "pin-project",
  "rand 0.8.5",
@@ -3963,6 +3964,7 @@ dependencies = [
  "zksync_consensus_storage",
  "zksync_consensus_sync_blocks",
  "zksync_consensus_utils",
+ "zksync_protobuf",
 ]
 
 [[package]]
@@ -3986,6 +3988,7 @@ dependencies = [
  "zksync_concurrency",
  "zksync_consensus_crypto",
  "zksync_consensus_roles",
+ "zksync_consensus_storage",
  "zksync_consensus_utils",
  "zksync_protobuf",
  "zksync_protobuf_build",
@@ -4063,6 +4066,7 @@ dependencies = [
  "prost",
  "rand 0.8.5",
  "rocksdb",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",

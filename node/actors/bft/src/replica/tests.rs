@@ -1,5 +1,8 @@
 use super::{leader_commit, leader_prepare};
-use crate::{testonly, testonly::ut_harness::UTHarness, Config};
+use crate::{
+    testonly,
+    testonly::ut_harness::{UTHarness, MAX_PAYLOAD_SIZE},
+};
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::{ctx, scope};
@@ -271,7 +274,7 @@ async fn leader_prepare_proposal_oversized_payload() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let payload_oversize = Config::PAYLOAD_MAX_SIZE + 1;
+        let payload_oversize = MAX_PAYLOAD_SIZE + 1;
         let payload_vec = vec![0; payload_oversize];
         let mut leader_prepare = util.new_leader_prepare(ctx).await.msg;
         leader_prepare.proposal_payload = Some(Payload(payload_vec));

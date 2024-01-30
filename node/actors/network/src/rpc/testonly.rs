@@ -2,23 +2,31 @@
 //! Implementations of Distribution are supposed to generate realistic data,
 //! but in fact they are "best-effort realistic" - they might need an upgrade,
 //! if tests require stricter properties of the generated data.
-use super::{consensus, sync_validator_addrs, Arc};
+use crate::rpc;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
+use std::sync::Arc;
 use zksync_consensus_roles::validator;
+use zksync_consensus_storage::BlockStoreState;
 
-impl Distribution<consensus::Req> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> consensus::Req {
-        consensus::Req(rng.gen())
+impl Distribution<rpc::consensus::Req> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> rpc::consensus::Req {
+        rpc::consensus::Req(rng.gen())
     }
 }
 
-impl Distribution<sync_validator_addrs::Resp> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> sync_validator_addrs::Resp {
+impl Distribution<rpc::consensus::Resp> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> rpc::consensus::Resp {
+        rpc::consensus::Resp
+    }
+}
+
+impl Distribution<rpc::push_validator_addrs::Req> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> rpc::push_validator_addrs::Req {
         let n = rng.gen_range(5..10);
-        sync_validator_addrs::Resp(
+        rpc::push_validator_addrs::Req(
             (0..n)
                 .map(|_| {
                     let key: validator::SecretKey = rng.gen();
@@ -27,5 +35,26 @@ impl Distribution<sync_validator_addrs::Resp> for Standard {
                 })
                 .collect(),
         )
+    }
+}
+
+impl Distribution<rpc::push_block_store_state::Req> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> rpc::push_block_store_state::Req {
+        rpc::push_block_store_state::Req(BlockStoreState {
+            first: rng.gen(),
+            last: rng.gen(),
+        })
+    }
+}
+
+impl Distribution<rpc::get_block::Req> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> rpc::get_block::Req {
+        rpc::get_block::Req(rng.gen())
+    }
+}
+
+impl Distribution<rpc::get_block::Resp> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> rpc::get_block::Resp {
+        rpc::get_block::Resp(Some(rng.gen()))
     }
 }

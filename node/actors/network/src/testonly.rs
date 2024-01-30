@@ -1,6 +1,6 @@
 //! Testonly utilities.
 #![allow(dead_code)]
-use crate::{consensus, event::Event, gossip, io::SyncState, Config, State};
+use crate::{consensus, event::Event, gossip, Config, State};
 use rand::Rng;
 use std::{
     collections::{HashMap, HashSet},
@@ -9,10 +9,12 @@ use std::{
 use zksync_concurrency::{
     ctx,
     ctx::channel,
-    io, net,
-    sync::{self, watch},
+    io, net, scope,
+    sync::{self},
 };
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::{node, validator};
+use zksync_consensus_storage::BlockStore;
+use zksync_consensus_utils::pipe;
 
 /// Synchronously forwards data from one stream to another.
 pub(crate) async fn forward(
@@ -46,60 +48,109 @@ pub struct Instance {
     pub(crate) state: Arc<State>,
     /// Stream of events.
     pub(crate) events: channel::UnboundedReceiver<Event>,
+    /// Termination signal that can be sent to the node.
+    pub(crate) terminate: channel::Sender<()>,
+    /// Dispatcher end of the network pipe.
+    pub(crate) pipe: pipe::DispatcherPipe<crate::io::InputMessage, crate::io::OutputMessage>,
+}
+
+/// Construct configs for `n` validators of the consensus.
+pub fn new_configs<R: Rng>(
+    rng: &mut R,
+    setup: &validator::testonly::GenesisSetup,
+    gossip_peers: usize,
+) -> Vec<Config> {
+    let configs = setup.keys.iter().map(|key| {
+        let addr = net::tcp::testonly::reserve_listener();
+        Config {
+            server_addr: addr,
+            validators: setup.validator_set(),
+            // Pings are disabled in tests by default to avoid dropping connections
+            // due to timeouts.
+            enable_pings: false,
+            consensus: Some(consensus::Config {
+                key: key.clone(),
+                public_addr: *addr,
+            }),
+            gossip: gossip::Config {
+                key: rng.gen(),
+                dynamic_inbound_limit: setup.keys.len(),
+                static_inbound: HashSet::default(),
+                static_outbound: HashMap::default(),
+            },
+            max_block_size: usize::MAX,
+        }
+    });
+    let mut cfgs: Vec<_> = configs.collect();
+
+    let n = cfgs.len();
+    for i in 0..n {
+        for j in 0..gossip_peers {
+            let j = (i + j + 1) % n;
+            let peer = cfgs[j].gossip.key.public();
+            let addr = *cfgs[j].server_addr;
+            cfgs[i].gossip.static_outbound.insert(peer, addr);
+        }
+    }
+    cfgs
+}
+
+/// Runner for Instance.
+pub struct InstanceRunner {
+    state: Arc<State>,
+    terminate: channel::Receiver<()>,
+    pipe: pipe::ActorPipe<crate::io::InputMessage, crate::io::OutputMessage>,
+}
+
+impl InstanceRunner {
+    /// Runs the instance background processes.
+    pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        scope::run!(ctx, |ctx, s| async {
+            s.spawn_bg(crate::run_network(ctx, self.state, self.pipe));
+            let _ = self.terminate.recv(ctx).await;
+            Ok(())
+        })
+        .await?;
+        drop(self.terminate);
+        Ok(())
+    }
 }
 
 impl Instance {
-    /// Construct configs for `n` validators of the consensus.
-    pub fn new_configs<R: Rng>(rng: &mut R, n: usize, gossip_peers: usize) -> Vec<Config> {
-        let keys: Vec<validator::SecretKey> = (0..n).map(|_| rng.gen()).collect();
-        let validators = validator::ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap();
-        let configs = keys.iter().map(|key| {
-            let addr = net::tcp::testonly::reserve_listener();
-            Config {
-                server_addr: addr,
-                validators: validators.clone(),
-                consensus: Some(consensus::Config {
-                    key: key.clone(),
-                    public_addr: *addr,
-                }),
-                gossip: gossip::Config {
-                    key: rng.gen(),
-                    dynamic_inbound_limit: n as u64,
-                    static_inbound: HashSet::default(),
-                    static_outbound: HashMap::default(),
-                    enable_pings: true,
-                },
-            }
-        });
-        let mut cfgs: Vec<_> = configs.collect();
-
-        for i in 0..cfgs.len() {
-            for j in 0..gossip_peers {
-                let j = (i + j + 1) % n;
-                let peer = cfgs[j].gossip.key.public();
-                let addr = *cfgs[j].server_addr;
-                cfgs[i].gossip.static_outbound.insert(peer, addr);
-            }
-        }
-        cfgs
-    }
-
     /// Construct an instance for a given config.
-    pub(crate) fn from_cfg(cfg: Config) -> Self {
+    pub fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self, InstanceRunner) {
         let (events_send, events_recv) = channel::unbounded();
-        Self {
-            state: State::new(cfg, Some(events_send), None).expect("Invalid network config"),
-            events: events_recv,
-        }
+        let (actor_pipe, dispatcher_pipe) = pipe::new();
+        let state =
+            State::new(cfg, block_store, Some(events_send)).expect("Invalid network config");
+        let (terminate_send, terminate_recv) = channel::bounded(1);
+        (
+            Self {
+                state: state.clone(),
+                events: events_recv,
+                pipe: dispatcher_pipe,
+                terminate: terminate_send,
+            },
+            InstanceRunner {
+                state: state.clone(),
+                pipe: actor_pipe,
+                terminate: terminate_recv,
+            },
+        )
     }
 
-    /// Constructs `n` node instances, configured to connect to each other.
-    /// Non-blocking (it doesn't run the network actors).
-    pub fn new<R: Rng>(rng: &mut R, n: usize, gossip_peers: usize) -> Vec<Self> {
-        Self::new_configs(rng, n, gossip_peers)
-            .into_iter()
-            .map(Self::from_cfg)
-            .collect()
+    /// Sends a termination signal to a node
+    /// and waits for it to terminate.
+    pub async fn terminate(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
+        let _ = self.terminate.try_send(());
+        self.terminate.closed(ctx).await
+    }
+
+    /// Pipe getter.
+    pub fn pipe(
+        &mut self,
+    ) -> &mut pipe::DispatcherPipe<crate::io::InputMessage, crate::io::OutputMessage> {
+        &mut self.pipe
     }
 
     /// State getter.
@@ -120,32 +171,6 @@ impl Instance {
     /// Returns the gossip config for this node.
     pub fn gossip_config(&self) -> &gossip::Config {
         &self.state.gossip.cfg
-    }
-
-    /// Returns the overall config for this node.
-    pub fn to_config(&self) -> Config {
-        Config {
-            server_addr: self.state.cfg.server_addr,
-            validators: self.state.cfg.validators.clone(),
-            gossip: self.state.gossip.cfg.clone(),
-            consensus: self
-                .state
-                .consensus
-                .as_ref()
-                .map(|consensus_state| consensus_state.cfg.clone()),
-        }
-    }
-
-    /// Sets a `SyncState` subscriber for the node. Panics if the node state is already shared.
-    pub fn set_sync_state_subscriber(&mut self, sync_state: watch::Receiver<SyncState>) {
-        let state = Arc::get_mut(&mut self.state).expect("node state is shared");
-        state.gossip.sync_state = Some(sync_state);
-    }
-
-    /// Disables ping messages over the gossip network.
-    pub fn disable_gossip_pings(&mut self) {
-        let state = Arc::get_mut(&mut self.state).expect("node state is shared");
-        state.gossip.cfg.enable_pings = false;
     }
 
     /// Wait for static outbound gossip connections to be established.
@@ -177,6 +202,42 @@ impl Instance {
             .wait_for(|got| got.current() == &want)
             .await
             .unwrap();
+    }
+
+    /// Waits for node to be disconnected from the given gossip peer.
+    pub async fn wait_for_gossip_disconnect(
+        &self,
+        ctx: &ctx::Ctx,
+        peer: &node::PublicKey,
+    ) -> ctx::OrCanceled<()> {
+        let state = &self.state.gossip;
+        sync::wait_for(ctx, &mut state.inbound.subscribe(), |got| {
+            !got.current().contains(peer)
+        })
+        .await?;
+        sync::wait_for(ctx, &mut state.outbound.subscribe(), |got| {
+            !got.current().contains(peer)
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// Waits for node to be disconnected from the given consensus peer.
+    pub async fn wait_for_consensus_disconnect(
+        &self,
+        ctx: &ctx::Ctx,
+        peer: &validator::PublicKey,
+    ) -> ctx::OrCanceled<()> {
+        let state = self.state.consensus.as_ref().unwrap();
+        sync::wait_for(ctx, &mut state.inbound.subscribe(), |got| {
+            !got.current().contains(peer)
+        })
+        .await?;
+        sync::wait_for(ctx, &mut state.outbound.subscribe(), |got| {
+            !got.current().contains(peer)
+        })
+        .await?;
+        Ok(())
     }
 }
 
@@ -216,17 +277,4 @@ pub async fn instant_network(
     }
     tracing::info!("consensus network established");
     Ok(())
-}
-
-impl SyncState {
-    /// Generates a random state based on the provided RNG and with the specified `last_stored_block`
-    /// number.
-    pub(crate) fn gen(rng: &mut impl Rng, number: validator::BlockNumber) -> Self {
-        let mut this = Self {
-            first_stored_block: rng.gen(),
-            last_stored_block: rng.gen(),
-        };
-        this.last_stored_block.message.proposal.number = number;
-        this
-    }
 }

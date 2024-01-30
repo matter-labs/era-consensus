@@ -161,7 +161,7 @@ impl StateMachine {
                 )),
             recipient: Target::Broadcast,
         };
-        self.pipe.send(output_message.into());
+        self.outbound_pipe.send(output_message.into());
 
         // Clean the caches.
         self.prepare_message_cache.retain(|k, _| k >= &self.view);

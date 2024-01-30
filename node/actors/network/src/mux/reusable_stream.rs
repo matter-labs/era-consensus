@@ -282,7 +282,7 @@ impl ReusableStream {
                         let read = recv_open_task.join(ctx).await?;
                         (read, reservation)
                     }
-                    _ => unreachable!("bad StreakKind"),
+                    _ => unreachable!("bad StreamKind"),
                 };
 
                 let (read_lock, new_read_receiver) = sync::ExclusiveLock::new(read);

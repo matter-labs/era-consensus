@@ -21,6 +21,9 @@ struct Args {
     /// Configs for <ip:port>, will be in directory <output_dir>/<ip:port>/
     #[arg(long)]
     output_dir: PathBuf,
+    /// Block payload size in bytes.
+    #[arg(long, default_value_t = 1000000)]
+    payload_size: usize,
 }
 
 fn main() -> anyhow::Result<()> {

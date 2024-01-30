@@ -18,15 +18,15 @@ use zksync_consensus_roles::{
     validator,
 };
 use zksync_consensus_storage::{BlockStore, BlockStoreRunner, PersistentBlockStore};
-use zksync_protobuf::{required, ProtoFmt};
+use zksync_protobuf::{required, serde::Serde, ProtoFmt};
 
 /// Ports for the nodes to listen on kubernetes pod.
 const NODES_PORT: u16 = 3054;
 
 /// Decodes a proto message from json for arbitrary ProtoFmt.
-fn decode_json<T: ProtoFmt>(json: &str) -> anyhow::Result<T> {
+pub fn decode_json<T: serde::de::DeserializeOwned>(json: &str) -> anyhow::Result<T> {
     let mut d = serde_json::Deserializer::from_str(json);
-    let p: T = zksync_protobuf::serde::deserialize(&mut d)?;
+    let p = T::deserialize(&mut d)?;
     d.end()?;
     Ok(p)
 }
@@ -36,6 +36,30 @@ fn encode_json<T: ProtoFmt>(x: &T) -> String {
     let mut s = serde_json::Serializer::pretty(vec![]);
     zksync_protobuf::serde::serialize(x, &mut s).unwrap();
     String::from_utf8(s.into_inner()).unwrap()
+}
+
+/// Pair of (public key, ip address) for a gossip network node.
+#[derive(Debug, Clone)]
+pub struct NodeAddr {
+    pub key: node::PublicKey,
+    pub addr: std::net::SocketAddr,
+}
+
+impl ProtoFmt for NodeAddr {
+    type Proto = proto::NodeAddr;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        let key = read_required_text(&r.key).context("key")?;
+        let addr = read_required_text(&r.addr).context("addr")?;
+        Ok(Self { addr, key })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            key: Some(TextFmt::encode(&self.key)),
+            addr: Some(TextFmt::encode(&self.addr)),
+        }
+    }
 }
 
 /// Node configuration including executor configuration, optional validator configuration,
@@ -48,10 +72,11 @@ pub struct AppConfig {
 
     pub validators: validator::ValidatorSet,
     pub genesis_block: validator::FinalBlock,
+    pub max_payload_size: usize,
 
-    pub gossip_dynamic_inbound_limit: u64,
-    pub gossip_static_inbound: HashSet<PublicKey>,
-    pub gossip_static_outbound: HashMap<PublicKey, SocketAddr>,
+    pub gossip_dynamic_inbound_limit: usize,
+    pub gossip_static_inbound: HashSet<node::PublicKey>,
+    pub gossip_static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>,
 }
 
 impl ProtoFmt for AppConfig {
@@ -77,11 +102,9 @@ impl ProtoFmt for AppConfig {
 
         let mut gossip_static_outbound = HashMap::new();
         for (i, e) in r.gossip_static_outbound.iter().enumerate() {
-            let key = read_required_text(&e.key)
-                .with_context(|| format!("gossip_static_outbound[{i}].key"))?;
-            let addr = read_required_text(&e.addr)
-                .with_context(|| format!("gossip_static_outbound[{i}].addr"))?;
-            gossip_static_outbound.insert(key, addr);
+            let node_addr: NodeAddr =
+                ProtoFmt::read(e).with_context(|| format!("gossip_static_outbound[{i}]"))?;
+            gossip_static_outbound.insert(node_addr.key, node_addr.addr);
         }
         Ok(Self {
             server_addr: read_required_text(&r.server_addr).context("server_addr")?,
@@ -91,8 +114,12 @@ impl ProtoFmt for AppConfig {
 
             validators,
             genesis_block: read_required_text(&r.genesis_block).context("genesis_block")?,
+            max_payload_size: required(&r.max_payload_size)
+                .and_then(|x| Ok((*x).try_into()?))
+                .context("max_payload_size")?,
 
-            gossip_dynamic_inbound_limit: *required(&r.gossip_dynamic_inbound_limit)
+            gossip_dynamic_inbound_limit: required(&r.gossip_dynamic_inbound_limit)
+                .and_then(|x| Ok((*x).try_into()?))
                 .context("gossip_dynamic_inbound_limit")?,
             gossip_static_inbound,
             gossip_static_outbound,
@@ -107,8 +134,11 @@ impl ProtoFmt for AppConfig {
 
             validators: self.validators.iter().map(TextFmt::encode).collect(),
             genesis_block: Some(self.genesis_block.encode()),
+            max_payload_size: Some(self.max_payload_size.try_into().unwrap()),
 
-            gossip_dynamic_inbound_limit: Some(self.gossip_dynamic_inbound_limit),
+            gossip_dynamic_inbound_limit: Some(
+                self.gossip_dynamic_inbound_limit.try_into().unwrap(),
+            ),
             gossip_static_inbound: self
                 .gossip_static_inbound
                 .iter()
@@ -152,9 +182,10 @@ impl<'a> ConfigPaths<'a> {
         Ok(Configs {
             app: (|| {
                 let app = fs::read_to_string(self.app).context("failed reading file")?;
-                decode_json(&app).context("failed decoding JSON")
+                decode_json::<Serde<AppConfig>>(&app).context("failed decoding JSON")
             })()
-            .with_context(|| self.app.display().to_string())?,
+            .with_context(|| self.app.display().to_string())?
+            .0,
 
             validator_key: self
                 .validator_key
@@ -180,17 +211,18 @@ impl<'a> ConfigPaths<'a> {
 }
 
 impl AppConfig {
-    pub fn default_for(nodes_amount: u64) -> (AppConfig, Vec<validator::SecretKey>) {
+    pub fn default_for(nodes_amount: usize) -> (AppConfig, Vec<validator::SecretKey>) {
         // Generate the keys for all the replicas.
         let rng = &mut rand::thread_rng();
         let validator_keys: Vec<validator::SecretKey> =
             (0..nodes_amount).map(|_| rng.gen()).collect();
 
-        let (genesis, validator_set) = testonly::make_genesis(
-            &validator_keys,
-            validator::Payload(vec![]),
-            validator::BlockNumber(0),
-        );
+            let mut genesis = validator::GenesisSetup::empty(rng, nodes_amount);
+            genesis
+                .next_block()
+                .payload(validator::Payload(vec![]))
+                .push();
+            let validator_keys = genesis.keys.clone();
 
         (
             Self {
@@ -198,8 +230,9 @@ impl AppConfig {
                 public_addr: SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
                 metrics_server_addr: None,
 
-                validators: validator_set.clone(),
-                genesis_block: genesis.clone(),
+                validators: genesis.validator_set(),
+                genesis_block: genesis.blocks[0].clone(),
+                max_payload_size: 1000000,
 
                 gossip_dynamic_inbound_limit: 2,
                 gossip_static_inbound: [].into(),
@@ -221,7 +254,7 @@ impl AppConfig {
 
     pub fn with_gossip_dynamic_inbound_limit(
         &mut self,
-        gossip_dynamic_inbound_limit: u64,
+        gossip_dynamic_inbound_limit: usize,
     ) -> &mut Self {
         self.gossip_dynamic_inbound_limit = gossip_dynamic_inbound_limit;
         self
@@ -280,6 +313,7 @@ impl Configs {
                 gossip_dynamic_inbound_limit: self.app.gossip_dynamic_inbound_limit,
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
+                max_payload_size: self.app.max_payload_size,
             },
             block_store,
             validator: self.validator_key.as_ref().map(|key| executor::Validator {
@@ -288,7 +322,7 @@ impl Configs {
                     public_addr: self.app.public_addr,
                 },
                 replica_store: Box::new(store),
-                payload_manager: Box::new(bft::testonly::RandomPayload),
+                payload_manager: Box::new(bft::testonly::RandomPayload(self.app.max_payload_size)),
             }),
         };
         Ok((e, runner))

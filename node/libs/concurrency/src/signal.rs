@@ -1,6 +1,7 @@
 //! Simple signal reporting primitive. A building block for `Scope` and `Ctx`.
 //! Can also be used outside of the crate, but only together with `Ctx`.
 use crate::ctx;
+use std::future::Future;
 
 /// Communication channel over which a signal can be sent only once.
 /// Useful for reporting very simple events.
@@ -37,8 +38,11 @@ impl Once {
     }
 
     /// Waits for the signal to be sent.
-    pub async fn recv(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
-        ctx.wait(self.cancel_safe_recv()).await
+    pub fn recv<'a>(
+        &'a self,
+        ctx: &'a ctx::Ctx,
+    ) -> ctx::CtxAware<impl 'a + Future<Output = ctx::OrCanceled<()>>> {
+        ctx.wait(self.cancel_safe_recv())
     }
 
     /// Checks if send() was already called.

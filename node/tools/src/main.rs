@@ -7,8 +7,20 @@ use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_tools::{server, ConfigPaths};
+use zksync_consensus_tools::{server, decode_json, ConfigPaths, NodeAddr};
 use zksync_consensus_utils::no_copy::NoCopy;
+use zksync_protobuf::serde::Serde;
+
+/// Wrapper for Vec<NodeAddr>.
+#[derive(Debug, Clone)]
+struct NodeAddrs(Vec<Serde<NodeAddr>>);
+
+impl std::str::FromStr for NodeAddrs {
+    type Err = anyhow::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(Self(decode_json(s)?))
+    }
+}
 
 /// Command-line application launching a node executor.
 #[derive(Debug, Parser)]
@@ -29,6 +41,9 @@ struct Args {
     /// Port for the RPC server.
     #[arg(long)]
     rpc_port: Option<u16>,
+    /// IP address and key of the seed peers.
+    #[arg(long)]
+    add_gossip_static_outbound: NodeAddrs,
 }
 
 impl Args {
@@ -82,10 +97,18 @@ async fn main() -> anyhow::Result<()> {
 
     // Load the config files.
     tracing::debug!("Loading config files.");
-    let configs = args
+    let mut configs = args
         .config_paths()
         .load()
         .context("config_paths().load()")?;
+
+    // Add gossipStaticOutbound pairs from cli to config
+    configs.app.gossip_static_outbound.extend(
+        args.add_gossip_static_outbound
+            .0
+            .into_iter()
+            .map(|e| (e.0.key, e.0.addr)),
+    );
 
     let (executor, runner) = configs
         .make_executor(ctx)
