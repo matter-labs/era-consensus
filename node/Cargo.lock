@@ -2795,6 +2795,7 @@ dependencies = [
  "prost",
  "rand 0.8.5",
  "rocksdb",
+ "serde",
  "serde_json",
  "tempfile",
  "tokio",
