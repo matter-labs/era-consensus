@@ -140,7 +140,7 @@ async fn main() -> anyhow::Result<()> {
         }
         s.spawn_bg(runner.run(ctx));
         s.spawn(executor.run(ctx));
-        s.spawn(rpc_server.run());
+        s.spawn(rpc_server.run(ctx));
         Ok(())
     })
     .await

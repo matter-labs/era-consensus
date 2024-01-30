@@ -16,7 +16,7 @@ impl RPCServer {
     }
 
     /// Runs the RPC server.
-    pub async fn run(&self) -> anyhow::Result<()> {
+    pub async fn run(&self, ctx: &Ctx) -> anyhow::Result<()> {
         // Custom tower service to handle the RPC requests
         let service_builder = tower::ServiceBuilder::new()
             // Proxy `GET /health` requests to internal `system_health` method.
@@ -37,9 +37,7 @@ impl RPCServer {
 
         let handle = server.start(module);
 
-        // In this example we don't care about doing shutdown so let's it run forever.
-        // You may use the `ServerHandle` to shut it down or manage it yourself.
-        tokio::spawn(handle.stopped());
+        ctx.wait(handle.stopped()).await?;
         Ok(())
     }
 }
