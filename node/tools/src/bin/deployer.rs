@@ -46,7 +46,7 @@ fn generate_config(nodes: usize) -> anyhow::Result<()> {
     let rng = &mut rand::thread_rng();
     let node_keys: Vec<node::SecretKey> = (0..nodes).map(|_| rng.gen()).collect();
 
-    let (default_config, validator_keys) = AppConfig::default_for(nodes as u64);
+    let (default_config, validator_keys) = AppConfig::default_for(nodes);
     let mut cfgs: Vec<_> = (0..nodes).map(|_| default_config.clone()).collect();
 
     // Construct a gossip network with optimal diameter.
