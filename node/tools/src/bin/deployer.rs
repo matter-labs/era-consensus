@@ -3,31 +3,33 @@ use std::{fs, path::PathBuf};
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use k8s_openapi::api::{
-    apps::v1::Deployment,
-    core::v1::{Namespace, Pod},
-};
+use k8s_openapi::api::{apps::v1::Deployment, core::v1::Namespace};
 use kube::{api::PostParams, Api, Client};
 use rand::Rng;
 use serde_json::json;
+use tracing::log::info;
 use zksync_consensus_crypto::TextFmt;
-use zksync_consensus_roles::{node, validator};
+use zksync_consensus_roles::node;
 use zksync_consensus_tools::AppConfig;
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
 #[command(name = "deployer")]
 struct DeployerCLI {
+    /// Subcommand to run.
     #[command(subcommand)]
     command: DeployerCommands,
 }
 
+/// Subcommand arguments.
 #[derive(Debug, Parser)]
 struct SubCommandArgs {
+    /// Number of nodes to deploy.
     #[arg(long)]
     nodes: usize,
 }
 
+/// Subcommands.
 #[derive(Subcommand, Debug)]
 enum DeployerCommands {
     /// Generate configs for the nodes.
@@ -36,13 +38,15 @@ enum DeployerCommands {
     Deploy(SubCommandArgs),
 }
 
+/// Generates config for the nodes to run in the kubernetes cluster
+/// Creates a directory for each node in the parent k8s_configs directory.
 fn generate_config(nodes: usize) -> anyhow::Result<()> {
     assert!(nodes > 0, "at least 1 node has to be specified");
 
-    // Each node will have `gossip_peers` outbound peers.
+    // Each node will have `gossip_peers` inbound peers.
     let peers = 2;
 
-    // Generate the keys for all the replicas.
+    // Generate the node keys for all the replicas.
     let rng = &mut rand::thread_rng();
     let node_keys: Vec<node::SecretKey> = (0..nodes).map(|_| rng.gen()).collect();
 
@@ -50,10 +54,10 @@ fn generate_config(nodes: usize) -> anyhow::Result<()> {
     let mut cfgs: Vec<_> = (0..nodes).map(|_| default_config.clone()).collect();
 
     // Construct a gossip network with optimal diameter.
-    for i in 0..nodes {
+    for (i, node) in node_keys.iter().enumerate() {
         for j in 0..peers {
             let next = (i * peers + j + 1) % nodes;
-            cfgs[next].add_gossip_static_inbound(node_keys[i].public());
+            cfgs[next].add_gossip_static_inbound(node.public());
         }
     }
 
@@ -81,15 +85,13 @@ fn generate_config(nodes: usize) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Deploys the nodes to the kubernetes cluster.
 async fn deploy(nodes: usize) -> anyhow::Result<()> {
-    // Create a Kubernetes client
     let client = Client::try_default().await?;
 
-    // Check if namespace consensus is already deployed
     let namespaces: Api<Namespace> = Api::all(client.clone());
     let consensus_namespace = namespaces.get_opt("consensus").await?;
     if consensus_namespace.is_none() {
-        // Create a new namespace object
         let namespace: Namespace = serde_json::from_value(json!({
             "apiVersion": "v1",
         "kind": "Namespace",
@@ -101,17 +103,20 @@ async fn deploy(nodes: usize) -> anyhow::Result<()> {
         }
         }))?;
 
-        // Deploy namespace
         let namespaces: Api<Namespace> = Api::all(client.clone());
         let post_params = PostParams::default();
         let result = namespaces.create(&post_params, &namespace).await?;
 
-        println!("Created namespace {:?}", result);
+        info!("Namespace: {} ,created", result.metadata.name.unwrap());
+    } else {
+        info!(
+            "Namespace: {} ,already exists",
+            consensus_namespace.unwrap().metadata.name.unwrap()
+        );
     }
 
     for i in 0..nodes {
         let node_container_name = format!("consensus-node-0{}", i);
-        // Create a new pod object
         let deployment: Deployment = serde_json::from_value(json!({
               "apiVersion": "apps/v1",
               "kind": "Deployment",
@@ -169,14 +174,11 @@ async fn deploy(nodes: usize) -> anyhow::Result<()> {
               }
         }))?;
 
-        // Create a Kubernetes API object for the pods resource
         let deployments: Api<Deployment> = Api::namespaced(client.clone(), "consensus");
-
-        // Create the pod
         let post_params = PostParams::default();
         let result = deployments.create(&post_params, &deployment).await?;
 
-        println!("Created deployment {:?}", result);
+        info!("Deployment: {} , created", result.metadata.name.unwrap());
     }
 
     Ok(())

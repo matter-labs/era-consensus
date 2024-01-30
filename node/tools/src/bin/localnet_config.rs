@@ -4,7 +4,7 @@ use clap::Parser;
 use rand::Rng;
 use std::{fs, net::SocketAddr, path::PathBuf};
 use zksync_consensus_crypto::TextFmt;
-use zksync_consensus_roles::{node, validator};
+use zksync_consensus_roles::node;
 use zksync_consensus_tools::AppConfig;
 
 /// Command line arguments.

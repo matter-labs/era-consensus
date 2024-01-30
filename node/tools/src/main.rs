@@ -7,7 +7,7 @@ use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_tools::{server, decode_json, ConfigPaths, NodeAddr};
+use zksync_consensus_tools::{decode_json, server, ConfigPaths, NodeAddr};
 use zksync_consensus_utils::no_copy::NoCopy;
 use zksync_protobuf::serde::Serde;
 

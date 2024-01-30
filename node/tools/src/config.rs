@@ -1,10 +1,8 @@
 //! Node configuration.
 use crate::{proto, store};
 use anyhow::Context as _;
-use bft::testonly;
-use rand::Rng;
 use std::{
-    collections::{hash_map::RandomState, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     fs,
     net::SocketAddr,
     path::{Path, PathBuf},
@@ -41,8 +39,8 @@ fn encode_json<T: ProtoFmt>(x: &T) -> String {
 /// Pair of (public key, ip address) for a gossip network node.
 #[derive(Debug, Clone)]
 pub struct NodeAddr {
-    pub key: node::PublicKey,
-    pub addr: std::net::SocketAddr,
+    pub key: PublicKey,
+    pub addr: SocketAddr,
 }
 
 impl ProtoFmt for NodeAddr {
@@ -75,8 +73,8 @@ pub struct AppConfig {
     pub max_payload_size: usize,
 
     pub gossip_dynamic_inbound_limit: usize,
-    pub gossip_static_inbound: HashSet<node::PublicKey>,
-    pub gossip_static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>,
+    pub gossip_static_inbound: HashSet<PublicKey>,
+    pub gossip_static_outbound: HashMap<PublicKey, SocketAddr>,
 }
 
 impl ProtoFmt for AppConfig {
@@ -214,15 +212,13 @@ impl AppConfig {
     pub fn default_for(nodes_amount: usize) -> (AppConfig, Vec<validator::SecretKey>) {
         // Generate the keys for all the replicas.
         let rng = &mut rand::thread_rng();
-        let validator_keys: Vec<validator::SecretKey> =
-            (0..nodes_amount).map(|_| rng.gen()).collect();
 
-            let mut genesis = validator::GenesisSetup::empty(rng, nodes_amount);
-            genesis
-                .next_block()
-                .payload(validator::Payload(vec![]))
-                .push();
-            let validator_keys = genesis.keys.clone();
+        let mut genesis = validator::GenesisSetup::empty(rng, nodes_amount);
+        genesis
+            .next_block()
+            .payload(validator::Payload(vec![]))
+            .push();
+        let validator_keys = genesis.keys.clone();
 
         (
             Self {
@@ -257,22 +253,6 @@ impl AppConfig {
         gossip_dynamic_inbound_limit: usize,
     ) -> &mut Self {
         self.gossip_dynamic_inbound_limit = gossip_dynamic_inbound_limit;
-        self
-    }
-
-    pub fn with_gossip_static_inbound(
-        &mut self,
-        gossip_static_inbound: HashSet<PublicKey, RandomState>,
-    ) -> &mut Self {
-        self.gossip_static_inbound = gossip_static_inbound;
-        self
-    }
-
-    pub fn with_gossip_static_outbound(
-        &mut self,
-        gossip_static_outbound: HashMap<PublicKey, SocketAddr, RandomState>,
-    ) -> &mut Self {
-        self.gossip_static_outbound = gossip_static_outbound;
         self
     }
 
