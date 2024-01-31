@@ -1,8 +1,7 @@
-use std::net::SocketAddr;
-
 use super::methods::{health_check::HealthCheck, RPCMethod};
 use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
-use zksync_concurrency::ctx::Ctx;
+use std::net::SocketAddr;
+use zksync_concurrency::{ctx, scope};
 
 /// RPC server.
 pub struct RPCServer {
@@ -16,7 +15,7 @@ impl RPCServer {
     }
 
     /// Runs the RPC server.
-    pub async fn run(&self, ctx: &Ctx) -> anyhow::Result<()> {
+    pub async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         // Custom tower service to handle the RPC requests
         let service_builder = tower::ServiceBuilder::new()
             // Proxy `GET /health` requests to internal `system_health` method.
@@ -36,8 +35,16 @@ impl RPCServer {
         })?;
 
         let handle = server.start(module);
-
-        ctx.wait(handle.stopped()).await?;
-        Ok(())
+        scope::run!(ctx, |ctx, s| async {
+            s.spawn_bg(async {
+                ctx.canceled().await;
+                // Ignore `AlreadyStoppedError`.
+                let _ = handle.stop();
+                Ok(())
+            });
+            handle.clone().stopped().await;
+            Ok(())
+        })
+        .await
     }
 }
