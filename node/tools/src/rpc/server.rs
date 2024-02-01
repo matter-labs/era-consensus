@@ -1,5 +1,9 @@
-use super::methods::{health_check::HealthCheck, RPCMethod};
-use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
+use super::methods::{health_check::HealthCheck, peers::PeersInfo, RPCMethod};
+use jsonrpsee::{
+    server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server},
+    types::{error::ErrorCode, ErrorObject},
+    MethodResponse,
+};
 use std::net::SocketAddr;
 use zksync_concurrency::{ctx, scope};
 
@@ -18,10 +22,14 @@ impl RPCServer {
     pub async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         // Custom tower service to handle the RPC requests
         let service_builder = tower::ServiceBuilder::new()
-            // Proxy `GET /health` requests to internal `system_health` method.
+            // Proxy `GET /<path>` requests to internal methods.
             .layer(ProxyGetRequestLayer::new(
                 HealthCheck::path(),
                 HealthCheck::method(),
+            )?)
+            .layer(ProxyGetRequestLayer::new(
+                PeersInfo::path(),
+                PeersInfo::method(),
             )?);
 
         let server = Server::builder()
@@ -33,6 +41,7 @@ impl RPCServer {
         module.register_method(HealthCheck::method(), |params, _| {
             HealthCheck::callback(params)
         })?;
+        module.register_method(PeersInfo::method(), |params, _| PeersInfo::callback(params))?;
 
         let handle = server.start(module);
         scope::run!(ctx, |ctx, s| async {

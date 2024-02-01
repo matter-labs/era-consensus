@@ -1,9 +1,10 @@
-use jsonrpsee::types::Params;
+use anyhow::Error;
+use jsonrpsee::types::{error::ErrorCode, ErrorObject, ErrorObjectOwned, Params};
 
 /// Trait to implement for new RPC methods.
 pub(crate) trait RPCMethod {
     /// Method response logic when called.
-    fn callback(params: Params) -> serde_json::Value;
+    fn callback(params: Params) -> Result<serde_json::Value, ErrorCode>;
     /// Method name.
     fn method() -> &'static str;
     /// Method path for GET requests.
@@ -11,3 +12,4 @@ pub(crate) trait RPCMethod {
 }
 
 pub(crate) mod health_check;
+pub(crate) mod peers;
