@@ -9,6 +9,8 @@ use zksync_consensus_roles::node;
 use zksync_consensus_tools::k8s;
 use zksync_consensus_tools::AppConfig;
 
+const NAMESPACE: &str = "consensus";
+
 /// Command line arguments.
 #[derive(Debug, Parser)]
 #[command(name = "deployer")]
@@ -62,7 +64,7 @@ fn generate_config(nodes: usize) -> anyhow::Result<()> {
     let root = PathBuf::from(manifest_path).join("k8s_configs");
     let _ = fs::remove_dir_all(&root);
     for (i, cfg) in cfgs.into_iter().enumerate() {
-        let node_config_dir = root.join(format!("node_{}", i));
+        let node_config_dir = root.join(format!("node_{i:0>2}"));
         fs::create_dir_all(&node_config_dir)
             .with_context(|| format!("create_dir_all({:?})", node_config_dir))?;
 
@@ -83,15 +85,16 @@ fn generate_config(nodes: usize) -> anyhow::Result<()> {
 }
 
 /// Deploys the nodes to the kubernetes cluster.
-async fn deploy(nodes: usize) -> anyhow::Result<()> {
+fn deploy(nodes: usize) -> anyhow::Result<()> {
     let client = k8s::get_client()?;
-    k8s::create_or_reuse_namespace(&client, "consensus")?;
+    k8s::create_or_reuse_namespace(&client, NAMESPACE)?;
 
     for i in 0..nodes {
         k8s::create_deployment(
             &client,
-            &format!("consensus-node-0{i}"),
-            &format!("node_{i}"),
+            &format!("consensus_node_{i:0>2}"),
+            &format!("node_{i:0>2}"),
+            NAMESPACE,
         )?;
     }
 
@@ -104,6 +107,6 @@ async fn main() -> anyhow::Result<()> {
 
     match command {
         DeployerCommands::GenerateConfig(args) => generate_config(args.nodes),
-        DeployerCommands::Deploy(args) => deploy(args.nodes).await,
+        DeployerCommands::Deploy(args) => deploy(args.nodes),
     }
 }
