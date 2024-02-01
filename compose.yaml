@@ -6,7 +6,7 @@ services:
     image: consensus-node
     container_name: consensus-node-1
     ports:
-      - "3051:3051"
+      - "3154:3154"
     networks:
       node_net:
         # This allow us to know the ip of the node-1 container to fill the address in the config file
@@ -16,7 +16,7 @@ services:
     image: consensus-node
     container_name: consensus-node-2
     ports:
-      - "3051:3051"
+      - "3155:3154"
     networks:
       node_net:
         # This allow us to know the ip of the node-2 container to fill the address in the config file
