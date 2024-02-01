@@ -1,5 +1,4 @@
-use anyhow::Error;
-use jsonrpsee::types::{error::ErrorCode, ErrorObject, ErrorObjectOwned, Params};
+use jsonrpsee::types::{error::ErrorCode, Params};
 
 /// Trait to implement for new RPC methods.
 pub(crate) trait RPCMethod {

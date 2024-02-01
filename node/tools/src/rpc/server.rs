@@ -1,9 +1,5 @@
 use super::methods::{health_check::HealthCheck, peers::PeersInfo, RPCMethod};
-use jsonrpsee::{
-    server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server},
-    types::{error::ErrorCode, ErrorObject},
-    MethodResponse,
-};
+use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
 use std::net::SocketAddr;
 use zksync_concurrency::{ctx, scope};
 

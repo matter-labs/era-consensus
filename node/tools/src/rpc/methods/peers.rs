@@ -2,11 +2,7 @@
 use crate::{decode_json, AppConfig};
 
 use super::RPCMethod;
-use anyhow::Error;
-use jsonrpsee::{
-    types::{error::ErrorCode, ErrorObjectOwned, Params},
-    MethodResponse,
-};
+use jsonrpsee::types::{error::ErrorCode, Params};
 use std::fs::{self};
 use zksync_consensus_crypto::TextFmt;
 use zksync_protobuf::serde::Serde;

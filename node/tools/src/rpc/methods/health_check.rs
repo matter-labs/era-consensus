@@ -1,6 +1,6 @@
 //! Health check method for RPC server.
 use super::RPCMethod;
-use jsonrpsee::types::{error::ErrorCode, ErrorObjectOwned, Params};
+use jsonrpsee::types::{error::ErrorCode, Params};
 
 /// Health check method for RPC server.
 pub(crate) struct HealthCheck;
