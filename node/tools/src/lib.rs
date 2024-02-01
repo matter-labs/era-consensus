@@ -1,6 +1,7 @@
 //! CLI tools for the consensus node.
 #![allow(missing_docs)]
 mod config;
+pub mod k8s;
 mod proto;
 mod rpc;
 mod store;

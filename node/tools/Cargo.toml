@@ -33,6 +33,7 @@ jsonrpsee.workspace = true
 tower.workspace = true
 kube.workspace = true
 k8s-openapi.workspace = true
+futures.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true

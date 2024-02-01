@@ -4060,6 +4060,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "clap",
+ "futures",
  "jsonrpsee",
  "k8s-openapi",
  "kube",
