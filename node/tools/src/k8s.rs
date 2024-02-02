@@ -40,7 +40,12 @@ pub fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::Result<
     }
 }
 
-pub fn create_deployment(client: &Client, node_name: &str, node_id: &str, namespace: &str) -> anyhow::Result<()> {
+pub fn create_deployment(
+    client: &Client,
+    node_name: &str,
+    node_id: &str,
+    namespace: &str,
+) -> anyhow::Result<()> {
     let deployment: Deployment = serde_json::from_value(json!({
           "apiVersion": "apps/v1",
           "kind": "Deployment",

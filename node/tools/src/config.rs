@@ -209,11 +209,11 @@ impl<'a> ConfigPaths<'a> {
 }
 
 impl AppConfig {
-    pub fn default_for(nodes_amount: usize) -> (AppConfig, Vec<validator::SecretKey>) {
+    pub fn default_for(validators_amount: usize) -> (AppConfig, Vec<validator::SecretKey>) {
         // Generate the keys for all the replicas.
         let rng = &mut rand::thread_rng();
 
-        let mut genesis = validator::GenesisSetup::empty(rng, nodes_amount);
+        let mut genesis = validator::GenesisSetup::empty(rng, validators_amount);
         genesis
             .next_block()
             .payload(validator::Payload(vec![]))
@@ -236,6 +236,11 @@ impl AppConfig {
             },
             validator_keys,
         )
+    }
+
+    pub fn with_server_addr(&mut self, server_addr: SocketAddr) -> &mut Self {
+        self.server_addr = server_addr;
+        self
     }
 
     pub fn with_public_addr(&mut self, public_addr: SocketAddr) -> &mut Self {
@@ -268,6 +273,11 @@ impl AppConfig {
 
     pub fn write_to_file(&self, path: &Path) -> anyhow::Result<()> {
         fs::write(path.join("config.json"), encode_json(self)).context("fs::write()")
+    }
+
+    pub fn with_max_payload_size(&mut self, max_payload_size: usize) -> &mut Self {
+        self.max_payload_size = max_payload_size;
+        self
     }
 }
 
