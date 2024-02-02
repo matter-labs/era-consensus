@@ -7,7 +7,7 @@ use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_tools::{decode_json, server, ConfigPaths, NodeAddr};
+use zksync_consensus_tools::{decode_json, ConfigPaths, NodeAddr, RPCServer};
 use zksync_consensus_utils::no_copy::NoCopy;
 use zksync_protobuf::serde::Serde;
 
@@ -121,6 +121,7 @@ async fn main() -> anyhow::Result<()> {
     } else {
         rpc_addr.set_port(rpc_addr.port() + 100);
     }
+    let rpc_server = RPCServer::new(rpc_addr);
 
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {
@@ -137,7 +138,7 @@ async fn main() -> anyhow::Result<()> {
         }
         s.spawn_bg(runner.run(ctx));
         s.spawn(executor.run(ctx));
-        s.spawn(server::run_server(rpc_addr));
+        s.spawn(rpc_server.run(ctx));
         Ok(())
     })
     .await

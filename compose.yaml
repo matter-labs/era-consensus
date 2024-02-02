@@ -10,7 +10,7 @@ services:
     environment:
       - NODE_ID=node_0
     ports:
-      - "3051:3051"
+      - "3154:3154"
     networks:
       node_net:
         # This allow us to know the ip of the node-1 container to fill the address in the config file
@@ -22,7 +22,7 @@ services:
     environment:
       - NODE_ID=node_1
     ports:
-      - "3052:3051"
+      - "3155:3154"
     networks:
       node_net:
         # This allow us to know the ip of the node-2 container to fill the address in the config file

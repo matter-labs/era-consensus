@@ -1,3 +1,4 @@
 //! RPC server for testing purposes.
 mod methods;
-pub mod server;
+/// Module for the RPC server implementation.
+pub(crate) mod server;

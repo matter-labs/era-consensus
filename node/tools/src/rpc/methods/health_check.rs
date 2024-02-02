@@ -1,12 +1,23 @@
 //! Health check method for RPC server.
-use jsonrpsee::types::Params;
+use super::RPCMethod;
+use jsonrpsee::types::{error::ErrorCode, Params};
 
-/// Health check response for /health endpoint.
-pub(crate) fn callback(_params: Params) -> serde_json::Value {
-    serde_json::json!({"health": true})
-}
+/// Health check method for RPC server.
+pub(crate) struct HealthCheck;
 
-/// Health check method name.
-pub(crate) fn method() -> &'static str {
-    "health_check"
+impl RPCMethod for HealthCheck {
+    /// Health check response for /health endpoint.
+    fn callback(_params: Params) -> Result<serde_json::Value, ErrorCode> {
+        Ok(serde_json::json!({"health": true}))
+    }
+
+    /// Health check method name.
+    fn method() -> &'static str {
+        "health_check"
+    }
+
+    /// Method path for GET requests.
+    fn path() -> &'static str {
+        "/health"
+    }
 }

@@ -10,4 +10,4 @@ mod store;
 mod tests;
 
 pub use config::{decode_json, AppConfig, ConfigPaths, NodeAddr};
-pub use rpc::server;
+pub use rpc::server::RPCServer;
