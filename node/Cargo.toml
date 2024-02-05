@@ -84,7 +84,6 @@ tracing = { version = "0.1.37", features = ["attributes"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter", "fmt"] }
 kube = { version = "0.88.1", features = ["runtime", "derive"] }
 k8s-openapi = { version = "0.21.0", features = ["latest"] }
-futures = "0.3.1"
 jsonrpsee = { version = "0.21.0", features = ["server"]  }
 tower = { version = "0.4.13" }
 

@@ -1,18 +1,27 @@
-use futures::executor;
-use k8s_openapi::api::{apps::v1::Deployment, core::v1::Namespace};
-use kube::{api::PostParams, Api, Client};
+use std::collections::HashMap;
+
+use crate::NodeAddr;
+use k8s_openapi::api::{
+    apps::v1::Deployment,
+    core::v1::{Namespace, Pod},
+};
+use kube::{
+    api::{ListParams, PostParams},
+    Api, Client, ResourceExt,
+};
 use serde_json::json;
 use tracing::log::info;
+use zksync_protobuf::serde::Serde;
 
 /// Get a kube client
-pub fn get_client() -> anyhow::Result<Client> {
-    Ok(executor::block_on(Client::try_default())?)
+pub async fn get_client() -> anyhow::Result<Client> {
+    Ok(Client::try_default().await?)
 }
 
 /// Creates a namespace in k8s cluster
-pub fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::Result<()> {
+pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::Result<()> {
     let namespaces: Api<Namespace> = Api::all(client.clone());
-    let consensus_namespace = executor::block_on(namespaces.get_opt(name))?;
+    let consensus_namespace = namespaces.get_opt(name).await?;
     if consensus_namespace.is_none() {
         let namespace: Namespace = serde_json::from_value(json!({
             "apiVersion": "v1",
@@ -27,7 +36,7 @@ pub fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::Result<
 
         let namespaces: Api<Namespace> = Api::all(client.clone());
         let post_params = PostParams::default();
-        let result = executor::block_on(namespaces.create(&post_params, &namespace))?;
+        let result = namespaces.create(&post_params, &namespace).await?;
 
         info!("Namespace: {} ,created", result.metadata.name.unwrap());
         Ok(())
@@ -40,12 +49,15 @@ pub fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::Result<
     }
 }
 
-pub fn create_deployment(
+pub async fn create_deployment(
     client: &Client,
     node_name: &str,
     node_id: &str,
+    is_seed: bool,
+    peers: Vec<NodeAddr>,
     namespace: &str,
 ) -> anyhow::Result<()> {
+    let cli_args = get_cli_args(peers);
     let deployment: Deployment = serde_json::from_value(json!({
           "apiVersion": "apps/v1",
           "kind": "Deployment",
@@ -63,7 +75,8 @@ pub fn create_deployment(
             "template": {
               "metadata": {
                 "labels": {
-                  "app": node_name
+                  "app": node_name,
+                  "seed": is_seed.to_string()
                 }
               },
               "spec": {
@@ -78,6 +91,7 @@ pub fn create_deployment(
                       }
                     ],
                     "command": ["./k8s_entrypoint.sh"],
+                    "args": cli_args,
                     "imagePullPolicy": "Never",
                     "ports": [
                       {
@@ -105,8 +119,45 @@ pub fn create_deployment(
 
     let deployments: Api<Deployment> = Api::namespaced(client.clone(), namespace);
     let post_params = PostParams::default();
-    let result = executor::block_on(deployments.create(&post_params, &deployment))?;
+    let result = deployments.create(&post_params, &deployment).await?;
 
     info!("Deployment: {} , created", result.metadata.name.unwrap());
     Ok(())
+}
+
+/// Returns a HashMap with mapping: node_name -> IP address
+pub async fn get_seed_node_addrs(client: &Client) -> HashMap<String, String> {
+    let mut result = HashMap::new();
+    let pods: Api<Pod> = Api::namespaced(client.clone(), "consensus");
+
+    let lp = ListParams::default().labels("seed=true");
+    for p in pods.list(&lp).await.unwrap() {
+        let node_name = p.labels()["app"].clone();
+        result.insert(node_name, p.status.unwrap().pod_ip.unwrap());
+    }
+    result
+}
+
+fn get_cli_args(peers: Vec<NodeAddr>) -> Vec<String> {
+    if peers.is_empty() {
+        [].to_vec()
+    } else {
+        [
+            "--add-gossip-static-outbound".to_string(),
+            encode_json(
+                &peers
+                    .iter()
+                    .map(|e| Serde(e.clone()))
+                    .collect::<Vec<Serde<NodeAddr>>>(),
+            ),
+        ]
+        .to_vec()
+    }
+}
+
+/// Encodes a generated proto message to json for arbitrary ProtoFmt.
+pub fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
+    let mut s = serde_json::Serializer::new(vec![]);
+    T::serialize(x, &mut s).unwrap();
+    String::from_utf8(s.into_inner()).unwrap()
 }

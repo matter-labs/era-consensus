@@ -30,11 +30,16 @@ pub fn decode_json<T: serde::de::DeserializeOwned>(json: &str) -> anyhow::Result
 }
 
 /// Encodes a generated proto message to json for arbitrary ProtoFmt.
-fn encode_json<T: ProtoFmt>(x: &T) -> String {
+pub fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
     let mut s = serde_json::Serializer::pretty(vec![]);
-    zksync_protobuf::serde::serialize(x, &mut s).unwrap();
+    T::serialize(x, &mut s).unwrap();
     String::from_utf8(s.into_inner()).unwrap()
 }
+// pub fn encode_json<T: ProtoFmt>(x: &T) -> String {
+//     let mut s = serde_json::Serializer::pretty(vec![]);
+//     zksync_protobuf::serde::serialize(x, &mut s).unwrap();
+//     String::from_utf8(s.into_inner()).unwrap()
+// }
 
 /// Pair of (public key, ip address) for a gossip network node.
 #[derive(Debug, Clone)]
@@ -271,8 +276,8 @@ impl AppConfig {
         self
     }
 
-    pub fn write_to_file(&self, path: &Path) -> anyhow::Result<()> {
-        fs::write(path.join("config.json"), encode_json(self)).context("fs::write()")
+    pub fn write_to_file(self, path: &Path) -> anyhow::Result<()> {
+        fs::write(path.join("config.json"), encode_json(&Serde(self))).context("fs::write()")
     }
 
     pub fn with_max_payload_size(&mut self, max_payload_size: usize) -> &mut Self {

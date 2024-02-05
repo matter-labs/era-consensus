@@ -6,8 +6,12 @@ use clap::{Parser, Subcommand};
 use rand::Rng;
 use zksync_consensus_crypto::TextFmt;
 use zksync_consensus_roles::node;
+use zksync_consensus_roles::node::PublicKey;
+use zksync_consensus_tools::decode_json;
 use zksync_consensus_tools::k8s;
 use zksync_consensus_tools::AppConfig;
+use zksync_consensus_tools::NodeAddr;
+use zksync_protobuf::serde::Serde;
 
 const NAMESPACE: &str = "consensus";
 
@@ -85,17 +89,44 @@ fn generate_config(nodes: usize) -> anyhow::Result<()> {
 }
 
 /// Deploys the nodes to the kubernetes cluster.
-fn deploy(nodes: usize) -> anyhow::Result<()> {
-    let client = k8s::get_client()?;
-    k8s::create_or_reuse_namespace(&client, NAMESPACE)?;
+async fn deploy(nodes: usize) -> anyhow::Result<()> {
+    let client = k8s::get_client().await?;
+    k8s::create_or_reuse_namespace(&client, NAMESPACE).await?;
 
-    for i in 0..nodes {
+    // 20% of the nodes will be seed nodes
+    let seed_nodes = (nodes as f32 * 0.2).ceil() as usize;
+
+    // deploy seed peer(s)
+    for i in 0..seed_nodes {
         k8s::create_deployment(
             &client,
-            &format!("consensus_node_{i:0>2}"),
+            &format!("consensus-node-{i:0>2}"),
             &format!("node_{i:0>2}"),
+            true,
+            vec![], // Seed peers don't have other peer information
             NAMESPACE,
-        )?;
+        )
+        .await?;
+    }
+
+    // obtain seed peer(s) IP(s)
+    let peers = k8s::get_seed_node_addrs(&client).await;
+
+    // TODO recover public keys
+    // Using hardcoded data to test
+    let peers = [decode_json::<Serde<NodeAddr>>(&"{\"key\": \"node:public:ed25519:3059a9ae1de665f2e5dfcb64d5d3a044b2b3617436ddd56c2baf896878b13961\",\"addr\": \"10.13.33.0:3045\"}")?.0].to_vec();
+
+    // deploy the rest of nodes
+    for i in seed_nodes..nodes {
+        k8s::create_deployment(
+            &client,
+            &format!("consensus-node-{i:0>2}"),
+            &format!("node_{i:0>2}"),
+            false,
+            peers.clone(),
+            NAMESPACE,
+        )
+        .await?;
     }
 
     Ok(())
@@ -107,6 +138,6 @@ async fn main() -> anyhow::Result<()> {
 
     match command {
         DeployerCommands::GenerateConfig(args) => generate_config(args.nodes),
-        DeployerCommands::Deploy(args) => deploy(args.nodes),
+        DeployerCommands::Deploy(args) => deploy(args.nodes).await,
     }
 }
