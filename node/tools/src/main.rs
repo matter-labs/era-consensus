@@ -7,7 +7,7 @@ use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_tools::{decode_json, ConfigPaths, NodeAddr};
+use zksync_consensus_tools::{decode_json, ConfigPaths, NodeAddr, RPCServer};
 use zksync_consensus_utils::no_copy::NoCopy;
 use zksync_protobuf::serde::Serde;
 
@@ -38,6 +38,9 @@ struct Args {
     /// Path to the rocksdb database of the node.
     #[arg(long, default_value = "./database")]
     database: PathBuf,
+    /// Port for the RPC server.
+    #[arg(long)]
+    rpc_port: Option<u16>,
     /// IP address and key of the seed peers.
     #[arg(long)]
     add_gossip_static_outbound: NodeAddrs,
@@ -112,6 +115,14 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("configs.into_executor()")?;
 
+    let mut rpc_addr = configs.app.public_addr;
+    if let Some(port) = args.rpc_port {
+        rpc_addr.set_port(port);
+    } else {
+        rpc_addr.set_port(rpc_addr.port() + 100);
+    }
+    let rpc_server = RPCServer::new(rpc_addr);
+
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {
         if let Some(addr) = configs.app.metrics_server_addr {
@@ -127,6 +138,7 @@ async fn main() -> anyhow::Result<()> {
         }
         s.spawn_bg(runner.run(ctx));
         s.spawn(executor.run(ctx));
+        s.spawn(rpc_server.run(ctx));
         Ok(())
     })
     .await

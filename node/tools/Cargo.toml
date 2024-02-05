@@ -29,6 +29,8 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 vise-exporter.workspace = true
+jsonrpsee.workspace = true
+tower.workspace = true
 
 [dev-dependencies]
 tempfile.workspace = true
