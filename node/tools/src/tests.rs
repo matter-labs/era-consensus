@@ -27,7 +27,8 @@ impl Distribution<AppConfig> for Standard {
             let _ = config.add_gossip_static_inbound(rng.gen::<node::SecretKey>().public());
         });
         (0..6).into_iter().for_each(|_| {
-            let _ = config.add_gossip_static_outbound(rng.gen::<node::SecretKey>().public(), make_addr(rng));
+            let _ = config
+                .add_gossip_static_outbound(rng.gen::<node::SecretKey>().public(), make_addr(rng));
         });
         config
     }

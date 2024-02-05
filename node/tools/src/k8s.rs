@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use crate::NodeAddr;
 use k8s_openapi::api::{
     apps::v1::Deployment,
@@ -10,6 +8,7 @@ use kube::{
     Api, Client, ResourceExt,
 };
 use serde_json::json;
+use std::collections::HashMap;
 use tracing::log::info;
 use zksync_protobuf::serde::Serde;
 
@@ -51,13 +50,14 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
 
 pub async fn create_deployment(
     client: &Client,
-    node_name: &str,
-    node_id: &str,
+    node_number: usize,
     is_seed: bool,
     peers: Vec<NodeAddr>,
     namespace: &str,
 ) -> anyhow::Result<()> {
     let cli_args = get_cli_args(peers);
+    let node_name = format!("consensus-node-{node_number:0>2}");
+    let node_id = format!("node_{node_number:0>2}");
     let deployment: Deployment = serde_json::from_value(json!({
           "apiVersion": "apps/v1",
           "kind": "Deployment",
@@ -76,6 +76,7 @@ pub async fn create_deployment(
               "metadata": {
                 "labels": {
                   "app": node_name,
+                  "id": node_id,
                   "seed": is_seed.to_string()
                 }
               },
@@ -127,15 +128,15 @@ pub async fn create_deployment(
 
 /// Returns a HashMap with mapping: node_name -> IP address
 pub async fn get_seed_node_addrs(client: &Client) -> HashMap<String, String> {
-    let mut result = HashMap::new();
+    let mut seed_nodes = HashMap::new();
     let pods: Api<Pod> = Api::namespaced(client.clone(), "consensus");
 
     let lp = ListParams::default().labels("seed=true");
     for p in pods.list(&lp).await.unwrap() {
-        let node_name = p.labels()["app"].clone();
-        result.insert(node_name, p.status.unwrap().pod_ip.unwrap());
+        let node_id = p.labels()["id"].clone();
+        seed_nodes.insert(node_id, p.status.unwrap().pod_ip.unwrap());
     }
-    result
+    seed_nodes
 }
 
 fn get_cli_args(peers: Vec<NodeAddr>) -> Vec<String> {

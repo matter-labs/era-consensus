@@ -1,19 +1,19 @@
 //! Deployer for the kubernetes cluster.
+use std::net::SocketAddr;
+use std::str::FromStr;
 use std::{fs, path::PathBuf};
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use rand::Rng;
-use zksync_consensus_crypto::TextFmt;
-use zksync_consensus_roles::node;
-use zksync_consensus_roles::node::PublicKey;
-use zksync_consensus_tools::decode_json;
+use zksync_consensus_crypto::{Text, TextFmt};
+use zksync_consensus_roles::node::{self, SecretKey};
 use zksync_consensus_tools::k8s;
 use zksync_consensus_tools::AppConfig;
 use zksync_consensus_tools::NodeAddr;
-use zksync_protobuf::serde::Serde;
 
 const NAMESPACE: &str = "consensus";
+const NODES_PORT: u16 = 3054;
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
@@ -100,8 +100,7 @@ async fn deploy(nodes: usize) -> anyhow::Result<()> {
     for i in 0..seed_nodes {
         k8s::create_deployment(
             &client,
-            &format!("consensus-node-{i:0>2}"),
-            &format!("node_{i:0>2}"),
+            i,
             true,
             vec![], // Seed peers don't have other peer information
             NAMESPACE,
@@ -109,27 +108,39 @@ async fn deploy(nodes: usize) -> anyhow::Result<()> {
         .await?;
     }
 
-    // obtain seed peer(s) IP(s)
-    let peers = k8s::get_seed_node_addrs(&client).await;
+    // Waiting 15 secs to allow the pods to start
+    // TODO: should replace with some safer method
+    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
 
-    // TODO recover public keys
-    // Using hardcoded data to test
-    let peers = [decode_json::<Serde<NodeAddr>>(&"{\"key\": \"node:public:ed25519:3059a9ae1de665f2e5dfcb64d5d3a044b2b3617436ddd56c2baf896878b13961\",\"addr\": \"10.13.33.0:3045\"}")?.0].to_vec();
+    // obtain seed peer(s) IP(s)
+    let peer_ips = k8s::get_seed_node_addrs(&client).await;
+
+    let mut peers = vec![];
+
+    for i in 0..seed_nodes {
+        let node_id = &format!("node_{i:0>2}");
+        let node_key = read_node_key_from_config(node_id)?;
+        let address = peer_ips.get(node_id).context("IP address not found")?;
+        peers.push(NodeAddr {
+            key: node_key.public(),
+            addr: SocketAddr::from_str(&format!("{address}:{NODES_PORT}"))?,
+        });
+    }
 
     // deploy the rest of nodes
     for i in seed_nodes..nodes {
-        k8s::create_deployment(
-            &client,
-            &format!("consensus-node-{i:0>2}"),
-            &format!("node_{i:0>2}"),
-            false,
-            peers.clone(),
-            NAMESPACE,
-        )
-        .await?;
+        k8s::create_deployment(&client, i, false, peers.clone(), NAMESPACE).await?;
     }
 
     Ok(())
+}
+
+fn read_node_key_from_config(node_id: &String) -> anyhow::Result<SecretKey> {
+    let manifest_path = std::env::var("CARGO_MANIFEST_DIR")?;
+    let root = PathBuf::from(manifest_path).join("k8s_configs");
+    let node_key_path = root.join(node_id).join("node_key");
+    let key = fs::read_to_string(node_key_path).context("failed reading file")?;
+    Text::new(&key).decode().context("failed decoding key")
 }
 
 #[tokio::main]
