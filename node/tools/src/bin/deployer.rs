@@ -106,31 +106,32 @@ async fn deploy(nodes: usize) -> anyhow::Result<()> {
             NAMESPACE,
         )
         .await?;
+        k8s::create_or_reuse_service(&client, &format!("consensus-node-{i:0>2}"), &format!("consensus-node-{i:0>2}")).await?;
     }
 
-    // Waiting 15 secs to allow the pods to start
-    // TODO: should replace with some safer method
-    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+    // // Waiting 15 secs to allow the pods to start
+    // // TODO: should replace with some safer method
+    // tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
 
-    // obtain seed peer(s) IP(s)
-    let peer_ips = k8s::get_seed_node_addrs(&client).await;
+    // // obtain seed peer(s) IP(s)
+    // let peer_ips = k8s::get_seed_node_addrs(&client).await;
 
-    let mut peers = vec![];
+    // let mut peers = vec![];
 
-    for i in 0..seed_nodes {
-        let node_id = &format!("node_{i:0>2}");
-        let node_key = read_node_key_from_config(node_id)?;
-        let address = peer_ips.get(node_id).context("IP address not found")?;
-        peers.push(NodeAddr {
-            key: node_key.public(),
-            addr: SocketAddr::from_str(&format!("{address}:{NODES_PORT}"))?,
-        });
-    }
+    // for i in 0..seed_nodes {
+    //     let node_id = &format!("node_{i:0>2}");
+    //     let node_key = read_node_key_from_config(node_id)?;
+    //     let address = peer_ips.get(node_id).context("IP address not found")?;
+    //     peers.push(NodeAddr {
+    //         key: node_key.public(),
+    //         addr: SocketAddr::from_str(&format!("{address}:{NODES_PORT}"))?,
+    //     });
+    // }
 
-    // deploy the rest of nodes
-    for i in seed_nodes..nodes {
-        k8s::create_deployment(&client, i, false, peers.clone(), NAMESPACE).await?;
-    }
+    // // deploy the rest of nodes
+    // for i in seed_nodes..nodes {
+    //     k8s::create_deployment(&client, i, false, peers.clone(), NAMESPACE).await?;
+    // }
 
     Ok(())
 }
