@@ -1,7 +1,7 @@
 use crate::NodeAddr;
 use k8s_openapi::api::{
     apps::v1::Deployment,
-    core::v1::{Namespace, Pod},
+    core::v1::{Namespace, Pod, Service},
 };
 use kube::{
     api::{ListParams, PostParams},
@@ -11,6 +11,10 @@ use serde_json::json;
 use std::collections::HashMap;
 use tracing::log::info;
 use zksync_protobuf::serde::Serde;
+use kube::{
+    api::{DeleteParams},
+    runtime::wait::{await_condition, conditions::is_pod_running},
+};
 
 /// Get a kube client
 pub async fn get_client() -> anyhow::Result<Client> {
@@ -46,6 +50,51 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
         );
         Ok(())
     }
+}
+
+/// Creates a namespace in k8s cluster
+pub async fn create_or_reuse_service(client: &Client, name: &str, node_name: &str) -> anyhow::Result<()> {
+  let services: Api<Service> = Api::namespaced(client.clone(), "consensus");
+  let example_service = services.get_opt(name).await?;
+  if example_service.is_none() {
+      let service: Service = serde_json::from_value(json!({
+          "apiVersion": "v1",
+          "kind": "Service",
+          "metadata": {
+            "name": name,
+            "namespace": "consensus",
+            "labels": {
+              "app": node_name
+            }
+          },
+          "spec": {
+            "type": "NodePort",
+            "ports": [
+              {
+                "port": 80,
+                "targetPort": 3154,
+                "protocol": "TCP",
+              }
+            ],
+            "selector": {
+              "app": node_name
+            },
+          }
+      }))?;
+
+      let services: Api<Service> = Api::namespaced(client.clone(), "consensus");
+      let post_params = PostParams::default();
+      let result = services.create(&post_params, &service).await?;
+
+      info!("Service: {} ,created", result.metadata.name.unwrap());
+      Ok(())
+  } else {
+      info!(
+          "Service: {} ,already exists",
+          example_service.unwrap().metadata.name.unwrap()
+      );
+      Ok(())
+  }
 }
 
 pub async fn create_deployment(
@@ -96,19 +145,20 @@ pub async fn create_deployment(
                     "imagePullPolicy": "Never",
                     "ports": [
                       {
-                        "containerPort": 3054
+                        "containerPort": 3154,
+                        "protocol": "TCP"
                       }
                     ],
                     "livenessProbe": {
                       "httpGet": {
                         "path": "/health",
-                        "port": 3054
+                        "port": 3154
                       }
                     },
                     "readinessProbe": {
                       "httpGet": {
                         "path": "/health",
-                        "port": 3054
+                        "port": 3154
                       }
                     }
                   }
@@ -121,6 +171,14 @@ pub async fn create_deployment(
     let deployments: Api<Deployment> = Api::namespaced(client.clone(), namespace);
     let post_params = PostParams::default();
     let result = deployments.create(&post_params, &deployment).await?;
+    // tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
+
+    // let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
+    // let lp = ListParams::default().labels(&format!("app={}", node_name));
+    // let pod = pods.list(&lp).await?;
+    // let a = pod.into_iter().find(|pod| pod.clone().metadata.name.unwrap().starts_with(node_name)).unwrap();
+    // let pf = pods.portforward(&a.metadata.name.unwrap(), &[3150, 3154]).await;
+    // println!("Portforward: {:?}", pf.is_ok());
 
     info!("Deployment: {} , created", result.metadata.name.unwrap());
     Ok(())
