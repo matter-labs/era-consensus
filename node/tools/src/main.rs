@@ -43,7 +43,7 @@ struct Args {
     rpc_port: Option<u16>,
     /// IP address and key of the seed peers.
     #[arg(long)]
-    add_gossip_static_outbound: NodeAddrs,
+    add_gossip_static_outbound: Option<NodeAddrs>,
 }
 
 impl Args {
@@ -103,12 +103,15 @@ async fn main() -> anyhow::Result<()> {
         .context("config_paths().load()")?;
 
     // Add gossipStaticOutbound pairs from cli to config
-    configs.app.gossip_static_outbound.extend(
-        args.add_gossip_static_outbound
-            .0
-            .into_iter()
-            .map(|e| (e.0.key, e.0.addr)),
-    );
+    if let Some(go) = args.add_gossip_static_outbound {
+        configs.app.gossip_static_outbound.extend(
+                go
+                .0
+                .into_iter()
+                .map(|e| (e.0.key, e.0.addr)),
+        );
+    }
+    
 
     let (executor, runner) = configs
         .make_executor(ctx)
