@@ -3,7 +3,7 @@
 mod config;
 pub mod k8s;
 mod proto;
-mod rpc;
+pub mod rpc;
 mod store;
 
 #[cfg(test)]

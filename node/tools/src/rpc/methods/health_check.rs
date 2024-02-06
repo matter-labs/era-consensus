@@ -3,7 +3,7 @@ use super::RPCMethod;
 use jsonrpsee::types::{error::ErrorCode, Params};
 
 /// Health check method for RPC server.
-pub(crate) struct HealthCheck;
+pub struct HealthCheck;
 
 impl RPCMethod for HealthCheck {
     /// Health check response for /health endpoint.
