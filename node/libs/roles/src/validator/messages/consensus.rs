@@ -1,6 +1,6 @@
 //! Messages related to the consensus protocol.
 
-use super::{BlockHeader, Msg, Payload, Signed};
+use super::{BlockNumber, BlockHeader, Msg, Payload, Signed};
 use crate::{validator, validator::Signature};
 use anyhow::bail;
 use bit_vec::BitVec;
@@ -37,6 +37,44 @@ impl TryFrom<u32> for ProtocolVersion {
         // Currently, consensus doesn't define restrictions on the possible version. Unsupported
         // versions are filtered out on the BFT actor level instead.
         Ok(Self(value))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ForkId(pub usize);
+
+pub(crate) struct Fork {
+    pub(crate) first_block: BlockNumber,
+    parent_fork: Option<ForkId>,
+}
+
+#[derive(Default)]
+pub struct ForkSet(pub(in crate::validator) Vec<Fork>);
+
+pub struct Genesis {
+    pub forks: ForkSet,
+}
+
+impl ForkSet {
+    pub fn insert(&mut self, first_block: BlockNumber) {
+        self.0.push(Fork {
+            first_block,
+            parent_fork: first_block.prev().and_then(|b|self.find(b)),
+        });
+    }
+
+    pub fn current(&self) -> Option<ForkId> {
+        Some(ForkId(self.0.len().checked_sub(1)?))
+    }
+
+    pub fn find(&self, block: BlockNumber) -> Option<ForkId> {
+        let mut i = self.current()?;
+        loop {
+            if self.0[i.0].first_block <= block {
+                return Some(i);
+            }
+            i = self.0[i.0].parent_fork?;
+        }
     }
 }
 

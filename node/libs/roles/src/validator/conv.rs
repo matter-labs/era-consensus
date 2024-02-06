@@ -1,4 +1,5 @@
 use super::{
+    ForkSet, Genesis,
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
     FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
     PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, Signature, Signed,
@@ -10,6 +11,36 @@ use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_required, required, ProtoFmt};
+
+impl ProtoFmt for ForkSet {
+    type Proto = proto::ForkSet;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        let mut this = Self::default();
+        for first_block in &r.first_blocks {
+            this.insert(BlockNumber(*first_block));
+        }
+        Ok(this)
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            first_blocks: self.0.iter().map(|f|f.first_block.0).collect(),
+        }
+    }
+}
+
+impl ProtoFmt for Genesis {
+    type Proto = proto::Genesis;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            forks: read_required(&r.forks).context("forks")?,
+        })
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            forks: Some(self.forks.build()),
+        }
+    }
+}
 
 impl ProtoFmt for BlockHeaderHash {
     type Proto = proto::BlockHeaderHash;
