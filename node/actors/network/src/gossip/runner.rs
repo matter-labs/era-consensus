@@ -38,7 +38,7 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'
         self.0
             .gossip
             .validator_addrs
-            .update(&self.0.cfg.validators, &req.0[..])
+            .update(&self.0.cfg.genesis.validators, &req.0[..])
             .await?;
         Ok(())
     }
@@ -221,7 +221,7 @@ async fn run_address_announcer(
             .gossip
             .validator_addrs
             .update(
-                &state.cfg.validators,
+                &state.cfg.genesis.validators,
                 &[Arc::new(key.sign_msg(validator::NetAddress {
                     addr: my_addr,
                     version: next_version,

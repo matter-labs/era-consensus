@@ -13,10 +13,8 @@ use zksync_consensus_utils::pipe::ActorPipe;
 pub struct Config {
     /// TCP socket address to listen for inbound connections at.
     pub server_addr: net::tcp::ListenerAddr,
-    /// Validators which
-    /// - client should establish outbound connections to.
-    /// - server should accept inbound connections from (1 per validator).
-    pub validators: validator::ValidatorSet,
+    /// Genesis config.
+    pub genesis: validator::Genesis,
     /// Gossip network config.
     pub gossip: gossip::Config,
     /// Consensus network config. If not present, the node will not participate in the consensus network.
@@ -32,10 +30,8 @@ pub struct Config {
 pub(crate) struct SharedConfig {
     /// TCP socket address to listen for inbound connections at.
     pub(crate) server_addr: net::tcp::ListenerAddr,
-    /// Validators which
-    /// - client should establish outbound connections to.
-    /// - server should accept inbound connections from (1 per validator).
-    pub(crate) validators: validator::ValidatorSet,
+    /// Genesis config.
+    pub(crate) genesis: validator::Genesis,
     /// Enables pinging the peers to make sure that they are alive.
     pub(crate) enable_pings: bool,
     /// Maximal size of the proto-encoded `validator::FinalBlock` in bytes.
@@ -66,7 +62,7 @@ impl State {
     ) -> anyhow::Result<Arc<Self>> {
         let consensus = cfg
             .consensus
-            .map(|consensus_cfg| consensus::State::new(consensus_cfg, &cfg.validators))
+            .map(|consensus_cfg| consensus::State::new(consensus_cfg, &cfg.genesis.validators))
             .transpose()?;
         let this = Self {
             gossip: gossip::State::new(cfg.gossip, block_store),
@@ -74,7 +70,7 @@ impl State {
             events,
             cfg: SharedConfig {
                 server_addr: cfg.server_addr,
-                validators: cfg.validators,
+                genesis: cfg.genesis,
                 enable_pings: cfg.enable_pings,
                 max_block_size: cfg.max_block_size,
             },

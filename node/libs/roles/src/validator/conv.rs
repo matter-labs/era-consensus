@@ -1,5 +1,6 @@
 use super::{
-    ForkSet, Genesis,
+    ValidatorSet,
+    ForkSet, Genesis, GenesisHash,
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
     FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
     PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, Signature, Signed,
@@ -15,8 +16,10 @@ use zksync_protobuf::{read_required, required, ProtoFmt};
 impl ProtoFmt for ForkSet {
     type Proto = proto::ForkSet;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let mut this = Self::default();
-        for first_block in &r.first_blocks {
+        let mut this= Self::default();
+        let mut first_blocks = r.first_blocks.iter();
+        anyhow::ensure!(first_blocks.next()==Some(&0),"initial fork should start at block 0");
+        for first_block in first_blocks {
             this.insert(BlockNumber(*first_block));
         }
         Ok(this)
@@ -31,13 +34,30 @@ impl ProtoFmt for ForkSet {
 impl ProtoFmt for Genesis {
     type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        let validators : Vec<_> = r.validators.iter().enumerate().map(|(i,v)|{
+            PublicKey::read(v).context(i)
+        }).collect::<Result<_,_>>().context("validators")?;
         Ok(Self {
             forks: read_required(&r.forks).context("forks")?,
+            validators: ValidatorSet::new(validators.into_iter()).context("validators")?, 
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
             forks: Some(self.forks.build()),
+            validators: self.validators.iter().map(|x|x.build()).collect(),
+        }
+    }
+}
+
+impl ProtoFmt for GenesisHash {
+    type Proto = proto::GenesisHash;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            keccak256: Some(self.0.encode()),
         }
     }
 }

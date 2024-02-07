@@ -6,6 +6,7 @@ use anyhow::bail;
 use bit_vec::BitVec;
 use std::collections::{BTreeMap, BTreeSet};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
+use zksync_consensus_crypto::{keccak256::Keccak256};
 
 /// Version of the consensus algorithm that the validator is using.
 /// It allows to prevent misinterpretation of messages signed by validators
@@ -40,43 +41,81 @@ impl TryFrom<u32> for ProtocolVersion {
     }
 }
 
+/// Identifier of the fork that this consensus instance is building blocks for.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ForkId(pub usize);
 
+#[derive(Clone,Debug)]
 pub(crate) struct Fork {
     pub(crate) first_block: BlockNumber,
     parent_fork: Option<ForkId>,
 }
 
-#[derive(Default)]
+impl Default for Fork {
+    fn default() -> Self { Self { first_block: BlockNumber(0), parent_fork: None } }
+}
+
+/// History of forks of the blockchain.
+/// It allows to determine which which fork contains block with the given number.
+/// Current fork is the one with the highest fork id.
+#[derive(Debug,Clone)]
 pub struct ForkSet(pub(in crate::validator) Vec<Fork>);
 
-pub struct Genesis {
-    pub forks: ForkSet,
+impl Default for ForkSet {
+    fn default() -> Self { Self(vec![Fork::default()]) }
 }
 
 impl ForkSet {
+    /// Inserts a new fork to the fork set, attached to the highest fork with
+    /// the block `first_block-1`.
     pub fn insert(&mut self, first_block: BlockNumber) {
         self.0.push(Fork {
             first_block,
-            parent_fork: first_block.prev().and_then(|b|self.find(b)),
+            parent_fork: first_block.prev().map(|b|self.find(b)),
         });
     }
 
-    pub fn current(&self) -> Option<ForkId> {
-        Some(ForkId(self.0.len().checked_sub(1)?))
+    /// Current fork that node is participating in. 
+    pub fn current(&self) -> ForkId {
+        ForkId(self.0.len()-1)
     }
 
-    pub fn find(&self, block: BlockNumber) -> Option<ForkId> {
-        let mut i = self.current()?;
+    /// Finds the fork which the given block belongs to.
+    /// This should be used to verify the quorum certificate
+    /// on a finalized block fetched from the network.
+    pub fn find(&self, block: BlockNumber) -> ForkId {
+        let mut i = self.current();
         loop {
             if self.0[i.0].first_block <= block {
-                return Some(i);
+                return i;
             }
-            i = self.0[i.0].parent_fork?;
+            // By construction, every block belongs to some fork.
+            i = self.0[i.0].parent_fork.unwrap();
         }
     }
 }
+
+/// Genesis of the blockchain, unique for each blockchain instance.
+#[derive(Debug,Clone)]
+pub struct Genesis {
+    // TODO(gprusak): add blockchain id here.
+    /// Set of validators of the chain.
+    pub validators: ValidatorSet,
+    /// Forks history, `forks.current()` indicates the current fork.
+    pub forks: ForkSet,
+}
+
+/// Hash of the genesis specification.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct GenesisHash(pub(crate) Keccak256);
+
+impl Genesis {
+    /// Hash of the genesis.
+    pub fn hash(&self) -> GenesisHash {
+        GenesisHash(Keccak256::new(&zksync_protobuf::canonical(self)))
+    }
+}
+
 
 /// Consensus messages.
 #[allow(missing_docs)]

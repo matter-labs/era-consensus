@@ -1,5 +1,6 @@
 //! Test-only utilities.
 use super::{
+    Genesis, ForkSet,
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
     FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
     PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature,
@@ -42,7 +43,7 @@ impl<'a> BlockBuilder<'a> {
             .iter()
             .map(|sk| sk.sign_msg(self.msg))
             .collect();
-        let justification = CommitQC::from(&msgs, &self.setup.validator_set()).unwrap();
+        let justification = CommitQC::from(&msgs, &self.setup.genesis.validators).unwrap();
         self.setup.blocks.push(FinalBlock {
             payload: self.payload,
             justification,
@@ -76,6 +77,8 @@ pub struct GenesisSetup {
     pub keys: Vec<SecretKey>,
     /// Initial blocks.
     pub blocks: Vec<FinalBlock>,
+    /// Genesis config.
+    pub genesis: Genesis,
 }
 
 /// Builder of GenesisSetup.
@@ -88,9 +91,15 @@ pub struct BlockBuilder<'a> {
 impl GenesisSetup {
     /// Constructs GenesisSetup with no blocks.
     pub fn empty(rng: &mut impl Rng, validators: usize) -> Self {
+        let keys : Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
+        let genesis = Genesis {
+            validators: ValidatorSet::new(keys.iter().map(|k|k.public())).unwrap(),
+            forks: ForkSet::default(),
+        };
         Self {
-            keys: (0..validators).map(|_| rng.gen()).collect(),
+            keys,
             blocks: vec![],
+            genesis,
         }
     }
 
@@ -130,11 +139,6 @@ impl GenesisSetup {
         for _ in 0..count {
             self.push_block(rng.gen());
         }
-    }
-
-    /// ValidatorSet.
-    pub fn validator_set(&self) -> ValidatorSet {
-        ValidatorSet::new(self.keys.iter().map(|k| k.public())).unwrap()
     }
 }
 

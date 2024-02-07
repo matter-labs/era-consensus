@@ -39,7 +39,7 @@ impl ValidatorNode {
         Self {
             node: Config {
                 server_addr: *net_config.server_addr,
-                validators: setup.validator_set(),
+                genesis: setup.genesis.clone(),
                 node_key: gossip.key,
                 gossip_dynamic_inbound_limit: gossip.dynamic_inbound_limit,
                 gossip_static_inbound: gossip.static_inbound,

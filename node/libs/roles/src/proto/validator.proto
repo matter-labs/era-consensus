@@ -6,12 +6,17 @@ import "zksync/std.proto";
 
 message ForkSet {
   // First block of each fork.
-  // Parent fork is deduced on the flight.
+  // First fork has to start at block 0.
   repeated uint64 first_blocks = 1; // BlockNumber
 }
 
 message Genesis {
   optional ForkSet forks = 1; // required
+  repeated PublicKey validators = 2;
+}
+
+message GenesisHash {
+  optional bytes keccak256 = 1; // required
 }
 
 message PayloadHash {

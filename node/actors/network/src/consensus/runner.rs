@@ -120,6 +120,7 @@ pub(crate) async fn run_client(
 ) -> anyhow::Result<()> {
     let clients: HashMap<_, _> = shared_state
         .cfg
+        .genesis
         .validators
         .iter()
         .map(|peer| (peer.clone(), rpc::Client::<rpc::consensus::Rpc>::new(ctx)))

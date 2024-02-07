@@ -211,7 +211,10 @@ impl Configs {
         let e = executor::Executor {
             config: executor::Config {
                 server_addr: self.app.server_addr,
-                validators: self.app.validators.clone(),
+                genesis: validator::Genesis {
+                    forks: validator::ForkSet::default(),
+                    validators: self.app.validators.clone(),
+                },
                 node_key: self.node_key.clone(),
                 gossip_dynamic_inbound_limit: self.app.gossip_dynamic_inbound_limit,
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),

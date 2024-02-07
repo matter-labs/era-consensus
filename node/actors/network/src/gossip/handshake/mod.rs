@@ -3,7 +3,7 @@ use crate::{frame, noise, proto::gossip as proto};
 use anyhow::Context as _;
 use zksync_concurrency::{ctx, time};
 use zksync_consensus_crypto::ByteFmt;
-use zksync_consensus_roles::node;
+use zksync_consensus_roles::{node,validator};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
 #[cfg(test)]
@@ -20,6 +20,9 @@ pub(crate) struct Handshake {
     /// Session ID signed with the node key.
     /// Authenticates the peer to be the owner of the node key.
     pub(crate) session_id: node::Signed<node::SessionId>,
+    /// Hash of the blockchain genesis specification.
+    /// Only nodes with the same genesis belong to the same network.
+    pub(crate) genesis: validator::GenesisHash,
     /// Information whether the peer treats this connection as static.
     /// It is informational only, it doesn't affect the logic of the node.
     pub(crate) is_static: bool,
@@ -30,12 +33,14 @@ impl ProtoFmt for Handshake {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             session_id: read_required(&r.session_id).context("session_id")?,
+            genesis: read_required(&r.genesis).context("genesis")?,
             is_static: *required(&r.is_static).context("is_static")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
             session_id: Some(self.session_id.build()),
+            genesis: Some(self.genesis.build()),
             is_static: Some(self.is_static),
         }
     }

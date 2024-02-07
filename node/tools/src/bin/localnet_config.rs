@@ -63,12 +63,12 @@ fn main() -> anyhow::Result<()> {
     // Generate the keys for all the replicas.
     let rng = &mut rand::thread_rng();
 
-    let mut genesis = validator::GenesisSetup::empty(rng, addrs.len());
-    genesis
+    let mut setup = validator::GenesisSetup::empty(rng, addrs.len());
+    setup
         .next_block()
         .payload(validator::Payload(vec![]))
         .push();
-    let validator_keys = genesis.keys.clone();
+    let validator_keys = setup.keys.clone();
     let node_keys: Vec<node::SecretKey> = (0..addrs.len()).map(|_| rng.gen()).collect();
 
     // Each node will have `gossip_peers` outbound peers.
@@ -81,8 +81,8 @@ fn main() -> anyhow::Result<()> {
             public_addr: addrs[i],
             metrics_server_addr,
 
-            validators: genesis.validator_set(),
-            genesis_block: genesis.blocks[0].clone(),
+            validators: setup.genesis.validators.clone(),
+            genesis_block: setup.blocks[0].clone(),
             max_payload_size: args.payload_size,
 
             gossip_dynamic_inbound_limit: 0,

@@ -46,11 +46,10 @@ pub struct Config {
     /// IP:port to listen on, for incoming TCP connections.
     /// Use `0.0.0.0:<port>` to listen on all network interfaces (i.e. on all IPs exposed by this VM).
     pub server_addr: std::net::SocketAddr,
-    /// Static specification of validators for Proof of Authority. Should be deprecated once we move
-    /// to Proof of Stake.
-    pub validators: validator::ValidatorSet,
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
+    /// Genesis config.
+    pub genesis: validator::Genesis,
 
     /// Key of this node. It uniquely identifies the node.
     /// It should match the secret key provided in the `node_key` file.
@@ -93,7 +92,7 @@ impl Executor {
     fn network_config(&self) -> network::Config {
         network::Config {
             server_addr: net::tcp::ListenerAddr::new(self.config.server_addr),
-            validators: self.config.validators.clone(),
+            genesis: self.config.genesis.clone(),
             gossip: self.config.gossip(),
             consensus: self.validator.as_ref().map(|v| v.config.clone()),
             enable_pings: true,
@@ -106,6 +105,7 @@ impl Executor {
         if let Some(validator) = self.validator.as_ref() {
             if !self
                 .config
+                .genesis
                 .validators
                 .iter()
                 .any(|key| key == &validator.config.key.public())
@@ -133,7 +133,7 @@ impl Executor {
         );
 
         // Create each of the actors.
-        let validator_set = self.config.validators;
+        let validator_set = &self.config.genesis.validators;
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {

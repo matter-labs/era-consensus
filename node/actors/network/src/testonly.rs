@@ -64,7 +64,7 @@ pub fn new_configs<R: Rng>(
         let addr = net::tcp::testonly::reserve_listener();
         Config {
             server_addr: addr,
-            validators: setup.validator_set(),
+            genesis: setup.genesis.clone(),
             // Pings are disabled in tests by default to avoid dropping connections
             // due to timeouts.
             enable_pings: false,
@@ -189,7 +189,7 @@ impl Instance {
     pub async fn wait_for_consensus_connections(&self) {
         let consensus_state = self.state.consensus.as_ref().unwrap();
 
-        let want: HashSet<_> = self.state.cfg.validators.iter().cloned().collect();
+        let want: HashSet<_> = self.state.cfg.genesis.validators.iter().cloned().collect();
         consensus_state
             .inbound
             .subscribe()
@@ -267,7 +267,7 @@ pub async fn instant_network(
         node.state
             .gossip
             .validator_addrs
-            .update(&node.state.cfg.validators, &addrs)
+            .update(&node.state.cfg.genesis.validators, &addrs)
             .await
             .unwrap();
     }
