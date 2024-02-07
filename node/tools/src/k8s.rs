@@ -1,14 +1,18 @@
-use crate::NodeAddr;
+use crate::{config, NodeAddr};
+use anyhow::{anyhow, Context};
 use k8s_openapi::api::{
     apps::v1::Deployment,
     core::v1::{Namespace, Pod},
 };
 use kube::{
     api::{ListParams, PostParams},
+    core::ObjectList,
     Api, Client, ResourceExt,
 };
 use serde_json::json;
 use std::collections::HashMap;
+use tokio_retry::strategy::FixedInterval;
+use tokio_retry::Retry;
 use tracing::log::info;
 use zksync_protobuf::serde::Serde;
 
@@ -20,34 +24,46 @@ pub async fn get_client() -> anyhow::Result<Client> {
 /// Creates a namespace in k8s cluster
 pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::Result<()> {
     let namespaces: Api<Namespace> = Api::all(client.clone());
-    let consensus_namespace = namespaces.get_opt(name).await?;
-    if consensus_namespace.is_none() {
-        let namespace: Namespace = serde_json::from_value(json!({
-            "apiVersion": "v1",
-            "kind": "Namespace",
-            "metadata": {
-                "name": "consensus",
-                "labels": {
-                    "name": "consensus"
+    match namespaces.get_opt(name).await? {
+        None => {
+            let namespace: Namespace = serde_json::from_value(json!({
+                "apiVersion": "v1",
+                "kind": "Namespace",
+                "metadata": {
+                    "name": "consensus",
+                    "labels": {
+                        "name": "consensus"
+                    }
                 }
-            }
-        }))?;
+            }))?;
 
-        let namespaces: Api<Namespace> = Api::all(client.clone());
-        let post_params = PostParams::default();
-        let result = namespaces.create(&post_params, &namespace).await?;
+            let namespaces: Api<Namespace> = Api::all(client.clone());
+            let post_params = PostParams::default();
+            let result = namespaces.create(&post_params, &namespace).await?;
 
-        info!("Namespace: {} ,created", result.metadata.name.unwrap());
-        Ok(())
-    } else {
-        info!(
-            "Namespace: {} ,already exists",
-            consensus_namespace.unwrap().metadata.name.unwrap()
-        );
-        Ok(())
+            info!(
+                "Namespace: {} ,created",
+                result
+                    .metadata
+                    .name
+                    .context("Name not defined in metadata")?
+            );
+            Ok(())
+        }
+        Some(consensus_namespace) => {
+            info!(
+                "Namespace: {} ,already exists",
+                consensus_namespace
+                    .metadata
+                    .name
+                    .context("Name not defined in metadata")?
+            );
+            Ok(())
+        }
     }
 }
 
+/// Creates a deployment
 pub async fn create_deployment(
     client: &Client,
     node_number: usize,
@@ -122,21 +138,58 @@ pub async fn create_deployment(
     let post_params = PostParams::default();
     let result = deployments.create(&post_params, &deployment).await?;
 
-    info!("Deployment: {} , created", result.metadata.name.unwrap());
+    info!(
+        "Deployment: {} , created",
+        result
+            .metadata
+            .name
+            .context("Name not defined in metadata")?
+    );
     Ok(())
 }
 
-/// Returns a HashMap with mapping: node_name -> IP address
-pub async fn get_seed_node_addrs(client: &Client) -> HashMap<String, String> {
+/// Returns a HashMap with mapping: node_id -> IP address
+pub async fn get_seed_node_addrs(
+    client: &Client,
+    amount: usize,
+) -> anyhow::Result<HashMap<String, String>> {
     let mut seed_nodes = HashMap::new();
     let pods: Api<Pod> = Api::namespaced(client.clone(), "consensus");
 
-    let lp = ListParams::default().labels("seed=true");
-    for p in pods.list(&lp).await.unwrap() {
+    // Will retry 15 times during 15 seconds to allow pods to start and obtain an IP
+    let retry_strategy = FixedInterval::from_millis(1000).take(15);
+    let pod_list = Retry::spawn(retry_strategy, || get_seed_pods(&pods, amount)).await?;
+
+    for p in pod_list {
         let node_id = p.labels()["id"].clone();
-        seed_nodes.insert(node_id, p.status.unwrap().pod_ip.unwrap());
+        seed_nodes.insert(
+            node_id,
+            p.status
+                .context("Status not present")?
+                .pod_ip
+                .context("Pod IP address not present")?,
+        );
     }
-    seed_nodes
+    Ok(seed_nodes)
+}
+
+async fn get_seed_pods(pods: &Api<Pod>, amount: usize) -> anyhow::Result<ObjectList<Pod>> {
+    let lp = ListParams::default().labels("seed=true");
+    let p = pods.list(&lp).await?;
+    if p.items.len() == amount && p.iter().all(is_pod_running) {
+        Ok(p)
+    } else {
+        Err(anyhow!("Pods are not ready"))
+    }
+}
+
+fn is_pod_running(pod: &Pod) -> bool {
+    if let Some(status) = &pod.status {
+        if let Some(phase) = &status.phase {
+            return phase == "Running";
+        }
+    }
+    false
 }
 
 fn get_cli_args(peers: Vec<NodeAddr>) -> Vec<String> {
@@ -145,7 +198,7 @@ fn get_cli_args(peers: Vec<NodeAddr>) -> Vec<String> {
     } else {
         [
             "--add-gossip-static-outbound".to_string(),
-            encode_json(
+            config::encode_json(
                 &peers
                     .iter()
                     .map(|e| Serde(e.clone()))
@@ -154,11 +207,4 @@ fn get_cli_args(peers: Vec<NodeAddr>) -> Vec<String> {
         ]
         .to_vec()
     }
-}
-
-/// Encodes a generated proto message to json for arbitrary ProtoFmt.
-pub fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
-    let mut s = serde_json::Serializer::new(vec![]);
-    T::serialize(x, &mut s).unwrap();
-    String::from_utf8(s.into_inner()).unwrap()
 }

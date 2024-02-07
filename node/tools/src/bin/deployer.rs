@@ -64,7 +64,7 @@ fn generate_config(nodes: usize) -> anyhow::Result<()> {
         }
     }
 
-    let manifest_path = std::env::var("CARGO_MANIFEST_DIR").unwrap();
+    let manifest_path = std::env::var("CARGO_MANIFEST_DIR")?;
     let root = PathBuf::from(manifest_path).join("k8s_configs");
     let _ = fs::remove_dir_all(&root);
     for (i, cfg) in cfgs.into_iter().enumerate() {
@@ -108,12 +108,8 @@ async fn deploy(nodes: usize) -> anyhow::Result<()> {
         .await?;
     }
 
-    // Waiting 15 secs to allow the pods to start
-    // TODO: should replace with some safer method
-    tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
-
     // obtain seed peer(s) IP(s)
-    let peer_ips = k8s::get_seed_node_addrs(&client).await;
+    let peer_ips = k8s::get_seed_node_addrs(&client, seed_nodes).await?;
 
     let mut peers = vec![];
 
