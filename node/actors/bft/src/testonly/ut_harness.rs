@@ -61,7 +61,7 @@ impl UTHarness {
 
         let cfg = Arc::new(Config {
             secret_key: setup.keys[0].clone(),
-            validator_set: setup.validator_set(),
+            validator_set: setup.genesis.validators.clone(),
             block_store: block_store.clone(),
             replica_store: Box::new(in_memory::ReplicaStore::default()),
             payload_manager,

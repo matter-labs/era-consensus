@@ -1,12 +1,12 @@
 //! Messages related to the consensus protocol.
-
 use super::{BlockNumber, BlockHeader, Msg, Payload, Signed};
 use crate::{validator, validator::Signature};
 use anyhow::bail;
 use bit_vec::BitVec;
 use std::collections::{BTreeMap, BTreeSet};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
-use zksync_consensus_crypto::{keccak256::Keccak256};
+use zksync_consensus_crypto::{TextFmt, ByteFmt, Text, keccak256::Keccak256};
+use std::fmt;
 
 /// Version of the consensus algorithm that the validator is using.
 /// It allows to prevent misinterpretation of messages signed by validators
@@ -45,7 +45,7 @@ impl TryFrom<u32> for ProtocolVersion {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ForkId(pub usize);
 
-#[derive(Clone,Debug)]
+#[derive(Clone,Debug, PartialEq)]
 pub(crate) struct Fork {
     pub(crate) first_block: BlockNumber,
     parent_fork: Option<ForkId>,
@@ -58,7 +58,7 @@ impl Default for Fork {
 /// History of forks of the blockchain.
 /// It allows to determine which which fork contains block with the given number.
 /// Current fork is the one with the highest fork id.
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone,PartialEq)]
 pub struct ForkSet(pub(in crate::validator) Vec<Fork>);
 
 impl Default for ForkSet {
@@ -96,7 +96,7 @@ impl ForkSet {
 }
 
 /// Genesis of the blockchain, unique for each blockchain instance.
-#[derive(Debug,Clone)]
+#[derive(Debug,Clone, PartialEq)]
 pub struct Genesis {
     // TODO(gprusak): add blockchain id here.
     /// Set of validators of the chain.
@@ -116,6 +116,26 @@ impl Genesis {
     }
 }
 
+impl TextFmt for GenesisHash {
+    fn decode(text: Text) -> anyhow::Result<Self> {
+        text.strip("genesis_hash:keccak256:")?
+            .decode_hex()
+            .map(Self)
+    }
+
+    fn encode(&self) -> String {
+        format!(
+            "genesis_hash:keccak256:{}",
+            hex::encode(ByteFmt::encode(&self.0))
+        )
+    }
+}
+
+impl fmt::Debug for GenesisHash {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.write_str(&TextFmt::encode(self))
+    }
+}
 
 /// Consensus messages.
 #[allow(missing_docs)]

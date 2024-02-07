@@ -171,7 +171,7 @@ pub(crate) async fn run_inbound_stream(
     sender: &channel::UnboundedSender<io::OutputMessage>,
     mut stream: noise::Stream,
 ) -> anyhow::Result<()> {
-    let peer = handshake::inbound(ctx, &state.gossip.cfg, &mut stream).await?;
+    let peer = handshake::inbound(ctx, &state.gossip.cfg, state.cfg.genesis.hash(), &mut stream).await?;
     tracing::Span::current().record("peer", tracing::field::debug(&peer));
     state.gossip.inbound.insert(peer.clone()).await?;
     let res = run_stream(ctx, state, &peer, sender, stream).await;
@@ -187,7 +187,7 @@ async fn run_outbound_stream(
     addr: std::net::SocketAddr,
 ) -> anyhow::Result<()> {
     let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet).await?;
-    handshake::outbound(ctx, &state.gossip.cfg, &mut stream, peer).await?;
+    handshake::outbound(ctx, &state.gossip.cfg, state.cfg.genesis.hash(), &mut stream, peer).await?;
 
     state.gossip.outbound.insert(peer.clone()).await?;
     let res = run_stream(ctx, state, peer, sender, stream).await;

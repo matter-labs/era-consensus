@@ -1,6 +1,6 @@
 //! Test-only utilities.
 use super::{
-    Genesis, ForkSet,
+    Genesis, GenesisHash, ForkSet,
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
     FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
     PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature,
@@ -276,6 +276,31 @@ impl Distribution<BlockNumber> for Standard {
 impl Distribution<ProtocolVersion> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ProtocolVersion {
         ProtocolVersion(rng.gen())
+    }
+}
+
+impl Distribution<GenesisHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisHash {
+        GenesisHash(rng.gen())
+    }
+}
+
+impl Distribution<ForkSet> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ForkSet {
+        let mut x = ForkSet::default();
+        for _ in 0..3 {
+            x.insert(rng.gen());
+        }
+        x
+    }
+}
+
+impl Distribution<Genesis> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
+        Genesis {
+            validators: rng.gen(),
+            forks: rng.gen(),
+        }
     }
 }
 

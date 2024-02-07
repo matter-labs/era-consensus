@@ -84,6 +84,10 @@ fn test_text_encoding() {
     let msg_hash: MsgHash = rng.gen();
     let t = TextFmt::encode(&msg_hash);
     assert_eq!(msg_hash, Text::new(&t).decode::<MsgHash>().unwrap());
+
+    let genesis_hash: GenesisHash = rng.gen();
+    let t = TextFmt::encode(&genesis_hash);
+    assert_eq!(genesis_hash, Text::new(&t).decode::<GenesisHash>().unwrap());
 }
 
 #[test]
@@ -103,6 +107,9 @@ fn test_schema_encoding() {
     test_encode_random::<PublicKey>(rng);
     test_encode_random::<Signature>(rng);
     test_encode_random::<AggregateSignature>(rng);
+    test_encode_random::<ForkSet>(rng);
+    test_encode_random::<Genesis>(rng);
+    test_encode_random::<GenesisHash>(rng);
 }
 
 #[test]

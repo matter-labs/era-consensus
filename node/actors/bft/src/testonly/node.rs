@@ -64,10 +64,9 @@ impl Node {
         scope::run!(ctx, |ctx, s| async {
             s.spawn(async {
                 let validator_key = self.net.consensus.as_ref().unwrap().key.clone();
-                let validator_set = self.net.validators.clone();
                 crate::Config {
                     secret_key: validator_key.clone(),
-                    validator_set,
+                    validator_set: self.net.genesis.validators.clone(),
                     block_store: self.block_store.clone(),
                     replica_store: Box::new(in_memory::ReplicaStore::default()),
                     payload_manager: self.behavior.payload_manager(),

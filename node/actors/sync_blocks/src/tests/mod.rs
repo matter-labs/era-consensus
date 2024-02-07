@@ -24,7 +24,7 @@ impl Distribution<Config> for Standard {
 }
 
 pub(crate) fn test_config(setup: &GenesisSetup) -> Config {
-    Config::new(setup.validator_set(), setup.keys.len()).unwrap()
+    Config::new(setup.genesis.validators.clone(), setup.keys.len()).unwrap()
 }
 
 pub(crate) fn sync_state(setup: &GenesisSetup, last_block_number: usize) -> BlockStoreState {

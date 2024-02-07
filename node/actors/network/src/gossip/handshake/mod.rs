@@ -1,4 +1,3 @@
-use super::Config;
 use crate::{frame, noise, proto::gossip as proto};
 use anyhow::Context as _;
 use zksync_concurrency::{ctx, time};
@@ -49,6 +48,8 @@ impl ProtoFmt for Handshake {
 /// Error returned by gossip handshake logic.
 #[derive(Debug, thiserror::Error)]
 pub(super) enum Error {
+    #[error("genesis mismatch")]
+    GenesisMismatch,
     #[error("session id mismatch")]
     SessionIdMismatch,
     #[error("unexpected peer")]
@@ -61,7 +62,8 @@ pub(super) enum Error {
 
 pub(super) async fn outbound(
     ctx: &ctx::Ctx,
-    cfg: &Config,
+    cfg: &super::Config,
+    genesis: validator::GenesisHash,
     stream: &mut noise::Stream,
     peer: &node::PublicKey,
 ) -> Result<(), Error> {
@@ -72,6 +74,7 @@ pub(super) async fn outbound(
         stream,
         &Handshake {
             session_id: cfg.key.sign_msg(session_id.clone()),
+            genesis,
             is_static: cfg.static_outbound.contains_key(peer),
         },
     )
@@ -80,6 +83,9 @@ pub(super) async fn outbound(
     let h: Handshake = frame::recv_proto(ctx, stream, Handshake::max_size())
         .await
         .map_err(Error::Stream)?;
+    if h.genesis != genesis {
+        return Err(Error::GenesisMismatch);
+    }
     if h.session_id.msg != session_id {
         return Err(Error::SessionIdMismatch);
     }
@@ -92,7 +98,8 @@ pub(super) async fn outbound(
 
 pub(super) async fn inbound(
     ctx: &ctx::Ctx,
-    cfg: &Config,
+    cfg: &super::Config,
+    genesis: validator::GenesisHash,
     stream: &mut noise::Stream,
 ) -> Result<node::PublicKey, Error> {
     let ctx = &ctx.with_timeout(TIMEOUT);
@@ -103,12 +110,16 @@ pub(super) async fn inbound(
     if h.session_id.msg != session_id {
         return Err(Error::SessionIdMismatch);
     }
+    if h.genesis != genesis {
+        return Err(Error::GenesisMismatch);
+    }
     h.session_id.verify()?;
     frame::send_proto(
         ctx,
         stream,
         &Handshake {
             session_id: cfg.key.sign_msg(session_id.clone()),
+            genesis,
             is_static: cfg.static_inbound.contains(&h.session_id.key),
         },
     )

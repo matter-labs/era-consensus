@@ -1,4 +1,4 @@
-use crate::{pool::PoolWatch, rpc, watch::Watch, state::SharedConfig};
+use crate::{pool::PoolWatch, rpc, watch::Watch};
 use anyhow::Context as _;
 use std::{
     collections::{HashMap, HashSet},
