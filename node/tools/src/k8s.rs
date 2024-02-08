@@ -11,10 +11,6 @@ use serde_json::json;
 use std::collections::HashMap;
 use tracing::log::info;
 use zksync_protobuf::serde::Serde;
-use kube::{
-    api::{DeleteParams},
-    runtime::wait::{await_condition, conditions::is_pod_running},
-};
 
 /// Get a kube client
 pub async fn get_client() -> anyhow::Result<Client> {
@@ -53,48 +49,52 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
 }
 
 /// Creates a namespace in k8s cluster
-pub async fn create_or_reuse_service(client: &Client, name: &str, node_name: &str) -> anyhow::Result<()> {
-  let services: Api<Service> = Api::namespaced(client.clone(), "consensus");
-  let example_service = services.get_opt(name).await?;
-  if example_service.is_none() {
-      let service: Service = serde_json::from_value(json!({
-          "apiVersion": "v1",
-          "kind": "Service",
-          "metadata": {
-            "name": name,
-            "namespace": "consensus",
-            "labels": {
-              "app": node_name
-            }
-          },
-          "spec": {
-            "type": "NodePort",
-            "ports": [
-              {
-                "port": 80,
-                "targetPort": 3154,
-                "protocol": "TCP",
+pub async fn create_or_reuse_service(
+    client: &Client,
+    name: &str,
+    node_name: &str,
+) -> anyhow::Result<()> {
+    let services: Api<Service> = Api::namespaced(client.clone(), "consensus");
+    let example_service = services.get_opt(name).await?;
+    if example_service.is_none() {
+        let service: Service = serde_json::from_value(json!({
+            "apiVersion": "v1",
+            "kind": "Service",
+            "metadata": {
+              "name": name,
+              "namespace": "consensus",
+              "labels": {
+                "app": node_name
               }
-            ],
-            "selector": {
-              "app": node_name
             },
-          }
-      }))?;
+            "spec": {
+              "type": "NodePort",
+              "ports": [
+                {
+                  "port": 80,
+                  "targetPort": 3154,
+                  "protocol": "TCP",
+                }
+              ],
+              "selector": {
+                "app": node_name
+              },
+            }
+        }))?;
 
-      let services: Api<Service> = Api::namespaced(client.clone(), "consensus");
-      let post_params = PostParams::default();
-      let result = services.create(&post_params, &service).await?;
+        let services: Api<Service> = Api::namespaced(client.clone(), "consensus");
+        let post_params = PostParams::default();
+        let result = services.create(&post_params, &service).await?;
 
-      info!("Service: {} ,created", result.metadata.name.unwrap());
-      Ok(())
-  } else {
-      info!(
-          "Service: {} ,already exists",
-          example_service.unwrap().metadata.name.unwrap()
-      );
-      Ok(())
-  }
+        info!("Service: {} ,created", result.metadata.name.unwrap());
+        Ok(())
+    } else {
+        info!(
+            "Service: {} ,already exists",
+            example_service.unwrap().metadata.name.unwrap()
+        );
+        Ok(())
+    }
 }
 
 pub async fn create_deployment(

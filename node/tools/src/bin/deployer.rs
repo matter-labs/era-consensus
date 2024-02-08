@@ -106,7 +106,12 @@ async fn deploy(nodes: usize) -> anyhow::Result<()> {
             NAMESPACE,
         )
         .await?;
-        k8s::create_or_reuse_service(&client, &format!("consensus-node-{i:0>2}"), &format!("consensus-node-{i:0>2}")).await?;
+        k8s::create_or_reuse_service(
+            &client,
+            &format!("consensus-node-{i:0>2}"),
+            &format!("consensus-node-{i:0>2}"),
+        )
+        .await?;
     }
 
     // // Waiting 15 secs to allow the pods to start

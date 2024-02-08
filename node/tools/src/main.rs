@@ -103,15 +103,12 @@ async fn main() -> anyhow::Result<()> {
         .context("config_paths().load()")?;
 
     // Add gossipStaticOutbound pairs from cli to config
-    if let Some(go) = args.add_gossip_static_outbound {
-        configs.app.gossip_static_outbound.extend(
-                go
-                .0
-                .into_iter()
-                .map(|e| (e.0.key, e.0.addr)),
-        );
+    if let Some(outbound) = args.add_gossip_static_outbound {
+        configs
+            .app
+            .gossip_static_outbound
+            .extend(outbound.0.into_iter().map(|e| (e.0.key, e.0.addr)));
     }
-    
 
     let (executor, runner) = configs
         .make_executor(ctx)
