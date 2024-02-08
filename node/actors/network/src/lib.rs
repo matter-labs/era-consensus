@@ -96,7 +96,7 @@ impl Network {
 
 impl Runner {
     /// Runs the network actor.
-    pub async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
+    pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let mut listener = self.net.gossip.cfg.server_addr.bind().context("server_addr.bind()")?;
 
         scope::run!(ctx, |ctx, s| async {
@@ -116,13 +116,15 @@ impl Runner {
 
             // Maintain static gossip connections. 
             for (peer, addr) in &self.net.gossip.cfg.gossip.static_outbound {
-                s.spawn::<()>(async {
+                s.spawn(async {
                     loop {
                         let run_result = self.net.gossip.run_outbound_stream(ctx, peer, *addr).await;
                         if let Err(err) = run_result {
                             tracing::info!("gossip.run_outbound_stream(): {err:#}");
                         }
-                        ctx.sleep(CONNECT_RETRY).await?;
+                        if let Err(ctx::Canceled) = ctx.sleep(CONNECT_RETRY).await {
+                            return Ok(());
+                        }
                     }
                 });
             }

@@ -79,12 +79,12 @@ impl Network {
         peer: &node::PublicKey,
         stream: noise::Stream,
     ) -> anyhow::Result<()> {
-        let push_validator_addrs_client = rpc::Client::<rpc::push_validator_addrs::Rpc>::new(ctx);
+        let push_validator_addrs_client = rpc::Client::<rpc::push_validator_addrs::Rpc>::new(ctx, self.cfg.rpc.push_validator_addrs_rate);
         let push_validator_addrs_server = PushValidatorAddrsServer(self);
-        let push_block_store_state_client = rpc::Client::<rpc::push_block_store_state::Rpc>::new(ctx);
+        let push_block_store_state_client = rpc::Client::<rpc::push_block_store_state::Rpc>::new(ctx, self.cfg.rpc.push_block_store_state_rate);
         let push_block_store_state_server = PushBlockStoreStateServer { peer, net: self, };
 
-        let get_block_client = Arc::new(rpc::Client::<rpc::get_block::Rpc>::new(ctx));
+        let get_block_client = Arc::new(rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate));
         self    
             .get_block_clients
             .insert(peer.clone(), get_block_client.clone());
@@ -92,15 +92,15 @@ impl Network {
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_client(&push_validator_addrs_client)
-                .add_server(push_validator_addrs_server)
+                .add_server(push_validator_addrs_server, self.cfg.rpc.push_validator_addrs_rate)
                 .add_client(&push_block_store_state_client)
-                .add_server(push_block_store_state_server)
+                .add_server(push_block_store_state_server, self.cfg.rpc.push_block_store_state_rate)
                 .add_client(&get_block_client)
-                .add_server(&*self.block_store)
-                .add_server(rpc::ping::Server);
+                .add_server(&*self.block_store, self.cfg.rpc.get_block_rate)
+                .add_server(rpc::ping::Server, self.cfg.rpc.ping_rate);
 
             if let Some(ping_timeout) = &self.cfg.ping_timeout {
-                let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx);
+                let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx, self.cfg.rpc.ping_rate);
                 service = service.add_client(&ping_client);
                 s.spawn(async {
                     let ping_client = ping_client;

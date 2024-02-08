@@ -99,6 +99,7 @@ impl Executor {
             validator_key: self.validator.as_ref().map(|v| v.key.clone()),
             ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
+            rpc: network::RpcConfig::default(),
         }
     }
 

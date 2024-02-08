@@ -8,10 +8,7 @@ use zksync_concurrency::sync;
 /// Mapping from validator::PublicKey to a signed validator::NetAddress.
 /// Represents the currents state of node's knowledge about the validator endpoints.
 #[derive(Clone, Default, PartialEq, Eq)]
-pub(crate) struct ValidatorAddrs {
-    pub(super) inner: im::HashMap<validator::PublicKey, Arc<validator::Signed<validator::NetAddress>>>,
-    update_calls: usize,
-}
+pub(crate) struct ValidatorAddrs(pub(super) im::HashMap<validator::PublicKey, Arc<validator::Signed<validator::NetAddress>>>);
 
 impl ValidatorAddrs {
     /// Gets a NetAddress for a given key.
@@ -19,14 +16,14 @@ impl ValidatorAddrs {
         &self,
         key: &validator::PublicKey,
     ) -> Option<&Arc<validator::Signed<validator::NetAddress>>> {
-        self.inner.get(key)
+        self.0.get(key)
     }
 
     /// Returns a set of entries of `self` which are newer than the entries in `b`.
     pub(super) fn get_newer(&self, b: &Self) -> Vec<Arc<validator::Signed<validator::NetAddress>>> {
         let mut newer = vec![];
-        for (k, v) in &self.inner {
-            if let Some(bv) = b.inner.get(k) {
+        for (k, v) in &self.0 {
+            if let Some(bv) = b.0.get(k) {
                 if !v.msg.is_newer(&bv.msg) {
                     continue;
                 }
@@ -46,7 +43,6 @@ impl ValidatorAddrs {
         validators: &validator::ValidatorSet,
         data: &[Arc<validator::Signed<validator::NetAddress>>],
     ) -> anyhow::Result<bool> {
-        self.update_calls += 1;
         let mut changed = false;
 
         let mut done = HashSet::new();
@@ -64,21 +60,16 @@ impl ValidatorAddrs {
                 // however we eventually want the validator set to be dynamic.
                 continue;
             }
-            if let Some(x) = self.inner.get(&d.key) {
+            if let Some(x) = self.0.get(&d.key) {
                 if !d.msg.is_newer(&x.msg) {
                     continue;
                 }
             }
             d.verify()?;
-            self.inner.insert(d.key.clone(), d.clone());
+            self.0.insert(d.key.clone(), d.clone());
             changed = true;
         }
         Ok(changed)
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn update_calls(&self) -> usize {
-        self.update_calls
     }
 }
 

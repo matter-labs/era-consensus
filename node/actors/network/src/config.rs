@@ -1,10 +1,31 @@
 use zksync_consensus_roles::{validator,node};
-use zksync_concurrency::{net,time};
+use zksync_concurrency::{net,time,limiter};
 use std::collections::{HashMap,HashSet};
 
 /// How often we should retry to establish a connection to a validator.
 /// TODO(gprusak): once it becomes relevant, choose a more appropriate retry strategy.
 pub(crate) const CONNECT_RETRY: time::Duration = time::Duration::seconds(20);
+
+#[derive(Debug,Clone)]
+pub struct RpcConfig {
+    pub push_validator_addrs_rate: limiter::Rate,
+    pub push_block_store_state_rate: limiter::Rate,
+    pub get_block_rate: limiter::Rate,
+    pub ping_rate: limiter::Rate,
+    pub consensus_rate: limiter::Rate,
+}
+
+impl Default for RpcConfig {
+    fn default() -> Self {
+        Self {
+            push_validator_addrs_rate: limiter::Rate { burst: 1, refresh: time::Duration::seconds(5) },
+            push_block_store_state_rate: limiter::Rate { burst: 2, refresh: time::Duration::milliseconds(500) },
+            get_block_rate: limiter::Rate { burst: 10, refresh: time::Duration::milliseconds(100) },
+            ping_rate: limiter::Rate { burst: 1, refresh: time::Duration::seconds(5) },
+            consensus_rate: limiter::Rate { burst: 10, refresh: time::Duration::ZERO },
+        }
+    }
+}
 
 /// Gossip network configuration.
 #[derive(Debug, Clone)]
@@ -18,7 +39,7 @@ pub struct GossipConfig {
     pub static_inbound: HashSet<node::PublicKey>,
     /// Outbound connections that the node should actively try to
     /// establish and maintain.
-    pub static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>,
+    pub static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>, 
 }
 
 /// Network actor config.
@@ -42,5 +63,6 @@ pub struct Config {
     /// the connection is dropped.
     /// `None` disables sending ping messages (useful for tests).
     pub ping_timeout: Option<time::Duration>,
+    pub rpc: RpcConfig,
 }
 

@@ -64,12 +64,12 @@ impl Network {
         let key = gossip.cfg.validator_key.clone()?;
         let validators: HashSet<_> = gossip.cfg.genesis.validators.iter().cloned().collect();
         Some(Arc::new(Self {
-            gossip,
             key,
             inbound: PoolWatch::new(validators.clone(), 0),
             outbound: PoolWatch::new(validators.clone(), 0),
-            clients: validators.iter().map(|peer| (peer.clone(), rpc::Client::new(ctx)))
+            clients: validators.iter().map(|peer| (peer.clone(), rpc::Client::new(ctx, gossip.cfg.rpc.consensus_rate)))
                 .collect(),
+            gossip,
         }))
     }
 
@@ -105,10 +105,10 @@ impl Network {
         self.inbound.insert(peer.clone()).await?;
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
-                .add_server(rpc::ping::Server)
-                .add_server(self);
+                .add_server(rpc::ping::Server, self.gossip.cfg.rpc.ping_rate)
+                .add_server(self, self.gossip.cfg.rpc.consensus_rate);
             if let Some(ping_timeout) = &self.gossip.cfg.ping_timeout {
-                let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx);
+                let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx, self.gossip.cfg.rpc.ping_rate);
                 service = service.add_client(&ping_client);
                 s.spawn(async {
                     let ping_client = ping_client;
@@ -133,14 +133,12 @@ impl Network {
         let mut stream = preface::connect(ctx, addr, preface::Endpoint::ConsensusNet).await?;
         handshake::outbound(ctx, &self.key, self.gossip.cfg.genesis.hash(), &mut stream, peer).await?;
         self.outbound.insert(peer.clone()).await?;
-        let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx);
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
-                .add_client(&ping_client)
-                .add_server(rpc::ping::Server)
+                .add_server(rpc::ping::Server, self.gossip.cfg.rpc.ping_rate)
                 .add_client(client);
             if let Some(ping_timeout) = &self.gossip.cfg.ping_timeout {
-                let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx);
+                let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx, self.gossip.cfg.rpc.ping_rate);
                 service = service.add_client(&ping_client);
                 s.spawn(async {
                     let ping_client = ping_client;

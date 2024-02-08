@@ -1,7 +1,6 @@
 //! RPC for notifying peer about our BlockStore state.
 use crate::{mux, proto::gossip as proto};
 use anyhow::Context;
-use zksync_concurrency::{limiter, time};
 use zksync_consensus_storage::BlockStoreState;
 use zksync_protobuf::{read_required, ProtoFmt};
 
@@ -12,10 +11,6 @@ pub(crate) struct Rpc;
 impl super::Rpc for Rpc {
     const CAPABILITY_ID: mux::CapabilityId = 3;
     const INFLIGHT: u32 = 1;
-    const RATE: limiter::Rate = limiter::Rate {
-        burst: 2,
-        refresh: time::Duration::milliseconds(500),
-    };
     const METHOD: &'static str = "push_block_store_state";
 
     type Req = Req;

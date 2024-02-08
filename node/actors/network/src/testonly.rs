@@ -1,6 +1,6 @@
 //! Testonly utilities.
 #![allow(dead_code)]
-use crate::{Network, Runner, GossipConfig, Config};
+use crate::{Network, Runner, GossipConfig, RpcConfig, Config};
 use rand::Rng;
 use std::{
     collections::{HashMap, HashSet},
@@ -75,6 +75,7 @@ pub fn new_configs<R: Rng>(
                 static_outbound: HashMap::default(),
             },
             max_block_size: usize::MAX,
+            rpc: RpcConfig::default(),
         }
     });
     let mut cfgs: Vec<_> = configs.collect();
@@ -101,13 +102,7 @@ impl InstanceRunner {
     /// Runs the instance background processes.
     pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         scope::run!(ctx, |ctx, s| async {
-            s.spawn_bg(async {
-                match self.runner.run(ctx).await {
-                    Ok(()) => Ok(()),
-                    Err(ctx::Error::Canceled(_)) => Ok(()),
-                    Err(ctx::Error::Internal(err)) => Err(err),
-                }
-            });
+            s.spawn_bg(self.runner.run(ctx));
             let _ = self.terminate.recv(ctx).await;
             Ok(())
         })
