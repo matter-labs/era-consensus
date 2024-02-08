@@ -5,6 +5,7 @@ use rand::Rng;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
+    sync::atomic::Ordering,
 };
 use test_casing::{test_casing, Product};
 use tracing::Instrument as _;
@@ -469,8 +470,11 @@ async fn validator_node_restart() {
     let sec = time::Duration::seconds(1);
 
     let setup = validator::testonly::GenesisSetup::new(rng, 2);
-    // TODO: push_validator_addrs should have refresh = 0
     let mut cfgs = testonly::new_configs(rng, &setup, 1);
+    // Set the rpc refresh time to 0, so that any updates are immediately propagated.
+    for cfg in &mut cfgs {
+        cfg.rpc.push_validator_addrs_rate.refresh = time::Duration::ZERO;
+    }
     let (store, store_runner) = new_store(ctx, &setup.blocks[0]).await;
     let (node1, node1_runner) = testonly::Instance::new(ctx, cfgs[1].clone(), store.clone());
     scope::run!(ctx, |ctx, s| async {
@@ -499,9 +503,9 @@ async fn validator_node_restart() {
             clock.set_utc(now);
             tracing::info!("now = {now:?}");
 
-            // node0 contains pipe, which has to exist to prevent the connection from dying
+            // _node0 contains pipe, which has to exist to prevent the connection from dying
             // early.
-            let (node0, runner) = testonly::Instance::new(ctx, cfgs[0].clone(), store.clone());
+            let (_node0, runner) = testonly::Instance::new(ctx, cfgs[0].clone(), store.clone());
             scope::run!(ctx, |ctx, s| async {
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
                 tracing::info!("wait for the update to arrive to node1");
@@ -584,11 +588,10 @@ async fn rate_limiting() {
     .await
     .unwrap();
 
-    // TODO: here we should count rpc calls handled.
 
     // Check that the satellite nodes received either 1 or 2 updates.
-    /*for n in &mut nodes {
-        let got = n.net.gossip.validator_addrs.subscribe().borrow().update_calls();
+    for n in &mut nodes {
+        let got = n.net.gossip.push_validator_addrs_calls.load(Ordering::SeqCst);
         assert!((1..=2).contains(&got),"got {got} want 1 or 2");
-    }*/
+    }
 }

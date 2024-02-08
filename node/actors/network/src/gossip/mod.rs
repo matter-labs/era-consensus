@@ -16,6 +16,7 @@ use crate::{io, Config, pool::PoolWatch, rpc, gossip::ValidatorAddrsWatch, gossi
 use anyhow::Context as _;
 use std::{
     sync::{Arc},
+    sync::atomic::AtomicUsize,
 };
 
 mod handshake;
@@ -49,6 +50,8 @@ pub(crate) struct Network {
     pub(crate) get_block_clients: ArcMap<rpc::Client<rpc::get_block::Rpc>>,
     /// Output pipe of the network actor.
     pub(crate) sender: channel::UnboundedSender<io::OutputMessage>,
+    /// TESTONLY: how many time push_validator_addrs rpc was called by the peers. 
+    pub(crate) push_validator_addrs_calls: AtomicUsize,
 }
 
 impl Network {
@@ -66,6 +69,7 @@ impl Network {
             block_store,
             get_block_clients: ArcMap::default(),
             cfg,
+            push_validator_addrs_calls: 0.into(),
         })
     }
 

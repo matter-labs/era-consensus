@@ -2,6 +2,7 @@ use super::{Network, handshake, ValidatorAddrs};
 use crate::{io, noise, preface, rpc};
 use async_trait::async_trait;
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 use zksync_concurrency::{
     ctx,
     oneshot, scope, sync,
@@ -22,6 +23,7 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'
         _ctx: &ctx::Ctx,
         req: rpc::push_validator_addrs::Req,
     ) -> anyhow::Result<()> {
+        self.0.push_validator_addrs_calls.fetch_add(1,Ordering::SeqCst);
         self.0
             .validator_addrs
             .update(&self.0.cfg.genesis.validators, &req.0[..])
