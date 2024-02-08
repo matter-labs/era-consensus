@@ -96,8 +96,8 @@ impl Network {
 
 impl Runner {
     /// Runs the network actor.
-    pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        let mut listener = self.net.gossip.cfg.server_addr.bind()?;
+    pub async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
+        let mut listener = self.net.gossip.cfg.server_addr.bind().context("server_addr.bind()")?;
 
         scope::run!(ctx, |ctx, s| async {
             // Handle incoming messages.
@@ -132,7 +132,7 @@ impl Runner {
                 if c.gossip.cfg.genesis.validators.contains(&c.key.public()) {
                     // Maintain outbound connections.
                     for peer in c.clients.keys() {
-                        s.spawn(c.maintain_connection(ctx,peer));
+                        s.spawn(async { c.maintain_connection(ctx,peer).await; Ok(()) });
                     }
                     // Announce IP periodically.
                     s.spawn(async {

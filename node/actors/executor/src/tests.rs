@@ -31,7 +31,7 @@ impl ValidatorNode {
             config: self.node,
             block_store,
             validator: Some(Validator {
-                config: self.validator,
+                key: self.validator_key,
                 replica_store: Box::new(in_memory::ReplicaStore::default()),
                 payload_manager: Box::new(bft::testonly::RandomPayload(1000)),
             }),

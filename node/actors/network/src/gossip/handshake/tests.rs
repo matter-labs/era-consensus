@@ -1,5 +1,5 @@
 use super::*;
-use crate::{frame, noise, testonly, gossip::Config};
+use crate::{frame, noise, testonly, GossipConfig};
 use rand::Rng;
 use std::collections::{HashMap, HashSet};
 use zksync_concurrency::{ctx, io, scope, testonly::abort_on_panic};
@@ -12,8 +12,8 @@ fn test_schema_encode_decode() {
     test_encode_random::<Handshake>(rng);
 }
 
-fn make_cfg<R: Rng>(rng: &mut R) -> Config {
-    Config {
+fn make_cfg<R: Rng>(rng: &mut R) -> GossipConfig {
+    GossipConfig {
         key: rng.gen(),
         dynamic_inbound_limit: 0,
         static_inbound: HashSet::default(),

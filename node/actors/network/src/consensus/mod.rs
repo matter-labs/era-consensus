@@ -155,7 +155,7 @@ impl Network {
         res
     }
 
-    pub(crate) async fn maintain_connection(&self, ctx: &ctx::Ctx, peer: &validator::PublicKey) -> anyhow::Result<()> {
+    pub(crate) async fn maintain_connection(&self, ctx: &ctx::Ctx, peer: &validator::PublicKey) {
         let addrs = &mut self.gossip.validator_addrs.subscribe();
         let mut addr = None;
         while ctx.is_active() {
@@ -173,7 +173,6 @@ impl Network {
                 tracing::info!("run_outbound_stream({peer:?},{addr}): {err:#}");
             }
         }
-        Ok(())
     }
 
     pub(crate) async fn run_address_announcer(&self, ctx: &ctx::Ctx) {

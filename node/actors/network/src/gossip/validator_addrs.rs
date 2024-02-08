@@ -9,7 +9,7 @@ use zksync_concurrency::sync;
 /// Represents the currents state of node's knowledge about the validator endpoints.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct ValidatorAddrs {
-    inner: im::HashMap<validator::PublicKey, Arc<validator::Signed<validator::NetAddress>>>,
+    pub(super) inner: im::HashMap<validator::PublicKey, Arc<validator::Signed<validator::NetAddress>>>,
     update_calls: usize,
 }
 
@@ -74,6 +74,11 @@ impl ValidatorAddrs {
             changed = true;
         }
         Ok(changed)
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn update_calls(&self) -> usize {
+        self.update_calls
     }
 }
 

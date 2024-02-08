@@ -76,6 +76,7 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, specs: &[Node]) -> anyhow::
                 let mut nodes = vec![];
                 for (i, spec) in specs.iter().enumerate() {
                     let (node, runner) = network::testonly::Instance::new(
+                        ctx,
                         spec.net.clone(),
                         spec.block_store.clone(),
                     );
@@ -99,7 +100,7 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, specs: &[Node]) -> anyhow::
                 let mut recvs = vec![];
                 for (i, spec) in specs.iter().enumerate() {
                     let (actor_pipe, pipe) = pipe::new();
-                    let key = spec.net.consensus.as_ref().unwrap().key.public();
+                    let key = spec.net.validator_key.as_ref().unwrap().public();
                     sends.insert(key, actor_pipe.send);
                     recvs.push(actor_pipe.recv);
                     s.spawn(

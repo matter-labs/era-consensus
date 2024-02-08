@@ -63,7 +63,7 @@ impl Node {
         let con_send = consensus_pipe.send;
         scope::run!(ctx, |ctx, s| async {
             s.spawn(async {
-                let validator_key = self.net.consensus.as_ref().unwrap().key.clone();
+                let validator_key = self.net.validator_key.clone().unwrap();
                 crate::Config {
                     secret_key: validator_key.clone(),
                     validator_set: self.net.genesis.validators.clone(),
