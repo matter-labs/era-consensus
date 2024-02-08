@@ -70,7 +70,7 @@ fn main() -> anyhow::Result<()> {
 
     for (i, cfg) in cfgs.into_iter().enumerate() {
         // Recreate the directory for the node's config.
-        let root = args.output_dir.join(format!("node_{}", i));
+        let root = args.output_dir.join(cfg.public_addr.to_string());
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
         cfg.write_to_file(&root)?;
