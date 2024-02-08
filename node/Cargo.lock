@@ -2948,6 +2948,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "tester"
+version = "0.1.0"
+dependencies = [
+ "jsonrpsee",
+ "serde_json",
+ "tokio",
+ "zksync_consensus_tools",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.56"
 source = "registry+https://github.com/rust-lang/crates.io-index"

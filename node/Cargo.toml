@@ -10,7 +10,8 @@ members = [
     "libs/protobuf_build",
     "libs/roles",
     "libs/storage",
-    "libs/utils",
+    "libs/utils", 
+    "tests",
     "tools",
 ]
 resolver = "2"
