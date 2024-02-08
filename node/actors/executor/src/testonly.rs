@@ -1,9 +1,9 @@
 //! Testing extensions for node executor.
-use crate::{Config, ValidatorConfig};
+use crate::{Config};
 use rand::Rng;
 use zksync_concurrency::net;
 use zksync_consensus_network as network;
-use zksync_consensus_roles::validator::testonly::GenesisSetup;
+use zksync_consensus_roles::validator::{self,testonly::GenesisSetup};
 
 /// Full validator configuration.
 #[derive(Debug, Clone)]
@@ -12,7 +12,7 @@ pub struct ValidatorNode {
     /// Full node configuration.
     pub node: Config,
     /// Consensus configuration of the validator.
-    pub validator: ValidatorConfig,
+    pub validator_key: validator::SecretKey,
     /// Genesis configuration (validator set & initial blocks).
     pub setup: GenesisSetup,
 }
@@ -34,11 +34,12 @@ impl ValidatorNode {
         let net_config = network::testonly::new_configs(rng, &setup, 0)
             .pop()
             .unwrap();
-        let validator = net_config.consensus.unwrap();
+        let validator_key = net_config.validator_key.unwrap();
         let gossip = net_config.gossip;
         Self {
             node: Config {
                 server_addr: *net_config.server_addr,
+                public_addr: net_config.public_addr,
                 genesis: setup.genesis.clone(),
                 node_key: gossip.key,
                 gossip_dynamic_inbound_limit: gossip.dynamic_inbound_limit,
@@ -46,7 +47,7 @@ impl ValidatorNode {
                 gossip_static_outbound: gossip.static_outbound,
                 max_payload_size: usize::MAX,
             },
-            validator,
+            validator_key,
             setup,
         }
     }

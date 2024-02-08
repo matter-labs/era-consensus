@@ -1,6 +1,6 @@
 //! General-purpose network metrics.
 
-use crate::state::State;
+use crate::Network;
 use std::{
     net::SocketAddr,
     pin::Pin,
@@ -138,7 +138,7 @@ pub(crate) struct NetworkGauges {
 
 impl NetworkGauges {
     /// Registers a metrics collector for the specified state.
-    pub(crate) fn register(state_ref: Weak<State>) {
+    pub(crate) fn register(state_ref: Weak<Network>) {
         #[vise::register]
         static COLLECTOR: Collector<Option<NetworkGauges>> = Collector::new();
 

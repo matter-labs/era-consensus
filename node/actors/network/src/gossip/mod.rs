@@ -12,11 +12,79 @@
 //! Static connections constitute a rigid "backbone" of the gossip network, which is insensitive to
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
+use crate::{io, Config, pool::PoolWatch, rpc, gossip::ValidatorAddrsWatch, gossip::ArcMap};
+use anyhow::Context as _;
+use std::{
+    sync::{Arc},
+};
+
 mod handshake;
 mod runner;
-mod state;
+mod validator_addrs;
+mod arcmap;
 #[cfg(test)]
 mod tests;
 
-pub(crate) use runner::*;
-pub use state::*;
+pub(crate) use arcmap::*;
+pub(crate) use validator_addrs::*;
+
+use zksync_concurrency::{ctx, ctx::channel};
+use zksync_consensus_roles::{node, validator};
+use zksync_consensus_storage::BlockStore;
+use zksync_protobuf::kB;
+
+/// Gossip network state.
+pub(crate) struct Network {
+    /// Gossip network configuration.
+    pub(crate) cfg: Config,
+    /// Currently open inbound connections.
+    pub(crate) inbound: PoolWatch<node::PublicKey>,
+    /// Currently open outbound connections.
+    pub(crate) outbound: PoolWatch<node::PublicKey>,
+    /// Current state of knowledge about validators' endpoints.
+    pub(crate) validator_addrs: ValidatorAddrsWatch,
+    /// Block store to serve `get_block` requests from.
+    pub(crate) block_store: Arc<BlockStore>,
+    /// Clients for `get_block` requests for each currently active peer.
+    pub(crate) get_block_clients: ArcMap<rpc::Client<rpc::get_block::Rpc>>,
+    /// Output pipe of the network actor.
+    pub(crate) sender: channel::UnboundedSender<io::OutputMessage>,
+}
+
+impl Network {
+    /// Constructs a new State.
+    pub(crate) fn new(
+        cfg: Config,
+        block_store: Arc<BlockStore>,
+        sender: channel::UnboundedSender<io::OutputMessage>,
+    ) -> Arc<Self> {
+        Arc::new(Self {
+            sender,
+            inbound: PoolWatch::new(cfg.gossip.static_inbound.clone(), cfg.gossip.dynamic_inbound_limit),
+            outbound: PoolWatch::new(cfg.gossip.static_outbound.keys().cloned().collect(), 0),
+            validator_addrs: ValidatorAddrsWatch::default(),
+            block_store,
+            get_block_clients: ArcMap::default(),
+            cfg,
+        })
+    }
+
+    pub(crate) async fn get_block(
+        &self,
+        ctx: &ctx::Ctx,
+        recipient: &node::PublicKey,
+        number: validator::BlockNumber,
+    ) -> anyhow::Result<Option<validator::FinalBlock>> {
+        Ok(self
+            .get_block_clients
+            .get_any(recipient)
+            .context("recipient is unreachable")?
+            .call(
+                ctx,
+                &rpc::get_block::Req(number),
+                self.cfg.max_block_size.saturating_add(kB),
+            )
+            .await?
+            .0)
+    }
+}

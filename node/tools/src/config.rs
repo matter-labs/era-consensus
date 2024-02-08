@@ -211,6 +211,7 @@ impl Configs {
         let e = executor::Executor {
             config: executor::Config {
                 server_addr: self.app.server_addr,
+                public_addr: self.app.public_addr,
                 genesis: validator::Genesis {
                     forks: validator::ForkSet::default(),
                     validators: self.app.validators.clone(),
@@ -223,10 +224,7 @@ impl Configs {
             },
             block_store,
             validator: self.validator_key.as_ref().map(|key| executor::Validator {
-                config: executor::ValidatorConfig {
-                    key: key.clone(),
-                    public_addr: self.app.public_addr,
-                },
+                key: key.clone(), 
                 replica_store: Box::new(store),
                 payload_manager: Box::new(bft::testonly::RandomPayload(self.app.max_payload_size)),
             }),

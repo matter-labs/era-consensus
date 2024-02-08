@@ -1,4 +1,4 @@
-use crate::{frame, noise, proto::gossip as proto};
+use crate::{frame, noise, proto::gossip as proto, GossipConfig};
 use anyhow::Context as _;
 use zksync_concurrency::{ctx, time};
 use zksync_consensus_crypto::ByteFmt;
@@ -62,7 +62,7 @@ pub(super) enum Error {
 
 pub(super) async fn outbound(
     ctx: &ctx::Ctx,
-    cfg: &super::Config,
+    cfg: &GossipConfig,
     genesis: validator::GenesisHash,
     stream: &mut noise::Stream,
     peer: &node::PublicKey,
@@ -98,7 +98,7 @@ pub(super) async fn outbound(
 
 pub(super) async fn inbound(
     ctx: &ctx::Ctx,
-    cfg: &super::Config,
+    cfg: &GossipConfig,
     genesis: validator::GenesisHash,
     stream: &mut noise::Stream,
 ) -> Result<node::PublicKey, Error> {
