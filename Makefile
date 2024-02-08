@@ -17,11 +17,17 @@ nodes_config:
 docker_build_executor:
 	docker build --output=node/tools/docker_binaries --target=binary .
 
+docker_build_tester:
+	docker build --output=node/tools/docker_binaries --target=binary -f node/tests/Dockerfile node
+
 docker_node_image:
 	docker build -t consensus-node --target=runtime .
 
+docker_test_image:
+	docker build -t test-suite -f node/tests/Dockerfile --target=runtime node
+
 docker_nodes_config:
-	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin localnet_config -- --input-addrs docker-config/addresses.txt --output-dir docker-config
+	cd ${EXECUTABLE_NODE_DIR} && cargo run  --bin localnet_config -- --input-addrs docker-config/addresses.txt --output-dir docker-config
 
 docker_node:
 	$(MAKE) docker_node_image
@@ -38,10 +44,15 @@ stop_docker_nodes:
 	docker stop consensus-node-1 consensus-node-2
 
 start_k8s_nodes:
-	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer generate-config --nodes ${NODES}
+	cd ${EXECUTABLE_NODE_DIR} && cargo run  --bin deployer generate-config --nodes ${NODES}
 	$(MAKE) docker_node_image
 	minikube image load consensus-node:latest
-	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer deploy --nodes ${NODES}
+	cd ${EXECUTABLE_NODE_DIR} && cargo run  --bin deployer deploy --nodes ${NODES}
+
+start_k8s_tests:
+	$(MAKE) docker_test_image
+	minikube image load test-suite:latest
+	kubectl apply -f node/tests/test_deployments.yaml
 
 # Clean commands
 
