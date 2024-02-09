@@ -80,11 +80,6 @@ impl fmt::Display for BlockNumber {
 pub struct BlockHeaderHash(pub(crate) Keccak256);
 
 impl BlockHeaderHash {
-    /// Constant that the parent of the genesis block should be set to.
-    pub fn genesis_parent() -> Self {
-        Self(Keccak256::default())
-    }
-
     /// Interprets the specified `bytes` as a block header hash digest (i.e., a reverse operation to [`Self::as_bytes()`]).
     /// It is caller's responsibility to ensure that `bytes` are actually a block header hash digest.
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
@@ -122,7 +117,7 @@ impl fmt::Debug for BlockHeaderHash {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockHeader {
     /// Hash of the parent block.
-    pub parent: BlockHeaderHash,
+    pub parent: Option<BlockHeaderHash>,
     /// Number of the block.
     pub number: BlockNumber,
     /// Payload of the block.
@@ -135,19 +130,19 @@ impl BlockHeader {
         BlockHeaderHash(Keccak256::new(&zksync_protobuf::canonical(self)))
     }
 
-    /// Creates a genesis block.
-    pub fn genesis(payload: PayloadHash, number: BlockNumber) -> Self {
+    /// Creates a first block of the chain
+    pub fn first(payload: PayloadHash, number: BlockNumber) -> Self {
         Self {
-            parent: BlockHeaderHash::genesis_parent(),
+            parent: None,
             number,
             payload,
         }
     }
 
     /// Creates a child block for the given parent.
-    pub fn new(parent: &BlockHeader, payload: PayloadHash) -> Self {
+    pub fn next(parent: &BlockHeader, payload: PayloadHash) -> Self {
         Self {
-            parent: parent.hash(),
+            parent: Some(parent.hash()),
             number: parent.number.next(),
             payload,
         }
@@ -166,7 +161,7 @@ pub struct FinalBlock {
 impl FinalBlock {
     /// Creates a new finalized block.
     pub fn new(payload: Payload, justification: CommitQC) -> Self {
-        assert_eq!(justification.message.proposal.payload, payload.hash());
+        assert_eq!(justification.header().payload, payload.hash());
         Self {
             payload,
             justification,
@@ -178,11 +173,10 @@ impl FinalBlock {
         &self.justification.message.proposal
     }
 
-    /// Verified internal consistency of this block.
+    /// Verifies internal consistency of this block.
     pub fn verify(
         &self,
         genesis: &super::Genesis,
-        consensus_threshold: usize,
     ) -> Result<(), BlockValidationError> {
         let payload_hash = self.payload.hash();
         if payload_hash != self.header().payload {
@@ -192,7 +186,7 @@ impl FinalBlock {
             });
         }
         self.justification
-            .verify(&genesis, consensus_threshold)
+            .verify(&genesis)
             .map_err(BlockValidationError::Justification)
     }
 }

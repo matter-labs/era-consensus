@@ -35,9 +35,9 @@ pub(crate) enum Error {
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] validator::Error),
-    /// Invalid justification for the message.
-    #[error("invalid justification: {0:#}")]
-    InvalidJustification(#[source] anyhow::Error),
+    /// Invalid message.
+    #[error("invalid message: {0:#}")]
+    InvalidMessage(#[source] anyhow::Error),
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error(transparent)]
     Internal(#[from] ctx::Error),
@@ -80,9 +80,10 @@ impl StateMachine {
         }
 
         // Check that it comes from the correct leader.
-        if author != &self.config.view_leader(view) {
+        let leader = self.config.genesis.validators.view_leader(view);
+        if author != &leader {
             return Err(Error::InvalidLeader {
-                correct_leader: self.config.view_leader(view),
+                correct_leader: leader,
                 received_leader: author.clone(),
             });
         }
@@ -100,13 +101,8 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
-        // ----------- Checking the justification of the message --------------
-
-        // Verify the QuorumCertificate.
-        message
-            .justification
-            .verify(&self.config.validator_set, self.config.threshold())
-            .map_err(Error::InvalidJustification)?;
+        message.verify(&self.config.validator_set)
+            .map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------
 

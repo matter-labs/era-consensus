@@ -18,11 +18,11 @@ impl StateMachine {
         //                the corresponding block (same goes for synchronization).
         let Some(cache) = self
             .block_proposal_cache
-            .get(&commit_qc.message.proposal.number)
+            .get(&commit_qc.header().number)
         else {
             return Ok(());
         };
-        let Some(payload) = cache.get(&commit_qc.message.proposal.payload) else {
+        let Some(payload) = cache.get(&commit_qc.header().payload) else {
             return Ok(());
         };
         let block = validator::FinalBlock {

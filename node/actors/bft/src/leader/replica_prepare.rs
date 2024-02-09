@@ -37,22 +37,12 @@ pub(crate) enum Error {
         /// Existing message from the same replica.
         existing_message: validator::ReplicaPrepare,
     },
-    /// High QC of a future view.
-    #[error(
-        "high QC of a future view (high QC view: {high_qc_view:?}, current view: {current_view:?}"
-    )]
-    HighQCOfFutureView {
-        /// Received high QC view.
-        high_qc_view: validator::ViewNumber,
-        /// Current view.
-        current_view: validator::ViewNumber,
-    },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] validator::Error),
-    /// Invalid `HighQC` message.
-    #[error("invalid high QC: {0:#}")]
-    InvalidHighQC(#[source] anyhow::Error),
+    /// Invalid message.
+    #[error("invalid message: {0:#}")]
+    InvalidMessage(#[source] anyhow::Error),
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error(transparent)]
     Internal(#[from] ctx::Error),
@@ -109,7 +99,7 @@ impl StateMachine {
         }
 
         // If the message is for a view when we are not a leader, we discard it.
-        if self.config.view_leader(message.view) != self.config.secret_key.public() {
+        if self.config.genesis.validators.view_leader(message.view) != self.config.secret_key.public() {
             return Err(Error::NotLeaderInView);
         }
 
@@ -129,23 +119,8 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
-        // ----------- Checking the contents of the message --------------
-
-        // Verify the high QC.
-        message
-            .high_qc
-            .verify(&self.config.validator_set, self.config.threshold())
-            .map_err(Error::InvalidHighQC)?;
-
-        // If the high QC is for a future view, we discard the message.
-        // This check is not necessary for correctness, but it's useful to
-        // guarantee that our proposals don't contain QCs from the future.
-        if message.high_qc.message.view >= message.view {
-            return Err(Error::HighQCOfFutureView {
-                high_qc_view: message.high_qc.message.view,
-                current_view: message.view,
-            });
-        }
+        // Verify the message.
+        message.verify(&self.config.validator_set).map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------
 
@@ -165,7 +140,7 @@ impl StateMachine {
         // Now we check if we have enough messages to continue.
         let num_messages = self.prepare_message_cache.get(&message.view).unwrap().len();
 
-        if num_messages < self.config.threshold() {
+        if num_messages < self.config.genesis.validators.threshold() {
             return Ok(());
         }
 
@@ -173,7 +148,7 @@ impl StateMachine {
         // for this same view if we receive another replica prepare message after this.
         self.prepare_message_cache.remove(&message.view);
 
-        debug_assert_eq!(num_messages, self.config.threshold());
+        debug_assert_eq!(num_messages, self.config.genesis.validators.threshold());
 
         // ----------- Update the state machine --------------
 

@@ -29,7 +29,7 @@ message BlockHeaderHash {
 
 message BlockHeader {
   // Hash of the parent Block.  
-  optional BlockHeaderHash parent = 2; // required
+  optional BlockHeaderHash parent = 2; // optional
   // Sequential number of the block = parent.number + 1.
   optional uint64 number = 3; // required
   // Hash of the block payload.
@@ -39,6 +39,12 @@ message BlockHeader {
 message FinalBlock {
   optional bytes payload = 1; // required
   optional CommitQC justification = 2; // required
+}
+
+message View {
+  optional uint32 protocol_version = 1; // required; ProtocolVersion
+  optional uint64 fork = 2; // required; ForkId 
+  optional uint64 number = 3; // required; ViewNumber
 }
 
 message ConsensusMsg {
@@ -51,32 +57,28 @@ message ConsensusMsg {
 }
 
 message ReplicaPrepare {
-  optional uint32 protocol_version = 4; // required
-  optional uint64 view = 1; // required
-  optional ReplicaCommit high_vote = 2; // required
-  optional CommitQC high_qc = 3; // required
+  optional View view = 1; // required
+  optional ReplicaCommit high_vote = 2; // optional 
+  optional CommitQC high_qc = 3; // optional
 }
 
 message ReplicaCommit {
-  optional uint32 protocol_version = 3; // required
-  optional uint64 view = 1; // required
+  optional View view = 1; // required
   optional BlockHeader proposal = 2; // required
 }
 
 message LeaderPrepare {
-  optional uint32 protocol_version = 5; // required
-  optional uint64 view = 1; // required
-  optional BlockHeader proposal = 2; // required
-  optional bytes proposal_payload = 3; // optional (depending on justification)
-  optional PrepareQC justification = 4; // required
+  optional BlockHeader proposal = 1; // required
+  optional bytes proposal_payload = 2; // optional (depending on justification)
+  optional PrepareQC justification = 3; // required
 }
 
 message LeaderCommit {
-  optional uint32 protocol_version = 2; // required
   optional CommitQC justification = 1; // required
 }
 
 message PrepareQC {
+  optional View view = 4; // required
   repeated ReplicaPrepare msgs = 1; // required
   repeated std.BitVector signers = 2; // required
   optional AggregateSignature sig = 3; // required

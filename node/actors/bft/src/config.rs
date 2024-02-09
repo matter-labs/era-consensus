@@ -1,5 +1,5 @@
 //! The inner data of the consensus state machine. This is shared between the different roles.
-use crate::{misc, PayloadManager};
+use crate::{PayloadManager};
 use std::sync::Arc;
 use tracing::instrument;
 use zksync_consensus_roles::validator;
@@ -10,8 +10,8 @@ use zksync_consensus_storage as storage;
 pub struct Config {
     /// The validator's secret key.
     pub secret_key: validator::SecretKey,
-    /// A vector of public keys for all the validators in the network.
-    pub validator_set: validator::ValidatorSet,
+    /// Genesis
+    pub genesis: validator::Genesis,
     /// The maximum size of the payload of a block, in bytes. We will
     /// reject blocks with payloads larger than this.
     pub max_payload_size: usize,
@@ -21,26 +21,4 @@ pub struct Config {
     pub replica_store: Box<dyn storage::ReplicaStore>,
     /// Payload manager.
     pub payload_manager: Box<dyn PayloadManager>,
-}
-
-impl Config {
-    /// Computes the validator for the given view.
-    #[instrument(level = "trace", ret)]
-    pub fn view_leader(&self, view_number: validator::ViewNumber) -> validator::PublicKey {
-        let index = view_number.0 as usize % self.validator_set.len();
-        self.validator_set.get(index).unwrap().clone()
-    }
-
-    /// Calculate the consensus threshold, the minimum number of votes for any consensus action to be valid,
-    /// for a given number of replicas.
-    #[instrument(level = "trace", ret)]
-    pub fn threshold(&self) -> usize {
-        misc::consensus_threshold(self.validator_set.len())
-    }
-
-    /// Calculate the maximum number of faulty replicas, for a given number of replicas.
-    #[instrument(level = "trace", ret)]
-    pub fn faulty_replicas(&self) -> usize {
-        misc::faulty_replicas(self.validator_set.len())
-    }
 }

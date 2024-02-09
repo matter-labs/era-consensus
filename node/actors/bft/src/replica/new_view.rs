@@ -11,9 +11,7 @@ impl StateMachine {
         tracing::info!("Starting view {}", self.view.next().0);
 
         // Update the state machine.
-        let next_view = self.view.next();
-
-        self.view = next_view;
+        self.view = self.view.next();
         self.phase = validator::Phase::Prepare;
 
         // Clear the block cache.
@@ -30,13 +28,16 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaPrepare(
                     validator::ReplicaPrepare {
-                        protocol_version: crate::PROTOCOL_VERSION,
-                        view: next_view,
-                        high_vote: self.high_vote,
+                        view: validator::View {
+                            protocol_version: crate::PROTOCOL_VERSION,
+                            fork: self.config.genesis.forks.current(),
+                            number: self.view,
+                        },
+                        high_vote: self.high_vote.clone(),
                         high_qc: self.high_qc.clone(),
                     },
                 )),
-            recipient: Target::Validator(self.config.view_leader(next_view)),
+            recipient: Target::Validator(self.config.view_leader(self.view)),
         };
         self.outbound_pipe.send(output_message.into());
 

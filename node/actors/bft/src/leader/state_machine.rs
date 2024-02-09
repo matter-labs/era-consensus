@@ -155,13 +155,14 @@ impl StateMachine {
         // in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
         let mut count: HashMap<_, usize> = HashMap::new();
         for (vote, signers) in &justification.map {
-            *count.entry(vote.high_vote.proposal).or_default() += signers.len();
+            *count.entry(vote.high_vote.proposal.clone()).or_default() += signers.len();
         }
 
-        let highest_vote: Option<validator::BlockHeader> = count
+        let faulty_replicas = cfg.genesis.validators.faulty_replicas();
+        let highest_vote: Option<validator::Proposal> = count
             .iter()
             // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
-            .find_map(|(h, v)| (*v > 2 * cfg.faulty_replicas()).then_some(h))
+            .find_map(|(h, v)| (*v > 2 * faulty_replicas).then_some(h))
             .cloned();
 
         // Get the highest validator::CommitQC.
@@ -202,7 +203,7 @@ impl StateMachine {
                     .leader_proposal_payload_size
                     .observe(payload.0.len());
                 let proposal =
-                    validator::BlockHeader::new(&highest_qc.message.proposal, payload.hash());
+                    validator::BlockHeader::next(&highest_qc.message.proposal, payload.hash());
                 (proposal, Some(payload))
             }
         };

@@ -1,5 +1,5 @@
 use super::*;
-use rand::Rng;
+use rand::{Rng,seq::SliceRandom};
 use std::vec;
 use zksync_concurrency::ctx;
 use zksync_consensus_crypto::{ByteFmt, Text, TextFmt};
@@ -172,41 +172,28 @@ fn test_commit_qc() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let sk1: SecretKey = rng.gen();
-    let sk2: SecretKey = rng.gen();
-    let sk3: SecretKey = rng.gen();
+    let setup1 = GenesisSetup::new(rng,6);
+    let setup2 = GenesisSetup::new(rng,6);
+    let genesis3 = Genesis {
+        validators: ValidatorSet::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
+        forks: setup1.genesis.forks.clone(),
+    };
 
-    let msg: ReplicaCommit = rng.gen();
+    for i in 0..setup1.keys.len()+1 {
+        let mut qc = CommitQC::new(rng.gen(), &setup1.genesis);
+        for key in &setup1.keys[0..i] {
+            qc.add(key.sign_msg(qc.message.clone()),&setup1.genesis);
+        }
+        if i>=setup1.genesis.validators.threshold() {
+            assert!(qc.verify(&setup1.genesis).is_ok());
+        } else {
+            assert!(qc.verify(&setup1.genesis).is_err());
+        }
 
-    let validator_set1 = ValidatorSet::new(vec![
-        sk1.public(),
-        sk2.public(),
-        sk3.public(),
-        rng.gen(),
-        rng.gen(),
-    ])
-    .unwrap();
-    let validator_set2 =
-        ValidatorSet::new(vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()]).unwrap();
-    let validator_set3 = ValidatorSet::new(vec![sk1.public(), sk2.public(), sk3.public()]).unwrap();
-
-    let qc = CommitQC::from(
-        &[sk1.sign_msg(msg), sk2.sign_msg(msg), sk3.sign_msg(msg)],
-        &validator_set1,
-    )
-    .unwrap();
-
-    // Matching validator set and enough signers.
-    assert!(qc.verify(&validator_set1, 1).is_ok());
-    assert!(qc.verify(&validator_set1, 2).is_ok());
-    assert!(qc.verify(&validator_set1, 3).is_ok());
-
-    // Not enough signers.
-    assert!(qc.verify(&validator_set1, 4).is_err());
-
-    // Mismatching validator sets.
-    assert!(qc.verify(&validator_set2, 3).is_err());
-    assert!(qc.verify(&validator_set3, 3).is_err());
+        // Mismatching validator sets.
+        assert!(qc.verify(&setup2.genesis).is_err());
+        assert!(qc.verify(&genesis3).is_err());
+    }
 }
 
 #[test]
@@ -214,47 +201,32 @@ fn test_prepare_qc() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let sk1: SecretKey = rng.gen();
-    let sk2: SecretKey = rng.gen();
-    let sk3: SecretKey = rng.gen();
+    let setup1 = GenesisSetup::new(rng,6);
+    let setup2 = GenesisSetup::new(rng,6);
+    let genesis3 = Genesis {
+        validators: ValidatorSet::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
+        forks: setup1.genesis.forks.clone(),
+    };
+    
+    let view: View = rng.gen();
+    let mut msgs: Vec<ReplicaPrepare> = (0..2).map(|_|rng.gen()).collect();
+    for msg in &mut msgs {
+        msg.view = view.clone();
+    }
 
-    let view: ViewNumber = rng.gen();
-    let mut msg1: ReplicaPrepare = rng.gen();
-    let mut msg2: ReplicaPrepare = rng.gen();
-    msg1.view = view;
-    msg2.view = view;
+    for n in 0..setup1.keys.len()+1 {
+        let mut qc = PrepareQC::new(view.clone());
+        for key in &setup1.keys[0..n] {
+            qc.add(&key.sign_msg(msgs.choose(rng).unwrap().clone()),&setup1.genesis);
+        }
+        if n>=setup1.genesis.validators.threshold() {
+            assert!(qc.verify(&setup1.genesis).is_ok());
+        } else {
+            assert!(qc.verify(&setup1.genesis).is_err());
+        }
 
-    let validator_set1 = ValidatorSet::new(vec![
-        sk1.public(),
-        sk2.public(),
-        sk3.public(),
-        rng.gen(),
-        rng.gen(),
-    ])
-    .unwrap();
-    let validator_set2 =
-        ValidatorSet::new(vec![rng.gen(), rng.gen(), rng.gen(), rng.gen(), rng.gen()]).unwrap();
-    let validator_set3 = ValidatorSet::new(vec![sk1.public(), sk2.public(), sk3.public()]).unwrap();
-
-    let agg_qc = PrepareQC::from(
-        &[
-            sk1.sign_msg(msg1.clone()),
-            sk2.sign_msg(msg2),
-            sk3.sign_msg(msg1),
-        ],
-        &validator_set1,
-    )
-    .unwrap();
-
-    // Matching validator set and enough signers.
-    assert!(agg_qc.verify(view, &validator_set1, 1).is_ok());
-    assert!(agg_qc.verify(view, &validator_set1, 2).is_ok());
-    assert!(agg_qc.verify(view, &validator_set1, 3).is_ok());
-
-    // Not enough signers.
-    assert!(agg_qc.verify(view, &validator_set1, 4).is_err());
-
-    // Mismatching validator sets.
-    assert!(agg_qc.verify(view, &validator_set2, 3).is_err());
-    assert!(agg_qc.verify(view, &validator_set3, 3).is_err());
+        // Mismatching validator sets.
+        assert!(qc.verify(&setup2.genesis).is_err());
+        assert!(qc.verify(&genesis3).is_err());
+    }
 }

@@ -55,7 +55,7 @@ impl StateMachine {
         // ----------- Checking origin of the message --------------
 
         // Unwrap message.
-        let message = signed_message.msg;
+        let message = &signed_message.msg;
         let author = &signed_message.key;
 
         // Check protocol version compatibility.
@@ -84,7 +84,7 @@ impl StateMachine {
         }
 
         // If the message is for a view when we are not a leader, we discard it.
-        if self.config.view_leader(message.view) != self.config.secret_key.public() {
+        if self.config.genesis.validators.view_leader(message.view) != self.config.secret_key.public() {
             return Err(Error::NotLeaderInView);
         }
 
@@ -95,7 +95,7 @@ impl StateMachine {
             .and_then(|x| x.get(author))
         {
             return Err(Error::DuplicateMessage {
-                existing_message: existing_message.msg,
+                existing_message: existing_message.msg.clone(),
             });
         }
 
@@ -109,25 +109,26 @@ impl StateMachine {
         // We add the message to the incrementally-constructed QC.
         self.commit_qcs
             .entry(message.view)
-            .or_insert(CommitQC::new(message, &self.config.validator_set))
+            .or_insert(CommitQC::new(message.clone(), &self.config.validator_set))
             .add(&signed_message.sig, validator_index);
 
         // We store the message in our cache.
         let cache_entry = self.commit_message_cache.entry(message.view).or_default();
-        cache_entry.insert(author.clone(), signed_message);
+        cache_entry.insert(author.clone(), signed_message.clone());
 
         // Now we check if we have enough messages to continue.
         let mut by_proposal: HashMap<_, Vec<_>> = HashMap::new();
         for msg in cache_entry.values() {
-            by_proposal.entry(msg.msg.proposal).or_default().push(msg);
+            by_proposal.entry(msg.msg.proposal.clone()).or_default().push(msg);
         }
+        let threshold = self.config.genesis.validators.threshold();
         let Some((_, replica_messages)) = by_proposal
             .into_iter()
-            .find(|(_, v)| v.len() >= self.config.threshold())
+            .find(|(_, v)| v.len() >= threshold)
         else {
             return Ok(());
         };
-        debug_assert_eq!(replica_messages.len(), self.config.threshold());
+        debug_assert_eq!(replica_messages.len(), threshold);
 
         // ----------- Update the state machine --------------
 
