@@ -31,12 +31,12 @@ pub fn decode_json<T: serde::de::DeserializeOwned>(json: &str) -> anyhow::Result
 }
 
 /// Encodes a generated proto message to json for arbitrary ProtoFmt.
-pub fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
+pub(crate) fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
     let s = serde_json::Serializer::pretty(vec![]);
     encode_json_with_serializer(x, s)
 }
 
-pub fn encode_json_with_serializer<T: serde::ser::Serialize, F: Formatter>(
+pub(crate) fn encode_json_with_serializer<T: serde::ser::Serialize, F: Formatter>(
     x: &T,
     mut serializer: Serializer<Vec<u8>, F>,
 ) -> String {
