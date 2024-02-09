@@ -99,10 +99,10 @@ impl Network {
                 .add_server(push_block_store_state_server, self.cfg.rpc.push_block_store_state_rate)
                 .add_client(&get_block_client)
                 .add_server(&*self.block_store, self.cfg.rpc.get_block_rate)
-                .add_server(rpc::ping::Server, self.cfg.rpc.ping_rate);
+                .add_server(rpc::ping::Server, rpc::ping::RATE);
 
             if let Some(ping_timeout) = &self.cfg.ping_timeout {
-                let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx, self.cfg.rpc.ping_rate);
+                let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx, rpc::ping::RATE);
                 service = service.add_client(&ping_client);
                 s.spawn(async {
                     let ping_client = ping_client;

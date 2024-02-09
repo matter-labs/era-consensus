@@ -6,12 +6,16 @@ use std::collections::{HashMap,HashSet};
 /// TODO(gprusak): once it becomes relevant, choose a more appropriate retry strategy.
 pub(crate) const CONNECT_RETRY: time::Duration = time::Duration::seconds(20);
 
+/// Rate limiting config for RPCs.
 #[derive(Debug,Clone)]
 pub struct RpcConfig {
+    /// Max rate of sending/receiving push_validator_addrs messages.
     pub push_validator_addrs_rate: limiter::Rate,
+    /// Max rate of sending/receiving push_block_store_state messages.
     pub push_block_store_state_rate: limiter::Rate,
+    /// Max rate of sending/receiving get_block RPCs.
     pub get_block_rate: limiter::Rate,
-    pub ping_rate: limiter::Rate,
+    /// Max rate of sending/receiving consensus messages.
     pub consensus_rate: limiter::Rate,
 }
 
@@ -21,7 +25,6 @@ impl Default for RpcConfig {
             push_validator_addrs_rate: limiter::Rate { burst: 1, refresh: time::Duration::seconds(5) },
             push_block_store_state_rate: limiter::Rate { burst: 2, refresh: time::Duration::milliseconds(500) },
             get_block_rate: limiter::Rate { burst: 10, refresh: time::Duration::milliseconds(100) },
-            ping_rate: limiter::Rate { burst: 1, refresh: time::Duration::seconds(5) },
             consensus_rate: limiter::Rate { burst: 10, refresh: time::Duration::ZERO },
         }
     }
@@ -63,6 +66,7 @@ pub struct Config {
     /// the connection is dropped.
     /// `None` disables sending ping messages (useful for tests).
     pub ping_timeout: Option<time::Duration>,
+    /// Rate limiting config for RPCs.
     pub rpc: RpcConfig,
 }
 

@@ -45,15 +45,15 @@ async fn test_ping() {
     let clock = ctx::ManualClock::new();
     let ctx = &ctx::test_root(&clock);
     let (s1, s2) = noise::testonly::pipe(ctx).await;
-    let client = Client::<ping::Rpc>::new(ctx, PING_RATE);
+    let client = Client::<ping::Rpc>::new(ctx, ping::RATE);
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(async {
-            expected(Service::new().add_server(ping::Server, PING_RATE).run(ctx, s1).await).context("server")
+            expected(Service::new().add_server(ping::Server, ping::RATE).run(ctx, s1).await).context("server")
         });
         s.spawn_bg(async {
             expected(Service::new().add_client(&client).run(ctx, s2).await).context("client")
         });
-        for _ in 0..PING_RATE.burst {
+        for _ in 0..ping::RATE.burst {
             let req = ping::Req(ctx.rng().gen());
             let resp = client.call(ctx, &req, kB).await?;
             assert_eq!(req.0, resp.0);
@@ -63,7 +63,7 @@ async fn test_ping() {
         let req = ping::Req(ctx.rng().gen());
         let resp = client.call(ctx, &req, kB).await?;
         assert_eq!(req.0, resp.0);
-        assert!(ctx.now() >= now + PING_RATE.refresh);
+        assert!(ctx.now() >= now + ping::RATE.refresh);
         Ok(())
     })
     .await
@@ -77,7 +77,6 @@ struct PingServer {
 
 const PING_COUNT: u64 = 3;
 const PING_TIMEOUT: time::Duration = time::Duration::seconds(6);
-const PING_RATE: limiter::Rate = limiter::Rate { burst: 1, refresh: time::Duration::seconds(3) };
 
 #[async_trait::async_trait]
 impl Handler<ping::Rpc> for PingServer {
@@ -102,7 +101,7 @@ async fn test_ping_loop() {
     clock.set_advance_on_sleep();
     let ctx = &ctx::test_root(&clock);
     let (s1, s2) = noise::testonly::pipe(ctx).await;
-    let client = Client::<ping::Rpc>::new(ctx, PING_RATE);
+    let client = Client::<ping::Rpc>::new(ctx, ping::RATE);
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(async {
             // Clock is passed to the server, so that it can
@@ -114,6 +113,7 @@ async fn test_ping_loop() {
 
             expected(Service::new().add_server(server, limiter::Rate {
                 burst: 1,
+                // with `refresh = 0`, server will never autoadvance time.
                 refresh: time::Duration::ZERO,
             }).run(ctx, s1).await).context("server")
         });

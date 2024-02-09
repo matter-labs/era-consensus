@@ -2,7 +2,7 @@
 use crate::{mux, proto::ping as proto};
 use anyhow::Context as _;
 use rand::Rng;
-use zksync_concurrency::{ctx, time};
+use zksync_concurrency::{ctx, time, limiter};
 use zksync_protobuf::{kB, required, ProtoFmt};
 
 /// Ping RPC.
@@ -15,6 +15,11 @@ impl super::Rpc for Rpc {
     type Req = Req;
     type Resp = Resp;
 }
+
+/// Hardcoded expected rate supported by the server.
+/// This needs to be part of the protocol, so that both parties agree on when
+/// connection is alive.
+pub(crate) const RATE: limiter::Rate = limiter::Rate { burst: 2, refresh: time::Duration::seconds(1) };
 
 /// Canonical Ping server implementation,
 /// which responds with data from the request.
