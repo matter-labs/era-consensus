@@ -158,6 +158,14 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         // ----------- Checking the justification of the message --------------
+        
+        // Check that the payload doesn't exceed the maximum size.
+        if payload.0.len() > self.config.max_payload_size {
+            return Err(Error::ProposalOversizedPayload {
+                payload_size: payload.0.len(),
+                header: message.proposal,
+            });
+        }
 
         // Verify the PrepareQC.
         message

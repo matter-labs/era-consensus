@@ -300,65 +300,40 @@ impl LeaderPrepare {
     /// Verifies LeaderPrepare.
     pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
         self.justification.verify(genesis).context("justification")?;
-        
-        // Get the highest block voted and check if there's a quorum of votes for it. To have a quorum
-        // in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
-        let mut vote_count: HashMap<_, usize> = HashMap::new();
+        let high_vote = self.justification.high_vote(genesis);
+        let high_qc = self.justification.high_qc(genesis);
 
-        for (msg, signers) in &message.justification.map {
-            *vote_count.entry(msg.high_vote.proposal.clone()).or_default() += signers.len();
-        }
-        let faulty_replicas = genesis.validators.faulty_replicas();
-        let highest_vote: Option<validator::BlockHeader> = vote_count
-            .into_iter()
-            // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
-            .find(|(_, v)| *v > 2 * faulty_replicas)
-            .map(|(h, _)| h);
-
-        // Get the highest CommitQC and verify it.
-        let highest_qc: validator::CommitQC = message
-            .justification
-            .map
-            .keys()
-            .max_by_key(|m| m.high_qc.message.view)
-            .unwrap()
-            .high_qc
-            .clone();
         // Check that the proposal is valid.
         match &self.proposal_payload {
             // The leader proposed a new block.
             Some(payload) => {
-                // Check that the payload doesn't exceed the maximum size.
-                if payload.0.len() > self.config.max_payload_size {
-                    return Err(Error::ProposalOversizedPayload {
-                        payload_size: payload.0.len(),
-                        header: message.proposal,
-                    });
-                }
-
                 // Check that payload matches the header
-                if message.proposal.payload != payload.hash() {
+                if self.proposal.payload != payload.hash() {
                     return Err(Error::ProposalMismatchedPayload);
                 }
 
                 // Check that we finalized the previous block.
-                if highest_vote.is_some()
-                    && highest_vote.as_ref() != Some(&highest_qc.message.proposal)
-                {
+                if high_vote && high_vote.as_ref() != &high_qc.map(|qc|&qc.message.proposal) {
                     return Err(Error::ProposalWhenPreviousNotFinalized);
                 }
 
                 // Parent hash should match.
-                if highest_qc.message.proposal.hash() != message.proposal.parent {
+                let want_parent = high_qc.map(|qc|qc.header().hash());
+                if want_parent != self.proposal.parent {
                     return Err(Error::ProposalInvalidParentHash {
-                        correct_parent_hash: highest_qc.header().hash(),
-                        received_parent_hash: message.proposal.parent,
-                        header: message.proposal.clone(),
+                        correct_parent_hash: want_parent,
+                        received_parent_hash: self.proposal.parent,
+                        header: self.proposal.clone(),
                     });
                 }
 
                 // Block number should match.
-                if highest_qc.header().number.next() != message.proposal.number {
+                let want_block = match &high_qc {
+                    Some(qc) => qc.header().number.next(),
+                    None => genesis.forks.current().
+                    Som
+                }
+                if high_qc.header().number.next() != message.proposal.number {
                     return Err(Error::ProposalNonSequentialNumber {
                         correct_number: highest_qc.header().number.next(),
                         received_number: message.proposal.number,
@@ -421,6 +396,29 @@ impl PrepareQC {
             map: BTreeMap::new(),
             signature: validator::AggregateSignature::default(),
         }
+    }
+
+    /// Get the highest block voted and check if there's a quorum of votes for it. To have a quorum
+    /// in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
+    pub fn high_vote(&self, genesis: &Genesis) -> Option<BlockHeader> {
+        let mut count: HashMap<_, usize> = HashMap::new();
+        for (msg, signers) in &self.map {
+            if let Some(v) = &msg.high_vote {
+                *count.entry(v.proposal.clone()).or_default() += signers.count();
+            }
+        }
+        // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
+        let min = 2 * genesis.validators.faulty_replicas() + 1;
+        count.into_iter().find(|x| x.1 >= min).map(|x| x.0)
+    }
+
+    /// Get the highest CommitQC.
+    pub fn high_qc(&self) -> Option<CommitQC> {
+        self.map
+            .keys()
+            .filter_map(|m|&m.high_qc)
+            .max_by_key(|qc|qc.view.number)
+            .cloned()
     }
 
     /// Add a validator's signed message.
