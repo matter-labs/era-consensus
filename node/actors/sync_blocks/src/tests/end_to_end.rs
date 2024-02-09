@@ -2,12 +2,12 @@
 use super::*;
 use anyhow::Context as _;
 use async_trait::async_trait;
-use rand::seq::SliceRandom;
+use rand::{seq::SliceRandom};
 use std::fmt;
 use test_casing::test_casing;
 use tracing::{instrument, Instrument};
 use zksync_concurrency::{
-    ctx, scope,
+    ctx, scope, ctx::channel,
     testonly::{abort_on_panic, set_timeout},
 };
 use zksync_consensus_network as network;
@@ -22,7 +22,7 @@ struct Node {
     store: Arc<BlockStore>,
     setup: Arc<GenesisSetup>,
     switch_on_sender: Option<oneshot::Sender<()>>,
-    _switch_off_sender: oneshot::Sender<()>,
+    terminate: channel::Sender<()>,
 }
 
 impl Node {
@@ -53,7 +53,7 @@ impl Node {
     ) -> (Self, NodeRunner) {
         let (store, store_runner) = new_store(ctx, &setup.blocks[0]).await;
         let (switch_on_sender, switch_on_receiver) = oneshot::channel();
-        let (switch_off_sender, switch_off_receiver) = oneshot::channel();
+        let (terminate_send, terminate_recv) = channel::bounded(1);
 
         let runner = NodeRunner {
             network,
@@ -61,19 +61,24 @@ impl Node {
             store_runner,
             setup: setup.clone(),
             switch_on_receiver,
-            switch_off_receiver,
+            terminate: terminate_recv,
         };
         let this = Self {
             store,
             setup,
             switch_on_sender: Some(switch_on_sender),
-            _switch_off_sender: switch_off_sender,
+            terminate: terminate_send,
         };
         (this, runner)
     }
 
     fn switch_on(&mut self) {
         self.switch_on_sender.take();
+    }
+
+    async fn terminate(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
+        let _ = self.terminate.try_send(());
+        self.terminate.closed(ctx).await
     }
 
     async fn put_block(&self, ctx: &ctx::Ctx, block_number: BlockNumber) {
@@ -90,18 +95,18 @@ struct NodeRunner {
     store_runner: BlockStoreRunner,
     setup: Arc<GenesisSetup>,
     switch_on_receiver: oneshot::Receiver<()>,
-    switch_off_receiver: oneshot::Receiver<()>,
+    terminate: channel::Receiver<()>,
 }
 
 impl NodeRunner {
-    async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         tracing::info!("NodeRunner::run()");
         let key = self.network.gossip.key.public();
         let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
         let (mut network, network_runner) =
             network::testonly::Instance::new(ctx, self.network.clone(), self.store.clone());
         let sync_blocks_config = test_config(&self.setup);
-        scope::run!(ctx, |ctx, s| async {
+        let res = scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(self.store_runner.run(ctx));
             s.spawn_bg(network_runner.run(ctx));
             network.wait_for_gossip_connections().await;
@@ -123,11 +128,14 @@ impl NodeRunner {
             s.spawn_bg(sync_blocks_config.run(ctx, sync_blocks_actor_pipe, self.store.clone()));
             tracing::info!("Node is fully started");
 
-            let _ = self.switch_off_receiver.recv_or_disconnected(ctx).await;
-            tracing::info!("Node stopped");
+            let _ = self.terminate.recv(ctx).await;
+            tracing::info!("stopping");
             Ok(())
         })
-        .await
+        .await;
+        drop(self.terminate);
+        tracing::info!("node stopped");
+        res
     }
 
     async fn run_executor(
@@ -277,37 +285,34 @@ impl GossipNetworkTest for SwitchingOffNodes {
         (self.node_count, self.node_count / 2)
     }
 
-    async fn test(self, ctx: &ctx::Ctx, mut node_handles: Vec<Node>) -> anyhow::Result<()> {
+    async fn test(self, ctx: &ctx::Ctx, mut nodes: Vec<Node>) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
 
-        for node_handle in &mut node_handles {
-            node_handle.switch_on();
+        for node in &mut nodes {
+            node.switch_on();
         }
+        nodes.shuffle(rng);
 
         let mut block_number = BlockNumber(1);
-        while !node_handles.is_empty() {
-            tracing::info!("{} nodes left", node_handles.len());
+        while !nodes.is_empty() {
+            tracing::info!("{} nodes left", nodes.len());
 
-            let sending_node = node_handles.choose(rng).unwrap();
-            sending_node.put_block(ctx, block_number).await;
+            nodes.choose(rng).unwrap().put_block(ctx, block_number).await;
             tracing::info!("block {block_number} inserted");
 
             // Wait until all remaining nodes get the new block.
-            for node_handle in &node_handles {
-                node_handle
-                    .store
-                    .wait_until_persisted(ctx, block_number)
-                    .await?;
+            for node in &nodes {
+                node.store.wait_until_persisted(ctx, block_number).await?;
             }
-            tracing::trace!("All nodes received block #{block_number}");
+            tracing::info!("All nodes received block #{block_number}");
             block_number = block_number.next();
 
             // Switch off a random node by dropping its handle.
             // We start switching off only after the first round, to make sure all nodes are fully
             // started.
-            let node_index_to_remove = rng.gen_range(0..node_handles.len());
-            node_handles.swap_remove(node_index_to_remove);
+            nodes.pop().unwrap().terminate(ctx).await.unwrap();
         }
+        tracing::info!("test finished, terminating");
         Ok(())
     }
 }
