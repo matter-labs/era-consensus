@@ -178,10 +178,10 @@ impl FinalBlock {
         &self.justification.message.proposal
     }
 
-    /// Validates internal consistency of this block.
-    pub fn validate(
+    /// Verified internal consistency of this block.
+    pub fn verify(
         &self,
-        validators: &super::ValidatorSet,
+        genesis: &super::Genesis,
         consensus_threshold: usize,
     ) -> Result<(), BlockValidationError> {
         let payload_hash = self.payload.hash();
@@ -192,7 +192,7 @@ impl FinalBlock {
             });
         }
         self.justification
-            .verify(validators, consensus_threshold)
+            .verify(&genesis, consensus_threshold)
             .map_err(BlockValidationError::Justification)
     }
 }

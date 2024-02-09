@@ -217,13 +217,20 @@ impl Variant<Msg> for LeaderCommit {
     }
 }
 
+#[derive(Clone,Debug,PartialEq,Eq, PartialOrd, Ord)]
+pub struct View {
+    /// Protocol version.
+    pub protocol_version: ProtocolVersion,
+    /// Fork this message belongs to.
+    pub fork: ForkId,
+    /// The number of the current view.
+    pub number: ViewNumber,
+}
+
 /// A Prepare message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ReplicaPrepare {
-    /// Protocol version.
-    pub protocol_version: ProtocolVersion,
-    /// The number of the current view.
-    pub view: ViewNumber,
+    pub view: View,
     /// The highest block that the replica has committed to.
     pub high_vote: ReplicaCommit,
     /// The highest CommitQC that the replica has seen.
@@ -233,21 +240,14 @@ pub struct ReplicaPrepare {
 /// A Commit message from a replica.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReplicaCommit {
-    /// Protocol version.
-    pub protocol_version: ProtocolVersion,
-    /// The number of the current view.
-    pub view: ViewNumber,
+    pub view: View,
     /// The header of the block that the replica is committing to.
     pub proposal: BlockHeader,
 }
 
 /// A Prepare message from a leader.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LeaderPrepare {
-    /// Protocol version.
-    pub protocol_version: ProtocolVersion,
-    /// The number of the current view.
-    pub view: ViewNumber,
+pub struct LeaderPrepare { 
     /// The header of the block that the leader is proposing.
     pub proposal: BlockHeader,
     /// Payload of the block that the leader is proposing.
@@ -260,8 +260,6 @@ pub struct LeaderPrepare {
 /// A Commit message from a leader.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeaderCommit {
-    /// Protocol version.
-    pub protocol_version: ProtocolVersion,
     /// The CommitQC that justifies the message from the leader.
     pub justification: CommitQC,
 }
@@ -271,6 +269,12 @@ pub struct LeaderCommit {
 /// and high QCs in a map. We can still aggregate the signatures though.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct PrepareQC {
+    /// Protocol version.
+    pub protocol_version: ProtocolVersion,
+    /// Fork this message belongs to.
+    pub fork: ForkId,
+    /// View of this certificate.
+    pub view: ViewNumber,
     /// Map from replica Prepare messages to the validators that signed them.
     pub map: BTreeMap<ReplicaPrepare, Signers>,
     /// Aggregate signature of the replica Prepare messages.
@@ -309,15 +313,15 @@ impl PrepareQC {
     /// Verifies the integrity of the PrepareQC.
     pub fn verify(
         &self,
+        fork: ForkId,
         view: ViewNumber,
-        validators: &ValidatorSet,
+        genesis: &Genesis,
         threshold: usize,
     ) -> anyhow::Result<()> {
         // First we check that all messages are for the same view number.
         for msg in self.map.keys() {
-            if msg.view != view {
-                bail!("PrepareQC contains messages for different views!");
-            }
+            anyhow::ensure!(msg.fork == fork);
+            anyhow::ensure!(msg.view == view, "PrepareQC contains messages for different views!");
         }
 
         // Then we need to do some checks on the signers bit maps.
@@ -346,7 +350,6 @@ impl PrepareQC {
         }
 
         // Verify that we have enough signers.
-        // TODO(gprusak): how about num_signers == threshold to make the certificates more uniform?
         if num_signers < threshold {
             bail!(
                 "Insufficient signers in PrepareQC.\nNumber of signers: {}\nThreshold: {}",
@@ -405,17 +408,12 @@ impl CommitQC {
     }
 
     /// Verifies the signature of the CommitQC.
-    pub fn verify(&self, validators: &ValidatorSet, threshold: usize) -> anyhow::Result<()> {
+    pub fn verify(&self, genesis: &Genesis, threshold: usize) -> anyhow::Result<()> {
         let signers = self.signers.0.clone();
 
         // First we to do some checks on the signers bit map.
-        if signers.len() != validators.len() {
-            bail!("Bit vector in CommitQC has wrong length!");
-        }
-
-        if !signers.any() {
-            bail!("Empty bit vector in CommitQC. We require at least one signer!");
-        }
+        anyhow::ensure!(signers.len() == genesis.validators.len(), "Bit vector in CommitQC has wrong length!");
+        anyhow::ensure!(signers.any(), "Empty bit vector in CommitQC. We require at least one signer!");
 
         // Verify that we have enough signers.
         let num_signers = signers.iter().filter(|b| *b).count();
@@ -429,7 +427,8 @@ impl CommitQC {
         }
 
         // Now we can verify the signature.
-        let messages_and_keys = validators
+        let messages_and_keys = genesis
+            .validators
             .iter()
             .enumerate()
             .filter(|(i, _)| signers[*i])
