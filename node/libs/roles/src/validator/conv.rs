@@ -1,5 +1,5 @@
 use super::{
-    ValidatorSet, View, ForkId,
+    ValidatorSet, View, ForkId, Fork,
     ForkSet, Genesis, GenesisHash,
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
     FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
@@ -13,20 +13,32 @@ use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
 
+impl ProtoFmt for Fork {
+    type Proto = proto::Fork;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
+            first_parent: read_optional(&r.first_parent).context("first_parent")?,
+        })
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            first_block: Some(self.first_block.0),
+            first_parent: self.first_parent.as_ref().map(|x|x.build()),
+        }
+    }
+}
+
 impl ProtoFmt for ForkSet {
     type Proto = proto::ForkSet;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let mut this= Self::default();
-        let mut first_blocks = r.first_blocks.iter();
-        anyhow::ensure!(first_blocks.next()==Some(&0),"initial fork should start at block 0");
-        for first_block in first_blocks {
-            this.insert(BlockNumber(*first_block));
-        }
+        let this = Self(r.forks.iter().enumerate().map(|(i,f)|Fork::read(f).context(i)).collect::<Result<_,_>>().context("forks")?);
+        anyhow::ensure!(!this.0.is_empty(),"empty");
         Ok(this)
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            first_blocks: self.0.iter().map(|f|f.first_block.0).collect(),
+            forks: self.0.iter().map(|f|f.build()).collect(),
         }
     }
 }
@@ -91,7 +103,7 @@ impl ProtoFmt for BlockHeader {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             parent: read_optional(&r.parent).context("parent")?,
-            number: BlockNumber(r.number.context("number")?),
+            number: BlockNumber(*required(&r.number).context("number")?),
             payload: read_required(&r.payload).context("payload")?,
         })
     }

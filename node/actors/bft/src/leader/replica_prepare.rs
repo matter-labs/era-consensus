@@ -41,8 +41,8 @@ pub(crate) enum Error {
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] validator::Error),
     /// Invalid message.
-    #[error("invalid message: {0:#}")]
-    InvalidMessage(#[source] anyhow::Error),
+    #[error(transparent)]
+    InvalidMessage(validator::ReplicaPrepareVerifyError),
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error(transparent)]
     Internal(#[from] ctx::Error),
@@ -74,24 +74,20 @@ impl StateMachine {
         let author = &signed_message.key;
 
         // Check protocol version compatibility.
-        if !crate::PROTOCOL_VERSION.compatible(&message.protocol_version) {
+        if !crate::PROTOCOL_VERSION.compatible(&message.view.protocol_version) {
             return Err(Error::IncompatibleProtocolVersion {
-                message_version: message.protocol_version,
+                message_version: message.view.protocol_version,
                 local_version: crate::PROTOCOL_VERSION,
             });
         }
 
         // Check that the message signer is in the validator set.
-        let validator_index =
-            self.config
-                .validator_set
-                .index(author)
-                .ok_or(Error::NonValidatorSigner {
-                    signer: author.clone(),
-                })?;
+        if !self.config.genesis.validators.contains(author) {
+            return Err(Error::NonValidatorSigner { signer: author.clone() })?;
+        }
 
         // If the message is from the "past", we discard it.
-        if (message.view, validator::Phase::Prepare) < (self.view, self.phase) {
+        if (message.view.number, validator::Phase::Prepare) < (self.view, self.phase) {
             return Err(Error::Old {
                 current_view: self.view,
                 current_phase: self.phase,
@@ -99,14 +95,14 @@ impl StateMachine {
         }
 
         // If the message is for a view when we are not a leader, we discard it.
-        if self.config.genesis.validators.view_leader(message.view) != self.config.secret_key.public() {
+        if self.config.genesis.validators.view_leader(message.view.number) != self.config.secret_key.public() {
             return Err(Error::NotLeaderInView);
         }
 
         // If we already have a message from the same validator and for the same view, we discard it.
         if let Some(existing_message) = self
             .prepare_message_cache
-            .get(&message.view)
+            .get(&message.view.number)
             .and_then(|x| x.get(author))
         {
             return Err(Error::Exists {
@@ -120,25 +116,23 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         // Verify the message.
-        message.verify(&self.config.validator_set).map_err(Error::InvalidMessage)?;
+        message.verify(&self.config.genesis).map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------
 
         // We add the message to the incrementally-constructed QC.
-        self.prepare_qcs.entry(message.view).or_default().add(
-            &signed_message,
-            validator_index,
-            &self.config.validator_set,
-        );
+        self.prepare_qcs.entry(message.view.number)
+            .or_insert_with(||validator::PrepareQC::new(message.view.clone()))
+            .add(&signed_message, &self.config.genesis);
 
         // We store the message in our cache.
         self.prepare_message_cache
-            .entry(message.view)
+            .entry(message.view.number)
             .or_default()
             .insert(author.clone(), signed_message);
 
         // Now we check if we have enough messages to continue.
-        let num_messages = self.prepare_message_cache.get(&message.view).unwrap().len();
+        let num_messages = self.prepare_message_cache.get(&message.view.number).unwrap().len();
 
         if num_messages < self.config.genesis.validators.threshold() {
             return Ok(());
@@ -146,18 +140,18 @@ impl StateMachine {
 
         // Remove replica prepare messages for this view, so that we don't create a new block proposal
         // for this same view if we receive another replica prepare message after this.
-        self.prepare_message_cache.remove(&message.view);
+        self.prepare_message_cache.remove(&message.view.number);
 
         debug_assert_eq!(num_messages, self.config.genesis.validators.threshold());
 
         // ----------- Update the state machine --------------
 
-        self.view = message.view;
+        self.view = message.view.number;
         self.phase = validator::Phase::Commit;
         self.phase_start = ctx.now();
 
         // Consume the incrementally-constructed QC for this view.
-        let justification = self.prepare_qcs.remove(&message.view).unwrap();
+        let justification = self.prepare_qcs.remove(&message.view.number).unwrap();
 
         self.prepare_qc.send_replace(Some(justification));
         Ok(())

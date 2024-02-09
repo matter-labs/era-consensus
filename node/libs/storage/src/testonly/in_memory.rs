@@ -11,7 +11,7 @@ pub struct BlockStore(Mutex<VecDeque<validator::FinalBlock>>);
 
 /// In-memory replica store.
 #[derive(Debug, Default)]
-pub struct ReplicaStore(Mutex<Option<ReplicaState>>);
+pub struct ReplicaStore(Mutex<ReplicaState>);
 
 impl BlockStore {
     /// Creates a new store containing only the specified `genesis_block`.
@@ -67,12 +67,12 @@ impl PersistentBlockStore for BlockStore {
 
 #[async_trait::async_trait]
 impl crate::ReplicaStore for ReplicaStore {
-    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>> {
+    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<ReplicaState> {
         Ok(self.0.lock().unwrap().clone())
     }
 
     async fn set_state(&self, _ctx: &ctx::Ctx, state: &ReplicaState) -> ctx::Result<()> {
-        *self.0.lock().unwrap() = Some(state.clone());
+        *self.0.lock().unwrap() = state.clone();
         Ok(())
     }
 }

@@ -6,7 +6,7 @@ use assert_matches::assert_matches;
 use pretty_assertions::assert_eq;
 use rand::Rng;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_roles::validator::{self, LeaderCommit, Phase, ViewNumber};
+use zksync_consensus_roles::validator::{self, Phase, ViewNumber};
 
 #[tokio::test]
 async fn replica_prepare_sanity() {
@@ -37,14 +37,10 @@ async fn replica_prepare_sanity_yield_leader_prepare() {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(
-            leader_prepare.msg.protocol_version,
-            replica_prepare.msg.protocol_version
-        );
-        assert_eq!(leader_prepare.msg.view, replica_prepare.msg.view);
+        assert_eq!(leader_prepare.msg.view(), &replica_prepare.msg.view);
         assert_eq!(
             leader_prepare.msg.proposal.parent,
-            replica_prepare.header().hash()
+            replica_prepare.msg.high_vote.map(|v|v.proposal.hash()),
         );
         assert_eq!(
             leader_prepare.msg.justification,
@@ -71,14 +67,10 @@ async fn replica_prepare_sanity_yield_leader_prepare_reproposal() {
             .process_replica_prepare_all(ctx, replica_prepare.clone())
             .await;
 
+        assert_eq!(leader_prepare.msg.view(), &replica_prepare.view);
         assert_eq!(
-            leader_prepare.msg.protocol_version,
-            replica_prepare.protocol_version
-        );
-        assert_eq!(leader_prepare.msg.view, replica_prepare.view);
-        assert_eq!(
-            leader_prepare.msg.proposal,
-            replica_prepare.high_vote.proposal
+            Some(leader_prepare.msg.proposal),
+            replica_prepare.high_vote.map(|v|v.proposal),
         );
         assert_eq!(leader_prepare.msg.proposal_payload, None);
         let map = leader_prepare.msg.justification.map;
@@ -100,7 +92,7 @@ async fn replica_prepare_incompatible_protocol_version() {
 
         let incompatible_protocol_version = util.incompatible_protocol_version();
         let replica_prepare = util.new_replica_prepare(|msg| {
-            msg.protocol_version = incompatible_protocol_version;
+            msg.view.protocol_version = incompatible_protocol_version;
         });
         let res = util.process_replica_prepare(ctx, replica_prepare).await;
         assert_matches!(
@@ -201,7 +193,7 @@ async fn replica_prepare_not_leader_in_view() {
 
         let replica_prepare = util.new_replica_prepare(|msg| {
             // Moving to the next view changes the leader.
-            msg.view = msg.view.next();
+            msg.view.number = msg.view.number.next();
         });
         let res = util.process_replica_prepare(ctx, replica_prepare).await;
         assert_matches!(res, Err(ReplicaPrepareError::NotLeaderInView));
@@ -308,8 +300,8 @@ async fn replica_prepare_high_qc_of_current_view() {
         let view = ViewNumber(1);
         let qc_view = ViewNumber(1);
         util.set_view(view);
-        let qc = util.new_commit_qc(|msg| msg.view = qc_view);
-        let replica_prepare = util.new_replica_prepare(|msg| msg.high_qc = qc);
+        let qc = util.new_commit_qc(|msg| msg.view.number = qc_view);
+        let replica_prepare = util.new_replica_prepare(|msg| msg.high_qc = Some(qc));
         let res = util.process_replica_prepare(ctx, replica_prepare).await;
         /*assert_matches!(
             res,
@@ -335,8 +327,8 @@ async fn replica_prepare_high_qc_of_future_view() {
         let view = ViewNumber(1);
         let qc_view = ViewNumber(2);
         util.set_view(view);
-        let qc = util.new_commit_qc(|msg| msg.view = qc_view);
-        let replica_prepare = util.new_replica_prepare(|msg| msg.high_qc = qc);
+        let qc = util.new_commit_qc(|msg| msg.view.number = qc_view);
+        let replica_prepare = util.new_replica_prepare(|msg| msg.high_qc = Some(qc));
         let res = util.process_replica_prepare(ctx, replica_prepare).await;
         /*TODO: assert_matches!(
             res,
@@ -380,16 +372,7 @@ async fn replica_commit_sanity_yield_leader_commit() {
             .await
             .unwrap()
             .unwrap();
-        assert_matches!(
-            leader_commit.msg,
-            LeaderCommit {
-                protocol_version,
-                justification,
-            } => {
-                assert_eq!(protocol_version, replica_commit.msg.protocol_version);
-                assert_eq!(justification, util.new_commit_qc(|msg| *msg = replica_commit.msg));
-            }
-        );
+        assert_eq!(leader_commit.msg.justification, util.new_commit_qc(|msg| *msg = replica_commit.msg));
         Ok(())
     })
     .await
@@ -406,7 +389,7 @@ async fn replica_commit_incompatible_protocol_version() {
 
         let incompatible_protocol_version = util.incompatible_protocol_version();
         let mut replica_commit = util.new_replica_commit(ctx).await.msg;
-        replica_commit.protocol_version = incompatible_protocol_version;
+        replica_commit.view.protocol_version = incompatible_protocol_version;
         let res = util
             .process_replica_commit(ctx, util.owner_key().sign_msg(replica_commit))
             .await;
@@ -455,7 +438,7 @@ async fn replica_commit_old() {
         s.spawn_bg(runner.run(ctx));
 
         let mut replica_commit = util.new_replica_commit(ctx).await.msg;
-        replica_commit.view = util.replica.view.prev();
+        replica_commit.view.number = util.replica.view.prev();
         let replica_commit = util.owner_key().sign_msg(replica_commit);
         let res = util.process_replica_commit(ctx, replica_commit).await;
         assert_matches!(

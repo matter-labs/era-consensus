@@ -1,9 +1,8 @@
 use crate::{
-    misc::consensus_threshold,
     testonly::{ut_harness::UTHarness, Behavior, Network, Test},
 };
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_roles::validator::Phase;
+use zksync_consensus_roles::validator;
 
 async fn run_test(behavior: Behavior, network: Network) {
     zksync_concurrency::testonly::abort_on_panic();
@@ -11,7 +10,7 @@ async fn run_test(behavior: Behavior, network: Network) {
 
     const NODES: usize = 11;
     let mut nodes = vec![behavior; NODES];
-    for n in &mut nodes[0..consensus_threshold(NODES)] {
+    for n in &mut nodes[0..validator::threshold(NODES)] {
         *n = Behavior::Honest;
     }
     Test {
@@ -114,7 +113,7 @@ async fn timeout_leader_in_commit() {
 
         util.new_leader_prepare(ctx).await;
         // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
-        assert_eq!(util.leader.phase, Phase::Commit);
+        assert_eq!(util.leader.phase, validator::Phase::Commit);
         util.produce_block_after_timeout(ctx).await;
         Ok(())
     })
@@ -133,7 +132,7 @@ async fn timeout_replica_in_commit() {
 
         util.new_replica_commit(ctx).await;
         // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
-        assert_eq!(util.leader.phase, Phase::Commit);
+        assert_eq!(util.leader.phase, validator::Phase::Commit);
         util.produce_block_after_timeout(ctx).await;
         Ok(())
     })
@@ -157,7 +156,7 @@ async fn timeout_leader_some_commits() {
             .unwrap()
             .is_none());
         // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
-        assert_eq!(util.leader_phase(), Phase::Commit);
+        assert_eq!(util.leader_phase(), validator::Phase::Commit);
         util.produce_block_after_timeout(ctx).await;
         Ok(())
     })

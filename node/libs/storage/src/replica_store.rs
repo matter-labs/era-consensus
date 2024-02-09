@@ -12,7 +12,7 @@ use zksync_protobuf::{read_required, read_optional, required, ProtoFmt};
 #[async_trait::async_trait]
 pub trait ReplicaStore: fmt::Debug + Send + Sync {
     /// Gets the replica state, if it is contained in the database.
-    async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>>;
+    async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<ReplicaState>;
 
     /// Stores the given replica state into the database.
     async fn set_state(&self, ctx: &ctx::Ctx, state: &ReplicaState) -> ctx::Result<()>;

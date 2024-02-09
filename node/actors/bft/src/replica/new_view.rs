@@ -13,10 +13,11 @@ impl StateMachine {
         // Update the state machine.
         self.view = self.view.next();
         self.phase = validator::Phase::Prepare;
-
-        // Clear the block cache.
-        self.block_proposal_cache
-            .retain(|k, _| k > &self.high_qc.message.proposal.number);
+        if let Some(qc) = self.high_qc.as_ref() {
+            // Clear the block cache.
+            self.block_proposal_cache
+                .retain(|k, _| k > &qc.header().number);
+        }
 
         // Backup our state.
         self.backup_state(ctx).await.wrap("backup_state()")?;
@@ -37,7 +38,7 @@ impl StateMachine {
                         high_qc: self.high_qc.clone(),
                     },
                 )),
-            recipient: Target::Validator(self.config.view_leader(self.view)),
+            recipient: Target::Validator(self.config.genesis.validators.view_leader(self.view)),
         };
         self.outbound_pipe.send(output_message.into());
 

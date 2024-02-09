@@ -1,6 +1,6 @@
 //! Messages related to blocks.
 
-use super::CommitQC;
+use super::{CommitQC,CommitQCVerifyError};
 use std::fmt;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 
@@ -228,5 +228,5 @@ pub enum BlockValidationError {
     },
     /// Failed verifying quorum certificate.
     #[error("failed verifying quorum certificate: {0:#?}")]
-    Justification(#[source] anyhow::Error),
+    Justification(#[source] CommitQCVerifyError),
 }

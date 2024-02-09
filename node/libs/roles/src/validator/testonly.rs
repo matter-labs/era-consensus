@@ -1,6 +1,6 @@
 //! Test-only utilities.
 use super::{
-    ForkId,
+    ForkId, Fork,
     Genesis, GenesisHash, ForkSet, View,
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
     FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
@@ -40,7 +40,7 @@ impl<'a> BlockBuilder<'a> {
     pub fn push(self) {
         let mut justification = CommitQC::new(self.msg, &self.setup.genesis);
         for key in &self.setup.keys {
-            justification.add(key.sign_msg(justification.message.clone()),&self.setup.genesis);
+            justification.add(&key.sign_msg(justification.message.clone()),&self.setup.genesis);
         }
         self.setup.blocks.push(FinalBlock {
             payload: self.payload,
@@ -92,7 +92,7 @@ impl GenesisSetup {
         let keys : Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
         let genesis = Genesis {
             validators: ValidatorSet::new(keys.iter().map(|k|k.public())).unwrap(),
-            forks: ForkSet::default(),
+            forks: ForkSet::new(Fork::default()),
         };
         Self {
             keys,
@@ -236,11 +236,20 @@ impl Distribution<GenesisHash> for Standard {
     }
 }
 
+impl Distribution<Fork> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Fork {
+        Fork { 
+            first_block: rng.gen(),
+            first_parent: rng.gen(),
+        }
+    }
+}
+
 impl Distribution<ForkSet> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ForkSet {
-        let mut x = ForkSet::default();
+        let mut x = ForkSet::new(rng.gen());
         for _ in 0..3 {
-            x.insert(rng.gen());
+            x.push(rng.gen());
         }
         x
     }

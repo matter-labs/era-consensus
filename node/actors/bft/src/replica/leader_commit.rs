@@ -15,14 +15,12 @@ pub(crate) enum Error {
         local_version: ProtocolVersion,
     },
     /// Invalid leader.
-    #[error(
-        "invalid leader (correct leader: {correct_leader:?}, received leader: {received_leader:?})"
-    )]
-    InvalidLeader {
-        /// Correct leader.
-        correct_leader: validator::PublicKey,
+    #[error("bad leader: got {got:?}, want {want:?}")]
+    BadLeader {
         /// Received leader.
-        received_leader: validator::PublicKey,
+        got: validator::PublicKey,
+        /// Correct leader.
+        want: validator::PublicKey,
     },
     /// Past view of phase.
     #[error("past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
@@ -69,27 +67,26 @@ impl StateMachine {
         // Unwrap message.
         let message = &signed_message.msg;
         let author = &signed_message.key;
-        let view = message.justification.message.view;
 
         // Check protocol version compatibility.
-        if !crate::PROTOCOL_VERSION.compatible(&message.protocol_version) {
+        if !crate::PROTOCOL_VERSION.compatible(&message.view().protocol_version) {
             return Err(Error::IncompatibleProtocolVersion {
-                message_version: message.protocol_version,
+                message_version: message.view().protocol_version,
                 local_version: crate::PROTOCOL_VERSION,
             });
         }
 
         // Check that it comes from the correct leader.
-        let leader = self.config.genesis.validators.view_leader(view);
+        let leader = self.config.genesis.validators.view_leader(message.view().number);
         if author != &leader {
-            return Err(Error::InvalidLeader {
-                correct_leader: leader,
-                received_leader: author.clone(),
+            return Err(Error::BadLeader {
+                want: leader,
+                got: author.clone(),
             });
         }
 
         // If the message is from the "past", we discard it.
-        if (view, validator::Phase::Commit) < (self.view, self.phase) {
+        if (message.view().number, validator::Phase::Commit) < (self.view, self.phase) {
             return Err(Error::Old {
                 current_view: self.view,
                 current_phase: self.phase,
@@ -101,8 +98,7 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
-        message.verify(&self.config.validator_set)
-            .map_err(Error::InvalidMessage)?;
+        message.verify(&self.config.genesis).map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------
 
@@ -111,14 +107,8 @@ impl StateMachine {
             .await
             .wrap("save_block()")?;
 
-        // Update the state machine. We don't update the view and phase (or backup our state) here
-        // because we will do it when we start the new view.
-        if message.justification.message.view >= self.high_qc.message.view {
-            self.high_qc = message.justification.clone();
-        }
-
         // Start a new view. But first we skip to the view of this message.
-        self.view = view;
+        self.view = message.view().number;
         self.start_new_view(ctx).await.wrap("start_new_view()")?;
 
         Ok(())

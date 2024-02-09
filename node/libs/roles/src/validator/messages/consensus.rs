@@ -1,9 +1,9 @@
 //! Messages related to the consensus protocol.
-use super::{BlockNumber, BlockHeader, Msg, Payload, Signed};
+use super::{BlockNumber, BlockHeaderHash, BlockHeader, Msg, Payload, Signed};
 use crate::{validator};
 use anyhow::Context as _;
 use bit_vec::BitVec;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{HashMap, BTreeMap, BTreeSet};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 use zksync_consensus_crypto::{TextFmt, ByteFmt, Text, keccak256::Keccak256};
 use std::fmt;
@@ -45,14 +45,17 @@ impl TryFrom<u32> for ProtocolVersion {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ForkId(pub usize);
 
+/// Specification of a fork.
 #[derive(Clone,Debug, PartialEq)]
-pub(crate) struct Fork {
-    pub(crate) first_block: BlockNumber,
-    parent_fork: Option<ForkId>,
+pub struct Fork {
+    /// First block of a fork.
+    pub first_block: BlockNumber,
+    /// Parent fo the first block of a fork.
+    pub first_parent: Option<BlockHeaderHash>,
 }
 
 impl Default for Fork {
-    fn default() -> Self { Self { first_block: BlockNumber(0), parent_fork: None } }
+    fn default() -> Self { Self { first_block: BlockNumber(0), first_parent: None } }
 }
 
 /// History of forks of the blockchain.
@@ -61,37 +64,34 @@ impl Default for Fork {
 #[derive(Debug,Clone,PartialEq)]
 pub struct ForkSet(pub(in crate::validator) Vec<Fork>);
 
-impl Default for ForkSet {
-    fn default() -> Self { Self(vec![Fork::default()]) }
+impl ForkSet {
+    /// Constructs a new fork set.
+    pub fn new(fork:Fork) -> Self { Self(vec![fork]) }
 }
 
 impl ForkSet {
-    /// Inserts a new fork to the fork set, attached to the highest fork with
-    /// the block `first_block-1`.
-    pub fn insert(&mut self, first_block: BlockNumber) {
-        self.0.push(Fork {
-            first_block,
-            parent_fork: first_block.prev().map(|b|self.find(b)),
-        });
+    /// Inserts a new fork to the fork set.
+    pub fn push(&mut self, fork: Fork) {
+        self.0.push(fork);
     }
 
     /// Current fork that node is participating in. 
-    pub fn current(&self) -> ForkId {
-        ForkId(self.0.len()-1)
-    }
+    pub fn current(&self) -> ForkId { ForkId(self.0.len()-1) }
+    /// First block of the current fork.
+    pub fn first_block(&self) -> BlockNumber { self.0.last().unwrap().first_block }
+    /// Parent of the first block of the current fork.
+    pub fn first_parent(&self) -> Option<BlockHeaderHash> { self.0.last().unwrap().first_parent }
 
     /// Finds the fork which the given block belongs to.
     /// This should be used to verify the quorum certificate
     /// on a finalized block fetched from the network.
-    pub fn find(&self, block: BlockNumber) -> ForkId {
-        let mut i = self.current();
-        loop {
-            if self.0[i.0].first_block <= block {
-                return i;
+    pub fn find(&self, block: BlockNumber) -> Option<ForkId> {
+        for i in (0..self.0.len()-1).rev() {
+            if self.0[i].first_block >= block {
+                return Some(ForkId(i));
             }
-            // By construction, every block belongs to some fork.
-            i = self.0[i.0].parent_fork.unwrap();
         }
+        None
     }
 }
 
@@ -163,8 +163,8 @@ impl ConsensusMsg {
         match self {
             Self::ReplicaPrepare(m) => &m.view,
             Self::ReplicaCommit(m) => &m.view,
-            Self::LeaderPrepare(m) => &m.justification.view,
-            Self::LeaderCommit(m) => &m.justification.message.view,
+            Self::LeaderPrepare(m) => &m.view(),
+            Self::LeaderCommit(m) => &m.view(),
         } 
     }
 
@@ -253,16 +253,44 @@ pub struct ReplicaPrepare {
     pub high_qc: Option<CommitQC>,
 }
 
+/// Error returned by `ReplicaPrepare::verify()`.
+#[derive(thiserror::Error,Debug)]
+pub enum ReplicaPrepareVerifyError {
+    /// BadFork.
+    #[error("bad fork")]
+    BadFork,
+    /// FutureHighVoteView.
+    #[error("high vote from the future")]
+    FutureHighVoteView,
+    /// FutureHighQCView.
+    #[error("high qc from the future")]
+    FutureHighQCView,
+    /// HighVote.
+    #[error("high_vote: {0:#}")]
+    HighVote(#[source] anyhow::Error),
+    /// HighQC.
+    #[error("high_qc: {0:#}")]
+    HighQC(#[source] CommitQCVerifyError),
+}
+
 impl ReplicaPrepare {
     /// Verifies the message.
-    pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
+    pub fn verify(&self, genesis: &Genesis) -> Result<(),ReplicaPrepareVerifyError> {
+        use ReplicaPrepareVerifyError as Error;
+        if self.view.fork != genesis.forks.current() {
+            return Err(Error::BadFork);
+        }
         if let Some(v) = &self.high_vote {
-            anyhow::ensure!(self.view.after(&v.view));
-            v.verify(genesis).context("high_vote")?;
+            if self.view.number <= v.view.number {
+                return Err(Error::FutureHighVoteView);
+            }
+            v.verify(genesis).map_err(Error::HighVote)?;
         }
         if let Some(qc) = &self.high_qc {
-            anyhow::ensure!(self.view.after(&qc.view()));
-            qc.verify(genesis).context("high_qc")?;
+            if self.view.number <= qc.view().number {
+                return Err(Error::FutureHighQCView);
+            }
+            qc.verify(genesis).map_err(Error::HighQC)?;
         }
         Ok(())
     }
@@ -279,7 +307,10 @@ pub struct ReplicaCommit {
 
 impl ReplicaCommit {
     /// Verifies the message.
-    pub fn verify(&self, _genesis: &Genesis) -> anyhow::Result<()> {
+    pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
+        let fork = genesis.forks.current();
+        anyhow::ensure!(self.view.fork == fork);
+        anyhow::ensure!(genesis.forks.find(self.proposal.number) == Some(fork));
         Ok(())
     }
 }
@@ -296,13 +327,68 @@ pub struct LeaderPrepare {
     pub justification: PrepareQC,
 }
 
-impl LeaderPrepare {
-    /// Verifies LeaderPrepare.
-    pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
-        self.justification.verify(genesis).context("justification")?;
-        let high_vote = self.justification.high_vote(genesis);
-        let high_qc = self.justification.high_qc(genesis);
+/// Error returned by `LeaderPrepare::verify()`.
+#[derive(thiserror::Error,Debug)]
+pub enum LeaderPrepareVerifyError {
+    /// Justification
+    #[error("justification: {0:#}")]
+    Justification(#[source] anyhow::Error),
+    /// Bad block number.
+    #[error("bad block number: got {got:?}, want {want:?}")]
+    BadBlockNumber {
+        /// Correct proposal number.
+        want: BlockNumber,
+        /// Received proposal number.
+        got: BlockNumber,
+    },
+    /// Bad parent hash.
+    #[error("bad parent hash: got {got:?}, want {want:?}")]
+    BadParentHash {
+        /// Correct parent hash.
+        want: Option<BlockHeaderHash>,
+        /// Received parent hash.
+        got: Option<BlockHeaderHash>,
+    },
+    /// New block proposal when the previous proposal was not finalized.
+    #[error("new block proposal when the previous proposal was not finalized")]
+    ProposalWhenPreviousNotFinalized,
+    /// Mismatched payload.
+    #[error("block proposal with mismatched payload")]
+    ProposalMismatchedPayload,
+    /// Re-proposal without quorum.
+    #[error("block re-proposal without quorum for the re-proposal")]
+    ReproposalWithoutQuorum,
+    /// Re-proposal when the previous proposal was finalized.
+    #[error("block re-proposal when the previous proposal was finalized")]
+    ReproposalWhenFinalized,
+    /// Reproposed a bad block.
+    #[error("Reproposed a bad block")]
+    ReproposalBadBlock,
+}
 
+impl LeaderPrepare {
+    /// View of the message.
+    pub fn view(&self) -> &View {
+        &self.justification.view
+    }
+
+    /// Verifies LeaderPrepare.
+    pub fn verify(&self, genesis: &Genesis) -> Result<(),LeaderPrepareVerifyError> {
+        use LeaderPrepareVerifyError as Error;
+        self.justification.verify(genesis).map_err(Error::Justification)?;
+        let high_vote = self.justification.high_vote(genesis);
+        let high_qc = self.justification.high_qc();
+
+        let (want_parent,want_number) = match high_qc {
+            Some(qc) => (Some(qc.header().hash()),qc.header().number.next()),
+            None => (genesis.forks.first_parent(),genesis.forks.first_block()),
+        };
+        if self.proposal.parent != want_parent {
+            return Err(Error::BadParentHash{got:self.proposal.parent, want: want_parent});
+        }
+        if self.proposal.number != want_number {
+            return Err(Error::BadBlockNumber{got:self.proposal.number, want: want_number});
+        }
         // Check that the proposal is valid.
         match &self.proposal_payload {
             // The leader proposed a new block.
@@ -313,44 +399,23 @@ impl LeaderPrepare {
                 }
 
                 // Check that we finalized the previous block.
-                if high_vote && high_vote.as_ref() != &high_qc.map(|qc|&qc.message.proposal) {
+                if high_vote.is_some() && high_vote.as_ref() != high_qc.map(|qc|&qc.message.proposal) {
                     return Err(Error::ProposalWhenPreviousNotFinalized);
                 }
-
-                // Parent hash should match.
-                let want_parent = high_qc.map(|qc|qc.header().hash());
-                if want_parent != self.proposal.parent {
-                    return Err(Error::ProposalInvalidParentHash {
-                        correct_parent_hash: want_parent,
-                        received_parent_hash: self.proposal.parent,
-                        header: self.proposal.clone(),
-                    });
+            }
+            None => {
+                let Some(high_vote) = &high_vote else {
+                    return Err(Error::ReproposalWithoutQuorum);
+                };
+                if let Some(high_qc) = &high_qc {
+                    if high_vote.number == high_qc.header().number {
+                        return Err(Error::ReproposalWhenFinalized);
+                    }
                 }
-
-                // Block number should match.
-                let want_block = match &high_qc {
-                    Some(qc) => qc.header().number.next(),
-                    None => genesis.forks.current().
-                    Som
+                if high_vote != &self.proposal {
+                    return Err(Error::ReproposalBadBlock);
                 }
-                if high_qc.header().number.next() != message.proposal.number {
-                    return Err(Error::ProposalNonSequentialNumber {
-                        correct_number: highest_qc.header().number.next(),
-                        received_number: message.proposal.number,
-                        header: message.proposal,
-                    });
-                }
-
-        // Block number should match.
-        if highest_qc.header().number.next() != message.proposal.number {
-            return Err(Error::ProposalNonSequentialNumber {
-                correct_number: highest_qc.header().number.next(),
-                received_number: message.proposal.number,
-                header: message.proposal,
-            });
-        }
-        if let Some(payload) = &self.proposal_payload {
-            anyhow::ensure!(self.proposal.payload == payload.hash()); 
+            }
         }
         Ok(())
     }
@@ -413,18 +478,20 @@ impl PrepareQC {
     }
 
     /// Get the highest CommitQC.
-    pub fn high_qc(&self) -> Option<CommitQC> {
+    pub fn high_qc(&self) -> Option<&CommitQC> {
         self.map
             .keys()
-            .filter_map(|m|&m.high_qc)
-            .max_by_key(|qc|qc.view.number)
-            .cloned()
+            .filter_map(|m|m.high_qc.as_ref())
+            .max_by_key(|qc|qc.view().number)
     }
 
     /// Add a validator's signed message.
     /// * `signed_message` - A valid signed `ReplicaPrepare` message.
     /// * `validator_index` - The signer index in the validator set.
     pub fn add(&mut self, msg: &Signed<ReplicaPrepare>, genesis: &Genesis) {
+        // TODO: check if there is already a message from that validator.
+        // TODO: verify msg
+        if msg.msg.view != self.view { return }
         let Some(i) = genesis.validators.index(&msg.key) else { return };
         let e = self.map.entry(msg.msg.clone()).or_insert_with(|| Signers::new(genesis.validators.len()));
         if e.0[i] { return };
@@ -477,6 +544,28 @@ pub struct CommitQC {
     pub signature: validator::AggregateSignature,
 }
 
+/// Error returned by `CommitQc::verify()`.
+#[derive(thiserror::Error,Debug)]
+pub enum CommitQCVerifyError {
+    /// Invalid message.
+    #[error("invalid message: {0:#}")]
+    InvalidMessage(#[source] anyhow::Error),
+    /// Bad signer set.
+    #[error("signers set doesn't match genesis")]
+    BadSignersSet,
+    /// Not enough signers.
+    #[error("not enough signers: got {got}, want {want}")]
+    NotEnoughSigners { 
+        /// Got signers.
+        got: usize,
+        /// Want signers.
+        want: usize,
+    }, 
+    /// Bad signature.
+    #[error("bad signature: {0:#}")]
+    BadSignature(#[source] validator::Error),
+}
+
 impl CommitQC {
     /// Header of the certified block.
     pub fn header(&self) -> &BlockHeader {
@@ -498,7 +587,7 @@ impl CommitQC {
     }
 
     /// Add a validator's signature.
-    pub fn add(&mut self, msg: Signed<ReplicaCommit>, genesis: &Genesis) {
+    pub fn add(&mut self, msg: &Signed<ReplicaCommit>, genesis: &Genesis) {
         if self.message != msg.msg { return };
         let Some(i) = genesis.validators.index(&msg.key) else { return };
         if self.signers.0[i] { return };
@@ -507,13 +596,19 @@ impl CommitQC {
     }
 
     /// Verifies the signature of the CommitQC.
-    pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
-        anyhow::ensure!(self.signers.len() == genesis.validators.len(), "Bit vector in CommitQC has wrong length!");
+    pub fn verify(&self, genesis: &Genesis) -> Result<(),CommitQCVerifyError> {
+        use CommitQCVerifyError as Error;
+        self.message.verify(genesis).map_err(Error::InvalidMessage)?;
+        if self.signers.len() != genesis.validators.len() {
+            return Err(Error::BadSignersSet);
+        }
 
         // Verify that we have enough signers.
         let num_signers = self.signers.count();
         let threshold = genesis.validators.threshold();
-        anyhow::ensure!(num_signers >= threshold, "got {num_signers} signers, want >= {threshold}");
+        if num_signers < threshold {
+            return Err(Error::NotEnoughSigners { got: num_signers, want: threshold });
+        }
 
         // Now we can verify the signature.
         let messages_and_keys = genesis.validators
@@ -522,7 +617,7 @@ impl CommitQC {
             .filter(|(i, _)| self.signers.0[*i])
             .map(|(_, pk)| (self.message.clone(), pk));
 
-        Ok(self.signature.verify_messages(messages_and_keys)?)
+        self.signature.verify_messages(messages_and_keys).map_err(Error::BadSignature)
     }
 }
 

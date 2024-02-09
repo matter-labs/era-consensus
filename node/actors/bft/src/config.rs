@@ -1,7 +1,6 @@
 //! The inner data of the consensus state machine. This is shared between the different roles.
 use crate::{PayloadManager};
 use std::sync::Arc;
-use tracing::instrument;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage as storage;
 

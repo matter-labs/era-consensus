@@ -61,7 +61,7 @@ impl UTHarness {
 
         let cfg = Arc::new(Config {
             secret_key: setup.keys[0].clone(),
-            validator_set: setup.genesis.validators.clone(),
+            genesis: setup.genesis.clone(),
             block_store: block_store.clone(),
             replica_store: Box::new(in_memory::ReplicaStore::default()),
             payload_manager,
@@ -84,7 +84,7 @@ impl UTHarness {
     /// Creates a new `UTHarness` with minimally-significant validator set size.
     pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, BlockStoreRunner) {
         let num_validators = 6;
-        assert!(crate::misc::faulty_replicas(num_validators) > 0);
+        assert!(validator::faulty_replicas(num_validators) > 0);
         UTHarness::new(ctx, num_validators).await
     }
 
@@ -93,10 +93,13 @@ impl UTHarness {
     /// recovers after a timeout.
     pub(crate) async fn produce_block_after_timeout(&mut self, ctx: &ctx::Ctx) {
         let want = ReplicaPrepare {
-            protocol_version: self.protocol_version(),
-            view: self.replica.view.next(),
+            view: validator::View {
+                protocol_version: self.protocol_version(),
+                fork: self.replica.config.genesis.forks.current(),
+                number: self.replica.view.next(),
+            },
             high_qc: self.replica.high_qc.clone(),
-            high_vote: self.replica.high_vote,
+            high_vote: self.replica.high_vote.clone(),
         };
         let replica_prepare = self.process_replica_timeout(ctx).await;
         assert_eq!(want, replica_prepare.msg);
@@ -148,7 +151,7 @@ impl UTHarness {
         let mut msg = ReplicaPrepare {
             protocol_version: self.protocol_version(),
             view: self.replica.view,
-            high_vote: self.replica.high_vote,
+            high_vote: self.replica.high_vote.clone(),
             high_qc: self.replica.high_qc.clone(),
         };
         mutate_fn(&mut msg);
@@ -162,7 +165,7 @@ impl UTHarness {
         let mut msg = ReplicaCommit {
             protocol_version: self.protocol_version(),
             view: self.replica.view,
-            proposal: self.replica.high_qc.message.proposal,
+            proposal: self.replica.high_qc.message.proposal.clone(),
         };
         mutate_fn(&mut msg);
         self.owner_key().sign_msg(msg)
@@ -231,7 +234,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaPrepare,
     ) -> Signed<LeaderPrepare> {
-        let want_threshold = self.replica.config.threshold();
+        let want_threshold = self.validators().threshold();
         let mut leader_prepare = None;
         let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
         for (i, msg) in msgs.into_iter().enumerate() {
@@ -260,8 +263,8 @@ impl UTHarness {
         msg: ReplicaCommit,
     ) -> Signed<LeaderCommit> {
         for (i, key) in self.keys.iter().enumerate() {
-            let res = self.leader.process_replica_commit(ctx, key.sign_msg(msg));
-            let want_threshold = self.replica.config.threshold();
+            let res = self.leader.process_replica_commit(ctx, key.sign_msg(msg.clone()));
+            let want_threshold = self.validators().threshold();
             match (i + 1).cmp(&want_threshold) {
                 Ordering::Equal => res.unwrap(),
                 Ordering::Less => res.unwrap(),
@@ -292,11 +295,11 @@ impl UTHarness {
     }
 
     pub(crate) fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
-        self.replica.config.view_leader(view)
+        self.validators().view_leader(view)
     }
 
-    pub(crate) fn validator_set(&self) -> validator::ValidatorSet {
-        validator::ValidatorSet::new(self.keys.iter().map(|k| k.public())).unwrap()
+    pub(crate) fn validators(&self) -> &validator::ValidatorSet {
+        &self.replica.config.genesis.validators
     }
 
     pub(crate) fn new_commit_qc(&self, mutate_fn: impl FnOnce(&mut ReplicaCommit)) -> CommitQC {

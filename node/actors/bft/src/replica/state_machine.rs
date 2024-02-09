@@ -23,10 +23,11 @@ pub(crate) struct StateMachine {
     /// The current phase.
     pub(crate) phase: validator::Phase,
     /// The highest block proposal that the replica has committed to.
-    pub(crate) high_vote: validator::ReplicaCommit,
+    pub(crate) high_vote: Option<validator::ReplicaCommit>,
     /// The highest commit quorum certificate known to the replica.
-    pub(crate) high_qc: validator::CommitQC,
+    pub(crate) high_qc: Option<validator::CommitQC>,
     /// A cache of the received block proposals.
+    // TODO: this should be invalidated per view, not block number which is no longer monotone
     pub(crate) block_proposal_cache:
         BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
     /// The deadline to receive an input message.
@@ -45,10 +46,7 @@ impl StateMachine {
         config: Arc<Config>,
         outbound_pipe: OutputSender,
     ) -> ctx::Result<(Self, sync::prunable_mpsc::Sender<ConsensusReq>)> {
-        let backup = match config.replica_store.state(ctx).await? {
-            Some(backup) => backup,
-            None => config.block_store.subscribe().borrow().last.clone().into(),
-        };
+        let backup = config.replica_store.state(ctx).await?;
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
         for proposal in backup.proposals {
             block_proposal_cache
@@ -152,7 +150,7 @@ impl StateMachine {
         let backup = storage::ReplicaState {
             view: self.view,
             phase: self.phase,
-            high_vote: self.high_vote,
+            high_vote: self.high_vote.clone(),
             high_qc: self.high_qc.clone(),
             proposals,
         };

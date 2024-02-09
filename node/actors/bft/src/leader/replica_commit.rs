@@ -59,24 +59,20 @@ impl StateMachine {
         let author = &signed_message.key;
 
         // Check protocol version compatibility.
-        if !crate::PROTOCOL_VERSION.compatible(&message.protocol_version) {
+        if !crate::PROTOCOL_VERSION.compatible(&message.view.protocol_version) {
             return Err(Error::IncompatibleProtocolVersion {
-                message_version: message.protocol_version,
+                message_version: message.view.protocol_version,
                 local_version: crate::PROTOCOL_VERSION,
             });
         }
 
         // Check that the message signer is in the validator set.
-        let validator_index =
-            self.config
-                .validator_set
-                .index(author)
-                .ok_or(Error::NonValidatorSigner {
-                    signer: author.clone(),
-                })?;
+        if !self.config.genesis.validators.contains(author) {
+            return Err(Error::NonValidatorSigner { signer: author.clone() });
+        }
 
         // If the message is from the "past", we discard it.
-        if (message.view, validator::Phase::Commit) < (self.view, self.phase) {
+        if (message.view.number, validator::Phase::Commit) < (self.view, self.phase) {
             return Err(Error::Old {
                 current_view: self.view,
                 current_phase: self.phase,
@@ -84,14 +80,14 @@ impl StateMachine {
         }
 
         // If the message is for a view when we are not a leader, we discard it.
-        if self.config.genesis.validators.view_leader(message.view) != self.config.secret_key.public() {
+        if self.config.genesis.validators.view_leader(message.view.number) != self.config.secret_key.public() {
             return Err(Error::NotLeaderInView);
         }
 
         // If we already have a message from the same validator and for the same view, we discard it.
         if let Some(existing_message) = self
             .commit_message_cache
-            .get(&message.view)
+            .get(&message.view.number)
             .and_then(|x| x.get(author))
         {
             return Err(Error::DuplicateMessage {
@@ -108,12 +104,12 @@ impl StateMachine {
 
         // We add the message to the incrementally-constructed QC.
         self.commit_qcs
-            .entry(message.view)
-            .or_insert(CommitQC::new(message.clone(), &self.config.validator_set))
-            .add(&signed_message.sig, validator_index);
+            .entry(message.view.number)
+            .or_insert_with(||CommitQC::new(message.clone(), &self.config.genesis))
+            .add(&signed_message, &self.config.genesis);
 
         // We store the message in our cache.
-        let cache_entry = self.commit_message_cache.entry(message.view).or_default();
+        let cache_entry = self.commit_message_cache.entry(message.view.number).or_default();
         cache_entry.insert(author.clone(), signed_message.clone());
 
         // Now we check if we have enough messages to continue.
@@ -136,7 +132,7 @@ impl StateMachine {
         metrics::METRICS
             .leader_commit_phase_latency
             .observe_latency(now - self.phase_start);
-        self.view = message.view.next();
+        self.view = message.view.number.next();
         self.phase = validator::Phase::Prepare;
         self.phase_start = now;
 
@@ -144,10 +140,10 @@ impl StateMachine {
 
         // Remove replica commit messages for this view, so that we don't create a new leader commit
         // for this same view if we receive another replica commit message after this.
-        self.commit_message_cache.remove(&message.view);
+        self.commit_message_cache.remove(&message.view.number);
 
         // Consume the incrementally-constructed QC for this view.
-        let justification = self.commit_qcs.remove(&message.view).unwrap();
+        let justification = self.commit_qcs.remove(&message.view.number).unwrap();
 
         // Broadcast the leader commit message to all replicas (ourselves included).
         let output_message = ConsensusInputMessage {
@@ -155,10 +151,7 @@ impl StateMachine {
                 .config
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::LeaderCommit(
-                    validator::LeaderCommit {
-                        protocol_version: crate::PROTOCOL_VERSION,
-                        justification,
-                    },
+                    validator::LeaderCommit { justification },
                 )),
             recipient: Target::Broadcast,
         };

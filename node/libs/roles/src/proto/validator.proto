@@ -4,10 +4,13 @@ package zksync.roles.validator;
 
 import "zksync/std.proto";
 
+message Fork {
+  optional uint64 first_block = 1; // required; BlockNumber
+  optional BlockHeaderHash first_parent = 2; // optional
+}
+
 message ForkSet {
-  // First block of each fork.
-  // First fork has to start at block 0.
-  repeated uint64 first_blocks = 1; // BlockNumber
+  repeated Fork forks = 1; 
 }
 
 message Genesis {
