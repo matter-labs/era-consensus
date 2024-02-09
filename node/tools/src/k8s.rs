@@ -113,18 +113,21 @@ pub async fn create_deployment(
                     "ports": [
                       {
                         "containerPort": 3054
+                      },
+                      {
+                        "containerPort": 3154
                       }
                     ],
                     "livenessProbe": {
                       "httpGet": {
                         "path": "/health",
-                        "port": 3054
+                        "port": 3154
                       }
                     },
                     "readinessProbe": {
                       "httpGet": {
                         "path": "/health",
-                        "port": 3054
+                        "port": 3154
                       }
                     }
                   }
@@ -198,11 +201,12 @@ fn get_cli_args(peers: Vec<NodeAddr>) -> Vec<String> {
     } else {
         [
             "--add-gossip-static-outbound".to_string(),
-            config::encode_json(
+            config::encode_json_with_serializer(
                 &peers
                     .iter()
                     .map(|e| Serde(e.clone()))
                     .collect::<Vec<Serde<NodeAddr>>>(),
+                serde_json::Serializer::new(vec![]),
             ),
         ]
         .to_vec()

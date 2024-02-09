@@ -1,6 +1,7 @@
 //! Node configuration.
 use crate::{proto, store};
 use anyhow::Context as _;
+use serde_json::{ser::Formatter, Serializer};
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -31,10 +32,18 @@ pub fn decode_json<T: serde::de::DeserializeOwned>(json: &str) -> anyhow::Result
 
 /// Encodes a generated proto message to json for arbitrary ProtoFmt.
 pub fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
-    let mut s = serde_json::Serializer::pretty(vec![]);
-    T::serialize(x, &mut s).unwrap();
-    String::from_utf8(s.into_inner()).unwrap()
+    let s = serde_json::Serializer::pretty(vec![]);
+    encode_json_with_serializer(x, s)
 }
+
+pub fn encode_json_with_serializer<T: serde::ser::Serialize, F: Formatter>(
+    x: &T,
+    mut serializer: Serializer<Vec<u8>, F>,
+) -> String {
+    T::serialize(x, &mut serializer).unwrap();
+    String::from_utf8(serializer.into_inner()).unwrap()
+}
+
 // pub fn encode_json<T: ProtoFmt>(x: &T) -> String {
 //     let mut s = serde_json::Serializer::pretty(vec![]);
 //     zksync_protobuf::serde::serialize(x, &mut s).unwrap();
