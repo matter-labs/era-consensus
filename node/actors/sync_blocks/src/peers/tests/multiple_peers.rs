@@ -10,10 +10,12 @@ struct RequestingBlocksFromTwoPeers;
 impl Test for RequestingBlocksFromTwoPeers {
     const BLOCK_COUNT: usize = 5;
 
-    fn tweak_config(&self, config: &mut Config) {
+    fn config(&self, setup: &validator::testonly::GenesisSetup) -> Config {
+        let mut config = Config::new(setup.genesis.clone());
         config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
         config.max_concurrent_blocks = 5;
         config.max_concurrent_blocks_per_peer = 1;
+        config
     }
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
@@ -194,9 +196,11 @@ impl RequestingBlocksFromMultiplePeers {
 impl Test for RequestingBlocksFromMultiplePeers {
     const BLOCK_COUNT: usize = 20;
 
-    fn tweak_config(&self, config: &mut Config) {
+    fn config(&self, setup: &validator::testonly::GenesisSetup) -> Config {
+        let mut config = Config::new(setup.genesis.clone());
         config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
         config.max_concurrent_blocks_per_peer = self.max_concurrent_blocks_per_peer;
+        config
     }
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {

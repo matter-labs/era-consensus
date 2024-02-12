@@ -183,7 +183,7 @@ fn test_commit_qc() {
     for i in 0..setup1.keys.len()+1 {
         let mut qc = CommitQC::new(rng.gen(), &setup1.genesis);
         for key in &setup1.keys[0..i] {
-            qc.add(key.sign_msg(qc.message.clone()),&setup1.genesis);
+            qc.add(&key.sign_msg(qc.message.clone()),&setup1.genesis);
         }
         if i>=setup1.genesis.validators.threshold() {
             assert!(qc.verify(&setup1.genesis).is_ok());

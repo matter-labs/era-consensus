@@ -7,7 +7,7 @@ use rand::{
 use std::ops;
 use zksync_concurrency::{oneshot, time};
 use zksync_consensus_network::io::GetBlockError;
-use zksync_consensus_roles::validator::{self, testonly::GenesisSetup, BlockNumber, ValidatorSet};
+use zksync_consensus_roles::validator::{self, testonly::GenesisSetup, BlockNumber};
 use zksync_consensus_storage::{BlockStore, BlockStoreRunner, BlockStoreState};
 use zksync_consensus_utils::pipe;
 
@@ -17,14 +17,8 @@ const TEST_TIMEOUT: time::Duration = time::Duration::seconds(20);
 
 impl Distribution<Config> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Config {
-        let validator_set: ValidatorSet = rng.gen();
-        let consensus_threshold = validator_set.len();
-        Config::new(validator_set, consensus_threshold).unwrap()
+        Config::new(rng.gen())
     }
-}
-
-pub(crate) fn test_config(setup: &GenesisSetup) -> Config {
-    Config::new(setup.genesis.validators.clone(), setup.keys.len()).unwrap()
 }
 
 pub(crate) fn sync_state(setup: &GenesisSetup, last_block_number: usize) -> BlockStoreState {

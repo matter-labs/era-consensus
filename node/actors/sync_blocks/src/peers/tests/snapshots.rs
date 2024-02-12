@@ -12,8 +12,10 @@ impl Test for UpdatingPeerStateWithStorageSnapshot {
     const BLOCK_COUNT: usize = 5;
     const GENESIS_BLOCK_NUMBER: usize = 2;
 
-    fn tweak_config(&self, config: &mut Config) {
+    fn config(&self, setup: &validator::testonly::GenesisSetup) -> Config {
+        let mut config = Config::new(setup.genesis.clone());
         config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
+        config
     }
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
@@ -79,8 +81,10 @@ struct FilteringRequestsForSnapshotPeer;
 impl Test for FilteringRequestsForSnapshotPeer {
     const BLOCK_COUNT: usize = 5;
 
-    fn tweak_config(&self, config: &mut Config) {
+    fn config(&self, setup: &validator::testonly::GenesisSetup) -> Config {
+        let mut config = Config::new(setup.genesis.clone());
         config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
+        config 
     }
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
@@ -195,8 +199,10 @@ struct PruningPeerHistory;
 impl Test for PruningPeerHistory {
     const BLOCK_COUNT: usize = 5;
 
-    fn tweak_config(&self, config: &mut Config) {
+    fn config(&self, setup: &validator::testonly::GenesisSetup) -> Config {
+        let mut config = Config::new(setup.genesis.clone());
         config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
+        config
     }
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
@@ -274,8 +280,10 @@ struct BackfillingPeerHistory;
 impl Test for BackfillingPeerHistory {
     const BLOCK_COUNT: usize = 5;
 
-    fn tweak_config(&self, config: &mut Config) {
+    fn config(&self, setup: &validator::testonly::GenesisSetup) -> Config {
+        let mut config = Config::new(setup.genesis.clone());
         config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
+        config
     }
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {

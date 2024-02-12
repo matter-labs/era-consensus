@@ -1,16 +1,13 @@
 //! Configuration for the `SyncBlocks` actor.
 
 use zksync_concurrency::time;
-use zksync_consensus_roles::validator::ValidatorSet;
+use zksync_consensus_roles::validator;
 
 /// Configuration for the `SyncBlocks` actor.
 #[derive(Debug)]
 pub struct Config {
     /// Set of validators authoring blocks.
-    pub(crate) validator_set: ValidatorSet,
-    /// Consensus threshold for blocks quorum certificates.
-    pub(crate) consensus_threshold: usize,
-
+    pub(crate) genesis: validator::Genesis,
     /// Maximum number of blocks to attempt to get concurrently from all peers in total.
     pub(crate) max_concurrent_blocks: usize,
     /// Maximum number of blocks to attempt to get concurrently from any single peer.
@@ -22,24 +19,13 @@ pub struct Config {
 
 impl Config {
     /// Creates a new configuration with the provided mandatory params.
-    pub fn new(validator_set: ValidatorSet, consensus_threshold: usize) -> anyhow::Result<Self> {
-        anyhow::ensure!(
-            consensus_threshold > 0,
-            "`consensus_threshold` must be positive"
-        );
-        anyhow::ensure!(validator_set.len() > 0, "`validator_set` must not be empty");
-        anyhow::ensure!(
-            consensus_threshold <= validator_set.len(),
-            "`consensus_threshold` must not exceed length of `validator_set`"
-        );
-
-        Ok(Self {
-            validator_set,
-            consensus_threshold,
+    pub fn new(genesis: validator::Genesis) -> Self {
+        Self {
+            genesis,
             max_concurrent_blocks: 20,
             max_concurrent_blocks_per_peer: 5,
             sleep_interval_for_get_block: time::Duration::seconds(10),
-        })
+        }
     }
 
     /// Sets the maximum number of blocks to attempt to get concurrently.

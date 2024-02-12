@@ -95,7 +95,7 @@ impl UTHarness {
         let want = ReplicaPrepare {
             view: validator::View {
                 protocol_version: self.protocol_version(),
-                fork: self.replica.config.genesis.forks.current(),
+                fork: self.genesis().forks.current(),
                 number: self.replica.view.next(),
             },
             high_qc: self.replica.high_qc.clone(),
@@ -143,14 +143,21 @@ impl UTHarness {
         self.replica.view = view
     }
 
+    pub(crate) fn replica_view(&self) -> validator::View {
+        validator::View {
+            protocol_version: self.protocol_version(),
+            fork: self.genesis().forks.current(),
+            number: self.replica.view,
+        }
+    }
+
     pub(crate) fn new_replica_prepare(
         &mut self,
         mutate_fn: impl FnOnce(&mut ReplicaPrepare),
     ) -> Signed<ReplicaPrepare> {
         self.set_owner_as_view_leader();
         let mut msg = ReplicaPrepare {
-            protocol_version: self.protocol_version(),
-            view: self.replica.view,
+            view: self.replica_view(),
             high_vote: self.replica.high_vote.clone(),
             high_qc: self.replica.high_qc.clone(),
         };
@@ -163,9 +170,8 @@ impl UTHarness {
         mutate_fn: impl FnOnce(&mut ReplicaCommit),
     ) -> Signed<ReplicaCommit> {
         let mut msg = ReplicaCommit {
-            protocol_version: self.protocol_version(),
-            view: self.replica.view,
-            proposal: self.replica.high_qc.message.proposal.clone(),
+            view: self.replica_view(),
+            proposal: self.replica.high_qc.as_ref().unwrap().message.proposal.clone(),
         };
         mutate_fn(&mut msg);
         self.owner_key().sign_msg(msg)
@@ -234,7 +240,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaPrepare,
     ) -> Signed<LeaderPrepare> {
-        let want_threshold = self.validators().threshold();
+        let want_threshold = self.genesis().validators.threshold();
         let mut leader_prepare = None;
         let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
         for (i, msg) in msgs.into_iter().enumerate() {
@@ -264,7 +270,7 @@ impl UTHarness {
     ) -> Signed<LeaderCommit> {
         for (i, key) in self.keys.iter().enumerate() {
             let res = self.leader.process_replica_commit(ctx, key.sign_msg(msg.clone()));
-            let want_threshold = self.validators().threshold();
+            let want_threshold = self.genesis().validators.threshold();
             match (i + 1).cmp(&want_threshold) {
                 Ordering::Equal => res.unwrap(),
                 Ordering::Less => res.unwrap(),
@@ -295,17 +301,19 @@ impl UTHarness {
     }
 
     pub(crate) fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
-        self.validators().view_leader(view)
+        self.genesis().validators.view_leader(view)
     }
 
-    pub(crate) fn validators(&self) -> &validator::ValidatorSet {
-        &self.replica.config.genesis.validators
+    pub(crate) fn genesis(&self) -> &validator::Genesis {
+        &self.replica.config.genesis
     }
 
     pub(crate) fn new_commit_qc(&self, mutate_fn: impl FnOnce(&mut ReplicaCommit)) -> CommitQC {
-        let msg = self.new_current_replica_commit(mutate_fn).msg;
-        let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg)).collect();
-        CommitQC::from(&msgs, &self.validator_set()).unwrap()
+        let mut qc = CommitQC::new(self.new_current_replica_commit(mutate_fn).msg, self.genesis());
+        for key in &self.keys {
+            qc.add(&key.sign_msg(qc.message.clone()), self.genesis());
+        }
+        qc
     }
 
     pub(crate) fn new_prepare_qc(
@@ -313,7 +321,10 @@ impl UTHarness {
         mutate_fn: impl FnOnce(&mut ReplicaPrepare),
     ) -> PrepareQC {
         let msg = self.new_replica_prepare(mutate_fn).msg;
-        let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
-        PrepareQC::from(&msgs, &self.validator_set()).unwrap()
+        let mut qc = PrepareQC::new(msg.view.clone());
+        for key in &self.keys {
+            qc.add(&key.sign_msg(msg.clone()), self.genesis());
+        }
+        qc
     }
 }

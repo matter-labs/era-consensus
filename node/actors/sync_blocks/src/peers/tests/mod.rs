@@ -1,5 +1,4 @@
 use super::*;
-use crate::tests::test_config;
 use assert_matches::assert_matches;
 use async_trait::async_trait;
 use rand::{seq::IteratorRandom, Rng};
@@ -45,8 +44,8 @@ trait Test: fmt::Debug + Send + Sync {
     const BLOCK_COUNT: usize;
     const GENESIS_BLOCK_NUMBER: usize = 0;
 
-    fn tweak_config(&self, _config: &mut Config) {
-        // Does nothing by default
+    fn config(&self, setup: &validator::testonly::GenesisSetup) -> Config {
+        Config::new(setup.genesis.clone())
     }
 
     async fn initialize_storage(
@@ -76,9 +75,7 @@ async fn test_peer_states<T: Test>(test: T) {
 
     let (message_sender, message_receiver) = channel::unbounded();
     let (events_sender, events_receiver) = channel::unbounded();
-    let mut config = test_config(&setup);
-    test.tweak_config(&mut config);
-    let mut peer_states = PeerStates::new(config, store.clone(), message_sender);
+    let mut peer_states = PeerStates::new(test.config(&setup), store.clone(), message_sender);
     peer_states.events_sender = Some(events_sender);
     let peer_states = Arc::new(peer_states);
     let test_handles = TestHandles {

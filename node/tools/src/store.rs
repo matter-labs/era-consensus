@@ -163,7 +163,7 @@ impl PersistentBlockStore for RocksDB {
 
 #[async_trait::async_trait]
 impl ReplicaStore for RocksDB {
-    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>> {
+    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<ReplicaState> {
         Ok(scope::wait_blocking(|| {
             let Some(raw_state) = self
                 .0
@@ -172,10 +172,9 @@ impl ReplicaStore for RocksDB {
                 .get(DatabaseKey::ReplicaState.encode_key())
                 .context("Failed to get ReplicaState from RocksDB")?
             else {
-                return Ok(None);
+                return Ok(ReplicaState::default());
             };
             zksync_protobuf::decode(&raw_state)
-                .map(Some)
                 .context("Failed to decode replica state!")
         })
         .await?)

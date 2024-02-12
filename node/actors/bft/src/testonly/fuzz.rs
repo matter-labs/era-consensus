@@ -46,33 +46,29 @@ impl Fuzz for validator::ConsensusMsg {
 
 impl Fuzz for validator::ReplicaPrepare {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..4) {
+        match rng.gen_range(0..3) {
             0 => self.view = rng.gen(),
             1 => self.high_vote.mutate(rng),
-            2 => self.high_qc.mutate(rng),
-            3 => self.protocol_version = rng.gen(),
-            _ => unreachable!(),
+            _ => self.high_qc.mutate(rng),
         }
     }
 }
 
 impl Fuzz for validator::ReplicaCommit {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..3) {
+        match rng.gen_range(0..2) {
             0 => self.view = rng.gen(),
-            1 => self.proposal.mutate(rng),
-            2 => self.protocol_version = rng.gen(),
-            _ => unreachable!(),
+            _ => self.proposal.mutate(rng),
         }
     }
 }
 
+// TODO: why payload is not fuzzed?
 impl Fuzz for validator::LeaderPrepare {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..3) {
+        match rng.gen_range(0..2) {
             0 => self.proposal.mutate(rng),
             1 => self.justification.mutate(rng),
-            2 => self.protocol_version = rng.gen(),
             _ => unreachable!(),
         }
     }
@@ -80,11 +76,7 @@ impl Fuzz for validator::LeaderPrepare {
 
 impl Fuzz for validator::LeaderCommit {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..2) {
-            0 => self.justification.mutate(rng),
-            1 => self.protocol_version = rng.gen(),
-            _ => unreachable!(),
-        }
+        self.justification.mutate(rng);
     }
 }
 

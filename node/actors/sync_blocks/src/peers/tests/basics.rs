@@ -150,10 +150,12 @@ impl UpdatingPeerStateWithMultipleBlocks {
 impl Test for UpdatingPeerStateWithMultipleBlocks {
     const BLOCK_COUNT: usize = 10;
 
-    fn tweak_config(&self, config: &mut Config) {
+    fn config(&self, setup: &validator::testonly::GenesisSetup) -> Config {
+        let mut config = Config::new(setup.genesis.clone());
         config.max_concurrent_blocks_per_peer = Self::MAX_CONCURRENT_BLOCKS;
         // ^ We want to test rate limiting for peers
         config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
+        config
     }
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
@@ -226,8 +228,10 @@ struct DisconnectingPeer;
 impl Test for DisconnectingPeer {
     const BLOCK_COUNT: usize = 5;
 
-    fn tweak_config(&self, config: &mut Config) {
+    fn config(&self, setup: &validator::testonly::GenesisSetup) -> Config {
+        let mut config = Config::new(setup.genesis.clone());
         config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
+        config
     }
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
@@ -368,10 +372,12 @@ impl DownloadingBlocksInGaps {
 impl Test for DownloadingBlocksInGaps {
     const BLOCK_COUNT: usize = 10;
 
-    fn tweak_config(&self, config: &mut Config) {
+    fn config(&self, setup: &validator::testonly::GenesisSetup) -> Config {
+        let mut config = Config::new(setup.genesis.clone());
         config.max_concurrent_blocks = 1;
         // ^ Forces the node to download blocks in a deterministic order
         config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
+        config
     }
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {
@@ -452,8 +458,10 @@ struct LimitingGetBlockConcurrency;
 impl Test for LimitingGetBlockConcurrency {
     const BLOCK_COUNT: usize = 5;
 
-    fn tweak_config(&self, config: &mut Config) {
+    fn config(&self, setup: &validator::testonly::GenesisSetup) -> Config {
+        let mut config = Config::new(setup.genesis.clone());
         config.max_concurrent_blocks = 3;
+        config
     }
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {

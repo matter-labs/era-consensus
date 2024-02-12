@@ -213,7 +213,7 @@ impl Configs {
                 server_addr: self.app.server_addr,
                 public_addr: self.app.public_addr,
                 genesis: validator::Genesis {
-                    forks: validator::ForkSet::default(),
+                    forks: validator::ForkSet::new(validator::Fork::default()),
                     validators: self.app.validators.clone(),
                 },
                 node_key: self.node_key.clone(),

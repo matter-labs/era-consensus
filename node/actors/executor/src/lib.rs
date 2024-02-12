@@ -135,9 +135,6 @@ impl Executor {
             network_dispatcher_pipe,
         );
 
-        // Create each of the actors.
-        let validator_set = &self.config.genesis.validators;
-
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
             s.spawn_blocking(|| dispatcher.run(ctx).context("IO Dispatcher stopped"));
@@ -151,7 +148,7 @@ impl Executor {
                     let validator = validator;
                     bft::Config {
                         secret_key: validator.key.clone(),
-                        validator_set: validator_set.clone(),
+                        genesis: self.config.genesis.clone(),
                         block_store: self.block_store.clone(),
                         replica_store: validator.replica_store,
                         payload_manager: validator.payload_manager,
@@ -162,10 +159,7 @@ impl Executor {
                     .context("Consensus stopped")
                 });
             }
-            sync_blocks::Config::new(
-                validator_set.clone(),
-                bft::misc::consensus_threshold(validator_set.len()),
-            )?
+            sync_blocks::Config::new(self.config.genesis.clone())
             .run(ctx, sync_blocks_actor_pipe, self.block_store.clone())
             .await
             .context("Syncing blocks stopped")

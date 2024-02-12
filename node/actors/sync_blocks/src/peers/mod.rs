@@ -73,7 +73,7 @@ impl PeerStates {
         anyhow::ensure!(state.first.header().number <= state.last.header().number);
         state
             .last
-            .verify(&self.config.validator_set, self.config.consensus_threshold)
+            .verify(&self.config.genesis)
             .context("state.last.verify()")?;
         let mut peers = self.peers.lock().unwrap();
         match peers.entry(peer.clone()) {
@@ -201,7 +201,7 @@ impl PeerStates {
             .into());
         }
         block
-            .validate(&self.config.validator_set, self.config.consensus_threshold)
+            .verify(&self.config.genesis)
             .context("block.validate()")?;
         Ok(block)
     }
