@@ -34,6 +34,9 @@ pub(crate) enum Error {
     /// The processing node is not a lead for this message's view.
     #[error("we are not a leader for this message's view")]
     NotLeaderInView,
+    /// Invalid message.
+    #[error("invalid message: {0:#}")]
+    InvalidMessage(anyhow::Error),
     /// Duplicate message from a replica.
     #[error("duplicate message from a replica (existing message: {existing_message:?}")]
     DuplicateMessage {
@@ -100,7 +103,12 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
+        message.verify(&self.config.genesis, /*allow_past_forks=*/false).map_err(Error::InvalidMessage)?;
+
         // ----------- All checks finished. Now we process the message. --------------
+
+        // TODO: we have a bug here since we don't check whether replicas commit
+        // to the same proposal.
 
         // We add the message to the incrementally-constructed QC.
         self.commit_qcs

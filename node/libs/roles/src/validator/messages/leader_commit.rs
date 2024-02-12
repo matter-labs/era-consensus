@@ -1,6 +1,5 @@
 use super::*;
 use crate::validator;
-use anyhow::Context as _;
 
 /// A Commit message from a leader.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -11,8 +10,8 @@ pub struct LeaderCommit {
 
 impl LeaderCommit {
     /// Verifies LeaderCommit.
-    pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
-        self.justification.verify(genesis,/*allow_past_forks=*/false).context("justification")
+    pub fn verify(&self, genesis: &Genesis) -> Result<(),CommitQCVerifyError> {
+        self.justification.verify(genesis,/*allow_past_forks=*/false)
     }
 
     /// View of this message.

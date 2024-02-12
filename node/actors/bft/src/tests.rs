@@ -63,7 +63,7 @@ async fn byzantine_real_network() {
     run_test(Behavior::Byzantine, Network::Real).await
 }
 
-// Testing liveness after the network becomes idle with leader having no cached prepare messages for the current view.
+/// Testing liveness after the network becomes idle with leader having no cached prepare messages for the current view.
 #[tokio::test]
 async fn timeout_leader_no_prepares() {
     zksync_concurrency::testonly::abort_on_panic();
@@ -71,8 +71,7 @@ async fn timeout_leader_no_prepares() {
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
-
-        util.new_replica_prepare(|_| {});
+        util.new_replica_prepare();
         util.produce_block_after_timeout(ctx).await;
         Ok(())
     })
@@ -88,10 +87,9 @@ async fn timeout_leader_some_prepares() {
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
-
-        let replica_prepare = util.new_replica_prepare(|_| {});
+        let replica_prepare = util.new_replica_prepare();
         assert!(util
-            .process_replica_prepare(ctx, replica_prepare)
+            .process_replica_prepare(ctx, util.sign(replica_prepare))
             .await
             .unwrap()
             .is_none());
@@ -151,7 +149,7 @@ async fn timeout_leader_some_commits() {
 
         let replica_commit = util.new_replica_commit(ctx).await;
         assert!(util
-            .process_replica_commit(ctx, replica_commit)
+            .process_replica_commit(ctx, util.sign(replica_commit))
             .await
             .unwrap()
             .is_none());

@@ -24,10 +24,10 @@ pub enum ReplicaPrepareVerifyError {
     },
     /// FutureHighVoteView.
     #[error("high vote from the future")]
-    FutureHighVoteView,
+    HighVoteFutureView,
     /// FutureHighQCView.
     #[error("high qc from the future")]
-    FutureHighQCView,
+    HighQCFutureView,
     /// HighVote.
     #[error("high_vote: {0:#}")]
     HighVote(anyhow::Error),
@@ -45,13 +45,13 @@ impl ReplicaPrepare {
         }
         if let Some(v) = &self.high_vote {
             if self.view.number <= v.view.number {
-                return Err(Error::FutureHighVoteView);
+                return Err(Error::HighVoteFutureView);
             }
             v.verify(genesis,/*allow_past_forks=*/false).map_err(Error::HighVote)?;
         }
         if let Some(qc) = &self.high_qc {
             if self.view.number <= qc.view().number {
-                return Err(Error::FutureHighQCView);
+                return Err(Error::HighQCFutureView);
             }
             qc.verify(genesis,/*allow_past_forks=*/false).map_err(Error::HighQC)?;
         }

@@ -32,10 +32,10 @@ pub(crate) enum Error {
     },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
-    InvalidSignature(#[source] validator::Error),
+    InvalidSignature(validator::Error),
     /// Invalid message.
     #[error("invalid message: {0:#}")]
-    InvalidMessage(#[source] anyhow::Error),
+    InvalidMessage(validator::CommitQCVerifyError),
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error(transparent)]
     Internal(#[from] ctx::Error),
@@ -97,7 +97,6 @@ impl StateMachine {
 
         // Check the signature on the message.
         signed_message.verify().map_err(Error::InvalidSignature)?;
-
         message.verify(&self.config.genesis).map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------

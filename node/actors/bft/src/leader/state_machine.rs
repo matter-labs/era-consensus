@@ -165,7 +165,7 @@ impl StateMachine {
             // The previous block was finalized, so we can propose a new block.
             _ => {
                 let (parent,number) = match high_qc {
-                    Some(qc) => (qc.header().parent,qc.header().number.next()),
+                    Some(qc) => (Some(qc.header().hash()),qc.header().number.next()),
                     None => (cfg.genesis.forks.first_parent(),cfg.genesis.forks.first_block()),
                 };
                 // Defensively assume that PayloadManager cannot propose until the previous block is stored.

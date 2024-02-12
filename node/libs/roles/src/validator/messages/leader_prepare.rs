@@ -193,17 +193,7 @@ impl LeaderPrepare {
         self.justification.verify(genesis).map_err(Error::Justification)?;
         let high_vote = self.justification.high_vote(genesis);
         let high_qc = self.justification.high_qc();
-
-        let (want_parent,want_number) = match high_qc {
-            Some(qc) => (Some(qc.header().hash()),qc.header().number.next()),
-            None => (genesis.forks.first_parent(),genesis.forks.first_block()),
-        };
-        if self.proposal.parent != want_parent {
-            return Err(Error::BadParentHash{got:self.proposal.parent, want: want_parent});
-        }
-        if self.proposal.number != want_number {
-            return Err(Error::BadBlockNumber{got:self.proposal.number, want: want_number});
-        }
+ 
         // Check that the proposal is valid.
         match &self.proposal_payload {
             // The leader proposed a new block.
@@ -212,10 +202,19 @@ impl LeaderPrepare {
                 if self.proposal.payload != payload.hash() {
                     return Err(Error::ProposalMismatchedPayload);
                 }
-
                 // Check that we finalized the previous block.
                 if high_vote.is_some() && high_vote.as_ref() != high_qc.map(|qc|&qc.message.proposal) {
                     return Err(Error::ProposalWhenPreviousNotFinalized);
+                }
+                let (want_parent,want_number) = match high_qc {
+                    Some(qc) => (Some(qc.header().hash()),qc.header().number.next()),
+                    None => (genesis.forks.first_parent(),genesis.forks.first_block()),
+                };
+                if self.proposal.parent != want_parent {
+                    return Err(Error::BadParentHash{got:self.proposal.parent, want: want_parent});
+                }
+                if self.proposal.number != want_number {
+                    return Err(Error::BadBlockNumber{got:self.proposal.number, want: want_number});
                 }
             }
             None => {
