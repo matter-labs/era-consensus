@@ -1,5 +1,9 @@
 use crate::testonly::node::MAX_PAYLOAD_SIZE;
-use rand::{seq::SliceRandom, Rng, distributions::{Distribution, Standard}};
+use rand::{
+    distributions::{Distribution, Standard},
+    seq::SliceRandom,
+    Rng,
+};
 use zksync_consensus_roles::validator;
 
 /// Trait that allows us to mutate types. It's an approach to fuzzing that instead of starting with completely random inputs
@@ -11,7 +15,10 @@ pub(crate) trait Fuzz {
     fn mutate(&mut self, rng: &mut impl Rng);
 }
 
-impl<T:Fuzz> Fuzz for Option<T> where Standard: Distribution<T> {
+impl<T: Fuzz> Fuzz for Option<T>
+where
+    Standard: Distribution<T>,
+{
     fn mutate(&mut self, rng: &mut impl Rng) {
         if let Some(v) = self.as_mut() {
             v.mutate(rng);

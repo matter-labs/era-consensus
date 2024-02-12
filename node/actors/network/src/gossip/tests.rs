@@ -4,8 +4,8 @@ use pretty_assertions::assert_eq;
 use rand::Rng;
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
     sync::atomic::Ordering,
+    sync::Arc,
 };
 use test_casing::{test_casing, Product};
 use tracing::Instrument as _;
@@ -243,7 +243,10 @@ async fn test_validator_addrs_propagation() {
         let want: HashMap<_, _> = cfgs
             .iter()
             .map(|cfg| {
-                (cfg.validator_key.as_ref().unwrap().public(), cfg.public_addr)
+                (
+                    cfg.validator_key.as_ref().unwrap().public(),
+                    cfg.public_addr,
+                )
             })
             .collect();
         for (i, node) in nodes.iter().enumerate() {
@@ -545,7 +548,10 @@ async fn rate_limiting() {
     let want: HashMap<_, _> = cfgs
         .iter()
         .map(|cfg| {
-            (cfg.validator_key.as_ref().unwrap().public(), cfg.public_addr)
+            (
+                cfg.validator_key.as_ref().unwrap().public(),
+                cfg.public_addr,
+            )
         })
         .collect();
     for i in 1..n {
@@ -564,7 +570,8 @@ async fn rate_limiting() {
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             let sub = &mut node.net.gossip.validator_addrs.subscribe();
             sync::wait_for(ctx, sub, |got| {
-                got.get(&node.cfg().validator_key.as_ref().unwrap().public()).is_some()
+                got.get(&node.cfg().validator_key.as_ref().unwrap().public())
+                    .is_some()
             })
             .await
             .unwrap();
@@ -588,10 +595,13 @@ async fn rate_limiting() {
     .await
     .unwrap();
 
-
     // Check that the satellite nodes received either 1 or 2 updates.
     for n in &mut nodes {
-        let got = n.net.gossip.push_validator_addrs_calls.load(Ordering::SeqCst);
-        assert!((1..=2).contains(&got),"got {got} want 1 or 2");
+        let got = n
+            .net
+            .gossip
+            .push_validator_addrs_calls
+            .load(Ordering::SeqCst);
+        assert!((1..=2).contains(&got), "got {got} want 1 or 2");
     }
 }

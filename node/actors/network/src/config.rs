@@ -1,13 +1,13 @@
-use zksync_consensus_roles::{validator,node};
-use zksync_concurrency::{net,time,limiter};
-use std::collections::{HashMap,HashSet};
+use std::collections::{HashMap, HashSet};
+use zksync_concurrency::{limiter, net, time};
+use zksync_consensus_roles::{node, validator};
 
 /// How often we should retry to establish a connection to a validator.
 /// TODO(gprusak): once it becomes relevant, choose a more appropriate retry strategy.
 pub(crate) const CONNECT_RETRY: time::Duration = time::Duration::seconds(20);
 
 /// Rate limiting config for RPCs.
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct RpcConfig {
     /// Max rate of sending/receiving push_validator_addrs messages.
     pub push_validator_addrs_rate: limiter::Rate,
@@ -22,10 +22,22 @@ pub struct RpcConfig {
 impl Default for RpcConfig {
     fn default() -> Self {
         Self {
-            push_validator_addrs_rate: limiter::Rate { burst: 1, refresh: time::Duration::seconds(5) },
-            push_block_store_state_rate: limiter::Rate { burst: 2, refresh: time::Duration::milliseconds(500) },
-            get_block_rate: limiter::Rate { burst: 10, refresh: time::Duration::milliseconds(100) },
-            consensus_rate: limiter::Rate { burst: 10, refresh: time::Duration::ZERO },
+            push_validator_addrs_rate: limiter::Rate {
+                burst: 1,
+                refresh: time::Duration::seconds(5),
+            },
+            push_block_store_state_rate: limiter::Rate {
+                burst: 2,
+                refresh: time::Duration::milliseconds(500),
+            },
+            get_block_rate: limiter::Rate {
+                burst: 10,
+                refresh: time::Duration::milliseconds(100),
+            },
+            consensus_rate: limiter::Rate {
+                burst: 10,
+                refresh: time::Duration::ZERO,
+            },
         }
     }
 }
@@ -42,7 +54,7 @@ pub struct GossipConfig {
     pub static_inbound: HashSet<node::PublicKey>,
     /// Outbound connections that the node should actively try to
     /// establish and maintain.
-    pub static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>, 
+    pub static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>,
 }
 
 /// Network actor config.
@@ -69,4 +81,3 @@ pub struct Config {
     /// Rate limiting config for RPCs.
     pub rpc: RpcConfig,
 }
-

@@ -5,8 +5,8 @@ use zksync_concurrency::{ctx, ctx::channel, scope, time};
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
-pub mod consensus;
 mod config;
+pub mod consensus;
 mod event;
 mod frame;
 pub mod gossip;
@@ -26,7 +26,6 @@ mod watch;
 
 pub use config::*;
 
-
 /// State of the network actor observable outside of the actor.
 pub struct Network {
     /// Consensus network state.
@@ -35,7 +34,7 @@ pub struct Network {
     pub(crate) gossip: Arc<gossip::Network>,
 }
 
-/// Runner of the Network background tasks. 
+/// Runner of the Network background tasks.
 #[must_use]
 pub struct Runner {
     net: Arc<Network>,
@@ -50,14 +49,17 @@ impl Network {
         cfg: Config,
         block_store: Arc<BlockStore>,
         pipe: ActorPipe<io::InputMessage, io::OutputMessage>,
-    ) -> (Arc<Self>,Runner) {
+    ) -> (Arc<Self>, Runner) {
         let gossip = gossip::Network::new(cfg, block_store, pipe.send);
-        let consensus = consensus::Network::new(ctx,gossip.clone());
+        let consensus = consensus::Network::new(ctx, gossip.clone());
         let net = Arc::new(Self { gossip, consensus });
-        (net.clone(), Runner {
-            net,
-            receiver: pipe.recv,
-        })
+        (
+            net.clone(),
+            Runner {
+                net,
+                receiver: pipe.recv,
+            },
+        )
     }
 
     /// Registers metrics for this state.
@@ -65,7 +67,11 @@ impl Network {
         metrics::NetworkGauges::register(Arc::downgrade(self));
     }
 
-    async fn handle_message(&self, ctx: &ctx::Ctx, message: io::InputMessage) -> anyhow::Result<()> {
+    async fn handle_message(
+        &self,
+        ctx: &ctx::Ctx,
+        message: io::InputMessage,
+    ) -> anyhow::Result<()> {
         const CONSENSUS_MSG_TIMEOUT: time::Duration = time::Duration::seconds(10);
         const GET_BLOCK_TIMEOUT: time::Duration = time::Duration::seconds(10);
 
@@ -74,16 +80,20 @@ impl Network {
                 if let Some(consensus) = &self.consensus {
                     let ctx = &ctx.with_timeout(CONSENSUS_MSG_TIMEOUT);
                     match message.recipient {
-                        io::Target::Validator(key) => consensus.send(ctx,&key,message.message).await?,
-                        io::Target::Broadcast => consensus.broadcast(ctx,message.message).await?,
+                        io::Target::Validator(key) => {
+                            consensus.send(ctx, &key, message.message).await?
+                        }
+                        io::Target::Broadcast => consensus.broadcast(ctx, message.message).await?,
                     }
                 }
             }
             io::InputMessage::SyncBlocks(io::SyncBlocksInputMessage::GetBlock {
-                recipient, number, response,
+                recipient,
+                number,
+                response,
             }) => {
                 let ctx = &ctx.with_timeout(GET_BLOCK_TIMEOUT);
-                let _ = response.send(match self.gossip.get_block(ctx,&recipient,number).await {
+                let _ = response.send(match self.gossip.get_block(ctx, &recipient, number).await {
                     Ok(Some(block)) => Ok(block),
                     Ok(None) => Err(io::GetBlockError::NotAvailable),
                     Err(err) => Err(io::GetBlockError::Internal(err)),
@@ -97,7 +107,13 @@ impl Network {
 impl Runner {
     /// Runs the network actor.
     pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        let mut listener = self.net.gossip.cfg.server_addr.bind().context("server_addr.bind()")?;
+        let mut listener = self
+            .net
+            .gossip
+            .cfg
+            .server_addr
+            .bind()
+            .context("server_addr.bind()")?;
 
         scope::run!(ctx, |ctx, s| async {
             // Handle incoming messages.
@@ -105,7 +121,7 @@ impl Runner {
                 // We don't propagate cancellation errors
                 while let Ok(message) = self.receiver.recv(ctx).await {
                     s.spawn(async {
-                        if let Err(err) = self.net.handle_message(ctx,message).await {
+                        if let Err(err) = self.net.handle_message(ctx, message).await {
                             tracing::info!("handle_message(): {err:#}");
                         }
                         Ok(())
@@ -114,11 +130,12 @@ impl Runner {
                 Ok(())
             });
 
-            // Maintain static gossip connections. 
+            // Maintain static gossip connections.
             for (peer, addr) in &self.net.gossip.cfg.gossip.static_outbound {
                 s.spawn(async {
                     loop {
-                        let run_result = self.net.gossip.run_outbound_stream(ctx, peer, *addr).await;
+                        let run_result =
+                            self.net.gossip.run_outbound_stream(ctx, peer, *addr).await;
                         if let Err(err) = run_result {
                             tracing::info!("gossip.run_outbound_stream(): {err:#}");
                         }
@@ -134,7 +151,10 @@ impl Runner {
                 if c.gossip.cfg.genesis.validators.contains(&c.key.public()) {
                     // Maintain outbound connections.
                     for peer in c.clients.keys() {
-                        s.spawn(async { c.maintain_connection(ctx,peer).await; Ok(()) });
+                        s.spawn(async {
+                            c.maintain_connection(ctx, peer).await;
+                            Ok(())
+                        });
                     }
                     // Announce IP periodically.
                     s.spawn(async {
@@ -161,7 +181,9 @@ impl Runner {
                                 }
                             }
                             preface::Endpoint::GossipNet => {
-                                self.net.gossip.run_inbound_stream(ctx, stream)
+                                self.net
+                                    .gossip
+                                    .run_inbound_stream(ctx, stream)
                                     .await
                                     .context("gossip.run_inbound_stream()")?;
                             }

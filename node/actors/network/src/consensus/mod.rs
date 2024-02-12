@@ -1,22 +1,21 @@
 //! Consensus network is a full graph of connections between all validators.
 //! BFT consensus messages are exchanged over this network.
-use crate::pool::PoolWatch;
-use crate::gossip;
 use crate::config;
-use std::sync::Arc;
-use std::collections::{HashSet,HashMap};
-use zksync_consensus_roles::{validator};
-use zksync_concurrency::{ctx, oneshot, scope, sync, time};
-use zksync_protobuf::kB;
+use crate::gossip;
+use crate::pool::PoolWatch;
 use crate::{io, noise, preface, rpc};
 use anyhow::Context as _;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+use zksync_concurrency::{ctx, oneshot, scope, sync, time};
+use zksync_consensus_roles::validator;
+use zksync_protobuf::kB;
 
 mod handshake;
 #[cfg(test)]
 mod tests;
 
-
-const RESP_MAX_SIZE : usize = kB;
+const RESP_MAX_SIZE: usize = kB;
 /// Frequency at which the validator broadcasts its own IP address.
 /// Although the IP is not likely to change while validator is running,
 /// we do this periodically, so that the network can observe if validator
@@ -26,13 +25,13 @@ const ADDRESS_ANNOUNCER_INTERVAL: time::Duration = time::Duration::minutes(10);
 /// Consensus network state.
 pub(crate) struct Network {
     pub(crate) gossip: Arc<gossip::Network>,
-    pub(crate) key: validator::SecretKey, 
+    pub(crate) key: validator::SecretKey,
     /// Set of the currently open inbound connections.
     pub(crate) inbound: PoolWatch<validator::PublicKey>,
     /// Set of the currently open outbound connections.
     pub(crate) outbound: PoolWatch<validator::PublicKey>,
 
-    pub(crate) clients: HashMap<validator::PublicKey, rpc::Client::<rpc::consensus::Rpc>>,
+    pub(crate) clients: HashMap<validator::PublicKey, rpc::Client<rpc::consensus::Rpc>>,
 }
 
 #[async_trait::async_trait]
@@ -48,7 +47,8 @@ impl rpc::Handler<rpc::consensus::Rpc> for &Network {
         req: rpc::consensus::Req,
     ) -> anyhow::Result<rpc::consensus::Resp> {
         let (send, recv) = oneshot::channel();
-        self.gossip.sender
+        self.gossip
+            .sender
             .send(io::OutputMessage::Consensus(io::ConsensusReq {
                 msg: req.0,
                 ack: send,
@@ -67,30 +67,49 @@ impl Network {
             key,
             inbound: PoolWatch::new(validators.clone(), 0),
             outbound: PoolWatch::new(validators.clone(), 0),
-            clients: validators.iter().map(|peer| (peer.clone(), rpc::Client::new(ctx, gossip.cfg.rpc.consensus_rate)))
+            clients: validators
+                .iter()
+                .map(|peer| {
+                    (
+                        peer.clone(),
+                        rpc::Client::new(ctx, gossip.cfg.rpc.consensus_rate),
+                    )
+                })
                 .collect(),
             gossip,
         }))
     }
 
-    pub(crate) async fn broadcast(&self, ctx: &ctx::Ctx, msg: validator::Signed<validator::ConsensusMsg>) -> anyhow::Result<()> {
+    pub(crate) async fn broadcast(
+        &self,
+        ctx: &ctx::Ctx,
+        msg: validator::Signed<validator::ConsensusMsg>,
+    ) -> anyhow::Result<()> {
         let req = rpc::consensus::Req(msg);
-        scope::run!(ctx, |ctx,s| async {
-            for (peer,client) in &self.clients {
+        scope::run!(ctx, |ctx, s| async {
+            for (peer, client) in &self.clients {
                 s.spawn(async {
                     if let Err(err) = client.call(ctx, &req, RESP_MAX_SIZE).await {
-                        tracing::info!("send({:?},<ConsensusMsg>): {err:#}",&*peer);
+                        tracing::info!("send({:?},<ConsensusMsg>): {err:#}", &*peer);
                     }
                     Ok(())
                 });
             }
             Ok(())
-        }).await
+        })
+        .await
     }
 
-    pub(crate) async fn send(&self, ctx: &ctx::Ctx, key: &validator::PublicKey, msg: validator::Signed<validator::ConsensusMsg>) -> anyhow::Result<()> {   
+    pub(crate) async fn send(
+        &self,
+        ctx: &ctx::Ctx,
+        key: &validator::PublicKey,
+        msg: validator::Signed<validator::ConsensusMsg>,
+    ) -> anyhow::Result<()> {
         let client = self.clients.get(key).context("not an active validator")?;
-        client.call(ctx, &rpc::consensus::Req(msg), RESP_MAX_SIZE).await?;
+        client
+            .call(ctx, &rpc::consensus::Req(msg), RESP_MAX_SIZE)
+            .await?;
         Ok(())
     }
 
@@ -101,7 +120,8 @@ impl Network {
         ctx: &ctx::Ctx,
         mut stream: noise::Stream,
     ) -> anyhow::Result<()> {
-        let peer = handshake::inbound(ctx, &self.key, self.gossip.cfg.genesis.hash(), &mut stream).await?;
+        let peer =
+            handshake::inbound(ctx, &self.key, self.gossip.cfg.genesis.hash(), &mut stream).await?;
         self.inbound.insert(peer.clone()).await?;
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
@@ -129,9 +149,16 @@ impl Network {
         peer: &validator::PublicKey,
         addr: std::net::SocketAddr,
     ) -> anyhow::Result<()> {
-        let client = self.clients.get(peer).context("not an active validator")?; 
+        let client = self.clients.get(peer).context("not an active validator")?;
         let mut stream = preface::connect(ctx, addr, preface::Endpoint::ConsensusNet).await?;
-        handshake::outbound(ctx, &self.key, self.gossip.cfg.genesis.hash(), &mut stream, peer).await?;
+        handshake::outbound(
+            ctx,
+            &self.key,
+            self.gossip.cfg.genesis.hash(),
+            &mut stream,
+            peer,
+        )
+        .await?;
         self.outbound.insert(peer.clone()).await?;
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
@@ -187,8 +214,7 @@ impl Network {
                 .get(&self.key.public())
                 .map(|x| x.msg.version + 1)
                 .unwrap_or(0);
-            self
-                .gossip
+            self.gossip
                 .validator_addrs
                 .update(
                     &self.gossip.cfg.genesis.validators,

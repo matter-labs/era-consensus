@@ -12,11 +12,11 @@ pub struct ReplicaPrepare {
 }
 
 /// Error returned by `ReplicaPrepare::verify()`.
-#[derive(thiserror::Error,Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum ReplicaPrepareVerifyError {
     /// BadFork.
     #[error("bad fork: got {got:?}, want {want:?}")]
-    BadFork{
+    BadFork {
         /// got
         got: ForkId,
         /// want
@@ -38,25 +38,28 @@ pub enum ReplicaPrepareVerifyError {
 
 impl ReplicaPrepare {
     /// Verifies the message.
-    pub fn verify(&self, genesis: &Genesis) -> Result<(),ReplicaPrepareVerifyError> {
+    pub fn verify(&self, genesis: &Genesis) -> Result<(), ReplicaPrepareVerifyError> {
         use ReplicaPrepareVerifyError as Error;
         if self.view.fork != genesis.forks.current() {
-            return Err(Error::BadFork { got: self.view.fork, want: genesis.forks.current() });
+            return Err(Error::BadFork {
+                got: self.view.fork,
+                want: genesis.forks.current(),
+            });
         }
         if let Some(v) = &self.high_vote {
             if self.view.number <= v.view.number {
                 return Err(Error::HighVoteFutureView);
             }
-            v.verify(genesis,/*allow_past_forks=*/false).map_err(Error::HighVote)?;
+            v.verify(genesis, /*allow_past_forks=*/ false)
+                .map_err(Error::HighVote)?;
         }
         if let Some(qc) = &self.high_qc {
             if self.view.number <= qc.view().number {
                 return Err(Error::HighQCFutureView);
             }
-            qc.verify(genesis,/*allow_past_forks=*/false).map_err(Error::HighQC)?;
+            qc.verify(genesis, /*allow_past_forks=*/ false)
+                .map_err(Error::HighQC)?;
         }
         Ok(())
     }
 }
-
-

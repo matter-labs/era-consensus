@@ -174,8 +174,7 @@ impl ReplicaStore for RocksDB {
             else {
                 return Ok(ReplicaState::default());
             };
-            zksync_protobuf::decode(&raw_state)
-                .context("Failed to decode replica state!")
+            zksync_protobuf::decode(&raw_state).context("Failed to decode replica state!")
         })
         .await?)
     }

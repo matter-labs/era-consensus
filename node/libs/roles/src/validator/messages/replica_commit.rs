@@ -19,10 +19,13 @@ impl ReplicaCommit {
         // during synchronization. Eventually we will switch to synchronization without
         // CommitQCs for blocks from the past forks, and then we can always enforce
         // `genesis.forks.current()` instead.
-        let want = genesis.forks.find(self.proposal.number); 
-        anyhow::ensure!(want == Some(self.view.fork), "bad fork: got {:?} want {want:?} for block {}",self.view.fork, self.proposal.number);
+        let want = genesis.forks.find(self.proposal.number);
+        anyhow::ensure!(
+            want == Some(self.view.fork),
+            "bad fork: got {:?} want {want:?} for block {}",
+            self.view.fork,
+            self.proposal.number
+        );
         Ok(())
     }
 }
-
-

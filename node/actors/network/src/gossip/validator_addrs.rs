@@ -1,14 +1,16 @@
 //! Global state distributed by active validators, observed by all the nodes in the network.
-use zksync_consensus_roles::validator;
-use std::sync::Arc;
+use crate::watch::Watch;
 use std::collections::HashSet;
-use crate::watch::Watch; 
+use std::sync::Arc;
 use zksync_concurrency::sync;
+use zksync_consensus_roles::validator;
 
 /// Mapping from validator::PublicKey to a signed validator::NetAddress.
 /// Represents the currents state of node's knowledge about the validator endpoints.
 #[derive(Clone, Default, PartialEq, Eq)]
-pub(crate) struct ValidatorAddrs(pub(super) im::HashMap<validator::PublicKey, Arc<validator::Signed<validator::NetAddress>>>);
+pub(crate) struct ValidatorAddrs(
+    pub(super) im::HashMap<validator::PublicKey, Arc<validator::Signed<validator::NetAddress>>>,
+);
 
 impl ValidatorAddrs {
     /// Gets a NetAddress for a given key.
@@ -107,4 +109,3 @@ impl ValidatorAddrsWatch {
         Ok(())
     }
 }
-

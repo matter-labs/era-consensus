@@ -1,9 +1,9 @@
 use crate::{
     io::OutputMessage,
     leader,
+    leader::{replica_commit, replica_prepare},
     replica,
-    leader::{replica_commit,replica_prepare},
-    replica::{leader_commit,leader_prepare},
+    replica::{leader_commit, leader_prepare},
     testonly, Config, PayloadManager,
 };
 use assert_matches::assert_matches;
@@ -103,13 +103,15 @@ impl UTHarness {
         };
         let replica_prepare = self.process_replica_timeout(ctx).await;
         assert_eq!(want, replica_prepare.msg);
-        self.produce_block(ctx).await; 
+        self.produce_block(ctx).await;
     }
 
     /// Produces a block, by executing the full view.
     pub(crate) async fn produce_block(&mut self, ctx: &ctx::Ctx) {
         let msg = self.new_leader_commit(ctx).await;
-        self.process_leader_commit(ctx, self.sign(msg)).await.unwrap();
+        self.process_leader_commit(ctx, self.sign(msg))
+            .await
+            .unwrap();
     }
 
     pub(crate) fn protocol_version(&self) -> validator::ProtocolVersion {
@@ -124,7 +126,7 @@ impl UTHarness {
         &self.replica.config.secret_key
     }
 
-    pub(crate) fn sign<V: Variant<validator::Msg>>(&self, msg: V) -> Signed<V> { 
+    pub(crate) fn sign<V: Variant<validator::Msg>>(&self, msg: V) -> Signed<V> {
         self.replica.config.secret_key.sign_msg(msg)
     }
 
@@ -169,7 +171,14 @@ impl UTHarness {
     pub(crate) fn new_current_replica_commit(&self) -> ReplicaCommit {
         ReplicaCommit {
             view: self.replica_view(),
-            proposal: self.replica.high_qc.as_ref().unwrap().message.proposal.clone(),
+            proposal: self
+                .replica
+                .high_qc
+                .as_ref()
+                .unwrap()
+                .message
+                .proposal
+                .clone(),
         }
     }
 
@@ -180,7 +189,10 @@ impl UTHarness {
 
     pub(crate) async fn new_replica_commit(&mut self, ctx: &ctx::Ctx) -> ReplicaCommit {
         let msg = self.new_leader_prepare(ctx).await;
-        self.process_leader_prepare(ctx, self.sign(msg)).await.unwrap().msg
+        self.process_leader_prepare(ctx, self.sign(msg))
+            .await
+            .unwrap()
+            .msg
     }
 
     pub(crate) async fn new_leader_commit(&mut self, ctx: &ctx::Ctx) -> LeaderCommit {
@@ -262,7 +274,9 @@ impl UTHarness {
         msg: ReplicaCommit,
     ) -> Signed<LeaderCommit> {
         for (i, key) in self.keys.iter().enumerate() {
-            let res = self.leader.process_replica_commit(ctx, key.sign_msg(msg.clone()));
+            let res = self
+                .leader
+                .process_replica_commit(ctx, key.sign_msg(msg.clone()));
             let want_threshold = self.genesis().validators.threshold();
             match (i + 1).cmp(&want_threshold) {
                 Ordering::Equal => res.unwrap(),

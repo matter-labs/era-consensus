@@ -1,11 +1,11 @@
 //! Messages related to the consensus protocol.
 use super::*;
-use crate::{validator};
+use crate::validator;
 use bit_vec::BitVec;
 use std::collections::{BTreeMap, BTreeSet};
-use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
-use zksync_consensus_crypto::{TextFmt, ByteFmt, Text, keccak256::Keccak256};
 use std::fmt;
+use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
+use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
 /// Version of the consensus algorithm that the validator is using.
 /// It allows to prevent misinterpretation of messages signed by validators
@@ -45,7 +45,7 @@ impl TryFrom<u32> for ProtocolVersion {
 pub struct ForkId(pub usize);
 
 /// Specification of a fork.
-#[derive(Clone,Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Fork {
     /// First block of a fork.
     pub first_block: BlockNumber,
@@ -54,18 +54,25 @@ pub struct Fork {
 }
 
 impl Default for Fork {
-    fn default() -> Self { Self { first_block: BlockNumber(0), first_parent: None } }
+    fn default() -> Self {
+        Self {
+            first_block: BlockNumber(0),
+            first_parent: None,
+        }
+    }
 }
 
 /// History of forks of the blockchain.
 /// It allows to determine which which fork contains block with the given number.
 /// Current fork is the one with the highest fork id.
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct ForkSet(pub(in crate::validator) Vec<Fork>);
 
 impl ForkSet {
     /// Constructs a new fork set.
-    pub fn new(fork:Fork) -> Self { Self(vec![fork]) }
+    pub fn new(fork: Fork) -> Self {
+        Self(vec![fork])
+    }
 }
 
 impl ForkSet {
@@ -74,12 +81,18 @@ impl ForkSet {
         self.0.push(fork);
     }
 
-    /// Current fork that node is participating in. 
-    pub fn current(&self) -> ForkId { ForkId(self.0.len()-1) }
+    /// Current fork that node is participating in.
+    pub fn current(&self) -> ForkId {
+        ForkId(self.0.len() - 1)
+    }
     /// First block of the current fork.
-    pub fn first_block(&self) -> BlockNumber { self.0.last().unwrap().first_block }
+    pub fn first_block(&self) -> BlockNumber {
+        self.0.last().unwrap().first_block
+    }
     /// Parent of the first block of the current fork.
-    pub fn first_parent(&self) -> Option<BlockHeaderHash> { self.0.last().unwrap().first_parent }
+    pub fn first_parent(&self) -> Option<BlockHeaderHash> {
+        self.0.last().unwrap().first_parent
+    }
 
     /// Finds the fork which the given block belongs to.
     /// This should be used to verify the quorum certificate
@@ -107,9 +120,12 @@ impl ValidatorSet {
     pub fn new(validators: impl IntoIterator<Item = validator::PublicKey>) -> anyhow::Result<Self> {
         let mut set = BTreeSet::new();
         for validator in validators {
-            anyhow::ensure!(set.insert(validator),"Duplicate validator in ValidatorSet");
+            anyhow::ensure!(set.insert(validator), "Duplicate validator in ValidatorSet");
         }
-        anyhow::ensure!(!set.is_empty(), "ValidatorSet must contain at least one validator");
+        anyhow::ensure!(
+            !set.is_empty(),
+            "ValidatorSet must contain at least one validator"
+        );
         Ok(Self {
             vec: set.iter().cloned().collect(),
             map: set.into_iter().enumerate().map(|(i, pk)| (pk, i)).collect(),
@@ -147,12 +163,12 @@ impl ValidatorSet {
         let index = view_number.0 as usize % self.len();
         self.get(index).unwrap().clone()
     }
-   
+
     /// Signature threshold for this validator set.
     pub fn threshold(&self) -> usize {
         threshold(self.len())
     }
-   
+
     /// Maximal number of faulty replicas allowed in this validator set.
     pub fn faulty_replicas(&self) -> usize {
         faulty_replicas(self.len())
@@ -162,7 +178,7 @@ impl ValidatorSet {
 /// Calculate the consensus threshold, the minimum number of votes for any consensus action to be valid,
 /// for a given number of replicas.
 pub fn threshold(n: usize) -> usize {
-    n-faulty_replicas(n)
+    n - faulty_replicas(n)
 }
 
 /// Calculate the maximum number of faulty replicas, for a given number of replicas.
@@ -177,10 +193,8 @@ pub fn faulty_replicas(n: usize) -> usize {
     (n - 1) / 5
 }
 
-
-
 /// Genesis of the blockchain, unique for each blockchain instance.
-#[derive(Debug,Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Genesis {
     // TODO(gprusak): add blockchain id here.
     /// Set of validators of the chain.
@@ -221,7 +235,6 @@ impl fmt::Debug for GenesisHash {
     }
 }
 
-
 /// Consensus messages.
 #[allow(missing_docs)]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -250,7 +263,7 @@ impl ConsensusMsg {
             Self::ReplicaCommit(m) => &m.view,
             Self::LeaderPrepare(m) => &m.view(),
             Self::LeaderCommit(m) => &m.view(),
-        } 
+        }
     }
 
     /// Protocol version of this message.
@@ -308,7 +321,7 @@ impl Variant<Msg> for LeaderCommit {
 }
 
 /// View specification.
-#[derive(Clone,Debug,PartialEq,Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct View {
     /// Protocol version.
     pub protocol_version: ProtocolVersion,
@@ -321,9 +334,7 @@ pub struct View {
 impl View {
     /// Checks if `self` can occur after `b`.
     pub fn after(&self, b: &Self) -> bool {
-        self.fork == b.fork &&
-        self.number > b.number &&
-        self.protocol_version >= b.protocol_version
+        self.fork == b.fork && self.number > b.number && self.protocol_version >= b.protocol_version
     }
 }
 
@@ -343,7 +354,6 @@ impl Signers {
     pub fn count(&self) -> usize {
         self.0.iter().filter(|b| *b).count()
     }
-
 
     /// Size of the corresponding ValidatorSet.
     pub fn len(&self) -> usize {

@@ -2,7 +2,7 @@ use crate::{frame, noise, proto::gossip as proto, GossipConfig};
 use anyhow::Context as _;
 use zksync_concurrency::{ctx, time};
 use zksync_consensus_crypto::ByteFmt;
-use zksync_consensus_roles::{node,validator};
+use zksync_consensus_roles::{node, validator};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
 #[cfg(test)]

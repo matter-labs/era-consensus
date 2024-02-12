@@ -1,10 +1,8 @@
 use super::{
-    ValidatorSet, View, ForkId, Fork,
-    ForkSet, Genesis, GenesisHash,
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
-    FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
-    PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, Signature, Signed,
-    Signers, ViewNumber,
+    FinalBlock, Fork, ForkId, ForkSet, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
+    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
+    ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
 };
 use crate::{node::SessionId, proto::validator as proto};
 use anyhow::Context as _;
@@ -24,7 +22,7 @@ impl ProtoFmt for Fork {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             first_block: Some(self.first_block.0),
-            first_parent: self.first_parent.as_ref().map(|x|x.build()),
+            first_parent: self.first_parent.as_ref().map(|x| x.build()),
         }
     }
 }
@@ -32,13 +30,20 @@ impl ProtoFmt for Fork {
 impl ProtoFmt for ForkSet {
     type Proto = proto::ForkSet;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let this = Self(r.forks.iter().enumerate().map(|(i,f)|Fork::read(f).context(i)).collect::<Result<_,_>>().context("forks")?);
-        anyhow::ensure!(!this.0.is_empty(),"empty");
+        let this = Self(
+            r.forks
+                .iter()
+                .enumerate()
+                .map(|(i, f)| Fork::read(f).context(i))
+                .collect::<Result<_, _>>()
+                .context("forks")?,
+        );
+        anyhow::ensure!(!this.0.is_empty(), "empty");
         Ok(this)
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            forks: self.0.iter().map(|f|f.build()).collect(),
+            forks: self.0.iter().map(|f| f.build()).collect(),
         }
     }
 }
@@ -46,18 +51,22 @@ impl ProtoFmt for ForkSet {
 impl ProtoFmt for Genesis {
     type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let validators : Vec<_> = r.validators.iter().enumerate().map(|(i,v)|{
-            PublicKey::read(v).context(i)
-        }).collect::<Result<_,_>>().context("validators")?;
+        let validators: Vec<_> = r
+            .validators
+            .iter()
+            .enumerate()
+            .map(|(i, v)| PublicKey::read(v).context(i))
+            .collect::<Result<_, _>>()
+            .context("validators")?;
         Ok(Self {
             forks: read_required(&r.forks).context("forks")?,
-            validators: ValidatorSet::new(validators.into_iter()).context("validators")?, 
+            validators: ValidatorSet::new(validators.into_iter()).context("validators")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
             forks: Some(self.forks.build()),
-            validators: self.validators.iter().map(|x|x.build()).collect(),
+            validators: self.validators.iter().map(|x| x.build()).collect(),
         }
     }
 }
@@ -166,9 +175,13 @@ impl ProtoFmt for View {
     type Proto = proto::View;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {     
+        Ok(Self {
             protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
-            fork: ForkId(required(&r.fork).and_then(|x|Ok((*x).try_into()?)).context("fork")?),
+            fork: ForkId(
+                required(&r.fork)
+                    .and_then(|x| Ok((*x).try_into()?))
+                    .context("fork")?,
+            ),
             number: ViewNumber(*required(&r.number).context("number")?),
         })
     }

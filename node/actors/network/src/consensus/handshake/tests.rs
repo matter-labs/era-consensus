@@ -92,7 +92,7 @@ async fn test_peer_mismatch() {
     let key2: validator::SecretKey = rng.gen();
 
     let genesis: validator::GenesisHash = rng.gen();
-    
+
     scope::run!(ctx, |ctx, s| async {
         let (s0, s1) = noise::testonly::pipe(ctx).await;
         s.spawn(async {
@@ -123,7 +123,7 @@ async fn test_invalid_signature() {
     let key1: validator::SecretKey = rng.gen();
 
     let genesis: validator::GenesisHash = rng.gen();
-    
+
     // Bad signature detected on outbound end.
     scope::run!(ctx, |ctx, s| async {
         let (mut s0, s1) = noise::testonly::pipe(ctx).await;

@@ -1,9 +1,9 @@
 //! Testing extensions for node executor.
-use crate::{Config};
+use crate::Config;
 use rand::Rng;
 use zksync_concurrency::net;
 use zksync_consensus_network as network;
-use zksync_consensus_roles::validator::{self,testonly::GenesisSetup};
+use zksync_consensus_roles::validator::{self, testonly::GenesisSetup};
 
 /// Full validator configuration.
 #[derive(Debug, Clone)]

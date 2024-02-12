@@ -6,7 +6,7 @@ use std::{
     fmt,
     sync::Arc,
 };
-use zksync_concurrency::{time, ctx, net, scope};
+use zksync_concurrency::{ctx, net, scope, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
@@ -139,7 +139,12 @@ impl Executor {
         scope::run!(ctx, |ctx, s| async {
             s.spawn_blocking(|| dispatcher.run(ctx).context("IO Dispatcher stopped"));
             s.spawn(async {
-                let (net,runner) = network::Network::new(ctx,network_config, self.block_store.clone(),network_actor_pipe);
+                let (net, runner) = network::Network::new(
+                    ctx,
+                    network_config,
+                    self.block_store.clone(),
+                    network_actor_pipe,
+                );
                 net.register_metrics();
                 runner.run(ctx).await.context("Network stopped")
             });
@@ -160,9 +165,9 @@ impl Executor {
                 });
             }
             sync_blocks::Config::new(self.config.genesis.clone())
-            .run(ctx, sync_blocks_actor_pipe, self.block_store.clone())
-            .await
-            .context("Syncing blocks stopped")
+                .run(ctx, sync_blocks_actor_pipe, self.block_store.clone())
+                .await
+                .context("Syncing blocks stopped")
         })
         .await
     }

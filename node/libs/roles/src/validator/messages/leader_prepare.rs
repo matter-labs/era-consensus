@@ -1,6 +1,6 @@
 use super::*;
-use std::collections::{HashMap,BTreeMap};
 use crate::validator;
+use std::collections::{BTreeMap, HashMap};
 
 /// A quorum certificate of replica Prepare messages. Since not all Prepare messages are
 /// identical (they have different high blocks and high QCs), we need to keep the high blocks
@@ -16,7 +16,7 @@ pub struct PrepareQC {
 }
 
 /// Error returned by `PrepareQC::verify()`.
-#[derive(thiserror::Error,Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum PrepareQCVerifyError {
     /// Inconsistent views.
     #[error("inconsistent views of signed messages")]
@@ -29,12 +29,12 @@ pub enum PrepareQCVerifyError {
     BadFormat(anyhow::Error),
     /// Not enough signers.
     #[error("not enough signers: got {got}, want {want}")]
-    NotEnoughSigners { 
+    NotEnoughSigners {
         /// Got signers.
         got: usize,
         /// Want signers.
         want: usize,
-    }, 
+    },
     /// Bad signature.
     #[error("bad signature: {0:#}")]
     BadSignature(validator::Error),
@@ -68,8 +68,8 @@ impl PrepareQC {
     pub fn high_qc(&self) -> Option<&CommitQC> {
         self.map
             .keys()
-            .filter_map(|m|m.high_qc.as_ref())
-            .max_by_key(|qc|qc.view().number)
+            .filter_map(|m| m.high_qc.as_ref())
+            .max_by_key(|qc| qc.view().number)
     }
 
     /// Add a validator's signed message.
@@ -78,40 +78,59 @@ impl PrepareQC {
     pub fn add(&mut self, msg: &Signed<ReplicaPrepare>, genesis: &Genesis) {
         // TODO: check if there is already a message from that validator.
         // TODO: verify msg
-        if msg.msg.view != self.view { return }
-        let Some(i) = genesis.validators.index(&msg.key) else { return };
-        let e = self.map.entry(msg.msg.clone()).or_insert_with(|| Signers::new(genesis.validators.len()));
-        if e.0[i] { return };
-        e.0.set(i,true);
+        if msg.msg.view != self.view {
+            return;
+        }
+        let Some(i) = genesis.validators.index(&msg.key) else {
+            return;
+        };
+        let e = self
+            .map
+            .entry(msg.msg.clone())
+            .or_insert_with(|| Signers::new(genesis.validators.len()));
+        if e.0[i] {
+            return;
+        };
+        e.0.set(i, true);
         self.signature.add(&msg.sig);
     }
 
     /// Verifies the integrity of the PrepareQC.
-    pub fn verify(&self, genesis: &Genesis) -> Result<(),PrepareQCVerifyError> {
+    pub fn verify(&self, genesis: &Genesis) -> Result<(), PrepareQCVerifyError> {
         use PrepareQCVerifyError as Error;
         let mut sum = Signers::new(genesis.validators.len());
         // Check the ReplicaPrepare messages.
-        for (i,(msg,signers)) in self.map.iter().enumerate() {
+        for (i, (msg, signers)) in self.map.iter().enumerate() {
             if msg.view != self.view {
                 return Err(Error::InconsistentViews);
             }
             if signers.len() != sum.len() {
-                return Err(Error::BadFormat(anyhow::format_err!("msg[{i}].signers has wrong length")));
+                return Err(Error::BadFormat(anyhow::format_err!(
+                    "msg[{i}].signers has wrong length"
+                )));
             }
             if signers.is_empty() {
-                return Err(Error::BadFormat(anyhow::format_err!("msg[{i}] has no signers assigned")));
+                return Err(Error::BadFormat(anyhow::format_err!(
+                    "msg[{i}] has no signers assigned"
+                )));
             }
             if !(&sum & signers).is_empty() {
-                return Err(Error::BadFormat(anyhow::format_err!("overlapping signature sets for different messages")));
+                return Err(Error::BadFormat(anyhow::format_err!(
+                    "overlapping signature sets for different messages"
+                )));
             }
-            msg.verify(genesis).map_err(|err|Error::InvalidMessage(i,err))?;
+            msg.verify(genesis)
+                .map_err(|err| Error::InvalidMessage(i, err))?;
             sum |= signers;
         }
 
         // Verify that we have enough signers.
         let threshold = genesis.validators.threshold();
         if sum.count() < threshold {
-            return Err(Error::NotEnoughSigners { got: sum.count(), want: threshold });
+            return Err(Error::NotEnoughSigners {
+                got: sum.count(),
+                want: threshold,
+            });
         }
         // Now we can verify the signature.
         let messages_and_keys = self.map.clone().into_iter().flat_map(|(msg, signers)| {
@@ -124,15 +143,15 @@ impl PrepareQC {
                 .collect::<Vec<_>>()
         });
         // TODO(gprusak): This reaggregating is suboptimal.
-        self.signature.verify_messages(messages_and_keys).map_err(Error::BadSignature)
+        self.signature
+            .verify_messages(messages_and_keys)
+            .map_err(Error::BadSignature)
     }
 }
 
-
-
 /// A Prepare message from a leader.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LeaderPrepare { 
+pub struct LeaderPrepare {
     /// The header of the block that the leader is proposing.
     pub proposal: BlockHeader,
     /// Payload of the block that the leader is proposing.
@@ -143,7 +162,7 @@ pub struct LeaderPrepare {
 }
 
 /// Error returned by `LeaderPrepare::verify()`.
-#[derive(thiserror::Error,Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum LeaderPrepareVerifyError {
     /// Justification
     #[error("justification: {0:#}")]
@@ -188,12 +207,14 @@ impl LeaderPrepare {
     }
 
     /// Verifies LeaderPrepare.
-    pub fn verify(&self, genesis: &Genesis) -> Result<(),LeaderPrepareVerifyError> {
+    pub fn verify(&self, genesis: &Genesis) -> Result<(), LeaderPrepareVerifyError> {
         use LeaderPrepareVerifyError as Error;
-        self.justification.verify(genesis).map_err(Error::Justification)?;
+        self.justification
+            .verify(genesis)
+            .map_err(Error::Justification)?;
         let high_vote = self.justification.high_vote(genesis);
         let high_qc = self.justification.high_qc();
- 
+
         // Check that the proposal is valid.
         match &self.proposal_payload {
             // The leader proposed a new block.
@@ -203,18 +224,26 @@ impl LeaderPrepare {
                     return Err(Error::ProposalMismatchedPayload);
                 }
                 // Check that we finalized the previous block.
-                if high_vote.is_some() && high_vote.as_ref() != high_qc.map(|qc|&qc.message.proposal) {
+                if high_vote.is_some()
+                    && high_vote.as_ref() != high_qc.map(|qc| &qc.message.proposal)
+                {
                     return Err(Error::ProposalWhenPreviousNotFinalized);
                 }
-                let (want_parent,want_number) = match high_qc {
-                    Some(qc) => (Some(qc.header().hash()),qc.header().number.next()),
-                    None => (genesis.forks.first_parent(),genesis.forks.first_block()),
+                let (want_parent, want_number) = match high_qc {
+                    Some(qc) => (Some(qc.header().hash()), qc.header().number.next()),
+                    None => (genesis.forks.first_parent(), genesis.forks.first_block()),
                 };
                 if self.proposal.parent != want_parent {
-                    return Err(Error::BadParentHash{got:self.proposal.parent, want: want_parent});
+                    return Err(Error::BadParentHash {
+                        got: self.proposal.parent,
+                        want: want_parent,
+                    });
                 }
                 if self.proposal.number != want_number {
-                    return Err(Error::BadBlockNumber{got:self.proposal.number, want: want_number});
+                    return Err(Error::BadBlockNumber {
+                        got: self.proposal.number,
+                        want: want_number,
+                    });
                 }
             }
             None => {
@@ -234,5 +263,3 @@ impl LeaderPrepare {
         Ok(())
     }
 }
-
-

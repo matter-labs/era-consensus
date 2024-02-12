@@ -83,7 +83,9 @@ impl StateMachine {
 
         // Check that the message signer is in the validator set.
         if !self.config.genesis.validators.contains(author) {
-            return Err(Error::NonValidatorSigner { signer: author.clone() })?;
+            return Err(Error::NonValidatorSigner {
+                signer: author.clone(),
+            })?;
         }
 
         // If the message is from the "past", we discard it.
@@ -95,7 +97,13 @@ impl StateMachine {
         }
 
         // If the message is for a view when we are not a leader, we discard it.
-        if self.config.genesis.validators.view_leader(message.view.number) != self.config.secret_key.public() {
+        if self
+            .config
+            .genesis
+            .validators
+            .view_leader(message.view.number)
+            != self.config.secret_key.public()
+        {
             return Err(Error::NotLeaderInView);
         }
 
@@ -116,13 +124,16 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         // Verify the message.
-        message.verify(&self.config.genesis).map_err(Error::InvalidMessage)?;
+        message
+            .verify(&self.config.genesis)
+            .map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------
 
         // We add the message to the incrementally-constructed QC.
-        self.prepare_qcs.entry(message.view.number)
-            .or_insert_with(||validator::PrepareQC::new(message.view.clone()))
+        self.prepare_qcs
+            .entry(message.view.number)
+            .or_insert_with(|| validator::PrepareQC::new(message.view.clone()))
             .add(&signed_message, &self.config.genesis);
 
         // We store the message in our cache.
@@ -132,7 +143,11 @@ impl StateMachine {
             .insert(author.clone(), signed_message);
 
         // Now we check if we have enough messages to continue.
-        let num_messages = self.prepare_message_cache.get(&message.view.number).unwrap().len();
+        let num_messages = self
+            .prepare_message_cache
+            .get(&message.view.number)
+            .unwrap()
+            .len();
 
         if num_messages < self.config.genesis.validators.threshold() {
             return Ok(());

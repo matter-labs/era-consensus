@@ -1,6 +1,4 @@
-use crate::{
-    testonly::{ut_harness::UTHarness, Behavior, Network, Test},
-};
+use crate::testonly::{ut_harness::UTHarness, Behavior, Network, Test};
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
 

@@ -10,8 +10,9 @@ pub struct LeaderCommit {
 
 impl LeaderCommit {
     /// Verifies LeaderCommit.
-    pub fn verify(&self, genesis: &Genesis) -> Result<(),CommitQCVerifyError> {
-        self.justification.verify(genesis,/*allow_past_forks=*/false)
+    pub fn verify(&self, genesis: &Genesis) -> Result<(), CommitQCVerifyError> {
+        self.justification
+            .verify(genesis, /*allow_past_forks=*/ false)
     }
 
     /// View of this message.
@@ -33,7 +34,7 @@ pub struct CommitQC {
 }
 
 /// Error returned by `CommitQc::verify()`.
-#[derive(thiserror::Error,Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum CommitQCVerifyError {
     /// Invalid message.
     #[error("invalid message: {0:#}")]
@@ -43,12 +44,12 @@ pub enum CommitQCVerifyError {
     BadSignersSet,
     /// Not enough signers.
     #[error("not enough signers: got {got}, want {want}")]
-    NotEnoughSigners { 
+    NotEnoughSigners {
         /// Got signers.
         got: usize,
         /// Want signers.
         want: usize,
-    }, 
+    },
     /// Bad signature.
     #[error("bad signature: {0:#}")]
     BadSignature(#[source] validator::Error),
@@ -76,17 +77,29 @@ impl CommitQC {
 
     /// Add a validator's signature.
     pub fn add(&mut self, msg: &Signed<ReplicaCommit>, genesis: &Genesis) {
-        if self.message != msg.msg { return };
-        let Some(i) = genesis.validators.index(&msg.key) else { return };
-        if self.signers.0[i] { return };
+        if self.message != msg.msg {
+            return;
+        };
+        let Some(i) = genesis.validators.index(&msg.key) else {
+            return;
+        };
+        if self.signers.0[i] {
+            return;
+        };
         self.signers.0.set(i, true);
         self.signature.add(&msg.sig);
     }
 
     /// Verifies the signature of the CommitQC.
-    pub fn verify(&self, genesis: &Genesis, allow_past_forks: bool) -> Result<(),CommitQCVerifyError> {
+    pub fn verify(
+        &self,
+        genesis: &Genesis,
+        allow_past_forks: bool,
+    ) -> Result<(), CommitQCVerifyError> {
         use CommitQCVerifyError as Error;
-        self.message.verify(genesis, allow_past_forks).map_err(Error::InvalidMessage)?;
+        self.message
+            .verify(genesis, allow_past_forks)
+            .map_err(Error::InvalidMessage)?;
         if self.signers.len() != genesis.validators.len() {
             return Err(Error::BadSignersSet);
         }
@@ -95,18 +108,22 @@ impl CommitQC {
         let num_signers = self.signers.count();
         let threshold = genesis.validators.threshold();
         if num_signers < threshold {
-            return Err(Error::NotEnoughSigners { got: num_signers, want: threshold });
+            return Err(Error::NotEnoughSigners {
+                got: num_signers,
+                want: threshold,
+            });
         }
 
         // Now we can verify the signature.
-        let messages_and_keys = genesis.validators
+        let messages_and_keys = genesis
+            .validators
             .iter()
             .enumerate()
             .filter(|(i, _)| self.signers.0[*i])
             .map(|(_, pk)| (self.message.clone(), pk));
 
-        self.signature.verify_messages(messages_and_keys).map_err(Error::BadSignature)
+        self.signature
+            .verify_messages(messages_and_keys)
+            .map_err(Error::BadSignature)
     }
 }
-
-

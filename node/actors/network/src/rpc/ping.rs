@@ -2,7 +2,7 @@
 use crate::{mux, proto::ping as proto};
 use anyhow::Context as _;
 use rand::Rng;
-use zksync_concurrency::{ctx, time, limiter};
+use zksync_concurrency::{ctx, limiter, time};
 use zksync_protobuf::{kB, required, ProtoFmt};
 
 /// Ping RPC.
@@ -19,7 +19,10 @@ impl super::Rpc for Rpc {
 /// Hardcoded expected rate supported by the server.
 /// This needs to be part of the protocol, so that both parties agree on when
 /// connection is alive.
-pub(crate) const RATE: limiter::Rate = limiter::Rate { burst: 2, refresh: time::Duration::seconds(1) };
+pub(crate) const RATE: limiter::Rate = limiter::Rate {
+    burst: 2,
+    refresh: time::Duration::seconds(1),
+};
 
 /// Canonical Ping server implementation,
 /// which responds with data from the request.
@@ -46,7 +49,10 @@ impl super::Client<Rpc> {
     ) -> anyhow::Result<()> {
         loop {
             let req = Req(ctx.rng().gen());
-            let resp = self.call(&ctx.with_timeout(timeout), &req, kB).await.context("ping")?;
+            let resp = self
+                .call(&ctx.with_timeout(timeout), &req, kB)
+                .await
+                .context("ping")?;
             if req.0 != resp.0 {
                 anyhow::bail!("bad ping response");
             }

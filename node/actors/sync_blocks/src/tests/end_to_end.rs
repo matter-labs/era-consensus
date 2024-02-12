@@ -2,12 +2,14 @@
 use super::*;
 use anyhow::Context as _;
 use async_trait::async_trait;
-use rand::{seq::SliceRandom};
+use rand::seq::SliceRandom;
 use std::fmt;
 use test_casing::test_casing;
 use tracing::{instrument, Instrument};
 use zksync_concurrency::{
-    ctx, scope, ctx::channel,
+    ctx,
+    ctx::channel,
+    scope,
     testonly::{abort_on_panic, set_timeout},
 };
 use zksync_consensus_network as network;
@@ -297,7 +299,11 @@ impl GossipNetworkTest for SwitchingOffNodes {
         while !nodes.is_empty() {
             tracing::info!("{} nodes left", nodes.len());
 
-            nodes.choose(rng).unwrap().put_block(ctx, block_number).await;
+            nodes
+                .choose(rng)
+                .unwrap()
+                .put_block(ctx, block_number)
+                .await;
             tracing::info!("block {block_number} inserted");
 
             // Wait until all remaining nodes get the new block.

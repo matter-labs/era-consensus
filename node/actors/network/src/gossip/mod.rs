@@ -12,19 +12,16 @@
 //! Static connections constitute a rigid "backbone" of the gossip network, which is insensitive to
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
-use crate::{io, Config, pool::PoolWatch, rpc, gossip::ValidatorAddrsWatch, gossip::ArcMap};
+use crate::{gossip::ArcMap, gossip::ValidatorAddrsWatch, io, pool::PoolWatch, rpc, Config};
 use anyhow::Context as _;
-use std::{
-    sync::{Arc},
-    sync::atomic::AtomicUsize,
-};
+use std::{sync::atomic::AtomicUsize, sync::Arc};
 
+mod arcmap;
 mod handshake;
 mod runner;
-mod validator_addrs;
-mod arcmap;
 #[cfg(test)]
 mod tests;
+mod validator_addrs;
 
 pub(crate) use arcmap::*;
 pub(crate) use validator_addrs::*;
@@ -50,7 +47,7 @@ pub(crate) struct Network {
     pub(crate) get_block_clients: ArcMap<rpc::Client<rpc::get_block::Rpc>>,
     /// Output pipe of the network actor.
     pub(crate) sender: channel::UnboundedSender<io::OutputMessage>,
-    /// TESTONLY: how many time push_validator_addrs rpc was called by the peers. 
+    /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
 }
 
@@ -63,7 +60,10 @@ impl Network {
     ) -> Arc<Self> {
         Arc::new(Self {
             sender,
-            inbound: PoolWatch::new(cfg.gossip.static_inbound.clone(), cfg.gossip.dynamic_inbound_limit),
+            inbound: PoolWatch::new(
+                cfg.gossip.static_inbound.clone(),
+                cfg.gossip.dynamic_inbound_limit,
+            ),
             outbound: PoolWatch::new(cfg.gossip.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
             block_store,

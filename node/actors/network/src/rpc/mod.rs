@@ -277,7 +277,11 @@ impl<'a> Service<'a> {
     }
 
     /// Adds a server to the RPC service.
-    pub(crate) fn add_server<R: Rpc>(mut self, handler: impl Handler<R> + 'a, rate: limiter::Rate) -> Self {
+    pub(crate) fn add_server<R: Rpc>(
+        mut self,
+        handler: impl Handler<R> + 'a,
+        rate: limiter::Rate,
+    ) -> Self {
         let queue = mux::StreamQueue::new(R::INFLIGHT);
         if self
             .mux

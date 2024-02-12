@@ -1,6 +1,6 @@
 //! Messages related to blocks.
 
-use super::{CommitQC,CommitQCVerifyError};
+use super::{CommitQC, CommitQCVerifyError};
 use std::fmt;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 
@@ -174,10 +174,7 @@ impl FinalBlock {
     }
 
     /// Verifies internal consistency of this block.
-    pub fn verify(
-        &self,
-        genesis: &super::Genesis,
-    ) -> Result<(), BlockValidationError> {
+    pub fn verify(&self, genesis: &super::Genesis) -> Result<(), BlockValidationError> {
         let payload_hash = self.payload.hash();
         if payload_hash != self.header().payload {
             return Err(BlockValidationError::HashMismatch {
@@ -186,7 +183,7 @@ impl FinalBlock {
             });
         }
         self.justification
-            .verify(&genesis, /*allow_past_forks=*/true)
+            .verify(&genesis, /*allow_past_forks=*/ true)
             .map_err(BlockValidationError::Justification)
     }
 }

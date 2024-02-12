@@ -1,11 +1,10 @@
 //! Test-only utilities.
 use super::{
-    ForkId, Fork,
-    Genesis, GenesisHash, ForkSet, View,
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
-    FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
-    PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature,
-    Signed, Signers, ValidatorSet, ViewNumber,
+    FinalBlock, Fork, ForkId, ForkSet, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
+    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
+    ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorSet, View,
+    ViewNumber,
 };
 use bit_vec::BitVec;
 use rand::{
@@ -40,7 +39,10 @@ impl<'a> BlockBuilder<'a> {
     pub fn push(self) {
         let mut justification = CommitQC::new(self.msg, &self.setup.genesis);
         for key in &self.setup.keys {
-            justification.add(&key.sign_msg(justification.message.clone()),&self.setup.genesis);
+            justification.add(
+                &key.sign_msg(justification.message.clone()),
+                &self.setup.genesis,
+            );
         }
         self.setup.blocks.push(FinalBlock {
             payload: self.payload,
@@ -89,9 +91,9 @@ pub struct BlockBuilder<'a> {
 impl GenesisSetup {
     /// Constructs GenesisSetup with no blocks.
     pub fn empty(rng: &mut impl Rng, validators: usize) -> Self {
-        let keys : Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
+        let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
         let genesis = Genesis {
-            validators: ValidatorSet::new(keys.iter().map(|k|k.public())).unwrap(),
+            validators: ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap(),
             forks: ForkSet::new(Fork::default()),
         };
         Self {
@@ -129,7 +131,7 @@ impl GenesisSetup {
                         number: ViewNumber(0),
                     },
                     proposal: BlockHeader::first(payload.hash(), BlockNumber(0)),
-                }
+                },
             },
             payload,
             setup: self,
@@ -238,7 +240,7 @@ impl Distribution<GenesisHash> for Standard {
 
 impl Distribution<Fork> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Fork {
-        Fork { 
+        Fork {
             first_block: rng.gen(),
             first_parent: rng.gen(),
         }
@@ -384,10 +386,10 @@ impl Distribution<ViewNumber> for Standard {
 
 impl Distribution<View> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> View {
-        View{
+        View {
             protocol_version: rng.gen(),
             fork: rng.gen(),
-            number:  rng.gen(),
+            number: rng.gen(),
         }
     }
 }

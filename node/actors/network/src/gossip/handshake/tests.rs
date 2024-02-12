@@ -29,7 +29,7 @@ async fn test_session_id_mismatch() {
 
     let cfg0 = make_cfg(rng);
     let cfg1 = make_cfg(rng);
-    let genesis : validator::GenesisHash = rng.gen();
+    let genesis: validator::GenesisHash = rng.gen();
 
     // MitM attempt detected on the inbound end.
     scope::run!(ctx, |ctx, s| async {
@@ -101,13 +101,16 @@ async fn test_peer_mismatch() {
     let cfg1 = make_cfg(rng);
     let cfg2 = make_cfg(rng);
 
-    let genesis : validator::GenesisHash = rng.gen();
+    let genesis: validator::GenesisHash = rng.gen();
 
     scope::run!(ctx, |ctx, s| async {
         let (s0, s1) = noise::testonly::pipe(ctx).await;
         s.spawn(async {
             let mut s0 = s0;
-            assert_eq!(cfg1.key.public(), inbound(ctx, &cfg0, genesis, &mut s0).await?);
+            assert_eq!(
+                cfg1.key.public(),
+                inbound(ctx, &cfg0, genesis, &mut s0).await?
+            );
             Ok(())
         });
         s.spawn(async {
@@ -132,8 +135,8 @@ async fn test_invalid_signature() {
     let cfg0 = make_cfg(rng);
     let cfg1 = make_cfg(rng);
 
-    let genesis : validator::GenesisHash = rng.gen();
-    
+    let genesis: validator::GenesisHash = rng.gen();
+
     // Bad signature detected on outbound end.
     scope::run!(ctx, |ctx, s| async {
         let (mut s0, s1) = noise::testonly::pipe(ctx).await;

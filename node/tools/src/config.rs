@@ -224,7 +224,7 @@ impl Configs {
             },
             block_store,
             validator: self.validator_key.as_ref().map(|key| executor::Validator {
-                key: key.clone(), 
+                key: key.clone(),
                 replica_store: Box::new(store),
                 payload_manager: Box::new(bft::testonly::RandomPayload(self.app.max_payload_size)),
             }),

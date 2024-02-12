@@ -1,5 +1,5 @@
-use crate::testonly::ut_harness::UTHarness;
 use super::*;
+use crate::testonly::ut_harness::UTHarness;
 use assert_matches::assert_matches;
 use pretty_assertions::assert_eq;
 use rand::Rng;
@@ -38,7 +38,10 @@ async fn replica_prepare_sanity_yield_leader_prepare() {
         assert_eq!(leader_prepare.msg.view(), &replica_prepare.view);
         assert_eq!(
             leader_prepare.msg.proposal.parent,
-            replica_prepare.high_vote.as_ref().map(|v|v.proposal.hash()),
+            replica_prepare
+                .high_vote
+                .as_ref()
+                .map(|v| v.proposal.hash()),
         );
         assert_eq!(
             leader_prepare.msg.justification,
@@ -68,7 +71,7 @@ async fn replica_prepare_sanity_yield_leader_prepare_reproposal() {
         assert_eq!(leader_prepare.msg.view(), &replica_prepare.view);
         assert_eq!(
             Some(leader_prepare.msg.proposal),
-            replica_prepare.high_vote.as_ref().map(|v|v.proposal),
+            replica_prepare.high_vote.as_ref().map(|v| v.proposal),
         );
         assert_eq!(leader_prepare.msg.proposal_payload, None);
         let map = leader_prepare.msg.justification.map;
@@ -139,7 +142,9 @@ async fn replica_prepare_old_view() {
         let replica_prepare = util.new_replica_prepare();
         util.leader.view = util.replica.view.next();
         util.leader.phase = Phase::Prepare;
-        let res = util.process_replica_prepare(ctx, util.sign(replica_prepare)).await;
+        let res = util
+            .process_replica_prepare(ctx, util.sign(replica_prepare))
+            .await;
         assert_matches!(
             res,
             Err(replica_prepare::Error::Old {
@@ -164,7 +169,9 @@ async fn replica_prepare_during_commit() {
         let replica_prepare = util.new_replica_prepare();
         util.leader.view = util.replica.view;
         util.leader.phase = Phase::Commit;
-        let res = util.process_replica_prepare(ctx, util.sign(replica_prepare)).await;
+        let res = util
+            .process_replica_prepare(ctx, util.sign(replica_prepare))
+            .await;
         assert_matches!(
             res,
             Err(replica_prepare::Error::Old {
@@ -190,7 +197,9 @@ async fn replica_prepare_not_leader_in_view() {
 
         let mut replica_prepare = util.new_replica_prepare();
         replica_prepare.view.number = replica_prepare.view.number.next();
-        let res = util.process_replica_prepare(ctx, util.sign(replica_prepare)).await;
+        let res = util
+            .process_replica_prepare(ctx, util.sign(replica_prepare))
+            .await;
         assert_matches!(res, Err(replica_prepare::Error::NotLeaderInView));
         Ok(())
     })
@@ -281,10 +290,15 @@ async fn replica_prepare_invalid_commit_qc() {
         util.produce_block(ctx).await;
         let mut replica_prepare = util.new_replica_prepare();
         replica_prepare.high_qc.as_mut().unwrap().signature = rng.gen();
-        let res = util.process_replica_prepare(ctx, util.sign(replica_prepare)).await;
-        assert_matches!(res, Err(replica_prepare::Error::InvalidMessage(
-            validator::ReplicaPrepareVerifyError::HighQC(_)
-        )));
+        let res = util
+            .process_replica_prepare(ctx, util.sign(replica_prepare))
+            .await;
+        assert_matches!(
+            res,
+            Err(replica_prepare::Error::InvalidMessage(
+                validator::ReplicaPrepareVerifyError::HighQC(_)
+            ))
+        );
         Ok(())
     })
     .await
@@ -308,10 +322,15 @@ async fn replica_prepare_high_qc_of_future_view() {
         for _ in 0..2 {
             let qc = util.new_commit_qc(|msg| msg.view = view.clone());
             replica_prepare.high_qc = Some(qc);
-            let res = util.process_replica_prepare(ctx, util.sign(replica_prepare.clone())).await;
-            assert_matches!(res, Err(replica_prepare::Error::InvalidMessage(
-                validator::ReplicaPrepareVerifyError::HighQCFutureView
-            )));
+            let res = util
+                .process_replica_prepare(ctx, util.sign(replica_prepare.clone()))
+                .await;
+            assert_matches!(
+                res,
+                Err(replica_prepare::Error::InvalidMessage(
+                    validator::ReplicaPrepareVerifyError::HighQCFutureView
+                ))
+            );
             view.number = view.number.next();
         }
         Ok(())
@@ -350,7 +369,10 @@ async fn replica_commit_sanity_yield_leader_commit() {
             .await
             .unwrap()
             .unwrap();
-        assert_eq!(leader_commit.msg.justification, util.new_commit_qc(|msg| *msg = replica_commit));
+        assert_eq!(
+            leader_commit.msg.justification,
+            util.new_commit_qc(|msg| *msg = replica_commit)
+        );
         Ok(())
     })
     .await
@@ -444,7 +466,9 @@ async fn replica_commit_not_leader_in_view() {
         let current_view_leader = util.view_leader(util.replica.view);
         assert_ne!(current_view_leader, util.owner_key().public());
         let replica_commit = util.new_current_replica_commit();
-        let res = util.process_replica_commit(ctx, util.sign(replica_commit)).await;
+        let res = util
+            .process_replica_commit(ctx, util.sign(replica_commit))
+            .await;
         assert_matches!(res, Err(replica_commit::Error::NotLeaderInView));
         Ok(())
     })
@@ -546,7 +570,9 @@ async fn replica_commit_unexpected_proposal() {
 
         util.produce_block(ctx).await;
         let replica_commit = util.new_current_replica_commit();
-        let _ = util.process_replica_commit(ctx, util.sign(replica_commit)).await;
+        let _ = util
+            .process_replica_commit(ctx, util.sign(replica_commit))
+            .await;
         Ok(())
     })
     .await

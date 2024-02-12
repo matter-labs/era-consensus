@@ -73,7 +73,7 @@ impl PeerStates {
         anyhow::ensure!(state.first.header().number <= state.last.header().number);
         state
             .last
-            .verify(&self.config.genesis)
+            .verify(&self.config.genesis, /*allow_past_forks=*/true)
             .context("state.last.verify()")?;
         let mut peers = self.peers.lock().unwrap();
         match peers.entry(peer.clone()) {

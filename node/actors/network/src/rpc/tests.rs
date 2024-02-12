@@ -48,7 +48,13 @@ async fn test_ping() {
     let client = Client::<ping::Rpc>::new(ctx, ping::RATE);
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(async {
-            expected(Service::new().add_server(ping::Server, ping::RATE).run(ctx, s1).await).context("server")
+            expected(
+                Service::new()
+                    .add_server(ping::Server, ping::RATE)
+                    .run(ctx, s1)
+                    .await,
+            )
+            .context("server")
         });
         s.spawn_bg(async {
             expected(Service::new().add_client(&client).run(ctx, s2).await).context("client")
@@ -111,11 +117,20 @@ async fn test_ping_loop() {
                 pings: 0.into(),
             };
 
-            expected(Service::new().add_server(server, limiter::Rate {
-                burst: 1,
-                // with `refresh = 0`, server will never autoadvance time.
-                refresh: time::Duration::ZERO,
-            }).run(ctx, s1).await).context("server")
+            expected(
+                Service::new()
+                    .add_server(
+                        server,
+                        limiter::Rate {
+                            burst: 1,
+                            // with `refresh = 0`, server will never autoadvance time.
+                            refresh: time::Duration::ZERO,
+                        },
+                    )
+                    .run(ctx, s1)
+                    .await,
+            )
+            .context("server")
         });
         s.spawn_bg(async {
             expected(Service::new().add_client(&client).run(ctx, s2).await).context("client")
@@ -124,8 +139,8 @@ async fn test_ping_loop() {
         assert!(client.ping_loop(ctx, PING_TIMEOUT).await.is_err());
         let got = ctx.now() - now;
         // PING_COUNT will succeed and the next with time out.
-        let want = (PING_COUNT+1) as u32 * PING_TIMEOUT;
-        assert_eq!(got,want);
+        let want = (PING_COUNT + 1) as u32 * PING_TIMEOUT;
+        assert_eq!(got, want);
         Ok(())
     })
     .await
@@ -168,7 +183,13 @@ async fn test_inflight() {
     let client = Client::<ExampleRpc>::new(ctx, RATE);
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(async {
-            expected(Service::new().add_server(ExampleServer, RATE).run(ctx, s1).await).context("server")
+            expected(
+                Service::new()
+                    .add_server(ExampleServer, RATE)
+                    .run(ctx, s1)
+                    .await,
+            )
+            .context("server")
         });
         s.spawn_bg(async {
             expected(Service::new().add_client(&client).run(ctx, s2).await).context("client")

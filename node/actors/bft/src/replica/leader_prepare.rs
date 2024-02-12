@@ -42,11 +42,9 @@ pub(crate) enum Error {
     #[error("invalid message: {0:#}")]
     InvalidMessage(#[source] validator::LeaderPrepareVerifyError),
     /// Previous proposal was not finalized.
-   
+
     /// Oversized payload.
-    #[error(
-        "block proposal with an oversized payload (payload size: {payload_size})"
-    )]
+    #[error("block proposal with an oversized payload (payload size: {payload_size})")]
     ProposalOversizedPayload {
         /// Size of the payload.
         payload_size: usize,
@@ -114,20 +112,30 @@ impl StateMachine {
         // ----------- Checking the the message --------------
 
         signed_message.verify().map_err(Error::InvalidSignature)?;
-        message.verify(&self.config.genesis).map_err(Error::InvalidMessage)?;
+        message
+            .verify(&self.config.genesis)
+            .map_err(Error::InvalidMessage)?;
         let high_qc = message.justification.high_qc();
-    
+
         // Check that the payload doesn't exceed the maximum size.
         if let Some(payload) = &message.proposal_payload {
             if payload.0.len() > self.config.max_payload_size {
-                return Err(Error::ProposalOversizedPayload { payload_size: payload.0.len() });
+                return Err(Error::ProposalOversizedPayload {
+                    payload_size: payload.0.len(),
+                });
             }
 
             if let Some(prev) = message.proposal.number.prev() {
                 // Defensively assume that PayloadManager cannot verify proposal until the previous block is stored.
-                self.config.block_store.wait_until_persisted(ctx, prev).await.map_err(ctx::Error::Canceled)?;
+                self.config
+                    .block_store
+                    .wait_until_persisted(ctx, prev)
+                    .await
+                    .map_err(ctx::Error::Canceled)?;
             }
-            if let Err(err) = self.config.payload_manager
+            if let Err(err) = self
+                .config
+                .payload_manager
                 .verify(ctx, message.proposal.number, payload)
                 .await
             {

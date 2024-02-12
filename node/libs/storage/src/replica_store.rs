@@ -4,7 +4,7 @@ use anyhow::Context as _;
 use std::fmt;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
-use zksync_protobuf::{read_required, read_optional, required, ProtoFmt};
+use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
 
 /// Storage for [`ReplicaState`].
 ///
@@ -98,8 +98,8 @@ impl ProtoFmt for ReplicaState {
         Self::Proto {
             view: Some(self.view.0),
             phase: Some(self.phase.build()),
-            high_vote: self.high_vote.as_ref().map(|x|x.build()),
-            high_qc: self.high_qc.as_ref().map(|x|x.build()),
+            high_vote: self.high_vote.as_ref().map(|x| x.build()),
+            high_qc: self.high_qc.as_ref().map(|x| x.build()),
             proposals: self.proposals.iter().map(|p| p.build()).collect(),
         }
     }

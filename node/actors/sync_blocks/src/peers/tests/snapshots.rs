@@ -84,7 +84,7 @@ impl Test for FilteringRequestsForSnapshotPeer {
     fn config(&self, setup: &validator::testonly::GenesisSetup) -> Config {
         let mut config = Config::new(setup.genesis.clone());
         config.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
-        config 
+        config
     }
 
     async fn test(self, ctx: &ctx::Ctx, handles: TestHandles) -> anyhow::Result<()> {

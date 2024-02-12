@@ -161,12 +161,17 @@ impl StateMachine {
             // For this we only need the header, since we are guaranteed that at least
             // f+1 honest replicas have the block and can broadcast it when finalized
             // (2f+1 have stated that they voted for the block, at most f are malicious).
-            Some(proposal) if Some(&proposal) != high_qc.map(|qc|&qc.message.proposal) => (proposal, None),
+            Some(proposal) if Some(&proposal) != high_qc.map(|qc| &qc.message.proposal) => {
+                (proposal, None)
+            }
             // The previous block was finalized, so we can propose a new block.
             _ => {
-                let (parent,number) = match high_qc {
-                    Some(qc) => (Some(qc.header().hash()),qc.header().number.next()),
-                    None => (cfg.genesis.forks.first_parent(),cfg.genesis.forks.first_block()),
+                let (parent, number) = match high_qc {
+                    Some(qc) => (Some(qc.header().hash()), qc.header().number.next()),
+                    None => (
+                        cfg.genesis.forks.first_parent(),
+                        cfg.genesis.forks.first_block(),
+                    ),
                 };
                 // Defensively assume that PayloadManager cannot propose until the previous block is stored.
                 if let Some(prev) = number.prev() {
@@ -184,7 +189,11 @@ impl StateMachine {
                 metrics::METRICS
                     .leader_proposal_payload_size
                     .observe(payload.0.len());
-                let proposal = validator::BlockHeader { number, parent, payload: payload.hash() };
+                let proposal = validator::BlockHeader {
+                    number,
+                    parent,
+                    payload: payload.hash(),
+                };
                 (proposal, Some(payload))
             }
         };

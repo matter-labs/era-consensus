@@ -1,13 +1,10 @@
-use super::{Network, handshake, ValidatorAddrs};
+use super::{handshake, Network, ValidatorAddrs};
 use crate::{io, noise, preface, rpc};
 use async_trait::async_trait;
-use std::sync::Arc;
 use std::sync::atomic::Ordering;
-use zksync_concurrency::{
-    ctx,
-    oneshot, scope, sync,
-};
-use zksync_consensus_roles::{node};
+use std::sync::Arc;
+use zksync_concurrency::{ctx, oneshot, scope, sync};
+use zksync_consensus_roles::node;
 use zksync_consensus_storage::BlockStore;
 use zksync_protobuf::kB;
 
@@ -23,7 +20,9 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'
         _ctx: &ctx::Ctx,
         req: rpc::push_validator_addrs::Req,
     ) -> anyhow::Result<()> {
-        self.0.push_validator_addrs_calls.fetch_add(1,Ordering::SeqCst);
+        self.0
+            .push_validator_addrs_calls
+            .fetch_add(1, Ordering::SeqCst);
         self.0
             .validator_addrs
             .update(&self.0.cfg.genesis.validators, &req.0[..])
@@ -81,22 +80,36 @@ impl Network {
         peer: &node::PublicKey,
         stream: noise::Stream,
     ) -> anyhow::Result<()> {
-        let push_validator_addrs_client = rpc::Client::<rpc::push_validator_addrs::Rpc>::new(ctx, self.cfg.rpc.push_validator_addrs_rate);
+        let push_validator_addrs_client = rpc::Client::<rpc::push_validator_addrs::Rpc>::new(
+            ctx,
+            self.cfg.rpc.push_validator_addrs_rate,
+        );
         let push_validator_addrs_server = PushValidatorAddrsServer(self);
-        let push_block_store_state_client = rpc::Client::<rpc::push_block_store_state::Rpc>::new(ctx, self.cfg.rpc.push_block_store_state_rate);
-        let push_block_store_state_server = PushBlockStoreStateServer { peer, net: self, };
+        let push_block_store_state_client = rpc::Client::<rpc::push_block_store_state::Rpc>::new(
+            ctx,
+            self.cfg.rpc.push_block_store_state_rate,
+        );
+        let push_block_store_state_server = PushBlockStoreStateServer { peer, net: self };
 
-        let get_block_client = Arc::new(rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate));
-        self    
-            .get_block_clients
+        let get_block_client = Arc::new(rpc::Client::<rpc::get_block::Rpc>::new(
+            ctx,
+            self.cfg.rpc.get_block_rate,
+        ));
+        self.get_block_clients
             .insert(peer.clone(), get_block_client.clone());
 
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_client(&push_validator_addrs_client)
-                .add_server(push_validator_addrs_server, self.cfg.rpc.push_validator_addrs_rate)
+                .add_server(
+                    push_validator_addrs_server,
+                    self.cfg.rpc.push_validator_addrs_rate,
+                )
                 .add_client(&push_block_store_state_client)
-                .add_server(push_block_store_state_server, self.cfg.rpc.push_block_store_state_rate)
+                .add_server(
+                    push_block_store_state_server,
+                    self.cfg.rpc.push_block_store_state_rate,
+                )
                 .add_client(&get_block_client)
                 .add_server(&*self.block_store, self.cfg.rpc.get_block_rate)
                 .add_server(rpc::ping::Server, rpc::ping::RATE);
@@ -143,8 +156,7 @@ impl Network {
         })
         .await;
 
-        self
-            .get_block_clients
+        self.get_block_clients
             .remove(peer.clone(), get_block_client);
         res
     }
@@ -156,7 +168,8 @@ impl Network {
         ctx: &ctx::Ctx,
         mut stream: noise::Stream,
     ) -> anyhow::Result<()> {
-        let peer = handshake::inbound(ctx, &self.cfg.gossip, self.cfg.genesis.hash(), &mut stream).await?;
+        let peer =
+            handshake::inbound(ctx, &self.cfg.gossip, self.cfg.genesis.hash(), &mut stream).await?;
         tracing::Span::current().record("peer", tracing::field::debug(&peer));
         self.inbound.insert(peer.clone()).await?;
         let res = self.run_stream(ctx, &peer, stream).await;
@@ -171,7 +184,14 @@ impl Network {
         addr: std::net::SocketAddr,
     ) -> anyhow::Result<()> {
         let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet).await?;
-        handshake::outbound(ctx, &self.cfg.gossip, self.cfg.genesis.hash(), &mut stream, peer).await?;
+        handshake::outbound(
+            ctx,
+            &self.cfg.gossip,
+            self.cfg.genesis.hash(),
+            &mut stream,
+            peer,
+        )
+        .await?;
 
         self.outbound.insert(peer.clone()).await?;
         let res = self.run_stream(ctx, peer, stream).await;

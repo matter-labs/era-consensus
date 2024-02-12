@@ -135,8 +135,9 @@ async fn test_transmission() {
                 let i = NoCopy::from(i);
                 s.spawn_bg(async {
                     let i = i;
-                    runner.run(ctx)
-                        .instrument(tracing::info_span!("node", i=*i))
+                    runner
+                        .run(ctx)
+                        .instrument(tracing::info_span!("node", i = *i))
                         .await
                         .context(*i)
                 });
@@ -152,7 +153,9 @@ async fn test_transmission() {
             let want: validator::Signed<validator::ConsensusMsg> = rng.gen();
             let in_message = io::ConsensusInputMessage {
                 message: want.clone(),
-                recipient: io::Target::Validator(nodes[1].cfg().validator_key.as_ref().unwrap().public()),
+                recipient: io::Target::Validator(
+                    nodes[1].cfg().validator_key.as_ref().unwrap().public(),
+                ),
             };
             nodes[0].pipe.send(in_message.into());
 

@@ -1,17 +1,12 @@
 //! Testonly utilities.
 #![allow(dead_code)]
-use crate::{Network, Runner, GossipConfig, RpcConfig, Config};
+use crate::{Config, GossipConfig, Network, RpcConfig, Runner};
 use rand::Rng;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use zksync_concurrency::{
-    ctx,
-    ctx::channel,
-    io, net, scope,
-    sync,
-};
+use zksync_concurrency::{ctx, ctx::channel, io, net, scope, sync};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe;
@@ -114,13 +109,17 @@ impl InstanceRunner {
 
 impl Instance {
     /// Construct an instance for a given config.
-    pub fn new(ctx: &ctx::Ctx, cfg: Config, block_store: Arc<BlockStore>) -> (Self, InstanceRunner) {
+    pub fn new(
+        ctx: &ctx::Ctx,
+        cfg: Config,
+        block_store: Arc<BlockStore>,
+    ) -> (Self, InstanceRunner) {
         let (actor_pipe, dispatcher_pipe) = pipe::new();
-        let (net,runner) = Network::new(ctx, cfg, block_store, actor_pipe);
+        let (net, runner) = Network::new(ctx, cfg, block_store, actor_pipe);
         let (terminate_send, terminate_recv) = channel::bounded(1);
         (
             Self {
-                net, 
+                net,
                 pipe: dispatcher_pipe,
                 terminate: terminate_send,
             },
