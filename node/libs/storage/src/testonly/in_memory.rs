@@ -1,22 +1,31 @@
 //! In-memory storage implementation.
 use crate::{BlockStoreState, PersistentBlockStore, ReplicaState};
 use anyhow::Context as _;
-use std::{collections::VecDeque, sync::Mutex};
+use std::{collections::VecDeque, sync::Mutex, sync::Arc};
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
 
+
 /// In-memory block store.
-#[derive(Debug, Default)]
-pub struct BlockStore(Mutex<VecDeque<validator::FinalBlock>>);
+#[derive(Clone, Debug, Default)]
+pub struct BlockStore(Arc<Mutex<VecDeque<validator::FinalBlock>>>);
 
 /// In-memory replica store.
-#[derive(Debug, Default)]
-pub struct ReplicaStore(Mutex<ReplicaState>);
+#[derive(Clone, Debug, Default)]
+pub struct ReplicaStore(Arc<Mutex<ReplicaState>>);
 
 impl BlockStore {
     /// Creates a new store containing only the specified `genesis_block`.
     pub fn new(genesis: validator::FinalBlock) -> Self {
-        Self(Mutex::new([genesis].into()))
+        Self(Arc::new(Mutex::new([genesis].into())))
+    }
+
+    /// Reverts blocks with `number >= next`.
+    pub fn revert(&self, next: validator::BlockNumber) {
+        let mut blocks = self.0.lock().unwrap();
+        if let Some(first) = blocks.front().map(|b|b.header().number.0) {
+            blocks.truncate(next.0.saturating_sub(first) as usize);
+        }
     }
 }
 

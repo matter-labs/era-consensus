@@ -16,7 +16,6 @@ use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
 mod io;
-pub mod testonly;
 #[cfg(test)]
 mod tests;
 

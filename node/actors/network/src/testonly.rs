@@ -48,8 +48,8 @@ pub struct Instance {
 }
 
 /// Construct configs for `n` validators of the consensus.
-pub fn new_configs<R: Rng>(
-    rng: &mut R,
+pub fn new_configs(
+    rng: &mut impl Rng,
     setup: &validator::testonly::GenesisSetup,
     gossip_peers: usize,
 ) -> Vec<Config> {
@@ -57,15 +57,15 @@ pub fn new_configs<R: Rng>(
         let addr = net::tcp::testonly::reserve_listener();
         Config {
             server_addr: addr,
-            genesis: setup.genesis.clone(),
             public_addr: *addr,
+            genesis: setup.genesis.clone(),
             // Pings are disabled in tests by default to avoid dropping connections
             // due to timeouts.
             ping_timeout: None,
             validator_key: Some(key.clone()),
             gossip: GossipConfig {
                 key: rng.gen(),
-                dynamic_inbound_limit: setup.keys.len(),
+                dynamic_inbound_limit: usize::MAX,
                 static_inbound: HashSet::default(),
                 static_outbound: HashMap::default(),
             },
@@ -85,6 +85,31 @@ pub fn new_configs<R: Rng>(
         }
     }
     cfgs
+}
+
+/// Constructs a config for a non-validator node, which will
+/// establish a gossip connection to `peer`.
+pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
+    let addr = net::tcp::testonly::reserve_listener();
+    Config {
+        server_addr: addr,
+        public_addr: *addr,
+        genesis: peer.genesis.clone(),
+        // Pings are disabled in tests by default to avoid dropping connections
+        // due to timeouts.
+        ping_timeout: None,
+        validator_key: None,
+        gossip: GossipConfig {
+            key: rng.gen(),
+            dynamic_inbound_limit: usize::MAX,
+            static_inbound: HashSet::default(),
+            static_outbound: [
+               (peer.gossip.key.public(), peer.public_addr), 
+            ].into(),
+        },
+        max_block_size: usize::MAX,
+        rpc: RpcConfig::default(),
+    }
 }
 
 /// Runner for Instance.
