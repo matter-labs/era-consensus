@@ -5,7 +5,6 @@ use tracing::Instrument as _;
 use zksync_concurrency::{ctx, net, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::testonly::new_store;
-use zksync_consensus_utils::no_copy::NoCopy;
 use assert_matches::assert_matches;
 
 #[tokio::test]
@@ -177,7 +176,7 @@ async fn test_transmission() {
             .enumerate()
             .map(|(i, cfg)| {
                 let (node, runner) = testonly::Instance::new(ctx, cfg.clone(), store.clone());
-                let i = NoCopy::from(i);
+                let i = ctx::NoCopy(i);
                 s.spawn_bg(async {
                     let i = i;
                     runner

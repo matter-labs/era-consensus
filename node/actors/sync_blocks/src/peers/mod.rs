@@ -17,7 +17,6 @@ use zksync_consensus_roles::{
     validator::{BlockNumber, FinalBlock},
 };
 use zksync_consensus_storage::{BlockStore, BlockStoreState};
-use zksync_consensus_utils::no_copy::NoCopy;
 
 mod events;
 #[cfg(test)]
@@ -109,11 +108,11 @@ impl PeerStates {
                 })
                 .await?;
                 let permit = sync::acquire(ctx, &sem).await?;
-                let block_number = NoCopy::from(next);
+                let block_number = ctx::NoCopy(next);
                 next = next.next();
                 s.spawn(async {
                     let _permit = permit;
-                    self.fetch_block(ctx, block_number.into_inner()).await
+                    self.fetch_block(ctx, block_number.into()).await
                 });
             }
         })

@@ -14,7 +14,6 @@ use zksync_concurrency::{
 };
 use zksync_consensus_network as network;
 use zksync_consensus_storage::testonly::new_store;
-use zksync_consensus_utils::no_copy::NoCopy;
 
 type NetworkDispatcherPipe =
     pipe::DispatcherPipe<network::io::InputMessage, network::io::OutputMessage>;
@@ -235,9 +234,9 @@ impl GossipNetworkTest for BasicSynchronization {
         scope::run!(ctx, |ctx, s| async {
             // Add a batch of blocks.
             for block_number in (5..10).rev().map(BlockNumber) {
-                let block_number = NoCopy::from(block_number);
+                let block_number = ctx::NoCopy(block_number);
                 s.spawn_bg(async {
-                    sending_node.put_block(ctx, block_number.into_inner()).await;
+                    sending_node.put_block(ctx, block_number.into()).await;
                     Ok(())
                 });
             }

@@ -9,7 +9,6 @@ use std::{
     },
 };
 use zksync_concurrency::{ctx, scope, testonly::abort_on_panic};
-use zksync_consensus_utils::no_copy::NoCopy;
 use zksync_protobuf::ProtoFmt as _;
 
 mod proto;
@@ -247,35 +246,35 @@ fn mux_with_noise() {
         scope::run!(ctx, |ctx, s| async {
             let (s1, s2) = noise::testonly::pipe(ctx).await;
             for (cap, q) in mux1.connect.clone() {
-                let cap = NoCopy::from(cap);
+                let cap = ctx::NoCopy(cap);
                 s.spawn_bg(async {
                     run_server(ctx, q, *cap)
                         .await
-                        .with_context(|| format!("server({})", cap.into_inner()))
+                        .with_context(|| format!("server({})", cap.into()))
                 });
             }
             for (cap, q) in mux1.accept.clone() {
-                let cap = NoCopy::from(cap);
+                let cap = ctx::NoCopy(cap);
                 s.spawn(async {
                     run_client(ctx, q, *cap)
                         .await
-                        .with_context(|| format!("client({})", cap.into_inner()))
+                        .with_context(|| format!("client({})", cap.into()))
                 });
             }
             for (cap, q) in mux2.connect.clone() {
-                let cap = NoCopy::from(cap);
+                let cap = ctx::NoCopy(cap);
                 s.spawn_bg(async {
                     run_server(ctx, q, *cap)
                         .await
-                        .with_context(|| format!("server({})", cap.into_inner()))
+                        .with_context(|| format!("server({})", cap.into()))
                 });
             }
             for (cap, q) in mux2.accept.clone() {
-                let cap = NoCopy::from(cap);
+                let cap = ctx::NoCopy(cap);
                 s.spawn(async {
                     run_client(ctx, q, *cap)
                         .await
-                        .with_context(|| format!("client({})", cap.into_inner()))
+                        .with_context(|| format!("client({})", cap.into()))
                 });
             }
             s.spawn_bg(async { expected(mux1.run(ctx, s1).await).context("mux1.run()") });
