@@ -4,6 +4,7 @@ use rand::Rng;
 use zksync_concurrency::{ctx, io, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
 use zksync_protobuf::testonly::test_encode_random;
+use assert_matches::assert_matches;
 
 #[test]
 fn test_schema_encode_decode() {
@@ -111,6 +112,50 @@ async fn test_peer_mismatch() {
     })
     .await
     .unwrap();
+}
+
+#[tokio::test]
+async fn test_genesis_mismatch() {
+    abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let key0: validator::SecretKey = rng.gen();
+    let key1: validator::SecretKey = rng.gen();
+
+    tracing::info!("test that inbound handshake rejects mismatching genesis");
+    scope::run!(ctx, |ctx, s| async {
+        let (s0, mut s1) = noise::testonly::pipe(ctx).await;
+        s.spawn(async {
+            let mut s0 = s0;
+            let res = outbound(ctx, &key0, ctx.rng().gen(), &mut s0, &key1.public()).await;
+            assert_matches!(res, Err(Error::Stream(_)));
+            Ok(())
+        });
+        let res = inbound(ctx, &key1, rng.gen(), &mut s1).await;
+        assert_matches!(res, Err(Error::GenesisMismatch));
+        anyhow::Ok(())
+    })
+    .await
+    .unwrap();
+    
+    tracing::info!("test that outbound handshake rejects mismatching genesis");
+    scope::run!(ctx, |ctx, s| async {
+        let (s0, mut s1) = noise::testonly::pipe(ctx).await;
+        s.spawn(async {
+            let mut s0 = s0;
+            let res = outbound(ctx, &key0, ctx.rng().gen(), &mut s0, &key1.public()).await;
+            assert_matches!(res, Err(Error::GenesisMismatch));
+            Ok(())
+        });
+        let session_id = node::SessionId(s1.id().encode());
+        let _ : Handshake = frame::recv_proto(ctx, &mut s1, Handshake::max_size()).await.unwrap();
+        frame::send_proto(ctx, &mut s1, &Handshake {
+            session_id: key1.sign_msg(session_id),
+            genesis: rng.gen(),
+        }).await.unwrap();
+        anyhow::Ok(())
+    }).await.unwrap();
 }
 
 #[tokio::test]

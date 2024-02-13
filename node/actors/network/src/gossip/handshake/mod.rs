@@ -54,10 +54,10 @@ pub(super) enum Error {
     SessionIdMismatch,
     #[error("unexpected peer")]
     PeerMismatch,
-    #[error("validator signature")]
+    #[error(transparent)]
     Signature(#[from] node::InvalidSignatureError),
-    #[error("stream")]
-    Stream(#[source] anyhow::Error),
+    #[error(transparent)]
+    Stream(anyhow::Error),
 }
 
 pub(super) async fn outbound(

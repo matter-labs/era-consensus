@@ -1,5 +1,5 @@
 use super::*;
-use crate::{io, preface, rpc, testonly};
+use crate::{metrics, io, preface, rpc, testonly};
 use pretty_assertions::assert_eq;
 use rand::Rng;
 use std::{
@@ -16,6 +16,7 @@ use zksync_concurrency::{
 };
 use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock};
 use zksync_consensus_storage::testonly::new_store;
+use assert_matches::assert_matches;
 
 #[tokio::test]
 async fn test_one_connection_per_node() {
@@ -254,6 +255,42 @@ async fn test_validator_addrs_propagation() {
             let sub = &mut node.net.gossip.validator_addrs.subscribe();
             sync::wait_for(ctx, sub, |got| want == to_addr_map(got)).await?;
         }
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_genesis_mismatch() {
+    abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let setup = validator::testonly::GenesisSetup::new(rng, 2);
+    let cfgs = testonly::new_configs(rng, &setup, 1);
+        
+    scope::run!(ctx, |ctx,s| async {
+        let mut listener = cfgs[1].server_addr.bind().context("server_addr.bind()")?;
+
+        tracing::info!("Start one node, we will simulate the other one.");
+        let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
+        s.spawn_bg(runner.run(ctx));
+        let (_node,runner) = testonly::Instance::new(ctx, cfgs[0].clone(), store.clone());
+        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
+
+        tracing::info!("Accept a connection with mismatching genesis.");
+        let stream = metrics::MeteredStream::listen(ctx, &mut listener).await?.context("listen()")?;
+        let (mut stream, endpoint) = preface::accept(ctx, stream).await.context("preface::accept()")?; 
+        assert_eq!(endpoint, preface::Endpoint::GossipNet);
+        tracing::info!("Expect the handshake to fail");
+        let res = handshake::inbound(ctx, &cfgs[1].gossip, rng.gen(), &mut stream).await;
+        assert_matches!(res,Err(handshake::Error::GenesisMismatch));
+
+        tracing::info!("Try to connect to a node with a mismatching genesis.");
+        let mut stream = preface::connect(ctx, cfgs[0].public_addr, preface::Endpoint::GossipNet).await.context("preface::connect")?;
+        let res = handshake::outbound(ctx, &cfgs[1].gossip, rng.gen(), &mut stream, &cfgs[0].gossip.key.public()).await;
+        tracing::info!("Expect the peer to verify the mismatching Genesis and close the connection.");
+        assert_matches!(res,Err(handshake::Error::Stream(_)));
         Ok(())
     })
     .await

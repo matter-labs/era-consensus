@@ -27,7 +27,6 @@ pub(crate) struct StateMachine {
     /// The highest commit quorum certificate known to the replica.
     pub(crate) high_qc: Option<validator::CommitQC>,
     /// A cache of the received block proposals.
-    // TODO: this should be invalidated per view, not block number which is no longer monotone
     pub(crate) block_proposal_cache:
         BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
     /// The deadline to receive an input message.
