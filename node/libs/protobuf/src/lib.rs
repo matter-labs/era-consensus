@@ -5,6 +5,7 @@
 pub mod build;
 pub mod proto;
 mod proto_fmt;
+pub mod repr;
 pub mod serde;
 mod std_conv;
 pub mod testonly;
