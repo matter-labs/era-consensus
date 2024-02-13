@@ -6,6 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
+use anyhow::Context as _;
 
 /// Version of the consensus algorithm that the validator is using.
 /// It allows to prevent misinterpretation of messages signed by validators
@@ -47,6 +48,7 @@ pub struct ForkId(pub usize);
 /// Specification of a fork.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Fork {
+    pub id: ForkId,
     /// First block of a fork.
     pub first_block: BlockNumber,
     /// Parent fo the first block of a fork.
@@ -56,6 +58,7 @@ pub struct Fork {
 impl Default for Fork {
     fn default() -> Self {
         Self {
+            id: ForkId(0),
             first_block: BlockNumber(0),
             first_parent: None,
         }
@@ -70,15 +73,32 @@ pub struct ForkSet(pub(in crate::validator) Vec<Fork>);
 
 impl ForkSet {
     /// Constructs a new fork set.
-    pub fn new(fork: Fork) -> Self {
-        Self(vec![fork])
+    pub fn new(forks: Vec<Fork>) -> anyhow::Result<Self> {
+        let first = forks.first().context("empty fork set")?;
+        anyhow::ensure!(first.first_parent.is_none());
+        for i in 1..forks.len() {
+            anyhow::ensure!(forks[i-1].id < forks[i].id);
+            anyhow::ensure!(forks[i].first_parent.is_some());
+        }
+        Ok(Self(forks))
     }
-}
 
-impl ForkSet {
+    /// Gets a forks.
+    pub fn get(&self, fork: ForkId) -> Option<&Fork> {
+        self.0.get(fork.0)
+    }
+    
     /// Inserts a new fork to the fork set.
-    pub fn push(&mut self, fork: Fork) {
+    pub fn push(&mut self, fork: Fork) -> anyhow::Result<()> {
+        anyhow::ensure!(fork.id > self.0.last().unwrap().id);
+        let mut n = self.0.len();
+        while n > 0 && self.0[n-1].first_block >= fork.first_block {
+            n -= 1;
+        }
+        anyhow::ensure!((n==0) != fork.first_parent.is_none());
+        self.0.truncate(n);
         self.0.push(fork);
+        Ok(())
     }
 
     /// Current fork that node is participating in.

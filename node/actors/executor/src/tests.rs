@@ -10,6 +10,7 @@ use zksync_concurrency::{
 use zksync_consensus_bft as bft;
 use zksync_consensus_roles::{validator::testonly::GenesisSetup, validator::BlockNumber};
 use zksync_consensus_storage::{
+    self as storage,
     testonly::{in_memory, new_store},
     BlockStore,
     PersistentBlockStore as _,
@@ -165,13 +166,13 @@ async fn test_block_revert() {
             stores.push(store);
         }
         for s in stores {
-            s.wait_until_persisted(ctx, BlockNumber(10)).await?;
+            s.wait_until_persisted(ctx, BlockNumber(6)).await?;
         }
         Ok(())
     }).await.unwrap();
     
     tracing::info!("Revert blocks");
-    let first = BlockNumber(5);
+    let first = BlockNumber(3);
     setup.genesis.forks.push(validator::Fork {
         first_block: first,
         first_parent: ps[0].block(ctx,first).await.unwrap().header().parent,
@@ -182,6 +183,7 @@ async fn test_block_revert() {
         ps[i].revert(first);
     }
 
+    let last_block = BlockNumber(8);
     scope::run!(ctx, |ctx,s| async {
         tracing::info!("Make validators produce blocks on the new fork.");
         let mut stores = vec![];
@@ -196,7 +198,8 @@ async fn test_block_revert() {
         let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
         s.spawn_bg(runner.run(ctx));
         s.spawn_bg(make_executor(&new_fullnode(rng,&cfgs[0]),store.clone()).run(ctx));
-        store.wait_until_persisted(ctx, BlockNumber(15)).await?;
+        store.wait_until_persisted(ctx, last_block).await?;
+        storage::testonly::verify(ctx, &*store, &setup.genesis).await.context("verify(storage)")?;
         Ok(())
     }).await.unwrap();
 }

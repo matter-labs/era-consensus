@@ -30,16 +30,12 @@ impl ProtoFmt for Fork {
 impl ProtoFmt for ForkSet {
     type Proto = proto::ForkSet;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let this = Self(
-            r.forks
-                .iter()
-                .enumerate()
-                .map(|(i, f)| Fork::read(f).context(i))
-                .collect::<Result<_, _>>()
-                .context("forks")?,
-        );
-        anyhow::ensure!(!this.0.is_empty(), "empty");
-        Ok(this)
+        Self::new(r.forks
+            .iter()
+            .enumerate()
+            .map(|(i, f)| Fork::read(f).context(i))
+            .collect::<Result<_, _>>()
+            .context("forks")?)
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {

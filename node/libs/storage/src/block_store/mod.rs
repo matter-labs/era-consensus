@@ -188,7 +188,7 @@ impl BlockStore {
         &self,
         ctx: &ctx::Ctx,
         block: validator::FinalBlock,
-    ) -> ctx::OrCanceled<()> {
+    ) -> ctx::Result<()> {
         let number = block.header().number;
         sync::wait_for(ctx, &mut self.subscribe(), |queued_state| {
             queued_state.next() >= number
@@ -200,6 +200,9 @@ impl BlockStore {
                 if queued_state.next() != number {
                     return false;
                 }
+                anyhow::ensure!(Some(queued_state.last.header().hash()) == block.header().parent,
+                    "block.parent doesn't match the previous block"
+                );
                 queued_state.last = block.justification.clone();
                 true
             });
@@ -243,6 +246,14 @@ impl BlockStore {
     pub fn subscribe(&self) -> sync::watch::Receiver<BlockStoreState> {
         self.inner.borrow().queued_state.subscribe()
     }
+
+    /// Verifies storage against the genesis.
+    /// Storage is expected to contain a chain of blocks with matching
+    /// parents.
+    pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
+        //TODO
+    }
+
 
     fn scrape_metrics(&self) -> metrics::BlockStore {
         let m = metrics::BlockStore::default();

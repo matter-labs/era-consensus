@@ -4,6 +4,7 @@ use rand::{distributions::Standard, prelude::Distribution, Rng};
 use std::sync::Arc;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
+use anyhow::Context as _;
 
 pub mod in_memory;
 
@@ -50,4 +51,24 @@ pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<valid
     }
     assert!(store.block(ctx, range.next()).await.is_err());
     blocks
+}
+
+/// Verifies storage content.
+pub async fn verify(ctx: &ctx::Ctx, store: &BlockStore, genesis: &validator::Genesis) -> anyhow::Result<()> {
+    let range = store.subscribe().borrow().clone();
+    let mut parent : Option<validator::BlockHeaderHash> = None;
+    for n in range.first.header().number.0..range.next().0 {
+        let n = validator::BlockNumber(n);
+        async {
+            let block = store.block(ctx,n).await?.context("missing")?;
+            block.verify(&genesis)?;
+            // Ignore checking the first block parent
+            if parent.is_some() {
+                anyhow::ensure!(parent==block.header().parent);
+            }
+            parent = Some(block.header().hash());
+            Ok(())
+        }.await.context(n)?;
+    }
+    Ok(())
 }

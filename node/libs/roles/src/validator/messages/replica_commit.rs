@@ -1,4 +1,5 @@
 use super::*;
+use anyhow::Context as _;
 
 /// A Commit message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -19,13 +20,17 @@ impl ReplicaCommit {
         // during synchronization. Eventually we will switch to synchronization without
         // CommitQCs for blocks from the past forks, and then we can always enforce
         // `genesis.forks.current()` instead.
-        let want = genesis.forks.find(self.proposal.number);
+        let want = genesis.forks.find(self.proposal.number).context("doesn't belong to any fork")?;
         anyhow::ensure!(
-            want == Some(self.view.fork),
+            want == self.view.fork,
             "bad fork: got {:?} want {want:?} for block {}",
             self.view.fork,
             self.proposal.number
         );
+        let fork = genesis.forks.get(want).unwrap();
+        if self.proposal.number == fork.first_block {
+            anyhow::ensure!(self.proposal.parent==fork.first_parent,"bad parent of the first block of the fork");
+        }
         Ok(())
     }
 }

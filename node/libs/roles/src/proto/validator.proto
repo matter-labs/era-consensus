@@ -5,8 +5,9 @@ package zksync.roles.validator;
 import "zksync/std.proto";
 
 message Fork {
-  optional uint64 first_block = 1; // required; BlockNumber
-  optional BlockHeaderHash first_parent = 2; // optional
+  optional uint64 id = 1; // required; ForkId
+  optional uint64 first_block = 2; // required; BlockNumber
+  optional BlockHeaderHash first_parent = 3; // optional
 }
 
 message ForkSet {
