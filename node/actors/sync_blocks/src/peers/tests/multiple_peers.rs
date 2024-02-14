@@ -31,7 +31,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         let rng = &mut ctx.rng();
         let first_peer = rng.gen::<node::SecretKey>().public();
         peer_states
-            .update(&first_peer, sync_state(&setup, 2))
+            .update(&first_peer, sync_state(&setup, BlockNumber(2)))
             .unwrap();
 
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
@@ -47,7 +47,7 @@ impl Test for RequestingBlocksFromTwoPeers {
 
         let second_peer = rng.gen::<node::SecretKey>().public();
         peer_states
-            .update(&second_peer, sync_state(&setup, 4))
+            .update(&second_peer, sync_state(&setup, BlockNumber(4)))
             .unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
 
@@ -77,7 +77,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         assert_matches!(message_receiver.try_recv(), None);
 
         peer_states
-            .update(&first_peer, sync_state(&setup, 4))
+            .update(&first_peer, sync_state(&setup, BlockNumber(4)))
             .unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
         // Now the actor can get block #3 from the peer.
@@ -219,8 +219,7 @@ impl Test for RequestingBlocksFromMultiplePeers {
         scope::run!(ctx, |ctx, s| async {
             // Announce peer states.
             for (peer_key, peer) in peers {
-                let last_block = peer.last_block.0 as usize;
-                peer_states.update(peer_key, sync_state(&setup, last_block)).unwrap();
+                peer_states.update(peer_key, sync_state(&setup, peer.last_block)).unwrap();
             }
 
             s.spawn_bg(async {

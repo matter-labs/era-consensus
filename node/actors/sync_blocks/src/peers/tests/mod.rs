@@ -15,7 +15,6 @@ use zksync_consensus_storage::testonly::new_store;
 mod basics;
 mod fakes;
 mod multiple_peers;
-mod snapshots;
 
 const TEST_TIMEOUT: time::Duration = time::Duration::seconds(5);
 const BLOCK_SLEEP_INTERVAL: time::Duration = time::Duration::milliseconds(5);

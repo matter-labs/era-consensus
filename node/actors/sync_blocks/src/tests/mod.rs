@@ -4,7 +4,6 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use std::ops;
 use zksync_concurrency::{oneshot, time};
 use zksync_consensus_network::io::GetBlockError;
 use zksync_consensus_roles::validator::{self, testonly::GenesisSetup, BlockNumber};
@@ -21,18 +20,10 @@ impl Distribution<Config> for Standard {
     }
 }
 
-pub(crate) fn sync_state(setup: &GenesisSetup, last_block_number: usize) -> BlockStoreState {
-    snapshot_sync_state(setup, 1..=last_block_number)
-}
-
-pub(crate) fn snapshot_sync_state(
-    setup: &GenesisSetup,
-    range: ops::RangeInclusive<usize>,
-) -> BlockStoreState {
-    assert!(!range.is_empty());
+pub(crate) fn sync_state(setup: &GenesisSetup, last: BlockNumber) -> BlockStoreState {
     BlockStoreState {
-        first: setup.blocks[*range.start()].header().number,
-        last: Some(setup.blocks[*range.end()].justification.clone()),
+        first: setup.genesis.forks.root().first_block,
+        last: Some(setup.blocks[last.0 as usize].justification.clone()),
     }
 }
 
