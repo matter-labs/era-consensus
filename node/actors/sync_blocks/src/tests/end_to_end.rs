@@ -52,7 +52,7 @@ impl Node {
         network: network::Config,
         setup: Arc<GenesisSetup>,
     ) -> (Self, NodeRunner) {
-        let (store, store_runner) = new_store(ctx, &setup.blocks[0]).await;
+        let (store, store_runner) = new_store(ctx, &setup.genesis).await;
         let (switch_on_sender, switch_on_receiver) = oneshot::channel();
         let (terminate_send, terminate_recv) = channel::bounded(1);
 

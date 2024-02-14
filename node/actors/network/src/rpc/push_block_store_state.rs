@@ -1,8 +1,9 @@
 //! RPC for notifying peer about our BlockStore state.
 use crate::{mux, proto::gossip as proto};
 use anyhow::Context;
+use zksync_consensus_roles::validator;
 use zksync_consensus_storage::BlockStoreState;
-use zksync_protobuf::{read_required, ProtoFmt};
+use zksync_protobuf::{required, read_optional, ProtoFmt};
 
 /// PushBlockStoreState RPC.
 #[derive(Debug)]
@@ -26,15 +27,15 @@ impl ProtoFmt for Req {
 
     fn read(message: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(BlockStoreState {
-            first: read_required(&message.first).context("first")?,
-            last: read_required(&message.last).context("last")?,
+            first: validator::BlockNumber(*required(&message.first).context("first")?),
+            last: read_optional(&message.last).context("last")?,
         }))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            first: Some(self.0.first.build()),
-            last: Some(self.0.last.build()),
+            first: Some(self.0.first.0),
+            last: self.0.last.as_ref().map(|x|x.build()),
         }
     }
 }

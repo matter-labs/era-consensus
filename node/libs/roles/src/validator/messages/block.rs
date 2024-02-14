@@ -130,15 +130,6 @@ impl BlockHeader {
         BlockHeaderHash(Keccak256::new(&zksync_protobuf::canonical(self)))
     }
 
-    /// Creates a first block of the chain
-    pub fn first(payload: PayloadHash, number: BlockNumber) -> Self {
-        Self {
-            parent: None,
-            number,
-            payload,
-        }
-    }
-
     /// Creates a child block for the given parent.
     pub fn next(parent: &BlockHeader, payload: PayloadHash) -> Self {
         Self {

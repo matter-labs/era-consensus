@@ -16,7 +16,7 @@ async fn test_one_connection_per_validator() {
     let nodes = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx,s| async {
-        let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
+        let (store,runner) = new_store(ctx,&setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
         let nodes : Vec<_> = nodes.into_iter().enumerate().map(|(i,node)| {
             let (node,runner) = testonly::Instance::new(ctx, node, store.clone());
@@ -76,7 +76,7 @@ async fn test_genesis_mismatch() {
         let mut listener = cfgs[1].server_addr.bind().context("server_addr.bind()")?;
 
         tracing::info!("Start one node, we will simulate the other one.");
-        let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
+        let (store,runner) = new_store(ctx,&setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
         let (node,runner) = testonly::Instance::new(ctx, cfgs[0].clone(), store.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
@@ -116,7 +116,7 @@ async fn test_address_change() {
     let setup = validator::testonly::GenesisSetup::new(rng, 5);
     let mut cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
+        let (store, runner) = new_store(ctx, &setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
         let mut nodes: Vec<_> = cfgs
             .iter()
@@ -169,7 +169,7 @@ async fn test_transmission() {
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
+        let (store, runner) = new_store(ctx, &setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
         let mut nodes: Vec<_> = cfgs
             .iter()

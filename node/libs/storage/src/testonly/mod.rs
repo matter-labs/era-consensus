@@ -32,7 +32,7 @@ impl Distribution<ReplicaState> for Standard {
 /// Constructs a new in-memory store with a genesis block.
 pub async fn new_store(
     ctx: &ctx::Ctx,
-    genesis: &validator::FinalBlock,
+    genesis: &validator::Genesis,
 ) -> (Arc<BlockStore>, BlockStoreRunner) {
     BlockStore::new(ctx, Box::new(in_memory::BlockStore::new(genesis.clone())))
         .await
@@ -41,15 +41,17 @@ pub async fn new_store(
 
 /// Dumps all the blocks stored in `store`.
 pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<validator::FinalBlock> {
-    let range = store.state(ctx).await.unwrap();
+    let genesis = store.genesis(ctx).await.unwrap();
+    let last = store.last(ctx).await.unwrap();
     let mut blocks = vec![];
-    for n in range.first.header().number.0..range.next().0 {
-        let n = validator::BlockNumber(n);
+    let begin = genesis.forks.root().first_block;
+    let end = last.as_ref().map(|qc|qc.header().number.next()).unwrap_or(begin);
+    for n in (begin.0..end.0).map(validator::BlockNumber) {
         let block = store.block(ctx, n).await.unwrap();
         assert_eq!(block.header().number, n);
         blocks.push(block);
     }
-    assert!(store.block(ctx, range.next()).await.is_err());
+    assert!(store.block(ctx, end).await.is_err());
     blocks
 }
 
@@ -57,8 +59,7 @@ pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<valid
 pub async fn verify(ctx: &ctx::Ctx, store: &BlockStore, genesis: &validator::Genesis) -> anyhow::Result<()> {
     let range = store.subscribe().borrow().clone();
     let mut parent : Option<validator::BlockHeaderHash> = None;
-    for n in range.first.header().number.0..range.next().0 {
-        let n = validator::BlockNumber(n);
+    for n in (range.first.0..range.next().0).map(validator::BlockNumber) {
         async {
             let block = store.block(ctx,n).await?.context("missing")?;
             block.verify(&genesis)?;

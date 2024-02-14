@@ -28,7 +28,7 @@ async fn test_one_connection_per_node() {
     let cfgs = testonly::new_configs(rng, &setup, 2);
 
     scope::run!(ctx, |ctx,s| async {
-        let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
+        let (store,runner) = new_store(ctx,&setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
         let mut nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
             let (node,runner) = testonly::Instance::new(ctx, cfg.clone(), store.clone());
@@ -230,7 +230,7 @@ async fn test_validator_addrs_propagation() {
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
+        let (store, runner) = new_store(ctx, &setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
         let nodes: Vec<_> = cfgs
             .iter()
@@ -273,7 +273,7 @@ async fn test_genesis_mismatch() {
         let mut listener = cfgs[1].server_addr.bind().context("server_addr.bind()")?;
 
         tracing::info!("Start one node, we will simulate the other one.");
-        let (store,runner) = new_store(ctx,&setup.blocks[0]).await;
+        let (store,runner) = new_store(ctx,&setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
         let (_node,runner) = testonly::Instance::new(ctx, cfgs[0].clone(), store.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
@@ -316,7 +316,7 @@ async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
         for (i, cfg) in cfgs.into_iter().enumerate() {
-            let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
+            let (store, runner) = new_store(ctx, &setup.genesis).await;
             s.spawn_bg(runner.run(ctx));
             let (node, runner) = testonly::Instance::new(ctx, cfg, store);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
@@ -358,7 +358,7 @@ async fn wait_for_updates(
         else {
             continue;
         };
-        if state.last == block.justification {
+        if state.last.as_ref() == Some(&block.justification) {
             updates.insert(peer);
         }
         response.send(()).ok();
@@ -384,7 +384,7 @@ async fn uncoordinated_block_syncing(
 
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::GenesisSetup::empty(rng, node_count);
+    let mut setup = validator::testonly::GenesisSetup::new(rng, node_count);
     setup.push_blocks(rng, EXCHANGED_STATE_COUNT);
     scope::run!(ctx, |ctx, s| async {
         for (i, cfg) in testonly::new_configs(rng, &setup, gossip_peers)
@@ -392,7 +392,7 @@ async fn uncoordinated_block_syncing(
             .enumerate()
         {
             let i = i;
-            let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
+            let (store, runner) = new_store(ctx, &setup.genesis).await;
             s.spawn_bg(runner.run(ctx));
             let (node, runner) = testonly::Instance::new(ctx, cfg, store.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
@@ -428,7 +428,7 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
     // All inbound and outbound peers should answer the request.
     let expected_successful_responses = (2 * gossip_peers).min(node_count - 1);
 
-    let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
+    let (store, runner) = new_store(ctx, &setup.genesis).await;
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(runner.run(ctx));
         let mut nodes: Vec<_> = cfgs
@@ -515,7 +515,7 @@ async fn validator_node_restart() {
     for cfg in &mut cfgs {
         cfg.rpc.push_validator_addrs_rate.refresh = time::Duration::ZERO;
     }
-    let (store, store_runner) = new_store(ctx, &setup.blocks[0]).await;
+    let (store, store_runner) = new_store(ctx, &setup.genesis).await;
     let (node1, node1_runner) = testonly::Instance::new(ctx, cfgs[1].clone(), store.clone());
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(store_runner.run(ctx));
@@ -598,7 +598,7 @@ async fn rate_limiting() {
     }
     let mut nodes = vec![];
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
+        let (store, runner) = new_store(ctx, &setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
         // Spawn the satellite nodes and wait until they register
         // their own address.

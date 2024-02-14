@@ -70,8 +70,8 @@ pub struct BlockBuilder<'a> {
 }
 
 impl GenesisSetup {
-    /// Constructs GenesisSetup with no blocks.
-    pub fn empty(rng: &mut impl Rng, validators: usize) -> Self {
+    /// Constructs GenesisSetup.
+    pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
         let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
         let genesis = Genesis {
             validators: ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap(),
@@ -84,23 +84,18 @@ impl GenesisSetup {
         }
     }
 
-    /// Constructs GenesisSetup with genesis block.
-    pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
-        let mut this = Self::empty(rng, validators);
-        this.push_block(rng.gen());
-        this
-    }
-
     /// Returns a builder for the next block.
     pub fn next_block(&mut self) -> BlockBuilder {
+        assert!(self.genesis.forks.root()==self.genesis.forks.current(), "constructing blocks for genesis with >1 fork is not supported yet");
         let parent = self.blocks.last().map(|b| &b.justification.message);
         let payload = Payload(vec![]);
+        let fork = self.genesis.forks.current();
         BlockBuilder {
             msg: match parent {
                 Some(p) => ReplicaCommit {
                     view: View {
                         protocol_version: p.view.protocol_version,
-                        fork: p.view.fork,
+                        fork: fork.number,
                         number: p.view.number.next(),
                     },
                     proposal: BlockHeader::next(&p.proposal, payload.hash()),
@@ -108,10 +103,14 @@ impl GenesisSetup {
                 None => ReplicaCommit {
                     view: View {
                         protocol_version: ProtocolVersion::EARLIEST,
-                        fork: self.genesis.forks.current().number,
+                        fork: fork.number,
                         number: ViewNumber(0),
                     },
-                    proposal: BlockHeader::first(payload.hash(), BlockNumber(0)),
+                    proposal: BlockHeader {
+                        parent: fork.first_parent,
+                        number: fork.first_block,
+                        payload: payload.hash(),
+                    },
                 },
             },
             payload,

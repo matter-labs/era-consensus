@@ -14,7 +14,7 @@ async fn test_metrics() {
     let setup = validator::testonly::GenesisSetup::new(rng, 3);
     let cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
+        let (store, runner) = new_store(ctx, &setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
         let nodes: Vec<_> = cfgs
             .into_iter()

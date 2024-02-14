@@ -2,6 +2,7 @@
 use std::{collections::VecDeque, fmt, sync::Arc};
 use zksync_concurrency::{ctx, error::Wrap as _, sync};
 use zksync_consensus_roles::validator;
+use anyhow::Context as _;
 
 mod metrics;
 
@@ -19,13 +20,17 @@ pub struct BlockStoreState {
 impl BlockStoreState {
     /// Checks whether block with the given number is stored in the `BlockStore`.
     pub fn contains(&self, number: validator::BlockNumber) -> bool {
-        self.first <= number && number <= self.last.header().number
+        let Some(last) = &self.last else { return false };
+        self.first <= number && number <= last.header().number
     }
 
     /// Number of the next block that can be stored in the `BlockStore`.
     /// (i.e. `last` + 1).
     pub fn next(&self) -> validator::BlockNumber {
-        self.last.header().number.next()
+        match &self.last {
+            Some(qc) => qc.header().number.next(),
+            None => self.first,
+        }
     }
 }
 
@@ -115,7 +120,7 @@ impl BlockStoreRunner {
 
                 self.0.inner.send_modify(|inner| {
                     debug_assert_eq!(inner.persisted_state.next(), block.header().number);
-                    inner.persisted_state.last = block.justification.clone();
+                    inner.persisted_state.last = Some(block.justification.clone());
                     inner.queue.pop_front();
                 });
             }
@@ -144,15 +149,15 @@ impl BlockStore {
         let last = persistent.last(ctx).await.wrap("persistent.last()")?;
         t.observe();
         if let Some(last) = &last {
-            last.verify(&genesis).context("last.verify()")?;
+            last.verify(&genesis,/*allow_past_forks=*/true).context("last.verify()")?;
         }
         let state = BlockStoreState {
-            first: genesis.forks.root().number,
+            first: genesis.forks.root().first_block,
             last,
         };
         let this = Arc::new(Self {
             inner: sync::watch::channel(Inner {
-                queued_state: sync::watch::channel(BlockStoreState(state.clone())).0,
+                queued_state: sync::watch::channel(state.clone()).0,
                 persisted_state: state,
                 queue: VecDeque::new(),
             })
@@ -164,6 +169,7 @@ impl BlockStore {
         Ok((this.clone(), BlockStoreRunner(this)))
     }
 
+    /// Genesis specification for this block store.
     pub fn genesis(&self) -> &validator::Genesis {
         &self.genesis
     }
@@ -172,19 +178,20 @@ impl BlockStore {
     /// Blocks' fork numbers are assumed to be non non-decreasing.
     /// Certificates of the blocks are assumed to match `genesis.validators`.
     /// `verify_fork_points()` checks just the fork points against the genesis.
-    async fn verify_fork_points(&self, ctx: &ctx) -> ctx::Result<()> {
+    async fn verify_fork_points(&self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         for fork in self.genesis.forks.iter() {
-            /// Verify the parent of the first block.
+            // Verify the parent of the first block.
             if let Some(prev) = fork.first_block.prev() {
                 if let Some(block) = self.block(ctx,prev).await? {
                     block.verify(&self.genesis).with_context(||format!("{prev:?}"))?;
                 }
             }
-            /// Verify the first block.
+            // Verify the first block.
             if let Some(block) = self.block(ctx,fork.first_block).await? {
                 block.verify(&self.genesis).with_context(||format!("{:?}",fork.first_block))?;
             }
         }
+        Ok(())
     }
 
     /// Fetches a block (from queue or persistent storage).
@@ -236,7 +243,7 @@ impl BlockStore {
             if queued_state.next() != number {
                 return Ok(());
             }
-            if Some(queued_state.last.header().hash()) != block.header().parent {
+            if queued_state.last.as_ref().map(|qc|qc.header().hash()) != block.header().parent {
                 return Err(anyhow::format_err!("block.parent doesn't match the previous block").into());
             }
             // Verify the message without verifying the signatures, to avoid doing it twice.
@@ -249,7 +256,7 @@ impl BlockStore {
                 if queued_state.next() != number {
                     return false;
                 }
-                queued_state.last = block.justification.clone();
+                queued_state.last = Some(block.justification.clone());
                 true
             });
             if !modified {
@@ -293,22 +300,13 @@ impl BlockStore {
         self.inner.borrow().queued_state.subscribe()
     }
 
-    /// Verifies storage against the genesis.
-    /// Storage is expected to contain a chain of blocks with matching
-    /// parents.
-    pub fn verify(&self, _genesis: &validator::Genesis) -> anyhow::Result<()> {
-        //TODO
-        unimplemented!()
-    }
-
-
     fn scrape_metrics(&self) -> metrics::BlockStore {
         let m = metrics::BlockStore::default();
         let inner = self.inner.borrow();
-        m.last_queued_block
-            .set(inner.queued_state.borrow().last.header().number.0);
-        m.last_persisted_block
-            .set(inner.persisted_state.last.header().number.0);
+        m.next_queued_block
+            .set(inner.queued_state.borrow().next().0);
+        m.next_persisted_block
+            .set(inner.persisted_state.next().0);
         m
     }
 }

@@ -42,6 +42,7 @@ struct TestHandles {
 #[async_trait]
 trait Test: fmt::Debug + Send + Sync {
     const BLOCK_COUNT: usize;
+    // TODO: move this to genesis
     const GENESIS_BLOCK_NUMBER: usize = 0;
 
     fn config(&self, setup: &validator::testonly::GenesisSetup) -> Config {
@@ -70,7 +71,7 @@ async fn test_peer_states<T: Test>(test: T) {
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::GenesisSetup::new(rng, 4);
     setup.push_blocks(rng, T::BLOCK_COUNT);
-    let (store, store_run) = new_store(ctx, &setup.blocks[T::GENESIS_BLOCK_NUMBER]).await;
+    let (store, store_run) = new_store(ctx, &setup.genesis).await;
     test.initialize_storage(ctx, store.as_ref(), &setup).await;
 
     let (message_sender, message_receiver) = channel::unbounded();
