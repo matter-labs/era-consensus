@@ -1,5 +1,8 @@
 //! Testonly utilities.
+
+pub mod gen_value;
 use super::{canonical, canonical_raw, decode, encode, read_fields, ProtoFmt, Wire};
+pub use gen_value::*;
 use prost::Message as _;
 use prost_reflect::ReflectMessage as _;
 use rand::{
