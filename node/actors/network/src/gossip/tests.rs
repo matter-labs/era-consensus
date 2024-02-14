@@ -398,7 +398,7 @@ async fn uncoordinated_block_syncing(
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             s.spawn(async {
                 let store = store;
-                for block in &setup.blocks[1..] {
+                for block in &setup.blocks {
                     ctx.sleep(state_generation_interval).await?;
                     store.queue_block(ctx, block.clone()).await.unwrap();
                 }
@@ -422,15 +422,18 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
 
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let setup = validator::testonly::GenesisSetup::new(rng, node_count);
+    let mut setup = validator::testonly::GenesisSetup::new(rng, node_count);
+    setup.push_blocks(rng,1);
     let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
 
     // All inbound and outbound peers should answer the request.
     let expected_successful_responses = (2 * gossip_peers).min(node_count - 1);
 
-    let (store, runner) = new_store(ctx, &setup.genesis).await;
     scope::run!(ctx, |ctx, s| async {
+        let (store, runner) = new_store(ctx, &setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
+        store.queue_block(ctx,setup.blocks[0].clone()).await.unwrap();
+
         let mut nodes: Vec<_> = cfgs
             .into_iter()
             .enumerate()

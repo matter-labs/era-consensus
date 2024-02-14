@@ -142,23 +142,6 @@ pub fn make_genesis_block(rng: &mut impl Rng, protocol_version: ProtocolVersion)
     setup.blocks[0].clone()
 }
 
-/*
-/// Constructs a random block with a given parent.
-/// WARNING: this is not a fully correct FinalBlock.
-pub fn make_block<R: Rng>(
-    rng: &mut R,
-    parent: &BlockHeader,
-    protocol_version: ProtocolVersion,
-) -> FinalBlock {
-    let payload: Payload = rng.gen();
-    let header = BlockHeader::new(parent, payload.hash());
-    let justification = make_justification(rng, &header, protocol_version);
-    FinalBlock {
-        payload,
-        justification,
-    }
-}*/
-
 impl AggregateSignature {
     /// Generate a new aggregate signature from a list of signatures.
     pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
@@ -238,7 +221,7 @@ impl Distribution<ForkSet> for Standard {
         for _ in 0..3 {
             let last = forks.last().unwrap();
             forks.push(Fork {
-                number: ForkNumber(last.number.0 + rng.gen_range(0..3)),
+                number: ForkNumber(last.number.0 + rng.gen_range(1..3)),
                 first_block: BlockNumber(last.first_block.0 + rng.gen_range(1..10)),
                 first_parent: Some(rng.gen()),
             });
