@@ -6,18 +6,25 @@ use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
 
 
+pub struct BlockStoreInner {
+    genesis: validator::Genesis,
+    blocks: Mutex<VecDeque<validator::FinalBlock>>,
+}
+
 /// In-memory block store.
-#[derive(Clone, Debug, Default)]
-pub struct BlockStore(Arc<Mutex<VecDeque<validator::FinalBlock>>>);
+#[derive(Clone, Debug)]
+pub struct BlockStore(Arc<BlockStoreInner>);
 
 /// In-memory replica store.
 #[derive(Clone, Debug, Default)]
 pub struct ReplicaStore(Arc<Mutex<ReplicaState>>);
 
 impl BlockStore {
-    /// Creates a new store containing only the specified `genesis_block`.
-    pub fn new(genesis: validator::FinalBlock) -> Self {
-        Self(Arc::new(Mutex::new([genesis].into())))
+    pub fn new(genesis: validator::Genesis) -> Self {
+        Self(Arc::new(BlockStoreInner {
+            genesis,
+            blocks: Mutex::default(),
+        }))
     }
 
     /// Reverts blocks with `number >= next`.
@@ -31,15 +38,8 @@ impl BlockStore {
 
 #[async_trait::async_trait]
 impl PersistentBlockStore for BlockStore {
-    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
-        let blocks = self.0.lock().unwrap();
-        if blocks.is_empty() {
-            return Err(anyhow::anyhow!("store is empty").into());
-        }
-        Ok(BlockStoreState {
-            first: blocks.front().unwrap().justification.clone(),
-            last: blocks.back().unwrap().justification.clone(),
-        })
+    async fn last(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<validator::CommitQC>> {
+        Ok(self.0.blocks.lock().unwrap().back().map(|b|b.justification.clone())),
     }
 
     async fn block(
@@ -47,7 +47,7 @@ impl PersistentBlockStore for BlockStore {
         _ctx: &ctx::Ctx,
         number: validator::BlockNumber,
     ) -> ctx::Result<validator::FinalBlock> {
-        let blocks = self.0.lock().unwrap();
+        let blocks = self.0.blocks.lock().unwrap();
         let front = blocks.front().context("not found")?;
         let idx = number
             .0
@@ -61,7 +61,7 @@ impl PersistentBlockStore for BlockStore {
         _ctx: &ctx::Ctx,
         block: &validator::FinalBlock,
     ) -> ctx::Result<()> {
-        let mut blocks = self.0.lock().unwrap();
+        let mut this = self.0.blocks.lock().unwrap();
         let got = block.header().number;
         if let Some(last) = blocks.back() {
             let want = last.header().number.next();

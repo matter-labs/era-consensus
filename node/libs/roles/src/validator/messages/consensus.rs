@@ -106,6 +106,11 @@ impl ForkSet {
         Ok(())
     }
 
+    /// Root fork (starting with a block without parent).
+    pub fn root(&self) -> &Fork {
+        self.0.first().unwrap()
+    }
+
     /// Current fork that node is participating in.
     pub fn current(&self) -> &Fork {
         self.0.last().unwrap()
@@ -121,6 +126,11 @@ impl ForkSet {
             }
         }
         None
+    }
+
+    /// Iterates over the forks.
+    pub fn iter(&self) -> impl Iterator<Item=&Fork> {
+        self.0.iter()
     }
 }
 

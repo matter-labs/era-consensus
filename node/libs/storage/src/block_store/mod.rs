@@ -9,15 +9,17 @@ mod metrics;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockStoreState {
     /// Stored block with the lowest number.
-    pub first: validator::CommitQC,
+    /// Currently always same as `genesis.first_block`.
+    pub first: validator::BlockNumber,
     /// Stored block with the highest number.
-    pub last: validator::CommitQC,
+    /// None iff store is empty.
+    pub last: Option<validator::CommitQC>,
 }
 
 impl BlockStoreState {
     /// Checks whether block with the given number is stored in the `BlockStore`.
     pub fn contains(&self, number: validator::BlockNumber) -> bool {
-        self.first.header().number <= number && number <= self.last.header().number
+        self.first <= number && number <= self.last.header().number
     }
 
     /// Number of the next block that can be stored in the `BlockStore`.
@@ -32,12 +34,14 @@ impl BlockStoreState {
 /// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait::async_trait]
 pub trait PersistentBlockStore: fmt::Debug + Send + Sync {
-    /// Range of blocks available in storage.
-    /// PersistentBlockStore is expected to always contain at least 1 block,
-    /// and be append-only storage (never delete blocks).
+    /// Genesis matching the block store content.
+    /// Consensus code calls this method only once.
+    async fn genesis(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::Genesis>;
+
+    /// Last block available in storage.
     /// Consensus code calls this method only once and then tracks the
     /// range of available blocks internally.
-    async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState>;
+    async fn last(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<validator::CommitQC>>;
 
     /// Gets a block by its number.
     /// Returns error if block is missing.
@@ -74,6 +78,7 @@ struct Inner {
 pub struct BlockStore {
     inner: sync::watch::Sender<Inner>,
     persistent: Box<dyn PersistentBlockStore>,
+    genesis: validator::Genesis,
 }
 
 /// Runner of the BlockStore background tasks.
@@ -132,22 +137,54 @@ impl BlockStore {
         ctx: &ctx::Ctx,
         persistent: Box<dyn PersistentBlockStore>,
     ) -> ctx::Result<(Arc<Self>, BlockStoreRunner)> {
-        let t = metrics::PERSISTENT_BLOCK_STORE.state_latency.start();
-        let state = persistent.state(ctx).await.wrap("persistent.state()")?;
+        let t = metrics::PERSISTENT_BLOCK_STORE.genesis_latency.start();
+        let genesis = persistent.genesis(ctx).await.wrap("persistent.genesis()")?;
         t.observe();
-        if state.first.header().number > state.last.header().number {
-            return Err(anyhow::anyhow!("invalid state").into());
+        let t = metrics::PERSISTENT_BLOCK_STORE.last_latency.start();
+        let last = persistent.last(ctx).await.wrap("persistent.last()")?;
+        t.observe();
+        if let Some(last) = &last {
+            last.verify(&genesis).context("last.verify()")?;
         }
+        let state = BlockStoreState {
+            first: genesis.forks.root().number,
+            last,
+        };
         let this = Arc::new(Self {
-            persistent,
             inner: sync::watch::channel(Inner {
-                queued_state: sync::watch::channel(state.clone()).0,
+                queued_state: sync::watch::channel(BlockStoreState(state.clone())).0,
                 persisted_state: state,
                 queue: VecDeque::new(),
             })
             .0,
+            genesis,
+            persistent,
         });
+        this.verify_fork_points(ctx).await.wrap("verify_fork_points()")?;
         Ok((this.clone(), BlockStoreRunner(this)))
+    }
+
+    pub fn genesis(&self) -> &validator::Genesis {
+        &self.genesis
+    }
+
+    /// Store is assumed to contain a continuous range of blocks.
+    /// Blocks' fork numbers are assumed to be non non-decreasing.
+    /// Certificates of the blocks are assumed to match `genesis.validators`.
+    /// `verify_fork_points()` checks just the fork points against the genesis.
+    async fn verify_fork_points(&self, ctx: &ctx) -> ctx::Result<()> {
+        for fork in self.genesis.forks.iter() {
+            /// Verify the parent of the first block.
+            if let Some(prev) = fork.first_block.prev() {
+                if let Some(block) = self.block(ctx,prev).await? {
+                    block.verify(&self.genesis).with_context(||format!("{prev:?}"))?;
+                }
+            }
+            /// Verify the first block.
+            if let Some(block) = self.block(ctx,fork.first_block).await? {
+                block.verify(&self.genesis).with_context(||format!("{:?}",fork.first_block))?;
+            }
+        }
     }
 
     /// Fetches a block (from queue or persistent storage).
@@ -202,10 +239,9 @@ impl BlockStore {
             if Some(queued_state.last.header().hash()) != block.header().parent {
                 return Err(anyhow::format_err!("block.parent doesn't match the previous block").into());
             }
-            // TODO: move genesis to block store, and verify against the genesis instead.
-            if queued_state.last.view().fork > block.justification.view().fork {
-                return Err(anyhow::format_err!("block from the work fork").into());
-            }
+            // Verify the message without verifying the signatures, to avoid doing it twice.
+            // TODO(gprusak): consider moving the signature verification here for resiliency.
+            block.justification.message.verify(&self.genesis,/*allow_past_forks=*/true)?;
         }
         self.inner.send_if_modified(|inner| {
             let modified = inner.queued_state.send_if_modified(|queued_state| {
