@@ -31,7 +31,7 @@ impl Test {
         let mut honest = vec![];
         scope::run!(ctx, |ctx, s| async {
             for (i, net) in nets.into_iter().enumerate() {
-                let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
+                let (store, runner) = new_store(ctx, &setup.genesis).await;
                 s.spawn_bg(runner.run(ctx));
                 if self.nodes[i] == Behavior::Honest {
                     honest.push(store.clone());

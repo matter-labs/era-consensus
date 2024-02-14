@@ -38,6 +38,8 @@ syntax = "proto3";
 
 package zksync.tools;
 
+import "zksync/roles/validator.proto";
+
 // (public key, ip address) of a gossip network node. 
 message NodeAddr {
   optional string key = 1; // [required] NodePublicKey
@@ -62,24 +64,20 @@ message AppConfig {
   
   // Consensus
   
-  // Public keys of all validators.
-  repeated string validators = 5; // [required] ValidatorPublicKey
-
-  // Genesis block of the blockchain.
-  // Will be inserted to storage if not already present.
-  optional string genesis_block = 6; // [required] FinalBlock
+  // Specification of the chain.
+  optional roles.validator.Genesis genesis = 4; // required
 
   // Maximal size of the block payload.
-  optional uint64 max_payload_size = 11; // [required] B
+  optional uint64 max_payload_size = 5; // [required] B
 
   // Gossip network
 
   // Limit on the number of gossip network inbound connections outside
   // of the `gossip_static_inbound` set.
-  optional uint64 gossip_dynamic_inbound_limit = 8; // [required]
+  optional uint64 gossip_dynamic_inbound_limit = 6; // [required]
   // Inbound connections that should be unconditionally accepted on the gossip network.
-  repeated string gossip_static_inbound = 9; // NodePublicKey
+  repeated string gossip_static_inbound = 7; // NodePublicKey
   // Outbound gossip network connections that the node should actively try to
   // establish and maintain.
-  repeated NodeAddr gossip_static_outbound = 10;
+  repeated NodeAddr gossip_static_outbound = 8;
 }

@@ -67,30 +67,27 @@ impl PeerStates {
         state: BlockStoreState,
     ) -> anyhow::Result<()> {
         use std::collections::hash_map::Entry;
-
-        let last = state.last.header().number;
-        anyhow::ensure!(state.first.header().number <= state.last.header().number);
-        state
-            .last
+        let Some(last) = &state.last else { return Ok(()) };
+        last
             .verify(&self.config.genesis, /*allow_past_forks=*/true)
             .context("state.last.verify()")?;
         let mut peers = self.peers.lock().unwrap();
         match peers.entry(peer.clone()) {
-            Entry::Occupied(mut e) => e.get_mut().state = state,
+            Entry::Occupied(mut e) => e.get_mut().state = state.clone(),
             Entry::Vacant(e) => {
                 let permits = self.config.max_concurrent_blocks_per_peer;
                 e.insert(PeerState {
-                    state,
+                    state: state.clone(),
                     get_block_semaphore: Arc::new(sync::Semaphore::new(permits)),
                 });
             }
         }
         self.highest_peer_block
             .send_if_modified(|highest_peer_block| {
-                if *highest_peer_block >= last {
+                if *highest_peer_block >= last.header().number {
                     return false;
                 }
-                *highest_peer_block = last;
+                *highest_peer_block = last.header().number;
                 true
             });
         Ok(())

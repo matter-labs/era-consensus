@@ -20,8 +20,7 @@ impl Distribution<AppConfig> for Standard {
             public_addr: make_addr(rng),
             metrics_server_addr: Some(make_addr(rng)),
 
-            validators: rng.gen(),
-            genesis_block: rng.gen(),
+            genesis: rng.gen(),
 
             gossip_dynamic_inbound_limit: rng.gen(),
             gossip_static_inbound: (0..5)
@@ -47,11 +46,11 @@ async fn test_reopen_rocksdb() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let dir = TempDir::new().unwrap();
-    let mut setup = GenesisSetup::empty(rng, 3);
+    let mut setup = GenesisSetup::new(rng, 3);
     setup.push_blocks(rng, 5);
     let mut want = vec![];
     for b in &setup.blocks {
-        let store = store::RocksDB::open(dir.path()).await.unwrap();
+        let store = store::RocksDB::open(setup.genesis.clone(),dir.path()).await.unwrap();
         store.store_next_block(ctx, b).await.unwrap();
         want.push(b.clone());
         assert_eq!(want, testonly::dump(ctx, &store).await);

@@ -212,8 +212,8 @@ impl GossipNetworkTest for BasicSynchronization {
         for node_handle in &mut node_handles {
             node_handle.switch_on();
             let state = node_handle.store.subscribe().borrow().clone();
-            assert_eq!(state.first.header().number, BlockNumber(0));
-            assert_eq!(state.last.header().number, BlockNumber(0));
+            assert_eq!(state.first, BlockNumber(0));
+            assert_eq!(state.last.as_ref().unwrap().header().number, BlockNumber(0));
         }
 
         for block_number in (1..5).map(BlockNumber) {

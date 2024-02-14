@@ -56,7 +56,7 @@ impl UTHarness {
     ) -> (UTHarness, BlockStoreRunner) {
         let rng = &mut ctx.rng();
         let setup = validator::testonly::GenesisSetup::new(rng, num_validators);
-        let (block_store, runner) = new_store(ctx, &setup.blocks[0]).await;
+        let (block_store, runner) = new_store(ctx, &setup.genesis).await;
         let (send, recv) = ctx::channel::unbounded();
 
         let cfg = Arc::new(Config {

@@ -31,8 +31,8 @@ pub(crate) fn snapshot_sync_state(
 ) -> BlockStoreState {
     assert!(!range.is_empty());
     BlockStoreState {
-        first: setup.blocks[*range.start()].justification.clone(),
-        last: setup.blocks[*range.end()].justification.clone(),
+        first: setup.blocks[*range.start()].header().number,
+        last: Some(setup.blocks[*range.end()].justification.clone()),
     }
 }
 

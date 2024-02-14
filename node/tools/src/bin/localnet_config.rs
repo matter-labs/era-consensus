@@ -63,11 +63,7 @@ fn main() -> anyhow::Result<()> {
     // Generate the keys for all the replicas.
     let rng = &mut rand::thread_rng();
 
-    let mut setup = validator::GenesisSetup::empty(rng, addrs.len());
-    setup
-        .next_block()
-        .payload(validator::Payload(vec![]))
-        .push();
+    let setup = validator::GenesisSetup::new(rng, addrs.len());
     let validator_keys = setup.keys.clone();
     let node_keys: Vec<node::SecretKey> = (0..addrs.len()).map(|_| rng.gen()).collect();
 
@@ -81,8 +77,7 @@ fn main() -> anyhow::Result<()> {
             public_addr: addrs[i],
             metrics_server_addr,
 
-            validators: setup.genesis.validators.clone(),
-            genesis_block: setup.blocks[0].clone(),
+            genesis: setup.genesis.clone(),
             max_payload_size: args.payload_size,
 
             gossip_dynamic_inbound_limit: 0,
