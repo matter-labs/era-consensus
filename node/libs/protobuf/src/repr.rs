@@ -1,4 +1,4 @@
-//! `ProtoRepr` utilities.
+//! Trait for defining proto conversion for external types.
 
 use crate::build::prost_reflect::ReflectMessage;
 use anyhow::Context as _;
