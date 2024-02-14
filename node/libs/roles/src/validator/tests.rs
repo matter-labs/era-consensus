@@ -172,7 +172,7 @@ fn test_agg_signature_verify() {
 fn make_view(number: ViewNumber, setup: &GenesisSetup) -> View {
     View {
         protocol_version: ProtocolVersion::EARLIEST,
-        fork: setup.genesis.forks.current(),
+        fork: setup.genesis.forks.current().number,
         number: number,
     }
 }

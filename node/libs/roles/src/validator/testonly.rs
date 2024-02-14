@@ -1,7 +1,7 @@
 //! Test-only utilities.
 use super::{
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
-    FinalBlock, Fork, ForkId, ForkSet, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
+    FinalBlock, Fork, ForkNumber, ForkSet, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorSet, View,
     ViewNumber,
@@ -14,25 +14,6 @@ use rand::{
 use std::sync::Arc;
 use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
-
-/*
-/// Constructs a CommitQC with `CommitQC.message.proposal` matching header.
-/// WARNING: it is not a fully correct CommitQC.
-pub fn make_justification<R: Rng>(
-    rng: &mut R,
-    header: &BlockHeader,
-    protocol_version: ProtocolVersion,
-) -> CommitQC {
-    CommitQC {
-        message: ReplicaCommit {
-            protocol_version,
-            view: ViewNumber(header.number.0),
-            proposal: *header,
-        },
-        signers: rng.gen(),
-        signature: rng.gen(),
-    }
-}*/
 
 impl<'a> BlockBuilder<'a> {
     /// Builds `GenesisSetup`.
@@ -94,7 +75,7 @@ impl GenesisSetup {
         let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
         let genesis = Genesis {
             validators: ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap(),
-            forks: ForkSet::new(Fork::default()),
+            forks: ForkSet::new(vec![Fork::default()]).unwrap(),
         };
         Self {
             keys,
@@ -127,7 +108,7 @@ impl GenesisSetup {
                 None => ReplicaCommit {
                     view: View {
                         protocol_version: ProtocolVersion::EARLIEST,
-                        fork: self.genesis.forks.current(),
+                        fork: self.genesis.forks.current().number,
                         number: ViewNumber(0),
                     },
                     proposal: BlockHeader::first(payload.hash(), BlockNumber(0)),
@@ -226,9 +207,9 @@ impl Distribution<ProtocolVersion> for Standard {
     }
 }
 
-impl Distribution<ForkId> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ForkId {
-        ForkId(rng.gen())
+impl Distribution<ForkNumber> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ForkNumber {
+        ForkNumber(rng.gen())
     }
 }
 
@@ -241,19 +222,29 @@ impl Distribution<GenesisHash> for Standard {
 impl Distribution<Fork> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Fork {
         Fork {
+            number: rng.gen(),
             first_block: rng.gen(),
-            first_parent: rng.gen(),
+            first_parent: Some(rng.gen()),
         }
     }
 }
 
 impl Distribution<ForkSet> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ForkSet {
-        let mut x = ForkSet::new(rng.gen());
+        let mut forks = vec![Fork{
+            number: rng.gen(),
+            first_block: rng.gen(),
+            first_parent: None,
+        }];
         for _ in 0..3 {
-            x.push(rng.gen());
+            let last = forks.last().unwrap();
+            forks.push(Fork {
+                number: ForkNumber(last.number.0 + rng.gen_range(0..3)),
+                first_block: BlockNumber(last.first_block.0 + rng.gen_range(1..10)),
+                first_parent: Some(rng.gen()),
+            });
         }
-        x
+        ForkSet::new(forks).unwrap()
     }
 }
 

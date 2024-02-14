@@ -95,7 +95,7 @@ impl UTHarness {
         let want = ReplicaPrepare {
             view: validator::View {
                 protocol_version: self.protocol_version(),
-                fork: self.genesis().forks.current(),
+                fork: self.genesis().forks.current().number,
                 number: self.replica.view.next(),
             },
             high_qc: self.replica.high_qc.clone(),
@@ -154,7 +154,7 @@ impl UTHarness {
     pub(crate) fn replica_view(&self) -> validator::View {
         validator::View {
             protocol_version: self.protocol_version(),
-            fork: self.genesis().forks.current(),
+            fork: self.genesis().forks.current().number,
             number: self.replica.view,
         }
     }

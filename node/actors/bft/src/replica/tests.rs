@@ -150,7 +150,7 @@ async fn leader_prepare_old_view() {
         s.spawn_bg(runner.run(ctx));
 
         let mut leader_prepare = util.new_leader_prepare(ctx).await;
-        leader_prepare.justification.view.number = util.replica.view.prev();
+        leader_prepare.justification.view.number.0 = util.replica.view.0-1;
         let res = util
             .process_leader_prepare(ctx, util.sign(leader_prepare))
             .await;

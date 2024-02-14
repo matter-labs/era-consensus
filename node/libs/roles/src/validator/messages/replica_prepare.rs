@@ -18,9 +18,9 @@ pub enum ReplicaPrepareVerifyError {
     #[error("bad fork: got {got:?}, want {want:?}")]
     BadFork {
         /// got
-        got: ForkId,
+        got: ForkNumber,
         /// want
-        want: ForkId,
+        want: ForkNumber,
     },
     /// FutureHighVoteView.
     #[error("high vote from the future")]
@@ -40,10 +40,11 @@ impl ReplicaPrepare {
     /// Verifies the message.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), ReplicaPrepareVerifyError> {
         use ReplicaPrepareVerifyError as Error;
-        if self.view.fork != genesis.forks.current() {
+        let fork = genesis.forks.current();
+        if self.view.fork != fork.number {
             return Err(Error::BadFork {
                 got: self.view.fork,
-                want: genesis.forks.current(),
+                want: fork.number,
             });
         }
         if let Some(v) = &self.high_vote {

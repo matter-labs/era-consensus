@@ -31,7 +31,7 @@ impl StateMachine {
                     validator::ReplicaPrepare {
                         view: validator::View {
                             protocol_version: crate::PROTOCOL_VERSION,
-                            fork: self.config.genesis.forks.current(),
+                            fork: self.config.genesis.forks.current().number,
                             number: self.view,
                         },
                         high_vote: self.high_vote.clone(),

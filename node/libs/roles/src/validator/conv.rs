@@ -1,6 +1,6 @@
 use super::{
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
-    FinalBlock, Fork, ForkId, ForkSet, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
+    FinalBlock, Fork, ForkNumber, ForkSet, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
 };
@@ -15,12 +15,14 @@ impl ProtoFmt for Fork {
     type Proto = proto::Fork;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
+            number: ForkNumber(*required(&r.number).context("number")?),
             first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
             first_parent: read_optional(&r.first_parent).context("first_parent")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
+            number: Some(self.number.0),
             first_block: Some(self.first_block.0),
             first_parent: self.first_parent.as_ref().map(|x| x.build()),
         }
@@ -173,11 +175,7 @@ impl ProtoFmt for View {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
-            fork: ForkId(
-                required(&r.fork)
-                    .and_then(|x| Ok((*x).try_into()?))
-                    .context("fork")?,
-            ),
+            fork: ForkNumber(*required(&r.fork).context("fork")?),
             number: ViewNumber(*required(&r.number).context("number")?),
         })
     }

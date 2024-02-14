@@ -14,20 +14,20 @@ impl ReplicaCommit {
     /// Verifies the message.
     pub fn verify(&self, genesis: &Genesis, allow_past_forks: bool) -> anyhow::Result<()> {
         if !allow_past_forks {
-            anyhow::ensure!(self.view.fork == genesis.forks.current());
+            anyhow::ensure!(self.view.fork == genesis.forks.current().number);
         }
         // Currently we process CommitQCs from past forks when verifying FinalBlocks
         // during synchronization. Eventually we will switch to synchronization without
         // CommitQCs for blocks from the past forks, and then we can always enforce
         // `genesis.forks.current()` instead.
-        let want = genesis.forks.find(self.proposal.number).context("doesn't belong to any fork")?;
+        let fork = genesis.forks.find(self.proposal.number).context("doesn't belong to any fork")?;
         anyhow::ensure!(
-            want == self.view.fork,
-            "bad fork: got {:?} want {want:?} for block {}",
+            fork.number == self.view.fork,
+            "bad fork: got {:?} want {:?} for block {}",
             self.view.fork,
+            fork.number,
             self.proposal.number
         );
-        let fork = genesis.forks.get(want).unwrap();
         if self.proposal.number == fork.first_block {
             anyhow::ensure!(self.proposal.parent==fork.first_parent,"bad parent of the first block of the fork");
         }

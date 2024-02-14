@@ -174,9 +174,10 @@ async fn test_block_revert() {
     tracing::info!("Revert blocks");
     let first = BlockNumber(3);
     setup.genesis.forks.push(validator::Fork {
+        number: setup.genesis.forks.current().number.next(),
         first_block: first,
         first_parent: ps[0].block(ctx,first).await.unwrap().header().parent,
-    });
+    }).unwrap();
     // Update configs and persistent storage.
     for i in 0..cfgs.len() {
         cfgs[i].genesis = setup.genesis.clone();

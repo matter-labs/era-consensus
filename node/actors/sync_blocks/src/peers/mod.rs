@@ -97,7 +97,7 @@ impl PeerStates {
     }
 
     /// Task fetching blocks from peers which are not present in storage.
-    pub(crate) async fn run_block_fetcher(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
+    pub(crate) async fn run_block_fetcher(&self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         let sem = sync::Semaphore::new(self.config.max_concurrent_blocks);
         scope::run!(ctx, |ctx, s| async {
             let mut next = self.storage.subscribe().borrow().next();
@@ -121,17 +121,19 @@ impl PeerStates {
 
     /// Fetches the block from peers and puts it to storage.
     /// Early exits if the block appeared in storage from other source.
-    async fn fetch_block(&self, ctx: &ctx::Ctx, block_number: BlockNumber) -> ctx::OrCanceled<()> {
+    async fn fetch_block(&self, ctx: &ctx::Ctx, block_number: BlockNumber) -> ctx::Result<()> {
         let _ = scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(async {
                 let block = self.fetch_block_from_peers(ctx, block_number).await?;
                 self.storage.queue_block(ctx, block).await
             });
             // Cancel fetching as soon as block is queued for storage.
-            self.storage.wait_until_queued(ctx, block_number).await
+            self.storage.wait_until_queued(ctx, block_number).await?;
+            Ok(())
         })
         .await;
-        self.storage.wait_until_persisted(ctx, block_number).await
+        self.storage.wait_until_persisted(ctx, block_number).await?;
+        Ok(())
     }
 
     /// Fetches the block from peers.

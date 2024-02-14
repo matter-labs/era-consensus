@@ -231,7 +231,7 @@ impl LeaderPrepare {
                 }
                 let (want_parent, want_number) = match high_qc {
                     Some(qc) => (Some(qc.header().hash()), qc.header().number.next()),
-                    None => (genesis.forks.first_parent(), genesis.forks.first_block()),
+                    None => (genesis.forks.current().first_parent, genesis.forks.current().first_block),
                 };
                 if self.proposal.parent != want_parent {
                     return Err(Error::BadParentHash {

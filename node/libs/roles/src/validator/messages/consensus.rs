@@ -41,14 +41,24 @@ impl TryFrom<u32> for ProtocolVersion {
     }
 }
 
-/// Identifier of the fork that this consensus instance is building blocks for.
+/// Number of the fork. Newer fork has higher number.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ForkId(pub usize);
+pub struct ForkNumber(pub u64);
+
+impl ForkNumber {
+    /// Next fork number.
+    pub fn next(self) -> Self {
+        Self(self.0 + 1)
+    }
+}
+
+
 
 /// Specification of a fork.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Fork {
-    pub id: ForkId,
+    /// Number of the fork. 
+    pub number: ForkNumber,
     /// First block of a fork.
     pub first_block: BlockNumber,
     /// Parent fo the first block of a fork.
@@ -58,7 +68,7 @@ pub struct Fork {
 impl Default for Fork {
     fn default() -> Self {
         Self {
-            id: ForkId(0),
+            number: ForkNumber(0),
             first_block: BlockNumber(0),
             first_parent: None,
         }
@@ -77,20 +87,15 @@ impl ForkSet {
         let first = forks.first().context("empty fork set")?;
         anyhow::ensure!(first.first_parent.is_none());
         for i in 1..forks.len() {
-            anyhow::ensure!(forks[i-1].id < forks[i].id);
+            anyhow::ensure!(forks[i-1].number < forks[i].number);
             anyhow::ensure!(forks[i].first_parent.is_some());
         }
         Ok(Self(forks))
     }
 
-    /// Gets a forks.
-    pub fn get(&self, fork: ForkId) -> Option<&Fork> {
-        self.0.get(fork.0)
-    }
-    
     /// Inserts a new fork to the fork set.
     pub fn push(&mut self, fork: Fork) -> anyhow::Result<()> {
-        anyhow::ensure!(fork.id > self.0.last().unwrap().id);
+        anyhow::ensure!(fork.number > self.current().number);
         let mut n = self.0.len();
         while n > 0 && self.0[n-1].first_block >= fork.first_block {
             n -= 1;
@@ -102,25 +107,17 @@ impl ForkSet {
     }
 
     /// Current fork that node is participating in.
-    pub fn current(&self) -> ForkId {
-        ForkId(self.0.len() - 1)
-    }
-    /// First block of the current fork.
-    pub fn first_block(&self) -> BlockNumber {
-        self.0.last().unwrap().first_block
-    }
-    /// Parent of the first block of the current fork.
-    pub fn first_parent(&self) -> Option<BlockHeaderHash> {
-        self.0.last().unwrap().first_parent
+    pub fn current(&self) -> &Fork {
+        self.0.last().unwrap()
     }
 
     /// Finds the fork which the given block belongs to.
     /// This should be used to verify the quorum certificate
     /// on a finalized block fetched from the network.
-    pub fn find(&self, block: BlockNumber) -> Option<ForkId> {
-        for i in (0..self.0.len()).rev() {
-            if self.0[i].first_block <= block {
-                return Some(ForkId(i));
+    pub fn find(&self, block: BlockNumber) -> Option<&Fork> {
+        for fork in self.0.iter().rev() {
+            if fork.first_block <= block {
+                return Some(fork);
             }
         }
         None
@@ -346,7 +343,7 @@ pub struct View {
     /// Protocol version.
     pub protocol_version: ProtocolVersion,
     /// Fork this message belongs to.
-    pub fork: ForkId,
+    pub fork: ForkNumber,
     /// The number of the current view.
     pub number: ViewNumber,
 }
@@ -415,11 +412,6 @@ impl ViewNumber {
     /// Get the next view number.
     pub fn next(self) -> Self {
         Self(self.0 + 1)
-    }
-
-    /// Get the previous view number.
-    pub fn prev(self) -> Self {
-        Self(self.0 - 1)
     }
 }
 

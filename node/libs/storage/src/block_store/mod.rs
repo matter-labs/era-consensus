@@ -190,19 +190,29 @@ impl BlockStore {
         block: validator::FinalBlock,
     ) -> ctx::Result<()> {
         let number = block.header().number;
-        sync::wait_for(ctx, &mut self.subscribe(), |queued_state| {
-            queued_state.next() >= number
-        })
-        .await?;
+        {
+            let sub = &mut self.subscribe();
+            let queued_state = sync::wait_for(ctx, sub, |queued_state| {
+                queued_state.next() >= number
+            })
+            .await?;
+            if queued_state.next() != number {
+                return Ok(());
+            }
+            if Some(queued_state.last.header().hash()) != block.header().parent {
+                return Err(anyhow::format_err!("block.parent doesn't match the previous block").into());
+            }
+            // TODO: move genesis to block store, and verify against the genesis instead.
+            if queued_state.last.view().fork > block.justification.view().fork {
+                return Err(anyhow::format_err!("block from the work fork").into());
+            }
+        }
         self.inner.send_if_modified(|inner| {
             let modified = inner.queued_state.send_if_modified(|queued_state| {
                 // It may happen that the same block is queued_state by 2 calls.
                 if queued_state.next() != number {
                     return false;
                 }
-                anyhow::ensure!(Some(queued_state.last.header().hash()) == block.header().parent,
-                    "block.parent doesn't match the previous block"
-                );
                 queued_state.last = block.justification.clone();
                 true
             });
@@ -215,7 +225,7 @@ impl BlockStore {
         Ok(())
     }
 
-    /// Waits until the given block is queued_state to be stored.
+    /// Waits until the given block is queued to be stored.
     pub async fn wait_until_queued(
         &self,
         ctx: &ctx::Ctx,
@@ -250,8 +260,9 @@ impl BlockStore {
     /// Verifies storage against the genesis.
     /// Storage is expected to contain a chain of blocks with matching
     /// parents.
-    pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
+    pub fn verify(&self, _genesis: &validator::Genesis) -> anyhow::Result<()> {
         //TODO
+        unimplemented!()
     }
 
 
