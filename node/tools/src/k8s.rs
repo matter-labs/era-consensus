@@ -105,6 +105,14 @@ pub async fn create_deployment(
                       {
                         "name": "NODE_ID",
                         "value": node_id
+                      },
+                      {
+                        "name": "PUBLIC_ADDR",
+                        "valueFrom": {
+                            "fieldRef": {
+                                "fieldPath": "status.podIP"
+                            }
+                        }
                       }
                     ],
                     "command": ["./k8s_entrypoint.sh"],
@@ -201,7 +209,7 @@ fn get_cli_args(peers: Vec<NodeAddr>) -> Vec<String> {
     } else {
         [
             "--add-gossip-static-outbound".to_string(),
-            config::encode_json_with_serializer(
+            config::encode_with_serializer(
                 &peers
                     .iter()
                     .map(|e| Serde(e.clone()))
