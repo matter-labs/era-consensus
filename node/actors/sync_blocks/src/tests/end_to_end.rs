@@ -213,10 +213,10 @@ impl GossipNetworkTest for BasicSynchronization {
             node_handle.switch_on();
             let state = node_handle.store.subscribe().borrow().clone();
             assert_eq!(state.first, BlockNumber(0));
-            assert_eq!(state.last.as_ref().unwrap().header().number, BlockNumber(0));
+            assert_eq!(state.last, None);
         }
 
-        for block_number in (1..5).map(BlockNumber) {
+        for block_number in (0..5).map(BlockNumber) {
             let sending_node = node_handles.choose(rng).unwrap();
             sending_node.put_block(ctx, block_number).await;
 
@@ -294,7 +294,7 @@ impl GossipNetworkTest for SwitchingOffNodes {
         }
         nodes.shuffle(rng);
 
-        let mut block_number = BlockNumber(1);
+        let mut block_number = BlockNumber(0);
         while !nodes.is_empty() {
             tracing::info!("{} nodes left", nodes.len());
 
@@ -343,7 +343,7 @@ impl GossipNetworkTest for SwitchingOnNodes {
         let rng = &mut ctx.rng();
 
         let mut switched_on_nodes = Vec::with_capacity(self.node_count);
-        let mut block_number = BlockNumber(1);
+        let mut block_number = BlockNumber(0);
         while switched_on_nodes.len() < self.node_count {
             // Switch on a random node.
             let node_index_to_switch_on = rng.gen_range(0..node_handles.len());

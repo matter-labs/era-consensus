@@ -15,12 +15,8 @@ async fn processing_invalid_sync_states() {
 
     let (message_sender, _) = channel::unbounded();
     let peer_states = PeerStates::new(Config::new(setup.genesis.clone()), storage, message_sender);
-
     let peer = &rng.gen::<node::SecretKey>().public();
-    let mut invalid_sync_state = sync_state(&setup, BlockNumber(1));
-    invalid_sync_state.first = setup.blocks[2].header().number;
-    assert!(peer_states.update(peer, invalid_sync_state).is_err());
-
+    
     let mut invalid_sync_state = sync_state(&setup, BlockNumber(1));
     invalid_sync_state.last.as_mut().unwrap().message.proposal.number = BlockNumber(5);
     assert!(peer_states.update(peer, invalid_sync_state).is_err());
@@ -91,23 +87,23 @@ impl Test for PeerWithFakeBlock {
 
         for fake_block in [
             // other block than requested
-            setup.blocks[0].clone(),
+            setup.blocks[1].clone(),
             // block with wrong validator set
             {
                 let mut setup = GenesisSetup::new(rng, 4);
                 setup.push_blocks(rng, 2);
-                setup.blocks[1].clone()
+                setup.blocks[0].clone()
             },
             // block with mismatching payload,
             {
-                let mut block = setup.blocks[1].clone();
+                let mut block = setup.blocks[0].clone();
                 block.payload = validator::Payload(b"invalid".to_vec());
                 block
             },
         ] {
             let peer_key = rng.gen::<node::SecretKey>().public();
             peer_states
-                .update(&peer_key, sync_state(&setup, BlockNumber(1)))
+                .update(&peer_key, sync_state(&setup, BlockNumber(0)))
                 .unwrap();
             clock.advance(BLOCK_SLEEP_INTERVAL);
 
@@ -117,13 +113,13 @@ impl Test for PeerWithFakeBlock {
                 response,
             }) = message_receiver.recv(ctx).await?;
             assert_eq!(recipient, peer_key);
-            assert_eq!(number, BlockNumber(1));
+            assert_eq!(number, BlockNumber(0));
             response.send(Ok(fake_block)).unwrap();
 
             wait_for_event(ctx, &mut events_receiver, |ev| {
                 matches!(ev,
                     PeerStateEvent::RpcFailed {
-                        block_number: BlockNumber(1),
+                        block_number: BlockNumber(0),
                         peer_key: key,
                     } if key == peer_key
                 )

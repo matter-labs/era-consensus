@@ -31,7 +31,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         let rng = &mut ctx.rng();
         let first_peer = rng.gen::<node::SecretKey>().public();
         peer_states
-            .update(&first_peer, sync_state(&setup, BlockNumber(2)))
+            .update(&first_peer, sync_state(&setup, BlockNumber(1)))
             .unwrap();
 
         let io::OutputMessage::Network(SyncBlocksInputMessage::GetBlock {
@@ -41,13 +41,13 @@ impl Test for RequestingBlocksFromTwoPeers {
         }) = message_receiver.recv(ctx).await?;
         assert_eq!(recipient, first_peer);
         assert!(
-            first_peer_block_number == BlockNumber(1) || first_peer_block_number == BlockNumber(2)
+            first_peer_block_number == BlockNumber(0) || first_peer_block_number == BlockNumber(1)
         );
         tracing::info!(%first_peer_block_number, "received request");
 
         let second_peer = rng.gen::<node::SecretKey>().public();
         peer_states
-            .update(&second_peer, sync_state(&setup, BlockNumber(4)))
+            .update(&second_peer, sync_state(&setup, BlockNumber(3)))
             .unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
 
@@ -58,8 +58,8 @@ impl Test for RequestingBlocksFromTwoPeers {
         }) = message_receiver.recv(ctx).await?;
         assert_eq!(recipient, second_peer);
         assert!(
-            second_peer_block_number == BlockNumber(1)
-                || second_peer_block_number == BlockNumber(2)
+            second_peer_block_number == BlockNumber(0)
+                || second_peer_block_number == BlockNumber(1)
         );
         tracing::info!(%second_peer_block_number, "received requrest");
 
@@ -77,7 +77,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         assert_matches!(message_receiver.try_recv(), None);
 
         peer_states
-            .update(&first_peer, sync_state(&setup, BlockNumber(4)))
+            .update(&first_peer, sync_state(&setup, BlockNumber(3)))
             .unwrap();
         clock.advance(BLOCK_SLEEP_INTERVAL);
         // Now the actor can get block #3 from the peer.
@@ -89,7 +89,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         }) = message_receiver.recv(ctx).await?;
         assert_eq!(recipient, first_peer);
         assert!(
-            first_peer_block_number == BlockNumber(3) || first_peer_block_number == BlockNumber(4)
+            first_peer_block_number == BlockNumber(2) || first_peer_block_number == BlockNumber(3)
         );
         tracing::info!(%first_peer_block_number, "received requrest");
 
@@ -110,7 +110,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         }) = message_receiver.recv(ctx).await?;
         assert_eq!(recipient, first_peer);
         assert!(
-            first_peer_block_number == BlockNumber(3) || first_peer_block_number == BlockNumber(4)
+            first_peer_block_number == BlockNumber(2) || first_peer_block_number == BlockNumber(3)
         );
         tracing::info!(%first_peer_block_number, "received requrest");
 
@@ -134,7 +134,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         clock.advance(BLOCK_SLEEP_INTERVAL);
         assert_matches!(message_receiver.try_recv(), None);
 
-        storage.wait_until_persisted(ctx, BlockNumber(4)).await?;
+        storage.wait_until_persisted(ctx, BlockNumber(3)).await?;
         Ok(())
     }
 }
@@ -225,7 +225,7 @@ impl Test for RequestingBlocksFromMultiplePeers {
             s.spawn_bg(async {
                 let mut responses_by_peer: HashMap<_, Vec<_>> = HashMap::new();
                 let mut requested_blocks = HashSet::new();
-                while requested_blocks.len() < Self::BLOCK_COUNT - 1 {
+                while requested_blocks.len() < Self::BLOCK_COUNT {
                     let Ok(message) = message_receiver.recv(ctx).await else {
                         return Ok(()); // Test is finished
                     };
@@ -279,8 +279,8 @@ impl Test for RequestingBlocksFromMultiplePeers {
 
             // We advance the clock when a node receives a new block or updates a peer state,
             // since in both cases some new blocks may become available for download.
-            let mut block_numbers = HashSet::with_capacity(Self::BLOCK_COUNT - 1);
-            while block_numbers.len() < Self::BLOCK_COUNT - 1 {
+            let mut block_numbers = HashSet::with_capacity(Self::BLOCK_COUNT);
+            while block_numbers.len() < Self::BLOCK_COUNT {
                 let peer_event = events_receiver.recv(ctx).await?;
                 match peer_event {
                     PeerStateEvent::GotBlock(number) => {
@@ -294,7 +294,7 @@ impl Test for RequestingBlocksFromMultiplePeers {
                 }
             }
 
-            storage.wait_until_persisted(ctx,BlockNumber(19)).await?;
+            storage.wait_until_persisted(ctx,setup.blocks.last().unwrap().header().number).await?;
             Ok(())
         })
         .await
