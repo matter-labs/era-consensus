@@ -8,12 +8,9 @@ use clap::{Parser, Subcommand};
 use rand::Rng;
 use zksync_consensus_crypto::{Text, TextFmt};
 use zksync_consensus_roles::node::SecretKey;
-use zksync_consensus_tools::k8s;
-use zksync_consensus_tools::AppConfig;
-use zksync_consensus_tools::NodeAddr;
+use zksync_consensus_tools::{k8s, AppConfig, NodeAddr, NODES_PORT};
 
 const NAMESPACE: &str = "consensus";
-const NODES_PORT: u16 = 3054;
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
@@ -98,7 +95,7 @@ async fn deploy(nodes: usize) -> anyhow::Result<()> {
 
     // deploy seed peer(s)
     for i in 0..seed_nodes {
-        k8s::create_deployment(
+        k8s::deploy_node(
             &client,
             i,
             true,
@@ -109,7 +106,7 @@ async fn deploy(nodes: usize) -> anyhow::Result<()> {
     }
 
     // obtain seed peer(s) IP(s)
-    let peer_ips = k8s::get_seed_node_addrs(&client, seed_nodes).await?;
+    let peer_ips = k8s::get_seed_node_addrs(&client, seed_nodes, NAMESPACE).await?;
 
     let mut peers = vec![];
 
@@ -125,7 +122,7 @@ async fn deploy(nodes: usize) -> anyhow::Result<()> {
 
     // deploy the rest of nodes
     for i in seed_nodes..nodes {
-        k8s::create_deployment(&client, i, false, peers.clone(), NAMESPACE).await?;
+        k8s::deploy_node(&client, i, false, peers.clone(), NAMESPACE).await?;
     }
 
     Ok(())

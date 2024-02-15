@@ -30,9 +30,9 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
                 "apiVersion": "v1",
                 "kind": "Namespace",
                 "metadata": {
-                    "name": "consensus",
+                    "name": name,
                     "labels": {
-                        "name": "consensus"
+                        "name": name
                     }
                 }
             }))?;
@@ -64,22 +64,22 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
 }
 
 /// Creates a deployment
-pub async fn create_deployment(
+pub async fn deploy_node(
     client: &Client,
-    node_number: usize,
+    node_index: usize,
     is_seed: bool,
     peers: Vec<NodeAddr>,
     namespace: &str,
 ) -> anyhow::Result<()> {
     let cli_args = get_cli_args(peers);
-    let node_name = format!("consensus-node-{node_number:0>2}");
-    let node_id = format!("node_{node_number:0>2}");
+    let node_name = format!("consensus-node-{node_index:0>2}");
+    let node_id = format!("node_{node_index:0>2}");
     let deployment: Deployment = serde_json::from_value(json!({
           "apiVersion": "apps/v1",
           "kind": "Deployment",
           "metadata": {
             "name": node_name,
-            "namespace": "consensus"
+            "namespace": namespace
           },
           "spec": {
             "selector": {
@@ -120,7 +120,7 @@ pub async fn create_deployment(
                     "imagePullPolicy": "Never",
                     "ports": [
                       {
-                        "containerPort": 3054
+                        "containerPort": config::NODES_PORT
                       },
                       {
                         "containerPort": 3154
@@ -163,9 +163,10 @@ pub async fn create_deployment(
 pub async fn get_seed_node_addrs(
     client: &Client,
     amount: usize,
+    namespace: &str,
 ) -> anyhow::Result<HashMap<String, String>> {
     let mut seed_nodes = HashMap::new();
-    let pods: Api<Pod> = Api::namespaced(client.clone(), "consensus");
+    let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
 
     // Will retry 15 times during 15 seconds to allow pods to start and obtain an IP
     let retry_strategy = FixedInterval::from_millis(1000).take(15);
