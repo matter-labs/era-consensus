@@ -7,8 +7,6 @@ services:
       target: runtime
     image: consensus-node
     container_name: consensus-node-1
-    environment:
-      - NODE_ID=node_0
     ports:
       - "3154:3154"
     networks:
@@ -19,8 +17,6 @@ services:
   node-2:
     image: consensus-node
     container_name: consensus-node-2
-    environment:
-      - NODE_ID=node_1
     ports:
       - "3155:3154"
     networks:

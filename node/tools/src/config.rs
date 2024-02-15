@@ -1,6 +1,8 @@
 //! Node configuration.
 use crate::{proto, store};
 use anyhow::Context as _;
+use serde_json::{ser::Formatter, Serializer};
+use std::str::FromStr;
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -11,10 +13,7 @@ use zksync_concurrency::ctx;
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
-use zksync_consensus_roles::{
-    node::{self, PublicKey},
-    validator,
-};
+use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BlockStore, BlockStoreRunner, PersistentBlockStore};
 use zksync_protobuf::{required, serde::Serde, ProtoFmt};
 
@@ -30,11 +29,19 @@ pub fn decode_json<T: serde::de::DeserializeOwned>(json: &str) -> anyhow::Result
 }
 
 /// Encodes a generated proto message to json for arbitrary ProtoFmt.
-pub fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
-    let mut s = serde_json::Serializer::pretty(vec![]);
-    T::serialize(x, &mut s).unwrap();
-    String::from_utf8(s.into_inner()).unwrap()
+pub(crate) fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
+    let s = serde_json::Serializer::pretty(vec![]);
+    encode_with_serializer(x, s)
 }
+
+pub(crate) fn encode_with_serializer<T: serde::ser::Serialize, F: Formatter>(
+    x: &T,
+    mut serializer: Serializer<Vec<u8>, F>,
+) -> String {
+    T::serialize(x, &mut serializer).unwrap();
+    String::from_utf8(serializer.into_inner()).unwrap()
+}
+
 // pub fn encode_json<T: ProtoFmt>(x: &T) -> String {
 //     let mut s = serde_json::Serializer::pretty(vec![]);
 //     zksync_protobuf::serde::serialize(x, &mut s).unwrap();
@@ -44,7 +51,7 @@ pub fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
 /// Pair of (public key, ip address) for a gossip network node.
 #[derive(Debug, Clone)]
 pub struct NodeAddr {
-    pub key: PublicKey,
+    pub key: node::PublicKey,
     pub addr: SocketAddr,
 }
 
@@ -78,8 +85,17 @@ pub struct AppConfig {
     pub max_payload_size: usize,
 
     pub gossip_dynamic_inbound_limit: usize,
-    pub gossip_static_inbound: HashSet<PublicKey>,
-    pub gossip_static_outbound: HashMap<PublicKey, SocketAddr>,
+    pub gossip_static_inbound: HashSet<node::PublicKey>,
+    pub gossip_static_outbound: HashMap<node::PublicKey, SocketAddr>,
+}
+
+impl AppConfig {
+    pub fn check_public_addr(&mut self) -> anyhow::Result<()> {
+        if let Ok(public_addr) = std::env::var("PUBLIC_ADDR") {
+            self.public_addr = SocketAddr::from_str(&format!("{public_addr}:{NODES_PORT}"))?;
+        }
+        Ok(())
+    }
 }
 
 impl ProtoFmt for AppConfig {
@@ -266,12 +282,16 @@ impl AppConfig {
         self
     }
 
-    pub fn add_gossip_static_outbound(&mut self, key: PublicKey, addr: SocketAddr) -> &mut Self {
+    pub fn add_gossip_static_outbound(
+        &mut self,
+        key: node::PublicKey,
+        addr: SocketAddr,
+    ) -> &mut Self {
         self.gossip_static_outbound.insert(key, addr);
         self
     }
 
-    pub fn add_gossip_static_inbound(&mut self, key: PublicKey) -> &mut Self {
+    pub fn add_gossip_static_inbound(&mut self, key: node::PublicKey) -> &mut Self {
         self.gossip_static_inbound.insert(key);
         self
     }

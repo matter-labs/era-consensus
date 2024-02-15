@@ -10,5 +10,6 @@ pub trait RPCMethod {
     fn path() -> &'static str;
 }
 
-pub mod health_check;
+pub(crate) mod config;
+pub(crate) mod health_check;
 pub(crate) mod peers;

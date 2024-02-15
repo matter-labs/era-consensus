@@ -3,4 +3,4 @@
 
 cd docker_config/${NODE_ID}
 export RUST_LOG=INFO
-../../executor
+../../executor $@
