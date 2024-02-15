@@ -11,5 +11,5 @@ pub trait RPCMethod {
 }
 
 pub(crate) mod config;
-pub(crate) mod health_check;
+pub mod health_check;
 pub(crate) mod peers;
