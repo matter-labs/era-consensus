@@ -2,7 +2,7 @@ use crate::{config, NodeAddr};
 use anyhow::{anyhow, Context};
 use k8s_openapi::api::{
     apps::v1::Deployment,
-    core::v1::{Namespace, Pod, Service},
+    core::v1::{Namespace, Pod},
 };
 use kube::{
     api::{ListParams, PostParams},
@@ -19,6 +19,25 @@ use zksync_protobuf::serde::Serde;
 /// Get a kube client
 pub async fn get_client() -> anyhow::Result<Client> {
     Ok(Client::try_default().await?)
+}
+
+/// Get a kube client
+pub async fn get_consensus_node_ips(client: &Client) -> anyhow::Result<Vec<String>> {
+    let pods: Api<Pod> = Api::namespaced(client.clone(), "consensus");
+    let lp = ListParams::default();
+    let pod = pods.list(&lp).await?;
+    let a: Vec<String> = pod
+        .into_iter()
+        .filter(|pod| {
+            pod.clone()
+                .metadata
+                .name
+                .unwrap()
+                .starts_with("consensus-node")
+        })
+        .map(|pod| pod.status.unwrap().pod_ip.unwrap())
+        .collect();
+    Ok(a)
 }
 
 /// Creates a namespace in k8s cluster
