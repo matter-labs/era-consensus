@@ -6,7 +6,7 @@ use rand::{
 };
 use zksync_concurrency::{oneshot, time};
 use zksync_consensus_network::io::GetBlockError;
-use zksync_consensus_roles::validator::{self, testonly::GenesisSetup, BlockNumber};
+use zksync_consensus_roles::validator::{self, testonly::Setup, BlockNumber};
 use zksync_consensus_storage::{BlockStore, BlockStoreRunner, BlockStoreState};
 use zksync_consensus_utils::pipe;
 
@@ -20,7 +20,7 @@ impl Distribution<Config> for Standard {
     }
 }
 
-pub(crate) fn sync_state(setup: &GenesisSetup, last: BlockNumber) -> BlockStoreState {
+pub(crate) fn sync_state(setup: &Setup, last: BlockNumber) -> BlockStoreState {
     BlockStoreState {
         first: setup.genesis.forks.root().first_block,
         last: Some(setup.blocks[last.0 as usize].justification.clone()),
@@ -28,7 +28,7 @@ pub(crate) fn sync_state(setup: &GenesisSetup, last: BlockNumber) -> BlockStoreS
 }
 
 pub(crate) fn send_block(
-    setup: &GenesisSetup,
+    setup: &Setup,
     number: BlockNumber,
     response: oneshot::Sender<Result<validator::FinalBlock, GetBlockError>>,
 ) {

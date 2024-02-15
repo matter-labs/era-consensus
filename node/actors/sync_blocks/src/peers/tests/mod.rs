@@ -31,7 +31,7 @@ async fn wait_for_event(
 #[derive(Debug)]
 struct TestHandles {
     clock: ctx::ManualClock,
-    setup: validator::testonly::GenesisSetup,
+    setup: validator::testonly::Setup,
     peer_states: Arc<PeerStates>,
     storage: Arc<BlockStore>,
     message_receiver: channel::UnboundedReceiver<io::OutputMessage>,
@@ -44,7 +44,7 @@ trait Test: fmt::Debug + Send + Sync {
     // TODO: move this to genesis
     const GENESIS_BLOCK_NUMBER: usize = 0;
 
-    fn config(&self, setup: &validator::testonly::GenesisSetup) -> Config {
+    fn config(&self, setup: &validator::testonly::Setup) -> Config {
         Config::new(setup.genesis.clone())
     }
 
@@ -52,7 +52,7 @@ trait Test: fmt::Debug + Send + Sync {
         &self,
         _ctx: &ctx::Ctx,
         _storage: &BlockStore,
-        _setup: &validator::testonly::GenesisSetup,
+        _setup: &validator::testonly::Setup,
     ) {
         // Does nothing by default
     }
@@ -68,8 +68,9 @@ async fn test_peer_states<T: Test>(test: T) {
     let clock = ctx::ManualClock::new();
     let ctx = &ctx::test_root(&clock);
     let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::GenesisSetup::new(rng, 4);
-    setup.push_blocks(rng, T::BLOCK_COUNT);
+    let setup = validator::testonly::Setup::builder(rng, 4)
+        .push_blocks(rng, T::BLOCK_COUNT)
+        .build();
     let (store, store_run) = new_store(ctx, &setup.genesis).await;
     test.initialize_storage(ctx, store.as_ref(), &setup).await;
 

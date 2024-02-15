@@ -13,7 +13,7 @@ async fn replica_prepare_sanity() {
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
-
+        tracing::info!("started");
         util.new_leader_prepare(ctx).await;
         Ok(())
     })

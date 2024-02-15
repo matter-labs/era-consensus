@@ -11,7 +11,7 @@ async fn test_metrics() {
     abort_on_panic();
     let ctx = &mut ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let setup = validator::testonly::GenesisSetup::new(rng, 3);
+    let setup = validator::testonly::Setup::new(rng, 3);
     let cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
         let (store, runner) = new_store(ctx, &setup.genesis).await;

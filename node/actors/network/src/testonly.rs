@@ -50,7 +50,7 @@ pub struct Instance {
 /// Construct configs for `n` validators of the consensus.
 pub fn new_configs(
     rng: &mut impl Rng,
-    setup: &validator::testonly::GenesisSetup,
+    setup: &validator::testonly::Setup,
     gossip_peers: usize,
 ) -> Vec<Config> {
     let configs = setup.keys.iter().map(|key| {

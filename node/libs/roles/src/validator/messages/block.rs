@@ -164,6 +164,11 @@ impl FinalBlock {
         &self.justification.message.proposal
     }
 
+    /// Number of the block.
+    pub fn number(&self) -> BlockNumber {
+        self.header().number
+    }
+
     /// Verifies internal consistency of this block.
     pub fn verify(&self, genesis: &super::Genesis) -> Result<(), BlockValidationError> {
         let payload_hash = self.payload.hash();

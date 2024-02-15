@@ -2,15 +2,16 @@
 
 use super::*;
 use crate::tests::sync_state;
-use zksync_consensus_roles::{validator, validator::testonly::GenesisSetup};
+use zksync_consensus_roles::{validator, validator::testonly::Setup};
 use zksync_consensus_storage::testonly::new_store;
 
 #[tokio::test]
 async fn processing_invalid_sync_states() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let mut setup = GenesisSetup::new(rng, 4);
-    setup.push_blocks(rng, 3);
+    let setup = Setup::builder(rng, 4)
+        .push_blocks(rng, 3)
+        .build();
     let (storage, _runner) = new_store(ctx, &setup.genesis).await;
 
     let (message_sender, _) = channel::unbounded();
@@ -21,8 +22,9 @@ async fn processing_invalid_sync_states() {
     invalid_sync_state.last.as_mut().unwrap().message.proposal.number = BlockNumber(5);
     assert!(peer_states.update(peer, invalid_sync_state).is_err());
 
-    let mut other_network = GenesisSetup::new(rng, 4);
-    other_network.push_blocks(rng, 2);
+    let other_network = Setup::builder(rng, 4)
+        .push_blocks(rng, 2)
+        .build();
     let invalid_sync_state = sync_state(&other_network, BlockNumber(1));
     assert!(peer_states.update(peer, invalid_sync_state).is_err());
 }
@@ -67,7 +69,7 @@ struct PeerWithFakeBlock;
 impl Test for PeerWithFakeBlock {
     const BLOCK_COUNT: usize = 10;
 
-    fn config(&self, setup: &GenesisSetup) -> Config {
+    fn config(&self, setup: &Setup) -> Config {
         let mut cfg = Config::new(setup.genesis.clone());
         cfg.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
         cfg
@@ -89,11 +91,7 @@ impl Test for PeerWithFakeBlock {
             // other block than requested
             setup.blocks[1].clone(),
             // block with wrong validator set
-            {
-                let mut setup = GenesisSetup::new(rng, 4);
-                setup.push_blocks(rng, 2);
-                setup.blocks[0].clone()
-            },
+            Setup::builder(rng, 4).push_blocks(rng, 1).build().blocks[0].clone(),
             // block with mismatching payload,
             {
                 let mut block = setup.blocks[0].clone();

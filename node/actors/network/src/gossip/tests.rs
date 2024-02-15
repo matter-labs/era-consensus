@@ -24,7 +24,7 @@ async fn test_one_connection_per_node() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let setup = validator::testonly::GenesisSetup::new(rng, 5);
+    let setup = validator::testonly::Setup::new(rng, 5);
     let cfgs = testonly::new_configs(rng, &setup, 2);
 
     scope::run!(ctx, |ctx,s| async {
@@ -226,7 +226,7 @@ async fn test_validator_addrs_propagation() {
     abort_on_panic();
     let ctx = &ctx::test_root(&ctx::AffineClock::new(40.));
     let rng = &mut ctx.rng();
-    let setup = validator::testonly::GenesisSetup::new(rng, 10);
+    let setup = validator::testonly::Setup::new(rng, 10);
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
@@ -266,7 +266,7 @@ async fn test_genesis_mismatch() {
     abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let setup = validator::testonly::GenesisSetup::new(rng, 2);
+    let setup = validator::testonly::Setup::new(rng, 2);
     let cfgs = testonly::new_configs(rng, &setup, 1);
         
     scope::run!(ctx, |ctx,s| async {
@@ -311,7 +311,9 @@ async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
 
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::GenesisSetup::new(rng, node_count);
+    let setup = validator::testonly::Setup::builder(rng, node_count)
+        .push_blocks(rng, EXCHANGED_STATE_COUNT)
+        .build();
     let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
@@ -322,7 +324,6 @@ async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
-        setup.push_blocks(rng, EXCHANGED_STATE_COUNT);
         for block in &setup.blocks {
             for node in &nodes {
                 node.net
@@ -384,8 +385,9 @@ async fn uncoordinated_block_syncing(
 
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::GenesisSetup::new(rng, node_count);
-    setup.push_blocks(rng, EXCHANGED_STATE_COUNT);
+    let setup = validator::testonly::Setup::builder(rng, node_count)
+        .push_blocks(rng, EXCHANGED_STATE_COUNT)
+        .build();
     scope::run!(ctx, |ctx, s| async {
         for (i, cfg) in testonly::new_configs(rng, &setup, gossip_peers)
             .into_iter()
@@ -422,8 +424,9 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
 
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::GenesisSetup::new(rng, node_count);
-    setup.push_blocks(rng,1);
+    let setup = validator::testonly::Setup::builder(rng, node_count)
+        .push_blocks(rng,1)
+        .build();
     let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
 
     // All inbound and outbound peers should answer the request.
@@ -512,7 +515,7 @@ async fn validator_node_restart() {
     let zero = time::Duration::ZERO;
     let sec = time::Duration::seconds(1);
 
-    let setup = validator::testonly::GenesisSetup::new(rng, 2);
+    let setup = validator::testonly::Setup::new(rng, 2);
     let mut cfgs = testonly::new_configs(rng, &setup, 1);
     // Set the rpc refresh time to 0, so that any updates are immediately propagated.
     for cfg in &mut cfgs {
@@ -583,7 +586,7 @@ async fn rate_limiting() {
 
     // construct star topology.
     let n = 10;
-    let setup = validator::testonly::GenesisSetup::new(rng, n);
+    let setup = validator::testonly::Setup::new(rng, n);
     let mut cfgs = testonly::new_configs(rng, &setup, 0);
     let want: HashMap<_, _> = cfgs
         .iter()

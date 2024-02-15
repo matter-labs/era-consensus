@@ -1,19 +1,23 @@
 use super::*;
 use crate::{testonly::new_store, ReplicaState};
+use zksync_consensus_roles::validator::testonly::Setup;
 use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
-use zksync_consensus_roles::validator;
 
 #[tokio::test]
 async fn test_inmemory_block_store() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::GenesisSetup::new(rng, 3);
+    let setup = Setup::builder(rng, 3)
+        .push_blocks(rng, 3)
+        .fork()
+        .push_blocks(rng, 3)
+        .build();
+
     let store = &testonly::in_memory::BlockStore::new(setup.genesis.clone());
-    setup.push_blocks(rng, 5);
     let mut want = vec![];
-    for block in setup.blocks {
-        store.store_next_block(ctx, &block).await.unwrap();
-        want.push(block);
+    for block in &setup.blocks {
+        store.store_next_block(ctx, block).await.unwrap();
+        want.push(block.clone());
         assert_eq!(want, testonly::dump(ctx, store).await);
     }
 }
@@ -30,9 +34,7 @@ async fn test_state_updates() {
     abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::GenesisSetup::new(rng, 1);
-    setup.push_blocks(rng, 1);
-
+    let setup = Setup::builder(rng, 1).push_blocks(rng, 1).build();
     let (store, runner) = new_store(ctx, &setup.genesis).await;
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(runner.run(ctx));

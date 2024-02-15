@@ -7,7 +7,7 @@ use zksync_concurrency::{
     time,
 };
 use zksync_consensus_bft as bft;
-use zksync_consensus_roles::{validator::testonly::GenesisSetup, validator::BlockNumber};
+use zksync_consensus_roles::{validator::testonly::Setup, validator::BlockNumber};
 use zksync_consensus_storage::{
     self as storage,
     testonly::{in_memory, new_store},
@@ -42,7 +42,7 @@ async fn executing_single_validator() {
     let ctx = &ctx::root();
     let rng = &mut ctx.rng();
 
-    let setup = GenesisSetup::new(rng,1);
+    let setup = Setup::new(rng,1);
     let cfgs = new_configs(rng,&setup,0);
     scope::run!(ctx, |ctx, s| async {
         let (store, runner) = new_store(ctx, &setup.genesis).await;
@@ -61,7 +61,7 @@ async fn executing_validator_and_full_node() {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
 
-    let setup = GenesisSetup::new(rng,1);
+    let setup = Setup::new(rng,1);
     let cfgs = new_configs(rng,&setup,0);
     scope::run!(ctx, |ctx, s| async {
         // Spawn validator.
@@ -94,7 +94,7 @@ async fn test_block_revert() {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
     
-    let mut setup = GenesisSetup::new(rng, 2);
+    let mut setup = Setup::new(rng, 2);
     let mut cfgs = new_configs(rng, &setup, 1);
     // Persistent stores for the validators.
     let mut ps : Vec<_> = cfgs.iter().map(|_|in_memory::BlockStore::new(setup.genesis.clone())).collect();

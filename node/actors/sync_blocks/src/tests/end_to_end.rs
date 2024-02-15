@@ -21,7 +21,7 @@ type NetworkDispatcherPipe =
 #[derive(Debug)]
 struct Node {
     store: Arc<BlockStore>,
-    setup: Arc<GenesisSetup>,
+    setup: Arc<Setup>,
     switch_on_sender: Option<oneshot::Sender<()>>,
     terminate: channel::Sender<()>,
 }
@@ -33,9 +33,9 @@ impl Node {
         gossip_peers: usize,
     ) -> (Vec<Node>, Vec<NodeRunner>) {
         let rng = &mut ctx.rng();
-        // NOTE: originally there were only 4 consensus nodes.
-        let mut setup = validator::testonly::GenesisSetup::new(rng, node_count);
-        setup.push_blocks(rng, 20);
+        let setup = validator::testonly::Setup::builder(rng, node_count)
+            .push_blocks(rng, 20)
+            .build();
         let setup = Arc::new(setup);
         let mut nodes = vec![];
         let mut runners = vec![];
@@ -50,7 +50,7 @@ impl Node {
     async fn new(
         ctx: &ctx::Ctx,
         network: network::Config,
-        setup: Arc<GenesisSetup>,
+        setup: Arc<Setup>,
     ) -> (Self, NodeRunner) {
         let (store, store_runner) = new_store(ctx, &setup.genesis).await;
         let (switch_on_sender, switch_on_receiver) = oneshot::channel();
@@ -94,7 +94,7 @@ struct NodeRunner {
     network: network::Config,
     store: Arc<BlockStore>,
     store_runner: BlockStoreRunner,
-    setup: Arc<GenesisSetup>,
+    setup: Arc<Setup>,
     switch_on_receiver: oneshot::Receiver<()>,
     terminate: channel::Receiver<()>,
 }

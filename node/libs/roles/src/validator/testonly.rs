@@ -15,131 +15,108 @@ use std::sync::Arc;
 use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
 
-impl<'a> BlockBuilder<'a> {
-    /// Builds `GenesisSetup`.
-    pub fn push(self) {
-        let mut justification = CommitQC::new(self.msg, &self.setup.genesis);
-        for key in &self.setup.keys {
-            justification.add(
-                &key.sign_msg(justification.message.clone()),
-                &self.setup.genesis,
-            );
-        }
-        self.setup.blocks.push(FinalBlock {
-            payload: self.payload,
-            justification,
-        });
-    }
+/// Builder of Setup.
+pub struct SetupBuilder(Setup);
 
-    /// Sets `protocol_version`.
-    pub fn protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
-        self.msg.view.protocol_version = protocol_version;
-        self
-    }
+impl SetupBuilder {
+    /// Build the setup.
+    pub fn build(self) -> Setup { self.0 }
 
-    /// Sets `block_number`.
-    pub fn block_number(mut self, block_number: BlockNumber) -> Self {
-        self.msg.proposal.number = block_number;
-        self
-    }
-
-    /// Sets `payload`.
-    pub fn payload(mut self, payload: Payload) -> Self {
-        self.msg.proposal.payload = payload.hash();
-        self.payload = payload;
-        self
-    }
-}
-
-/// GenesisSetup.
-#[derive(Debug, Clone)]
-pub struct GenesisSetup {
-    /// Validators' secret keys.
-    pub keys: Vec<SecretKey>,
-    /// Initial blocks.
-    pub blocks: Vec<FinalBlock>,
-    /// Genesis config.
-    pub genesis: Genesis,
-}
-
-/// Builder of GenesisSetup.
-pub struct BlockBuilder<'a> {
-    setup: &'a mut GenesisSetup,
-    msg: ReplicaCommit,
-    payload: Payload,
-}
-
-impl GenesisSetup {
-    /// Constructs GenesisSetup.
-    pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
-        let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
-        let genesis = Genesis {
-            validators: ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap(),
-            forks: ForkSet::new(vec![Fork::default()]).unwrap(),
-        };
-        Self {
-            keys,
-            blocks: vec![],
-            genesis,
-        }
-    }
-
-    /// Returns a builder for the next block.
-    pub fn next_block(&mut self) -> BlockBuilder {
-        assert!(self.genesis.forks.root()==self.genesis.forks.current(), "constructing blocks for genesis with >1 fork is not supported yet");
-        let parent = self.blocks.last().map(|b| &b.justification.message);
-        let payload = Payload(vec![]);
-        let fork = self.genesis.forks.current();
-        BlockBuilder {
-            msg: match parent {
-                Some(p) => ReplicaCommit {
-                    view: View {
-                        protocol_version: p.view.protocol_version,
-                        fork: fork.number,
-                        number: p.view.number.next(),
-                    },
-                    proposal: BlockHeader::next(&p.proposal, payload.hash()),
-                },
-                None => ReplicaCommit {
-                    view: View {
-                        protocol_version: ProtocolVersion::EARLIEST,
-                        fork: fork.number,
-                        number: ViewNumber(0),
-                    },
-                    proposal: BlockHeader {
-                        parent: fork.first_parent,
-                        number: fork.first_block,
-                        payload: payload.hash(),
-                    },
-                },
+    /// Produce a fork at the current head.
+    pub fn fork(mut self) -> Self {
+        let number = self.0.genesis.forks.current().number.next();
+        self.0.genesis.forks.push(match self.0.blocks.last() {
+            Some(b) => Fork {
+                number,
+                first_parent: Some(b.header().hash()),
+                first_block: b.header().number.next(),
             },
-            payload,
-            setup: self,
+            None => Fork {
+                number,
+                first_parent: None,
+                // This is an arbitrary value.
+                // We just select any value different than the current root to cover more
+                // non-trivial cases.
+                first_block: self.0.genesis.forks.root().first_block.next(), 
+            },
+        }).unwrap();
+        self
+    }
+
+    fn next(&self) -> BlockNumber {
+        match self.0.blocks.last() {
+            Some(b) => b.header().number.next(),
+            None => self.0.genesis.forks.root().first_block,
         }
     }
 
     /// Pushes the next block with the given payload.
     pub fn push_block(&mut self, payload: Payload) {
-        self.next_block().payload(payload).push();
+        let number = self.next();
+        let fork = self.0.genesis.forks.find(number).unwrap();
+        let view = View {
+            protocol_version: ProtocolVersion::EARLIEST,
+            fork: fork.number,
+            number: self.0.blocks.last().map(|b|b.justification.view().number.next()).unwrap_or(ViewNumber(0)),
+        };
+        let proposal = match self.0.blocks.last() {
+            Some(b) => BlockHeader::next(&b.header(), payload.hash()),
+            None => BlockHeader {
+                parent: fork.first_parent,
+                number: fork.first_block,
+                payload: payload.hash(),
+            },
+        };
+        let msg = ReplicaCommit { view, proposal };
+        let mut justification = CommitQC::new(msg, &self.0.genesis);
+        for key in &self.0.keys {
+            justification.add(
+                &key.sign_msg(justification.message.clone()),
+                &self.0.genesis,
+            );
+        }
+        self.0.blocks.push(FinalBlock { payload, justification });
     }
 
     /// Pushes `count` blocks with a random payload.
-    pub fn push_blocks(&mut self, rng: &mut impl Rng, count: usize) {
+    pub fn push_blocks(mut self, rng: &mut impl Rng, count: usize) -> Self {
         for _ in 0..count {
             self.push_block(rng.gen());
         }
+        self
     }
 }
 
-/// Constructs a genesis block with random payload.
-pub fn make_genesis_block(rng: &mut impl Rng, protocol_version: ProtocolVersion) -> FinalBlock {
-    let mut setup = GenesisSetup::new(rng, 3);
-    setup
-        .next_block()
-        .protocol_version(protocol_version)
-        .payload(rng.gen())
-        .push();
-    setup.blocks[0].clone()
+/// Setup.
+#[derive(Debug)]
+pub struct Setup {
+    /// Validators' secret keys.
+    pub keys: Vec<SecretKey>,
+    /// Past blocks.
+    pub blocks: Vec<FinalBlock>,
+    /// Genesis config.
+    pub genesis: Genesis,
+}
+
+impl Setup {
+    /// New Setup builder.
+    pub fn builder(rng: &mut impl Rng, validators: usize) -> SetupBuilder {
+        let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
+        let genesis = Genesis {
+            validators: ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap(),
+            forks: ForkSet::new(vec![Fork {
+                number: ForkNumber(rng.gen_range(0..100)),
+                first_block: BlockNumber(rng.gen_range(0..100)),
+                first_parent: None,
+            }]).unwrap(),
+        };
+        SetupBuilder(Self { keys, genesis, blocks: vec![] })
+    }
+
+    /// Constructs GenesisSetup.
+    pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
+        Self::builder(rng,validators).build()    
+    }
 }
 
 impl AggregateSignature {

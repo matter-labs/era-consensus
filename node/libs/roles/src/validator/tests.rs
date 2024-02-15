@@ -1,4 +1,5 @@
 use super::*;
+use crate::validator::testonly::Setup;
 use assert_matches::assert_matches;
 use rand::{seq::SliceRandom, Rng};
 use std::vec;
@@ -169,7 +170,7 @@ fn test_agg_signature_verify() {
         .is_err());
 }
 
-fn make_view(number: ViewNumber, setup: &GenesisSetup) -> View {
+fn make_view(number: ViewNumber, setup: &Setup) -> View {
     View {
         protocol_version: ProtocolVersion::EARLIEST,
         fork: setup.genesis.forks.current().number,
@@ -180,7 +181,7 @@ fn make_view(number: ViewNumber, setup: &GenesisSetup) -> View {
 fn make_replica_commit(
     rng: &mut impl Rng,
     view: ViewNumber,
-    setup: &GenesisSetup,
+    setup: &Setup,
 ) -> ReplicaCommit {
     ReplicaCommit {
         view: make_view(view, setup),
@@ -188,7 +189,7 @@ fn make_replica_commit(
     }
 }
 
-fn make_commit_qc(rng: &mut impl Rng, view: ViewNumber, setup: &GenesisSetup) -> CommitQC {
+fn make_commit_qc(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> CommitQC {
     let mut qc = CommitQC::new(make_replica_commit(rng, view, setup), &setup.genesis);
     for key in &setup.keys {
         qc.add(&key.sign_msg(qc.message.clone()), &setup.genesis);
@@ -199,7 +200,7 @@ fn make_commit_qc(rng: &mut impl Rng, view: ViewNumber, setup: &GenesisSetup) ->
 fn make_replica_prepare(
     rng: &mut impl Rng,
     view: ViewNumber,
-    setup: &GenesisSetup,
+    setup: &Setup,
 ) -> ReplicaPrepare {
     ReplicaPrepare {
         view: make_view(view, setup),
@@ -220,8 +221,8 @@ fn test_commit_qc() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let setup1 = GenesisSetup::new(rng, 6);
-    let setup2 = GenesisSetup::new(rng, 6);
+    let setup1 = Setup::new(rng, 6);
+    let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
         validators: ValidatorSet::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
         forks: setup1.genesis.forks.clone(),
@@ -255,8 +256,8 @@ fn test_prepare_qc() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let setup1 = GenesisSetup::new(rng, 6);
-    let setup2 = GenesisSetup::new(rng, 6);
+    let setup1 = Setup::new(rng, 6);
+    let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
         validators: ValidatorSet::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
         forks: setup1.genesis.forks.clone(),

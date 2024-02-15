@@ -25,7 +25,7 @@ impl Test {
     /// Run a test with the given parameters.
     pub(crate) async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
-        let setup = validator::testonly::GenesisSetup::new(rng, self.nodes.len());
+        let setup = validator::testonly::Setup::new(rng, self.nodes.len());
         let nets: Vec<_> = network::testonly::new_configs(rng, &setup, 1);
         let mut nodes = vec![];
         let mut honest = vec![];

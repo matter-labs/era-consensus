@@ -100,7 +100,7 @@ impl ForkSet {
         while n > 0 && self.0[n-1].first_block >= fork.first_block {
             n -= 1;
         }
-        anyhow::ensure!((n==0) != fork.first_parent.is_none());
+        anyhow::ensure!((n==0) == fork.first_parent.is_none());
         self.0.truncate(n);
         self.0.push(fork);
         Ok(())

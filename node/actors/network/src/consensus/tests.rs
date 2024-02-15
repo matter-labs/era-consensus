@@ -12,7 +12,7 @@ async fn test_one_connection_per_validator() {
     abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let setup = validator::testonly::GenesisSetup::new(rng, 3);
+    let setup = validator::testonly::Setup::new(rng, 3);
     let nodes = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx,s| async {
@@ -69,7 +69,7 @@ async fn test_genesis_mismatch() {
     abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let setup = validator::testonly::GenesisSetup::new(rng, 2);
+    let setup = validator::testonly::Setup::new(rng, 2);
     let cfgs = testonly::new_configs(rng, &setup, /*gossip_peers=*/0);
 
     scope::run!(ctx, |ctx,s| async {
@@ -113,7 +113,7 @@ async fn test_address_change() {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.));
     let rng = &mut ctx.rng();
 
-    let setup = validator::testonly::GenesisSetup::new(rng, 5);
+    let setup = validator::testonly::Setup::new(rng, 5);
     let mut cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
         let (store, runner) = new_store(ctx, &setup.genesis).await;
@@ -165,7 +165,7 @@ async fn test_transmission() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let setup = validator::testonly::GenesisSetup::new(rng, 2);
+    let setup = validator::testonly::Setup::new(rng, 2);
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {

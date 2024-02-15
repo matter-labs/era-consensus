@@ -55,7 +55,7 @@ impl UTHarness {
         payload_manager: Box<dyn PayloadManager>,
     ) -> (UTHarness, BlockStoreRunner) {
         let rng = &mut ctx.rng();
-        let setup = validator::testonly::GenesisSetup::new(rng, num_validators);
+        let setup = validator::testonly::Setup::new(rng, num_validators);
         let (block_store, runner) = new_store(ctx, &setup.genesis).await;
         let (send, recv) = ctx::channel::unbounded();
 
