@@ -18,4 +18,4 @@ spec:
         - name: test-suite
           image: test-suite:latest
           imagePullPolicy: Never
-          command: ["./tester"]
+          command: ["./tester_entrypoint.sh"]
