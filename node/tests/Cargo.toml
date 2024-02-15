@@ -12,6 +12,8 @@ zksync_consensus_tools.workspace = true
 serde_json.workspace = true
 tokio.workspace = true
 jsonrpsee.workspace = true
+clap.workspace = true
+tracing.workspace = true
 
 [lints]
 workspace = true
