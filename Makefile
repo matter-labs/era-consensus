@@ -18,7 +18,7 @@ docker_build_executor:
 	docker build --output=node/tools/docker_binaries --target=binary .
 
 docker_build_tester:
-	docker build --output=node/tools/docker_binaries --target=binary -f node/tests/Dockerfile node
+	docker build --output=node/tools/docker_binaries --target=binary -f node/tests/Dockerfile .
 
 docker_node_image:
 	docker build -t consensus-node --target=runtime .
@@ -50,6 +50,7 @@ start_k8s_nodes:
 	cd ${EXECUTABLE_NODE_DIR} && cargo run  --bin deployer deploy --nodes ${NODES}
 
 start_k8s_tests:
+	cd node && cargo run --bin tester generate-config
 	$(MAKE) docker_test_image
 	minikube image load test-suite:latest
 	kubectl apply -f node/tests/test_deployments.yaml
