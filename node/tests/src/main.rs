@@ -22,6 +22,8 @@ struct TesterCLI {
 enum TesterCommands {
     /// Generate configs for the nodes.
     GenerateConfig,
+    /// Set up the test pod.
+    StartPod,
     /// Deploy the nodes.
     Run,
 }
@@ -52,6 +54,11 @@ pub async fn generate_config() {
     }
 }
 
+pub async fn start_tests_pod() {
+    let client = k8s::get_client().await.unwrap();
+    k8s::create_tests_deployment(&client).await.unwrap();
+}
+
 /// Sanity test for the RPC server.
 pub async fn sanity_test() {
     let config_file_path = get_config_path();
@@ -72,11 +79,15 @@ pub async fn sanity_test() {
 #[tokio::main]
 async fn main() {
     let args = TesterCLI::parse();
-    tracing::trace!(?args, "Starting node");
+
     match args.command {
         TesterCommands::GenerateConfig => {
             generate_config().await;
             tracing::info!("Config succesfully generated")
+        }
+        TesterCommands::StartPod => {
+            start_tests_pod().await;
+            tracing::info!("Pod started succesfully!")
         }
         TesterCommands::Run => {
             sanity_test().await;

@@ -82,6 +82,59 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
     }
 }
 
+pub async fn create_tests_deployment(client: &Client) -> anyhow::Result<()> {
+    let deployment: Deployment = serde_json::from_value(json!({
+      "apiVersion": "apps/v1",
+      "kind": "Deployment",
+      "metadata": {
+        "name": "tests-deployment",
+        "namespace": "consensus",
+        "labels": {
+          "app": "test-node"
+        }
+      },
+      "spec": {
+        "selector": {
+          "matchLabels": {
+            "app": "test-node"
+          }
+        },
+        "template": {
+          "metadata": {
+            "labels": {
+              "app": "test-node"
+            }
+          },
+          "spec": {
+            "containers": [
+              {
+                "name": "test-suite",
+                "image": "test-suite:latest",
+                "imagePullPolicy": "Never",
+                "command": [
+                  "./tester_entrypoint.sh"
+                ]
+              }
+            ]
+          }
+        }
+      }
+    }))?;
+
+    let deployments: Api<Deployment> = Api::namespaced(client.clone(), "consensus");
+    let post_params = PostParams::default();
+    let result = deployments.create(&post_params, &deployment).await?;
+
+    info!(
+        "Deployment: {} , created",
+        result
+            .metadata
+            .name
+            .context("Name not defined in metadata")?
+    );
+    Ok(())
+}
+
 /// Creates a deployment
 pub async fn create_deployment(
     client: &Client,
@@ -167,14 +220,6 @@ pub async fn create_deployment(
     let deployments: Api<Deployment> = Api::namespaced(client.clone(), namespace);
     let post_params = PostParams::default();
     let result = deployments.create(&post_params, &deployment).await?;
-    // tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
-
-    // let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
-    // let lp = ListParams::default().labels(&format!("app={}", node_name));
-    // let pod = pods.list(&lp).await?;
-    // let a = pod.into_iter().find(|pod| pod.clone().metadata.name.unwrap().starts_with(node_name)).unwrap();
-    // let pf = pods.portforward(&a.metadata.name.unwrap(), &[3150, 3154]).await;
-    // println!("Portforward: {:?}", pf.is_ok());
 
     info!(
         "Deployment: {} , created",
