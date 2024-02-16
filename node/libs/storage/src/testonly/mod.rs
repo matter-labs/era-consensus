@@ -56,13 +56,13 @@ pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<valid
 }
 
 /// Verifies storage content.
-pub async fn verify(ctx: &ctx::Ctx, store: &BlockStore, genesis: &validator::Genesis) -> anyhow::Result<()> {
+pub async fn verify(ctx: &ctx::Ctx, store: &BlockStore) -> anyhow::Result<()> {
     let range = store.subscribe().borrow().clone();
     let mut parent : Option<validator::BlockHeaderHash> = None;
     for n in (range.first.0..range.next().0).map(validator::BlockNumber) {
         async {
             let block = store.block(ctx,n).await?.context("missing")?;
-            block.verify(&genesis)?;
+            block.verify(store.genesis())?;
             // Ignore checking the first block parent
             if parent.is_some() {
                 anyhow::ensure!(parent==block.header().parent);

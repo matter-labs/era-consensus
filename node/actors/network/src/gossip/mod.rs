@@ -73,6 +73,11 @@ impl Network {
         })
     }
 
+    /// Genesis.
+    pub(crate) fn genesis(&self) -> &validator::Genesis {
+        self.block_store.genesis()
+    }
+
     pub(crate) async fn get_block(
         &self,
         ctx: &ctx::Ctx,

@@ -58,7 +58,6 @@ pub fn new_configs(
         Config {
             server_addr: addr,
             public_addr: *addr,
-            genesis: setup.genesis.clone(),
             // Pings are disabled in tests by default to avoid dropping connections
             // due to timeouts.
             ping_timeout: None,
@@ -94,7 +93,6 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
     Config {
         server_addr: addr,
         public_addr: *addr,
-        genesis: peer.genesis.clone(),
         // Pings are disabled in tests by default to avoid dropping connections
         // due to timeouts.
         ping_timeout: None,
@@ -174,6 +172,11 @@ impl Instance {
         &self.net
     }
 
+    /// Genesis.
+    pub fn genesis(&self) -> &validator::Genesis {
+        self.net.gossip.genesis()
+    }
+
     /// Returns the gossip config for this node.
     pub fn cfg(&self) -> &Config {
         &self.net.gossip.cfg
@@ -195,7 +198,7 @@ impl Instance {
     pub async fn wait_for_consensus_connections(&self) {
         let consensus_state = self.net.consensus.as_ref().unwrap();
 
-        let want: HashSet<_> = self.cfg().genesis.validators.iter().cloned().collect();
+        let want: HashSet<_> = self.genesis().validators.iter().cloned().collect();
         consensus_state
             .inbound
             .subscribe()
@@ -273,7 +276,7 @@ pub async fn instant_network(
         node.net
             .gossip
             .validator_addrs
-            .update(&node.cfg().genesis.validators, &addrs)
+            .update(&node.genesis().validators, &addrs)
             .await
             .unwrap();
     }

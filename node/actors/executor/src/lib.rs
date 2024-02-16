@@ -48,8 +48,6 @@ pub struct Config {
     pub public_addr: std::net::SocketAddr,
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
-    /// Genesis config.
-    pub genesis: validator::Genesis,
 
     /// Key of this node. It uniquely identifies the node.
     /// It should match the secret key provided in the `node_key` file.
@@ -93,7 +91,6 @@ impl Executor {
         network::Config {
             server_addr: net::tcp::ListenerAddr::new(self.config.server_addr),
             public_addr: self.config.public_addr,
-            genesis: self.config.genesis.clone(),
             gossip: self.config.gossip(),
             validator_key: self.validator.as_ref().map(|v| v.key.clone()),
             ping_timeout: Some(time::Duration::seconds(10)),
@@ -106,8 +103,8 @@ impl Executor {
     fn verify(&self) -> anyhow::Result<()> {
         if let Some(validator) = self.validator.as_ref() {
             if !self
-                .config
-                .genesis
+                .block_store
+                .genesis()
                 .validators
                 .iter()
                 .any(|key| key == &validator.key.public())
@@ -162,7 +159,7 @@ impl Executor {
                     .context("Consensus stopped")
                 });
             }
-            sync_blocks::Config::new(self.config.genesis.clone())
+            sync_blocks::Config::new()
                 .run(ctx, sync_blocks_actor_pipe, self.block_store.clone())
                 .await
                 .context("Syncing blocks stopped")

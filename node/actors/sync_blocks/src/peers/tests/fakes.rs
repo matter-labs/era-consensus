@@ -14,7 +14,7 @@ async fn processing_invalid_sync_states() {
     let (storage, _runner) = new_store(ctx, &setup.genesis).await;
 
     let (message_sender, _) = channel::unbounded();
-    let peer_states = PeerStates::new(Config::new(setup.genesis.clone()), storage, message_sender);
+    let peer_states = PeerStates::new(Config::new(), storage, message_sender);
     let peer = &rng.gen::<node::SecretKey>().public();
     
     let mut invalid_block = setup.blocks[1].clone();
@@ -69,8 +69,8 @@ struct PeerWithFakeBlock;
 impl Test for PeerWithFakeBlock {
     const BLOCK_COUNT: usize = 10;
 
-    fn config(&self, setup: &Setup) -> Config {
-        let mut cfg = Config::new(setup.genesis.clone());
+    fn config(&self) -> Config {
+        let mut cfg = Config::new();
         cfg.sleep_interval_for_get_block = BLOCK_SLEEP_INTERVAL;
         cfg
     }

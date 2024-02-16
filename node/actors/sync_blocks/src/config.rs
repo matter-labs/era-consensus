@@ -1,13 +1,9 @@
 //! Configuration for the `SyncBlocks` actor.
-
 use zksync_concurrency::time;
-use zksync_consensus_roles::validator;
 
 /// Configuration for the `SyncBlocks` actor.
 #[derive(Debug)]
 pub struct Config {
-    /// Set of validators authoring blocks.
-    pub(crate) genesis: validator::Genesis,
     /// Maximum number of blocks to attempt to get concurrently from all peers in total.
     pub(crate) max_concurrent_blocks: usize,
     /// Maximum number of blocks to attempt to get concurrently from any single peer.
@@ -19,9 +15,8 @@ pub struct Config {
 
 impl Config {
     /// Creates a new configuration with the provided mandatory params.
-    pub fn new(genesis: validator::Genesis) -> Self {
+    pub fn new() -> Self {
         Self {
-            genesis,
             max_concurrent_blocks: 20,
             max_concurrent_blocks_per_peer: 5,
             sleep_interval_for_get_block: time::Duration::seconds(10),

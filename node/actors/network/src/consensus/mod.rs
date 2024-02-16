@@ -62,7 +62,7 @@ impl Network {
     /// Constructs a new consensus network state.
     pub(crate) fn new(ctx: &ctx::Ctx, gossip: Arc<gossip::Network>) -> Option<Arc<Self>> {
         let key = gossip.cfg.validator_key.clone()?;
-        let validators: HashSet<_> = gossip.cfg.genesis.validators.iter().cloned().collect();
+        let validators: HashSet<_> = gossip.genesis().validators.iter().cloned().collect();
         Some(Arc::new(Self {
             key,
             inbound: PoolWatch::new(validators.clone(), 0),
@@ -121,7 +121,7 @@ impl Network {
         mut stream: noise::Stream,
     ) -> anyhow::Result<()> {
         let peer =
-            handshake::inbound(ctx, &self.key, self.gossip.cfg.genesis.hash(), &mut stream).await?;
+            handshake::inbound(ctx, &self.key, self.gossip.genesis().hash(), &mut stream).await?;
         self.inbound.insert(peer.clone()).await?;
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
@@ -154,7 +154,7 @@ impl Network {
         handshake::outbound(
             ctx,
             &self.key,
-            self.gossip.cfg.genesis.hash(),
+            self.gossip.genesis().hash(),
             &mut stream,
             peer,
         )
@@ -217,7 +217,7 @@ impl Network {
             self.gossip
                 .validator_addrs
                 .update(
-                    &self.gossip.cfg.genesis.validators,
+                    &self.gossip.genesis().validators,
                     &[Arc::new(self.key.sign_msg(validator::NetAddress {
                         addr: my_addr,
                         version: next_version,

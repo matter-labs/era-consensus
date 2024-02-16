@@ -22,7 +22,6 @@ fn make_executor(cfg: &network::Config, block_store: Arc<BlockStore>) -> Executo
             server_addr: *cfg.server_addr,
             public_addr: cfg.public_addr,
             max_payload_size: usize::MAX,
-            genesis: cfg.genesis.clone(),
             node_key: cfg.gossip.key.clone(),
             gossip_dynamic_inbound_limit: cfg.gossip.dynamic_inbound_limit.clone(),
             gossip_static_inbound: cfg.gossip.static_inbound.clone(),
@@ -97,7 +96,7 @@ async fn test_block_revert() {
     
     let setup = Setup::new(rng, 2);
     let first = setup.next();
-    let mut cfgs = new_configs(rng, &setup, 1);
+    let cfgs = new_configs(rng, &setup, 1);
     // Persistent stores for the validators.
     let mut ps : Vec<_> = cfgs.iter().map(|_|in_memory::BlockStore::new(setup.genesis.clone())).collect();
 
@@ -127,7 +126,6 @@ async fn test_block_revert() {
     genesis.forks.push(fork.clone()).unwrap();
     // Update configs and persistent storage.
     for i in 0..cfgs.len() {
-        cfgs[i].genesis = genesis.clone();
         ps[i] = ps[i].fork(fork.clone()).unwrap();
     }
 
@@ -147,7 +145,7 @@ async fn test_block_revert() {
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("fullnode")));
         s.spawn_bg(make_executor(&new_fullnode(rng,&cfgs[0]),store.clone()).run(ctx).instrument(tracing::info_span!("fullnode")));
         store.wait_until_persisted(ctx, last_block).await?;
-        storage::testonly::verify(ctx, &*store, &genesis).await.context("verify(storage)")?;
+        storage::testonly::verify(ctx, &*store).await.context("verify(storage)")?;
         Ok(())
     }).await.unwrap();
 }

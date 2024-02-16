@@ -25,7 +25,7 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'
             .fetch_add(1, Ordering::SeqCst);
         self.0
             .validator_addrs
-            .update(&self.0.cfg.genesis.validators, &req.0[..])
+            .update(&self.0.genesis().validators, &req.0[..])
             .await?;
         Ok(())
     }
@@ -169,7 +169,7 @@ impl Network {
         mut stream: noise::Stream,
     ) -> anyhow::Result<()> {
         let peer =
-            handshake::inbound(ctx, &self.cfg.gossip, self.cfg.genesis.hash(), &mut stream).await?;
+            handshake::inbound(ctx, &self.cfg.gossip, self.genesis().hash(), &mut stream).await?;
         tracing::Span::current().record("peer", tracing::field::debug(&peer));
         self.inbound.insert(peer.clone()).await?;
         let res = self.run_stream(ctx, &peer, stream).await;
@@ -187,7 +187,7 @@ impl Network {
         handshake::outbound(
             ctx,
             &self.cfg.gossip,
-            self.cfg.genesis.hash(),
+            self.genesis().hash(),
             &mut stream,
             peer,
         )

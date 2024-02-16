@@ -1,5 +1,4 @@
 //! Peer states tracked by the `SyncBlocks` actor.
-
 use self::events::PeerStateEvent;
 use crate::{io, Config};
 use anyhow::Context as _;
@@ -14,6 +13,7 @@ use zksync_concurrency::{
 use zksync_consensus_network::io::SyncBlocksInputMessage;
 use zksync_consensus_roles::{
     node,
+    validator,
     validator::{BlockNumber, FinalBlock},
 };
 use zksync_consensus_storage::{BlockStore, BlockStoreState};
@@ -41,6 +41,11 @@ pub(crate) struct PeerStates {
 }
 
 impl PeerStates {
+    fn genesis(&self) -> &validator::Genesis {
+        self.storage.genesis()
+    }
+
+
     /// Creates a new instance together with a handle.
     pub(crate) fn new(
         config: Config,
@@ -69,7 +74,7 @@ impl PeerStates {
         use std::collections::hash_map::Entry;
         let Some(last) = &state.last else { return Ok(()) };
         last
-            .verify(&self.config.genesis, /*allow_past_forks=*/true)
+            .verify(self.genesis(), /*allow_past_forks=*/true)
             .context("state.last.verify()")?;
         let mut peers = self.peers.lock().unwrap();
         match peers.entry(peer.clone()) {
@@ -199,7 +204,7 @@ impl PeerStates {
             .into());
         }
         block
-            .verify(&self.config.genesis)
+            .verify(&self.genesis())
             .context("block.validate()")?;
         Ok(block)
     }

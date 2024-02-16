@@ -194,7 +194,6 @@ impl Configs {
             config: executor::Config {
                 server_addr: self.app.server_addr,
                 public_addr: self.app.public_addr,
-                genesis: self.app.genesis.clone(), 
                 node_key: self.node_key.clone(),
                 gossip_dynamic_inbound_limit: self.app.gossip_dynamic_inbound_limit,
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),

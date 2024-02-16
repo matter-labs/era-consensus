@@ -21,39 +21,15 @@ type NetworkDispatcherPipe =
 #[derive(Debug)]
 struct Node {
     store: Arc<BlockStore>,
-    setup: Arc<Setup>,
     start: channel::Sender<()>,
     terminate: channel::Sender<()>,
 }
 
-impl Node {
-    async fn new_network(
-        ctx: &ctx::Ctx,
-        node_count: usize,
-        gossip_peers: usize,
-    ) -> (Vec<Node>, Vec<NodeRunner>) {
-        let rng = &mut ctx.rng();
-        let mut setup = validator::testonly::Setup::new(rng, node_count);
-        setup.push_blocks(rng,1);
-        setup.fork();
-        setup.push_blocks(rng,9);
-        setup.fork();
-        setup.push_blocks(rng,10);
-        let setup = Arc::new(setup);
-        let mut nodes = vec![];
-        let mut runners = vec![];
-        for net in network::testonly::new_configs(rng, &setup, gossip_peers) {
-            let (n, r) = Node::new(ctx, net, setup.clone()).await;
-            nodes.push(n);
-            runners.push(r);
-        }
-        (nodes, runners)
-    }
-
+impl Node { 
     async fn new(
         ctx: &ctx::Ctx,
         network: network::Config,
-        setup: Arc<Setup>,
+        setup: &Setup,
     ) -> (Self, NodeRunner) {
         let (store, store_runner) = new_store(ctx, &setup.genesis).await;
         let (start_send, start_recv) = channel::bounded(1);
@@ -63,13 +39,11 @@ impl Node {
             network,
             store: store.clone(),
             store_runner,
-            setup: setup.clone(),
             start: start_recv,
             terminate: terminate_recv,
         };
         let this = Self {
             store,
-            setup,
             start: start_send,
             terminate: terminate_send,
         };
@@ -91,7 +65,6 @@ struct NodeRunner {
     network: network::Config,
     store: Arc<BlockStore>,
     store_runner: BlockStoreRunner,
-    setup: Arc<Setup>,
     start: channel::Receiver<()>,
     terminate: channel::Receiver<()>,
 }
@@ -103,7 +76,7 @@ impl NodeRunner {
         let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
         let (mut network, network_runner) =
             network::testonly::Instance::new(ctx, self.network.clone(), self.store.clone());
-        let sync_blocks_config = Config::new(self.setup.genesis.clone());
+        let sync_blocks_config = Config::new();
         let res = scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(self.store_runner.run(ctx));
             s.spawn_bg(network_runner.run(ctx));
@@ -167,7 +140,7 @@ impl NodeRunner {
 trait GossipNetworkTest: fmt::Debug + Send {
     /// Returns the number of nodes in the gossip network and number of peers for each node.
     fn network_params(&self) -> (usize, usize);
-    async fn test(self, ctx: &ctx::Ctx, network: Vec<Node>) -> anyhow::Result<()>;
+    async fn test(self, ctx: &ctx::Ctx, setup: &Setup, network: Vec<Node>) -> anyhow::Result<()>;
 }
 
 #[instrument(level = "trace")]
@@ -175,13 +148,24 @@ async fn test_sync_blocks<T: GossipNetworkTest>(test: T) {
     abort_on_panic();
     let _guard = set_timeout(TEST_TIMEOUT);
     let ctx = &ctx::test_root(&ctx::AffineClock::new(25.));
+    let rng = &mut ctx.rng();
     let (node_count, gossip_peers) = test.network_params();
-    let (nodes, runners) = Node::new_network(ctx, node_count, gossip_peers).await;
+    
+    let mut setup = validator::testonly::Setup::new(rng, node_count);
+    setup.push_blocks(rng,1);
+    setup.fork();
+    setup.push_blocks(rng,9);
+    setup.fork();
+    setup.push_blocks(rng,10);
+
     scope::run!(ctx, |ctx, s| async {
-        for (i, runner) in runners.into_iter().enumerate() {
+        let mut nodes = vec![];
+        for (i,net) in network::testonly::new_configs(rng, &setup, gossip_peers).into_iter().enumerate() {
+            let (node, runner) = Node::new(ctx, net, &setup).await;
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            nodes.push(node);
         }
-        test.test(ctx, nodes).await
+        test.test(ctx, &setup, nodes).await
     })
     .await
     .unwrap();
@@ -199,9 +183,8 @@ impl GossipNetworkTest for BasicSynchronization {
         (self.node_count, self.gossip_peers)
     }
 
-    async fn test(self, ctx: &ctx::Ctx, nodes: Vec<Node>) -> anyhow::Result<()> {
+    async fn test(self, ctx: &ctx::Ctx, setup: &Setup, nodes: Vec<Node>) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
-        let setup = nodes[0].setup.clone();
 
         tracing::info!("Check initial node states");
         for node in &nodes {
@@ -272,9 +255,8 @@ impl GossipNetworkTest for SwitchingOffNodes {
         (self.node_count, self.node_count / 2)
     }
 
-    async fn test(self, ctx: &ctx::Ctx, mut nodes: Vec<Node>) -> anyhow::Result<()> {
+    async fn test(self, ctx: &ctx::Ctx, setup: &Setup, mut nodes: Vec<Node>) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
-        let setup = nodes[0].setup.clone();
         nodes.shuffle(rng);
 
         for node in &nodes {
@@ -326,12 +308,12 @@ impl GossipNetworkTest for SwitchingOnNodes {
         (self.node_count, self.node_count / 2)
     }
 
-    async fn test(self, ctx: &ctx::Ctx, mut nodes: Vec<Node>) -> anyhow::Result<()> {
+    async fn test(self, ctx: &ctx::Ctx, setup: &Setup, mut nodes: Vec<Node>) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
         nodes.shuffle(rng);
         for i in 0..nodes.len() {
             nodes[i].start(); // Switch on a node.
-            let block = &nodes[0].setup.blocks[i];
+            let block = &setup.blocks[i];
             nodes[0..i+1].choose(rng).unwrap().store.queue_block(ctx,block.clone()).await.unwrap();
 
             // Wait until all switched on nodes get the new block.

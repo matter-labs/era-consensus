@@ -44,8 +44,8 @@ trait Test: fmt::Debug + Send + Sync {
     // TODO: move this to genesis
     const GENESIS_BLOCK_NUMBER: usize = 0;
 
-    fn config(&self, setup: &validator::testonly::Setup) -> Config {
-        Config::new(setup.genesis.clone())
+    fn config(&self) -> Config {
+        Config::new()
     }
 
     async fn initialize_storage(
@@ -78,7 +78,7 @@ async fn test_peer_states<T: Test>(test: T) {
 
     let (message_sender, message_receiver) = channel::unbounded();
     let (events_sender, events_receiver) = channel::unbounded();
-    let mut peer_states = PeerStates::new(test.config(&setup), store.clone(), message_sender);
+    let mut peer_states = PeerStates::new(test.config(), store.clone(), message_sender);
     peer_states.events_sender = Some(events_sender);
     let peer_states = Arc::new(peer_states);
     let test_handles = TestHandles {

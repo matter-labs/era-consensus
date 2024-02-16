@@ -65,8 +65,6 @@ pub struct Config {
     /// Public TCP address that other nodes are expected to connect to.
     /// It is announced over gossip network.
     pub public_addr: std::net::SocketAddr,
-    /// Genesis config.
-    pub genesis: validator::Genesis,
     /// Gossip network config.
     pub gossip: GossipConfig,
     /// Private key of the validator.
