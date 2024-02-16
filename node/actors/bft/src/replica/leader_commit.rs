@@ -79,7 +79,7 @@ impl StateMachine {
         // Check that it comes from the correct leader.
         let leader = self
             .config
-            .genesis
+            .genesis()
             .validators
             .view_leader(message.view().number);
         if author != &leader {
@@ -102,7 +102,7 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message.verify().map_err(Error::InvalidSignature)?;
         message
-            .verify(&self.config.genesis)
+            .verify(&self.config.genesis())
             .map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------

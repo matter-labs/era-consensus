@@ -61,7 +61,6 @@ impl UTHarness {
 
         let cfg = Arc::new(Config {
             secret_key: setup.keys[0].clone(),
-            genesis: setup.genesis.clone(),
             block_store: block_store.clone(),
             replica_store: Box::new(in_memory::ReplicaStore::default()),
             payload_manager,
@@ -312,7 +311,7 @@ impl UTHarness {
     }
 
     pub(crate) fn genesis(&self) -> &validator::Genesis {
-        &self.replica.config.genesis
+        self.replica.config.genesis()
     }
 
     pub(crate) fn new_commit_qc(&self, mutate_fn: impl FnOnce(&mut ReplicaCommit)) -> CommitQC {

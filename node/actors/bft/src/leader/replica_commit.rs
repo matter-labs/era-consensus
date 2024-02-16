@@ -70,7 +70,7 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator set.
-        if !self.config.genesis.validators.contains(author) {
+        if !self.config.genesis().validators.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone(),
             });
@@ -87,7 +87,7 @@ impl StateMachine {
         // If the message is for a view when we are not a leader, we discard it.
         if self
             .config
-            .genesis
+            .genesis()
             .validators
             .view_leader(message.view.number)
             != self.config.secret_key.public()
@@ -112,7 +112,7 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         message
-            .verify(&self.config.genesis, /*allow_past_forks=*/ false)
+            .verify(self.config.genesis(), /*allow_past_forks=*/ false)
             .map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------
@@ -123,8 +123,8 @@ impl StateMachine {
         // We add the message to the incrementally-constructed QC.
         self.commit_qcs
             .entry(message.view.number)
-            .or_insert_with(|| CommitQC::new(message.clone(), &self.config.genesis))
-            .add(&signed_message, &self.config.genesis);
+            .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()))
+            .add(&signed_message, self.config.genesis());
 
         // We store the message in our cache.
         let cache_entry = self
@@ -141,7 +141,7 @@ impl StateMachine {
                 .or_default()
                 .push(msg);
         }
-        let threshold = self.config.genesis.validators.threshold();
+        let threshold = self.config.genesis().validators.threshold();
         let Some((_, replica_messages)) =
             by_proposal.into_iter().find(|(_, v)| v.len() >= threshold)
         else {

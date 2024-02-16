@@ -93,7 +93,7 @@ impl StateMachine {
         }
 
         // Check that it comes from the correct leader.
-        let leader = self.config.genesis.validators.view_leader(view);
+        let leader = self.config.genesis().validators.view_leader(view);
         if author != &leader {
             return Err(Error::InvalidLeader {
                 correct_leader: leader,
@@ -113,7 +113,7 @@ impl StateMachine {
 
         signed_message.verify().map_err(Error::InvalidSignature)?;
         message
-            .verify(&self.config.genesis)
+            .verify(&self.config.genesis())
             .map_err(Error::InvalidMessage)?;
         let high_qc = message.justification.high_qc();
 

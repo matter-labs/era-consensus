@@ -82,7 +82,7 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator set.
-        if !self.config.genesis.validators.contains(author) {
+        if !self.config.genesis().validators.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone(),
             })?;
@@ -99,7 +99,7 @@ impl StateMachine {
         // If the message is for a view when we are not a leader, we discard it.
         if self
             .config
-            .genesis
+            .genesis()
             .validators
             .view_leader(message.view.number)
             != self.config.secret_key.public()
@@ -125,7 +125,7 @@ impl StateMachine {
 
         // Verify the message.
         message
-            .verify(&self.config.genesis)
+            .verify(self.config.genesis())
             .map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------
@@ -134,7 +134,7 @@ impl StateMachine {
         self.prepare_qcs
             .entry(message.view.number)
             .or_insert_with(|| validator::PrepareQC::new(message.view.clone()))
-            .add(&signed_message, &self.config.genesis);
+            .add(&signed_message, self.config.genesis());
 
         // We store the message in our cache.
         self.prepare_message_cache
@@ -149,7 +149,7 @@ impl StateMachine {
             .unwrap()
             .len();
 
-        if num_messages < self.config.genesis.validators.threshold() {
+        if num_messages < self.config.genesis().validators.threshold() {
             return Ok(());
         }
 
@@ -157,7 +157,7 @@ impl StateMachine {
         // for this same view if we receive another replica prepare message after this.
         self.prepare_message_cache.remove(&message.view.number);
 
-        debug_assert_eq!(num_messages, self.config.genesis.validators.threshold());
+        debug_assert_eq!(num_messages, self.config.genesis().validators.threshold());
 
         // ----------- Update the state machine --------------
 

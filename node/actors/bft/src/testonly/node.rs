@@ -66,7 +66,6 @@ impl Node {
                 let validator_key = self.net.validator_key.clone().unwrap();
                 crate::Config {
                     secret_key: validator_key.clone(),
-                    genesis: self.net.genesis.clone(),
                     block_store: self.block_store.clone(),
                     replica_store: Box::new(in_memory::ReplicaStore::default()),
                     payload_manager: self.behavior.payload_manager(),

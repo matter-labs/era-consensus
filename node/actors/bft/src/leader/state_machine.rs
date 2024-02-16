@@ -151,7 +151,7 @@ impl StateMachine {
         justification: validator::PrepareQC,
         pipe: &OutputSender,
     ) -> ctx::Result<()> {
-        let high_vote = justification.high_vote(&cfg.genesis);
+        let high_vote = justification.high_vote(cfg.genesis());
         let high_qc = justification.high_qc();
 
         // Create the block proposal to send to the replicas,
@@ -166,7 +166,7 @@ impl StateMachine {
             }
             // The previous block was finalized, so we can propose a new block.
             _ => {
-                let fork = cfg.genesis.forks.current();
+                let fork = cfg.genesis().forks.current();
                 let (parent, number) = match high_qc {
                     Some(qc) => (Some(qc.header().hash()), qc.header().number.next()),
                     None => (fork.first_parent, fork.first_block),

@@ -152,7 +152,6 @@ impl Executor {
                     let validator = validator;
                     bft::Config {
                         secret_key: validator.key.clone(),
-                        genesis: self.config.genesis.clone(),
                         block_store: self.block_store.clone(),
                         replica_store: validator.replica_store,
                         payload_manager: validator.payload_manager,
