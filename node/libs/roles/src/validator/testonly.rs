@@ -54,7 +54,8 @@ impl Setup {
         }).unwrap();
     }
 
-    fn next(&self) -> BlockNumber {
+    /// Next block to finalize.
+    pub fn next(&self) -> BlockNumber {
         match self.0.blocks.last() {
             Some(b) => b.header().number.next(),
             None => self.0.genesis.forks.root().first_block,

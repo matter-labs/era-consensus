@@ -75,7 +75,7 @@ impl UTHarness {
             leader,
             replica,
             pipe: recv,
-            keys: setup.keys,
+            keys: setup.keys.clone(),
         };
         let _: Signed<ReplicaPrepare> = this.try_recv().unwrap();
         (this, runner)

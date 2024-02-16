@@ -6,6 +6,7 @@ use zksync_concurrency::{
     testonly::{abort_on_panic, set_timeout},
     time,
 };
+use tracing::Instrument as _;
 use zksync_consensus_bft as bft;
 use zksync_consensus_roles::{validator::testonly::Setup, validator::BlockNumber};
 use zksync_consensus_storage::{
@@ -91,10 +92,11 @@ async fn test_block_revert() {
     abort_on_panic();
     let _guard = set_timeout(time::Duration::seconds(10));
 
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.));
     let rng = &mut ctx.rng();
     
-    let mut setup = Setup::new(rng, 2);
+    let setup = Setup::new(rng, 2);
+    let first = setup.next();
     let mut cfgs = new_configs(rng, &setup, 1);
     // Persistent stores for the validators.
     let mut ps : Vec<_> = cfgs.iter().map(|_|in_memory::BlockStore::new(setup.genesis.clone())).collect();
@@ -109,42 +111,43 @@ async fn test_block_revert() {
             stores.push(store);
         }
         for s in stores {
-            s.wait_until_persisted(ctx, BlockNumber(6)).await?;
+            s.wait_until_persisted(ctx, BlockNumber(first.0 + 6)).await?;
         }
         Ok(())
     }).await.unwrap();
     
     tracing::info!("Revert blocks");
-    let first = BlockNumber(3);
+    let first = BlockNumber(first.0 + 3);
     let fork = validator::Fork {
         number: setup.genesis.forks.current().number.next(),
         first_block: first,
         first_parent: ps[0].block(ctx,first).await.unwrap().header().parent,
     };
-    setup.genesis.forks.push(fork.clone()).unwrap();
+    let mut genesis = setup.genesis.clone();
+    genesis.forks.push(fork.clone()).unwrap();
     // Update configs and persistent storage.
     for i in 0..cfgs.len() {
-        cfgs[i].genesis = setup.genesis.clone();
+        cfgs[i].genesis = genesis.clone();
         ps[i] = ps[i].fork(fork.clone()).unwrap();
     }
 
-    let last_block = BlockNumber(8);
+    let last_block = BlockNumber(first.0+8);
     scope::run!(ctx, |ctx,s| async {
         tracing::info!("Make validators produce blocks on the new fork.");
         let mut stores = vec![];
         for i in 0..cfgs.len() {
             let (store, runner) = BlockStore::new(ctx, Box::new(ps[i].clone())).await.unwrap();
-            s.spawn_bg(runner.run(ctx));
-            s.spawn_bg(make_executor(&cfgs[i],store.clone()).run(ctx));
+            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node",i)));
+            s.spawn_bg(make_executor(&cfgs[i],store.clone()).run(ctx).instrument(tracing::info_span!("node",i)));
             stores.push(store);
         }
         
         tracing::info!("Spawn a new node with should fetch blocks from both new and old fork");
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        s.spawn_bg(make_executor(&new_fullnode(rng,&cfgs[0]),store.clone()).run(ctx));
+        let (store, runner) = new_store(ctx, &genesis).await;
+        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("fullnode")));
+        s.spawn_bg(make_executor(&new_fullnode(rng,&cfgs[0]),store.clone()).run(ctx).instrument(tracing::info_span!("fullnode")));
         store.wait_until_persisted(ctx, last_block).await?;
-        storage::testonly::verify(ctx, &*store, &setup.genesis).await.context("verify(storage)")?;
+        storage::testonly::verify(ctx, &*store, &genesis).await.context("verify(storage)")?;
         Ok(())
     }).await.unwrap();
 }

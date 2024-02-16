@@ -311,9 +311,8 @@ async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
 
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
-    let setup = validator::testonly::Setup::builder(rng, node_count)
-        .push_blocks(rng, EXCHANGED_STATE_COUNT)
-        .build();
+    let mut setup = validator::testonly::Setup::new(rng, node_count);
+    setup.push_blocks(rng, EXCHANGED_STATE_COUNT);
     let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
@@ -385,9 +384,8 @@ async fn uncoordinated_block_syncing(
 
     let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
     let rng = &mut ctx.rng();
-    let setup = validator::testonly::Setup::builder(rng, node_count)
-        .push_blocks(rng, EXCHANGED_STATE_COUNT)
-        .build();
+    let mut setup = validator::testonly::Setup::new(rng, node_count);
+    setup.push_blocks(rng, EXCHANGED_STATE_COUNT);
     scope::run!(ctx, |ctx, s| async {
         for (i, cfg) in testonly::new_configs(rng, &setup, gossip_peers)
             .into_iter()
@@ -424,9 +422,8 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
 
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let setup = validator::testonly::Setup::builder(rng, node_count)
-        .push_blocks(rng,1)
-        .build();
+    let mut setup = validator::testonly::Setup::new(rng, node_count);
+    setup.push_blocks(rng,1);
     let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
 
     // All inbound and outbound peers should answer the request.

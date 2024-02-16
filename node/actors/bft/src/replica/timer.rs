@@ -6,7 +6,7 @@ use zksync_consensus_roles::validator;
 
 impl StateMachine {
     /// The base duration of the timeout.
-    pub(crate) const BASE_DURATION: time::Duration = time::Duration::milliseconds(1000);
+    pub(crate) const BASE_DURATION: time::Duration = time::Duration::milliseconds(2000);
 
     /// Resets the timer. On every timeout we double the duration, starting from a given base duration.
     /// This is a simple exponential backoff.

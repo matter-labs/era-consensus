@@ -1,10 +1,11 @@
 use crate::testonly::{ut_harness::UTHarness, Behavior, Network, Test};
-use zksync_concurrency::{ctx, scope};
+use zksync_concurrency::{ctx, scope, time};
 use zksync_consensus_roles::validator;
 
 async fn run_test(behavior: Behavior, network: Network) {
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(20));
     zksync_concurrency::testonly::abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(1.));
+    let ctx = &ctx::test_root(&ctx::RealClock);
 
     const NODES: usize = 11;
     let mut nodes = vec![behavior; NODES];
