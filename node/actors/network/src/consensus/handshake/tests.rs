@@ -1,10 +1,10 @@
 use super::*;
 use crate::{frame, noise, testonly};
+use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::{ctx, io, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
 use zksync_protobuf::testonly::test_encode_random;
-use assert_matches::assert_matches;
 
 #[test]
 fn test_schema_encode_decode() {
@@ -138,7 +138,7 @@ async fn test_genesis_mismatch() {
     })
     .await
     .unwrap();
-    
+
     tracing::info!("test that outbound handshake rejects mismatching genesis");
     scope::run!(ctx, |ctx, s| async {
         let (s0, mut s1) = noise::testonly::pipe(ctx).await;
@@ -149,13 +149,23 @@ async fn test_genesis_mismatch() {
             Ok(())
         });
         let session_id = node::SessionId(s1.id().encode());
-        let _ : Handshake = frame::recv_proto(ctx, &mut s1, Handshake::max_size()).await.unwrap();
-        frame::send_proto(ctx, &mut s1, &Handshake {
-            session_id: key1.sign_msg(session_id),
-            genesis: rng.gen(),
-        }).await.unwrap();
+        let _: Handshake = frame::recv_proto(ctx, &mut s1, Handshake::max_size())
+            .await
+            .unwrap();
+        frame::send_proto(
+            ctx,
+            &mut s1,
+            &Handshake {
+                session_id: key1.sign_msg(session_id),
+                genesis: rng.gen(),
+            },
+        )
+        .await
+        .unwrap();
         anyhow::Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test]

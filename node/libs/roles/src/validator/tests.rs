@@ -174,15 +174,11 @@ fn make_view(number: ViewNumber, setup: &Setup) -> View {
     View {
         protocol_version: ProtocolVersion::EARLIEST,
         fork: setup.genesis.forks.current().number,
-        number: number,
+        number,
     }
 }
 
-fn make_replica_commit(
-    rng: &mut impl Rng,
-    view: ViewNumber,
-    setup: &Setup,
-) -> ReplicaCommit {
+fn make_replica_commit(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> ReplicaCommit {
     ReplicaCommit {
         view: make_view(view, setup),
         proposal: rng.gen(),
@@ -197,11 +193,7 @@ fn make_commit_qc(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> Commit
     qc
 }
 
-fn make_replica_prepare(
-    rng: &mut impl Rng,
-    view: ViewNumber,
-    setup: &Setup,
-) -> ReplicaPrepare {
+fn make_replica_prepare(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> ReplicaPrepare {
     ReplicaPrepare {
         view: make_view(view, setup),
         high_vote: {

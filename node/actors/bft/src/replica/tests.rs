@@ -150,7 +150,7 @@ async fn leader_prepare_old_view() {
         s.spawn_bg(runner.run(ctx));
 
         let mut leader_prepare = util.new_leader_prepare(ctx).await;
-        leader_prepare.justification.view.number.0 = util.replica.view.0-1;
+        leader_prepare.justification.view.number.0 = util.replica.view.0 - 1;
         let res = util
             .process_leader_prepare(ctx, util.sign(leader_prepare))
             .await;
@@ -183,11 +183,11 @@ async fn leader_prepare_invalid_payload() {
         let mut justification = CommitQC::new(
             ReplicaCommit {
                 view: util.replica_view(),
-                proposal: leader_prepare.proposal.clone(),
+                proposal: leader_prepare.proposal,
             },
             util.genesis(),
         );
-        justification.add(&util.sign(justification.message.clone()), &util.genesis());
+        justification.add(&util.sign(justification.message.clone()), util.genesis());
         let block = validator::FinalBlock {
             payload: leader_prepare.proposal_payload.clone().unwrap(),
             justification,
@@ -453,8 +453,7 @@ async fn leader_prepare_reproposal_when_finalized() {
             .high_qc()
             .unwrap()
             .message
-            .proposal
-            .clone();
+            .proposal;
         leader_prepare.proposal_payload = None;
         let res = util
             .process_leader_prepare(ctx, util.sign(leader_prepare))

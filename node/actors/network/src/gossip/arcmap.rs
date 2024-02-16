@@ -1,9 +1,10 @@
 //! Multimap of pointers indexed by `node::PublicKey`.
 //! Used to maintain a collection GetBlock rpc clients.
 //! TODO(gprusak): consider upgrading PoolWatch instead.
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::Mutex;
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 use zksync_consensus_roles::node;
 
 /// ArcMap

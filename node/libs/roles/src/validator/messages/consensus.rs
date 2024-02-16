@@ -1,12 +1,16 @@
 //! Messages related to the consensus protocol.
-use super::*;
+use super::{
+    BlockHeaderHash, BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, ReplicaPrepare,
+};
 use crate::validator;
+use anyhow::Context as _;
 use bit_vec::BitVec;
-use std::collections::{BTreeMap, BTreeSet};
-use std::fmt;
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
-use anyhow::Context as _;
 
 /// Version of the consensus algorithm that the validator is using.
 /// It allows to prevent misinterpretation of messages signed by validators
@@ -52,12 +56,10 @@ impl ForkNumber {
     }
 }
 
-
-
 /// Specification of a fork.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Fork {
-    /// Number of the fork. 
+    /// Number of the fork.
     pub number: ForkNumber,
     /// First block of a fork.
     pub first_block: BlockNumber,
@@ -87,7 +89,7 @@ impl ForkSet {
         let first = forks.first().context("empty fork set")?;
         anyhow::ensure!(first.first_parent.is_none());
         for i in 1..forks.len() {
-            anyhow::ensure!(forks[i-1].number < forks[i].number);
+            anyhow::ensure!(forks[i - 1].number < forks[i].number);
             anyhow::ensure!(forks[i].first_parent.is_some());
         }
         Ok(Self(forks))
@@ -97,10 +99,10 @@ impl ForkSet {
     pub fn push(&mut self, fork: Fork) -> anyhow::Result<()> {
         anyhow::ensure!(fork.number > self.current().number);
         let mut n = self.0.len();
-        while n > 0 && self.0[n-1].first_block >= fork.first_block {
+        while n > 0 && self.0[n - 1].first_block >= fork.first_block {
             n -= 1;
         }
-        anyhow::ensure!((n==0) == fork.first_parent.is_none());
+        anyhow::ensure!((n == 0) == fork.first_parent.is_none());
         self.0.truncate(n);
         self.0.push(fork);
         Ok(())
@@ -120,16 +122,11 @@ impl ForkSet {
     /// This should be used to verify the quorum certificate
     /// on a finalized block fetched from the network.
     pub fn find(&self, block: BlockNumber) -> Option<&Fork> {
-        for fork in self.0.iter().rev() {
-            if fork.first_block <= block {
-                return Some(fork);
-            }
-        }
-        None
+        self.0.iter().rev().find(|&fork| fork.first_block <= block)
     }
 
     /// Iterates over the forks.
-    pub fn iter(&self) -> impl Iterator<Item=&Fork> {
+    pub fn iter(&self) -> impl Iterator<Item = &Fork> {
         self.0.iter()
     }
 }
@@ -288,8 +285,8 @@ impl ConsensusMsg {
         match self {
             Self::ReplicaPrepare(m) => &m.view,
             Self::ReplicaCommit(m) => &m.view,
-            Self::LeaderPrepare(m) => &m.view(),
-            Self::LeaderCommit(m) => &m.view(),
+            Self::LeaderPrepare(m) => m.view(),
+            Self::LeaderCommit(m) => m.view(),
         }
     }
 

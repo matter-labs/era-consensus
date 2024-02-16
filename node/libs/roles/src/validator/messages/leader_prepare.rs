@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, Genesis, Payload, ReplicaPrepare,
+    ReplicaPrepareVerifyError, Signed, Signers, View,
+};
 use crate::validator;
 use std::collections::{BTreeMap, HashMap};
 
@@ -56,7 +59,7 @@ impl PrepareQC {
         let mut count: HashMap<_, usize> = HashMap::new();
         for (msg, signers) in &self.map {
             if let Some(v) = &msg.high_vote {
-                *count.entry(v.proposal.clone()).or_default() += signers.count();
+                *count.entry(v.proposal).or_default() += signers.count();
             }
         }
         // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
@@ -231,7 +234,10 @@ impl LeaderPrepare {
                 }
                 let (want_parent, want_number) = match high_qc {
                     Some(qc) => (Some(qc.header().hash()), qc.header().number.next()),
-                    None => (genesis.forks.current().first_parent, genesis.forks.current().first_block),
+                    None => (
+                        genesis.forks.current().first_parent,
+                        genesis.forks.current().first_block,
+                    ),
                 };
                 if self.proposal.parent != want_parent {
                     return Err(Error::BadParentHash {

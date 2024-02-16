@@ -101,9 +101,7 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
             key: rng.gen(),
             dynamic_inbound_limit: usize::MAX,
             static_inbound: HashSet::default(),
-            static_outbound: [
-               (peer.gossip.key.public(), peer.public_addr), 
-            ].into(),
+            static_outbound: [(peer.gossip.key.public(), peer.public_addr)].into(),
         },
         max_block_size: usize::MAX,
         rpc: RpcConfig::default(),

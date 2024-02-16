@@ -16,7 +16,7 @@ use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
 
 /// Test setup.
-#[derive(Debug,Clone)]
+#[derive(Debug, Clone)]
 pub struct Setup(SetupInner);
 
 impl Setup {
@@ -29,29 +29,38 @@ impl Setup {
                 number: ForkNumber(rng.gen_range(0..100)),
                 first_block: BlockNumber(rng.gen_range(0..100)),
                 first_parent: None,
-            }]).unwrap(),
+            }])
+            .unwrap(),
         };
-        Self(SetupInner { keys, genesis, blocks: vec![] })
+        Self(SetupInner {
+            keys,
+            genesis,
+            blocks: vec![],
+        })
     }
 
     /// Produce a fork at the current head.
     pub fn fork(&mut self) {
         let number = self.0.genesis.forks.current().number.next();
-        self.0.genesis.forks.push(match self.0.blocks.last() {
-            Some(b) => Fork {
-                number,
-                first_parent: Some(b.header().hash()),
-                first_block: b.header().number.next(),
-            },
-            None => Fork {
-                number,
-                first_parent: None,
-                // This is an arbitrary value.
-                // We just select any value different than the current root to cover more
-                // non-trivial cases.
-                first_block: self.0.genesis.forks.root().first_block.next(), 
-            },
-        }).unwrap();
+        self.0
+            .genesis
+            .forks
+            .push(match self.0.blocks.last() {
+                Some(b) => Fork {
+                    number,
+                    first_parent: Some(b.header().hash()),
+                    first_block: b.header().number.next(),
+                },
+                None => Fork {
+                    number,
+                    first_parent: None,
+                    // This is an arbitrary value.
+                    // We just select any value different than the current root to cover more
+                    // non-trivial cases.
+                    first_block: self.0.genesis.forks.root().first_block.next(),
+                },
+            })
+            .unwrap();
     }
 
     /// Next block to finalize.
@@ -69,10 +78,15 @@ impl Setup {
         let view = View {
             protocol_version: ProtocolVersion::EARLIEST,
             fork: fork.number,
-            number: self.0.blocks.last().map(|b|b.justification.view().number.next()).unwrap_or(ViewNumber(0)),
+            number: self
+                .0
+                .blocks
+                .last()
+                .map(|b| b.justification.view().number.next())
+                .unwrap_or(ViewNumber(0)),
         };
         let proposal = match self.0.blocks.last() {
-            Some(b) => BlockHeader::next(&b.header(), payload.hash()),
+            Some(b) => BlockHeader::next(b.header(), payload.hash()),
             None => BlockHeader {
                 parent: fork.first_parent,
                 number: fork.first_block,
@@ -87,7 +101,10 @@ impl Setup {
                 &self.0.genesis,
             );
         }
-        self.0.blocks.push(FinalBlock { payload, justification });
+        self.0.blocks.push(FinalBlock {
+            payload,
+            justification,
+        });
     }
 
     /// Pushes `count` blocks with a random payload.
@@ -117,7 +134,9 @@ pub struct SetupInner {
 
 impl std::ops::Deref for Setup {
     type Target = SetupInner;
-    fn deref(&self) -> &Self::Target { &self.0 }
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl AggregateSignature {
@@ -191,7 +210,7 @@ impl Distribution<Fork> for Standard {
 
 impl Distribution<ForkSet> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ForkSet {
-        let mut forks = vec![Fork{
+        let mut forks = vec![Fork {
             number: rng.gen(),
             first_block: rng.gen(),
             first_parent: None,

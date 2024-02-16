@@ -1,10 +1,10 @@
 //! Test-only utilities.
 use crate::{BlockStore, BlockStoreRunner, PersistentBlockStore, Proposal, ReplicaState};
+use anyhow::Context as _;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use std::sync::Arc;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
-use anyhow::Context as _;
 
 pub mod in_memory;
 
@@ -45,7 +45,10 @@ pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<valid
     let last = store.last(ctx).await.unwrap();
     let mut blocks = vec![];
     let begin = genesis.forks.root().first_block;
-    let end = last.as_ref().map(|qc|qc.header().number.next()).unwrap_or(begin);
+    let end = last
+        .as_ref()
+        .map(|qc| qc.header().number.next())
+        .unwrap_or(begin);
     for n in (begin.0..end.0).map(validator::BlockNumber) {
         let block = store.block(ctx, n).await.unwrap();
         assert_eq!(block.header().number, n);
@@ -58,18 +61,20 @@ pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<valid
 /// Verifies storage content.
 pub async fn verify(ctx: &ctx::Ctx, store: &BlockStore) -> anyhow::Result<()> {
     let range = store.subscribe().borrow().clone();
-    let mut parent : Option<validator::BlockHeaderHash> = None;
+    let mut parent: Option<validator::BlockHeaderHash> = None;
     for n in (range.first.0..range.next().0).map(validator::BlockNumber) {
         async {
-            let block = store.block(ctx,n).await?.context("missing")?;
+            let block = store.block(ctx, n).await?.context("missing")?;
             block.verify(store.genesis())?;
             // Ignore checking the first block parent
             if parent.is_some() {
-                anyhow::ensure!(parent==block.header().parent);
+                anyhow::ensure!(parent == block.header().parent);
             }
             parent = Some(block.header().hash());
             Ok(())
-        }.await.context(n)?;
+        }
+        .await
+        .context(n)?;
     }
     Ok(())
 }

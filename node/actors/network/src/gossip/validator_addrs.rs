@@ -1,7 +1,6 @@
 //! Global state distributed by active validators, observed by all the nodes in the network.
 use crate::watch::Watch;
-use std::collections::HashSet;
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 use zksync_concurrency::sync;
 use zksync_consensus_roles::validator;
 

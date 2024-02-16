@@ -12,7 +12,7 @@ use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, Text
 use zksync_consensus_executor as executor;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BlockStore, BlockStoreRunner};
-use zksync_protobuf::{required, read_required, serde::Serde, ProtoFmt};
+use zksync_protobuf::{read_required, required, serde::Serde, ProtoFmt};
 
 /// Decodes a proto message from json for arbitrary ProtoFmt.
 pub fn decode_json<T: serde::de::DeserializeOwned>(json: &str) -> anyhow::Result<T> {
@@ -86,7 +86,7 @@ impl ProtoFmt for AppConfig {
             public_addr: read_required_text(&r.public_addr).context("public_addr")?,
             metrics_server_addr: read_optional_text(&r.metrics_server_addr)
                 .context("metrics_server_addr")?,
-            
+
             genesis: read_required(&r.genesis).context("genesis")?,
             max_payload_size: required(&r.max_payload_size)
                 .and_then(|x| Ok((*x).try_into()?))

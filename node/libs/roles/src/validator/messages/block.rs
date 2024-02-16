@@ -179,7 +179,7 @@ impl FinalBlock {
             });
         }
         self.justification
-            .verify(&genesis, /*allow_past_forks=*/ true)
+            .verify(genesis, /*allow_past_forks=*/ true)
             .map_err(BlockValidationError::Justification)
     }
 }

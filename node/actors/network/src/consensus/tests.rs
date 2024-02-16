@@ -1,11 +1,11 @@
 use super::*;
-use crate::{io, preface, rpc, testonly, metrics};
+use crate::{io, metrics, preface, rpc, testonly};
+use assert_matches::assert_matches;
 use rand::Rng;
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, net, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::testonly::new_store;
-use assert_matches::assert_matches;
 
 #[tokio::test]
 async fn test_one_connection_per_validator() {
@@ -63,44 +63,67 @@ async fn test_one_connection_per_validator() {
     .unwrap();
 }
 
-
 #[tokio::test]
 async fn test_genesis_mismatch() {
     abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let setup = validator::testonly::Setup::new(rng, 2);
-    let cfgs = testonly::new_configs(rng, &setup, /*gossip_peers=*/0);
+    let cfgs = testonly::new_configs(rng, &setup, /*gossip_peers=*/ 0);
 
-    scope::run!(ctx, |ctx,s| async {
+    scope::run!(ctx, |ctx, s| async {
         let mut listener = cfgs[1].server_addr.bind().context("server_addr.bind()")?;
 
         tracing::info!("Start one node, we will simulate the other one.");
-        let (store,runner) = new_store(ctx,&setup.genesis).await;
+        let (store, runner) = new_store(ctx, &setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
-        let (node,runner) = testonly::Instance::new(ctx, cfgs[0].clone(), store.clone());
+        let (node, runner) = testonly::Instance::new(ctx, cfgs[0].clone(), store.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         tracing::info!("Populate the validator_addrs of the running node.");
-        node.net.gossip.validator_addrs.update(&setup.genesis.validators, &[Arc::new(setup.keys[1].sign_msg(validator::NetAddress{
-            addr: cfgs[1].public_addr,
-            version: 0,
-            timestamp: ctx.now_utc(),
-        }))]).await.unwrap();
+        node.net
+            .gossip
+            .validator_addrs
+            .update(
+                &setup.genesis.validators,
+                &[Arc::new(setup.keys[1].sign_msg(validator::NetAddress {
+                    addr: cfgs[1].public_addr,
+                    version: 0,
+                    timestamp: ctx.now_utc(),
+                }))],
+            )
+            .await
+            .unwrap();
 
         tracing::info!("Accept a connection with mismatching genesis.");
-        let stream = metrics::MeteredStream::listen(ctx, &mut listener).await?.context("listen()")?;
-        let (mut stream, endpoint) = preface::accept(ctx, stream).await.context("preface::accept()")?; 
+        let stream = metrics::MeteredStream::listen(ctx, &mut listener)
+            .await?
+            .context("listen()")?;
+        let (mut stream, endpoint) = preface::accept(ctx, stream)
+            .await
+            .context("preface::accept()")?;
         assert_eq!(endpoint, preface::Endpoint::ConsensusNet);
         tracing::info!("Expect the handshake to fail");
         let res = handshake::inbound(ctx, &setup.keys[1], rng.gen(), &mut stream).await;
-        assert_matches!(res,Err(handshake::Error::GenesisMismatch));
+        assert_matches!(res, Err(handshake::Error::GenesisMismatch));
 
         tracing::info!("Try to connect to a node with a mismatching genesis.");
-        let mut stream = preface::connect(ctx, cfgs[0].public_addr, preface::Endpoint::ConsensusNet).await.context("preface::connect")?;
-        let res = handshake::outbound(ctx, &setup.keys[1], rng.gen(), &mut stream, &setup.keys[0].public()).await;
-        tracing::info!("Expect the peer to verify the mismatching Genesis and close the connection.");
-        assert_matches!(res,Err(handshake::Error::Stream(_)));
+        let mut stream =
+            preface::connect(ctx, cfgs[0].public_addr, preface::Endpoint::ConsensusNet)
+                .await
+                .context("preface::connect")?;
+        let res = handshake::outbound(
+            ctx,
+            &setup.keys[1],
+            rng.gen(),
+            &mut stream,
+            &setup.keys[0].public(),
+        )
+        .await;
+        tracing::info!(
+            "Expect the peer to verify the mismatching Genesis and close the connection."
+        );
+        assert_matches!(res, Err(handshake::Error::Stream(_)));
         Ok(())
     })
     .await

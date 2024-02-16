@@ -12,9 +12,14 @@
 //! Static connections constitute a rigid "backbone" of the gossip network, which is insensitive to
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
-use crate::{gossip::ArcMap, gossip::ValidatorAddrsWatch, io, pool::PoolWatch, rpc, Config};
+use crate::{
+    gossip::{ArcMap, ValidatorAddrsWatch},
+    io,
+    pool::PoolWatch,
+    rpc, Config,
+};
 use anyhow::Context as _;
-use std::{sync::atomic::AtomicUsize, sync::Arc};
+use std::sync::{atomic::AtomicUsize, Arc};
 
 mod arcmap;
 mod handshake;
@@ -25,7 +30,6 @@ mod validator_addrs;
 
 pub(crate) use arcmap::*;
 pub(crate) use validator_addrs::*;
-
 use zksync_concurrency::{ctx, ctx::channel};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
@@ -78,6 +82,7 @@ impl Network {
         self.block_store.genesis()
     }
 
+    /// Sends a GetBlock RPC to the given peer.
     pub(crate) async fn get_block(
         &self,
         ctx: &ctx::Ctx,

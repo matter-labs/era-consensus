@@ -25,15 +25,15 @@ use crate::{signal, time};
 use std::{fmt, future::Future, pin::Pin, sync::Arc, task};
 
 pub mod channel;
-mod no_copy;
 mod clock;
+mod no_copy;
 mod rng;
 mod testonly;
 #[cfg(test)]
 mod tests;
 
-pub use no_copy::NoCopy;
 pub use clock::*;
+pub use no_copy::NoCopy;
 pub use testonly::*;
 
 /// Contexts are composed into a tree via `_parent` link.

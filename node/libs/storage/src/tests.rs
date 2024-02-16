@@ -1,7 +1,7 @@
 use super::*;
 use crate::{testonly::new_store, ReplicaState};
-use zksync_consensus_roles::validator::testonly::Setup;
 use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
+use zksync_consensus_roles::validator::testonly::Setup;
 
 #[tokio::test]
 async fn test_inmemory_block_store() {

@@ -1,11 +1,11 @@
 use super::*;
-use crate::{metrics, io, preface, rpc, testonly};
+use crate::{io, metrics, preface, rpc, testonly};
+use assert_matches::assert_matches;
 use pretty_assertions::assert_eq;
 use rand::Rng;
 use std::{
     collections::{HashMap, HashSet},
-    sync::atomic::Ordering,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
 };
 use test_casing::{test_casing, Product};
 use tracing::Instrument as _;
@@ -16,7 +16,6 @@ use zksync_concurrency::{
 };
 use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock};
 use zksync_consensus_storage::testonly::new_store;
-use assert_matches::assert_matches;
 
 #[tokio::test]
 async fn test_one_connection_per_node() {
@@ -268,29 +267,44 @@ async fn test_genesis_mismatch() {
     let rng = &mut ctx.rng();
     let setup = validator::testonly::Setup::new(rng, 2);
     let cfgs = testonly::new_configs(rng, &setup, 1);
-        
-    scope::run!(ctx, |ctx,s| async {
+
+    scope::run!(ctx, |ctx, s| async {
         let mut listener = cfgs[1].server_addr.bind().context("server_addr.bind()")?;
 
         tracing::info!("Start one node, we will simulate the other one.");
-        let (store,runner) = new_store(ctx,&setup.genesis).await;
+        let (store, runner) = new_store(ctx, &setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
-        let (_node,runner) = testonly::Instance::new(ctx, cfgs[0].clone(), store.clone());
+        let (_node, runner) = testonly::Instance::new(ctx, cfgs[0].clone(), store.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         tracing::info!("Accept a connection with mismatching genesis.");
-        let stream = metrics::MeteredStream::listen(ctx, &mut listener).await?.context("listen()")?;
-        let (mut stream, endpoint) = preface::accept(ctx, stream).await.context("preface::accept()")?; 
+        let stream = metrics::MeteredStream::listen(ctx, &mut listener)
+            .await?
+            .context("listen()")?;
+        let (mut stream, endpoint) = preface::accept(ctx, stream)
+            .await
+            .context("preface::accept()")?;
         assert_eq!(endpoint, preface::Endpoint::GossipNet);
         tracing::info!("Expect the handshake to fail");
         let res = handshake::inbound(ctx, &cfgs[1].gossip, rng.gen(), &mut stream).await;
-        assert_matches!(res,Err(handshake::Error::GenesisMismatch));
+        assert_matches!(res, Err(handshake::Error::GenesisMismatch));
 
         tracing::info!("Try to connect to a node with a mismatching genesis.");
-        let mut stream = preface::connect(ctx, cfgs[0].public_addr, preface::Endpoint::GossipNet).await.context("preface::connect")?;
-        let res = handshake::outbound(ctx, &cfgs[1].gossip, rng.gen(), &mut stream, &cfgs[0].gossip.key.public()).await;
-        tracing::info!("Expect the peer to verify the mismatching Genesis and close the connection.");
-        assert_matches!(res,Err(handshake::Error::Stream(_)));
+        let mut stream = preface::connect(ctx, cfgs[0].public_addr, preface::Endpoint::GossipNet)
+            .await
+            .context("preface::connect")?;
+        let res = handshake::outbound(
+            ctx,
+            &cfgs[1].gossip,
+            rng.gen(),
+            &mut stream,
+            &cfgs[0].gossip.key.public(),
+        )
+        .await;
+        tracing::info!(
+            "Expect the peer to verify the mismatching Genesis and close the connection."
+        );
+        assert_matches!(res, Err(handshake::Error::Stream(_)));
         Ok(())
     })
     .await
@@ -423,7 +437,7 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::Setup::new(rng, node_count);
-    setup.push_blocks(rng,1);
+    setup.push_blocks(rng, 1);
     let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
 
     // All inbound and outbound peers should answer the request.
@@ -432,7 +446,10 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
     scope::run!(ctx, |ctx, s| async {
         let (store, runner) = new_store(ctx, &setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
-        store.queue_block(ctx,setup.blocks[0].clone()).await.unwrap();
+        store
+            .queue_block(ctx, setup.blocks[0].clone())
+            .await
+            .unwrap();
 
         let mut nodes: Vec<_> = cfgs
             .into_iter()

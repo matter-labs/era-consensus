@@ -70,7 +70,9 @@ async fn test_peer_states<T: Test>(test: T) {
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::Setup::new(rng, 4);
     for _ in 0..T::BLOCK_COUNT {
-        if rng.gen_range(0..3) == 0 { setup.fork(); }
+        if rng.gen_range(0..3) == 0 {
+            setup.fork();
+        }
         setup.push_block(rng.gen());
     }
     let (store, store_run) = new_store(ctx, &setup.genesis).await;

@@ -32,12 +32,14 @@ impl ProtoFmt for Fork {
 impl ProtoFmt for ForkSet {
     type Proto = proto::ForkSet;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Self::new(r.forks
-            .iter()
-            .enumerate()
-            .map(|(i, f)| Fork::read(f).context(i))
-            .collect::<Result<_, _>>()
-            .context("forks")?)
+        Self::new(
+            r.forks
+                .iter()
+                .enumerate()
+                .map(|(i, f)| Fork::read(f).context(i))
+                .collect::<Result<_, _>>()
+                .context("forks")?,
+        )
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
@@ -183,7 +185,7 @@ impl ProtoFmt for View {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             protocol_version: Some(self.protocol_version.0),
-            fork: Some(self.fork.0.try_into().unwrap()),
+            fork: Some(self.fork.0),
             number: Some(self.number.0),
         }
     }

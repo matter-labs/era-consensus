@@ -50,7 +50,9 @@ async fn test_reopen_rocksdb() {
     setup.push_blocks(rng, 5);
     let mut want = vec![];
     for b in &setup.blocks {
-        let store = store::RocksDB::open(setup.genesis.clone(),dir.path()).await.unwrap();
+        let store = store::RocksDB::open(setup.genesis.clone(), dir.path())
+            .await
+            .unwrap();
         store.store_next_block(ctx, b).await.unwrap();
         want.push(b.clone());
         assert_eq!(want, testonly::dump(ctx, &store).await);

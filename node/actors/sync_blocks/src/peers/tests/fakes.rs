@@ -10,13 +10,13 @@ async fn processing_invalid_sync_states() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut setup = Setup::new(rng, 4);
-    setup.push_blocks(rng,3);
+    setup.push_blocks(rng, 3);
     let (storage, _runner) = new_store(ctx, &setup.genesis).await;
 
     let (message_sender, _) = channel::unbounded();
     let peer_states = PeerStates::new(Config::new(), storage, message_sender);
     let peer = &rng.gen::<node::SecretKey>().public();
-    
+
     let mut invalid_block = setup.blocks[1].clone();
     invalid_block.justification.message.proposal.number = rng.gen();
     let invalid_sync_state = sync_state(&setup, Some(&invalid_block));
@@ -105,7 +105,7 @@ impl Test for PeerWithFakeBlock {
         ] {
             let key = rng.gen::<node::SecretKey>().public();
             peer_states
-                .update(&key, sync_state(&setup, setup.blocks.get(0)))
+                .update(&key, sync_state(&setup, setup.blocks.first()))
                 .unwrap();
             clock.advance(BLOCK_SLEEP_INTERVAL);
 

@@ -170,14 +170,7 @@ impl UTHarness {
     pub(crate) fn new_current_replica_commit(&self) -> ReplicaCommit {
         ReplicaCommit {
             view: self.replica_view(),
-            proposal: self
-                .replica
-                .high_qc
-                .as_ref()
-                .unwrap()
-                .message
-                .proposal
-                .clone(),
+            proposal: self.replica.high_qc.as_ref().unwrap().message.proposal,
         }
     }
 

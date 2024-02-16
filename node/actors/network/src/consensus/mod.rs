@@ -1,12 +1,11 @@
 //! Consensus network is a full graph of connections between all validators.
 //! BFT consensus messages are exchanged over this network.
-use crate::config;
-use crate::gossip;
-use crate::pool::PoolWatch;
-use crate::{io, noise, preface, rpc};
+use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc};
 use anyhow::Context as _;
-use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 use zksync_concurrency::{ctx, oneshot, scope, sync, time};
 use zksync_consensus_roles::validator;
 use zksync_protobuf::kB;
@@ -24,13 +23,15 @@ const ADDRESS_ANNOUNCER_INTERVAL: time::Duration = time::Duration::minutes(10);
 
 /// Consensus network state.
 pub(crate) struct Network {
+    /// Gossip network state to bootstrap consensus network from.
     pub(crate) gossip: Arc<gossip::Network>,
+    /// This validator's secret key.
     pub(crate) key: validator::SecretKey,
     /// Set of the currently open inbound connections.
     pub(crate) inbound: PoolWatch<validator::PublicKey>,
     /// Set of the currently open outbound connections.
     pub(crate) outbound: PoolWatch<validator::PublicKey>,
-
+    /// RPC clients for all validators.
     pub(crate) clients: HashMap<validator::PublicKey, rpc::Client<rpc::consensus::Rpc>>,
 }
 
@@ -80,6 +81,7 @@ impl Network {
         }))
     }
 
+    /// Sends a message to all validators.
     pub(crate) async fn broadcast(
         &self,
         ctx: &ctx::Ctx,
@@ -100,6 +102,7 @@ impl Network {
         .await
     }
 
+    /// Sends a message to the given validator.
     pub(crate) async fn send(
         &self,
         ctx: &ctx::Ctx,
@@ -180,6 +183,8 @@ impl Network {
         res
     }
 
+    /// Maintains a connection to the given validator.
+    /// If connection breaks, it tries to reconnect periodically.
     pub(crate) async fn maintain_connection(&self, ctx: &ctx::Ctx, peer: &validator::PublicKey) {
         let addrs = &mut self.gossip.validator_addrs.subscribe();
         let mut addr = None;
@@ -200,6 +205,8 @@ impl Network {
         }
     }
 
+    /// Periodically announces this validator's public IP over gossip network,
+    /// so that other validators can discover and connect to this validator.
     pub(crate) async fn run_address_announcer(&self, ctx: &ctx::Ctx) {
         let my_addr = self.gossip.cfg.public_addr;
         let mut sub = self.gossip.validator_addrs.subscribe();

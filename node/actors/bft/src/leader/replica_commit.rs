@@ -1,3 +1,4 @@
+//! Handler of a ReplicaCommit message.
 use super::StateMachine;
 use crate::metrics;
 use std::collections::HashMap;
@@ -136,10 +137,7 @@ impl StateMachine {
         // Now we check if we have enough messages to continue.
         let mut by_proposal: HashMap<_, Vec<_>> = HashMap::new();
         for msg in cache_entry.values() {
-            by_proposal
-                .entry(msg.msg.proposal.clone())
-                .or_default()
-                .push(msg);
+            by_proposal.entry(msg.msg.proposal).or_default().push(msg);
         }
         let threshold = self.config.genesis().validators.threshold();
         let Some((_, replica_messages)) =

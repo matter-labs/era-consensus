@@ -38,7 +38,9 @@ impl Test for RequestingBlocksFromTwoPeers {
             response: first_peer_response,
         }) = message_receiver.recv(ctx).await?;
         assert_eq!(recipient, first_peer);
-        assert!(setup.blocks[0..=1].iter().any(|b|b.number()==first_peer_block_number));
+        assert!(setup.blocks[0..=1]
+            .iter()
+            .any(|b| b.number() == first_peer_block_number));
         tracing::info!(%first_peer_block_number, "received request");
 
         let second_peer = rng.gen::<node::SecretKey>().public();
@@ -53,10 +55,14 @@ impl Test for RequestingBlocksFromTwoPeers {
             response: second_peer_response,
         }) = message_receiver.recv(ctx).await?;
         assert_eq!(recipient, second_peer);
-        assert!(setup.blocks[0..=1].iter().any(|b|b.number()==second_peer_block_number));
+        assert!(setup.blocks[0..=1]
+            .iter()
+            .any(|b| b.number() == second_peer_block_number));
         tracing::info!(%second_peer_block_number, "received requrest");
 
-        first_peer_response.send(make_response(setup.block(first_peer_block_number))).unwrap();
+        first_peer_response
+            .send(make_response(setup.block(first_peer_block_number)))
+            .unwrap();
         wait_for_event(
             ctx,
             &mut events_receiver,
@@ -81,10 +87,14 @@ impl Test for RequestingBlocksFromTwoPeers {
             response: first_peer_response,
         }) = message_receiver.recv(ctx).await?;
         assert_eq!(recipient, first_peer);
-        assert!(setup.blocks[2..=3].iter().any(|b|b.number()==first_peer_block_number));
+        assert!(setup.blocks[2..=3]
+            .iter()
+            .any(|b| b.number() == first_peer_block_number));
         tracing::info!(%first_peer_block_number, "received requrest");
 
-        first_peer_response.send(make_response(setup.block(first_peer_block_number))).unwrap();
+        first_peer_response
+            .send(make_response(setup.block(first_peer_block_number)))
+            .unwrap();
         wait_for_event(
             ctx,
             &mut events_receiver,
@@ -100,10 +110,14 @@ impl Test for RequestingBlocksFromTwoPeers {
             response: first_peer_response,
         }) = message_receiver.recv(ctx).await?;
         assert_eq!(recipient, first_peer);
-        assert!(setup.blocks[2..=3].iter().any(|b|b.number()==first_peer_block_number));
+        assert!(setup.blocks[2..=3]
+            .iter()
+            .any(|b| b.number() == first_peer_block_number));
         tracing::info!(%first_peer_block_number, "received requrest");
 
-        second_peer_response.send(make_response(setup.block(second_peer_block_number))).unwrap();
+        second_peer_response
+            .send(make_response(setup.block(second_peer_block_number)))
+            .unwrap();
         wait_for_event(
             ctx,
             &mut events_receiver,
@@ -111,7 +125,9 @@ impl Test for RequestingBlocksFromTwoPeers {
         )
         .await
         .unwrap();
-        first_peer_response.send(make_response(setup.block(first_peer_block_number))).unwrap();
+        first_peer_response
+            .send(make_response(setup.block(first_peer_block_number)))
+            .unwrap();
         wait_for_event(
             ctx,
             &mut events_receiver,
@@ -123,7 +139,9 @@ impl Test for RequestingBlocksFromTwoPeers {
         clock.advance(BLOCK_SLEEP_INTERVAL);
         assert_matches!(message_receiver.try_recv(), None);
 
-        storage.wait_until_persisted(ctx, setup.blocks[3].number()).await?;
+        storage
+            .wait_until_persisted(ctx, setup.blocks[3].number())
+            .await?;
         Ok(())
     }
 }

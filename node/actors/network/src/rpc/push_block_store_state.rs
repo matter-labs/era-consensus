@@ -3,7 +3,7 @@ use crate::{mux, proto::gossip as proto};
 use anyhow::Context;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::BlockStoreState;
-use zksync_protobuf::{required, read_optional, ProtoFmt};
+use zksync_protobuf::{read_optional, required, ProtoFmt};
 
 /// PushBlockStoreState RPC.
 #[derive(Debug)]
@@ -35,7 +35,7 @@ impl ProtoFmt for Req {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             first: Some(self.0.first.0),
-            last: self.0.last.as_ref().map(|x|x.build()),
+            last: self.0.last.as_ref().map(|x| x.build()),
         }
     }
 }

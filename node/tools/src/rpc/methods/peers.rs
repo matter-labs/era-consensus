@@ -1,7 +1,6 @@
 //! Peers method for RPC server.
-use crate::{decode_json, AppConfig};
-
 use super::RPCMethod;
+use crate::{decode_json, AppConfig};
 use jsonrpsee::types::{error::ErrorCode, Params};
 use std::fs::{self};
 use zksync_consensus_crypto::TextFmt;

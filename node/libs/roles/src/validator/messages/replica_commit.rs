@@ -1,4 +1,4 @@
-use super::*;
+use super::{BlockHeader, Genesis, View};
 use anyhow::Context as _;
 
 /// A Commit message from a replica.
@@ -20,7 +20,10 @@ impl ReplicaCommit {
         // during synchronization. Eventually we will switch to synchronization without
         // CommitQCs for blocks from the past forks, and then we can always enforce
         // `genesis.forks.current()` instead.
-        let fork = genesis.forks.find(self.proposal.number).context("doesn't belong to any fork")?;
+        let fork = genesis
+            .forks
+            .find(self.proposal.number)
+            .context("doesn't belong to any fork")?;
         anyhow::ensure!(
             fork.number == self.view.fork,
             "bad fork: got {:?} want {:?} for block {}",
@@ -29,7 +32,10 @@ impl ReplicaCommit {
             self.proposal.number
         );
         if self.proposal.number == fork.first_block {
-            anyhow::ensure!(self.proposal.parent==fork.first_parent,"bad parent of the first block of the fork");
+            anyhow::ensure!(
+                self.proposal.parent == fork.first_parent,
+                "bad parent of the first block of the fork"
+            );
         }
         Ok(())
     }

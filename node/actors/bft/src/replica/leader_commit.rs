@@ -1,3 +1,4 @@
+//! Handler of a LeaderCommit message.
 use super::StateMachine;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
@@ -102,7 +103,7 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message.verify().map_err(Error::InvalidSignature)?;
         message
-            .verify(&self.config.genesis())
+            .verify(self.config.genesis())
             .map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------

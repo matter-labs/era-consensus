@@ -1,8 +1,8 @@
 //! Defines storage layer for finalized blocks.
+use anyhow::Context as _;
 use std::{collections::VecDeque, fmt, sync::Arc};
 use zksync_concurrency::{ctx, error::Wrap as _, sync};
 use zksync_consensus_roles::validator;
-use anyhow::Context as _;
 
 mod metrics;
 
@@ -149,7 +149,8 @@ impl BlockStore {
         let last = persistent.last(ctx).await.wrap("persistent.last()")?;
         t.observe();
         if let Some(last) = &last {
-            last.verify(&genesis,/*allow_past_forks=*/true).context("last.verify()")?;
+            last.verify(&genesis, /*allow_past_forks=*/ true)
+                .context("last.verify()")?;
         }
         let state = BlockStoreState {
             first: genesis.forks.root().first_block,
@@ -165,7 +166,9 @@ impl BlockStore {
             genesis,
             persistent,
         });
-        this.verify_fork_points(ctx).await.wrap("verify_fork_points()")?;
+        this.verify_fork_points(ctx)
+            .await
+            .wrap("verify_fork_points()")?;
         Ok((this.clone(), BlockStoreRunner(this)))
     }
 
@@ -182,13 +185,17 @@ impl BlockStore {
         for fork in self.genesis.forks.iter() {
             // Verify the parent of the first block.
             if let Some(prev) = fork.first_block.prev() {
-                if let Some(block) = self.block(ctx,prev).await? {
-                    block.verify(&self.genesis).with_context(||format!("{prev:?}"))?;
+                if let Some(block) = self.block(ctx, prev).await? {
+                    block
+                        .verify(&self.genesis)
+                        .with_context(|| format!("{prev:?}"))?;
                 }
             }
             // Verify the first block.
-            if let Some(block) = self.block(ctx,fork.first_block).await? {
-                block.verify(&self.genesis).with_context(||format!("{:?}",fork.first_block))?;
+            if let Some(block) = self.block(ctx, fork.first_block).await? {
+                block
+                    .verify(&self.genesis)
+                    .with_context(|| format!("{:?}", fork.first_block))?;
             }
         }
         Ok(())
@@ -236,19 +243,22 @@ impl BlockStore {
         let number = block.header().number;
         {
             let sub = &mut self.subscribe();
-            let queued_state = sync::wait_for(ctx, sub, |queued_state| {
-                queued_state.next() >= number
-            })
-            .await?;
+            let queued_state =
+                sync::wait_for(ctx, sub, |queued_state| queued_state.next() >= number).await?;
             if queued_state.next() != number {
                 return Ok(());
             }
-            if queued_state.last.as_ref().map(|qc|qc.header().hash()) != block.header().parent {
-                return Err(anyhow::format_err!("block.parent doesn't match the previous block").into());
+            if queued_state.last.as_ref().map(|qc| qc.header().hash()) != block.header().parent {
+                return Err(
+                    anyhow::format_err!("block.parent doesn't match the previous block").into(),
+                );
             }
             // Verify the message without verifying the signatures, to avoid doing it twice.
             // TODO(gprusak): consider moving the signature verification here for resiliency.
-            block.justification.message.verify(&self.genesis,/*allow_past_forks=*/true)?;
+            block
+                .justification
+                .message
+                .verify(&self.genesis, /*allow_past_forks=*/ true)?;
         }
         self.inner.send_if_modified(|inner| {
             let modified = inner.queued_state.send_if_modified(|queued_state| {
@@ -305,8 +315,7 @@ impl BlockStore {
         let inner = self.inner.borrow();
         m.next_queued_block
             .set(inner.queued_state.borrow().next().0);
-        m.next_persisted_block
-            .set(inner.persisted_state.next().0);
+        m.next_persisted_block.set(inner.persisted_state.next().0);
         m
     }
 }

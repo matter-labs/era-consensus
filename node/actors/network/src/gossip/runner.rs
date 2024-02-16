@@ -1,8 +1,7 @@
 use super::{handshake, Network, ValidatorAddrs};
 use crate::{io, noise, preface, rpc};
 use async_trait::async_trait;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{atomic::Ordering, Arc};
 use zksync_concurrency::{ctx, oneshot, scope, sync};
 use zksync_consensus_roles::node;
 use zksync_consensus_storage::BlockStore;
@@ -74,6 +73,7 @@ impl rpc::Handler<rpc::get_block::Rpc> for &BlockStore {
 }
 
 impl Network {
+    /// Manages lifecycle of a single connection.
     async fn run_stream(
         &self,
         ctx: &ctx::Ctx,
@@ -177,6 +177,7 @@ impl Network {
         res
     }
 
+    /// Connects to a peer and handles the resulting stream.
     pub(crate) async fn run_outbound_stream(
         &self,
         ctx: &ctx::Ctx,

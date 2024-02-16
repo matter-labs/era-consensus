@@ -7,7 +7,6 @@ use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;
 pub mod consensus;
-mod event;
 mod frame;
 pub mod gossip;
 pub mod io;
@@ -37,7 +36,9 @@ pub struct Network {
 /// Runner of the Network background tasks.
 #[must_use]
 pub struct Runner {
+    /// Network state.
     net: Arc<Network>,
+    /// Receiver of the messages from the dispatcher.
     receiver: channel::UnboundedReceiver<io::InputMessage>,
 }
 
@@ -67,24 +68,26 @@ impl Network {
         metrics::NetworkGauges::register(Arc::downgrade(self));
     }
 
+    /// Handles a dispatcher message.
     async fn handle_message(
         &self,
         ctx: &ctx::Ctx,
         message: io::InputMessage,
     ) -> anyhow::Result<()> {
+        /// Timeout for handling a consensus message.
         const CONSENSUS_MSG_TIMEOUT: time::Duration = time::Duration::seconds(10);
+        /// Timeout for a GetBlock RPC.
         const GET_BLOCK_TIMEOUT: time::Duration = time::Duration::seconds(10);
 
         match message {
             io::InputMessage::Consensus(message) => {
-                if let Some(consensus) = &self.consensus {
-                    let ctx = &ctx.with_timeout(CONSENSUS_MSG_TIMEOUT);
-                    match message.recipient {
-                        io::Target::Validator(key) => {
-                            consensus.send(ctx, &key, message.message).await?
-                        }
-                        io::Target::Broadcast => consensus.broadcast(ctx, message.message).await?,
+                let consensus = self.consensus.as_ref().context("not a validator node")?;
+                let ctx = &ctx.with_timeout(CONSENSUS_MSG_TIMEOUT);
+                match message.recipient {
+                    io::Target::Validator(key) => {
+                        consensus.send(ctx, &key, message.message).await?
                     }
+                    io::Target::Broadcast => consensus.broadcast(ctx, message.message).await?,
                 }
             }
             io::InputMessage::SyncBlocks(io::SyncBlocksInputMessage::GetBlock {

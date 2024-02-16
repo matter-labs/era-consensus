@@ -1,3 +1,4 @@
+//! Network actor configs.
 use std::collections::{HashMap, HashSet};
 use zksync_concurrency::{limiter, net, time};
 use zksync_consensus_roles::{node, validator};

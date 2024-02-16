@@ -12,8 +12,7 @@ use zksync_concurrency::{
 };
 use zksync_consensus_network::io::SyncBlocksInputMessage;
 use zksync_consensus_roles::{
-    node,
-    validator,
+    node, validator,
     validator::{BlockNumber, FinalBlock},
 };
 use zksync_consensus_storage::{BlockStore, BlockStoreState};
@@ -45,7 +44,6 @@ impl PeerStates {
         self.storage.genesis()
     }
 
-
     /// Creates a new instance together with a handle.
     pub(crate) fn new(
         config: Config,
@@ -72,9 +70,10 @@ impl PeerStates {
         state: BlockStoreState,
     ) -> anyhow::Result<()> {
         use std::collections::hash_map::Entry;
-        let Some(last) = &state.last else { return Ok(()) };
-        last
-            .verify(self.genesis(), /*allow_past_forks=*/true)
+        let Some(last) = &state.last else {
+            return Ok(());
+        };
+        last.verify(self.genesis(), /*allow_past_forks=*/ true)
             .context("state.last.verify()")?;
         let mut peers = self.peers.lock().unwrap();
         match peers.entry(peer.clone()) {
@@ -203,9 +202,7 @@ impl PeerStates {
             )
             .into());
         }
-        block
-            .verify(&self.genesis())
-            .context("block.validate()")?;
+        block.verify(self.genesis()).context("block.validate()")?;
         Ok(block)
     }
 

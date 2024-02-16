@@ -82,7 +82,12 @@ impl RocksDB {
         let db = self.0.db.read().unwrap();
         let mut options = ReadOptions::default();
         options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
-        let Some(res) = db.iterator_opt(DatabaseKey::BLOCK_HEAD_ITERATOR, options).next() else { return Ok(None) };
+        let Some(res) = db
+            .iterator_opt(DatabaseKey::BLOCK_HEAD_ITERATOR, options)
+            .next()
+        else {
+            return Ok(None);
+        };
         let (_, last) = res.context("RocksDB error reading head block")?;
         let last: validator::FinalBlock =
             zksync_protobuf::decode(&last).context("Failed decoding head block bytes")?;

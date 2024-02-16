@@ -13,6 +13,12 @@ pub struct Config {
     pub(crate) sleep_interval_for_get_block: time::Duration,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Config {
     /// Creates a new configuration with the provided mandatory params.
     pub fn new() -> Self {

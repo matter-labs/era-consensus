@@ -438,7 +438,7 @@ async fn replica_commit_old() {
         s.spawn_bg(runner.run(ctx));
 
         let mut replica_commit = util.new_replica_commit(ctx).await;
-        replica_commit.view.number = ViewNumber(util.replica.view.0-1);
+        replica_commit.view.number = ViewNumber(util.replica.view.0 - 1);
         let replica_commit = util.sign(replica_commit);
         let res = util.process_replica_commit(ctx, replica_commit).await;
         assert_matches!(

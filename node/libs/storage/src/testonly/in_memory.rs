@@ -1,7 +1,10 @@
 //! In-memory storage implementation.
 use crate::{PersistentBlockStore, ReplicaState};
 use anyhow::Context as _;
-use std::{collections::VecDeque, sync::Mutex, sync::Arc};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+};
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
 
@@ -28,12 +31,12 @@ impl BlockStore {
         }))
     }
 
-    /// Forks the storage. 
+    /// Forks the storage.
     pub fn fork(&self, fork: validator::Fork) -> anyhow::Result<Self> {
         let mut genesis = self.0.genesis.clone();
         genesis.forks.push(fork)?;
         let mut blocks = self.0.blocks.lock().unwrap().clone();
-        if let Some(first) = blocks.front().map(|b|b.header().number.0) {
+        if let Some(first) = blocks.front().map(|b| b.header().number.0) {
             blocks.truncate(genesis.forks.current().first_block.0.saturating_sub(first) as usize);
         }
         Ok(Self(Arc::new(BlockStoreInner {
@@ -50,7 +53,13 @@ impl PersistentBlockStore for BlockStore {
     }
 
     async fn last(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<validator::CommitQC>> {
-        Ok(self.0.blocks.lock().unwrap().back().map(|b|b.justification.clone()))
+        Ok(self
+            .0
+            .blocks
+            .lock()
+            .unwrap()
+            .back()
+            .map(|b| b.justification.clone()))
     }
 
     async fn block(

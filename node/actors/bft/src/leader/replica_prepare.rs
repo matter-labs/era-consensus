@@ -1,3 +1,4 @@
+//! Handler of a ReplicaPrepare message.
 use super::StateMachine;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
@@ -85,7 +86,7 @@ impl StateMachine {
         if !self.config.genesis().validators.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone(),
-            })?;
+            });
         }
 
         // If the message is from the "past", we discard it.

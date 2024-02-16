@@ -1,3 +1,4 @@
+//! Handler of a LeaderPrepare message.
 use super::StateMachine;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
@@ -113,7 +114,7 @@ impl StateMachine {
 
         signed_message.verify().map_err(Error::InvalidSignature)?;
         message
-            .verify(&self.config.genesis())
+            .verify(self.config.genesis())
             .map_err(Error::InvalidMessage)?;
         let high_qc = message.justification.high_qc();
 
