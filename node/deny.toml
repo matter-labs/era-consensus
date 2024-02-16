@@ -60,6 +60,9 @@ skip = [
     { name = "base64", version = "0.13.1" },
     { name = "block-buffer", version = "0.9.0" },
     { name = "digest", version = "0.10.7" },
+
+    # Old versions required by criterion.
+    { name = "itertools", version = "0.10.5" },
 ]
 
 [sources]
