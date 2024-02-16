@@ -34,7 +34,11 @@ impl Node {
     ) -> (Vec<Node>, Vec<NodeRunner>) {
         let rng = &mut ctx.rng();
         let setup = validator::testonly::Setup::builder(rng, node_count)
-            .push_blocks(rng, 20)
+            .push_blocks(rng,3)
+            .fork()
+            .push_blocks(rng,7)
+            .fork()
+            .push_blocks(rng,10)
             .build();
         let setup = Arc::new(setup);
         let mut nodes = vec![];
