@@ -9,8 +9,6 @@ use zksync_consensus_storage as storage;
 pub struct Config {
     /// The validator's secret key.
     pub secret_key: validator::SecretKey,
-    /// Genesis
-    pub genesis: validator::Genesis,
     /// The maximum size of the payload of a block, in bytes. We will
     /// reject blocks with payloads larger than this.
     pub max_payload_size: usize,
@@ -20,4 +18,11 @@ pub struct Config {
     pub replica_store: Box<dyn storage::ReplicaStore>,
     /// Payload manager.
     pub payload_manager: Box<dyn PayloadManager>,
+}
+
+impl Config {
+    /// Genesis.
+    pub fn genesis(&self) -> &validator::Genesis {
+        self.block_store.genesis()
+    }
 }
