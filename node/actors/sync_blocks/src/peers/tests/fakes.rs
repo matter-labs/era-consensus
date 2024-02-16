@@ -18,14 +18,15 @@ async fn processing_invalid_sync_states() {
     let peer_states = PeerStates::new(Config::new(setup.genesis.clone()), storage, message_sender);
     let peer = &rng.gen::<node::SecretKey>().public();
     
-    let mut invalid_sync_state = sync_state(&setup, BlockNumber(1));
-    invalid_sync_state.last.as_mut().unwrap().message.proposal.number = BlockNumber(5);
+    let mut invalid_block = setup.blocks[1].clone();
+    invalid_block.justification.message.proposal.number = rng.gen();
+    let invalid_sync_state = sync_state(&setup, Some(&invalid_block));
     assert!(peer_states.update(peer, invalid_sync_state).is_err());
 
     let other_network = Setup::builder(rng, 4)
         .push_blocks(rng, 2)
         .build();
-    let invalid_sync_state = sync_state(&other_network, BlockNumber(1));
+    let invalid_sync_state = sync_state(&other_network, other_network.blocks.get(1));
     assert!(peer_states.update(peer, invalid_sync_state).is_err());
 }
 
@@ -47,8 +48,9 @@ impl Test for PeerWithFakeSyncState {
 
         let rng = &mut ctx.rng();
         let peer_key = rng.gen::<node::SecretKey>().public();
-        let mut fake_sync_state = sync_state(&setup, BlockNumber(1));
-        fake_sync_state.last.as_mut().unwrap().message.proposal.number = BlockNumber(42);
+        let mut invalid_block = setup.blocks[1].clone();
+        invalid_block.justification.message.proposal.number = rng.gen();
+        let fake_sync_state = sync_state(&setup, Some(&invalid_block));
         assert!(peer_states.update(&peer_key, fake_sync_state).is_err());
 
         clock.advance(BLOCK_SLEEP_INTERVAL);
@@ -99,9 +101,9 @@ impl Test for PeerWithFakeBlock {
                 block
             },
         ] {
-            let peer_key = rng.gen::<node::SecretKey>().public();
+            let key = rng.gen::<node::SecretKey>().public();
             peer_states
-                .update(&peer_key, sync_state(&setup, BlockNumber(0)))
+                .update(&key, sync_state(&setup, setup.blocks.get(0)))
                 .unwrap();
             clock.advance(BLOCK_SLEEP_INTERVAL);
 
@@ -110,16 +112,16 @@ impl Test for PeerWithFakeBlock {
                 number,
                 response,
             }) = message_receiver.recv(ctx).await?;
-            assert_eq!(recipient, peer_key);
-            assert_eq!(number, BlockNumber(0));
+            assert_eq!(recipient, key);
+            assert_eq!(number, setup.blocks[0].number());
             response.send(Ok(fake_block)).unwrap();
 
             wait_for_event(ctx, &mut events_receiver, |ev| {
                 matches!(ev,
                     PeerStateEvent::RpcFailed {
-                        block_number: BlockNumber(0),
-                        peer_key: key,
-                    } if key == peer_key
+                        block_number,
+                        peer_key,
+                    } if peer_key == key && block_number == number
                 )
             })
             .await?;

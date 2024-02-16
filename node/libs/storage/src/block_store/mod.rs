@@ -275,7 +275,7 @@ impl BlockStore {
         number: validator::BlockNumber,
     ) -> ctx::OrCanceled<()> {
         sync::wait_for(ctx, &mut self.subscribe(), |queued_state| {
-            queued_state.contains(number)
+            number < queued_state.next()
         })
         .await?;
         Ok(())
@@ -288,7 +288,7 @@ impl BlockStore {
         number: validator::BlockNumber,
     ) -> ctx::OrCanceled<()> {
         sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
-            inner.persisted_state.contains(number)
+            number < inner.persisted_state.next()
         })
         .await?;
         Ok(())

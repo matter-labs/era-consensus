@@ -88,7 +88,7 @@ impl SetupBuilder {
 }
 
 /// Setup.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Setup {
     /// Validators' secret keys.
     pub keys: Vec<SecretKey>,
@@ -116,6 +116,14 @@ impl Setup {
     /// Constructs GenesisSetup.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
         Self::builder(rng,validators).build()    
+    }
+
+    /// Finds the block by the number.
+    /// `Setup` is assumed to be constructed via `SetupBuilder`,
+    /// and therefore the blocks have consecutive numbers.
+    pub fn block(&self, n: BlockNumber) -> Option<&FinalBlock> {
+        let first = self.blocks.first()?.number();
+        self.blocks.get(n.0.checked_sub(first.0)? as usize)
     }
 }
 

@@ -245,7 +245,6 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaPrepare,
     ) -> Signed<LeaderPrepare> {
-        tracing::info!("process_replica_prepare_all");
         let want_threshold = self.genesis().validators.threshold();
         let mut leader_prepare = None;
         let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
@@ -257,7 +256,6 @@ impl UTHarness {
                 Ordering::Greater => assert_matches!(res, Err(replica_prepare::Error::Old { .. })),
             }
         }
-        tracing::info!("process_replica_prepare_all DONE");
         leader_prepare.unwrap()
     }
 

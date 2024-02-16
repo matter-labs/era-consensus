@@ -46,10 +46,11 @@ impl Test {
             s.spawn_bg(run_nodes(ctx, self.network, &nodes));
 
             // Run the nodes until all honest nodes store enough finalized blocks.
-            let want_block = validator::BlockNumber(self.blocks_to_finalize as u64);
+            let first = setup.genesis.forks.current().first_block;
+            let want_next = validator::BlockNumber(first.0 + self.blocks_to_finalize as u64);
             for store in &honest {
                 sync::wait_for(ctx, &mut store.subscribe(), |state| {
-                    state.next() > want_block
+                    state.next() > want_next
                 })
                 .await?;
             }

@@ -4,9 +4,9 @@ use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use zksync_concurrency::{oneshot, time};
+use zksync_concurrency::{time};
 use zksync_consensus_network::io::GetBlockError;
-use zksync_consensus_roles::validator::{self, testonly::Setup, BlockNumber};
+use zksync_consensus_roles::validator::{self, testonly::Setup};
 use zksync_consensus_storage::{BlockStore, BlockStoreRunner, BlockStoreState};
 use zksync_consensus_utils::pipe;
 
@@ -20,22 +20,13 @@ impl Distribution<Config> for Standard {
     }
 }
 
-pub(crate) fn sync_state(setup: &Setup, last: BlockNumber) -> BlockStoreState {
+pub(crate) fn sync_state(setup: &Setup, last: Option<&validator::FinalBlock>) -> BlockStoreState {
     BlockStoreState {
         first: setup.genesis.forks.root().first_block,
-        last: Some(setup.blocks[last.0 as usize].justification.clone()),
+        last: last.map(|b|b.justification.clone()),
     }
 }
 
-pub(crate) fn send_block(
-    setup: &Setup,
-    number: BlockNumber,
-    response: oneshot::Sender<Result<validator::FinalBlock, GetBlockError>>,
-) {
-    let block = setup
-        .blocks
-        .get(number.0 as usize)
-        .cloned()
-        .ok_or(GetBlockError::NotAvailable);
-    response.send(block).ok();
+pub(crate) fn make_response(block: Option<&validator::FinalBlock>) -> Result<validator::FinalBlock, GetBlockError> {
+    block.cloned().ok_or(GetBlockError::NotAvailable)
 }
