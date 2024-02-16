@@ -9,9 +9,8 @@ use zksync_consensus_storage::testonly::new_store;
 async fn processing_invalid_sync_states() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let setup = Setup::builder(rng, 4)
-        .push_blocks(rng, 3)
-        .build();
+    let mut setup = Setup::new(rng, 4);
+    setup.push_blocks(rng,3);
     let (storage, _runner) = new_store(ctx, &setup.genesis).await;
 
     let (message_sender, _) = channel::unbounded();
@@ -23,9 +22,8 @@ async fn processing_invalid_sync_states() {
     let invalid_sync_state = sync_state(&setup, Some(&invalid_block));
     assert!(peer_states.update(peer, invalid_sync_state).is_err());
 
-    let other_network = Setup::builder(rng, 4)
-        .push_blocks(rng, 2)
-        .build();
+    let mut other_network = Setup::new(rng, 4);
+    other_network.push_blocks(rng, 2);
     let invalid_sync_state = sync_state(&other_network, other_network.blocks.get(1));
     assert!(peer_states.update(peer, invalid_sync_state).is_err());
 }
@@ -93,7 +91,11 @@ impl Test for PeerWithFakeBlock {
             // other block than requested
             setup.blocks[1].clone(),
             // block with wrong validator set
-            Setup::builder(rng, 4).push_blocks(rng, 1).build().blocks[0].clone(),
+            {
+                let mut s = Setup::new(rng, 4);
+                s.push_blocks(rng, 1);
+                s.blocks[0].clone()
+            },
             // block with mismatching payload,
             {
                 let mut block = setup.blocks[0].clone();

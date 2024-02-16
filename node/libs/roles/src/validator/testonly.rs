@@ -15,15 +15,27 @@ use std::sync::Arc;
 use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
 
-/// Builder of Setup.
-pub struct SetupBuilder(Setup);
+/// Test setup.
+#[derive(Debug,Clone)]
+pub struct Setup(SetupInner);
 
-impl SetupBuilder {
-    /// Build the setup.
-    pub fn build(self) -> Setup { self.0 }
+impl Setup {
+    /// New Setup builder.
+    pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
+        let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
+        let genesis = Genesis {
+            validators: ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap(),
+            forks: ForkSet::new(vec![Fork {
+                number: ForkNumber(rng.gen_range(0..100)),
+                first_block: BlockNumber(rng.gen_range(0..100)),
+                first_parent: None,
+            }]).unwrap(),
+        };
+        Self(SetupInner { keys, genesis, blocks: vec![] })
+    }
 
     /// Produce a fork at the current head.
-    pub fn fork(mut self) -> Self {
+    pub fn fork(&mut self) {
         let number = self.0.genesis.forks.current().number.next();
         self.0.genesis.forks.push(match self.0.blocks.last() {
             Some(b) => Fork {
@@ -40,7 +52,6 @@ impl SetupBuilder {
                 first_block: self.0.genesis.forks.root().first_block.next(), 
             },
         }).unwrap();
-        self
     }
 
     fn next(&self) -> BlockNumber {
@@ -79,17 +90,22 @@ impl SetupBuilder {
     }
 
     /// Pushes `count` blocks with a random payload.
-    pub fn push_blocks(mut self, rng: &mut impl Rng, count: usize) -> Self {
+    pub fn push_blocks(&mut self, rng: &mut impl Rng, count: usize) {
         for _ in 0..count {
             self.push_block(rng.gen());
         }
-        self
+    }
+
+    /// Finds the block by the number.
+    pub fn block(&self, n: BlockNumber) -> Option<&FinalBlock> {
+        let first = self.0.blocks.first()?.number();
+        self.0.blocks.get(n.0.checked_sub(first.0)? as usize)
     }
 }
 
 /// Setup.
 #[derive(Debug, Clone)]
-pub struct Setup {
+pub struct SetupInner {
     /// Validators' secret keys.
     pub keys: Vec<SecretKey>,
     /// Past blocks.
@@ -98,33 +114,9 @@ pub struct Setup {
     pub genesis: Genesis,
 }
 
-impl Setup {
-    /// New Setup builder.
-    pub fn builder(rng: &mut impl Rng, validators: usize) -> SetupBuilder {
-        let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
-        let genesis = Genesis {
-            validators: ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap(),
-            forks: ForkSet::new(vec![Fork {
-                number: ForkNumber(rng.gen_range(0..100)),
-                first_block: BlockNumber(rng.gen_range(0..100)),
-                first_parent: None,
-            }]).unwrap(),
-        };
-        SetupBuilder(Self { keys, genesis, blocks: vec![] })
-    }
-
-    /// Constructs GenesisSetup.
-    pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
-        Self::builder(rng,validators).build()    
-    }
-
-    /// Finds the block by the number.
-    /// `Setup` is assumed to be constructed via `SetupBuilder`,
-    /// and therefore the blocks have consecutive numbers.
-    pub fn block(&self, n: BlockNumber) -> Option<&FinalBlock> {
-        let first = self.blocks.first()?.number();
-        self.blocks.get(n.0.checked_sub(first.0)? as usize)
-    }
+impl std::ops::Deref for Setup {
+    type Target = SetupInner;
+    fn deref(&self) -> &Self::Target { &self.0 }
 }
 
 impl AggregateSignature {

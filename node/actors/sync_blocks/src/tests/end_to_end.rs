@@ -33,13 +33,12 @@ impl Node {
         gossip_peers: usize,
     ) -> (Vec<Node>, Vec<NodeRunner>) {
         let rng = &mut ctx.rng();
-        let setup = validator::testonly::Setup::builder(rng, node_count)
-            .push_blocks(rng,3)
-            .fork()
-            .push_blocks(rng,7)
-            .fork()
-            .push_blocks(rng,10)
-            .build();
+        let mut setup = validator::testonly::Setup::new(rng, node_count);
+        setup.push_blocks(rng,1);
+        setup.fork();
+        setup.push_blocks(rng,9);
+        setup.fork();
+        setup.push_blocks(rng,10);
         let setup = Arc::new(setup);
         let mut nodes = vec![];
         let mut runners = vec![];
