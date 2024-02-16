@@ -28,6 +28,8 @@ enum TesterCommands {
     Run,
 }
 
+/// Get the path of the node ips config file.
+/// This way we can run the test from every directory and also inside kubernetes pod.
 fn get_config_path() -> String {
     // This way we can run the test from every directory and also inside kubernetes pod.
     let manifest_path = std::env::var("CARGO_MANIFEST_DIR");
@@ -54,6 +56,7 @@ pub async fn generate_config() {
     }
 }
 
+/// Start the tests pod in the kubernetes cluster.
 pub async fn start_tests_pod() {
     let client = k8s::get_client().await.unwrap();
     k8s::create_tests_deployment(&client).await.unwrap();
