@@ -18,7 +18,7 @@ use zksync_consensus_storage::{BlockStore, BlockStoreRunner, PersistentBlockStor
 use zksync_protobuf::{required, serde::Serde, ProtoFmt};
 
 /// Ports for the nodes to listen on kubernetes pod.
-const NODES_PORT: u16 = 3054;
+pub const NODES_PORT: u16 = 3054;
 
 /// Decodes a proto message from json for arbitrary ProtoFmt.
 pub fn decode_json<T: serde::de::DeserializeOwned>(json: &str) -> anyhow::Result<T> {
@@ -34,7 +34,7 @@ pub(crate) fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
     encode_with_serializer(x, s)
 }
 
-/// Encodes a generated proto message to json for arbitrary ProtoFmt with a custom serializer.
+/// Encodes a generated proto message for arbitrary ProtoFmt with provided serializer.
 pub(crate) fn encode_with_serializer<T: serde::ser::Serialize, F: Formatter>(
     x: &T,
     mut serializer: Serializer<Vec<u8>, F>,
@@ -88,15 +88,6 @@ pub struct AppConfig {
     pub gossip_dynamic_inbound_limit: usize,
     pub gossip_static_inbound: HashSet<node::PublicKey>,
     pub gossip_static_outbound: HashMap<node::PublicKey, SocketAddr>,
-}
-
-impl AppConfig {
-    pub fn check_public_addr(&mut self) -> anyhow::Result<()> {
-        if let Ok(public_addr) = std::env::var("PUBLIC_ADDR") {
-            self.public_addr = SocketAddr::from_str(&format!("{public_addr}:{NODES_PORT}"))?;
-        }
-        Ok(())
-    }
 }
 
 impl ProtoFmt for AppConfig {
@@ -304,6 +295,13 @@ impl AppConfig {
     pub fn with_max_payload_size(&mut self, max_payload_size: usize) -> &mut Self {
         self.max_payload_size = max_payload_size;
         self
+    }
+
+    pub fn check_public_addr(&mut self) -> anyhow::Result<()> {
+        if let Ok(public_addr) = std::env::var("PUBLIC_ADDR") {
+            self.public_addr = SocketAddr::from_str(&format!("{public_addr}:{NODES_PORT}"))?;
+        }
+        Ok(())
     }
 }
 

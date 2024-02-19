@@ -3,4 +3,4 @@
 
 cd k8s_config/${NODE_ID}
 export RUST_LOG=INFO
-../../executor
+../../executor $@
