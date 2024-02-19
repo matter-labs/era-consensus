@@ -3,6 +3,7 @@ NODE?=0
 DOCKER_IP=172.12.0.10
 EXECUTABLE_NODE_DIR=node/tools
 NODES=4
+SEED_NODES=1
 
 # Locally run commands
 
@@ -41,7 +42,7 @@ start_k8s_nodes:
 	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer generate-config --nodes ${NODES}
 	$(MAKE) docker_node_image
 	minikube image load consensus-node:latest
-	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer deploy --nodes ${NODES}
+	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer deploy --nodes ${NODES} --seed-nodes ${SEED_NODES}
 
 # Clean commands
 

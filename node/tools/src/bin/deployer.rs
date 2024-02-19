@@ -10,6 +10,7 @@ use zksync_consensus_crypto::{Text, TextFmt};
 use zksync_consensus_roles::node::SecretKey;
 use zksync_consensus_tools::{k8s, AppConfig, NodeAddr, NODES_PORT};
 
+/// K8s namespace for consensus nodes.
 const NAMESPACE: &str = "consensus";
 
 /// Command line arguments.
@@ -24,9 +25,12 @@ struct DeployerCLI {
 /// Subcommand arguments.
 #[derive(Debug, Parser)]
 struct SubCommandArgs {
-    /// Number of nodes to deploy.
+    /// Number of total nodes to deploy.
     #[arg(long)]
     nodes: usize,
+    /// Number of seed nodes to deploy.
+    #[arg(long)]
+    seed_nodes: Option<usize>,
 }
 
 /// Subcommands.
@@ -86,12 +90,11 @@ fn generate_config(nodes: usize) -> anyhow::Result<()> {
 }
 
 /// Deploys the nodes to the kubernetes cluster.
-async fn deploy(nodes: usize) -> anyhow::Result<()> {
+async fn deploy(nodes: usize, seed_nodes: Option<usize>) -> anyhow::Result<()> {
     let client = k8s::get_client().await?;
     k8s::create_or_reuse_namespace(&client, NAMESPACE).await?;
 
-    // 20% of the nodes will be seed nodes
-    let seed_nodes = (nodes as f32 * 0.2).ceil() as usize;
+    let seed_nodes = seed_nodes.unwrap_or(1);
 
     // deploy seed peer(s)
     for i in 0..seed_nodes {
@@ -128,6 +131,7 @@ async fn deploy(nodes: usize) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Obtain node key from config file.
 fn read_node_key_from_config(node_id: &String) -> anyhow::Result<SecretKey> {
     let manifest_path = std::env::var("CARGO_MANIFEST_DIR")?;
     let root = PathBuf::from(manifest_path).join("k8s_configs");
@@ -142,6 +146,6 @@ async fn main() -> anyhow::Result<()> {
 
     match command {
         DeployerCommands::GenerateConfig(args) => generate_config(args.nodes),
-        DeployerCommands::Deploy(args) => deploy(args.nodes).await,
+        DeployerCommands::Deploy(args) => deploy(args.nodes, args.seed_nodes).await,
     }
 }
