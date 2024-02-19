@@ -34,6 +34,7 @@ pub(crate) fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
     encode_with_serializer(x, s)
 }
 
+/// Encodes a generated proto message for arbitrary ProtoFmt with provided serializer.
 pub(crate) fn encode_with_serializer<T: serde::ser::Serialize, F: Formatter>(
     x: &T,
     mut serializer: Serializer<Vec<u8>, F>,

@@ -12,6 +12,7 @@ pub(crate) struct ConfigInfo;
 // RPCMethod trait should be more general to allow external parameters like this case
 // TODO fix the trait and implement this code in it
 impl ConfigInfo {
+    /// Provide the node's config information
     pub(crate) fn info(config: AppConfig) -> Result<serde_json::Value, ErrorCode> {
         // This may change in the future since we are assuming that the executor binary is being run inside the config directory.
         Ok(serde_json::json!({

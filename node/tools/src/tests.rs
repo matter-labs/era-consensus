@@ -23,10 +23,10 @@ impl Distribution<AppConfig> for Standard {
             .with_gossip_dynamic_inbound_limit(rng.gen())
             .with_gossip_dynamic_inbound_limit(rng.gen())
             .with_max_payload_size(rng.gen());
-        (0..5).into_iter().for_each(|_| {
+        (0..5).for_each(|_| {
             let _ = config.add_gossip_static_inbound(rng.gen::<node::SecretKey>().public());
         });
-        (0..6).into_iter().for_each(|_| {
+        (0..6).for_each(|_| {
             let _ = config
                 .add_gossip_static_outbound(rng.gen::<node::SecretKey>().public(), make_addr(rng));
         });
