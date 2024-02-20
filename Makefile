@@ -26,7 +26,7 @@ docker_nodes_config:
 
 docker_node:
 	$(MAKE) docker_node_image
-	docker run -d --name consensus-node-${NODE} --env NODE_ID="node_${NODE}" consensus-node
+	docker run -d --name consensus-node-${NODE} --env NODE_ID="consensus-node-${NODE}" consensus-node
 
 consensus_docker_example:
 	mkdir -p ${EXECUTABLE_NODE_DIR}/docker-config

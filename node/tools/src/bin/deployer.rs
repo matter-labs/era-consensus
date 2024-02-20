@@ -69,7 +69,7 @@ fn generate_config(nodes: usize) -> anyhow::Result<()> {
     let root = PathBuf::from(manifest_path).join("k8s_configs");
     let _ = fs::remove_dir_all(&root);
     for (i, cfg) in cfgs.into_iter().enumerate() {
-        let node_config_dir = root.join(format!("node_{i:0>2}"));
+        let node_config_dir = root.join(format!("consensus-node-{i:0>2}"));
         fs::create_dir_all(&node_config_dir)
             .with_context(|| format!("create_dir_all({:?})", node_config_dir))?;
 
@@ -114,7 +114,7 @@ async fn deploy(nodes: usize, seed_nodes: Option<usize>) -> anyhow::Result<()> {
     let mut peers = vec![];
 
     for i in 0..seed_nodes {
-        let node_id = &format!("node_{i:0>2}");
+        let node_id = &format!("consensus-node-{i:0>2}");
         let node_key = read_node_key_from_config(node_id)?;
         let address = peer_ips.get(node_id).context("IP address not found")?;
         peers.push(NodeAddr {
