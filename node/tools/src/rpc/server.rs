@@ -1,9 +1,12 @@
 use crate::AppConfig;
 
-use super::methods::{config::ConfigInfo, health_check::HealthCheck, peers::PeersInfo, RPCMethod};
+use super::methods::{
+    config::ConfigInfo, health_check::HealthCheck, last_view::LastView, peers::PeersInfo, RPCMethod,
+};
 use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 use zksync_concurrency::{ctx, scope};
+use zksync_consensus_storage::BlockStore;
 
 /// RPC server.
 pub struct RPCServer {
@@ -11,11 +14,16 @@ pub struct RPCServer {
     ip_address: SocketAddr,
     /// AppConfig
     config: AppConfig,
+    node_storage: Arc<BlockStore>,
 }
 
 impl RPCServer {
-    pub fn new(ip_address: SocketAddr, config: AppConfig) -> Self {
-        Self { ip_address, config }
+    pub fn new(ip_address: SocketAddr, config: AppConfig, node_storage: Arc<BlockStore>) -> Self {
+        Self {
+            ip_address,
+            config,
+            node_storage,
+        }
     }
 
     /// Runs the RPC server.

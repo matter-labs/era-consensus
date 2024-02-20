@@ -2,6 +2,7 @@
 //! manages communication between the actors. It is the main executable in this workspace.
 use anyhow::Context as _;
 use clap::Parser;
+use k8s_openapi::api::node;
 use std::{fs, io::IsTerminal as _, path::PathBuf};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
@@ -125,9 +126,11 @@ async fn main() -> anyhow::Result<()> {
         rpc_addr.set_port(rpc_addr.port() + 100);
     }
 
+    let node_storage = executor.block_store.clone();
+
     // cloning configuration to let RPCServer show it
     // TODO this should be queried in real time instead, to reflect any possible change in config
-    let rpc_server = RPCServer::new(rpc_addr, configs.app.clone());
+    let rpc_server = RPCServer::new(rpc_addr, configs.app.clone(), node_storage);
 
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {
