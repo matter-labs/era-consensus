@@ -42,6 +42,10 @@ impl RPCServer {
             .layer(ProxyGetRequestLayer::new(
                 ConfigInfo::path(),
                 ConfigInfo::method(),
+            )?)
+            .layer(ProxyGetRequestLayer::new(
+                LastView::path(),
+                LastView::method(),
             )?);
 
         let server = Server::builder()
@@ -59,6 +63,11 @@ impl RPCServer {
         let config = self.config.clone();
         module.register_method(ConfigInfo::method(), move |_params, _| {
             ConfigInfo::info(config.clone())
+        })?;
+
+        let node_storage = self.node_storage.clone();
+        module.register_method(LastView::method(), move |_params, _| {
+            LastView::info(node_storage.clone())
         })?;
 
         let handle = server.start(module);

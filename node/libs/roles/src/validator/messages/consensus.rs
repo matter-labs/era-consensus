@@ -4,6 +4,7 @@ use super::{BlockHeader, Msg, Payload, Signed};
 use crate::{validator, validator::Signature};
 use anyhow::bail;
 use bit_vec::BitVec;
+use serde::Serialize;
 use std::collections::{BTreeMap, BTreeSet};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
@@ -417,7 +418,7 @@ impl ValidatorSet {
 }
 
 /// A struct that represents a view number.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
 pub struct ViewNumber(pub u64);
 
 impl ViewNumber {
