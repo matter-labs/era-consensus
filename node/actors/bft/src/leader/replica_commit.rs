@@ -113,7 +113,7 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         message
-            .verify(self.config.genesis(), /*allow_past_forks=*/ false)
+            .verify(self.config.genesis())
             .map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------

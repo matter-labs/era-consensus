@@ -166,7 +166,7 @@ impl StateMachine {
             }
             // The previous block was finalized, so we can propose a new block.
             _ => {
-                let fork = cfg.genesis().forks.current();
+                let fork = &cfg.genesis().fork;
                 let (parent, number) = match high_qc {
                     Some(qc) => (Some(qc.header().hash()), qc.header().number.next()),
                     None => (fork.first_parent, fork.first_block),

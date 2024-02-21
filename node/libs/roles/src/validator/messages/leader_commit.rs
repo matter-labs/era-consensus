@@ -12,7 +12,7 @@ impl LeaderCommit {
     /// Verifies LeaderCommit.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), CommitQCVerifyError> {
         self.justification
-            .verify(genesis, /*allow_past_forks=*/ false)
+            .verify(genesis)
     }
 
     /// View of this message.
@@ -94,11 +94,10 @@ impl CommitQC {
     pub fn verify(
         &self,
         genesis: &Genesis,
-        allow_past_forks: bool,
     ) -> Result<(), CommitQCVerifyError> {
         use CommitQCVerifyError as Error;
         self.message
-            .verify(genesis, allow_past_forks)
+            .verify(genesis)
             .map_err(Error::InvalidMessage)?;
         if self.signers.len() != genesis.validators.len() {
             return Err(Error::BadSignersSet);

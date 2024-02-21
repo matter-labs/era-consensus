@@ -31,7 +31,7 @@ impl BlockStore {
         }))
     }
 
-    /// Forks the storage.
+    /*/// Forks the storage.
     pub fn fork(&self, fork: validator::Fork) -> anyhow::Result<Self> {
         let mut genesis = self.0.genesis.clone();
         genesis.forks.push(fork)?;
@@ -43,7 +43,7 @@ impl BlockStore {
             genesis,
             blocks: Mutex::new(blocks),
         })))
-    }
+    }*/
 }
 
 #[async_trait::async_trait]

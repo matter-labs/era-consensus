@@ -149,11 +149,11 @@ impl BlockStore {
         let last = persistent.last(ctx).await.wrap("persistent.last()")?;
         t.observe();
         if let Some(last) = &last {
-            last.verify(&genesis, /*allow_past_forks=*/ true)
+            last.verify(&genesis)
                 .context("last.verify()")?;
         }
         let state = BlockStoreState {
-            first: genesis.forks.root().first_block,
+            first: genesis.fork.first_block,
             last,
         };
         let this = Arc::new(Self {
@@ -166,39 +166,16 @@ impl BlockStore {
             genesis,
             persistent,
         });
-        this.verify_fork_points(ctx)
-            .await
-            .wrap("verify_fork_points()")?;
+        // Verify the first block.
+        if let Some(block) = this.block(ctx, this.genesis.fork.first_block).await? {
+            block.verify(&this.genesis).with_context(|| format!("verify({:?})", this.genesis.fork.first_block))?;
+        }
         Ok((this.clone(), BlockStoreRunner(this)))
     }
 
     /// Genesis specification for this block store.
     pub fn genesis(&self) -> &validator::Genesis {
         &self.genesis
-    }
-
-    /// Store is assumed to contain a continuous range of blocks.
-    /// Blocks' fork numbers are assumed to be non non-decreasing.
-    /// Certificates of the blocks are assumed to match `genesis.validators`.
-    /// `verify_fork_points()` checks just the fork points against the genesis.
-    async fn verify_fork_points(&self, ctx: &ctx::Ctx) -> ctx::Result<()> {
-        for fork in self.genesis.forks.iter() {
-            // Verify the parent of the first block.
-            if let Some(prev) = fork.first_block.prev() {
-                if let Some(block) = self.block(ctx, prev).await? {
-                    block
-                        .verify(&self.genesis)
-                        .with_context(|| format!("{prev:?}"))?;
-                }
-            }
-            // Verify the first block.
-            if let Some(block) = self.block(ctx, fork.first_block).await? {
-                block
-                    .verify(&self.genesis)
-                    .with_context(|| format!("{:?}", fork.first_block))?;
-            }
-        }
-        Ok(())
     }
 
     /// Fetches a block (from queue or persistent storage).
@@ -258,7 +235,7 @@ impl BlockStore {
             block
                 .justification
                 .message
-                .verify(&self.genesis, /*allow_past_forks=*/ true)?;
+                .verify(&self.genesis)?;
         }
         self.inner.send_if_modified(|inner| {
             let modified = inner.queued_state.send_if_modified(|queued_state| {

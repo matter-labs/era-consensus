@@ -44,7 +44,7 @@ pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<valid
     let genesis = store.genesis(ctx).await.unwrap();
     let last = store.last(ctx).await.unwrap();
     let mut blocks = vec![];
-    let begin = genesis.forks.root().first_block;
+    let begin = genesis.fork.first_block;
     let end = last
         .as_ref()
         .map(|qc| qc.header().number.next())

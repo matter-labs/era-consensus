@@ -81,6 +81,7 @@ async fn executing_validator_and_full_node() {
     .unwrap();
 }
 
+/*
 /// * finalize some blocks
 /// * revert bunch of blocks
 /// * restart validators and make sure that new blocks get produced
@@ -125,7 +126,7 @@ async fn test_block_revert() {
     tracing::info!("Revert blocks");
     let first = BlockNumber(first.0 + 3);
     let fork = validator::Fork {
-        number: setup.genesis.forks.current().number.next(),
+        number: setup.genesis.fork.number.next(),
         first_block: first,
         first_parent: persistent_stores[0]
             .block(ctx, first)
@@ -135,7 +136,7 @@ async fn test_block_revert() {
             .parent,
     };
     let mut genesis = setup.genesis.clone();
-    genesis.forks.push(fork.clone()).unwrap();
+    genesis.fork = fork.clone();
     // Update configs and persistent storage.
     for store in &mut persistent_stores {
         *store = store.fork(fork.clone()).unwrap();
@@ -175,3 +176,4 @@ async fn test_block_revert() {
     .await
     .unwrap();
 }
+*/

@@ -40,25 +40,24 @@ impl ReplicaPrepare {
     /// Verifies the message.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), ReplicaPrepareVerifyError> {
         use ReplicaPrepareVerifyError as Error;
-        let fork = genesis.forks.current();
-        if self.view.fork != fork.number {
+        if self.view.fork != genesis.fork.number {
             return Err(Error::BadFork {
                 got: self.view.fork,
-                want: fork.number,
+                want: genesis.fork.number,
             });
         }
         if let Some(v) = &self.high_vote {
             if self.view.number <= v.view.number {
                 return Err(Error::HighVoteFutureView);
             }
-            v.verify(genesis, /*allow_past_forks=*/ false)
+            v.verify(genesis)
                 .map_err(Error::HighVote)?;
         }
         if let Some(qc) = &self.high_qc {
             if self.view.number <= qc.view().number {
                 return Err(Error::HighQCFutureView);
             }
-            qc.verify(genesis, /*allow_past_forks=*/ false)
+            qc.verify(genesis)
                 .map_err(Error::HighQC)?;
         }
         Ok(())

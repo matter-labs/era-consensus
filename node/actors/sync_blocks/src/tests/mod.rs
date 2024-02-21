@@ -12,7 +12,7 @@ const TEST_TIMEOUT: time::Duration = time::Duration::seconds(20);
 
 pub(crate) fn sync_state(setup: &Setup, last: Option<&validator::FinalBlock>) -> BlockStoreState {
     BlockStoreState {
-        first: setup.genesis.forks.root().first_block,
+        first: setup.genesis.fork.first_block,
         last: last.map(|b| b.justification.clone()),
     }
 }

@@ -3,7 +3,6 @@ use super::{
     BlockHeaderHash, BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, ReplicaPrepare,
 };
 use crate::validator;
-use anyhow::Context as _;
 use bit_vec::BitVec;
 use std::{
     collections::{BTreeMap, BTreeSet},

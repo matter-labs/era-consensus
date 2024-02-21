@@ -1,5 +1,4 @@
 use super::{BlockHeader, Genesis, View};
-use anyhow::Context as _;
 
 /// A Commit message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -12,28 +11,12 @@ pub struct ReplicaCommit {
 
 impl ReplicaCommit {
     /// Verifies the message.
-    pub fn verify(&self, genesis: &Genesis, allow_past_forks: bool) -> anyhow::Result<()> {
-        if !allow_past_forks {
-            anyhow::ensure!(self.view.fork == genesis.forks.current().number);
-        }
-        // Currently we process CommitQCs from past forks when verifying FinalBlocks
-        // during synchronization. Eventually we will switch to synchronization without
-        // CommitQCs for blocks from the past forks, and then we can always enforce
-        // `genesis.forks.current()` instead.
-        let fork = genesis
-            .forks
-            .find(self.proposal.number)
-            .context("doesn't belong to any fork")?;
-        anyhow::ensure!(
-            fork.number == self.view.fork,
-            "bad fork: got {:?} want {:?} for block {}",
-            self.view.fork,
-            fork.number,
-            self.proposal.number
-        );
-        if self.proposal.number == fork.first_block {
+    pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
+        anyhow::ensure!(self.view.fork == genesis.fork.number);
+        anyhow::ensure!(self.proposal.number >= genesis.fork.first_block);
+        if self.proposal.number == genesis.fork.first_block {
             anyhow::ensure!(
-                self.proposal.parent == fork.first_parent,
+                self.proposal.parent == genesis.fork.first_parent,
                 "bad parent of the first block of the fork"
             );
         }

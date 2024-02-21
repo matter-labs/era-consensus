@@ -148,12 +148,7 @@ async fn test_sync_blocks<T: GossipNetworkTest>(test: T) {
     let (node_count, gossip_peers) = test.network_params();
 
     let mut setup = validator::testonly::Setup::new(rng, node_count);
-    setup.push_blocks(rng, 1);
-    setup.fork();
-    setup.push_blocks(rng, 9);
-    setup.fork();
     setup.push_blocks(rng, 10);
-
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
         for (i, net) in network::testonly::new_configs(rng, &setup, gossip_peers)
@@ -189,7 +184,7 @@ impl GossipNetworkTest for BasicSynchronization {
         for node in &nodes {
             node.start();
             let state = node.store.subscribe().borrow().clone();
-            assert_eq!(state.first, setup.genesis.forks.root().first_block);
+            assert_eq!(state.first, setup.genesis.fork.first_block);
             assert_eq!(state.last, None);
         }
 

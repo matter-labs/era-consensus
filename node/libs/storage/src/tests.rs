@@ -8,9 +8,7 @@ async fn test_inmemory_block_store() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut setup = Setup::new(rng, 3);
-    setup.push_blocks(rng, 3);
-    setup.fork();
-    setup.push_blocks(rng, 3);
+    setup.push_blocks(rng, 5);
 
     let store = &testonly::in_memory::BlockStore::new(setup.genesis.clone());
     let mut want = vec![];
@@ -40,7 +38,7 @@ async fn test_state_updates() {
         s.spawn_bg(runner.run(ctx));
         let sub = &mut store.subscribe();
         let state = sub.borrow().clone();
-        assert_eq!(state.first, setup.genesis.forks.root().first_block);
+        assert_eq!(state.first, setup.genesis.fork.first_block);
         assert_eq!(state.last, None);
 
         store

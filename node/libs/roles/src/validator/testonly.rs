@@ -20,6 +20,7 @@ use zksync_consensus_utils::enum_util::Variant;
 pub struct Setup(SetupInner);
 
 impl Setup {
+    /// New `Setup` with a given `fork`.
     pub fn new_with_fork(rng: &mut impl Rng, validators: usize, fork: Fork) -> Self {
         let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
         let genesis = Genesis {
@@ -33,12 +34,12 @@ impl Setup {
         })
     }
 
-    /// New Setup builder.
+    /// New `Setup`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
         let fork = Fork {
             number: ForkNumber(rng.gen_range(0..100)),
             first_block: BlockNumber(rng.gen_range(0..100)),
-            first_parent: None,
+            first_parent: Some(rng.gen()),
         };
         Self::new_with_fork(rng,validators,fork)
     }
@@ -53,7 +54,6 @@ impl Setup {
 
     /// Pushes the next block with the given payload.
     pub fn push_block(&mut self, payload: Payload) {
-        let number = self.next();
         let view = View {
             protocol_version: ProtocolVersion::EARLIEST,
             fork: self.genesis.fork.number,

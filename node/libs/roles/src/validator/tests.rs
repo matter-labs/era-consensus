@@ -110,7 +110,6 @@ fn test_schema_encoding() {
     test_encode_random::<Signature>(rng);
     test_encode_random::<AggregateSignature>(rng);
     test_encode_random::<Fork>(rng);
-    test_encode_random::<ForkSet>(rng);
     test_encode_random::<Genesis>(rng);
     test_encode_random::<GenesisHash>(rng);
 }
@@ -173,7 +172,7 @@ fn test_agg_signature_verify() {
 fn make_view(number: ViewNumber, setup: &Setup) -> View {
     View {
         protocol_version: ProtocolVersion::EARLIEST,
-        fork: setup.genesis.forks.current().number,
+        fork: setup.genesis.fork.number,
         number,
     }
 }
@@ -217,10 +216,9 @@ fn test_commit_qc() {
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
         validators: ValidatorSet::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
-        forks: setup1.genesis.forks.clone(),
+        fork: setup1.genesis.fork.clone(),
     };
 
-    let allow_past_forks = false;
     for i in 0..setup1.keys.len() + 1 {
         let view = rng.gen();
         let mut qc = CommitQC::new(make_replica_commit(rng, view, &setup1), &setup1.genesis);
@@ -228,17 +226,17 @@ fn test_commit_qc() {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis);
         }
         if i >= setup1.genesis.validators.threshold() {
-            qc.verify(&setup1.genesis, allow_past_forks).unwrap();
+            qc.verify(&setup1.genesis).unwrap();
         } else {
             assert_matches!(
-                qc.verify(&setup1.genesis, allow_past_forks),
+                qc.verify(&setup1.genesis),
                 Err(Error::NotEnoughSigners { .. })
             );
         }
 
         // Mismatching validator sets.
-        assert!(qc.verify(&setup2.genesis, allow_past_forks).is_err());
-        assert!(qc.verify(&genesis3, allow_past_forks).is_err());
+        assert!(qc.verify(&setup2.genesis).is_err());
+        assert!(qc.verify(&genesis3).is_err());
     }
 }
 
@@ -252,7 +250,7 @@ fn test_prepare_qc() {
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
         validators: ValidatorSet::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
-        forks: setup1.genesis.forks.clone(),
+        fork: setup1.genesis.fork.clone(),
     };
 
     let view: ViewNumber = rng.gen();

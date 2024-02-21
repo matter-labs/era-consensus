@@ -73,7 +73,7 @@ impl PeerStates {
         let Some(last) = &state.last else {
             return Ok(());
         };
-        last.verify(self.genesis(), /*allow_past_forks=*/ true)
+        last.verify(self.genesis())
             .context("state.last.verify()")?;
         let mut peers = self.peers.lock().unwrap();
         match peers.entry(peer.clone()) {

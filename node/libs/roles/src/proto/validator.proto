@@ -10,12 +10,8 @@ message Fork {
   optional BlockHeaderHash first_parent = 3; // optional
 }
 
-message ForkSet {
-  repeated Fork forks = 1; 
-}
-
 message Genesis {
-  optional ForkSet forks = 1; // required
+  optional Fork fork = 1; // required
   repeated PublicKey validators = 2;
 }
 
