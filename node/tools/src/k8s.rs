@@ -25,22 +25,38 @@ pub async fn get_client() -> anyhow::Result<Client> {
 }
 
 /// Get a kube client
-pub async fn get_consensus_node_ips(client: &Client) -> anyhow::Result<Vec<String>> {
+pub async fn get_consensus_node_ips(client: &Client) -> anyhow::Result<Vec<SocketAddr>> {
     let pods: Api<Pod> = Api::namespaced(client.clone(), "consensus");
     let lp = ListParams::default();
     let pod = pods.list(&lp).await?;
-    let a: Vec<String> = pod
+    let a: Result<Vec<SocketAddr>, _> = pod
         .into_iter()
         .filter(|pod| {
-            pod.clone()
-                .metadata
-                .name
-                .unwrap()
-                .starts_with("consensus-node")
+            if let Some(pod) = pod.clone().metadata.name {
+                pod.contains("consensus-node")
+            } else {
+                false
+            }
         })
-        .map(|pod| pod.status.unwrap().pod_ip.unwrap())
+        .map(|pod| {
+            let pod_ip = pod.status.and_then(|status: PodStatus| status.pod_ip);
+            let port = pod.spec.and_then(|spec: PodSpec| {
+                spec.containers[0].clone().ports.and_then(|ports| {
+                    ports
+                        .iter()
+                        .find(|port| port.container_port != config::NODES_PORT as i32)
+                        .map(|port| port.container_port)
+                })
+            });
+            if let Some((pod_ip, port)) = pod_ip.zip(port) {
+                let pod_addr = format!("{}:{}", pod_ip, port);
+                SocketAddr::from_str(&pod_addr).map_err(|e| e.into())
+            } else {
+                bail!("Consensus Pod IP or port not found");
+            }
+        })
         .collect();
-    Ok(a)
+    a
 }
 
 /// Creates a namespace in k8s cluster
