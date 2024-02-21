@@ -1,16 +1,19 @@
 use crate::{config, NodeAddr};
-use anyhow::{anyhow, Context};
-use k8s_openapi::api::{
-    apps::v1::Deployment,
-    core::v1::{Namespace, Pod},
+use anyhow::{anyhow, bail, Context};
+use k8s_openapi::{
+    api::{
+        apps::v1::{Deployment, DeploymentSpec},
+        core::v1::{Container, Namespace, Pod, PodSpec, PodStatus, PodTemplateSpec},
+    },
+    apimachinery::pkg::apis::meta::v1::LabelSelector,
 };
 use kube::{
     api::{ListParams, PostParams},
-    core::ObjectList,
+    core::{ObjectList, ObjectMeta},
     Api, Client, ResourceExt,
 };
 use serde_json::json;
-use std::collections::HashMap;
+use std::{collections::HashMap, net::SocketAddr, str::FromStr};
 use tokio_retry::strategy::FixedInterval;
 use tokio_retry::Retry;
 use tracing::log::info;
@@ -83,43 +86,54 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
 }
 
 pub async fn create_tests_deployment(client: &Client) -> anyhow::Result<()> {
-    let deployment: Deployment = serde_json::from_value(json!({
-      "apiVersion": "apps/v1",
-      "kind": "Deployment",
-      "metadata": {
-        "name": "tests-deployment",
-        "namespace": "consensus",
-        "labels": {
-          "app": "test-node"
-        }
-      },
-      "spec": {
-        "selector": {
-          "matchLabels": {
-            "app": "test-node"
-          }
+    let deployment: Deployment = Deployment {
+        metadata: ObjectMeta {
+            name: Some("tests-deployment".to_string()),
+            namespace: Some("consensus".to_string()),
+            labels: Some(
+                [("app".to_string(), "test-node".to_string())]
+                    .iter()
+                    .cloned()
+                    .collect(),
+            ),
+            ..Default::default()
         },
-        "template": {
-          "metadata": {
-            "labels": {
-              "app": "test-node"
-            }
-          },
-          "spec": {
-            "containers": [
-              {
-                "name": "test-suite",
-                "image": "test-suite:latest",
-                "imagePullPolicy": "Never",
-                "command": [
-                  "./tester_entrypoint.sh"
-                ]
-              }
-            ]
-          }
-        }
-      }
-    }))?;
+        spec: Some(DeploymentSpec {
+            selector: LabelSelector {
+                match_labels: Some(
+                    [("app".to_string(), "test-node".to_string())]
+                        .iter()
+                        .cloned()
+                        .collect(),
+                ),
+                ..Default::default()
+            },
+            replicas: Some(1),
+            template: PodTemplateSpec {
+                metadata: Some(ObjectMeta {
+                    labels: Some(
+                        [("app".to_string(), "test-node".to_string())]
+                            .iter()
+                            .cloned()
+                            .collect(),
+                    ),
+                    ..Default::default()
+                }),
+                spec: Some(PodSpec {
+                    containers: vec![Container {
+                        name: "test-suite".to_string(),
+                        image: Some("test-suite:latest".to_string()),
+                        image_pull_policy: Some("Never".to_string()),
+                        command: Some(vec!["./tester_entrypoint.sh".to_string()]),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }),
+            },
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
 
     let deployments: Api<Deployment> = Api::namespaced(client.clone(), "consensus");
     let post_params = PostParams::default();
