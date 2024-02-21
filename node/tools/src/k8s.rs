@@ -152,7 +152,6 @@ pub async fn deploy_node(
                     }],
                     ..Default::default()
                 }),
-                ..Default::default()
             },
             ..Default::default()
         }),
