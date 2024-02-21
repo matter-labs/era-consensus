@@ -1,6 +1,7 @@
 //! This is a simple test for the RPC server. It checks if the server is running and can respond to.
-use std::{fs, io::Write};
+use std::{fs, io::Write, path::PathBuf};
 
+use anyhow::Context;
 use clap::{Parser, Subcommand};
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params, types::Params};
 use zksync_consensus_tools::{
@@ -30,36 +31,39 @@ enum TesterCommands {
 
 /// Get the path of the node ips config file.
 /// This way we can run the test from every directory and also inside kubernetes pod.
-fn get_config_path() -> String {
+fn get_config_path() -> PathBuf {
     // This way we can run the test from every directory and also inside kubernetes pod.
     let manifest_path = std::env::var("CARGO_MANIFEST_DIR");
     if let Ok(manifest) = manifest_path {
-        format!("{}/config.txt", manifest)
+        PathBuf::from(&format!("{}/config.txt", manifest))
     } else {
-        "config.txt".to_owned()
+        PathBuf::from("config.txt")
     }
 }
 
 /// Generate a config file with the IPs of the consensus nodes in the kubernetes cluster.
-pub async fn generate_config() {
-    let client = k8s::get_client().await.unwrap();
-    let pods_ip = k8s::get_consensus_node_ips(&client).await.unwrap();
-    let config_file_path: String = get_config_path();
-    for ip in pods_ip {
+pub async fn generate_config() -> anyhow::Result<()> {
+    let client = k8s::get_client().await?;
+    let pods_ip = k8s::get_consensus_node_ips(&client).await?;
+    let config_file_path = get_config_path();
+    for addr in pods_ip {
         let mut config_file = fs::OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
-            .open(&config_file_path)
-            .unwrap();
-        config_file.write_all(ip.as_bytes()).unwrap();
+            .open(&config_file_path)?;
+        config_file.write_all(addr.to_string().as_bytes())?;
     }
+    Ok(())
 }
 
 /// Start the tests pod in the kubernetes cluster.
-pub async fn start_tests_pod() {
-    let client = k8s::get_client().await.unwrap();
-    k8s::create_tests_deployment(&client).await.unwrap();
+pub async fn start_tests_pod() -> anyhow::Result<()> {
+    let client = k8s::get_client().await?;
+    k8s::create_tests_deployment(&client)
+        .await
+        .context("Failed to create tests pod")?;
+    Ok(())
 }
 
 /// Sanity test for the RPC server.
@@ -85,11 +89,11 @@ async fn main() {
 
     match args.command {
         TesterCommands::GenerateConfig => {
-            generate_config().await;
+            let _ = generate_config().await;
             tracing::info!("Config succesfully generated")
         }
         TesterCommands::StartPod => {
-            start_tests_pod().await;
+            let _ = start_tests_pod().await;
             tracing::info!("Pod started succesfully!")
         }
         TesterCommands::Run => {
