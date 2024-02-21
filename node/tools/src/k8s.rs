@@ -145,7 +145,6 @@ pub async fn deploy_node(
 ) -> anyhow::Result<()> {
     let cli_args = get_cli_args(peers);
     let node_name = format!("consensus-node-{node_index:0>2}");
-    let node_id = format!("node_{node_index:0>2}");
     let deployment: Deployment = serde_json::from_value(json!({
           "apiVersion": "apps/v1",
           "kind": "Deployment",
@@ -164,7 +163,7 @@ pub async fn deploy_node(
               "metadata": {
                 "labels": {
                   "app": node_name,
-                  "id": node_id,
+                  "id": node_name,
                   "seed": is_seed.to_string()
                 }
               },
@@ -176,7 +175,7 @@ pub async fn deploy_node(
                     "env": [
                       {
                         "name": "NODE_ID",
-                        "value": node_id
+                        "value": node_name
                       },
                       {
                         "name": "PUBLIC_ADDR",
