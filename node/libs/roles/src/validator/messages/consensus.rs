@@ -77,60 +77,6 @@ impl Default for Fork {
     }
 }
 
-/// History of forks of the blockchain.
-/// It allows to determine which which fork contains block with the given number.
-/// Current fork is the one with the highest fork id.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ForkSet(pub(in crate::validator) Vec<Fork>);
-
-impl ForkSet {
-    /// Constructs a new fork set.
-    pub fn new(forks: Vec<Fork>) -> anyhow::Result<Self> {
-        let first = forks.first().context("empty fork set")?;
-        anyhow::ensure!(first.first_parent.is_none());
-        for i in 1..forks.len() {
-            anyhow::ensure!(forks[i - 1].number < forks[i].number);
-            anyhow::ensure!(forks[i].first_parent.is_some());
-        }
-        Ok(Self(forks))
-    }
-
-    /// Inserts a new fork to the fork set.
-    pub fn push(&mut self, fork: Fork) -> anyhow::Result<()> {
-        anyhow::ensure!(fork.number > self.current().number);
-        let mut n = self.0.len();
-        while n > 0 && self.0[n - 1].first_block >= fork.first_block {
-            n -= 1;
-        }
-        anyhow::ensure!((n == 0) == fork.first_parent.is_none());
-        self.0.truncate(n);
-        self.0.push(fork);
-        Ok(())
-    }
-
-    /// Root fork (starting with a block without parent).
-    pub fn root(&self) -> &Fork {
-        self.0.first().unwrap()
-    }
-
-    /// Current fork that node is participating in.
-    pub fn current(&self) -> &Fork {
-        self.0.last().unwrap()
-    }
-
-    /// Finds the fork which the given block belongs to.
-    /// This should be used to verify the quorum certificate
-    /// on a finalized block fetched from the network.
-    pub fn find(&self, block: BlockNumber) -> Option<&Fork> {
-        self.0.iter().rev().find(|&fork| fork.first_block <= block)
-    }
-
-    /// Iterates over the forks.
-    pub fn iter(&self) -> impl Iterator<Item = &Fork> {
-        self.0.iter()
-    }
-}
-
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -223,8 +169,8 @@ pub struct Genesis {
     // TODO(gprusak): add blockchain id here.
     /// Set of validators of the chain.
     pub validators: ValidatorSet,
-    /// Forks history, `forks.current()` indicates the current fork.
-    pub forks: ForkSet,
+    /// Fork of the chain to follow.
+    pub fork: Fork,
 }
 
 /// Hash of the genesis specification.

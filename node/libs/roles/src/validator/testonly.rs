@@ -1,7 +1,7 @@
 //! Test-only utilities.
 use super::{
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
-    FinalBlock, Fork, ForkNumber, ForkSet, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
+    FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorSet, View,
     ViewNumber,
@@ -24,7 +24,7 @@ impl Setup {
         let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
         let genesis = Genesis {
             validators: ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap(),
-            forks: ForkSet::new(vec![fork]).unwrap(),
+            fork,
         };
         Self(SetupInner {
             keys,
@@ -43,45 +43,20 @@ impl Setup {
         Self::new_with_fork(rng,validators,fork)
     }
 
-    /// Produce a fork at the current head.
-    pub fn fork(&mut self) {
-        let number = self.0.genesis.forks.current().number.next();
-        self.0
-            .genesis
-            .forks
-            .push(match self.0.blocks.last() {
-                Some(b) => Fork {
-                    number,
-                    first_parent: Some(b.header().hash()),
-                    first_block: b.header().number.next(),
-                },
-                None => Fork {
-                    number,
-                    first_parent: None,
-                    // This is an arbitrary value.
-                    // We just select any value different than the current root to cover more
-                    // non-trivial cases.
-                    first_block: self.0.genesis.forks.root().first_block.next(),
-                },
-            })
-            .unwrap();
-    }
-
     /// Next block to finalize.
     pub fn next(&self) -> BlockNumber {
         match self.0.blocks.last() {
             Some(b) => b.header().number.next(),
-            None => self.0.genesis.forks.root().first_block,
+            None => self.0.genesis.fork.first_block,
         }
     }
 
     /// Pushes the next block with the given payload.
     pub fn push_block(&mut self, payload: Payload) {
         let number = self.next();
-        let fork = self.0.genesis.forks.find(number).unwrap();
         let view = View {
             protocol_version: ProtocolVersion::EARLIEST,
-            fork: fork.number,
+            fork: self.genesis.fork.number,
             number: self
                 .0
                 .blocks
@@ -92,8 +67,8 @@ impl Setup {
         let proposal = match self.0.blocks.last() {
             Some(b) => BlockHeader::next(b.header(), payload.hash()),
             None => BlockHeader {
-                parent: fork.first_parent,
-                number: fork.first_block,
+                parent: self.genesis.fork.first_parent,
+                number: self.genesis.fork.first_block,
                 payload: payload.hash(),
             },
         };
@@ -212,30 +187,11 @@ impl Distribution<Fork> for Standard {
     }
 }
 
-impl Distribution<ForkSet> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ForkSet {
-        let mut forks = vec![Fork {
-            number: rng.gen(),
-            first_block: rng.gen(),
-            first_parent: None,
-        }];
-        for _ in 0..3 {
-            let last = forks.last().unwrap();
-            forks.push(Fork {
-                number: ForkNumber(last.number.0 + rng.gen_range(1..3)),
-                first_block: BlockNumber(last.first_block.0 + rng.gen_range(1..10)),
-                first_parent: Some(rng.gen()),
-            });
-        }
-        ForkSet::new(forks).unwrap()
-    }
-}
-
 impl Distribution<Genesis> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
         Genesis {
             validators: rng.gen(),
-            forks: rng.gen(),
+            fork: rng.gen(),
         }
     }
 }

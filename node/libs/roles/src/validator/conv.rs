@@ -1,6 +1,6 @@
 use super::{
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
-    FinalBlock, Fork, ForkNumber, ForkSet, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
+    FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
 };
@@ -29,25 +29,6 @@ impl ProtoFmt for Fork {
     }
 }
 
-impl ProtoFmt for ForkSet {
-    type Proto = proto::ForkSet;
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Self::new(
-            r.forks
-                .iter()
-                .enumerate()
-                .map(|(i, f)| Fork::read(f).context(i))
-                .collect::<Result<_, _>>()
-                .context("forks")?,
-        )
-    }
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            forks: self.0.iter().map(|f| f.build()).collect(),
-        }
-    }
-}
-
 impl ProtoFmt for Genesis {
     type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
@@ -59,13 +40,13 @@ impl ProtoFmt for Genesis {
             .collect::<Result<_, _>>()
             .context("validators")?;
         Ok(Self {
-            forks: read_required(&r.forks).context("forks")?,
+            fork: read_required(&r.fork).context("fork")?,
             validators: ValidatorSet::new(validators.into_iter()).context("validators")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            forks: Some(self.forks.build()),
+            fork: Some(self.fork.build()),
             validators: self.validators.iter().map(|x| x.build()).collect(),
         }
     }
