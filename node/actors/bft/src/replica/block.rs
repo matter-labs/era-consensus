@@ -13,16 +13,22 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         commit_qc: &validator::CommitQC,
     ) -> ctx::Result<()> {
+        // Update high_qc.
+        if self
+            .high_qc
+            .as_ref()
+            .map(|qc| qc.view().number < commit_qc.view().number)
+            .unwrap_or(true)
+        {
+            self.high_qc = Some(commit_qc.clone());
+        }
         // TODO(gprusak): for availability of finalized blocks,
         //                replicas should be able to broadcast highest quorums without
         //                the corresponding block (same goes for synchronization).
-        let Some(cache) = self
-            .block_proposal_cache
-            .get(&commit_qc.message.proposal.number)
-        else {
+        let Some(cache) = self.block_proposal_cache.get(&commit_qc.header().number) else {
             return Ok(());
         };
-        let Some(payload) = cache.get(&commit_qc.message.proposal.payload) else {
+        let Some(payload) = cache.get(&commit_qc.header().payload) else {
             return Ok(());
         };
         let block = validator::FinalBlock {

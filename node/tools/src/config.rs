@@ -14,8 +14,8 @@ use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BlockStore, BlockStoreRunner, PersistentBlockStore};
-use zksync_protobuf::{required, serde::Serde, ProtoFmt};
+use zksync_consensus_storage::{BlockStore, BlockStoreRunner};
+use zksync_protobuf::{read_required, required, serde::Serde, ProtoFmt};
 
 /// Ports for the nodes to listen on kubernetes pod.
 pub const NODES_PORT: u16 = 3054;
@@ -75,8 +75,7 @@ pub struct AppConfig {
     pub public_addr: SocketAddr,
     pub metrics_server_addr: Option<SocketAddr>,
 
-    pub validators: validator::ValidatorSet,
-    pub genesis_block: validator::FinalBlock,
+    pub genesis: validator::Genesis,
     pub max_payload_size: usize,
 
     pub gossip_dynamic_inbound_limit: usize,
@@ -88,14 +87,6 @@ impl ProtoFmt for AppConfig {
     type Proto = proto::AppConfig;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let validators = r.validators.iter().enumerate().map(|(i, v)| {
-            Text::new(v)
-                .decode()
-                .with_context(|| format!("validators[{i}]"))
-        });
-        let validators: anyhow::Result<Vec<_>> = validators.collect();
-        let validators = validator::ValidatorSet::new(validators?).context("validators")?;
-
         let mut gossip_static_inbound = HashSet::new();
         for (i, v) in r.gossip_static_inbound.iter().enumerate() {
             gossip_static_inbound.insert(
@@ -117,8 +108,7 @@ impl ProtoFmt for AppConfig {
             metrics_server_addr: read_optional_text(&r.metrics_server_addr)
                 .context("metrics_server_addr")?,
 
-            validators,
-            genesis_block: read_required_text(&r.genesis_block).context("genesis_block")?,
+            genesis: read_required(&r.genesis).context("genesis")?,
             max_payload_size: required(&r.max_payload_size)
                 .and_then(|x| Ok((*x).try_into()?))
                 .context("max_payload_size")?,
@@ -137,8 +127,7 @@ impl ProtoFmt for AppConfig {
             public_addr: Some(self.public_addr.encode()),
             metrics_server_addr: self.metrics_server_addr.as_ref().map(TextFmt::encode),
 
-            validators: self.validators.iter().map(TextFmt::encode).collect(),
-            genesis_block: Some(self.genesis_block.encode()),
+            genesis: Some(self.genesis.build()),
             max_payload_size: Some(self.max_payload_size.try_into().unwrap()),
 
             gossip_dynamic_inbound_limit: Some(
@@ -216,33 +205,19 @@ impl<'a> ConfigPaths<'a> {
 }
 
 impl AppConfig {
-    pub fn default_for(validators_amount: usize) -> (AppConfig, Vec<validator::SecretKey>) {
-        // Generate the keys for all the replicas.
-        let rng = &mut rand::thread_rng();
+    pub fn default_for(genesis: validator::Genesis) -> AppConfig {
+        Self {
+            server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
+            public_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
+            metrics_server_addr: None,
 
-        let mut genesis = validator::GenesisSetup::empty(rng, validators_amount);
-        genesis
-            .next_block()
-            .payload(validator::Payload(vec![]))
-            .push();
-        let validator_keys = genesis.keys.clone();
+            genesis,
+            max_payload_size: 1000000,
 
-        (
-            Self {
-                server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
-                public_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
-                metrics_server_addr: None,
-
-                validators: genesis.validator_set(),
-                genesis_block: genesis.blocks[0].clone(),
-                max_payload_size: 1000000,
-
-                gossip_dynamic_inbound_limit: 2,
-                gossip_static_inbound: [].into(),
-                gossip_static_outbound: [].into(),
-            },
-            validator_keys,
-        )
+            gossip_dynamic_inbound_limit: 2,
+            gossip_static_inbound: [].into(),
+            gossip_static_outbound: [].into(),
+        }
     }
 
     pub fn with_server_addr(&mut self, server_addr: SocketAddr) -> &mut Self {
@@ -304,19 +279,12 @@ impl Configs {
         &self,
         ctx: &ctx::Ctx,
     ) -> ctx::Result<(executor::Executor, BlockStoreRunner)> {
-        let store = store::RocksDB::open(&self.database).await?;
-        // Store genesis if db is empty.
-        if store.is_empty().await? {
-            store
-                .store_next_block(ctx, &self.app.genesis_block)
-                .await
-                .context("store_next_block()")?;
-        }
+        let store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
         let (block_store, runner) = BlockStore::new(ctx, Box::new(store.clone())).await?;
         let e = executor::Executor {
             config: executor::Config {
                 server_addr: self.app.server_addr,
-                validators: self.app.validators.clone(),
+                public_addr: self.app.public_addr,
                 node_key: self.node_key.clone(),
                 gossip_dynamic_inbound_limit: self.app.gossip_dynamic_inbound_limit,
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
@@ -325,10 +293,7 @@ impl Configs {
             },
             block_store,
             validator: self.validator_key.as_ref().map(|key| executor::Validator {
-                config: executor::ValidatorConfig {
-                    key: key.clone(),
-                    public_addr: self.app.public_addr,
-                },
+                key: key.clone(),
                 replica_store: Box::new(store),
                 payload_manager: Box::new(bft::testonly::RandomPayload(self.app.max_payload_size)),
             }),

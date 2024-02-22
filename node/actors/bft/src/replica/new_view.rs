@@ -11,14 +11,13 @@ impl StateMachine {
         tracing::info!("Starting view {}", self.view.next().0);
 
         // Update the state machine.
-        let next_view = self.view.next();
-
-        self.view = next_view;
+        self.view = self.view.next();
         self.phase = validator::Phase::Prepare;
-
-        // Clear the block cache.
-        self.block_proposal_cache
-            .retain(|k, _| k > &self.high_qc.message.proposal.number);
+        if let Some(qc) = self.high_qc.as_ref() {
+            // Clear the block cache.
+            self.block_proposal_cache
+                .retain(|k, _| k > &qc.header().number);
+        }
 
         // Backup our state.
         self.backup_state(ctx).await.wrap("backup_state()")?;
@@ -30,13 +29,16 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaPrepare(
                     validator::ReplicaPrepare {
-                        protocol_version: crate::PROTOCOL_VERSION,
-                        view: next_view,
-                        high_vote: self.high_vote,
+                        view: validator::View {
+                            protocol_version: crate::PROTOCOL_VERSION,
+                            fork: self.config.genesis().fork.number,
+                            number: self.view,
+                        },
+                        high_vote: self.high_vote.clone(),
                         high_qc: self.high_qc.clone(),
                     },
                 )),
-            recipient: Target::Validator(self.config.view_leader(next_view)),
+            recipient: Target::Validator(self.config.genesis().validators.view_leader(self.view)),
         };
         self.outbound_pipe.send(output_message.into());
 

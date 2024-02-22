@@ -75,6 +75,9 @@ skip = [
 
     # Old versions required by kube.
     { name = "strsim", version = "0.10.0" }
+
+    # Old versions required by criterion.
+    { name = "itertools", version = "0.10.5" },
 ]
 
 [sources]

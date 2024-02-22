@@ -9,7 +9,6 @@ use std::{
     },
 };
 use zksync_concurrency::{ctx, scope, testonly::abort_on_panic};
-use zksync_consensus_utils::no_copy::NoCopy;
 use zksync_protobuf::ProtoFmt as _;
 
 mod proto;
@@ -193,10 +192,6 @@ fn expected(res: Result<(), mux::RunError>) -> Result<(), mux::RunError> {
 // * multiple capabilities are used at the same time.
 // * ends use totally different configs
 // * messages are larger than frames
-//
-// TODO(gprusak): in case the test fails it may be hard to find the actual bug, because
-// this test covers a lot of features. In such situation more specific tests
-// checking 1 property at a time should be added.
 #[test]
 fn mux_with_noise() {
     abort_on_panic();
@@ -247,35 +242,35 @@ fn mux_with_noise() {
         scope::run!(ctx, |ctx, s| async {
             let (s1, s2) = noise::testonly::pipe(ctx).await;
             for (cap, q) in mux1.connect.clone() {
-                let cap = NoCopy::from(cap);
+                let cap = ctx::NoCopy(cap);
                 s.spawn_bg(async {
                     run_server(ctx, q, *cap)
                         .await
-                        .with_context(|| format!("server({})", cap.into_inner()))
+                        .with_context(|| format!("server({})", cap.into()))
                 });
             }
             for (cap, q) in mux1.accept.clone() {
-                let cap = NoCopy::from(cap);
+                let cap = ctx::NoCopy(cap);
                 s.spawn(async {
                     run_client(ctx, q, *cap)
                         .await
-                        .with_context(|| format!("client({})", cap.into_inner()))
+                        .with_context(|| format!("client({})", cap.into()))
                 });
             }
             for (cap, q) in mux2.connect.clone() {
-                let cap = NoCopy::from(cap);
+                let cap = ctx::NoCopy(cap);
                 s.spawn_bg(async {
                     run_server(ctx, q, *cap)
                         .await
-                        .with_context(|| format!("server({})", cap.into_inner()))
+                        .with_context(|| format!("server({})", cap.into()))
                 });
             }
             for (cap, q) in mux2.accept.clone() {
-                let cap = NoCopy::from(cap);
+                let cap = ctx::NoCopy(cap);
                 s.spawn(async {
                     run_client(ctx, q, *cap)
                         .await
-                        .with_context(|| format!("client({})", cap.into_inner()))
+                        .with_context(|| format!("client({})", cap.into()))
                 });
             }
             s.spawn_bg(async { expected(mux1.run(ctx, s1).await).context("mux1.run()") });

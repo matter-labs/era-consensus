@@ -1,6 +1,5 @@
 //! Defines RPC for passing consensus messages.
 use crate::{mux, proto::consensus as proto};
-use zksync_concurrency::{limiter, time};
 use zksync_consensus_roles::validator;
 use zksync_protobuf::{read_required, ProtoFmt};
 
@@ -10,10 +9,6 @@ pub(crate) struct Rpc;
 impl super::Rpc for Rpc {
     const CAPABILITY_ID: mux::CapabilityId = 0;
     const INFLIGHT: u32 = 3;
-    const RATE: limiter::Rate = limiter::Rate {
-        burst: 10,
-        refresh: time::Duration::ZERO,
-    };
     const METHOD: &'static str = "consensus";
     type Req = Req;
     type Resp = Resp;

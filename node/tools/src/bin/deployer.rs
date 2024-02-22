@@ -6,7 +6,7 @@ use std::{fs, path::PathBuf};
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use zksync_consensus_crypto::{Text, TextFmt};
-use zksync_consensus_roles::node::SecretKey;
+use zksync_consensus_roles::{node, validator};
 use zksync_consensus_tools::{k8s, AppConfig, NodeAddr, NODES_PORT};
 
 /// K8s namespace for consensus nodes.
@@ -46,13 +46,19 @@ enum DeployerCommands {
 fn generate_config(nodes: usize) -> anyhow::Result<()> {
     assert!(nodes > 0, "at least 1 node has to be specified");
 
-    // Each node will have `gossip_peers` inbound peers.
+    // Generate the keys for all the replicas.
+    let rng = &mut rand::thread_rng();
+
+    let setup = validator::testonly::Setup::new(rng, nodes);
+    let validator_keys = setup.keys.clone();
+
+    // Each node will have `gossip_peers` outbound peers.
     let peers = 2;
 
-    // Generate the node keys for all the replicas.
-    let node_keys: Vec<SecretKey> = (0..nodes).map(|_| SecretKey::generate()).collect();
+    let node_keys: Vec<node::SecretKey> = (0..nodes).map(|_| node::SecretKey::generate()).collect();
 
-    let (default_config, validator_keys) = AppConfig::default_for(nodes);
+    let default_config = AppConfig::default_for(setup.genesis.clone());
+
     let mut cfgs: Vec<_> = (0..nodes).map(|_| default_config.clone()).collect();
 
     // Construct a gossip network with optimal diameter.
@@ -130,7 +136,7 @@ async fn deploy(nodes: usize, seed_nodes: Option<usize>) -> anyhow::Result<()> {
 }
 
 /// Obtain node key from config file.
-fn read_node_key_from_config(node_id: &String) -> anyhow::Result<SecretKey> {
+fn read_node_key_from_config(node_id: &String) -> anyhow::Result<node::SecretKey> {
     let manifest_path = std::env::var("CARGO_MANIFEST_DIR")?;
     let root = PathBuf::from(manifest_path).join("k8s_configs");
     let node_key_path = root.join(node_id).join("node_key");

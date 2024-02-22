@@ -52,9 +52,6 @@ pub(crate) trait Rpc: Sync + Send + 'static {
     /// Maximal number of calls executed in parallel.
     /// Both client and server enforce this limit.
     const INFLIGHT: u32;
-    /// Maximal rate at which calls can be made.
-    /// Both client and server enforce this limit.
-    const RATE: limiter::Rate;
     /// Name of the RPC, used in prometheus metrics.
     const METHOD: &'static str;
     /// Type of the request message.
@@ -122,9 +119,9 @@ pub(crate) struct Client<R: Rpc> {
 
 impl<R: Rpc> Client<R> {
     /// Constructs a new client.
-    pub(crate) fn new(ctx: &ctx::Ctx) -> Self {
+    pub(crate) fn new(ctx: &ctx::Ctx, rate: limiter::Rate) -> Self {
         Client {
-            limiter: limiter::Limiter::new(ctx, R::RATE),
+            limiter: limiter::Limiter::new(ctx, rate),
             queue: mux::StreamQueue::new(R::INFLIGHT),
             _rpc: std::marker::PhantomData,
         }
@@ -175,6 +172,7 @@ pub(crate) trait Handler<R: Rpc>: Sync + Send {
 struct Server<R: Rpc, H: Handler<R>> {
     handler: H,
     queue: Arc<mux::StreamQueue>,
+    rate: limiter::Rate,
     _rpc: std::marker::PhantomData<R>,
 }
 
@@ -188,7 +186,7 @@ impl<R: Rpc, H: Handler<R>> ServerTrait for Server<R, H> {
     /// Serves the incoming RPCs, respecting the rate limit and
     /// max inflight limit.
     async fn serve(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
-        let limiter = limiter::Limiter::new(ctx, R::RATE);
+        let limiter = limiter::Limiter::new(ctx, self.rate);
         scope::run!(ctx, |ctx, s| async {
             for _ in 0..R::INFLIGHT {
                 s.spawn::<()>(async {
@@ -279,7 +277,11 @@ impl<'a> Service<'a> {
     }
 
     /// Adds a server to the RPC service.
-    pub(crate) fn add_server<R: Rpc>(mut self, handler: impl Handler<R> + 'a) -> Self {
+    pub(crate) fn add_server<R: Rpc>(
+        mut self,
+        handler: impl Handler<R> + 'a,
+        rate: limiter::Rate,
+    ) -> Self {
         let queue = mux::StreamQueue::new(R::INFLIGHT);
         if self
             .mux
@@ -295,6 +297,7 @@ impl<'a> Service<'a> {
         self.servers.push(Box::new(Server {
             handler,
             queue,
+            rate,
             _rpc: std::marker::PhantomData,
         }));
         self
