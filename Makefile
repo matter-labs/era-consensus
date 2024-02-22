@@ -60,6 +60,7 @@ clean_docker:
 	docker rm -f consensus-node-2
 	docker network rm -f node-net
 	docker image rm -f consensus-node
+	docker image rm -f test-suite
 
 addresses_file:
 	mkdir -p ${EXECUTABLE_NODE_DIR}/docker-config
