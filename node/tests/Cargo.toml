@@ -15,6 +15,7 @@ jsonrpsee.workspace = true
 clap.workspace = true
 tracing.workspace = true
 anyhow.workspace = true
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

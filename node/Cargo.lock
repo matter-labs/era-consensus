@@ -2942,6 +2942,7 @@ dependencies = [
  "serde_json",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "zksync_consensus_tools",
 ]
 

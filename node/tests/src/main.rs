@@ -69,9 +69,9 @@ pub async fn start_tests_pod() -> anyhow::Result<()> {
 /// Sanity test for the RPC server.
 pub async fn sanity_test() {
     let config_file_path = get_config_path();
-    let node_ips = fs::read_to_string(config_file_path).unwrap();
-    for ip in node_ips.lines() {
-        let url: String = format!("http://{}:3154", ip);
+    let nodes_socket = fs::read_to_string(config_file_path).unwrap();
+    for socket in nodes_socket.lines() {
+        let url: String = format!("http://{}", socket);
         let rpc_client = HttpClientBuilder::default().build(url).unwrap();
         let params = Params::new(None);
         let response: serde_json::Value = rpc_client
@@ -84,21 +84,18 @@ pub async fn sanity_test() {
 
 /// Main function for the test.
 #[tokio::main]
-async fn main() {
+async fn main() -> anyhow::Result<()> {
     let args = TesterCLI::parse();
+    tracing_subscriber::fmt::init();
 
     match args.command {
-        TesterCommands::GenerateConfig => {
-            let _ = generate_config().await;
-            tracing::info!("Config succesfully generated")
-        }
-        TesterCommands::StartPod => {
-            let _ = start_tests_pod().await;
-            tracing::info!("Pod started succesfully!")
-        }
+        TesterCommands::GenerateConfig => generate_config().await,
+        TesterCommands::StartPod => start_tests_pod().await,
         TesterCommands::Run => {
+            tracing::info!("Running sanity test");
             sanity_test().await;
-            tracing::info!("Test passed!")
+            tracing::info!("Test Passed!");
+            Ok(())
         }
     }
 }

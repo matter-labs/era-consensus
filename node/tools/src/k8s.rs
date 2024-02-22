@@ -1,5 +1,5 @@
 use crate::{config, NodeAddr};
-use anyhow::{anyhow, bail, Context};
+use anyhow::{anyhow, bail, ensure, Context};
 use k8s_openapi::{
     api::{
         apps::v1::{Deployment, DeploymentSpec},
@@ -35,6 +35,10 @@ pub async fn get_consensus_node_ips(client: &Client) -> anyhow::Result<Vec<Socke
     let pods: Api<Pod> = Api::namespaced(client.clone(), DEFAULT_NAMESPACE);
     let lp = ListParams::default();
     let pod = pods.list(&lp).await?;
+    ensure!(
+        !pod.items.is_empty(),
+        "No consensus pods found in the k8s cluster"
+    );
     let a: Result<Vec<SocketAddr>, _> = pod
         .into_iter()
         .filter(|pod| {
