@@ -110,7 +110,7 @@ impl StateMachine {
             });
         }
 
-        // ----------- Checking the the message --------------
+        // ----------- Checking the message --------------
 
         signed_message.verify().map_err(Error::InvalidSignature)?;
         message

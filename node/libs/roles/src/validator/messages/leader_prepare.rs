@@ -76,11 +76,10 @@ impl PrepareQC {
     }
 
     /// Add a validator's signed message.
-    /// * `signed_message` - A valid signed `ReplicaPrepare` message.
-    /// * `validator_index` - The signer index in the validator set.
+    /// Message is assumed to be already verified.
+    // TODO: check if there is already a message from that validator.
+    // TODO: verify the message inside instead.
     pub fn add(&mut self, msg: &Signed<ReplicaPrepare>, genesis: &Genesis) {
-        // TODO: check if there is already a message from that validator.
-        // TODO: verify msg
         if msg.msg.view != self.view {
             return;
         }
@@ -234,10 +233,7 @@ impl LeaderPrepare {
                 }
                 let (want_parent, want_number) = match high_qc {
                     Some(qc) => (Some(qc.header().hash()), qc.header().number.next()),
-                    None => (
-                        genesis.fork.first_parent,
-                        genesis.fork.first_block,
-                    ),
+                    None => (genesis.fork.first_parent, genesis.fork.first_block),
                 };
                 if self.proposal.parent != want_parent {
                     return Err(Error::BadParentHash {

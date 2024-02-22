@@ -69,7 +69,7 @@ async fn test_peer_states<T: Test>(test: T) {
     let ctx = &ctx::test_root(&clock);
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::Setup::new(rng, 4);
-    setup.push_blocks(rng,T::BLOCK_COUNT);
+    setup.push_blocks(rng, T::BLOCK_COUNT);
     let (store, store_run) = new_store(ctx, &setup.genesis).await;
     test.initialize_storage(ctx, store.as_ref(), &setup).await;
 

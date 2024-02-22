@@ -11,8 +11,7 @@ pub struct LeaderCommit {
 impl LeaderCommit {
     /// Verifies LeaderCommit.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), CommitQCVerifyError> {
-        self.justification
-            .verify(genesis)
+        self.justification.verify(genesis)
     }
 
     /// View of this message.
@@ -76,6 +75,7 @@ impl CommitQC {
     }
 
     /// Add a validator's signature.
+    /// Signature is assumed to be already verified.
     pub fn add(&mut self, msg: &Signed<ReplicaCommit>, genesis: &Genesis) {
         if self.message != msg.msg {
             return;
@@ -91,10 +91,7 @@ impl CommitQC {
     }
 
     /// Verifies the signature of the CommitQC.
-    pub fn verify(
-        &self,
-        genesis: &Genesis,
-    ) -> Result<(), CommitQCVerifyError> {
+    pub fn verify(&self, genesis: &Genesis) -> Result<(), CommitQCVerifyError> {
         use CommitQCVerifyError as Error;
         self.message
             .verify(genesis)

@@ -30,20 +30,6 @@ impl BlockStore {
             blocks: Mutex::default(),
         }))
     }
-
-    /*/// Forks the storage.
-    pub fn fork(&self, fork: validator::Fork) -> anyhow::Result<Self> {
-        let mut genesis = self.0.genesis.clone();
-        genesis.forks.push(fork)?;
-        let mut blocks = self.0.blocks.lock().unwrap().clone();
-        if let Some(first) = blocks.front().map(|b| b.header().number.0) {
-            blocks.truncate(genesis.forks.current().first_block.0.saturating_sub(first) as usize);
-        }
-        Ok(Self(Arc::new(BlockStoreInner {
-            genesis,
-            blocks: Mutex::new(blocks),
-        })))
-    }*/
 }
 
 #[async_trait::async_trait]

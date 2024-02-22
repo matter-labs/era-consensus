@@ -27,13 +27,6 @@
 // NodePublicKey - public key of the node (gossip network participant) of the form "node:public:<signature scheme>:<hex encoded key material>"
 //   Currently only ed25519 signature scheme is supported for nodes.
 //   example: "node:public:ed25519:d36607699a0a3fbe3de16947928cf299484219ff62ca20f387795b0859dbe501"
-// 
-// FinalBlock - hex encoded serialized roles.validator.FinalBlock.
-//   Used to specify the genesis block of the chain.
-//   This blob of data is not customizable and we don't want to impose
-//   json-level backward compatibility on anything else but the configs.
-//   TODO(gprusak): either don't include it at all (derive genesis purely from
-//     the validator set) or move it to a separate config file.
 syntax = "proto3";
 
 package zksync.tools;
@@ -42,8 +35,8 @@ import "zksync/roles/validator.proto";
 
 // (public key, ip address) of a gossip network node. 
 message NodeAddr {
-  optional string key = 1; // [required] NodePublicKey
-  optional string addr = 2; // [required] IpAddr
+  optional string key = 1; // required; NodePublicKey
+  optional string addr = 2; // required; IpAddr
 }
 
 // Application configuration. 
@@ -52,15 +45,15 @@ message AppConfig {
 
   // IP:port to listen on, for incoming TCP connections.
   // Use `0.0.0.0:<port>` to listen on all network interfaces (i.e. on all IPs exposed by this VM).
-  optional string server_addr = 1; // [required] IpAddr
+  optional string server_addr = 1; // required; IpAddr
  
   // Public IP:port to advertise, should forward to server_addr.
-  optional string public_addr = 2; // [required] IpAddr
+  optional string public_addr = 2; // required; IpAddr
   
   // IP:port to serve metrics data for scraping.
   // Use `0.0.0.0:<port>` to listen on all network interfaces.
   // If not set, metrics data won't be served.
-  optional string metrics_server_addr = 3; // [optional] IpAddr 
+  optional string metrics_server_addr = 3; // optional; IpAddr 
   
   // Consensus
   
@@ -68,13 +61,13 @@ message AppConfig {
   optional roles.validator.Genesis genesis = 4; // required
 
   // Maximal size of the block payload.
-  optional uint64 max_payload_size = 5; // [required] B
+  optional uint64 max_payload_size = 5; // required; bytes
 
   // Gossip network
 
   // Limit on the number of gossip network inbound connections outside
   // of the `gossip_static_inbound` set.
-  optional uint64 gossip_dynamic_inbound_limit = 6; // [required]
+  optional uint64 gossip_dynamic_inbound_limit = 6; // required
   // Inbound connections that should be unconditionally accepted on the gossip network.
   repeated string gossip_static_inbound = 7; // NodePublicKey
   // Outbound gossip network connections that the node should actively try to

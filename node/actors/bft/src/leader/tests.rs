@@ -29,6 +29,7 @@ async fn replica_prepare_sanity_yield_leader_prepare() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
+        util.produce_block(ctx).await;
         let replica_prepare = util.new_replica_prepare();
         let leader_prepare = util
             .process_replica_prepare(ctx, util.sign(replica_prepare.clone()))

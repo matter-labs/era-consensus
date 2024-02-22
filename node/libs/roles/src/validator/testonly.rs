@@ -1,10 +1,9 @@
 //! Test-only utilities.
 use super::{
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
-    FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
-    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
-    ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorSet, View,
-    ViewNumber,
+    FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash,
+    NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
+    ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
 };
 use bit_vec::BitVec;
 use rand::{
@@ -41,7 +40,7 @@ impl Setup {
             first_block: BlockNumber(rng.gen_range(0..100)),
             first_parent: Some(rng.gen()),
         };
-        Self::new_with_fork(rng,validators,fork)
+        Self::new_with_fork(rng, validators, fork)
     }
 
     /// Next block to finalize.

@@ -1,8 +1,8 @@
 use super::{
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
-    FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
-    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
-    ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
+    FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash,
+    NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
+    ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
 };
 use crate::{node::SessionId, proto::validator as proto};
 use anyhow::Context as _;

@@ -149,8 +149,7 @@ impl BlockStore {
         let last = persistent.last(ctx).await.wrap("persistent.last()")?;
         t.observe();
         if let Some(last) = &last {
-            last.verify(&genesis)
-                .context("last.verify()")?;
+            last.verify(&genesis).context("last.verify()")?;
         }
         let state = BlockStoreState {
             first: genesis.fork.first_block,
@@ -168,7 +167,9 @@ impl BlockStore {
         });
         // Verify the first block.
         if let Some(block) = this.block(ctx, this.genesis.fork.first_block).await? {
-            block.verify(&this.genesis).with_context(|| format!("verify({:?})", this.genesis.fork.first_block))?;
+            block
+                .verify(&this.genesis)
+                .with_context(|| format!("verify({:?})", this.genesis.fork.first_block))?;
         }
         Ok((this.clone(), BlockStoreRunner(this)))
     }
@@ -217,25 +218,26 @@ impl BlockStore {
         ctx: &ctx::Ctx,
         block: validator::FinalBlock,
     ) -> ctx::Result<()> {
-        let number = block.header().number;
+        let number = block.number();
         {
             let sub = &mut self.subscribe();
             let queued_state =
                 sync::wait_for(ctx, sub, |queued_state| queued_state.next() >= number).await?;
-            if queued_state.next() != number {
+            if queued_state.next() > number {
                 return Ok(());
             }
-            if queued_state.last.as_ref().map(|qc| qc.header().hash()) != block.header().parent {
-                return Err(
-                    anyhow::format_err!("block.parent doesn't match the previous block").into(),
-                );
+            block.verify(&self.genesis).context("block.verify()")?;
+            // Verify parent hash, if previous block is available.
+            if let Some(last) = queued_state.last.as_ref() {
+                if Some(last.header().hash()) != block.header().parent {
+                    return Err(anyhow::format_err!(
+                        "block.parent = {:?}, want {:?}",
+                        block.header().parent,
+                        last.header().hash()
+                    )
+                    .into());
+                }
             }
-            // Verify the message without verifying the signatures, to avoid doing it twice.
-            // TODO(gprusak): consider moving the signature verification here for resiliency.
-            block
-                .justification
-                .message
-                .verify(&self.genesis)?;
         }
         self.inner.send_if_modified(|inner| {
             let modified = inner.queued_state.send_if_modified(|queued_state| {

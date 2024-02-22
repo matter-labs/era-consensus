@@ -50,15 +50,13 @@ impl ReplicaPrepare {
             if self.view.number <= v.view.number {
                 return Err(Error::HighVoteFutureView);
             }
-            v.verify(genesis)
-                .map_err(Error::HighVote)?;
+            v.verify(genesis).map_err(Error::HighVote)?;
         }
         if let Some(qc) = &self.high_qc {
             if self.view.number <= qc.view().number {
                 return Err(Error::HighQCFutureView);
             }
-            qc.verify(genesis)
-                .map_err(Error::HighQC)?;
+            qc.verify(genesis).map_err(Error::HighQC)?;
         }
         Ok(())
     }

@@ -192,10 +192,6 @@ fn expected(res: Result<(), mux::RunError>) -> Result<(), mux::RunError> {
 // * multiple capabilities are used at the same time.
 // * ends use totally different configs
 // * messages are larger than frames
-//
-// TODO(gprusak): in case the test fails it may be hard to find the actual bug, because
-// this test covers a lot of features. In such situation more specific tests
-// checking 1 property at a time should be added.
 #[test]
 fn mux_with_noise() {
     abort_on_panic();
