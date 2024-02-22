@@ -19,21 +19,31 @@ use tokio_retry::Retry;
 use tracing::log::info;
 use zksync_protobuf::serde::Serde;
 
+/// Docker image name for consensus nodes.
+const DOCKER_IMAGE_NAME: &str = "consensus-node";
+
+/// K8s namespace for consensus nodes.
+pub const DEFAULT_NAMESPACE: &str = "consensus";
+
 /// Get a kube client
 pub async fn get_client() -> anyhow::Result<Client> {
     Ok(Client::try_default().await?)
 }
 
-/// Get a kube client
+/// Get the IP addresses and the exposed port of the RPC server of the consensus nodes in the kubernetes cluster.
 pub async fn get_consensus_node_ips(client: &Client) -> anyhow::Result<Vec<SocketAddr>> {
-    let pods: Api<Pod> = Api::namespaced(client.clone(), "consensus");
+    let pods: Api<Pod> = Api::namespaced(client.clone(), DEFAULT_NAMESPACE);
     let lp = ListParams::default();
     let pod = pods.list(&lp).await?;
     let a: Result<Vec<SocketAddr>, _> = pod
         .into_iter()
         .filter(|pod| {
-            if let Some(pod) = pod.clone().metadata.name {
-                pod.contains("consensus-node")
+            let docker_image = pod
+                .spec
+                .clone()
+                .and_then(|spec: PodSpec| spec.containers[0].clone().image);
+            if let Some(docker_image) = docker_image {
+                docker_image.contains(DOCKER_IMAGE_NAME)
             } else {
                 false
             }
@@ -105,7 +115,7 @@ pub async fn create_tests_deployment(client: &Client) -> anyhow::Result<()> {
     let deployment: Deployment = Deployment {
         metadata: ObjectMeta {
             name: Some("tests-deployment".to_string()),
-            namespace: Some("consensus".to_string()),
+            namespace: Some(DEFAULT_NAMESPACE.to_string()),
             labels: Some(
                 [("app".to_string(), "test-node".to_string())]
                     .iter()
@@ -151,7 +161,7 @@ pub async fn create_tests_deployment(client: &Client) -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    let deployments: Api<Deployment> = Api::namespaced(client.clone(), "consensus");
+    let deployments: Api<Deployment> = Api::namespaced(client.clone(), DEFAULT_NAMESPACE);
     let post_params = PostParams::default();
     let result = deployments.create(&post_params, &deployment).await?;
 
@@ -201,7 +211,7 @@ pub async fn deploy_node(
                 "containers": [
                   {
                     "name": node_name,
-                    "image": "consensus-node",
+                    "image": DOCKER_IMAGE_NAME,
                     "env": [
                       {
                         "name": "NODE_ID",
