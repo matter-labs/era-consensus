@@ -13,7 +13,7 @@ use kube::{
     Api, Client, ResourceExt,
 };
 use serde_json::json;
-use std::{collections::HashMap, net::SocketAddr, str::FromStr};
+use std::{collections::HashMap, net::SocketAddr};
 use tokio_retry::strategy::FixedInterval;
 use tokio_retry::Retry;
 use tracing::log::info;
@@ -34,18 +34,18 @@ pub async fn get_client() -> anyhow::Result<Client> {
 pub async fn get_consensus_node_ips(client: &Client) -> anyhow::Result<Vec<SocketAddr>> {
     let pods: Api<Pod> = Api::namespaced(client.clone(), DEFAULT_NAMESPACE);
     let lp = ListParams::default();
-    let pod = pods.list(&lp).await?;
+    let pods = pods.list(&lp).await?;
     ensure!(
-        !pod.items.is_empty(),
+        !pods.items.is_empty(),
         "No consensus pods found in the k8s cluster"
     );
-    let a: Result<Vec<SocketAddr>, _> = pod
+    let pods_addresses: Result<Vec<SocketAddr>, _> = pods
         .into_iter()
         .filter(|pod| {
             let docker_image = pod
                 .spec
                 .clone()
-                .and_then(|spec: PodSpec| spec.containers[0].clone().image);
+                .and_then(|spec| spec.containers[0].clone().image);
             if let Some(docker_image) = docker_image {
                 docker_image.contains(DOCKER_IMAGE_NAME)
             } else {
@@ -53,8 +53,8 @@ pub async fn get_consensus_node_ips(client: &Client) -> anyhow::Result<Vec<Socke
             }
         })
         .map(|pod| {
-            let pod_ip = pod.status.and_then(|status: PodStatus| status.pod_ip);
-            let port = pod.spec.and_then(|spec: PodSpec| {
+            let pod_ip = pod.status.and_then(|status| status.pod_ip);
+            let port = pod.spec.and_then(|spec| {
                 spec.containers[0].clone().ports.and_then(|ports| {
                     ports
                         .iter()
@@ -62,15 +62,12 @@ pub async fn get_consensus_node_ips(client: &Client) -> anyhow::Result<Vec<Socke
                         .map(|port| port.container_port)
                 })
             });
-            if let Some((pod_ip, port)) = pod_ip.zip(port) {
-                let pod_addr = format!("{}:{}", pod_ip, port);
-                SocketAddr::from_str(&pod_addr).map_err(|e| e.into())
-            } else {
-                bail!("Consensus Pod IP or port not found");
-            }
+            let pod_ip = pod_ip.context("pod_ip")?;
+            let port: u16 = port.context("port")?.try_into().context("port")?;
+            Ok(SocketAddr::new(pod_ip.parse()?, port))
         })
         .collect();
-    a
+    pods_addresses
 }
 
 /// Creates a namespace in k8s cluster
@@ -120,33 +117,18 @@ pub async fn create_tests_deployment(client: &Client) -> anyhow::Result<()> {
         metadata: ObjectMeta {
             name: Some("tests-deployment".to_string()),
             namespace: Some(DEFAULT_NAMESPACE.to_string()),
-            labels: Some(
-                [("app".to_string(), "test-node".to_string())]
-                    .iter()
-                    .cloned()
-                    .collect(),
-            ),
+            labels: Some([("app".to_string(), "test-node".to_string())].into()),
             ..Default::default()
         },
         spec: Some(DeploymentSpec {
             selector: LabelSelector {
-                match_labels: Some(
-                    [("app".to_string(), "test-node".to_string())]
-                        .iter()
-                        .cloned()
-                        .collect(),
-                ),
+                match_labels: Some([("app".to_string(), "test-node".to_string())].into()),
                 ..Default::default()
             },
             replicas: Some(1),
             template: PodTemplateSpec {
                 metadata: Some(ObjectMeta {
-                    labels: Some(
-                        [("app".to_string(), "test-node".to_string())]
-                            .iter()
-                            .cloned()
-                            .collect(),
-                    ),
+                    labels: Some([("app".to_string(), "test-node".to_string())].into()),
                     ..Default::default()
                 }),
                 spec: Some(PodSpec {
