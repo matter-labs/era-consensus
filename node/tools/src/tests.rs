@@ -15,22 +15,23 @@ fn make_addr<R: Rng + ?Sized>(rng: &mut R) -> std::net::SocketAddr {
 
 impl Distribution<AppConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AppConfig {
-        let (mut config, _) = AppConfig::default_for(1);
-        config
-            .with_server_addr(make_addr(rng))
-            .with_public_addr(make_addr(rng))
-            .with_metrics_server_addr(make_addr(rng))
-            .with_gossip_dynamic_inbound_limit(rng.gen())
-            .with_gossip_dynamic_inbound_limit(rng.gen())
-            .with_max_payload_size(rng.gen());
-        (0..5).for_each(|_| {
-            let _ = config.add_gossip_static_inbound(rng.gen::<node::SecretKey>().public());
-        });
-        (0..6).for_each(|_| {
-            let _ = config
-                .add_gossip_static_outbound(rng.gen::<node::SecretKey>().public(), make_addr(rng));
-        });
-        config
+        AppConfig {
+            server_addr: make_addr(rng),
+            public_addr: make_addr(rng),
+            metrics_server_addr: Some(make_addr(rng)),
+
+            validators: rng.gen(),
+            genesis_block: rng.gen(),
+
+            gossip_dynamic_inbound_limit: rng.gen(),
+            gossip_static_inbound: (0..5)
+                .map(|_| rng.gen::<node::SecretKey>().public())
+                .collect(),
+            gossip_static_outbound: (0..6)
+                .map(|_| (rng.gen::<node::SecretKey>().public(), make_addr(rng)))
+                .collect(),
+            max_payload_size: rng.gen(),
+        }
     }
 }
 
