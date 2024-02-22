@@ -44,7 +44,9 @@ fn get_config_path() -> PathBuf {
 /// Generate a config file with the IPs of the consensus nodes in the kubernetes cluster.
 pub async fn generate_config() -> anyhow::Result<()> {
     let client = k8s::get_client().await?;
-    let pods_ip = k8s::get_consensus_node_ips(&client).await?;
+    let pods_ip = k8s::get_consensus_nodes_address(&client)
+        .await
+        .context("Failed to get consensus pods address")?;
     let config_file_path = get_config_path();
     for addr in pods_ip {
         let mut config_file = fs::OpenOptions::new()
@@ -52,7 +54,9 @@ pub async fn generate_config() -> anyhow::Result<()> {
             .create(true)
             .truncate(true)
             .open(&config_file_path)?;
-        config_file.write_all(addr.to_string().as_bytes())?;
+        config_file
+            .write_all(addr.to_string().as_bytes())
+            .with_context(|| "Failed to write to config file")?;
     }
     Ok(())
 }

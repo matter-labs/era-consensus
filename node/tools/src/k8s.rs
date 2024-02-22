@@ -1,9 +1,9 @@
 use crate::{config, NodeAddr};
-use anyhow::{anyhow, bail, ensure, Context};
+use anyhow::{anyhow, ensure, Context};
 use k8s_openapi::{
     api::{
         apps::v1::{Deployment, DeploymentSpec},
-        core::v1::{Container, Namespace, Pod, PodSpec, PodStatus, PodTemplateSpec},
+        core::v1::{Container, Namespace, Pod, PodSpec, PodTemplateSpec},
     },
     apimachinery::pkg::apis::meta::v1::LabelSelector,
 };
@@ -31,7 +31,7 @@ pub async fn get_client() -> anyhow::Result<Client> {
 }
 
 /// Get the IP addresses and the exposed port of the RPC server of the consensus nodes in the kubernetes cluster.
-pub async fn get_consensus_node_ips(client: &Client) -> anyhow::Result<Vec<SocketAddr>> {
+pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<SocketAddr>> {
     let pods: Api<Pod> = Api::namespaced(client.clone(), DEFAULT_NAMESPACE);
     let lp = ListParams::default();
     let pods = pods.list(&lp).await?;
@@ -39,35 +39,44 @@ pub async fn get_consensus_node_ips(client: &Client) -> anyhow::Result<Vec<Socke
         !pods.items.is_empty(),
         "No consensus pods found in the k8s cluster"
     );
-    let pods_addresses: Result<Vec<SocketAddr>, _> = pods
+    let pod_addresses: Vec<SocketAddr> = pods
         .into_iter()
-        .filter(|pod| {
-            let docker_image = pod
-                .spec
-                .clone()
-                .and_then(|spec| spec.containers[0].clone().image);
-            if let Some(docker_image) = docker_image {
-                docker_image.contains(DOCKER_IMAGE_NAME)
+        .filter_map(|pod| {
+            let pod_spec = pod.spec.clone().context("Failed to get pod spec").ok()?;
+            let pod_running_container = pod_spec
+                .containers
+                .first()
+                .context("Failed to get pod container")
+                .ok()?
+                .to_owned();
+            let docker_image = pod_running_container
+                .image
+                .context("Failed to get pod docker image")
+                .ok()?;
+
+            if docker_image.contains(DOCKER_IMAGE_NAME) {
+                let pod_ip = pod
+                    .status
+                    .context("Failed to get pod status")
+                    .ok()?
+                    .pod_ip
+                    .context("Failed to get pod ip")
+                    .ok()?;
+                let port = pod_running_container.ports?.iter().find_map(|port| {
+                    let port = port.container_port.try_into().ok()?;
+                    (port != config::NODES_PORT).then_some(port)
+                });
+                Some(SocketAddr::new(pod_ip.parse().ok()?, port?))
             } else {
-                false
+                None
             }
         })
-        .map(|pod| {
-            let pod_ip = pod.status.and_then(|status| status.pod_ip);
-            let port = pod.spec.and_then(|spec| {
-                spec.containers[0].clone().ports.and_then(|ports| {
-                    ports
-                        .iter()
-                        .find(|port| port.container_port != config::NODES_PORT as i32)
-                        .map(|port| port.container_port)
-                })
-            });
-            let pod_ip = pod_ip.context("pod_ip")?;
-            let port: u16 = port.context("port")?.try_into().context("port")?;
-            Ok(SocketAddr::new(pod_ip.parse()?, port))
-        })
         .collect();
-    pods_addresses
+    ensure!(
+        !pod_addresses.is_empty(),
+        "No consensus pods found in the k8s cluster"
+    );
+    Ok(pod_addresses)
 }
 
 /// Creates a namespace in k8s cluster
