@@ -1,11 +1,10 @@
 //! Test-only utilities.
 use super::{
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
-    FinalBlock, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
-    PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature,
-    Signed, Signers, ValidatorSet, ViewNumber,
+    FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash,
+    NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
+    ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
 };
-use anyhow::{bail, Context};
 use bit_vec::BitVec;
 use rand::{
     distributions::{Distribution, Standard},
@@ -15,114 +14,75 @@ use std::sync::Arc;
 use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
 
-/// Constructs a CommitQC with `CommitQC.message.proposal` matching header.
-/// WARNING: it is not a fully correct CommitQC.
-pub fn make_justification<R: Rng>(
-    rng: &mut R,
-    header: &BlockHeader,
-    protocol_version: ProtocolVersion,
-) -> CommitQC {
-    CommitQC {
-        message: ReplicaCommit {
-            protocol_version,
-            view: ViewNumber(header.number.0),
-            proposal: *header,
-        },
-        signers: rng.gen(),
-        signature: rng.gen(),
-    }
-}
-
-impl<'a> BlockBuilder<'a> {
-    /// Builds `GenesisSetup`.
-    pub fn push(self) {
-        let msgs: Vec<_> = self
-            .setup
-            .keys
-            .iter()
-            .map(|sk| sk.sign_msg(self.msg))
-            .collect();
-        let justification = CommitQC::from(&msgs, &self.setup.validator_set()).unwrap();
-        self.setup.blocks.push(FinalBlock {
-            payload: self.payload,
-            justification,
-        });
-    }
-
-    /// Sets `protocol_version`.
-    pub fn protocol_version(mut self, protocol_version: ProtocolVersion) -> Self {
-        self.msg.protocol_version = protocol_version;
-        self
-    }
-
-    /// Sets `block_number`.
-    pub fn block_number(mut self, block_number: BlockNumber) -> Self {
-        self.msg.proposal.number = block_number;
-        self
-    }
-
-    /// Sets `payload`.
-    pub fn payload(mut self, payload: Payload) -> Self {
-        self.msg.proposal.payload = payload.hash();
-        self.payload = payload;
-        self
-    }
-}
-
-/// GenesisSetup.
+/// Test setup.
 #[derive(Debug, Clone)]
-pub struct GenesisSetup {
-    /// Validators' secret keys.
-    pub keys: Vec<SecretKey>,
-    /// Initial blocks.
-    pub blocks: Vec<FinalBlock>,
-}
+pub struct Setup(SetupInner);
 
-/// Builder of GenesisSetup.
-pub struct BlockBuilder<'a> {
-    setup: &'a mut GenesisSetup,
-    msg: ReplicaCommit,
-    payload: Payload,
-}
-
-impl GenesisSetup {
-    /// Constructs GenesisSetup with no blocks.
-    pub fn empty(rng: &mut impl Rng, validators: usize) -> Self {
-        Self {
-            keys: (0..validators).map(|_| rng.gen()).collect(),
+impl Setup {
+    /// New `Setup` with a given `fork`.
+    pub fn new_with_fork(rng: &mut impl Rng, validators: usize, fork: Fork) -> Self {
+        let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
+        let genesis = Genesis {
+            validators: ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap(),
+            fork,
+        };
+        Self(SetupInner {
+            keys,
+            genesis,
             blocks: vec![],
-        }
+        })
     }
 
-    /// Constructs GenesisSetup with genesis block.
+    /// New `Setup`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
-        let mut this = Self::empty(rng, validators);
-        this.push_block(rng.gen());
-        this
+        let fork = Fork {
+            number: ForkNumber(rng.gen_range(0..100)),
+            first_block: BlockNumber(rng.gen_range(0..100)),
+            first_parent: Some(rng.gen()),
+        };
+        Self::new_with_fork(rng, validators, fork)
     }
 
-    /// Returns a builder for the next block.
-    pub fn next_block(&mut self) -> BlockBuilder {
-        let parent = self.blocks.last().map(|b| b.justification.message);
-        let payload = Payload(vec![]);
-        BlockBuilder {
-            setup: self,
-            msg: ReplicaCommit {
-                protocol_version: parent
-                    .map(|m| m.protocol_version)
-                    .unwrap_or(ProtocolVersion::EARLIEST),
-                view: parent.map(|m| m.view.next()).unwrap_or(ViewNumber(0)),
-                proposal: parent
-                    .map(|m| BlockHeader::new(&m.proposal, payload.hash()))
-                    .unwrap_or(BlockHeader::genesis(payload.hash(), BlockNumber(0))),
-            },
-            payload,
+    /// Next block to finalize.
+    pub fn next(&self) -> BlockNumber {
+        match self.0.blocks.last() {
+            Some(b) => b.header().number.next(),
+            None => self.0.genesis.fork.first_block,
         }
     }
 
     /// Pushes the next block with the given payload.
     pub fn push_block(&mut self, payload: Payload) {
-        self.next_block().payload(payload).push();
+        let view = View {
+            protocol_version: ProtocolVersion::EARLIEST,
+            fork: self.genesis.fork.number,
+            number: self
+                .0
+                .blocks
+                .last()
+                .map(|b| b.justification.view().number.next())
+                .unwrap_or(ViewNumber(0)),
+        };
+        let proposal = match self.0.blocks.last() {
+            Some(b) => BlockHeader::next(b.header(), payload.hash()),
+            None => BlockHeader {
+                parent: self.genesis.fork.first_parent,
+                number: self.genesis.fork.first_block,
+                payload: payload.hash(),
+            },
+        };
+        let msg = ReplicaCommit { view, proposal };
+        let mut justification = CommitQC::new(msg, &self.0.genesis);
+        for key in &self.0.keys {
+            justification.add(
+                &key.sign_msg(justification.message.clone()),
+                &self.0.genesis,
+            );
+        }
+        self.0.blocks.push(FinalBlock {
+            payload,
+            justification,
+        });
     }
 
     /// Pushes `count` blocks with a random payload.
@@ -132,36 +92,28 @@ impl GenesisSetup {
         }
     }
 
-    /// ValidatorSet.
-    pub fn validator_set(&self) -> ValidatorSet {
-        ValidatorSet::new(self.keys.iter().map(|k| k.public())).unwrap()
+    /// Finds the block by the number.
+    pub fn block(&self, n: BlockNumber) -> Option<&FinalBlock> {
+        let first = self.0.blocks.first()?.number();
+        self.0.blocks.get(n.0.checked_sub(first.0)? as usize)
     }
 }
 
-/// Constructs a genesis block with random payload.
-pub fn make_genesis_block(rng: &mut impl Rng, protocol_version: ProtocolVersion) -> FinalBlock {
-    let mut setup = GenesisSetup::new(rng, 3);
-    setup
-        .next_block()
-        .protocol_version(protocol_version)
-        .payload(rng.gen())
-        .push();
-    setup.blocks[0].clone()
+/// Setup.
+#[derive(Debug, Clone)]
+pub struct SetupInner {
+    /// Validators' secret keys.
+    pub keys: Vec<SecretKey>,
+    /// Past blocks.
+    pub blocks: Vec<FinalBlock>,
+    /// Genesis config.
+    pub genesis: Genesis,
 }
 
-/// Constructs a random block with a given parent.
-/// WARNING: this is not a fully correct FinalBlock.
-pub fn make_block<R: Rng>(
-    rng: &mut R,
-    parent: &BlockHeader,
-    protocol_version: ProtocolVersion,
-) -> FinalBlock {
-    let payload: Payload = rng.gen();
-    let header = BlockHeader::new(parent, payload.hash());
-    let justification = make_justification(rng, &header, protocol_version);
-    FinalBlock {
-        payload,
-        justification,
+impl std::ops::Deref for Setup {
+    type Target = SetupInner;
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
@@ -173,69 +125,6 @@ impl AggregateSignature {
             agg.add(sig);
         }
         agg
-    }
-}
-
-impl PrepareQC {
-    /// Creates a new PrepareQC from a list of *signed* replica Prepare messages and the current validator set.
-    pub fn from(
-        signed_messages: &[Signed<ReplicaPrepare>],
-        validators: &ValidatorSet,
-    ) -> anyhow::Result<Self> {
-        // Get the view number from the messages, they must all be equal.
-        let view = signed_messages
-            .first()
-            .context("Empty signed messages vector")?
-            .msg
-            .view;
-
-        // Create the messages map.
-        let mut prepare_qc = PrepareQC::default();
-
-        for signed_message in signed_messages {
-            if signed_message.msg.view != view {
-                bail!("Signed messages aren't all for the same view.");
-            }
-
-            // Get index of the validator in the validator set.
-            let index = validators
-                .index(&signed_message.key)
-                .context("Message signer isn't in the validator set")?;
-
-            prepare_qc.add(signed_message, index, validators);
-        }
-
-        Ok(prepare_qc)
-    }
-}
-
-impl CommitQC {
-    /// Creates a new CommitQC from a list of *signed* replica Commit messages and the current validator set.
-    /// * `signed_messages` - A list of valid `ReplicaCommit` signed messages. Must contain at least one item.
-    /// * `validators` - The validator set.
-    pub fn from(
-        signed_messages: &[Signed<ReplicaCommit>],
-        validators: &ValidatorSet,
-    ) -> anyhow::Result<Self> {
-        // Store the signed messages in a Hashmap.
-        let message = signed_messages[0].msg;
-        let mut commit_qc = CommitQC::new(message, validators);
-
-        for signed_message in signed_messages {
-            // Check that the votes are all for the same message.
-            if signed_message.msg != message {
-                bail!("CommitQC can only be created from votes for the same message.");
-            }
-
-            // Get index of the validator in the validator set.
-            let validator_index = validators
-                .index(&signed_message.key)
-                .context("Message signer isn't in the validator set")?;
-
-            commit_qc.add(&signed_message.sig, validator_index);
-        }
-
-        Ok(commit_qc)
     }
 }
 
@@ -272,6 +161,37 @@ impl Distribution<BlockNumber> for Standard {
 impl Distribution<ProtocolVersion> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ProtocolVersion {
         ProtocolVersion(rng.gen())
+    }
+}
+
+impl Distribution<ForkNumber> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ForkNumber {
+        ForkNumber(rng.gen())
+    }
+}
+
+impl Distribution<GenesisHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisHash {
+        GenesisHash(rng.gen())
+    }
+}
+
+impl Distribution<Fork> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Fork {
+        Fork {
+            number: rng.gen(),
+            first_block: rng.gen(),
+            first_parent: Some(rng.gen()),
+        }
+    }
+}
+
+impl Distribution<Genesis> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
+        Genesis {
+            validators: rng.gen(),
+            fork: rng.gen(),
+        }
     }
 }
 
@@ -316,7 +236,6 @@ impl Distribution<FinalBlock> for Standard {
 impl Distribution<ReplicaPrepare> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaPrepare {
         ReplicaPrepare {
-            protocol_version: rng.gen(),
             view: rng.gen(),
             high_vote: rng.gen(),
             high_qc: rng.gen(),
@@ -327,7 +246,6 @@ impl Distribution<ReplicaPrepare> for Standard {
 impl Distribution<ReplicaCommit> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaCommit {
         ReplicaCommit {
-            protocol_version: rng.gen(),
             view: rng.gen(),
             proposal: rng.gen(),
         }
@@ -337,8 +255,6 @@ impl Distribution<ReplicaCommit> for Standard {
 impl Distribution<LeaderPrepare> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderPrepare {
         LeaderPrepare {
-            protocol_version: rng.gen(),
-            view: rng.gen(),
             proposal: rng.gen(),
             proposal_payload: rng.gen(),
             justification: rng.gen(),
@@ -349,7 +265,6 @@ impl Distribution<LeaderPrepare> for Standard {
 impl Distribution<LeaderCommit> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderCommit {
         LeaderCommit {
-            protocol_version: rng.gen(),
             justification: rng.gen(),
         }
     }
@@ -361,6 +276,7 @@ impl Distribution<PrepareQC> for Standard {
         let map = (0..n).map(|_| (rng.gen(), rng.gen())).collect();
 
         PrepareQC {
+            view: rng.gen(),
             map,
             signature: rng.gen(),
         }
@@ -394,6 +310,16 @@ impl Distribution<ValidatorSet> for Standard {
 impl Distribution<ViewNumber> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ViewNumber {
         ViewNumber(rng.gen())
+    }
+}
+
+impl Distribution<View> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> View {
+        View {
+            protocol_version: rng.gen(),
+            fork: rng.gen(),
+            number: rng.gen(),
+        }
     }
 }
 

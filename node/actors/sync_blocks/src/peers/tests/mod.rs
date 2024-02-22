@@ -1,5 +1,4 @@
 use super::*;
-use crate::tests::test_config;
 use assert_matches::assert_matches;
 use async_trait::async_trait;
 use rand::{seq::IteratorRandom, Rng};
@@ -16,7 +15,6 @@ use zksync_consensus_storage::testonly::new_store;
 mod basics;
 mod fakes;
 mod multiple_peers;
-mod snapshots;
 
 const TEST_TIMEOUT: time::Duration = time::Duration::seconds(5);
 const BLOCK_SLEEP_INTERVAL: time::Duration = time::Duration::milliseconds(5);
@@ -33,7 +31,7 @@ async fn wait_for_event(
 #[derive(Debug)]
 struct TestHandles {
     clock: ctx::ManualClock,
-    setup: validator::testonly::GenesisSetup,
+    setup: validator::testonly::Setup,
     peer_states: Arc<PeerStates>,
     storage: Arc<BlockStore>,
     message_receiver: channel::UnboundedReceiver<io::OutputMessage>,
@@ -43,17 +41,18 @@ struct TestHandles {
 #[async_trait]
 trait Test: fmt::Debug + Send + Sync {
     const BLOCK_COUNT: usize;
+    // TODO: move this to genesis
     const GENESIS_BLOCK_NUMBER: usize = 0;
 
-    fn tweak_config(&self, _config: &mut Config) {
-        // Does nothing by default
+    fn config(&self) -> Config {
+        Config::new()
     }
 
     async fn initialize_storage(
         &self,
         _ctx: &ctx::Ctx,
         _storage: &BlockStore,
-        _setup: &validator::testonly::GenesisSetup,
+        _setup: &validator::testonly::Setup,
     ) {
         // Does nothing by default
     }
@@ -69,16 +68,14 @@ async fn test_peer_states<T: Test>(test: T) {
     let clock = ctx::ManualClock::new();
     let ctx = &ctx::test_root(&clock);
     let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::GenesisSetup::new(rng, 4);
+    let mut setup = validator::testonly::Setup::new(rng, 4);
     setup.push_blocks(rng, T::BLOCK_COUNT);
-    let (store, store_run) = new_store(ctx, &setup.blocks[T::GENESIS_BLOCK_NUMBER]).await;
+    let (store, store_run) = new_store(ctx, &setup.genesis).await;
     test.initialize_storage(ctx, store.as_ref(), &setup).await;
 
     let (message_sender, message_receiver) = channel::unbounded();
     let (events_sender, events_receiver) = channel::unbounded();
-    let mut config = test_config(&setup);
-    test.tweak_config(&mut config);
-    let mut peer_states = PeerStates::new(config, store.clone(), message_sender);
+    let mut peer_states = PeerStates::new(test.config(), store.clone(), message_sender);
     peer_states.events_sender = Some(events_sender);
     let peer_states = Arc::new(peer_states);
     let test_handles = TestHandles {

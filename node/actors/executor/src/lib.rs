@@ -6,7 +6,7 @@ use std::{
     fmt,
     sync::Arc,
 };
-use zksync_concurrency::{ctx, net, scope};
+use zksync_concurrency::{ctx, net, scope, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
@@ -16,16 +16,13 @@ use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
 mod io;
-pub mod testonly;
 #[cfg(test)]
 mod tests;
-
-pub use network::consensus::Config as ValidatorConfig;
 
 /// Validator-related part of [`Executor`].
 pub struct Validator {
     /// Consensus network configuration.
-    pub config: ValidatorConfig,
+    pub key: validator::SecretKey,
     /// Store for replica state.
     pub replica_store: Box<dyn ReplicaStore>,
     /// Payload manager.
@@ -35,7 +32,7 @@ pub struct Validator {
 impl fmt::Debug for Validator {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("ValidatorExecutor")
-            .field("config", &self.config)
+            .field("key", &self.key)
             .finish()
     }
 }
@@ -46,9 +43,9 @@ pub struct Config {
     /// IP:port to listen on, for incoming TCP connections.
     /// Use `0.0.0.0:<port>` to listen on all network interfaces (i.e. on all IPs exposed by this VM).
     pub server_addr: std::net::SocketAddr,
-    /// Static specification of validators for Proof of Authority. Should be deprecated once we move
-    /// to Proof of Stake.
-    pub validators: validator::ValidatorSet,
+    /// Public TCP address that other nodes are expected to connect to.
+    /// It is announced over gossip network.
+    pub public_addr: std::net::SocketAddr,
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
 
@@ -67,8 +64,8 @@ pub struct Config {
 
 impl Config {
     /// Returns gossip network configuration.
-    pub(crate) fn gossip(&self) -> network::gossip::Config {
-        network::gossip::Config {
+    pub(crate) fn gossip(&self) -> network::GossipConfig {
+        network::GossipConfig {
             key: self.node_key.clone(),
             dynamic_inbound_limit: self.gossip_dynamic_inbound_limit,
             static_inbound: self.gossip_static_inbound.clone(),
@@ -93,11 +90,12 @@ impl Executor {
     fn network_config(&self) -> network::Config {
         network::Config {
             server_addr: net::tcp::ListenerAddr::new(self.config.server_addr),
-            validators: self.config.validators.clone(),
+            public_addr: self.config.public_addr,
             gossip: self.config.gossip(),
-            consensus: self.validator.as_ref().map(|v| v.config.clone()),
-            enable_pings: true,
+            validator_key: self.validator.as_ref().map(|v| v.key.clone()),
+            ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
+            rpc: network::RpcConfig::default(),
         }
     }
 
@@ -105,10 +103,11 @@ impl Executor {
     fn verify(&self) -> anyhow::Result<()> {
         if let Some(validator) = self.validator.as_ref() {
             if !self
-                .config
+                .block_store
+                .genesis()
                 .validators
                 .iter()
-                .any(|key| key == &validator.config.key.public())
+                .any(|key| key == &validator.key.public())
             {
                 anyhow::bail!("this validator doesn't belong to the consensus");
             }
@@ -132,26 +131,24 @@ impl Executor {
             network_dispatcher_pipe,
         );
 
-        // Create each of the actors.
-        let validator_set = self.config.validators;
-
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
             s.spawn_blocking(|| dispatcher.run(ctx).context("IO Dispatcher stopped"));
             s.spawn(async {
-                let state = network::State::new(network_config, self.block_store.clone(), None)
-                    .context("Invalid network config")?;
-                state.register_metrics();
-                network::run_network(ctx, state, network_actor_pipe)
-                    .await
-                    .context("Network stopped")
+                let (net, runner) = network::Network::new(
+                    ctx,
+                    network_config,
+                    self.block_store.clone(),
+                    network_actor_pipe,
+                );
+                net.register_metrics();
+                runner.run(ctx).await.context("Network stopped")
             });
             if let Some(validator) = self.validator {
                 s.spawn(async {
                     let validator = validator;
                     bft::Config {
-                        secret_key: validator.config.key.clone(),
-                        validator_set: validator_set.clone(),
+                        secret_key: validator.key.clone(),
                         block_store: self.block_store.clone(),
                         replica_store: validator.replica_store,
                         payload_manager: validator.payload_manager,
@@ -162,13 +159,10 @@ impl Executor {
                     .context("Consensus stopped")
                 });
             }
-            sync_blocks::Config::new(
-                validator_set.clone(),
-                bft::misc::consensus_threshold(validator_set.len()),
-            )?
-            .run(ctx, sync_blocks_actor_pipe, self.block_store.clone())
-            .await
-            .context("Syncing blocks stopped")
+            sync_blocks::Config::new()
+                .run(ctx, sync_blocks_actor_pipe, self.block_store.clone())
+                .await
+                .context("Syncing blocks stopped")
         })
         .await
     }

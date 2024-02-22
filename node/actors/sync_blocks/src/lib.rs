@@ -28,7 +28,7 @@ impl Config {
     ) -> anyhow::Result<()> {
         let peer_states = PeerStates::new(self, storage.clone(), pipe.send);
         let result: ctx::Result<()> = scope::run!(ctx, |ctx, s| async {
-            s.spawn_bg(async { Ok(peer_states.run_block_fetcher(ctx).await?) });
+            s.spawn_bg(async { peer_states.run_block_fetcher(ctx).await });
             loop {
                 match pipe.recv.recv(ctx).await? {
                     InputMessage::Network(SyncBlocksRequest::UpdatePeerSyncState {

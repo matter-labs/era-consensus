@@ -1,17 +1,12 @@
 //! Testonly utilities.
 #![allow(dead_code)]
-use crate::{consensus, event::Event, gossip, Config, State};
+use crate::{Config, GossipConfig, Network, RpcConfig, Runner};
 use rand::Rng;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use zksync_concurrency::{
-    ctx,
-    ctx::channel,
-    io, net, scope,
-    sync::{self},
-};
+use zksync_concurrency::{ctx, ctx::channel, io, net, scope, sync};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe;
@@ -45,9 +40,7 @@ pub(crate) async fn forward(
 /// events channel.
 pub struct Instance {
     /// State of the instance.
-    pub(crate) state: Arc<State>,
-    /// Stream of events.
-    pub(crate) events: channel::UnboundedReceiver<Event>,
+    pub(crate) net: Arc<Network>,
     /// Termination signal that can be sent to the node.
     pub(crate) terminate: channel::Sender<()>,
     /// Dispatcher end of the network pipe.
@@ -55,30 +48,28 @@ pub struct Instance {
 }
 
 /// Construct configs for `n` validators of the consensus.
-pub fn new_configs<R: Rng>(
-    rng: &mut R,
-    setup: &validator::testonly::GenesisSetup,
+pub fn new_configs(
+    rng: &mut impl Rng,
+    setup: &validator::testonly::Setup,
     gossip_peers: usize,
 ) -> Vec<Config> {
     let configs = setup.keys.iter().map(|key| {
         let addr = net::tcp::testonly::reserve_listener();
         Config {
             server_addr: addr,
-            validators: setup.validator_set(),
+            public_addr: *addr,
             // Pings are disabled in tests by default to avoid dropping connections
             // due to timeouts.
-            enable_pings: false,
-            consensus: Some(consensus::Config {
-                key: key.clone(),
-                public_addr: *addr,
-            }),
-            gossip: gossip::Config {
+            ping_timeout: None,
+            validator_key: Some(key.clone()),
+            gossip: GossipConfig {
                 key: rng.gen(),
-                dynamic_inbound_limit: setup.keys.len(),
+                dynamic_inbound_limit: usize::MAX,
                 static_inbound: HashSet::default(),
                 static_outbound: HashMap::default(),
             },
             max_block_size: usize::MAX,
+            rpc: RpcConfig::default(),
         }
     });
     let mut cfgs: Vec<_> = configs.collect();
@@ -95,18 +86,39 @@ pub fn new_configs<R: Rng>(
     cfgs
 }
 
+/// Constructs a config for a non-validator node, which will
+/// establish a gossip connection to `peer`.
+pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
+    let addr = net::tcp::testonly::reserve_listener();
+    Config {
+        server_addr: addr,
+        public_addr: *addr,
+        // Pings are disabled in tests by default to avoid dropping connections
+        // due to timeouts.
+        ping_timeout: None,
+        validator_key: None,
+        gossip: GossipConfig {
+            key: rng.gen(),
+            dynamic_inbound_limit: usize::MAX,
+            static_inbound: HashSet::default(),
+            static_outbound: [(peer.gossip.key.public(), peer.public_addr)].into(),
+        },
+        max_block_size: usize::MAX,
+        rpc: RpcConfig::default(),
+    }
+}
+
 /// Runner for Instance.
 pub struct InstanceRunner {
-    state: Arc<State>,
+    runner: Runner,
     terminate: channel::Receiver<()>,
-    pipe: pipe::ActorPipe<crate::io::InputMessage, crate::io::OutputMessage>,
 }
 
 impl InstanceRunner {
     /// Runs the instance background processes.
     pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         scope::run!(ctx, |ctx, s| async {
-            s.spawn_bg(crate::run_network(ctx, self.state, self.pipe));
+            s.spawn_bg(self.runner.run(ctx));
             let _ = self.terminate.recv(ctx).await;
             Ok(())
         })
@@ -118,22 +130,22 @@ impl InstanceRunner {
 
 impl Instance {
     /// Construct an instance for a given config.
-    pub fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self, InstanceRunner) {
-        let (events_send, events_recv) = channel::unbounded();
+    pub fn new(
+        ctx: &ctx::Ctx,
+        cfg: Config,
+        block_store: Arc<BlockStore>,
+    ) -> (Self, InstanceRunner) {
         let (actor_pipe, dispatcher_pipe) = pipe::new();
-        let state =
-            State::new(cfg, block_store, Some(events_send)).expect("Invalid network config");
+        let (net, runner) = Network::new(ctx, cfg, block_store, actor_pipe);
         let (terminate_send, terminate_recv) = channel::bounded(1);
         (
             Self {
-                state: state.clone(),
-                events: events_recv,
+                net,
                 pipe: dispatcher_pipe,
                 terminate: terminate_send,
             },
             InstanceRunner {
-                state: state.clone(),
-                pipe: actor_pipe,
+                runner,
                 terminate: terminate_recv,
             },
         )
@@ -154,30 +166,25 @@ impl Instance {
     }
 
     /// State getter.
-    pub fn state(&self) -> &Arc<State> {
-        &self.state
+    pub fn state(&self) -> &Arc<Network> {
+        &self.net
     }
 
-    /// Returns the consensus config for this node, assuming it is a validator.
-    pub fn consensus_config(&self) -> &consensus::Config {
-        &self
-            .state
-            .consensus
-            .as_ref()
-            .expect("Node is not a validator")
-            .cfg
+    /// Genesis.
+    pub fn genesis(&self) -> &validator::Genesis {
+        self.net.gossip.genesis()
     }
 
     /// Returns the gossip config for this node.
-    pub fn gossip_config(&self) -> &gossip::Config {
-        &self.state.gossip.cfg
+    pub fn cfg(&self) -> &Config {
+        &self.net.gossip.cfg
     }
 
     /// Wait for static outbound gossip connections to be established.
     pub async fn wait_for_gossip_connections(&self) {
-        let gossip_state = &self.state.gossip;
-        let want: HashSet<_> = gossip_state.cfg.static_outbound.keys().cloned().collect();
-        gossip_state
+        let want: HashSet<_> = self.cfg().gossip.static_outbound.keys().cloned().collect();
+        self.net
+            .gossip
             .outbound
             .subscribe()
             .wait_for(|got| want.is_subset(got.current()))
@@ -187,9 +194,9 @@ impl Instance {
 
     /// Waits for all the consensus connections to be established.
     pub async fn wait_for_consensus_connections(&self) {
-        let consensus_state = self.state.consensus.as_ref().unwrap();
+        let consensus_state = self.net.consensus.as_ref().unwrap();
 
-        let want: HashSet<_> = self.state.cfg.validators.iter().cloned().collect();
+        let want: HashSet<_> = self.genesis().validators.iter().cloned().collect();
         consensus_state
             .inbound
             .subscribe()
@@ -210,7 +217,7 @@ impl Instance {
         ctx: &ctx::Ctx,
         peer: &node::PublicKey,
     ) -> ctx::OrCanceled<()> {
-        let state = &self.state.gossip;
+        let state = &self.net.gossip;
         sync::wait_for(ctx, &mut state.inbound.subscribe(), |got| {
             !got.current().contains(peer)
         })
@@ -228,7 +235,7 @@ impl Instance {
         ctx: &ctx::Ctx,
         peer: &validator::PublicKey,
     ) -> ctx::OrCanceled<()> {
-        let state = self.state.consensus.as_ref().unwrap();
+        let state = self.net.consensus.as_ref().unwrap();
         sync::wait_for(ctx, &mut state.inbound.subscribe(), |got| {
             !got.current().contains(peer)
         })
@@ -253,8 +260,8 @@ pub async fn instant_network(
     let mut addrs = vec![];
     let nodes: Vec<_> = nodes.collect();
     for node in &nodes {
-        let key = node.consensus_config().key.public();
-        let sub = &mut node.state.gossip.validator_addrs.subscribe();
+        let key = node.cfg().validator_key.as_ref().unwrap().public();
+        let sub = &mut node.net.gossip.validator_addrs.subscribe();
         loop {
             if let Some(addr) = sync::changed(ctx, sub).await?.get(&key) {
                 addrs.push(addr.clone());
@@ -264,10 +271,10 @@ pub async fn instant_network(
     }
     // Broadcast validator addrs.
     for node in &nodes {
-        node.state
+        node.net
             .gossip
             .validator_addrs
-            .update(&node.state.cfg.validators, &addrs)
+            .update(&node.genesis().validators, &addrs)
             .await
             .unwrap();
     }
