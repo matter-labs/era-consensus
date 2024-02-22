@@ -2,12 +2,12 @@
 use crate::{proto, store};
 use anyhow::Context as _;
 use serde_json::{ser::Formatter, Serializer};
-use std::str::FromStr;
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    net::SocketAddr,
+    net::{Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
+    str::FromStr,
 };
 use zksync_concurrency::ctx;
 use zksync_consensus_bft as bft;
@@ -42,12 +42,6 @@ pub(crate) fn encode_with_serializer<T: serde::ser::Serialize, F: Formatter>(
     T::serialize(x, &mut serializer).unwrap();
     String::from_utf8(serializer.into_inner()).unwrap()
 }
-
-// pub fn encode_json<T: ProtoFmt>(x: &T) -> String {
-//     let mut s = serde_json::Serializer::pretty(vec![]);
-//     zksync_protobuf::serde::serialize(x, &mut s).unwrap();
-//     String::from_utf8(s.into_inner()).unwrap()
-// }
 
 /// Pair of (public key, ip address) for a gossip network node.
 #[derive(Debug, Clone)]
@@ -235,8 +229,8 @@ impl AppConfig {
 
         (
             Self {
-                server_addr: SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
-                public_addr: SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
+                server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
+                public_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
                 metrics_server_addr: None,
 
                 validators: genesis.validator_set(),

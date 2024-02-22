@@ -5,7 +5,6 @@ use std::{fs, path::PathBuf};
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
-use rand::Rng;
 use zksync_consensus_crypto::{Text, TextFmt};
 use zksync_consensus_roles::node::SecretKey;
 use zksync_consensus_tools::{k8s, AppConfig, NodeAddr, NODES_PORT};
@@ -51,8 +50,7 @@ fn generate_config(nodes: usize) -> anyhow::Result<()> {
     let peers = 2;
 
     // Generate the node keys for all the replicas.
-    let rng = &mut rand::thread_rng();
-    let node_keys: Vec<SecretKey> = (0..nodes).map(|_| rng.gen()).collect();
+    let node_keys: Vec<SecretKey> = (0..nodes).map(|_| SecretKey::generate()).collect();
 
     let (default_config, validator_keys) = AppConfig::default_for(nodes);
     let mut cfgs: Vec<_> = (0..nodes).map(|_| default_config.clone()).collect();
