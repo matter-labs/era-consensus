@@ -32,7 +32,7 @@ pub async fn get_client() -> anyhow::Result<Client> {
 
 /// Get the IP addresses and the exposed port of the RPC server of the consensus nodes in the kubernetes cluster.
 pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<SocketAddr>> {
-    let pods: Api<Pod> = Api::namespaced(client.clone(), DEFAULT_NAMESPACE);
+    let pods: Api<Pod> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
     let lp = ListParams::default();
     let pods = pods.list(&lp).await?;
     ensure!(
@@ -42,7 +42,7 @@ pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<
     let pod_addresses: Vec<SocketAddr> = pods
         .into_iter()
         .filter_map(|pod| {
-            let pod_spec = pod.spec.clone().context("Failed to get pod spec").ok()?;
+            let pod_spec = pod.spec.context("Failed to get pod spec").ok()?;
             let pod_running_container = pod_spec
                 .containers
                 .first()
@@ -156,7 +156,7 @@ pub async fn create_tests_deployment(client: &Client) -> anyhow::Result<()> {
         ..Default::default()
     };
 
-    let deployments: Api<Deployment> = Api::namespaced(client.clone(), DEFAULT_NAMESPACE);
+    let deployments: Api<Deployment> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
     let post_params = PostParams::default();
     let result = deployments.create(&post_params, &deployment).await?;
 
