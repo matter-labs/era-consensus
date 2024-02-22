@@ -71,6 +71,7 @@ pub async fn start_tests_pod() -> anyhow::Result<()> {
 }
 
 /// Sanity test for the RPC server.
+/// We use unwraps here because this function is intended to be used like a test.
 pub async fn sanity_test() {
     let config_file_path = get_config_path();
     let nodes_socket = fs::read_to_string(config_file_path).unwrap();
