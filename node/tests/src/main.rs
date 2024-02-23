@@ -48,14 +48,14 @@ pub async fn generate_config() -> anyhow::Result<()> {
         .await
         .context("Failed to get consensus pods address")?;
     let config_file_path = get_config_path();
+    let mut config_file = fs::OpenOptions::new()
+        .write(true)
+        .create(true)
+        .truncate(true)
+        .open(&config_file_path)?;
     for addr in pods_ip {
-        let mut config_file = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&config_file_path)?;
         config_file
-            .write_all(addr.to_string().as_bytes())
+            .write_all(format!("{}\n", addr.to_string()).as_bytes())
             .with_context(|| "Failed to write to config file")?;
     }
     Ok(())
