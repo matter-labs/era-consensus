@@ -2936,11 +2936,13 @@ dependencies = [
 name = "tester"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "clap",
  "jsonrpsee",
  "serde_json",
  "tokio",
  "tracing",
+ "tracing-subscriber",
  "zksync_consensus_tools",
 ]
 

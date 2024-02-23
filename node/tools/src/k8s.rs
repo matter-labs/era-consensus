@@ -1,43 +1,82 @@
 use crate::{config, NodeAddr};
-use anyhow::{anyhow, Context};
-use k8s_openapi::api::{
-    apps::v1::Deployment,
-    core::v1::{Namespace, Pod},
+use anyhow::{anyhow, ensure, Context};
+use k8s_openapi::{
+    api::{
+        apps::v1::{Deployment, DeploymentSpec},
+        core::v1::{Container, Namespace, Pod, PodSpec, PodTemplateSpec},
+    },
+    apimachinery::pkg::apis::meta::v1::LabelSelector,
 };
 use kube::{
     api::{ListParams, PostParams},
-    core::ObjectList,
+    core::{ObjectList, ObjectMeta},
     Api, Client, ResourceExt,
 };
 use serde_json::json;
-use std::collections::HashMap;
+use std::{collections::HashMap, net::SocketAddr};
 use tokio_retry::strategy::FixedInterval;
 use tokio_retry::Retry;
 use tracing::log::info;
 use zksync_protobuf::serde::Serde;
+
+/// Docker image name for consensus nodes.
+const DOCKER_IMAGE_NAME: &str = "consensus-node";
+
+/// K8s namespace for consensus nodes.
+pub const DEFAULT_NAMESPACE: &str = "consensus";
 
 /// Get a kube client
 pub async fn get_client() -> anyhow::Result<Client> {
     Ok(Client::try_default().await?)
 }
 
-/// Get a kube client
-pub async fn get_consensus_node_ips(client: &Client) -> anyhow::Result<Vec<String>> {
-    let pods: Api<Pod> = Api::namespaced(client.clone(), "consensus");
+/// Get the IP addresses and the exposed port of the RPC server of the consensus nodes in the kubernetes cluster.
+pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<SocketAddr>> {
+    let pods: Api<Pod> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
     let lp = ListParams::default();
-    let pod = pods.list(&lp).await?;
-    let a: Vec<String> = pod
+    let pods = pods.list(&lp).await?;
+    ensure!(
+        !pods.items.is_empty(),
+        "No consensus pods found in the k8s cluster"
+    );
+    let pod_addresses: Vec<SocketAddr> = pods
         .into_iter()
-        .filter(|pod| {
-            pod.clone()
-                .metadata
-                .name
-                .unwrap()
-                .starts_with("consensus-node")
+        .filter_map(|pod| {
+            let pod_spec = pod.spec.context("Failed to get pod spec").ok()?;
+            let pod_running_container = pod_spec
+                .containers
+                .first()
+                .context("Failed to get pod container")
+                .ok()?
+                .to_owned();
+            let docker_image = pod_running_container
+                .image
+                .context("Failed to get pod docker image")
+                .ok()?;
+
+            if docker_image.contains(DOCKER_IMAGE_NAME) {
+                let pod_ip = pod
+                    .status
+                    .context("Failed to get pod status")
+                    .ok()?
+                    .pod_ip
+                    .context("Failed to get pod ip")
+                    .ok()?;
+                let port = pod_running_container.ports?.iter().find_map(|port| {
+                    let port = port.container_port.try_into().ok()?;
+                    (port != config::NODES_PORT).then_some(port)
+                });
+                Some(SocketAddr::new(pod_ip.parse().ok()?, port?))
+            } else {
+                None
+            }
         })
-        .map(|pod| pod.status.unwrap().pod_ip.unwrap())
         .collect();
-    Ok(a)
+    ensure!(
+        !pod_addresses.is_empty(),
+        "No consensus pods found in the k8s cluster"
+    );
+    Ok(pod_addresses)
 }
 
 /// Creates a namespace in k8s cluster
@@ -49,9 +88,9 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
                 "apiVersion": "v1",
                 "kind": "Namespace",
                 "metadata": {
-                    "name": "consensus",
+                    "name": name,
                     "labels": {
-                        "name": "consensus"
+                        "name": name
                     }
                 }
             }))?;
@@ -83,45 +122,41 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
 }
 
 pub async fn create_tests_deployment(client: &Client) -> anyhow::Result<()> {
-    let deployment: Deployment = serde_json::from_value(json!({
-      "apiVersion": "apps/v1",
-      "kind": "Deployment",
-      "metadata": {
-        "name": "tests-deployment",
-        "namespace": "consensus",
-        "labels": {
-          "app": "test-node"
-        }
-      },
-      "spec": {
-        "selector": {
-          "matchLabels": {
-            "app": "test-node"
-          }
+    let deployment: Deployment = Deployment {
+        metadata: ObjectMeta {
+            name: Some("tests-deployment".to_string()),
+            namespace: Some(DEFAULT_NAMESPACE.to_string()),
+            labels: Some([("app".to_string(), "test-node".to_string())].into()),
+            ..Default::default()
         },
-        "template": {
-          "metadata": {
-            "labels": {
-              "app": "test-node"
-            }
-          },
-          "spec": {
-            "containers": [
-              {
-                "name": "test-suite",
-                "image": "test-suite:latest",
-                "imagePullPolicy": "Never",
-                "command": [
-                  "./tester_entrypoint.sh"
-                ]
-              }
-            ]
-          }
-        }
-      }
-    }))?;
+        spec: Some(DeploymentSpec {
+            selector: LabelSelector {
+                match_labels: Some([("app".to_string(), "test-node".to_string())].into()),
+                ..Default::default()
+            },
+            replicas: Some(1),
+            template: PodTemplateSpec {
+                metadata: Some(ObjectMeta {
+                    labels: Some([("app".to_string(), "test-node".to_string())].into()),
+                    ..Default::default()
+                }),
+                spec: Some(PodSpec {
+                    containers: vec![Container {
+                        name: "test-suite".to_string(),
+                        image: Some("test-suite:latest".to_string()),
+                        image_pull_policy: Some("Never".to_string()),
+                        command: Some(vec!["./tester_entrypoint.sh".to_string()]),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }),
+            },
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
 
-    let deployments: Api<Deployment> = Api::namespaced(client.clone(), "consensus");
+    let deployments: Api<Deployment> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
     let post_params = PostParams::default();
     let result = deployments.create(&post_params, &deployment).await?;
 
@@ -136,22 +171,21 @@ pub async fn create_tests_deployment(client: &Client) -> anyhow::Result<()> {
 }
 
 /// Creates a deployment
-pub async fn create_deployment(
+pub async fn deploy_node(
     client: &Client,
-    node_number: usize,
+    node_index: usize,
     is_seed: bool,
     peers: Vec<NodeAddr>,
     namespace: &str,
 ) -> anyhow::Result<()> {
     let cli_args = get_cli_args(peers);
-    let node_name = format!("consensus-node-{node_number:0>2}");
-    let node_id = format!("node_{node_number:0>2}");
+    let node_name = format!("consensus-node-{node_index:0>2}");
     let deployment: Deployment = serde_json::from_value(json!({
           "apiVersion": "apps/v1",
           "kind": "Deployment",
           "metadata": {
             "name": node_name,
-            "namespace": "consensus"
+            "namespace": namespace
           },
           "spec": {
             "selector": {
@@ -164,7 +198,7 @@ pub async fn create_deployment(
               "metadata": {
                 "labels": {
                   "app": node_name,
-                  "id": node_id,
+                  "id": node_name,
                   "seed": is_seed.to_string()
                 }
               },
@@ -172,11 +206,11 @@ pub async fn create_deployment(
                 "containers": [
                   {
                     "name": node_name,
-                    "image": "consensus-node",
+                    "image": DOCKER_IMAGE_NAME,
                     "env": [
                       {
                         "name": "NODE_ID",
-                        "value": node_id
+                        "value": node_name
                       },
                       {
                         "name": "PUBLIC_ADDR",
@@ -192,7 +226,7 @@ pub async fn create_deployment(
                     "imagePullPolicy": "Never",
                     "ports": [
                       {
-                        "containerPort": 3054
+                        "containerPort": config::NODES_PORT
                       },
                       {
                         "containerPort": 3154
@@ -235,9 +269,10 @@ pub async fn create_deployment(
 pub async fn get_seed_node_addrs(
     client: &Client,
     amount: usize,
+    namespace: &str,
 ) -> anyhow::Result<HashMap<String, String>> {
     let mut seed_nodes = HashMap::new();
-    let pods: Api<Pod> = Api::namespaced(client.clone(), "consensus");
+    let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
 
     // Will retry 15 times during 15 seconds to allow pods to start and obtain an IP
     let retry_strategy = FixedInterval::from_millis(1000).take(15);
