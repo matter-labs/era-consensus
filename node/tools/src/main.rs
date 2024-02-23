@@ -2,7 +2,6 @@
 //! manages communication between the actors. It is the main executable in this workspace.
 use anyhow::Context as _;
 use clap::Parser;
-use k8s_openapi::api::node;
 use std::{fs, io::IsTerminal as _, path::PathBuf};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
