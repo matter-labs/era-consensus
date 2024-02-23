@@ -11,10 +11,28 @@ use kube::{
 };
 use serde_json::json;
 use std::collections::HashMap;
+use std::net::SocketAddr;
+use std::str::FromStr;
 use tokio_retry::strategy::FixedInterval;
 use tokio_retry::Retry;
 use tracing::log::info;
+use zksync_consensus_roles::node;
 use zksync_protobuf::serde::Serde;
+
+/// Consensus Node Representation
+#[derive(Debug)]
+pub struct ConsensusNode {
+    /// Node identifier
+    pub id: String,
+    /// Node key
+    pub key: node::SecretKey,
+    /// Full NodeAddr
+    pub node_addr: Option<NodeAddr>,
+    /// Is seed node (meaning it has no gossipStaticOutbound configuration)
+    pub is_seed: bool,
+    /// known gossipStaticOutbound peers
+    pub gossip_static_outbound: Vec<NodeAddr>,
+}
 
 /// Get a kube client
 pub async fn get_client() -> anyhow::Result<Client> {
@@ -66,44 +84,41 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
 /// Creates a deployment
 pub async fn deploy_node(
     client: &Client,
-    node_index: usize,
-    is_seed: bool,
-    peers: Vec<NodeAddr>,
+    node: &ConsensusNode,
     namespace: &str,
 ) -> anyhow::Result<()> {
-    let cli_args = get_cli_args(peers);
-    let node_name = format!("consensus-node-{node_index:0>2}");
+    let cli_args = get_cli_args(&node.gossip_static_outbound);
     let deployment: Deployment = serde_json::from_value(json!({
           "apiVersion": "apps/v1",
           "kind": "Deployment",
           "metadata": {
-            "name": node_name,
+            "name": node.id,
             "namespace": namespace
           },
           "spec": {
             "selector": {
               "matchLabels": {
-                "app": node_name
+                "app": node.id
               }
             },
             "replicas": 1,
             "template": {
               "metadata": {
                 "labels": {
-                  "app": node_name,
-                  "id": node_name,
-                  "seed": is_seed.to_string()
+                  "app": node.id,
+                  "id": node.id,
+                  "seed": node.is_seed.to_string()
                 }
               },
               "spec": {
                 "containers": [
                   {
-                    "name": node_name,
+                    "name": node.id,
                     "image": "consensus-node",
                     "env": [
                       {
                         "name": "NODE_ID",
-                        "value": node_name
+                        "value": node.id
                       },
                       {
                         "name": "PUBLIC_ADDR",
@@ -158,30 +173,32 @@ pub async fn deploy_node(
     Ok(())
 }
 
-/// Returns a HashMap with mapping: node_id -> IP address
-pub async fn get_seed_node_addrs(
+/// Waits for the pods to start in order to complete each ConsensusNode with its assigned NodeAddr
+pub async fn find_node_addrs(
     client: &Client,
-    amount: usize,
+    seed_nodes: &mut HashMap<String, &mut ConsensusNode>,
     namespace: &str,
-) -> anyhow::Result<HashMap<String, String>> {
-    let mut seed_nodes = HashMap::new();
+) -> anyhow::Result<()> {
     let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
 
     // Will retry 15 times during 15 seconds to allow pods to start and obtain an IP
     let retry_strategy = FixedInterval::from_millis(1000).take(15);
-    let pod_list = Retry::spawn(retry_strategy, || get_seed_pods(&pods, amount)).await?;
+    let pod_list = Retry::spawn(retry_strategy, || get_seed_pods(&pods, seed_nodes.len())).await?;
 
     for p in pod_list {
-        let node_id = p.labels()["id"].clone();
-        seed_nodes.insert(
-            node_id,
-            p.status
-                .context("Status not present")?
-                .pod_ip
-                .context("Pod IP address not present")?,
-        );
+        let id = p.labels()["id"].clone();
+        let ip = p
+            .status
+            .context("Status not present")?
+            .pod_ip
+            .context("Pod IP address not present")?;
+        let node: &mut ConsensusNode = &mut *seed_nodes.get_mut(&id).context("node not found")?;
+        node.node_addr = Some(NodeAddr {
+            key: node.key.public(),
+            addr: SocketAddr::from_str(&format!("{}:{}", ip, config::NODES_PORT))?,
+        });
     }
-    Ok(seed_nodes)
+    Ok(())
 }
 
 async fn get_seed_pods(pods: &Api<Pod>, amount: usize) -> anyhow::Result<ObjectList<Pod>> {
@@ -203,7 +220,7 @@ fn is_pod_running(pod: &Pod) -> bool {
     false
 }
 
-fn get_cli_args(peers: Vec<NodeAddr>) -> Vec<String> {
+fn get_cli_args(peers: &Vec<NodeAddr>) -> Vec<String> {
     if peers.is_empty() {
         [].to_vec()
     } else {

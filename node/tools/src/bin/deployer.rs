@@ -1,13 +1,12 @@
 //! Deployer for the kubernetes cluster.
-use std::net::SocketAddr;
-use std::str::FromStr;
+use std::collections::HashMap;
 use std::{fs, path::PathBuf};
 
 use anyhow::Context;
 use clap::{Parser, Subcommand};
 use zksync_consensus_crypto::{Text, TextFmt};
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_tools::{k8s, AppConfig, NodeAddr, NODES_PORT};
+use zksync_consensus_tools::{k8s, AppConfig};
 
 /// K8s namespace for consensus nodes.
 const NAMESPACE: &str = "consensus";
@@ -94,54 +93,77 @@ fn generate_config(nodes: usize) -> anyhow::Result<()> {
 }
 
 /// Deploys the nodes to the kubernetes cluster.
-async fn deploy(nodes: usize, seed_nodes: Option<usize>) -> anyhow::Result<()> {
+async fn deploy(nodes_amount: usize, seed_nodes_amount: Option<usize>) -> anyhow::Result<()> {
     let client = k8s::get_client().await?;
     k8s::create_or_reuse_namespace(&client, NAMESPACE).await?;
+    let seed_nodes_amount = seed_nodes_amount.unwrap_or(1);
 
-    let seed_nodes = seed_nodes.unwrap_or(1);
+    let seed_nodes = &mut HashMap::new();
+    let mut non_seed_nodes = HashMap::new();
 
-    // deploy seed peer(s)
-    for i in 0..seed_nodes {
-        k8s::deploy_node(
-            &client,
-            i,
-            true,
-            vec![], // Seed peers don't have other peer information
-            NAMESPACE,
-        )
-        .await?;
+    // Split the nodes in different hash maps as they will be deployed at different stages
+    let mut consensus_nodes = from_configs(nodes_amount)?;
+    for (index, node) in consensus_nodes.iter_mut().enumerate() {
+        if index < seed_nodes_amount {
+            node.is_seed = true;
+            seed_nodes.insert(node.id.to_owned(), node);
+        } else {
+            non_seed_nodes.insert(node.id.to_owned(), node);
+        }
     }
 
-    // obtain seed peer(s) IP(s)
-    let peer_ips = k8s::get_seed_node_addrs(&client, seed_nodes, NAMESPACE).await?;
-
-    let mut peers = vec![];
-
-    for i in 0..seed_nodes {
-        let node_id = &format!("consensus-node-{i:0>2}");
-        let node_key = read_node_key_from_config(node_id)?;
-        let address = peer_ips.get(node_id).context("IP address not found")?;
-        peers.push(NodeAddr {
-            key: node_key.public(),
-            addr: SocketAddr::from_str(&format!("{address}:{NODES_PORT}"))?,
-        });
+    // Deploy seed peer(s)
+    for node in seed_nodes.values() {
+        k8s::deploy_node(&client, node, NAMESPACE).await?;
     }
 
-    // deploy the rest of nodes
-    for i in seed_nodes..nodes {
-        k8s::deploy_node(&client, i, false, peers.clone(), NAMESPACE).await?;
+    // Fetch and complete node addrs into seed nodes
+    k8s::find_node_addrs(&client, seed_nodes, NAMESPACE).await?;
+
+    // Build a vector of seed peers NodeAddrs to provide as gossip_static_outbound to the rest of the nodes
+    let peers: Vec<_> = seed_nodes
+        .values()
+        .map(|n| {
+            n.node_addr
+                .as_ref()
+                .expect("Seed node address not defined")
+                .clone()
+        })
+        .collect();
+
+    // Deploy the rest of the nodes
+    for node in non_seed_nodes.values_mut() {
+        node.gossip_static_outbound = peers.clone();
+        k8s::deploy_node(&client, node, NAMESPACE).await?;
     }
 
     Ok(())
 }
 
-/// Obtain node key from config file.
-fn read_node_key_from_config(node_id: &String) -> anyhow::Result<node::SecretKey> {
+/// Build ConsensusNodes representation list from configurations
+// TODO once we can provide config via cli args, this will be replaced
+//      using in-memory config structs
+fn from_configs(nodes: usize) -> anyhow::Result<Vec<k8s::ConsensusNode>> {
     let manifest_path = std::env::var("CARGO_MANIFEST_DIR")?;
     let root = PathBuf::from(manifest_path).join("k8s_configs");
-    let node_key_path = root.join(node_id).join("node_key");
-    let key = fs::read_to_string(node_key_path).context("failed reading file")?;
-    Text::new(&key).decode().context("failed decoding key")
+    let mut consensus_nodes = vec![];
+
+    for i in 0..nodes {
+        let node_id = format!("consensus-node-{i:0>2}");
+        let node_key_path = root.join(&node_id).join("node_key");
+        let key_string = fs::read_to_string(node_key_path).context("failed reading file")?;
+        let key = Text::new(&key_string)
+            .decode()
+            .context("failed decoding key")?;
+        consensus_nodes.push(k8s::ConsensusNode {
+            id: node_id,
+            key,
+            node_addr: None,
+            is_seed: false,
+            gossip_static_outbound: vec![],
+        });
+    }
+    Ok(consensus_nodes)
 }
 
 #[tokio::main]
