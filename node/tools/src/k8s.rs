@@ -39,44 +39,46 @@ pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<
         !pods.items.is_empty(),
         "No consensus pods found in the k8s cluster"
     );
-    let pod_addresses: Vec<SocketAddr> = pods
+    let pod_addresses: Result<Vec<SocketAddr>, _> = pods
         .into_iter()
-        .filter_map(|pod| {
-            let pod_spec = pod.spec.context("Failed to get pod spec").ok()?;
-            let pod_running_container = pod_spec
+        .filter(|pod| {
+            let running_image = pod
+                .spec
+                .clone()
+                .and_then(|spec| spec.containers.first().cloned())
+                .and_then(|container| container.image)
+                .unwrap_or_default();
+
+            running_image.contains(DOCKER_IMAGE_NAME)
+        })
+        .map(|pod| {
+            let pod_running_container = pod
+                .spec
+                .context("Failed to get pod spec")?
                 .containers
                 .first()
-                .context("Failed to get pod container")
-                .ok()?
-                .to_owned();
-            let docker_image = pod_running_container
-                .image
-                .context("Failed to get pod docker image")
-                .ok()?;
-
-            if docker_image.contains(DOCKER_IMAGE_NAME) {
-                let pod_ip = pod
-                    .status
-                    .context("Failed to get pod status")
-                    .ok()?
-                    .pod_ip
-                    .context("Failed to get pod ip")
-                    .ok()?;
-                let port = pod_running_container.ports?.iter().find_map(|port| {
+                .cloned()
+                .context("Failed to get container")?;
+            let pod_ip = pod
+                .status
+                .context("Failed to get pod status")?
+                .pod_ip
+                .context("Failed to get pod ip")?;
+            let port = pod_running_container
+                .ports
+                .context("Failed to get ports of container")?
+                .iter()
+                .find_map(|port| {
                     let port = port.container_port.try_into().ok()?;
                     (port != config::NODES_PORT).then_some(port)
                 });
-                Some(SocketAddr::new(pod_ip.parse().ok()?, port?))
-            } else {
-                None
-            }
+            Ok(SocketAddr::new(
+                pod_ip.parse()?,
+                port.context("Failed getting container port")?,
+            ))
         })
         .collect();
-    ensure!(
-        !pod_addresses.is_empty(),
-        "No consensus pods found in the k8s cluster"
-    );
-    Ok(pod_addresses)
+    pod_addresses
 }
 
 /// Creates a namespace in k8s cluster
