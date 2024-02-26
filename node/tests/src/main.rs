@@ -1,7 +1,7 @@
 //! This is a simple test for the RPC server. It checks if the server is running and can respond to.
-use std::{fs, io::Write, path::PathBuf};
+use std::{fs, io::Write, net::SocketAddr, path::PathBuf, str::FromStr};
 
-use anyhow::Context;
+use anyhow::{ensure, Context};
 use clap::{Parser, Subcommand};
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params, types::Params};
 use zksync_consensus_tools::{
@@ -47,16 +47,18 @@ pub async fn generate_config() -> anyhow::Result<()> {
     let pods_ip = k8s::get_consensus_nodes_address(&client)
         .await
         .context("Failed to get consensus pods address")?;
+    ensure!(
+        !pods_ip.is_empty(),
+        "No consensus pods found in the k8s cluster"
+    );
     let config_file_path = get_config_path();
     let mut config_file = fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
-        .open(&config_file_path)?;
+        .open(config_file_path)?;
     for addr in pods_ip {
-        config_file
-            .write_all(format!("{}\n", addr.to_string()).as_bytes())
-            .with_context(|| "Failed to write to config file")?;
+        writeln!(config_file, "{addr}").context("Failed to write to config file")?;
     }
     Ok(())
 }
@@ -76,7 +78,8 @@ pub async fn sanity_test() {
     let config_file_path = get_config_path();
     let nodes_socket = fs::read_to_string(config_file_path).unwrap();
     for socket in nodes_socket.lines() {
-        let url: String = format!("http://{}", socket);
+        let socket = SocketAddr::from_str(socket).unwrap();
+        let url = format!("http://{}", socket);
         let rpc_client = HttpClientBuilder::default().build(url).unwrap();
         let params = Params::new(None);
         let response: serde_json::Value = rpc_client
