@@ -206,7 +206,7 @@ pub async fn find_node_addrs(
             .context("Status not present")?
             .pod_ip
             .context("Pod IP address not present")?;
-        let node: &mut ConsensusNode = &mut *seed_nodes.get_mut(&id).context("node not found")?;
+        let node: &mut ConsensusNode = *seed_nodes.get_mut(&id).context("node not found")?;
         node.node_addr = Some(NodeAddr {
             key: node.key.public(),
             addr: SocketAddr::from_str(&format!("{}:{}", ip, config::NODES_PORT))?,
@@ -234,7 +234,7 @@ fn is_pod_running(pod: &Pod) -> bool {
     false
 }
 
-fn get_cli_args(peers: &Vec<NodeAddr>) -> Vec<String> {
+fn get_cli_args(peers: &[NodeAddr]) -> Vec<String> {
     if peers.is_empty() {
         [].to_vec()
     } else {
