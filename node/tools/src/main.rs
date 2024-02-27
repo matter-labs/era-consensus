@@ -42,7 +42,7 @@ struct Args {
     rpc_port: Option<u16>,
     /// IP address and key of the seed peers.
     #[arg(long)]
-    add_gossip_static_outbound: NodeAddrs,
+    add_gossip_static_outbound: Option<NodeAddrs>,
 }
 
 impl Args {
@@ -101,13 +101,16 @@ async fn main() -> anyhow::Result<()> {
         .load()
         .context("config_paths().load()")?;
 
+    // if `PUBLIC_ADDR` env var is set, use it to override publicAddr in config
+    configs.app.check_public_addr().context("Public Address")?;
+
     // Add gossipStaticOutbound pairs from cli to config
-    configs.app.gossip_static_outbound.extend(
-        args.add_gossip_static_outbound
-            .0
-            .into_iter()
-            .map(|e| (e.0.key, e.0.addr)),
-    );
+    if let Some(addrs) = args.add_gossip_static_outbound {
+        configs
+            .app
+            .gossip_static_outbound
+            .extend(addrs.0.into_iter().map(|e| (e.0.key, e.0.addr)));
+    }
 
     let (executor, runner) = configs
         .make_executor(ctx)
@@ -120,7 +123,10 @@ async fn main() -> anyhow::Result<()> {
     } else {
         rpc_addr.set_port(rpc_addr.port() + 100);
     }
-    let rpc_server = RPCServer::new(rpc_addr);
+
+    // cloning configuration to let RPCServer show it
+    // TODO this should be queried in real time instead, to reflect any possible change in config
+    let rpc_server = RPCServer::new(rpc_addr, configs.app.clone());
 
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {

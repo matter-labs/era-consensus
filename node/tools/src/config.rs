@@ -1,10 +1,13 @@
 //! Node configuration.
 use crate::{proto, store};
 use anyhow::Context as _;
+use serde_json::{ser::Formatter, Serializer};
 use std::{
     collections::{HashMap, HashSet},
     fs,
+    net::{Ipv4Addr, SocketAddr},
     path::{Path, PathBuf},
+    str::FromStr,
 };
 use zksync_concurrency::ctx;
 use zksync_consensus_bft as bft;
@@ -14,6 +17,9 @@ use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BlockStore, BlockStoreRunner};
 use zksync_protobuf::{read_required, required, serde::Serde, ProtoFmt};
 
+/// Ports for the nodes to listen on kubernetes pod.
+pub const NODES_PORT: u16 = 3054;
+
 /// Decodes a proto message from json for arbitrary ProtoFmt.
 pub fn decode_json<T: serde::de::DeserializeOwned>(json: &str) -> anyhow::Result<T> {
     let mut d = serde_json::Deserializer::from_str(json);
@@ -22,11 +28,26 @@ pub fn decode_json<T: serde::de::DeserializeOwned>(json: &str) -> anyhow::Result
     Ok(p)
 }
 
+/// Encodes a generated proto message to json for arbitrary ProtoFmt.
+pub(crate) fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
+    let s = serde_json::Serializer::pretty(vec![]);
+    encode_with_serializer(x, s)
+}
+
+/// Encodes a generated proto message for arbitrary ProtoFmt with provided serializer.
+pub(crate) fn encode_with_serializer<T: serde::ser::Serialize, F: Formatter>(
+    x: &T,
+    mut serializer: Serializer<Vec<u8>, F>,
+) -> String {
+    T::serialize(x, &mut serializer).unwrap();
+    String::from_utf8(serializer.into_inner()).unwrap()
+}
+
 /// Pair of (public key, ip address) for a gossip network node.
 #[derive(Debug, Clone)]
 pub struct NodeAddr {
     pub key: node::PublicKey,
-    pub addr: std::net::SocketAddr,
+    pub addr: SocketAddr,
 }
 
 impl ProtoFmt for NodeAddr {
@@ -48,18 +69,18 @@ impl ProtoFmt for NodeAddr {
 
 /// Node configuration including executor configuration, optional validator configuration,
 /// and application-specific settings (e.g. metrics scraping).
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct AppConfig {
-    pub server_addr: std::net::SocketAddr,
-    pub public_addr: std::net::SocketAddr,
-    pub metrics_server_addr: Option<std::net::SocketAddr>,
+    pub server_addr: SocketAddr,
+    pub public_addr: SocketAddr,
+    pub metrics_server_addr: Option<SocketAddr>,
 
     pub genesis: validator::Genesis,
     pub max_payload_size: usize,
 
     pub gossip_dynamic_inbound_limit: usize,
     pub gossip_static_inbound: HashSet<node::PublicKey>,
-    pub gossip_static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>,
+    pub gossip_static_outbound: HashMap<node::PublicKey, SocketAddr>,
 }
 
 impl ProtoFmt for AppConfig {
@@ -180,6 +201,76 @@ impl<'a> ConfigPaths<'a> {
 
             database: self.database.into(),
         })
+    }
+}
+
+impl AppConfig {
+    pub fn default_for(genesis: validator::Genesis) -> AppConfig {
+        Self {
+            server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
+            public_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
+            metrics_server_addr: None,
+
+            genesis,
+            max_payload_size: 1000000,
+
+            gossip_dynamic_inbound_limit: 2,
+            gossip_static_inbound: [].into(),
+            gossip_static_outbound: [].into(),
+        }
+    }
+
+    pub fn with_server_addr(&mut self, server_addr: SocketAddr) -> &mut Self {
+        self.server_addr = server_addr;
+        self
+    }
+
+    pub fn with_public_addr(&mut self, public_addr: SocketAddr) -> &mut Self {
+        self.public_addr = public_addr;
+        self
+    }
+
+    pub fn with_metrics_server_addr(&mut self, metrics_server_addr: SocketAddr) -> &mut Self {
+        self.metrics_server_addr = Some(metrics_server_addr);
+        self
+    }
+
+    pub fn with_gossip_dynamic_inbound_limit(
+        &mut self,
+        gossip_dynamic_inbound_limit: usize,
+    ) -> &mut Self {
+        self.gossip_dynamic_inbound_limit = gossip_dynamic_inbound_limit;
+        self
+    }
+
+    pub fn add_gossip_static_outbound(
+        &mut self,
+        key: node::PublicKey,
+        addr: SocketAddr,
+    ) -> &mut Self {
+        self.gossip_static_outbound.insert(key, addr);
+        self
+    }
+
+    pub fn add_gossip_static_inbound(&mut self, key: node::PublicKey) -> &mut Self {
+        self.gossip_static_inbound.insert(key);
+        self
+    }
+
+    pub fn write_to_file(self, path: &Path) -> anyhow::Result<()> {
+        fs::write(path.join("config.json"), encode_json(&Serde(self))).context("fs::write()")
+    }
+
+    pub fn with_max_payload_size(&mut self, max_payload_size: usize) -> &mut Self {
+        self.max_payload_size = max_payload_size;
+        self
+    }
+
+    pub fn check_public_addr(&mut self) -> anyhow::Result<()> {
+        if let Ok(public_addr) = std::env::var("PUBLIC_ADDR") {
+            self.public_addr = SocketAddr::from_str(&format!("{public_addr}:{NODES_PORT}"))?;
+        }
+        Ok(())
     }
 }
 

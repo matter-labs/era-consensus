@@ -40,6 +40,18 @@ allow = [
     "MPL-2.0",
 ]
 
+[[licenses.clarify]]
+name = "ring"
+# SPDX considers OpenSSL to encompass both the OpenSSL and SSLeay licenses
+# https://spdx.org/licenses/OpenSSL.html
+# ISC - Both BoringSSL and ring use this for their new files
+# MIT - "Files in third_party/ have their own licenses, as described therein. The MIT
+# license, for third_party/fiat, which, unlike other third_party directories, is
+# compiled into non-test libraries, is included below."
+# OpenSSL - Obviously
+expression = "MIT"
+license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
+
 [bans]
 # Lint level for when multiple versions of the same crate are detected
 multiple-versions = "deny"
@@ -60,6 +72,9 @@ skip = [
     { name = "base64", version = "0.13.1" },
     { name = "block-buffer", version = "0.9.0" },
     { name = "digest", version = "0.10.7" },
+
+    # Old versions required by kube.
+    { name = "strsim", version = "0.10.0" },
 
     # Old versions required by criterion.
     { name = "itertools", version = "0.10.5" },

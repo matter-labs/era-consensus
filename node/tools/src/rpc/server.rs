@@ -1,4 +1,6 @@
-use super::methods::{health_check::HealthCheck, peers::PeersInfo, RPCMethod};
+use crate::AppConfig;
+
+use super::methods::{config::ConfigInfo, health_check::HealthCheck, peers::PeersInfo, RPCMethod};
 use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
 use std::net::SocketAddr;
 use zksync_concurrency::{ctx, scope};
@@ -7,11 +9,13 @@ use zksync_concurrency::{ctx, scope};
 pub struct RPCServer {
     /// IP address to bind to.
     ip_address: SocketAddr,
+    /// AppConfig
+    config: AppConfig,
 }
 
 impl RPCServer {
-    pub fn new(ip_address: SocketAddr) -> Self {
-        Self { ip_address }
+    pub fn new(ip_address: SocketAddr, config: AppConfig) -> Self {
+        Self { ip_address, config }
     }
 
     /// Runs the RPC server.
@@ -26,6 +30,10 @@ impl RPCServer {
             .layer(ProxyGetRequestLayer::new(
                 PeersInfo::path(),
                 PeersInfo::method(),
+            )?)
+            .layer(ProxyGetRequestLayer::new(
+                ConfigInfo::path(),
+                ConfigInfo::method(),
             )?);
 
         let server = Server::builder()
@@ -38,6 +46,12 @@ impl RPCServer {
             HealthCheck::callback(params)
         })?;
         module.register_method(PeersInfo::method(), |params, _| PeersInfo::callback(params))?;
+
+        // TODO find a better way to implement this as I had to clone the clone and move it to pass the borrow checker
+        let config = self.config.clone();
+        module.register_method(ConfigInfo::method(), move |_params, _| {
+            ConfigInfo::info(config.clone())
+        })?;
 
         let handle = server.start(module);
         scope::run!(ctx, |ctx, s| async {
