@@ -83,6 +83,15 @@ pub async fn sanity_test() {
     }
 }
 
+/// Sanity test for the RPC server.
+/// We use unwraps here because this function is intended to be used like a test.
+pub async fn delay_test() {
+    let client = k8s::get_client().await.unwrap();
+    k8s::add_chaos_delay_for_node(&client, "consensus-node-01")
+        .await
+        .unwrap();
+}
+
 /// Main function for the test.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -95,6 +104,9 @@ async fn main() -> anyhow::Result<()> {
         TesterCommands::Run => {
             tracing::info!("Running sanity test");
             sanity_test().await;
+            tracing::info!("Test Passed!");
+            tracing::info!("Running Delay tests");
+            delay_test().await;
             tracing::info!("Test Passed!");
             Ok(())
         }
