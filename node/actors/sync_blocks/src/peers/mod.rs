@@ -1,5 +1,4 @@
 //! Peer states tracked by the `SyncBlocks` actor.
-
 use self::events::PeerStateEvent;
 use crate::{io, Config};
 use anyhow::Context as _;
@@ -13,11 +12,10 @@ use zksync_concurrency::{
 };
 use zksync_consensus_network::io::SyncBlocksInputMessage;
 use zksync_consensus_roles::{
-    node,
+    node, validator,
     validator::{BlockNumber, FinalBlock},
 };
 use zksync_consensus_storage::{BlockStore, BlockStoreState};
-use zksync_consensus_utils::no_copy::NoCopy;
 
 mod events;
 #[cfg(test)]
@@ -42,6 +40,10 @@ pub(crate) struct PeerStates {
 }
 
 impl PeerStates {
+    fn genesis(&self) -> &validator::Genesis {
+        self.storage.genesis()
+    }
+
     /// Creates a new instance together with a handle.
     pub(crate) fn new(
         config: Config,
@@ -68,37 +70,34 @@ impl PeerStates {
         state: BlockStoreState,
     ) -> anyhow::Result<()> {
         use std::collections::hash_map::Entry;
-
-        let last = state.last.header().number;
-        anyhow::ensure!(state.first.header().number <= state.last.header().number);
-        state
-            .last
-            .verify(&self.config.validator_set, self.config.consensus_threshold)
-            .context("state.last.verify()")?;
+        let Some(last) = &state.last else {
+            return Ok(());
+        };
+        last.verify(self.genesis()).context("state.last.verify()")?;
         let mut peers = self.peers.lock().unwrap();
         match peers.entry(peer.clone()) {
-            Entry::Occupied(mut e) => e.get_mut().state = state,
+            Entry::Occupied(mut e) => e.get_mut().state = state.clone(),
             Entry::Vacant(e) => {
                 let permits = self.config.max_concurrent_blocks_per_peer;
                 e.insert(PeerState {
-                    state,
+                    state: state.clone(),
                     get_block_semaphore: Arc::new(sync::Semaphore::new(permits)),
                 });
             }
         }
         self.highest_peer_block
             .send_if_modified(|highest_peer_block| {
-                if *highest_peer_block >= last {
+                if *highest_peer_block >= last.header().number {
                     return false;
                 }
-                *highest_peer_block = last;
+                *highest_peer_block = last.header().number;
                 true
             });
         Ok(())
     }
 
     /// Task fetching blocks from peers which are not present in storage.
-    pub(crate) async fn run_block_fetcher(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
+    pub(crate) async fn run_block_fetcher(&self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         let sem = sync::Semaphore::new(self.config.max_concurrent_blocks);
         scope::run!(ctx, |ctx, s| async {
             let mut next = self.storage.subscribe().borrow().next();
@@ -109,11 +108,11 @@ impl PeerStates {
                 })
                 .await?;
                 let permit = sync::acquire(ctx, &sem).await?;
-                let block_number = NoCopy::from(next);
+                let block_number = ctx::NoCopy(next);
                 next = next.next();
                 s.spawn(async {
                     let _permit = permit;
-                    self.fetch_block(ctx, block_number.into_inner()).await
+                    self.fetch_block(ctx, block_number.into()).await
                 });
             }
         })
@@ -122,17 +121,19 @@ impl PeerStates {
 
     /// Fetches the block from peers and puts it to storage.
     /// Early exits if the block appeared in storage from other source.
-    async fn fetch_block(&self, ctx: &ctx::Ctx, block_number: BlockNumber) -> ctx::OrCanceled<()> {
+    async fn fetch_block(&self, ctx: &ctx::Ctx, block_number: BlockNumber) -> ctx::Result<()> {
         let _ = scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(async {
                 let block = self.fetch_block_from_peers(ctx, block_number).await?;
                 self.storage.queue_block(ctx, block).await
             });
             // Cancel fetching as soon as block is queued for storage.
-            self.storage.wait_until_queued(ctx, block_number).await
+            self.storage.wait_until_queued(ctx, block_number).await?;
+            Ok(())
         })
         .await;
-        self.storage.wait_until_persisted(ctx, block_number).await
+        self.storage.wait_until_persisted(ctx, block_number).await?;
+        Ok(())
     }
 
     /// Fetches the block from peers.
@@ -200,9 +201,7 @@ impl PeerStates {
             )
             .into());
         }
-        block
-            .validate(&self.config.validator_set, self.config.consensus_threshold)
-            .context("block.validate()")?;
+        block.verify(self.genesis()).context("block.validate()")?;
         Ok(block)
     }
 

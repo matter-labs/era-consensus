@@ -1,7 +1,6 @@
 //! RPC for fetching a block from peer.
 use crate::{mux, proto::gossip as proto};
 use anyhow::Context;
-use zksync_concurrency::{limiter, time};
 use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
 use zksync_protobuf::{read_optional, ProtoFmt};
 
@@ -13,10 +12,6 @@ pub(crate) struct Rpc;
 impl super::Rpc for Rpc {
     const CAPABILITY_ID: mux::CapabilityId = 4;
     const INFLIGHT: u32 = 5;
-    const RATE: limiter::Rate = limiter::Rate {
-        burst: 10,
-        refresh: time::Duration::milliseconds(100),
-    };
     const METHOD: &'static str = "get_block";
 
     type Req = Req;

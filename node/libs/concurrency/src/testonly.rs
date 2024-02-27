@@ -38,6 +38,7 @@ pub fn abort_on_panic() {
 /// Guard which has to be dropped before timeout is reached.
 /// Otherwise the test will panic.
 #[allow(unused_tuple_struct_fields)]
+#[must_use]
 pub struct TimeoutGuard(std::sync::mpsc::Sender<()>);
 
 /// Panics if (real time) timeout is reached before ctx is canceled.

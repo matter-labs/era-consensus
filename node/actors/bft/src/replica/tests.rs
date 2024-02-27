@@ -10,39 +10,32 @@ use zksync_consensus_roles::validator::{
     self, CommitQC, Payload, PrepareQC, ReplicaCommit, ReplicaPrepare, ViewNumber,
 };
 
+/// Sanity check of the happy path.
 #[tokio::test]
-async fn leader_prepare_sanity() {
+async fn block_production() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
-
-        let leader_prepare = util.new_leader_prepare(ctx).await;
-        util.process_leader_prepare(ctx, leader_prepare)
-            .await
-            .unwrap();
+        util.produce_block(ctx).await;
         Ok(())
     })
     .await
     .unwrap();
 }
 
+/// Sanity check of block production with reproposal.
 #[tokio::test]
-async fn leader_prepare_reproposal_sanity() {
+async fn reproposal_block_production() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
-
-        util.new_replica_commit(ctx).await;
+        util.new_leader_commit(ctx).await;
         util.process_replica_timeout(ctx).await;
-        let leader_prepare = util.new_leader_prepare(ctx).await;
-        assert!(leader_prepare.msg.proposal_payload.is_none());
-        util.process_leader_prepare(ctx, leader_prepare)
-            .await
-            .unwrap();
+        util.produce_block(ctx).await;
         Ok(())
     })
     .await
@@ -58,10 +51,10 @@ async fn leader_prepare_incompatible_protocol_version() {
         s.spawn_bg(runner.run(ctx));
 
         let incompatible_protocol_version = util.incompatible_protocol_version();
-        let mut leader_prepare = util.new_leader_prepare(ctx).await.msg;
-        leader_prepare.protocol_version = incompatible_protocol_version;
+        let mut leader_prepare = util.new_leader_prepare(ctx).await;
+        leader_prepare.justification.view.protocol_version = incompatible_protocol_version;
         let res = util
-            .process_leader_prepare(ctx, util.owner_key().sign_msg(leader_prepare))
+            .process_leader_prepare(ctx, util.sign(leader_prepare))
             .await;
         assert_matches!(
             res,
@@ -84,15 +77,14 @@ async fn leader_prepare_sanity_yield_replica_commit() {
 
         let leader_prepare = util.new_leader_prepare(ctx).await;
         let replica_commit = util
-            .process_leader_prepare(ctx, leader_prepare.clone())
+            .process_leader_prepare(ctx, util.sign(leader_prepare.clone()))
             .await
             .unwrap();
         assert_eq!(
             replica_commit.msg,
             ReplicaCommit {
-                protocol_version: leader_prepare.msg.protocol_version,
-                view: leader_prepare.msg.view,
-                proposal: leader_prepare.msg.proposal,
+                view: leader_prepare.view().clone(),
+                proposal: leader_prepare.proposal,
             }
         );
         Ok(())
@@ -113,25 +105,29 @@ async fn leader_prepare_invalid_leader() {
         util.set_view(view);
         assert_eq!(util.view_leader(view), util.keys[0].public());
 
-        let replica_prepare = util.new_replica_prepare(|_| {});
+        let replica_prepare = util.new_replica_prepare();
         assert!(util
-            .process_replica_prepare(ctx, replica_prepare.clone())
+            .process_replica_prepare(ctx, util.sign(replica_prepare.clone()))
             .await
             .unwrap()
             .is_none());
 
-        let replica_prepare = util.keys[1].sign_msg(replica_prepare.msg);
+        let replica_prepare = util.keys[1].sign_msg(replica_prepare);
         let mut leader_prepare = util
             .process_replica_prepare(ctx, replica_prepare)
             .await
             .unwrap()
             .unwrap()
             .msg;
-        leader_prepare.view = leader_prepare.view.next();
-        assert_ne!(util.view_leader(leader_prepare.view), util.keys[0].public());
+        leader_prepare.justification.view.number = leader_prepare.justification.view.number.next();
+        assert_ne!(
+            util.view_leader(leader_prepare.view().number),
+            util.keys[0].public()
+        );
 
-        let leader_prepare = util.owner_key().sign_msg(leader_prepare);
-        let res = util.process_leader_prepare(ctx, leader_prepare).await;
+        let res = util
+            .process_leader_prepare(ctx, util.sign(leader_prepare))
+            .await;
         assert_matches!(
             res,
             Err(leader_prepare::Error::InvalidLeader { correct_leader, received_leader }) => {
@@ -153,10 +149,11 @@ async fn leader_prepare_old_view() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let mut leader_prepare = util.new_leader_prepare(ctx).await.msg;
-        leader_prepare.view = util.replica.view.prev();
-        let leader_prepare = util.owner_key().sign_msg(leader_prepare);
-        let res = util.process_leader_prepare(ctx, leader_prepare).await;
+        let mut leader_prepare = util.new_leader_prepare(ctx).await;
+        leader_prepare.justification.view.number.0 = util.replica.view.0 - 1;
+        let res = util
+            .process_leader_prepare(ctx, util.sign(leader_prepare))
+            .await;
         assert_matches!(
             res,
             Err(leader_prepare::Error::Old { current_view, current_phase }) => {
@@ -183,17 +180,17 @@ async fn leader_prepare_invalid_payload() {
         let leader_prepare = util.new_leader_prepare(ctx).await;
 
         // Insert a finalized block to the storage.
+        let mut justification = CommitQC::new(
+            ReplicaCommit {
+                view: util.replica_view(),
+                proposal: leader_prepare.proposal,
+            },
+            util.genesis(),
+        );
+        justification.add(&util.sign(justification.message.clone()), util.genesis());
         let block = validator::FinalBlock {
-            payload: leader_prepare.msg.proposal_payload.clone().unwrap(),
-            justification: CommitQC::from(
-                &[util.keys[0].sign_msg(ReplicaCommit {
-                    protocol_version: util.protocol_version(),
-                    view: util.replica.view,
-                    proposal: leader_prepare.msg.proposal,
-                })],
-                &util.validator_set(),
-            )
-            .unwrap(),
+            payload: leader_prepare.proposal_payload.clone().unwrap(),
+            justification,
         };
         util.replica
             .config
@@ -202,7 +199,9 @@ async fn leader_prepare_invalid_payload() {
             .await
             .unwrap();
 
-        let res = util.process_leader_prepare(ctx, leader_prepare).await;
+        let res = util
+            .process_leader_prepare(ctx, util.sign(leader_prepare))
+            .await;
         assert_matches!(res, Err(leader_prepare::Error::ProposalInvalidPayload(..)));
         Ok(())
     })
@@ -217,8 +216,8 @@ async fn leader_prepare_invalid_sig() {
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
-
-        let mut leader_prepare = util.new_leader_prepare(ctx).await;
+        let leader_prepare = util.new_leader_prepare(ctx).await;
+        let mut leader_prepare = util.sign(leader_prepare);
         leader_prepare.sig = ctx.rng().gen();
         let res = util.process_leader_prepare(ctx, leader_prepare).await;
         assert_matches!(res, Err(leader_prepare::Error::InvalidSignature(..)));
@@ -236,30 +235,17 @@ async fn leader_prepare_invalid_prepare_qc() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let mut leader_prepare = util.new_leader_prepare(ctx).await.msg;
-        leader_prepare.justification = ctx.rng().gen();
-        let leader_prepare = util.owner_key().sign_msg(leader_prepare);
-        let res = util.process_leader_prepare(ctx, leader_prepare).await;
-        assert_matches!(res, Err(leader_prepare::Error::InvalidPrepareQC(_)));
-        Ok(())
-    })
-    .await
-    .unwrap();
-}
-
-#[tokio::test]
-async fn leader_prepare_invalid_high_qc() {
-    zksync_concurrency::testonly::abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
-        s.spawn_bg(runner.run(ctx));
-
-        let mut leader_prepare = util.new_leader_prepare(ctx).await.msg;
-        leader_prepare.justification = util.new_prepare_qc(|msg| msg.high_qc = ctx.rng().gen());
-        let leader_prepare = util.owner_key().sign_msg(leader_prepare);
-        let res = util.process_leader_prepare(ctx, leader_prepare).await;
-        assert_matches!(res, Err(leader_prepare::Error::InvalidHighQC(_)));
+        let mut leader_prepare = util.new_leader_prepare(ctx).await;
+        leader_prepare.justification.signature = ctx.rng().gen();
+        let res = util
+            .process_leader_prepare(ctx, util.sign(leader_prepare))
+            .await;
+        assert_matches!(
+            res,
+            Err(leader_prepare::Error::InvalidMessage(
+                validator::LeaderPrepareVerifyError::Justification(_)
+            ))
+        );
         Ok(())
     })
     .await
@@ -275,18 +261,17 @@ async fn leader_prepare_proposal_oversized_payload() {
         s.spawn_bg(runner.run(ctx));
 
         let payload_oversize = MAX_PAYLOAD_SIZE + 1;
-        let payload_vec = vec![0; payload_oversize];
-        let mut leader_prepare = util.new_leader_prepare(ctx).await.msg;
-        leader_prepare.proposal_payload = Some(Payload(payload_vec));
-        let leader_prepare = util.owner_key().sign_msg(leader_prepare);
+        let payload = Payload(vec![0; payload_oversize]);
+        let mut leader_prepare = util.new_leader_prepare(ctx).await;
+        leader_prepare.proposal.payload = payload.hash();
+        leader_prepare.proposal_payload = Some(payload);
         let res = util
-            .process_leader_prepare(ctx, leader_prepare.clone())
+            .process_leader_prepare(ctx, util.sign(leader_prepare))
             .await;
         assert_matches!(
             res,
-            Err(leader_prepare::Error::ProposalOversizedPayload{ payload_size, header }) => {
+            Err(leader_prepare::Error::ProposalOversizedPayload{ payload_size }) => {
                 assert_eq!(payload_size, payload_oversize);
-                assert_eq!(header, leader_prepare.msg.proposal);
             }
         );
         Ok(())
@@ -303,11 +288,17 @@ async fn leader_prepare_proposal_mismatched_payload() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let mut leader_prepare = util.new_leader_prepare(ctx).await.msg;
+        let mut leader_prepare = util.new_leader_prepare(ctx).await;
         leader_prepare.proposal_payload = Some(ctx.rng().gen());
-        let leader_prepare = util.owner_key().sign_msg(leader_prepare);
-        let res = util.process_leader_prepare(ctx, leader_prepare).await;
-        assert_matches!(res, Err(leader_prepare::Error::ProposalMismatchedPayload));
+        let res = util
+            .process_leader_prepare(ctx, util.sign(leader_prepare))
+            .await;
+        assert_matches!(
+            res,
+            Err(leader_prepare::Error::InvalidMessage(
+                validator::LeaderPrepareVerifyError::ProposalMismatchedPayload
+            ))
+        );
         Ok(())
     })
     .await
@@ -318,61 +309,28 @@ async fn leader_prepare_proposal_mismatched_payload() {
 async fn leader_prepare_proposal_when_previous_not_finalized() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let replica_prepare = util.new_replica_prepare(|_| {});
-        let mut leader_prepare = util
-            .process_replica_prepare(ctx, replica_prepare)
-            .await
-            .unwrap()
-            .unwrap()
-            .msg;
-        leader_prepare.justification = util.new_prepare_qc(|msg| msg.high_vote = ctx.rng().gen());
-        let leader_prepare = util.owner_key().sign_msg(leader_prepare);
-        let res = util.process_leader_prepare(ctx, leader_prepare).await;
-        assert_matches!(
-            res,
-            Err(leader_prepare::Error::ProposalWhenPreviousNotFinalized)
-        );
-        Ok(())
-    })
-    .await
-    .unwrap();
-}
-
-#[tokio::test]
-async fn leader_prepare_proposal_invalid_parent_hash() {
-    zksync_concurrency::testonly::abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
-        s.spawn_bg(runner.run(ctx));
-
-        let replica_prepare = util.new_replica_prepare(|_| {});
-        let mut leader_prepare = util
-            .process_replica_prepare(ctx, replica_prepare.clone())
-            .await
-            .unwrap()
-            .unwrap()
-            .msg;
-        leader_prepare.proposal.parent = ctx.rng().gen();
-        let leader_prepare = util.owner_key().sign_msg(leader_prepare);
+        tracing::info!("Execute view without replicas receiving the LeaderCommit.");
+        util.new_leader_commit(ctx).await;
+        util.process_replica_timeout(ctx).await;
+        tracing::info!("Make leader repropose the block.");
+        let mut leader_prepare = util.new_leader_prepare(ctx).await;
+        tracing::info!("Modify the message to include a new proposal anyway.");
+        let payload: Payload = rng.gen();
+        leader_prepare.proposal.payload = payload.hash();
+        leader_prepare.proposal_payload = Some(payload);
         let res = util
-            .process_leader_prepare(ctx, leader_prepare.clone())
+            .process_leader_prepare(ctx, util.sign(leader_prepare))
             .await;
         assert_matches!(
             res,
-            Err(leader_prepare::Error::ProposalInvalidParentHash {
-                correct_parent_hash,
-                received_parent_hash,
-                header
-            }) => {
-                assert_eq!(correct_parent_hash, replica_prepare.msg.high_vote.proposal.hash());
-                assert_eq!(received_parent_hash, leader_prepare.msg.proposal.parent);
-                assert_eq!(header, leader_prepare.msg.proposal);
-            }
+            Err(leader_prepare::Error::InvalidMessage(
+                validator::LeaderPrepareVerifyError::ProposalWhenPreviousNotFinalized
+            ))
         );
         Ok(())
     })
@@ -381,37 +339,54 @@ async fn leader_prepare_proposal_invalid_parent_hash() {
 }
 
 #[tokio::test]
-async fn leader_prepare_proposal_non_sequential_number() {
+async fn leader_prepare_bad_parent_hash() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        s.spawn_bg(runner.run(ctx));
+
+        tracing::info!("Produce initial block.");
+        util.produce_block(ctx).await;
+        tracing::info!("Make leader propose the next block.");
+        let mut leader_prepare = util.new_leader_prepare(ctx).await;
+        tracing::info!("Modify the proposal.parent so that it doesn't match the previous block");
+        leader_prepare.proposal.parent = Some(ctx.rng().gen());
+        let res = util.process_leader_prepare(ctx, util.sign(leader_prepare.clone())).await;
+        assert_matches!(res, Err(leader_prepare::Error::InvalidMessage(
+            validator::LeaderPrepareVerifyError::BadParentHash { got, want }
+        )) => {
+            assert_eq!(want, Some(leader_prepare.justification.high_qc().unwrap().message.proposal.hash()));
+            assert_eq!(got, leader_prepare.proposal.parent);
+        });
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn leader_prepare_bad_block_number() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
     scope::run!(ctx, |ctx,s| async {
         let (mut util,runner) = UTHarness::new(ctx,1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let replica_prepare = util.new_replica_prepare(|_| {});
-        let mut leader_prepare = util
-            .process_replica_prepare(ctx, replica_prepare.clone())
-            .await
-            .unwrap()
-            .unwrap()
-            .msg;
-        let correct_num = replica_prepare.msg.high_vote.proposal.number.next();
-        assert_eq!(correct_num, leader_prepare.proposal.number);
-
-        let non_seq_num = correct_num.next();
-        leader_prepare.proposal.number = non_seq_num;
-        let leader_prepare = util.owner_key().sign_msg(leader_prepare);
-        let res = util
-            .process_leader_prepare(ctx, leader_prepare.clone())
-            .await;
-        assert_matches!(
-            res,
-            Err(leader_prepare::Error::ProposalNonSequentialNumber { correct_number, received_number, header }) => {
-                assert_eq!(correct_number, correct_num);
-                assert_eq!(received_number, non_seq_num);
-                assert_eq!(header, leader_prepare.msg.proposal);
-            }
-        );
+        tracing::info!("Produce initial block.");
+        util.produce_block(ctx).await;
+        tracing::info!("Make leader propose the next block.");
+        let mut leader_prepare = util.new_leader_prepare(ctx).await;
+        tracing::info!("Modify the proposal.number so that it doesn't match the previous block");
+        leader_prepare.proposal.number = rng.gen();
+        let res = util.process_leader_prepare(ctx, util.sign(leader_prepare.clone())).await;
+        assert_matches!(res, Err(leader_prepare::Error::InvalidMessage(
+            validator::LeaderPrepareVerifyError::BadBlockNumber { got, want }
+        )) => {
+            assert_eq!(want, leader_prepare.justification.high_qc().unwrap().message.proposal.number.next());
+            assert_eq!(got, leader_prepare.proposal.number);
+        });
         Ok(())
     }).await.unwrap();
 }
@@ -425,29 +400,34 @@ async fn leader_prepare_reproposal_without_quorum() {
         let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
-        let replica_prepare = util.new_replica_prepare(|_| {}).msg;
-        let mut leader_prepare = util
-            .process_replica_prepare_all(ctx, replica_prepare.clone())
-            .await
-            .msg;
-
-        // Turn leader_prepare into an unjustified reproposal.
-        let replica_prepares: Vec<_> = util
-            .keys
-            .iter()
-            .map(|k| {
-                let mut msg = replica_prepare.clone();
-                msg.high_vote = rng.gen();
-                k.sign_msg(msg)
-            })
-            .collect();
-        leader_prepare.justification =
-            PrepareQC::from(&replica_prepares, &util.validator_set()).unwrap();
-        leader_prepare.proposal_payload = None;
-
-        let leader_prepare = util.keys[0].sign_msg(leader_prepare);
-        let res = util.process_leader_prepare(ctx, leader_prepare).await;
-        assert_matches!(res, Err(leader_prepare::Error::ReproposalWithoutQuorum));
+        tracing::info!("make leader repropose a block");
+        util.new_leader_commit(ctx).await;
+        util.process_replica_timeout(ctx).await;
+        let mut leader_prepare = util.new_leader_prepare(ctx).await;
+        tracing::info!("modify justification, to make reproposal unjustified");
+        let mut replica_prepare: ReplicaPrepare = leader_prepare
+            .justification
+            .map
+            .keys()
+            .next()
+            .unwrap()
+            .clone();
+        leader_prepare.justification = PrepareQC::new(leader_prepare.justification.view);
+        for key in &util.keys {
+            replica_prepare.high_vote.as_mut().unwrap().proposal.payload = rng.gen();
+            leader_prepare
+                .justification
+                .add(&key.sign_msg(replica_prepare.clone()), util.genesis());
+        }
+        let res = util
+            .process_leader_prepare(ctx, util.sign(leader_prepare))
+            .await;
+        assert_matches!(
+            res,
+            Err(leader_prepare::Error::InvalidMessage(
+                validator::LeaderPrepareVerifyError::ReproposalWithoutQuorum
+            ))
+        );
         Ok(())
     })
     .await
@@ -462,11 +442,28 @@ async fn leader_prepare_reproposal_when_finalized() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let mut leader_prepare = util.new_leader_prepare(ctx).await.msg;
+        tracing::info!("Make leader propose a new block");
+        util.produce_block(ctx).await;
+        let mut leader_prepare = util.new_leader_prepare(ctx).await;
+        tracing::info!(
+            "Modify the message so that it is actually a reproposal of the previous block"
+        );
+        leader_prepare.proposal = leader_prepare
+            .justification
+            .high_qc()
+            .unwrap()
+            .message
+            .proposal;
         leader_prepare.proposal_payload = None;
-        let leader_prepare = util.owner_key().sign_msg(leader_prepare);
-        let res = util.process_leader_prepare(ctx, leader_prepare).await;
-        assert_matches!(res, Err(leader_prepare::Error::ReproposalWhenFinalized));
+        let res = util
+            .process_leader_prepare(ctx, util.sign(leader_prepare))
+            .await;
+        assert_matches!(
+            res,
+            Err(leader_prepare::Error::InvalidMessage(
+                validator::LeaderPrepareVerifyError::ReproposalWhenFinalized
+            ))
+        );
         Ok(())
     })
     .await
@@ -477,40 +474,33 @@ async fn leader_prepare_reproposal_when_finalized() {
 async fn leader_prepare_reproposal_invalid_block() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let mut leader_prepare = util.new_leader_prepare(ctx).await.msg;
-        leader_prepare.justification = util.new_prepare_qc(|msg| msg.high_vote = ctx.rng().gen());
-        leader_prepare.proposal_payload = None;
-        let leader_prepare = util.owner_key().sign_msg(leader_prepare);
-        let res = util.process_leader_prepare(ctx, leader_prepare).await;
-        assert_matches!(res, Err(leader_prepare::Error::ReproposalInvalidBlock));
+        tracing::info!("Make leader repropose a block.");
+        util.new_leader_commit(ctx).await;
+        util.process_replica_timeout(ctx).await;
+        let mut leader_prepare = util.new_leader_prepare(ctx).await;
+        tracing::info!("Make the reproposal different than expected");
+        leader_prepare.proposal.payload = rng.gen();
+        let res = util
+            .process_leader_prepare(ctx, util.sign(leader_prepare))
+            .await;
+        assert_matches!(
+            res,
+            Err(leader_prepare::Error::InvalidMessage(
+                validator::LeaderPrepareVerifyError::ReproposalBadBlock
+            ))
+        );
         Ok(())
     })
     .await
     .unwrap();
 }
 
-#[tokio::test]
-async fn leader_commit_sanity() {
-    zksync_concurrency::testonly::abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
-        s.spawn_bg(runner.run(ctx));
-
-        let leader_commit = util.new_leader_commit(ctx).await;
-        util.process_leader_commit(ctx, leader_commit)
-            .await
-            .unwrap();
-        Ok(())
-    })
-    .await
-    .unwrap();
-}
-
+/// Check that replica provides expecte high_vote and high_qc after finalizing a block.
 #[tokio::test]
 async fn leader_commit_sanity_yield_replica_prepare() {
     zksync_concurrency::testonly::abort_on_panic();
@@ -521,16 +511,17 @@ async fn leader_commit_sanity_yield_replica_prepare() {
 
         let leader_commit = util.new_leader_commit(ctx).await;
         let replica_prepare = util
-            .process_leader_commit(ctx, leader_commit.clone())
+            .process_leader_commit(ctx, util.sign(leader_commit.clone()))
             .await
             .unwrap();
+        let mut view = leader_commit.justification.message.view.clone();
+        view.number = view.number.next();
         assert_eq!(
             replica_prepare.msg,
             ReplicaPrepare {
-                protocol_version: leader_commit.msg.protocol_version,
-                view: leader_commit.msg.justification.message.view.next(),
-                high_vote: leader_commit.msg.justification.message,
-                high_qc: leader_commit.msg.justification,
+                view,
+                high_vote: Some(leader_commit.justification.message.clone()),
+                high_qc: Some(leader_commit.justification),
             }
         );
         Ok(())
@@ -548,11 +539,9 @@ async fn leader_commit_incompatible_protocol_version() {
         s.spawn_bg(runner.run(ctx));
 
         let incompatible_protocol_version = util.incompatible_protocol_version();
-        let mut leader_commit = util.new_leader_commit(ctx).await.msg;
-        leader_commit.protocol_version = incompatible_protocol_version;
-        let res = util
-            .process_leader_commit(ctx, util.owner_key().sign_msg(leader_commit))
-            .await;
+        let mut leader_commit = util.new_leader_commit(ctx).await;
+        leader_commit.justification.message.view.protocol_version = incompatible_protocol_version;
+        let res = util.process_leader_commit(ctx, util.sign(leader_commit)).await;
         assert_matches!(
             res,
             Err(leader_commit::Error::IncompatibleProtocolVersion { message_version, local_version }) => {
@@ -565,21 +554,18 @@ async fn leader_commit_incompatible_protocol_version() {
 }
 
 #[tokio::test]
-async fn leader_commit_invalid_leader() {
+async fn leader_commit_bad_leader() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) = UTHarness::new(ctx, 2).await;
         s.spawn_bg(runner.run(ctx));
-
-        let current_view_leader = util.view_leader(util.replica.view);
-        assert_ne!(current_view_leader, util.owner_key().public());
-
-        let leader_commit = util.new_leader_commit(ctx).await.msg;
+        let leader_commit = util.new_leader_commit(ctx).await;
+        // Sign the leader_prepare with a key of different validator.
         let res = util
             .process_leader_commit(ctx, util.keys[1].sign_msg(leader_commit))
             .await;
-        assert_matches!(res, Err(leader_commit::Error::InvalidLeader { .. }));
+        assert_matches!(res, Err(leader_commit::Error::BadLeader { .. }));
         Ok(())
     })
     .await
@@ -594,8 +580,8 @@ async fn leader_commit_invalid_sig() {
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
-
-        let mut leader_commit = util.new_leader_commit(ctx).await;
+        let leader_commit = util.new_leader_commit(ctx).await;
+        let mut leader_commit = util.sign(leader_commit);
         leader_commit.sig = rng.gen();
         let res = util.process_leader_commit(ctx, leader_commit).await;
         assert_matches!(res, Err(leader_commit::Error::InvalidSignature { .. }));
@@ -614,12 +600,17 @@ async fn leader_commit_invalid_commit_qc() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let mut leader_commit = util.new_leader_commit(ctx).await.msg;
-        leader_commit.justification = rng.gen();
+        let mut leader_commit = util.new_leader_commit(ctx).await;
+        leader_commit.justification.signature = rng.gen();
         let res = util
-            .process_leader_commit(ctx, util.owner_key().sign_msg(leader_commit))
+            .process_leader_commit(ctx, util.sign(leader_commit))
             .await;
-        assert_matches!(res, Err(leader_commit::Error::InvalidJustification { .. }));
+        assert_matches!(
+            res,
+            Err(leader_commit::Error::InvalidMessage(
+                validator::CommitQCVerifyError::BadSignature(..)
+            ))
+        );
         Ok(())
     })
     .await

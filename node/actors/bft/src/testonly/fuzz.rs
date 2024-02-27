@@ -1,5 +1,9 @@
 use crate::testonly::node::MAX_PAYLOAD_SIZE;
-use rand::{seq::SliceRandom, Rng};
+use rand::{
+    distributions::{Distribution, Standard},
+    seq::SliceRandom,
+    Rng,
+};
 use zksync_consensus_roles::validator;
 
 /// Trait that allows us to mutate types. It's an approach to fuzzing that instead of starting with completely random inputs
@@ -9,6 +13,19 @@ pub(crate) trait Fuzz {
     /// Mutates a message. It will take a message (ideally a valid message, but we don't check this here) and change a single
     /// value to make it invalid (but ideally pretty close to being valid).
     fn mutate(&mut self, rng: &mut impl Rng);
+}
+
+impl<T: Fuzz> Fuzz for Option<T>
+where
+    Standard: Distribution<T>,
+{
+    fn mutate(&mut self, rng: &mut impl Rng) {
+        if let Some(v) = self.as_mut() {
+            v.mutate(rng);
+        } else {
+            *self = Some(rng.gen());
+        }
+    }
 }
 
 impl Fuzz for validator::Signed<validator::ConsensusMsg> {
@@ -36,33 +53,29 @@ impl Fuzz for validator::ConsensusMsg {
 
 impl Fuzz for validator::ReplicaPrepare {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..4) {
+        match rng.gen_range(0..3) {
             0 => self.view = rng.gen(),
             1 => self.high_vote.mutate(rng),
-            2 => self.high_qc.mutate(rng),
-            3 => self.protocol_version = rng.gen(),
-            _ => unreachable!(),
+            _ => self.high_qc.mutate(rng),
         }
     }
 }
 
 impl Fuzz for validator::ReplicaCommit {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..3) {
+        match rng.gen_range(0..2) {
             0 => self.view = rng.gen(),
-            1 => self.proposal.mutate(rng),
-            2 => self.protocol_version = rng.gen(),
-            _ => unreachable!(),
+            _ => self.proposal.mutate(rng),
         }
     }
 }
 
+// TODO: why payload is not fuzzed?
 impl Fuzz for validator::LeaderPrepare {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..3) {
+        match rng.gen_range(0..2) {
             0 => self.proposal.mutate(rng),
             1 => self.justification.mutate(rng),
-            2 => self.protocol_version = rng.gen(),
             _ => unreachable!(),
         }
     }
@@ -70,11 +83,7 @@ impl Fuzz for validator::LeaderPrepare {
 
 impl Fuzz for validator::LeaderCommit {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..2) {
-            0 => self.justification.mutate(rng),
-            1 => self.protocol_version = rng.gen(),
-            _ => unreachable!(),
-        }
+        self.justification.mutate(rng);
     }
 }
 

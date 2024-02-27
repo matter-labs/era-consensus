@@ -1,5 +1,5 @@
 //! Defines an RPC for sending ping messages.
-use crate::{mux, proto::ping as proto, rpc::Rpc as _};
+use crate::{mux, proto::ping as proto};
 use anyhow::Context as _;
 use rand::Rng;
 use zksync_concurrency::{ctx, limiter, time};
@@ -11,14 +11,18 @@ pub(crate) struct Rpc;
 impl super::Rpc for Rpc {
     const CAPABILITY_ID: mux::CapabilityId = 2;
     const INFLIGHT: u32 = 1;
-    const RATE: limiter::Rate = limiter::Rate {
-        burst: 1,
-        refresh: time::Duration::seconds(10),
-    };
     const METHOD: &'static str = "ping";
     type Req = Req;
     type Resp = Resp;
 }
+
+/// Hardcoded expected rate supported by the server.
+/// This needs to be part of the protocol, so that both parties agree on when
+/// connection is alive.
+pub(crate) const RATE: limiter::Rate = limiter::Rate {
+    burst: 2,
+    refresh: time::Duration::seconds(1),
+};
 
 /// Canonical Ping server implementation,
 /// which responds with data from the request.
@@ -35,7 +39,7 @@ impl super::Handler<Rpc> for Server {
 }
 
 impl super::Client<Rpc> {
-    /// Calls ping RPC every `Rpc.RATE.refresh`.
+    /// Sends a ping every `timeout`.
     /// Returns an error if any single ping request fails or
     /// exceeds `timeout`.
     pub(crate) async fn ping_loop(
@@ -44,12 +48,16 @@ impl super::Client<Rpc> {
         timeout: time::Duration,
     ) -> anyhow::Result<()> {
         loop {
-            ctx.sleep(Rpc::RATE.refresh).await?;
-            let ctx = &ctx.with_timeout(timeout);
             let req = Req(ctx.rng().gen());
-            let resp = self.call(ctx, &req, kB).await.context("ping")?;
+            let resp = self
+                .call(&ctx.with_timeout(timeout), &req, kB)
+                .await
+                .context("ping")?;
             if req.0 != resp.0 {
                 anyhow::bail!("bad ping response");
+            }
+            if let Err(ctx::Canceled) = ctx.sleep(timeout).await {
+                return Ok(());
             }
         }
     }

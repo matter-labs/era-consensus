@@ -45,15 +45,21 @@ async fn test_ping() {
     let clock = ctx::ManualClock::new();
     let ctx = &ctx::test_root(&clock);
     let (s1, s2) = noise::testonly::pipe(ctx).await;
-    let client = Client::<ping::Rpc>::new(ctx);
+    let client = Client::<ping::Rpc>::new(ctx, ping::RATE);
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(async {
-            expected(Service::new().add_server(ping::Server).run(ctx, s1).await).context("server")
+            expected(
+                Service::new()
+                    .add_server(ping::Server, ping::RATE)
+                    .run(ctx, s1)
+                    .await,
+            )
+            .context("server")
         });
         s.spawn_bg(async {
             expected(Service::new().add_client(&client).run(ctx, s2).await).context("client")
         });
-        for _ in 0..ping::Rpc::RATE.burst {
+        for _ in 0..ping::RATE.burst {
             let req = ping::Req(ctx.rng().gen());
             let resp = client.call(ctx, &req, kB).await?;
             assert_eq!(req.0, resp.0);
@@ -63,7 +69,7 @@ async fn test_ping() {
         let req = ping::Req(ctx.rng().gen());
         let resp = client.call(ctx, &req, kB).await?;
         assert_eq!(req.0, resp.0);
-        assert!(ctx.now() >= now + ping::Rpc::RATE.refresh);
+        assert!(ctx.now() >= now + ping::RATE.refresh);
         Ok(())
     })
     .await
@@ -76,7 +82,7 @@ struct PingServer {
 }
 
 const PING_COUNT: u64 = 3;
-const PING_TIMEOUT: time::Duration = time::Duration::seconds(3);
+const PING_TIMEOUT: time::Duration = time::Duration::seconds(6);
 
 #[async_trait::async_trait]
 impl Handler<ping::Rpc> for PingServer {
@@ -101,8 +107,7 @@ async fn test_ping_loop() {
     clock.set_advance_on_sleep();
     let ctx = &ctx::test_root(&clock);
     let (s1, s2) = noise::testonly::pipe(ctx).await;
-    let client = Client::<ping::Rpc>::new(ctx);
-    let max = 5;
+    let client = Client::<ping::Rpc>::new(ctx, ping::RATE);
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(async {
             // Clock is passed to the server, so that it can
@@ -112,13 +117,20 @@ async fn test_ping_loop() {
                 pings: 0.into(),
             };
 
-            // Use independent clock for server, because
-            // otherwise both clocks get autoincremented too aggresively.
-            let clock = ctx::ManualClock::new();
-            clock.set_advance_on_sleep();
-            let ctx = &ctx::test_with_clock(ctx, &clock);
-
-            expected(Service::new().add_server(server).run(ctx, s1).await).context("server")
+            expected(
+                Service::new()
+                    .add_server(
+                        server,
+                        limiter::Rate {
+                            burst: 1,
+                            // with `refresh = 0`, server will never autoadvance time.
+                            refresh: time::Duration::ZERO,
+                        },
+                    )
+                    .run(ctx, s1)
+                    .await,
+            )
+            .context("server")
         });
         s.spawn_bg(async {
             expected(Service::new().add_client(&client).run(ctx, s2).await).context("client")
@@ -126,8 +138,9 @@ async fn test_ping_loop() {
         let now = ctx.now();
         assert!(client.ping_loop(ctx, PING_TIMEOUT).await.is_err());
         let got = ctx.now() - now;
-        let want = (max - ping::Rpc::RATE.burst) as u32 * ping::Rpc::RATE.refresh + PING_TIMEOUT;
-        assert!(got >= want, "want at least {want} latency, but got {got}");
+        // PING_COUNT will succeed and the next with time out.
+        let want = (PING_COUNT + 1) as u32 * PING_TIMEOUT;
+        assert_eq!(got, want);
         Ok(())
     })
     .await
@@ -136,13 +149,14 @@ async fn test_ping_loop() {
 
 struct ExampleRpc;
 
+const RATE: limiter::Rate = limiter::Rate {
+    burst: 10,
+    refresh: time::Duration::ZERO,
+};
+
 impl Rpc for ExampleRpc {
     const CAPABILITY_ID: mux::CapabilityId = 0;
     const INFLIGHT: u32 = 5;
-    const RATE: limiter::Rate = limiter::Rate {
-        burst: 10,
-        refresh: time::Duration::ZERO,
-    };
     const METHOD: &'static str = "example";
     type Req = ();
     type Resp = ();
@@ -166,10 +180,16 @@ async fn test_inflight() {
     abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let (s1, s2) = noise::testonly::pipe(ctx).await;
-    let client = Client::<ExampleRpc>::new(ctx);
+    let client = Client::<ExampleRpc>::new(ctx, RATE);
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(async {
-            expected(Service::new().add_server(ExampleServer).run(ctx, s1).await).context("server")
+            expected(
+                Service::new()
+                    .add_server(ExampleServer, RATE)
+                    .run(ctx, s1)
+                    .await,
+            )
+            .context("server")
         });
         s.spawn_bg(async {
             expected(Service::new().add_client(&client).run(ctx, s2).await).context("client")

@@ -3693,6 +3693,7 @@ name = "zksync_consensus_network"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "assert_matches",
  "async-trait",
  "im",
  "once_cell",
@@ -3720,6 +3721,7 @@ name = "zksync_consensus_roles"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "assert_matches",
  "bit-vec",
  "hex",
  "prost",

@@ -1,6 +1,6 @@
 //! Messages related to blocks.
 
-use super::CommitQC;
+use super::{CommitQC, CommitQCVerifyError};
 use std::fmt;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 
@@ -64,8 +64,8 @@ impl BlockNumber {
     }
 
     /// Returns the previous block number.
-    pub fn prev(self) -> Self {
-        Self(self.0 - 1)
+    pub fn prev(self) -> Option<Self> {
+        Some(Self(self.0.checked_sub(1)?))
     }
 }
 
@@ -80,11 +80,6 @@ impl fmt::Display for BlockNumber {
 pub struct BlockHeaderHash(pub(crate) Keccak256);
 
 impl BlockHeaderHash {
-    /// Constant that the parent of the genesis block should be set to.
-    pub fn genesis_parent() -> Self {
-        Self(Keccak256::default())
-    }
-
     /// Interprets the specified `bytes` as a block header hash digest (i.e., a reverse operation to [`Self::as_bytes()`]).
     /// It is caller's responsibility to ensure that `bytes` are actually a block header hash digest.
     pub fn from_bytes(bytes: [u8; 32]) -> Self {
@@ -122,7 +117,7 @@ impl fmt::Debug for BlockHeaderHash {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockHeader {
     /// Hash of the parent block.
-    pub parent: BlockHeaderHash,
+    pub parent: Option<BlockHeaderHash>,
     /// Number of the block.
     pub number: BlockNumber,
     /// Payload of the block.
@@ -135,19 +130,10 @@ impl BlockHeader {
         BlockHeaderHash(Keccak256::new(&zksync_protobuf::canonical(self)))
     }
 
-    /// Creates a genesis block.
-    pub fn genesis(payload: PayloadHash, number: BlockNumber) -> Self {
-        Self {
-            parent: BlockHeaderHash::genesis_parent(),
-            number,
-            payload,
-        }
-    }
-
     /// Creates a child block for the given parent.
-    pub fn new(parent: &BlockHeader, payload: PayloadHash) -> Self {
+    pub fn next(parent: &BlockHeader, payload: PayloadHash) -> Self {
         Self {
-            parent: parent.hash(),
+            parent: Some(parent.hash()),
             number: parent.number.next(),
             payload,
         }
@@ -166,7 +152,7 @@ pub struct FinalBlock {
 impl FinalBlock {
     /// Creates a new finalized block.
     pub fn new(payload: Payload, justification: CommitQC) -> Self {
-        assert_eq!(justification.message.proposal.payload, payload.hash());
+        assert_eq!(justification.header().payload, payload.hash());
         Self {
             payload,
             justification,
@@ -178,12 +164,13 @@ impl FinalBlock {
         &self.justification.message.proposal
     }
 
-    /// Validates internal consistency of this block.
-    pub fn validate(
-        &self,
-        validators: &super::ValidatorSet,
-        consensus_threshold: usize,
-    ) -> Result<(), BlockValidationError> {
+    /// Number of the block.
+    pub fn number(&self) -> BlockNumber {
+        self.header().number
+    }
+
+    /// Verifies internal consistency of this block.
+    pub fn verify(&self, genesis: &super::Genesis) -> Result<(), BlockValidationError> {
         let payload_hash = self.payload.hash();
         if payload_hash != self.header().payload {
             return Err(BlockValidationError::HashMismatch {
@@ -192,7 +179,7 @@ impl FinalBlock {
             });
         }
         self.justification
-            .verify(validators, consensus_threshold)
+            .verify(genesis)
             .map_err(BlockValidationError::Justification)
     }
 }
@@ -234,5 +221,5 @@ pub enum BlockValidationError {
     },
     /// Failed verifying quorum certificate.
     #[error("failed verifying quorum certificate: {0:#?}")]
-    Justification(#[source] anyhow::Error),
+    Justification(#[source] CommitQCVerifyError),
 }

@@ -4,9 +4,12 @@ use std::time;
 #[derive(Debug, vise::Metrics)]
 #[metrics(prefix = "zksync_consensus_storage_persistent_block_store")]
 pub(super) struct PersistentBlockStore {
-    /// Latency of a successful `state()` call.
+    /// Latency of a successful `genesis()` call.
     #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
-    pub(super) state_latency: vise::Histogram<time::Duration>,
+    pub(super) genesis_latency: vise::Histogram<time::Duration>,
+    /// Latency of a successful `last()` call.
+    #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
+    pub(super) last_latency: vise::Histogram<time::Duration>,
     /// Latency of a successful `block()` call.
     #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
     pub(super) block_latency: vise::Histogram<time::Duration>,
@@ -21,8 +24,8 @@ pub(super) static PERSISTENT_BLOCK_STORE: vise::Global<PersistentBlockStore> = v
 #[derive(Debug, vise::Metrics)]
 #[metrics(prefix = "zksync_consensus_storage_block_store")]
 pub(super) struct BlockStore {
-    /// BlockNumber of the last queued block.
-    pub(super) last_queued_block: vise::Gauge<u64>,
-    /// BlockNumber of the last persisted block.
-    pub(super) last_persisted_block: vise::Gauge<u64>,
+    /// BlockNumber of the next block to queue.
+    pub(super) next_queued_block: vise::Gauge<u64>,
+    /// BlockNumber of the next block to persist.
+    pub(super) next_persisted_block: vise::Gauge<u64>,
 }

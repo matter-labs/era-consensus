@@ -27,6 +27,7 @@ tracing.workspace = true
 vise.workspace = true
 
 [dev-dependencies]
+assert_matches.workspace = true
 pretty_assertions.workspace = true
 test-casing.workspace = true
 tokio.workspace = true
