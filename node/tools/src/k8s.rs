@@ -1,4 +1,11 @@
-use crate::{config, NodeAddr};
+use crate::{
+    config,
+    network_chaos::{
+        NetworkChaos, NetworkChaosAction, NetworkChaosDelay, NetworkChaosMode,
+        NetworkChaosSelector, NetworkChaosSpec,
+    },
+    NodeAddr,
+};
 use anyhow::{anyhow, ensure, Context};
 use k8s_openapi::{
     api::{
@@ -10,7 +17,7 @@ use k8s_openapi::{
 use kube::{
     api::{ListParams, PostParams},
     core::{ObjectList, ObjectMeta},
-    Api, Client, ResourceExt,
+    Api, Client, CustomResource, ResourceExt,
 };
 use serde_json::json;
 use std::{collections::HashMap, net::SocketAddr};
@@ -119,6 +126,41 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
             Ok(())
         }
     }
+}
+
+pub async fn add_chaos_delay_for_node(client: &Client, node_name: &str) -> anyhow::Result<()> {
+    let chaos: NetworkChaos = NetworkChaos {
+        metadata: ObjectMeta {
+            name: Some("chaos-delay".to_string()),
+            ..Default::default()
+        },
+        spec: NetworkChaosSpec {
+            action: NetworkChaosAction::Delay,
+            mode: NetworkChaosMode::One,
+            selector: NetworkChaosSelector {
+                namespaces: vec![DEFAULT_NAMESPACE.to_string()].into(),
+                label_selectors: Some([("app".to_string(), node_name.to_string())].into()),
+            },
+            delay: NetworkChaosDelay {
+                latency: "1000ms".to_string(),
+                ..Default::default()
+            },
+            duration: Some("10s".to_string()),
+        },
+    };
+
+    let deployments: Api<NetworkChaos> = Api::all(client.to_owned());
+    let post_params = PostParams::default();
+    let result = deployments.create(&post_params, &chaos).await?;
+
+    info!(
+        "Chaos: {} , created",
+        result
+            .metadata
+            .name
+            .context("Name not defined in metadata")?
+    );
+    Ok(())
 }
 
 pub async fn create_tests_deployment(client: &Client) -> anyhow::Result<()> {
