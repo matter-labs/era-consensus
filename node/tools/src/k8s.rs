@@ -202,6 +202,7 @@ pub async fn deploy_node(
                   {
                     "name": node_name,
                     "image": DOCKER_IMAGE_NAME,
+                    "image": "consensus-node",
                     "env": [
                       {
                         "name": "NODE_ID",

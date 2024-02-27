@@ -11,16 +11,16 @@ async fn test_metrics() {
     abort_on_panic();
     let ctx = &mut ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let setup = validator::testonly::GenesisSetup::new(rng, 3);
+    let setup = validator::testonly::Setup::new(rng, 3);
     let cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
+        let (store, runner) = new_store(ctx, &setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
         let nodes: Vec<_> = cfgs
             .into_iter()
             .enumerate()
             .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(cfg, store.clone());
+                let (node, runner) = testonly::Instance::new(ctx, cfg, store.clone());
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                 node
             })

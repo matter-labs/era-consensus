@@ -25,13 +25,13 @@ impl Test {
     /// Run a test with the given parameters.
     pub(crate) async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
-        let setup = validator::testonly::GenesisSetup::new(rng, self.nodes.len());
+        let setup = validator::testonly::Setup::new(rng, self.nodes.len());
         let nets: Vec<_> = network::testonly::new_configs(rng, &setup, 1);
         let mut nodes = vec![];
         let mut honest = vec![];
         scope::run!(ctx, |ctx, s| async {
             for (i, net) in nets.into_iter().enumerate() {
-                let (store, runner) = new_store(ctx, &setup.blocks[0]).await;
+                let (store, runner) = new_store(ctx, &setup.genesis).await;
                 s.spawn_bg(runner.run(ctx));
                 if self.nodes[i] == Behavior::Honest {
                     honest.push(store.clone());
@@ -46,10 +46,11 @@ impl Test {
             s.spawn_bg(run_nodes(ctx, self.network, &nodes));
 
             // Run the nodes until all honest nodes store enough finalized blocks.
-            let want_block = validator::BlockNumber(self.blocks_to_finalize as u64);
+            let first = setup.genesis.fork.first_block;
+            let want_next = validator::BlockNumber(first.0 + self.blocks_to_finalize as u64);
             for store in &honest {
                 sync::wait_for(ctx, &mut store.subscribe(), |state| {
-                    state.next() > want_block
+                    state.next() > want_next
                 })
                 .await?;
             }
@@ -76,6 +77,7 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, specs: &[Node]) -> anyhow::
                 let mut nodes = vec![];
                 for (i, spec) in specs.iter().enumerate() {
                     let (node, runner) = network::testonly::Instance::new(
+                        ctx,
                         spec.net.clone(),
                         spec.block_store.clone(),
                     );
@@ -99,7 +101,7 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, specs: &[Node]) -> anyhow::
                 let mut recvs = vec![];
                 for (i, spec) in specs.iter().enumerate() {
                     let (actor_pipe, pipe) = pipe::new();
-                    let key = spec.net.consensus.as_ref().unwrap().key.public();
+                    let key = spec.net.validator_key.as_ref().unwrap().public();
                     sends.insert(key, actor_pipe.send);
                     recvs.push(actor_pipe.recv);
                     s.spawn(

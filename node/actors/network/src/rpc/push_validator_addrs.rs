@@ -2,7 +2,6 @@
 use crate::{mux, proto::gossip as proto};
 use anyhow::Context as _;
 use std::sync::Arc;
-use zksync_concurrency::{limiter, time};
 use zksync_consensus_roles::validator;
 use zksync_protobuf::ProtoFmt;
 
@@ -12,10 +11,6 @@ pub(crate) struct Rpc;
 impl super::Rpc for Rpc {
     const CAPABILITY_ID: mux::CapabilityId = 1;
     const INFLIGHT: u32 = 1;
-    const RATE: limiter::Rate = limiter::Rate {
-        burst: 1,
-        refresh: time::Duration::seconds(5),
-    };
     const METHOD: &'static str = "push_validator_addrs";
 
     type Req = Req;

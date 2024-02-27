@@ -26,7 +26,6 @@ mod config;
 pub mod io;
 mod leader;
 mod metrics;
-pub mod misc;
 mod replica;
 pub mod testonly;
 #[cfg(test)]

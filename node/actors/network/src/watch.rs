@@ -3,12 +3,10 @@ use zksync_concurrency::sync;
 
 /// Wrapper of the tokio::sync::Watch.
 pub(crate) struct Watch<T> {
-    /// Mutex-wrapped sender, so that it can be
-    /// accessed via immutable reference.
+    /// `sync::watch::Sender` contains synchronous mutex.
+    /// We wrap it into an async mutex to wait for it asynchronously.
     send: sync::Mutex<sync::watch::Sender<T>>,
-    /// By keeping a copy of a receiver, sender
-    /// is never closed, which gets rid of send
-    /// errors.
+    /// Receiver outside of the mutex so that `subscribe()` can be nonblocking.
     recv: sync::watch::Receiver<T>,
 }
 
