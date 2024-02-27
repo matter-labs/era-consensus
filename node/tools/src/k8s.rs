@@ -39,46 +39,39 @@ pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<
         !pods.items.is_empty(),
         "No consensus pods found in the k8s cluster"
     );
-    let pod_addresses: Result<Vec<SocketAddr>, _> = pods
-        .into_iter()
-        .filter(|pod| {
-            let running_image = pod
-                .spec
-                .clone()
-                .and_then(|spec| spec.containers.first().cloned())
-                .and_then(|container| container.image)
-                .unwrap_or_default();
-
-            running_image.contains(DOCKER_IMAGE_NAME)
-        })
-        .map(|pod| {
-            let pod_running_container = pod
-                .spec
-                .context("Failed to get pod spec")?
-                .containers
-                .first()
-                .cloned()
-                .context("Failed to get container")?;
+    let mut node_rpc_addresses: Vec<SocketAddr> = Vec::new();
+    for pod in pods.into_iter() {
+        let pod_container = pod
+            .clone()
+            .spec
+            .context("Failed to get pod spec")?
+            .containers
+            .first()
+            .cloned()
+            .context("Failed to get container")?;
+        if pod_container
+            .image
+            .context("Failed to get image")?
+            .contains(DOCKER_IMAGE_NAME)
+        {
             let pod_ip = pod
                 .status
                 .context("Failed to get pod status")?
                 .pod_ip
                 .context("Failed to get pod ip")?;
-            let port = pod_running_container
+            let pod_rpc_port = pod_container
                 .ports
                 .context("Failed to get ports of container")?
                 .iter()
                 .find_map(|port| {
-                    let port = port.container_port.try_into().ok()?;
+                    let port: u16 = port.container_port.try_into().ok()?;
                     (port != config::NODES_PORT).then_some(port)
-                });
-            Ok(SocketAddr::new(
-                pod_ip.parse()?,
-                port.context("Failed getting container port")?,
-            ))
-        })
-        .collect();
-    pod_addresses
+                })
+                .context("Failed parsing container port")?;
+            node_rpc_addresses.push(SocketAddr::new(pod_ip.parse()?, pod_rpc_port));
+        }
+    }
+    Ok(node_rpc_addresses)
 }
 
 /// Creates a namespace in k8s cluster
