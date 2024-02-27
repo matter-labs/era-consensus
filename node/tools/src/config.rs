@@ -152,13 +152,17 @@ impl ProtoFmt for AppConfig {
 
 /// This struct holds the file path to each of the config files.
 #[derive(Debug)]
-pub struct ConfigPaths<'a> {
+pub struct ConfigArgs<'a> {
     /// Path to a JSON file with node configuration.
     pub app: &'a Path,
+    /// Validator key as a string.
+    pub validator_key: Option<String>,
     /// Path to a validator key file.
-    pub validator_key: Option<&'a Path>,
+    pub validator_key_file: &'a Path,
+    /// Node key as a string.
+    pub node_key: Option<String>,
     /// Path to a node key file.
-    pub node_key: &'a Path,
+    pub node_key_file: &'a Path,
     /// Path to the rocksdb database.
     pub database: &'a Path,
 }
@@ -170,7 +174,7 @@ pub struct Configs {
     pub database: PathBuf,
 }
 
-impl<'a> ConfigPaths<'a> {
+impl<'a> ConfigArgs<'a> {
     // Loads configs from the file system.
     pub fn load(self) -> anyhow::Result<Configs> {
         Ok(Configs {
@@ -181,23 +185,32 @@ impl<'a> ConfigPaths<'a> {
             .with_context(|| self.app.display().to_string())?
             .0,
 
-            validator_key: self
-                .validator_key
-                .as_ref()
-                .map(|file| {
-                    (|| {
-                        let key = fs::read_to_string(file).context("failed reading file")?;
-                        Text::new(&key).decode().context("failed decoding key")
-                    })()
-                    .with_context(|| file.display().to_string())
-                })
-                .transpose()?,
+            validator_key: (|| {
+                let key = match self.validator_key {
+                    Some(key) => Some(key.clone()),
+                    None => fs::read_to_string(self.validator_key_file)
+                        .context(format!(
+                            "failed reading file: {}",
+                            self.validator_key_file.display()
+                        ))
+                        .ok(),
+                };
+                key.map(|value| Text::new(&value).decode().context("failed decoding key"))
+            })()
+            .transpose()
+            .with_context(|| "validator key")?,
 
             node_key: (|| {
-                let key = fs::read_to_string(self.node_key).context("failed reading file")?;
+                let key = match self.node_key {
+                    Some(key) => key.clone(),
+                    None => fs::read_to_string(self.node_key_file).context(format!(
+                        "failed reading file: {}",
+                        self.node_key_file.display()
+                    ))?,
+                };
                 Text::new(&key).decode().context("failed decoding key")
             })()
-            .with_context(|| self.node_key.display().to_string())?,
+            .with_context(|| "node key")?,
 
             database: self.database.into(),
         })

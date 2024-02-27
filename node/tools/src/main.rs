@@ -1,13 +1,13 @@
 //! Main binary for the consensus node. It reads the configuration, initializes all parts of the node and
 //! manages communication between the actors. It is the main executable in this workspace.
 use anyhow::Context as _;
-use clap::Parser;
+use clap::{Args, Parser};
 use std::{fs, io::IsTerminal as _, path::PathBuf};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_tools::{decode_json, ConfigPaths, NodeAddr, RPCServer};
+use zksync_consensus_tools::{decode_json, ConfigArgs, NodeAddr, RPCServer};
 use zksync_protobuf::serde::Serde;
 
 /// Wrapper for Vec<NodeAddr>.
@@ -23,17 +23,16 @@ impl std::str::FromStr for NodeAddrs {
 
 /// Command-line application launching a node executor.
 #[derive(Debug, Parser)]
-struct Args {
-    /// Path to a validator key file. If set to an empty string, validator key will not be read
-    /// (i.e., a node will be initialized as a non-validator node).
-    #[arg(long, default_value = "./validator_key")]
-    validator_key: PathBuf,
+struct Cli {
+    /// Validator key.
+    #[command(flatten)]
+    validator_key: ValidatorKey,
     /// Path to a JSON file with node configuration.
     #[arg(long, default_value = "./config.json")]
     config_file: PathBuf,
-    /// Path to a node key file.
-    #[arg(long, default_value = "./node_key")]
-    node_key: PathBuf,
+    /// Node key definition.
+    #[command(flatten)]
+    node_key: NodeKey,
     /// Path to the rocksdb database of the node.
     #[arg(long, default_value = "./database")]
     database: PathBuf,
@@ -45,14 +44,45 @@ struct Args {
     add_gossip_static_outbound: Option<NodeAddrs>,
 }
 
-impl Args {
+/// Node key definitions:
+/// If both are present, node-key option has precedence.
+#[derive(Debug, Args)]
+#[group(required = false, multiple = true)]
+struct NodeKey {
+    /// Set Node key in command line
+    #[arg(long, value_name = "node_key")]
+    node_key: Option<String>,
+
+    /// Set a path to the node key file
+    #[arg(long, default_value = "./node_key")]
+    node_key_file: PathBuf,
+}
+
+/// Validator key definitions:
+/// If validator key is not set, and key file is not present,
+/// a node will be initialized as a non-validator node.
+/// If both are present, validator-key option has precedence.
+#[derive(Debug, Args)]
+#[group(required = false, multiple = true)]
+struct ValidatorKey {
+    /// Set validator key directly in command line
+    #[arg(long, value_name = "validator_key")]
+    validator_key: Option<String>,
+
+    /// Set path to node key file
+    #[arg(long, default_value = "./validator_key")]
+    validator_key_file: PathBuf,
+}
+
+impl Cli {
     /// Extracts configuration paths from these args.
-    fn config_paths(&self) -> ConfigPaths<'_> {
-        ConfigPaths {
+    fn config_paths(&self) -> ConfigArgs<'_> {
+        ConfigArgs {
             app: &self.config_file,
-            node_key: &self.node_key,
-            validator_key: (!self.validator_key.as_os_str().is_empty())
-                .then_some(&self.validator_key),
+            node_key: self.node_key.node_key.clone(),
+            node_key_file: &self.node_key.node_key_file,
+            validator_key: self.validator_key.validator_key.clone(),
+            validator_key_file: &self.validator_key.validator_key_file,
             database: &self.database,
         }
     }
@@ -60,7 +90,7 @@ impl Args {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args: Args = Args::parse();
+    let args: Cli = Cli::parse();
     tracing::trace!(?args, "Starting node");
     let ctx = &ctx::root();
 
