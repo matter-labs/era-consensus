@@ -2,6 +2,7 @@
 #![allow(missing_docs)]
 mod config;
 pub mod k8s;
+pub mod network_chaos;
 mod proto;
 pub mod rpc;
 mod store;
