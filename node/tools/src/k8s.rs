@@ -1,16 +1,21 @@
 use crate::{config, NodeAddr};
 use anyhow::{anyhow, Context};
-use k8s_openapi::api::{
-    apps::v1::Deployment,
-    core::v1::{Namespace, Pod},
+use k8s_openapi::{
+    api::{
+        apps::v1::{Deployment, DeploymentSpec},
+        core::v1::{
+            Container, ContainerPort, EnvVar, EnvVarSource, HTTPGetAction, Namespace,
+            ObjectFieldSelector, Pod, PodSpec, PodTemplateSpec, Probe,
+        },
+    },
+    apimachinery::pkg::{apis::meta::v1::LabelSelector, util::intstr::IntOrString::Int},
 };
 use kube::{
     api::{ListParams, PostParams},
-    core::ObjectList,
+    core::{ObjectList, ObjectMeta},
     Api, Client, ResourceExt,
 };
-use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use tokio_retry::strategy::FixedInterval;
 use tokio_retry::Retry;
 use tracing::log::info;
@@ -26,16 +31,14 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
     let namespaces: Api<Namespace> = Api::all(client.clone());
     match namespaces.get_opt(name).await? {
         None => {
-            let namespace: Namespace = serde_json::from_value(json!({
-                "apiVersion": "v1",
-                "kind": "Namespace",
-                "metadata": {
-                    "name": name,
-                    "labels": {
-                        "name": name
-                    }
-                }
-            }))?;
+            let namespace = Namespace {
+                metadata: ObjectMeta {
+                    name: Some(name.to_owned()),
+                    labels: Some(BTreeMap::from([("name".to_owned(), name.to_owned())])),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
 
             let namespaces: Api<Namespace> = Api::all(client.clone());
             let post_params = PostParams::default();
@@ -73,76 +76,87 @@ pub async fn deploy_node(
 ) -> anyhow::Result<()> {
     let cli_args = get_cli_args(peers);
     let node_name = format!("consensus-node-{node_index:0>2}");
-    let deployment: Deployment = serde_json::from_value(json!({
-          "apiVersion": "apps/v1",
-          "kind": "Deployment",
-          "metadata": {
-            "name": node_name,
-            "namespace": namespace
-          },
-          "spec": {
-            "selector": {
-              "matchLabels": {
-                "app": node_name
-              }
+    let deployment = Deployment {
+        metadata: ObjectMeta {
+            name: Some(node_name.to_owned()),
+            namespace: Some(namespace.to_owned()),
+            ..Default::default()
+        },
+        spec: Some(DeploymentSpec {
+            selector: LabelSelector {
+                match_labels: Some(BTreeMap::from([("app".to_owned(), node_name.to_owned())])),
+                ..Default::default()
             },
-            "replicas": 1,
-            "template": {
-              "metadata": {
-                "labels": {
-                  "app": node_name,
-                  "id": node_name,
-                  "seed": is_seed.to_string()
-                }
-              },
-              "spec": {
-                "containers": [
-                  {
-                    "name": node_name,
-                    "image": "consensus-node",
-                    "env": [
-                      {
-                        "name": "NODE_ID",
-                        "value": node_name
-                      },
-                      {
-                        "name": "PUBLIC_ADDR",
-                        "valueFrom": {
-                            "fieldRef": {
-                                "fieldPath": "status.podIP"
-                            }
-                        }
-                      }
-                    ],
-                    "command": ["./k8s_entrypoint.sh"],
-                    "args": cli_args,
-                    "imagePullPolicy": "Never",
-                    "ports": [
-                      {
-                        "containerPort": config::NODES_PORT
-                      },
-                      {
-                        "containerPort": 3154
-                      }
-                    ],
-                    "livenessProbe": {
-                      "httpGet": {
-                        "path": "/health",
-                        "port": 3154
-                      }
-                    },
-                    "readinessProbe": {
-                      "httpGet": {
-                        "path": "/health",
-                        "port": 3154
-                      }
-                    }
-                  }
-                ]
-              }
-            }
-          }
-    }))?;
+            replicas: Some(1),
+            template: PodTemplateSpec {
+                metadata: Some(ObjectMeta {
+                    labels: Some(BTreeMap::from([
+                        ("app".to_owned(), node_name.to_owned()),
+                        ("id".to_owned(), node_name.to_owned()),
+                        ("seed".to_owned(), is_seed.to_string()),
+                    ])),
+                    ..Default::default()
+                }),
+                spec: Some(PodSpec {
+                    containers: vec![Container {
+                        name: node_name.to_owned(),
+                        image: Some("consensus-node".to_owned()),
+                        env: Some(vec![
+                            EnvVar {
+                                name: "NODE_ID".to_owned(),
+                                value: Some(node_name.to_owned()),
+                                ..Default::default()
+                            },
+                            EnvVar {
+                                name: "PUBLIC_ADDR".to_owned(),
+                                value_from: Some(EnvVarSource {
+                                    field_ref: Some(ObjectFieldSelector {
+                                        field_path: "status.podIP".to_owned(),
+                                        ..Default::default()
+                                    }),
+                                    ..Default::default()
+                                }),
+                                ..Default::default()
+                            },
+                        ]),
+                        command: Some(vec!["./k8s_entrypoint.sh".to_owned()]),
+                        args: Some(cli_args),
+                        image_pull_policy: Some("Never".to_owned()),
+                        ports: Some(vec![
+                            ContainerPort {
+                                container_port: i32::from(config::NODES_PORT),
+                                ..Default::default()
+                            },
+                            ContainerPort {
+                                container_port: 3154,
+                                ..Default::default()
+                            },
+                        ]),
+                        liveness_probe: Some(Probe {
+                            http_get: Some(HTTPGetAction {
+                                path: Some("/health".to_owned()),
+                                port: Int(3154),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }),
+                        readiness_probe: Some(Probe {
+                            http_get: Some(HTTPGetAction {
+                                path: Some("/health".to_owned()),
+                                port: Int(3154),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }),
+            },
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
 
     let deployments: Api<Deployment> = Api::namespaced(client.clone(), namespace);
     let post_params = PostParams::default();
