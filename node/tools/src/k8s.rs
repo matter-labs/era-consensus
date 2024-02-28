@@ -17,7 +17,7 @@ use k8s_openapi::{
 use kube::{
     api::{ListParams, PostParams},
     core::{ObjectList, ObjectMeta},
-    Api, Client, CustomResource, ResourceExt,
+    Api, Client, ResourceExt,
 };
 use serde_json::json;
 use std::{collections::HashMap, net::SocketAddr};
@@ -129,12 +129,9 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
 }
 
 pub async fn add_chaos_delay_for_node(client: &Client, node_name: &str) -> anyhow::Result<()> {
-    let chaos: NetworkChaos = NetworkChaos {
-        metadata: ObjectMeta {
-            name: Some("chaos-delay".to_string()),
-            ..Default::default()
-        },
-        spec: NetworkChaosSpec {
+    let chaos = NetworkChaos::new(
+        "chaos-delay",
+        NetworkChaosSpec {
             action: NetworkChaosAction::Delay,
             mode: NetworkChaosMode::One,
             selector: NetworkChaosSelector {
@@ -147,12 +144,12 @@ pub async fn add_chaos_delay_for_node(client: &Client, node_name: &str) -> anyho
             },
             duration: Some("10s".to_string()),
         },
-    };
+    );
 
-    let deployments: Api<NetworkChaos> = Api::all(client.to_owned());
-    let post_params = PostParams::default();
-    let result = deployments.create(&post_params, &chaos).await?;
-
+    let chaos_deployments = Api::namespaced(client.clone(), "chaos-mesh");
+    let result = chaos_deployments
+        .create(&PostParams::default(), &chaos)
+        .await?;
     info!(
         "Chaos: {} , created",
         result
