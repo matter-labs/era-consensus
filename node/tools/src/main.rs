@@ -7,7 +7,7 @@ use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_tools::{decode_json, ConfigArgs, NodeAddr, RPCServer};
+use zksync_consensus_tools::{decode_json, AppConfig, ConfigArgs, NodeAddr, RPCServer};
 use zksync_protobuf::serde::Serde;
 
 /// Wrapper for Vec<NodeAddr>.
@@ -24,15 +24,15 @@ impl std::str::FromStr for NodeAddrs {
 /// Command-line application launching a node executor.
 #[derive(Debug, Parser)]
 struct Cli {
+    /// Node configuration.
+    #[command(flatten)]
+    config_grp: Config,
     /// Validator key.
     #[command(flatten)]
-    validator_key: ValidatorKey,
-    /// Path to a JSON file with node configuration.
-    #[arg(long, default_value = "./config.json")]
-    config_file: PathBuf,
+    validator_key_grp: ValidatorKey,
     /// Node key definition.
     #[command(flatten)]
-    node_key: NodeKey,
+    node_key_grp: NodeKey,
     /// Path to the rocksdb database of the node.
     #[arg(long, default_value = "./database")]
     database: PathBuf,
@@ -74,15 +74,35 @@ struct ValidatorKey {
     validator_key_file: PathBuf,
 }
 
+/// Configuration:
+/// If both are present, config options will override config_file.
+#[derive(Debug, Args)]
+#[group(required = false, multiple = true)]
+struct Config {
+    /// Provide configuration directly in command line
+    #[arg(long, value_name = "config", value_parser(parse_config))]
+    config: Option<Serde<AppConfig>>,
+
+    /// Set path to config file
+    #[arg(long, default_value = "./config.json")]
+    config_file: PathBuf,
+}
+
+fn parse_config(val: &str) -> anyhow::Result<Serde<AppConfig>> {
+    let config = decode_json(val)?;
+    Ok(config)
+}
+
 impl Cli {
     /// Extracts configuration paths from these args.
-    fn config_paths(&self) -> ConfigArgs<'_> {
+    fn config_args(&self) -> ConfigArgs<'_> {
         ConfigArgs {
-            app: &self.config_file,
-            node_key: self.node_key.node_key.clone(),
-            node_key_file: &self.node_key.node_key_file,
-            validator_key: self.validator_key.validator_key.clone(),
-            validator_key_file: &self.validator_key.validator_key_file,
+            config: self.config_grp.config.clone().map(|config| config.0),
+            config_file: &self.config_grp.config_file,
+            node_key: self.node_key_grp.node_key.clone(),
+            node_key_file: &self.node_key_grp.node_key_file,
+            validator_key: self.validator_key_grp.validator_key.clone(),
+            validator_key_file: &self.validator_key_grp.validator_key_file,
             database: &self.database,
         }
     }
@@ -126,10 +146,7 @@ async fn main() -> anyhow::Result<()> {
 
     // Load the config files.
     tracing::debug!("Loading config files.");
-    let mut configs = args
-        .config_paths()
-        .load()
-        .context("config_paths().load()")?;
+    let mut configs = args.config_args().load().context("config_args().load()")?;
 
     // if `PUBLIC_ADDR` env var is set, use it to override publicAddr in config
     configs.app.check_public_addr().context("Public Address")?;

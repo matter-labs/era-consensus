@@ -153,8 +153,10 @@ impl ProtoFmt for AppConfig {
 /// This struct holds the file path to each of the config files.
 #[derive(Debug)]
 pub struct ConfigArgs<'a> {
+    /// Node configuration from command line.
+    pub config: Option<AppConfig>,
     /// Path to a JSON file with node configuration.
-    pub app: &'a Path,
+    pub config_file: &'a Path,
     /// Validator key as a string.
     pub validator_key: Option<String>,
     /// Path to a validator key file.
@@ -179,10 +181,10 @@ impl<'a> ConfigArgs<'a> {
     pub fn load(self) -> anyhow::Result<Configs> {
         Ok(Configs {
             app: (|| {
-                let app = fs::read_to_string(self.app).context("failed reading file")?;
+                let app = fs::read_to_string(self.config_file).context("failed reading file")?;
                 decode_json::<Serde<AppConfig>>(&app).context("failed decoding JSON")
             })()
-            .with_context(|| self.app.display().to_string())?
+            .with_context(|| self.config_file.display().to_string())?
             .0,
 
             validator_key: (|| {
