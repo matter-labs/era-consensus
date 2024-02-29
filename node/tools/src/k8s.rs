@@ -1,4 +1,4 @@
-use crate::{config, NodeAddr};
+use crate::{config, AppConfig, NodeAddr};
 use anyhow::{anyhow, Context};
 use k8s_openapi::{
     api::{
@@ -21,7 +21,8 @@ use std::str::FromStr;
 use tokio_retry::strategy::FixedInterval;
 use tokio_retry::Retry;
 use tracing::log::info;
-use zksync_consensus_roles::node;
+use zksync_consensus_crypto::TextFmt;
+use zksync_consensus_roles::{node, validator};
 use zksync_protobuf::serde::Serde;
 
 /// Consensus Node Representation
@@ -29,14 +30,16 @@ use zksync_protobuf::serde::Serde;
 pub struct ConsensusNode {
     /// Node identifier
     pub id: String,
+    /// Node configuration
+    pub config: AppConfig,
     /// Node key
     pub key: node::SecretKey,
+    /// Node key
+    pub validator_key: Option<validator::SecretKey>,
     /// Full NodeAddr
     pub node_addr: Option<NodeAddr>,
     /// Is seed node (meaning it has no gossipStaticOutbound configuration)
     pub is_seed: bool,
-    /// known gossipStaticOutbound peers
-    pub gossip_static_outbound: Vec<NodeAddr>,
 }
 
 /// Get a kube client
@@ -90,7 +93,7 @@ pub async fn deploy_node(
     node: &ConsensusNode,
     namespace: &str,
 ) -> anyhow::Result<()> {
-    let cli_args = get_cli_args(&node.gossip_static_outbound);
+    let cli_args = get_cli_args(node);
     let deployment = Deployment {
         metadata: ObjectMeta {
             name: Some(node.id.to_owned()),
@@ -116,24 +119,17 @@ pub async fn deploy_node(
                     containers: vec![Container {
                         name: node.id.to_owned(),
                         image: Some("consensus-node".to_owned()),
-                        env: Some(vec![
-                            EnvVar {
-                                name: "NODE_ID".to_owned(),
-                                value: Some(node.id.to_owned()),
-                                ..Default::default()
-                            },
-                            EnvVar {
-                                name: "PUBLIC_ADDR".to_owned(),
-                                value_from: Some(EnvVarSource {
-                                    field_ref: Some(ObjectFieldSelector {
-                                        field_path: "status.podIP".to_owned(),
-                                        ..Default::default()
-                                    }),
+                        env: Some(vec![EnvVar {
+                            name: "PUBLIC_ADDR".to_owned(),
+                            value_from: Some(EnvVarSource {
+                                field_ref: Some(ObjectFieldSelector {
+                                    field_path: "status.podIP".to_owned(),
                                     ..Default::default()
                                 }),
                                 ..Default::default()
-                            },
-                        ]),
+                            }),
+                            ..Default::default()
+                        }]),
                         command: Some(vec!["./k8s_entrypoint.sh".to_owned()]),
                         args: Some(cli_args),
                         image_pull_policy: Some("Never".to_owned()),
@@ -190,14 +186,14 @@ pub async fn deploy_node(
 /// Waits for the pods to start in order to complete each ConsensusNode with its assigned NodeAddr
 pub async fn find_node_addrs(
     client: &Client,
-    seed_nodes: &mut HashMap<String, &mut ConsensusNode>,
+    nodes: &mut HashMap<String, &mut ConsensusNode>,
     namespace: &str,
 ) -> anyhow::Result<()> {
     let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
 
     // Will retry 15 times during 15 seconds to allow pods to start and obtain an IP
     let retry_strategy = FixedInterval::from_millis(1000).take(15);
-    let pod_list = Retry::spawn(retry_strategy, || get_seed_pods(&pods, seed_nodes.len())).await?;
+    let pod_list = Retry::spawn(retry_strategy, || get_seed_pods(&pods, nodes.len())).await?;
 
     for p in pod_list {
         let id = p.labels()["id"].clone();
@@ -206,7 +202,7 @@ pub async fn find_node_addrs(
             .context("Status not present")?
             .pod_ip
             .context("Pod IP address not present")?;
-        let node: &mut ConsensusNode = *seed_nodes.get_mut(&id).context("node not found")?;
+        let node: &mut ConsensusNode = *nodes.get_mut(&id).context("node not found")?;
         node.node_addr = Some(NodeAddr {
             key: node.key.public(),
             addr: SocketAddr::from_str(&format!("{}:{}", ip, config::NODES_PORT))?,
@@ -234,20 +230,19 @@ fn is_pod_running(pod: &Pod) -> bool {
     false
 }
 
-fn get_cli_args(peers: &[NodeAddr]) -> Vec<String> {
-    if peers.is_empty() {
-        [].to_vec()
-    } else {
-        [
-            "--add-gossip-static-outbound".to_string(),
-            config::encode_with_serializer(
-                &peers
-                    .iter()
-                    .map(|e| Serde(e.clone()))
-                    .collect::<Vec<Serde<NodeAddr>>>(),
-                serde_json::Serializer::new(vec![]),
-            ),
-        ]
-        .to_vec()
-    }
+fn get_cli_args(consensus_node: &ConsensusNode) -> Vec<String> {
+    let mut cli_args = [
+        "--config".to_string(),
+        config::encode_with_serializer(
+            &Serde(consensus_node.config.clone()),
+            serde_json::Serializer::new(vec![]),
+        ),
+        "--node-key".to_string(),
+        TextFmt::encode(&consensus_node.key),
+    ]
+    .to_vec();
+    if let Some(key) = &consensus_node.validator_key {
+        cli_args.append(&mut ["--validator-key".to_string(), TextFmt::encode(key)].to_vec())
+    };
+    cli_args
 }

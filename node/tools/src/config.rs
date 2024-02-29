@@ -178,14 +178,24 @@ pub struct Configs {
 
 impl<'a> ConfigArgs<'a> {
     // Loads configs from the file system.
-    pub fn load(self) -> anyhow::Result<Configs> {
+    pub fn load(self) -> anyhow::Result<Configs, anyhow::Error> {
         Ok(Configs {
             app: (|| {
-                let app = fs::read_to_string(self.config_file).context("failed reading file")?;
-                decode_json::<Serde<AppConfig>>(&app).context("failed decoding JSON")
+                let config = match self.config {
+                    Some(app) => app,
+                    None => {
+                        let app = fs::read_to_string(self.config_file).context(format!(
+                            "failed reading file: {}",
+                            self.config_file.display()
+                        ))?;
+                        decode_json::<Serde<AppConfig>>(&app)
+                            .context("failed decoding JSON")?
+                            .0
+                    }
+                };
+                Ok::<AppConfig, anyhow::Error>(config)
             })()
-            .with_context(|| self.config_file.display().to_string())?
-            .0,
+            .context("config")?,
 
             validator_key: (|| {
                 let key = match self.validator_key {
@@ -200,7 +210,7 @@ impl<'a> ConfigArgs<'a> {
                 key.map(|value| Text::new(&value).decode().context("failed decoding key"))
             })()
             .transpose()
-            .with_context(|| "validator key")?,
+            .context("validator key")?,
 
             node_key: (|| {
                 let key = match self.node_key {
@@ -212,7 +222,7 @@ impl<'a> ConfigArgs<'a> {
                 };
                 Text::new(&key).decode().context("failed decoding key")
             })()
-            .with_context(|| "node key")?,
+            .context("node key")?,
 
             database: self.database.into(),
         })

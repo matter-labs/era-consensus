@@ -39,10 +39,9 @@ stop_docker_nodes:
 	docker stop consensus-node-1 consensus-node-2
 
 start_k8s_nodes:
-	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer generate-config --nodes ${NODES}
 	$(MAKE) docker_node_image
 	minikube image load consensus-node:latest
-	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer deploy --nodes ${NODES} --seed-nodes ${SEED_NODES}
+	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer -- --nodes ${NODES} --seed-nodes ${SEED_NODES}
 
 # Clean commands
 
