@@ -88,6 +88,7 @@ struct Config {
     config_file: PathBuf,
 }
 
+/// Function to let clap parse the command line `config` argument
 fn parse_config(val: &str) -> anyhow::Result<Serde<AppConfig>> {
     let config = decode_json(val)?;
     Ok(config)
