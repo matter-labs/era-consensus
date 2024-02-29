@@ -197,7 +197,7 @@ impl<'a> ConfigArgs<'a> {
             })()
             .context("config")?,
 
-            validator_key: (|| {
+            validator_key: {
                 let key = match self.validator_key {
                     Some(key) => Some(key.clone()),
                     None => fs::read_to_string(self.validator_key_file)
@@ -208,7 +208,7 @@ impl<'a> ConfigArgs<'a> {
                         .ok(),
                 };
                 key.map(|value| Text::new(&value).decode().context("failed decoding key"))
-            })()
+            }
             .transpose()
             .context("validator key")?,
 
