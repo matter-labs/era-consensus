@@ -1,6 +1,6 @@
 use crate::AppConfig;
 
-use super::methods::{config, health_check, last_view, peers};
+use super::methods::{config, health_check, last_view, last_vote, peers};
 use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
 use std::{net::SocketAddr, sync::Arc};
 use zksync_concurrency::{ctx, scope};
@@ -39,6 +39,10 @@ impl RPCServer {
             .layer(ProxyGetRequestLayer::new(
                 last_view::path(),
                 last_view::method(),
+            )?)
+            .layer(ProxyGetRequestLayer::new(
+                last_vote::path(),
+                last_vote::method(),
             )?);
 
         let mut module = RpcModule::new(());
@@ -56,6 +60,11 @@ impl RPCServer {
         let node_storage = self.node_storage.clone();
         module.register_method(last_view::method(), move |_params, _| {
             last_view::callback(node_storage.clone())
+        })?;
+
+        let node_storage = self.node_storage.clone();
+        module.register_method(last_vote::method(), move |_params, _| {
+            last_vote::callback(node_storage.clone())
         })?;
 
         let server = Server::builder()
