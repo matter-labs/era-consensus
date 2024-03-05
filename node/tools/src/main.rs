@@ -7,19 +7,10 @@ use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_tools::{decode_json, AppConfig, ConfigArgs, NodeAddr, RPCServer};
+use zksync_consensus_crypto::{Text, TextFmt};
+use zksync_consensus_roles::{node, validator};
+use zksync_consensus_tools::{decode_json, AppConfig, ConfigArgs, RPCServer};
 use zksync_protobuf::serde::Serde;
-
-/// Wrapper for Vec<NodeAddr>.
-#[derive(Debug, Clone)]
-struct NodeAddrs(Vec<Serde<NodeAddr>>);
-
-impl std::str::FromStr for NodeAddrs {
-    type Err = anyhow::Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(decode_json(s)?))
-    }
-}
 
 /// Command-line application launching a node executor.
 #[derive(Debug, Parser)]
@@ -39,19 +30,16 @@ struct Cli {
     /// Port for the RPC server.
     #[arg(long)]
     rpc_port: Option<u16>,
-    /// IP address and key of the seed peers.
-    #[arg(long)]
-    add_gossip_static_outbound: Option<NodeAddrs>,
 }
 
 /// Node key definitions:
 /// If both are present, node-key option has precedence.
 #[derive(Debug, Args)]
-#[group(required = false, multiple = true)]
+#[group(required = false, multiple = false)]
 struct NodeKey {
     /// Set Node key in command line
-    #[arg(long, value_name = "node_key")]
-    node_key: Option<String>,
+    #[arg(long, value_name = "node_key", value_parser(parse_key::<node::SecretKey>))]
+    node_key: Option<node::SecretKey>,
 
     /// Set a path to the node key file
     #[arg(long, default_value = "./node_key")]
@@ -63,11 +51,11 @@ struct NodeKey {
 /// a node will be initialized as a non-validator node.
 /// If both are present, validator-key option has precedence.
 #[derive(Debug, Args)]
-#[group(required = false, multiple = true)]
+#[group(required = false, multiple = false)]
 struct ValidatorKey {
     /// Set validator key directly in command line
-    #[arg(long, value_name = "validator_key")]
-    validator_key: Option<String>,
+    #[arg(long, value_name = "validator_key", value_parser(parse_key::<validator::SecretKey>))]
+    validator_key: Option<validator::SecretKey>,
 
     /// Set path to node key file
     #[arg(long, default_value = "./validator_key")]
@@ -77,7 +65,7 @@ struct ValidatorKey {
 /// Configuration:
 /// If both are present, config options will override config_file.
 #[derive(Debug, Args)]
-#[group(required = false, multiple = true)]
+#[group(required = false, multiple = false)]
 struct Config {
     /// Provide configuration directly in command line
     #[arg(long, value_name = "config", value_parser(parse_config))]
@@ -92,6 +80,10 @@ struct Config {
 fn parse_config(val: &str) -> anyhow::Result<Serde<AppConfig>> {
     let config = decode_json(val)?;
     Ok(config)
+}
+
+fn parse_key<T: TextFmt>(val: &str) -> anyhow::Result<T> {
+    Ok(Text::new(&val).decode().context("failed decoding key")?)
 }
 
 impl Cli {
@@ -151,14 +143,6 @@ async fn main() -> anyhow::Result<()> {
 
     // if `PUBLIC_ADDR` env var is set, use it to override publicAddr in config
     configs.app.check_public_addr().context("Public Address")?;
-
-    // Add gossipStaticOutbound pairs from cli to config
-    if let Some(addrs) = args.add_gossip_static_outbound {
-        configs
-            .app
-            .gossip_static_outbound
-            .extend(addrs.0.into_iter().map(|e| (e.0.key, e.0.addr)));
-    }
 
     let (executor, runner) = configs
         .make_executor(ctx)
