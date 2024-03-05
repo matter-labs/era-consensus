@@ -8,7 +8,7 @@ SEED_NODES=1
 # Locally run commands
 
 node:
-	export RUST_LOG=INFO && cd ${EXECUTABLE_NODE_DIR}/nodes-config/node_${NODE} && cargo run -- --database ../../database/node_${NODE}
+	export RUST_LOG=INFO && cd ${EXECUTABLE_NODE_DIR}/nodes-config/127.0.0.1:3054 && cargo run -- --database ../../database/node_${NODE}
 
 nodes_config:
 	cd ${EXECUTABLE_NODE_DIR} && cargo run --bin localnet_config -- --input-addrs addresses.txt --output-dir nodes-config
@@ -43,6 +43,9 @@ start_k8s_nodes:
 	$(MAKE) docker_node_image
 	minikube image load consensus-node:latest
 	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer deploy --nodes ${NODES} --seed-nodes ${SEED_NODES}
+
+install_chaos_mesh:
+	curl -sSL https://mirrors.chaos-mesh.org/v2.6.3/install.sh | bash
 
 # Clean commands
 
