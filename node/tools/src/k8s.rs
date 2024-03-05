@@ -40,6 +40,51 @@ pub async fn get_client() -> anyhow::Result<Client> {
     Ok(Client::try_default().await?)
 }
 
+pub fn get_node_rpc_address(pod: Pod) -> anyhow::Result<SocketAddr> {
+    let pod_spec = pod.spec.context("Failed to get pod spec")?;
+    let pod_running_container = pod_spec
+        .containers
+        .first()
+        .context("Failed to get pod container")?
+        .to_owned();
+    let port: u16 = pod_running_container
+        .ports
+        .context("Failed getting node rpc port")?
+        .iter()
+        .find_map(|port| {
+            let port = port.container_port.try_into().ok()?;
+            (port != config::NODES_PORT).then_some(port)
+        })
+        .context("Failed parsing node rpc port")?;
+    let pod_ip = pod
+        .status
+        .clone()
+        .context("Failed to get pod status")
+        .ok()
+        .and_then(|status| status.pod_ip.clone())
+        .context("Failed to get pod ip")?;
+
+    let pod_rpc_addr = SocketAddr::new(pod_ip.parse().context("Failed to parse pod ip")?, port);
+    Ok(pod_rpc_addr)
+}
+
+pub async fn get_node_rpc_address_with_name(
+    client: &Client,
+    pod_id: &str,
+) -> anyhow::Result<SocketAddr> {
+    let pods: Api<Pod> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
+    let lp = ListParams::default().labels(&format!("id={}", pod_id));
+    let pod = pods
+        .list(&lp)
+        .await?
+        .items
+        .first()
+        .cloned()
+        .context("Pod not found")?;
+    let pod_rpc_addr = get_node_rpc_address(pod)?;
+    Ok(pod_rpc_addr)
+}
+
 pub async fn create_or_reuse_network_chaos_role(client: &Client) -> anyhow::Result<()> {
     let roles: Api<Role> = Api::namespaced(client.to_owned(), "chaos-mesh");
     match roles.get_opt("network-chaos-reader").await? {
@@ -200,52 +245,15 @@ pub async fn create_or_reuse_pod_reader_role(client: &Client) -> anyhow::Result<
 }
 
 /// Get the IP addresses and the exposed port of the RPC server of the consensus nodes in the kubernetes cluster.
-pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<SocketAddr>> {
+pub async fn get_consensus_nodes_rpc_address(client: &Client) -> anyhow::Result<Vec<SocketAddr>> {
     let pods: Api<Pod> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
     let lp = ListParams::default();
     let pods = pods.list(&lp).await?;
-    ensure!(
-        !pods.items.is_empty(),
-        "No consensus pods found in the k8s cluster"
-    );
-    let pod_addresses: Vec<SocketAddr> = pods
+    let pod_addresses: anyhow::Result<Vec<SocketAddr>> = pods
         .into_iter()
-        .filter_map(|pod| {
-            let pod_spec = pod.spec.context("Failed to get pod spec").ok()?;
-            let pod_running_container = pod_spec
-                .containers
-                .first()
-                .context("Failed to get pod container")
-                .ok()?
-                .to_owned();
-            let docker_image = pod_running_container
-                .image
-                .context("Failed to get pod docker image")
-                .ok()?;
-
-            if docker_image.contains(DOCKER_IMAGE_NAME) {
-                let pod_ip = pod
-                    .status
-                    .context("Failed to get pod status")
-                    .ok()?
-                    .pod_ip
-                    .context("Failed to get pod ip")
-                    .ok()?;
-                let port = pod_running_container.ports?.iter().find_map(|port| {
-                    let port = port.container_port.try_into().ok()?;
-                    (port != config::NODES_PORT).then_some(port)
-                });
-                Some(SocketAddr::new(pod_ip.parse().ok()?, port?))
-            } else {
-                None
-            }
-        })
+        .map(|pod| get_node_rpc_address(pod))
         .collect();
-    ensure!(
-        !pod_addresses.is_empty(),
-        "No consensus pods found in the k8s cluster"
-    );
-    Ok(pod_addresses)
+    pod_addresses
 }
 
 /// Creates a namespace in k8s cluster
