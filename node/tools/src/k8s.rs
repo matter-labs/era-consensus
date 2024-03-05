@@ -6,13 +6,16 @@ use crate::{
     },
     NodeAddr,
 };
-use anyhow::{anyhow, ensure, Context};
+use anyhow::{anyhow, Context};
 use k8s_openapi::{
     api::{
         apps::v1::{Deployment, DeploymentSpec},
-        core::v1::{Container, Namespace, Pod, PodSpec, PodTemplateSpec},
+        core::v1::{
+            Container, Namespace, Pod, PodSpec, PodTemplateSpec, Service, ServicePort, ServiceSpec,
+        },
+        rbac::v1::{PolicyRule, Role, RoleBinding, RoleRef, Subject},
     },
-    apimachinery::pkg::apis::meta::v1::LabelSelector,
+    apimachinery::pkg::{apis::meta::v1::LabelSelector, util::intstr::IntOrString},
 };
 use kube::{
     api::{ListParams, PostParams},
@@ -35,6 +38,165 @@ pub const DEFAULT_NAMESPACE: &str = "consensus";
 /// Get a kube client
 pub async fn get_client() -> anyhow::Result<Client> {
     Ok(Client::try_default().await?)
+}
+
+pub async fn create_or_reuse_network_chaos_role(client: &Client) -> anyhow::Result<()> {
+    let roles: Api<Role> = Api::namespaced(client.to_owned(), "chaos-mesh");
+    match roles.get_opt("network-chaos-reader").await? {
+        Some(role) => {
+            info!(
+                "Role: {} ,already exists",
+                role.metadata.name.context("Name not defined in metadata")?
+            );
+        }
+        None => {
+            let role = Role {
+                metadata: ObjectMeta {
+                    name: "network-chaos-reader".to_string().into(),
+                    namespace: "chaos-mesh".to_owned().into(),
+                    ..Default::default()
+                },
+                rules: vec![PolicyRule {
+                    api_groups: Some(vec!["*".to_string()]),
+                    resources: Some(vec!["networkchaos".to_string()]),
+                    verbs: vec![
+                        "get".to_owned(),
+                        "list".to_owned(),
+                        "watch".to_owned(),
+                        "create".to_owned(),
+                    ],
+                    ..Default::default()
+                }]
+                .into(),
+            };
+
+            let roles: Api<Role> = Api::namespaced(client.to_owned(), "chaos-mesh");
+            let post_params = PostParams::default();
+            let result = roles.create(&post_params, &role).await?;
+
+            info!(
+                "Role: {} , created",
+                result
+                    .metadata
+                    .name
+                    .context("Name not defined in metadata")?
+            );
+
+            let role_binding = RoleBinding {
+                metadata: ObjectMeta {
+                    name: "network-chaos-reader-rule".to_string().into(),
+                    namespace: "chaos-mesh".to_owned().into(),
+                    ..Default::default()
+                },
+                subjects: vec![Subject {
+                    kind: "ServiceAccount".to_string(),
+                    name: "default".to_string(),
+                    namespace: DEFAULT_NAMESPACE.to_owned().into(),
+                    ..Default::default()
+                }]
+                .into(),
+                role_ref: RoleRef {
+                    api_group: "rbac.authorization.k8s.io".to_string(),
+                    kind: "Role".to_string(),
+                    name: "network-chaos-reader".to_string(),
+                },
+            };
+
+            let role_bindings: Api<RoleBinding> = Api::namespaced(client.to_owned(), "chaos-mesh");
+            let post_params = PostParams::default();
+            let result = role_bindings.create(&post_params, &role_binding).await?;
+
+            info!(
+                "RoleBinding: {} , created",
+                result
+                    .metadata
+                    .name
+                    .context("Name not defined in metadata")?
+            );
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn create_or_reuse_pod_reader_role(client: &Client) -> anyhow::Result<()> {
+    let roles: Api<Role> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
+    match roles.get_opt("pod-reader").await? {
+        Some(role) => {
+            info!(
+                "Role: {} ,already exists",
+                role.metadata.name.context("Name not defined in metadata")?
+            );
+        }
+        None => {
+            let role = Role {
+                metadata: ObjectMeta {
+                    name: "pod-reader".to_string().into(),
+                    namespace: DEFAULT_NAMESPACE.to_string().into(),
+                    ..Default::default()
+                },
+                rules: vec![PolicyRule {
+                    api_groups: Some(vec!["".to_string()]),
+                    resources: Some(vec!["pods".to_string()]),
+                    verbs: vec![
+                        "get".to_owned(),
+                        "list".to_owned(),
+                        "watch".to_owned(),
+                        "create".to_owned(),
+                    ],
+                    ..Default::default()
+                }]
+                .into(),
+            };
+
+            let roles: Api<Role> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
+            let post_params = PostParams::default();
+            let result = roles.create(&post_params, &role).await?;
+
+            info!(
+                "Role: {} , created",
+                result
+                    .metadata
+                    .name
+                    .context("Name not defined in metadata")?
+            );
+
+            let role_binding = RoleBinding {
+                metadata: ObjectMeta {
+                    name: "pod-reader-rule".to_string().into(),
+                    namespace: DEFAULT_NAMESPACE.to_string().into(),
+                    ..Default::default()
+                },
+                role_ref: RoleRef {
+                    api_group: "rbac.authorization.k8s.io".to_string(),
+                    kind: "Role".to_string(),
+                    name: "pod-reader".to_string(),
+                },
+                subjects: vec![Subject {
+                    kind: "ServiceAccount".to_string(),
+                    name: "default".to_string(),
+                    api_group: "".to_owned().into(),
+                    ..Default::default()
+                }]
+                .into(),
+            };
+
+            let role_bindings: Api<RoleBinding> =
+                Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
+            let post_params = PostParams::default();
+            let result = role_bindings.create(&post_params, &role_binding).await?;
+
+            info!(
+                "RoleBinding: {} , created",
+                result
+                    .metadata
+                    .name
+                    .context("Name not defined in metadata")?
+            );
+        }
+    }
+
+    Ok(())
 }
 
 /// Get the IP addresses and the exposed port of the RPC server of the consensus nodes in the kubernetes cluster.
