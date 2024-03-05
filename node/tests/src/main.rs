@@ -1,10 +1,27 @@
 //! This is a simple test for the RPC server. It checks if the server is running and can respond to.
-use std::{fs, io::Write, path::PathBuf};
+use std::{sync::Mutex, thread::sleep, time::Duration};
 
-use anyhow::Context;
-use clap::{Parser, Subcommand};
-use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
-use zksync_consensus_tools::{k8s, rpc::methods::health_check};
+use clap::{Args, Parser, Subcommand};
+use jsonrpsee::{
+    core::{client::ClientT, RpcResult},
+    http_client::HttpClientBuilder,
+    rpc_params,
+    server::{middleware::http::ProxyGetRequestLayer, Server},
+    RpcModule,
+};
+use std::net::SocketAddr;
+use std::sync::Arc;
+use tracing::info;
+use zksync_concurrency::{
+    ctx::{self, Ctx},
+    scope,
+};
+use zksync_consensus_tools::{
+    k8s::{self, add_chaos_delay_for_node},
+    rpc::methods::{health_check, last_vote},
+};
+
+mod utils;
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
@@ -21,31 +38,71 @@ enum TesterCommands {
     /// Set up the test pod.
     StartPod,
     /// Deploy the nodes.
-    Run,
+    Run(RunArgs),
 }
 
-pub(crate) async fn deploy_role() -> anyhow::Result<()> {
-    let client = k8s::get_client().await?;
-    k8s::create_or_reuse_namespace(&client, k8s::DEFAULT_NAMESPACE).await?;
-    k8s::create_or_reuse_pod_reader_role(&client).await?;
-    k8s::create_or_reuse_network_chaos_role(&client).await?;
-    Ok(())
+#[derive(Args, Debug)]
+pub struct RunArgs {
+    #[clap(long, default_value = "3030")]
+    pub rpc_port: u16,
 }
 
-/// Start the tests pod in the kubernetes cluster.
-pub async fn start_tests_pod() -> anyhow::Result<()> {
-    let client = k8s::get_client().await?;
-    k8s::create_tests_deployment(&client)
-        .await
-        .context("Failed to create tests pod")?;
-    Ok(())
+#[derive(Debug, Default)]
+pub struct TestResult {
+    passed: u16,
+}
+
+impl TestResult {
+    fn add_passed(&mut self) {
+        self.passed += 1;
+    }
+}
+
+async fn run_test_rpc_server(
+    ctx: &Ctx,
+    port: u16,
+    test_result: Arc<Mutex<TestResult>>,
+) -> anyhow::Result<()> {
+    let ip_address = SocketAddr::from(([0, 0, 0, 0], port));
+    // Custom tower service to handle the RPC requests
+    let service_builder = tower::ServiceBuilder::new()
+        // Proxy `GET /<path>` requests to internal methods.
+        .layer(ProxyGetRequestLayer::new("/test_result", "test_result")?);
+
+    let mut module = RpcModule::new(());
+    let test_result = test_result.clone();
+    module.register_method("test_result", move |_params, _| {
+        tests_status(test_result.clone())
+    })?;
+
+    let server = Server::builder()
+        .set_http_middleware(service_builder)
+        .build(ip_address)
+        .await?;
+
+    let handle = server.start(module);
+    scope::run!(ctx, |ctx, s| async {
+        s.spawn_bg(async {
+            ctx.canceled().await;
+            let _ = handle.stop();
+            Ok(())
+        });
+        info!("Server started at {}", ip_address);
+        handle.clone().stopped().await;
+        Ok(())
+    })
+    .await
+}
+
+fn tests_status(counter: Arc<Mutex<TestResult>>) -> RpcResult<String> {
+    Ok(format!("Tests passed: {}", counter.lock().unwrap().passed))
 }
 
 /// Sanity test for the RPC server.
 /// We use unwraps here because this function is intended to be used like a test.
-pub async fn sanity_test() {
+pub async fn sanity_test(test_result: Arc<Mutex<TestResult>>) -> anyhow::Result<()> {
     let client = k8s::get_client().await.unwrap();
-    let nodes_socket = k8s::get_consensus_nodes_address(&client).await.unwrap();
+    let nodes_socket = k8s::get_consensus_nodes_rpc_address(&client).await.unwrap();
     for socket in nodes_socket {
         let url: String = format!("http://{}", socket);
         let rpc_client = HttpClientBuilder::default().build(url).unwrap();
@@ -55,36 +112,34 @@ pub async fn sanity_test() {
             .unwrap();
         assert_eq!(response, health_check::callback().unwrap());
     }
-}
-
-/// Sanity test for the RPC server.
-/// We use unwraps here because this function is intended to be used like a test.
-pub async fn delay_test() {
-    let client = k8s::get_client().await.unwrap();
-    k8s::add_chaos_delay_for_node(&client, "consensus-node-01")
-        .await
-        .unwrap();
+    test_result.lock().unwrap().add_passed();
+    Ok(())
 }
 
 /// Main function for the test.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args = TesterCLI::parse();
+    let ctx = &ctx::root();
     tracing_subscriber::fmt::init();
+    let args = TesterCLI::parse();
+    let test_results = Arc::new(Mutex::new(TestResult::default()));
 
     match args.command {
         TesterCommands::StartPod => {
-            deploy_role().await?;
-            start_tests_pod().await
+            utils::deploy_role().await?;
+            utils::start_tests_pod().await
         }
-        TesterCommands::Run => {
-            tracing::info!("Running sanity test");
-            sanity_test().await;
-            tracing::info!("Test Passed!");
-            tracing::info!("Running Delay tests");
-            delay_test().await;
-            tracing::info!("Test Passed!");
-            Ok(())
+        TesterCommands::Run(args) => {
+            scope::run!(ctx, |ctx, s| async {
+                s.spawn(run_test_rpc_server(
+                    ctx,
+                    args.rpc_port,
+                    test_results.clone(),
+                ));
+                s.spawn(async { sanity_test(test_results.clone()).await });
+                Ok(())
+            })
+            .await
         }
     }
 }
