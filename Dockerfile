@@ -35,7 +35,6 @@ EXPOSE 3051
 FROM debian:stable-slim as tester-runtime
 COPY node/tools/docker_binaries/tester /test/
 COPY node/tests/tester_entrypoint.sh /test/
-COPY node/tests/config.txt /test/
 
 WORKDIR /test
 

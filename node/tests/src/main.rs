@@ -18,43 +18,17 @@ struct TesterCLI {
 /// Subcommands.
 #[derive(Subcommand, Debug)]
 enum TesterCommands {
-    /// Generate configs for the nodes.
-    GenerateConfig,
     /// Set up the test pod.
     StartPod,
     /// Deploy the nodes.
     Run,
 }
 
-/// Get the path of the node ips config file.
-/// This way we can run the test from every directory and also inside kubernetes pod.
-fn get_config_path() -> PathBuf {
-    // This way we can run the test from every directory and also inside kubernetes pod.
-    let manifest_path = std::env::var("CARGO_MANIFEST_DIR");
-    if let Ok(manifest) = manifest_path {
-        PathBuf::from(&format!("{}/config.txt", manifest))
-    } else {
-        PathBuf::from("config.txt")
-    }
-}
-
-/// Generate a config file with the IPs of the consensus nodes in the kubernetes cluster.
-pub async fn generate_config() -> anyhow::Result<()> {
+pub(crate) async fn deploy_role() -> anyhow::Result<()> {
     let client = k8s::get_client().await?;
-    let pods_ip = k8s::get_consensus_nodes_address(&client)
-        .await
-        .context("Failed to get consensus pods address")?;
-    let config_file_path = get_config_path();
-    for addr in pods_ip {
-        let mut config_file = fs::OpenOptions::new()
-            .write(true)
-            .create(true)
-            .truncate(true)
-            .open(&config_file_path)?;
-        config_file
-            .write_all(addr.to_string().as_bytes())
-            .with_context(|| "Failed to write to config file")?;
-    }
+    k8s::create_or_reuse_namespace(&client, k8s::DEFAULT_NAMESPACE).await?;
+    k8s::create_or_reuse_pod_reader_role(&client).await?;
+    k8s::create_or_reuse_network_chaos_role(&client).await?;
     Ok(())
 }
 
@@ -70,9 +44,9 @@ pub async fn start_tests_pod() -> anyhow::Result<()> {
 /// Sanity test for the RPC server.
 /// We use unwraps here because this function is intended to be used like a test.
 pub async fn sanity_test() {
-    let config_file_path = get_config_path();
-    let nodes_socket = fs::read_to_string(config_file_path).unwrap();
-    for socket in nodes_socket.lines() {
+    let client = k8s::get_client().await.unwrap();
+    let nodes_socket = k8s::get_consensus_nodes_address(&client).await.unwrap();
+    for socket in nodes_socket {
         let url: String = format!("http://{}", socket);
         let rpc_client = HttpClientBuilder::default().build(url).unwrap();
         let response: serde_json::Value = rpc_client
@@ -99,8 +73,10 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt::init();
 
     match args.command {
-        TesterCommands::GenerateConfig => generate_config().await,
-        TesterCommands::StartPod => start_tests_pod().await,
+        TesterCommands::StartPod => {
+            deploy_role().await?;
+            start_tests_pod().await
+        }
         TesterCommands::Run => {
             tracing::info!("Running sanity test");
             sanity_test().await;
