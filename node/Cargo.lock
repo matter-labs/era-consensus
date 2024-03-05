@@ -2941,8 +2941,10 @@ dependencies = [
  "jsonrpsee",
  "serde_json",
  "tokio",
+ "tower",
  "tracing",
  "tracing-subscriber",
+ "zksync_concurrency",
  "zksync_consensus_tools",
 ]
 
