@@ -197,7 +197,7 @@ impl<'a> ConfigArgs<'a> {
             })()
             .context("config")?,
 
-            validator_key: self.validator_key.or((|| {
+            validator_key: self.validator_key.or({
                 fs::read_to_string(self.validator_key_file)
                     .context(format!(
                         "failed reading file: {}",
@@ -205,11 +205,11 @@ impl<'a> ConfigArgs<'a> {
                     ))
                     .ok()
                     .map(|value| Text::new(&value).decode().context("failed decoding key"))
-            })()
+            }
             .transpose()
             .context("validator key")?),
 
-            node_key: self.node_key.or((|| {
+            node_key: self.node_key.or({
                 fs::read_to_string(self.node_key_file)
                     .context(format!(
                         "failed reading file: {}",
@@ -217,7 +217,7 @@ impl<'a> ConfigArgs<'a> {
                     ))
                     .ok()
                     .map( |value| Text::new(&value).decode().context("failed decoding key"))
-            })()
+            }
             .transpose()
             .context("node key")?).expect("Missing node key: Should provide --node-key, --node-key-file, or place a `node_key` file at root directory"),
 
