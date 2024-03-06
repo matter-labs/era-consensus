@@ -249,11 +249,26 @@ pub async fn get_consensus_nodes_rpc_address(client: &Client) -> anyhow::Result<
     let pods: Api<Pod> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
     let lp = ListParams::default();
     let pods = pods.list(&lp).await?;
-    let pod_addresses: anyhow::Result<Vec<SocketAddr>> = pods
-        .into_iter()
-        .map(|pod| get_node_rpc_address(pod))
-        .collect();
-    pod_addresses
+    let mut nodes_rpc_address = Vec::new();
+    for pod in pods {
+        if pod
+            .spec
+            .clone()
+            .context("Failed to get pod spec")?
+            .containers
+            .first()
+            .cloned()
+            .context("Failed to get pod container")?
+            .image
+            .context("Failed to get pod image")?
+            != DOCKER_IMAGE_NAME
+        {
+            continue;
+        }
+        let pod_rpc_addr = get_node_rpc_address(pod)?;
+        nodes_rpc_address.push(pod_rpc_addr);
+    }
+    Ok(nodes_rpc_address)
 }
 
 /// Creates a namespace in k8s cluster
