@@ -77,12 +77,12 @@ struct Config {
 
 /// Function to let clap parse the command line `config` argument
 fn parse_config(val: &str) -> anyhow::Result<Serde<AppConfig>> {
-    let config = decode_json(val)?;
-    Ok(config)
+    decode_json(val)
 }
 
+/// Node/validator key parser for clap
 fn parse_key<T: TextFmt>(val: &str) -> anyhow::Result<T> {
-    Ok(Text::new(&val).decode().context("failed decoding key")?)
+    Text::new(val).decode().context("failed decoding key")
 }
 
 impl Cli {
