@@ -17,3 +17,9 @@ pub(crate) async fn deploy_role() -> anyhow::Result<()> {
     k8s::create_or_reuse_network_chaos_role(&client).await?;
     Ok(())
 }
+
+pub(crate) async fn deploy_rpc_service() -> anyhow::Result<()> {
+    let client = k8s::get_client().await?;
+    k8s::expose_tester_rpc(&client).await?;
+    Ok(())
+}

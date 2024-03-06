@@ -167,7 +167,8 @@ async fn main() -> anyhow::Result<()> {
     match args.command {
         TesterCommands::StartPod => {
             utils::deploy_role().await?;
-            utils::start_tests_pod().await
+            utils::start_tests_pod().await?;
+            utils::deploy_rpc_service().await
         }
         TesterCommands::Run(args) => {
             scope::run!(ctx, |ctx, s| async {

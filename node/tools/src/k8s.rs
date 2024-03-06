@@ -313,6 +313,42 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
     }
 }
 
+pub async fn expose_tester_rpc(client: &Client) -> anyhow::Result<()> {
+    let load_balancer_sevice = Service {
+        metadata: ObjectMeta {
+            name: Some("tester-rpc".to_string()),
+            namespace: Some(DEFAULT_NAMESPACE.to_string()),
+            ..Default::default()
+        },
+        spec: Some(ServiceSpec {
+            type_: Some("LoadBalancer".to_owned()),
+            selector: Some([("app".to_string(), "test-node".to_string())].into()),
+            ports: vec![ServicePort {
+                port: 3030,
+                target_port: Some(IntOrString::Int(3030)),
+                ..Default::default()
+            }]
+            .into(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let services: Api<Service> = Api::namespaced(client.clone(), DEFAULT_NAMESPACE);
+    let post_params = PostParams::default();
+    let result = services.create(&post_params, &load_balancer_sevice).await?;
+
+    info!(
+        "Service: {} , created",
+        result
+            .metadata
+            .name
+            .context("Name not defined in metadata")?
+    );
+
+    Ok(())
+}
+
 pub async fn add_chaos_delay_for_node(client: &Client, node_name: &str) -> anyhow::Result<()> {
     let chaos = NetworkChaos::new(
         "chaos-delay",
