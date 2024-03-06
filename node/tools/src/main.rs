@@ -32,8 +32,7 @@ struct Cli {
     rpc_port: Option<u16>,
 }
 
-/// Node key definitions:
-/// If both are present, node-key option has precedence.
+/// Node key definitions
 #[derive(Debug, Args)]
 #[group(required = false, multiple = false)]
 struct NodeKey {
@@ -49,7 +48,6 @@ struct NodeKey {
 /// Validator key definitions:
 /// If validator key is not set, and key file is not present,
 /// a node will be initialized as a non-validator node.
-/// If both are present, validator-key option has precedence.
 #[derive(Debug, Args)]
 #[group(required = false, multiple = false)]
 struct ValidatorKey {
@@ -62,8 +60,9 @@ struct ValidatorKey {
     validator_key_file: PathBuf,
 }
 
-/// Configuration:
-/// If both are present, config options will override config_file.
+/// Configuration json.
+/// Can be provided via cli arg or via file.
+/// If none is present a config.json at root is expected
 #[derive(Debug, Args)]
 #[group(required = false, multiple = false)]
 struct Config {
