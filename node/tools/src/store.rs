@@ -8,7 +8,7 @@ use std::{
 };
 use zksync_concurrency::{ctx, error::Wrap as _, scope};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{BlockStoreState, PersistentBlockStore, ReplicaState, ReplicaStore};
+use zksync_consensus_storage::{PersistentBlockStore, ReplicaState, ReplicaStore};
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -47,62 +47,51 @@ impl DatabaseKey {
     }
 }
 
+struct Inner {
+    genesis: validator::Genesis,
+    db: RwLock<rocksdb::DB>,
+}
+
 /// Main struct for the Storage module, it just contains the database. Provides a set of high-level
 /// atomic operations on the database. It "contains" the following data:
 ///
 /// - An append-only database of finalized blocks.
 /// - A backup of the consensus replica state.
 #[derive(Clone)]
-pub(crate) struct RocksDB(Arc<RwLock<rocksdb::DB>>);
+pub(crate) struct RocksDB(Arc<Inner>);
 
 impl RocksDB {
     /// Create a new Storage. It first tries to open an existing database, and if that fails it just creates a
     /// a new one. We need the genesis block of the chain as input.
-    pub(crate) async fn open(path: &Path) -> ctx::Result<Self> {
+    pub(crate) async fn open(genesis: validator::Genesis, path: &Path) -> ctx::Result<Self> {
         let mut options = rocksdb::Options::default();
         options.create_missing_column_families(true);
         options.create_if_missing(true);
-        Ok(Self(Arc::new(RwLock::new(
-            scope::wait_blocking(|| {
-                rocksdb::DB::open(&options, path).context("Failed opening RocksDB")
-            })
-            .await?,
-        ))))
+        Ok(Self(Arc::new(Inner {
+            genesis,
+            db: RwLock::new(
+                scope::wait_blocking(|| {
+                    rocksdb::DB::open(&options, path).context("Failed opening RocksDB")
+                })
+                .await?,
+            ),
+        })))
     }
 
-    fn state_blocking(&self) -> anyhow::Result<Option<BlockStoreState>> {
-        let db = self.0.read().unwrap();
-
+    fn last_blocking(&self) -> anyhow::Result<Option<validator::CommitQC>> {
+        let db = self.0.db.read().unwrap();
         let mut options = ReadOptions::default();
         options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
-        let Some(res) = db.iterator_opt(IteratorMode::Start, options).next() else {
-            return Ok(None);
-        };
-        let (_, first) = res.context("RocksDB error reading first stored block")?;
-        let first: validator::FinalBlock =
-            zksync_protobuf::decode(&first).context("Failed decoding first stored block bytes")?;
-
-        let mut options = ReadOptions::default();
-        options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
-        let (_, last) = db
+        let Some(res) = db
             .iterator_opt(DatabaseKey::BLOCK_HEAD_ITERATOR, options)
             .next()
-            .context("last block not found")?
-            .context("RocksDB error reading head block")?;
+        else {
+            return Ok(None);
+        };
+        let (_, last) = res.context("RocksDB error reading head block")?;
         let last: validator::FinalBlock =
             zksync_protobuf::decode(&last).context("Failed decoding head block bytes")?;
-
-        Ok(Some(BlockStoreState {
-            first: first.justification,
-            last: last.justification,
-        }))
-    }
-
-    /// Checks if BlockStore is empty.
-    pub(crate) async fn is_empty(&self) -> anyhow::Result<bool> {
-        Ok(scope::wait_blocking(|| self.state_blocking())
-            .await?
-            .is_none())
+        Ok(Some(last.justification))
     }
 }
 
@@ -114,10 +103,12 @@ impl fmt::Debug for RocksDB {
 
 #[async_trait::async_trait]
 impl PersistentBlockStore for RocksDB {
-    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
-        Ok(scope::wait_blocking(|| self.state_blocking())
-            .await?
-            .context("storage is empty")?)
+    async fn genesis(&self, _ctx: &ctx::Ctx) -> ctx::Result<validator::Genesis> {
+        Ok(self.0.genesis.clone())
+    }
+
+    async fn last(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<validator::CommitQC>> {
+        Ok(scope::wait_blocking(|| self.last_blocking()).await?)
     }
 
     async fn block(
@@ -126,7 +117,7 @@ impl PersistentBlockStore for RocksDB {
         number: validator::BlockNumber,
     ) -> ctx::Result<validator::FinalBlock> {
         scope::wait_blocking(|| {
-            let db = self.0.read().unwrap();
+            let db = self.0.db.read().unwrap();
             let block = db
                 .get(DatabaseKey::Block(number).encode_key())
                 .context("RocksDB error")?
@@ -144,7 +135,7 @@ impl PersistentBlockStore for RocksDB {
         block: &validator::FinalBlock,
     ) -> ctx::Result<()> {
         scope::wait_blocking(|| {
-            let db = self.0.write().unwrap();
+            let db = self.0.db.write().unwrap();
             let block_number = block.header().number;
             let mut write_batch = rocksdb::WriteBatch::default();
             write_batch.put(
@@ -163,20 +154,19 @@ impl PersistentBlockStore for RocksDB {
 
 #[async_trait::async_trait]
 impl ReplicaStore for RocksDB {
-    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<ReplicaState>> {
+    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<ReplicaState> {
         Ok(scope::wait_blocking(|| {
             let Some(raw_state) = self
                 .0
+                .db
                 .read()
                 .unwrap()
                 .get(DatabaseKey::ReplicaState.encode_key())
                 .context("Failed to get ReplicaState from RocksDB")?
             else {
-                return Ok(None);
+                return Ok(ReplicaState::default());
             };
-            zksync_protobuf::decode(&raw_state)
-                .map(Some)
-                .context("Failed to decode replica state!")
+            zksync_protobuf::decode(&raw_state).context("Failed to decode replica state!")
         })
         .await?)
     }
@@ -184,6 +174,7 @@ impl ReplicaStore for RocksDB {
     async fn set_state(&self, _ctx: &ctx::Ctx, state: &ReplicaState) -> ctx::Result<()> {
         Ok(scope::wait_blocking(|| {
             self.0
+                .db
                 .write()
                 .unwrap()
                 .put(

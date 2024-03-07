@@ -8,7 +8,6 @@ use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_tools::{decode_json, ConfigPaths, NodeAddr, RPCServer};
-use zksync_consensus_utils::no_copy::NoCopy;
 use zksync_protobuf::serde::Serde;
 
 /// Wrapper for Vec<NodeAddr>.
@@ -133,10 +132,8 @@ async fn main() -> anyhow::Result<()> {
 
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {
-        if let Some(addr) = configs.app.metrics_server_addr {
-            let addr = NoCopy::from(addr);
+        if let Some(addr) = &configs.app.metrics_server_addr {
             s.spawn_bg(async {
-                let addr = addr;
                 MetricsExporter::default()
                     .with_graceful_shutdown(ctx.canceled())
                     .start(*addr)

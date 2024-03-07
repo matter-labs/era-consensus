@@ -1,14 +1,16 @@
 //! Peers method for RPC server.
 use jsonrpsee::core::RpcResult;
 use std::sync::Arc;
-use zksync_consensus_storage::{BlockStore, ReplicaState};
+use zksync_consensus_storage::BlockStore;
 
 /// Config response for /config endpoint.
 pub fn callback(node_storage: Arc<BlockStore>) -> RpcResult<serde_json::Value> {
     let sub = &mut node_storage.subscribe();
     let state = sub.borrow().clone();
-    let replica_state = ReplicaState::from(state.last).view;
-    Ok(serde_json::json!(replica_state))
+    let a = state.last.unwrap().view().number;
+    Ok(serde_json::json!({
+        "last_view": a
+    }))
 }
 
 /// Config method name.

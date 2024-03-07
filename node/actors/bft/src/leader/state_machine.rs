@@ -135,10 +135,10 @@ impl StateMachine {
             let Some(prepare_qc) = sync::changed(ctx, &mut prepare_qc).await?.clone() else {
                 continue;
             };
-            if prepare_qc.view() < next_view {
+            if prepare_qc.view.number < next_view {
                 continue;
             };
-            next_view = prepare_qc.view().next();
+            next_view = prepare_qc.view.number.next();
             Self::propose(ctx, config, prepare_qc, pipe).await?;
         }
     }
@@ -151,45 +151,31 @@ impl StateMachine {
         justification: validator::PrepareQC,
         pipe: &OutputSender,
     ) -> ctx::Result<()> {
-        // Get the highest block voted for and check if there's a quorum of votes for it. To have a quorum
-        // in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
-        let mut count: HashMap<_, usize> = HashMap::new();
-        for (vote, signers) in &justification.map {
-            *count.entry(vote.high_vote.proposal).or_default() += signers.len();
-        }
-
-        let highest_vote: Option<validator::BlockHeader> = count
-            .iter()
-            // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
-            .find_map(|(h, v)| (*v > 2 * cfg.faulty_replicas()).then_some(h))
-            .cloned();
-
-        // Get the highest validator::CommitQC.
-        let highest_qc: &validator::CommitQC = justification
-            .map
-            .keys()
-            .map(|s| &s.high_qc)
-            .max_by_key(|qc| qc.message.view)
-            .unwrap();
+        let high_vote = justification.high_vote(cfg.genesis());
+        let high_qc = justification.high_qc();
 
         // Create the block proposal to send to the replicas,
         // and the commit vote to store in our block proposal cache.
-        let (proposal, payload) = match highest_vote {
+        let (proposal, payload) = match high_vote {
             // The previous block was not finalized, so we need to propose it again.
             // For this we only need the header, since we are guaranteed that at least
             // f+1 honest replicas have the block and can broadcast it when finalized
             // (2f+1 have stated that they voted for the block, at most f are malicious).
-            Some(proposal) if proposal != highest_qc.message.proposal => (proposal, None),
+            Some(proposal) if Some(&proposal) != high_qc.map(|qc| &qc.message.proposal) => {
+                (proposal, None)
+            }
             // The previous block was finalized, so we can propose a new block.
             _ => {
+                let fork = &cfg.genesis().fork;
+                let (parent, number) = match high_qc {
+                    Some(qc) => (Some(qc.header().hash()), qc.header().number.next()),
+                    None => (fork.first_parent, fork.first_block),
+                };
                 // Defensively assume that PayloadManager cannot propose until the previous block is stored.
-                cfg.block_store
-                    .wait_until_persisted(ctx, highest_qc.header().number)
-                    .await?;
-                let payload = cfg
-                    .payload_manager
-                    .propose(ctx, highest_qc.header().number.next())
-                    .await?;
+                if let Some(prev) = number.prev() {
+                    cfg.block_store.wait_until_persisted(ctx, prev).await?;
+                }
+                let payload = cfg.payload_manager.propose(ctx, number).await?;
                 if payload.0.len() > cfg.max_payload_size {
                     return Err(anyhow::format_err!(
                         "proposed payload too large: got {}B, max {}B",
@@ -201,8 +187,11 @@ impl StateMachine {
                 metrics::METRICS
                     .leader_proposal_payload_size
                     .observe(payload.0.len());
-                let proposal =
-                    validator::BlockHeader::new(&highest_qc.message.proposal, payload.hash());
+                let proposal = validator::BlockHeader {
+                    number,
+                    parent,
+                    payload: payload.hash(),
+                };
                 (proposal, Some(payload))
             }
         };
@@ -214,8 +203,6 @@ impl StateMachine {
             .secret_key
             .sign_msg(validator::ConsensusMsg::LeaderPrepare(
                 validator::LeaderPrepare {
-                    protocol_version: crate::PROTOCOL_VERSION,
-                    view: justification.view(),
                     proposal,
                     proposal_payload: payload,
                     justification,
