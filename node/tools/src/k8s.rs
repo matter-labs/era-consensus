@@ -46,16 +46,14 @@ pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<
     );
     let mut node_rpc_addresses: Vec<SocketAddr> = Vec::new();
     for pod in pods.into_iter() {
-        let pod_container = pod
-            .clone()
-            .spec
-            .context("Failed to get pod spec")?
+        let pod_spec = pod.spec.as_ref().context("Failed to get pod spec")?;
+        let pod_container = pod_spec
             .containers
             .first()
-            .cloned()
             .context("Failed to get container")?;
         if pod_container
             .image
+            .as_ref()
             .context("Failed to get image")?
             .contains(DOCKER_IMAGE_NAME)
         {
@@ -66,6 +64,7 @@ pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<
                 .context("Failed to get pod ip")?;
             let pod_rpc_port = pod_container
                 .ports
+                .as_ref()
                 .context("Failed to get ports of container")?
                 .iter()
                 .find_map(|port| {
@@ -288,7 +287,7 @@ pub async fn get_seed_node_addrs(
     let pod_list = Retry::spawn(retry_strategy, || get_seed_pods(&pods, amount)).await?;
 
     for p in pod_list {
-        let node_id = p.labels()["id"].clone();
+        let node_id = p.labels()["id"].to_owned();
         seed_nodes.insert(
             node_id,
             p.status
