@@ -1,5 +1,5 @@
 use crate::{config, NodeAddr};
-use anyhow::{anyhow, Context};
+use anyhow::Context;
 use k8s_openapi::{
     api::{
         apps::v1::{Deployment, DeploymentSpec},
@@ -17,7 +17,6 @@ use kube::{
 };
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
-use std::str::FromStr;
 use tokio_retry::strategy::FixedInterval;
 use tokio_retry::Retry;
 use tracing::log::info;
