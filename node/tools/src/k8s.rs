@@ -226,7 +226,7 @@ async fn get_running_pod(pods: &Api<Pod>, label: &str) -> anyhow::Result<Pod> {
         .await?
         .iter()
         .next()
-        .context(format!("Pod not found: {label}"))
+        .with_context(|| format!("Pod not found: {label}"))
         .cloned()?;
     if is_pod_running(&pod) {
         Ok(pod)
