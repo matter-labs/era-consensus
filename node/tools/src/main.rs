@@ -124,11 +124,9 @@ async fn main() -> anyhow::Result<()> {
         rpc_addr.set_port(rpc_addr.port() + 100);
     }
 
+    // Create the RPC server with the executor's storage.
     let node_storage = executor.block_store.clone();
-
-    // cloning configuration to let RPCServer show it
-    // TODO this should be queried in real time instead, to reflect any possible change in config
-    let rpc_server = RPCServer::new(rpc_addr, configs.app.clone(), node_storage);
+    let rpc_server = RPCServer::new(rpc_addr, node_storage);
 
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {

@@ -4,7 +4,6 @@ use super::{
 };
 use crate::validator;
 use bit_vec::BitVec;
-use serde::Serialize;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,

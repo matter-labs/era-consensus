@@ -1,6 +1,4 @@
-use crate::AppConfig;
-
-use super::methods::{config, health_check, last_view, peers};
+use super::methods::{health_check, last_view};
 use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
 use std::{net::SocketAddr, sync::Arc};
 use zksync_concurrency::{ctx, scope};
@@ -10,17 +8,14 @@ use zksync_consensus_storage::BlockStore;
 pub struct RPCServer {
     /// IP address to bind to.
     ip_address: SocketAddr,
-    /// AppConfig
-    config: AppConfig,
     /// Node storage.
     node_storage: Arc<BlockStore>,
 }
 
 impl RPCServer {
-    pub fn new(ip_address: SocketAddr, config: AppConfig, node_storage: Arc<BlockStore>) -> Self {
+    pub fn new(ip_address: SocketAddr, node_storage: Arc<BlockStore>) -> Self {
         Self {
             ip_address,
-            config,
             node_storage,
         }
     }
@@ -34,8 +29,6 @@ impl RPCServer {
                 health_check::path(),
                 health_check::method(),
             )?)
-            .layer(ProxyGetRequestLayer::new(peers::path(), peers::method())?)
-            .layer(ProxyGetRequestLayer::new(config::path(), config::method())?)
             .layer(ProxyGetRequestLayer::new(
                 last_view::path(),
                 last_view::method(),
@@ -44,13 +37,6 @@ impl RPCServer {
         let mut module = RpcModule::new(());
         module.register_method(health_check::method(), |_params, _| {
             health_check::callback()
-        })?;
-        module.register_method(peers::method(), |_params, _| peers::callback())?;
-
-        // TODO find a better way to implement this as I had to clone the clone and move it to pass the borrow checker
-        let config = self.config.clone();
-        module.register_method(config::method(), move |_params, _| {
-            config::callback(config.clone())
         })?;
 
         let node_storage = self.node_storage.clone();
