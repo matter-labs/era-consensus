@@ -15,7 +15,7 @@ The following questions will be answered by the following resources:
 ## Policies
 
 - [Security policy](.github/SECURITY.md)
-- [Contribution policy](CONTRIBUTING.md)
+- [Contribution policy](.github/CONTRIBUTING.md)
 
 ## License
 
