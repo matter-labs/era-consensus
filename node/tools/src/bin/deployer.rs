@@ -113,12 +113,14 @@ async fn deploy(nodes_amount: usize, seed_nodes_amount: Option<usize>) -> anyhow
     }
 
     // Deploy seed peer(s)
-    for node in seed_nodes.values() {
-        k8s::deploy_node(&client, node, NAMESPACE).await?;
+    for node in seed_nodes.values_mut() {
+        node.deploy(&client, NAMESPACE).await?;
     }
 
     // Fetch and complete node addrs into seed nodes
-    k8s::find_node_addrs(&client, seed_nodes, NAMESPACE).await?;
+    for node in seed_nodes.values_mut() {
+        node.fetch_and_assign_pod_ip(&client, NAMESPACE).await?;
+    }
 
     // Build a vector of seed peers NodeAddrs to provide as gossip_static_outbound to the rest of the nodes
     let peers: Vec<_> = seed_nodes
@@ -134,7 +136,7 @@ async fn deploy(nodes_amount: usize, seed_nodes_amount: Option<usize>) -> anyhow
     // Deploy the rest of the nodes
     for node in non_seed_nodes.values_mut() {
         node.gossip_static_outbound = peers.clone();
-        k8s::deploy_node(&client, node, NAMESPACE).await?;
+        node.deploy(&client, NAMESPACE).await?;
     }
 
     Ok(())
