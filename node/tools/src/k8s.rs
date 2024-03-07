@@ -17,8 +17,6 @@ use kube::{
 };
 use std::collections::BTreeMap;
 use std::net::SocketAddr;
-use tokio_retry::strategy::FixedInterval;
-use tokio_retry::Retry;
 use tracing::log::info;
 use zksync_consensus_roles::node;
 use zksync_protobuf::serde::Serde;
@@ -52,12 +50,11 @@ impl ConsensusNode {
         namespace: &str,
     ) -> anyhow::Result<Pod> {
         let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
-        // Wait until the pod is running, otherwise we get 500 error.
-        let pod = Retry::spawn(FixedInterval::from_millis(1000).take(15), || {
-            get_running_pod(&pods, &self.id)
+        // Wait until the pod is running, otherwise we get an error.
+        retry(15, 1000, || async {
+            get_running_pod(&pods, &self.id).await
         })
-        .await?;
-        Ok(pod)
+        .await
     }
 
     /// Fetchs the pod's IP address and assignts to self.node_addr
@@ -322,15 +319,13 @@ async fn get_running_pod(pods: &Api<Pod>, label: &str) -> anyhow::Result<Pod> {
     let pod = pods
         .list(&lp)
         .await?
-        .iter()
-        .next()
-        .with_context(|| format!("Pod not found: {label}"))
-        .cloned()?;
-    if is_pod_running(&pod) {
-        Ok(pod)
-    } else {
-        Err(anyhow::format_err!("Pod not ready"))
+        .items
+        .pop()
+        .with_context(|| format!("Pod not found: {label}"))?;
+    if !is_pod_running(&pod) {
+        anyhow::bail!("Pod is not running");
     }
+    Ok(pod)
 }
 
 fn is_pod_running(pod: &Pod) -> bool {
@@ -357,5 +352,25 @@ fn get_cli_args(peers: &[NodeAddr]) -> Vec<String> {
             ),
         ]
         .to_vec()
+    }
+}
+
+async fn retry<T, Fut, F>(retries: usize, delay: usize, mut f: F) -> anyhow::Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = anyhow::Result<T>>,
+{
+    let delay = std::time::Duration::from_millis(delay.try_into()?);
+    let mut count = 0;
+    loop {
+        let result = f().await;
+        if result.is_ok() {
+            return result;
+        }
+        count += 1;
+        if count > retries {
+            return result;
+        }
+        std::thread::sleep(delay);
     }
 }
