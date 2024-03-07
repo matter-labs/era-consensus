@@ -9,3 +9,6 @@ logs/
 .terraform
 .ssh
 **/*terraform.tfstate*
+
+# Binaries generated in Docker
+node/tools/docker_binaries
