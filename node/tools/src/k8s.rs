@@ -70,7 +70,7 @@ impl ConsensusNode {
             .context("Pod IP address not present")?;
         self.node_addr = Some(NodeAddr {
             key: self.key.public(),
-            addr: SocketAddr::from_str(&format!("{}:{}", ip, config::NODES_PORT))?,
+            addr: SocketAddr::new(ip.parse()?, config::NODES_PORT),
         });
         Ok(())
     }
@@ -232,7 +232,7 @@ async fn get_running_pod(pods: &Api<Pod>, label: &str) -> anyhow::Result<Pod> {
     if is_pod_running(&pod) {
         Ok(pod)
     } else {
-        Err(anyhow!("Pod not ready"))
+        Err(anyhow::format_err!("Pod not ready"))
     }
 }
 
