@@ -358,7 +358,7 @@ impl std::ops::BitAnd for &Signers {
 }
 
 /// A struct that represents a view number.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ViewNumber(pub u64);
 
 impl ViewNumber {
