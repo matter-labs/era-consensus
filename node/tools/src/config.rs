@@ -2,12 +2,13 @@
 use crate::{proto, store};
 use anyhow::Context as _;
 use serde_json::{ser::Formatter, Serializer};
+use std::net::Ipv4Addr;
+use std::str::FromStr;
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    net::{Ipv4Addr, SocketAddr},
+    net::SocketAddr,
     path::{Path, PathBuf},
-    str::FromStr,
 };
 use zksync_concurrency::ctx;
 use zksync_consensus_bft as bft;
