@@ -1,5 +1,5 @@
 use crate::{config, NodeAddr};
-use anyhow::{anyhow, Context};
+use anyhow::{anyhow, ensure, Context};
 use k8s_openapi::{
     api::{
         apps::v1::{Deployment, DeploymentSpec},
@@ -15,15 +15,67 @@ use kube::{
     core::{ObjectList, ObjectMeta},
     Api, Client, ResourceExt,
 };
-use std::collections::{BTreeMap, HashMap};
+use std::{
+    collections::{BTreeMap, HashMap},
+    net::SocketAddr,
+};
 use tokio_retry::strategy::FixedInterval;
 use tokio_retry::Retry;
 use tracing::log::info;
 use zksync_protobuf::serde::Serde;
 
+/// Docker image name for consensus nodes.
+const DOCKER_IMAGE_NAME: &str = "consensus-node";
+
+/// K8s namespace for consensus nodes.
+pub const DEFAULT_NAMESPACE: &str = "consensus";
+
 /// Get a kube client
 pub async fn get_client() -> anyhow::Result<Client> {
     Ok(Client::try_default().await?)
+}
+
+/// Get the IP addresses and the exposed port of the RPC server of the consensus nodes in the kubernetes cluster.
+pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<SocketAddr>> {
+    let pods: Api<Pod> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
+    let lp = ListParams::default();
+    let pods = pods.list(&lp).await?;
+    ensure!(
+        !pods.items.is_empty(),
+        "No consensus pods found in the k8s cluster"
+    );
+    let mut node_rpc_addresses: Vec<SocketAddr> = Vec::new();
+    for pod in pods.into_iter() {
+        let pod_spec = pod.spec.as_ref().context("Failed to get pod spec")?;
+        let pod_container = pod_spec
+            .containers
+            .first()
+            .context("Failed to get container")?;
+        if pod_container
+            .image
+            .as_ref()
+            .context("Failed to get image")?
+            .contains(DOCKER_IMAGE_NAME)
+        {
+            let pod_ip = pod
+                .status
+                .context("Failed to get pod status")?
+                .pod_ip
+                .context("Failed to get pod ip")?;
+            let pod_rpc_port = pod_container
+                .ports
+                .as_ref()
+                .context("Failed to get ports of container")?
+                .iter()
+                .find_map(|port| {
+                    let port: u16 = port.container_port.try_into().ok()?;
+                    (port != config::NODES_PORT).then_some(port)
+                })
+                .context("Failed parsing container port")?;
+            node_rpc_addresses.push(SocketAddr::new(pod_ip.parse()?, pod_rpc_port));
+        }
+    }
+    Ok(node_rpc_addresses)
 }
 
 /// Creates a namespace in k8s cluster
@@ -64,6 +116,55 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
             Ok(())
         }
     }
+}
+
+pub async fn create_tests_deployment(client: &Client) -> anyhow::Result<()> {
+    let deployment: Deployment = Deployment {
+        metadata: ObjectMeta {
+            name: Some("tests-deployment".to_string()),
+            namespace: Some(DEFAULT_NAMESPACE.to_string()),
+            labels: Some([("app".to_string(), "test-node".to_string())].into()),
+            ..Default::default()
+        },
+        spec: Some(DeploymentSpec {
+            selector: LabelSelector {
+                match_labels: Some([("app".to_string(), "test-node".to_string())].into()),
+                ..Default::default()
+            },
+            replicas: Some(1),
+            template: PodTemplateSpec {
+                metadata: Some(ObjectMeta {
+                    labels: Some([("app".to_string(), "test-node".to_string())].into()),
+                    ..Default::default()
+                }),
+                spec: Some(PodSpec {
+                    containers: vec![Container {
+                        name: "test-suite".to_string(),
+                        image: Some("test-suite:latest".to_string()),
+                        image_pull_policy: Some("Never".to_string()),
+                        command: Some(vec!["./tester_entrypoint.sh".to_string()]),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }),
+            },
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let deployments: Api<Deployment> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
+    let post_params = PostParams::default();
+    let result = deployments.create(&post_params, &deployment).await?;
+
+    info!(
+        "Deployment: {} , created",
+        result
+            .metadata
+            .name
+            .context("Name not defined in metadata")?
+    );
+    Ok(())
 }
 
 /// Creates a deployment
@@ -186,7 +287,7 @@ pub async fn get_seed_node_addrs(
     let pod_list = Retry::spawn(retry_strategy, || get_seed_pods(&pods, amount)).await?;
 
     for p in pod_list {
-        let node_id = p.labels()["id"].clone();
+        let node_id = p.labels()["id"].to_owned();
         seed_nodes.insert(
             node_id,
             p.status

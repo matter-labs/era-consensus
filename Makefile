@@ -16,13 +16,13 @@ nodes_config:
 # Docker commands
 
 docker_build_executor:
-	docker build --output=node/tools/docker_binaries --target=binary .
+	docker build --output=node/tools/docker_binaries --target=executor-binary .
 
 docker_node_image:
-	docker build -t consensus-node --target=runtime .
+	docker build -t consensus-node --target=executor-runtime .
 
 docker_nodes_config:
-	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin localnet_config -- --input-addrs docker-config/addresses.txt --output-dir docker-config
+	cd ${EXECUTABLE_NODE_DIR} && cargo run  --bin localnet_config -- --input-addrs docker-config/addresses.txt --output-dir docker-config
 
 docker_node:
 	$(MAKE) docker_node_image
@@ -39,7 +39,7 @@ stop_docker_nodes:
 	docker stop consensus-node-1 consensus-node-2
 
 start_k8s_nodes:
-	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer generate-config --nodes ${NODES}
+	cd ${EXECUTABLE_NODE_DIR} && cargo run  --bin deployer generate-config --nodes ${NODES}
 	$(MAKE) docker_node_image
 	minikube image load consensus-node:latest
 	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer deploy --nodes ${NODES} --seed-nodes ${SEED_NODES}
@@ -60,6 +60,7 @@ clean_docker:
 	docker rm -f consensus-node-2
 	docker network rm -f node-net
 	docker image rm -f consensus-node
+	docker image rm -f test-suite
 
 addresses_file:
 	mkdir -p ${EXECUTABLE_NODE_DIR}/docker-config
