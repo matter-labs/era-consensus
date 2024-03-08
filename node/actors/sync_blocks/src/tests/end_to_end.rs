@@ -7,12 +7,13 @@ use std::fmt;
 use test_casing::test_casing;
 use tracing::{instrument, Instrument};
 use zksync_concurrency::{
-    ctx, scope,
+    ctx,
+    ctx::channel,
+    scope,
     testonly::{abort_on_panic, set_timeout},
 };
 use zksync_consensus_network as network;
 use zksync_consensus_storage::testonly::new_store;
-use zksync_consensus_utils::no_copy::NoCopy;
 
 type NetworkDispatcherPipe =
     pipe::DispatcherPipe<network::io::InputMessage, network::io::OutputMessage>;
@@ -20,66 +21,38 @@ type NetworkDispatcherPipe =
 #[derive(Debug)]
 struct Node {
     store: Arc<BlockStore>,
-    setup: Arc<GenesisSetup>,
-    switch_on_sender: Option<oneshot::Sender<()>>,
-    _switch_off_sender: oneshot::Sender<()>,
+    start: channel::Sender<()>,
+    terminate: channel::Sender<()>,
 }
 
 impl Node {
-    async fn new_network(
-        ctx: &ctx::Ctx,
-        node_count: usize,
-        gossip_peers: usize,
-    ) -> (Vec<Node>, Vec<NodeRunner>) {
-        let rng = &mut ctx.rng();
-        // NOTE: originally there were only 4 consensus nodes.
-        let mut setup = validator::testonly::GenesisSetup::new(rng, node_count);
-        setup.push_blocks(rng, 20);
-        let setup = Arc::new(setup);
-        let mut nodes = vec![];
-        let mut runners = vec![];
-        for net in network::testonly::new_configs(rng, &setup, gossip_peers) {
-            let (n, r) = Node::new(ctx, net, setup.clone()).await;
-            nodes.push(n);
-            runners.push(r);
-        }
-        (nodes, runners)
-    }
-
-    async fn new(
-        ctx: &ctx::Ctx,
-        network: network::Config,
-        setup: Arc<GenesisSetup>,
-    ) -> (Self, NodeRunner) {
-        let (store, store_runner) = new_store(ctx, &setup.blocks[0]).await;
-        let (switch_on_sender, switch_on_receiver) = oneshot::channel();
-        let (switch_off_sender, switch_off_receiver) = oneshot::channel();
+    async fn new(ctx: &ctx::Ctx, network: network::Config, setup: &Setup) -> (Self, NodeRunner) {
+        let (store, store_runner) = new_store(ctx, &setup.genesis).await;
+        let (start_send, start_recv) = channel::bounded(1);
+        let (terminate_send, terminate_recv) = channel::bounded(1);
 
         let runner = NodeRunner {
             network,
             store: store.clone(),
             store_runner,
-            setup: setup.clone(),
-            switch_on_receiver,
-            switch_off_receiver,
+            start: start_recv,
+            terminate: terminate_recv,
         };
         let this = Self {
             store,
-            setup,
-            switch_on_sender: Some(switch_on_sender),
-            _switch_off_sender: switch_off_sender,
+            start: start_send,
+            terminate: terminate_send,
         };
         (this, runner)
     }
 
-    fn switch_on(&mut self) {
-        self.switch_on_sender.take();
+    fn start(&self) {
+        let _ = self.start.try_send(());
     }
 
-    async fn put_block(&self, ctx: &ctx::Ctx, block_number: BlockNumber) {
-        tracing::trace!(%block_number, "Storing new block");
-        let block = &self.setup.blocks[block_number.0 as usize];
-        self.store.queue_block(ctx, block.clone()).await.unwrap();
+    async fn terminate(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
+        let _ = self.terminate.try_send(());
+        self.terminate.closed(ctx).await
     }
 }
 
@@ -88,29 +61,25 @@ struct NodeRunner {
     network: network::Config,
     store: Arc<BlockStore>,
     store_runner: BlockStoreRunner,
-    setup: Arc<GenesisSetup>,
-    switch_on_receiver: oneshot::Receiver<()>,
-    switch_off_receiver: oneshot::Receiver<()>,
+    start: channel::Receiver<()>,
+    terminate: channel::Receiver<()>,
 }
 
 impl NodeRunner {
-    async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         tracing::info!("NodeRunner::run()");
         let key = self.network.gossip.key.public();
         let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
         let (mut network, network_runner) =
-            network::testonly::Instance::new(self.network.clone(), self.store.clone());
-        let sync_blocks_config = test_config(&self.setup);
-        scope::run!(ctx, |ctx, s| async {
+            network::testonly::Instance::new(ctx, self.network.clone(), self.store.clone());
+        let sync_blocks_config = Config::new();
+        let res = scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(self.store_runner.run(ctx));
             s.spawn_bg(network_runner.run(ctx));
             network.wait_for_gossip_connections().await;
             tracing::info!("Node connected to peers");
 
-            self.switch_on_receiver
-                .recv_or_disconnected(ctx)
-                .await?
-                .ok();
+            self.start.recv(ctx).await?;
             tracing::info!("switch_on");
             s.spawn_bg(
                 async {
@@ -123,11 +92,14 @@ impl NodeRunner {
             s.spawn_bg(sync_blocks_config.run(ctx, sync_blocks_actor_pipe, self.store.clone()));
             tracing::info!("Node is fully started");
 
-            let _ = self.switch_off_receiver.recv_or_disconnected(ctx).await;
-            tracing::info!("Node stopped");
+            let _ = self.terminate.recv(ctx).await;
+            tracing::info!("stopping");
             Ok(())
         })
-        .await
+        .await;
+        drop(self.terminate);
+        tracing::info!("node stopped");
+        res
     }
 
     async fn run_executor(
@@ -164,7 +136,7 @@ impl NodeRunner {
 trait GossipNetworkTest: fmt::Debug + Send {
     /// Returns the number of nodes in the gossip network and number of peers for each node.
     fn network_params(&self) -> (usize, usize);
-    async fn test(self, ctx: &ctx::Ctx, network: Vec<Node>) -> anyhow::Result<()>;
+    async fn test(self, ctx: &ctx::Ctx, setup: &Setup, network: Vec<Node>) -> anyhow::Result<()>;
 }
 
 #[instrument(level = "trace")]
@@ -172,13 +144,22 @@ async fn test_sync_blocks<T: GossipNetworkTest>(test: T) {
     abort_on_panic();
     let _guard = set_timeout(TEST_TIMEOUT);
     let ctx = &ctx::test_root(&ctx::AffineClock::new(25.));
+    let rng = &mut ctx.rng();
     let (node_count, gossip_peers) = test.network_params();
-    let (nodes, runners) = Node::new_network(ctx, node_count, gossip_peers).await;
+
+    let mut setup = validator::testonly::Setup::new(rng, node_count);
+    setup.push_blocks(rng, 10);
     scope::run!(ctx, |ctx, s| async {
-        for (i, runner) in runners.into_iter().enumerate() {
+        let mut nodes = vec![];
+        for (i, net) in network::testonly::new_configs(rng, &setup, gossip_peers)
+            .into_iter()
+            .enumerate()
+        {
+            let (node, runner) = Node::new(ctx, net, &setup).await;
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            nodes.push(node);
         }
-        test.test(ctx, nodes).await
+        test.test(ctx, &setup, nodes).await
     })
     .await
     .unwrap();
@@ -196,52 +177,43 @@ impl GossipNetworkTest for BasicSynchronization {
         (self.node_count, self.gossip_peers)
     }
 
-    async fn test(self, ctx: &ctx::Ctx, mut node_handles: Vec<Node>) -> anyhow::Result<()> {
+    async fn test(self, ctx: &ctx::Ctx, setup: &Setup, nodes: Vec<Node>) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
 
         tracing::info!("Check initial node states");
-        for node_handle in &mut node_handles {
-            node_handle.switch_on();
-            let state = node_handle.store.subscribe().borrow().clone();
-            assert_eq!(state.first.header().number, BlockNumber(0));
-            assert_eq!(state.last.header().number, BlockNumber(0));
+        for node in &nodes {
+            node.start();
+            let state = node.store.subscribe().borrow().clone();
+            assert_eq!(state.first, setup.genesis.fork.first_block);
+            assert_eq!(state.last, None);
         }
 
-        for block_number in (1..5).map(BlockNumber) {
-            let sending_node = node_handles.choose(rng).unwrap();
-            sending_node.put_block(ctx, block_number).await;
+        for block in &setup.blocks[0..5] {
+            let node = nodes.choose(rng).unwrap();
+            node.store.queue_block(ctx, block.clone()).await.unwrap();
 
-            tracing::info!("Wait until all nodes get block #{block_number}");
-            for node_handle in &mut node_handles {
-                node_handle
-                    .store
-                    .wait_until_persisted(ctx, block_number)
-                    .await?;
-                tracing::info!("OK");
+            tracing::info!("Wait until all nodes get block #{}", block.number());
+            for node in &nodes {
+                node.store.wait_until_persisted(ctx, block.number()).await?;
             }
         }
 
-        let sending_node = node_handles.choose(rng).unwrap();
+        let node = nodes.choose(rng).unwrap();
         scope::run!(ctx, |ctx, s| async {
             // Add a batch of blocks.
-            for block_number in (5..10).rev().map(BlockNumber) {
-                let block_number = NoCopy::from(block_number);
-                s.spawn_bg(async {
-                    sending_node.put_block(ctx, block_number.into_inner()).await;
-                    Ok(())
-                });
+            for block in setup.blocks[5..].iter().rev() {
+                s.spawn_bg(node.store.queue_block(ctx, block.clone()));
             }
 
             // Wait until nodes get all new blocks.
-            for node_handle in &node_handles {
-                node_handle
-                    .store
-                    .wait_until_persisted(ctx, BlockNumber(9))
-                    .await?;
+            let last = setup.blocks.last().unwrap().number();
+            for node in &nodes {
+                node.store.wait_until_persisted(ctx, last).await?;
             }
             Ok(())
         })
-        .await
+        .await?;
+        Ok(())
     }
 }
 
@@ -277,37 +249,38 @@ impl GossipNetworkTest for SwitchingOffNodes {
         (self.node_count, self.node_count / 2)
     }
 
-    async fn test(self, ctx: &ctx::Ctx, mut node_handles: Vec<Node>) -> anyhow::Result<()> {
+    async fn test(self, ctx: &ctx::Ctx, setup: &Setup, mut nodes: Vec<Node>) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
+        nodes.shuffle(rng);
 
-        for node_handle in &mut node_handles {
-            node_handle.switch_on();
+        for node in &nodes {
+            node.start();
         }
 
-        let mut block_number = BlockNumber(1);
-        while !node_handles.is_empty() {
-            tracing::info!("{} nodes left", node_handles.len());
-
-            let sending_node = node_handles.choose(rng).unwrap();
-            sending_node.put_block(ctx, block_number).await;
-            tracing::info!("block {block_number} inserted");
+        for i in 0..nodes.len() {
+            tracing::info!("{} nodes left", nodes.len() - i);
+            let block = &setup.blocks[i];
+            nodes[i..]
+                .choose(rng)
+                .unwrap()
+                .store
+                .queue_block(ctx, block.clone())
+                .await
+                .unwrap();
+            tracing::info!("block {} inserted", block.number());
 
             // Wait until all remaining nodes get the new block.
-            for node_handle in &node_handles {
-                node_handle
-                    .store
-                    .wait_until_persisted(ctx, block_number)
-                    .await?;
+            for node in &nodes[i..] {
+                node.store.wait_until_persisted(ctx, block.number()).await?;
             }
-            tracing::trace!("All nodes received block #{block_number}");
-            block_number = block_number.next();
+            tracing::info!("All nodes received block #{}", block.number());
 
-            // Switch off a random node by dropping its handle.
+            // Terminate a random node.
             // We start switching off only after the first round, to make sure all nodes are fully
             // started.
-            let node_index_to_remove = rng.gen_range(0..node_handles.len());
-            node_handles.swap_remove(node_index_to_remove);
+            nodes[i].terminate(ctx).await.unwrap();
         }
+        tracing::info!("test finished, terminating");
         Ok(())
     }
 }
@@ -329,30 +302,25 @@ impl GossipNetworkTest for SwitchingOnNodes {
         (self.node_count, self.node_count / 2)
     }
 
-    async fn test(self, ctx: &ctx::Ctx, mut node_handles: Vec<Node>) -> anyhow::Result<()> {
+    async fn test(self, ctx: &ctx::Ctx, setup: &Setup, mut nodes: Vec<Node>) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
-
-        let mut switched_on_nodes = Vec::with_capacity(self.node_count);
-        let mut block_number = BlockNumber(1);
-        while switched_on_nodes.len() < self.node_count {
-            // Switch on a random node.
-            let node_index_to_switch_on = rng.gen_range(0..node_handles.len());
-            let mut node_handle = node_handles.swap_remove(node_index_to_switch_on);
-            node_handle.switch_on();
-            switched_on_nodes.push(node_handle);
-
-            let sending_node = switched_on_nodes.choose(rng).unwrap();
-            sending_node.put_block(ctx, block_number).await;
+        nodes.shuffle(rng);
+        for i in 0..nodes.len() {
+            nodes[i].start(); // Switch on a node.
+            let block = &setup.blocks[i];
+            nodes[0..i + 1]
+                .choose(rng)
+                .unwrap()
+                .store
+                .queue_block(ctx, block.clone())
+                .await
+                .unwrap();
 
             // Wait until all switched on nodes get the new block.
-            for node_handle in &mut switched_on_nodes {
-                node_handle
-                    .store
-                    .wait_until_persisted(ctx, block_number)
-                    .await?;
+            for node in &nodes[0..i + 1] {
+                node.store.wait_until_persisted(ctx, block.number()).await?;
             }
-            tracing::trace!("All nodes received block #{block_number}");
-            block_number = block_number.next();
+            tracing::trace!("All nodes received block #{}", block.number());
         }
         Ok(())
     }

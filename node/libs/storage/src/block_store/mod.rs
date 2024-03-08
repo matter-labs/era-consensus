@@ -1,4 +1,5 @@
 //! Defines storage layer for finalized blocks.
+use anyhow::Context as _;
 use std::{collections::VecDeque, fmt, sync::Arc};
 use zksync_concurrency::{ctx, error::Wrap as _, sync};
 use zksync_consensus_roles::validator;
@@ -9,21 +10,27 @@ mod metrics;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockStoreState {
     /// Stored block with the lowest number.
-    pub first: validator::CommitQC,
+    /// Currently always same as `genesis.first_block`.
+    pub first: validator::BlockNumber,
     /// Stored block with the highest number.
-    pub last: validator::CommitQC,
+    /// None iff store is empty.
+    pub last: Option<validator::CommitQC>,
 }
 
 impl BlockStoreState {
     /// Checks whether block with the given number is stored in the `BlockStore`.
     pub fn contains(&self, number: validator::BlockNumber) -> bool {
-        self.first.header().number <= number && number <= self.last.header().number
+        let Some(last) = &self.last else { return false };
+        self.first <= number && number <= last.header().number
     }
 
     /// Number of the next block that can be stored in the `BlockStore`.
     /// (i.e. `last` + 1).
     pub fn next(&self) -> validator::BlockNumber {
-        self.last.header().number.next()
+        match &self.last {
+            Some(qc) => qc.header().number.next(),
+            None => self.first,
+        }
     }
 }
 
@@ -32,12 +39,14 @@ impl BlockStoreState {
 /// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait::async_trait]
 pub trait PersistentBlockStore: fmt::Debug + Send + Sync {
-    /// Range of blocks available in storage.
-    /// PersistentBlockStore is expected to always contain at least 1 block,
-    /// and be append-only storage (never delete blocks).
+    /// Genesis matching the block store content.
+    /// Consensus code calls this method only once.
+    async fn genesis(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::Genesis>;
+
+    /// Last block available in storage.
     /// Consensus code calls this method only once and then tracks the
     /// range of available blocks internally.
-    async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState>;
+    async fn last(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<validator::CommitQC>>;
 
     /// Gets a block by its number.
     /// Returns error if block is missing.
@@ -74,6 +83,7 @@ struct Inner {
 pub struct BlockStore {
     inner: sync::watch::Sender<Inner>,
     persistent: Box<dyn PersistentBlockStore>,
+    genesis: validator::Genesis,
 }
 
 /// Runner of the BlockStore background tasks.
@@ -110,7 +120,7 @@ impl BlockStoreRunner {
 
                 self.0.inner.send_modify(|inner| {
                     debug_assert_eq!(inner.persisted_state.next(), block.header().number);
-                    inner.persisted_state.last = block.justification.clone();
+                    inner.persisted_state.last = Some(block.justification.clone());
                     inner.queue.pop_front();
                 });
             }
@@ -132,22 +142,41 @@ impl BlockStore {
         ctx: &ctx::Ctx,
         persistent: Box<dyn PersistentBlockStore>,
     ) -> ctx::Result<(Arc<Self>, BlockStoreRunner)> {
-        let t = metrics::PERSISTENT_BLOCK_STORE.state_latency.start();
-        let state = persistent.state(ctx).await.wrap("persistent.state()")?;
+        let t = metrics::PERSISTENT_BLOCK_STORE.genesis_latency.start();
+        let genesis = persistent.genesis(ctx).await.wrap("persistent.genesis()")?;
         t.observe();
-        if state.first.header().number > state.last.header().number {
-            return Err(anyhow::anyhow!("invalid state").into());
+        let t = metrics::PERSISTENT_BLOCK_STORE.last_latency.start();
+        let last = persistent.last(ctx).await.wrap("persistent.last()")?;
+        t.observe();
+        if let Some(last) = &last {
+            last.verify(&genesis).context("last.verify()")?;
         }
+        let state = BlockStoreState {
+            first: genesis.fork.first_block,
+            last,
+        };
         let this = Arc::new(Self {
-            persistent,
             inner: sync::watch::channel(Inner {
                 queued_state: sync::watch::channel(state.clone()).0,
                 persisted_state: state,
                 queue: VecDeque::new(),
             })
             .0,
+            genesis,
+            persistent,
         });
+        // Verify the first block.
+        if let Some(block) = this.block(ctx, this.genesis.fork.first_block).await? {
+            block
+                .verify(&this.genesis)
+                .with_context(|| format!("verify({:?})", this.genesis.fork.first_block))?;
+        }
         Ok((this.clone(), BlockStoreRunner(this)))
+    }
+
+    /// Genesis specification for this block store.
+    pub fn genesis(&self) -> &validator::Genesis {
+        &self.genesis
     }
 
     /// Fetches a block (from queue or persistent storage).
@@ -188,19 +217,35 @@ impl BlockStore {
         &self,
         ctx: &ctx::Ctx,
         block: validator::FinalBlock,
-    ) -> ctx::OrCanceled<()> {
-        let number = block.header().number;
-        sync::wait_for(ctx, &mut self.subscribe(), |queued_state| {
-            queued_state.next() >= number
-        })
-        .await?;
+    ) -> ctx::Result<()> {
+        let number = block.number();
+        {
+            let sub = &mut self.subscribe();
+            let queued_state =
+                sync::wait_for(ctx, sub, |queued_state| queued_state.next() >= number).await?;
+            if queued_state.next() > number {
+                return Ok(());
+            }
+            block.verify(&self.genesis).context("block.verify()")?;
+            // Verify parent hash, if previous block is available.
+            if let Some(last) = queued_state.last.as_ref() {
+                if Some(last.header().hash()) != block.header().parent {
+                    return Err(anyhow::format_err!(
+                        "block.parent = {:?}, want {:?}",
+                        block.header().parent,
+                        last.header().hash()
+                    )
+                    .into());
+                }
+            }
+        }
         self.inner.send_if_modified(|inner| {
             let modified = inner.queued_state.send_if_modified(|queued_state| {
                 // It may happen that the same block is queued_state by 2 calls.
                 if queued_state.next() != number {
                     return false;
                 }
-                queued_state.last = block.justification.clone();
+                queued_state.last = Some(block.justification.clone());
                 true
             });
             if !modified {
@@ -212,14 +257,14 @@ impl BlockStore {
         Ok(())
     }
 
-    /// Waits until the given block is queued_state to be stored.
+    /// Waits until the given block is queued to be stored.
     pub async fn wait_until_queued(
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
     ) -> ctx::OrCanceled<()> {
         sync::wait_for(ctx, &mut self.subscribe(), |queued_state| {
-            queued_state.contains(number)
+            number < queued_state.next()
         })
         .await?;
         Ok(())
@@ -232,7 +277,7 @@ impl BlockStore {
         number: validator::BlockNumber,
     ) -> ctx::OrCanceled<()> {
         sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
-            inner.persisted_state.contains(number)
+            number < inner.persisted_state.next()
         })
         .await?;
         Ok(())
@@ -247,10 +292,9 @@ impl BlockStore {
     fn scrape_metrics(&self) -> metrics::BlockStore {
         let m = metrics::BlockStore::default();
         let inner = self.inner.borrow();
-        m.last_queued_block
-            .set(inner.queued_state.borrow().last.header().number.0);
-        m.last_persisted_block
-            .set(inner.persisted_state.last.header().number.0);
+        m.next_queued_block
+            .set(inner.queued_state.borrow().next().0);
+        m.next_persisted_block.set(inner.persisted_state.next().0);
         m
     }
 }

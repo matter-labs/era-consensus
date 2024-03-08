@@ -15,6 +15,7 @@ impl Distribution<Handshake> for Standard {
         let session_id: node::SessionId = rng.gen();
         Handshake {
             session_id: key.sign_msg(session_id),
+            genesis: rng.gen(),
         }
     }
 }

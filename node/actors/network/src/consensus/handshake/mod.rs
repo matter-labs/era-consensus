@@ -19,6 +19,9 @@ pub(crate) struct Handshake {
     /// Session ID signed with the validator key.
     /// Authenticates the peer to be the owner of the validator key.
     pub(crate) session_id: validator::Signed<node::SessionId>,
+    /// Hash of the blockchain genesis specification.
+    /// Only nodes with the same genesis belong to the same network.
+    pub(crate) genesis: validator::GenesisHash,
 }
 
 impl ProtoFmt for Handshake {
@@ -26,11 +29,13 @@ impl ProtoFmt for Handshake {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             session_id: read_required(&r.session_id).context("session_id")?,
+            genesis: read_required(&r.genesis).context("genesis")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
             session_id: Some(self.session_id.build()),
+            genesis: Some(self.genesis.build()),
         }
     }
 }
@@ -38,6 +43,8 @@ impl ProtoFmt for Handshake {
 /// Error returned by handshake logic.
 #[derive(Debug, thiserror::Error)]
 pub(super) enum Error {
+    #[error("genesis mismatch")]
+    GenesisMismatch,
     #[error("session id mismatch")]
     SessionIdMismatch,
     #[error("unexpected peer")]
@@ -51,6 +58,7 @@ pub(super) enum Error {
 pub(super) async fn outbound(
     ctx: &ctx::Ctx,
     me: &validator::SecretKey,
+    genesis: validator::GenesisHash,
     stream: &mut noise::Stream,
     peer: &validator::PublicKey,
 ) -> Result<(), Error> {
@@ -61,6 +69,7 @@ pub(super) async fn outbound(
         stream,
         &Handshake {
             session_id: me.sign_msg(session_id.clone()),
+            genesis,
         },
     )
     .await
@@ -68,6 +77,9 @@ pub(super) async fn outbound(
     let h: Handshake = frame::recv_proto(ctx, stream, Handshake::max_size())
         .await
         .map_err(Error::Stream)?;
+    if h.genesis != genesis {
+        return Err(Error::GenesisMismatch);
+    }
     if h.session_id.msg != session_id {
         return Err(Error::SessionIdMismatch);
     }
@@ -81,6 +93,7 @@ pub(super) async fn outbound(
 pub(super) async fn inbound(
     ctx: &ctx::Ctx,
     me: &validator::SecretKey,
+    genesis: validator::GenesisHash,
     stream: &mut noise::Stream,
 ) -> Result<validator::PublicKey, Error> {
     let ctx = &ctx.with_timeout(TIMEOUT);
@@ -88,6 +101,9 @@ pub(super) async fn inbound(
     let h: Handshake = frame::recv_proto(ctx, stream, Handshake::max_size())
         .await
         .map_err(Error::Stream)?;
+    if h.genesis != genesis {
+        return Err(Error::GenesisMismatch);
+    }
     if h.session_id.msg != session_id.clone() {
         return Err(Error::SessionIdMismatch);
     }
@@ -97,6 +113,7 @@ pub(super) async fn inbound(
         stream,
         &Handshake {
             session_id: me.sign_msg(session_id.clone()),
+            genesis,
         },
     )
     .await

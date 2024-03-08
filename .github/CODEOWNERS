@@ -1,8 +1,7 @@
 CODEOWNERS @brunoffranca
 
-/node/actors/consensus/ @brunoffranca @moshababo
+/node/actors/consensus/ @brunoffranca
 /node/actors/network/ @pompon0
-/node/actors/sync_blocks/ @slowli
 
 /node/libs/concurrency/ @pompon0
 /node/libs/crypto/ @brunoffranca

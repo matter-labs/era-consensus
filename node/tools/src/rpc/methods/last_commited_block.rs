@@ -11,24 +11,24 @@ use zksync_consensus_storage::BlockStore;
 pub fn callback(node_storage: Arc<BlockStore>) -> RpcResult<serde_json::Value> {
     let sub = &mut node_storage.subscribe();
     let state = sub.borrow().clone();
-    let last_view = state
+    let last_commited_block_header = state
         .last
         .context("Failed to get last state")
         .map_err(|_| ErrorObjectOwned::from(ErrorCode::InternalError))?
-        .view()
+        .header()
         .number
         .0;
     Ok(serde_json::json!({
-        "last_view": last_view
+        "last_commited_block": last_commited_block_header
     }))
 }
 
 /// Last view method name.
 pub fn method() -> &'static str {
-    "last_view"
+    "last_commited_block"
 }
 
 /// Method path for GET requests.
 pub fn path() -> &'static str {
-    "/last_view"
+    "/last_commited_block"
 }

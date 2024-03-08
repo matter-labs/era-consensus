@@ -8,7 +8,6 @@ use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_tools::{decode_json, ConfigPaths, NodeAddr, RPCServer};
-use zksync_consensus_utils::no_copy::NoCopy;
 use zksync_protobuf::serde::Serde;
 
 /// Wrapper for Vec<NodeAddr>.
@@ -125,18 +124,14 @@ async fn main() -> anyhow::Result<()> {
         rpc_addr.set_port(rpc_addr.port() + 100);
     }
 
+    // Create the RPC server with the executor's storage.
     let node_storage = executor.block_store.clone();
-
-    // cloning configuration to let RPCServer show it
-    // TODO this should be queried in real time instead, to reflect any possible change in config
-    let rpc_server = RPCServer::new(rpc_addr, configs.app.clone(), node_storage);
+    let rpc_server = RPCServer::new(rpc_addr, node_storage);
 
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {
-        if let Some(addr) = configs.app.metrics_server_addr {
-            let addr = NoCopy::from(addr);
+        if let Some(addr) = &configs.app.metrics_server_addr {
             s.spawn_bg(async {
-                let addr = addr;
                 MetricsExporter::default()
                     .with_graceful_shutdown(ctx.canceled())
                     .start(*addr)

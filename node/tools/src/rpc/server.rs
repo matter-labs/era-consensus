@@ -10,17 +10,14 @@ use zksync_consensus_storage::BlockStore;
 pub struct RPCServer {
     /// IP address to bind to.
     ip_address: SocketAddr,
-    /// AppConfig
-    config: AppConfig,
     /// Node storage.
     node_storage: Arc<BlockStore>,
 }
 
 impl RPCServer {
-    pub fn new(ip_address: SocketAddr, config: AppConfig, node_storage: Arc<BlockStore>) -> Self {
+    pub fn new(ip_address: SocketAddr, node_storage: Arc<BlockStore>) -> Self {
         Self {
             ip_address,
-            config,
             node_storage,
         }
     }
@@ -34,27 +31,18 @@ impl RPCServer {
                 health_check::path(),
                 health_check::method(),
             )?)
-            .layer(ProxyGetRequestLayer::new(peers::path(), peers::method())?)
-            .layer(ProxyGetRequestLayer::new(config::path(), config::method())?)
             .layer(ProxyGetRequestLayer::new(
                 last_view::path(),
                 last_view::method(),
             )?)
             .layer(ProxyGetRequestLayer::new(
-                last_vote::path(),
-                last_vote::method(),
+                last_commited_block::path(),
+                last_commited_block::method(),
             )?);
 
         let mut module = RpcModule::new(());
         module.register_method(health_check::method(), |_params, _| {
             health_check::callback()
-        })?;
-        module.register_method(peers::method(), |_params, _| peers::callback())?;
-
-        // TODO find a better way to implement this as I had to clone the clone and move it to pass the borrow checker
-        let config = self.config.clone();
-        module.register_method(config::method(), move |_params, _| {
-            config::callback(config.clone())
         })?;
 
         let node_storage = self.node_storage.clone();
@@ -63,8 +51,8 @@ impl RPCServer {
         })?;
 
         let node_storage = self.node_storage.clone();
-        module.register_method(last_vote::method(), move |_params, _| {
-            last_vote::callback(node_storage.clone())
+        module.register_method(last_commited_block::method(), move |_params, _| {
+            last_commited_block::callback(node_storage.clone())
         })?;
 
         let server = Server::builder()

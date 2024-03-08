@@ -1,11 +1,14 @@
 //! Messages related to the consensus protocol.
-
-use super::{BlockHeader, Msg, Payload, Signed};
-use crate::{validator, validator::Signature};
-use anyhow::bail;
+use super::{
+    BlockHeaderHash, BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, ReplicaPrepare,
+};
+use crate::validator;
 use bit_vec::BitVec;
-use serde::Serialize;
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+};
+use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
 /// Version of the consensus algorithm that the validator is using.
@@ -41,6 +44,166 @@ impl TryFrom<u32> for ProtocolVersion {
     }
 }
 
+/// Number of the fork. Newer fork has higher number.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ForkNumber(pub u64);
+
+impl ForkNumber {
+    /// Next fork number.
+    pub fn next(self) -> Self {
+        Self(self.0 + 1)
+    }
+}
+
+/// Specification of a fork.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Fork {
+    /// Number of the fork.
+    pub number: ForkNumber,
+    /// First block of a fork.
+    pub first_block: BlockNumber,
+    /// Parent fo the first block of a fork.
+    pub first_parent: Option<BlockHeaderHash>,
+}
+
+impl Default for Fork {
+    fn default() -> Self {
+        Self {
+            number: ForkNumber(0),
+            first_block: BlockNumber(0),
+            first_parent: None,
+        }
+    }
+}
+
+/// A struct that represents a set of validators. It is used to store the current validator set.
+/// We represent each validator by its validator public key.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ValidatorSet {
+    vec: Vec<validator::PublicKey>,
+    map: BTreeMap<validator::PublicKey, usize>,
+}
+
+impl ValidatorSet {
+    /// Creates a new ValidatorSet from a list of validator public keys.
+    pub fn new(validators: impl IntoIterator<Item = validator::PublicKey>) -> anyhow::Result<Self> {
+        let mut set = BTreeSet::new();
+        for validator in validators {
+            anyhow::ensure!(set.insert(validator), "Duplicate validator in ValidatorSet");
+        }
+        anyhow::ensure!(
+            !set.is_empty(),
+            "ValidatorSet must contain at least one validator"
+        );
+        Ok(Self {
+            vec: set.iter().cloned().collect(),
+            map: set.into_iter().enumerate().map(|(i, pk)| (pk, i)).collect(),
+        })
+    }
+
+    /// Iterates over validators.
+    pub fn iter(&self) -> impl Iterator<Item = &validator::PublicKey> {
+        self.vec.iter()
+    }
+
+    /// Returns the number of validators.
+    #[allow(clippy::len_without_is_empty)] // a valid `ValidatorSet` is always non-empty by construction
+    pub fn len(&self) -> usize {
+        self.vec.len()
+    }
+
+    /// Returns true if the given validator is in the validator set.
+    pub fn contains(&self, validator: &validator::PublicKey) -> bool {
+        self.map.contains_key(validator)
+    }
+
+    /// Get validator by its index in the set.
+    pub fn get(&self, index: usize) -> Option<&validator::PublicKey> {
+        self.vec.get(index)
+    }
+
+    /// Get the index of a validator in the set.
+    pub fn index(&self, validator: &validator::PublicKey) -> Option<usize> {
+        self.map.get(validator).copied()
+    }
+
+    /// Computes the validator for the given view.
+    pub fn view_leader(&self, view_number: ViewNumber) -> validator::PublicKey {
+        let index = view_number.0 as usize % self.len();
+        self.get(index).unwrap().clone()
+    }
+
+    /// Signature threshold for this validator set.
+    pub fn threshold(&self) -> usize {
+        threshold(self.len())
+    }
+
+    /// Maximal number of faulty replicas allowed in this validator set.
+    pub fn faulty_replicas(&self) -> usize {
+        faulty_replicas(self.len())
+    }
+}
+
+/// Calculate the consensus threshold, the minimum number of votes for any consensus action to be valid,
+/// for a given number of replicas.
+pub fn threshold(n: usize) -> usize {
+    n - faulty_replicas(n)
+}
+
+/// Calculate the maximum number of faulty replicas, for a given number of replicas.
+pub fn faulty_replicas(n: usize) -> usize {
+    // Calculate the allowed maximum number of faulty replicas. We want the following relationship to hold:
+    //      n = 5*f + 1
+    // for n total replicas and f faulty replicas. This results in the following formula for the maximum
+    // number of faulty replicas:
+    //      f = floor((n - 1) / 5)
+    // Because of this, it doesn't make sense to have 5*f + 2 or 5*f + 3 replicas. It won't increase the number
+    // of allowed faulty replicas.
+    (n - 1) / 5
+}
+
+/// Genesis of the blockchain, unique for each blockchain instance.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Genesis {
+    // TODO(gprusak): add blockchain id here.
+    /// Set of validators of the chain.
+    pub validators: ValidatorSet,
+    /// Fork of the chain to follow.
+    pub fork: Fork,
+}
+
+/// Hash of the genesis specification.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct GenesisHash(pub(crate) Keccak256);
+
+impl Genesis {
+    /// Hash of the genesis.
+    pub fn hash(&self) -> GenesisHash {
+        GenesisHash(Keccak256::new(&zksync_protobuf::canonical(self)))
+    }
+}
+
+impl TextFmt for GenesisHash {
+    fn decode(text: Text) -> anyhow::Result<Self> {
+        text.strip("genesis_hash:keccak256:")?
+            .decode_hex()
+            .map(Self)
+    }
+
+    fn encode(&self) -> String {
+        format!(
+            "genesis_hash:keccak256:{}",
+            hex::encode(ByteFmt::encode(&self.0))
+        )
+    }
+}
+
+impl fmt::Debug for GenesisHash {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.write_str(&TextFmt::encode(self))
+    }
+}
+
 /// Consensus messages.
 #[allow(missing_docs)]
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -62,14 +225,19 @@ impl ConsensusMsg {
         }
     }
 
+    /// View of this message.
+    pub fn view(&self) -> &View {
+        match self {
+            Self::ReplicaPrepare(m) => &m.view,
+            Self::ReplicaCommit(m) => &m.view,
+            Self::LeaderPrepare(m) => m.view(),
+            Self::LeaderCommit(m) => m.view(),
+        }
+    }
+
     /// Protocol version of this message.
     pub fn protocol_version(&self) -> ProtocolVersion {
-        match self {
-            Self::ReplicaPrepare(m) => m.protocol_version,
-            Self::ReplicaCommit(m) => m.protocol_version,
-            Self::LeaderPrepare(m) => m.protocol_version,
-            Self::LeaderCommit(m) => m.protocol_version,
-        }
+        self.view().protocol_version
     }
 }
 
@@ -121,225 +289,21 @@ impl Variant<Msg> for LeaderCommit {
     }
 }
 
-/// A Prepare message from a replica.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct ReplicaPrepare {
+/// View specification.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct View {
     /// Protocol version.
     pub protocol_version: ProtocolVersion,
+    /// Fork this message belongs to.
+    pub fork: ForkNumber,
     /// The number of the current view.
-    pub view: ViewNumber,
-    /// The highest block that the replica has committed to.
-    pub high_vote: ReplicaCommit,
-    /// The highest CommitQC that the replica has seen.
-    pub high_qc: CommitQC,
+    pub number: ViewNumber,
 }
 
-/// A Commit message from a replica.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ReplicaCommit {
-    /// Protocol version.
-    pub protocol_version: ProtocolVersion,
-    /// The number of the current view.
-    pub view: ViewNumber,
-    /// The header of the block that the replica is committing to.
-    pub proposal: BlockHeader,
-}
-
-/// A Prepare message from a leader.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LeaderPrepare {
-    /// Protocol version.
-    pub protocol_version: ProtocolVersion,
-    /// The number of the current view.
-    pub view: ViewNumber,
-    /// The header of the block that the leader is proposing.
-    pub proposal: BlockHeader,
-    /// Payload of the block that the leader is proposing.
-    /// `None` iff this is a reproposal.
-    pub proposal_payload: Option<Payload>,
-    /// The PrepareQC that justifies this proposal from the leader.
-    pub justification: PrepareQC,
-}
-
-/// A Commit message from a leader.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct LeaderCommit {
-    /// Protocol version.
-    pub protocol_version: ProtocolVersion,
-    /// The CommitQC that justifies the message from the leader.
-    pub justification: CommitQC,
-}
-
-/// A quorum certificate of replica Prepare messages. Since not all Prepare messages are
-/// identical (they have different high blocks and high QCs), we need to keep the high blocks
-/// and high QCs in a map. We can still aggregate the signatures though.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct PrepareQC {
-    /// Map from replica Prepare messages to the validators that signed them.
-    pub map: BTreeMap<ReplicaPrepare, Signers>,
-    /// Aggregate signature of the replica Prepare messages.
-    pub signature: validator::AggregateSignature,
-}
-
-impl PrepareQC {
-    /// View of the QC.
-    pub fn view(&self) -> ViewNumber {
-        self.map
-            .keys()
-            .map(|k| k.view)
-            .next()
-            .unwrap_or(ViewNumber(0))
-    }
-
-    /// Add a validator's signed message.
-    /// * `signed_message` - A valid signed `ReplicaPrepare` message.
-    /// * `validator_index` - The signer index in the validator set.
-    /// * `validator_set` - The validator set.
-    pub fn add(
-        &mut self,
-        signed_message: &Signed<ReplicaPrepare>,
-        validator_index: usize,
-        validator_set: &ValidatorSet,
-    ) {
-        self.map
-            .entry(signed_message.msg.clone())
-            .or_insert_with(|| Signers(BitVec::from_elem(validator_set.len(), false)))
-            .0
-            .set(validator_index, true);
-
-        self.signature.add(&signed_message.sig);
-    }
-
-    /// Verifies the integrity of the PrepareQC.
-    pub fn verify(
-        &self,
-        view: ViewNumber,
-        validators: &ValidatorSet,
-        threshold: usize,
-    ) -> anyhow::Result<()> {
-        // First we check that all messages are for the same view number.
-        for msg in self.map.keys() {
-            if msg.view != view {
-                bail!("PrepareQC contains messages for different views!");
-            }
-        }
-
-        // Then we need to do some checks on the signers bit maps.
-        let mut bit_map = BitVec::from_elem(validators.len(), false);
-        let mut num_signers = 0;
-
-        for signer_bitmap in self.map.values() {
-            let signers = signer_bitmap.0.clone();
-
-            if signers.len() != validators.len() {
-                bail!("Bit vector in PrepareQC has wrong length!");
-            }
-
-            if !signers.any() {
-                bail!("Empty bit vector in PrepareQC. We require at least one signer for every message!");
-            }
-
-            let mut intersection = bit_map.clone();
-            intersection.and(&signers);
-            if intersection.any() {
-                bail!("Bit vectors in PrepareQC are not disjoint. We require that every validator signs at most one message!");
-            }
-            bit_map.or(&signers);
-
-            num_signers += signers.iter().filter(|b| *b).count();
-        }
-
-        // Verify that we have enough signers.
-        // TODO(gprusak): how about num_signers == threshold to make the certificates more uniform?
-        if num_signers < threshold {
-            bail!(
-                "Insufficient signers in PrepareQC.\nNumber of signers: {}\nThreshold: {}",
-                num_signers,
-                threshold
-            );
-        }
-
-        // Now we can verify the signature.
-        let messages_and_keys = self.map.clone().into_iter().flat_map(|(msg, signers)| {
-            validators
-                .iter()
-                .enumerate()
-                .filter(|(i, _)| signers.0[*i])
-                .map(|(_, pk)| (msg.clone(), pk))
-                .collect::<Vec<_>>()
-        });
-
-        Ok(self.signature.verify_messages(messages_and_keys)?)
-    }
-}
-
-/// A Commit Quorum Certificate. It is an aggregate of signed replica Commit messages.
-/// The Quorum Certificate is supposed to be over identical messages, so we only need one message.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct CommitQC {
-    /// The replica Commit message that the QC is for.
-    pub message: ReplicaCommit,
-    /// The validators that signed this message.
-    pub signers: Signers,
-    /// The aggregate signature of the signed replica messages.
-    pub signature: validator::AggregateSignature,
-}
-
-impl CommitQC {
-    /// Header of the certified block.
-    pub fn header(&self) -> &BlockHeader {
-        &self.message.proposal
-    }
-
-    /// Create a new empty instance for a given `ReplicaCommit` message and a validator set size.
-    pub fn new(message: ReplicaCommit, validator_set: &ValidatorSet) -> Self {
-        Self {
-            message,
-            signers: Signers(BitVec::from_elem(validator_set.len(), false)),
-            signature: validator::AggregateSignature::default(),
-        }
-    }
-
-    /// Add a validator's signature.
-    /// * `sig` - A valid signature.
-    /// * `validator_index` - The signer index in the validator set.
-    pub fn add(&mut self, sig: &Signature, validator_index: usize) {
-        self.signers.0.set(validator_index, true);
-        self.signature.add(sig);
-    }
-
-    /// Verifies the signature of the CommitQC.
-    pub fn verify(&self, validators: &ValidatorSet, threshold: usize) -> anyhow::Result<()> {
-        let signers = self.signers.0.clone();
-
-        // First we to do some checks on the signers bit map.
-        if signers.len() != validators.len() {
-            bail!("Bit vector in CommitQC has wrong length!");
-        }
-
-        if !signers.any() {
-            bail!("Empty bit vector in CommitQC. We require at least one signer!");
-        }
-
-        // Verify that we have enough signers.
-        let num_signers = signers.iter().filter(|b| *b).count();
-
-        if num_signers < threshold {
-            bail!(
-                "Insufficient signers in CommitQC.\nNumber of signers: {}\nThreshold: {}",
-                num_signers,
-                threshold
-            );
-        }
-
-        // Now we can verify the signature.
-        let messages_and_keys = validators
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| signers[*i])
-            .map(|(_, pk)| (self.message, pk));
-
-        Ok(self.signature.verify_messages(messages_and_keys)?)
+impl View {
+    /// Checks if `self` can occur after `b`.
+    pub fn after(&self, b: &Self) -> bool {
+        self.fork == b.fork && self.number > b.number && self.protocol_version >= b.protocol_version
     }
 }
 
@@ -349,10 +313,20 @@ impl CommitQC {
 pub struct Signers(pub BitVec);
 
 impl Signers {
-    /// Returns  the number of signers, i.e. the number of validators that signed
+    /// Constructs an empty signers set.
+    pub fn new(n: usize) -> Self {
+        Self(BitVec::from_elem(n, false))
+    }
+
+    /// Returns the number of signers, i.e. the number of validators that signed
     /// the particular message that this signer bitmap refers to.
-    pub fn len(&self) -> usize {
+    pub fn count(&self) -> usize {
         self.0.iter().filter(|b| *b).count()
+    }
+
+    /// Size of the corresponding ValidatorSet.
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 
     /// Returns true if there are no signers.
@@ -361,75 +335,35 @@ impl Signers {
     }
 }
 
-/// A struct that represents a set of validators. It is used to store the current validator set.
-/// We represent each validator by its validator public key.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ValidatorSet {
-    vec: Vec<validator::PublicKey>,
-    map: BTreeMap<validator::PublicKey, usize>,
+impl std::ops::BitOrAssign<&Self> for Signers {
+    fn bitor_assign(&mut self, other: &Self) {
+        self.0.or(&other.0);
+    }
 }
 
-impl ValidatorSet {
-    /// Creates a new ValidatorSet from a list of validator public keys.
-    pub fn new(validators: impl IntoIterator<Item = validator::PublicKey>) -> anyhow::Result<Self> {
-        let mut set = BTreeSet::new();
-
-        for validator in validators {
-            if !set.insert(validator) {
-                bail!("Duplicate validator in ValidatorSet");
-            }
-        }
-
-        if set.is_empty() {
-            bail!("ValidatorSet must contain at least one validator");
-        }
-
-        Ok(Self {
-            vec: set.iter().cloned().collect(),
-            map: set.into_iter().enumerate().map(|(i, pk)| (pk, i)).collect(),
-        })
+impl std::ops::BitAndAssign<&Self> for Signers {
+    fn bitand_assign(&mut self, other: &Self) {
+        self.0.and(&other.0);
     }
+}
 
-    /// Iterates over validators.
-    pub fn iter(&self) -> impl Iterator<Item = &validator::PublicKey> {
-        self.vec.iter()
-    }
-
-    /// Returns the number of validators.
-    #[allow(clippy::len_without_is_empty)] // a valid `ValidatorSet` is always non-empty by construction
-    pub fn len(&self) -> usize {
-        self.vec.len()
-    }
-
-    /// Returns true if the given validator is in the validator set.
-    pub fn contains(&self, validator: &validator::PublicKey) -> bool {
-        self.map.contains_key(validator)
-    }
-
-    /// Get validator by its index in the set.
-    pub fn get(&self, index: usize) -> Option<&validator::PublicKey> {
-        self.vec.get(index)
-    }
-
-    /// Get the index of a validator in the set.
-    pub fn index(&self, validator: &validator::PublicKey) -> Option<usize> {
-        self.map.get(validator).copied()
+impl std::ops::BitAnd for &Signers {
+    type Output = Signers;
+    fn bitand(self, other: Self) -> Signers {
+        let mut this = self.clone();
+        this &= other;
+        this
     }
 }
 
 /// A struct that represents a view number.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ViewNumber(pub u64);
 
 impl ViewNumber {
     /// Get the next view number.
     pub fn next(self) -> Self {
         Self(self.0 + 1)
-    }
-
-    /// Get the previous view number.
-    pub fn prev(self) -> Self {
-        Self(self.0 - 1)
     }
 }
 
