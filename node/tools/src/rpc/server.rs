@@ -1,4 +1,4 @@
-use super::methods::{health_check, last_view};
+use super::methods::{health_check, last_commited_block, last_view};
 use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
 use std::{net::SocketAddr, sync::Arc};
 use zksync_concurrency::{ctx, scope};
@@ -32,6 +32,10 @@ impl RPCServer {
             .layer(ProxyGetRequestLayer::new(
                 last_view::path(),
                 last_view::method(),
+            )?)
+            .layer(ProxyGetRequestLayer::new(
+                last_commited_block::path(),
+                last_commited_block::method(),
             )?);
 
         let mut module = RpcModule::new(());
@@ -42,6 +46,11 @@ impl RPCServer {
         let node_storage = self.node_storage.clone();
         module.register_method(last_view::method(), move |_params, _| {
             last_view::callback(node_storage.clone())
+        })?;
+
+        let node_storage = self.node_storage.clone();
+        module.register_method(last_commited_block::method(), move |_params, _| {
+            last_commited_block::callback(node_storage.clone())
         })?;
 
         let server = Server::builder()
