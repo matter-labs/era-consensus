@@ -1,5 +1,5 @@
 //! In-memory storage implementation.
-use crate::{PersistentBlockStore, ReplicaState};
+use crate::{BlockStoreState, PersistentBlockStore, ReplicaState};
 use anyhow::Context as _;
 use std::{
     collections::VecDeque,
@@ -38,14 +38,17 @@ impl PersistentBlockStore for BlockStore {
         Ok(self.0.genesis.clone())
     }
 
-    async fn last(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<validator::CommitQC>> {
-        Ok(self
-            .0
-            .blocks
-            .lock()
-            .unwrap()
-            .back()
-            .map(|b| b.justification.clone()))
+    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
+        Ok(BlockStoreState {
+            first: self.0.genesis.fork.first_block,
+            last: self
+                .0
+                .blocks
+                .lock()
+                .unwrap()
+                .back()
+                .map(|b| b.justification.clone())
+        })
     }
 
     async fn block(

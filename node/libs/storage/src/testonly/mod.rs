@@ -42,19 +42,22 @@ pub async fn new_store(
 /// Dumps all the blocks stored in `store`.
 pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<validator::FinalBlock> {
     let genesis = store.genesis(ctx).await.unwrap();
-    let last = store.last(ctx).await.unwrap();
+    let state = store.state(ctx).await.unwrap();
+    assert!(genesis.fork.first_block <= state.first);
     let mut blocks = vec![];
-    let begin = genesis.fork.first_block;
-    let end = last
+    let after = state.last
         .as_ref()
         .map(|qc| qc.header().number.next())
-        .unwrap_or(begin);
-    for n in (begin.0..end.0).map(validator::BlockNumber) {
+        .unwrap_or(state.first);
+    for n in (state.first.0..after.0).map(validator::BlockNumber) {
         let block = store.block(ctx, n).await.unwrap();
         assert_eq!(block.header().number, n);
         blocks.push(block);
     }
-    assert!(store.block(ctx, end).await.is_err());
+    if let Some(before) = state.first.prev() {
+        assert!(store.block(ctx, before).await.is_err());
+    }
+    assert!(store.block(ctx, after).await.is_err());
     blocks
 }
 

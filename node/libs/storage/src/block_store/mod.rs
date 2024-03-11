@@ -10,7 +10,7 @@ mod metrics;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockStoreState {
     /// Stored block with the lowest number.
-    /// Currently always same as `genesis.first_block`.
+    /// If last is `None`, this is the first block that should be fetched.
     pub first: validator::BlockNumber,
     /// Stored block with the highest number.
     /// None iff store is empty.
@@ -46,7 +46,7 @@ pub trait PersistentBlockStore: fmt::Debug + Send + Sync {
     /// Last block available in storage.
     /// Consensus code calls this method only once and then tracks the
     /// range of available blocks internally.
-    async fn last(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<validator::CommitQC>>;
+    async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState>;
 
     /// Gets a block by its number.
     /// Returns error if block is missing.
@@ -145,16 +145,12 @@ impl BlockStore {
         let t = metrics::PERSISTENT_BLOCK_STORE.genesis_latency.start();
         let genesis = persistent.genesis(ctx).await.wrap("persistent.genesis()")?;
         t.observe();
-        let t = metrics::PERSISTENT_BLOCK_STORE.last_latency.start();
-        let last = persistent.last(ctx).await.wrap("persistent.last()")?;
+        let t = metrics::PERSISTENT_BLOCK_STORE.state_latency.start();
+        let state = persistent.state(ctx).await.wrap("persistent.state()")?;
         t.observe();
-        if let Some(last) = &last {
-            last.verify(&genesis).context("last.verify()")?;
+        if let Some(last) = &state.last {
+            last.verify(&genesis).context("state.last.verify()")?;
         }
-        let state = BlockStoreState {
-            first: genesis.fork.first_block,
-            last,
-        };
         let this = Arc::new(Self {
             inner: sync::watch::channel(Inner {
                 queued_state: sync::watch::channel(state.clone()).0,
