@@ -8,7 +8,7 @@ SEED_NODES=1
 # Locally run commands
 
 node:
-	export RUST_LOG=INFO && cd ${EXECUTABLE_NODE_DIR}/nodes-config/127.0.0.1:3054 && cargo run -- --database ../../database/node_${NODE}
+	export RUST_LOG=INFO && cd ${EXECUTABLE_NODE_DIR}/nodes-config/node_${NODE} && cargo run -- --database ../../database/node_${NODE}
 
 nodes_config:
 	cd ${EXECUTABLE_NODE_DIR} && cargo run --bin localnet_config -- --input-addrs addresses.txt --output-dir nodes-config
