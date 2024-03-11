@@ -45,7 +45,7 @@ pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<
         "No consensus pods found in the k8s cluster"
     );
     let mut node_rpc_addresses: Vec<SocketAddr> = Vec::new();
-    for pod in pods.into_iter() {
+    for pod in pods {
         let pod_spec = pod.spec.as_ref().context("Failed to get pod spec")?;
         let pod_container = pod_spec
             .containers
@@ -68,11 +68,11 @@ pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<
                 .context("Failed to get ports of container")?
                 .iter()
                 .find_map(|port| {
-                    let port: u16 = port.container_port.try_into().ok()?;
-                    (port != config::NODES_PORT).then_some(port)
+                    let port: u8 = port.container_port.try_into().ok()?;
+                    (port != config::NODES_PORT as u8).then_some(port)
                 })
                 .context("Failed parsing container port")?;
-            node_rpc_addresses.push(SocketAddr::new(pod_ip.parse()?, pod_rpc_port));
+            node_rpc_addresses.push(SocketAddr::new(pod_ip.parse()?, pod_rpc_port as u16));
         }
     }
     Ok(node_rpc_addresses)
