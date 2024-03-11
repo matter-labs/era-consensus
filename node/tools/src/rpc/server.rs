@@ -1,6 +1,4 @@
-use crate::AppConfig;
-
-use super::methods::{config, health_check, last_view, last_vote, peers};
+use super::methods::{health_check, last_commited_block, last_view};
 use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
 use std::{net::SocketAddr, sync::Arc};
 use zksync_concurrency::{ctx, scope};

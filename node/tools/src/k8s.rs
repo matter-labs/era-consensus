@@ -11,11 +11,13 @@ use k8s_openapi::{
     api::{
         apps::v1::{Deployment, DeploymentSpec},
         core::v1::{
-            Container, Namespace, Pod, PodSpec, PodTemplateSpec, Service, ServicePort, ServiceSpec,
+            Container, ContainerPort, EnvVar, EnvVarSource, HTTPGetAction, Namespace,
+            ObjectFieldSelector, Pod, PodSpec, PodTemplateSpec, Probe, Service, ServicePort,
+            ServiceSpec,
         },
         rbac::v1::{PolicyRule, Role, RoleBinding, RoleRef, Subject},
     },
-    apimachinery::pkg::{apis::meta::v1::LabelSelector, util::intstr::IntOrString},
+    apimachinery::pkg::{apis::meta::v1::LabelSelector, util::intstr::IntOrString::Int},
 };
 use kube::{
     api::{ListParams, PostParams},
@@ -325,7 +327,7 @@ pub async fn expose_tester_rpc(client: &Client) -> anyhow::Result<()> {
             selector: Some([("app".to_string(), "test-node".to_string())].into()),
             ports: vec![ServicePort {
                 port: 3030,
-                target_port: Some(IntOrString::Int(3030)),
+                target_port: Some(Int(3030)),
                 ..Default::default()
             }]
             .into(),

@@ -1,6 +1,7 @@
 //! This is a simple test for the RPC server. It checks if the server is running and can respond to.
 use std::{sync::Mutex, thread::sleep, time::Duration};
 
+use anyhow::Context;
 use clap::{Args, Parser, Subcommand};
 use jsonrpsee::{
     core::{client::ClientT, RpcResult},
@@ -18,7 +19,7 @@ use zksync_concurrency::{
 };
 use zksync_consensus_tools::{
     k8s::{self, add_chaos_delay_for_node},
-    rpc::methods::{health_check, last_vote},
+    rpc::methods::{health_check, last_commited_block},
 };
 
 mod utils;
@@ -130,27 +131,28 @@ pub async fn delay_test(test_result: Arc<Mutex<TestResult>>) -> anyhow::Result<(
     let url: String = format!("http://{}", ip);
     let rpc_client = HttpClientBuilder::default().build(url).unwrap();
     let response: serde_json::Value = rpc_client
-        .request(last_vote::method(), rpc_params!())
+        .request(last_commited_block::method(), rpc_params!())
         .await
         .unwrap();
-    let last_voted_view: u64 = serde_json::from_value(response).unwrap();
-    info!("last_voted_view: {}", last_voted_view);
+    let last_voted_view: u64 =
+        serde_json::from_value(response.get("last_commited_block").unwrap().to_owned()).unwrap();
     for _ in 0..5 {
         let response: serde_json::Value = rpc_client
-            .request(last_vote::method(), rpc_params!())
+            .request(last_commited_block::method(), rpc_params!())
             .await
             .unwrap();
-        let new_last_voted_view: u64 = serde_json::from_value(response).unwrap();
-        info!("new_last_voted_view: {}", new_last_voted_view);
+        let new_last_voted_view: u64 =
+            serde_json::from_value(response.get("last_commited_block").unwrap().to_owned())
+                .unwrap();
         assert_eq!(new_last_voted_view, last_voted_view);
     }
     sleep(Duration::from_secs(10));
     let response: serde_json::Value = rpc_client
-        .request(last_vote::method(), rpc_params!())
+        .request(last_commited_block::method(), rpc_params!())
         .await
         .unwrap();
-    let new_last_voted_view: u64 = serde_json::from_value(response).unwrap();
-    info!("new_last_voted_view: {}", new_last_voted_view);
+    let new_last_voted_view: u64 =
+        serde_json::from_value(response.get("last_commited_block").unwrap().to_owned()).unwrap();
     assert!(new_last_voted_view > last_voted_view);
     test_result.lock().unwrap().add_passed();
     Ok(())
