@@ -76,20 +76,24 @@ impl Default for Fork {
     }
 }
 
+
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ValidatorSet {
     vec: Vec<validator::PublicKey>,
-    map: BTreeMap<validator::PublicKey, usize>,
+    indexes: BTreeMap<validator::PublicKey, usize>,
+    weights: BTreeMap<validator::PublicKey, usize>,
 }
 
 impl ValidatorSet {
     /// Creates a new ValidatorSet from a list of validator public keys.
-    pub fn new(validators: impl IntoIterator<Item = validator::PublicKey>) -> anyhow::Result<Self> {
+    pub fn new(validators: impl IntoIterator<Item = (validator::PublicKey, usize)>) -> anyhow::Result<Self> {
         let mut set = BTreeSet::new();
-        for validator in validators {
-            anyhow::ensure!(set.insert(validator), "Duplicate validator in ValidatorSet");
+        let mut weights = BTreeMap::new();
+        for (key, weight) in validators {
+            anyhow::ensure!(set.insert(key), "Duplicate validator in ValidatorSet");
+            weights.insert(key, weight);
         }
         anyhow::ensure!(
             !set.is_empty(),
@@ -97,7 +101,8 @@ impl ValidatorSet {
         );
         Ok(Self {
             vec: set.iter().cloned().collect(),
-            map: set.into_iter().enumerate().map(|(i, pk)| (pk, i)).collect(),
+            indexes: set.into_iter().enumerate().map(|(i, pk)| (pk, i)).collect(),
+            weights,
         })
     }
 
@@ -114,7 +119,7 @@ impl ValidatorSet {
 
     /// Returns true if the given validator is in the validator set.
     pub fn contains(&self, validator: &validator::PublicKey) -> bool {
-        self.map.contains_key(validator)
+        self.indexes.contains_key(validator)
     }
 
     /// Get validator by its index in the set.
@@ -124,7 +129,7 @@ impl ValidatorSet {
 
     /// Get the index of a validator in the set.
     pub fn index(&self, validator: &validator::PublicKey) -> Option<usize> {
-        self.map.get(validator).copied()
+        self.indexes.get(validator).copied()
     }
 
     /// Computes the validator for the given view.

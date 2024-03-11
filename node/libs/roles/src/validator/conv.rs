@@ -36,7 +36,8 @@ impl ProtoFmt for Genesis {
             .validators
             .iter()
             .enumerate()
-            .map(|(i, v)| PublicKey::read(v).context(i))
+            // TODO: obtain weight
+            .map(|(i, v)| PublicKey::read(v).context(i).map(|key| (key, 0)))
             .collect::<Result<_, _>>()
             .context("validators")?;
         Ok(Self {
