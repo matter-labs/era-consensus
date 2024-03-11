@@ -185,7 +185,7 @@ pub async fn create_or_reuse_pod_reader_role(client: &Client) -> anyhow::Result<
                     ..Default::default()
                 },
                 rules: vec![PolicyRule {
-                    api_groups: Some(vec!["".to_string()]),
+                    api_groups: Some(vec![String::new()]),
                     resources: Some(vec!["pods".to_string()]),
                     verbs: vec![
                         "get".to_owned(),
@@ -224,7 +224,7 @@ pub async fn create_or_reuse_pod_reader_role(client: &Client) -> anyhow::Result<
                 subjects: vec![Subject {
                     kind: "ServiceAccount".to_string(),
                     name: "default".to_string(),
-                    api_group: "".to_owned().into(),
+                    api_group: String::new().into(),
                     ..Default::default()
                 }]
                 .into(),

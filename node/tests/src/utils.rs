@@ -1,3 +1,4 @@
+//! This module contains utility functions for the test binary.
 use anyhow::Context;
 use zksync_consensus_tools::k8s;
 
@@ -10,6 +11,8 @@ pub(crate) async fn start_tests_pod() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Deploy the necessary roles for the test pod.
+/// This includes the role for listing the consensus pods and the role to deploy network chaos.
 pub(crate) async fn deploy_role() -> anyhow::Result<()> {
     let client = k8s::get_client().await?;
     k8s::create_or_reuse_namespace(&client, k8s::DEFAULT_NAMESPACE).await?;
@@ -18,6 +21,7 @@ pub(crate) async fn deploy_role() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Deploy a service to expose the tester RPC server.
 pub(crate) async fn deploy_rpc_service() -> anyhow::Result<()> {
     let client = k8s::get_client().await?;
     k8s::expose_tester_rpc(&client).await?;
