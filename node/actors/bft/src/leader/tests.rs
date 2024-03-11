@@ -38,13 +38,6 @@ async fn replica_prepare_sanity_yield_leader_prepare() {
             .unwrap();
         assert_eq!(leader_prepare.msg.view(), &replica_prepare.view);
         assert_eq!(
-            leader_prepare.msg.proposal.parent,
-            replica_prepare
-                .high_vote
-                .as_ref()
-                .map(|v| v.proposal.hash()),
-        );
-        assert_eq!(
             leader_prepare.msg.justification,
             util.new_prepare_qc(|msg| *msg = replica_prepare)
         );

@@ -115,7 +115,7 @@ impl BlockStoreRunner {
                 tracing::info!(
                     "stored block #{}: {:#?}",
                     block.header().number,
-                    block.header().hash()
+                    block.header().payload
                 );
 
                 self.0.inner.send_modify(|inner| {
@@ -227,17 +227,6 @@ impl BlockStore {
                 return Ok(());
             }
             block.verify(&self.genesis).context("block.verify()")?;
-            // Verify parent hash, if previous block is available.
-            if let Some(last) = queued_state.last.as_ref() {
-                if Some(last.header().hash()) != block.header().parent {
-                    return Err(anyhow::format_err!(
-                        "block.parent = {:?}, want {:?}",
-                        block.header().parent,
-                        last.header().hash()
-                    )
-                    .into());
-                }
-            }
         }
         self.inner.send_if_modified(|inner| {
             let modified = inner.queued_state.send_if_modified(|queued_state| {

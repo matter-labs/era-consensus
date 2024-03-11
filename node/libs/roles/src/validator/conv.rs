@@ -1,7 +1,7 @@
 use super::{
-    AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
-    FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash,
-    NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
+    AggregateSignature, BlockHeader, BlockNumber, CommitQC, ConsensusMsg, FinalBlock, Fork,
+    ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress,
+    Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
     ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
 };
 use crate::{node::SessionId, proto::validator as proto};
@@ -17,14 +17,12 @@ impl ProtoFmt for Fork {
         Ok(Self {
             number: ForkNumber(*required(&r.number).context("number")?),
             first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
-            first_parent: read_optional(&r.first_parent).context("first_parent")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
             number: Some(self.number.0),
             first_block: Some(self.first_block.0),
-            first_parent: self.first_parent.as_ref().map(|x| x.build()),
         }
     }
 }
@@ -64,18 +62,6 @@ impl ProtoFmt for GenesisHash {
     }
 }
 
-impl ProtoFmt for BlockHeaderHash {
-    type Proto = proto::BlockHeaderHash;
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
-    }
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            keccak256: Some(self.0.encode()),
-        }
-    }
-}
-
 impl ProtoFmt for PayloadHash {
     type Proto = proto::PayloadHash;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
@@ -92,14 +78,12 @@ impl ProtoFmt for BlockHeader {
     type Proto = proto::BlockHeader;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            parent: read_optional(&r.parent).context("parent")?,
             number: BlockNumber(*required(&r.number).context("number")?),
             payload: read_required(&r.payload).context("payload")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            parent: self.parent.as_ref().map(ProtoFmt::build),
             number: Some(self.number.0),
             payload: Some(self.payload.build()),
         }

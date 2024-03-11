@@ -19,8 +19,7 @@ use std::{
     collections::{BTreeMap, HashMap},
     net::SocketAddr,
 };
-use tokio_retry::strategy::FixedInterval;
-use tokio_retry::Retry;
+use tokio_retry::{strategy::FixedInterval, Retry};
 use tracing::log::info;
 use zksync_protobuf::serde::Serde;
 
