@@ -24,6 +24,7 @@ use kube::{
     core::{ObjectList, ObjectMeta},
     Api, Client, ResourceExt,
 };
+use serde::de::IntoDeserializer;
 use std::{
     collections::{BTreeMap, HashMap},
     net::SocketAddr,
@@ -351,7 +352,11 @@ pub async fn expose_tester_rpc(client: &Client) -> anyhow::Result<()> {
     Ok(())
 }
 
-pub async fn add_chaos_delay_for_node(client: &Client, node_name: &str) -> anyhow::Result<()> {
+pub async fn add_chaos_delay_for_node(
+    client: &Client,
+    node_name: &str,
+    duration_secs: u8,
+) -> anyhow::Result<()> {
     let chaos = NetworkChaos::new(
         "chaos-delay",
         NetworkChaosSpec {
@@ -365,7 +370,7 @@ pub async fn add_chaos_delay_for_node(client: &Client, node_name: &str) -> anyho
                 latency: "1000ms".to_string(),
                 ..Default::default()
             },
-            duration: Some("10s".to_string()),
+            duration: format!("{}s", duration_secs).into(),
         },
     );
 

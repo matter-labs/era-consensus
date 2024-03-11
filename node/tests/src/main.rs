@@ -117,7 +117,7 @@ pub async fn delay_test(test_result: Arc<Mutex<u8>>) -> anyhow::Result<()> {
     let ip = k8s::get_node_rpc_address_with_name(&client, target_node)
         .await
         .unwrap();
-    add_chaos_delay_for_node(&client, target_node)
+    add_chaos_delay_for_node(&client, target_node, 10)
         .await
         .unwrap();
     let url: String = format!("http://{}", ip);
