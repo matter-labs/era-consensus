@@ -163,6 +163,30 @@ async fn leader_prepare_old_view() {
     .unwrap();
 }
 
+#[tokio::test]
+async fn leader_prepare_pruned_block() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        s.spawn_bg(runner.run(ctx));
+
+        let mut leader_prepare = util.new_leader_prepare(ctx).await;
+        // We assume default replica state and nontrivial `genesis.fork.first_block` here.
+        leader_prepare.proposal.number = util.replica.config.block_store.subscribe().borrow().first.prev().unwrap();
+        let res = util.process_leader_prepare(ctx, util.sign(leader_prepare)).await;
+        assert_matches!(
+            res,
+            Err(leader_prepare::Error::ProposalAlreadyPruned)
+        );
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+
+
 /// Tests that `WriteBlockStore::verify_payload` is applied before signing a vote.
 #[tokio::test]
 async fn leader_prepare_invalid_payload() {

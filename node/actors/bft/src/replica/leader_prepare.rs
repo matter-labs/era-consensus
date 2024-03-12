@@ -42,8 +42,9 @@ pub(crate) enum Error {
     /// Invalid message.
     #[error("invalid message: {0:#}")]
     InvalidMessage(#[source] validator::LeaderPrepareVerifyError),
-    /// Previous proposal was not finalized.
-
+    /// Leader proposed a block that was already pruned from replica's storage.
+    #[error("leader proposed a block that was already pruned from replica's storage")]
+    ProposalAlreadyPruned,
     /// Oversized payload.
     #[error("block proposal with an oversized payload (payload size: {payload_size})")]
     ProposalOversizedPayload {
@@ -108,6 +109,14 @@ impl StateMachine {
                 current_view: self.view,
                 current_phase: self.phase,
             });
+        }
+
+        // Replica MUSN'T vote for blocks which have been already pruned for storage.
+        // (because it won't be albe to persist and broadcast them once finalized).
+        // TODO(gprusak): it should never happen, we should add safety checks to prevent
+        // pruning blocks not known to be finalized.
+        if message.proposal.number < self.config.block_store.subscribe().borrow().first {
+            return Err(Error::ProposalAlreadyPruned);
         }
 
         // ----------- Checking the message --------------

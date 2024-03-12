@@ -71,7 +71,6 @@ impl PeerStates {
     ) -> anyhow::Result<()> {
         use std::collections::hash_map::Entry;
         state.verify(self.genesis()).context("state.verify()")?;
-        let Some(last) = &state.last else { return Ok(()) };
         let mut peers = self.peers.lock().unwrap();
         match peers.entry(peer.clone()) {
             Entry::Occupied(mut e) => e.get_mut().state = state.clone(),
@@ -83,14 +82,16 @@ impl PeerStates {
                 });
             }
         }
-        self.highest_peer_block
-            .send_if_modified(|highest_peer_block| {
-                if *highest_peer_block >= last.header().number {
-                    return false;
-                }
-                *highest_peer_block = last.header().number;
-                true
-            });
+        if let Some(last) = &state.last {
+            self.highest_peer_block
+                .send_if_modified(|highest_peer_block| {
+                    if *highest_peer_block >= last.header().number {
+                        return false;
+                    }
+                    *highest_peer_block = last.header().number;
+                    true
+                });
+        }
         Ok(())
     }
 

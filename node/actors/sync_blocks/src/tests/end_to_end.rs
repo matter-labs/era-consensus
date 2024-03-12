@@ -295,10 +295,6 @@ async fn switching_off_nodes(node_count: usize) {
     test_sync_blocks(SwitchingOffNodes { node_count }).await;
 }
 
-// TODO: validator with first > fork.first_block should be able to produce blocks (make it 2
-//  validators with different first and > fork.first_block).
-// TODO(maybe done): gossip shouldn't request a block from peer which has want < first
-
 #[derive(Debug)]
 struct SwitchingOnNodes {
     node_count: usize,

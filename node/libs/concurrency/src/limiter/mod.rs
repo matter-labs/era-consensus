@@ -1,6 +1,7 @@
 //! Rate limiter which supports delayed permit consumption.
 use crate::{ctx, sync, time};
 use std::sync::Mutex;
+use std::fmt;
 
 #[cfg(test)]
 mod tests;
@@ -100,6 +101,13 @@ pub struct Limiter {
     /// Concurrent acquire() calls are executed synchronously
     /// using the fair queue provided by `sync::Mutex`.
     acquire: sync::Mutex<sync::watch::Receiver<State>>,
+}
+
+impl fmt::Debug for Limiter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Limiter")
+            .finish_non_exhaustive()
+    }
 }
 
 /// Permit reservation returned by `Limit::acquire()`.

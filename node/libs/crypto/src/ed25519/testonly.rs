@@ -1,6 +1,6 @@
 //! Random key generation, intended for use in testing
 
-use super::{SecretKey, Signature};
+use super::{SecretKey, PublicKey, Signature};
 use crate::ByteFmt;
 use ed25519_dalek as ed;
 use rand::{
@@ -8,7 +8,6 @@ use rand::{
     Rng,
 };
 
-/// Generates a random SecretKey. This is meant for testing purposes.
 impl Distribution<SecretKey> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SecretKey {
         let raw: [u8; ed::SECRET_KEY_LENGTH] = rng.gen();
@@ -16,7 +15,12 @@ impl Distribution<SecretKey> for Standard {
     }
 }
 
-/// Generates a random Signature. This is meant for testing purposes.
+impl Distribution<PublicKey> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PublicKey {
+        rng.gen::<SecretKey>().public()
+    }
+}
+
 impl Distribution<Signature> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Signature {
         let key = rng.gen::<SecretKey>();

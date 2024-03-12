@@ -58,12 +58,17 @@ pub struct BlockNumber(pub u64);
 impl BlockNumber {
     /// Returns the next block number.
     pub fn next(self) -> Self {
-        Self(self.0 + 1)
+        Self(self.0.checked_add(1).unwrap())
     }
 
     /// Returns the previous block number.
     pub fn prev(self) -> Option<Self> {
         Some(Self(self.0.checked_sub(1)?))
+    }
+   
+    /// Returns `self + n`.
+    pub fn add(self, n: u64) -> Self {
+        Self(self.0.checked_add(n).unwrap())
     }
 }
 

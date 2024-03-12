@@ -51,7 +51,7 @@ impl BlockStoreState {
 ///
 /// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait::async_trait]
-pub trait PersistentBlockStore: fmt::Debug + Send + Sync {
+pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
     /// Genesis matching the block store content.
     /// Consensus code calls this method only once.
     async fn genesis(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::Genesis>;
