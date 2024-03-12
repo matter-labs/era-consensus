@@ -325,9 +325,7 @@ async fn get_running_pod(pods: &Api<Pod>, label: &str) -> anyhow::Result<Pod> {
         .items
         .pop()
         .with_context(|| format!("Pod not found: {label}"))?;
-    if !is_pod_running(&pod) {
-        anyhow::bail!("Pod is not running");
-    }
+    anyhow::ensure!(is_pod_running(&pod), "Pod is not running");
     Ok(pod)
 }
 
