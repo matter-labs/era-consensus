@@ -15,8 +15,8 @@ use kube::{
     core::ObjectMeta,
     Api, Client,
 };
-use std::collections::BTreeMap;
-use std::net::SocketAddr;
+use std::{collections::BTreeMap, net::SocketAddr, time::Duration};
+use tokio::time;
 use tracing::log::info;
 use zksync_consensus_crypto::TextFmt;
 use zksync_consensus_roles::{node, validator};
@@ -54,7 +54,7 @@ impl ConsensusNode {
     ) -> anyhow::Result<Pod> {
         let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
         // Wait until the pod is running, otherwise we get an error.
-        retry(15, 1000, || async {
+        retry(15, Duration::from_millis(1000), || async {
             get_running_pod(&pods, &self.id).await
         })
         .await
@@ -355,22 +355,19 @@ fn get_cli_args(consensus_node: &ConsensusNode) -> Vec<String> {
     cli_args
 }
 
-async fn retry<T, Fut, F>(retries: usize, delay: usize, mut f: F) -> anyhow::Result<T>
+async fn retry<T, Fut, F>(retries: usize, delay: Duration, mut f: F) -> anyhow::Result<T>
 where
     F: FnMut() -> Fut,
     Fut: std::future::Future<Output = anyhow::Result<T>>,
 {
-    let delay = std::time::Duration::from_millis(delay.try_into()?);
+    let mut interval = time::interval(delay);
     let mut count = 0;
     loop {
-        let result = f().await;
-        if result.is_ok() {
-            return result;
-        }
+        interval.tick().await;
         count += 1;
-        if count > retries {
+        let result = f().await;
+        if result.is_ok() || count > retries {
             return result;
         }
-        std::thread::sleep(delay);
     }
 }
