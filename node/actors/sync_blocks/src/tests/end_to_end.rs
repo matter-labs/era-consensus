@@ -13,7 +13,7 @@ use zksync_concurrency::{
     testonly::{abort_on_panic, set_timeout},
 };
 use zksync_consensus_network as network;
-use zksync_consensus_storage::testonly::new_store;
+use zksync_consensus_storage::testonly::{new_store_with_first};
 
 type NetworkDispatcherPipe =
     pipe::DispatcherPipe<network::io::InputMessage, network::io::OutputMessage>;
@@ -26,8 +26,12 @@ struct Node {
 }
 
 impl Node {
-    async fn new(ctx: &ctx::Ctx, network: network::Config, setup: &Setup) -> (Self, NodeRunner) {
-        let (store, store_runner) = new_store(ctx, &setup.genesis).await;
+    async fn new(ctx: &ctx::Ctx, network: network::Config, setup: &Setup) -> (Self,NodeRunner) {
+        Self::new_with_first(ctx,network,setup,setup.genesis.fork.first_block).await
+    }
+
+    async fn new_with_first(ctx: &ctx::Ctx, network: network::Config, setup: &Setup, first: validator::BlockNumber) -> (Self, NodeRunner) {
+        let (store, store_runner) = new_store_with_first(ctx, &setup.genesis, first).await;
         let (start_send, start_recv) = channel::bounded(1);
         let (terminate_send, terminate_recv) = channel::bounded(1);
 
@@ -291,6 +295,10 @@ async fn switching_off_nodes(node_count: usize) {
     test_sync_blocks(SwitchingOffNodes { node_count }).await;
 }
 
+// TODO: validator with first > fork.first_block should be able to produce blocks (make it 2
+//  validators with different first and > fork.first_block).
+// TODO(maybe done): gossip shouldn't request a block from peer which has want < first
+
 #[derive(Debug)]
 struct SwitchingOnNodes {
     node_count: usize,
@@ -330,4 +338,47 @@ impl GossipNetworkTest for SwitchingOnNodes {
 #[tokio::test(flavor = "multi_thread")]
 async fn switching_on_nodes(node_count: usize) {
     test_sync_blocks(SwitchingOnNodes { node_count }).await;
+}
+
+/// Test checking that nodes with different first block can synchronize. 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_different_first_block() {
+    abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(25.));
+    let rng = &mut ctx.rng();
+
+    let mut setup = validator::testonly::Setup::new(rng, 2);
+    let n = 4;
+    setup.push_blocks(rng, 10);
+    scope::run!(ctx, |ctx, s| async {
+        let mut nodes = vec![];
+        // Spawn `n` nodes, all connected to each other.
+        for (i, net) in network::testonly::new_configs(rng, &setup, n)
+            .into_iter()
+            .enumerate()
+        {
+            // Choose the first block for the node at random.
+            let first = setup.blocks.choose(rng).unwrap().number();
+            let (node, runner) = Node::new_with_first(ctx, net, &setup, first).await;
+            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            node.start();
+            nodes.push(node);
+        }
+        // Randomize the order of nodes.
+        nodes.shuffle(rng);
+
+        for block in &setup.blocks {
+            // Find nodes interested in the next block. 
+            let interested_nodes : Vec<_> = nodes.iter().filter(|n|n.store.subscribe().borrow().first<=block.number()).collect();
+            // Store this block to one of them.
+            if let Some(node) = interested_nodes.choose(rng) {
+                node.store.queue_block(ctx,block.clone()).await.unwrap();
+            }
+            // Wait until all remaining nodes get the new block.
+            for node in interested_nodes {
+                node.store.wait_until_persisted(ctx, block.number()).await.unwrap();
+            }
+        }
+        Ok(())
+    }).await.unwrap();
 }

@@ -10,6 +10,7 @@ use zksync_consensus_roles::validator;
 
 #[derive(Debug)]
 struct BlockStoreInner {
+    first: validator::BlockNumber,
     genesis: validator::Genesis,
     blocks: Mutex<VecDeque<validator::FinalBlock>>,
 }
@@ -24,8 +25,10 @@ pub struct ReplicaStore(Arc<Mutex<ReplicaState>>);
 
 impl BlockStore {
     /// New In-memory `BlockStore`.
-    pub fn new(genesis: validator::Genesis) -> Self {
+    pub fn new(genesis: validator::Genesis, first: validator::BlockNumber) -> Self {
+        assert!(genesis.fork.first_block<=first);
         Self(Arc::new(BlockStoreInner {
+            first,
             genesis,
             blocks: Mutex::default(),
         }))
@@ -40,7 +43,7 @@ impl PersistentBlockStore for BlockStore {
 
     async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
         Ok(BlockStoreState {
-            first: self.0.genesis.fork.first_block,
+            first: self.0.first,
             last: self
                 .0
                 .blocks
@@ -72,11 +75,12 @@ impl PersistentBlockStore for BlockStore {
     ) -> ctx::Result<()> {
         let mut blocks = self.0.blocks.lock().unwrap();
         let got = block.header().number;
-        if let Some(last) = blocks.back() {
-            let want = last.header().number.next();
-            if got != want {
-                return Err(anyhow::anyhow!("got block {got:?}, while expected {want:?}").into());
-            }
+        let want = match blocks.back() {
+            Some(last) => last.header().number.next(),
+            None => self.0.first,
+        };
+        if got != want {
+            return Err(anyhow::anyhow!("got block {got:?}, while expected {want:?}").into());
         }
         blocks.push_back(block.clone());
         Ok(())

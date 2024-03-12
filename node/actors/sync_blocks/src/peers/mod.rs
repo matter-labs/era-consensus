@@ -63,17 +63,15 @@ impl PeerStates {
 
     /// Updates the known `BlockStore` state of the given peer.
     /// This information is used to decide from which peer to fetch
-    /// a given block from.
+    /// a given block.
     pub(crate) fn update(
         &self,
         peer: &node::PublicKey,
         state: BlockStoreState,
     ) -> anyhow::Result<()> {
         use std::collections::hash_map::Entry;
-        let Some(last) = &state.last else {
-            return Ok(());
-        };
-        last.verify(self.genesis()).context("state.last.verify()")?;
+        state.verify(self.genesis()).context("state.verify()")?;
+        let Some(last) = &state.last else { return Ok(()) };
         let mut peers = self.peers.lock().unwrap();
         match peers.entry(peer.clone()) {
             Entry::Occupied(mut e) => e.get_mut().state = state.clone(),

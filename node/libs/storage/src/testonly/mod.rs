@@ -29,12 +29,22 @@ impl Distribution<ReplicaState> for Standard {
     }
 }
 
-/// Constructs a new in-memory store with a genesis block.
+/// Constructs a new in-memory store.
 pub async fn new_store(
     ctx: &ctx::Ctx,
     genesis: &validator::Genesis,
 ) -> (Arc<BlockStore>, BlockStoreRunner) {
-    BlockStore::new(ctx, Box::new(in_memory::BlockStore::new(genesis.clone())))
+    new_store_with_first(ctx,genesis,genesis.fork.first_block).await
+}
+
+/// Constructs a new in-memory store with a custom expected first block
+/// (i.e. possibly different than `genesis.fork.first_block`).
+pub async fn new_store_with_first(
+    ctx: &ctx::Ctx,
+    genesis: &validator::Genesis,
+    first: validator::BlockNumber,
+) -> (Arc<BlockStore>, BlockStoreRunner) {
+    BlockStore::new(ctx, Box::new(in_memory::BlockStore::new(genesis.clone(),first)))
         .await
         .unwrap()
 }

@@ -32,6 +32,19 @@ impl BlockStoreState {
             None => self.first,
         }
     }
+
+    /// Verifies `BlockStoreState'.
+    pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            genesis.fork.first_block <= self.first,
+            "first block ({}) doesn't belong to the fork (which starts at block {})",self.first,genesis.fork.first_block
+        );
+        if let Some(last) = &self.last {
+            anyhow::ensure!(self.first <= last.header().number, "first block {} has bigger number than the last block {}",self.first,last.header().number);
+            last.verify(&genesis).context("last.verify()")?;
+        }
+        Ok(())
+    }
 }
 
 /// Storage of a continuous range of L2 blocks.
@@ -43,7 +56,7 @@ pub trait PersistentBlockStore: fmt::Debug + Send + Sync {
     /// Consensus code calls this method only once.
     async fn genesis(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::Genesis>;
 
-    /// Last block available in storage.
+    /// Range of blocks available in storage.
     /// Consensus code calls this method only once and then tracks the
     /// range of available blocks internally.
     async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState>;
@@ -119,7 +132,7 @@ impl BlockStoreRunner {
                 );
 
                 self.0.inner.send_modify(|inner| {
-                    debug_assert_eq!(inner.persisted_state.next(), block.header().number);
+                    debug_assert_eq!(inner.persisted_state.next(), block.number());
                     inner.persisted_state.last = Some(block.justification.clone());
                     inner.queue.pop_front();
                 });
@@ -148,9 +161,7 @@ impl BlockStore {
         let t = metrics::PERSISTENT_BLOCK_STORE.state_latency.start();
         let state = persistent.state(ctx).await.wrap("persistent.state()")?;
         t.observe();
-        if let Some(last) = &state.last {
-            last.verify(&genesis).context("state.last.verify()")?;
-        }
+        state.verify(&genesis).context("state.verify()")?;
         let this = Arc::new(Self {
             inner: sync::watch::channel(Inner {
                 queued_state: sync::watch::channel(state.clone()).0,
@@ -161,12 +172,6 @@ impl BlockStore {
             genesis,
             persistent,
         });
-        // Verify the first block.
-        if let Some(block) = this.block(ctx, this.genesis.fork.first_block).await? {
-            block
-                .verify(&this.genesis)
-                .with_context(|| format!("verify({:?})", this.genesis.fork.first_block))?;
-        }
         Ok((this.clone(), BlockStoreRunner(this)))
     }
 
@@ -243,6 +248,7 @@ impl BlockStore {
     }
 
     /// Waits until the given block is queued to be stored.
+    /// If `number < state.first` then it immetiately returns `Ok(())`.
     pub async fn wait_until_queued(
         &self,
         ctx: &ctx::Ctx,
@@ -256,6 +262,7 @@ impl BlockStore {
     }
 
     /// Waits until the given block is stored persistently.
+    /// If `number < state.first` then it immetiately returns `Ok(())`.
     pub async fn wait_until_persisted(
         &self,
         ctx: &ctx::Ctx,
