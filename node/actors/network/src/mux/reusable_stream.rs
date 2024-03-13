@@ -71,7 +71,7 @@ pub(crate) struct StreamQueue {
 }
 
 impl StreamQueue {
-    /// Constructs a new StreamQueue with the specificied number of reusable streams.
+    /// Constructs a new StreamQueue with the specified number of reusable streams.
     /// During multiplexer handshake, peers exchange information about
     /// how many reusable streams they support per capability.
     pub(crate) fn new(max_streams: u32) -> Arc<Self> {
@@ -289,7 +289,7 @@ impl ReusableStream {
                 read_receiver = new_read_receiver;
                 let (write_lock, new_write_receiver) = sync::ExclusiveLock::new(write);
                 write_receiver = new_write_receiver;
-                // Sending may fail because the requestor is not interested in the stream any more.
+                // Sending may fail because the requester is not interested in the stream any more.
                 // In this case we just close the transient stream immediately.
                 let _ = reservation.send(Stream {
                     read: ReadStream(read_lock),

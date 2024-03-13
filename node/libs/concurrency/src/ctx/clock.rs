@@ -27,7 +27,7 @@ use std::{
 };
 use tokio::sync::watch;
 
-// Instant doesn't have a deterministic contructor.
+// Instant doesn't have a deterministic constructor.
 // However since Instant is not convertible to an unix timestamp,
 // we can snapshot Instant::now() once and treat it as a constant.
 // All observable effects will be then deterministic.
