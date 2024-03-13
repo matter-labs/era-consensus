@@ -1,6 +1,6 @@
 //! Random key generation, intended for use in testing
 
-use super::{SecretKey, PublicKey, Signature};
+use super::{PublicKey, SecretKey, Signature};
 use crate::ByteFmt;
 use ed25519_dalek as ed;
 use rand::{

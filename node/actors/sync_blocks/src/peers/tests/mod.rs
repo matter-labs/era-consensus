@@ -105,29 +105,47 @@ async fn test_try_acquire_peer_permit() {
     let ctx = &ctx::test_root(&clock);
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::Setup::new(rng, 1);
-    setup.push_blocks(rng,10);
-    scope::run!(ctx,|ctx,s| async {
-        let (store,runner) = new_store(ctx,&setup.genesis).await;
+    setup.push_blocks(rng, 10);
+    scope::run!(ctx, |ctx, s| async {
+        let (store, runner) = new_store(ctx, &setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
-        let (send,_recv) = ctx::channel::unbounded();
+        let (send, _recv) = ctx::channel::unbounded();
         let peer_states = PeerStates::new(Config::default(), store, send);
 
-        let peer : node::PublicKey = rng.gen();
+        let peer: node::PublicKey = rng.gen();
         let b = &setup.blocks;
         for s in [
             // Empty entry.
-            BlockStoreState { first: b[0].number(), last: None },
+            BlockStoreState {
+                first: b[0].number(),
+                last: None,
+            },
             // Entry with some blocks.
-            BlockStoreState { first: b[0].number(), last: Some(b[3].justification.clone()) },
+            BlockStoreState {
+                first: b[0].number(),
+                last: Some(b[3].justification.clone()),
+            },
             // Entry with changed first.
-            BlockStoreState { first: b[1].number(), last: Some(b[3].justification.clone()) },
+            BlockStoreState {
+                first: b[1].number(),
+                last: Some(b[3].justification.clone()),
+            },
             // Empty entry again.
-            BlockStoreState { first: b[1].number(), last: None },
+            BlockStoreState {
+                first: b[1].number(),
+                last: None,
+            },
         ] {
             peer_states.update(&peer, s.clone()).unwrap();
             for block in b {
-                let got = peer_states.try_acquire_peer_permit(block.number()).map(|p|p.0);
-                if s.first <= block.number() && s.last.as_ref().map_or(false, |last| block.number() <= last.header().number) {
+                let got = peer_states
+                    .try_acquire_peer_permit(block.number())
+                    .map(|p| p.0);
+                if s.first <= block.number()
+                    && s.last
+                        .as_ref()
+                        .map_or(false, |last| block.number() <= last.header().number)
+                {
                     assert_eq!(Some(peer.clone()), got);
                 } else {
                     assert_eq!(None, got);
@@ -135,5 +153,7 @@ async fn test_try_acquire_peer_permit() {
             }
         }
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }

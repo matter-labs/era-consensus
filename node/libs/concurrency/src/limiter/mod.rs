@@ -1,7 +1,6 @@
 //! Rate limiter which supports delayed permit consumption.
 use crate::{ctx, sync, time};
-use std::sync::Mutex;
-use std::fmt;
+use std::{fmt, sync::Mutex};
 
 #[cfg(test)]
 mod tests;
@@ -105,8 +104,7 @@ pub struct Limiter {
 
 impl fmt::Debug for Limiter {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        f.debug_struct("Limiter")
-            .finish_non_exhaustive()
+        f.debug_struct("Limiter").finish_non_exhaustive()
     }
 }
 

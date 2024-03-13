@@ -37,11 +37,18 @@ impl BlockStoreState {
     pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
         anyhow::ensure!(
             genesis.fork.first_block <= self.first,
-            "first block ({}) doesn't belong to the fork (which starts at block {})",self.first,genesis.fork.first_block
+            "first block ({}) doesn't belong to the fork (which starts at block {})",
+            self.first,
+            genesis.fork.first_block
         );
         if let Some(last) = &self.last {
-            anyhow::ensure!(self.first <= last.header().number, "first block {} has bigger number than the last block {}",self.first,last.header().number);
-            last.verify(&genesis).context("last.verify()")?;
+            anyhow::ensure!(
+                self.first <= last.header().number,
+                "first block {} has bigger number than the last block {}",
+                self.first,
+                last.header().number
+            );
+            last.verify(genesis).context("last.verify()")?;
         }
         Ok(())
     }

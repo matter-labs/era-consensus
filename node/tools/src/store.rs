@@ -8,7 +8,7 @@ use std::{
 };
 use zksync_concurrency::{ctx, error::Wrap as _, scope};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{PersistentBlockStore, ReplicaState, BlockStoreState, ReplicaStore};
+use zksync_consensus_storage::{BlockStoreState, PersistentBlockStore, ReplicaState, ReplicaStore};
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -25,7 +25,7 @@ impl DatabaseKey {
     /// Starting database key for blocks indexed by number. All other keys in the default column family
     /// are lower than this value.
     pub(crate) const BLOCKS_START_KEY: &'static [u8] = &u64::MIN.to_be_bytes();
-    
+
     /// Iterator mode for the head block (i.e., a block with the greatest number).
     pub(crate) const BLOCK_HEAD_ITERATOR: IteratorMode<'static> =
         IteratorMode::From(&u64::MAX.to_be_bytes(), Direction::Reverse);
@@ -110,7 +110,7 @@ impl PersistentBlockStore for RocksDB {
     async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
         Ok(BlockStoreState {
             // `RocksDB` is assumed to store all blocks starting from genesis.
-            first: self.0.genesis.fork.first_block, 
+            first: self.0.genesis.fork.first_block,
             last: scope::wait_blocking(|| self.last_blocking()).await?,
         })
     }

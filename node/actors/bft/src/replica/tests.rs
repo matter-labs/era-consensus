@@ -173,19 +173,24 @@ async fn leader_prepare_pruned_block() {
 
         let mut leader_prepare = util.new_leader_prepare(ctx).await;
         // We assume default replica state and nontrivial `genesis.fork.first_block` here.
-        leader_prepare.proposal.number = util.replica.config.block_store.subscribe().borrow().first.prev().unwrap();
-        let res = util.process_leader_prepare(ctx, util.sign(leader_prepare)).await;
-        assert_matches!(
-            res,
-            Err(leader_prepare::Error::ProposalAlreadyPruned)
-        );
+        leader_prepare.proposal.number = util
+            .replica
+            .config
+            .block_store
+            .subscribe()
+            .borrow()
+            .first
+            .prev()
+            .unwrap();
+        let res = util
+            .process_leader_prepare(ctx, util.sign(leader_prepare))
+            .await;
+        assert_matches!(res, Err(leader_prepare::Error::ProposalAlreadyPruned));
         Ok(())
     })
     .await
     .unwrap();
 }
-
-
 
 /// Tests that `WriteBlockStore::verify_payload` is applied before signing a vote.
 #[tokio::test]

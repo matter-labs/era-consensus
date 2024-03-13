@@ -21,7 +21,11 @@ fn config(cfg: &network::Config) -> Config {
     }
 }
 
-fn validator(cfg: &network::Config, block_store: Arc<BlockStore>, replica_store: impl ReplicaStore) -> Executor {
+fn validator(
+    cfg: &network::Config,
+    block_store: Arc<BlockStore>,
+    replica_store: impl ReplicaStore,
+) -> Executor {
     Executor {
         config: config(cfg),
         block_store,
@@ -29,7 +33,7 @@ fn validator(cfg: &network::Config, block_store: Arc<BlockStore>, replica_store:
             key: cfg.validator_key.clone().unwrap(),
             replica_store: Box::new(replica_store),
             payload_manager: Box::new(bft::testonly::RandomPayload(1000)),
-        })
+        }),
     }
 }
 
@@ -82,7 +86,9 @@ async fn test_fullnode_syncing_from_validator() {
         s.spawn_bg(fullnode(&new_fullnode(rng, &cfgs[0]), store.clone()).run(ctx));
 
         // Wait for blocks in full node store.
-        store.wait_until_persisted(ctx, setup.genesis.fork.first_block.add(5)).await?;
+        store
+            .wait_until_persisted(ctx, setup.genesis.fork.first_block + 5)
+            .await?;
         Ok(())
     })
     .await
@@ -107,22 +113,34 @@ async fn test_validator_syncing_from_fullnode() {
         // Run validator and produce some blocks.
         // Wait for the blocks to be fetched by the full node.
         let replica_store = in_memory::ReplicaStore::default();
-        scope::run!(ctx, |ctx,s| async {
+        scope::run!(ctx, |ctx, s| async {
             let (store, runner) = new_store(ctx, &setup.genesis).await;
-            s.spawn_bg(runner.run(ctx));       
+            s.spawn_bg(runner.run(ctx));
             s.spawn_bg(validator(&cfgs[0], store, replica_store.clone()).run(ctx));
-            node_store.wait_until_persisted(ctx, setup.genesis.fork.first_block.add(4)).await?;
+            node_store
+                .wait_until_persisted(ctx, setup.genesis.fork.first_block + 4)
+                .await?;
             Ok(())
-        }).await.unwrap();
+        })
+        .await
+        .unwrap();
 
         // Restart the validator with empty store (but preserved replica state) and non-trivial
         // `store.state.first`.
         // Validator should fetch the past blocks from the full node before producing next blocks.
-        let last_block = node_store.subscribe().borrow().last.as_ref().unwrap().header().number;
-        let (store, runner) = new_store_with_first(ctx, &setup.genesis, setup.genesis.fork.first_block.add(2)).await;
+        let last_block = node_store
+            .subscribe()
+            .borrow()
+            .last
+            .as_ref()
+            .unwrap()
+            .header()
+            .number;
+        let (store, runner) =
+            new_store_with_first(ctx, &setup.genesis, setup.genesis.fork.first_block + 2).await;
         s.spawn_bg(runner.run(ctx));
         s.spawn_bg(validator(&cfgs[0], store, replica_store).run(ctx));
-        node_store.wait_until_persisted(ctx, last_block.add(3)).await?;
+        node_store.wait_until_persisted(ctx, last_block + 3).await?;
 
         Ok(())
     })
