@@ -2,7 +2,7 @@ use super::{
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
     FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash,
     NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
-    ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
+    ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber, WeightedValidator,
 };
 use crate::{node::SessionId, proto::validator as proto};
 use anyhow::Context as _;
@@ -36,8 +36,7 @@ impl ProtoFmt for Genesis {
             .validators
             .iter()
             .enumerate()
-            // TODO: obtain weight
-            .map(|(i, v)| PublicKey::read(v).context(i).map(|key| (key, 0)))
+            .map(|(i, v)| WeightedValidator::read(v).context(i))
             .collect::<Result<_, _>>()
             .context("validators")?;
         Ok(Self {
@@ -48,7 +47,11 @@ impl ProtoFmt for Genesis {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             fork: Some(self.fork.build()),
-            validators: self.validators.iter().map(|x| x.build()).collect(),
+            validators: self
+                .validators
+                .weighted_validators_iter()
+                .map(|v| v.build())
+                .collect(),
         }
     }
 }
@@ -451,6 +454,24 @@ impl ProtoFmt for AggregateSignature {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             bn254: Some(self.0.encode()),
+        }
+    }
+}
+
+impl ProtoFmt for WeightedValidator {
+    type Proto = proto::WeightedValidator;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            key: read_required(&r.key).context("key")?,
+            weight: *required(&r.weight).context("weight")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            key: Some(self.key.build()),
+            weight: Some(self.weight),
         }
     }
 }

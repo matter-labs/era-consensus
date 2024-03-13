@@ -215,7 +215,8 @@ fn test_commit_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
-        validators: ValidatorSet::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
+        validators: ValidatorSet::new(setup1.genesis.validators.weighted_validators_iter().take(3))
+            .unwrap(),
         fork: setup1.genesis.fork.clone(),
     };
 
@@ -249,7 +250,8 @@ fn test_prepare_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
-        validators: ValidatorSet::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
+        validators: ValidatorSet::new(setup1.genesis.validators.weighted_validators_iter().take(3))
+            .unwrap(),
         fork: setup1.genesis.fork.clone(),
     };
 

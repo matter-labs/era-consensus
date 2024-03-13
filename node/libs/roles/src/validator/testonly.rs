@@ -4,6 +4,7 @@ use super::{
     FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash,
     NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
     ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
+    WeightedValidator,
 };
 use bit_vec::BitVec;
 use rand::{
@@ -22,8 +23,13 @@ impl Setup {
     /// New `Setup` with a given `fork`.
     pub fn new_with_fork(rng: &mut impl Rng, validators: usize, fork: Fork) -> Self {
         let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
+        let weight = (10000 / validators) as u32;
         let genesis = Genesis {
-            validators: ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap(),
+            validators: ValidatorSet::new(keys.iter().map(|k| WeightedValidator {
+                key: k.public(),
+                weight,
+            }))
+            .unwrap(),
             fork,
         };
         Self(SetupInner {
@@ -302,7 +308,10 @@ impl Distribution<Signers> for Standard {
 impl Distribution<ValidatorSet> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ValidatorSet {
         let count = rng.gen_range(1..11);
-        let public_keys = (0..count).map(|_| rng.gen());
+        let public_keys = (0..count).map(|_| WeightedValidator {
+            key: rng.gen(),
+            weight: 1000,
+        });
         ValidatorSet::new(public_keys).unwrap()
     }
 }

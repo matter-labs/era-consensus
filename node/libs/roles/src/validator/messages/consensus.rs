@@ -3,6 +3,7 @@ use super::{
     BlockHeaderHash, BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, ReplicaPrepare,
 };
 use crate::validator;
+use anyhow::Context;
 use bit_vec::BitVec;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -76,7 +77,6 @@ impl Default for Fork {
     }
 }
 
-
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -88,12 +88,18 @@ pub struct ValidatorSet {
 
 impl ValidatorSet {
     /// Creates a new ValidatorSet from a list of validator public keys.
-    pub fn new(validators: impl IntoIterator<Item = (validator::PublicKey, usize)>) -> anyhow::Result<Self> {
+    pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
         let mut set = BTreeSet::new();
         let mut weights = BTreeMap::new();
-        for (key, weight) in validators {
-            anyhow::ensure!(set.insert(key), "Duplicate validator in ValidatorSet");
-            weights.insert(key, weight);
+        for validator in validators {
+            anyhow::ensure!(
+                set.insert(validator.key.clone()),
+                "Duplicate validator in ValidatorSet"
+            );
+            weights.insert(
+                validator.key,
+                validator.weight.try_into().context("weight")?,
+            );
         }
         anyhow::ensure!(
             !set.is_empty(),
@@ -109,6 +115,14 @@ impl ValidatorSet {
     /// Iterates over validators.
     pub fn iter(&self) -> impl Iterator<Item = &validator::PublicKey> {
         self.vec.iter()
+    }
+
+    /// Iterates over validators.
+    pub fn weighted_validators_iter(&self) -> impl Iterator<Item = WeightedValidator> + '_ {
+        self.weights.iter().map(|(key, weight)| WeightedValidator {
+            key: key.clone(),
+            weight: *weight as u32,
+        })
     }
 
     /// Returns the number of validators.
@@ -378,4 +392,13 @@ impl ViewNumber {
 pub enum Phase {
     Prepare,
     Commit,
+}
+
+/// Validator representation inside a ValidatorSet.
+#[derive(Debug, Clone)]
+pub struct WeightedValidator {
+    /// Validator key
+    pub key: validator::PublicKey,
+    /// Validator weight inside the ValidatorSet.
+    pub weight: u32,
 }
