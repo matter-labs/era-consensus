@@ -361,13 +361,12 @@ where
     Fut: std::future::Future<Output = anyhow::Result<T>>,
 {
     let mut interval = time::interval(delay);
-    let mut count = 0;
-    loop {
+    for count in 0.. {
         interval.tick().await;
-        count += 1;
         let result = f().await;
         if result.is_ok() || count > retries {
             return result;
         }
     }
+    unreachable!("Loop sould always return")
 }
