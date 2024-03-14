@@ -1,6 +1,9 @@
 //! Generic message types.
-use super::{ConsensusMsg, NetAddress};
-use crate::{node::SessionId, validator, validator::Error};
+use super::{ConsensusMsg, L1BatchSignature, NetAddress};
+use crate::{
+    node::SessionId,
+    validator::{self, Error},
+};
 use std::fmt;
 use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
@@ -14,6 +17,8 @@ pub enum Msg {
     SessionId(SessionId),
     /// validator discovery
     NetAddress(NetAddress),
+    /// l1 batch signature
+    L1BatchSignature(L1BatchSignature),
 }
 
 impl Msg {
@@ -53,6 +58,18 @@ impl Variant<Msg> for NetAddress {
     }
     fn extract(msg: Msg) -> Result<Self, BadVariantError> {
         let Msg::NetAddress(this) = msg else {
+            return Err(BadVariantError);
+        };
+        Ok(this)
+    }
+}
+
+impl Variant<Msg> for L1BatchSignature {
+    fn insert(self) -> Msg {
+        Msg::L1BatchSignature(self)
+    }
+    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
+        let Msg::L1BatchSignature(this) = msg else {
             return Err(BadVariantError);
         };
         Ok(this)
