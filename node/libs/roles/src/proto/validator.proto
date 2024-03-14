@@ -117,7 +117,7 @@ message NetAddress {
   // Currently the IP of the validator is static, but this scheme might also
   // be used to provide dynamic IP support (if validator discovers that its
   // own IP has changed - by pinging a trusted STUN server for example - it can
-  // broadcast a new discovery message), or (mutli)proxy support (a validator
+  // broadcast a new discovery message), or (multi)proxy support (a validator
   // may maintain a dynamic set of trusted proxy servers which forward traffic
   // to it - this way validator wouldn't have to have a public IP at all).
   optional uint64 version = 2; // required
