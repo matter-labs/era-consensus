@@ -282,3 +282,45 @@ fn test_prepare_qc() {
         assert!(qc.verify(&genesis3).is_err());
     }
 }
+
+#[test]
+fn test_validator_set_weights() {
+    use PrepareQCVerifyError as Error;
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let setup1 = Setup::new(rng, 6);
+    let setup2 = Setup::new(rng, 6);
+    let genesis3 = Genesis {
+        validators: ValidatorSet::new(setup1.genesis.validators.weighted_validators_iter().take(3))
+            .unwrap(),
+        fork: setup1.genesis.fork.clone(),
+    };
+
+    let view: ViewNumber = rng.gen();
+    let msgs: Vec<_> = (0..3)
+        .map(|_| make_replica_prepare(rng, view, &setup1))
+        .collect();
+
+    for n in 0..setup1.keys.len() + 1 {
+        let mut qc = PrepareQC::new(msgs[0].view.clone());
+        for key in &setup1.keys[0..n] {
+            qc.add(
+                &key.sign_msg(msgs.choose(rng).unwrap().clone()),
+                &setup1.genesis,
+            );
+        }
+        if n >= setup1.genesis.validators.threshold() {
+            qc.verify(&setup1.genesis).unwrap();
+        } else {
+            assert_matches!(
+                qc.verify(&setup1.genesis),
+                Err(Error::NotEnoughSigners { .. })
+            );
+        }
+
+        // Mismatching validator sets.
+        assert!(qc.verify(&setup2.genesis).is_err());
+        assert!(qc.verify(&genesis3).is_err());
+    }
+}

@@ -100,6 +100,10 @@ impl CommitQC {
             return Err(Error::BadSignersSet);
         }
 
+        // Verify the signer's weights is enough.
+        // TODO replace threshold check
+        let weight = genesis.validators.weight(self.signers.clone());
+
         // Verify that we have enough signers.
         let num_signers = self.signers.count();
         let threshold = genesis.validators.threshold();

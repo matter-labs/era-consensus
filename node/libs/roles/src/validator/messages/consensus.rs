@@ -161,6 +161,14 @@ impl ValidatorSet {
     pub fn faulty_replicas(&self) -> usize {
         faulty_replicas(self.len())
     }
+
+    /// Compute the sum of signers weights.
+    pub fn weight(&self, signers: Signers) -> usize {
+        self.iter()
+            .enumerate()
+            .filter(|(i, _)| signers.0[*i])
+            .fold(0, |acc, (_, pk)| acc + self.weights[pk])
+    }
 }
 
 /// Calculate the consensus threshold, the minimum number of votes for any consensus action to be valid,
