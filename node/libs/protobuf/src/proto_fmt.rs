@@ -197,7 +197,7 @@ pub(super) fn read_fields(
 }
 
 /// Converts an encoded protobuf message to its canonical form, given the descriptor of the message
-/// type. Retuns an error if:
+/// type. Returns an error if:
 /// * an unknown field is detected
 /// * the message type doesn't support canonical encoding (implicit presence, map fields)
 pub fn canonical_raw(
