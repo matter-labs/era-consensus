@@ -1,6 +1,5 @@
-use crate::AppConfig;
-
 use super::methods::{config::ConfigInfo, health_check::HealthCheck, peers::PeersInfo, RPCMethod};
+use crate::AppConfig;
 use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
 use std::net::SocketAddr;
 use zksync_concurrency::{ctx, scope};
