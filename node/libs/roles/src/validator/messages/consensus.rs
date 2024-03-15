@@ -8,6 +8,7 @@ use bit_vec::BitVec;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
+    iter::zip,
 };
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
@@ -83,7 +84,7 @@ impl Default for Fork {
 pub struct ValidatorCommittee {
     vec: Vec<validator::PublicKey>,
     indexes: BTreeMap<validator::PublicKey, usize>,
-    weights: BTreeMap<validator::PublicKey, usize>,
+    weights: Vec<usize>,
 }
 
 impl ValidatorCommittee {
@@ -107,8 +108,13 @@ impl ValidatorCommittee {
         );
         Ok(Self {
             vec: set.iter().cloned().collect(),
-            indexes: set.into_iter().enumerate().map(|(i, pk)| (pk, i)).collect(),
-            weights,
+            indexes: set
+                .clone()
+                .into_iter()
+                .enumerate()
+                .map(|(i, pk)| (pk, i))
+                .collect(),
+            weights: set.iter().map(|pk| weights[pk]).collect(),
         })
     }
 
@@ -119,7 +125,7 @@ impl ValidatorCommittee {
 
     /// Iterates over validators.
     pub fn weighted_validators_iter(&self) -> impl Iterator<Item = WeightedValidator> + '_ {
-        self.weights.iter().map(|(key, weight)| WeightedValidator {
+        zip(&self.vec, &self.weights).map(|(key, weight)| WeightedValidator {
             key: key.clone(),
             weight: *weight as u32,
         })
@@ -164,10 +170,12 @@ impl ValidatorCommittee {
 
     /// Compute the sum of signers weights.
     pub fn weight(&self, signers: Signers) -> usize {
-        self.iter()
+        self.weights
+            .iter()
             .enumerate()
             .filter(|(i, _)| signers.0[*i])
-            .fold(0, |acc, (_, pk)| acc + self.weights[pk])
+            .map(|(_, weight)| weight)
+            .sum()
     }
 }
 
