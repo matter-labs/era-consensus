@@ -157,7 +157,7 @@ impl Limiter {
     }
 
     /// Acquires reservation for `permits` permits from the rate limiter.
-    /// It blocks until enought permits are available.
+    /// It blocks until enough permits are available.
     /// It is fair in a sense that in case a later acquire() call is
     /// executed, but for a smaller number of permits, it has to wait
     /// until the previous call (for a larger number of permits) completes.

@@ -498,7 +498,7 @@ async fn leader_prepare_reproposal_invalid_block() {
     .unwrap();
 }
 
-/// Check that replica provides expecte high_vote and high_qc after finalizing a block.
+/// Check that replica provides expected high_vote and high_qc after finalizing a block.
 #[tokio::test]
 async fn leader_commit_sanity_yield_replica_prepare() {
     zksync_concurrency::testonly::abort_on_panic();
