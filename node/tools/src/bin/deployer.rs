@@ -1,9 +1,7 @@
 //! Deployer for the kubernetes cluster.
-use std::collections::HashMap;
-use std::{fs, path::PathBuf};
-
 use anyhow::Context;
 use clap::{Parser, Subcommand};
+use std::{collections::HashMap, fs, path::PathBuf};
 use zksync_consensus_crypto::{Text, TextFmt};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_tools::{k8s, AppConfig};
