@@ -368,5 +368,5 @@ where
             return result;
         }
     }
-    unreachable!("Loop sould always return")
+    unreachable!("Loop should always return")
 }
