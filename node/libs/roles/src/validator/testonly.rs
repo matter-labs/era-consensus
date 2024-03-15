@@ -3,7 +3,7 @@ use super::{
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
     FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash,
     NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
-    ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
+    ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorCommittee, View, ViewNumber,
     WeightedValidator,
 };
 use bit_vec::BitVec;
@@ -25,7 +25,7 @@ impl Setup {
         let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
         let weight = (10000 / validators) as u32;
         let genesis = Genesis {
-            validators: ValidatorSet::new(keys.iter().map(|k| WeightedValidator {
+            validators: ValidatorCommittee::new(keys.iter().map(|k| WeightedValidator {
                 key: k.public(),
                 weight,
             }))
@@ -305,14 +305,14 @@ impl Distribution<Signers> for Standard {
     }
 }
 
-impl Distribution<ValidatorSet> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ValidatorSet {
+impl Distribution<ValidatorCommittee> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ValidatorCommittee {
         let count = rng.gen_range(1..11);
         let public_keys = (0..count).map(|_| WeightedValidator {
             key: rng.gen(),
             weight: 1000,
         });
-        ValidatorSet::new(public_keys).unwrap()
+        ValidatorCommittee::new(public_keys).unwrap()
     }
 }
 

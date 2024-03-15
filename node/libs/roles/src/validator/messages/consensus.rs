@@ -80,13 +80,13 @@ impl Default for Fork {
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ValidatorSet {
+pub struct ValidatorCommittee {
     vec: Vec<validator::PublicKey>,
     indexes: BTreeMap<validator::PublicKey, usize>,
     weights: BTreeMap<validator::PublicKey, usize>,
 }
 
-impl ValidatorSet {
+impl ValidatorCommittee {
     /// Creates a new ValidatorSet from a list of validator public keys.
     pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
         let mut set = BTreeSet::new();
@@ -194,7 +194,7 @@ pub fn faulty_replicas(n: usize) -> usize {
 pub struct Genesis {
     // TODO(gprusak): add blockchain id here.
     /// Set of validators of the chain.
-    pub validators: ValidatorSet,
+    pub validators: ValidatorCommittee,
     /// Fork of the chain to follow.
     pub fork: Fork,
 }

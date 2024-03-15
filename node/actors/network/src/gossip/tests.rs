@@ -143,7 +143,7 @@ async fn test_validator_addrs() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
 
     let keys: Vec<validator::SecretKey> = (0..8).map(|_| rng.gen()).collect();
-    let validators = validator::ValidatorSet::new(keys.iter().map(|k| WeightedValidator {
+    let validators = validator::ValidatorCommittee::new(keys.iter().map(|k| WeightedValidator {
         key: k.public(),
         weight: 1250,
     }))

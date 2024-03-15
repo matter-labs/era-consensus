@@ -101,6 +101,7 @@ impl PrepareQC {
     pub fn verify(&self, genesis: &Genesis) -> Result<(), PrepareQCVerifyError> {
         use PrepareQCVerifyError as Error;
         let mut sum = Signers::new(genesis.validators.len());
+
         // Check the ReplicaPrepare messages.
         for (i, (msg, signers)) in self.map.iter().enumerate() {
             if msg.view != self.view {
@@ -125,6 +126,9 @@ impl PrepareQC {
                 .map_err(|err| Error::InvalidMessage(i, err))?;
             sum |= signers;
         }
+
+        let weight = genesis.validators.weight(sum.clone());
+        dbg!(weight);
 
         // Verify that we have enough signers.
         let threshold = genesis.validators.threshold();

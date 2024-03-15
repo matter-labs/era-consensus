@@ -2,7 +2,8 @@ use super::{
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
     FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash,
     NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
-    ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber, WeightedValidator,
+    ReplicaPrepare, Signature, Signed, Signers, ValidatorCommittee, View, ViewNumber,
+    WeightedValidator,
 };
 use crate::{node::SessionId, proto::validator as proto};
 use anyhow::Context as _;
@@ -41,7 +42,7 @@ impl ProtoFmt for Genesis {
             .context("validators")?;
         Ok(Self {
             fork: read_required(&r.fork).context("fork")?,
-            validators: ValidatorSet::new(validators.into_iter()).context("validators")?,
+            validators: ValidatorCommittee::new(validators.into_iter()).context("validators")?,
         })
     }
     fn build(&self) -> Self::Proto {

@@ -41,7 +41,7 @@ impl ValidatorAddrs {
     /// Returns true iff some new entry was added.
     pub(super) fn update(
         &mut self,
-        validators: &validator::ValidatorSet,
+        validators: &validator::ValidatorCommittee,
         data: &[Arc<validator::Signed<validator::NetAddress>>],
     ) -> anyhow::Result<bool> {
         let mut changed = false;
@@ -97,7 +97,7 @@ impl ValidatorAddrsWatch {
     /// invalid entry should be banned.
     pub(crate) async fn update(
         &self,
-        validators: &validator::ValidatorSet,
+        validators: &validator::ValidatorCommittee,
         data: &[Arc<validator::Signed<validator::NetAddress>>],
     ) -> anyhow::Result<()> {
         let this = self.0.lock().await;

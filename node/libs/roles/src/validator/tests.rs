@@ -215,8 +215,10 @@ fn test_commit_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
-        validators: ValidatorSet::new(setup1.genesis.validators.weighted_validators_iter().take(3))
-            .unwrap(),
+        validators: ValidatorCommittee::new(
+            setup1.genesis.validators.weighted_validators_iter().take(3),
+        )
+        .unwrap(),
         fork: setup1.genesis.fork.clone(),
     };
 
@@ -250,8 +252,10 @@ fn test_prepare_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
-        validators: ValidatorSet::new(setup1.genesis.validators.weighted_validators_iter().take(3))
-            .unwrap(),
+        validators: ValidatorCommittee::new(
+            setup1.genesis.validators.weighted_validators_iter().take(3),
+        )
+        .unwrap(),
         fork: setup1.genesis.fork.clone(),
     };
 
@@ -284,43 +288,36 @@ fn test_prepare_qc() {
 }
 
 #[test]
-fn test_validator_set_weights() {
-    use PrepareQCVerifyError as Error;
+fn test_validator_committee_weights() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let setup1 = Setup::new(rng, 6);
-    let setup2 = Setup::new(rng, 6);
-    let genesis3 = Genesis {
-        validators: ValidatorSet::new(setup1.genesis.validators.weighted_validators_iter().take(3))
-            .unwrap(),
-        fork: setup1.genesis.fork.clone(),
+    let setup = Setup::new(rng, 6);
+    // Validators weights
+    let weights = [800, 800, 800, 6000, 800, 800];
+    // Expected sum of the validators weights
+    let sums = [800, 1600, 2400, 8400, 9200, 10000];
+    let validators: Vec<WeightedValidator> = weights
+        .iter()
+        .enumerate()
+        .map(|(i, w)| WeightedValidator {
+            key: setup.keys[i].public(),
+            weight: *w,
+        })
+        .collect();
+
+    let genesis = Genesis {
+        validators: ValidatorCommittee::new(validators).unwrap(),
+        fork: setup.genesis.fork.clone(),
     };
 
     let view: ViewNumber = rng.gen();
-    let msgs: Vec<_> = (0..3)
-        .map(|_| make_replica_prepare(rng, view, &setup1))
-        .collect();
-
-    for n in 0..setup1.keys.len() + 1 {
-        let mut qc = PrepareQC::new(msgs[0].view.clone());
-        for key in &setup1.keys[0..n] {
-            qc.add(
-                &key.sign_msg(msgs.choose(rng).unwrap().clone()),
-                &setup1.genesis,
-            );
-        }
-        if n >= setup1.genesis.validators.threshold() {
-            qc.verify(&setup1.genesis).unwrap();
-        } else {
-            assert_matches!(
-                qc.verify(&setup1.genesis),
-                Err(Error::NotEnoughSigners { .. })
-            );
-        }
-
-        // Mismatching validator sets.
-        assert!(qc.verify(&setup2.genesis).is_err());
-        assert!(qc.verify(&genesis3).is_err());
+    let msg = make_replica_prepare(rng, view, &setup);
+    let mut qc = PrepareQC::new(msg.view.clone());
+    for n in 0..6 {
+        let key = &setup.keys[n];
+        qc.add(&key.sign_msg(msg.clone()), &setup.genesis);
+        let signers = &qc.map[&msg];
+        assert_eq!(genesis.validators.weight(signers.clone()), sums[n]);
     }
 }
