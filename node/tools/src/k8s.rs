@@ -215,11 +215,11 @@ pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<
                 .context("Failed to get ports of container")?
                 .iter()
                 .find_map(|port| {
-                    let port: u8 = port.container_port.try_into().ok()?;
-                    (port != config::NODES_PORT as u8).then_some(port)
+                    let port = port.container_port.try_into().ok()?;
+                    (port != config::NODES_PORT).then_some(port)
                 })
                 .context("Failed parsing container port")?;
-            node_rpc_addresses.push(SocketAddr::new(pod_ip.parse()?, pod_rpc_port as u16));
+            node_rpc_addresses.push(SocketAddr::new(pod_ip.parse()?, pod_rpc_port));
         }
     }
     Ok(node_rpc_addresses)
