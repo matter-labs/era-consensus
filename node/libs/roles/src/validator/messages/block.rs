@@ -52,20 +52,25 @@ impl Payload {
 }
 
 /// Sequential number of the block.
-/// Genesis block can have an arbitrary block number.
-/// For blocks other than genesis: block.number = block.parent.number + 1.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockNumber(pub u64);
 
 impl BlockNumber {
     /// Returns the next block number.
     pub fn next(self) -> Self {
-        Self(self.0 + 1)
+        Self(self.0.checked_add(1).unwrap())
     }
 
     /// Returns the previous block number.
     pub fn prev(self) -> Option<Self> {
         Some(Self(self.0.checked_sub(1)?))
+    }
+}
+
+impl std::ops::Add<u64> for BlockNumber {
+    type Output = BlockNumber;
+    fn add(self, n: u64) -> Self {
+        Self(self.0.checked_add(n).unwrap())
     }
 }
 
@@ -75,69 +80,13 @@ impl fmt::Display for BlockNumber {
     }
 }
 
-/// Hash of the block header.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BlockHeaderHash(pub(crate) Keccak256);
-
-impl BlockHeaderHash {
-    /// Interprets the specified `bytes` as a block header hash digest (i.e., a reverse operation to [`Self::as_bytes()`]).
-    /// It is caller's responsibility to ensure that `bytes` are actually a block header hash digest.
-    pub fn from_bytes(bytes: [u8; 32]) -> Self {
-        Self(Keccak256::from_bytes(bytes))
-    }
-
-    /// Returns a reference to the bytes of this hash.
-    pub fn as_bytes(&self) -> &[u8; 32] {
-        self.0.as_bytes()
-    }
-}
-
-impl TextFmt for BlockHeaderHash {
-    fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("block_header_hash:keccak256:")?
-            .decode_hex()
-            .map(Self)
-    }
-
-    fn encode(&self) -> String {
-        format!(
-            "block_header_hash:keccak256:{}",
-            hex::encode(ByteFmt::encode(&self.0))
-        )
-    }
-}
-
-impl fmt::Debug for BlockHeaderHash {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.write_str(&TextFmt::encode(self))
-    }
-}
-
 /// A block header.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockHeader {
-    /// Hash of the parent block.
-    pub parent: Option<BlockHeaderHash>,
     /// Number of the block.
     pub number: BlockNumber,
     /// Payload of the block.
     pub payload: PayloadHash,
-}
-
-impl BlockHeader {
-    /// Returns the hash of the block.
-    pub fn hash(&self) -> BlockHeaderHash {
-        BlockHeaderHash(Keccak256::new(&zksync_protobuf::canonical(self)))
-    }
-
-    /// Creates a child block for the given parent.
-    pub fn next(parent: &BlockHeader, payload: PayloadHash) -> Self {
-        Self {
-            parent: Some(parent.hash()),
-            number: parent.number.next(),
-            payload,
-        }
-    }
 }
 
 /// A block that has been finalized by the consensus protocol.
@@ -191,16 +140,6 @@ impl ByteFmt for FinalBlock {
 
     fn encode(&self) -> Vec<u8> {
         zksync_protobuf::encode(self)
-    }
-}
-
-impl TextFmt for FinalBlock {
-    fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("final_block:")?.decode_hex()
-    }
-
-    fn encode(&self) -> String {
-        format!("final_block:{}", hex::encode(ByteFmt::encode(self)))
     }
 }
 

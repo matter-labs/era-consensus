@@ -1,4 +1,4 @@
-use super::{Msg, MsgHash, SecretKey, SessionId, Signature, Signed};
+use super::{Msg, MsgHash, PublicKey, SecretKey, SessionId, Signature, Signed};
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -24,6 +24,12 @@ where
 impl Distribution<Signature> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Signature {
         Signature(rng.gen())
+    }
+}
+
+impl Distribution<PublicKey> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PublicKey {
+        PublicKey(rng.gen())
     }
 }
 

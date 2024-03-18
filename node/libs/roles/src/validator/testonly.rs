@@ -1,8 +1,8 @@
 //! Test-only utilities.
 use super::{
-    AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
-    FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash,
-    NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
+    AggregateSignature, BlockHeader, BlockNumber, CommitQC, ConsensusMsg, FinalBlock, Fork,
+    ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress,
+    Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
     ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
 };
 use bit_vec::BitVec;
@@ -38,7 +38,6 @@ impl Setup {
         let fork = Fork {
             number: ForkNumber(rng.gen_range(0..100)),
             first_block: BlockNumber(rng.gen_range(0..100)),
-            first_parent: Some(rng.gen()),
         };
         Self::new_with_fork(rng, validators, fork)
     }
@@ -64,9 +63,11 @@ impl Setup {
                 .unwrap_or(ViewNumber(0)),
         };
         let proposal = match self.0.blocks.last() {
-            Some(b) => BlockHeader::next(b.header(), payload.hash()),
+            Some(b) => BlockHeader {
+                number: b.number().next(),
+                payload: payload.hash(),
+            },
             None => BlockHeader {
-                parent: self.genesis.fork.first_parent,
                 number: self.genesis.fork.first_block,
                 payload: payload.hash(),
             },
@@ -181,7 +182,6 @@ impl Distribution<Fork> for Standard {
         Fork {
             number: rng.gen(),
             first_block: rng.gen(),
-            first_parent: Some(rng.gen()),
         }
     }
 }
@@ -201,16 +201,9 @@ impl Distribution<PayloadHash> for Standard {
     }
 }
 
-impl Distribution<BlockHeaderHash> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockHeaderHash {
-        BlockHeaderHash(rng.gen())
-    }
-}
-
 impl Distribution<BlockHeader> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockHeader {
         BlockHeader {
-            parent: rng.gen(),
             number: rng.gen(),
             payload: rng.gen(),
         }
