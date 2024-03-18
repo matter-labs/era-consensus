@@ -111,8 +111,8 @@ impl StateMachine {
             });
         }
 
-        // Replica MUSN'T vote for blocks which have been already pruned for storage.
-        // (because it won't be albe to persist and broadcast them once finalized).
+        // Replica MUSTN'T vote for blocks which have been already pruned for storage.
+        // (because it won't be able to persist and broadcast them once finalized).
         // TODO(gprusak): it should never happen, we should add safety checks to prevent
         // pruning blocks not known to be finalized.
         if message.proposal.number < self.config.block_store.subscribe().borrow().first {
