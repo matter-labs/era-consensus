@@ -30,7 +30,7 @@
 //! Task can be either async or blocking:
 //! * Async tasks are Futures executed via `Task::run`. They MUSN'T call blocking operations,
 //!   because they are executed on a shared thread pool.
-//! * Blocking tasks are `FnOnce()` functions/closures exeucted via `Task::run_blocking`. Blocking
+//! * Blocking tasks are `FnOnce()` functions/closures executed via `Task::run_blocking`. Blocking
 //!   task MUST be executed on a dedicated thread rather than a shared thread pool.
 //! * All functions which perform blocking calls should be documented as blocking.
 //!   If a function has multiple versions and the async version is called `<f>`, then the sync
@@ -117,7 +117,7 @@ impl<E: 'static + Send> Task<E> {
     }
 
     /// Runs an sync blocking task in the scope. MUST be executed on a dedicated thread.
-    /// See `Task::run` for behavior. See module docs for desciption of blocking tasks.
+    /// See `Task::run` for behavior. See module docs for description of blocking tasks.
     pub(super) fn run_blocking<T>(self, f: impl FnOnce() -> Result<T, E>) -> Result<T, Terminated> {
         let panic_reporter = PanicReporter::new(self);
         let res = f();

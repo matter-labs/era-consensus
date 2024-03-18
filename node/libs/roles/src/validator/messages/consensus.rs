@@ -1,7 +1,5 @@
 //! Messages related to the consensus protocol.
-use super::{
-    BlockHeaderHash, BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, ReplicaPrepare,
-};
+use super::{BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, ReplicaPrepare};
 use crate::validator;
 use bit_vec::BitVec;
 use std::{
@@ -62,8 +60,6 @@ pub struct Fork {
     pub number: ForkNumber,
     /// First block of a fork.
     pub first_block: BlockNumber,
-    /// Parent fo the first block of a fork.
-    pub first_parent: Option<BlockHeaderHash>,
 }
 
 impl Default for Fork {
@@ -71,7 +67,6 @@ impl Default for Fork {
         Self {
             number: ForkNumber(0),
             first_block: BlockNumber(0),
-            first_parent: None,
         }
     }
 }

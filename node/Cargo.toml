@@ -81,7 +81,6 @@ test-casing = "0.1.0"
 thiserror = "1.0.40"
 time = "0.3.23"
 tokio = { version = "1.34.0", features = ["full"] }
-tokio-retry = "0.3.0"
 tracing = { version = "0.1.37", features = ["attributes"] }
 tracing-subscriber = { version = "0.3.16", features = ["env-filter", "fmt"] }
 kube = { version = "0.88.1", features = ["runtime", "derive"] }
@@ -157,7 +156,5 @@ wildcard_dependencies = "warn"
 redundant_locals = "allow"
 needless_pass_by_ref_mut = "allow"
 box_default = "allow"
-# remove once fix to https://github.com/rust-lang/rust-clippy/issues/11764 is available on CI.
-map_identity = "allow"
 # &*x is not equivalent to x, because it affects borrowing in closures.
 borrow_deref_ref = "allow"

@@ -1,7 +1,6 @@
 //! Peers method for RPC server.
-use crate::{config::encode_json, decode_json, AppConfig};
-
 use super::RPCMethod;
+use crate::{config::encode_json, decode_json, AppConfig};
 use jsonrpsee::types::{error::ErrorCode, Params};
 use std::fs::{self};
 use zksync_protobuf::serde::Serde;
