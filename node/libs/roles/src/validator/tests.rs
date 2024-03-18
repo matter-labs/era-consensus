@@ -294,9 +294,9 @@ fn test_validator_committee_weights() {
 
     let setup = Setup::new(rng, 6);
     // Validators weights
-    let weights = [800, 800, 800, 6000, 800, 800];
+    let weights = [1000, 600, 800, 6000, 900, 700];
     // Expected sum of the validators weights
-    let sums = [800, 1600, 2400, 8400, 9200, 10000];
+    let sums = [1000, 1600, 2400, 8400, 9300, 10000];
     let validators: Vec<WeightedValidator> = weights
         .iter()
         .enumerate()
@@ -314,10 +314,10 @@ fn test_validator_committee_weights() {
     let view: ViewNumber = rng.gen();
     let msg = make_replica_prepare(rng, view, &setup);
     let mut qc = PrepareQC::new(msg.view.clone());
-    for n in 0..6 {
+    for (n, weight) in sums.iter().enumerate() {
         let key = &setup.keys[n];
         qc.add(&key.sign_msg(msg.clone()), &setup.genesis);
         let signers = &qc.map[&msg];
-        assert_eq!(genesis.validators.weight(signers.clone()), sums[n]);
+        assert_eq!(genesis.validators.weight(signers.clone()), *weight);
     }
 }
