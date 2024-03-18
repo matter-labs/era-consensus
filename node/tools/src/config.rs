@@ -153,20 +153,30 @@ impl ProtoFmt for AppConfig {
 /// Configuration information.
 #[derive(Debug)]
 pub struct ConfigArgs<'a> {
-    /// Node configuration from command line.
-    pub config: Option<AppConfig>,
-    /// Path to a JSON file with node configuration.
-    pub config_file: &'a Path,
-    /// Validator key as a string.
-    pub validator_key: Option<validator::SecretKey>,
-    /// Path to a validator key file.
-    pub validator_key_file: &'a Path,
-    /// Node key as a string.
-    pub node_key: Option<node::SecretKey>,
-    /// Path to a node key file.
-    pub node_key_file: &'a Path,
+    /// Node configuration.
+    pub config_args: ConfigSource<'a>,
     /// Path to the rocksdb database.
     pub database: &'a Path,
+}
+
+#[derive(Debug)]
+pub enum ConfigSource<'a> {
+    CliConfig {
+        /// Node configuration from command line.
+        config: AppConfig,
+        /// Node key as a string.
+        node_key: node::SecretKey,
+        /// Validator key as a string.
+        validator_key: Option<validator::SecretKey>,
+    },
+    PathConfig {
+        /// Path to a JSON file with node configuration.
+        config_file: &'a Path,
+        /// Path to a validator key file.
+        validator_key_file: &'a Path,
+        /// Path to a node key file.
+        node_key_file: &'a Path,
+    },
 }
 
 pub struct Configs {
@@ -179,50 +189,44 @@ pub struct Configs {
 impl<'a> ConfigArgs<'a> {
     // Loads configs from the file system.
     pub fn load(self) -> anyhow::Result<Configs> {
-        Ok(Configs {
-            app: (|| {
-                let config = match self.config {
-                    Some(app) => app,
-                    None => {
-                        let app = fs::read_to_string(self.config_file).context(format!(
-                            "failed reading file: {}",
-                            self.config_file.display()
-                        ))?;
-                        decode_json::<Serde<AppConfig>>(&app)
-                            .context("failed decoding JSON")?
-                            .0
-                    }
-                };
-                Ok::<AppConfig, anyhow::Error>(config)
-            })()
-            .context("config")?,
+        match self.config_args {
+            ConfigSource::CliConfig {
+                config,
+                node_key,
+                validator_key,
+            } => Ok(Configs {
+                app: config.clone(),
+                validator_key: validator_key.clone(),
+                node_key: node_key.clone(),
+                database: self.database.into(),
+            }),
+            ConfigSource::PathConfig {
+                config_file,
+                validator_key_file,
+                node_key_file,
+            } => Ok(Configs {
+                app: (|| {
+                    let app = fs::read_to_string(config_file).context("failed reading file")?;
+                    decode_json::<Serde<AppConfig>>(&app).context("failed decoding JSON")
+                })()
+                .with_context(|| config_file.display().to_string())?
+                .0,
 
-            validator_key: self.validator_key.or({
-                fs::read_to_string(self.validator_key_file)
-                    .context(format!(
-                        "failed reading file: {}",
-                        self.validator_key_file.display()
-                    ))
+                validator_key: fs::read_to_string(validator_key_file)
                     .ok()
                     .map(|value| Text::new(&value).decode().context("failed decoding key"))
-            }
-            .transpose()
-            .context("validator key")?),
+                    .transpose()
+                    .with_context(|| validator_key_file.display().to_string())?,
 
-            node_key: self.node_key.or({
-                fs::read_to_string(self.node_key_file)
-                    .context(format!(
-                        "failed reading file: {}",
-                        self.node_key_file.display()
-                    ))
-                    .ok()
-                    .map( |value| Text::new(&value).decode().context("failed decoding key"))
-            }
-            .transpose()
-            .context("node key")?).expect("Missing node key: Should provide --node-key, --node-key-file, or place a `node_key` file at root directory"),
+                node_key: (|| {
+                    let key = fs::read_to_string(node_key_file).context("failed reading file")?;
+                    Text::new(&key).decode().context("failed decoding key")
+                })()
+                .with_context(|| node_key_file.display().to_string())?,
 
-            database: self.database.into(),
-        })
+                database: self.database.into(),
+            }),
+        }
     }
 }
 
