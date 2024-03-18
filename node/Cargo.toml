@@ -156,7 +156,5 @@ wildcard_dependencies = "warn"
 redundant_locals = "allow"
 needless_pass_by_ref_mut = "allow"
 box_default = "allow"
-# remove once fix to https://github.com/rust-lang/rust-clippy/issues/11764 is available on CI.
-map_identity = "allow"
 # &*x is not equivalent to x, because it affects borrowing in closures.
 borrow_deref_ref = "allow"
