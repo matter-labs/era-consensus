@@ -10,7 +10,7 @@ use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
 ///
 /// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait::async_trait]
-pub trait ReplicaStore: fmt::Debug + Send + Sync {
+pub trait ReplicaStore: 'static + fmt::Debug + Send + Sync {
     /// Gets the replica state, if it is contained in the database.
     async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<ReplicaState>;
 

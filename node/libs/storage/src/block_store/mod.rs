@@ -10,7 +10,7 @@ mod metrics;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlockStoreState {
     /// Stored block with the lowest number.
-    /// Currently always same as `genesis.first_block`.
+    /// If last is `None`, this is the first block that should be fetched.
     pub first: validator::BlockNumber,
     /// Stored block with the highest number.
     /// None iff store is empty.
@@ -32,21 +32,41 @@ impl BlockStoreState {
             None => self.first,
         }
     }
+
+    /// Verifies `BlockStoreState'.
+    pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            genesis.fork.first_block <= self.first,
+            "first block ({}) doesn't belong to the fork (which starts at block {})",
+            self.first,
+            genesis.fork.first_block
+        );
+        if let Some(last) = &self.last {
+            anyhow::ensure!(
+                self.first <= last.header().number,
+                "first block {} has bigger number than the last block {}",
+                self.first,
+                last.header().number
+            );
+            last.verify(genesis).context("last.verify()")?;
+        }
+        Ok(())
+    }
 }
 
 /// Storage of a continuous range of L2 blocks.
 ///
 /// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait::async_trait]
-pub trait PersistentBlockStore: fmt::Debug + Send + Sync {
+pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
     /// Genesis matching the block store content.
     /// Consensus code calls this method only once.
     async fn genesis(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::Genesis>;
 
-    /// Last block available in storage.
+    /// Range of blocks available in storage.
     /// Consensus code calls this method only once and then tracks the
     /// range of available blocks internally.
-    async fn last(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<validator::CommitQC>>;
+    async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState>;
 
     /// Gets a block by its number.
     /// Returns error if block is missing.
@@ -115,11 +135,11 @@ impl BlockStoreRunner {
                 tracing::info!(
                     "stored block #{}: {:#?}",
                     block.header().number,
-                    block.header().hash()
+                    block.header().payload
                 );
 
                 self.0.inner.send_modify(|inner| {
-                    debug_assert_eq!(inner.persisted_state.next(), block.header().number);
+                    debug_assert_eq!(inner.persisted_state.next(), block.number());
                     inner.persisted_state.last = Some(block.justification.clone());
                     inner.queue.pop_front();
                 });
@@ -145,16 +165,10 @@ impl BlockStore {
         let t = metrics::PERSISTENT_BLOCK_STORE.genesis_latency.start();
         let genesis = persistent.genesis(ctx).await.wrap("persistent.genesis()")?;
         t.observe();
-        let t = metrics::PERSISTENT_BLOCK_STORE.last_latency.start();
-        let last = persistent.last(ctx).await.wrap("persistent.last()")?;
+        let t = metrics::PERSISTENT_BLOCK_STORE.state_latency.start();
+        let state = persistent.state(ctx).await.wrap("persistent.state()")?;
         t.observe();
-        if let Some(last) = &last {
-            last.verify(&genesis).context("last.verify()")?;
-        }
-        let state = BlockStoreState {
-            first: genesis.fork.first_block,
-            last,
-        };
+        state.verify(&genesis).context("state.verify()")?;
         let this = Arc::new(Self {
             inner: sync::watch::channel(Inner {
                 queued_state: sync::watch::channel(state.clone()).0,
@@ -165,12 +179,6 @@ impl BlockStore {
             genesis,
             persistent,
         });
-        // Verify the first block.
-        if let Some(block) = this.block(ctx, this.genesis.fork.first_block).await? {
-            block
-                .verify(&this.genesis)
-                .with_context(|| format!("verify({:?})", this.genesis.fork.first_block))?;
-        }
         Ok((this.clone(), BlockStoreRunner(this)))
     }
 
@@ -227,17 +235,6 @@ impl BlockStore {
                 return Ok(());
             }
             block.verify(&self.genesis).context("block.verify()")?;
-            // Verify parent hash, if previous block is available.
-            if let Some(last) = queued_state.last.as_ref() {
-                if Some(last.header().hash()) != block.header().parent {
-                    return Err(anyhow::format_err!(
-                        "block.parent = {:?}, want {:?}",
-                        block.header().parent,
-                        last.header().hash()
-                    )
-                    .into());
-                }
-            }
         }
         self.inner.send_if_modified(|inner| {
             let modified = inner.queued_state.send_if_modified(|queued_state| {
@@ -258,6 +255,7 @@ impl BlockStore {
     }
 
     /// Waits until the given block is queued to be stored.
+    /// If `number < state.first` then it immetiately returns `Ok(())`.
     pub async fn wait_until_queued(
         &self,
         ctx: &ctx::Ctx,
@@ -271,6 +269,7 @@ impl BlockStore {
     }
 
     /// Waits until the given block is stored persistently.
+    /// If `number < state.first` then it immetiately returns `Ok(())`.
     pub async fn wait_until_persisted(
         &self,
         ctx: &ctx::Ctx,

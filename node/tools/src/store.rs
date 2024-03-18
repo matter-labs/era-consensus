@@ -8,7 +8,7 @@ use std::{
 };
 use zksync_concurrency::{ctx, error::Wrap as _, scope};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{PersistentBlockStore, ReplicaState, ReplicaStore};
+use zksync_consensus_storage::{BlockStoreState, PersistentBlockStore, ReplicaState, ReplicaStore};
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -107,8 +107,12 @@ impl PersistentBlockStore for RocksDB {
         Ok(self.0.genesis.clone())
     }
 
-    async fn last(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<validator::CommitQC>> {
-        Ok(scope::wait_blocking(|| self.last_blocking()).await?)
+    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
+        Ok(BlockStoreState {
+            // `RocksDB` is assumed to store all blocks starting from genesis.
+            first: self.0.genesis.fork.first_block,
+            last: scope::wait_blocking(|| self.last_blocking()).await?,
+        })
     }
 
     async fn block(
