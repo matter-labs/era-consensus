@@ -1,6 +1,6 @@
 use super::{
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
-    FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, L1BatchSignature, LeaderCommit,
+    FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, L1BatchSignatureMsg, LeaderCommit,
     LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC,
     ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers,
     ValidatorSet, View, ViewNumber,
@@ -356,8 +356,8 @@ impl ProtoFmt for NetAddress {
     }
 }
 
-impl ProtoFmt for L1BatchSignature {
-    type Proto = proto::L1BatchSignature;
+impl ProtoFmt for L1BatchSignatureMsg {
+    type Proto = proto::L1BatchSignatureMsg;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(ByteFmt::decode(required(&r.signature)?)?))
