@@ -23,10 +23,9 @@ docker_node_image:
 # Kubernetes commands
 
 start_k8s_nodes:
-	cd ${EXECUTABLE_NODE_DIR} && cargo run  --bin deployer generate-config --nodes ${NODES}
 	$(MAKE) docker_node_image
 	minikube image load consensus-node:latest
-	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer deploy --nodes ${NODES} --seed-nodes ${SEED_NODES}
+	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer -- --nodes ${NODES} --seed-nodes ${SEED_NODES}
 
 # Clean commands
 

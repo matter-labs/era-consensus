@@ -7,52 +7,83 @@ use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_tools::{decode_json, ConfigPaths, NodeAddr, RPCServer};
+use zksync_consensus_crypto::{Text, TextFmt};
+use zksync_consensus_roles::{node, validator};
+use zksync_consensus_tools::{decode_json, AppConfig, ConfigArgs, ConfigSource, RPCServer};
 use zksync_protobuf::serde::Serde;
-
-/// Wrapper for Vec<NodeAddr>.
-#[derive(Debug, Clone)]
-struct NodeAddrs(Vec<Serde<NodeAddr>>);
-
-impl std::str::FromStr for NodeAddrs {
-    type Err = anyhow::Error;
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        Ok(Self(decode_json(s)?))
-    }
-}
 
 /// Command-line application launching a node executor.
 #[derive(Debug, Parser)]
-struct Args {
+struct Cli {
+    /// Full json config
+    #[arg(long,
+          value_parser(parse_config),
+          requires="node_key",
+          conflicts_with_all=["config_file", "validator_key_file", "node_key_file"])]
+    config: Option<Serde<AppConfig>>,
+    /// Plain node key
+    #[arg(long,
+          value_parser(parse_key::<node::SecretKey>),
+          requires="config",
+          conflicts_with_all=["config_file", "validator_key_file", "node_key_file"])]
+    node_key: Option<node::SecretKey>,
+    /// Plain validator key
+    #[arg(long,
+          value_parser(parse_key::<validator::SecretKey>),
+          requires_all=["config", "node_key"],
+          conflicts_with_all=["config_file", "validator_key_file", "node_key_file"])]
+    validator_key: Option<validator::SecretKey>,
     /// Path to a validator key file. If set to an empty string, validator key will not be read
     /// (i.e., a node will be initialized as a non-validator node).
-    #[arg(long, default_value = "./validator_key")]
-    validator_key: PathBuf,
+    #[arg(long,
+          default_value = "./validator_key",
+          conflicts_with_all=["config", "validator_key", "node_key"])]
+    validator_key_file: PathBuf,
     /// Path to a JSON file with node configuration.
-    #[arg(long, default_value = "./config.json")]
+    #[arg(long,
+          default_value = "./config.json",
+          conflicts_with_all=["config", "validator_key", "node_key"])]
     config_file: PathBuf,
     /// Path to a node key file.
-    #[arg(long, default_value = "./node_key")]
-    node_key: PathBuf,
+    #[arg(long,
+          default_value = "./node_key",
+          conflicts_with_all=["config", "validator_key", "node_key"])]
+    node_key_file: PathBuf,
     /// Path to the rocksdb database of the node.
     #[arg(long, default_value = "./database")]
     database: PathBuf,
     /// Port for the RPC server.
     #[arg(long)]
     rpc_port: Option<u16>,
-    /// IP address and key of the seed peers.
-    #[arg(long)]
-    add_gossip_static_outbound: Option<NodeAddrs>,
 }
 
-impl Args {
+/// Function to let clap parse the command line `config` argument
+fn parse_config(val: &str) -> anyhow::Result<Serde<AppConfig>> {
+    decode_json(val)
+}
+
+/// Node/validator key parser for clap
+fn parse_key<T: TextFmt>(val: &str) -> anyhow::Result<T> {
+    Text::new(val).decode().context("failed decoding key")
+}
+
+impl Cli {
     /// Extracts configuration paths from these args.
-    fn config_paths(&self) -> ConfigPaths<'_> {
-        ConfigPaths {
-            app: &self.config_file,
-            node_key: &self.node_key,
-            validator_key: (!self.validator_key.as_os_str().is_empty())
-                .then_some(&self.validator_key),
+    fn config_args(&self) -> ConfigArgs<'_> {
+        let config_args = match &self.config {
+            Some(config) => ConfigSource::CliConfig {
+                config: config.clone().0,
+                node_key: self.node_key.clone().unwrap(), // node_key is present as it is enforced by clap rules
+                validator_key: self.validator_key.clone(),
+            },
+            None => ConfigSource::PathConfig {
+                config_file: &self.config_file,
+                validator_key_file: &self.validator_key_file,
+                node_key_file: &self.node_key_file,
+            },
+        };
+        ConfigArgs {
+            config_args,
             database: &self.database,
         }
     }
@@ -60,7 +91,7 @@ impl Args {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args: Args = Args::parse();
+    let args: Cli = Cli::parse();
     tracing::trace!(?args, "Starting node");
     let ctx = &ctx::root();
 
@@ -96,21 +127,10 @@ async fn main() -> anyhow::Result<()> {
 
     // Load the config files.
     tracing::debug!("Loading config files.");
-    let mut configs = args
-        .config_paths()
-        .load()
-        .context("config_paths().load()")?;
+    let mut configs = args.config_args().load().context("config_args().load()")?;
 
     // if `PUBLIC_ADDR` env var is set, use it to override publicAddr in config
     configs.app.check_public_addr().context("Public Address")?;
-
-    // Add gossipStaticOutbound pairs from cli to config
-    if let Some(addrs) = args.add_gossip_static_outbound {
-        configs
-            .app
-            .gossip_static_outbound
-            .extend(addrs.0.into_iter().map(|e| (e.0.key, e.0.addr)));
-    }
 
     let (executor, runner) = configs
         .make_executor(ctx)
