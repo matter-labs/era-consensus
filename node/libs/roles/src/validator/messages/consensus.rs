@@ -83,14 +83,14 @@ pub struct ValidatorCommittee {
 }
 
 impl ValidatorCommittee {
-    /// Creates a new ValidatorSet from a list of validator public keys.
+    /// Creates a new ValidatorCommittee from a list of validator public keys.
     pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
         let mut set = BTreeSet::new();
         let mut weights = BTreeMap::new();
         for validator in validators {
             anyhow::ensure!(
                 set.insert(validator.key.clone()),
-                "Duplicate validator in ValidatorSet"
+                "Duplicate validator in ValidatorCommittee"
             );
             weights.insert(
                 validator.key,
@@ -99,7 +99,7 @@ impl ValidatorCommittee {
         }
         anyhow::ensure!(
             !set.is_empty(),
-            "ValidatorSet must contain at least one validator"
+            "ValidatorCommittee must contain at least one validator"
         );
         Ok(Self {
             vec: set.iter().cloned().collect(),
@@ -127,7 +127,7 @@ impl ValidatorCommittee {
     }
 
     /// Returns the number of validators.
-    #[allow(clippy::len_without_is_empty)] // a valid `ValidatorSet` is always non-empty by construction
+    #[allow(clippy::len_without_is_empty)] // a valid `ValidatorCommittee` is always non-empty by construction
     pub fn len(&self) -> usize {
         self.vec.len()
     }
@@ -354,7 +354,7 @@ impl Signers {
         self.0.iter().filter(|b| *b).count()
     }
 
-    /// Size of the corresponding ValidatorSet.
+    /// Size of the corresponding ValidatorCommittee.
     pub fn len(&self) -> usize {
         self.0.len()
     }
@@ -405,11 +405,11 @@ pub enum Phase {
     Commit,
 }
 
-/// Validator representation inside a ValidatorSet.
+/// Validator representation inside a ValidatorCommittee.
 #[derive(Debug, Clone)]
 pub struct WeightedValidator {
     /// Validator key
     pub key: validator::PublicKey,
-    /// Validator weight inside the ValidatorSet.
+    /// Validator weight inside the ValidatorCommittee.
     pub weight: u32,
 }
