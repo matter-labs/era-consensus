@@ -150,17 +150,33 @@ impl ProtoFmt for AppConfig {
     }
 }
 
-/// This struct holds the file path to each of the config files.
+/// Configuration information.
 #[derive(Debug)]
-pub struct ConfigPaths<'a> {
-    /// Path to a JSON file with node configuration.
-    pub app: &'a Path,
-    /// Path to a validator key file.
-    pub validator_key: Option<&'a Path>,
-    /// Path to a node key file.
-    pub node_key: &'a Path,
+pub struct ConfigArgs<'a> {
+    /// Node configuration.
+    pub config_args: ConfigSource<'a>,
     /// Path to the rocksdb database.
     pub database: &'a Path,
+}
+
+#[derive(Debug)]
+pub enum ConfigSource<'a> {
+    CliConfig {
+        /// Node configuration from command line.
+        config: AppConfig,
+        /// Node key as a string.
+        node_key: node::SecretKey,
+        /// Validator key as a string.
+        validator_key: Option<validator::SecretKey>,
+    },
+    PathConfig {
+        /// Path to a JSON file with node configuration.
+        config_file: &'a Path,
+        /// Path to a validator key file.
+        validator_key_file: &'a Path,
+        /// Path to a node key file.
+        node_key_file: &'a Path,
+    },
 }
 
 pub struct Configs {
@@ -170,37 +186,47 @@ pub struct Configs {
     pub database: PathBuf,
 }
 
-impl<'a> ConfigPaths<'a> {
+impl<'a> ConfigArgs<'a> {
     // Loads configs from the file system.
     pub fn load(self) -> anyhow::Result<Configs> {
-        Ok(Configs {
-            app: (|| {
-                let app = fs::read_to_string(self.app).context("failed reading file")?;
-                decode_json::<Serde<AppConfig>>(&app).context("failed decoding JSON")
-            })()
-            .with_context(|| self.app.display().to_string())?
-            .0,
+        match self.config_args {
+            ConfigSource::CliConfig {
+                config,
+                node_key,
+                validator_key,
+            } => Ok(Configs {
+                app: config.clone(),
+                validator_key: validator_key.clone(),
+                node_key: node_key.clone(),
+                database: self.database.into(),
+            }),
+            ConfigSource::PathConfig {
+                config_file,
+                validator_key_file,
+                node_key_file,
+            } => Ok(Configs {
+                app: (|| {
+                    let app = fs::read_to_string(config_file).context("failed reading file")?;
+                    decode_json::<Serde<AppConfig>>(&app).context("failed decoding JSON")
+                })()
+                .with_context(|| config_file.display().to_string())?
+                .0,
 
-            validator_key: self
-                .validator_key
-                .as_ref()
-                .map(|file| {
-                    (|| {
-                        let key = fs::read_to_string(file).context("failed reading file")?;
-                        Text::new(&key).decode().context("failed decoding key")
-                    })()
-                    .with_context(|| file.display().to_string())
-                })
-                .transpose()?,
+                validator_key: fs::read_to_string(validator_key_file)
+                    .ok()
+                    .map(|value| Text::new(&value).decode().context("failed decoding key"))
+                    .transpose()
+                    .with_context(|| validator_key_file.display().to_string())?,
 
-            node_key: (|| {
-                let key = fs::read_to_string(self.node_key).context("failed reading file")?;
-                Text::new(&key).decode().context("failed decoding key")
-            })()
-            .with_context(|| self.node_key.display().to_string())?,
+                node_key: (|| {
+                    let key = fs::read_to_string(node_key_file).context("failed reading file")?;
+                    Text::new(&key).decode().context("failed decoding key")
+                })()
+                .with_context(|| node_key_file.display().to_string())?,
 
-            database: self.database.into(),
-        })
+                database: self.database.into(),
+            }),
+        }
     }
 }
 

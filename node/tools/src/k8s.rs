@@ -1,4 +1,4 @@
-use crate::{config, NodeAddr};
+use crate::{config, AppConfig, NodeAddr};
 use anyhow::{ensure, Context};
 use k8s_openapi::{
     api::{
@@ -18,7 +18,8 @@ use kube::{
 use std::{collections::BTreeMap, net::SocketAddr, time::Duration};
 use tokio::time;
 use tracing::log::info;
-use zksync_consensus_roles::node;
+use zksync_consensus_crypto::TextFmt;
+use zksync_consensus_roles::{node, validator};
 use zksync_protobuf::serde::Serde;
 
 /// Docker image name for consensus nodes.
@@ -32,14 +33,16 @@ pub const DEFAULT_NAMESPACE: &str = "consensus";
 pub struct ConsensusNode {
     /// Node identifier
     pub id: String,
+    /// Node configuration
+    pub config: AppConfig,
     /// Node key
     pub key: node::SecretKey,
+    /// Node key
+    pub validator_key: Option<validator::SecretKey>,
     /// Full NodeAddr
     pub node_addr: Option<NodeAddr>,
     /// Is seed node (meaning it has no gossipStaticOutbound configuration)
     pub is_seed: bool,
-    /// known gossipStaticOutbound peers
-    pub gossip_static_outbound: Vec<NodeAddr>,
 }
 
 impl ConsensusNode {
@@ -79,7 +82,7 @@ impl ConsensusNode {
 
     /// Creates a deployment
     pub async fn deploy(&self, client: &Client, namespace: &str) -> anyhow::Result<()> {
-        let cli_args = get_cli_args(&self.gossip_static_outbound);
+        let cli_args = get_cli_args(self);
         let deployment = Deployment {
             metadata: ObjectMeta {
                 name: Some(self.id.to_owned()),
@@ -322,9 +325,7 @@ async fn get_running_pod(pods: &Api<Pod>, label: &str) -> anyhow::Result<Pod> {
         .items
         .pop()
         .with_context(|| format!("Pod not found: {label}"))?;
-    if !is_pod_running(&pod) {
-        anyhow::bail!("Pod is not running");
-    }
+    anyhow::ensure!(is_pod_running(&pod), "Pod is not running");
     Ok(pod)
 }
 
@@ -337,22 +338,21 @@ fn is_pod_running(pod: &Pod) -> bool {
     false
 }
 
-fn get_cli_args(peers: &[NodeAddr]) -> Vec<String> {
-    if peers.is_empty() {
-        [].to_vec()
-    } else {
-        [
-            "--add-gossip-static-outbound".to_string(),
-            config::encode_with_serializer(
-                &peers
-                    .iter()
-                    .map(|e| Serde(e.clone()))
-                    .collect::<Vec<Serde<NodeAddr>>>(),
-                serde_json::Serializer::new(vec![]),
-            ),
-        ]
-        .to_vec()
-    }
+fn get_cli_args(consensus_node: &ConsensusNode) -> Vec<String> {
+    let mut cli_args = [
+        "--config".to_string(),
+        config::encode_with_serializer(
+            &Serde(consensus_node.config.clone()),
+            serde_json::Serializer::new(vec![]),
+        ),
+        "--node-key".to_string(),
+        TextFmt::encode(&consensus_node.key),
+    ]
+    .to_vec();
+    if let Some(key) = &consensus_node.validator_key {
+        cli_args.append(&mut ["--validator-key".to_string(), TextFmt::encode(key)].to_vec())
+    };
+    cli_args
 }
 
 async fn retry<T, Fut, F>(retries: usize, delay: Duration, mut f: F) -> anyhow::Result<T>
@@ -368,5 +368,5 @@ where
             return result;
         }
     }
-    unreachable!("Loop sould always return")
+    unreachable!("Loop should always return")
 }
