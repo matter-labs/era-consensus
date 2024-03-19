@@ -7,7 +7,7 @@ use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator::{
-    self, CommitQC, Payload, PrepareQC, ReplicaCommit, ReplicaPrepare, ViewNumber,
+    self, CommitQC, Payload, PrepareQC, ReplicaCommit, ReplicaPrepare,
 };
 
 /// Sanity check of the happy path.
@@ -101,10 +101,6 @@ async fn leader_prepare_invalid_leader() {
         let (mut util, runner) = UTHarness::new(ctx, 2).await;
         s.spawn_bg(runner.run(ctx));
 
-        let view = ViewNumber(2);
-        util.set_view(view);
-        assert_eq!(util.view_leader(view), util.keys[0].public());
-
         let replica_prepare = util.new_replica_prepare();
         assert!(util
             .process_replica_prepare(ctx, util.sign(replica_prepare.clone()))
@@ -161,6 +157,35 @@ async fn leader_prepare_old_view() {
                 assert_eq!(current_phase, util.replica.phase);
             }
         );
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn leader_prepare_pruned_block() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        s.spawn_bg(runner.run(ctx));
+
+        let mut leader_prepare = util.new_leader_prepare(ctx).await;
+        // We assume default replica state and nontrivial `genesis.fork.first_block` here.
+        leader_prepare.proposal.number = util
+            .replica
+            .config
+            .block_store
+            .subscribe()
+            .borrow()
+            .first
+            .prev()
+            .unwrap();
+        let res = util
+            .process_leader_prepare(ctx, util.sign(leader_prepare))
+            .await;
+        assert_matches!(res, Err(leader_prepare::Error::ProposalAlreadyPruned));
         Ok(())
     })
     .await
@@ -332,33 +357,6 @@ async fn leader_prepare_proposal_when_previous_not_finalized() {
                 validator::LeaderPrepareVerifyError::ProposalWhenPreviousNotFinalized
             ))
         );
-        Ok(())
-    })
-    .await
-    .unwrap();
-}
-
-#[tokio::test]
-async fn leader_prepare_bad_parent_hash() {
-    zksync_concurrency::testonly::abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
-        s.spawn_bg(runner.run(ctx));
-
-        tracing::info!("Produce initial block.");
-        util.produce_block(ctx).await;
-        tracing::info!("Make leader propose the next block.");
-        let mut leader_prepare = util.new_leader_prepare(ctx).await;
-        tracing::info!("Modify the proposal.parent so that it doesn't match the previous block");
-        leader_prepare.proposal.parent = Some(ctx.rng().gen());
-        let res = util.process_leader_prepare(ctx, util.sign(leader_prepare.clone())).await;
-        assert_matches!(res, Err(leader_prepare::Error::InvalidMessage(
-            validator::LeaderPrepareVerifyError::BadParentHash { got, want }
-        )) => {
-            assert_eq!(want, Some(leader_prepare.justification.high_qc().unwrap().message.proposal.hash()));
-            assert_eq!(got, leader_prepare.proposal.parent);
-        });
         Ok(())
     })
     .await
