@@ -1,13 +1,18 @@
 //! Consensus network is a full graph of connections between all validators.
 //! BFT consensus messages are exchanged over this network.
-use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc};
+use crate::{
+    config, gossip, io, noise,
+    pool::PoolWatch,
+    preface,
+    rpc::{self, signature::L1BatchSignatureServer},
+};
 use anyhow::Context as _;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
 use zksync_concurrency::{ctx, oneshot, scope, sync, time};
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::validator::{self, L1BatchQC};
 use zksync_protobuf::kB;
 
 mod handshake;
@@ -33,6 +38,9 @@ pub(crate) struct Network {
     pub(crate) outbound: PoolWatch<validator::PublicKey>,
     /// RPC clients for all validators.
     pub(crate) clients: HashMap<validator::PublicKey, rpc::Client<rpc::consensus::Rpc>>,
+    /// RPC clients for l1 batch signature.
+    pub(crate) signature_clients: HashMap<validator::PublicKey, rpc::Client<rpc::signature::Rpc>>,
+    pub(crate) l1_batch_qc: L1BatchQC,
 }
 
 #[async_trait::async_trait]
@@ -59,6 +67,19 @@ impl rpc::Handler<rpc::consensus::Rpc> for &Network {
     }
 }
 
+#[async_trait::async_trait]
+impl rpc::Handler<rpc::signature::Rpc> for &L1BatchSignatureServer<'_> {
+    /// Here we bound the buffering of incoming consensus messages.
+    fn max_req_size(&self) -> usize {
+        self.0.gossip.cfg.max_block_size.saturating_add(kB)
+    }
+
+    async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::signature::Req) -> anyhow::Result<()> {
+        self.0.l1_batch_qc.clone().add(req.0.sig);
+        Ok(())
+    }
+}
+
 impl Network {
     /// Constructs a new consensus network state.
     pub(crate) fn new(ctx: &ctx::Ctx, gossip: Arc<gossip::Network>) -> Option<Arc<Self>> {
@@ -66,6 +87,7 @@ impl Network {
         let validators: HashSet<_> = gossip.genesis().validators.iter().cloned().collect();
         Some(Arc::new(Self {
             key,
+            l1_batch_qc: L1BatchQC::default(),
             inbound: PoolWatch::new(validators.clone(), 0),
             outbound: PoolWatch::new(validators.clone(), 0),
             clients: validators
@@ -77,12 +99,21 @@ impl Network {
                     )
                 })
                 .collect(),
+            signature_clients: validators
+                .iter()
+                .map(|peer| {
+                    (
+                        peer.clone(),
+                        rpc::Client::new(ctx, gossip.cfg.rpc.l1_batch_signature_rate),
+                    )
+                })
+                .collect(),
             gossip,
         }))
     }
 
     /// Sends a message to all validators.
-    pub(crate) async fn broadcast(
+    pub(crate) async fn broadcast_consensus_msg(
         &self,
         ctx: &ctx::Ctx,
         msg: validator::Signed<validator::ConsensusMsg>,
@@ -93,6 +124,27 @@ impl Network {
                 s.spawn(async {
                     if let Err(err) = client.call(ctx, &req, RESP_MAX_SIZE).await {
                         tracing::info!("send({:?},<ConsensusMsg>): {err:#}", &*peer);
+                    }
+                    Ok(())
+                });
+            }
+            Ok(())
+        })
+        .await
+    }
+
+    /// Broadcasts a signature to all validators.
+    pub(crate) async fn broadcast_signature(
+        &self,
+        ctx: &ctx::Ctx,
+        signature: validator::Signed<validator::L1BatchSignatureMsg>,
+    ) -> anyhow::Result<()> {
+        let req = rpc::signature::Req(signature);
+        scope::run!(ctx, |ctx, s| async {
+            for (peer, client) in &self.signature_clients {
+                s.spawn(async {
+                    if let Err(err) = client.call(ctx, &req, RESP_MAX_SIZE).await {
+                        tracing::info!("send({:?},<L1BatchSignatureMsg>): {err:#}", &*peer);
                     }
                     Ok(())
                 });

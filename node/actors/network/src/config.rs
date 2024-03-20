@@ -18,6 +18,8 @@ pub struct RpcConfig {
     pub get_block_rate: limiter::Rate,
     /// Max rate of sending/receiving consensus messages.
     pub consensus_rate: limiter::Rate,
+    /// Max rate of sending/receiving l1 batch signature messages.
+    pub l1_batch_signature_rate: limiter::Rate,
 }
 
 impl Default for RpcConfig {
@@ -36,6 +38,10 @@ impl Default for RpcConfig {
                 refresh: time::Duration::milliseconds(100),
             },
             consensus_rate: limiter::Rate {
+                burst: 10,
+                refresh: time::Duration::ZERO,
+            },
+            l1_batch_signature_rate: limiter::Rate {
                 burst: 10,
                 refresh: time::Duration::ZERO,
             },

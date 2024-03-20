@@ -87,7 +87,11 @@ impl Network {
                     io::Target::Validator(key) => {
                         consensus.send(ctx, &key, message.message).await?
                     }
-                    io::Target::Broadcast => consensus.broadcast(ctx, message.message).await?,
+                    io::Target::Broadcast => {
+                        consensus
+                            .broadcast_consensus_msg(ctx, message.message)
+                            .await?
+                    }
                 }
             }
             io::InputMessage::SyncBlocks(io::SyncBlocksInputMessage::GetBlock {
@@ -101,6 +105,11 @@ impl Network {
                     Ok(None) => Err(io::GetBlockError::NotAvailable),
                     Err(err) => Err(io::GetBlockError::Internal(err)),
                 });
+            }
+            io::InputMessage::L1BatchSignature(message) => {
+                let consensus = self.consensus.as_ref().context("not a validator node")?;
+                let ctx = &ctx.with_timeout(CONSENSUS_MSG_TIMEOUT);
+                consensus.broadcast_signature(ctx, message.message).await?;
             }
         }
         Ok(())
