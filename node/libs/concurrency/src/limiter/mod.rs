@@ -1,6 +1,6 @@
 //! Rate limiter which supports delayed permit consumption.
 use crate::{ctx, sync, time};
-use std::sync::Mutex;
+use std::{fmt, sync::Mutex};
 
 #[cfg(test)]
 mod tests;
@@ -102,6 +102,12 @@ pub struct Limiter {
     acquire: sync::Mutex<sync::watch::Receiver<State>>,
 }
 
+impl fmt::Debug for Limiter {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("Limiter").finish_non_exhaustive()
+    }
+}
+
 /// Permit reservation returned by `Limit::acquire()`.
 /// Represents a set of reserved permits.
 /// You need to drop it for the permits to get consumed
@@ -151,7 +157,7 @@ impl Limiter {
     }
 
     /// Acquires reservation for `permits` permits from the rate limiter.
-    /// It blocks until enought permits are available.
+    /// It blocks until enough permits are available.
     /// It is fair in a sense that in case a later acquire() call is
     /// executed, but for a smaller number of permits, it has to wait
     /// until the previous call (for a larger number of permits) completes.

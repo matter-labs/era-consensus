@@ -39,7 +39,7 @@ impl StateMachine {
         tracing::info!(
             "Finalized block {}: {:#?}",
             block.header().number,
-            block.header().hash(),
+            block.header().payload,
         );
         self.config
             .block_store

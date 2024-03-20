@@ -7,7 +7,6 @@ import "zksync/std.proto";
 message Fork {
   optional uint64 number = 1; // required; ForkId
   optional uint64 first_block = 2; // required; BlockNumber
-  optional BlockHeaderHash first_parent = 3; // optional
 }
 
 message Genesis {
@@ -23,17 +22,11 @@ message PayloadHash {
   optional bytes keccak256 = 1; // required
 }
 
-message BlockHeaderHash {
-  optional bytes keccak256 = 1; // required
-}
-
 message BlockHeader {
-  // Hash of the parent Block.  
-  optional BlockHeaderHash parent = 2; // optional
   // Sequential number of the block = parent.number + 1.
-  optional uint64 number = 3; // required
+  optional uint64 number = 1; // required
   // Hash of the block payload.
-  optional PayloadHash payload = 4; // required
+  optional PayloadHash payload = 2; // required
 }
 
 message FinalBlock {
@@ -117,7 +110,7 @@ message NetAddress {
   // Currently the IP of the validator is static, but this scheme might also
   // be used to provide dynamic IP support (if validator discovers that its
   // own IP has changed - by pinging a trusted STUN server for example - it can
-  // broadcast a new discovery message), or (mutli)proxy support (a validator
+  // broadcast a new discovery message), or (multi)proxy support (a validator
   // may maintain a dynamic set of trusted proxy servers which forward traffic
   // to it - this way validator wouldn't have to have a public IP at all).
   optional uint64 version = 2; // required
