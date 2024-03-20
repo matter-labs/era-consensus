@@ -1,12 +1,10 @@
 //! Deployer for the kubernetes cluster.
 use clap::Parser;
 use std::collections::HashMap;
-use zksync_consensus_roles::{node, validator};
+use zksync_consensus_roles::node::SecretKey;
+use zksync_consensus_roles::validator;
 use zksync_consensus_tools::k8s::ConsensusNode;
 use zksync_consensus_tools::{k8s, AppConfig};
-
-/// K8s namespace for consensus nodes.
-const NAMESPACE: &str = "consensus";
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
@@ -35,7 +33,7 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
     // Each node will have `gossip_peers` outbound peers.
     let peers = 2;
 
-    let node_keys: Vec<node::SecretKey> = (0..nodes).map(|_| node::SecretKey::generate()).collect();
+    let node_keys: Vec<SecretKey> = (0..nodes).map(|_| SecretKey::generate()).collect();
 
     let default_config = AppConfig::default_for(setup.genesis.clone());
 
@@ -65,7 +63,7 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
 async fn deploy(nodes_amount: usize, seed_nodes_amount: Option<usize>) -> anyhow::Result<()> {
     let mut consensus_nodes = generate_consensus_nodes(nodes_amount, seed_nodes_amount);
     let client = k8s::get_client().await?;
-    k8s::create_or_reuse_namespace(&client, NAMESPACE).await?;
+    k8s::create_or_reuse_namespace(&client, k8s::DEFAULT_NAMESPACE).await?;
 
     let seed_nodes = &mut HashMap::new();
     let mut non_seed_nodes = HashMap::new();
@@ -81,12 +79,13 @@ async fn deploy(nodes_amount: usize, seed_nodes_amount: Option<usize>) -> anyhow
 
     // Deploy seed peer(s)
     for node in seed_nodes.values_mut() {
-        node.deploy(&client, NAMESPACE).await?;
+        node.deploy(&client, k8s::DEFAULT_NAMESPACE).await?;
     }
 
     // Fetch and complete node addrs into seed nodes
     for node in seed_nodes.values_mut() {
-        node.fetch_and_assign_pod_ip(&client, NAMESPACE).await?;
+        node.fetch_and_assign_pod_ip(&client, k8s::DEFAULT_NAMESPACE)
+            .await?;
     }
 
     // Build a vector of (PublicKey, SocketAddr) to provide as gossip_static_outbound
@@ -106,7 +105,7 @@ async fn deploy(nodes_amount: usize, seed_nodes_amount: Option<usize>) -> anyhow
     // Deploy the rest of the nodes
     for node in non_seed_nodes.values_mut() {
         node.config.gossip_static_outbound.extend(peers.clone());
-        node.deploy(&client, NAMESPACE).await?;
+        node.deploy(&client, k8s::DEFAULT_NAMESPACE).await?;
     }
 
     Ok(())
