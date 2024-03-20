@@ -1,6 +1,9 @@
 use crate::config::AppConfig;
 use crate::{config, NodeAddr};
 use anyhow::Context;
+use k8s_openapi::api::core::v1::Service;
+use k8s_openapi::api::core::v1::ServicePort;
+use k8s_openapi::api::core::v1::ServiceSpec;
 use k8s_openapi::{
     api::{
         apps::v1::{Deployment, DeploymentSpec},
@@ -279,6 +282,55 @@ async fn get_running_pod(pods: &Api<Pod>, label: &str) -> anyhow::Result<Pod> {
     Ok(pod)
 }
 
+pub async fn create_tests_deployment(client: &Client) -> anyhow::Result<()> {
+    let deployment: Deployment = Deployment {
+        metadata: ObjectMeta {
+            name: Some("tests-deployment".to_string()),
+            namespace: Some(DEFAULT_NAMESPACE.to_string()),
+            labels: Some([("app".to_string(), "test-node".to_string())].into()),
+            ..Default::default()
+        },
+        spec: Some(DeploymentSpec {
+            selector: LabelSelector {
+                match_labels: Some([("app".to_string(), "test-node".to_string())].into()),
+                ..Default::default()
+            },
+            replicas: Some(1),
+            template: PodTemplateSpec {
+                metadata: Some(ObjectMeta {
+                    labels: Some([("app".to_string(), "test-node".to_string())].into()),
+                    ..Default::default()
+                }),
+                spec: Some(PodSpec {
+                    containers: vec![Container {
+                        name: "test-suite".to_string(),
+                        image: Some("test-suite:latest".to_string()),
+                        image_pull_policy: Some("Never".to_string()),
+                        command: Some(vec!["./tester_entrypoint.sh".to_string()]),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }),
+            },
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let deployments: Api<Deployment> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
+    let post_params = PostParams::default();
+    let result = deployments.create(&post_params, &deployment).await?;
+
+    info!(
+        "Deployment: {} , created",
+        result
+            .metadata
+            .name
+            .context("Name not defined in metadata")?
+    );
+    Ok(())
+}
+
 /// Creates a namespace in k8s cluster
 pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::Result<()> {
     let namespaces: Api<Namespace> = Api::all(client.clone());
@@ -317,6 +369,42 @@ pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::R
             Ok(())
         }
     }
+}
+
+pub async fn expose_tester_rpc(client: &Client) -> anyhow::Result<()> {
+    let load_balancer_sevice = Service {
+        metadata: ObjectMeta {
+            name: Some("tester-rpc".to_string()),
+            namespace: Some(DEFAULT_NAMESPACE.to_string()),
+            ..Default::default()
+        },
+        spec: Some(ServiceSpec {
+            type_: Some("LoadBalancer".to_owned()),
+            selector: Some([("app".to_string(), "test-node".to_string())].into()),
+            ports: vec![ServicePort {
+                port: 3030,
+                target_port: Some(Int(3030)),
+                ..Default::default()
+            }]
+            .into(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let services: Api<Service> = Api::namespaced(client.clone(), DEFAULT_NAMESPACE);
+    let post_params = PostParams::default();
+    let result = services.create(&post_params, &load_balancer_sevice).await?;
+
+    info!(
+        "Service: {} , created",
+        result
+            .metadata
+            .name
+            .context("Name not defined in metadata")?
+    );
+
+    Ok(())
 }
 
 pub async fn create_or_reuse_pod_reader_role(client: &Client) -> anyhow::Result<()> {

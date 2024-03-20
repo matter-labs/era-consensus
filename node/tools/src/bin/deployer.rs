@@ -1,14 +1,10 @@
 //! Deployer for the kubernetes cluster.
-use std::net::SocketAddr;
-use std::str::FromStr;
-use std::{fs, path::PathBuf};
-
-use anyhow::Context;
-use clap::{Parser, Subcommand};
-use zksync_consensus_crypto::{Text, TextFmt};
+use clap::Parser;
+use std::collections::HashMap;
 use zksync_consensus_roles::node::SecretKey;
 use zksync_consensus_roles::validator;
-use zksync_consensus_tools::{k8s, AppConfig, NodeAddr, NODES_PORT};
+use zksync_consensus_tools::k8s::ConsensusNode;
+use zksync_consensus_tools::{k8s, AppConfig};
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
