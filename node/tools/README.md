@@ -1,6 +1,6 @@
 # Running Test Consensus Nodes
 
-These instructions guide you through the process of setting up and running a test consensus node in both local and Clusterized environments.
+These instructions guide you through the process of setting up and running a test consensus node in both local and Clustered environments.
 
 ## Local Setup
 

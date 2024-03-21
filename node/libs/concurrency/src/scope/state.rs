@@ -91,7 +91,7 @@ impl<E: 'static> TerminateGuard<E> {
 
 /// Wrapper of `State` which cancels the scope when dropped.
 /// Each "main" scope task must keep a reference to it to prevent
-/// scope premature cancelation. Note that the scope might get canceled
+/// scope premature cancellation. Note that the scope might get canceled
 /// earlier anyway via `TerminateGuard::set_err`.
 pub(super) struct CancelGuard<E: 'static>(Arc<TerminateGuard<E>>);
 
