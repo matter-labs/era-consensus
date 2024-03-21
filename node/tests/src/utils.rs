@@ -39,7 +39,8 @@ pub(crate) async fn get_last_commited_block(rpc_client: HttpClient) -> anyhow::R
         .await
         .context("Failed to get last commited block")?;
     let last_commited_block: u64 =
-        serde_json::from_value(response).context("Failed to parse last commited block")?;
+        serde_json::from_value(response.get("last_commited_block").unwrap().to_owned())
+            .context("Failed to parse last commited block")?;
     Ok(last_commited_block)
 }
 
@@ -48,14 +49,14 @@ pub(crate) async fn check_health_of_node(rpc_client: HttpClient) -> anyhow::Resu
         .request(health_check::method(), rpc_params!())
         .await
         .context("Failed to get last commited block")?;
-    let health_check: bool =
-        serde_json::from_value(response).context("Failed to parse health check")?;
+    let health_check: bool = serde_json::from_value(response.get("health").unwrap().to_owned())
+        .context("Failed to parse health check")?;
     Ok(health_check)
 }
 
 pub(crate) async fn get_consensus_node_rpc_client(node_id: &PodId) -> anyhow::Result<HttpClient> {
     let client = k8s::get_client().await?;
-    let socket = k8s::get_node_rpc_address_with_name(&client, &node_id.0)
+    let socket = k8s::get_node_rpc_address_with_id(&client, &node_id)
         .await
         .context("Failed to get node rpc address")?;
     let url: String = format!("http://{}", socket);
