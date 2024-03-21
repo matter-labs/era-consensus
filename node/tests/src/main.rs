@@ -1,9 +1,7 @@
 //! Binary containing the tests for the consensus nodes to run in the kubernetes cluster.
 use clap::{Args, Parser, Subcommand};
 use jsonrpsee::{
-    core::{client::ClientT, RpcResult},
-    http_client::HttpClientBuilder,
-    rpc_params,
+    core::RpcResult,
     server::{middleware::http::ProxyGetRequestLayer, Server},
     RpcModule,
 };
@@ -11,13 +9,16 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::{sync::Mutex, thread::sleep, time::Duration};
 use tracing::info;
+use utils::get_consensus_nodes_rpc_client;
 use zksync_concurrency::{
     ctx::{self, Ctx},
     scope,
 };
-use zksync_consensus_tools::{
-    k8s::{self, chaos::add_chaos_delay_for_pod},
-    rpc::methods::{health_check, last_commited_block},
+use zksync_consensus_tools::k8s::PodId;
+
+use crate::utils::{
+    add_chaos_delay_for_target_pods, check_health_of_node, get_consensus_node_rpc_client,
+    get_last_commited_block,
 };
 
 mod utils;
@@ -93,16 +94,10 @@ fn tests_status(counter: Arc<Mutex<u8>>) -> RpcResult<String> {
 /// Sanity test for the RPC server.
 /// We use unwraps here because this function is intended to be used like a test.
 pub async fn sanity_test(test_result: Arc<Mutex<u8>>) -> anyhow::Result<()> {
-    let client = k8s::get_client().await.unwrap();
-    let nodes_socket = k8s::get_consensus_nodes_rpc_address(&client).await.unwrap();
-    for socket in nodes_socket {
-        let url: String = format!("http://{}", socket);
-        let rpc_client = HttpClientBuilder::default().build(url).unwrap();
-        let response: serde_json::Value = rpc_client
-            .request(health_check::method(), rpc_params!())
-            .await
-            .unwrap();
-        assert_eq!(response, health_check::callback().unwrap());
+    let rpc_clients = get_consensus_nodes_rpc_client().await.unwrap();
+    for rpc_client in rpc_clients {
+        let response = check_health_of_node(rpc_client).await.unwrap();
+        assert!(response);
     }
     *test_result.lock().unwrap() += 1;
     Ok(())
@@ -112,40 +107,21 @@ pub async fn sanity_test(test_result: Arc<Mutex<u8>>) -> anyhow::Result<()> {
 /// This tests introduce some delay in a specific node and checks if it recovers after some time.
 /// We use unwraps here because this function is intended to be used like a test.
 pub async fn delay_test(test_result: Arc<Mutex<u8>>) -> anyhow::Result<()> {
-    let client = k8s::get_client().await.unwrap();
-    let target_node = "consensus-node-01";
-    let ip = k8s::get_node_rpc_address_with_name(&client, target_node)
+    let target_nodes = vec![PodId::from("consensus-node-01")];
+    add_chaos_delay_for_target_pods(target_nodes.clone(), 10)
         .await
         .unwrap();
-    add_chaos_delay_for_pod(&client, target_node, 10)
+    let rpc_client = get_consensus_node_rpc_client(target_nodes.first().unwrap())
         .await
         .unwrap();
-    let url: String = format!("http://{}", ip);
-    let rpc_client = HttpClientBuilder::default().build(url).unwrap();
-    let response: serde_json::Value = rpc_client
-        .request(last_commited_block::method(), rpc_params!())
-        .await
-        .unwrap();
-    let last_voted_view: u64 =
-        serde_json::from_value(response.get("last_commited_block").unwrap().to_owned()).unwrap();
+    let last_commited_block = get_last_commited_block(rpc_client.clone()).await.unwrap();
     for _ in 0..5 {
-        let response: serde_json::Value = rpc_client
-            .request(last_commited_block::method(), rpc_params!())
-            .await
-            .unwrap();
-        let new_last_voted_view: u64 =
-            serde_json::from_value(response.get("last_commited_block").unwrap().to_owned())
-                .unwrap();
-        assert_eq!(new_last_voted_view, last_voted_view);
+        let new_last_commited_block = get_last_commited_block(rpc_client.clone()).await.unwrap();
+        assert_eq!(new_last_commited_block, last_commited_block);
     }
     sleep(Duration::from_secs(10));
-    let response: serde_json::Value = rpc_client
-        .request(last_commited_block::method(), rpc_params!())
-        .await
-        .unwrap();
-    let new_last_voted_view: u64 =
-        serde_json::from_value(response.get("last_commited_block").unwrap().to_owned()).unwrap();
-    assert!(new_last_voted_view > last_voted_view);
+    let new_last_commited_block = get_last_commited_block(rpc_client.clone()).await.unwrap();
+    assert!(new_last_commited_block > last_commited_block);
     *test_result.lock().unwrap() += 1;
     Ok(())
 }
