@@ -496,7 +496,7 @@ impl Test for LimitingGetBlockConcurrency {
             message_responses.keys().copied().collect::<HashSet<_>>(),
             setup.blocks[0..3].iter().map(|b| b.number()).collect(),
         );
-        tracing::info!("blocks requrested");
+        tracing::info!("blocks requested");
 
         // Send a correct response.
         let response = message_responses.remove(&setup.blocks[0].number()).unwrap();

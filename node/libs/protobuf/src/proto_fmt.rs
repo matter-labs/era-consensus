@@ -85,7 +85,7 @@ impl Wire {
         }
     }
 
-    /// Converts wire type to the raw wite type value.
+    /// Converts wire type to the raw wire type value.
     pub(crate) const fn raw(self) -> u32 {
         match self {
             Self::Varint => VARINT,

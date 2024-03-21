@@ -60,7 +60,7 @@ impl ConsensusNode {
         .await
     }
 
-    /// Fetchs the pod's IP address and assignts to self.node_addr
+    /// Fetches the pod's IP address and assigns to self.node_addr
     pub async fn fetch_and_assign_pod_ip(
         &mut self,
         client: &Client,
