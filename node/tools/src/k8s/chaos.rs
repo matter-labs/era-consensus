@@ -9,6 +9,8 @@ use k8s_openapi::api::rbac::v1::{PolicyRule, Role, RoleBinding, RoleRef, Subject
 use kube::{core::ObjectMeta, Client};
 use tracing::log::info;
 
+use super::PodId;
+
 /// Spec for the NetworkChaos CRD.
 #[derive(CustomResource, Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[kube(
@@ -139,7 +141,7 @@ pub async fn create_or_reuse_network_chaos_role(client: &Client) -> anyhow::Resu
 /// Create a network chaos resource to add delay to the network for a specific pod.
 pub async fn add_chaos_delay_for_pod(
     client: &Client,
-    node_name: &str,
+    node_name: PodId,
     duration_secs: u8,
 ) -> anyhow::Result<()> {
     let chaos = NetworkChaos::new(
@@ -149,7 +151,7 @@ pub async fn add_chaos_delay_for_pod(
             mode: NetworkChaosMode::One,
             selector: NetworkChaosSelector {
                 namespaces: vec![DEFAULT_NAMESPACE.to_string()].into(),
-                label_selectors: Some([("app".to_string(), node_name.to_string())].into()),
+                label_selectors: Some([("app".to_string(), node_name.0.to_string())].into()),
             },
             delay: NetworkChaosDelay {
                 latency: "1000ms".to_string(),

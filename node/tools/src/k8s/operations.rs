@@ -20,6 +20,7 @@ use kube::{
     core::ObjectMeta,
     Api, Client,
 };
+use std::fmt::Display;
 use std::{collections::BTreeMap, net::SocketAddr, time::Duration};
 use tokio::time;
 use tracing::log::info;
@@ -32,11 +33,26 @@ const DOCKER_IMAGE_NAME: &str = "consensus-node";
 /// K8s namespace for consensus nodes.
 pub const DEFAULT_NAMESPACE: &str = "consensus";
 
+#[derive(Debug, Clone)]
+pub struct PodId(pub String);
+
+impl From<&str> for PodId {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl Display for PodId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 /// Consensus Node Representation
 #[derive(Debug)]
 pub struct ConsensusNode {
     /// Node identifier
-    pub id: String,
+    pub id: PodId,
     /// Node configuration
     pub config: AppConfig,
     /// Node key
@@ -59,7 +75,7 @@ impl ConsensusNode {
         let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
         // Wait until the pod is running, otherwise we get an error.
         retry(15, Duration::from_millis(1000), || async {
-            get_running_pod(&pods, &self.id).await
+            get_running_pod(&pods, &self.id.0).await
         })
         .await
     }
@@ -89,33 +105,33 @@ impl ConsensusNode {
         let cli_args = get_cli_args(self);
         let deployment = Deployment {
             metadata: ObjectMeta {
-                name: Some(self.id.to_owned()),
+                name: Some(self.id.0.to_owned()),
                 namespace: Some(namespace.to_owned()),
                 ..Default::default()
             },
             spec: Some(DeploymentSpec {
                 selector: LabelSelector {
-                    match_labels: Some(BTreeMap::from([("app".to_owned(), self.id.to_owned())])),
+                    match_labels: Some(BTreeMap::from([("app".to_owned(), self.id.0.to_owned())])),
                     ..Default::default()
                 },
                 replicas: Some(1),
                 template: PodTemplateSpec {
                     metadata: Some(ObjectMeta {
                         labels: Some(BTreeMap::from([
-                            ("app".to_owned(), self.id.to_owned()),
-                            ("id".to_owned(), self.id.to_owned()),
+                            ("app".to_owned(), self.id.0.to_owned()),
+                            ("id".to_owned(), self.id.0.to_owned()),
                             ("seed".to_owned(), self.is_seed.to_string()),
                         ])),
                         ..Default::default()
                     }),
                     spec: Some(PodSpec {
                         containers: vec![Container {
-                            name: self.id.to_owned(),
+                            name: self.id.0.to_owned(),
                             image: Some(DOCKER_IMAGE_NAME.to_owned()),
                             env: Some(vec![
                                 EnvVar {
                                     name: "NODE_ID".to_owned(),
-                                    value: Some(self.id.to_owned()),
+                                    value: Some(self.id.0.to_owned()),
                                     ..Default::default()
                                 },
                                 EnvVar {
