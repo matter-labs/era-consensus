@@ -233,12 +233,12 @@ pub fn get_node_rpc_address(pod: Pod) -> anyhow::Result<SocketAddr> {
     Ok(pod_rpc_addr)
 }
 
-pub async fn get_node_rpc_address_with_name(
+pub async fn get_node_rpc_address_with_id(
     client: &Client,
-    pod_id: &str,
+    pod_id: &PodId,
 ) -> anyhow::Result<SocketAddr> {
     let pods: Api<Pod> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
-    let lp = ListParams::default().labels(&format!("id={}", pod_id));
+    let lp = ListParams::default().labels(&format!("id={}", pod_id.0));
     let pod = pods
         .list(&lp)
         .await?

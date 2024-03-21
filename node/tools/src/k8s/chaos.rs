@@ -141,17 +141,17 @@ pub async fn create_or_reuse_network_chaos_role(client: &Client) -> anyhow::Resu
 /// Create a network chaos resource to add delay to the network for a specific pod.
 pub async fn add_chaos_delay_for_pod(
     client: &Client,
-    node_name: PodId,
+    pod_ip: PodId,
     duration_secs: u8,
 ) -> anyhow::Result<()> {
     let chaos = NetworkChaos::new(
-        "chaos-delay",
+        format!("chaos-delay-{}", pod_ip).as_str(),
         NetworkChaosSpec {
             action: NetworkChaosAction::Delay,
             mode: NetworkChaosMode::One,
             selector: NetworkChaosSelector {
                 namespaces: vec![DEFAULT_NAMESPACE.to_string()].into(),
-                label_selectors: Some([("app".to_string(), node_name.0.to_string())].into()),
+                label_selectors: Some([("app".to_string(), pod_ip.to_string())].into()),
             },
             delay: NetworkChaosDelay {
                 latency: "1000ms".to_string(),
