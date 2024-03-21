@@ -1,9 +1,13 @@
-use crate::k8s::DEFAULT_NAMESPACE;
+use crate::k8s::{get_last_view, DEFAULT_NAMESPACE};
+use jsonrpsee::http_client::HttpClient;
 use kube::api::{Api, PostParams};
 use kube::CustomResource;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
+use zksync_concurrency::oneshot;
+use zksync_consensus_roles::validator::{View, ViewNumber};
 
+use crate::k8s;
 use anyhow::Context;
 use k8s_openapi::api::rbac::v1::{PolicyRule, Role, RoleBinding, RoleRef, Subject};
 use kube::{core::ObjectMeta, Client};
@@ -58,7 +62,7 @@ pub struct NetworkChaosDelay {
 }
 
 /// Create custom role and role binding for the tester pod.
-/// This role will allow the tester pod to deploy network chaos resources.
+/// This role will allow the tester pod to deploy and delete network chaos resources.
 pub async fn create_or_reuse_network_chaos_role(client: &Client) -> anyhow::Result<()> {
     let roles: Api<Role> = Api::namespaced(client.to_owned(), "chaos-mesh");
     match roles.get_opt("network-chaos-reader").await? {
@@ -83,6 +87,7 @@ pub async fn create_or_reuse_network_chaos_role(client: &Client) -> anyhow::Resu
                         "list".to_owned(),
                         "watch".to_owned(),
                         "create".to_owned(),
+                        "delete".to_owned(),
                     ],
                     ..Default::default()
                 }]
@@ -138,26 +143,100 @@ pub async fn create_or_reuse_network_chaos_role(client: &Client) -> anyhow::Resu
     Ok(())
 }
 
+pub struct ChaosScheduler {
+    from_view: ViewNumber,
+    to_view: ViewNumber,
+    target_pods: Vec<PodId>,
+}
+
+impl ChaosScheduler {
+    pub fn new(from_view: u64, to_view: u64, target_pods: Vec<PodId>) -> Self {
+        Self {
+            from_view: ViewNumber(from_view),
+            to_view: ViewNumber(to_view),
+            target_pods,
+        }
+    }
+
+    async fn check_for_start_view(
+        &self,
+        client: &Client,
+        rpc_client: HttpClient,
+    ) -> anyhow::Result<()> {
+        info!("Checking for start view");
+        let (start_sender, start_receiver) = std::sync::mpsc::channel();
+        let (start_view, end_view) = (self.from_view.0, self.to_view.0);
+        let task = tokio::task::spawn(async move {
+            let response = get_last_view(rpc_client).await.unwrap();
+            info!("Last view: {}", response);
+            if response >= start_view && response <= end_view {
+                start_sender.send(()).unwrap();
+            }
+        });
+        if start_receiver.recv().is_ok() {
+            task.abort();
+            for pod_id in self.target_pods.iter() {
+                info!("Adding chaos delay for pod: {}", pod_id.0);
+                add_chaos_delay_for_pod(&client, pod_id.clone()).await?;
+            }
+        }
+        Ok(())
+    }
+
+    async fn check_for_end_view(
+        &self,
+        client: &Client,
+        rpc_client: HttpClient,
+    ) -> anyhow::Result<()> {
+        info!("Checking for end view");
+        let (end_sender, end_receiver) = std::sync::mpsc::channel();
+        let end_view = self.to_view.0;
+        let task = tokio::task::spawn(async move {
+            let response = get_last_view(rpc_client).await.unwrap();
+            info!("Last view: {}", response);
+            if response >= end_view {
+                end_sender.send(()).unwrap();
+            }
+        });
+        if end_receiver.recv().is_ok() {
+            task.abort();
+            for pod_id in self.target_pods.iter() {
+                info!("Deleting chaos delay for pod: {}", pod_id.0);
+                remove_chaos_delay_for_pod(&client, pod_id.clone()).await?;
+            }
+        }
+        Ok(())
+    }
+
+    pub async fn schedule_delay(&self) -> anyhow::Result<()> {
+        let client = Client::try_default().await?;
+        for pod_id in self.target_pods.iter() {
+            let rpc_client = k8s::get_consensus_node_rpc_client(&pod_id).await?;
+            self.check_for_start_view(&client, rpc_client.clone())
+                .await?;
+            info!("Waiting for end view");
+            self.check_for_end_view(&client, rpc_client).await?;
+        }
+        Ok(())
+    }
+}
+
 /// Create a network chaos resource to add delay to the network for a specific pod.
-pub async fn add_chaos_delay_for_pod(
-    client: &Client,
-    node_name: PodId,
-    duration_secs: u8,
-) -> anyhow::Result<()> {
+pub async fn add_chaos_delay_for_pod(client: &Client, node_name: PodId) -> anyhow::Result<()> {
     let chaos = NetworkChaos::new(
-        "chaos-delay",
+        &format!("chaos-delay-{}", node_name.0),
         NetworkChaosSpec {
             action: NetworkChaosAction::Delay,
             mode: NetworkChaosMode::One,
             selector: NetworkChaosSelector {
                 namespaces: vec![DEFAULT_NAMESPACE.to_string()].into(),
-                label_selectors: Some([("app".to_string(), node_name.0.to_string())].into()),
+                label_selectors: Some([("app".to_string(), node_name.0)].into()),
             },
             delay: NetworkChaosDelay {
                 latency: "1000ms".to_string(),
                 ..Default::default()
             },
-            duration: format!("{}s", duration_secs).into(),
+            duration: None,
         },
     );
 
@@ -172,5 +251,16 @@ pub async fn add_chaos_delay_for_pod(
             .name
             .context("Name not defined in metadata")?
     );
+    Ok(())
+}
+
+pub async fn remove_chaos_delay_for_pod(client: &Client, node_name: PodId) -> anyhow::Result<()> {
+    let chaos_deployments: Api<NetworkChaos> = Api::namespaced(client.clone(), "chaos-mesh");
+    let result = chaos_deployments
+        .delete(&format!("chaos-delay-{}", node_name.0), &Default::default())
+        .await?;
+    if result.right().unwrap().is_success() {
+        info!("Chaos for: {} , deleted", node_name.0);
+    }
     Ok(())
 }

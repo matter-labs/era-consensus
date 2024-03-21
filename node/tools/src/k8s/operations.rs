@@ -1,6 +1,11 @@
 use crate::config::AppConfig;
+use crate::k8s;
+use crate::rpc::methods::last_view;
 use crate::{config, NodeAddr};
 use anyhow::Context;
+use jsonrpsee::core::client::ClientT;
+use jsonrpsee::http_client::{HttpClient, HttpClientBuilder};
+use jsonrpsee::rpc_params;
 use k8s_openapi::api::core::v1::Service;
 use k8s_openapi::api::core::v1::ServicePort;
 use k8s_openapi::api::core::v1::ServiceSpec;
@@ -235,10 +240,10 @@ pub fn get_node_rpc_address(pod: Pod) -> anyhow::Result<SocketAddr> {
 
 pub async fn get_node_rpc_address_with_name(
     client: &Client,
-    pod_id: &str,
+    pod_id: &PodId,
 ) -> anyhow::Result<SocketAddr> {
     let pods: Api<Pod> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
-    let lp = ListParams::default().labels(&format!("id={}", pod_id));
+    let lp = ListParams::default().labels(&format!("id={}", pod_id.0));
     let pod = pods
         .list(&lp)
         .await?
@@ -534,4 +539,37 @@ where
         }
     }
     unreachable!("Loop should always return")
+}
+
+pub async fn get_consensus_nodes_rpc_client() -> anyhow::Result<Vec<HttpClient>> {
+    let client = get_client().await?;
+    let nodes_socket = get_consensus_nodes_rpc_address(&client).await?;
+    let mut rpc_clients = Vec::new();
+    for socket in nodes_socket {
+        let url: String = format!("http://{}", socket);
+        let rpc_client = HttpClientBuilder::default().build(url).unwrap();
+        rpc_clients.push(rpc_client);
+    }
+    info!("RPC clients: {:?}", rpc_clients);
+    Ok(rpc_clients)
+}
+
+pub(crate) async fn get_consensus_node_rpc_client(node_id: &PodId) -> anyhow::Result<HttpClient> {
+    let client = get_client().await?;
+    let socket = get_node_rpc_address_with_name(&client, &node_id)
+        .await
+        .context("Failed to get node rpc address")?;
+    let url: String = format!("http://{}", socket);
+    let rpc_client = HttpClientBuilder::default().build(url).unwrap();
+    Ok(rpc_client)
+}
+
+pub async fn get_last_view(rpc_client: HttpClient) -> anyhow::Result<u64> {
+    let response: serde_json::Value = rpc_client
+        .request(last_view::method(), rpc_params!())
+        .await
+        .context("Failed to get last view")?;
+    let last_view: u64 = serde_json::from_value(response.get("last_view").unwrap().to_owned())
+        .context("Failed to parse last view")?;
+    Ok(last_view)
 }

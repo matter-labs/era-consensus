@@ -2,19 +2,22 @@
 use clap::{Args, Parser, Subcommand};
 use jsonrpsee::{
     core::RpcResult,
-    server::{middleware::http::ProxyGetRequestLayer, Server},
+    http_client::{HttpClient, HttpClientBuilder},
+    server::{
+        middleware::{http::ProxyGetRequestLayer, rpc},
+        Server,
+    },
     RpcModule,
 };
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::{sync::Mutex, thread::sleep, time::Duration};
 use tracing::info;
-use utils::get_consensus_nodes_rpc_client;
 use zksync_concurrency::{
     ctx::{self, Ctx},
     scope,
 };
-use zksync_consensus_tools::k8s::PodId;
+use zksync_consensus_tools::k8s::{chaos::ChaosScheduler, get_consensus_nodes_rpc_client, PodId};
 
 use crate::utils::{
     add_chaos_delay_for_target_pods, check_health_of_node, get_consensus_node_rpc_client,
@@ -96,8 +99,8 @@ fn tests_status(counter: Arc<Mutex<u8>>) -> RpcResult<String> {
 pub async fn sanity_test(test_result: Arc<Mutex<u8>>) -> anyhow::Result<()> {
     let rpc_clients = get_consensus_nodes_rpc_client().await.unwrap();
     for rpc_client in rpc_clients {
-        let response = check_health_of_node(rpc_client).await.unwrap();
-        assert!(response);
+        let node_is_live = check_health_of_node(rpc_client).await.unwrap();
+        assert!(node_is_live);
     }
     *test_result.lock().unwrap() += 1;
     Ok(())
@@ -108,7 +111,8 @@ pub async fn sanity_test(test_result: Arc<Mutex<u8>>) -> anyhow::Result<()> {
 /// We use unwraps here because this function is intended to be used like a test.
 pub async fn delay_test(test_result: Arc<Mutex<u8>>) -> anyhow::Result<()> {
     let target_nodes = vec![PodId::from("consensus-node-01")];
-    add_chaos_delay_for_target_pods(target_nodes.clone(), 10)
+    ChaosScheduler::new(1, 1500, target_nodes.clone())
+        .schedule_delay()
         .await
         .unwrap();
     let rpc_client = get_consensus_node_rpc_client(target_nodes.first().unwrap())
