@@ -127,11 +127,20 @@ impl StateMachine {
             .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()))
             .add(&signed_message, self.config.genesis());
 
-        // We store the message in our cache.
         let cache_entry = self
             .commit_message_cache
             .entry(message.view.number)
             .or_default();
+
+        // We check validators weight from current messages
+        // TODO: this is wrong, we have to calculate previous weights by proposal
+        let previous_weight = self
+            .config
+            .genesis()
+            .validators
+            .weight_from_msgs(&cache_entry.values().collect());
+
+        // We store the message in our cache.
         cache_entry.insert(author.clone(), signed_message.clone());
 
         // Now we check if we have enough messages to continue.
@@ -146,7 +155,9 @@ impl StateMachine {
         else {
             return Ok(());
         };
-        debug_assert_eq!(replica_messages.len(), threshold);
+        // Check that previous weight did not reach threshold
+        // to ensure this is the first time the threshold has been reached
+        debug_assert!(previous_weight < threshold);
 
         // ----------- Update the state machine --------------
 

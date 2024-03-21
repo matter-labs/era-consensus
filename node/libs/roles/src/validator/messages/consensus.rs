@@ -83,8 +83,13 @@ pub struct ValidatorCommittee {
 }
 
 impl ValidatorCommittee {
+    /// Maximum validator weight
+    /// 100.00%
+    pub const MAX_WEIGHT: usize = 10000;
+
     /// Required weight to verify signatures.
-    const THRESHOLD: usize = 100_00;
+    /// Currently 80.00%
+    const THRESHOLD: usize = 8000;
 
     /// Creates a new ValidatorCommittee from a list of validator public keys.
     pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
@@ -135,17 +140,17 @@ impl ValidatorCommittee {
         self.vec.len()
     }
 
-    /// Returns true if the given validator is in the validator set.
+    /// Returns true if the given validator is in the validator committee.
     pub fn contains(&self, validator: &validator::PublicKey) -> bool {
         self.indexes.contains_key(validator)
     }
 
-    /// Get validator by its index in the set.
+    /// Get validator by its index in the committee.
     pub fn get(&self, index: usize) -> Option<&validator::PublicKey> {
         self.vec.get(index)
     }
 
-    /// Get the index of a validator in the set.
+    /// Get the index of a validator in the committee.
     pub fn index(&self, validator: &validator::PublicKey) -> Option<usize> {
         self.indexes.get(validator).copied()
     }
@@ -156,12 +161,12 @@ impl ValidatorCommittee {
         self.get(index).unwrap().clone()
     }
 
-    /// Signature threshold for this validator set.
+    /// Signature threshold for this validator committee.
     pub fn threshold(&self) -> usize {
         Self::THRESHOLD
     }
 
-    /// Maximal number of faulty replicas allowed in this validator set.
+    /// Maximal number of faulty replicas allowed in this validator committee.
     pub fn faulty_replicas(&self) -> usize {
         faulty_replicas(self.len())
     }

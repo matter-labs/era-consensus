@@ -7,12 +7,12 @@ use crate::{
     testonly, Config, PayloadManager,
 };
 use assert_matches::assert_matches;
-use std::{cmp::Ordering, sync::Arc};
+use std::sync::Arc;
 use zksync_concurrency::ctx;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator::{
     self, CommitQC, LeaderCommit, LeaderPrepare, Phase, PrepareQC, ReplicaCommit, ReplicaPrepare,
-    SecretKey, Signed, ViewNumber,
+    SecretKey, Signed, ValidatorCommittee, ViewNumber,
 };
 use zksync_consensus_storage::{
     testonly::{in_memory, new_store},
@@ -224,15 +224,23 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaPrepare,
     ) -> Signed<LeaderPrepare> {
+        let expected_validator_weight = ValidatorCommittee::MAX_WEIGHT / self.keys.len();
         let want_threshold = self.genesis().validators.threshold();
         let mut leader_prepare = None;
         let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
+        let mut first_match = true;
         for (i, msg) in msgs.into_iter().enumerate() {
             let res = self.process_replica_prepare(ctx, msg).await;
-            match (i + 1).cmp(&want_threshold) {
-                Ordering::Equal => leader_prepare = res.unwrap(),
-                Ordering::Less => assert!(res.unwrap().is_none()),
-                Ordering::Greater => assert_matches!(res, Err(replica_prepare::Error::Old { .. })),
+            match (
+                (i + 1) * expected_validator_weight < want_threshold,
+                first_match,
+            ) {
+                (true, _) => assert!(res.unwrap().is_none()),
+                (false, true) => {
+                    first_match = false;
+                    leader_prepare = res.unwrap()
+                }
+                (false, false) => assert_matches!(res, Err(replica_prepare::Error::Old { .. })),
             }
         }
         leader_prepare.unwrap()
@@ -252,15 +260,23 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaCommit,
     ) -> Signed<LeaderCommit> {
+        let expected_validator_weight = ValidatorCommittee::MAX_WEIGHT / self.keys.len();
+        let want_threshold = self.genesis().validators.threshold();
+        let mut first_match = true;
         for (i, key) in self.keys.iter().enumerate() {
             let res = self
                 .leader
                 .process_replica_commit(ctx, key.sign_msg(msg.clone()));
-            let want_threshold = self.genesis().validators.threshold();
-            match (i + 1).cmp(&want_threshold) {
-                Ordering::Equal => res.unwrap(),
-                Ordering::Less => res.unwrap(),
-                Ordering::Greater => assert_matches!(res, Err(replica_commit::Error::Old { .. })),
+            match (
+                (i + 1) * expected_validator_weight < want_threshold,
+                first_match,
+            ) {
+                (true, _) => res.unwrap(),
+                (false, true) => {
+                    first_match = false;
+                    res.unwrap()
+                }
+                (false, false) => assert_matches!(res, Err(replica_commit::Error::Old { .. })),
             }
         }
         self.try_recv().unwrap()

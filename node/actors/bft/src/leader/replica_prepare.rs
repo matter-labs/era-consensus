@@ -137,21 +137,28 @@ impl StateMachine {
             .or_insert_with(|| validator::PrepareQC::new(message.view.clone()))
             .add(&signed_message, self.config.genesis());
 
-        // We store the message in our cache.
-        self.prepare_message_cache
-            .entry(message.view.number)
-            .or_default()
-            .insert(author.clone(), signed_message);
-
-        // Now we check if we have enough messages to continue.
-        let messages: Vec<&validator::Signed<validator::ReplicaPrepare>> = self
+        // Work on current view messages
+        let entry = self
             .prepare_message_cache
-            .get(&message.view.number)
-            .unwrap()
-            .values()
-            .collect();
+            .entry(message.view.number)
+            .or_default();
 
-        let weight = self.config.genesis().validators.weight_from_msgs(&messages);
+        // We check validators weight from current messages
+        let previous_weight = self
+            .config
+            .genesis()
+            .validators
+            .weight_from_msgs(&entry.values().collect());
+
+        // We store the message in our cache.
+        entry.insert(author.clone(), signed_message);
+
+        // Now we check if we have enough weight to continue.
+        let weight = self
+            .config
+            .genesis()
+            .validators
+            .weight_from_msgs(&entry.values().collect());
         let threshold = self.config.genesis().validators.threshold();
         if weight < threshold {
             return Ok(());
@@ -161,7 +168,9 @@ impl StateMachine {
         // for this same view if we receive another replica prepare message after this.
         self.prepare_message_cache.remove(&message.view.number);
 
-        debug_assert!(weight >= threshold);
+        // Check that previous weight did not reach threshold
+        // to ensure this is the first time the threshold has been reached
+        debug_assert!(previous_weight < threshold);
 
         // ----------- Update the state machine --------------
 

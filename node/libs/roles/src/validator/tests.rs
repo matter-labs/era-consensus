@@ -200,6 +200,7 @@ fn test_commit_qc() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
+    // This will ceate equally weighted validators
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
@@ -216,7 +217,8 @@ fn test_commit_qc() {
         for key in &setup1.keys[0..i] {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis);
         }
-        if i >= setup1.genesis.validators.threshold() {
+        let expected_weight = i * ValidatorCommittee::MAX_WEIGHT / 6;
+        if expected_weight >= setup1.genesis.validators.threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {
             assert_matches!(
@@ -237,6 +239,7 @@ fn test_prepare_qc() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
+    // This will ceate equally weighted validators
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
@@ -260,7 +263,8 @@ fn test_prepare_qc() {
                 &setup1.genesis,
             );
         }
-        if n >= setup1.genesis.validators.threshold() {
+        let expected_weight = n * ValidatorCommittee::MAX_WEIGHT / 6;
+        if expected_weight >= setup1.genesis.validators.threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {
             assert_matches!(
