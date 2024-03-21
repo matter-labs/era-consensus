@@ -221,7 +221,7 @@ fn test_commit_qc() {
         } else {
             assert_matches!(
                 qc.verify(&setup1.genesis),
-                Err(Error::NotEnoughSigners { .. })
+                Err(Error::WeightNotReached { .. })
             );
         }
 
@@ -265,7 +265,7 @@ fn test_prepare_qc() {
         } else {
             assert_matches!(
                 qc.verify(&setup1.genesis),
-                Err(Error::NotEnoughSigners { .. })
+                Err(Error::WeightNotReached { .. })
             );
         }
 
@@ -306,6 +306,9 @@ fn test_validator_committee_weights() {
         let key = &setup.keys[n];
         qc.add(&key.sign_msg(msg.clone()), &setup.genesis);
         let signers = &qc.map[&msg];
-        assert_eq!(genesis.validators.weight(signers.clone()), *weight);
+        assert_eq!(
+            genesis.validators.weight_from_signers(signers.clone()),
+            *weight
+        );
     }
 }

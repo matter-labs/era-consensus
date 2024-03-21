@@ -144,13 +144,16 @@ impl StateMachine {
             .insert(author.clone(), signed_message);
 
         // Now we check if we have enough messages to continue.
-        let num_messages = self
+        let messages: Vec<&validator::Signed<validator::ReplicaPrepare>> = self
             .prepare_message_cache
             .get(&message.view.number)
             .unwrap()
-            .len();
+            .values()
+            .collect();
 
-        if num_messages < self.config.genesis().validators.threshold() {
+        let weight = self.config.genesis().validators.weight_from_msgs(&messages);
+        let threshold = self.config.genesis().validators.threshold();
+        if weight < threshold {
             return Ok(());
         }
 
@@ -158,7 +161,7 @@ impl StateMachine {
         // for this same view if we receive another replica prepare message after this.
         self.prepare_message_cache.remove(&message.view.number);
 
-        debug_assert_eq!(num_messages, self.config.genesis().validators.threshold());
+        debug_assert!(weight >= threshold);
 
         // ----------- Update the state machine --------------
 

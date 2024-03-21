@@ -70,7 +70,7 @@ impl StateMachine {
             });
         }
 
-        // Check that the message signer is in the validator set.
+        // Check that the message signer is in the validator committee.
         if !self.config.genesis().validators.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone(),
@@ -140,8 +140,9 @@ impl StateMachine {
             by_proposal.entry(msg.msg.proposal).or_default().push(msg);
         }
         let threshold = self.config.genesis().validators.threshold();
-        let Some((_, replica_messages)) =
-            by_proposal.into_iter().find(|(_, v)| v.len() >= threshold)
+        let Some((_, replica_messages)) = by_proposal
+            .into_iter()
+            .find(|(_, v)| self.config.genesis().validators.weight_from_msgs(v) >= threshold)
         else {
             return Ok(());
         };

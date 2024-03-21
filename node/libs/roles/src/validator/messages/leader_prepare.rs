@@ -30,12 +30,12 @@ pub enum PrepareQCVerifyError {
     /// Bad message format.
     #[error(transparent)]
     BadFormat(anyhow::Error),
-    /// Not enough signers.
-    #[error("not enough signers: got {got}, want {want}")]
-    NotEnoughSigners {
-        /// Got signers.
+    /// Weight not reached.
+    #[error("Signers have not reached wanted weight: got {got}, want {want}")]
+    WeightNotReached {
+        /// Got weight.
         got: usize,
-        /// Want signers.
+        /// Want weight.
         want: usize,
     },
     /// Bad signature.
@@ -127,14 +127,12 @@ impl PrepareQC {
             sum |= signers;
         }
 
-        let weight = genesis.validators.weight(sum.clone());
-        dbg!(weight);
-
-        // Verify that we have enough signers.
+        // Verify the signer's weights is enough.
+        let weight = genesis.validators.weight_from_signers(sum.clone());
         let threshold = genesis.validators.threshold();
-        if sum.count() < threshold {
-            return Err(Error::NotEnoughSigners {
-                got: sum.count(),
+        if weight < threshold {
+            return Err(Error::WeightNotReached {
+                got: weight,
                 want: threshold,
             });
         }

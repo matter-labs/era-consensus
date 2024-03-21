@@ -83,6 +83,9 @@ pub struct ValidatorCommittee {
 }
 
 impl ValidatorCommittee {
+    /// Required weight to verify signatures.
+    const THRESHOLD: usize = 100_00;
+
     /// Creates a new ValidatorCommittee from a list of validator public keys.
     pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
         let mut set = BTreeSet::new();
@@ -155,7 +158,7 @@ impl ValidatorCommittee {
 
     /// Signature threshold for this validator set.
     pub fn threshold(&self) -> usize {
-        threshold(self.len())
+        Self::THRESHOLD
     }
 
     /// Maximal number of faulty replicas allowed in this validator set.
@@ -164,12 +167,24 @@ impl ValidatorCommittee {
     }
 
     /// Compute the sum of signers weights.
-    pub fn weight(&self, signers: Signers) -> usize {
+    pub fn weight_from_signers(&self, signers: Signers) -> usize {
         self.weights
             .iter()
             .enumerate()
             .filter(|(i, _)| signers.0[*i])
             .map(|(_, weight)| weight)
+            .sum()
+    }
+
+    /// Compute the sum of signers weights.
+    pub fn weight_from_msgs<T: Variant<Msg>>(&self, signed: &Vec<&validator::Signed<T>>) -> usize {
+        signed
+            .iter()
+            .map(|s| {
+                self.weights[self
+                    .index(&s.key)
+                    .expect("Signer is not in validator committee")]
+            })
             .sum()
     }
 }
