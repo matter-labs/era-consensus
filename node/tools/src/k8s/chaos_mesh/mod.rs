@@ -1,2 +1,5 @@
+pub mod actions;
 pub mod cdr;
-pub mod ops;
+pub mod roles;
+
+pub use actions::*;

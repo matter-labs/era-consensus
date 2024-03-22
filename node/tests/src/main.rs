@@ -14,7 +14,7 @@ use zksync_concurrency::{
     ctx::{self, Ctx},
     scope,
 };
-use zksync_consensus_tools::k8s::{chaos_mesh::ops::delete_chaos_delay_for_pod, PodId};
+use zksync_consensus_tools::k8s::{chaos_mesh::delete_chaos_delay_for_pod, PodId};
 
 use crate::utils::{
     add_chaos_delay_for_target_pods, check_health_of_node, get_consensus_node_rpc_client,

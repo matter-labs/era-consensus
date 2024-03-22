@@ -28,7 +28,7 @@ pub(crate) async fn get_consensus_nodes_rpc_client() -> anyhow::Result<Vec<HttpC
 pub(crate) async fn add_chaos_delay_for_target_pods(target_pods: Vec<PodId>) -> anyhow::Result<()> {
     let client = k8s::get_client().await?;
     for pod_id in target_pods {
-        chaos_mesh::ops::add_chaos_delay_for_pod(&client, pod_id).await?;
+        chaos_mesh::add_chaos_delay_for_pod(&client, pod_id).await?;
     }
     Ok(())
 }
@@ -82,7 +82,7 @@ pub(crate) async fn deploy_role() -> anyhow::Result<()> {
     let client = k8s::get_client().await?;
     k8s::create_or_reuse_namespace(&client, k8s::DEFAULT_NAMESPACE).await?;
     k8s::create_or_reuse_pod_reader_role(&client).await?;
-    chaos_mesh::ops::create_or_reuse_network_chaos_role(&client).await?;
+    chaos_mesh::roles::create_or_reuse_network_chaos_role(&client).await?;
     Ok(())
 }
 
