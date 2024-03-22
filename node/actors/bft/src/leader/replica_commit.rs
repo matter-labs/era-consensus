@@ -159,12 +159,12 @@ impl StateMachine {
         };
 
         // Check that previous weight did not reach threshold
+        // to ensure this is the first time the threshold has been reached
         let previous_weight = self
             .config
             .genesis()
             .validators
             .weight_from_msgs(by_proposal_before.entry(proposal).or_default());
-        // to ensure this is the first time the threshold has been reached
         debug_assert!(previous_weight < threshold);
 
         // ----------- Update the state machine --------------
