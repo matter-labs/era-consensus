@@ -410,7 +410,9 @@ pub async fn expose_tester_rpc(client: &Client) -> anyhow::Result<()> {
 
     let services: Api<Service> = Api::namespaced(client.clone(), DEFAULT_NAMESPACE);
     let post_params = PostParams::default();
-    let result = services.create(&post_params, &load_balancer_service).await?;
+    let result = services
+        .create(&post_params, &load_balancer_service)
+        .await?;
 
     info!(
         "Service: {} , created",
