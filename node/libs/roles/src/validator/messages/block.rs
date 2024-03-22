@@ -108,7 +108,7 @@ impl FinalBlock {
         }
     }
 
-    /// Header fo the block.
+    /// Header of the block.
     pub fn header(&self) -> &BlockHeader {
         &self.justification.message.proposal
     }
