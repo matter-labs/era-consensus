@@ -18,7 +18,7 @@ use zksync_consensus_tools::k8s::{chaos_mesh::ops::delete_chaos_delay_for_pod, P
 
 use crate::utils::{
     add_chaos_delay_for_target_pods, check_health_of_node, get_consensus_node_rpc_client,
-    get_last_commited_block,
+    get_last_committed_block,
 };
 
 mod utils;
@@ -114,14 +114,14 @@ pub async fn delay_test(test_result: Arc<Mutex<u8>>) -> anyhow::Result<()> {
     add_chaos_delay_for_target_pods(target_nodes.clone())
         .await
         .unwrap();
-    let last_commited_block = get_last_commited_block(rpc_client.clone()).await.unwrap();
+    let last_committed_block = get_last_committed_block(rpc_client.clone()).await.unwrap();
     delete_chaos_delay_for_pod(target_nodes.first().unwrap())
         .await
         .unwrap();
     // Wait for the deletion of the chaos delay.
     sleep(Duration::from_secs(2));
-    let new_last_commited_block = get_last_commited_block(rpc_client).await.unwrap();
-    assert!(new_last_commited_block > last_commited_block);
+    let new_last_committed_block = get_last_committed_block(rpc_client).await.unwrap();
+    assert!(new_last_committed_block > last_committed_block);
     *test_result.lock().unwrap() += 1;
     Ok(())
 }

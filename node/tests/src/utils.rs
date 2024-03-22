@@ -8,7 +8,7 @@ use jsonrpsee::{
 use zksync_consensus_tools::k8s::chaos_mesh;
 use zksync_consensus_tools::{
     k8s::{self, PodId},
-    rpc::methods::{health_check, last_commited_block},
+    rpc::methods::{health_check, last_committed_block},
 };
 
 /// Get the RPC clients for all the consensus nodes.
@@ -34,15 +34,15 @@ pub(crate) async fn add_chaos_delay_for_target_pods(target_pods: Vec<PodId>) -> 
 }
 
 /// Get the last commited block using the rpc_client of the consensus node.
-pub(crate) async fn get_last_commited_block(rpc_client: HttpClient) -> anyhow::Result<u64> {
+pub(crate) async fn get_last_committed_block(rpc_client: HttpClient) -> anyhow::Result<u64> {
     let response: serde_json::Value = rpc_client
-        .request(last_commited_block::method(), rpc_params!())
+        .request(last_committed_block::method(), rpc_params!())
         .await
         .context("Failed to get last commited block")?;
-    let last_commited_block: u64 =
-        serde_json::from_value(response.get("last_commited_block").unwrap().to_owned())
+    let last_committed_block: u64 =
+        serde_json::from_value(response.get("last_committed_block").unwrap().to_owned())
             .context("Failed to parse last commited block")?;
-    Ok(last_commited_block)
+    Ok(last_committed_block)
 }
 
 /// Check the health of the consensus node using its rpc_client.
