@@ -1,4 +1,4 @@
-pub mod chaos;
+pub mod chaos_mesh;
 mod operations;
 
 pub use operations::*;

@@ -5,6 +5,7 @@ use jsonrpsee::{
     http_client::{HttpClient, HttpClientBuilder},
     rpc_params,
 };
+use zksync_consensus_tools::k8s::chaos_mesh;
 use zksync_consensus_tools::{
     k8s::{self, PodId},
     rpc::methods::{health_check, last_commited_block},
@@ -28,7 +29,7 @@ pub(crate) async fn add_chaos_delay_for_target_pods(
 ) -> anyhow::Result<()> {
     let client = k8s::get_client().await?;
     for pod_id in target_pods {
-        k8s::chaos::add_chaos_delay_for_pod(&client, pod_id, delay).await?;
+        chaos_mesh::ops::add_chaos_delay_for_pod(&client, pod_id, delay).await?;
     }
     Ok(())
 }
@@ -79,7 +80,7 @@ pub(crate) async fn deploy_role() -> anyhow::Result<()> {
     let client = k8s::get_client().await?;
     k8s::create_or_reuse_namespace(&client, k8s::DEFAULT_NAMESPACE).await?;
     k8s::create_or_reuse_pod_reader_role(&client).await?;
-    k8s::chaos::create_or_reuse_network_chaos_role(&client).await?;
+    chaos_mesh::ops::create_or_reuse_network_chaos_role(&client).await?;
     Ok(())
 }
 
