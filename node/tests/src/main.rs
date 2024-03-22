@@ -1,11 +1,29 @@
-//! This is a simple test for the RPC server. It checks if the server is running and can respond to.
-use anyhow::{ensure, Context};
-use clap::{Parser, Subcommand};
-use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
-use std::{fs, io::Write, net::SocketAddr, path::PathBuf, str::FromStr};
-use zksync_consensus_tools::{k8s, rpc::methods::health_check};
+//! Binary containing the tests for the consensus nodes to run in the kubernetes cluster.
+use clap::{Args, Parser, Subcommand};
+use jsonrpsee::{
+    core::RpcResult,
+    server::{middleware::http::ProxyGetRequestLayer, Server},
+    RpcModule,
+};
+use std::net::SocketAddr;
+use std::sync::Arc;
+use std::{sync::Mutex, thread::sleep, time::Duration};
+use tracing::info;
+use utils::get_consensus_nodes_rpc_client;
+use zksync_concurrency::{
+    ctx::{self, Ctx},
+    scope,
+};
+use zksync_consensus_tools::k8s::{chaos_mesh::delete_chaos_delay_for_pod, PodId};
 
-/// Command line arguments.
+use crate::utils::{
+    add_chaos_delay_for_target_pods, check_health_of_node, get_consensus_node_rpc_client,
+    get_last_committed_block,
+};
+
+mod utils;
+
+/// CLI for the tester binary.
 #[derive(Debug, Parser)]
 #[command(name = "tester")]
 struct TesterCLI {
@@ -14,91 +32,124 @@ struct TesterCLI {
     command: TesterCommands,
 }
 
-/// Subcommands.
+/// Subcommands for the `tester` binary.
 #[derive(Subcommand, Debug)]
 enum TesterCommands {
-    /// Generate configs for the nodes.
-    GenerateConfig,
-    /// Set up the test pod.
+    /// Set up and deploy the test pod.
     StartPod,
-    /// Deploy the nodes.
-    Run,
+    /// Run the tests and the RPC server with the test results.
+    Run(RunArgs),
 }
 
-/// Get the path of the node ips config file.
-/// This way we can run the test from every directory and also inside kubernetes pod.
-fn get_config_path() -> PathBuf {
-    // This way we can run the test from every directory and also inside kubernetes pod.
-    let manifest_path = std::env::var("CARGO_MANIFEST_DIR");
-    if let Ok(manifest) = manifest_path {
-        PathBuf::from(&format!("{}/config.txt", manifest))
-    } else {
-        PathBuf::from("config.txt")
-    }
+/// Arguments for the `run` subcommand.
+#[derive(Args, Debug)]
+pub struct RunArgs {
+    /// Port for the RPC server to check the test results.
+    #[clap(long, default_value = "3030")]
+    pub rpc_port: u16,
 }
 
-/// Generate a config file with the IPs of the consensus nodes in the kubernetes cluster.
-pub async fn generate_config() -> anyhow::Result<()> {
-    let client = k8s::get_client().await?;
-    let pods_ip = k8s::get_consensus_nodes_address(&client)
-        .await
-        .context("Failed to get consensus pods address")?;
-    ensure!(
-        !pods_ip.is_empty(),
-        "No consensus pods found in the k8s cluster"
-    );
-    let config_file_path = get_config_path();
-    let mut config_file = fs::OpenOptions::new()
-        .write(true)
-        .create(true)
-        .truncate(true)
-        .open(config_file_path)?;
-    for addr in pods_ip {
-        writeln!(config_file, "{addr}").context("Failed to write to config file")?;
-    }
-    Ok(())
+/// Run the RPC server to check the test results.
+async fn run_test_rpc_server(
+    ctx: &Ctx,
+    port: u16,
+    test_result: Arc<Mutex<u8>>,
+) -> anyhow::Result<()> {
+    let ip_address = SocketAddr::from(([0, 0, 0, 0], port));
+    // Custom tower service to handle the RPC requests
+    let service_builder = tower::ServiceBuilder::new()
+        // Proxy `GET /<path>` requests to internal methods.
+        .layer(ProxyGetRequestLayer::new("/test_result", "test_result")?);
+
+    let mut module = RpcModule::new(());
+    let test_result = test_result.clone();
+    module.register_method("test_result", move |_params, _| {
+        tests_status(test_result.clone())
+    })?;
+
+    let server = Server::builder()
+        .set_http_middleware(service_builder)
+        .build(ip_address)
+        .await?;
+
+    let handle = server.start(module);
+    scope::run!(ctx, |ctx, s| async {
+        s.spawn_bg(async {
+            ctx.canceled().await;
+            let _ = handle.stop();
+            Ok(())
+        });
+        info!("Server started at {}", ip_address);
+        handle.clone().stopped().await;
+        Ok(())
+    })
+    .await
 }
 
-/// Start the tests pod in the kubernetes cluster.
-pub async fn start_tests_pod() -> anyhow::Result<()> {
-    let client = k8s::get_client().await?;
-    k8s::create_tests_deployment(&client)
-        .await
-        .context("Failed to create tests pod")?;
-    Ok(())
+/// Method for the RPC server to check the test results.
+fn tests_status(counter: Arc<Mutex<u8>>) -> RpcResult<String> {
+    Ok(format!("Tests passed: {}", counter.lock().unwrap()))
 }
 
 /// Sanity test for the RPC server.
 /// We use unwraps here because this function is intended to be used like a test.
-pub async fn sanity_test() {
-    let config_file_path = get_config_path();
-    let nodes_socket = fs::read_to_string(config_file_path).unwrap();
-    for socket in nodes_socket.lines() {
-        let socket = SocketAddr::from_str(socket).unwrap();
-        let url = format!("http://{}", socket);
-        let rpc_client = HttpClientBuilder::default().build(url).unwrap();
-        let response: serde_json::Value = rpc_client
-            .request(health_check::method(), rpc_params!())
-            .await
-            .unwrap();
-        assert_eq!(response, health_check::callback().unwrap());
+pub async fn sanity_test(test_result: Arc<Mutex<u8>>) -> anyhow::Result<()> {
+    let rpc_clients = get_consensus_nodes_rpc_client().await.unwrap();
+    for rpc_client in rpc_clients {
+        let response = check_health_of_node(rpc_client).await.unwrap();
+        assert!(response);
     }
+    *test_result.lock().unwrap() += 1;
+    Ok(())
+}
+
+/// Delay test for the RPC server.
+/// This tests introduce some delay in a specific node and checks if it recovers after some time.
+/// We use unwraps here because this function is intended to be used like a test.
+pub async fn delay_test(test_result: Arc<Mutex<u8>>) -> anyhow::Result<()> {
+    let target_nodes = vec![PodId::from("consensus-node-01")];
+    let rpc_client = get_consensus_node_rpc_client(target_nodes.first().unwrap())
+        .await
+        .unwrap();
+    add_chaos_delay_for_target_pods(target_nodes.clone())
+        .await
+        .unwrap();
+    let last_committed_block = get_last_committed_block(rpc_client.clone()).await.unwrap();
+    delete_chaos_delay_for_pod(target_nodes.first().unwrap())
+        .await
+        .unwrap();
+    // Wait for the deletion of the chaos delay.
+    sleep(Duration::from_secs(2));
+    let new_last_committed_block = get_last_committed_block(rpc_client).await.unwrap();
+    assert!(new_last_committed_block > last_committed_block);
+    *test_result.lock().unwrap() += 1;
+    Ok(())
 }
 
 /// Main function for the test.
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let args = TesterCLI::parse();
+    let ctx = &ctx::root();
     tracing_subscriber::fmt::init();
+    let args = TesterCLI::parse();
+    let test_passed = Arc::new(Mutex::new(0));
 
     match args.command {
-        TesterCommands::GenerateConfig => generate_config().await,
-        TesterCommands::StartPod => start_tests_pod().await,
-        TesterCommands::Run => {
-            tracing::info!("Running sanity test");
-            sanity_test().await;
-            tracing::info!("Test Passed!");
-            Ok(())
+        TesterCommands::StartPod => {
+            utils::deploy_role().await?;
+            utils::start_tests_pod().await?;
+            utils::deploy_rpc_service().await
+        }
+        TesterCommands::Run(args) => {
+            scope::run!(ctx, |ctx, s| async {
+                s.spawn(run_test_rpc_server(ctx, args.rpc_port, test_passed.clone()));
+                s.spawn(async {
+                    sanity_test(test_passed.clone()).await?;
+                    delay_test(test_passed.clone()).await
+                });
+                Ok(())
+            })
+            .await
         }
     }
 }

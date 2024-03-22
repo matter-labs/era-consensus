@@ -3,7 +3,7 @@ use clap::Parser;
 use std::collections::HashMap;
 use zksync_consensus_roles::node::SecretKey;
 use zksync_consensus_roles::validator;
-use zksync_consensus_tools::k8s::ConsensusNode;
+use zksync_consensus_tools::k8s::{ConsensusNode, PodId};
 use zksync_consensus_tools::{k8s, AppConfig};
 
 /// Command line arguments.
@@ -39,7 +39,7 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
 
     let mut cfgs: Vec<ConsensusNode> = (0..nodes)
         .map(|i| ConsensusNode {
-            id: format!("consensus-node-{i:0>2}"),
+            id: PodId::from(format!("consensus-node-{i:0>2}").as_str()),
             config: default_config.clone(),
             key: node_keys[i].clone(),
             validator_key: Some(validator_keys[i].clone()),
@@ -71,9 +71,9 @@ async fn deploy(nodes_amount: usize, seed_nodes_amount: Option<usize>) -> anyhow
     // Split the nodes in different hash maps as they will be deployed at different stages
     for node in consensus_nodes.iter_mut() {
         if node.is_seed {
-            seed_nodes.insert(node.id.to_owned(), node);
+            seed_nodes.insert(node.id.0.to_owned(), node);
         } else {
-            non_seed_nodes.insert(node.id.to_owned(), node);
+            non_seed_nodes.insert(node.id.0.to_owned(), node);
         }
     }
 

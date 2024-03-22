@@ -7,7 +7,6 @@ docker_build_tester:
 	docker build --output=../tools/docker_binaries --target=tester-binary -f ../../Dockerfile ../../
 
 start_k8s_tests:
-	cargo run --bin tester generate-config
 	$(MAKE) docker_test_image
 	minikube image load test-suite:latest
 	cargo run --bin tester start-pod

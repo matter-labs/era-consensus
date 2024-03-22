@@ -1,5 +1,9 @@
-use crate::{config, AppConfig, NodeAddr};
-use anyhow::{ensure, Context};
+use crate::config::AppConfig;
+use crate::{config, NodeAddr};
+use anyhow::Context;
+use k8s_openapi::api::core::v1::Service;
+use k8s_openapi::api::core::v1::ServicePort;
+use k8s_openapi::api::core::v1::ServiceSpec;
 use k8s_openapi::{
     api::{
         apps::v1::{Deployment, DeploymentSpec},
@@ -7,6 +11,7 @@ use k8s_openapi::{
             Container, ContainerPort, EnvVar, EnvVarSource, HTTPGetAction, Namespace,
             ObjectFieldSelector, Pod, PodSpec, PodTemplateSpec, Probe,
         },
+        rbac::v1::{PolicyRule, Role, RoleBinding, RoleRef, Subject},
     },
     apimachinery::pkg::{apis::meta::v1::LabelSelector, util::intstr::IntOrString::Int},
 };
@@ -15,6 +20,7 @@ use kube::{
     core::ObjectMeta,
     Api, Client,
 };
+use std::fmt::Display;
 use std::{collections::BTreeMap, net::SocketAddr, time::Duration};
 use tokio::time;
 use tracing::log::info;
@@ -24,15 +30,29 @@ use zksync_protobuf::serde::Serde;
 
 /// Docker image name for consensus nodes.
 const DOCKER_IMAGE_NAME: &str = "consensus-node";
-
 /// K8s namespace for consensus nodes.
 pub const DEFAULT_NAMESPACE: &str = "consensus";
+
+#[derive(Debug, Clone)]
+pub struct PodId(pub String);
+
+impl From<&str> for PodId {
+    fn from(s: &str) -> Self {
+        Self(s.to_string())
+    }
+}
+
+impl Display for PodId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
 
 /// Consensus Node Representation
 #[derive(Debug)]
 pub struct ConsensusNode {
     /// Node identifier
-    pub id: String,
+    pub id: PodId,
     /// Node configuration
     pub config: AppConfig,
     /// Node key
@@ -55,7 +75,7 @@ impl ConsensusNode {
         let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
         // Wait until the pod is running, otherwise we get an error.
         retry(15, Duration::from_millis(1000), || async {
-            get_running_pod(&pods, &self.id).await
+            get_running_pod(&pods, &self.id.0).await
         })
         .await
     }
@@ -85,33 +105,33 @@ impl ConsensusNode {
         let cli_args = get_cli_args(self);
         let deployment = Deployment {
             metadata: ObjectMeta {
-                name: Some(self.id.to_owned()),
+                name: Some(self.id.0.to_owned()),
                 namespace: Some(namespace.to_owned()),
                 ..Default::default()
             },
             spec: Some(DeploymentSpec {
                 selector: LabelSelector {
-                    match_labels: Some(BTreeMap::from([("app".to_owned(), self.id.to_owned())])),
+                    match_labels: Some(BTreeMap::from([("app".to_owned(), self.id.0.to_owned())])),
                     ..Default::default()
                 },
                 replicas: Some(1),
                 template: PodTemplateSpec {
                     metadata: Some(ObjectMeta {
                         labels: Some(BTreeMap::from([
-                            ("app".to_owned(), self.id.to_owned()),
-                            ("id".to_owned(), self.id.to_owned()),
+                            ("app".to_owned(), self.id.0.to_owned()),
+                            ("id".to_owned(), self.id.0.to_owned()),
                             ("seed".to_owned(), self.is_seed.to_string()),
                         ])),
                         ..Default::default()
                     }),
                     spec: Some(PodSpec {
                         containers: vec![Container {
-                            name: self.id.to_owned(),
+                            name: self.id.0.to_owned(),
                             image: Some(DOCKER_IMAGE_NAME.to_owned()),
                             env: Some(vec![
                                 EnvVar {
                                     name: "NODE_ID".to_owned(),
-                                    value: Some(self.id.to_owned()),
+                                    value: Some(self.id.0.to_owned()),
                                     ..Default::default()
                                 },
                                 EnvVar {
@@ -185,87 +205,97 @@ pub async fn get_client() -> anyhow::Result<Client> {
     Ok(Client::try_default().await?)
 }
 
+pub fn get_node_rpc_address(pod: Pod) -> anyhow::Result<SocketAddr> {
+    let pod_spec = pod.spec.context("Failed to get pod spec")?;
+    let pod_running_container = pod_spec
+        .containers
+        .first()
+        .context("Failed to get pod container")?
+        .to_owned();
+    let port: u16 = pod_running_container
+        .ports
+        .context("Failed getting node rpc port")?
+        .iter()
+        .find_map(|port| {
+            let port = port.container_port.try_into().ok()?;
+            (port != config::NODES_PORT).then_some(port)
+        })
+        .context("Failed parsing node rpc port")?;
+    let pod_ip = pod
+        .status
+        .clone()
+        .context("Failed to get pod status")
+        .ok()
+        .and_then(|status| status.pod_ip.clone())
+        .context("Failed to get pod ip")?;
+
+    let pod_rpc_addr = SocketAddr::new(pod_ip.parse().context("Failed to parse pod ip")?, port);
+    Ok(pod_rpc_addr)
+}
+
+pub async fn get_node_rpc_address_with_id(
+    client: &Client,
+    pod_id: &PodId,
+) -> anyhow::Result<SocketAddr> {
+    let pods: Api<Pod> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
+    let lp = ListParams::default().labels(&format!("id={}", pod_id.0));
+    let pod = pods
+        .list(&lp)
+        .await?
+        .items
+        .first()
+        .cloned()
+        .context("Pod not found")?;
+    let pod_rpc_addr = get_node_rpc_address(pod)?;
+    Ok(pod_rpc_addr)
+}
+
 /// Get the IP addresses and the exposed port of the RPC server of the consensus nodes in the kubernetes cluster.
-pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<SocketAddr>> {
+pub async fn get_consensus_nodes_rpc_address(client: &Client) -> anyhow::Result<Vec<SocketAddr>> {
     let pods: Api<Pod> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
     let lp = ListParams::default();
     let pods = pods.list(&lp).await?;
-    ensure!(
-        !pods.items.is_empty(),
-        "No consensus pods found in the k8s cluster"
-    );
-    let mut node_rpc_addresses: Vec<SocketAddr> = Vec::new();
+    let mut nodes_rpc_address = Vec::new();
     for pod in pods {
-        let pod_spec = pod.spec.as_ref().context("Failed to get pod spec")?;
-        let pod_container = pod_spec
+        if pod
+            .spec
+            .clone()
+            .context("Failed to get pod spec")?
             .containers
             .first()
-            .context("Failed to get container")?;
-        if pod_container
+            .cloned()
+            .context("Failed to get pod container")?
             .image
-            .as_ref()
-            .context("Failed to get image")?
-            .contains(DOCKER_IMAGE_NAME)
+            .context("Failed to get pod image")?
+            != DOCKER_IMAGE_NAME
         {
-            let pod_ip = pod
-                .status
-                .context("Failed to get pod status")?
-                .pod_ip
-                .context("Failed to get pod ip")?;
-            let pod_rpc_port = pod_container
-                .ports
-                .as_ref()
-                .context("Failed to get ports of container")?
-                .iter()
-                .find_map(|port| {
-                    let port = port.container_port.try_into().ok()?;
-                    (port != config::NODES_PORT).then_some(port)
-                })
-                .context("Failed parsing container port")?;
-            node_rpc_addresses.push(SocketAddr::new(pod_ip.parse()?, pod_rpc_port));
+            continue;
         }
+        let pod_rpc_addr = get_node_rpc_address(pod)?;
+        nodes_rpc_address.push(pod_rpc_addr);
     }
-    Ok(node_rpc_addresses)
+    Ok(nodes_rpc_address)
 }
 
-/// Creates a namespace in k8s cluster
-pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::Result<()> {
-    let namespaces: Api<Namespace> = Api::all(client.clone());
-    match namespaces.get_opt(name).await? {
-        None => {
-            let namespace = Namespace {
-                metadata: ObjectMeta {
-                    name: Some(name.to_owned()),
-                    labels: Some(BTreeMap::from([("name".to_owned(), name.to_owned())])),
-                    ..Default::default()
-                },
-                ..Default::default()
-            };
-
-            let namespaces: Api<Namespace> = Api::all(client.clone());
-            let post_params = PostParams::default();
-            let result = namespaces.create(&post_params, &namespace).await?;
-
-            info!(
-                "Namespace: {} ,created",
-                result
-                    .metadata
-                    .name
-                    .context("Name not defined in metadata")?
-            );
-            Ok(())
-        }
-        Some(consensus_namespace) => {
-            info!(
-                "Namespace: {} ,already exists",
-                consensus_namespace
-                    .metadata
-                    .name
-                    .context("Name not defined in metadata")?
-            );
-            Ok(())
+fn is_pod_running(pod: &Pod) -> bool {
+    if let Some(status) = &pod.status {
+        if let Some(phase) = &status.phase {
+            return phase == "Running";
         }
     }
+    false
+}
+
+async fn get_running_pod(pods: &Api<Pod>, label: &str) -> anyhow::Result<Pod> {
+    let lp = ListParams::default().labels(&format!("app={label}"));
+    let pod = pods
+        .list(&lp)
+        .await?
+        .items
+        .pop()
+        .with_context(|| format!("Pod not found: {label}"))?;
+    anyhow::ensure!(is_pod_running(&pod), "Pod is not running");
+    Ok(pod)
 }
 
 pub async fn create_tests_deployment(client: &Client) -> anyhow::Result<()> {
@@ -317,25 +347,162 @@ pub async fn create_tests_deployment(client: &Client) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn get_running_pod(pods: &Api<Pod>, label: &str) -> anyhow::Result<Pod> {
-    let lp = ListParams::default().labels(&format!("app={label}"));
-    let pod = pods
-        .list(&lp)
-        .await?
-        .items
-        .pop()
-        .with_context(|| format!("Pod not found: {label}"))?;
-    anyhow::ensure!(is_pod_running(&pod), "Pod is not running");
-    Ok(pod)
-}
+/// Creates a namespace in k8s cluster
+pub async fn create_or_reuse_namespace(client: &Client, name: &str) -> anyhow::Result<()> {
+    let namespaces: Api<Namespace> = Api::all(client.clone());
+    match namespaces.get_opt(name).await? {
+        None => {
+            let namespace = Namespace {
+                metadata: ObjectMeta {
+                    name: Some(name.to_owned()),
+                    labels: Some(BTreeMap::from([("name".to_owned(), name.to_owned())])),
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
 
-fn is_pod_running(pod: &Pod) -> bool {
-    if let Some(status) = &pod.status {
-        if let Some(phase) = &status.phase {
-            return phase == "Running";
+            let namespaces: Api<Namespace> = Api::all(client.clone());
+            let post_params = PostParams::default();
+            let result = namespaces.create(&post_params, &namespace).await?;
+
+            info!(
+                "Namespace: {} ,created",
+                result
+                    .metadata
+                    .name
+                    .context("Name not defined in metadata")?
+            );
+            Ok(())
+        }
+        Some(consensus_namespace) => {
+            info!(
+                "Namespace: {} ,already exists",
+                consensus_namespace
+                    .metadata
+                    .name
+                    .context("Name not defined in metadata")?
+            );
+            Ok(())
         }
     }
-    false
+}
+
+pub async fn expose_tester_rpc(client: &Client) -> anyhow::Result<()> {
+    let load_balancer_service = Service {
+        metadata: ObjectMeta {
+            name: Some("tester-rpc".to_string()),
+            namespace: Some(DEFAULT_NAMESPACE.to_string()),
+            ..Default::default()
+        },
+        spec: Some(ServiceSpec {
+            type_: Some("LoadBalancer".to_owned()),
+            selector: Some([("app".to_string(), "test-node".to_string())].into()),
+            ports: vec![ServicePort {
+                port: 3030,
+                target_port: Some(Int(3030)),
+                ..Default::default()
+            }]
+            .into(),
+            ..Default::default()
+        }),
+        ..Default::default()
+    };
+
+    let services: Api<Service> = Api::namespaced(client.clone(), DEFAULT_NAMESPACE);
+    let post_params = PostParams::default();
+    let result = services
+        .create(&post_params, &load_balancer_service)
+        .await?;
+
+    info!(
+        "Service: {} , created",
+        result
+            .metadata
+            .name
+            .context("Name not defined in metadata")?
+    );
+
+    Ok(())
+}
+
+pub async fn create_or_reuse_pod_reader_role(client: &Client) -> anyhow::Result<()> {
+    let roles: Api<Role> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
+    match roles.get_opt("pod-reader").await? {
+        Some(role) => {
+            info!(
+                "Role: {} ,already exists",
+                role.metadata.name.context("Name not defined in metadata")?
+            );
+        }
+        None => {
+            let role = Role {
+                metadata: ObjectMeta {
+                    name: "pod-reader".to_string().into(),
+                    namespace: DEFAULT_NAMESPACE.to_string().into(),
+                    ..Default::default()
+                },
+                rules: vec![PolicyRule {
+                    api_groups: Some(vec![String::new()]),
+                    resources: Some(vec!["pods".to_string()]),
+                    verbs: vec![
+                        "get".to_owned(),
+                        "list".to_owned(),
+                        "watch".to_owned(),
+                        "create".to_owned(),
+                    ],
+                    ..Default::default()
+                }]
+                .into(),
+            };
+
+            let roles: Api<Role> = Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
+            let post_params = PostParams::default();
+            let result = roles.create(&post_params, &role).await?;
+
+            info!(
+                "Role: {} , created",
+                result
+                    .metadata
+                    .name
+                    .context("Name not defined in metadata")?
+            );
+
+            let role_binding = RoleBinding {
+                metadata: ObjectMeta {
+                    name: "pod-reader-rule".to_string().into(),
+                    namespace: DEFAULT_NAMESPACE.to_string().into(),
+                    ..Default::default()
+                },
+                role_ref: RoleRef {
+                    api_group: "rbac.authorization.k8s.io".to_string(),
+                    kind: "Role".to_string(),
+                    name: "pod-reader".to_string(),
+                },
+                subjects: vec![Subject {
+                    kind: "ServiceAccount".to_string(),
+                    name: "default".to_string(),
+                    api_group: String::new().into(),
+                    ..Default::default()
+                }]
+                .into(),
+            };
+
+            let role_bindings: Api<RoleBinding> =
+                Api::namespaced(client.to_owned(), DEFAULT_NAMESPACE);
+            let post_params = PostParams::default();
+            let result = role_bindings.create(&post_params, &role_binding).await?;
+
+            info!(
+                "RoleBinding: {} , created",
+                result
+                    .metadata
+                    .name
+                    .context("Name not defined in metadata")?
+            );
+        }
+    }
+
+    Ok(())
 }
 
 fn get_cli_args(consensus_node: &ConsensusNode) -> Vec<String> {

@@ -27,6 +27,9 @@ start_k8s_nodes:
 	minikube image load consensus-node:latest
 	cd ${EXECUTABLE_NODE_DIR} && cargo run --release --bin deployer -- --nodes ${NODES} --seed-nodes ${SEED_NODES}
 
+install_chaos_mesh:
+	curl -sSL https://mirrors.chaos-mesh.org/v2.6.3/install.sh | bash
+
 # Clean commands
 
 clean: clean_docker clean_k8s
