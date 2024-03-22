@@ -11,6 +11,7 @@ use zksync_consensus_tools::{
     rpc::methods::{health_check, last_commited_block},
 };
 
+/// Get the RPC clients for all the consensus nodes.
 pub(crate) async fn get_consensus_nodes_rpc_client() -> anyhow::Result<Vec<HttpClient>> {
     let client = k8s::get_client().await?;
     let nodes_socket = k8s::get_consensus_nodes_rpc_address(&client).await?;
@@ -23,6 +24,7 @@ pub(crate) async fn get_consensus_nodes_rpc_client() -> anyhow::Result<Vec<HttpC
     Ok(rpc_clients)
 }
 
+/// Add chaos delay for the target pods.
 pub(crate) async fn add_chaos_delay_for_target_pods(
     target_pods: Vec<PodId>,
     delay: u8,
@@ -34,6 +36,7 @@ pub(crate) async fn add_chaos_delay_for_target_pods(
     Ok(())
 }
 
+/// Get the last commited block using the rpc_client of the consensus node.
 pub(crate) async fn get_last_commited_block(rpc_client: HttpClient) -> anyhow::Result<u64> {
     let response: serde_json::Value = rpc_client
         .request(last_commited_block::method(), rpc_params!())
@@ -45,6 +48,7 @@ pub(crate) async fn get_last_commited_block(rpc_client: HttpClient) -> anyhow::R
     Ok(last_commited_block)
 }
 
+/// Check the health of the consensus node using its rpc_client.
 pub(crate) async fn check_health_of_node(rpc_client: HttpClient) -> anyhow::Result<bool> {
     let response: serde_json::Value = rpc_client
         .request(health_check::method(), rpc_params!())
@@ -55,9 +59,10 @@ pub(crate) async fn check_health_of_node(rpc_client: HttpClient) -> anyhow::Resu
     Ok(health_check)
 }
 
+/// Get the RPC client for the consensus node with the given pod ID.
 pub(crate) async fn get_consensus_node_rpc_client(node_id: &PodId) -> anyhow::Result<HttpClient> {
     let client = k8s::get_client().await?;
-    let socket = k8s::get_node_rpc_address_with_id(&client, &node_id)
+    let socket = k8s::get_node_rpc_address_with_id(&client, node_id)
         .await
         .context("Failed to get node rpc address")?;
     let url: String = format!("http://{}", socket);
