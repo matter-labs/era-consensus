@@ -132,7 +132,7 @@ impl StateMachine {
             .entry(message.view.number)
             .or_default();
 
-        // We check validators weight from current messages, stored by prFoposal
+        // We check validators weight from current messages, stored by proposal
         let mut by_proposal_before: HashMap<_, Vec<_>> = HashMap::new();
         let entry_before = cache_entry.clone();
         for msg in entry_before.values() {
