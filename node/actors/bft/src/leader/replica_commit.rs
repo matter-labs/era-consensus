@@ -163,7 +163,7 @@ impl StateMachine {
             .config
             .genesis()
             .validators
-            .weight_from_msgs(&by_proposal_before.entry(proposal).or_default());
+            .weight_from_msgs(by_proposal_before.entry(proposal).or_default());
         // to ensure this is the first time the threshold has been reached
         debug_assert!(previous_weight < threshold);
 
