@@ -33,15 +33,15 @@ pub(crate) async fn add_chaos_delay_for_target_pods(target_pods: Vec<PodId>) -> 
     Ok(())
 }
 
-/// Get the last commited block using the rpc_client of the consensus node.
+/// Get the last committed block using the rpc_client of the consensus node.
 pub(crate) async fn get_last_committed_block(rpc_client: HttpClient) -> anyhow::Result<u64> {
     let response: serde_json::Value = rpc_client
         .request(last_committed_block::method(), rpc_params!())
         .await
-        .context("Failed to get last commited block")?;
+        .context("Failed to get last committed block")?;
     let last_committed_block: u64 =
         serde_json::from_value(response.get("last_committed_block").unwrap().to_owned())
-            .context("Failed to parse last commited block")?;
+            .context("Failed to parse last committed block")?;
     Ok(last_committed_block)
 }
 
@@ -50,7 +50,7 @@ pub(crate) async fn check_health_of_node(rpc_client: HttpClient) -> anyhow::Resu
     let response: serde_json::Value = rpc_client
         .request(health_check::method(), rpc_params!())
         .await
-        .context("Failed to get last commited block")?;
+        .context("Failed to get last committed block")?;
     let health_check: bool = serde_json::from_value(response.get("health").unwrap().to_owned())
         .context("Failed to parse health check")?;
     Ok(health_check)
