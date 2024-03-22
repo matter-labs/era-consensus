@@ -132,13 +132,15 @@ impl StateMachine {
             .entry(message.view.number)
             .or_default();
 
-        // We check validators weight from current messages
-        // TODO: this is wrong, we have to calculate previous weights by proposal
-        let previous_weight = self
-            .config
-            .genesis()
-            .validators
-            .weight_from_msgs(&cache_entry.values().collect());
+        // We check validators weight from current messages, stored by prFoposal
+        let mut by_proposal_before: HashMap<_, Vec<_>> = HashMap::new();
+        let entry_before = cache_entry.clone();
+        for msg in entry_before.values() {
+            by_proposal_before
+                .entry(msg.msg.proposal)
+                .or_default()
+                .push(msg);
+        }
 
         // We store the message in our cache.
         cache_entry.insert(author.clone(), signed_message.clone());
@@ -149,13 +151,19 @@ impl StateMachine {
             by_proposal.entry(msg.msg.proposal).or_default().push(msg);
         }
         let threshold = self.config.genesis().validators.threshold();
-        let Some((_, replica_messages)) = by_proposal
+        let Some((proposal, _replica_messages)) = by_proposal
             .into_iter()
             .find(|(_, v)| self.config.genesis().validators.weight_from_msgs(v) >= threshold)
         else {
             return Ok(());
         };
+
         // Check that previous weight did not reach threshold
+        let previous_weight = self
+            .config
+            .genesis()
+            .validators
+            .weight_from_msgs(&by_proposal_before.entry(proposal).or_default());
         // to ensure this is the first time the threshold has been reached
         debug_assert!(previous_weight < threshold);
 

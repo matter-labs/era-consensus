@@ -144,21 +144,19 @@ impl StateMachine {
             .or_default();
 
         // We check validators weight from current messages
-        let previous_weight = self
+        let msgs_before: Vec<_> = entry.values().collect();
+        let weight_before = self
             .config
             .genesis()
             .validators
-            .weight_from_msgs(&entry.values().collect());
+            .weight_from_msgs(&msgs_before);
 
         // We store the message in our cache.
         entry.insert(author.clone(), signed_message);
 
         // Now we check if we have enough weight to continue.
-        let weight = self
-            .config
-            .genesis()
-            .validators
-            .weight_from_msgs(&entry.values().collect());
+        let msgs: Vec<_> = entry.values().collect();
+        let weight = self.config.genesis().validators.weight_from_msgs(&msgs);
         let threshold = self.config.genesis().validators.threshold();
         if weight < threshold {
             return Ok(());
@@ -170,7 +168,7 @@ impl StateMachine {
 
         // Check that previous weight did not reach threshold
         // to ensure this is the first time the threshold has been reached
-        debug_assert!(previous_weight < threshold);
+        debug_assert!(weight_before < threshold);
 
         // ----------- Update the state machine --------------
 

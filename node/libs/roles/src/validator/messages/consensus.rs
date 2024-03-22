@@ -182,7 +182,7 @@ impl ValidatorCommittee {
     }
 
     /// Compute the sum of signers weights.
-    pub fn weight_from_msgs<T: Variant<Msg>>(&self, signed: &Vec<&validator::Signed<T>>) -> usize {
+    pub fn weight_from_msgs<T: Variant<Msg>>(&self, signed: &[&validator::Signed<T>]) -> usize {
         signed
             .iter()
             .map(|s| {

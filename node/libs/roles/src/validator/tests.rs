@@ -200,7 +200,7 @@ fn test_commit_qc() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    // This will ceate equally weighted validators
+    // This will create equally weighted validators
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
@@ -239,7 +239,7 @@ fn test_prepare_qc() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    // This will ceate equally weighted validators
+    // This will create equally weighted validators
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
