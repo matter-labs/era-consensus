@@ -74,7 +74,10 @@ skip = [
     { name = "digest", version = "0.10.7" },
 
     # Old versions required by kube.
-    { name = "strsim", version = "0.10.0" }
+    { name = "strsim", version = "0.10.0" },
+
+    # Old versions required by kube.
+    { name = "heck", version = "0.4.1" }
 ]
 
 [sources]
