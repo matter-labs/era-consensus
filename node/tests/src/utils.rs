@@ -25,13 +25,10 @@ pub(crate) async fn get_consensus_nodes_rpc_client() -> anyhow::Result<Vec<HttpC
 }
 
 /// Add chaos delay for the target pods.
-pub(crate) async fn add_chaos_delay_for_target_pods(
-    target_pods: Vec<PodId>,
-    delay: u8,
-) -> anyhow::Result<()> {
+pub(crate) async fn add_chaos_delay_for_target_pods(target_pods: Vec<PodId>) -> anyhow::Result<()> {
     let client = k8s::get_client().await?;
     for pod_id in target_pods {
-        chaos_mesh::ops::add_chaos_delay_for_pod(&client, pod_id, delay).await?;
+        chaos_mesh::ops::add_chaos_delay_for_pod(&client, pod_id).await?;
     }
     Ok(())
 }

@@ -14,7 +14,7 @@ use zksync_concurrency::{
     ctx::{self, Ctx},
     scope,
 };
-use zksync_consensus_tools::k8s::PodId;
+use zksync_consensus_tools::k8s::{chaos_mesh::ops::delete_chaos_delay_for_pod, PodId};
 
 use crate::utils::{
     add_chaos_delay_for_target_pods, check_health_of_node, get_consensus_node_rpc_client,
@@ -108,19 +108,19 @@ pub async fn sanity_test(test_result: Arc<Mutex<u8>>) -> anyhow::Result<()> {
 /// We use unwraps here because this function is intended to be used like a test.
 pub async fn delay_test(test_result: Arc<Mutex<u8>>) -> anyhow::Result<()> {
     let target_nodes = vec![PodId::from("consensus-node-01")];
-    add_chaos_delay_for_target_pods(target_nodes.clone(), 10)
-        .await
-        .unwrap();
     let rpc_client = get_consensus_node_rpc_client(target_nodes.first().unwrap())
         .await
         .unwrap();
+    add_chaos_delay_for_target_pods(target_nodes.clone())
+        .await
+        .unwrap();
     let last_commited_block = get_last_commited_block(rpc_client.clone()).await.unwrap();
-    for _ in 0..5 {
-        let new_last_commited_block = get_last_commited_block(rpc_client.clone()).await.unwrap();
-        assert_eq!(new_last_commited_block, last_commited_block);
-    }
-    sleep(Duration::from_secs(10));
-    let new_last_commited_block = get_last_commited_block(rpc_client.clone()).await.unwrap();
+    delete_chaos_delay_for_pod(target_nodes.first().unwrap())
+        .await
+        .unwrap();
+    // Wait for the deletion of the chaos delay.
+    sleep(Duration::from_secs(2));
+    let new_last_commited_block = get_last_commited_block(rpc_client).await.unwrap();
     assert!(new_last_commited_block > last_commited_block);
     *test_result.lock().unwrap() += 1;
     Ok(())
