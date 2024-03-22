@@ -58,7 +58,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         assert!(setup.blocks[0..=1]
             .iter()
             .any(|b| b.number() == second_peer_block_number));
-        tracing::info!(%second_peer_block_number, "received requrest");
+        tracing::info!(%second_peer_block_number, "received request");
 
         first_peer_response
             .send(make_response(setup.block(first_peer_block_number)))
@@ -90,7 +90,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         assert!(setup.blocks[2..=3]
             .iter()
             .any(|b| b.number() == first_peer_block_number));
-        tracing::info!(%first_peer_block_number, "received requrest");
+        tracing::info!(%first_peer_block_number, "received request");
 
         first_peer_response
             .send(make_response(setup.block(first_peer_block_number)))
@@ -113,7 +113,7 @@ impl Test for RequestingBlocksFromTwoPeers {
         assert!(setup.blocks[2..=3]
             .iter()
             .any(|b| b.number() == first_peer_block_number));
-        tracing::info!(%first_peer_block_number, "received requrest");
+        tracing::info!(%first_peer_block_number, "received request");
 
         second_peer_response
             .send(make_response(setup.block(second_peer_block_number)))

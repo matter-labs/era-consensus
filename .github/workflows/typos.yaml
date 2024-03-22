@@ -1,0 +1,20 @@
+# A Github action that typos to check spelling.
+#
+# _typos.toml is a config file of typos.
+# More details about typos is https://github.com/crate-ci/typos
+
+name: Typos
+
+on: pull_request
+
+jobs:
+
+  typos:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Check for typos
+        uses: crate-ci/typos@master
