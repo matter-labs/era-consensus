@@ -87,6 +87,8 @@ kube = { version = "0.88.1", features = ["runtime", "derive"] }
 k8s-openapi = { version = "0.21.0", features = ["latest"] }
 jsonrpsee = { version = "0.21.0", features = ["server", "http-client"]  }
 tower = { version = "0.4.13" }
+num-bigint = "0.4.4"
+num-traits = "0.2.18"
 
 # Note that "bench" profile inherits from "release" profile and
 # "test" profile inherits from "dev" profile.
