@@ -82,10 +82,6 @@ pub struct ValidatorCommittee {
 }
 
 impl ValidatorCommittee {
-    /// Maximum validator weight
-    /// 100.00%
-    pub const MAX_WEIGHT: u64 = 10000;
-
     /// Required weight to verify signatures.
     /// Currently 80.00%
     const THRESHOLD: u64 = 8000;
@@ -99,10 +95,7 @@ impl ValidatorCommittee {
                 set.insert(validator.key.clone()),
                 "Duplicate validator in ValidatorCommittee"
             );
-            weights.insert(
-                validator.key,
-                validator.weight,
-            );
+            weights.insert(validator.key, validator.weight);
         }
         anyhow::ensure!(
             !set.is_empty(),
@@ -190,6 +183,11 @@ impl ValidatorCommittee {
                     .expect("Signer is not in validator committee")]
             })
             .sum()
+    }
+
+    /// Sum of all validators' weight in the committee
+    pub fn max_weight(&self) -> u64 {
+        self.weights.iter().sum()
     }
 }
 

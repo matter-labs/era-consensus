@@ -12,7 +12,7 @@ use zksync_concurrency::ctx;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator::{
     self, CommitQC, LeaderCommit, LeaderPrepare, Phase, PrepareQC, ReplicaCommit, ReplicaPrepare,
-    SecretKey, Signed, ValidatorCommittee, ViewNumber,
+    SecretKey, Signed, ViewNumber,
 };
 use zksync_consensus_storage::{
     testonly::{in_memory, new_store},
@@ -224,7 +224,8 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaPrepare,
     ) -> Signed<LeaderPrepare> {
-        let expected_validator_weight = ValidatorCommittee::MAX_WEIGHT / self.keys.len() as u64;
+        let expected_validator_weight =
+            self.genesis().validators.max_weight() / self.keys.len() as u64;
         let want_threshold = self.genesis().validators.threshold();
         let mut leader_prepare = None;
         let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
@@ -260,7 +261,8 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaCommit,
     ) -> Signed<LeaderCommit> {
-        let expected_validator_weight = ValidatorCommittee::MAX_WEIGHT / self.keys.len() as u64;
+        let expected_validator_weight =
+            self.genesis().validators.max_weight() / self.keys.len() as u64;
         let want_threshold = self.genesis().validators.threshold();
         let mut first_match = true;
         for (i, key) in self.keys.iter().enumerate() {
