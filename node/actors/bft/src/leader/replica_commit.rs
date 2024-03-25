@@ -1,7 +1,6 @@
 //! Handler of a ReplicaCommit message.
 use super::StateMachine;
 use crate::metrics;
-use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
@@ -133,39 +132,36 @@ impl StateMachine {
             .or_default();
 
         // We check validators weight from current messages, stored by proposal
-        let mut by_proposal_before: HashMap<_, Vec<_>> = HashMap::new();
-        let entry_before = cache_entry.clone();
-        for msg in entry_before.values() {
-            by_proposal_before
-                .entry(msg.msg.proposal)
-                .or_default()
-                .push(msg);
-        }
+        let weight_before = self.config.genesis().validators.weight_from_msgs(
+            cache_entry
+                .clone()
+                .iter()
+                .map(|(_, m)| m)
+                .filter(|m| m.msg.proposal == message.proposal)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
 
         // We store the message in our cache.
         cache_entry.insert(author.clone(), signed_message.clone());
 
-        // Now we check if we have enough messages to continue.
-        let mut by_proposal: HashMap<_, Vec<_>> = HashMap::new();
-        for msg in cache_entry.values() {
-            by_proposal.entry(msg.msg.proposal).or_default().push(msg);
-        }
+        // Now we check if we have enough weight to continue.
+        let weight = self.config.genesis().validators.weight_from_msgs(
+            cache_entry
+                .iter()
+                .map(|(_, m)| m)
+                .filter(|m| m.msg.proposal == message.proposal)
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
         let threshold = self.config.genesis().validators.threshold();
-        let Some((proposal, _replica_messages)) = by_proposal
-            .into_iter()
-            .find(|(_, v)| self.config.genesis().validators.weight_from_msgs(v) >= threshold)
-        else {
+        if weight < threshold {
             return Ok(());
         };
 
         // Check that previous weight did not reach threshold
         // to ensure this is the first time the threshold has been reached
-        let previous_weight = self
-            .config
-            .genesis()
-            .validators
-            .weight_from_msgs(by_proposal_before.entry(proposal).or_default());
-        debug_assert!(previous_weight < threshold);
+        debug_assert!(weight_before < threshold);
 
         // ----------- Update the state machine --------------
 
