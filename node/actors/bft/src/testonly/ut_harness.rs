@@ -224,7 +224,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaPrepare,
     ) -> Signed<LeaderPrepare> {
-        let expected_validator_weight = ValidatorCommittee::MAX_WEIGHT / self.keys.len();
+        let expected_validator_weight = ValidatorCommittee::MAX_WEIGHT / self.keys.len() as u64;
         let want_threshold = self.genesis().validators.threshold();
         let mut leader_prepare = None;
         let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
@@ -232,7 +232,7 @@ impl UTHarness {
         for (i, msg) in msgs.into_iter().enumerate() {
             let res = self.process_replica_prepare(ctx, msg).await;
             match (
-                (i + 1) * expected_validator_weight < want_threshold,
+                (i + 1) as u64 * expected_validator_weight < want_threshold,
                 first_match,
             ) {
                 (true, _) => assert!(res.unwrap().is_none()),
@@ -260,7 +260,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaCommit,
     ) -> Signed<LeaderCommit> {
-        let expected_validator_weight = ValidatorCommittee::MAX_WEIGHT / self.keys.len();
+        let expected_validator_weight = ValidatorCommittee::MAX_WEIGHT / self.keys.len() as u64;
         let want_threshold = self.genesis().validators.threshold();
         let mut first_match = true;
         for (i, key) in self.keys.iter().enumerate() {
@@ -268,7 +268,7 @@ impl UTHarness {
                 .leader
                 .process_replica_commit(ctx, key.sign_msg(msg.clone()));
             match (
-                (i + 1) * expected_validator_weight < want_threshold,
+                (i + 1) as u64 * expected_validator_weight < want_threshold,
                 first_match,
             ) {
                 (true, _) => res.unwrap(),

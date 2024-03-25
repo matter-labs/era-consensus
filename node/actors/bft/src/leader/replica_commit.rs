@@ -134,9 +134,7 @@ impl StateMachine {
         // We check validators weight from current messages, stored by proposal
         let weight_before = self.config.genesis().validators.weight_from_msgs(
             cache_entry
-                .clone()
-                .iter()
-                .map(|(_, m)| m)
+                .values()
                 .filter(|m| m.msg.proposal == message.proposal)
                 .collect::<Vec<_>>()
                 .as_slice(),
@@ -148,8 +146,7 @@ impl StateMachine {
         // Now we check if we have enough weight to continue.
         let weight = self.config.genesis().validators.weight_from_msgs(
             cache_entry
-                .iter()
-                .map(|(_, m)| m)
+                .values()
                 .filter(|m| m.msg.proposal == message.proposal)
                 .collect::<Vec<_>>()
                 .as_slice(),

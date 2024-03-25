@@ -23,7 +23,7 @@ impl Setup {
     /// New `Setup` with a given `fork`.
     pub fn new_with_fork(rng: &mut impl Rng, validators: usize, fork: Fork) -> Self {
         let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
-        let weight = (ValidatorCommittee::MAX_WEIGHT / validators) as u32;
+        let weight = ValidatorCommittee::MAX_WEIGHT / validators as u64;
         let genesis = Genesis {
             validators: ValidatorCommittee::new(keys.iter().map(|k| WeightedValidator {
                 key: k.public(),
@@ -303,7 +303,7 @@ impl Distribution<ValidatorCommittee> for Standard {
         let count = rng.gen_range(1..11);
         let public_keys = (0..count).map(|_| WeightedValidator {
             key: rng.gen(),
-            weight: ValidatorCommittee::MAX_WEIGHT as u32,
+            weight: ValidatorCommittee::MAX_WEIGHT,
         });
         ValidatorCommittee::new(public_keys).unwrap()
     }

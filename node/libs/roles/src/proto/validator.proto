@@ -169,6 +169,6 @@ message AggregateSignature {
 
 message WeightedValidator {
   optional PublicKey key = 1; // required
-  optional uint32 weight = 2; // required
+  optional uint64 weight = 2; // required
 
 }

@@ -217,7 +217,7 @@ fn test_commit_qc() {
         for key in &setup1.keys[0..i] {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis);
         }
-        let expected_weight = i * ValidatorCommittee::MAX_WEIGHT / 6;
+        let expected_weight = i as u64 * ValidatorCommittee::MAX_WEIGHT / 6;
         if expected_weight >= setup1.genesis.validators.threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {
@@ -263,7 +263,7 @@ fn test_prepare_qc() {
                 &setup1.genesis,
             );
         }
-        let expected_weight = n * ValidatorCommittee::MAX_WEIGHT / 6;
+        let expected_weight = n as u64 * ValidatorCommittee::MAX_WEIGHT / 6;
         if expected_weight >= setup1.genesis.validators.threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {

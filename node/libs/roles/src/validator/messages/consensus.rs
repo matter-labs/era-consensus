@@ -1,7 +1,6 @@
 //! Messages related to the consensus protocol.
 use super::{BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, ReplicaPrepare};
 use crate::validator;
-use anyhow::Context;
 use bit_vec::BitVec;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -79,17 +78,17 @@ impl Default for Fork {
 pub struct ValidatorCommittee {
     vec: Vec<validator::PublicKey>,
     indexes: BTreeMap<validator::PublicKey, usize>,
-    weights: Vec<usize>,
+    weights: Vec<u64>,
 }
 
 impl ValidatorCommittee {
     /// Maximum validator weight
     /// 100.00%
-    pub const MAX_WEIGHT: usize = 10000;
+    pub const MAX_WEIGHT: u64 = 10000;
 
     /// Required weight to verify signatures.
     /// Currently 80.00%
-    const THRESHOLD: usize = 8000;
+    const THRESHOLD: u64 = 8000;
 
     /// Creates a new ValidatorCommittee from a list of validator public keys.
     pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
@@ -102,7 +101,7 @@ impl ValidatorCommittee {
             );
             weights.insert(
                 validator.key,
-                validator.weight.try_into().context("weight")?,
+                validator.weight,
             );
         }
         anyhow::ensure!(
@@ -130,7 +129,7 @@ impl ValidatorCommittee {
     pub fn weighted_validators_iter(&self) -> impl Iterator<Item = WeightedValidator> + '_ {
         zip(&self.vec, &self.weights).map(|(key, weight)| WeightedValidator {
             key: key.clone(),
-            weight: *weight as u32,
+            weight: *weight,
         })
     }
 
@@ -162,7 +161,7 @@ impl ValidatorCommittee {
     }
 
     /// Signature threshold for this validator committee.
-    pub fn threshold(&self) -> usize {
+    pub fn threshold(&self) -> u64 {
         Self::THRESHOLD
     }
 
@@ -172,7 +171,7 @@ impl ValidatorCommittee {
     }
 
     /// Compute the sum of signers weights.
-    pub fn weight_from_signers(&self, signers: Signers) -> usize {
+    pub fn weight_from_signers(&self, signers: Signers) -> u64 {
         self.weights
             .iter()
             .enumerate()
@@ -182,7 +181,7 @@ impl ValidatorCommittee {
     }
 
     /// Compute the sum of signers weights.
-    pub fn weight_from_msgs<T: Variant<Msg>>(&self, signed: &[&validator::Signed<T>]) -> usize {
+    pub fn weight_from_msgs<T: Variant<Msg>>(&self, signed: &[&validator::Signed<T>]) -> u64 {
         signed
             .iter()
             .map(|s| {
@@ -431,5 +430,5 @@ pub struct WeightedValidator {
     /// Validator key
     pub key: validator::PublicKey,
     /// Validator weight inside the ValidatorCommittee.
-    pub weight: u32,
+    pub weight: u64,
 }
