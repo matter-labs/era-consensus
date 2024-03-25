@@ -96,10 +96,17 @@ impl Hash for PublicKey {
 impl ByteFmt for PublicKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         let arr: [u8; 64] = bytes.try_into()?;
-        let p = G2Compressed::from_fixed_bytes(arr)
-            .into_affine()?
-            .into_projective();
-        Ok(PublicKey(p))
+        let p = G2Compressed::from_fixed_bytes(arr).into_affine()?;
+
+        if p.is_zero() {
+            return Err(Error::InvalidPublicKeyZero.into());
+        }
+
+        if p.scale_by_cofactor().is_zero() {
+            return Err(Error::InvalidPublicKeySubgroup.into());
+        }
+
+        Ok(PublicKey(p.into_projective()))
     }
 
     fn encode(&self) -> Vec<u8> {
@@ -131,6 +138,15 @@ impl Signature {
     #[inline(never)]
     pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> Result<(), Error> {
         let hash_point = hash::hash_to_g1(msg);
+
+        // Verify public key
+        if pk.0.is_zero() {
+            return Err(Error::InvalidPublicKeyZero);
+        }
+
+        if pk.0.into_affine().scale_by_cofactor().is_zero() {
+            return Err(Error::InvalidPublicKeySubgroup);
+        }
 
         // First pair: e(H(m): G1, pk: G2)
         let a = Bn256::pairing(hash_point, pk.0);

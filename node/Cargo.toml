@@ -40,7 +40,7 @@ zksync_protobuf = { path = "libs/protobuf" }
 zksync_protobuf_build = { path = "libs/protobuf_build" }
 
 # Crates from Matter Labs.
-pairing = { package = "pairing_ce", git = "https://github.com/matter-labs/pairing.git", rev = "f55393fd366596eac792d78525d26e9c4d6ed1ca" }
+pairing = { package = "pairing_ce", git = "https://github.com/matter-labs/pairing.git", rev = "e47fd140a1fbfe99b740cabf3d1336127b59199c" }
 vise = { version = "0.1.0", git = "https://github.com/matter-labs/vise.git", rev = "1c9cc500e92cf9ea052b230e114a6f9cce4fb2c1" }
 vise-exporter = { version = "0.1.0", git = "https://github.com/matter-labs/vise.git", rev = "1c9cc500e92cf9ea052b230e114a6f9cce4fb2c1" }
 
@@ -117,11 +117,9 @@ opt-level = 3
 
 [workspace.lints.rust]
 unsafe_code = "deny"
-noop_method_call = "warn"
 missing_docs = "warn"
 unreachable_pub = "warn"
 unused_qualifications = "warn"
-unused_tuple_struct_fields = "warn"
 
 [workspace.lints.clippy]
 # restriction group
