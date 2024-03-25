@@ -99,11 +99,11 @@ impl ByteFmt for PublicKey {
         let p = G2Compressed::from_fixed_bytes(arr).into_affine()?;
 
         if p.is_zero() {
-            return Err(Error::InvalidPublicKeyZero.into());
+            anyhow::bail!("Public key can't be zero")
         }
 
         if p.scale_by_cofactor().is_zero() {
-            return Err(Error::InvalidPublicKeySubgroup.into());
+            anyhow::bail!("Public key must be in the subgroup")
         }
 
         Ok(PublicKey(p.into_projective()))
@@ -139,13 +139,14 @@ impl Signature {
     pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> Result<(), Error> {
         let hash_point = hash::hash_to_g1(msg);
 
-        // Verify public key
+        // Verify public key. Since we already check the validity of a
+        // public key when constructing it, this should never fail (in theory).
         if pk.0.is_zero() {
-            return Err(Error::InvalidPublicKeyZero);
+            unreachable!();
         }
 
         if pk.0.into_affine().scale_by_cofactor().is_zero() {
-            return Err(Error::InvalidPublicKeySubgroup);
+            unreachable!();
         }
 
         // First pair: e(H(m): G1, pk: G2)

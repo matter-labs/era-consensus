@@ -6,8 +6,4 @@ pub enum Error {
     SignatureVerificationFailure,
     #[error("Aggregate signature verification failure")]
     AggregateSignatureVerificationFailure,
-    #[error("Public key can't be zero")]
-    InvalidPublicKeyZero,
-    #[error("Public key must be in the subgroup")]
-    InvalidPublicKeySubgroup,
 }

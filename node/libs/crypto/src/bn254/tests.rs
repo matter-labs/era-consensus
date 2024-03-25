@@ -90,6 +90,18 @@ fn aggregate_signature_failure_smoke() {
 }
 
 #[test]
+fn pk_validity_checks() {
+    // Check that we can't decode the null point.
+    let pk = PublicKey::default();
+    let bytes = pk.encode();
+    let pk_decoded = PublicKey::decode(&bytes);
+    let err = pk_decoded.unwrap_err();
+    assert_eq!(format!("{}", err.root_cause()), "Public key can't be zero");
+
+    // TODO: Create a G2 point in the wrong subgroup and test against it.
+}
+
+#[test]
 fn byte_fmt_correctness() {
     let mut rng = rand::thread_rng();
 
