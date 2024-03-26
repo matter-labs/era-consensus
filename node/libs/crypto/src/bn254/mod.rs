@@ -81,6 +81,24 @@ impl PartialEq for SecretKey {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicKey(G2);
 
+impl PublicKey {
+    /// Checks if the public key is not the identity element and is in the correct subgroup. Verifying signatures
+    /// against public keys that are not valid is insecure.
+    pub fn is_valid(&self) -> bool {
+        // Check that the point is not the identity element.
+        if self.0.is_zero() {
+            return false;
+        }
+
+        // We multiply the point by the order and check if the result is the identity element.
+        // If it is, then the point is on the correct subgroup.
+        let order = Fr::char();
+        let mut p = self.0;
+        p.mul_assign(order);
+        p.is_zero()
+    }
+}
+
 impl Default for PublicKey {
     fn default() -> Self {
         PublicKey(G2::zero())
@@ -97,16 +115,13 @@ impl ByteFmt for PublicKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         let arr: [u8; 64] = bytes.try_into()?;
         let p = G2Compressed::from_fixed_bytes(arr).into_affine()?;
+        let pk = PublicKey(p.into());
 
-        if p.is_zero() {
-            anyhow::bail!("Public key can't be zero")
+        if !pk.is_valid() {
+            anyhow::bail!("Public key is not valid")
         }
 
-        if p.scale_by_cofactor().is_zero() {
-            anyhow::bail!("Public key must be in the subgroup")
-        }
-
-        Ok(PublicKey(p.into_projective()))
+        Ok(pk)
     }
 
     fn encode(&self) -> Vec<u8> {
@@ -139,15 +154,9 @@ impl Signature {
     pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> Result<(), Error> {
         let hash_point = hash::hash_to_g1(msg);
 
-        // Verify public key. Since we already check the validity of a
+        // Verify public key is valid. Since we already check the validity of a
         // public key when constructing it, this should never fail (in theory).
-        if pk.0.is_zero() {
-            unreachable!();
-        }
-
-        if pk.0.into_affine().scale_by_cofactor().is_zero() {
-            unreachable!();
-        }
+        assert!(pk.is_valid());
 
         // First pair: e(H(m): G1, pk: G2)
         let a = Bn256::pairing(hash_point, pk.0);
@@ -212,8 +221,13 @@ impl AggregateSignature {
         // is one fewer pairing to calculate.
         let mut pairs: HashMap<&[u8], PublicKey> = HashMap::new();
         for (msg, pk) in msgs_and_pks {
+            // Verify public key is valid. Since we already check the validity of a
+            // public key when constructing it, this should never fail (in theory).
+            assert!(pk.is_valid());
+
             pairs.entry(msg).or_default().0.add_assign(&pk.0);
         }
+
         // First pair: e(sig: G1, generator: G2)
         let a = Bn256::pairing(self.0, G2::one());
 
