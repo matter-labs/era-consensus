@@ -131,15 +131,6 @@ impl StateMachine {
             .entry(message.view.number)
             .or_default();
 
-        // We check validators weight from current messages, stored by proposal
-        let weight_before = self.config.genesis().validators.weight_from_msgs(
-            cache_entry
-                .values()
-                .filter(|m| m.msg.proposal == message.proposal)
-                .collect::<Vec<_>>()
-                .as_slice(),
-        );
-
         // We store the message in our cache.
         cache_entry.insert(author.clone(), signed_message.clone());
 
@@ -151,17 +142,11 @@ impl StateMachine {
                 .collect::<Vec<_>>()
                 .as_slice(),
         );
-        let threshold = self.config.genesis().validators.threshold();
-        if weight < threshold {
+        if weight < self.config.genesis().validators.threshold() {
             return Ok(());
         };
 
-        // Check that previous weight did not reach threshold
-        // to ensure this is the first time the threshold has been reached
-        debug_assert!(weight_before < threshold);
-
         // ----------- Update the state machine --------------
-
         let now = ctx.now();
         metrics::METRICS
             .leader_commit_phase_latency

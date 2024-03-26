@@ -113,7 +113,7 @@ impl CommitQC {
         // Now we can verify the signature.
         let messages_and_keys = genesis
             .validators
-            .iter()
+            .iter_keys()
             .enumerate()
             .filter(|(i, _)| self.signers.0[*i])
             .map(|(_, pk)| (self.message.clone(), pk));

@@ -140,7 +140,7 @@ impl PrepareQC {
         let messages_and_keys = self.map.clone().into_iter().flat_map(|(msg, signers)| {
             genesis
                 .validators
-                .iter()
+                .iter_keys()
                 .enumerate()
                 .filter(|(i, _)| signers.0[*i])
                 .map(|(_, pk)| (msg.clone(), pk))

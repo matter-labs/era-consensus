@@ -106,7 +106,7 @@ impl Executor {
                 .block_store
                 .genesis()
                 .validators
-                .iter()
+                .iter_keys()
                 .any(|key| key == &validator.key.public())
             {
                 anyhow::bail!("this validator doesn't belong to the consensus");

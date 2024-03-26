@@ -5,7 +5,6 @@ use bit_vec::BitVec;
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
-    iter::zip,
 };
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
@@ -76,9 +75,8 @@ impl Default for Fork {
 /// We represent each validator by its validator public key.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ValidatorCommittee {
-    vec: Vec<validator::PublicKey>,
+    vec: Vec<WeightedValidator>,
     indexes: BTreeMap<validator::PublicKey, usize>,
-    weights: Vec<u64>,
 }
 
 impl ValidatorCommittee {
@@ -89,41 +87,40 @@ impl ValidatorCommittee {
     /// Creates a new ValidatorCommittee from a list of validator public keys.
     pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
         let mut set = BTreeSet::new();
-        let mut weights = BTreeMap::new();
+        let mut weighted_validators = BTreeMap::new();
         for validator in validators {
             anyhow::ensure!(
                 set.insert(validator.key.clone()),
                 "Duplicate validator in ValidatorCommittee"
             );
-            weights.insert(validator.key, validator.weight);
+            weighted_validators.insert(validator.key.clone(), validator);
         }
         anyhow::ensure!(
             !set.is_empty(),
             "ValidatorCommittee must contain at least one validator"
         );
         Ok(Self {
-            vec: set.iter().cloned().collect(),
+            vec: set
+                .iter()
+                .map(|key| weighted_validators[key].clone())
+                .collect(),
             indexes: set
                 .clone()
                 .into_iter()
                 .enumerate()
                 .map(|(i, pk)| (pk, i))
                 .collect(),
-            weights: set.iter().map(|pk| weights[pk]).collect(),
         })
     }
 
-    /// Iterates over validators.
-    pub fn iter(&self) -> impl Iterator<Item = &validator::PublicKey> {
+    /// Iterates over weighted validators.
+    pub fn iter(&self) -> impl Iterator<Item = &WeightedValidator> {
         self.vec.iter()
     }
 
-    /// Iterates over validators.
-    pub fn weighted_validators_iter(&self) -> impl Iterator<Item = WeightedValidator> + '_ {
-        zip(&self.vec, &self.weights).map(|(key, weight)| WeightedValidator {
-            key: key.clone(),
-            weight: *weight,
-        })
+    /// Iterates over validator keys.
+    pub fn iter_keys(&self) -> impl Iterator<Item = &validator::PublicKey> {
+        self.vec.iter().map(|v| &v.key)
     }
 
     /// Returns the number of validators.
@@ -138,7 +135,7 @@ impl ValidatorCommittee {
     }
 
     /// Get validator by its index in the committee.
-    pub fn get(&self, index: usize) -> Option<&validator::PublicKey> {
+    pub fn get(&self, index: usize) -> Option<&WeightedValidator> {
         self.vec.get(index)
     }
 
@@ -150,7 +147,7 @@ impl ValidatorCommittee {
     /// Computes the validator for the given view.
     pub fn view_leader(&self, view_number: ViewNumber) -> validator::PublicKey {
         let index = view_number.0 as usize % self.len();
-        self.get(index).unwrap().clone()
+        self.get(index).unwrap().key.clone()
     }
 
     /// Signature threshold for this validator committee.
@@ -165,11 +162,11 @@ impl ValidatorCommittee {
 
     /// Compute the sum of signers weights.
     pub fn weight_from_signers(&self, signers: Signers) -> u64 {
-        self.weights
+        self.vec
             .iter()
             .enumerate()
             .filter(|(i, _)| signers.0[*i])
-            .map(|(_, weight)| weight)
+            .map(|(_, v)| v.weight)
             .sum()
     }
 
@@ -178,16 +175,17 @@ impl ValidatorCommittee {
         signed
             .iter()
             .map(|s| {
-                self.weights[self
+                self.vec[self
                     .index(&s.key)
                     .expect("Signer is not in validator committee")]
+                .weight
             })
             .sum()
     }
 
     /// Sum of all validators' weight in the committee
     pub fn max_weight(&self) -> u64 {
-        self.weights.iter().sum()
+        self.vec.iter().map(|v| v.weight).sum()
     }
 }
 
@@ -423,7 +421,7 @@ pub enum Phase {
 }
 
 /// Validator representation inside a ValidatorCommittee.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WeightedValidator {
     /// Validator key
     pub key: validator::PublicKey,
