@@ -50,7 +50,7 @@ pub(super) enum Error {
     #[error("unexpected peer")]
     PeerMismatch,
     #[error("validator signature {0}")]
-    Signature(#[from] validator::Error),
+    Signature(#[from] anyhow::Error),
     #[error("stream {0}")]
     Stream(#[source] anyhow::Error),
 }

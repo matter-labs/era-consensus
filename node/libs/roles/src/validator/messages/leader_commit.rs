@@ -51,7 +51,7 @@ pub enum CommitQCVerifyError {
     },
     /// Bad signature.
     #[error("bad signature: {0:#}")]
-    BadSignature(#[source] validator::Error),
+    BadSignature(#[source] anyhow::Error),
 }
 
 impl CommitQC {

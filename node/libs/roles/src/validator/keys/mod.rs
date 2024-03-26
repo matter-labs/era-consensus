@@ -9,6 +9,3 @@ pub use aggregate_signature::AggregateSignature;
 pub use public_key::PublicKey;
 pub use secret_key::SecretKey;
 pub use signature::Signature;
-
-/// Error type returned by validator key operations.
-pub type Error = zksync_consensus_crypto::bn254::Error;
