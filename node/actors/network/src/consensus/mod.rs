@@ -21,6 +21,10 @@ const RESP_MAX_SIZE: usize = kB;
 /// is down.
 const ADDRESS_ANNOUNCER_INTERVAL: time::Duration = time::Duration::minutes(10);
 
+struct Client {
+    consensus_rpc: rpc::Client<rpc::consensus::Rpc>,
+}
+
 /// Consensus network state.
 pub(crate) struct Network {
     /// Gossip network state to bootstrap consensus network from.
@@ -32,7 +36,7 @@ pub(crate) struct Network {
     /// Set of the currently open outbound connections.
     pub(crate) outbound: PoolWatch<validator::PublicKey>,
     /// RPC clients for all validators.
-    pub(crate) clients: HashMap<validator::PublicKey, rpc::Client<rpc::consensus::Rpc>>,
+    pub(crate) clients: HashMap<validator::PublicKey, Client>,
 }
 
 #[async_trait::async_trait]
@@ -183,9 +187,23 @@ impl Network {
         res
     }
 
+    async fn run_loopback_stream(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        let Some(addr) = self.gossip.cfg.public_addr.resolve(ctx).await?.context("resolve()")?
+            .choose(&mut ctx.rng()).with_context(||format!("{:?} resolved to no addresses",self.gossip.cfg.public_addr))?;
+        self.run_outbound_stream(ctx, self.key.public(), addr).await
+    }
+
     /// Maintains a connection to the given validator.
     /// If connection breaks, it tries to reconnect periodically.
-    pub(crate) async fn maintain_connection(&self, ctx: &ctx::Ctx, peer: &validator::PublicKey) {
+    pub(crate) async fn maintain_connection(&self, ctx: &ctx::Ctx, peer: &validator::PublicKey) -> ctx::OrCanceled<()> {
+        if self.key.public() == peer {
+            while ctx.is_active() {
+                if let Err(err) = self.run_loopback_stream(ctx).await {
+                    tracing::info!("run_loopback_stream(): {err:#}");
+                }
+            }
+            return;
+        }
         let addrs = &mut self.gossip.validator_addrs.subscribe();
         let mut addr = None;
         while ctx.is_active() {
@@ -207,13 +225,14 @@ impl Network {
 
     /// Periodically announces this validator's public IP over gossip network,
     /// so that other validators can discover and connect to this validator.
-    pub(crate) async fn run_address_announcer(&self, ctx: &ctx::Ctx) {
-        let my_addr = self.gossip.cfg.public_addr;
+    pub(crate) async fn run_address_announcer(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let mut sub = self.gossip.validator_addrs.subscribe();
         while ctx.is_active() {
+            let my_addrs = self.gossip.cfg.public_addr.resolve(ctx).await?.context("resolve()")?;
             let ctx = &ctx.with_timeout(ADDRESS_ANNOUNCER_INTERVAL);
             let _ = sync::wait_for(ctx, &mut sub, |got| {
                 got.get(&self.key.public()).map(|x| &x.msg.addr) != Some(&my_addr)
+                // TODO: got does match the loopback connection addr
             })
             .await;
             let next_version = sub

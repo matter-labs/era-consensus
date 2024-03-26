@@ -2,10 +2,12 @@ use super::{handshake, Network, ValidatorAddrs};
 use crate::{io, noise, preface, rpc};
 use async_trait::async_trait;
 use std::sync::{atomic::Ordering, Arc};
-use zksync_concurrency::{ctx, oneshot, scope, sync};
+use zksync_concurrency::{net, ctx, oneshot, scope, sync};
 use zksync_consensus_roles::node;
 use zksync_consensus_storage::BlockStore;
 use zksync_protobuf::kB;
+use rand::seq::SliceRandom;
+use anyhow::Context as _;
 
 struct PushValidatorAddrsServer<'a>(&'a Network);
 
@@ -182,8 +184,10 @@ impl Network {
         &self,
         ctx: &ctx::Ctx,
         peer: &node::PublicKey,
-        addr: std::net::SocketAddr,
+        addr: net::Host,
     ) -> anyhow::Result<()> {
+        let addr = *addr.resolve(ctx).await?.context("resolve()")?
+            .choose(&mut ctx.rng()).with_context(||"{addr:?} resolved to empty address set")?;
         let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet).await?;
         handshake::outbound(
             ctx,
