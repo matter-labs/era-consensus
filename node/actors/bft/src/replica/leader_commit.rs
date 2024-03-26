@@ -33,7 +33,7 @@ pub(crate) enum Error {
     },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
-    InvalidSignature(validator::Error),
+    InvalidSignature(#[source] anyhow::Error),
     /// Invalid message.
     #[error("invalid message: {0:#}")]
     InvalidMessage(validator::CommitQCVerifyError),
