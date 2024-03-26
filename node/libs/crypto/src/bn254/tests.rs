@@ -4,7 +4,7 @@ use crate::{
 };
 use ff_ce::PrimeField;
 use pairing::{
-    bn256::{Fr, G2Affine},
+    bn256::{Fr, G2Affine, G2},
     CurveAffine, CurveProjective,
 };
 use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -122,8 +122,8 @@ fn byte_fmt_correctness() {
 #[test]
 fn pk_is_valid_correctness() {
     // Check that the null point is invalid.
-    let mut pk = PublicKey::default();
-    assert!(!pk.is_valid());
+    let mut pk = PublicKey(G2::zero());
+    assert!(pk.verify().is_err());
 
     // Check that a point in the wrong subgroup is invalid.
     let mut rng = rand04::OsRng::new().unwrap();
@@ -147,5 +147,5 @@ fn pk_is_valid_correctness() {
         }
     }
 
-    assert!(!pk.is_valid());
+    assert!(pk.verify().is_err());
 }

@@ -4,7 +4,6 @@
 //! hence it does not protect the secret key from side-channel attacks.
 
 use crate::ByteFmt;
-pub use error::Error;
 use ff_ce::Field as _;
 use pairing::{
     bn256::{Bn256, Fq12, Fr, FrRepr, G1Affine, G1Compressed, G2Affine, G2Compressed, G1, G2},
@@ -18,9 +17,6 @@ use std::{
     io::Cursor,
 };
 
-#[doc(hidden)]
-pub mod error;
-
 #[cfg(test)]
 mod tests;
 
@@ -33,13 +29,25 @@ pub struct SecretKey(Fr);
 impl SecretKey {
     /// Generates a secret key from a cryptographically-secure entropy source.
     pub fn generate() -> Self {
-        Self(rand04::Rand::rand(&mut rand04::OsRng::new().unwrap()))
+        loop {
+            let fr: Fr = rand04::Rand::rand(&mut rand04::OsRng::new().unwrap());
+
+            if !fr.is_zero() {
+                return Self(fr);
+            }
+        }
     }
 
     /// Gets the corresponding [`PublicKey`] for this [`SecretKey`]
     pub fn public(&self) -> PublicKey {
         let p = G2Affine::one().mul(self.0);
-        PublicKey(p)
+        let pk = PublicKey(p);
+
+        // Verify public key is valid. Since we already check the validity of a
+        // secret key when constructing it, this should never fail (in theory).
+        pk.verify().unwrap();
+
+        pk
     }
 
     /// Produces a signature using this [`SecretKey`]
@@ -55,6 +63,9 @@ impl ByteFmt for SecretKey {
         let mut fr_repr = FrRepr::default();
         fr_repr.read_be(Cursor::new(bytes))?;
         let fr = Fr::from_repr(fr_repr)?;
+
+        anyhow::ensure!(!fr.is_zero(), "Secret key can't be zero");
+
         Ok(SecretKey(fr))
     }
 
@@ -84,24 +95,18 @@ pub struct PublicKey(G2);
 impl PublicKey {
     /// Checks if the public key is not the identity element and is in the correct subgroup. Verifying signatures
     /// against public keys that are not valid is insecure.
-    pub fn is_valid(&self) -> bool {
+    fn verify(&self) -> anyhow::Result<()> {
         // Check that the point is not the identity element.
-        if self.0.is_zero() {
-            return false;
-        }
+        anyhow::ensure!(!self.0.is_zero(), "Public key can't be zero");
 
         // We multiply the point by the order and check if the result is the identity element.
         // If it is, then the point is on the correct subgroup.
         let order = Fr::char();
         let mut p = self.0;
         p.mul_assign(order);
-        p.is_zero()
-    }
-}
+        anyhow::ensure!(p.is_zero(), "Public key must be in the correct subgroup");
 
-impl Default for PublicKey {
-    fn default() -> Self {
-        PublicKey(G2::zero())
+        Ok(())
     }
 }
 
@@ -117,9 +122,7 @@ impl ByteFmt for PublicKey {
         let p = G2Compressed::from_fixed_bytes(arr).into_affine()?;
         let pk = PublicKey(p.into());
 
-        if !pk.is_valid() {
-            anyhow::bail!("Public key is not valid")
-        }
+        pk.verify()?;
 
         Ok(pk)
     }
@@ -151,10 +154,10 @@ impl Signature {
     /// This function is intentionally non-generic and disallow inlining to ensure that compilation optimizations can be effectively applied.
     /// This optimization is needed for ensuring that tests can run within a reasonable time frame.
     #[inline(never)]
-    pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> Result<(), Error> {
+    pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> anyhow::Result<()> {
         // Verify public key is valid. Since we already check the validity of a
         // public key when constructing it, this should never fail (in theory).
-        assert!(pk.is_valid());
+        pk.verify().unwrap();
 
         let hash_point = hash::hash_to_g1(msg);
 
@@ -163,11 +166,9 @@ impl Signature {
         // Second pair: e(sig: G1, generator: G2)
         let b = Bn256::pairing(self.0, G2Affine::one());
 
-        if a == b {
-            Ok(())
-        } else {
-            Err(Error::SignatureVerificationFailure)
-        }
+        anyhow::ensure!(a == b, "Signature verification failure");
+
+        Ok(())
     }
 }
 
@@ -216,16 +217,20 @@ impl AggregateSignature {
     /// This function is intentionally non-generic and disallow inlining to ensure that compilation optimizations can be effectively applied.
     /// This optimization is needed for ensuring that tests can run within a reasonable time frame.
     #[inline(never)]
-    fn verify_raw(&self, msgs_and_pks: &[(&[u8], &PublicKey)]) -> Result<(), Error> {
+    fn verify_raw(&self, msgs_and_pks: &[(&[u8], &PublicKey)]) -> anyhow::Result<()> {
         // Aggregate public keys if they are signing the same hash. Each public key aggregated
         // is one fewer pairing to calculate.
         let mut pairs: HashMap<&[u8], PublicKey> = HashMap::new();
+
         for (msg, pk) in msgs_and_pks {
             // Verify public key is valid. Since we already check the validity of a
             // public key when constructing it, this should never fail (in theory).
-            assert!(pk.is_valid());
+            pk.verify().unwrap();
 
-            pairs.entry(msg).or_default().0.add_assign(&pk.0);
+            pairs
+                .entry(msg)
+                .and_modify(|agg_pk| agg_pk.0.add_assign(&pk.0))
+                .or_insert((*pk).clone());
         }
 
         // First pair: e(sig: G1, generator: G2)
@@ -237,11 +242,9 @@ impl AggregateSignature {
             b.mul_assign(&Bn256::pairing(hash::hash_to_g1(msg), pk.0))
         }
 
-        if a == b {
-            Ok(())
-        } else {
-            Err(Error::AggregateSignatureVerificationFailure)
-        }
+        anyhow::ensure!(a == b, "Aggregate signature verification failure");
+
+        Ok(())
     }
 
     /// Verifies an aggregated signature for multiple messages against the provided list of public keys.
@@ -250,7 +253,7 @@ impl AggregateSignature {
     pub fn verify<'a>(
         &self,
         msgs_and_pks: impl Iterator<Item = (&'a [u8], &'a PublicKey)>,
-    ) -> Result<(), Error> {
+    ) -> anyhow::Result<()> {
         self.verify_raw(&msgs_and_pks.collect::<Vec<_>>()[..])
     }
 }
