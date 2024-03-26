@@ -46,13 +46,12 @@ impl Network {
     /// Constructs a new network actor state.
     /// Call `run_network` to run the actor.
     pub fn new(
-        ctx: &ctx::Ctx,
         cfg: Config,
         block_store: Arc<BlockStore>,
         pipe: ActorPipe<io::InputMessage, io::OutputMessage>,
     ) -> (Arc<Self>, Runner) {
         let gossip = gossip::Network::new(cfg, block_store, pipe.send);
-        let consensus = consensus::Network::new(ctx, gossip.clone());
+        let consensus = consensus::Network::new(gossip.clone());
         let net = Arc::new(Self { gossip, consensus });
         (
             net.clone(),
@@ -138,7 +137,7 @@ impl Runner {
                 s.spawn(async {
                     loop {
                         let run_result =
-                            self.net.gossip.run_outbound_stream(ctx, peer, *addr).await;
+                            self.net.gossip.run_outbound_stream(ctx, peer, addr.clone()).await;
                         if let Err(err) = run_result {
                             tracing::info!("gossip.run_outbound_stream(): {err:#}");
                         }
@@ -150,10 +149,11 @@ impl Runner {
             }
 
             if let Some(c) = &self.net.consensus {
+                let validators = &c.gossip.genesis().validators;
                 // If we are active validator ...
-                if c.gossip.genesis().validators.contains(&c.key.public()) {
+                if validators.contains(&c.key.public()) {
                     // Maintain outbound connections.
-                    for peer in c.clients.keys() {
+                    for peer in validators.iter() {
                         s.spawn(async {
                             c.maintain_connection(ctx, peer).await;
                             Ok(())

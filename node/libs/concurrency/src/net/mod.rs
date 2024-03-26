@@ -14,6 +14,10 @@ mod tests;
 #[derive(Debug,Clone,PartialEq)]
 pub struct Host(pub String);
 
+impl From<std::net::SocketAddr> for Host {
+    fn from(addr: std::net::SocketAddr) -> Self { Self(addr.to_string()) }
+}
+
 impl Host {
     /// If host is of the form "<domain>:<port>", performs DNS resolution.
     /// If host is of the form "<ip>:<port>", just parses the SocketAddr. 
@@ -28,4 +32,9 @@ impl Host {
             Ok(std::net::ToSocketAddrs::to_socket_addrs(&host)?.collect())
         })).await?.unwrap())
     }
+
+    /*/// Assumes host to be of the form "<ip>:<port>" and parses it.
+    pub fn parse_socket_addr(&self) -> Result<std::net::SocketAddr,std::net::AddrParseError> {
+        self.0.parse()
+    }*/
 }

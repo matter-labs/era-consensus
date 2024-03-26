@@ -1,4 +1,4 @@
-use super::{handshake, Network, ValidatorAddrs};
+use super::{handshake, Network, ValidatorAddrs, Connection};
 use crate::{io, noise, preface, rpc};
 use async_trait::async_trait;
 use std::sync::{atomic::Ordering, Arc};
@@ -81,6 +81,7 @@ impl Network {
         ctx: &ctx::Ctx,
         peer: &node::PublicKey,
         stream: noise::Stream,
+        conn: &Connection,
     ) -> anyhow::Result<()> {
         let push_validator_addrs_client = rpc::Client::<rpc::push_validator_addrs::Rpc>::new(
             ctx,
@@ -92,15 +93,7 @@ impl Network {
             self.cfg.rpc.push_block_store_state_rate,
         );
         let push_block_store_state_server = PushBlockStoreStateServer { peer, net: self };
-
-        let get_block_client = Arc::new(rpc::Client::<rpc::get_block::Rpc>::new(
-            ctx,
-            self.cfg.rpc.get_block_rate,
-        ));
-        self.get_block_clients
-            .insert(peer.clone(), get_block_client.clone());
-
-        let res = scope::run!(ctx, |ctx, s| async {
+        scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_client(&push_validator_addrs_client)
                 .add_server(
@@ -112,7 +105,7 @@ impl Network {
                     push_block_store_state_server,
                     self.cfg.rpc.push_block_store_state_rate,
                 )
-                .add_client(&get_block_client)
+                .add_client(&conn.get_block)
                 .add_server(&*self.block_store, self.cfg.rpc.get_block_rate)
                 .add_server(rpc::ping::Server, rpc::ping::RATE);
 
@@ -156,11 +149,7 @@ impl Network {
             service.run(ctx, stream).await?;
             Ok(())
         })
-        .await;
-
-        self.get_block_clients
-            .remove(peer.clone(), get_block_client);
-        res
+        .await
     }
 
     /// Handles an inbound stream.
@@ -170,11 +159,13 @@ impl Network {
         ctx: &ctx::Ctx,
         mut stream: noise::Stream,
     ) -> anyhow::Result<()> {
-        let peer =
-            handshake::inbound(ctx, &self.cfg.gossip, self.genesis().hash(), &mut stream).await?;
+        let peer = handshake::inbound(ctx, &self.cfg.gossip, self.genesis().hash(), &mut stream).await?;
         tracing::Span::current().record("peer", tracing::field::debug(&peer));
-        self.inbound.insert(peer.clone()).await?;
-        let res = self.run_stream(ctx, &peer, stream).await;
+        let conn = Arc::new(Connection {
+            get_block: rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate),
+        });
+        self.inbound.insert(peer.clone(),conn.clone()).await?;
+        let res = self.run_stream(ctx, &peer, stream, &*conn).await;
         self.inbound.remove(&peer).await;
         res
     }
@@ -197,9 +188,11 @@ impl Network {
             peer,
         )
         .await?;
-
-        self.outbound.insert(peer.clone()).await?;
-        let res = self.run_stream(ctx, peer, stream).await;
+        let conn = Arc::new(Connection {
+            get_block: rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate),
+        });
+        self.outbound.insert(peer.clone(),conn.clone()).await?;
+        let res = self.run_stream(ctx, peer, stream, &*conn).await;
         self.outbound.remove(peer).await;
         res
     }

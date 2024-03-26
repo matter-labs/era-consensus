@@ -30,7 +30,7 @@ async fn test_one_connection_per_node() {
         let (store,runner) = new_store(ctx,&setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
         let mut nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
-            let (node,runner) = testonly::Instance::new(ctx, cfg.clone(), store.clone());
+            let (node,runner) = testonly::Instance::new(cfg.clone(), store.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             node
         }).collect();
@@ -46,7 +46,7 @@ async fn test_one_connection_per_node() {
         let (peer, addr) = cfgs[0].gossip.static_outbound.iter().next().unwrap();
         let mut stream = preface::connect(
             ctx,
-            *addr,
+            addr.resolve(ctx).await.unwrap().unwrap()[0],
             preface::Endpoint::GossipNet,
         )
         .await
@@ -235,7 +235,7 @@ async fn test_validator_addrs_propagation() {
             .iter()
             .enumerate()
             .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(ctx, cfg.clone(), store.clone());
+                let (node, runner) = testonly::Instance::new(cfg.clone(), store.clone());
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                 node
             })
@@ -245,7 +245,7 @@ async fn test_validator_addrs_propagation() {
             .map(|cfg| {
                 (
                     cfg.validator_key.as_ref().unwrap().public(),
-                    cfg.public_addr,
+                    *cfg.server_addr,
                 )
             })
             .collect();
@@ -274,7 +274,7 @@ async fn test_genesis_mismatch() {
         tracing::info!("Start one node, we will simulate the other one.");
         let (store, runner) = new_store(ctx, &setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
-        let (_node, runner) = testonly::Instance::new(ctx, cfgs[0].clone(), store.clone());
+        let (_node, runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         tracing::info!("Accept a connection with mismatching genesis.");
@@ -290,7 +290,7 @@ async fn test_genesis_mismatch() {
         assert_matches!(res, Err(handshake::Error::GenesisMismatch));
 
         tracing::info!("Try to connect to a node with a mismatching genesis.");
-        let mut stream = preface::connect(ctx, cfgs[0].public_addr, preface::Endpoint::GossipNet)
+        let mut stream = preface::connect(ctx, *cfgs[0].server_addr, preface::Endpoint::GossipNet)
             .await
             .context("preface::connect")?;
         let res = handshake::outbound(
@@ -333,7 +333,7 @@ async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
         for (i, cfg) in cfgs.into_iter().enumerate() {
             let (store, runner) = new_store(ctx, &setup.genesis).await;
             s.spawn_bg(runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(ctx, cfg, store);
+            let (node, runner) = testonly::Instance::new(cfg, store);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -408,7 +408,7 @@ async fn uncoordinated_block_syncing(
             let i = i;
             let (store, runner) = new_store(ctx, &setup.genesis).await;
             s.spawn_bg(runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(ctx, cfg, store.clone());
+            let (node, runner) = testonly::Instance::new(cfg, store.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             s.spawn(async {
                 let store = store;
@@ -455,7 +455,7 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
             .into_iter()
             .enumerate()
             .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(ctx, cfg, store.clone());
+                let (node, runner) = testonly::Instance::new(cfg, store.clone());
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                 node
             })
@@ -536,7 +536,7 @@ async fn validator_node_restart() {
         cfg.rpc.push_validator_addrs_rate.refresh = time::Duration::ZERO;
     }
     let (store, store_runner) = new_store(ctx, &setup.genesis).await;
-    let (node1, node1_runner) = testonly::Instance::new(ctx, cfgs[1].clone(), store.clone());
+    let (node1, node1_runner) = testonly::Instance::new(cfgs[1].clone(), store.clone());
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(store_runner.run(ctx));
         s.spawn_bg(
@@ -553,7 +553,7 @@ async fn validator_node_restart() {
         for clock_shift in [zero, sec, -2 * sec, 4 * sec, 10 * sec, -30 * sec] {
             // Set the new addr to broadcast.
             let addr0 = mk_addr(rng);
-            cfgs[0].public_addr = addr0;
+            cfgs[0].public_addr = addr0.into();
             // Shift the UTC clock.
             let now = start + clock_shift;
             assert!(
@@ -565,7 +565,7 @@ async fn validator_node_restart() {
 
             // _node0 contains pipe, which has to exist to prevent the connection from dying
             // early.
-            let (_node0, runner) = testonly::Instance::new(ctx, cfgs[0].clone(), store.clone());
+            let (_node0, runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
             scope::run!(ctx, |ctx, s| async {
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
                 tracing::info!("wait for the update to arrive to node1");
@@ -607,13 +607,13 @@ async fn rate_limiting() {
         .map(|cfg| {
             (
                 cfg.validator_key.as_ref().unwrap().public(),
-                cfg.public_addr,
+                *cfg.server_addr,
             )
         })
         .collect();
     for i in 1..n {
         let key = cfgs[i].gossip.key.public().clone();
-        let public_addr = cfgs[i].public_addr;
+        let public_addr = cfgs[i].public_addr.clone();
         cfgs[0].gossip.static_outbound.insert(key, public_addr);
     }
     let mut nodes = vec![];
@@ -623,7 +623,7 @@ async fn rate_limiting() {
         // Spawn the satellite nodes and wait until they register
         // their own address.
         for (i, cfg) in cfgs[1..].iter().enumerate() {
-            let (node, runner) = testonly::Instance::new(ctx, cfg.clone(), store.clone());
+            let (node, runner) = testonly::Instance::new(cfg.clone(), store.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             let sub = &mut node.net.gossip.validator_addrs.subscribe();
             sync::wait_for(ctx, sub, |got| {
@@ -636,7 +636,7 @@ async fn rate_limiting() {
         }
 
         // Spawn the center node.
-        let (center, runner) = testonly::Instance::new(ctx, cfgs[0].clone(), store.clone());
+        let (center, runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node[0]")));
         // Await for the center to receive all validator addrs.
         let sub = &mut center.net.gossip.validator_addrs.subscribe();

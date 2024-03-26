@@ -1,7 +1,7 @@
 //! Global state distributed by active validators, observed by all the nodes in the network.
 use crate::watch::Watch;
 use std::{collections::HashSet, sync::Arc};
-use zksync_concurrency::sync;
+use zksync_concurrency::{time,sync};
 use zksync_consensus_roles::validator;
 
 /// Mapping from validator::PublicKey to a signed validator::NetAddress.
@@ -90,6 +90,24 @@ impl ValidatorAddrsWatch {
         self.0.subscribe()
     }
 
+    pub(crate) async fn announce(
+        &self,
+        key: &validator::SecretKey,
+        addr: std::net::SocketAddr,
+        timestamp: time::Utc,
+    ) {
+        let this = self.0.lock().await;
+        let mut validator_addrs = this.borrow().clone();
+        let version = validator_addrs.get(&key.public()).map(|x| x.msg.version + 1).unwrap_or(0);
+        let d = Arc::new(key.sign_msg(validator::NetAddress {
+            addr,
+            version,
+            timestamp,
+        }));
+        validator_addrs.0.insert(d.key.clone(), d);
+        this.send_replace(validator_addrs);
+    }
+
     /// Inserts data to ValidatorAddrs.
     /// Subscribers are notified iff at least 1 new entry has
     /// been inserted. Returns an error iff an invalid
@@ -103,7 +121,7 @@ impl ValidatorAddrsWatch {
         let this = self.0.lock().await;
         let mut validator_addrs = this.borrow().clone();
         if validator_addrs.update(validators, data)? {
-            this.send(validator_addrs).ok().unwrap();
+            this.send_replace(validator_addrs);
         }
         Ok(())
     }
