@@ -20,10 +20,8 @@ pub(crate) fn hash_to_point(msg: &[u8]) -> (G1Affine, u8) {
     )
     .unwrap();
     let x_num = hash_num % prime_field_modulus;
-
-    let mut arr = [0u64; 4];
-    arr.copy_from_slice(x_num.to_u64_digits().as_slice());
-    let mut x = Fq::from_repr(FqRepr(arr)).unwrap();
+    let x_arr: [u64; 4] = x_num.to_u64_digits().try_into().unwrap();
+    let mut x = Fq::from_repr(FqRepr(x_arr)).unwrap();
 
     for i in 0..255 {
         let p = get_point_from_x(x);
