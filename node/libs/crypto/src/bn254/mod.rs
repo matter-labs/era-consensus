@@ -152,11 +152,11 @@ impl Signature {
     /// This optimization is needed for ensuring that tests can run within a reasonable time frame.
     #[inline(never)]
     pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> Result<(), Error> {
-        let hash_point = hash::hash_to_g1(msg);
-
         // Verify public key is valid. Since we already check the validity of a
         // public key when constructing it, this should never fail (in theory).
         assert!(pk.is_valid());
+
+        let hash_point = hash::hash_to_g1(msg);
 
         // First pair: e(H(m): G1, pk: G2)
         let a = Bn256::pairing(hash_point, pk.0);
