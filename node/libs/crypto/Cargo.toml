@@ -18,6 +18,8 @@ rand04.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 ff_ce.workspace = true
+num-bigint.workspace = true
+num-traits.workspace = true
 
 [dev-dependencies]
 criterion.workspace = true
