@@ -17,7 +17,7 @@ impl Distribution<AppConfig> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AppConfig {
         AppConfig {
             server_addr: make_addr(rng),
-            public_addr: make_addr(rng),
+            public_addr: make_addr(rng).into(),
             metrics_server_addr: Some(make_addr(rng)),
 
             genesis: rng.gen(),
@@ -27,7 +27,7 @@ impl Distribution<AppConfig> for Standard {
                 .map(|_| rng.gen::<node::SecretKey>().public())
                 .collect(),
             gossip_static_outbound: (0..6)
-                .map(|_| (rng.gen::<node::SecretKey>().public(), make_addr(rng)))
+                .map(|_| (rng.gen::<node::SecretKey>().public(), make_addr(rng).into()))
                 .collect(),
             max_payload_size: rng.gen(),
         }

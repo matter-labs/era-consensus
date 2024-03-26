@@ -80,7 +80,7 @@ impl NodeRunner {
         let key = self.network.gossip.key.public();
         let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
         let (mut network, network_runner) =
-            network::testonly::Instance::new(ctx, self.network.clone(), self.store.clone());
+            network::testonly::Instance::new(self.network.clone(), self.store.clone());
         let sync_blocks_config = Config::new();
         let res = scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(self.store_runner.run(ctx));
