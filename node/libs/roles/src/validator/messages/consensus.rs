@@ -77,6 +77,7 @@ impl Default for Fork {
 pub struct ValidatorCommittee {
     vec: Vec<WeightedValidator>,
     indexes: BTreeMap<validator::PublicKey, usize>,
+    total_weight: u64,
 }
 
 impl ValidatorCommittee {
@@ -84,11 +85,17 @@ impl ValidatorCommittee {
     pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
         let mut set = BTreeSet::new();
         let mut weighted_validators = BTreeMap::new();
+        let mut total_weight: u64 = 0;
         for validator in validators {
             anyhow::ensure!(
                 set.insert(validator.key.clone()),
                 "Duplicate validator in ValidatorCommittee"
             );
+            if let Some(result) = total_weight.checked_add(validator.weight) {
+                total_weight = result
+            } else {
+                anyhow::bail!("Sum of weights overflows in ValidatorCommittee")
+            }
             weighted_validators.insert(validator.key.clone(), validator);
         }
         anyhow::ensure!(
@@ -106,6 +113,7 @@ impl ValidatorCommittee {
                 .enumerate()
                 .map(|(i, pk)| (pk, i))
                 .collect(),
+            total_weight,
         })
     }
 
@@ -168,7 +176,7 @@ impl ValidatorCommittee {
 
     /// Sum of all validators' weight in the committee
     pub fn total_weight(&self) -> u64 {
-        self.vec.iter().map(|v| v.weight).sum()
+        self.total_weight
     }
 }
 

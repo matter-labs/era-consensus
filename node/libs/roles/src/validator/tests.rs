@@ -1,5 +1,6 @@
 use super::*;
 use crate::validator::testonly::Setup;
+use anyhow::Error;
 use assert_matches::assert_matches;
 use rand::{seq::SliceRandom, Rng};
 use std::vec;
@@ -312,4 +313,26 @@ fn test_validator_committee_weights() {
             *weight
         );
     }
+}
+
+#[test]
+fn test_validator_weights_sanity() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let setup = Setup::new(rng, 6);
+    // Validators weights
+    let weight = u64::MAX / 5;
+    let weights = [weight, weight, weight, weight, weight, weight];
+    let validators: Vec<WeightedValidator> = weights
+        .iter()
+        .enumerate()
+        .map(|(i, w)| WeightedValidator {
+            key: setup.keys[i].public(),
+            weight: *w,
+        })
+        .collect();
+
+    // Creation should overflow
+    assert_matches!(ValidatorCommittee::new(validators), Err(Error { .. }));
 }
