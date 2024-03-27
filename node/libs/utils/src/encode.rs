@@ -1,4 +1,4 @@
-//! Utilites for testing encodings.
+//! Utilities for testing encodings.
 use rand::{
     distributions::{Alphanumeric, DistString, Distribution},
     Rng,

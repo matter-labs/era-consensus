@@ -40,9 +40,4 @@ impl Host {
             .await?
             .unwrap())
     }
-
-    /*/// Assumes host to be of the form "<ip>:<port>" and parses it.
-    pub fn parse_socket_addr(&self) -> Result<std::net::SocketAddr,std::net::AddrParseError> {
-        self.0.parse()
-    }*/
 }
