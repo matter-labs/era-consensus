@@ -10,7 +10,7 @@ use std::{
 use test_casing::{test_casing, Product};
 use tracing::Instrument as _;
 use zksync_concurrency::{
-    ctx, oneshot, scope, sync,
+    ctx, net, oneshot, scope, sync,
     testonly::{abort_on_panic, set_timeout},
     time,
 };
@@ -552,8 +552,8 @@ async fn validator_node_restart() {
         let start = ctx.now_utc();
         for clock_shift in [zero, sec, -2 * sec, 4 * sec, 10 * sec, -30 * sec] {
             // Set the new addr to broadcast.
-            let addr0 = mk_addr(rng);
-            cfgs[0].public_addr = addr0.into();
+            cfgs[0].server_addr = net::tcp::testonly::reserve_listener();
+            cfgs[0].public_addr = (*cfgs[0].server_addr).into();
             // Shift the UTC clock.
             let now = start + clock_shift;
             assert!(
@@ -570,13 +570,8 @@ async fn validator_node_restart() {
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
                 tracing::info!("wait for the update to arrive to node1");
                 let sub = &mut node1.net.gossip.validator_addrs.subscribe();
-                sync::wait_for(ctx, sub, |got| {
-                    let Some(got) = got.get(&setup.keys[0].public()) else {
-                        return false;
-                    };
-                    got.msg.addr == addr0
-                })
-                .await?;
+                let want = Some(*cfgs[0].server_addr);
+                sync::wait_for(ctx, sub, |got| got.get(&setup.keys[0].public()).map(|x|x.msg.addr) == want).await?;
                 Ok(())
             })
             .await?;

@@ -175,6 +175,9 @@ impl Network {
                     ping_client.ping_loop(ctx, *ping_timeout).await
                 });
             }
+            if peer == &self.key.public() {
+
+            }
             service.run(ctx, stream).await?;
             Ok(())
         })
@@ -227,20 +230,41 @@ impl Network {
         let key = self.key.public();
         let mut outbound = self.outbound.subscribe();
         let mut addrs = self.gossip.validator_addrs.subscribe();
+        // Current address of this node.
         let mut my_addr = None;
-        while ctx.is_active() {
-            let _ : Result<(),_> = scope::run!(&ctx.with_timeout(ADDRESS_ANNOUNCER_INTERVAL),|ctx,s| async {
-                s.spawn::<()>(async {
+        loop {
+            // Wait for one of the following:
+            let _ : ctx::OrCanceled<()> = scope::run!(ctx,|ctx,s| async {
+                // loopback connection was established to a different address (this node's address has changed)
+                s.spawn_bg::<()>(async {
                     sync::wait_for(ctx, &mut outbound, |x| x.current().get(&key).map(|x|x.addr) != my_addr).await?;
-                    Err(ctx::Canceled)
+                    tracing::info!("loopback conn addr");
+                    s.cancel();
+                    Ok(())
                 });
-                sync::wait_for(ctx, &mut addrs, |got| got.get(&key).map(|x| x.msg.addr) != my_addr).await?;
-                Err(ctx::Canceled)
+                // an announcement from the node's previous execution has been received which
+                // overrides our announcement (reannouncement is needed).
+                s.spawn_bg::<()>(async {
+                    sync::wait_for(ctx, &mut addrs, |got| got.get(&key).map(|x| x.msg.addr) != my_addr).await?;
+                    tracing::info!("reannouncement");
+                    s.cancel();
+                    Ok(())
+                });
+                // timeout has passed.
+                ctx.sleep(ADDRESS_ANNOUNCER_INTERVAL).await?;
+                tracing::info!("timeout announcement");
+                Ok(())
             }).await;
+            if !ctx.is_active() {
+                return;
+            }
+            // If a loopback connection exists, update the current address.
             if let Some(conn) = outbound.borrow().current().get(&key) {
                 my_addr = Some(conn.addr);
             }
+            // If address of this node is known, announce it.
             if let Some(addr) = my_addr {
+                tracing::debug!("announcing validator address {addr}");
                 self.gossip.validator_addrs.announce(&self.key,addr,ctx.now_utc()).await;
             }
         }
