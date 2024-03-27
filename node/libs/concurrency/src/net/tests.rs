@@ -9,7 +9,7 @@ async fn test_resolve() {
         .unwrap()
         .unwrap();
     // We assume here that loopback host "localhost" is always configured here.
-    // If that turns out to be problematic we should use a more robust DNS resulution
+    // If that turns out to be problematic we should use a more robust DNS resolution
     // library, so that we can run our own DNS server in tests.
     assert!(!addrs.is_empty());
     for addr in addrs {
