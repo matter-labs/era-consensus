@@ -208,7 +208,7 @@ fn test_commit_qc() {
             .unwrap(),
         fork: setup1.genesis.fork.clone(),
     };
-    let validator_weight = setup1.genesis.validators.max_weight();
+    let validator_weight = setup1.genesis.validators.total_weight();
 
     for i in 0..setup1.keys.len() + 1 {
         let view = rng.gen();
@@ -260,7 +260,7 @@ fn test_prepare_qc() {
                 &setup1.genesis,
             );
         }
-        let expected_weight = n as u64 * setup1.genesis.validators.max_weight() / 6;
+        let expected_weight = n as u64 * setup1.genesis.validators.total_weight() / 6;
         if expected_weight >= setup1.genesis.validators.threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {

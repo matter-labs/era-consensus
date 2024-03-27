@@ -121,27 +121,24 @@ impl StateMachine {
         // to the same proposal.
 
         // We add the message to the incrementally-constructed QC.
-        self.commit_qcs
+        let commit_qc = self
+            .commit_qcs
             .entry(message.view.number)
-            .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()))
-            .add(&signed_message, self.config.genesis());
-
-        let cache_entry = self
-            .commit_message_cache
-            .entry(message.view.number)
-            .or_default();
+            .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()));
+        commit_qc.add(&signed_message, self.config.genesis());
 
         // We store the message in our cache.
-        cache_entry.insert(author.clone(), signed_message.clone());
+        self.commit_message_cache
+            .entry(message.view.number)
+            .or_default()
+            .insert(author.clone(), signed_message.clone());
 
         // Now we check if we have enough weight to continue.
-        let weight = self.config.genesis().validators.weight_from_msgs(
-            cache_entry
-                .values()
-                .filter(|m| m.msg.proposal == message.proposal)
-                .collect::<Vec<_>>()
-                .as_slice(),
-        );
+        let weight = self
+            .config
+            .genesis()
+            .validators
+            .weight_from_signers(commit_qc.signers.clone());
         if weight < self.config.genesis().validators.threshold() {
             return Ok(());
         };

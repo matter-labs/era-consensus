@@ -56,14 +56,15 @@ impl PrepareQC {
     /// Get the highest block voted and check if there's a quorum of votes for it. To have a quorum
     /// in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
     pub fn high_vote(&self, genesis: &Genesis) -> Option<BlockHeader> {
-        let mut count: HashMap<_, usize> = HashMap::new();
+        let mut count: HashMap<_, u64> = HashMap::new();
         for (msg, signers) in &self.map {
             if let Some(v) = &msg.high_vote {
-                *count.entry(v.proposal).or_default() += signers.count();
+                *count.entry(v.proposal).or_default() +=
+                    genesis.validators.weight_from_signers(signers.clone());
             }
         }
         // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
-        let min = 2 * genesis.validators.faulty_replicas() + 1;
+        let min = 2 * genesis.validators.max_faulty_weight() + 1;
         count.into_iter().find(|x| x.1 >= min).map(|x| x.0)
     }
 

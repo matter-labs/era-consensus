@@ -80,10 +80,6 @@ pub struct ValidatorCommittee {
 }
 
 impl ValidatorCommittee {
-    /// Required weight to verify signatures.
-    /// Currently 80.00%
-    const THRESHOLD: u64 = 8000;
-
     /// Creates a new ValidatorCommittee from a list of validator public keys.
     pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
         let mut set = BTreeSet::new();
@@ -150,14 +146,14 @@ impl ValidatorCommittee {
         self.get(index).unwrap().key.clone()
     }
 
-    /// Signature threshold for this validator committee.
+    /// Signature weight threshold for this validator committee.
     pub fn threshold(&self) -> u64 {
-        Self::THRESHOLD
+        threshold(self.total_weight())
     }
 
     /// Maximal number of faulty replicas allowed in this validator committee.
-    pub fn faulty_replicas(&self) -> usize {
-        faulty_replicas(self.len())
+    pub fn max_faulty_weight(&self) -> u64 {
+        max_faulty_weight(self.total_weight())
     }
 
     /// Compute the sum of signers weights.
@@ -170,41 +166,28 @@ impl ValidatorCommittee {
             .sum()
     }
 
-    /// Compute the sum of signers weights.
-    pub fn weight_from_msgs<T: Variant<Msg>>(&self, signed: &[&validator::Signed<T>]) -> u64 {
-        signed
-            .iter()
-            .map(|s| {
-                self.vec[self
-                    .index(&s.key)
-                    .expect("Signer is not in validator committee")]
-                .weight
-            })
-            .sum()
-    }
-
     /// Sum of all validators' weight in the committee
-    pub fn max_weight(&self) -> u64 {
+    pub fn total_weight(&self) -> u64 {
         self.vec.iter().map(|v| v.weight).sum()
     }
 }
 
-/// Calculate the consensus threshold, the minimum number of votes for any consensus action to be valid,
-/// for a given number of replicas.
-pub fn threshold(n: usize) -> usize {
-    n - faulty_replicas(n)
+/// Calculate the consensus threshold, the minimum votes' weight for any consensus action to be valid,
+/// for a given committee total weight.
+pub fn threshold(total_weight: u64) -> u64 {
+    total_weight - max_faulty_weight(total_weight)
 }
 
-/// Calculate the maximum number of faulty replicas, for a given number of replicas.
-pub fn faulty_replicas(n: usize) -> usize {
-    // Calculate the allowed maximum number of faulty replicas. We want the following relationship to hold:
+/// Calculate the maximum allowed weight for faulty replicas, for a given total weight.
+pub fn max_faulty_weight(total_weight: u64) -> u64 {
+    // Calculate the allowed maximum weight of faulty replicas. We want the following relationship to hold:
     //      n = 5*f + 1
-    // for n total replicas and f faulty replicas. This results in the following formula for the maximum
-    // number of faulty replicas:
+    // for n total weight and f faulty weight. This results in the following formula for the maximum
+    // weight of faulty replicas:
     //      f = floor((n - 1) / 5)
-    // Because of this, it doesn't make sense to have 5*f + 2 or 5*f + 3 replicas. It won't increase the number
-    // of allowed faulty replicas.
-    (n - 1) / 5
+    // Because of this, it doesn't make sense to have 5*f + 2 or 5*f + 3 replicas. It won't increase the
+    // allowed weight for faulty replicas.
+    (total_weight - 1) / 5
 }
 
 /// Genesis of the blockchain, unique for each blockchain instance.

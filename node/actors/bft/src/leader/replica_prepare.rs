@@ -2,7 +2,7 @@
 use super::StateMachine;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
-use zksync_consensus_roles::validator::{self, ProtocolVersion};
+use zksync_consensus_roles::validator::{self, ProtocolVersion, Signers};
 
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]
@@ -132,43 +132,33 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // We add the message to the incrementally-constructed QC.
-        self.prepare_qcs
+        let prepare_qc = self
+            .prepare_qcs
             .entry(message.view.number)
-            .or_insert_with(|| validator::PrepareQC::new(message.view.clone()))
-            .add(&signed_message, self.config.genesis());
-
-        // Work on current view messages
-        let entry = self
-            .prepare_message_cache
-            .entry(message.view.number)
-            .or_default();
-
-        // We check validators weight from current messages
-        let msgs_before: Vec<_> = entry.values().collect();
-        let weight_before = self
-            .config
-            .genesis()
-            .validators
-            .weight_from_msgs(&msgs_before);
+            .or_insert_with(|| validator::PrepareQC::new(message.view.clone()));
+        prepare_qc.add(&signed_message, self.config.genesis());
 
         // We store the message in our cache.
-        entry.insert(author.clone(), signed_message);
+        self.prepare_message_cache
+            .entry(message.view.number)
+            .or_default()
+            .insert(author.clone(), signed_message.clone());
 
         // Now we check if we have enough weight to continue.
-        let msgs: Vec<_> = entry.values().collect();
-        let weight = self.config.genesis().validators.weight_from_msgs(&msgs);
-        let threshold = self.config.genesis().validators.threshold();
-        if weight < threshold {
+        let weight = self.config.genesis().validators.weight_from_signers(
+            prepare_qc
+                .map
+                .get(&signed_message.msg)
+                .unwrap_or(&Signers::new(self.config.genesis().validators.len()))
+                .clone(),
+        );
+        if weight < self.config.genesis().validators.threshold() {
             return Ok(());
         }
 
         // Remove replica prepare messages for this view, so that we don't create a new block proposal
         // for this same view if we receive another replica prepare message after this.
         self.prepare_message_cache.remove(&message.view.number);
-
-        // Check that previous weight did not reach threshold
-        // to ensure this is the first time the threshold has been reached
-        debug_assert!(weight_before < threshold);
 
         // ----------- Update the state machine --------------
 

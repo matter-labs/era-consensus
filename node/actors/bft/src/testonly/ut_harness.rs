@@ -83,7 +83,7 @@ impl UTHarness {
     /// Creates a new `UTHarness` with minimally-significant validator set size.
     pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, BlockStoreRunner) {
         let num_validators = 6;
-        assert!(validator::faulty_replicas(num_validators) > 0);
+        assert!(validator::max_faulty_weight(num_validators as u64) > 0);
         UTHarness::new(ctx, num_validators).await
     }
 
@@ -225,7 +225,7 @@ impl UTHarness {
         msg: ReplicaPrepare,
     ) -> Signed<LeaderPrepare> {
         let expected_validator_weight =
-            self.genesis().validators.max_weight() / self.keys.len() as u64;
+            self.genesis().validators.total_weight() / self.keys.len() as u64;
         let want_threshold = self.genesis().validators.threshold();
         let mut leader_prepare = None;
         let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
@@ -262,7 +262,7 @@ impl UTHarness {
         msg: ReplicaCommit,
     ) -> Signed<LeaderCommit> {
         let expected_validator_weight =
-            self.genesis().validators.max_weight() / self.keys.len() as u64;
+            self.genesis().validators.total_weight() / self.keys.len() as u64;
         let want_threshold = self.genesis().validators.threshold();
         let mut first_match = true;
         for (i, key) in self.keys.iter().enumerate() {
