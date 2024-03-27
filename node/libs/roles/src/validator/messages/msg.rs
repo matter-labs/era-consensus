@@ -1,6 +1,6 @@
 //! Generic message types.
 use super::{ConsensusMsg, NetAddress};
-use crate::{node::SessionId, validator, validator::Error};
+use crate::{node::SessionId, validator};
 use std::fmt;
 use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
@@ -108,7 +108,7 @@ pub struct Signed<V: Variant<Msg>> {
 
 impl<V: Variant<Msg> + Clone> Signed<V> {
     /// Verify the signature on the message.
-    pub fn verify(&self) -> Result<(), Error> {
+    pub fn verify(&self) -> anyhow::Result<()> {
         self.sig.verify_msg(&self.msg.clone().insert(), &self.key)
     }
 }
