@@ -1,12 +1,12 @@
 //! Testonly utilities.
-use zksync_consensus_utils::EncodeDist;
-use super::{canonical, canonical_raw, decode, encode, read_fields, ProtoFmt, Wire, ProtoRepr};
+use super::{canonical, canonical_raw, decode, encode, read_fields, ProtoFmt, ProtoRepr, Wire};
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
+use zksync_consensus_utils::EncodeDist;
 
 /// Test encoding and canonical encoding properties.
 #[track_caller]
@@ -23,7 +23,6 @@ pub fn test_encode<R: Rng, T: ProtoFmt + std::fmt::Debug + PartialEq>(rng: &mut 
         assert_eq!(x_canonical, canonical_raw(e, desc).unwrap());
     }
 }
-
 
 /// Syntax sugar for `test_encode`,
 /// because `test_encode(rng,&rng.gen())` doesn't compile.
@@ -165,16 +164,24 @@ impl<P: ProtoRepr> ProtoConv for ReprConv<P> {
 pub fn test_encode_all_formats<X: ProtoConv>(rng: &mut impl Rng)
 where
     X::Type: std::fmt::Debug + PartialEq,
-    EncodeDist: Distribution<X::Type>, 
+    EncodeDist: Distribution<X::Type>,
 {
     for required_only in [false, true] {
-        let want: X::Type = EncodeDist { required_only, decimal_fractions: false }.sample(rng);
+        let want: X::Type = EncodeDist {
+            required_only,
+            decimal_fractions: false,
+        }
+        .sample(rng);
         let got = decode_proto::<X>(&encode_proto::<X>(&want)).unwrap();
         assert_eq!(&want, &got, "binary encoding");
         let got = decode_yaml::<X>(&encode_yaml::<X>(&want)).unwrap();
         assert_eq!(&want, &got, "yaml encoding");
 
-        let want: X::Type = EncodeDist { required_only, decimal_fractions: true }.sample(rng);
+        let want: X::Type = EncodeDist {
+            required_only,
+            decimal_fractions: true,
+        }
+        .sample(rng);
         let got = decode_json::<X>(&encode_json::<X>(&want)).unwrap();
         assert_eq!(&want, &got, "json encoding");
     }

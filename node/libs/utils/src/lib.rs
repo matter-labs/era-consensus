@@ -2,6 +2,6 @@
 
 pub mod enum_util;
 pub mod pipe;
-pub mod encode;
+mod encode;
 
 pub use encode::*;

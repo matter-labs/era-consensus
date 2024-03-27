@@ -1,14 +1,11 @@
 use crate::{store, AppConfig};
-use rand::{
-    distributions::{Distribution},
-    Rng,
-};
+use rand::{distributions::Distribution, Rng};
 use tempfile::TempDir;
 use zksync_concurrency::ctx;
-use zksync_consensus_roles::{validator::testonly::Setup};
+use zksync_consensus_roles::validator::testonly::Setup;
 use zksync_consensus_storage::{testonly, PersistentBlockStore};
-use zksync_protobuf::testonly::{FmtConv,test_encode_all_formats};
 use zksync_consensus_utils::EncodeDist;
+use zksync_protobuf::testonly::{test_encode_all_formats, FmtConv};
 
 impl Distribution<AppConfig> for EncodeDist {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AppConfig {
@@ -20,8 +17,11 @@ impl Distribution<AppConfig> for EncodeDist {
             genesis: rng.gen(),
 
             gossip_dynamic_inbound_limit: rng.gen(),
-            gossip_static_inbound: self.sample_range(rng).map(|_|rng.gen()).collect(),
-            gossip_static_outbound: self.sample_range(rng).map(|_|(rng.gen(),self.sample(rng))).collect(),
+            gossip_static_inbound: self.sample_range(rng).map(|_| rng.gen()).collect(),
+            gossip_static_outbound: self
+                .sample_range(rng)
+                .map(|_| (rng.gen(), self.sample(rng)))
+                .collect(),
             max_payload_size: rng.gen(),
         }
     }
