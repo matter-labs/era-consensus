@@ -2,7 +2,8 @@ use super::{
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, ConsensusMsg, FinalBlock, Fork,
     ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress,
     Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
-    ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
+    ReplicaPrepare, Signature, Signed, Signers, ValidatorCommittee, View, ViewNumber,
+    WeightedValidator,
 };
 use crate::{node::SessionId, proto::validator as proto};
 use anyhow::Context as _;
@@ -34,18 +35,18 @@ impl ProtoFmt for Genesis {
             .validators
             .iter()
             .enumerate()
-            .map(|(i, v)| PublicKey::read(v).context(i))
+            .map(|(i, v)| WeightedValidator::read(v).context(i))
             .collect::<Result<_, _>>()
             .context("validators")?;
         Ok(Self {
             fork: read_required(&r.fork).context("fork")?,
-            validators: ValidatorSet::new(validators.into_iter()).context("validators")?,
+            validators: ValidatorCommittee::new(validators.into_iter()).context("validators")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
             fork: Some(self.fork.build()),
-            validators: self.validators.iter().map(|x| x.build()).collect(),
+            validators: self.validators.iter().map(|v| v.build()).collect(),
         }
     }
 }
@@ -434,6 +435,24 @@ impl ProtoFmt for AggregateSignature {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             bn254: Some(self.0.encode()),
+        }
+    }
+}
+
+impl ProtoFmt for WeightedValidator {
+    type Proto = proto::WeightedValidator;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            key: read_required(&r.key).context("key")?,
+            weight: *required(&r.weight).context("weight")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            key: Some(self.key.build()),
+            weight: Some(self.weight),
         }
     }
 }

@@ -11,7 +11,7 @@ message Fork {
 
 message Genesis {
   optional Fork fork = 1; // required
-  repeated PublicKey validators = 2;
+  repeated WeightedValidator validators = 2;
 }
 
 message GenesisHash {
@@ -165,4 +165,10 @@ message Signature {
 
 message AggregateSignature {
   optional bytes bn254 = 1; // required
+}
+
+message WeightedValidator {
+  optional PublicKey key = 1; // required
+  optional uint64 weight = 2; // required
+
 }

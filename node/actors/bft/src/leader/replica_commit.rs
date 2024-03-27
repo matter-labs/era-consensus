@@ -1,7 +1,6 @@
 //! Handler of a ReplicaCommit message.
 use super::StateMachine;
 use crate::metrics;
-use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
@@ -70,7 +69,7 @@ impl StateMachine {
             });
         }
 
-        // Check that the message signer is in the validator set.
+        // Check that the message signer is in the validator committee.
         if !self.config.genesis().validators.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone(),
@@ -122,33 +121,29 @@ impl StateMachine {
         // to the same proposal.
 
         // We add the message to the incrementally-constructed QC.
-        self.commit_qcs
+        let commit_qc = self
+            .commit_qcs
             .entry(message.view.number)
-            .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()))
-            .add(&signed_message, self.config.genesis());
+            .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()));
+        commit_qc.add(&signed_message, self.config.genesis());
 
         // We store the message in our cache.
-        let cache_entry = self
-            .commit_message_cache
+        self.commit_message_cache
             .entry(message.view.number)
-            .or_default();
-        cache_entry.insert(author.clone(), signed_message.clone());
+            .or_default()
+            .insert(author.clone(), signed_message.clone());
 
-        // Now we check if we have enough messages to continue.
-        let mut by_proposal: HashMap<_, Vec<_>> = HashMap::new();
-        for msg in cache_entry.values() {
-            by_proposal.entry(msg.msg.proposal).or_default().push(msg);
-        }
-        let threshold = self.config.genesis().validators.threshold();
-        let Some((_, replica_messages)) =
-            by_proposal.into_iter().find(|(_, v)| v.len() >= threshold)
-        else {
+        // Now we check if we have enough weight to continue.
+        let weight = self
+            .config
+            .genesis()
+            .validators
+            .weight_from_signers(commit_qc.signers.clone());
+        if weight < self.config.genesis().validators.threshold() {
             return Ok(());
         };
-        debug_assert_eq!(replica_messages.len(), threshold);
 
         // ----------- Update the state machine --------------
-
         let now = ctx.now();
         metrics::METRICS
             .leader_commit_phase_latency
