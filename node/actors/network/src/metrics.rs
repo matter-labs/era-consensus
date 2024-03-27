@@ -145,15 +145,14 @@ impl NetworkGauges {
         let register_result = COLLECTOR.before_scrape(move || {
             state_ref.upgrade().map(|state| {
                 let gauges = NetworkGauges::default();
-                let len = state.gossip.inbound.subscribe().borrow().current().len();
+                let len = state.gossip.inbound.current().len();
                 gauges.gossip_inbound_connections.set(len);
-                let len = state.gossip.outbound.subscribe().borrow().current().len();
+                let len = state.gossip.outbound.current().len();
                 gauges.gossip_outbound_connections.set(len);
                 if let Some(consensus_state) = &state.consensus {
-                    let len = consensus_state.inbound.subscribe().borrow().current().len();
+                    let len = consensus_state.inbound.current().len();
                     gauges.consensus_inbound_connections.set(len);
-                    let subscriber = consensus_state.outbound.subscribe();
-                    let len = subscriber.borrow().current().len();
+                    let len = consensus_state.outbound.current().len();
                     gauges.consensus_outbound_connections.set(len);
                 }
                 gauges

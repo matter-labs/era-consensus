@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
 };
-use zksync_concurrency::{ctx,net};
+use zksync_concurrency::{ctx, net};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;

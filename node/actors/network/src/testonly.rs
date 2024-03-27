@@ -130,10 +130,7 @@ impl InstanceRunner {
 
 impl Instance {
     /// Construct an instance for a given config.
-    pub fn new(
-        cfg: Config,
-        block_store: Arc<BlockStore>,
-    ) -> (Self, InstanceRunner) {
+    pub fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self, InstanceRunner) {
         let (actor_pipe, dispatcher_pipe) = pipe::new();
         let (net, runner) = Network::new(cfg, block_store, actor_pipe);
         let (terminate_send, terminate_recv) = channel::bounded(1);
@@ -186,7 +183,7 @@ impl Instance {
             .gossip
             .outbound
             .subscribe()
-            .wait_for(|got| want.iter().all(|k|got.current().contains_key(k)))
+            .wait_for(|got| want.iter().all(|k| got.current().contains_key(k)))
             .await
             .unwrap();
     }
@@ -199,13 +196,13 @@ impl Instance {
         consensus_state
             .inbound
             .subscribe()
-            .wait_for(|got| want.iter().all(|k|got.current().contains_key(k)))
+            .wait_for(|got| want.iter().all(|k| got.current().contains_key(k)))
             .await
             .unwrap();
         consensus_state
             .outbound
             .subscribe()
-            .wait_for(|got| want.iter().all(|k|got.current().contains_key(k)))
+            .wait_for(|got| want.iter().all(|k| got.current().contains_key(k)))
             .await
             .unwrap();
     }

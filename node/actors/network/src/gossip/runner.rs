@@ -1,13 +1,13 @@
-use super::{handshake, Network, ValidatorAddrs, Connection};
+use super::{handshake, Connection, Network, ValidatorAddrs};
 use crate::{io, noise, preface, rpc};
+use anyhow::Context as _;
 use async_trait::async_trait;
+use rand::seq::SliceRandom;
 use std::sync::{atomic::Ordering, Arc};
-use zksync_concurrency::{net, ctx, oneshot, scope, sync};
+use zksync_concurrency::{ctx, net, oneshot, scope, sync};
 use zksync_consensus_roles::node;
 use zksync_consensus_storage::BlockStore;
 use zksync_protobuf::kB;
-use rand::seq::SliceRandom;
-use anyhow::Context as _;
 
 struct PushValidatorAddrsServer<'a>(&'a Network);
 
@@ -159,13 +159,14 @@ impl Network {
         ctx: &ctx::Ctx,
         mut stream: noise::Stream,
     ) -> anyhow::Result<()> {
-        let peer = handshake::inbound(ctx, &self.cfg.gossip, self.genesis().hash(), &mut stream).await?;
+        let peer =
+            handshake::inbound(ctx, &self.cfg.gossip, self.genesis().hash(), &mut stream).await?;
         tracing::Span::current().record("peer", tracing::field::debug(&peer));
         let conn = Arc::new(Connection {
             get_block: rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate),
         });
-        self.inbound.insert(peer.clone(),conn.clone()).await?;
-        let res = self.run_stream(ctx, &peer, stream, &*conn).await;
+        self.inbound.insert(peer.clone(), conn.clone()).await?;
+        let res = self.run_stream(ctx, &peer, stream, &conn).await;
         self.inbound.remove(&peer).await;
         res
     }
@@ -177,8 +178,12 @@ impl Network {
         peer: &node::PublicKey,
         addr: net::Host,
     ) -> anyhow::Result<()> {
-        let addr = *addr.resolve(ctx).await?.context("resolve()")?
-            .choose(&mut ctx.rng()).with_context(||"{addr:?} resolved to empty address set")?;
+        let addr = *addr
+            .resolve(ctx)
+            .await?
+            .context("resolve()")?
+            .choose(&mut ctx.rng())
+            .with_context(|| "{addr:?} resolved to empty address set")?;
         let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet).await?;
         handshake::outbound(
             ctx,
@@ -191,8 +196,8 @@ impl Network {
         let conn = Arc::new(Connection {
             get_block: rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate),
         });
-        self.outbound.insert(peer.clone(),conn.clone()).await?;
-        let res = self.run_stream(ctx, peer, stream, &*conn).await;
+        self.outbound.insert(peer.clone(), conn.clone()).await?;
+        let res = self.run_stream(ctx, peer, stream, &conn).await;
         self.outbound.remove(peer).await;
         res
     }

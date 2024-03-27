@@ -12,12 +12,7 @@
 //! Static connections constitute a rigid "backbone" of the gossip network, which is insensitive to
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
-use crate::{
-    gossip::{ValidatorAddrsWatch},
-    io,
-    pool::PoolWatch,
-    rpc, Config,
-};
+use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, rpc, Config};
 use anyhow::Context as _;
 use std::sync::{atomic::AtomicUsize, Arc};
 
@@ -33,7 +28,9 @@ use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 use zksync_protobuf::kB;
 
+/// State of the gossip connection.
 pub(crate) struct Connection {
+    /// `get_block` rpc client.
     pub(crate) get_block: rpc::Client<rpc::get_block::Rpc>,
 }
 
@@ -42,9 +39,9 @@ pub(crate) struct Network {
     /// Gossip network configuration.
     pub(crate) cfg: Config,
     /// Currently open inbound connections.
-    pub(crate) inbound: PoolWatch<node::PublicKey,Arc<Connection>>,
+    pub(crate) inbound: PoolWatch<node::PublicKey, Arc<Connection>>,
     /// Currently open outbound connections.
-    pub(crate) outbound: PoolWatch<node::PublicKey,Arc<Connection>>,
+    pub(crate) outbound: PoolWatch<node::PublicKey, Arc<Connection>>,
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
     /// Block store to serve `get_block` requests from.
@@ -90,10 +87,16 @@ impl Network {
     ) -> anyhow::Result<Option<validator::FinalBlock>> {
         let outbound = self.outbound.current();
         let inbound = self.inbound.current();
-        Ok(outbound.get(recipient).or(inbound.get(recipient))
+        Ok(outbound
+            .get(recipient)
+            .or(inbound.get(recipient))
             .context("recipient is unreachable")?
             .get_block
-            .call(ctx, &rpc::get_block::Req(number), self.cfg.max_block_size.saturating_add(kB))
+            .call(
+                ctx,
+                &rpc::get_block::Req(number),
+                self.cfg.max_block_size.saturating_add(kB),
+            )
             .await?
             .0)
     }

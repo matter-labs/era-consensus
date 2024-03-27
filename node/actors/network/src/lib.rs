@@ -136,8 +136,11 @@ impl Runner {
             for (peer, addr) in &self.net.gossip.cfg.gossip.static_outbound {
                 s.spawn(async {
                     loop {
-                        let run_result =
-                            self.net.gossip.run_outbound_stream(ctx, peer, addr.clone()).await;
+                        let run_result = self
+                            .net
+                            .gossip
+                            .run_outbound_stream(ctx, peer, addr.clone())
+                            .await;
                         if let Err(err) = run_result {
                             tracing::info!("gossip.run_outbound_stream(): {err:#}");
                         }
@@ -159,11 +162,6 @@ impl Runner {
                             Ok(())
                         });
                     }
-                    // Announce IP periodically.
-                    s.spawn(async {
-                        c.run_address_announcer(ctx).await;
-                        Ok(())
-                    });
                 }
             }
 

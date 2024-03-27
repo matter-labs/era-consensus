@@ -2,11 +2,8 @@
 //! BFT consensus messages are exchanged over this network.
 use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc};
 use anyhow::Context as _;
-use std::{
-    collections::{HashSet},
-    sync::Arc,
-};
 use rand::seq::SliceRandom;
+use std::{collections::HashSet, sync::Arc};
 use zksync_concurrency::{ctx, oneshot, scope, sync, time};
 use zksync_consensus_roles::validator;
 use zksync_protobuf::kB;
@@ -22,7 +19,11 @@ const RESP_MAX_SIZE: usize = kB;
 /// is down.
 const ADDRESS_ANNOUNCER_INTERVAL: time::Duration = time::Duration::minutes(10);
 
+/// Outbound connection state.
 pub(crate) struct Connection {
+    /// Peer's address.
+    /// This is not used for now, but will be required for the debug page.
+    #[allow(dead_code)]
     addr: std::net::SocketAddr,
     consensus: rpc::Client<rpc::consensus::Rpc>,
 }
@@ -106,7 +107,9 @@ impl Network {
         msg: validator::Signed<validator::ConsensusMsg>,
     ) -> anyhow::Result<()> {
         let outbound = self.outbound.current();
-        outbound.get(key).context("not an active validator")?
+        outbound
+            .get(key)
+            .context("not an active validator")?
             .consensus
             .call(ctx, &rpc::consensus::Req(msg), RESP_MAX_SIZE)
             .await?;
@@ -122,7 +125,7 @@ impl Network {
     ) -> anyhow::Result<()> {
         let peer =
             handshake::inbound(ctx, &self.key, self.gossip.genesis().hash(), &mut stream).await?;
-        self.inbound.insert(peer.clone(),()).await?;
+        self.inbound.insert(peer.clone(), ()).await?;
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_server(rpc::ping::Server, rpc::ping::RATE)
@@ -162,7 +165,7 @@ impl Network {
             addr,
             consensus: rpc::Client::new(ctx, self.gossip.cfg.rpc.consensus_rate),
         });
-        self.outbound.insert(peer.clone(),conn.clone()).await?;
+        self.outbound.insert(peer.clone(), conn.clone()).await?;
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_server(rpc::ping::Server, rpc::ping::RATE)
@@ -180,11 +183,19 @@ impl Network {
             // Note that this is executed only for outbound end of the loopback connection.
             // Inbound end doesn't know the public address of itself.
             if peer == &self.key.public() {
-                let mut sub = self.gossip.validator_addrs.subscribe();
                 s.spawn(async {
+                    let mut sub = self.gossip.validator_addrs.subscribe();
                     while ctx.is_active() {
-                        self.gossip.validator_addrs.announce(&self.key,addr,ctx.now_utc()).await;
-                        let _ = sync::wait_for(&ctx.with_timeout(ADDRESS_ANNOUNCER_INTERVAL), &mut sub, |got| got.get(peer).map(|x| x.msg.addr) != addr).await;
+                        self.gossip
+                            .validator_addrs
+                            .announce(&self.key, addr, ctx.now_utc())
+                            .await;
+                        let _ = sync::wait_for(
+                            &ctx.with_timeout(ADDRESS_ANNOUNCER_INTERVAL),
+                            &mut sub,
+                            |got| got.get(peer).map(|x| x.msg.addr) != Some(addr),
+                        )
+                        .await;
                     }
                     Ok(())
                 });
@@ -198,9 +209,19 @@ impl Network {
     }
 
     async fn run_loopback_stream(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        let addr = *self.gossip.cfg.public_addr.resolve(ctx).await?.context("resolve()")?
-            .choose(&mut ctx.rng()).with_context(||format!("{:?} resolved to no addresses",self.gossip.cfg.public_addr))?;
-        self.run_outbound_stream(ctx, &self.key.public(), addr).await
+        let addr = *self
+            .gossip
+            .cfg
+            .public_addr
+            .resolve(ctx)
+            .await?
+            .context("resolve()")?
+            .choose(&mut ctx.rng())
+            .with_context(|| {
+                format!("{:?} resolved to no addresses", self.gossip.cfg.public_addr)
+            })?;
+        self.run_outbound_stream(ctx, &self.key.public(), addr)
+            .await
     }
 
     /// Maintains a connection to the given validator.

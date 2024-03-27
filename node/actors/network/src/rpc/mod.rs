@@ -119,6 +119,8 @@ pub(crate) struct Client<R: Rpc> {
 
 impl<R: Rpc> Client<R> {
     /// Constructs a new client.
+    // TODO(gprusak): at this point we don't need the clients to be reusable,
+    // so perhaps they should be constructed by `Servive::add_client` instead?
     pub(crate) fn new(ctx: &ctx::Ctx, rate: limiter::Rate) -> Self {
         Client {
             limiter: limiter::Limiter::new(ctx, rate),

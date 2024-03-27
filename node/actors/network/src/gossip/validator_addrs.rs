@@ -1,7 +1,7 @@
 //! Global state distributed by active validators, observed by all the nodes in the network.
 use crate::watch::Watch;
 use std::{collections::HashSet, sync::Arc};
-use zksync_concurrency::{time,sync};
+use zksync_concurrency::{sync, time};
 use zksync_consensus_roles::validator;
 
 /// Mapping from validator::PublicKey to a signed validator::NetAddress.
@@ -90,6 +90,7 @@ impl ValidatorAddrsWatch {
         self.0.subscribe()
     }
 
+    /// Inserts a new version of the announcement signed with the given key.
     pub(crate) async fn announce(
         &self,
         key: &validator::SecretKey,
@@ -98,7 +99,10 @@ impl ValidatorAddrsWatch {
     ) {
         let this = self.0.lock().await;
         let mut validator_addrs = this.borrow().clone();
-        let version = validator_addrs.get(&key.public()).map(|x| x.msg.version + 1).unwrap_or(0);
+        let version = validator_addrs
+            .get(&key.public())
+            .map(|x| x.msg.version + 1)
+            .unwrap_or(0);
         let d = Arc::new(key.sign_msg(validator::NetAddress {
             addr,
             version,
