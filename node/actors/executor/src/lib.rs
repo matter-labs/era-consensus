@@ -45,7 +45,7 @@ pub struct Config {
     pub server_addr: std::net::SocketAddr,
     /// Public TCP address that other nodes are expected to connect to.
     /// It is announced over gossip network.
-    pub public_addr: std::net::SocketAddr,
+    pub public_addr: net::Host,
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
 
@@ -59,7 +59,7 @@ pub struct Config {
     pub gossip_static_inbound: HashSet<node::PublicKey>,
     /// Outbound connections that the node should actively try to
     /// establish and maintain.
-    pub gossip_static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>,
+    pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
 }
 
 impl Config {
@@ -90,7 +90,7 @@ impl Executor {
     fn network_config(&self) -> network::Config {
         network::Config {
             server_addr: net::tcp::ListenerAddr::new(self.config.server_addr),
-            public_addr: self.config.public_addr,
+            public_addr: self.config.public_addr.clone(),
             gossip: self.config.gossip(),
             validator_key: self.validator.as_ref().map(|v| v.key.clone()),
             ping_timeout: Some(time::Duration::seconds(10)),
@@ -136,7 +136,6 @@ impl Executor {
             s.spawn_blocking(|| dispatcher.run(ctx).context("IO Dispatcher stopped"));
             s.spawn(async {
                 let (net, runner) = network::Network::new(
-                    ctx,
                     network_config,
                     self.block_store.clone(),
                     network_actor_pipe,

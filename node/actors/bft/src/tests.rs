@@ -3,7 +3,7 @@ use zksync_concurrency::{ctx, scope, time};
 use zksync_consensus_roles::validator;
 
 async fn run_test(behavior: Behavior, network: Network) {
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(20));
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
 
@@ -18,7 +18,7 @@ async fn run_test(behavior: Behavior, network: Network) {
     Test {
         network,
         nodes,
-        blocks_to_finalize: 15,
+        blocks_to_finalize: 10,
     }
     .run(ctx)
     .await

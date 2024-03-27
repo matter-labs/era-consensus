@@ -77,7 +77,6 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, specs: &[Node]) -> anyhow::
                 let mut nodes = vec![];
                 for (i, spec) in specs.iter().enumerate() {
                     let (node, runner) = network::testonly::Instance::new(
-                        ctx,
                         spec.net.clone(),
                         spec.block_store.clone(),
                     );

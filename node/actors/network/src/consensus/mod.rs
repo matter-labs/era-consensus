@@ -2,10 +2,8 @@
 //! BFT consensus messages are exchanged over this network.
 use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc};
 use anyhow::Context as _;
-use std::{
-    collections::{HashMap, HashSet},
-    sync::Arc,
-};
+use rand::seq::SliceRandom;
+use std::{collections::HashSet, sync::Arc};
 use zksync_concurrency::{ctx, oneshot, scope, sync, time};
 use zksync_consensus_roles::validator;
 use zksync_protobuf::kB;
@@ -21,6 +19,15 @@ const RESP_MAX_SIZE: usize = kB;
 /// is down.
 const ADDRESS_ANNOUNCER_INTERVAL: time::Duration = time::Duration::minutes(10);
 
+/// Outbound connection state.
+pub(crate) struct Connection {
+    /// Peer's address.
+    /// This is not used for now, but will be required for the debug page.
+    #[allow(dead_code)]
+    addr: std::net::SocketAddr,
+    consensus: rpc::Client<rpc::consensus::Rpc>,
+}
+
 /// Consensus network state.
 pub(crate) struct Network {
     /// Gossip network state to bootstrap consensus network from.
@@ -28,11 +35,9 @@ pub(crate) struct Network {
     /// This validator's secret key.
     pub(crate) key: validator::SecretKey,
     /// Set of the currently open inbound connections.
-    pub(crate) inbound: PoolWatch<validator::PublicKey>,
+    pub(crate) inbound: PoolWatch<validator::PublicKey, ()>,
     /// Set of the currently open outbound connections.
-    pub(crate) outbound: PoolWatch<validator::PublicKey>,
-    /// RPC clients for all validators.
-    pub(crate) clients: HashMap<validator::PublicKey, rpc::Client<rpc::consensus::Rpc>>,
+    pub(crate) outbound: PoolWatch<validator::PublicKey, Arc<Connection>>,
 }
 
 #[async_trait::async_trait]
@@ -61,22 +66,13 @@ impl rpc::Handler<rpc::consensus::Rpc> for &Network {
 
 impl Network {
     /// Constructs a new consensus network state.
-    pub(crate) fn new(ctx: &ctx::Ctx, gossip: Arc<gossip::Network>) -> Option<Arc<Self>> {
+    pub(crate) fn new(gossip: Arc<gossip::Network>) -> Option<Arc<Self>> {
         let key = gossip.cfg.validator_key.clone()?;
         let validators: HashSet<_> = gossip.genesis().validators.iter_keys().cloned().collect();
         Some(Arc::new(Self {
             key,
             inbound: PoolWatch::new(validators.clone(), 0),
             outbound: PoolWatch::new(validators.clone(), 0),
-            clients: validators
-                .iter()
-                .map(|peer| {
-                    (
-                        peer.clone(),
-                        rpc::Client::new(ctx, gossip.cfg.rpc.consensus_rate),
-                    )
-                })
-                .collect(),
             gossip,
         }))
     }
@@ -88,10 +84,11 @@ impl Network {
         msg: validator::Signed<validator::ConsensusMsg>,
     ) -> anyhow::Result<()> {
         let req = rpc::consensus::Req(msg);
+        let outbound = self.outbound.current();
         scope::run!(ctx, |ctx, s| async {
-            for (peer, client) in &self.clients {
+            for (peer, conn) in &outbound {
                 s.spawn(async {
-                    if let Err(err) = client.call(ctx, &req, RESP_MAX_SIZE).await {
+                    if let Err(err) = conn.consensus.call(ctx, &req, RESP_MAX_SIZE).await {
                         tracing::info!("send({:?},<ConsensusMsg>): {err:#}", &*peer);
                     }
                     Ok(())
@@ -109,8 +106,11 @@ impl Network {
         key: &validator::PublicKey,
         msg: validator::Signed<validator::ConsensusMsg>,
     ) -> anyhow::Result<()> {
-        let client = self.clients.get(key).context("not an active validator")?;
-        client
+        let outbound = self.outbound.current();
+        outbound
+            .get(key)
+            .context("not an active validator")?
+            .consensus
             .call(ctx, &rpc::consensus::Req(msg), RESP_MAX_SIZE)
             .await?;
         Ok(())
@@ -125,7 +125,7 @@ impl Network {
     ) -> anyhow::Result<()> {
         let peer =
             handshake::inbound(ctx, &self.key, self.gossip.genesis().hash(), &mut stream).await?;
-        self.inbound.insert(peer.clone()).await?;
+        self.inbound.insert(peer.clone(), ()).await?;
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_server(rpc::ping::Server, rpc::ping::RATE)
@@ -152,7 +152,6 @@ impl Network {
         peer: &validator::PublicKey,
         addr: std::net::SocketAddr,
     ) -> anyhow::Result<()> {
-        let client = self.clients.get(peer).context("not an active validator")?;
         let mut stream = preface::connect(ctx, addr, preface::Endpoint::ConsensusNet).await?;
         handshake::outbound(
             ctx,
@@ -162,17 +161,43 @@ impl Network {
             peer,
         )
         .await?;
-        self.outbound.insert(peer.clone()).await?;
+        let conn = Arc::new(Connection {
+            addr,
+            consensus: rpc::Client::new(ctx, self.gossip.cfg.rpc.consensus_rate),
+        });
+        self.outbound.insert(peer.clone(), conn.clone()).await?;
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_server(rpc::ping::Server, rpc::ping::RATE)
-                .add_client(client);
+                .add_client(&conn.consensus);
             if let Some(ping_timeout) = &self.gossip.cfg.ping_timeout {
                 let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx, rpc::ping::RATE);
                 service = service.add_client(&ping_client);
                 s.spawn(async {
                     let ping_client = ping_client;
                     ping_client.ping_loop(ctx, *ping_timeout).await
+                });
+            }
+            // If this is a loopback connection, announce periodically the address of this
+            // validator to the network.
+            // Note that this is executed only for outbound end of the loopback connection.
+            // Inbound end doesn't know the public address of itself.
+            if peer == &self.key.public() {
+                s.spawn(async {
+                    let mut sub = self.gossip.validator_addrs.subscribe();
+                    while ctx.is_active() {
+                        self.gossip
+                            .validator_addrs
+                            .announce(&self.key, addr, ctx.now_utc())
+                            .await;
+                        let _ = sync::wait_for(
+                            &ctx.with_timeout(ADDRESS_ANNOUNCER_INTERVAL),
+                            &mut sub,
+                            |got| got.get(peer).map(|x| x.msg.addr) != Some(addr),
+                        )
+                        .await;
+                    }
+                    Ok(())
                 });
             }
             service.run(ctx, stream).await?;
@@ -183,9 +208,35 @@ impl Network {
         res
     }
 
+    async fn run_loopback_stream(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        let addr = *self
+            .gossip
+            .cfg
+            .public_addr
+            .resolve(ctx)
+            .await?
+            .context("resolve()")?
+            .choose(&mut ctx.rng())
+            .with_context(|| {
+                format!("{:?} resolved to no addresses", self.gossip.cfg.public_addr)
+            })?;
+        self.run_outbound_stream(ctx, &self.key.public(), addr)
+            .await
+    }
+
     /// Maintains a connection to the given validator.
     /// If connection breaks, it tries to reconnect periodically.
     pub(crate) async fn maintain_connection(&self, ctx: &ctx::Ctx, peer: &validator::PublicKey) {
+        // Loopback connection is a special case, because the address is taken from
+        // the config rather than from `gossip.validator_addrs`.
+        if &self.key.public() == peer {
+            while ctx.is_active() {
+                if let Err(err) = self.run_loopback_stream(ctx).await {
+                    tracing::info!("run_loopback_stream(): {err:#}");
+                }
+            }
+            return;
+        }
         let addrs = &mut self.gossip.validator_addrs.subscribe();
         let mut addr = None;
         while ctx.is_active() {
@@ -202,37 +253,6 @@ impl Network {
             if let Err(err) = self.run_outbound_stream(ctx, peer, addr).await {
                 tracing::info!("run_outbound_stream({peer:?},{addr}): {err:#}");
             }
-        }
-    }
-
-    /// Periodically announces this validator's public IP over gossip network,
-    /// so that other validators can discover and connect to this validator.
-    pub(crate) async fn run_address_announcer(&self, ctx: &ctx::Ctx) {
-        let my_addr = self.gossip.cfg.public_addr;
-        let mut sub = self.gossip.validator_addrs.subscribe();
-        while ctx.is_active() {
-            let ctx = &ctx.with_timeout(ADDRESS_ANNOUNCER_INTERVAL);
-            let _ = sync::wait_for(ctx, &mut sub, |got| {
-                got.get(&self.key.public()).map(|x| &x.msg.addr) != Some(&my_addr)
-            })
-            .await;
-            let next_version = sub
-                .borrow()
-                .get(&self.key.public())
-                .map(|x| x.msg.version + 1)
-                .unwrap_or(0);
-            self.gossip
-                .validator_addrs
-                .update(
-                    &self.gossip.genesis().validators,
-                    &[Arc::new(self.key.sign_msg(validator::NetAddress {
-                        addr: my_addr,
-                        version: next_version,
-                        timestamp: ctx.now_utc(),
-                    }))],
-                )
-                .await
-                .unwrap();
         }
     }
 }

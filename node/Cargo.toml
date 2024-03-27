@@ -40,7 +40,7 @@ zksync_protobuf = { path = "libs/protobuf" }
 zksync_protobuf_build = { path = "libs/protobuf_build" }
 
 # Crates from Matter Labs.
-pairing = { package = "pairing_ce", git = "https://github.com/matter-labs/pairing.git", rev = "f55393fd366596eac792d78525d26e9c4d6ed1ca" }
+pairing = { package = "pairing_ce", git = "https://github.com/matter-labs/pairing.git", rev = "d24f2c5871089c4cd4f54c0ca266bb9fef6115eb" }
 vise = { version = "0.1.0", git = "https://github.com/matter-labs/vise.git", rev = "1c9cc500e92cf9ea052b230e114a6f9cce4fb2c1" }
 vise-exporter = { version = "0.1.0", git = "https://github.com/matter-labs/vise.git", rev = "1c9cc500e92cf9ea052b230e114a6f9cce4fb2c1" }
 
@@ -54,7 +54,7 @@ clap = { version = "4.3.3", features = ["derive"] }
 criterion = "0.5.1"
 ed25519-dalek = { version = "2.0.0", features = ["rand_core"] }
 ff_ce = "0.14.3"
-heck = "0.4.1"
+heck = "0.5.0"
 hex = "0.4.3"
 im = "15.1.0"
 once_cell = "1.17.1"
@@ -73,6 +73,7 @@ rand04 = { package = "rand", version = "0.4" }
 rocksdb = "0.21.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0.95"
+serde_yaml = "0.9"
 sha3 = "0.10.8"
 snow = "0.9.3"
 syn = "2.0.17"
@@ -117,11 +118,9 @@ opt-level = 3
 
 [workspace.lints.rust]
 unsafe_code = "deny"
-noop_method_call = "warn"
 missing_docs = "warn"
 unreachable_pub = "warn"
 unused_qualifications = "warn"
-unused_tuple_struct_fields = "warn"
 
 [workspace.lints.clippy]
 # restriction group

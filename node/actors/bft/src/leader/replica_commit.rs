@@ -36,7 +36,7 @@ pub(crate) enum Error {
     NotLeaderInView,
     /// Invalid message.
     #[error("invalid message: {0:#}")]
-    InvalidMessage(anyhow::Error),
+    InvalidMessage(#[source] anyhow::Error),
     /// Duplicate message from a replica.
     #[error("duplicate message from a replica (existing message: {existing_message:?}")]
     DuplicateMessage {
@@ -45,7 +45,7 @@ pub(crate) enum Error {
     },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
-    InvalidSignature(#[source] validator::Error),
+    InvalidSignature(#[source] anyhow::Error),
 }
 
 impl StateMachine {

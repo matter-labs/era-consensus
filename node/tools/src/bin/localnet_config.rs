@@ -61,21 +61,21 @@ fn main() -> anyhow::Result<()> {
         default_config.with_metrics_server_addr(metrics_server_addr);
     }
     let mut cfgs: Vec<_> = (0..nodes)
-        .map(|i| default_config.with_public_addr(addrs[i]).clone())
+        .map(|i| default_config.with_public_addr(addrs[i].into()).clone())
         .collect();
 
     // Construct a gossip network with optimal diameter.
     for i in 0..nodes {
         for j in 0..peers {
             let next = (i * peers + j + 1) % nodes;
-            cfgs[i].add_gossip_static_outbound(node_keys[next].public(), addrs[next]);
+            cfgs[i].add_gossip_static_outbound(node_keys[next].public(), addrs[next].into());
             cfgs[next].add_gossip_static_inbound(node_keys[i].public());
         }
     }
 
     for (i, cfg) in cfgs.into_iter().enumerate() {
         // Recreate the directory for the node's config.
-        let root = args.output_dir.join(cfg.public_addr.to_string());
+        let root = args.output_dir.join(&cfg.public_addr.0);
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
         cfg.write_to_file(&root)?;

@@ -40,7 +40,7 @@ pub(crate) enum Error {
     },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
-    InvalidSignature(#[source] validator::Error),
+    InvalidSignature(#[source] anyhow::Error),
     /// Invalid message.
     #[error(transparent)]
     InvalidMessage(validator::ReplicaPrepareVerifyError),

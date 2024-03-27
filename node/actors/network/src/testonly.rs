@@ -57,7 +57,7 @@ pub fn new_configs(
         let addr = net::tcp::testonly::reserve_listener();
         Config {
             server_addr: addr,
-            public_addr: *addr,
+            public_addr: (*addr).into(),
             // Pings are disabled in tests by default to avoid dropping connections
             // due to timeouts.
             ping_timeout: None,
@@ -79,7 +79,7 @@ pub fn new_configs(
         for j in 0..gossip_peers {
             let j = (i + j + 1) % n;
             let peer = cfgs[j].gossip.key.public();
-            let addr = *cfgs[j].server_addr;
+            let addr = cfgs[j].public_addr.clone();
             cfgs[i].gossip.static_outbound.insert(peer, addr);
         }
     }
@@ -92,7 +92,7 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
     let addr = net::tcp::testonly::reserve_listener();
     Config {
         server_addr: addr,
-        public_addr: *addr,
+        public_addr: (*addr).into(),
         // Pings are disabled in tests by default to avoid dropping connections
         // due to timeouts.
         ping_timeout: None,
@@ -101,7 +101,7 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
             key: rng.gen(),
             dynamic_inbound_limit: usize::MAX,
             static_inbound: HashSet::default(),
-            static_outbound: [(peer.gossip.key.public(), peer.public_addr)].into(),
+            static_outbound: [(peer.gossip.key.public(), peer.public_addr.clone())].into(),
         },
         max_block_size: usize::MAX,
         rpc: RpcConfig::default(),
@@ -130,13 +130,9 @@ impl InstanceRunner {
 
 impl Instance {
     /// Construct an instance for a given config.
-    pub fn new(
-        ctx: &ctx::Ctx,
-        cfg: Config,
-        block_store: Arc<BlockStore>,
-    ) -> (Self, InstanceRunner) {
+    pub fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self, InstanceRunner) {
         let (actor_pipe, dispatcher_pipe) = pipe::new();
-        let (net, runner) = Network::new(ctx, cfg, block_store, actor_pipe);
+        let (net, runner) = Network::new(cfg, block_store, actor_pipe);
         let (terminate_send, terminate_recv) = channel::bounded(1);
         (
             Self {
@@ -187,7 +183,7 @@ impl Instance {
             .gossip
             .outbound
             .subscribe()
-            .wait_for(|got| want.is_subset(got.current()))
+            .wait_for(|got| want.iter().all(|k| got.current().contains_key(k)))
             .await
             .unwrap();
     }
@@ -200,13 +196,13 @@ impl Instance {
         consensus_state
             .inbound
             .subscribe()
-            .wait_for(|got| got.current() == &want)
+            .wait_for(|got| want.iter().all(|k| got.current().contains_key(k)))
             .await
             .unwrap();
         consensus_state
             .outbound
             .subscribe()
-            .wait_for(|got| got.current() == &want)
+            .wait_for(|got| want.iter().all(|k| got.current().contains_key(k)))
             .await
             .unwrap();
     }
@@ -219,11 +215,11 @@ impl Instance {
     ) -> ctx::OrCanceled<()> {
         let state = &self.net.gossip;
         sync::wait_for(ctx, &mut state.inbound.subscribe(), |got| {
-            !got.current().contains(peer)
+            !got.current().contains_key(peer)
         })
         .await?;
         sync::wait_for(ctx, &mut state.outbound.subscribe(), |got| {
-            !got.current().contains(peer)
+            !got.current().contains_key(peer)
         })
         .await?;
         Ok(())
@@ -237,11 +233,11 @@ impl Instance {
     ) -> ctx::OrCanceled<()> {
         let state = self.net.consensus.as_ref().unwrap();
         sync::wait_for(ctx, &mut state.inbound.subscribe(), |got| {
-            !got.current().contains(peer)
+            !got.current().contains_key(peer)
         })
         .await?;
         sync::wait_for(ctx, &mut state.outbound.subscribe(), |got| {
-            !got.current().contains(peer)
+            !got.current().contains_key(peer)
         })
         .await?;
         Ok(())
