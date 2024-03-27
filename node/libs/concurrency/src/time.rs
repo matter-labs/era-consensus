@@ -18,6 +18,12 @@ impl std::fmt::Debug for Utc {
     }
 }
 
+impl std::fmt::Display for Utc {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        (time::OffsetDateTime::UNIX_EPOCH + self.0).fmt(f)
+    }
+}
+
 /// Start of the unix epoch.
 pub const UNIX_EPOCH: Utc = Utc(Duration::ZERO);
 

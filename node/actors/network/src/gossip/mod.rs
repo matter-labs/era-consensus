@@ -12,43 +12,40 @@
 //! Static connections constitute a rigid "backbone" of the gossip network, which is insensitive to
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
-use crate::{
-    gossip::{ArcMap, ValidatorAddrsWatch},
-    io,
-    pool::PoolWatch,
-    rpc, Config,
-};
+use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, rpc, Config};
 use anyhow::Context as _;
 use std::sync::{atomic::AtomicUsize, Arc};
 
-mod arcmap;
 mod handshake;
 mod runner;
 #[cfg(test)]
 mod tests;
 mod validator_addrs;
 
-pub(crate) use arcmap::*;
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 use zksync_protobuf::kB;
 
+/// State of the gossip connection.
+pub(crate) struct Connection {
+    /// `get_block` rpc client.
+    pub(crate) get_block: rpc::Client<rpc::get_block::Rpc>,
+}
+
 /// Gossip network state.
 pub(crate) struct Network {
     /// Gossip network configuration.
     pub(crate) cfg: Config,
     /// Currently open inbound connections.
-    pub(crate) inbound: PoolWatch<node::PublicKey>,
+    pub(crate) inbound: PoolWatch<node::PublicKey, Arc<Connection>>,
     /// Currently open outbound connections.
-    pub(crate) outbound: PoolWatch<node::PublicKey>,
+    pub(crate) outbound: PoolWatch<node::PublicKey, Arc<Connection>>,
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
     /// Block store to serve `get_block` requests from.
     pub(crate) block_store: Arc<BlockStore>,
-    /// Clients for `get_block` requests for each currently active peer.
-    pub(crate) get_block_clients: ArcMap<rpc::Client<rpc::get_block::Rpc>>,
     /// Output pipe of the network actor.
     pub(crate) sender: channel::UnboundedSender<io::OutputMessage>,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
@@ -71,7 +68,6 @@ impl Network {
             outbound: PoolWatch::new(cfg.gossip.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
             block_store,
-            get_block_clients: ArcMap::default(),
             cfg,
             push_validator_addrs_calls: 0.into(),
         })
@@ -89,10 +85,13 @@ impl Network {
         recipient: &node::PublicKey,
         number: validator::BlockNumber,
     ) -> anyhow::Result<Option<validator::FinalBlock>> {
-        Ok(self
-            .get_block_clients
-            .get_any(recipient)
+        let outbound = self.outbound.current();
+        let inbound = self.inbound.current();
+        Ok(outbound
+            .get(recipient)
+            .or(inbound.get(recipient))
             .context("recipient is unreachable")?
+            .get_block
             .call(
                 ctx,
                 &rpc::get_block::Req(number),

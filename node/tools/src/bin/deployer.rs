@@ -1,10 +1,8 @@
 //! Deployer for the kubernetes cluster.
 use clap::Parser;
 use std::collections::HashMap;
-use zksync_consensus_roles::node::SecretKey;
-use zksync_consensus_roles::validator;
-use zksync_consensus_tools::k8s::ConsensusNode;
-use zksync_consensus_tools::{k8s, AppConfig};
+use zksync_consensus_roles::{node::SecretKey, validator};
+use zksync_consensus_tools::{k8s, k8s::ConsensusNode, AppConfig};
 
 /// Command line arguments.
 #[derive(Debug, Parser)]

@@ -75,7 +75,7 @@ impl ConsensusNode {
             .context("Pod IP address not present")?;
         self.node_addr = Some(NodeAddr {
             key: self.key.public(),
-            addr: SocketAddr::new(ip.parse()?, config::NODES_PORT),
+            addr: SocketAddr::new(ip.parse()?, config::NODES_PORT).into(),
         });
         Ok(())
     }

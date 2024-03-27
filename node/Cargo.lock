@@ -3894,6 +3894,7 @@ dependencies = [
 name = "zksync_consensus_utils"
 version = "0.1.0"
 dependencies = [
+ "rand 0.8.5",
  "thiserror",
  "zksync_concurrency",
 ]
@@ -3911,10 +3912,12 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "serde_yaml",
  "tokio",
  "tracing",
  "tracing-subscriber",
  "zksync_concurrency",
+ "zksync_consensus_utils",
  "zksync_protobuf_build",
 ]
 

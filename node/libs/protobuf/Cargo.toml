@@ -9,6 +9,7 @@ links = "zksync_protobuf_proto"
 
 [dependencies]
 zksync_concurrency.workspace = true
+zksync_consensus_utils.workspace = true
 
 anyhow.workspace = true
 bit-vec.workspace = true
@@ -19,6 +20,7 @@ quick-protobuf.workspace = true
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml.workspace = true
 
 [dev-dependencies]
 tokio.workspace = true

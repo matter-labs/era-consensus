@@ -9,7 +9,7 @@ use std::{
     path::{Path, PathBuf},
     str::FromStr,
 };
-use zksync_concurrency::ctx;
+use zksync_concurrency::{ctx, net};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
@@ -43,11 +43,11 @@ pub(crate) fn encode_with_serializer<T: serde::ser::Serialize, F: Formatter>(
     String::from_utf8(serializer.into_inner()).unwrap()
 }
 
-/// Pair of (public key, ip address) for a gossip network node.
+/// Pair of (public key, host addr) for a gossip network node.
 #[derive(Debug, Clone)]
 pub struct NodeAddr {
     pub key: node::PublicKey,
-    pub addr: SocketAddr,
+    pub addr: net::Host,
 }
 
 impl ProtoFmt for NodeAddr {
@@ -55,14 +55,14 @@ impl ProtoFmt for NodeAddr {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let key = read_required_text(&r.key).context("key")?;
-        let addr = read_required_text(&r.addr).context("addr")?;
+        let addr = net::Host(required(&r.addr).context("addr")?.clone());
         Ok(Self { addr, key })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
             key: Some(TextFmt::encode(&self.key)),
-            addr: Some(TextFmt::encode(&self.addr)),
+            addr: Some(self.addr.0.clone()),
         }
     }
 }
@@ -72,7 +72,7 @@ impl ProtoFmt for NodeAddr {
 #[derive(Debug, PartialEq, Clone)]
 pub struct AppConfig {
     pub server_addr: SocketAddr,
-    pub public_addr: SocketAddr,
+    pub public_addr: net::Host,
     pub metrics_server_addr: Option<SocketAddr>,
 
     pub genesis: validator::Genesis,
@@ -80,7 +80,7 @@ pub struct AppConfig {
 
     pub gossip_dynamic_inbound_limit: usize,
     pub gossip_static_inbound: HashSet<node::PublicKey>,
-    pub gossip_static_outbound: HashMap<node::PublicKey, SocketAddr>,
+    pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
 }
 
 impl ProtoFmt for AppConfig {
@@ -104,7 +104,7 @@ impl ProtoFmt for AppConfig {
         }
         Ok(Self {
             server_addr: read_required_text(&r.server_addr).context("server_addr")?,
-            public_addr: read_required_text(&r.public_addr).context("public_addr")?,
+            public_addr: net::Host(required(&r.public_addr).context("public_addr")?.clone()),
             metrics_server_addr: read_optional_text(&r.metrics_server_addr)
                 .context("metrics_server_addr")?,
 
@@ -124,7 +124,7 @@ impl ProtoFmt for AppConfig {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             server_addr: Some(self.server_addr.encode()),
-            public_addr: Some(self.public_addr.encode()),
+            public_addr: Some(self.public_addr.0.clone()),
             metrics_server_addr: self.metrics_server_addr.as_ref().map(TextFmt::encode),
 
             genesis: Some(self.genesis.build()),
@@ -143,7 +143,7 @@ impl ProtoFmt for AppConfig {
                 .iter()
                 .map(|(key, addr)| proto::NodeAddr {
                     key: Some(TextFmt::encode(key)),
-                    addr: Some(TextFmt::encode(addr)),
+                    addr: Some(addr.0.clone()),
                 })
                 .collect(),
         }
@@ -234,7 +234,7 @@ impl AppConfig {
     pub fn default_for(genesis: validator::Genesis) -> AppConfig {
         Self {
             server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
-            public_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
+            public_addr: SocketAddr::new(Ipv4Addr::LOCALHOST.into(), NODES_PORT).into(),
             metrics_server_addr: None,
 
             genesis,
@@ -251,7 +251,7 @@ impl AppConfig {
         self
     }
 
-    pub fn with_public_addr(&mut self, public_addr: SocketAddr) -> &mut Self {
+    pub fn with_public_addr(&mut self, public_addr: net::Host) -> &mut Self {
         self.public_addr = public_addr;
         self
     }
@@ -272,7 +272,7 @@ impl AppConfig {
     pub fn add_gossip_static_outbound(
         &mut self,
         key: node::PublicKey,
-        addr: SocketAddr,
+        addr: net::Host,
     ) -> &mut Self {
         self.gossip_static_outbound.insert(key, addr);
         self
@@ -292,9 +292,10 @@ impl AppConfig {
         self
     }
 
-    pub fn check_public_addr(&mut self) -> anyhow::Result<()> {
+    /// Tries to load the public_addr IP from the env var.
+    pub fn try_load_public_addr(&mut self) -> anyhow::Result<()> {
         if let Ok(public_addr) = std::env::var("PUBLIC_ADDR") {
-            self.public_addr = SocketAddr::from_str(&format!("{public_addr}:{NODES_PORT}"))?;
+            self.public_addr = SocketAddr::from_str(&format!("{public_addr}:{NODES_PORT}"))?.into();
         }
         Ok(())
     }
@@ -310,7 +311,7 @@ impl Configs {
         let e = executor::Executor {
             config: executor::Config {
                 server_addr: self.app.server_addr,
-                public_addr: self.app.public_addr,
+                public_addr: self.app.public_addr.clone(),
                 node_key: self.node_key.clone(),
                 gossip_dynamic_inbound_limit: self.app.gossip_dynamic_inbound_limit,
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),

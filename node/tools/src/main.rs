@@ -130,14 +130,17 @@ async fn main() -> anyhow::Result<()> {
     let mut configs = args.config_args().load().context("config_args().load()")?;
 
     // if `PUBLIC_ADDR` env var is set, use it to override publicAddr in config
-    configs.app.check_public_addr().context("Public Address")?;
+    configs
+        .app
+        .try_load_public_addr()
+        .context("Public Address")?;
 
     let (executor, runner) = configs
         .make_executor(ctx)
         .await
         .context("configs.into_executor()")?;
 
-    let mut rpc_addr = configs.app.public_addr;
+    let mut rpc_addr = configs.app.server_addr;
     if let Some(port) = args.rpc_port {
         rpc_addr.set_port(port);
     } else {
