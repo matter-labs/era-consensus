@@ -1,34 +1,27 @@
 use crate::{store, AppConfig};
 use rand::{
-    distributions::{Distribution, Standard},
+    distributions::{Distribution},
     Rng,
 };
 use tempfile::TempDir;
 use zksync_concurrency::ctx;
-use zksync_consensus_roles::{node, validator::testonly::Setup};
+use zksync_consensus_roles::{validator::testonly::Setup};
 use zksync_consensus_storage::{testonly, PersistentBlockStore};
-use zksync_protobuf::testonly::test_encode_random;
+use zksync_protobuf::testonly::{FmtConv,test_encode_all_formats};
+use zksync_consensus_utils::EncodeDist;
 
-fn make_addr<R: Rng + ?Sized>(rng: &mut R) -> std::net::SocketAddr {
-    std::net::SocketAddr::new(std::net::IpAddr::from(rng.gen::<[u8; 16]>()), rng.gen())
-}
-
-impl Distribution<AppConfig> for Standard {
+impl Distribution<AppConfig> for EncodeDist {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AppConfig {
         AppConfig {
-            server_addr: make_addr(rng),
-            public_addr: make_addr(rng).into(),
-            metrics_server_addr: Some(make_addr(rng)),
+            server_addr: self.sample(rng),
+            public_addr: self.sample(rng),
+            metrics_server_addr: Some(self.sample(rng)),
 
             genesis: rng.gen(),
 
             gossip_dynamic_inbound_limit: rng.gen(),
-            gossip_static_inbound: (0..5)
-                .map(|_| rng.gen::<node::SecretKey>().public())
-                .collect(),
-            gossip_static_outbound: (0..6)
-                .map(|_| (rng.gen::<node::SecretKey>().public(), make_addr(rng).into()))
-                .collect(),
+            gossip_static_inbound: self.sample_range(rng).map(|_|rng.gen()).collect(),
+            gossip_static_outbound: self.sample_range(rng).map(|_|(rng.gen(),self.sample(rng))).collect(),
             max_payload_size: rng.gen(),
         }
     }
@@ -38,7 +31,7 @@ impl Distribution<AppConfig> for Standard {
 fn test_schema_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    test_encode_random::<AppConfig>(rng);
+    test_encode_all_formats::<FmtConv<AppConfig>>(rng);
 }
 
 #[tokio::test]

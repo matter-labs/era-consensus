@@ -1,10 +1,8 @@
 //! Testonly utilities.
-
-pub mod gen_value;
-use super::{canonical, canonical_raw, decode, encode, read_fields, ProtoFmt, Wire};
-pub use gen_value::*;
+use zksync_consensus_utils::EncodeDist;
+use super::{canonical, canonical_raw, decode, encode, read_fields, ProtoFmt, Wire, ProtoRepr};
 use prost::Message as _;
-use prost_reflect::ReflectMessage as _;
+use prost_reflect::ReflectMessage;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
@@ -26,8 +24,9 @@ pub fn test_encode<R: Rng, T: ProtoFmt + std::fmt::Debug + PartialEq>(rng: &mut 
     }
 }
 
+
 /// Syntax sugar for `test_encode`,
-/// because `test_encode(rng,&rng::gen())` doesn't compile.
+/// because `test_encode(rng,&rng.gen())` doesn't compile.
 #[track_caller]
 pub fn test_encode_random<T: ProtoFmt + std::fmt::Debug + PartialEq>(rng: &mut impl Rng)
 where
@@ -89,4 +88,94 @@ fn encode_shuffled_raw<R: Rng>(
 pub(crate) fn encode_shuffled<T: ProtoFmt, R: Rng>(rng: &mut R, x: &T) -> Vec<u8> {
     let msg = x.build();
     encode_shuffled_raw(rng, &msg.encode_to_vec(), &msg.descriptor()).unwrap()
+}
+
+/// Generalization of `ProtoFmt` and `ProtoRepr`.
+pub trait ProtoConv {
+    /// Type.
+    type Type;
+    /// Proto.
+    type Proto: ReflectMessage + Default;
+    /// read.
+    fn read(r: &Self::Proto) -> anyhow::Result<Self::Type>;
+    /// build.
+    fn build(this: &Self::Type) -> Self::Proto;
+}
+
+fn encode_proto<X: ProtoConv>(msg: &X::Type) -> Vec<u8> {
+    let msg = X::build(msg);
+    canonical_raw(&msg.encode_to_vec(), &msg.descriptor()).unwrap()
+}
+
+fn decode_proto<X: ProtoConv>(bytes: &[u8]) -> anyhow::Result<X::Type> {
+    X::read(&X::Proto::decode(bytes)?)
+}
+
+fn encode_json<X: ProtoConv>(msg: &X::Type) -> String {
+    let mut s = serde_json::Serializer::pretty(vec![]);
+    crate::serde::serialize_proto(&X::build(msg), &mut s).unwrap();
+    String::from_utf8(s.into_inner()).unwrap()
+}
+
+fn decode_json<X: ProtoConv>(json: &str) -> anyhow::Result<X::Type> {
+    let mut d = serde_json::Deserializer::from_str(json);
+    X::read(&crate::serde::deserialize_proto(&mut d)?)
+}
+
+fn encode_yaml<X: ProtoConv>(msg: &X::Type) -> String {
+    let mut s = serde_yaml::Serializer::new(vec![]);
+    crate::serde::serialize_proto(&X::build(msg), &mut s).unwrap();
+    String::from_utf8(s.into_inner().unwrap()).unwrap()
+}
+
+fn decode_yaml<X: ProtoConv>(yaml: &str) -> anyhow::Result<X::Type> {
+    let d = serde_yaml::Deserializer::from_str(yaml);
+    X::read(&crate::serde::deserialize_proto(d)?)
+}
+
+/// Wrapper for `ProtoRepr`, implementing ProtoConv;
+pub struct ReprConv<P: ProtoRepr>(std::marker::PhantomData<P>);
+/// Wrapper for `ProtoFmt`, implementing ProtoConv;
+pub struct FmtConv<T: ProtoFmt>(std::marker::PhantomData<T>);
+
+impl<T: ProtoFmt> ProtoConv for FmtConv<T> {
+    type Type = T;
+    type Proto = T::Proto;
+    fn read(r: &T::Proto) -> anyhow::Result<T> {
+        ProtoFmt::read(r)
+    }
+    fn build(this: &T) -> T::Proto {
+        ProtoFmt::build(this)
+    }
+}
+
+impl<P: ProtoRepr> ProtoConv for ReprConv<P> {
+    type Type = P::Type;
+    type Proto = P;
+    fn read(r: &P) -> anyhow::Result<P::Type> {
+        ProtoRepr::read(r)
+    }
+    fn build(this: &P::Type) -> P {
+        ProtoRepr::build(this)
+    }
+}
+
+/// Test reencoding random values in various formats.
+#[track_caller]
+pub fn test_encode_all_formats<X: ProtoConv>(rng: &mut impl Rng)
+where
+    X::Type: std::fmt::Debug + PartialEq,
+    EncodeDist: Distribution<X::Type>, 
+{
+    for required_only in [false, true] {
+        let want: X::Type = EncodeDist { required_only, decimal_fractions: false }.sample(rng);
+        let got = decode_proto::<X>(&encode_proto::<X>(&want)).unwrap();
+        assert_eq!(&want, &got, "binary encoding");
+        let got = decode_yaml::<X>(&encode_yaml::<X>(&want)).unwrap();
+        assert_eq!(&want, &got, "yaml encoding");
+
+        let want: X::Type = EncodeDist { required_only, decimal_fractions: true }.sample(rng);
+        let got = decode_json::<X>(&encode_json::<X>(&want)).unwrap();
+        assert_eq!(&want, &got, "json encoding");
+    }
 }
