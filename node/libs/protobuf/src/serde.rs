@@ -37,12 +37,24 @@ pub fn serialize<T: ProtoFmt, S: serde::Serializer>(x: &T, s: S) -> Result<S::Ok
     serialize_proto(&x.build(), s)
 }
 
-/// Implementation of serde::Deserialize for arbitrary ReflectMessage.
+/// Implementation of serde::Deserialize for arbitrary ReflectMessage denying unknown fields
 pub fn deserialize_proto<'de, T: ReflectMessage + Default, D: serde::Deserializer<'de>>(
     d: D,
 ) -> Result<T, D::Error> {
+    deserialize_proto_with_options(d, true)
+}
+
+/// Implementation of serde::Deserialize for arbitrary ReflectMessage with deny_unknown_fields option
+pub fn deserialize_proto_with_options<
+    'de,
+    T: ReflectMessage + Default,
+    D: serde::Deserializer<'de>,
+>(
+    d: D,
+    deny_unknown_fields: bool,
+) -> Result<T, D::Error> {
     let mut p = T::default();
-    let options = prost_reflect::DeserializeOptions::new().deny_unknown_fields(false);
+    let options = prost_reflect::DeserializeOptions::new().deny_unknown_fields(deny_unknown_fields);
     let msg = prost_reflect::DynamicMessage::deserialize_with_options(p.descriptor(), d, &options)?;
     p.merge(msg.encode_to_vec().as_slice()).unwrap();
     Ok(p)
