@@ -42,7 +42,8 @@ pub fn deserialize_proto<'de, T: ReflectMessage + Default, D: serde::Deserialize
     d: D,
 ) -> Result<T, D::Error> {
     let mut p = T::default();
-    let msg = prost_reflect::DynamicMessage::deserialize(p.descriptor(), d)?;
+    let options = prost_reflect::DeserializeOptions::new().deny_unknown_fields(false);
+    let msg = prost_reflect::DynamicMessage::deserialize_with_options(p.descriptor(), d, &options)?;
     p.merge(msg.encode_to_vec().as_slice()).unwrap();
     Ok(p)
 }
