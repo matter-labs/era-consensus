@@ -53,6 +53,7 @@ struct Cli {
     #[arg(long, default_value = "./database")]
     database: PathBuf,
     /// Port for the RPC server.
+    // TODO(gprusak): why this is not in config?
     #[arg(long)]
     rpc_port: Option<u16>,
 }
@@ -87,6 +88,13 @@ impl Cli {
             database: &self.database,
         }
     }
+}
+
+fn check_public_addr(cfg: &mut AppConfig) -> anyhow::Result<()> {
+    if let Ok(public_addr) = std::env::var("PUBLIC_ADDR") {
+        cfg.public_addr = SocketAddr::new(public_addr.parse()?,NODES_PORT)?;
+    }
+    Ok(())
 }
 
 #[tokio::main]

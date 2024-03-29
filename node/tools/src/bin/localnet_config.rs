@@ -39,10 +39,6 @@ fn main() -> anyhow::Result<()> {
     }
     assert!(!addrs.is_empty(), "at least 1 address has to be specified");
 
-    let metrics_server_addr = args
-        .metrics_server_port
-        .map(|port| SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), port));
-
     // Generate the keys for all the replicas.
     let rng = &mut rand::thread_rng();
 
@@ -54,15 +50,16 @@ fn main() -> anyhow::Result<()> {
     let peers = 2;
 
     let node_keys: Vec<node::SecretKey> = (0..nodes).map(|_| rng.gen()).collect();
-
-    let mut default_config = AppConfig::default_for(setup.genesis.clone());
-
-    if let Some(metrics_server_addr) = metrics_server_addr {
-        default_config.with_metrics_server_addr(metrics_server_addr);
-    }
     let mut cfgs: Vec<_> = (0..nodes)
-        .map(|i| default_config.with_public_addr(addrs[i]).clone())
-        .collect();
+        .map(|i| AppConfig {
+            server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), adds[i].port()),
+            public_addr: addrs[i],
+            metrics_server_addr: args.metrics_server_port.map(|port| SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), port)),
+            genesis: setup.genesis.clone(),
+            gossip_dynamic_inbound_limit: 0,
+            gossip_static_inbound: HashSet::default(),
+            gossip_statit_outbound: HashMap::defualt(),
+        }).collect();
 
     // Construct a gossip network with optimal diameter.
     for i in 0..nodes {
@@ -78,7 +75,7 @@ fn main() -> anyhow::Result<()> {
         let root = args.output_dir.join(cfg.public_addr.to_string());
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
-        cfg.write_to_file(&root)?;
+        fs::write(root.join("config.json"), encode_json(&Serde(cfg))).context("fs::write()")
         fs::write(
             root.join("validator_key"),
             &TextFmt::encode(&validator_keys[i]),

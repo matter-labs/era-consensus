@@ -37,7 +37,16 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
 
     let node_keys: Vec<node::SecretKey> = (0..nodes).map(|_| node::SecretKey::generate()).collect();
 
-    let default_config = AppConfig::default_for(setup.genesis.clone());
+    let default_config = AppConfig {
+        server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
+        public_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
+        metrics_server_addr: None,
+        genesis: setup.genesis.clone(),
+        max_payload_size: 1000000,
+        gossip_dynamic_inbound_limit: 2,
+        gossip_static_inbound: [].into(),
+        gossip_static_outbound: [].into(),
+    };
 
     let mut cfgs: Vec<ConsensusNode> = (0..nodes)
         .map(|i| ConsensusNode {
@@ -54,10 +63,9 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
     for (i, node) in node_keys.iter().enumerate() {
         for j in 0..peers {
             let next = (i * peers + j + 1) % nodes;
-            cfgs[next].config.add_gossip_static_inbound(node.public());
+            cfgs[next].config.gossip_static_inbound.insert(node.public());
         }
     }
-
     cfgs
 }
 
