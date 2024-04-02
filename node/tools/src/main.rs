@@ -54,10 +54,6 @@ struct Cli {
     /// Path to the rocksdb database of the node.
     #[arg(long, default_value = "./database")]
     database: PathBuf,
-    /// Port for the RPC server.
-    // TODO(gprusak): why this is not in config?
-    #[arg(long)]
-    rpc_port: Option<u16>,
 }
 
 /// Function to let clap parse the command line `config` argument
@@ -138,27 +134,15 @@ async fn main() -> anyhow::Result<()> {
     // Load the config files.
     tracing::debug!("Loading config files.");
     let mut configs = args.config_args().load().context("config_args().load()")?;
-
     // if `PUBLIC_ADDR` env var is set, use it to override publicAddr in config
     check_public_addr(&mut configs.app).context("check_public_addr()")?;
-    let (executor, runner) = configs
-        .make_executor(ctx)
-        .await
-        .context("configs.into_executor()")?;
 
-    let mut rpc_addr = configs.app.server_addr;
-    if let Some(port) = args.rpc_port {
-        rpc_addr.set_port(port);
-    } else {
-        rpc_addr.set_port(rpc_addr.port() + 100);
-    }
-
-    // Create the RPC server with the executor's storage.
-    let node_storage = executor.block_store.clone();
-    let rpc_server = RPCServer::new(rpc_addr, node_storage);
-
-    // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {
+        let (executor, runner) = configs
+            .make_executor(ctx)
+            .await
+            .context("configs.into_executor()")?;
+        s.spawn_bg(runner.run(ctx));
         if let Some(addr) = &configs.app.metrics_server_addr {
             s.spawn_bg(async {
                 MetricsExporter::default()
@@ -168,10 +152,10 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             });
         }
-        s.spawn_bg(runner.run(ctx));
-        s.spawn(executor.run(ctx));
-        s.spawn(rpc_server.run(ctx));
-        Ok(())
+        if let Some(debug_addr) = &configs.app.debug_addr {
+            s.spawn_bg(RPCServer::new(*debug_addr, executor.block_store.clone()).run(ctx));
+        }
+        executor.run(ctx).await
     })
     .await
 }

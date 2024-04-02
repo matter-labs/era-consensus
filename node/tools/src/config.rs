@@ -72,6 +72,7 @@ impl ProtoFmt for NodeAddr {
 pub struct AppConfig {
     pub server_addr: SocketAddr,
     pub public_addr: net::Host,
+    pub debug_addr: Option<SocketAddr>,
     pub metrics_server_addr: Option<SocketAddr>,
 
     pub genesis: validator::Genesis,
@@ -104,6 +105,7 @@ impl ProtoFmt for AppConfig {
         Ok(Self {
             server_addr: read_required_text(&r.server_addr).context("server_addr")?,
             public_addr: net::Host(required(&r.public_addr).context("public_addr")?.clone()),
+            debug_addr: read_optional_text(&r.debug_addr).context("debug_addr")?,
             metrics_server_addr: read_optional_text(&r.metrics_server_addr)
                 .context("metrics_server_addr")?,
 
@@ -124,6 +126,7 @@ impl ProtoFmt for AppConfig {
         Self::Proto {
             server_addr: Some(self.server_addr.encode()),
             public_addr: Some(self.public_addr.0.clone()),
+            debug_addr: self.debug_addr.as_ref().map(TextFmt::encode),
             metrics_server_addr: self.metrics_server_addr.as_ref().map(TextFmt::encode),
 
             genesis: Some(self.genesis.build()),

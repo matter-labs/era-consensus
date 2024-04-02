@@ -12,7 +12,8 @@ impl Distribution<AppConfig> for EncodeDist {
         AppConfig {
             server_addr: self.sample(rng),
             public_addr: self.sample(rng),
-            metrics_server_addr: Some(self.sample(rng)),
+            debug_addr: self.sample(rng),
+            metrics_server_addr: self.sample(rng),
 
             genesis: rng.gen(),
 

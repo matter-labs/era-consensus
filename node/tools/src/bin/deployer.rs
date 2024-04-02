@@ -37,6 +37,7 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
     let default_config = AppConfig {
         server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
         public_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT).into(),
+        debug_addr: None,
         metrics_server_addr: None,
         genesis: setup.genesis.clone(),
         max_payload_size: 1000000,
