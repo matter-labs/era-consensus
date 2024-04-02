@@ -144,7 +144,7 @@ jobs:
 
       - name: Terraform Destroy
         working-directory: infrastructure/loadtests
-        if: always()
+        if: false # always()
         run: |
           terraform destroy -auto-approve \
             -parallelism=${{ env.NUM_INSTANCES }} \

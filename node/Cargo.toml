@@ -121,7 +121,6 @@ noop_method_call = "warn"
 missing_docs = "warn"
 unreachable_pub = "warn"
 unused_qualifications = "warn"
-unused_tuple_struct_fields = "warn"
 
 [workspace.lints.clippy]
 # restriction group
