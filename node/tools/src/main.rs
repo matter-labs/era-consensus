@@ -9,7 +9,9 @@ use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_crypto::{Text, TextFmt};
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_tools::{decode_json, AppConfig, ConfigArgs, ConfigSource, RPCServer};
+use zksync_consensus_tools::{
+    decode_json, AppConfig, ConfigArgs, ConfigSource, RPCServer, NODES_PORT,
+};
 use zksync_protobuf::serde::Serde;
 
 /// Command-line application launching a node executor.
@@ -92,7 +94,7 @@ impl Cli {
 
 fn check_public_addr(cfg: &mut AppConfig) -> anyhow::Result<()> {
     if let Ok(public_addr) = std::env::var("PUBLIC_ADDR") {
-        cfg.public_addr = SocketAddr::new(public_addr.parse()?,NODES_PORT)?;
+        cfg.public_addr = std::net::SocketAddr::new(public_addr.parse()?, NODES_PORT);
     }
     Ok(())
 }
@@ -138,7 +140,7 @@ async fn main() -> anyhow::Result<()> {
     let mut configs = args.config_args().load().context("config_args().load()")?;
 
     // if `PUBLIC_ADDR` env var is set, use it to override publicAddr in config
-    configs.app.check_public_addr().context("Public Address")?;
+    check_public_addr(&mut configs.app).context("check_public_addr()")?;
 
     let (executor, runner) = configs
         .make_executor(ctx)

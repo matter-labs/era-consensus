@@ -2,10 +2,16 @@
 use anyhow::Context as _;
 use clap::Parser;
 use rand::Rng;
-use std::{fs, net::SocketAddr, path::PathBuf};
+use std::collections::{HashMap, HashSet};
+use std::{
+    fs,
+    net::{Ipv4Addr, SocketAddr},
+    path::PathBuf,
+};
 use zksync_consensus_crypto::TextFmt;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_tools::AppConfig;
+use zksync_consensus_tools::{encode_json, AppConfig};
+use zksync_protobuf::serde::Serde;
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
@@ -52,21 +58,29 @@ fn main() -> anyhow::Result<()> {
     let node_keys: Vec<node::SecretKey> = (0..nodes).map(|_| rng.gen()).collect();
     let mut cfgs: Vec<_> = (0..nodes)
         .map(|i| AppConfig {
-            server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), adds[i].port()),
+            server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), addrs[i].port()),
             public_addr: addrs[i],
-            metrics_server_addr: args.metrics_server_port.map(|port| SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), port)),
+            metrics_server_addr: args
+                .metrics_server_port
+                .map(|port| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port)),
             genesis: setup.genesis.clone(),
+            max_payload_size: 1000000,
             gossip_dynamic_inbound_limit: 0,
             gossip_static_inbound: HashSet::default(),
-            gossip_statit_outbound: HashMap::defualt(),
-        }).collect();
+            gossip_static_outbound: HashMap::default(),
+        })
+        .collect();
 
     // Construct a gossip network with optimal diameter.
     for i in 0..nodes {
         for j in 0..peers {
             let next = (i * peers + j + 1) % nodes;
-            cfgs[i].add_gossip_static_outbound(node_keys[next].public(), addrs[next]);
-            cfgs[next].add_gossip_static_inbound(node_keys[i].public());
+            cfgs[i]
+                .gossip_static_outbound
+                .insert(node_keys[next].public(), addrs[next]);
+            cfgs[next]
+                .gossip_static_inbound
+                .insert(node_keys[i].public());
         }
     }
 
@@ -75,7 +89,7 @@ fn main() -> anyhow::Result<()> {
         let root = args.output_dir.join(cfg.public_addr.to_string());
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
-        fs::write(root.join("config.json"), encode_json(&Serde(cfg))).context("fs::write()")
+        fs::write(root.join("config.json"), encode_json(&Serde(cfg))).context("fs::write()")?;
         fs::write(
             root.join("validator_key"),
             &TextFmt::encode(&validator_keys[i]),

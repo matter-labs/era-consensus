@@ -5,9 +5,8 @@ use serde_json::{ser::Formatter, Serializer};
 use std::{
     collections::{HashMap, HashSet},
     fs,
-    net::{Ipv4Addr, SocketAddr},
+    net::SocketAddr,
     path::{Path, PathBuf},
-    str::FromStr,
 };
 use zksync_concurrency::ctx;
 use zksync_consensus_bft as bft;
@@ -29,7 +28,7 @@ pub fn decode_json<T: serde::de::DeserializeOwned>(json: &str) -> anyhow::Result
 }
 
 /// Encodes a generated proto message to json for arbitrary ProtoFmt.
-pub(crate) fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
+pub fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
     let s = serde_json::Serializer::pretty(vec![]);
     encode_with_serializer(x, s)
 }

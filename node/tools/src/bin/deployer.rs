@@ -1,9 +1,10 @@
 //! Deployer for the kubernetes cluster.
 use clap::Parser;
 use std::collections::HashMap;
+use std::net::{Ipv4Addr, SocketAddr};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_tools::k8s::ConsensusNode;
-use zksync_consensus_tools::{k8s, AppConfig};
+use zksync_consensus_tools::{k8s, AppConfig, NODES_PORT};
 
 /// K8s namespace for consensus nodes.
 const NAMESPACE: &str = "consensus";
@@ -63,7 +64,10 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
     for (i, node) in node_keys.iter().enumerate() {
         for j in 0..peers {
             let next = (i * peers + j + 1) % nodes;
-            cfgs[next].config.gossip_static_inbound.insert(node.public());
+            cfgs[next]
+                .config
+                .gossip_static_inbound
+                .insert(node.public());
         }
     }
     cfgs
