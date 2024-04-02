@@ -2,6 +2,11 @@ use crate::{
     bn254::{AggregateSignature, PublicKey, SecretKey, Signature},
     ByteFmt,
 };
+use ff_ce::PrimeField;
+use pairing::{
+    bn256::{Fr, G2Affine, G2},
+    CurveAffine, CurveProjective,
+};
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::iter::repeat_with;
 
@@ -112,4 +117,35 @@ fn byte_fmt_correctness() {
     let bytes = agg.encode();
     let agg_decoded = AggregateSignature::decode(&bytes).unwrap();
     assert_eq!(agg, agg_decoded);
+}
+
+#[test]
+fn pk_is_valid_correctness() {
+    // Check that the null point is invalid.
+    let mut pk = PublicKey(G2::zero());
+    assert!(pk.verify().is_err());
+
+    // Check that a point in the wrong subgroup is invalid.
+    let mut rng = rand04::OsRng::new().unwrap();
+
+    loop {
+        let x = rand04::Rand::rand(&mut rng);
+        let greatest = rand04::Rand::rand(&mut rng);
+
+        if let Some(p) = G2Affine::get_point_from_x(x, greatest) {
+            if !p.is_zero() && p.is_on_curve() {
+                // Check that it's not on the subgroup.
+                let order = Fr::char();
+                let mut p = p.into_projective();
+                p.mul_assign(order);
+
+                if !p.is_zero() {
+                    pk = PublicKey(p);
+                    break;
+                }
+            }
+        }
+    }
+
+    assert!(pk.verify().is_err());
 }

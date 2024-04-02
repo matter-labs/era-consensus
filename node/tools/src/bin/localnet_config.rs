@@ -59,7 +59,7 @@ fn main() -> anyhow::Result<()> {
     let mut cfgs: Vec<_> = (0..nodes)
         .map(|i| AppConfig {
             server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), addrs[i].port()),
-            public_addr: addrs[i],
+            public_addr: addrs[i].into(),
             metrics_server_addr: args
                 .metrics_server_port
                 .map(|port| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port)),
@@ -77,7 +77,7 @@ fn main() -> anyhow::Result<()> {
             let next = (i * peers + j + 1) % nodes;
             cfgs[i]
                 .gossip_static_outbound
-                .insert(node_keys[next].public(), addrs[next]);
+                .insert(node_keys[next].public(), addrs[next].into());
             cfgs[next]
                 .gossip_static_inbound
                 .insert(node_keys[i].public());
@@ -86,7 +86,7 @@ fn main() -> anyhow::Result<()> {
 
     for (i, cfg) in cfgs.into_iter().enumerate() {
         // Recreate the directory for the node's config.
-        let root = args.output_dir.join(cfg.public_addr.to_string());
+        let root = args.output_dir.join(&cfg.public_addr.0);
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
         fs::write(root.join("config.json"), encode_json(&Serde(cfg))).context("fs::write()")?;

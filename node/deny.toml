@@ -59,6 +59,7 @@ multiple-versions = "deny"
 skip = [
     # Old versions required by tempfile and prost-build.
     { name = "bitflags", version = "1.3.2" },
+    { name = "heck", version = "0.4.1" },
 
     # Old version required by tracing-subscriber.
     { name = "regex-automata", version = "0.1.10" },

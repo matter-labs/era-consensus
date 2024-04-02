@@ -60,7 +60,7 @@ impl ConsensusNode {
         .await
     }
 
-    /// Fetchs the pod's IP address and assignts to self.node_addr
+    /// Fetches the pod's IP address and assigns to self.node_addr
     pub async fn fetch_and_assign_pod_ip(
         &mut self,
         client: &Client,
@@ -75,7 +75,7 @@ impl ConsensusNode {
             .context("Pod IP address not present")?;
         self.node_addr = Some(NodeAddr {
             key: self.key.public(),
-            addr: SocketAddr::new(ip.parse()?, config::NODES_PORT),
+            addr: SocketAddr::new(ip.parse()?, config::NODES_PORT).into(),
         });
         Ok(())
     }
@@ -195,7 +195,7 @@ pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<
         "No consensus pods found in the k8s cluster"
     );
     let mut node_rpc_addresses: Vec<SocketAddr> = Vec::new();
-    for pod in pods.into_iter() {
+    for pod in pods {
         let pod_spec = pod.spec.as_ref().context("Failed to get pod spec")?;
         let pod_container = pod_spec
             .containers
@@ -218,7 +218,7 @@ pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<
                 .context("Failed to get ports of container")?
                 .iter()
                 .find_map(|port| {
-                    let port: u16 = port.container_port.try_into().ok()?;
+                    let port = port.container_port.try_into().ok()?;
                     (port != config::NODES_PORT).then_some(port)
                 })
                 .context("Failed parsing container port")?;

@@ -1,4 +1,4 @@
-use super::{Error, PublicKey, Signature};
+use super::{PublicKey, Signature};
 use crate::validator::messages::{Msg, MsgHash};
 use std::fmt;
 use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
@@ -18,7 +18,7 @@ impl AggregateSignature {
     pub(crate) fn verify_messages<'a, V: Variant<Msg>>(
         &self,
         messages_and_keys: impl Iterator<Item = (V, &'a PublicKey)>,
-    ) -> Result<(), Error> {
+    ) -> anyhow::Result<()> {
         let hashes_and_keys =
             messages_and_keys.map(|(message, key)| (message.insert().hash(), key));
         self.verify_hash(hashes_and_keys)
@@ -28,7 +28,7 @@ impl AggregateSignature {
     pub(crate) fn verify_hash<'a>(
         &self,
         hashes_and_keys: impl Iterator<Item = (MsgHash, &'a PublicKey)>,
-    ) -> Result<(), Error> {
+    ) -> anyhow::Result<()> {
         let bytes_and_pks: Vec<_> = hashes_and_keys
             .map(|(hash, pk)| (hash.0.as_bytes().to_owned(), &pk.0))
             .collect();

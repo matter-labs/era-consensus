@@ -94,7 +94,7 @@ impl Cli {
 
 fn check_public_addr(cfg: &mut AppConfig) -> anyhow::Result<()> {
     if let Ok(public_addr) = std::env::var("PUBLIC_ADDR") {
-        cfg.public_addr = std::net::SocketAddr::new(public_addr.parse()?, NODES_PORT);
+        cfg.public_addr = std::net::SocketAddr::new(public_addr.parse()?, NODES_PORT).into();
     }
     Ok(())
 }
@@ -141,22 +141,21 @@ async fn main() -> anyhow::Result<()> {
 
     // if `PUBLIC_ADDR` env var is set, use it to override publicAddr in config
     check_public_addr(&mut configs.app).context("check_public_addr()")?;
-
     let (executor, runner) = configs
         .make_executor(ctx)
         .await
         .context("configs.into_executor()")?;
 
-    let mut rpc_addr = configs.app.public_addr;
+    let mut rpc_addr = configs.app.server_addr;
     if let Some(port) = args.rpc_port {
         rpc_addr.set_port(port);
     } else {
         rpc_addr.set_port(rpc_addr.port() + 100);
     }
 
-    // cloning configuration to let RPCServer show it
-    // TODO this should be queried in real time instead, to reflect any possible change in config
-    let rpc_server = RPCServer::new(rpc_addr, configs.app.clone());
+    // Create the RPC server with the executor's storage.
+    let node_storage = executor.block_store.clone();
+    let rpc_server = RPCServer::new(rpc_addr, node_storage);
 
     // Initialize the storage.
     scope::run!(ctx, |ctx, s| async {

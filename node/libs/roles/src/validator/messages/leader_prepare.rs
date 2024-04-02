@@ -40,7 +40,7 @@ pub enum PrepareQCVerifyError {
     },
     /// Bad signature.
     #[error("bad signature: {0:#}")]
-    BadSignature(validator::Error),
+    BadSignature(#[source] anyhow::Error),
 }
 
 impl PrepareQC {
