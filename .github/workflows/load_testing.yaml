@@ -8,6 +8,16 @@ on:
         required: false
         type: number
         default: 100
+      validators:
+        description: "Amount of validator nodes to launch (<= nodes)"
+        required: false
+        type: number
+        default: 100
+      peers:
+        description: "Amount of gossipnet peers each node should have"
+        required: false
+        type: number
+        default: 2
       node_port:
         description: "Executor port number"
         required: false
@@ -21,6 +31,8 @@ on:
 
 env:
   NUM_INSTANCES: ${{ github.event.inputs.num_instances || '100' }}
+  VALIDATORS: ${{ github.event.inputs.validators || github.event.inputs.num_instances || '100' }}
+  PEERS: ${{ github.event.inputs.peers || '2' }}
   NODE_PORT: ${{ github.event.inputs.node_port || '8080' }}
   METRICS_PORT: ${{ github.event.inputs.metrics_port || '8081' }}
   VM_AUTH_USERNAME: ${{ secrets.VM_AUTH_USERNAME }}
@@ -121,6 +133,8 @@ jobs:
           cargo run -p zksync_consensus_tools \
           --bin localnet_config -- \
           --input-addrs ips_prts.txt \
+          --validator-count ${{ env.VALIDATORS }} \
+          --peer-count ${{ env.PEERS }} \
           --metrics-server-port ${{ env.METRICS_PORT }} \
           --output-dir artifacts/node_configs
 
