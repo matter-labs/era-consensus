@@ -92,7 +92,8 @@ pub(crate) async fn accept(
     mut stream: metrics::MeteredStream,
 ) -> anyhow::Result<(noise::Stream, Endpoint)> {
     let ctx = &ctx.with_timeout(TIMEOUT);
-    let encryption: Encryption = frame::recv_proto(ctx, &mut stream, Encryption::max_size()).await?;
+    let encryption: Encryption =
+        frame::recv_proto(ctx, &mut stream, Encryption::max_size()).await?;
     if encryption != Encryption::NoiseNN {
         anyhow::bail!("unsupported encryption protocol: {encryption:?}");
     }

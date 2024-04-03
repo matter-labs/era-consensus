@@ -114,7 +114,7 @@ impl Network {
 impl Runner {
     /// Runs the network actor.
     pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        let res : ctx::Result<()> = scope::run!(ctx, |ctx, s| async {
+        let res: ctx::Result<()> = scope::run!(ctx, |ctx, s| async {
             let mut listener = self
                 .net
                 .gossip
@@ -122,7 +122,7 @@ impl Runner {
                 .server_addr
                 .bind()
                 .context("server_addr.bind()")?;
-            
+
             // Handle incoming messages.
             s.spawn(async {
                 // We don't propagate cancellation errors
@@ -172,8 +172,10 @@ impl Runner {
 
             let accept_limiter = limiter::Limiter::new(ctx, MAX_CONNECTION_ACCEPT_RATE);
             loop {
-                accept_limiter.acquire(ctx,1).await?;
-                let stream = metrics::MeteredStream::accept(ctx, &mut listener).await?.context("accept()")?;
+                accept_limiter.acquire(ctx, 1).await?;
+                let stream = metrics::MeteredStream::accept(ctx, &mut listener)
+                    .await?
+                    .context("accept()")?;
                 s.spawn(async {
                     let res = async {
                         let (stream, endpoint) = preface::accept(ctx, stream)
