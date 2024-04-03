@@ -1,8 +1,8 @@
 //! This tool constructs collection of node configs for running tests.
 use anyhow::Context as _;
 use clap::Parser;
-use rand::Rng;
 use rand::seq::SliceRandom as _;
+use rand::Rng;
 use std::{
     collections::{HashMap, HashSet},
     fs,
