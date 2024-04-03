@@ -7,7 +7,7 @@ use zksync_consensus_utils::enum_util::Variant;
 /// A secret key for the validator role.
 /// SecretKey is put into an Arc, so that we can clone it,
 /// without copying the secret all over the RAM.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct SecretKey(pub(crate) Arc<bn254::SecretKey>);
 
 impl SecretKey {

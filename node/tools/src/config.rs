@@ -4,9 +4,8 @@ use anyhow::Context as _;
 use serde_json::{ser::Formatter, Serializer};
 use std::{
     collections::{HashMap, HashSet},
-    fs,
     net::SocketAddr,
-    path::{Path, PathBuf},
+    path::PathBuf,
 };
 use zksync_concurrency::{ctx, net};
 use zksync_consensus_bft as bft;
@@ -14,7 +13,23 @@ use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, Text
 use zksync_consensus_executor as executor;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BlockStore, BlockStoreRunner};
-use zksync_protobuf::{read_required, required, serde::Serde, ProtoFmt};
+use zksync_protobuf::{read_required, required, ProtoFmt};
+
+fn read_required_secret_text<T: TextFmt>(text: &Option<String>) -> anyhow::Result<T> {
+    Text::new(
+        text.as_ref()
+            .ok_or_else(|| anyhow::format_err!("missing"))?,
+    )
+    .decode()
+    .map_err(|_| anyhow::format_err!("invalid format"))
+}
+
+fn read_optional_secret_text<T: TextFmt>(text: &Option<String>) -> anyhow::Result<Option<T>> {
+    text.as_ref()
+        .map(|t| Text::new(t).decode())
+        .transpose()
+        .map_err(|_| anyhow::format_err!("invalid format"))
+}
 
 /// Ports for the nodes to listen on kubernetes pod.
 pub const NODES_PORT: u16 = 3054;
@@ -77,7 +92,9 @@ pub struct AppConfig {
 
     pub genesis: validator::Genesis,
     pub max_payload_size: usize,
+    pub validator_key: Option<validator::SecretKey>,
 
+    pub node_key: node::SecretKey,
     pub gossip_dynamic_inbound_limit: usize,
     pub gossip_static_inbound: HashSet<node::PublicKey>,
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
@@ -113,7 +130,11 @@ impl ProtoFmt for AppConfig {
             max_payload_size: required(&r.max_payload_size)
                 .and_then(|x| Ok((*x).try_into()?))
                 .context("max_payload_size")?,
+            // TODO: read secret.
+            validator_key: read_optional_secret_text(&r.validator_secret_key)
+                .context("validator_secret_key")?,
 
+            node_key: read_required_secret_text(&r.node_secret_key).context("node_secret_key")?,
             gossip_dynamic_inbound_limit: required(&r.gossip_dynamic_inbound_limit)
                 .and_then(|x| Ok((*x).try_into()?))
                 .context("gossip_dynamic_inbound_limit")?,
@@ -131,7 +152,9 @@ impl ProtoFmt for AppConfig {
 
             genesis: Some(self.genesis.build()),
             max_payload_size: Some(self.max_payload_size.try_into().unwrap()),
+            validator_secret_key: self.validator_key.as_ref().map(TextFmt::encode),
 
+            node_secret_key: Some(self.node_key.encode()),
             gossip_dynamic_inbound_limit: Some(
                 self.gossip_dynamic_inbound_limit.try_into().unwrap(),
             ),
@@ -152,84 +175,10 @@ impl ProtoFmt for AppConfig {
     }
 }
 
-/// Configuration information.
 #[derive(Debug)]
-pub struct ConfigArgs<'a> {
-    /// Node configuration.
-    pub config_args: ConfigSource<'a>,
-    /// Path to the rocksdb database.
-    pub database: &'a Path,
-}
-
-#[derive(Debug)]
-pub enum ConfigSource<'a> {
-    CliConfig {
-        /// Node configuration from command line.
-        config: AppConfig,
-        /// Node key as a string.
-        node_key: node::SecretKey,
-        /// Validator key as a string.
-        validator_key: Option<validator::SecretKey>,
-    },
-    PathConfig {
-        /// Path to a JSON file with node configuration.
-        config_file: &'a Path,
-        /// Path to a validator key file.
-        validator_key_file: &'a Path,
-        /// Path to a node key file.
-        node_key_file: &'a Path,
-    },
-}
-
 pub struct Configs {
     pub app: AppConfig,
-    pub validator_key: Option<validator::SecretKey>,
-    pub node_key: node::SecretKey,
     pub database: PathBuf,
-}
-
-impl<'a> ConfigArgs<'a> {
-    // Loads configs from the file system.
-    pub fn load(self) -> anyhow::Result<Configs> {
-        match self.config_args {
-            ConfigSource::CliConfig {
-                config,
-                node_key,
-                validator_key,
-            } => Ok(Configs {
-                app: config.clone(),
-                validator_key: validator_key.clone(),
-                node_key: node_key.clone(),
-                database: self.database.into(),
-            }),
-            ConfigSource::PathConfig {
-                config_file,
-                validator_key_file,
-                node_key_file,
-            } => Ok(Configs {
-                app: (|| {
-                    let app = fs::read_to_string(config_file).context("failed reading file")?;
-                    decode_json::<Serde<AppConfig>>(&app).context("failed decoding JSON")
-                })()
-                .with_context(|| config_file.display().to_string())?
-                .0,
-
-                validator_key: fs::read_to_string(validator_key_file)
-                    .ok()
-                    .map(|value| Text::new(&value).decode().context("failed decoding key"))
-                    .transpose()
-                    .with_context(|| validator_key_file.display().to_string())?,
-
-                node_key: (|| {
-                    let key = fs::read_to_string(node_key_file).context("failed reading file")?;
-                    Text::new(&key).decode().context("failed decoding key")
-                })()
-                .with_context(|| node_key_file.display().to_string())?,
-
-                database: self.database.into(),
-            }),
-        }
-    }
 }
 
 impl Configs {
@@ -243,18 +192,24 @@ impl Configs {
             config: executor::Config {
                 server_addr: self.app.server_addr,
                 public_addr: self.app.public_addr.clone(),
-                node_key: self.node_key.clone(),
+                node_key: self.app.node_key.clone(),
                 gossip_dynamic_inbound_limit: self.app.gossip_dynamic_inbound_limit,
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
                 max_payload_size: self.app.max_payload_size,
             },
             block_store,
-            validator: self.validator_key.as_ref().map(|key| executor::Validator {
-                key: key.clone(),
-                replica_store: Box::new(store),
-                payload_manager: Box::new(bft::testonly::RandomPayload(self.app.max_payload_size)),
-            }),
+            validator: self
+                .app
+                .validator_key
+                .as_ref()
+                .map(|key| executor::Validator {
+                    key: key.clone(),
+                    replica_store: Box::new(store),
+                    payload_manager: Box::new(bft::testonly::RandomPayload(
+                        self.app.max_payload_size,
+                    )),
+                }),
         };
         Ok((e, runner))
     }

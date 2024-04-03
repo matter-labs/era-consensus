@@ -66,6 +66,8 @@ fn main() -> anyhow::Result<()> {
                 .map(|port| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port)),
             genesis: setup.genesis.clone(),
             max_payload_size: 1000000,
+            node_key: node_keys[i].clone(),
+            validator_key: Some(validator_keys[i].clone()),
             gossip_dynamic_inbound_limit: 0,
             gossip_static_inbound: HashSet::default(),
             gossip_static_outbound: HashMap::default(),

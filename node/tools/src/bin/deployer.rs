@@ -36,24 +36,22 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
 
     let node_keys: Vec<SecretKey> = (0..nodes).map(|_| SecretKey::generate()).collect();
 
-    let default_config = AppConfig {
-        server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
-        public_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT).into(),
-        debug_addr: None,
-        metrics_server_addr: None,
-        genesis: setup.genesis.clone(),
-        max_payload_size: 1000000,
-        gossip_dynamic_inbound_limit: 2,
-        gossip_static_inbound: [].into(),
-        gossip_static_outbound: [].into(),
-    };
-
     let mut cfgs: Vec<ConsensusNode> = (0..nodes)
         .map(|i| ConsensusNode {
             id: format!("consensus-node-{i:0>2}"),
-            config: default_config.clone(),
-            key: node_keys[i].clone(),
-            validator_key: Some(validator_keys[i].clone()),
+            config: AppConfig {
+                server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
+                public_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT).into(),
+                debug_addr: None,
+                metrics_server_addr: None,
+                genesis: setup.genesis.clone(),
+                max_payload_size: 1000000,
+                validator_key: Some(validator_keys[i].clone()),
+                node_key: node_keys[i].clone(),
+                gossip_dynamic_inbound_limit: 2,
+                gossip_static_inbound: [].into(),
+                gossip_static_outbound: [].into(),
+            },
             node_addr: None, //It's not assigned yet
             is_seed: i < seed_nodes_amount,
         })

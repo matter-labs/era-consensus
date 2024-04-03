@@ -18,8 +18,6 @@ use kube::{
 use std::{collections::BTreeMap, net::SocketAddr, time::Duration};
 use tokio::time;
 use tracing::log::info;
-use zksync_consensus_crypto::TextFmt;
-use zksync_consensus_roles::{node, validator};
 use zksync_protobuf::serde::Serde;
 
 /// Docker image name for consensus nodes.
@@ -35,10 +33,6 @@ pub struct ConsensusNode {
     pub id: String,
     /// Node configuration
     pub config: AppConfig,
-    /// Node key
-    pub key: node::SecretKey,
-    /// Node key
-    pub validator_key: Option<validator::SecretKey>,
     /// Full NodeAddr
     pub node_addr: Option<NodeAddr>,
     /// Is seed node (meaning it has no gossipStaticOutbound configuration)
@@ -74,7 +68,7 @@ impl ConsensusNode {
             .pod_ip
             .context("Pod IP address not present")?;
         self.node_addr = Some(NodeAddr {
-            key: self.key.public(),
+            key: self.config.node_key.public(),
             addr: SocketAddr::new(ip.parse()?, config::NODES_PORT).into(),
         });
         Ok(())
@@ -339,20 +333,13 @@ fn is_pod_running(pod: &Pod) -> bool {
 }
 
 fn get_cli_args(consensus_node: &ConsensusNode) -> Vec<String> {
-    let mut cli_args = [
+    vec![
         "--config".to_string(),
         config::encode_with_serializer(
             &Serde(consensus_node.config.clone()),
             serde_json::Serializer::new(vec![]),
         ),
-        "--node-key".to_string(),
-        TextFmt::encode(&consensus_node.key),
     ]
-    .to_vec();
-    if let Some(key) = &consensus_node.validator_key {
-        cli_args.append(&mut ["--validator-key".to_string(), TextFmt::encode(key)].to_vec())
-    };
-    cli_args
 }
 
 async fn retry<T, Fut, F>(retries: usize, delay: Duration, mut f: F) -> anyhow::Result<T>

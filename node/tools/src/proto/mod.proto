@@ -27,6 +27,15 @@
 // NodePublicKey - public key of the node (gossip network participant) of the form "node:public:<signature scheme>:<hex encoded key material>"
 //   Currently only ed25519 signature scheme is supported for nodes.
 //   example: "node:public:ed25519:d36607699a0a3fbe3de16947928cf299484219ff62ca20f387795b0859dbe501"
+//
+// Since this application is just a (testonly) example of how to use consensus,
+// the security is not that important, so for simplicity we embed the secrets into the config file:
+//
+// ValidatorSecretKey - secret key of the validator (consensus participant) of the form "validator:secret:<signature scheme>:<hex encoded key material>"
+//   Currently only bn254 signature scheme is supported for validators.
+//
+// NodeSecretKey - secret key of the node (gossip network participant) of the form "node:secret:<signature scheme>:<hex encoded key material>"
+//   Currently only ed25519 signature scheme is supported for nodes.
 syntax = "proto3";
 
 package zksync.tools;
@@ -67,7 +76,13 @@ message AppConfig {
   // Maximal size of the block payload.
   optional uint64 max_payload_size = 5; // required; bytes
 
+  // Validator secret key.
+  optional string validator_secret_key = 10; // optional; ValidatorSecretKey
+
   // Gossip network
+  
+  // Node secret key.
+  optional string node_secret_key = 11; // required; NodeSecretKey
 
   // Limit on the number of gossip network inbound connections outside
   // of the `gossip_static_inbound` set.
