@@ -9,7 +9,6 @@ use std::{
     net::{Ipv4Addr, SocketAddr},
     path::PathBuf,
 };
-use zksync_consensus_crypto::TextFmt;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_tools::{encode_json, AppConfig};
 use zksync_protobuf::serde::Serde;
@@ -101,18 +100,12 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    for (i, cfg) in cfgs.into_iter().enumerate() {
+    for cfg in cfgs {
         // Recreate the directory for the node's config.
         let root = args.output_dir.join(&cfg.public_addr.0);
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
         fs::write(root.join("config.json"), encode_json(&Serde(cfg))).context("fs::write()")?;
-        fs::write(
-            root.join("validator_key"),
-            &TextFmt::encode(&validator_keys[i]),
-        )
-        .context("fs::write()")?;
-        fs::write(root.join("node_key"), &TextFmt::encode(&node_keys[i])).context("fs::write()")?;
     }
     Ok(())
 }
