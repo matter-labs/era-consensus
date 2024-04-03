@@ -9,10 +9,13 @@
 //! and multiplex between multiple endpoints available on the same TCP port.
 use crate::{frame, metrics, noise, proto::preface as proto};
 use zksync_concurrency::{ctx, time};
-use zksync_protobuf::{required, ProtoFmt};
+use zksync_protobuf::{kB, required, ProtoFmt};
 
 /// Timeout on executing the preface protocol.
 const TIMEOUT: time::Duration = time::Duration::seconds(5);
+
+/// Max size of the frames exchanged during preface.
+const MAX_FRAME: usize = 10 * kB;
 
 /// E2E encryption protocol to use on a TCP connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -32,9 +35,6 @@ pub(crate) enum Endpoint {
 
 impl ProtoFmt for Encryption {
     type Proto = proto::Encryption;
-    fn max_size() -> usize {
-        10 * zksync_protobuf::kB
-    }
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         use proto::encryption::T;
         Ok(match required(&r.t)? {
@@ -52,9 +52,6 @@ impl ProtoFmt for Encryption {
 
 impl ProtoFmt for Endpoint {
     type Proto = proto::Endpoint;
-    fn max_size() -> usize {
-        10 * zksync_protobuf::kB
-    }
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         use proto::endpoint::T;
         Ok(match required(&r.t)? {
@@ -92,12 +89,11 @@ pub(crate) async fn accept(
     mut stream: metrics::MeteredStream,
 ) -> anyhow::Result<(noise::Stream, Endpoint)> {
     let ctx = &ctx.with_timeout(TIMEOUT);
-    let encryption: Encryption =
-        frame::recv_proto(ctx, &mut stream, Encryption::max_size()).await?;
+    let encryption: Encryption = frame::recv_proto(ctx, &mut stream, MAX_FRAME).await?;
     if encryption != Encryption::NoiseNN {
         anyhow::bail!("unsupported encryption protocol: {encryption:?}");
     }
     let mut stream = noise::Stream::server_handshake(ctx, stream).await?;
-    let endpoint = frame::recv_proto(ctx, &mut stream, Encryption::max_size()).await?;
+    let endpoint = frame::recv_proto(ctx, &mut stream, MAX_FRAME).await?;
     Ok((stream, endpoint))
 }

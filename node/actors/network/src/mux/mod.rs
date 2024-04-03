@@ -279,7 +279,7 @@ impl Mux {
                 let h = self.handshake();
                 frame::send_proto(ctx, &mut write, &h).await
             });
-            frame::recv_proto(ctx, &mut read, Handshake::max_size()).await
+            frame::recv_proto(ctx, &mut read, handshake::MAX_FRAME).await
         })
         .await
         .map_err(RunError::Protocol)?;
