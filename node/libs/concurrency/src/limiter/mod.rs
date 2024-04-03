@@ -18,6 +18,14 @@ pub struct Rate {
     pub refresh: time::Duration,
 }
 
+impl Rate {
+    /// Infinite refresh rate.
+    pub const INF: Rate = Rate {
+        burst: usize::MAX,
+        refresh: time::Duration::ZERO,
+    };
+}
+
 /// Representation of Duration in nanoseconds.
 /// Duration is equivalent to {seconds:i64,nanos:i32},
 /// so Nanos is a strictly bigger type.

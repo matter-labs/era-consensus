@@ -25,12 +25,6 @@ mod watch;
 
 pub use config::*;
 
-/// Limit for the rate of accepting new TCP connections.
-const MAX_CONNECTION_ACCEPT_RATE: limiter::Rate = limiter::Rate {
-    burst: 10,
-    refresh: time::Duration::milliseconds(100),
-};
-
 /// State of the network actor observable outside of the actor.
 pub struct Network {
     /// Consensus network state.
@@ -171,7 +165,7 @@ impl Runner {
                 }
             }
 
-            let accept_limiter = limiter::Limiter::new(ctx, MAX_CONNECTION_ACCEPT_RATE);
+            let accept_limiter = limiter::Limiter::new(ctx, self.net.gossip.cfg.tcp_accept_rate);
             loop {
                 accept_limiter.acquire(ctx, 1).await?;
                 let stream = metrics::MeteredStream::accept(ctx, &mut listener)
