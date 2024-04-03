@@ -88,6 +88,7 @@ impl Cli {
     }
 }
 
+/// Overrides `cfg.public_addr`, based on the `PUBLIC_ADDR` env variable.
 fn check_public_addr(cfg: &mut AppConfig) -> anyhow::Result<()> {
     if let Ok(public_addr) = std::env::var("PUBLIC_ADDR") {
         cfg.public_addr = std::net::SocketAddr::new(public_addr.parse()?, NODES_PORT).into();

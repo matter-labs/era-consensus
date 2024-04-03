@@ -2,8 +2,8 @@
 use anyhow::Context as _;
 use clap::Parser;
 use rand::Rng;
-use std::collections::{HashMap, HashSet};
 use std::{
+    collections::{HashMap, HashSet},
     fs,
     net::{Ipv4Addr, SocketAddr},
     path::PathBuf,
