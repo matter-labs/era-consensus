@@ -81,7 +81,6 @@ use crate::{frame, noise::bytes};
 use anyhow::Context as _;
 use std::{collections::BTreeMap, sync::Arc};
 use zksync_concurrency::{ctx, ctx::channel, io, scope, sync};
-use zksync_protobuf::ProtoFmt as _;
 
 mod config;
 mod handshake;

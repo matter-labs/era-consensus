@@ -25,6 +25,7 @@ mod watch;
 
 pub use config::*;
 
+/// Limit for the rate of accepting new TCP connections.
 const MAX_CONNECTION_ACCEPT_RATE: limiter::Rate = limiter::Rate {
     burst: 10,
     refresh: time::Duration::milliseconds(100),
