@@ -1,8 +1,7 @@
 //! This tool constructs collection of node configs for running tests.
 use anyhow::Context as _;
 use clap::Parser;
-use rand::seq::SliceRandom as _;
-use rand::Rng;
+use rand::{seq::SliceRandom as _, Rng};
 use std::{
     collections::{HashMap, HashSet},
     fs,
@@ -89,10 +88,12 @@ fn main() -> anyhow::Result<()> {
         cfgs.shuffle(rng);
         let mut next = 0;
         for i in 0..cfgs.len() {
-            cfgs[i].gossip_static_outbound = (0..peers).map(|_| {
-                next = (next+1) % nodes;
-                (cfgs[next].node_key.public(), cfgs[next].public_addr.clone())
-            }).collect();
+            cfgs[i].gossip_static_outbound = (0..peers)
+                .map(|_| {
+                    next = (next + 1) % nodes;
+                    (cfgs[next].node_key.public(), cfgs[next].public_addr.clone())
+                })
+                .collect();
         }
     }
 
