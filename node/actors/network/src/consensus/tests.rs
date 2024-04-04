@@ -96,9 +96,9 @@ async fn test_genesis_mismatch() {
             .unwrap();
 
         tracing::info!("Accept a connection with mismatching genesis.");
-        let stream = metrics::MeteredStream::listen(ctx, &mut listener)
+        let stream = metrics::MeteredStream::accept(ctx, &mut listener)
             .await?
-            .context("listen()")?;
+            .context("accept()")?;
         let (mut stream, endpoint) = preface::accept(ctx, stream)
             .await
             .context("preface::accept()")?;

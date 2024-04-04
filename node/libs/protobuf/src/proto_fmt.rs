@@ -273,10 +273,6 @@ pub trait ProtoFmt: Sized {
     fn read(r: &Self::Proto) -> anyhow::Result<Self>;
     /// Converts Self to Proto.
     fn build(&self) -> Self::Proto;
-    /// Maximal allowed message size (in bytes).
-    fn max_size() -> usize {
-        usize::MAX
-    }
 }
 
 /// Parses a required proto field.

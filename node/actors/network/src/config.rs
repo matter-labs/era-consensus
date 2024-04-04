@@ -80,6 +80,8 @@ pub struct Config {
     /// the connection is dropped.
     /// `None` disables sending ping messages (useful for tests).
     pub ping_timeout: Option<time::Duration>,
+    /// Max rate at which inbound TCP connections should be accepted.
+    pub tcp_accept_rate: limiter::Rate,
     /// Rate limiting config for RPCs.
     pub rpc: RpcConfig,
 }
