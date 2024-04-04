@@ -60,8 +60,9 @@ impl SecretKey {
 
 impl ByteFmt for SecretKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
+        let sk: [u8; 32] = bytes.try_into()?;
         let mut fr_repr = FrRepr::default();
-        fr_repr.read_be(Cursor::new(bytes))?;
+        fr_repr.read_be(Cursor::new(sk))?;
         let fr = Fr::from_repr(fr_repr)?;
 
         anyhow::ensure!(!fr.is_zero(), "Secret key can't be zero");
