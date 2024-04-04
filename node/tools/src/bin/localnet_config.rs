@@ -77,7 +77,7 @@ fn main() -> anyhow::Result<()> {
             max_payload_size: 1000000,
             node_key: node_keys[i].clone(),
             validator_key: validator_keys.get(i).cloned(),
-            gossip_dynamic_inbound_limit: 0,
+            gossip_dynamic_inbound_limit: peers,
             gossip_static_inbound: HashSet::default(),
             gossip_static_outbound: HashMap::default(),
         })
@@ -87,16 +87,12 @@ fn main() -> anyhow::Result<()> {
     {
         let mut cfgs: Vec<_> = cfgs.iter_mut().collect();
         cfgs.shuffle(rng);
-        for i in 0..nodes {
-            for j in 0..peers {
-                let next = (i * peers + j + 1) % nodes;
-                cfgs[i]
-                    .gossip_static_outbound
-                    .insert(node_keys[next].public(), addrs[next].into());
-                cfgs[next]
-                    .gossip_static_inbound
-                    .insert(node_keys[i].public());
-            }
+        let mut next = 0;
+        for i in 0..cfgs.len() {
+            cfgs[i].gossip_static_outbound = (0..peers).map(|_| {
+                next = (next+1) % nodes;
+                (cfgs[next].node_key.public(), cfgs[next].public_addr.clone())
+            }).collect();
         }
     }
 
