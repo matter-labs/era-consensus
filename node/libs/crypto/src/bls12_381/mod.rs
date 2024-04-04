@@ -2,7 +2,7 @@
 //! This is just an adapter of `blst`, exposing zksync-bft-specific API.
 
 use crate::ByteFmt;
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use blst::{min_pk as bls, BLST_ERROR};
 use std::collections::BTreeMap;
 
@@ -10,6 +10,15 @@ use std::collections::BTreeMap;
 mod tests;
 
 pub mod testonly;
+
+/// The byte-length of a BLS public key when serialized in compressed form.
+pub const PUBLIC_KEY_BYTES_LEN: usize = 48;
+
+/// Represents the public key at infinity.
+pub const INFINITY_PUBLIC_KEY: [u8; PUBLIC_KEY_BYTES_LEN] = [
+    0xc0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
 
 /// Type safety wrapper around a `blst` SecretKey
 pub struct SecretKey(bls::SecretKey);
@@ -48,11 +57,14 @@ impl ByteFmt for SecretKey {
 }
 
 /// Type safety wrapper around a `blst` public key.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicKey(bls::PublicKey);
 
 impl ByteFmt for PublicKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
+        if bytes == INFINITY_PUBLIC_KEY {
+            bail!(Error::InvalidInfinityPublicKey)
+        }
         bls::PublicKey::from_bytes(bytes)
             .map(Self)
             .map_err(|err| anyhow!("Error decoding public key: {err:?}"))
@@ -215,4 +227,7 @@ pub enum Error {
     /// Error aggregating signatures
     #[error("Error aggregating signatures: {0:?}")]
     SignatureAggregation(BLST_ERROR),
+    /// Infinity public key.
+    #[error("Error infinity public key")]
+    InvalidInfinityPublicKey
 }

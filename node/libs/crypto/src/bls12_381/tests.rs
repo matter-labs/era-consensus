@@ -1,6 +1,9 @@
 use super::*;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::iter::repeat_with;
+use std::ops::Deref;
+use anyhow::__private::kind::TraitKind;
+use thiserror::__private::AsDynError;
 
 // Test signing and verifying a random message
 #[test]
@@ -14,6 +17,18 @@ fn signature_smoke() {
     let sig = sk.sign(&msg);
 
     sig.verify(&msg, &pk).unwrap()
+}
+
+#[test]
+fn infinity_public_key_failure() {
+    let err = PublicKey::decode(&INFINITY_PUBLIC_KEY)
+        .expect_err("Decoding the infinity public key should fail");
+
+    assert_eq!(
+        err.to_string(),
+        Error::InvalidInfinityPublicKey.to_string(),
+        "Unexpected error message for infinity public key decoding"
+    );
 }
 
 // Make sure we reject an obviously invalid signature
