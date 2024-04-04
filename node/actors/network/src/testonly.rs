@@ -6,7 +6,7 @@ use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use zksync_concurrency::{ctx, ctx::channel, io, net, scope, sync};
+use zksync_concurrency::{ctx, ctx::channel, io, limiter, net, scope, sync};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe;
@@ -69,6 +69,7 @@ pub fn new_configs(
                 static_outbound: HashMap::default(),
             },
             max_block_size: usize::MAX,
+            tcp_accept_rate: limiter::Rate::INF,
             rpc: RpcConfig::default(),
         }
     });
@@ -104,6 +105,7 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
             static_outbound: [(peer.gossip.key.public(), peer.public_addr.clone())].into(),
         },
         max_block_size: usize::MAX,
+        tcp_accept_rate: limiter::Rate::INF,
         rpc: RpcConfig::default(),
     }
 }

@@ -81,7 +81,6 @@ use crate::{frame, noise::bytes};
 use anyhow::Context as _;
 use std::{collections::BTreeMap, sync::Arc};
 use zksync_concurrency::{ctx, ctx::channel, io, scope, sync};
-use zksync_protobuf::ProtoFmt as _;
 
 mod config;
 mod handshake;
@@ -279,7 +278,7 @@ impl Mux {
                 let h = self.handshake();
                 frame::send_proto(ctx, &mut write, &h).await
             });
-            frame::recv_proto(ctx, &mut read, Handshake::max_size()).await
+            frame::recv_proto(ctx, &mut read, handshake::MAX_FRAME).await
         })
         .await
         .map_err(RunError::Protocol)?;
