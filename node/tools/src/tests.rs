@@ -12,17 +12,20 @@ impl Distribution<AppConfig> for EncodeDist {
         AppConfig {
             server_addr: self.sample(rng),
             public_addr: self.sample(rng),
-            metrics_server_addr: Some(self.sample(rng)),
+            debug_addr: self.sample(rng),
+            metrics_server_addr: self.sample(rng),
 
             genesis: rng.gen(),
+            max_payload_size: rng.gen(),
+            validator_key: self.sample_opt(|| rng.gen()),
 
+            node_key: rng.gen(),
             gossip_dynamic_inbound_limit: rng.gen(),
             gossip_static_inbound: self.sample_range(rng).map(|_| rng.gen()).collect(),
             gossip_static_outbound: self
                 .sample_range(rng)
                 .map(|_| (rng.gen(), self.sample(rng)))
                 .collect(),
-            max_payload_size: rng.gen(),
         }
     }
 }

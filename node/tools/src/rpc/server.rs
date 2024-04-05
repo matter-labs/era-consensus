@@ -21,7 +21,7 @@ impl RPCServer {
     }
 
     /// Runs the RPC server.
-    pub async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         // Custom tower service to handle the RPC requests
         let service_builder = tower::ServiceBuilder::new()
             // Proxy `GET /<path>` requests to internal methods.
