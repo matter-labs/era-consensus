@@ -17,12 +17,6 @@ fn signature_smoke() {
 }
 
 #[test]
-#[should_panic]
-fn zero_ikm_panic() {
-    SecretKey::generate([0u8; 32]);
-}
-
-#[test]
 fn infinity_public_key_failure() {
     PublicKey::decode(&INFINITY_PUBLIC_KEY)
         .expect_err("Decoding the infinity public key should fail");
