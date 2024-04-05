@@ -29,11 +29,11 @@ impl Default for RpcConfig {
             },
             push_block_store_state_rate: limiter::Rate {
                 burst: 2,
-                refresh: time::Duration::ZERO, //milliseconds(500),
+                refresh: time::Duration::milliseconds(300),
             },
             get_block_rate: limiter::Rate {
                 burst: 10,
-                refresh: time::Duration::ZERO, //milliseconds(100),
+                refresh: time::Duration::milliseconds(100),
             },
             consensus_rate: limiter::Rate {
                 burst: 10,
