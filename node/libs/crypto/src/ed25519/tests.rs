@@ -1,4 +1,5 @@
-use super::*;
+use ed25519_dalek as ed;
+use ed::{Signer as _};
 #[test]
 fn test_ed25519() -> anyhow::Result<()> {
     struct TestVector {
@@ -30,7 +31,7 @@ fn test_ed25519() -> anyhow::Result<()> {
         },
     ];
 
-    for (test) in &test_vectors {
+    for test in &test_vectors {
         let sec_bytes = &test.secret_key[..ed::SECRET_KEY_LENGTH].try_into().unwrap();
         let pub_bytes = &test.public_key[..ed::PUBLIC_KEY_LENGTH].try_into().unwrap();
         let signing_key = ed::SigningKey::from_bytes(sec_bytes);
@@ -47,13 +48,13 @@ fn test_ed25519() -> anyhow::Result<()> {
             msg_bytes
         );
         assert!(
-            signing_key.verify(&msg_bytes, &sig2).is_ok(),
+            signing_key.verify(msg_bytes, &sig2).is_ok(),
             "Signature verification failed on message {:?}",
             msg_bytes
         );
         assert!(
             expected_verifying_key
-                .verify_strict(&msg_bytes, &sig2)
+                .verify_strict(msg_bytes, &sig2)
                 .is_ok(),
             "Signature strict verification failed on message {:?}",
             msg_bytes
