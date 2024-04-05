@@ -1,7 +1,9 @@
 //! This module implements the BLS signature over the BN254 curve.
+//! The implementation is based on the [IRTF draft v5](https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bls-signature-05).
 //!
 //! Disclaimer: the implementation of the pairing-friendly elliptic curve does not run in constant time,
 //! hence it does not protect the secret key from side-channel attacks.
+//!
 
 use crate::ByteFmt;
 use ff_ce::Field as _;

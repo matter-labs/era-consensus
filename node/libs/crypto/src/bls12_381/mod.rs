@@ -1,5 +1,6 @@
 //! This module implements the BLS signature over the BLS12_381 curve.
 //! This is just an adapter of `blst`, exposing zksync-bft-specific API.
+//! The implementation is based on the [IRTF draft v5](https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bls-signature-05).
 
 use crate::ByteFmt;
 use anyhow::{anyhow, bail};
