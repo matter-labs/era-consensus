@@ -7,6 +7,7 @@ use ed::{Signer as _, Verifier as _};
 use ed25519_dalek as ed;
 
 pub mod testonly;
+mod tests;
 
 /// ed25519 secret key.
 pub struct SecretKey(ed::SigningKey);
