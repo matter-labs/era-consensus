@@ -9,7 +9,7 @@ use zksync_consensus_crypto::{ed25519, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// A node's secret key.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct SecretKey(pub(super) Arc<ed25519::SecretKey>);
 
 impl SecretKey {

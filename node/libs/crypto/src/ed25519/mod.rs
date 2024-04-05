@@ -97,6 +97,12 @@ impl Ord for PublicKey {
     }
 }
 
+impl PartialEq for SecretKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.public() == other.public()
+    }
+}
+
 /// ed25519 signature.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Signature(ed::Signature);
