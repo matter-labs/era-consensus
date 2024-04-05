@@ -1,9 +1,6 @@
 use super::*;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::iter::repeat_with;
-use std::ops::Deref;
-use anyhow::__private::kind::TraitKind;
-use thiserror::__private::AsDynError;
 
 // Test signing and verifying a random message
 #[test]

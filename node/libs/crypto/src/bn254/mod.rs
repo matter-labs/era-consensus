@@ -154,7 +154,7 @@ impl Signature {
     ///
     /// This function is intentionally non-generic and disallow inlining to ensure that compilation optimizations can be effectively applied.
     /// This optimization is needed for ensuring that tests can run within a reasonable time frame.
-    /// 
+    ///
     /// Subgroup checks for signatures are unnecessary when using the G1 group because it has a cofactor of 1,
     /// ensuring all signatures are in the correct subgroup.
     /// Ref: https://hackmd.io/@jpw/bn254#Subgroup-check-for-mathbb-G_1.

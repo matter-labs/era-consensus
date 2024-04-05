@@ -1,9 +1,8 @@
-use ed25519_dalek::{
-    Signature, Signer, SigningKey, VerifyingKey, PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH,
-};
-use hex::FromHex;
 #[test]
 fn test_ed25519() -> Result<(), Box<dyn std::error::Error>> {
+    use ed25519_dalek::{
+        Signature, Signer, SigningKey, VerifyingKey, PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH,
+    };
     // Test vectors obtained from https://github.com/dalek-cryptography/ed25519-dalek/blob/main/TESTVECTORS.
     let test_vectors: Vec<(Vec<u8>, Vec<u8>, Vec<u8>, Vec<u8>)> = vec![
         (
