@@ -1,4 +1,4 @@
-//! BLS12-381 signature scheme.
+//! This module implements the BLS signature over the BLS12_381 curve.
 //! This is just an adapter of `blst`, exposing zksync-bft-specific API.
 
 use crate::ByteFmt;
