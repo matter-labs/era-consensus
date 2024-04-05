@@ -1,7 +1,6 @@
 use super::*;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 use std::iter::repeat_with;
-use assert_matches::assert_matches;
 
 // Test signing and verifying a random message
 #[test]

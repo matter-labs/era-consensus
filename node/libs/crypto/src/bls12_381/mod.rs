@@ -230,5 +230,5 @@ pub enum Error {
     SignatureAggregation(BLST_ERROR),
     /// Infinity public key.
     #[error("Error infinity public key")]
-    InvalidInfinityPublicKey
+    InvalidInfinityPublicKey,
 }

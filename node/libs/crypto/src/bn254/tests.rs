@@ -25,17 +25,18 @@ fn signature_smoke() {
 #[test]
 fn test_decode_zero_secret_key_failure() {
     let mut bytes: [u8; 1000] = [0; 1000];
-    bytes[0]=1; bytes[800]=1;
+    bytes[0] = 1;
+    bytes[800] = 1;
     SecretKey::decode(&bytes).expect_err("Oversized secret key decoded");
 
     let mut bytes: [u8; 33] = [0; 33];
-    bytes[0]=1; bytes[32]=1;
+    bytes[0] = 1;
+    bytes[32] = 1;
     SecretKey::decode(&bytes).expect_err("Oversized 33 bytes secret key decoded");
 
     let bytes: [u8; 31] = [0; 31];
     SecretKey::decode(&bytes).expect_err("Undersized secret key decoded");
 }
-
 
 #[test]
 fn signature_failure_smoke() {
