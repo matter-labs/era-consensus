@@ -27,6 +27,10 @@ pub struct SecretKey(bls::SecretKey);
 impl SecretKey {
     /// Generates a secret key from provided key material
     pub fn generate(key_material: [u8; 32]) -> Self {
+        assert!(
+            !key_material.iter().all(|&byte| byte == 0),
+            "key_material cannot consist of all zero bytes"
+        );
         // This unwrap is safe as the blst library method will only error if provided less than 32 bytes of key material
         Self(bls::SecretKey::key_gen(&key_material, &[]).unwrap())
     }
