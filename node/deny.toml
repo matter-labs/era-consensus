@@ -81,4 +81,4 @@ skip = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-org = { github = ["matter-labs", "slowli"] } # TODO: remove once `vise` is published
+allow-org = { github = ["matter-labs"] } # TODO: remove once `vise` is published

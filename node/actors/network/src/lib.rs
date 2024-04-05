@@ -1,7 +1,7 @@
 //! Network actor maintaining a pool of outbound and inbound connections to other nodes.
 use anyhow::Context as _;
 use std::sync::Arc;
-use zksync_concurrency::{ctx, ctx::channel, scope, time};
+use zksync_concurrency::{ctx, ctx::channel, limiter, scope, time};
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
@@ -109,15 +109,15 @@ impl Network {
 impl Runner {
     /// Runs the network actor.
     pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        let mut listener = self
-            .net
-            .gossip
-            .cfg
-            .server_addr
-            .bind()
-            .context("server_addr.bind()")?;
+        let res: ctx::Result<()> = scope::run!(ctx, |ctx, s| async {
+            let mut listener = self
+                .net
+                .gossip
+                .cfg
+                .server_addr
+                .bind()
+                .context("server_addr.bind()")?;
 
-        scope::run!(ctx, |ctx, s| async {
             // Handle incoming messages.
             s.spawn(async {
                 // We don't propagate cancellation errors
@@ -165,9 +165,12 @@ impl Runner {
                 }
             }
 
-            // TODO(gprusak): add rate limit and inflight limit for inbound handshakes.
-            while let Ok(stream) = metrics::MeteredStream::listen(ctx, &mut listener).await {
-                let stream = stream.context("listener.accept()")?;
+            let accept_limiter = limiter::Limiter::new(ctx, self.net.gossip.cfg.tcp_accept_rate);
+            loop {
+                accept_limiter.acquire(ctx, 1).await?;
+                let stream = metrics::MeteredStream::accept(ctx, &mut listener)
+                    .await?
+                    .context("accept()")?;
                 s.spawn(async {
                     let res = async {
                         let (stream, endpoint) = preface::accept(ctx, stream)
@@ -198,8 +201,11 @@ impl Runner {
                     Ok(())
                 });
             }
-            Ok(())
         })
-        .await
+        .await;
+        match res {
+            Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
+            Err(ctx::Error::Internal(err)) => Err(err),
+        }
     }
 }

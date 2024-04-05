@@ -31,7 +31,7 @@ impl MeteredStream {
     }
 
     /// Accepts an inbound connection and returns a metered stream.
-    pub(crate) async fn listen(
+    pub(crate) async fn accept(
         ctx: &ctx::Ctx,
         listener: &mut net::tcp::Listener,
     ) -> ctx::OrCanceled<io::Result<Self>> {

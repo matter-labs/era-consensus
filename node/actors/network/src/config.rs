@@ -29,7 +29,7 @@ impl Default for RpcConfig {
             },
             push_block_store_state_rate: limiter::Rate {
                 burst: 2,
-                refresh: time::Duration::milliseconds(500),
+                refresh: time::Duration::milliseconds(300),
             },
             get_block_rate: limiter::Rate {
                 burst: 10,
@@ -80,6 +80,8 @@ pub struct Config {
     /// the connection is dropped.
     /// `None` disables sending ping messages (useful for tests).
     pub ping_timeout: Option<time::Duration>,
+    /// Max rate at which inbound TCP connections should be accepted.
+    pub tcp_accept_rate: limiter::Rate,
     /// Rate limiting config for RPCs.
     pub rpc: RpcConfig,
 }

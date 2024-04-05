@@ -6,7 +6,7 @@ use std::{
     fmt,
     sync::Arc,
 };
-use zksync_concurrency::{ctx, net, scope, time};
+use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
@@ -95,6 +95,10 @@ impl Executor {
             validator_key: self.validator.as_ref().map(|v| v.key.clone()),
             ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
+            tcp_accept_rate: limiter::Rate {
+                burst: 10,
+                refresh: time::Duration::milliseconds(100),
+            },
             rpc: network::RpcConfig::default(),
         }
     }
