@@ -1,5 +1,6 @@
-use ed::Signer as _;
-use ed25519_dalek as ed;
+use crate::ed25519::{PublicKey, SecretKey, Signature};
+use crate::ByteFmt;
+
 #[test]
 fn test_ed25519() -> anyhow::Result<()> {
     struct TestVector {
@@ -32,31 +33,24 @@ fn test_ed25519() -> anyhow::Result<()> {
     ];
 
     for test in &test_vectors {
-        let sec_bytes = &test.secret_key[..ed::SECRET_KEY_LENGTH].try_into().unwrap();
-        let pub_bytes = &test.public_key[..ed::PUBLIC_KEY_LENGTH].try_into().unwrap();
-        let signing_key = ed::SigningKey::from_bytes(sec_bytes);
-        let expected_verifying_key = ed::VerifyingKey::from_bytes(pub_bytes).unwrap();
+        let sec_bytes = &test.secret_key[..32];
+        let pub_bytes = &test.public_key[..32];
+        let secret_key = SecretKey::decode(sec_bytes).unwrap();
+        let public_key = PublicKey::decode(pub_bytes).unwrap();
         let msg_bytes = &test.message;
 
-        assert_eq!(expected_verifying_key, signing_key.verifying_key());
+        assert_eq!(public_key, secret_key.public());
 
-        let sig1: ed::Signature = ed::Signature::try_from(&test.signature[..64]).unwrap();
-        let sig2: ed::Signature = signing_key.sign(msg_bytes);
+        let sig1: Signature = Signature::decode(&test.signature[..64]).unwrap();
+        let sig2: Signature = secret_key.sign(msg_bytes);
         assert_eq!(
             sig1, sig2,
             "Signature bytes not equal on message {:?}",
             msg_bytes
         );
         assert!(
-            signing_key.verify(msg_bytes, &sig2).is_ok(),
+            public_key.verify(msg_bytes, &sig2).is_ok(),
             "Signature verification failed on message {:?}",
-            msg_bytes
-        );
-        assert!(
-            expected_verifying_key
-                .verify_strict(msg_bytes, &sig2)
-                .is_ok(),
-            "Signature strict verification failed on message {:?}",
             msg_bytes
         );
     }
