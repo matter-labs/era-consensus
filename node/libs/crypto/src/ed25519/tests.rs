@@ -1,5 +1,5 @@
+use ed::Signer as _;
 use ed25519_dalek as ed;
-use ed::{Signer as _};
 #[test]
 fn test_ed25519() -> anyhow::Result<()> {
     struct TestVector {
