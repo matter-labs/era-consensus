@@ -209,7 +209,7 @@ fn test_commit_qc() {
             .unwrap(),
         fork: setup1.genesis.fork.clone(),
     };
-    let validator_weight = setup1.genesis.validators.total_weight();
+    let validator_weight = setup1.genesis.validators.total_weight() / 6;
 
     for i in 0..setup1.keys.len() + 1 {
         let view = rng.gen();
@@ -217,7 +217,7 @@ fn test_commit_qc() {
         for key in &setup1.keys[0..i] {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis);
         }
-        let expected_weight = i as u64 * validator_weight / 6;
+        let expected_weight = i as u64 * validator_weight;
         if expected_weight >= setup1.genesis.validators.threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {
@@ -308,10 +308,7 @@ fn test_validator_committee_weights() {
         let key = &setup.keys[n];
         qc.add(&key.sign_msg(msg.clone()), &setup.genesis);
         let signers = &qc.map[&msg];
-        assert_eq!(
-            genesis.validators.weight_from_signers(signers.clone()),
-            *weight
-        );
+        assert_eq!(genesis.validators.weight(signers.clone()), *weight);
     }
 }
 

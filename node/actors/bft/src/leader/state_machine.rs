@@ -41,8 +41,9 @@ pub(crate) struct StateMachine {
         validator::ViewNumber,
         HashMap<validator::PublicKey, Signed<validator::ReplicaCommit>>,
     >,
-    /// Commit QCs indexed by view number.
-    pub(crate) commit_qcs: BTreeMap<validator::ViewNumber, validator::CommitQC>,
+    /// Commit QCs indexed by view number and then by message.
+    pub(crate) commit_qcs:
+        BTreeMap<validator::ViewNumber, BTreeMap<validator::ReplicaCommit, validator::CommitQC>>,
 }
 
 impl StateMachine {

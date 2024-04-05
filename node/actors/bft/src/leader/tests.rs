@@ -572,3 +572,45 @@ async fn replica_commit_unexpected_proposal() {
     .await
     .unwrap();
 }
+
+#[tokio::test]
+async fn replica_commit_different_proposals() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new_many(ctx).await;
+        s.spawn_bg(runner.run(ctx));
+
+        let replica_commit = util.new_replica_commit(ctx).await;
+
+        // Process a modified replica_commit (ie. from a malicious or wrong node)
+        let mut bad_replica_commit = replica_commit.clone();
+        bad_replica_commit.proposal.number = replica_commit.proposal.number.next();
+        util.process_replica_commit(ctx, util.sign(bad_replica_commit))
+            .await
+            .unwrap();
+
+        // The rest of the validators sign the correct one
+        let mut replica_commit_result = None;
+        for i in 1..util.keys.len() {
+            replica_commit_result = util
+                .process_replica_commit(ctx, util.keys[i].sign_msg(replica_commit.clone()))
+                .await
+                .unwrap();
+        }
+
+        // Check correct proposal has been committed
+        assert_matches!(
+            replica_commit_result,
+            Some(leader_commit) => {
+                assert_eq!(
+                    leader_commit.msg.justification.message.proposal,
+                    replica_commit.proposal
+                );
+            }
+        );
+        Ok(())
+    })
+    .await
+    .unwrap();
+}

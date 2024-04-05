@@ -165,7 +165,7 @@ impl ValidatorCommittee {
     }
 
     /// Compute the sum of signers weights.
-    pub fn weight_from_signers(&self, signers: Signers) -> u64 {
+    pub fn weight(&self, signers: Signers) -> u64 {
         self.vec
             .iter()
             .enumerate()

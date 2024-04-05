@@ -59,8 +59,7 @@ impl PrepareQC {
         let mut count: HashMap<_, u64> = HashMap::new();
         for (msg, signers) in &self.map {
             if let Some(v) = &msg.high_vote {
-                *count.entry(v.proposal).or_default() +=
-                    genesis.validators.weight_from_signers(signers.clone());
+                *count.entry(v.proposal).or_default() += genesis.validators.weight(signers.clone());
             }
         }
         // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
@@ -129,7 +128,7 @@ impl PrepareQC {
         }
 
         // Verify the signers' weight is enough.
-        let weight = genesis.validators.weight_from_signers(sum.clone());
+        let weight = genesis.validators.weight(sum.clone());
         let threshold = genesis.validators.threshold();
         if weight < threshold {
             return Err(Error::WeightNotReached {

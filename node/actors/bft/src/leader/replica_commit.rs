@@ -1,4 +1,5 @@
 //! Handler of a ReplicaCommit message.
+
 use super::StateMachine;
 use crate::metrics;
 use tracing::instrument;
@@ -117,13 +118,12 @@ impl StateMachine {
 
         // ----------- All checks finished. Now we process the message. --------------
 
-        // TODO: we have a bug here since we don't check whether replicas commit
-        // to the same proposal.
-
         // We add the message to the incrementally-constructed QC.
         let commit_qc = self
             .commit_qcs
             .entry(message.view.number)
+            .or_default()
+            .entry(message.clone())
             .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()));
         commit_qc.add(&signed_message, self.config.genesis());
 
@@ -138,7 +138,7 @@ impl StateMachine {
             .config
             .genesis()
             .validators
-            .weight_from_signers(commit_qc.signers.clone());
+            .weight(commit_qc.signers.clone());
         if weight < self.config.genesis().validators.threshold() {
             return Ok(());
         };
@@ -159,7 +159,12 @@ impl StateMachine {
         self.commit_message_cache.remove(&message.view.number);
 
         // Consume the incrementally-constructed QC for this view.
-        let justification = self.commit_qcs.remove(&message.view.number).unwrap();
+        let justification = self
+            .commit_qcs
+            .remove(&message.view.number)
+            .unwrap()
+            .remove(message)
+            .unwrap();
 
         // Broadcast the leader commit message to all replicas (ourselves included).
         let output_message = ConsensusInputMessage {

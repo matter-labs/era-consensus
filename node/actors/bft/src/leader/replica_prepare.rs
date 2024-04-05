@@ -145,7 +145,7 @@ impl StateMachine {
             .insert(author.clone(), signed_message.clone());
 
         // Now we check if we have enough weight to continue.
-        let weight = self.config.genesis().validators.weight_from_signers(
+        let weight = self.config.genesis().validators.weight(
             prepare_qc
                 .map
                 .get(&signed_message.msg)
