@@ -2,7 +2,6 @@
 //! This is just an adapter of `blst`, exposing zksync-bft-specific API.
 //! The implementation is based on the [IRTF draft v5](https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bls-signature-05).
 
-use crate::keccak256::Keccak256;
 use crate::ByteFmt;
 use anyhow::{anyhow, bail};
 use blst::{min_pk as bls, BLST_ERROR};
@@ -22,18 +21,14 @@ pub const INFINITY_PUBLIC_KEY: [u8; PUBLIC_KEY_BYTES_LEN] = [
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
 
-const KEY_GEN_SALT: &[u8] = b"ERA-CONSENSUS-BLS12381-SIG-KEYGEN-SALT";
-
 /// Type safety wrapper around a `blst` SecretKey
 pub struct SecretKey(bls::SecretKey);
 
 impl SecretKey {
     /// Generates a secret key from provided key material
     pub fn generate(key_material: [u8; 32]) -> Self {
-        let hasher = Keccak256::new(KEY_GEN_SALT);
-        let salt_hash = hasher.as_bytes();
         // This unwrap is safe as the blst library method will only error if provided less than 32 bytes of key material
-        Self(bls::SecretKey::key_gen_v5(&key_material, salt_hash, &[]).unwrap())
+        Self(bls::SecretKey::key_gen_v4_5(&key_material, &[], &[]).unwrap())
     }
 
     /// Produces a signature using this [`SecretKey`]
