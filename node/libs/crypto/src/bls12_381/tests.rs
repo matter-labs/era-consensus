@@ -1,6 +1,12 @@
 use super::*;
 use rand::{rngs::StdRng, Rng, SeedableRng};
 
+#[test]
+fn infinity_public_key_failure() {
+    PublicKey::decode(&INFINITY_PUBLIC_KEY)
+        .expect_err("Decoding the infinity public key should fail");
+}
+
 // Test signing and verifying a random message
 #[test]
 fn signature_smoke() {
@@ -10,12 +16,6 @@ fn signature_smoke() {
     let msg: [u8; 32] = rng.gen();
     let sig = sk.sign(&msg);
     sig.verify(&msg, &sk.public()).unwrap()
-}
-
-#[test]
-fn infinity_public_key_failure() {
-    PublicKey::decode(&INFINITY_PUBLIC_KEY)
-        .expect_err("Decoding the infinity public key should fail");
 }
 
 // Make sure we reject an obviously invalid signature
@@ -28,6 +28,33 @@ fn signature_failure_smoke() {
     let msg: [u8; 32] = rng.gen();
     let sig = sk1.sign(&msg);
     assert!(sig.verify(&msg, &sk2.public()).is_err())
+}
+
+// Test signing and verifying a proof of possession
+#[test]
+fn pop_smoke() {
+    let mut rng = StdRng::seed_from_u64(29483920);
+
+    let sk: SecretKey = rng.gen();
+    let pop = sk.sign_pop();
+    pop.verify(&sk.public()).unwrap()
+}
+
+// Make sure we reject an obviously invalid proof of possession
+#[test]
+fn pop_failure_smoke() {
+    let mut rng = StdRng::seed_from_u64(29483920);
+
+    let sk1: SecretKey = rng.gen();
+    let sk2: SecretKey = rng.gen();
+
+    let pop = sk1.sign_pop();
+    assert!(pop.verify(&sk2.public()).is_err());
+
+    let msg = sk1.public().encode();
+    let sig = sk1.sign(&msg);
+    let pop = ProofOfPossession(sig.0);
+    assert!(pop.verify(&sk1.public()).is_err());
 }
 
 // Test signing and verifying a random message using aggregate signatures
