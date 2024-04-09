@@ -1,19 +1,15 @@
 use super::*;
 use rand::{rngs::StdRng, Rng, SeedableRng};
-use std::iter::repeat_with;
 
 // Test signing and verifying a random message
 #[test]
 fn signature_smoke() {
     let mut rng = StdRng::seed_from_u64(29483920);
 
-    let sk = SecretKey::generate(rng.gen());
-    let pk = sk.public();
+    let sk: SecretKey = rng.gen();
     let msg: [u8; 32] = rng.gen();
-
     let sig = sk.sign(&msg);
-
-    sig.verify(&msg, &pk).unwrap()
+    sig.verify(&msg, &sk.public()).unwrap()
 }
 
 #[test]
@@ -27,14 +23,11 @@ fn infinity_public_key_failure() {
 fn signature_failure_smoke() {
     let mut rng = StdRng::seed_from_u64(29483920);
 
-    let sk1 = SecretKey::generate(rng.gen());
-    let sk2 = SecretKey::generate(rng.gen());
-    let pk2 = sk2.public();
+    let sk1: SecretKey = rng.gen();
+    let sk2: SecretKey = rng.gen();
     let msg: [u8; 32] = rng.gen();
-
     let sig = sk1.sign(&msg);
-
-    assert!(sig.verify(&msg, &pk2).is_err())
+    assert!(sig.verify(&msg, &sk2.public()).is_err())
 }
 
 // Test signing and verifying a random message using aggregate signatures
@@ -43,9 +36,7 @@ fn aggregate_signature_smoke() {
     let mut rng = StdRng::seed_from_u64(29483920);
 
     // Use an arbitrary 5 keys for the smoke test
-    let sks: Vec<SecretKey> = repeat_with(|| SecretKey::generate(rng.gen()))
-        .take(5)
-        .collect();
+    let sks: Vec<SecretKey> = (0..5).map(|_| rng.gen()).collect();
     let pks: Vec<PublicKey> = sks.iter().map(|k| k.public()).collect();
     let msg: [u8; 32] = rng.gen();
 
@@ -61,9 +52,7 @@ fn aggregate_signature_failure_smoke() {
     let mut rng = StdRng::seed_from_u64(29483920);
 
     // Use an arbitrary 5 keys for the smoke test
-    let sks: Vec<SecretKey> = repeat_with(|| SecretKey::generate(rng.gen()))
-        .take(5)
-        .collect();
+    let sks: Vec<SecretKey> = (0..5).map(|_| rng.gen()).collect();
     let pks: Vec<PublicKey> = sks.iter().map(|k| k.public()).collect();
     let msg: [u8; 32] = rng.gen();
 

@@ -2,7 +2,6 @@ use super::*;
 use crate::{io, metrics, preface, rpc, testonly};
 use assert_matches::assert_matches;
 use rand::Rng;
-use tracing::Instrument as _;
 use zksync_concurrency::{ctx, net, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::testonly::new_store;

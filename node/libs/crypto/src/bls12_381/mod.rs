@@ -5,6 +5,7 @@
 use crate::ByteFmt;
 use anyhow::{anyhow, bail};
 use blst::{min_pk as bls, BLST_ERROR};
+use rand::Rng as _;
 use std::collections::BTreeMap;
 
 #[cfg(test)]
@@ -25,23 +26,21 @@ pub const INFINITY_PUBLIC_KEY: [u8; PUBLIC_KEY_BYTES_LEN] = [
 pub struct SecretKey(bls::SecretKey);
 
 impl SecretKey {
-    /// Generates a secret key from provided key material
-    pub fn generate(key_material: [u8; 32]) -> Self {
+    /// Generates a secret key from a cryptographically-secure entropy source.
+    pub fn generate() -> Self {
         // This unwrap is safe as the blst library method will only error if provided less than 32 bytes of key material
-        Self(bls::SecretKey::key_gen_v4_5(&key_material, &[], &[]).unwrap())
+        Self(bls::SecretKey::key_gen_v4_5(&rand::rngs::OsRng.gen::<[u8; 32]>(), &[], &[]).unwrap())
     }
 
     /// Produces a signature using this [`SecretKey`]
     pub fn sign(&self, msg: &[u8]) -> Signature {
-        let signature = self.0.sign(msg, &[], &[]);
-        Signature(signature)
+        Signature(self.0.sign(msg, &[], &[]))
     }
 
     /// Gets the corresponding [`PublicKey`] for this [`SecretKey`]
     #[inline]
     pub fn public(&self) -> PublicKey {
-        let public_key = self.0.sk_to_pk();
-        PublicKey(public_key)
+        PublicKey(self.0.sk_to_pk())
     }
 }
 

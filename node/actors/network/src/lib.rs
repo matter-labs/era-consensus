@@ -1,6 +1,7 @@
 //! Network actor maintaining a pool of outbound and inbound connections to other nodes.
 use anyhow::Context as _;
 use std::sync::Arc;
+use tracing::Instrument as _;
 use zksync_concurrency::{ctx, ctx::channel, limiter, scope, time};
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
@@ -172,7 +173,10 @@ impl Runner {
                     .await?
                     .context("accept()")?;
                 s.spawn(async {
+                    // This is a syscall which should always succeed on a correctly opened socket.
+                    let addr = stream.peer_addr().context("peer_addr()")?;
                     let res = async {
+                        tracing::info!("new inbound TCP connection from");
                         let (stream, endpoint) = preface::accept(ctx, stream)
                             .await
                             .context("preface::accept()")?;
@@ -194,9 +198,10 @@ impl Runner {
                         }
                         anyhow::Ok(())
                     }
+                    .instrument(tracing::info_span!("{addr}"))
                     .await;
                     if let Err(err) = res {
-                        tracing::info!("{err:#}");
+                        tracing::info!("{addr}: {err:#}");
                     }
                     Ok(())
                 });
