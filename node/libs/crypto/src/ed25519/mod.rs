@@ -8,13 +8,16 @@ use ed25519_dalek as ed;
 
 pub mod testonly;
 
+#[cfg(test)]
+mod tests;
+
 /// ed25519 secret key.
 pub struct SecretKey(ed::SigningKey);
 
 impl SecretKey {
     /// Generates a secret key from a cryptographically-secure entropy source.
     pub fn generate() -> Self {
-        Self(ed::SigningKey::generate(&mut rand::rngs::OsRng {}))
+        Self(ed::SigningKey::generate(&mut rand::rngs::OsRng))
     }
 
     /// Signs a message.
@@ -44,7 +47,7 @@ impl ByteFmt for SecretKey {
 }
 
 /// ed25519 public key.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct PublicKey(ed::VerifyingKey);
 
 impl PublicKey {

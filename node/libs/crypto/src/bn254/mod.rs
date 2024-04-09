@@ -1,7 +1,9 @@
-//! BLS signature scheme for the BN254 curve.
+//! This module implements the BLS signature over the BN254 curve.
+//! The implementation is based on the [IRTF draft v5](https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bls-signature-05).
 //!
 //! Disclaimer: the implementation of the pairing-friendly elliptic curve does not run in constant time,
 //! hence it does not protect the secret key from side-channel attacks.
+//!
 
 use crate::ByteFmt;
 use ff_ce::Field as _;
@@ -60,8 +62,9 @@ impl SecretKey {
 
 impl ByteFmt for SecretKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
+        let sk: [u8; 32] = bytes.try_into()?;
         let mut fr_repr = FrRepr::default();
-        fr_repr.read_be(Cursor::new(bytes))?;
+        fr_repr.read_be(Cursor::new(sk))?;
         let fr = Fr::from_repr(fr_repr)?;
 
         anyhow::ensure!(!fr.is_zero(), "Secret key can't be zero");
@@ -153,6 +156,10 @@ impl Signature {
     ///
     /// This function is intentionally non-generic and disallow inlining to ensure that compilation optimizations can be effectively applied.
     /// This optimization is needed for ensuring that tests can run within a reasonable time frame.
+    ///
+    /// Subgroup checks for signatures are unnecessary when using the G1 group because it has a cofactor of 1,
+    /// ensuring all signatures are in the correct subgroup.
+    /// Ref: https://hackmd.io/@jpw/bn254#Subgroup-check-for-mathbb-G_1.
     #[inline(never)]
     pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> anyhow::Result<()> {
         // Verify public key is valid. Since we already check the validity of a

@@ -56,6 +56,13 @@ impl MeteredStream {
     }
 }
 
+impl std::ops::Deref for MeteredStream {
+    type Target = net::tcp::Stream;
+    fn deref(&self) -> &Self::Target {
+        &self.stream
+    }
+}
+
 impl io::AsyncRead for MeteredStream {
     #[inline(always)]
     fn poll_read(

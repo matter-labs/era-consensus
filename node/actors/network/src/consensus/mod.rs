@@ -1,9 +1,11 @@
 //! Consensus network is a full graph of connections between all validators.
 //! BFT consensus messages are exchanged over this network.
+use crate::rpc::Rpc as _;
 use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc};
 use anyhow::Context as _;
 use rand::seq::SliceRandom;
 use std::{collections::HashSet, sync::Arc};
+use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope, sync, time};
 use zksync_consensus_roles::validator;
 use zksync_protobuf::kB;
@@ -89,7 +91,11 @@ impl Network {
             for (peer, conn) in &outbound {
                 s.spawn(async {
                     if let Err(err) = conn.consensus.call(ctx, &req, RESP_MAX_SIZE).await {
-                        tracing::info!("send({:?},<ConsensusMsg>): {err:#}", &*peer);
+                        tracing::info!(
+                            "send({:?},{}): {err:#}",
+                            &*peer,
+                            rpc::consensus::Rpc::submethod(&req)
+                        );
                     }
                     Ok(())
                 });
@@ -107,12 +113,14 @@ impl Network {
         msg: validator::Signed<validator::ConsensusMsg>,
     ) -> anyhow::Result<()> {
         let outbound = self.outbound.current();
+        let req = rpc::consensus::Req(msg);
         outbound
             .get(key)
-            .context("not an active validator")?
+            .context("not reachable")?
             .consensus
-            .call(ctx, &rpc::consensus::Req(msg), RESP_MAX_SIZE)
-            .await?;
+            .call(ctx, &req, RESP_MAX_SIZE)
+            .await
+            .with_context(|| rpc::consensus::Rpc::submethod(&req))?;
         Ok(())
     }
 
@@ -126,6 +134,7 @@ impl Network {
         let peer =
             handshake::inbound(ctx, &self.key, self.gossip.genesis().hash(), &mut stream).await?;
         self.inbound.insert(peer.clone(), ()).await?;
+        tracing::info!("inbound connection from {peer:?}");
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_server(rpc::ping::Server, rpc::ping::RATE)
@@ -166,6 +175,7 @@ impl Network {
             consensus: rpc::Client::new(ctx, self.gossip.cfg.rpc.consensus_rate),
         });
         self.outbound.insert(peer.clone(), conn.clone()).await?;
+        tracing::info!("outbound connection to {peer:?}");
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_server(rpc::ping::Server, rpc::ping::RATE)
@@ -221,6 +231,7 @@ impl Network {
                 format!("{:?} resolved to no addresses", self.gossip.cfg.public_addr)
             })?;
         self.run_outbound_stream(ctx, &self.key.public(), addr)
+            .instrument(tracing::info_span!("{addr}"))
             .await
     }
 
@@ -250,7 +261,11 @@ impl Network {
                 addr = new.get(peer).map(|x| x.msg.addr);
             }
             let Some(addr) = addr else { continue };
-            if let Err(err) = self.run_outbound_stream(ctx, peer, addr).await {
+            if let Err(err) = self
+                .run_outbound_stream(ctx, peer, addr)
+                .instrument(tracing::info_span!("{addr}"))
+                .await
+            {
                 tracing::info!("run_outbound_stream({peer:?},{addr}): {err:#}");
             }
         }

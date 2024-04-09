@@ -1,4 +1,5 @@
 use super::StateMachine;
+use crate::metrics;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
@@ -8,10 +9,11 @@ impl StateMachine {
     /// This blocking method is used whenever we start a new view.
     #[instrument(level = "trace", err)]
     pub(crate) async fn start_new_view(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
-        tracing::info!("Starting view {}", self.view.next().0);
-
         // Update the state machine.
         self.view = self.view.next();
+        tracing::info!("Starting view {}", self.view);
+        metrics::METRICS.replica_view_number.set(self.view.0);
+
         self.phase = validator::Phase::Prepare;
         if let Some(qc) = self.high_qc.as_ref() {
             // Clear the block cache.

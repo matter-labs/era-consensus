@@ -403,6 +403,12 @@ impl ViewNumber {
     }
 }
 
+impl fmt::Display for ViewNumber {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, formatter)
+    }
+}
+
 /// An enum that represents the current phase of the consensus.
 #[allow(missing_docs)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
