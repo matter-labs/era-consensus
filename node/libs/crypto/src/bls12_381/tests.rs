@@ -16,6 +16,12 @@ fn signature_smoke() {
     sig.verify(&msg, &pk).unwrap()
 }
 
+#[test]
+fn infinity_public_key_failure() {
+    PublicKey::decode(&INFINITY_PUBLIC_KEY)
+        .expect_err("Decoding the infinity public key should fail");
+}
+
 // Make sure we reject an obviously invalid signature
 #[test]
 fn signature_failure_smoke() {

@@ -8,6 +8,9 @@ use ed25519_dalek as ed;
 
 pub mod testonly;
 
+#[cfg(test)]
+mod tests;
+
 /// ed25519 secret key.
 pub struct SecretKey(ed::SigningKey);
 
@@ -44,7 +47,7 @@ impl ByteFmt for SecretKey {
 }
 
 /// ed25519 public key.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct PublicKey(ed::VerifyingKey);
 
 impl PublicKey {
