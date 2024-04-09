@@ -1,6 +1,7 @@
 //! Messages related to the consensus protocol.
 use super::{BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, ReplicaPrepare};
 use crate::validator;
+use anyhow::Context;
 use bit_vec::BitVec;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -91,11 +92,9 @@ impl ValidatorCommittee {
                 set.insert(validator.key.clone()),
                 "Duplicate validator in ValidatorCommittee"
             );
-            if let Some(result) = total_weight.checked_add(validator.weight) {
-                total_weight = result
-            } else {
-                anyhow::bail!("Sum of weights overflows in ValidatorCommittee")
-            }
+            total_weight = total_weight
+                .checked_add(validator.weight)
+                .context("Sum of weights overflows in ValidatorCommittee")?;
             weighted_validators.insert(validator.key.clone(), validator);
         }
         anyhow::ensure!(
@@ -148,7 +147,7 @@ impl ValidatorCommittee {
         self.indexes.get(validator).copied()
     }
 
-    /// Computes the validator for the given view.
+    /// Computes the leader for the given view.
     pub fn view_leader(&self, view_number: ViewNumber) -> validator::PublicKey {
         let index = view_number.0 as usize % self.len();
         self.get(index).unwrap().key.clone()
@@ -159,7 +158,7 @@ impl ValidatorCommittee {
         threshold(self.total_weight())
     }
 
-    /// Maximal number of faulty replicas allowed in this validator committee.
+    /// Maximal weight of faulty replicas allowed in this validator committee.
     pub fn max_faulty_weight(&self) -> u64 {
         max_faulty_weight(self.total_weight())
     }
@@ -193,8 +192,6 @@ pub fn max_faulty_weight(total_weight: u64) -> u64 {
     // for n total weight and f faulty weight. This results in the following formula for the maximum
     // weight of faulty replicas:
     //      f = floor((n - 1) / 5)
-    // Because of this, it doesn't make sense to have 5*f + 2 or 5*f + 3 replicas. It won't increase the
-    // allowed weight for faulty replicas.
     (total_weight - 1) / 5
 }
 

@@ -223,7 +223,7 @@ fn test_commit_qc() {
         } else {
             assert_matches!(
                 qc.verify(&setup1.genesis),
-                Err(Error::WeightNotReached { .. })
+                Err(Error::NotEnoughSigners { .. })
             );
         }
 
@@ -267,7 +267,7 @@ fn test_prepare_qc() {
         } else {
             assert_matches!(
                 qc.verify(&setup1.genesis),
-                Err(Error::WeightNotReached { .. })
+                Err(Error::NotEnoughSigners { .. })
             );
         }
 
@@ -320,7 +320,7 @@ fn test_validator_weights_sanity() {
     let setup = Setup::new(rng, 6);
     // Validators weights
     let weight = u64::MAX / 5;
-    let weights = [weight, weight, weight, weight, weight, weight];
+    let weights = [weight; 6];
     let validators: Vec<WeightedValidator> = weights
         .iter()
         .enumerate()

@@ -31,8 +31,8 @@ pub enum PrepareQCVerifyError {
     #[error(transparent)]
     BadFormat(anyhow::Error),
     /// Weight not reached.
-    #[error("Signers have not reached wanted weight: got {got}, want {want}")]
-    WeightNotReached {
+    #[error("Signers have not reached threshold weight: got {got}, want {want}")]
+    NotEnoughSigners {
         /// Got weight.
         got: u64,
         /// Want weight.
@@ -131,7 +131,7 @@ impl PrepareQC {
         let weight = genesis.validators.weight(sum.clone());
         let threshold = genesis.validators.threshold();
         if weight < threshold {
-            return Err(Error::WeightNotReached {
+            return Err(Error::NotEnoughSigners {
                 got: weight,
                 want: threshold,
             });
