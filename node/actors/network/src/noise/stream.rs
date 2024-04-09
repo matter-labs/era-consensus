@@ -87,6 +87,13 @@ pub(crate) struct Stream<S = MeteredStream> {
     write_buf: Box<Buffer>,
 }
 
+impl<S> std::ops::Deref for Stream<S> {
+    type Target = S;
+    fn deref(&self) -> &S {
+        &self.inner
+    }
+}
+
 impl<S> Stream<S>
 where
     S: io::AsyncRead + io::AsyncWrite + Unpin,
