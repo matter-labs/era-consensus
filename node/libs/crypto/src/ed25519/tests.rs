@@ -1,5 +1,7 @@
-use crate::ed25519::{PublicKey, SecretKey, Signature};
-use crate::ByteFmt;
+use crate::{
+    ed25519::{PublicKey, SecretKey, Signature},
+    ByteFmt,
+};
 
 #[test]
 fn test_ed25519() -> anyhow::Result<()> {

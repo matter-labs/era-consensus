@@ -1,7 +1,6 @@
 //! Consensus network is a full graph of connections between all validators.
 //! BFT consensus messages are exchanged over this network.
-use crate::rpc::Rpc as _;
-use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc};
+use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc, rpc::Rpc as _};
 use anyhow::Context as _;
 use rand::seq::SliceRandom;
 use std::{collections::HashSet, sync::Arc};

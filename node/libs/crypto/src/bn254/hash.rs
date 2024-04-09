@@ -4,7 +4,7 @@ use ff_ce::{Field, PrimeField, SqrtField};
 use num_bigint::BigUint;
 use num_traits::Num;
 use pairing::{
-    bn256::{fq, Fq, FqRepr, Fr, G1Affine},
+    bn256::{fq, Fq, FqRepr, G1Affine},
     CurveAffine,
 };
 use sha3::Digest as _;
@@ -35,7 +35,7 @@ pub(crate) fn hash_to_point(msg: &[u8]) -> (G1Affine, u8) {
     unreachable!()
 }
 
-fn get_point_from_x(mut x: Fq) -> Option<G1Affine> {
+fn get_point_from_x(x: Fq) -> Option<G1Affine> {
     // Compute x^3 + b.
     let mut x3b = x;
     x3b.square();
