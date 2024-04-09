@@ -4,7 +4,7 @@ use crate::{
     config, gossip, io, noise,
     pool::PoolWatch,
     preface,
-    rpc::{self, signature::L1BatchSignatureServer},
+    rpc::{self, signature::L1BatchServer},
 };
 use anyhow::Context as _;
 use std::{
@@ -68,15 +68,20 @@ impl rpc::Handler<rpc::consensus::Rpc> for &Network {
 }
 
 #[async_trait::async_trait]
-impl rpc::Handler<rpc::signature::Rpc> for &L1BatchSignatureServer<'_> {
+impl rpc::Handler<rpc::signature::Rpc> for &L1BatchServer<'_> {
     /// Here we bound the buffering of incoming consensus messages.
     fn max_req_size(&self) -> usize {
         self.0.gossip.cfg.max_block_size.saturating_add(kB)
     }
 
     async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::signature::Req) -> anyhow::Result<()> {
-        self.0.l1_batch_qc.clone().add(req.0.sig);
-        Ok(())
+        let genesis = self.0.gossip.genesis();
+        self.0.l1_batch_qc.verify(genesis).unwrap();
+        self.0
+            .l1_batch_qc
+            .clone()
+            .add(req.0.sig.clone(), &req.0, genesis);
+        return Ok(());
     }
 }
 
@@ -87,7 +92,6 @@ impl Network {
         let validators: HashSet<_> = gossip.genesis().validators.iter().cloned().collect();
         Some(Arc::new(Self {
             key,
-            l1_batch_qc: L1BatchQC::default(),
             inbound: PoolWatch::new(validators.clone(), 0),
             outbound: PoolWatch::new(validators.clone(), 0),
             clients: validators
@@ -108,7 +112,8 @@ impl Network {
                     )
                 })
                 .collect(),
-            gossip,
+            gossip: gossip.clone(),
+            l1_batch_qc: L1BatchQC::new(gossip.genesis().validators.len()),
         }))
     }
 
@@ -137,14 +142,14 @@ impl Network {
     pub(crate) async fn broadcast_signature(
         &self,
         ctx: &ctx::Ctx,
-        signature: validator::Signed<validator::L1BatchSignatureMsg>,
+        signature: validator::Signed<validator::L1BatchMsg>,
     ) -> anyhow::Result<()> {
         let req = rpc::signature::Req(signature);
         scope::run!(ctx, |ctx, s| async {
             for (peer, client) in &self.signature_clients {
                 s.spawn(async {
                     if let Err(err) = client.call(ctx, &req, RESP_MAX_SIZE).await {
-                        tracing::info!("send({:?},<L1BatchSignatureMsg>): {err:#}", &*peer);
+                        tracing::info!("send({:?},<L1BatchMsg>): {err:#}", &*peer);
                     }
                     Ok(())
                 });

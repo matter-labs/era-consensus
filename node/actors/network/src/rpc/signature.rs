@@ -13,10 +13,10 @@ impl super::Rpc for Rpc {
     type Req = Req;
     type Resp = ();
 }
-pub(crate) struct L1BatchSignatureServer<'a>(pub(crate) &'a Network);
+pub(crate) struct L1BatchServer<'a>(pub(crate) &'a Network);
 /// Signed consensus message that the receiving peer should process.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Req(pub(crate) validator::Signed<validator::L1BatchSignatureMsg>);
+pub(crate) struct Req(pub(crate) validator::Signed<validator::L1BatchMsg>);
 
 /// Confirmation that the signature message has been processed.
 #[derive(Debug, Clone, PartialEq, Eq)]

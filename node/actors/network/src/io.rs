@@ -11,12 +11,12 @@ pub enum InputMessage {
     /// Message types from the Sync Blocks actor.
     SyncBlocks(SyncBlocksInputMessage),
     /// Message of type L1BatchSignatureMsg from the validator.
-    L1BatchSignature(L1BatchSignatureInputMessage),
+    L1Batch(L1BatchInputMessage),
 }
 
 #[derive(Debug)]
-pub struct L1BatchSignatureInputMessage {
-    pub message: validator::Signed<validator::L1BatchSignatureMsg>,
+pub struct L1BatchInputMessage {
+    pub message: validator::Signed<validator::L1BatchMsg>,
 }
 
 /// Message types from the Consensus actor.

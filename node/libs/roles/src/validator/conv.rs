@@ -1,9 +1,8 @@
 use super::{
     AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
-    FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, L1BatchSignatureMsg, LeaderCommit,
-    LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC,
-    ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers,
-    ValidatorSet, View, ViewNumber,
+    FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, L1BatchMsg, LeaderCommit, LeaderPrepare,
+    Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
+    ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
 };
 use crate::{node::SessionId, proto::validator as proto};
 use anyhow::Context as _;
@@ -356,17 +355,15 @@ impl ProtoFmt for NetAddress {
     }
 }
 
-impl ProtoFmt for L1BatchSignatureMsg {
-    type Proto = proto::L1BatchSignatureMsg;
+impl ProtoFmt for L1BatchMsg {
+    type Proto = proto::L1BatchMsg;
 
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.signature)?)?))
+    fn read(_r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {})
     }
 
     fn build(&self) -> Self::Proto {
-        Self::Proto {
-            signature: Some(self.0.encode()),
-        }
+        Self::Proto {}
     }
 }
 
@@ -379,9 +376,7 @@ impl ProtoFmt for Msg {
             T::Consensus(r) => Self::Consensus(ProtoFmt::read(r).context("Consensus")?),
             T::SessionId(r) => Self::SessionId(SessionId(r.clone())),
             T::NetAddress(r) => Self::NetAddress(ProtoFmt::read(r).context("NetAddress")?),
-            T::L1BatchSignature(r) => {
-                Self::L1BatchSignature(ProtoFmt::read(r).context("L1BatchSignature")?)
-            }
+            T::L1Batch(r) => Self::L1Batch(ProtoFmt::read(r).context("L1Batch")?),
         })
     }
 
@@ -392,7 +387,7 @@ impl ProtoFmt for Msg {
             Self::Consensus(x) => T::Consensus(x.build()),
             Self::SessionId(x) => T::SessionId(x.0.clone()),
             Self::NetAddress(x) => T::NetAddress(x.build()),
-            Self::L1BatchSignature(x) => T::L1BatchSignature(x.build()),
+            Self::L1Batch(x) => T::L1Batch(x.build()),
         };
 
         Self::Proto { t: Some(t) }

@@ -106,7 +106,7 @@ impl Network {
                     Err(err) => Err(io::GetBlockError::Internal(err)),
                 });
             }
-            io::InputMessage::L1BatchSignature(message) => {
+            io::InputMessage::L1Batch(message) => {
                 let consensus = self.consensus.as_ref().context("not a validator node")?;
                 let ctx = &ctx.with_timeout(CONSENSUS_MSG_TIMEOUT);
                 consensus.broadcast_signature(ctx, message.message).await?;

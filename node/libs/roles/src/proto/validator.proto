@@ -144,8 +144,7 @@ message NetAddress {
   optional std.Timestamp timestamp = 3; // required
 }
 
-message L1BatchSignatureMsg {
-  optional bytes signature = 1; // required
+message L1BatchMsg {
 }
 
 message Msg {
@@ -153,7 +152,7 @@ message Msg {
     ConsensusMsg consensus = 1;
     bytes session_id = 2;
     NetAddress net_address = 3;
-    L1BatchSignatureMsg l1_batch_signature = 4;
+    L1BatchMsg l1_batch = 4;
   }
 }
 
