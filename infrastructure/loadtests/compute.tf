@@ -45,6 +45,7 @@ resource "google_compute_instance" "zksync_bft_node" {
   boot_disk {
     initialize_params {
       image = data.google_compute_image.ubuntu.self_link
+      size = 30
     }
   }
 

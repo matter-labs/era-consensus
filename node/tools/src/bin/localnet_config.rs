@@ -1,11 +1,16 @@
 //! This tool constructs collection of node configs for running tests.
 use anyhow::Context as _;
 use clap::Parser;
-use rand::Rng;
-use std::{fs, net::SocketAddr, path::PathBuf};
-use zksync_consensus_crypto::TextFmt;
+use rand::{seq::SliceRandom as _, Rng};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    net::{Ipv4Addr, SocketAddr},
+    path::PathBuf,
+};
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_tools::AppConfig;
+use zksync_consensus_tools::{encode_json, AppConfig};
+use zksync_protobuf::serde::Serde;
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
@@ -14,6 +19,13 @@ struct Args {
     /// Binary will generate a config for each IP in this file.
     #[arg(long)]
     input_addrs: PathBuf,
+    /// How many of the nodes from `input_addrs` should be validators.
+    /// By default all nodes are validators.
+    #[arg(long)]
+    validator_count: Option<usize>,
+    /// How many gossipnet peers should each node have.
+    #[arg(long, default_value_t = 2)]
+    peer_count: usize,
     /// TCP port to serve metrics for scraping.
     #[arg(long)]
     metrics_server_port: Option<u16>,
@@ -37,54 +49,60 @@ fn main() -> anyhow::Result<()> {
                 .with_context(|| format!("parse('{}')", a))?,
         );
     }
-    assert!(!addrs.is_empty(), "at least 1 address has to be specified");
-
-    let metrics_server_addr = args
-        .metrics_server_port
-        .map(|port| SocketAddr::new(std::net::Ipv4Addr::UNSPECIFIED.into(), port));
+    anyhow::ensure!(!addrs.is_empty(), "at least 1 address has to be specified");
+    let validator_count = args.validator_count.unwrap_or(addrs.len());
+    anyhow::ensure!(validator_count <= addrs.len());
 
     // Generate the keys for all the replicas.
     let rng = &mut rand::thread_rng();
 
-    let setup = validator::testonly::Setup::new(rng, addrs.len());
+    let setup = validator::testonly::Setup::new(rng, validator_count);
     let validator_keys = setup.keys.clone();
 
     // Each node will have `gossip_peers` outbound peers.
     let nodes = addrs.len();
-    let peers = 2;
+    let peers = nodes.min(args.peer_count);
 
     let node_keys: Vec<node::SecretKey> = (0..nodes).map(|_| rng.gen()).collect();
-
-    let mut default_config = AppConfig::default_for(setup.genesis.clone());
-
-    if let Some(metrics_server_addr) = metrics_server_addr {
-        default_config.with_metrics_server_addr(metrics_server_addr);
-    }
     let mut cfgs: Vec<_> = (0..nodes)
-        .map(|i| default_config.with_public_addr(addrs[i]).clone())
+        .map(|i| AppConfig {
+            server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), addrs[i].port()),
+            public_addr: addrs[i].into(),
+            debug_addr: None,
+            metrics_server_addr: args
+                .metrics_server_port
+                .map(|port| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port)),
+            genesis: setup.genesis.clone(),
+            max_payload_size: 1000000,
+            node_key: node_keys[i].clone(),
+            validator_key: validator_keys.get(i).cloned(),
+            gossip_dynamic_inbound_limit: peers,
+            gossip_static_inbound: HashSet::default(),
+            gossip_static_outbound: HashMap::default(),
+        })
         .collect();
 
     // Construct a gossip network with optimal diameter.
-    for i in 0..nodes {
-        for j in 0..peers {
-            let next = (i * peers + j + 1) % nodes;
-            cfgs[i].add_gossip_static_outbound(node_keys[next].public(), addrs[next]);
-            cfgs[next].add_gossip_static_inbound(node_keys[i].public());
+    {
+        let mut cfgs: Vec<_> = cfgs.iter_mut().collect();
+        cfgs.shuffle(rng);
+        let mut next = 0;
+        for i in 0..cfgs.len() {
+            cfgs[i].gossip_static_outbound = (0..peers)
+                .map(|_| {
+                    next = (next + 1) % nodes;
+                    (cfgs[next].node_key.public(), cfgs[next].public_addr.clone())
+                })
+                .collect();
         }
     }
 
-    for (i, cfg) in cfgs.into_iter().enumerate() {
+    for cfg in cfgs {
         // Recreate the directory for the node's config.
-        let root = args.output_dir.join(cfg.public_addr.to_string());
+        let root = args.output_dir.join(&cfg.public_addr.0);
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
-        cfg.write_to_file(&root)?;
-        fs::write(
-            root.join("validator_key"),
-            &TextFmt::encode(&validator_keys[i]),
-        )
-        .context("fs::write()")?;
-        fs::write(root.join("node_key"), &TextFmt::encode(&node_keys[i])).context("fs::write()")?;
+        fs::write(root.join("config.json"), encode_json(&Serde(cfg))).context("fs::write()")?;
     }
     Ok(())
 }

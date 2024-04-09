@@ -3,7 +3,7 @@ use anyhow::Context as _;
 use zksync_concurrency::{ctx, time};
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_roles::{node, validator};
-use zksync_protobuf::{read_required, ProtoFmt};
+use zksync_protobuf::{kB, read_required, ProtoFmt};
 
 #[cfg(test)]
 mod testonly;
@@ -12,6 +12,9 @@ mod tests;
 
 /// Timeout on performing a handshake.
 const TIMEOUT: time::Duration = time::Duration::seconds(5);
+
+/// Max size of a handshake frame.
+const MAX_FRAME: usize = 10 * kB;
 
 /// First message exchanged by nodes after establishing e2e encryption.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -50,7 +53,7 @@ pub(super) enum Error {
     #[error("unexpected peer")]
     PeerMismatch,
     #[error("validator signature {0}")]
-    Signature(#[from] validator::Error),
+    Signature(#[from] anyhow::Error),
     #[error("stream {0}")]
     Stream(#[source] anyhow::Error),
 }
@@ -74,7 +77,7 @@ pub(super) async fn outbound(
     )
     .await
     .map_err(Error::Stream)?;
-    let h: Handshake = frame::recv_proto(ctx, stream, Handshake::max_size())
+    let h: Handshake = frame::recv_proto(ctx, stream, MAX_FRAME)
         .await
         .map_err(Error::Stream)?;
     if h.genesis != genesis {
@@ -98,7 +101,7 @@ pub(super) async fn inbound(
 ) -> Result<validator::PublicKey, Error> {
     let ctx = &ctx.with_timeout(TIMEOUT);
     let session_id = node::SessionId(stream.id().encode());
-    let h: Handshake = frame::recv_proto(ctx, stream, Handshake::max_size())
+    let h: Handshake = frame::recv_proto(ctx, stream, MAX_FRAME)
         .await
         .map_err(Error::Stream)?;
     if h.genesis != genesis {

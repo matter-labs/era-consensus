@@ -1,7 +1,8 @@
 //! Network actor maintaining a pool of outbound and inbound connections to other nodes.
 use anyhow::Context as _;
 use std::sync::Arc;
-use zksync_concurrency::{ctx, ctx::channel, scope, time};
+use tracing::Instrument as _;
+use zksync_concurrency::{ctx, ctx::channel, limiter, scope, time};
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
@@ -46,13 +47,12 @@ impl Network {
     /// Constructs a new network actor state.
     /// Call `run_network` to run the actor.
     pub fn new(
-        ctx: &ctx::Ctx,
         cfg: Config,
         block_store: Arc<BlockStore>,
         pipe: ActorPipe<io::InputMessage, io::OutputMessage>,
     ) -> (Arc<Self>, Runner) {
         let gossip = gossip::Network::new(cfg, block_store, pipe.send);
-        let consensus = consensus::Network::new(ctx, gossip.clone());
+        let consensus = consensus::Network::new(gossip.clone());
         let net = Arc::new(Self { gossip, consensus });
         (
             net.clone(),
@@ -110,15 +110,15 @@ impl Network {
 impl Runner {
     /// Runs the network actor.
     pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        let mut listener = self
-            .net
-            .gossip
-            .cfg
-            .server_addr
-            .bind()
-            .context("server_addr.bind()")?;
+        let res: ctx::Result<()> = scope::run!(ctx, |ctx, s| async {
+            let mut listener = self
+                .net
+                .gossip
+                .cfg
+                .server_addr
+                .bind()
+                .context("server_addr.bind()")?;
 
-        scope::run!(ctx, |ctx, s| async {
             // Handle incoming messages.
             s.spawn(async {
                 // We don't propagate cancellation errors
@@ -137,8 +137,11 @@ impl Runner {
             for (peer, addr) in &self.net.gossip.cfg.gossip.static_outbound {
                 s.spawn(async {
                     loop {
-                        let run_result =
-                            self.net.gossip.run_outbound_stream(ctx, peer, *addr).await;
+                        let run_result = self
+                            .net
+                            .gossip
+                            .run_outbound_stream(ctx, peer, addr.clone())
+                            .await;
                         if let Err(err) = run_result {
                             tracing::info!("gossip.run_outbound_stream(): {err:#}");
                         }
@@ -150,28 +153,30 @@ impl Runner {
             }
 
             if let Some(c) = &self.net.consensus {
+                let validators = &c.gossip.genesis().validators;
                 // If we are active validator ...
-                if c.gossip.genesis().validators.contains(&c.key.public()) {
+                if validators.contains(&c.key.public()) {
                     // Maintain outbound connections.
-                    for peer in c.clients.keys() {
+                    for peer in validators.iter() {
                         s.spawn(async {
                             c.maintain_connection(ctx, peer).await;
                             Ok(())
                         });
                     }
-                    // Announce IP periodically.
-                    s.spawn(async {
-                        c.run_address_announcer(ctx).await;
-                        Ok(())
-                    });
                 }
             }
 
-            // TODO(gprusak): add rate limit and inflight limit for inbound handshakes.
-            while let Ok(stream) = metrics::MeteredStream::listen(ctx, &mut listener).await {
-                let stream = stream.context("listener.accept()")?;
+            let accept_limiter = limiter::Limiter::new(ctx, self.net.gossip.cfg.tcp_accept_rate);
+            loop {
+                accept_limiter.acquire(ctx, 1).await?;
+                let stream = metrics::MeteredStream::accept(ctx, &mut listener)
+                    .await?
+                    .context("accept()")?;
                 s.spawn(async {
+                    // This is a syscall which should always succeed on a correctly opened socket.
+                    let addr = stream.peer_addr().context("peer_addr()")?;
                     let res = async {
+                        tracing::info!("new inbound TCP connection from");
                         let (stream, endpoint) = preface::accept(ctx, stream)
                             .await
                             .context("preface::accept()")?;
@@ -193,15 +198,19 @@ impl Runner {
                         }
                         anyhow::Ok(())
                     }
+                    .instrument(tracing::info_span!("{addr}"))
                     .await;
                     if let Err(err) = res {
-                        tracing::info!("{err:#}");
+                        tracing::info!("{addr}: {err:#}");
                     }
                     Ok(())
                 });
             }
-            Ok(())
         })
-        .await
+        .await;
+        match res {
+            Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
+            Err(ctx::Error::Internal(err)) => Err(err),
+        }
     }
 }

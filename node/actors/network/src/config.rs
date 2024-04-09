@@ -29,7 +29,7 @@ impl Default for RpcConfig {
             },
             push_block_store_state_rate: limiter::Rate {
                 burst: 2,
-                refresh: time::Duration::milliseconds(500),
+                refresh: time::Duration::milliseconds(300),
             },
             get_block_rate: limiter::Rate {
                 burst: 10,
@@ -55,7 +55,7 @@ pub struct GossipConfig {
     pub static_inbound: HashSet<node::PublicKey>,
     /// Outbound connections that the node should actively try to
     /// establish and maintain.
-    pub static_outbound: HashMap<node::PublicKey, std::net::SocketAddr>,
+    pub static_outbound: HashMap<node::PublicKey, net::Host>,
 }
 
 /// Network actor config.
@@ -65,7 +65,10 @@ pub struct Config {
     pub server_addr: net::tcp::ListenerAddr,
     /// Public TCP address that other nodes are expected to connect to.
     /// It is announced over gossip network.
-    pub public_addr: std::net::SocketAddr,
+    /// In case public_addr is a domain instead of ip, DNS resolution is
+    /// performed and a loopback connection is established before announcing
+    /// the IP address over the gossip network.
+    pub public_addr: net::Host,
     /// Gossip network config.
     pub gossip: GossipConfig,
     /// Private key of the validator.
@@ -77,6 +80,8 @@ pub struct Config {
     /// the connection is dropped.
     /// `None` disables sending ping messages (useful for tests).
     pub ping_timeout: Option<time::Duration>,
+    /// Max rate at which inbound TCP connections should be accepted.
+    pub tcp_accept_rate: limiter::Rate,
     /// Rate limiting config for RPCs.
     pub rpc: RpcConfig,
 }

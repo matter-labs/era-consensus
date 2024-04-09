@@ -12,7 +12,7 @@ use zksync_consensus_storage::{
 fn config(cfg: &network::Config) -> Config {
     Config {
         server_addr: *cfg.server_addr,
-        public_addr: cfg.public_addr,
+        public_addr: cfg.public_addr.clone(),
         max_payload_size: usize::MAX,
         node_key: cfg.gossip.key.clone(),
         gossip_dynamic_inbound_limit: cfg.gossip.dynamic_inbound_limit,

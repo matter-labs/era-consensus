@@ -59,6 +59,7 @@ multiple-versions = "deny"
 skip = [
     # Old versions required by tempfile and prost-build.
     { name = "bitflags", version = "1.3.2" },
+    { name = "heck", version = "0.4.1" },
 
     # Old version required by tracing-subscriber.
     { name = "regex-automata", version = "0.1.10" },
@@ -80,4 +81,4 @@ skip = [
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-org = { github = ["matter-labs", "slowli"] } # TODO: remove once `vise` is published
+allow-org = { github = ["matter-labs"] } # TODO: remove once `vise` is published
