@@ -17,7 +17,7 @@ pub struct SecretKey(ed::SigningKey);
 impl SecretKey {
     /// Generates a secret key from a cryptographically-secure entropy source.
     pub fn generate() -> Self {
-        Self(ed::SigningKey::generate(&mut rand::rngs::OsRng {}))
+        Self(ed::SigningKey::generate(&mut rand::rngs::OsRng))
     }
 
     /// Signs a message.
