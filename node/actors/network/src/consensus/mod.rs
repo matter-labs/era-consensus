@@ -1,5 +1,6 @@
 //! Consensus network is a full graph of connections between all validators.
 //! BFT consensus messages are exchanged over this network.
+use crate::rpc::signature::L1BatchServer;
 use crate::rpc::Rpc as _;
 use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc};
 use anyhow::Context as _;
@@ -28,6 +29,7 @@ pub(crate) struct Connection {
     #[allow(dead_code)]
     addr: std::net::SocketAddr,
     consensus: rpc::Client<rpc::consensus::Rpc>,
+    signatures: rpc::Client<rpc::signature::Rpc>,
 }
 
 /// Consensus network state.
@@ -40,6 +42,7 @@ pub(crate) struct Network {
     pub(crate) inbound: PoolWatch<validator::PublicKey, ()>,
     /// Set of the currently open outbound connections.
     pub(crate) outbound: PoolWatch<validator::PublicKey, Arc<Connection>>,
+    pub(crate) l1_batch_qc: L1BatchQC,
 }
 
 #[async_trait::async_trait]
@@ -93,6 +96,7 @@ impl Network {
             key,
             inbound: PoolWatch::new(validators.clone(), 0),
             outbound: PoolWatch::new(validators.clone(), 0),
+            l1_batch_qc: L1BatchQC::new(validators.len()),
             gossip,
         }))
     }
@@ -130,10 +134,11 @@ impl Network {
         signature: validator::Signed<validator::L1BatchMsg>,
     ) -> anyhow::Result<()> {
         let req = rpc::signature::Req(signature);
+        let outbound = self.outbound.current();
         scope::run!(ctx, |ctx, s| async {
-            for (peer, client) in &self.signature_clients {
+            for (peer, conn) in &outbound {
                 s.spawn(async {
-                    if let Err(err) = client.call(ctx, &req, RESP_MAX_SIZE).await {
+                    if let Err(err) = conn.signatures.call(ctx, &req, RESP_MAX_SIZE).await {
                         tracing::info!("send({:?},<L1BatchMsg>): {err:#}", &*peer);
                     }
                     Ok(())
@@ -212,6 +217,7 @@ impl Network {
         let conn = Arc::new(Connection {
             addr,
             consensus: rpc::Client::new(ctx, self.gossip.cfg.rpc.consensus_rate),
+            signatures: rpc::Client::new(ctx, self.gossip.cfg.rpc.l1_batch_rate),
         });
         self.outbound.insert(peer.clone(), conn.clone()).await?;
         tracing::info!("outbound connection to {peer:?}");

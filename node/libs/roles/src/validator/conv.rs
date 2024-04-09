@@ -1,5 +1,5 @@
 use super::{
-    AggregateSignature, BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, ConsensusMsg,
+    AggregateSignature, BlockHeader, BlockNumber, CommitQC, ConsensusMsg,
     FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, L1BatchMsg, LeaderCommit, LeaderPrepare,
     Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,

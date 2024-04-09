@@ -2,7 +2,7 @@
 use super::{ConsensusMsg, L1BatchMsg, NetAddress};
 use crate::{
     node::SessionId,
-    validator::{self, Error},
+    validator::{self},
 };
 use std::fmt;
 use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};

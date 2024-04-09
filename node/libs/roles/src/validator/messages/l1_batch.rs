@@ -19,9 +19,11 @@ pub struct L1BatchQC {
     pub message: L1BatchMsg,
 }
 
-#[derive(Debug)]
+#[derive(thiserror::Error, Debug)]
 pub enum L1BatchQCVerifyError {
-    BadSignature(validator::Error),
+    /// Bad signature.
+    #[error("bad signature: {0:#}")]
+    BadSignature(#[source] anyhow::Error),
 }
 
 impl L1BatchQC {
