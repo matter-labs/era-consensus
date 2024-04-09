@@ -3742,6 +3742,8 @@ dependencies = [
  "ed25519-dalek",
  "ff_ce",
  "hex",
+ "num-bigint",
+ "num-traits",
  "pairing_ce",
  "rand 0.4.6",
  "rand 0.8.5",
