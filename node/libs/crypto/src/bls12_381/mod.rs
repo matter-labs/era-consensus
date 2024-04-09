@@ -14,6 +14,9 @@ mod tests;
 
 pub mod testonly;
 
+/// The domain separation tag for this signature scheme.
+pub const DST: &[u8] = b"MATTER_LABS_CONSENSUS_BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
+
 /// The byte-length of a BLS public key when serialized in compressed form.
 pub const PUBLIC_KEY_BYTES_LEN: usize = 48;
 
@@ -36,7 +39,7 @@ impl SecretKey {
 
     /// Produces a signature using this [`SecretKey`]
     pub fn sign(&self, msg: &[u8]) -> Signature {
-        Signature(self.0.sign(msg, &[], &[]))
+        Signature(self.0.sign(msg, DST, &[]))
     }
 
     /// Gets the corresponding [`PublicKey`] for this [`SecretKey`]
@@ -102,7 +105,7 @@ pub struct Signature(bls::Signature);
 impl Signature {
     /// Verifies a signature against the provided public key
     pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> Result<(), Error> {
-        let result = self.0.verify(true, msg, &[], &[], &pk.0, true);
+        let result = self.0.verify(true, msg, DST, &[], &pk.0, true);
 
         match result {
             BLST_ERROR::BLST_SUCCESS => Ok(()),
@@ -183,7 +186,7 @@ impl AggregateSignature {
         // Verify the signature.
         let result = self
             .0
-            .aggregate_verify(true, &messages, &[], &public_keys, true);
+            .aggregate_verify(true, &messages, DST, &public_keys, true);
 
         match result {
             BLST_ERROR::BLST_SUCCESS => Ok(()),
