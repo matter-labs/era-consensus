@@ -45,7 +45,7 @@ async fn immediate_permit_consumption() {
 }
 
 #[tokio::test]
-async fn inifinite_refresh_rate() {
+async fn infinite_refresh_rate() {
     testonly::abort_on_panic();
     let clock = &ctx::ManualClock::new();
     let ctx = &ctx::test_root(clock);

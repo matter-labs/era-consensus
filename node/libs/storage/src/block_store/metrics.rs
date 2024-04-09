@@ -7,9 +7,9 @@ pub(super) struct PersistentBlockStore {
     /// Latency of a successful `genesis()` call.
     #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
     pub(super) genesis_latency: vise::Histogram<time::Duration>,
-    /// Latency of a successful `last()` call.
+    /// Latency of a successful `state()` call.
     #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
-    pub(super) last_latency: vise::Histogram<time::Duration>,
+    pub(super) state_latency: vise::Histogram<time::Duration>,
     /// Latency of a successful `block()` call.
     #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
     pub(super) block_latency: vise::Histogram<time::Duration>,

@@ -23,7 +23,7 @@ fn params() -> snow::params::NoiseParams {
             pattern: snow::params::HandshakePattern::NN,
             modifiers: snow::params::HandshakeModifierList { list: vec![] },
         },
-        // We use curve25519 diffie-hellmann protocol to establish a common secret.
+        // We use Curve25519 Diffie-Hellman protocol to establish a common secret.
         dh: snow::params::DHChoice::Curve25519,
         // We use ChaChaPoly symmetric encryption for communication.
         cipher: snow::params::CipherChoice::ChaChaPoly,
@@ -83,8 +83,15 @@ pub(crate) struct Stream<S = MeteredStream> {
     noise: snow::TransportState,
     /// Buffers used for the read half of the stream.
     read_buf: Box<Buffer>,
-    /// Buffers used for the write hald of the stream.
+    /// Buffers used for the write half of the stream.
     write_buf: Box<Buffer>,
+}
+
+impl<S> std::ops::Deref for Stream<S> {
+    type Target = S;
+    fn deref(&self) -> &S {
+        &self.inner
+    }
 }
 
 impl<S> Stream<S>

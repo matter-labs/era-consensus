@@ -1,5 +1,5 @@
-use crate::{config, NodeAddr};
-use anyhow::{anyhow, ensure, Context};
+use crate::{config, AppConfig, NodeAddr};
+use anyhow::{ensure, Context};
 use k8s_openapi::{
     api::{
         apps::v1::{Deployment, DeploymentSpec},
@@ -12,15 +12,11 @@ use k8s_openapi::{
 };
 use kube::{
     api::{ListParams, PostParams},
-    core::{ObjectList, ObjectMeta},
-    Api, Client, ResourceExt,
+    core::ObjectMeta,
+    Api, Client,
 };
-use std::{
-    collections::{BTreeMap, HashMap},
-    net::SocketAddr,
-};
-use tokio_retry::strategy::FixedInterval;
-use tokio_retry::Retry;
+use std::{collections::BTreeMap, net::SocketAddr, time::Duration};
+use tokio::time;
 use tracing::log::info;
 use zksync_protobuf::serde::Serde;
 
@@ -29,6 +25,154 @@ const DOCKER_IMAGE_NAME: &str = "consensus-node";
 
 /// K8s namespace for consensus nodes.
 pub const DEFAULT_NAMESPACE: &str = "consensus";
+
+/// Consensus Node Representation
+#[derive(Debug)]
+pub struct ConsensusNode {
+    /// Node identifier
+    pub id: String,
+    /// Node configuration
+    pub config: AppConfig,
+    /// Full NodeAddr
+    pub node_addr: Option<NodeAddr>,
+    /// Is seed node (meaning it has no gossipStaticOutbound configuration)
+    pub is_seed: bool,
+}
+
+impl ConsensusNode {
+    /// Wait for a deployed consensus node to be ready and have an IP address
+    pub async fn await_running_pod(
+        &mut self,
+        client: &Client,
+        namespace: &str,
+    ) -> anyhow::Result<Pod> {
+        let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
+        // Wait until the pod is running, otherwise we get an error.
+        retry(15, Duration::from_millis(1000), || async {
+            get_running_pod(&pods, &self.id).await
+        })
+        .await
+    }
+
+    /// Fetches the pod's IP address and assigns to self.node_addr
+    pub async fn fetch_and_assign_pod_ip(
+        &mut self,
+        client: &Client,
+        namespace: &str,
+    ) -> anyhow::Result<()> {
+        let ip = self
+            .await_running_pod(client, namespace)
+            .await?
+            .status
+            .context("Status not present")?
+            .pod_ip
+            .context("Pod IP address not present")?;
+        self.node_addr = Some(NodeAddr {
+            key: self.config.node_key.public(),
+            addr: SocketAddr::new(ip.parse()?, config::NODES_PORT).into(),
+        });
+        Ok(())
+    }
+
+    /// Creates a deployment
+    pub async fn deploy(&self, client: &Client, namespace: &str) -> anyhow::Result<()> {
+        let cli_args = get_cli_args(self);
+        let deployment = Deployment {
+            metadata: ObjectMeta {
+                name: Some(self.id.to_owned()),
+                namespace: Some(namespace.to_owned()),
+                ..Default::default()
+            },
+            spec: Some(DeploymentSpec {
+                selector: LabelSelector {
+                    match_labels: Some(BTreeMap::from([("app".to_owned(), self.id.to_owned())])),
+                    ..Default::default()
+                },
+                replicas: Some(1),
+                template: PodTemplateSpec {
+                    metadata: Some(ObjectMeta {
+                        labels: Some(BTreeMap::from([
+                            ("app".to_owned(), self.id.to_owned()),
+                            ("id".to_owned(), self.id.to_owned()),
+                            ("seed".to_owned(), self.is_seed.to_string()),
+                        ])),
+                        ..Default::default()
+                    }),
+                    spec: Some(PodSpec {
+                        containers: vec![Container {
+                            name: self.id.to_owned(),
+                            image: Some(DOCKER_IMAGE_NAME.to_owned()),
+                            env: Some(vec![
+                                EnvVar {
+                                    name: "NODE_ID".to_owned(),
+                                    value: Some(self.id.to_owned()),
+                                    ..Default::default()
+                                },
+                                EnvVar {
+                                    name: "PUBLIC_ADDR".to_owned(),
+                                    value_from: Some(EnvVarSource {
+                                        field_ref: Some(ObjectFieldSelector {
+                                            field_path: "status.podIP".to_owned(),
+                                            ..Default::default()
+                                        }),
+                                        ..Default::default()
+                                    }),
+                                    ..Default::default()
+                                },
+                            ]),
+                            command: Some(vec!["./k8s_entrypoint.sh".to_owned()]),
+                            args: Some(cli_args),
+                            image_pull_policy: Some("Never".to_owned()),
+                            ports: Some(vec![
+                                ContainerPort {
+                                    container_port: i32::from(config::NODES_PORT),
+                                    ..Default::default()
+                                },
+                                ContainerPort {
+                                    container_port: 3154,
+                                    ..Default::default()
+                                },
+                            ]),
+                            liveness_probe: Some(Probe {
+                                http_get: Some(HTTPGetAction {
+                                    path: Some("/health".to_owned()),
+                                    port: Int(3154),
+                                    ..Default::default()
+                                }),
+                                ..Default::default()
+                            }),
+                            readiness_probe: Some(Probe {
+                                http_get: Some(HTTPGetAction {
+                                    path: Some("/health".to_owned()),
+                                    port: Int(3154),
+                                    ..Default::default()
+                                }),
+                                ..Default::default()
+                            }),
+                            ..Default::default()
+                        }],
+                        ..Default::default()
+                    }),
+                },
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        let deployments: Api<Deployment> = Api::namespaced(client.clone(), namespace);
+        let post_params = PostParams::default();
+        let result = deployments.create(&post_params, &deployment).await?;
+
+        info!(
+            "Deployment: {} , created",
+            result
+                .metadata
+                .name
+                .context("Name not defined in metadata")?
+        );
+        Ok(())
+    }
+}
 
 /// Get a kube client
 pub async fn get_client() -> anyhow::Result<Client> {
@@ -45,7 +189,7 @@ pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<
         "No consensus pods found in the k8s cluster"
     );
     let mut node_rpc_addresses: Vec<SocketAddr> = Vec::new();
-    for pod in pods.into_iter() {
+    for pod in pods {
         let pod_spec = pod.spec.as_ref().context("Failed to get pod spec")?;
         let pod_container = pod_spec
             .containers
@@ -68,7 +212,7 @@ pub async fn get_consensus_nodes_address(client: &Client) -> anyhow::Result<Vec<
                 .context("Failed to get ports of container")?
                 .iter()
                 .find_map(|port| {
-                    let port: u16 = port.container_port.try_into().ok()?;
+                    let port = port.container_port.try_into().ok()?;
                     (port != config::NODES_PORT).then_some(port)
                 })
                 .context("Failed parsing container port")?;
@@ -167,146 +311,16 @@ pub async fn create_tests_deployment(client: &Client) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// Creates a deployment
-pub async fn deploy_node(
-    client: &Client,
-    node_index: usize,
-    is_seed: bool,
-    peers: Vec<NodeAddr>,
-    namespace: &str,
-) -> anyhow::Result<()> {
-    let cli_args = get_cli_args(peers);
-    let node_name = format!("consensus-node-{node_index:0>2}");
-    let deployment = Deployment {
-        metadata: ObjectMeta {
-            name: Some(node_name.to_owned()),
-            namespace: Some(namespace.to_owned()),
-            ..Default::default()
-        },
-        spec: Some(DeploymentSpec {
-            selector: LabelSelector {
-                match_labels: Some(BTreeMap::from([("app".to_owned(), node_name.to_owned())])),
-                ..Default::default()
-            },
-            replicas: Some(1),
-            template: PodTemplateSpec {
-                metadata: Some(ObjectMeta {
-                    labels: Some(BTreeMap::from([
-                        ("app".to_owned(), node_name.to_owned()),
-                        ("id".to_owned(), node_name.to_owned()),
-                        ("seed".to_owned(), is_seed.to_string()),
-                    ])),
-                    ..Default::default()
-                }),
-                spec: Some(PodSpec {
-                    containers: vec![Container {
-                        name: node_name.to_owned(),
-                        image: Some("consensus-node".to_owned()),
-                        env: Some(vec![
-                            EnvVar {
-                                name: "NODE_ID".to_owned(),
-                                value: Some(node_name.to_owned()),
-                                ..Default::default()
-                            },
-                            EnvVar {
-                                name: "PUBLIC_ADDR".to_owned(),
-                                value_from: Some(EnvVarSource {
-                                    field_ref: Some(ObjectFieldSelector {
-                                        field_path: "status.podIP".to_owned(),
-                                        ..Default::default()
-                                    }),
-                                    ..Default::default()
-                                }),
-                                ..Default::default()
-                            },
-                        ]),
-                        command: Some(vec!["./k8s_entrypoint.sh".to_owned()]),
-                        args: Some(cli_args),
-                        image_pull_policy: Some("Never".to_owned()),
-                        ports: Some(vec![
-                            ContainerPort {
-                                container_port: i32::from(config::NODES_PORT),
-                                ..Default::default()
-                            },
-                            ContainerPort {
-                                container_port: 3154,
-                                ..Default::default()
-                            },
-                        ]),
-                        liveness_probe: Some(Probe {
-                            http_get: Some(HTTPGetAction {
-                                path: Some("/health".to_owned()),
-                                port: Int(3154),
-                                ..Default::default()
-                            }),
-                            ..Default::default()
-                        }),
-                        readiness_probe: Some(Probe {
-                            http_get: Some(HTTPGetAction {
-                                path: Some("/health".to_owned()),
-                                port: Int(3154),
-                                ..Default::default()
-                            }),
-                            ..Default::default()
-                        }),
-                        ..Default::default()
-                    }],
-                    ..Default::default()
-                }),
-            },
-            ..Default::default()
-        }),
-        ..Default::default()
-    };
-
-    let deployments: Api<Deployment> = Api::namespaced(client.clone(), namespace);
-    let post_params = PostParams::default();
-    let result = deployments.create(&post_params, &deployment).await?;
-
-    info!(
-        "Deployment: {} , created",
-        result
-            .metadata
-            .name
-            .context("Name not defined in metadata")?
-    );
-    Ok(())
-}
-
-/// Returns a HashMap with mapping: node_id -> IP address
-pub async fn get_seed_node_addrs(
-    client: &Client,
-    amount: usize,
-    namespace: &str,
-) -> anyhow::Result<HashMap<String, String>> {
-    let mut seed_nodes = HashMap::new();
-    let pods: Api<Pod> = Api::namespaced(client.clone(), namespace);
-
-    // Will retry 15 times during 15 seconds to allow pods to start and obtain an IP
-    let retry_strategy = FixedInterval::from_millis(1000).take(15);
-    let pod_list = Retry::spawn(retry_strategy, || get_seed_pods(&pods, amount)).await?;
-
-    for p in pod_list {
-        let node_id = p.labels()["id"].to_owned();
-        seed_nodes.insert(
-            node_id,
-            p.status
-                .context("Status not present")?
-                .pod_ip
-                .context("Pod IP address not present")?,
-        );
-    }
-    Ok(seed_nodes)
-}
-
-async fn get_seed_pods(pods: &Api<Pod>, amount: usize) -> anyhow::Result<ObjectList<Pod>> {
-    let lp = ListParams::default().labels("seed=true");
-    let p = pods.list(&lp).await?;
-    if p.items.len() == amount && p.iter().all(is_pod_running) {
-        Ok(p)
-    } else {
-        Err(anyhow!("Pods are not ready"))
-    }
+async fn get_running_pod(pods: &Api<Pod>, label: &str) -> anyhow::Result<Pod> {
+    let lp = ListParams::default().labels(&format!("app={label}"));
+    let pod = pods
+        .list(&lp)
+        .await?
+        .items
+        .pop()
+        .with_context(|| format!("Pod not found: {label}"))?;
+    anyhow::ensure!(is_pod_running(&pod), "Pod is not running");
+    Ok(pod)
 }
 
 fn is_pod_running(pod: &Pod) -> bool {
@@ -318,20 +332,28 @@ fn is_pod_running(pod: &Pod) -> bool {
     false
 }
 
-fn get_cli_args(peers: Vec<NodeAddr>) -> Vec<String> {
-    if peers.is_empty() {
-        [].to_vec()
-    } else {
-        [
-            "--add-gossip-static-outbound".to_string(),
-            config::encode_with_serializer(
-                &peers
-                    .iter()
-                    .map(|e| Serde(e.clone()))
-                    .collect::<Vec<Serde<NodeAddr>>>(),
-                serde_json::Serializer::new(vec![]),
-            ),
-        ]
-        .to_vec()
+fn get_cli_args(consensus_node: &ConsensusNode) -> Vec<String> {
+    vec![
+        "--config".to_string(),
+        config::encode_with_serializer(
+            &Serde(consensus_node.config.clone()),
+            serde_json::Serializer::new(vec![]),
+        ),
+    ]
+}
+
+async fn retry<T, Fut, F>(retries: usize, delay: Duration, mut f: F) -> anyhow::Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = anyhow::Result<T>>,
+{
+    let mut interval = time::interval(delay);
+    for count in 0.. {
+        interval.tick().await;
+        let result = f().await;
+        if result.is_ok() || count > retries {
+            return result;
+        }
     }
+    unreachable!("Loop should always return")
 }

@@ -14,12 +14,6 @@ impl ReplicaCommit {
     pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
         anyhow::ensure!(self.view.fork == genesis.fork.number);
         anyhow::ensure!(self.proposal.number >= genesis.fork.first_block);
-        if self.proposal.number == genesis.fork.first_block {
-            anyhow::ensure!(
-                self.proposal.parent == genesis.fork.first_parent,
-                "bad parent of the first block of the fork"
-            );
-        }
         Ok(())
     }
 }

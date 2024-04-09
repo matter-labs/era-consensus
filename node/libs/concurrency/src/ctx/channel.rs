@@ -6,7 +6,7 @@
 //! This
 //! * simplifies the channel interface
 //! * prevents users from relying on send/recv failure
-//!   for terminating their tasks - context cancelation
+//!   for terminating their tasks - context cancellation
 //!   should be used instead
 //! * avoids a race condition which arises naturally when 2 tasks in a scope
 //!   are communicating which each other - if one of them terminates due to context
@@ -97,7 +97,7 @@ impl<T> Sender<T> {
         v: T,
     ) -> ctx::CtxAware<impl 'a + Future<Output = ctx::OrCanceled<()>>> {
         ctx::CtxAware(async move {
-            // Context cancelation is forwarded,
+            // Context cancellation is forwarded,
             // but Disconnected error is ignored.
             let _ = ctx.wait(self.0.send(v)).await?;
             Ok(())
@@ -129,7 +129,7 @@ impl<T> Sender<T> {
 
 impl<T> Receiver<T> {
     /// Awaits for a message from the channel.
-    /// Waits for cancelation if the channel has been disconnected.
+    /// Waits for cancellation if the channel has been disconnected.
     pub fn recv<'a>(
         &'a mut self,
         ctx: &'a ctx::Ctx,
@@ -172,7 +172,7 @@ impl<T> UnboundedSender<T> {
 
 impl<T> UnboundedReceiver<T> {
     /// Awaits a message from the channel.
-    /// Waits for cancelation if the channel has been disconnected.
+    /// Waits for cancellation if the channel has been disconnected.
     pub fn recv<'a>(
         &'a mut self,
         ctx: &'a ctx::Ctx,

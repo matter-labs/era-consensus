@@ -1,13 +1,9 @@
 //! This is a simple test for the RPC server. It checks if the server is running and can respond to.
-use std::{fs, io::Write, net::SocketAddr, path::PathBuf, str::FromStr};
-
 use anyhow::{ensure, Context};
 use clap::{Parser, Subcommand};
-use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params, types::Params};
-use zksync_consensus_tools::{
-    k8s,
-    rpc::methods::{health_check::HealthCheck, RPCMethod},
-};
+use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
+use std::{fs, io::Write, net::SocketAddr, path::PathBuf, str::FromStr};
+use zksync_consensus_tools::{k8s, rpc::methods::health_check};
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
@@ -81,12 +77,11 @@ pub async fn sanity_test() {
         let socket = SocketAddr::from_str(socket).unwrap();
         let url = format!("http://{}", socket);
         let rpc_client = HttpClientBuilder::default().build(url).unwrap();
-        let params = Params::new(None);
         let response: serde_json::Value = rpc_client
-            .request(HealthCheck::method(), rpc_params!())
+            .request(health_check::method(), rpc_params!())
             .await
             .unwrap();
-        assert_eq!(response, HealthCheck::callback(params).unwrap());
+        assert_eq!(response, health_check::callback().unwrap());
     }
 }
 

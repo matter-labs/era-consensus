@@ -137,19 +137,6 @@ impl UTHarness {
         self.replica.view = view;
     }
 
-    pub(crate) fn set_view(&mut self, view: ViewNumber) {
-        self.set_replica_view(view);
-        self.set_leader_view(view);
-    }
-
-    pub(crate) fn set_leader_view(&mut self, view: ViewNumber) {
-        self.leader.view = view
-    }
-
-    pub(crate) fn set_replica_view(&mut self, view: ViewNumber) {
-        self.replica.view = view
-    }
-
     pub(crate) fn replica_view(&self) -> validator::View {
         validator::View {
             protocol_version: self.protocol_version(),

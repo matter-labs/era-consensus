@@ -174,11 +174,9 @@ impl Fuzz for validator::Payload {
 
 impl Fuzz for validator::BlockHeader {
     fn mutate(&mut self, rng: &mut impl Rng) {
-        match rng.gen_range(0..3) {
-            0 => self.parent = rng.gen(),
-            1 => self.number = rng.gen(),
-            2 => self.payload = rng.gen(),
-            _ => unreachable!(),
+        match rng.gen_range(0..2) {
+            0 => self.number = rng.gen(),
+            _ => self.payload = rng.gen(),
         }
     }
 }

@@ -2,7 +2,6 @@ use super::*;
 use crate::{io, metrics, preface, rpc, testonly};
 use assert_matches::assert_matches;
 use rand::Rng;
-use tracing::Instrument as _;
 use zksync_concurrency::{ctx, net, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::testonly::new_store;
@@ -19,7 +18,7 @@ async fn test_one_connection_per_validator() {
         let (store,runner) = new_store(ctx,&setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
         let nodes : Vec<_> = nodes.into_iter().enumerate().map(|(i,node)| {
-            let (node,runner) = testonly::Instance::new(ctx, node, store.clone());
+            let (node,runner) = testonly::Instance::new(node, store.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             node
         }).collect();
@@ -77,7 +76,7 @@ async fn test_genesis_mismatch() {
         tracing::info!("Start one node, we will simulate the other one.");
         let (store, runner) = new_store(ctx, &setup.genesis).await;
         s.spawn_bg(runner.run(ctx));
-        let (node, runner) = testonly::Instance::new(ctx, cfgs[0].clone(), store.clone());
+        let (node, runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         tracing::info!("Populate the validator_addrs of the running node.");
@@ -87,7 +86,7 @@ async fn test_genesis_mismatch() {
             .update(
                 &setup.genesis.validators,
                 &[Arc::new(setup.keys[1].sign_msg(validator::NetAddress {
-                    addr: cfgs[1].public_addr,
+                    addr: *cfgs[1].server_addr,
                     version: 0,
                     timestamp: ctx.now_utc(),
                 }))],
@@ -96,9 +95,9 @@ async fn test_genesis_mismatch() {
             .unwrap();
 
         tracing::info!("Accept a connection with mismatching genesis.");
-        let stream = metrics::MeteredStream::listen(ctx, &mut listener)
+        let stream = metrics::MeteredStream::accept(ctx, &mut listener)
             .await?
-            .context("listen()")?;
+            .context("accept()")?;
         let (mut stream, endpoint) = preface::accept(ctx, stream)
             .await
             .context("preface::accept()")?;
@@ -109,7 +108,7 @@ async fn test_genesis_mismatch() {
 
         tracing::info!("Try to connect to a node with a mismatching genesis.");
         let mut stream =
-            preface::connect(ctx, cfgs[0].public_addr, preface::Endpoint::ConsensusNet)
+            preface::connect(ctx, *cfgs[0].server_addr, preface::Endpoint::ConsensusNet)
                 .await
                 .context("preface::connect")?;
         let res = handshake::outbound(
@@ -145,7 +144,7 @@ async fn test_address_change() {
             .iter()
             .enumerate()
             .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(ctx, cfg.clone(), store.clone());
+                let (node, runner) = testonly::Instance::new(cfg.clone(), store.clone());
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                 node
             })
@@ -167,8 +166,8 @@ async fn test_address_change() {
         // Then it should broadcast its new address and the consensus network
         // should get reconstructed.
         cfgs[0].server_addr = net::tcp::testonly::reserve_listener();
-        cfgs[0].public_addr = *cfgs[0].server_addr;
-        let (node0, runner) = testonly::Instance::new(ctx, cfgs[0].clone(), store.clone());
+        cfgs[0].public_addr = (*cfgs[0].server_addr).into();
+        let (node0, runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
         nodes[0] = node0;
         for n in &nodes {
@@ -198,7 +197,7 @@ async fn test_transmission() {
             .iter()
             .enumerate()
             .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(ctx, cfg.clone(), store.clone());
+                let (node, runner) = testonly::Instance::new(cfg.clone(), store.clone());
                 let i = ctx::NoCopy(i);
                 s.spawn_bg(async {
                     let i = i;

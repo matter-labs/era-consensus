@@ -85,7 +85,7 @@ impl Wire {
         }
     }
 
-    /// Converts wire type to the raw wite type value.
+    /// Converts wire type to the raw wire type value.
     pub(crate) const fn raw(self) -> u32 {
         match self {
             Self::Varint => VARINT,
@@ -197,7 +197,7 @@ pub(super) fn read_fields(
 }
 
 /// Converts an encoded protobuf message to its canonical form, given the descriptor of the message
-/// type. Retuns an error if:
+/// type. Returns an error if:
 /// * an unknown field is detected
 /// * the message type doesn't support canonical encoding (implicit presence, map fields)
 pub fn canonical_raw(
@@ -273,10 +273,6 @@ pub trait ProtoFmt: Sized {
     fn read(r: &Self::Proto) -> anyhow::Result<Self>;
     /// Converts Self to Proto.
     fn build(&self) -> Self::Proto;
-    /// Maximal allowed message size (in bytes).
-    fn max_size() -> usize {
-        usize::MAX
-    }
 }
 
 /// Parses a required proto field.

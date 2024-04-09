@@ -125,7 +125,7 @@ pub struct Signed<V: Variant<Msg>> {
 
 impl<V: Variant<Msg> + Clone> Signed<V> {
     /// Verify the signature on the message.
-    pub fn verify(&self) -> Result<(), Error> {
+    pub fn verify(&self) -> anyhow::Result<()> {
         self.sig.verify_msg(&self.msg.clone().insert(), &self.key)
     }
 }

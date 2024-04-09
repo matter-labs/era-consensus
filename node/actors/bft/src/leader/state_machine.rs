@@ -167,9 +167,9 @@ impl StateMachine {
             // The previous block was finalized, so we can propose a new block.
             _ => {
                 let fork = &cfg.genesis().fork;
-                let (parent, number) = match high_qc {
-                    Some(qc) => (Some(qc.header().hash()), qc.header().number.next()),
-                    None => (fork.first_parent, fork.first_block),
+                let number = match high_qc {
+                    Some(qc) => qc.header().number.next(),
+                    None => fork.first_block,
                 };
                 // Defensively assume that PayloadManager cannot propose until the previous block is stored.
                 if let Some(prev) = number.prev() {
@@ -189,7 +189,6 @@ impl StateMachine {
                     .observe(payload.0.len());
                 let proposal = validator::BlockHeader {
                     number,
-                    parent,
                     payload: payload.hash(),
                 };
                 (proposal, Some(payload))

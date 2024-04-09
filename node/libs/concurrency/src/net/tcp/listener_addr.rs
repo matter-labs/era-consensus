@@ -21,7 +21,7 @@ pub(super) static RESERVED_LISTENER_ADDRS: Lazy<
 /// In tests it additionally allows to "reserve" a random unused TCP port:
 /// * it allows to avoid race conditions in tests which require a dedicated TCP port to spawn a
 ///   node on (and potentially restart it every now and then).
-/// * it is implemented by usign SO_REUSEPORT socket option (do not confuse with SO_REUSEADDR),
+/// * it is implemented by using SO_REUSEPORT socket option (do not confuse with SO_REUSEADDR),
 ///   which allows multiple sockets to share a port. reserve_for_test() creates a socket and binds
 ///   it to a random unused local port (without starting a TCP listener).
 ///   This socket won't be used for anything but telling the OS that the given TCP port is in use.

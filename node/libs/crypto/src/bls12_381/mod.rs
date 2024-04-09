@@ -1,9 +1,11 @@
-//! BLS12-381 signature scheme.
+//! This module implements the BLS signature over the BLS12_381 curve.
 //! This is just an adapter of `blst`, exposing zksync-bft-specific API.
+//! The implementation is based on the [IRTF draft v5](https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bls-signature-05).
 
 use crate::ByteFmt;
-use anyhow::anyhow;
+use anyhow::{anyhow, bail};
 use blst::{min_pk as bls, BLST_ERROR};
+use rand::Rng as _;
 use std::collections::BTreeMap;
 
 #[cfg(test)]
@@ -11,27 +13,34 @@ mod tests;
 
 pub mod testonly;
 
+/// The byte-length of a BLS public key when serialized in compressed form.
+pub const PUBLIC_KEY_BYTES_LEN: usize = 48;
+
+/// Represents the public key at infinity.
+pub const INFINITY_PUBLIC_KEY: [u8; PUBLIC_KEY_BYTES_LEN] = [
+    0xc0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+];
+
 /// Type safety wrapper around a `blst` SecretKey
 pub struct SecretKey(bls::SecretKey);
 
 impl SecretKey {
-    /// Generates a secret key from provided key material
-    pub fn generate(key_material: [u8; 32]) -> Self {
+    /// Generates a secret key from a cryptographically-secure entropy source.
+    pub fn generate() -> Self {
         // This unwrap is safe as the blst library method will only error if provided less than 32 bytes of key material
-        Self(bls::SecretKey::key_gen(&key_material, &[]).unwrap())
+        Self(bls::SecretKey::key_gen_v4_5(&rand::rngs::OsRng.gen::<[u8; 32]>(), &[], &[]).unwrap())
     }
 
     /// Produces a signature using this [`SecretKey`]
     pub fn sign(&self, msg: &[u8]) -> Signature {
-        let signature = self.0.sign(msg, &[], &[]);
-        Signature(signature)
+        Signature(self.0.sign(msg, &[], &[]))
     }
 
     /// Gets the corresponding [`PublicKey`] for this [`SecretKey`]
     #[inline]
     pub fn public(&self) -> PublicKey {
-        let public_key = self.0.sk_to_pk();
-        PublicKey(public_key)
+        PublicKey(self.0.sk_to_pk())
     }
 }
 
@@ -48,11 +57,14 @@ impl ByteFmt for SecretKey {
 }
 
 /// Type safety wrapper around a `blst` public key.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicKey(bls::PublicKey);
 
 impl ByteFmt for PublicKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
+        if bytes == INFINITY_PUBLIC_KEY {
+            bail!(Error::InvalidInfinityPublicKey)
+        }
         bls::PublicKey::from_bytes(bytes)
             .map(Self)
             .map_err(|err| anyhow!("Error decoding public key: {err:?}"))
@@ -215,4 +227,7 @@ pub enum Error {
     /// Error aggregating signatures
     #[error("Error aggregating signatures: {0:?}")]
     SignatureAggregation(BLST_ERROR),
+    /// Infinity public key.
+    #[error("Error infinity public key")]
+    InvalidInfinityPublicKey,
 }

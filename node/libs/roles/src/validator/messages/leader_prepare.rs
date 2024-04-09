@@ -1,5 +1,5 @@
 use super::{
-    BlockHeader, BlockHeaderHash, BlockNumber, CommitQC, Genesis, Payload, ReplicaPrepare,
+    BlockHeader, BlockNumber, CommitQC, Genesis, Payload, ReplicaPrepare,
     ReplicaPrepareVerifyError, Signed, Signers, View,
 };
 use crate::validator;
@@ -40,7 +40,7 @@ pub enum PrepareQCVerifyError {
     },
     /// Bad signature.
     #[error("bad signature: {0:#}")]
-    BadSignature(validator::Error),
+    BadSignature(#[source] anyhow::Error),
 }
 
 impl PrepareQC {
@@ -177,14 +177,6 @@ pub enum LeaderPrepareVerifyError {
         /// Received proposal number.
         got: BlockNumber,
     },
-    /// Bad parent hash.
-    #[error("bad parent hash: got {got:?}, want {want:?}")]
-    BadParentHash {
-        /// Correct parent hash.
-        want: Option<BlockHeaderHash>,
-        /// Received parent hash.
-        got: Option<BlockHeaderHash>,
-    },
     /// New block proposal when the previous proposal was not finalized.
     #[error("new block proposal when the previous proposal was not finalized")]
     ProposalWhenPreviousNotFinalized,
@@ -231,16 +223,10 @@ impl LeaderPrepare {
                 {
                     return Err(Error::ProposalWhenPreviousNotFinalized);
                 }
-                let (want_parent, want_number) = match high_qc {
-                    Some(qc) => (Some(qc.header().hash()), qc.header().number.next()),
-                    None => (genesis.fork.first_parent, genesis.fork.first_block),
+                let want_number = match high_qc {
+                    Some(qc) => qc.header().number.next(),
+                    None => genesis.fork.first_block,
                 };
-                if self.proposal.parent != want_parent {
-                    return Err(Error::BadParentHash {
-                        got: self.proposal.parent,
-                        want: want_parent,
-                    });
-                }
                 if self.proposal.number != want_number {
                     return Err(Error::BadBlockNumber {
                         got: self.proposal.number,

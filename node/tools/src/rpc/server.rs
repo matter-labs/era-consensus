@@ -1,57 +1,62 @@
-use crate::AppConfig;
-
-use super::methods::{config::ConfigInfo, health_check::HealthCheck, peers::PeersInfo, RPCMethod};
+use super::methods::{health_check, last_committed_block, last_view};
 use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
-use std::net::SocketAddr;
+use std::{net::SocketAddr, sync::Arc};
 use zksync_concurrency::{ctx, scope};
+use zksync_consensus_storage::BlockStore;
 
 /// RPC server.
 pub struct RPCServer {
     /// IP address to bind to.
     ip_address: SocketAddr,
-    /// AppConfig
-    config: AppConfig,
+    /// Node storage.
+    node_storage: Arc<BlockStore>,
 }
 
 impl RPCServer {
-    pub fn new(ip_address: SocketAddr, config: AppConfig) -> Self {
-        Self { ip_address, config }
+    pub fn new(ip_address: SocketAddr, node_storage: Arc<BlockStore>) -> Self {
+        Self {
+            ip_address,
+            node_storage,
+        }
     }
 
     /// Runs the RPC server.
-    pub async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         // Custom tower service to handle the RPC requests
         let service_builder = tower::ServiceBuilder::new()
             // Proxy `GET /<path>` requests to internal methods.
             .layer(ProxyGetRequestLayer::new(
-                HealthCheck::path(),
-                HealthCheck::method(),
+                health_check::path(),
+                health_check::method(),
             )?)
             .layer(ProxyGetRequestLayer::new(
-                PeersInfo::path(),
-                PeersInfo::method(),
+                last_view::path(),
+                last_view::method(),
             )?)
             .layer(ProxyGetRequestLayer::new(
-                ConfigInfo::path(),
-                ConfigInfo::method(),
+                last_committed_block::path(),
+                last_committed_block::method(),
             )?);
+
+        let mut module = RpcModule::new(());
+        module.register_method(health_check::method(), |_params, _| {
+            health_check::callback()
+        })?;
+
+        let node_storage = self.node_storage.clone();
+        module.register_method(last_view::method(), move |_params, _| {
+            last_view::callback(node_storage.clone())
+        })?;
+
+        let node_storage = self.node_storage.clone();
+        module.register_method(last_committed_block::method(), move |_params, _| {
+            last_committed_block::callback(node_storage.clone())
+        })?;
 
         let server = Server::builder()
             .set_http_middleware(service_builder)
             .build(self.ip_address)
             .await?;
-
-        let mut module = RpcModule::new(());
-        module.register_method(HealthCheck::method(), |params, _| {
-            HealthCheck::callback(params)
-        })?;
-        module.register_method(PeersInfo::method(), |params, _| PeersInfo::callback(params))?;
-
-        // TODO find a better way to implement this as I had to clone the clone and move it to pass the borrow checker
-        let config = self.config.clone();
-        module.register_method(ConfigInfo::method(), move |_params, _| {
-            ConfigInfo::info(config.clone())
-        })?;
 
         let handle = server.start(module);
         scope::run!(ctx, |ctx, s| async {
