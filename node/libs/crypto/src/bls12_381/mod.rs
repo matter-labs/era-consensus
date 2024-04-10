@@ -50,7 +50,7 @@ impl SecretKey {
         Signature(self.0.sign(msg, DST, &[]))
     }
 
-    /// Produces a proof of possession using this [`SecretKey`]
+    /// Produces a proof of possession for the public key corresponding to this [`SecretKey`]
     pub fn sign_pop(&self) -> ProofOfPossession {
         let msg = self.public().encode();
 
