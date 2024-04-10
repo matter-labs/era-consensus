@@ -12,7 +12,7 @@ use anyhow::{anyhow, bail};
 use blst::{min_pk as bls, BLST_ERROR};
 use rand::Rng as _;
 use std::collections::BTreeMap;
-use zeroize::{Zeroize, ZeroizeOnDrop};
+use zeroize::ZeroizeOnDrop;
 
 #[cfg(test)]
 mod tests;
@@ -35,7 +35,7 @@ pub const INFINITY_PUBLIC_KEY: [u8; PUBLIC_KEY_BYTES_LEN] = [
 ];
 
 /// Type safety wrapper around a `blst` SecretKey
-#[derive(Zeroize, ZeroizeOnDrop)]
+#[derive(ZeroizeOnDrop)]
 pub struct SecretKey(bls::SecretKey);
 
 impl SecretKey {

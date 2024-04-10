@@ -5,6 +5,7 @@ use crate::ByteFmt;
 use anyhow::Context as _;
 use ed::{Signer as _, Verifier as _};
 use ed25519_dalek as ed;
+use zeroize::ZeroizeOnDrop;
 
 pub mod testonly;
 
@@ -12,6 +13,7 @@ pub mod testonly;
 mod tests;
 
 /// ed25519 secret key.
+#[derive(ZeroizeOnDrop)]
 pub struct SecretKey(ed::SigningKey);
 
 impl SecretKey {
