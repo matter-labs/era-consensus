@@ -65,6 +65,21 @@ mod version1 {
     const VERSION: ProtocolVersion = ProtocolVersion(1);
     use super::*;
 
+    /// asserts that msg.hash()==hash and that sig is a
+    /// valid signature of msg (signed by `keys()[0]`).
+    #[track_caller]
+    fn change_detector(msg: Msg, hash: &str, sig: &str) {
+        let hash: MsgHash = Text::new(hash).decode().unwrap();
+        assert!(hash == msg.hash(), "bad hash, want {:?}", msg.hash());
+        let sig: Signature = Text::new(sig).decode().unwrap();
+        let key = keys()[0].clone();
+        assert!(
+            sig.verify_hash(&hash, &key.public()).is_ok(),
+            "bad signature, want {:?}",
+            key.sign_hash(&hash),
+        );
+    }
+
     /// Hardcoded view.
     fn view() -> View {
         View {
@@ -139,33 +154,37 @@ mod version1 {
 
     #[test]
     fn replica_commit_change_detector() {
-        let want: MsgHash = Text::new("validator_msg:keccak256:3538aa25b136b1ec7a8c9f8ac660b2cfabf06a6af35620c6d06c48200a6e43d4").decode().unwrap();
-        assert_eq!(want, replica_commit().insert().hash());
-        let sig: Signature = Text::new("validator:signature:bn254:acf1d30e191be77f7d49ae959403b650cb8d2be6472d0296b31912d63ae74ea9").decode().unwrap();
-        sig.verify_hash(&want, &keys()[0].public()).unwrap();
+        change_detector(
+            replica_commit().insert(),
+            "validator_msg:keccak256:bc629a46e67d0ceef09f898afe7c773b010f78f474452226364deb12f26bff59",
+            "validator:signature:bn254:09dca52611cf60eba99293a1ffec853ba65370b5c6727c5009748f7f59fefabd",
+        );
     }
 
     #[test]
     fn leader_commit_change_detector() {
-        let want: MsgHash = Text::new("validator_msg:keccak256:f17469f8ab95ae08c5bb383ccdceb9b685cb4c8fc6e75b7eefef7ea5c419e386").decode().unwrap();
-        assert_eq!(want, leader_commit().insert().hash());
-        let sig: Signature = Text::new("validator:signature:bn254:8663ff8f097e51d259f41450652fc936890d9a3592de07c5f81c0be57cb301cd").decode().unwrap();
-        sig.verify_hash(&want, &keys()[0].public()).unwrap();
+        change_detector(
+            leader_commit().insert(),
+            "validator_msg:keccak256:340c4f1d075d070a8bbde198c777f89e3c025b8e14e1d32328a52b694d7fb7da",
+            "validator:signature:bn254:08729ad003eee453696b72e56d2a75124730ff17376fca7099a21f32ff1b265a",
+        );
     }
 
     #[test]
     fn replica_prepare_change_detector() {
-        let want : MsgHash = Text::new("validator_msg:keccak256:2f3da9f4ad132e333a383bf97aa8c0c82fd302289b33f6f57e9bcd1a53b0b75d").decode().unwrap();
-        assert_eq!(want, replica_prepare().insert().hash());
-        let sig: Signature = Text::new("validator:signature:bn254:9a2f2f3a56ac385d8b3e5fb3db563d6785bffc9a73f2babe858d24233098f723").decode().unwrap();
-        sig.verify_hash(&want, &keys()[0].public()).unwrap();
+        change_detector(
+            replica_prepare().insert(),
+            "validator_msg:keccak256:361382ac2738d16f2b013f8674550970b8a5d79ab92eb1a437df2e478a0bbf46",
+            "validator:signature:bn254:8bd0a2f83e7fc0321a9d487266ca3e7ad4f717f8bf314ce1bb858f7235f84914",
+        );
     }
 
     #[test]
     fn leader_prepare_change_detector() {
-        let want : MsgHash = Text::new("validator_msg:keccak256:2a8389574a692a48525c43b5a9a444da7bade1b4b4d95ccec7d9fb3d731a7428").decode().unwrap();
-        assert_eq!(want, leader_prepare().insert().hash());
-        let sig: Signature = Text::new("validator:signature:bn254:065c45ecee3d7363b09f17b3dff610ff33a98d0ea0a90b8dd364fde48660bffc").decode().unwrap();
-        sig.verify_hash(&want, &keys()[0].public()).unwrap();
+        change_detector(
+            leader_prepare().insert(),
+            "validator_msg:keccak256:e29ae451d7bd6a72e1cccb5666fb66ddbd893e506d91e1985e9723a65bd9298b",
+            "validator:signature:bn254:92a42139359540383f90f01f7f69907a4f4e04f1753ffd857266ed4c157f7fa9",
+        );
     }
 }
