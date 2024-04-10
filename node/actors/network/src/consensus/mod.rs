@@ -4,7 +4,7 @@ use crate::rpc::Rpc as _;
 use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc};
 use anyhow::Context as _;
 use rand::seq::SliceRandom;
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet,collections::BTreeMap, sync::Arc};
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope, sync, time};
 use zksync_consensus_roles::validator;
@@ -21,13 +21,66 @@ const RESP_MAX_SIZE: usize = kB;
 /// is down.
 const ADDRESS_ANNOUNCER_INTERVAL: time::Duration = time::Duration::minutes(10);
 
-/// Outbound connection state.
-pub(crate) struct Connection {
-    /// Peer's address.
-    /// This is not used for now, but will be required for the debug page.
-    #[allow(dead_code)]
-    addr: std::net::SocketAddr,
-    consensus: rpc::Client<rpc::consensus::Rpc>,
+type MsgPoolInner = BTreeMap<usize,ConsensusInputMessage>;
+
+/// Pool of messages to send.
+pub(crate) struct MsgPool<T>(sync::watch::Sender<MsgPoolInner>);
+
+pub(crate) struct MsgPoolRecv {
+    recv: sync::watch::Receiver<MsgPoolInner>,
+    next: usize,
+}
+
+impl MsgPool {
+    pub fn new() -> Self {
+        Self(sync::watch::channel(BTreeMap::new()))
+    }
+
+    pub fn send(&self, msg: ConsensusInputMessage) {
+        self.0.send_if_modified(|msgs| {
+            let next = msgs.0.last().unwrap_or(0)+1;
+            let (k,v) in &msgs.0 {
+                use validator::ConsensusMsg as M;
+                if match (&v.message.msg, &msg.message.msg) {
+                    (M::ReplicaPrepare(a),M::ReplicaPrepare(b)) => a.view()>=b.view(),
+                    (M::ReplicaCommit(a),M::ReplicaCommit(b)) => a.view()>=b.view(),
+                    (M::LeaderPrepare(a),M::LeaderPrepare(b)) => a.view()>=b.view(),
+                    (M::LeaderCommit(a),M::LeaderCommit(b)) => a.view()>=b.view(),
+                    _ => continue,
+                } {
+                    return false;
+                }
+                msgs.0.remove(k);
+            }
+            msgs.0.insert(next,msg);
+            true
+        });
+    }
+
+    /// Subscribes to messages in the pool directed to `target`.
+    pub fn subscribe(&self, target: validator::PublicKey) -> MsgPoolRecv {
+        MsgPoolRecv {
+            recv: self.0.subscribe(),
+            next: 0,
+        }
+    }
+}
+
+impl MsgPoolRecv {
+    pub async fn recv(&mut self, ctx: &ctx::Ctx, target: &validator::PublicKey) -> ctx::OrCanceled<ConsensusInputMessage> {
+        loop {
+            for (k,v) in self.recv.borrow().range(self.next..) {
+                self.next = k+1;
+                match v.target {
+                    Target::Broadcast => {}
+                    Target::Validator(x) if x==target => {}
+                    _ => continue,
+                }
+                return Ok(v.clone());
+            }
+            sync::changed(ctx, &mut self.recv).await?;
+        }
+    }
 }
 
 /// Consensus network state.
@@ -39,7 +92,9 @@ pub(crate) struct Network {
     /// Set of the currently open inbound connections.
     pub(crate) inbound: PoolWatch<validator::PublicKey, ()>,
     /// Set of the currently open outbound connections.
-    pub(crate) outbound: PoolWatch<validator::PublicKey, Arc<Connection>>,
+    pub(crate) outbound: PoolWatch<validator::PublicKey, ()>,
+    /// Last messages sent by this node.
+    pub(crate) msg_pool: MsgPool,
 }
 
 #[async_trait::async_trait]
