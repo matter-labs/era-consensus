@@ -32,7 +32,7 @@ pub mod testonly;
 mod tests;
 
 /// Protocol version of this BFT implementation.
-pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVersion::EARLIEST;
+pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVersion::CURRENT;
 
 /// Payload proposal and verification trait.
 #[async_trait::async_trait]
