@@ -1,6 +1,5 @@
 use super::*;
 use crate::validator::testonly::Setup;
-use anyhow::Error;
 use assert_matches::assert_matches;
 use rand::{seq::SliceRandom, Rng};
 use std::vec;
@@ -311,7 +310,7 @@ fn test_validator_committee_weights() {
         let key = &setup.keys[n];
         qc.add(&key.sign_msg(msg.clone()), &setup.genesis);
         let signers = &qc.map[&msg];
-        assert_eq!(genesis.validators.weight(signers.clone()), *weight);
+        assert_eq!(genesis.validators.weight(signers), *weight);
     }
 }
 
@@ -334,5 +333,5 @@ fn test_validator_weights_sanity() {
         .collect();
 
     // Creation should overflow
-    assert_matches!(ValidatorCommittee::new(validators), Err(Error { .. }));
+    assert_matches!(ValidatorCommittee::new(validators), Err(_));
 }

@@ -134,11 +134,7 @@ impl StateMachine {
             .insert(author.clone(), signed_message.clone());
 
         // Now we check if we have enough weight to continue.
-        let weight = self
-            .config
-            .genesis()
-            .validators
-            .weight(commit_qc.signers.clone());
+        let weight = self.config.genesis().validators.weight(&commit_qc.signers);
         if weight < self.config.genesis().validators.threshold() {
             return Ok(());
         };

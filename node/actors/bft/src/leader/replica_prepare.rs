@@ -146,9 +146,8 @@ impl StateMachine {
 
         // Now we check if we have enough weight to continue.
         let weight: u64 = prepare_qc
-            .clone()
             .map
-            .into_values()
+            .values()
             .map(|signers| self.config.genesis().validators.weight(signers))
             .sum();
         if weight < self.config.genesis().validators.threshold() {
