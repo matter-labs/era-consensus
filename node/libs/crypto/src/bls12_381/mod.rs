@@ -1,17 +1,29 @@
 //! This module implements the BLS signature over the BLS12_381 curve.
 //! This is just an adapter of `blst`, exposing zksync-bft-specific API.
 //! The implementation is based on the [IRTF draft v5](https://datatracker.ietf.org/doc/html/draft-irtf-cfrg-bls-signature-05).
+//!
+//! This implementation does NOT protect against rogue key attacks (see https://crypto.stanford.edu/~dabo/pubs/papers/BLSmultisig.html).
+//! We expect signers to separately prove knowledge of the secret key, called proof of possession (POP). This library is meant to be used
+//! with validators, where each validator registers their public key on-chain together with a POP (a signature over their public key
+//! is sufficient).
 
 use crate::ByteFmt;
 use anyhow::{anyhow, bail};
 use blst::{min_pk as bls, BLST_ERROR};
 use rand::Rng as _;
 use std::collections::BTreeMap;
+use zeroize::ZeroizeOnDrop;
 
 #[cfg(test)]
 mod tests;
 
 pub mod testonly;
+
+/// The domain separation tag for this signature scheme.
+pub const DST: &[u8] = b"MATTER_LABS_CONSENSUS_BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
+
+/// The domain separation tag for the proof of possession.
+pub const DST_POP: &[u8] = b"MATTER_LABS_CONSENSUS_BLS_POP_BLS12381G2_XMD:SHA-256_SSWU_RO_";
 
 /// The byte-length of a BLS public key when serialized in compressed form.
 pub const PUBLIC_KEY_BYTES_LEN: usize = 48;
@@ -23,6 +35,7 @@ pub const INFINITY_PUBLIC_KEY: [u8; PUBLIC_KEY_BYTES_LEN] = [
 ];
 
 /// Type safety wrapper around a `blst` SecretKey
+#[derive(ZeroizeOnDrop)]
 pub struct SecretKey(bls::SecretKey);
 
 impl SecretKey {
@@ -34,7 +47,14 @@ impl SecretKey {
 
     /// Produces a signature using this [`SecretKey`]
     pub fn sign(&self, msg: &[u8]) -> Signature {
-        Signature(self.0.sign(msg, &[], &[]))
+        Signature(self.0.sign(msg, DST, &[]))
+    }
+
+    /// Produces a proof of possession for the public key corresponding to this [`SecretKey`]
+    pub fn sign_pop(&self) -> ProofOfPossession {
+        let msg = self.public().encode();
+
+        ProofOfPossession(self.0.sign(&msg, DST_POP, &[]))
     }
 
     /// Gets the corresponding [`PublicKey`] for this [`SecretKey`]
@@ -60,6 +80,12 @@ impl ByteFmt for SecretKey {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PublicKey(bls::PublicKey);
 
+impl std::hash::Hash for PublicKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        state.write(&self.0.to_bytes());
+    }
+}
+
 impl ByteFmt for PublicKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         if bytes == INFINITY_PUBLIC_KEY {
@@ -72,12 +98,6 @@ impl ByteFmt for PublicKey {
 
     fn encode(&self) -> Vec<u8> {
         self.0.to_bytes().to_vec()
-    }
-}
-
-impl std::hash::Hash for PublicKey {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        state.write(&self.0.to_bytes());
     }
 }
 
@@ -100,7 +120,7 @@ pub struct Signature(bls::Signature);
 impl Signature {
     /// Verifies a signature against the provided public key
     pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> Result<(), Error> {
-        let result = self.0.verify(true, msg, &[], &[], &pk.0, true);
+        let result = self.0.verify(true, msg, DST, &[], &pk.0, true);
 
         match result {
             BLST_ERROR::BLST_SUCCESS => Ok(()),
@@ -110,13 +130,14 @@ impl Signature {
 }
 
 impl ByteFmt for Signature {
-    fn encode(&self) -> Vec<u8> {
-        self.0.to_bytes().to_vec()
-    }
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         bls::Signature::from_bytes(bytes)
             .map(Self)
             .map_err(|err| anyhow!("Error decoding signature: {err:?}"))
+    }
+
+    fn encode(&self) -> Vec<u8> {
+        self.0.to_bytes().to_vec()
     }
 }
 
@@ -152,7 +173,7 @@ impl AggregateSignature {
 
     /// Verifies an aggregated signature for multiple messages against the provided list of public keys.
     /// This method expects one public key per message, otherwise it will fail. Note however that
-    /// If there are any duplicate messages, the public keys will be aggregated before verification.
+    /// if there are any duplicate messages, the public keys will be aggregated before verification.
     pub fn verify<'a>(
         &self,
         msgs_and_pks: impl Iterator<Item = (&'a [u8], &'a PublicKey)>,
@@ -181,7 +202,7 @@ impl AggregateSignature {
         // Verify the signature.
         let result = self
             .0
-            .aggregate_verify(true, &messages, &[], &public_keys, true);
+            .aggregate_verify(true, &messages, DST, &public_keys, true);
 
         match result {
             BLST_ERROR::BLST_SUCCESS => Ok(()),
@@ -214,20 +235,65 @@ impl Ord for AggregateSignature {
     }
 }
 
+/// Type safety wrapper around a `blst` proof of possession.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProofOfPossession(bls::Signature);
+
+impl ProofOfPossession {
+    /// Verifies a proof of possession against the provided public key
+    pub fn verify(&self, pk: &PublicKey) -> Result<(), Error> {
+        let msg = pk.encode();
+
+        let result = self.0.verify(true, &msg, DST_POP, &[], &pk.0, true);
+
+        match result {
+            BLST_ERROR::BLST_SUCCESS => Ok(()),
+            err => Err(Error::PopVerification(err)),
+        }
+    }
+}
+
+impl ByteFmt for ProofOfPossession {
+    fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
+        bls::Signature::from_bytes(bytes)
+            .map(Self)
+            .map_err(|err| anyhow!("Error decoding proof of possession: {err:?}"))
+    }
+
+    fn encode(&self) -> Vec<u8> {
+        self.0.to_bytes().to_vec()
+    }
+}
+
+impl PartialOrd for ProofOfPossession {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for ProofOfPossession {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        ByteFmt::encode(self).cmp(&ByteFmt::encode(other))
+    }
+}
+
 /// Error type for generating and interacting with BLS keys/signatures
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    /// Infinity public key.
+    #[error("Error infinity public key")]
+    InvalidInfinityPublicKey,
+    /// Error aggregating signatures
+    #[error("Error aggregating signatures: {0:?}")]
+    SignatureAggregation(BLST_ERROR),
     /// Signature verification failure
     #[error("Signature verification failure: {0:?}")]
     SignatureVerification(BLST_ERROR),
     /// Aggregate signature verification failure
     #[error("Aggregate signature verification failure: {0:?}")]
     AggregateSignatureVerification(BLST_ERROR),
-    /// Error aggregating signatures
-    #[error("Error aggregating signatures: {0:?}")]
-    SignatureAggregation(BLST_ERROR),
-    /// Infinity public key.
-    #[error("Error infinity public key")]
-    InvalidInfinityPublicKey,
+    /// Proof of possession verification failure
+    #[error("Proof of possession verification failure: {0:?}")]
+    PopVerification(BLST_ERROR),
 }
