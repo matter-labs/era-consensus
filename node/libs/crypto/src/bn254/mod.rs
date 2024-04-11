@@ -54,8 +54,8 @@ impl SecretKey {
 
     /// Produces a signature using this [`SecretKey`]
     pub fn sign(&self, msg: &[u8]) -> Signature {
-        let hash_point = hash::hash_to_g1(msg);
-        let sig = hash_point.mul(self.0);
+        let (msg_point, _) = hash::hash_to_point(msg);
+        let sig = msg_point.mul(self.0);
         Signature(sig)
     }
 }
@@ -166,10 +166,10 @@ impl Signature {
         // public key when constructing it, this should never fail (in theory).
         pk.verify().unwrap();
 
-        let hash_point = hash::hash_to_g1(msg);
+        let (msg_point, _) = hash::hash_to_point(msg);
 
         // First pair: e(H(m): G1, pk: G2)
-        let a = Bn256::pairing(hash_point, pk.0);
+        let a = Bn256::pairing(msg_point, pk.0);
         // Second pair: e(sig: G1, generator: G2)
         let b = Bn256::pairing(self.0, G2Affine::one());
 
@@ -246,7 +246,8 @@ impl AggregateSignature {
         // Second pair: e(H(m1): G1, pk1: G2) * ... * e(H(m1000): G1, pk1000: G2)
         let mut b = Fq12::one();
         for (msg, pk) in pairs {
-            b.mul_assign(&Bn256::pairing(hash::hash_to_g1(msg), pk.0))
+            let (msg_point, _) = hash::hash_to_point(msg);
+            b.mul_assign(&Bn256::pairing(msg_point, pk.0))
         }
 
         anyhow::ensure!(a == b, "Aggregate signature verification failure");

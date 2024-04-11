@@ -17,8 +17,9 @@ use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 pub struct ProtocolVersion(pub u32);
 
 impl ProtocolVersion {
-    /// Earliest protocol version.
-    pub const EARLIEST: Self = Self(0);
+    /// 0 - development version; deprecated.
+    /// 1 - development version
+    pub const CURRENT: Self = Self(1);
 
     /// Returns the integer corresponding to this version.
     pub fn as_u32(self) -> u32 {

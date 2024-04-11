@@ -1,6 +1,6 @@
 //! Random key generation, intended for use in testing
 
-use super::{bls, AggregateSignature, PublicKey, SecretKey, Signature};
+use super::{bls, AggregateSignature, ProofOfPossession, PublicKey, SecretKey, Signature};
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 
 /// Generates a random SecretKey. This is meant for testing purposes.
@@ -16,6 +16,14 @@ impl Distribution<Signature> for Standard {
         let key = rng.gen::<SecretKey>();
         let msg = rng.gen::<[u8; 4]>();
         key.sign(&msg)
+    }
+}
+
+/// Generates a random ProofOfPossession. This is meant for testing purposes.
+impl Distribution<ProofOfPossession> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ProofOfPossession {
+        let key = rng.gen::<SecretKey>();
+        key.sign_pop()
     }
 }
 
