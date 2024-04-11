@@ -23,7 +23,7 @@ const RESP_MAX_SIZE: usize = kB;
 /// is down.
 const ADDRESS_ANNOUNCER_INTERVAL: time::Duration = time::Duration::minutes(10);
 
-type MsgPoolInner = BTreeMap<usize, io::ConsensusInputMessage>;
+type MsgPoolInner = BTreeMap<usize, Arc<io::ConsensusInputMessage>>;
 
 /// Pool of messages to send.
 /// It stores the newest message (with the highest view) of each type.
@@ -44,7 +44,7 @@ impl MsgPool {
     }
 
     /// Inserts a message to the pool.
-    pub(crate) fn send(&self, msg: io::ConsensusInputMessage) {
+    pub(crate) fn send(&self, msg: Arc<io::ConsensusInputMessage>) {
         self.0.send_if_modified(|msgs| {
             // Select a unique ID for the new message: using `last ID+1` is ok (will NOT cause
             // an ID to be reused), because whenever we remove a message, we also insert a message.
@@ -92,21 +92,15 @@ impl MsgPool {
 }
 
 impl MsgPoolRecv {
-    /// Awaits a message addressed to `peer`.
+    /// Awaits the next message.
     pub(crate) async fn recv(
         &mut self,
         ctx: &ctx::Ctx,
-        peer: &validator::PublicKey,
-    ) -> ctx::OrCanceled<validator::Signed<validator::ConsensusMsg>> {
+    ) -> ctx::OrCanceled<Arc<io::ConsensusInputMessage>> {
         loop {
-            for (k, v) in self.recv.borrow().range(self.next..) {
+            if let Some((k, v)) = self.recv.borrow().range(self.next..).next() {
                 self.next = k + 1;
-                match &v.recipient {
-                    io::Target::Broadcast => {}
-                    io::Target::Validator(x) if x == peer => {}
-                    _ => continue,
-                }
-                return Ok(v.message.clone());
+                return Ok(v.clone());
             }
             sync::changed(ctx, &mut self.recv).await?;
         }
@@ -235,7 +229,15 @@ impl Network {
                 let mut sub = self.msg_pool.subscribe();
                 loop {
                     let call = consensus_cli.reserve(ctx).await?;
-                    let msg = sub.recv(ctx, peer).await?;
+                    let msg = loop {
+                        let msg = sub.recv(ctx).await?;
+                        match &msg.recipient {
+                            io::Target::Broadcast => {}
+                            io::Target::Validator(recipient) if recipient == peer => {}
+                            _ => continue,
+                        }
+                        break msg.message.clone();
+                    };
                     s.spawn(async {
                         let req = rpc::consensus::Req(msg);
                         let res = call.call(ctx, &req, RESP_MAX_SIZE).await;

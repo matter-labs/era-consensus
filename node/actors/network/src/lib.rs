@@ -83,7 +83,7 @@ impl Network {
                     .as_ref()
                     .context("not a validator node")?
                     .msg_pool
-                    .send(message);
+                    .send(Arc::new(message));
             }
             io::InputMessage::SyncBlocks(io::SyncBlocksInputMessage::GetBlock {
                 recipient,
