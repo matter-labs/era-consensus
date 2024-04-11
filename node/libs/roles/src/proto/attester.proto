@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+package zksync.roles.attester;
+
+import "zksync/std.proto";
+
+message L1BatchMsg {
+}
+
+message Msg {
+  oneof t { // required
+    L1BatchMsg l1_batch = 4;
+  }
+}
+
+message SignedBatch {
+  optional Msg msg = 1; // required
+  optional BatchPublicKey key = 2; // required
+  optional BatchSignature sig = 3; // required
+}
+
+message BatchPublicKey {
+  optional bytes bn254 = 1; // required
+}
+
+message BatchSignature {
+  optional bytes bn254 = 1; // required
+}
