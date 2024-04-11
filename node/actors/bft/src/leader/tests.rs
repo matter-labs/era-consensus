@@ -333,6 +333,68 @@ async fn replica_prepare_high_qc_of_future_view() {
     .unwrap();
 }
 
+/// Check all ReplicaPrepare are included for weight calculation
+/// even on different messages for the same view.
+#[tokio::test]
+async fn replica_prepare_different_messages() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new_many(ctx).await;
+        s.spawn_bg(runner.run(ctx));
+
+        util.produce_block(ctx).await;
+
+        let view = util.replica_view();
+        let replica_prepare = util.new_replica_prepare();
+
+        // Create a different proposal for the same view
+        let proposal = replica_prepare.clone().high_vote.unwrap().proposal;
+        let mut different_proposal = proposal;
+        different_proposal.number = different_proposal.number.next();
+
+        // Create a new ReplicaPrepare with the different proposal
+        let mut other_replica_prepare = replica_prepare.clone();
+        let mut high_vote = other_replica_prepare.high_vote.clone().unwrap();
+        high_vote.proposal = different_proposal;
+        let high_qc = util.new_commit_qc(|msg| {
+            msg.proposal = different_proposal;
+            msg.view = view.clone()
+        });
+
+        other_replica_prepare.high_vote = Some(high_vote);
+        other_replica_prepare.high_qc = Some(high_qc);
+
+        let validators = util.keys.len();
+
+        // half of the validators sign replica_prepare
+        for i in 0..validators / 2 {
+            util.process_replica_prepare(ctx, util.keys[i].sign_msg(replica_prepare.clone()))
+                .await
+                .unwrap();
+        }
+
+        let mut replica_commit_result = None;
+        // The rest (minus one) of the validators sign other_replica_prepare
+        for i in validators / 2..validators - 1 {
+            replica_commit_result = util
+                .process_replica_prepare(ctx, util.keys[i].sign_msg(other_replica_prepare.clone()))
+                .await
+                .unwrap();
+        }
+
+        // That should be enough for a proposal to be committed
+        assert_matches!(replica_commit_result, Some(_));
+
+        // Check the first proposal has been committed (as it has more votes)
+        let message = replica_commit_result.unwrap().msg;
+        assert_eq!(message.proposal, proposal);
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
 #[tokio::test]
 async fn replica_commit_sanity() {
     zksync_concurrency::testonly::abort_on_panic();
@@ -573,6 +635,9 @@ async fn replica_commit_unexpected_proposal() {
     .unwrap();
 }
 
+/// Proposal should be the same for every ReplicaCommit
+/// Check it doesn't fail if one validator sends a different propsal in
+/// the ReplicaCommit
 #[tokio::test]
 async fn replica_commit_different_proposals() {
     zksync_concurrency::testonly::abort_on_panic();

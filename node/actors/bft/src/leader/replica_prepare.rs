@@ -2,7 +2,7 @@
 use super::StateMachine;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
-use zksync_consensus_roles::validator::{self, ProtocolVersion, Signers};
+use zksync_consensus_roles::validator;
 
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]
@@ -11,9 +11,9 @@ pub(crate) enum Error {
     #[error("incompatible protocol version (message version: {message_version:?}, local version: {local_version:?}")]
     IncompatibleProtocolVersion {
         /// Message version.
-        message_version: ProtocolVersion,
+        message_version: validator::ProtocolVersion,
         /// Local version.
-        local_version: ProtocolVersion,
+        local_version: validator::ProtocolVersion,
     },
     /// Message signer isn't part of the validator set.
     #[error("Message signer isn't part of the validator set (signer: {signer:?})")]
@@ -145,13 +145,12 @@ impl StateMachine {
             .insert(author.clone(), signed_message.clone());
 
         // Now we check if we have enough weight to continue.
-        let weight = self.config.genesis().validators.weight(
-            prepare_qc
-                .map
-                .get(&signed_message.msg)
-                .unwrap_or(&Signers::new(self.config.genesis().validators.len()))
-                .clone(),
-        );
+        let weight: u64 = prepare_qc
+            .clone()
+            .map
+            .into_values()
+            .map(|signers| self.config.genesis().validators.weight(signers))
+            .sum();
         if weight < self.config.genesis().validators.threshold() {
             return Ok(());
         }
