@@ -1,10 +1,12 @@
 //! Consensus network is a full graph of connections between all validators.
 //! BFT consensus messages are exchanged over this network.
-use crate::rpc::Rpc as _;
 use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc};
 use anyhow::Context as _;
 use rand::seq::SliceRandom;
-use std::{collections::HashSet,collections::BTreeMap, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashSet},
+    sync::Arc,
+};
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope, sync, time};
 use zksync_consensus_roles::validator;
@@ -21,44 +23,67 @@ const RESP_MAX_SIZE: usize = kB;
 /// is down.
 const ADDRESS_ANNOUNCER_INTERVAL: time::Duration = time::Duration::minutes(10);
 
-type MsgPoolInner = BTreeMap<usize,ConsensusInputMessage>;
+type MsgPoolInner = BTreeMap<usize, io::ConsensusInputMessage>;
 
 /// Pool of messages to send.
-pub(crate) struct MsgPool<T>(sync::watch::Sender<MsgPoolInner>);
+/// It stores the newest message (with the highest view) of each type.
+/// Stored messages are available for retransmission in case of reconnect.
+pub(crate) struct MsgPool(sync::watch::Sender<MsgPoolInner>);
 
+/// Subscriber of the `MsgPool`. It allows to await messages addressed to
+/// a specific peer.
 pub(crate) struct MsgPoolRecv {
     recv: sync::watch::Receiver<MsgPoolInner>,
     next: usize,
 }
 
 impl MsgPool {
-    pub fn new() -> Self {
-        Self(sync::watch::channel(BTreeMap::new()))
+    /// Constructs an empty `MsgPool`.
+    pub(crate) fn new() -> Self {
+        Self(sync::watch::channel(BTreeMap::new()).0)
     }
 
-    pub fn send(&self, msg: ConsensusInputMessage) {
+    /// Inserts a message to the pool.
+    pub(crate) fn send(&self, msg: io::ConsensusInputMessage) {
         self.0.send_if_modified(|msgs| {
-            let next = msgs.0.last().unwrap_or(0)+1;
-            let (k,v) in &msgs.0 {
+            // Select a unique ID for the new message: using `last ID+1` is ok (will NOT cause
+            // an ID to be reused), because whenever we remove a message, we also insert a message.
+            let next = msgs.last_key_value().map_or(0, |(k, _)| k + 1);
+            // We first need to check if `msg` should actually be inserted.
+            let mut should_insert = true;
+            // Remove (at most) 1 message of the same type which is older.
+            msgs.retain(|_, v| {
                 use validator::ConsensusMsg as M;
-                if match (&v.message.msg, &msg.message.msg) {
-                    (M::ReplicaPrepare(a),M::ReplicaPrepare(b)) => a.view()>=b.view(),
-                    (M::ReplicaCommit(a),M::ReplicaCommit(b)) => a.view()>=b.view(),
-                    (M::LeaderPrepare(a),M::LeaderPrepare(b)) => a.view()>=b.view(),
-                    (M::LeaderCommit(a),M::LeaderCommit(b)) => a.view()>=b.view(),
-                    _ => continue,
-                } {
-                    return false;
+                // Messages of other types stay in the pool.
+                // TODO(gprusak): internals of `ConsensusMsg` are essentially
+                // an implementation detail of the bft crate. Consider moving
+                // this logic there.
+                match (&v.message.msg, &msg.message.msg) {
+                    (M::ReplicaPrepare(_), M::ReplicaPrepare(_)) => {}
+                    (M::ReplicaCommit(_), M::ReplicaCommit(_)) => {}
+                    (M::LeaderPrepare(_), M::LeaderPrepare(_)) => {}
+                    (M::LeaderCommit(_), M::LeaderCommit(_)) => {}
+                    _ => return true,
                 }
-                msgs.0.remove(k);
+                // If pool contains a message of the same type which is newer,
+                // then our message shouldn't be inserted.
+                if v.message.msg.view().number >= msg.message.msg.view().number {
+                    should_insert = false;
+                    return true;
+                }
+                // An older message of the same type should be removed.
+                false
+            });
+            if should_insert {
+                msgs.insert(next, msg);
             }
-            msgs.0.insert(next,msg);
-            true
+            // Notify receivers iff we have actually inserted a message.
+            should_insert
         });
     }
 
     /// Subscribes to messages in the pool directed to `target`.
-    pub fn subscribe(&self, target: validator::PublicKey) -> MsgPoolRecv {
+    pub(crate) fn subscribe(&self) -> MsgPoolRecv {
         MsgPoolRecv {
             recv: self.0.subscribe(),
             next: 0,
@@ -67,16 +92,21 @@ impl MsgPool {
 }
 
 impl MsgPoolRecv {
-    pub async fn recv(&mut self, ctx: &ctx::Ctx, target: &validator::PublicKey) -> ctx::OrCanceled<ConsensusInputMessage> {
+    /// Awaits a message addressed to `peer`.
+    pub(crate) async fn recv(
+        &mut self,
+        ctx: &ctx::Ctx,
+        peer: &validator::PublicKey,
+    ) -> ctx::OrCanceled<validator::Signed<validator::ConsensusMsg>> {
         loop {
-            for (k,v) in self.recv.borrow().range(self.next..) {
-                self.next = k+1;
-                match v.target {
-                    Target::Broadcast => {}
-                    Target::Validator(x) if x==target => {}
+            for (k, v) in self.recv.borrow().range(self.next..) {
+                self.next = k + 1;
+                match &v.recipient {
+                    io::Target::Broadcast => {}
+                    io::Target::Validator(x) if x == peer => {}
                     _ => continue,
                 }
-                return Ok(v.clone());
+                return Ok(v.message.clone());
             }
             sync::changed(ctx, &mut self.recv).await?;
         }
@@ -93,7 +123,7 @@ pub(crate) struct Network {
     pub(crate) inbound: PoolWatch<validator::PublicKey, ()>,
     /// Set of the currently open outbound connections.
     pub(crate) outbound: PoolWatch<validator::PublicKey, ()>,
-    /// Last messages sent by this node.
+    /// Messages to be sent to validators.
     pub(crate) msg_pool: MsgPool,
 }
 
@@ -116,7 +146,9 @@ impl rpc::Handler<rpc::consensus::Rpc> for &Network {
                 msg: req.0,
                 ack: send,
             }));
-        recv.recv_or_disconnected(ctx).await??;
+        // TODO(gprusak): disconnection means that there message was rejected OR
+        // that bft actor is missing (in tests), which leads to unnecesary disconnects.
+        let _ = recv.recv_or_disconnected(ctx).await?;
         Ok(rpc::consensus::Resp)
     }
 }
@@ -131,56 +163,13 @@ impl Network {
             inbound: PoolWatch::new(validators.clone(), 0),
             outbound: PoolWatch::new(validators.clone(), 0),
             gossip,
+            msg_pool: MsgPool::new(),
         }))
-    }
-
-    /// Sends a message to all validators.
-    pub(crate) async fn broadcast(
-        &self,
-        ctx: &ctx::Ctx,
-        msg: validator::Signed<validator::ConsensusMsg>,
-    ) -> anyhow::Result<()> {
-        let req = rpc::consensus::Req(msg);
-        let outbound = self.outbound.current();
-        scope::run!(ctx, |ctx, s| async {
-            for (peer, conn) in &outbound {
-                s.spawn(async {
-                    if let Err(err) = conn.consensus.call(ctx, &req, RESP_MAX_SIZE).await {
-                        tracing::info!(
-                            "send({:?},{}): {err:#}",
-                            &*peer,
-                            rpc::consensus::Rpc::submethod(&req)
-                        );
-                    }
-                    Ok(())
-                });
-            }
-            Ok(())
-        })
-        .await
-    }
-
-    /// Sends a message to the given validator.
-    pub(crate) async fn send(
-        &self,
-        ctx: &ctx::Ctx,
-        key: &validator::PublicKey,
-        msg: validator::Signed<validator::ConsensusMsg>,
-    ) -> anyhow::Result<()> {
-        let outbound = self.outbound.current();
-        let req = rpc::consensus::Req(msg);
-        outbound
-            .get(key)
-            .context("not reachable")?
-            .consensus
-            .call(ctx, &req, RESP_MAX_SIZE)
-            .await
-            .with_context(|| rpc::consensus::Rpc::submethod(&req))?;
-        Ok(())
     }
 
     /// Performs handshake of an inbound stream.
     /// Closes the stream if there is another inbound stream opened from the same validator.
+    #[tracing::instrument(level = "info", name = "consensus", skip_all)]
     pub(crate) async fn run_inbound_stream(
         &self,
         ctx: &ctx::Ctx,
@@ -189,7 +178,7 @@ impl Network {
         let peer =
             handshake::inbound(ctx, &self.key, self.gossip.genesis().hash(), &mut stream).await?;
         self.inbound.insert(peer.clone(), ()).await?;
-        tracing::info!("inbound connection from {peer:?}");
+        tracing::info!("peer = {peer:?}");
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_server(rpc::ping::Server, rpc::ping::RATE)
@@ -210,6 +199,7 @@ impl Network {
         res
     }
 
+    #[tracing::instrument(level = "info", name = "consensus", skip_all)]
     async fn run_outbound_stream(
         &self,
         ctx: &ctx::Ctx,
@@ -225,16 +215,14 @@ impl Network {
             peer,
         )
         .await?;
-        let conn = Arc::new(Connection {
-            addr,
-            consensus: rpc::Client::new(ctx, self.gossip.cfg.rpc.consensus_rate),
-        });
-        self.outbound.insert(peer.clone(), conn.clone()).await?;
-        tracing::info!("outbound connection to {peer:?}");
+        self.outbound.insert(peer.clone(), ()).await?;
+        tracing::info!("peer = {peer:?}");
+        let consensus_cli =
+            rpc::Client::<rpc::consensus::Rpc>::new(ctx, self.gossip.cfg.rpc.consensus_rate);
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_server(rpc::ping::Server, rpc::ping::RATE)
-                .add_client(&conn.consensus);
+                .add_client(&consensus_cli);
             if let Some(ping_timeout) = &self.gossip.cfg.ping_timeout {
                 let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx, rpc::ping::RATE);
                 service = service.add_client(&ping_client);
@@ -243,6 +231,21 @@ impl Network {
                     ping_client.ping_loop(ctx, *ping_timeout).await
                 });
             }
+            s.spawn::<()>(async {
+                let mut sub = self.msg_pool.subscribe();
+                loop {
+                    let call = consensus_cli.reserve(ctx).await?;
+                    let msg = sub.recv(ctx, peer).await?;
+                    s.spawn(async {
+                        let req = rpc::consensus::Req(msg);
+                        let res = call.call(ctx, &req, RESP_MAX_SIZE).await;
+                        if let Err(err) = res {
+                            tracing::info!("{err:#}");
+                        }
+                        Ok(())
+                    });
+                }
+            });
             // If this is a loopback connection, announce periodically the address of this
             // validator to the network.
             // Note that this is executed only for outbound end of the loopback connection.
@@ -286,7 +289,7 @@ impl Network {
                 format!("{:?} resolved to no addresses", self.gossip.cfg.public_addr)
             })?;
         self.run_outbound_stream(ctx, &self.key.public(), addr)
-            .instrument(tracing::info_span!("{addr}"))
+            .instrument(tracing::info_span!("loopback", ?addr))
             .await
     }
 
@@ -318,7 +321,7 @@ impl Network {
             let Some(addr) = addr else { continue };
             if let Err(err) = self
                 .run_outbound_stream(ctx, peer, addr)
-                .instrument(tracing::info_span!("{addr}"))
+                .instrument(tracing::info_span!("out", ?addr))
                 .await
             {
                 tracing::info!("run_outbound_stream({peer:?},{addr}): {err:#}");

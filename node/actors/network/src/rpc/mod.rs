@@ -104,7 +104,8 @@ impl<'a, R: Rpc> ReservedCall<'a, R> {
         let now = ctx.now();
         let metric_labels = CallLatencyType::ClientSendRecv.to_labels::<R>(req, &res);
         RPC_METRICS.latency[&metric_labels].observe_latency(now - send_time);
-        let (res, msg_size) = res.context(R::METHOD)?;
+        let (res, msg_size) =
+            res.with_context(|| format!("{}.{}", R::METHOD, R::submethod(req)))?;
         RPC_METRICS.message_size[&CallType::RespRecv.to_labels::<R>(req)].observe(msg_size);
         Ok(res)
     }

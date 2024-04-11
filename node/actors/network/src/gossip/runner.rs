@@ -4,6 +4,7 @@ use anyhow::Context as _;
 use async_trait::async_trait;
 use rand::seq::SliceRandom;
 use std::sync::{atomic::Ordering, Arc};
+use tracing::Instrument as _;
 use zksync_concurrency::{ctx, net, oneshot, scope, sync};
 use zksync_consensus_roles::node;
 use zksync_consensus_storage::BlockStore;
@@ -55,7 +56,9 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for PushBlockStoreStateServe
             response,
         };
         self.net.sender.send(message.into());
-        response_receiver.recv_or_disconnected(ctx).await??;
+        // TODO(gprusak): disconnection means that the message was rejected OR
+        // that `SyncBlocks` actor is missing (in tests), which leads to unnecesary disconnects.
+        let _ = response_receiver.recv_or_disconnected(ctx).await?;
         Ok(())
     }
 }
@@ -76,6 +79,7 @@ impl rpc::Handler<rpc::get_block::Rpc> for &BlockStore {
 
 impl Network {
     /// Manages lifecycle of a single connection.
+    #[tracing::instrument(level = "info", name = "gossip", skip_all)]
     async fn run_stream(
         &self,
         ctx: &ctx::Ctx,
@@ -161,7 +165,7 @@ impl Network {
     ) -> anyhow::Result<()> {
         let peer =
             handshake::inbound(ctx, &self.cfg.gossip, self.genesis().hash(), &mut stream).await?;
-        tracing::Span::current().record("peer", tracing::field::debug(&peer));
+        tracing::info!("peer = {peer:?}");
         let conn = Arc::new(Connection {
             get_block: rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate),
         });
@@ -184,6 +188,7 @@ impl Network {
             .context("resolve()")?
             .choose(&mut ctx.rng())
             .with_context(|| "{addr:?} resolved to empty address set")?;
+
         let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet).await?;
         handshake::outbound(
             ctx,
@@ -197,7 +202,10 @@ impl Network {
             get_block: rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate),
         });
         self.outbound.insert(peer.clone(), conn.clone()).await?;
-        let res = self.run_stream(ctx, peer, stream, &conn).await;
+        let res = self
+            .run_stream(ctx, peer, stream, &conn)
+            .instrument(tracing::info_span!("out", ?addr))
+            .await;
         self.outbound.remove(peer).await;
         res
     }

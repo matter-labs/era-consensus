@@ -215,8 +215,13 @@ async fn test_transmission() {
         for n in &mut nodes {
             n.wait_for_consensus_connections().await;
         }
-        for _ in 0..10 {
-            let want: validator::Signed<validator::ConsensusMsg> = rng.gen();
+        for i in 0..10 {
+            tracing::info!("message {i}");
+            // Construct a message and ensure that view is increasing
+            // (otherwise the message could get filtered out).
+            let mut want: validator::Signed<validator::ReplicaCommit> = rng.gen();
+            want.msg.view.number = validator::ViewNumber(i);
+            let want: validator::Signed<validator::ConsensusMsg> = want.cast().unwrap();
             let in_message = io::ConsensusInputMessage {
                 message: want.clone(),
                 recipient: io::Target::Validator(
@@ -225,14 +230,14 @@ async fn test_transmission() {
             };
             nodes[0].pipe.send(in_message.into());
 
-            let got = loop {
+            loop {
                 let output_message = nodes[1].pipe.recv(ctx).await.unwrap();
-                let io::OutputMessage::Consensus(got) = output_message else {
-                    continue;
+                if let io::OutputMessage::Consensus(got) = output_message {
+                    assert_eq!(want, got.msg);
+                    tracing::info!("OK");
+                    break;
                 };
-                break got;
-            };
-            assert_eq!(want, got.msg);
+            }
         }
         Ok(())
     })

@@ -74,21 +74,16 @@ impl Network {
         ctx: &ctx::Ctx,
         message: io::InputMessage,
     ) -> anyhow::Result<()> {
-        /// Timeout for handling a consensus message.
-        const CONSENSUS_MSG_TIMEOUT: time::Duration = time::Duration::seconds(10);
         /// Timeout for a GetBlock RPC.
         const GET_BLOCK_TIMEOUT: time::Duration = time::Duration::seconds(10);
 
         match message {
             io::InputMessage::Consensus(message) => {
-                let consensus = self.consensus.as_ref().context("not a validator node")?;
-                let ctx = &ctx.with_timeout(CONSENSUS_MSG_TIMEOUT);
-                match message.recipient {
-                    io::Target::Validator(key) => {
-                        consensus.send(ctx, &key, message.message).await?
-                    }
-                    io::Target::Broadcast => consensus.broadcast(ctx, message.message).await?,
-                }
+                self.consensus
+                    .as_ref()
+                    .context("not a validator node")?
+                    .msg_pool
+                    .send(message);
             }
             io::InputMessage::SyncBlocks(io::SyncBlocksInputMessage::GetBlock {
                 recipient,
@@ -176,7 +171,7 @@ impl Runner {
                     // This is a syscall which should always succeed on a correctly opened socket.
                     let addr = stream.peer_addr().context("peer_addr()")?;
                     let res = async {
-                        tracing::info!("new inbound TCP connection from");
+                        tracing::info!("new connection");
                         let (stream, endpoint) = preface::accept(ctx, stream)
                             .await
                             .context("preface::accept()")?;
@@ -198,7 +193,7 @@ impl Runner {
                         }
                         anyhow::Ok(())
                     }
-                    .instrument(tracing::info_span!("{addr}"))
+                    .instrument(tracing::info_span!("in", ?addr))
                     .await;
                     if let Err(err) = res {
                         tracing::info!("{addr}: {err:#}");
