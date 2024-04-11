@@ -244,3 +244,50 @@ async fn test_transmission() {
     .await
     .unwrap();
 }
+
+/// Test that messages are retransmitted when a node gets reconnected.
+#[tokio::test]
+async fn test_retransmission() {
+    abort_on_panic();
+    // Speed up is needed to make node0 reconnect to node1 fast.
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(40.));
+    let rng = &mut ctx.rng();
+
+    let setup = validator::testonly::Setup::new(rng, 2);
+    let cfgs = testonly::new_configs(rng, &setup, 1);
+
+    scope::run!(ctx, |ctx, s| async {
+        let (store, runner) = new_store(ctx, &setup.genesis).await;
+        s.spawn_bg(runner.run(ctx));
+
+        // Spawn the first node.
+        let (node0,runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
+        s.spawn_bg(runner.run(ctx));
+
+        // Make first node broadcast a message.
+        let want: validator::Signed<validator::ConsensusMsg> = rng.gen();
+        node0.pipe.send(io::ConsensusInputMessage {
+            message: want.clone(),
+            recipient: io::Target::Broadcast,
+        }.into());
+
+        // Spawn the second node multiple times.
+        // Each time the node should reconnect and re-receive the broadcasted consensus message.
+        for i in 0..2 {
+            tracing::info!("iteration {i}");
+            scope::run!(ctx, |ctx,s| async {
+                let (mut node1,runner) = testonly::Instance::new(cfgs[1].clone(), store.clone());
+                s.spawn_bg(runner.run(ctx));
+                loop {
+                    if let io::OutputMessage::Consensus(got) = node1.pipe.recv(ctx).await.unwrap() {
+                        assert_eq!(want, got.msg);
+                        tracing::info!("OK");
+                        break;
+                    }
+                }
+                Ok(())
+            }).await.unwrap();
+        }
+        Ok(())
+    }).await.unwrap();
+}
