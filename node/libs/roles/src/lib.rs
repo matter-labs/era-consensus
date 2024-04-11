@@ -7,6 +7,7 @@
 //!                It also participates in the validator network, which is a mesh network just for validators. Not
 //!                every node has this role.
 
+pub mod attester;
 pub mod node;
 pub mod proto;
 pub mod validator;
