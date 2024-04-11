@@ -5,7 +5,7 @@ use super::{
     ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
 };
 use crate::{
-    attester::{AttesterSet, BatchPublicKey},
+    attester::{self, AttesterSet},
     node::SessionId,
     proto::validator as proto,
 };
@@ -34,29 +34,32 @@ impl ProtoFmt for Fork {
 impl ProtoFmt for Genesis {
     type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let (validators, attesters) = r
+        let validators: Vec<_> = r
             .validators
             .iter()
-            .zip(r.attesters.iter())
             .enumerate()
-            .map(|(i, (pk, bpk))| {
-                (
-                    PublicKey::read(pk).context(i),
-                    BatchPublicKey::read(bpk).context(i),
-                )
-            })
-            .collect()
+            .map(|(i, v)| PublicKey::read(v).context(i))
+            .collect::<Result<_, _>>()
             .context("validators")?;
+        let attesters: Vec<_> = r
+            .attesters
+            .iter()
+            .enumerate()
+            .map(|(i, v)| attester::PublicKey::read(v).context(i))
+            .collect::<Result<_, _>>()
+            .context("validators")?;
+
         Ok(Self {
             fork: read_required(&r.fork).context("fork")?,
             validators: ValidatorSet::new(validators.into_iter()).context("validators")?,
-            attesters: AttesterSet::new(),
+            attesters: AttesterSet::new(attesters.into_iter()).context("attesters")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
             fork: Some(self.fork.build()),
             validators: self.validators.iter().map(|x| x.build()).collect(),
+            attesters: self.attesters.iter().map(|x| x.build()).collect(),
         }
     }
 }

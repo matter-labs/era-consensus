@@ -1,6 +1,6 @@
-use crate::attester::{L1BatchMsg, MsgHash};
+use crate::attester::{L1Batch, MsgHash};
 
-use super::{BatchPublicKey, BatchSignature};
+use super::{PublicKey, Signature};
 use std::fmt;
 use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
@@ -11,14 +11,14 @@ pub struct AggregateSignature(pub(crate) bn254::AggregateSignature);
 
 impl AggregateSignature {
     /// Add a signature to the aggregation.
-    pub fn add(&mut self, sig: &BatchSignature) {
+    pub fn add(&mut self, sig: &Signature) {
         self.0.add(&sig.0)
     }
 
     /// Verify a list of messages against a list of public keys.
     pub(crate) fn verify_messages<'a>(
         &self,
-        messages_and_keys: impl Iterator<Item = (L1BatchMsg, &'a BatchPublicKey)>,
+        messages_and_keys: impl Iterator<Item = (L1Batch, &'a PublicKey)>,
     ) -> anyhow::Result<()> {
         let hashes_and_keys =
             messages_and_keys.map(|(message, key)| (message.insert().hash(), key));
@@ -28,7 +28,7 @@ impl AggregateSignature {
     /// Verify a message hash against a list of public keys.
     pub(crate) fn verify_hash<'a>(
         &self,
-        hashes_and_keys: impl Iterator<Item = (MsgHash, &'a BatchPublicKey)>,
+        hashes_and_keys: impl Iterator<Item = (MsgHash, &'a PublicKey)>,
     ) -> anyhow::Result<()> {
         let bytes_and_pks: Vec<_> = hashes_and_keys
             .map(|(hash, pk)| (hash.0.as_bytes().to_owned(), &pk.0))

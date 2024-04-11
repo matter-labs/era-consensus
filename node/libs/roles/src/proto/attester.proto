@@ -4,12 +4,12 @@ package zksync.roles.attester;
 
 import "zksync/std.proto";
 
-message L1BatchMsg {
+message L1Batch {
 }
 
 message Msg {
   oneof t { // required
-    L1BatchMsg l1_batch = 4;
+    L1Batch l1_batch = 4;
   }
 }
 

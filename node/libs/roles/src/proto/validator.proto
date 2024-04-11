@@ -3,6 +3,7 @@ syntax = "proto3";
 package zksync.roles.validator;
 
 import "zksync/std.proto";
+import "zksync/roles/attester.proto";
 
 message Fork {
   optional uint64 number = 1; // required; ForkId
@@ -12,7 +13,7 @@ message Fork {
 message Genesis {
   optional Fork fork = 1; // required
   repeated PublicKey validators = 2;
-  repeated BatchPublicKey attesters = 3;
+  repeated attester.PublicKey attesters = 3;
 }
 
 message GenesisHash {

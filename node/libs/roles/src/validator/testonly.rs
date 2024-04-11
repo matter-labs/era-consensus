@@ -1,5 +1,5 @@
 //! Test-only utilities.
-use crate::attester::{AttesterSet, BatchAggregateSignature, BatchPublicKey, BatchSecretKey};
+use crate::attester::{self, AttesterSet};
 
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, ConsensusMsg, FinalBlock, Fork,
@@ -24,7 +24,7 @@ impl Setup {
     /// New `Setup` with a given `fork`.
     pub fn new_with_fork(rng: &mut impl Rng, validators: usize, fork: Fork) -> Self {
         let validator_keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
-        let attester_keys: Vec<BatchSecretKey> = (0..validators).map(|_| rng.gen()).collect();
+        let attester_keys: Vec<attester::SecretKey> = (0..validators).map(|_| rng.gen()).collect();
         let genesis = Genesis {
             validators: ValidatorSet::new(validator_keys.iter().map(|k| k.public())).unwrap(),
             attesters: AttesterSet::new(attester_keys.iter().map(|k| k.public())).unwrap(),
@@ -133,27 +133,27 @@ impl AggregateSignature {
     }
 }
 
-impl Distribution<BatchSecretKey> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchSecretKey {
-        BatchSecretKey(Arc::new(rng.gen()))
+impl Distribution<attester::SecretKey> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> attester::SecretKey {
+        attester::SecretKey(Arc::new(rng.gen()))
     }
 }
 
-impl Distribution<BatchPublicKey> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchPublicKey {
-        BatchPublicKey(rng.gen())
-    }
-}
-
-impl Distribution<BatchAggregateSignature> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchAggregateSignature {
-        BatchAggregateSignature(rng.gen())
+impl Distribution<attester::PublicKey> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> attester::PublicKey {
+        attester::PublicKey(rng.gen())
     }
 }
 
 impl Distribution<AggregateSignature> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateSignature {
         AggregateSignature(rng.gen())
+    }
+}
+
+impl Distribution<attester::AggregateSignature> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> attester::AggregateSignature {
+        attester::AggregateSignature(rng.gen())
     }
 }
 
