@@ -57,7 +57,7 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for PushBlockStoreStateServe
         };
         self.net.sender.send(message.into());
         // TODO(gprusak): disconnection means that the message was rejected OR
-        // that `SyncBlocks` actor is missing (in tests), which leads to unnecesary disconnects.
+        // that `SyncBlocks` actor is missing (in tests), which leads to unnecessary disconnects.
         let _ = response_receiver.recv_or_disconnected(ctx).await?;
         Ok(())
     }
