@@ -1,8 +1,6 @@
 use std::fmt;
 use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 
-use crate::validator::PublicKey;
-
 /// A public key for a validator used in L1 batch signing.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PublicKey(pub(crate) bn254::PublicKey);

@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    attester::{BatchPublicKey, BatchSignature, L1BatchMsg},
+    attester::{L1Batch, PublicKey, Signature},
     validator::ViewNumber,
 };
 use bit_vec::BitVec;
@@ -13,7 +13,7 @@ use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
 pub enum Msg {
     /// L1 batch message.
-    L1Batch(L1BatchMsg),
+    L1Batch(L1Batch),
 }
 
 impl Msg {
@@ -23,7 +23,7 @@ impl Msg {
     }
 }
 
-impl Variant<Msg> for L1BatchMsg {
+impl Variant<Msg> for L1Batch {
     fn insert(self) -> Msg {
         Msg::L1Batch(self)
     }
@@ -40,20 +40,20 @@ impl Variant<Msg> for L1BatchMsg {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SignedBatchMsg {
     /// The message that was signed.
-    pub msg: L1BatchMsg,
+    pub msg: L1Batch,
     /// The public key of the signer.
-    pub key: BatchPublicKey,
+    pub key: PublicKey,
     /// The signature.
-    pub sig: BatchSignature,
+    pub sig: Signature,
 }
 
 /// Struct that represents a bit map of validators. We use it to compactly store
 /// which validators signed a given message.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Attestations(pub BitVec);
+pub struct Signers(pub BitVec);
 
-impl Attestations {
-    /// Constructs an empty Attestations set.
+impl Signers {
+    /// Constructs an empty Signers set.
     pub fn new(n: usize) -> Self {
         Self(BitVec::from_elem(n, false))
     }
@@ -79,13 +79,13 @@ impl Attestations {
 /// We represent each validator by its validator public key.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AttesterSet {
-    vec: Vec<BatchPublicKey>,
-    map: BTreeMap<BatchPublicKey, usize>,
+    vec: Vec<PublicKey>,
+    map: BTreeMap<PublicKey, usize>,
 }
 
 impl AttesterSet {
     /// Creates a new AttesterSet from a list of validator public keys.
-    pub fn new(attesters: impl IntoIterator<Item = BatchPublicKey>) -> anyhow::Result<Self> {
+    pub fn new(attesters: impl IntoIterator<Item = PublicKey>) -> anyhow::Result<Self> {
         let mut set = BTreeSet::new();
         for attester in attesters {
             anyhow::ensure!(set.insert(attester), "Duplicate validator in ValidatorSet");
@@ -101,7 +101,7 @@ impl AttesterSet {
     }
 
     /// Iterates over validators.
-    pub fn iter(&self) -> impl Iterator<Item = &BatchPublicKey> {
+    pub fn iter(&self) -> impl Iterator<Item = &PublicKey> {
         self.vec.iter()
     }
 
@@ -112,22 +112,22 @@ impl AttesterSet {
     }
 
     /// Returns true if the given validator is in the validator set.
-    pub fn contains(&self, validator: &BatchPublicKey) -> bool {
+    pub fn contains(&self, validator: &PublicKey) -> bool {
         self.map.contains_key(validator)
     }
 
     /// Get validator by its index in the set.
-    pub fn get(&self, index: usize) -> Option<&BatchPublicKey> {
+    pub fn get(&self, index: usize) -> Option<&PublicKey> {
         self.vec.get(index)
     }
 
     /// Get the index of a validator in the set.
-    pub fn index(&self, validator: &BatchPublicKey) -> Option<usize> {
+    pub fn index(&self, validator: &PublicKey) -> Option<usize> {
         self.map.get(validator).copied()
     }
 
     /// Computes the validator for the given view.
-    pub fn view_leader(&self, view_number: ViewNumber) -> BatchPublicKey {
+    pub fn view_leader(&self, view_number: ViewNumber) -> PublicKey {
         let index = view_number.0 as usize % self.len();
         self.get(index).unwrap().clone()
     }
@@ -143,21 +143,21 @@ impl AttesterSet {
     // }
 }
 
-impl std::ops::BitOrAssign<&Self> for Attestations {
+impl std::ops::BitOrAssign<&Self> for Signers {
     fn bitor_assign(&mut self, other: &Self) {
         self.0.or(&other.0);
     }
 }
 
-impl std::ops::BitAndAssign<&Self> for Attestations {
+impl std::ops::BitAndAssign<&Self> for Signers {
     fn bitand_assign(&mut self, other: &Self) {
         self.0.and(&other.0);
     }
 }
 
-impl std::ops::BitAnd for &Attestations {
-    type Output = Attestations;
-    fn bitand(self, other: Self) -> Attestations {
+impl std::ops::BitAnd for &Signers {
+    type Output = Signers;
+    fn bitand(self, other: Self) -> Signers {
         let mut this = self.clone();
         this &= other;
         this
@@ -208,7 +208,7 @@ impl SignedBatchMsg {
     /// It is an equivalent of constructing/deconstructing enum values.
     pub fn cast(self) -> Result<SignedBatchMsg, BadVariantError> {
         Ok(SignedBatchMsg {
-            msg: L1BatchMsg::extract(self.msg.insert())?,
+            msg: L1Batch::extract(self.msg.insert())?,
             key: self.key,
             sig: self.sig,
         })

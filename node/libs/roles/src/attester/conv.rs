@@ -1,13 +1,13 @@
-use crate::proto::attester::{self as proto, SignedBatch};
+use crate::proto::attester::{self as proto};
 use anyhow::Context;
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
-use super::{BatchPublicKey, BatchSignature, L1BatchMsg, Msg};
+use super::{L1Batch, Msg, PublicKey, Signature, SignedBatchMsg};
 
-impl ProtoFmt for proto::L1BatchMsg {
-    type Proto = proto::L1BatchMsg;
+impl ProtoFmt for proto::L1Batch {
+    type Proto = proto::L1Batch;
 
     fn read(_r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {})
@@ -18,8 +18,8 @@ impl ProtoFmt for proto::L1BatchMsg {
     }
 }
 
-impl ProtoFmt for L1BatchMsg {
-    type Proto = proto::L1BatchMsg;
+impl ProtoFmt for L1Batch {
+    type Proto = proto::L1Batch;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self())
@@ -27,6 +27,24 @@ impl ProtoFmt for L1BatchMsg {
 
     fn build(&self) -> Self::Proto {
         self.build()
+    }
+}
+
+impl ProtoFmt for SignedBatchMsg {
+    type Proto = proto::SignedBatch;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            msg: L1Batch::extract(read_required::<Msg>(&r.msg).context("msg")?)?,
+            key: read_required(&r.key).context("key")?,
+            sig: read_required(&r.sig).context("sig")?,
+        })
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            msg: Some(self.msg.clone().insert().build()),
+            key: Some(self.key.build()),
+            sig: Some(self.sig.build()),
+        }
     }
 }
 
@@ -51,8 +69,8 @@ impl ProtoFmt for Msg {
     }
 }
 
-impl ProtoFmt for BatchPublicKey {
-    type Proto = proto::BatchPublicKey;
+impl ProtoFmt for PublicKey {
+    type Proto = proto::PublicKey;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
     }
@@ -63,8 +81,8 @@ impl ProtoFmt for BatchPublicKey {
     }
 }
 
-impl ProtoFmt for BatchSignature {
-    type Proto = proto::BatchSignature;
+impl ProtoFmt for Signature {
+    type Proto = proto::Signature;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
     }

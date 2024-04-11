@@ -1,5 +1,5 @@
-use super::{BatchPublicKey, BatchSignature};
-use crate::attester::{L1BatchMsg, MsgHash, SignedBatchMsg};
+use super::{PublicKey, Signature};
+use crate::attester::{L1Batch, MsgHash, SignedBatchMsg};
 use std::{fmt, sync::Arc};
 use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
@@ -17,23 +17,23 @@ impl SecretKey {
     }
 
     /// Batch public key corresponding to this batch secret key.
-    pub fn public(&self) -> BatchPublicKey {
-        BatchPublicKey(self.0.public())
+    pub fn public(&self) -> PublicKey {
+        PublicKey(self.0.public())
     }
 
     /// Signs a strongly typed message.
-    pub fn sign_batch_msg(&self, msg: L1BatchMsg) -> SignedBatchMsg {
+    pub fn sign_batch_msg(&self, msg: L1Batch) -> SignedBatchMsg {
         let msg = msg.insert();
         SignedBatchMsg {
             sig: self.sign_hash(&msg.hash()),
             key: self.public(),
-            msg: L1BatchMsg::extract(msg).unwrap(),
+            msg: L1Batch::extract(msg).unwrap(),
         }
     }
 
     /// Sign a message hash.
-    pub fn sign_hash(&self, msg_hash: &MsgHash) -> BatchSignature {
-        BatchSignature(self.0.sign(&ByteFmt::encode(msg_hash)))
+    pub fn sign_hash(&self, msg_hash: &MsgHash) -> Signature {
+        Signature(self.0.sign(&ByteFmt::encode(msg_hash)))
     }
 }
 

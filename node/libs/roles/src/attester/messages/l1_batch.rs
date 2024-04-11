@@ -1,25 +1,25 @@
 use crate::{
-    attester::BatchAggregateSignature,
-    validator::{self, Genesis, Signature},
+    attester::{AggregateSignature, Signature},
+    validator::Genesis,
 };
 
-use super::{Attesters, SignedBatchMsg};
+use super::{SignedBatchMsg, Signers};
 
 /// A message to send by validators to the gossip network.
 /// It contains the validators signature to sign the block batches to be sent to L1.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
-pub struct L1BatchMsg();
+pub struct L1Batch();
 
 /// A certificate for a batch of L2 blocks to be sent to L1.
 /// It contains the signatures of the validators that signed the batch.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct L1BatchQC {
     /// The aggregate signature of the signed L1 batches.
-    pub signature: BatchAggregateSignature,
+    pub signature: AggregateSignature,
     /// The validators that signed this message.
-    pub attesters: Attesters,
+    pub signers: Signers,
     /// The message that was signed.
-    pub message: L1BatchMsg,
+    pub message: L1Batch,
 }
 
 #[derive(thiserror::Error, Debug)]
@@ -34,13 +34,13 @@ impl L1BatchQC {
         if self.message != msg.msg {
             return;
         };
-        let Some(i) = genesis.validators.index(&msg.key) else {
+        let Some(i) = genesis.attesters.index(&msg.key) else {
             return;
         };
-        if self.attesters.0[i] {
+        if self.signers.0[i] {
             return;
         };
-        self.attesters.0.set(i, true);
+        self.signers.0.set(i, true);
         self.signature.add(&msg.sig);
     }
 
@@ -48,10 +48,10 @@ impl L1BatchQC {
     pub fn verify(&self, genesis: &Genesis) -> Result<(), L1BatchQCVerifyError> {
         // Now we can verify the signature.
         let messages_and_keys = genesis
-            .validators
+            .attesters
             .iter()
             .enumerate()
-            .filter(|(i, _)| self.attesters.0[*i])
+            .filter(|(i, _)| self.signers.0[*i])
             .map(|(_, pk)| (self.message.clone(), pk));
 
         self.signature

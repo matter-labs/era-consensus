@@ -1,6 +1,6 @@
 use crate::attester::{Msg, MsgHash};
 
-use super::BatchPublicKey;
+use super::PublicKey;
 use std::fmt;
 use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 
@@ -10,12 +10,12 @@ pub struct Signature(pub(crate) bn254::Signature);
 
 impl Signature {
     /// Verify a message against a public key.
-    pub fn verify_msg(&self, msg: &Msg, pk: &BatchPublicKey) -> anyhow::Result<()> {
+    pub fn verify_msg(&self, msg: &Msg, pk: &PublicKey) -> anyhow::Result<()> {
         self.verify_hash(&msg.hash(), pk)
     }
 
     /// Verify a message hash against a public key.
-    pub fn verify_hash(&self, msg_hash: &MsgHash, pk: &BatchPublicKey) -> anyhow::Result<()> {
+    pub fn verify_hash(&self, msg_hash: &MsgHash, pk: &PublicKey) -> anyhow::Result<()> {
         self.0.verify(&ByteFmt::encode(msg_hash), &pk.0)
     }
 }
