@@ -1,6 +1,6 @@
 //! Messages related to the consensus protocol.
 use super::{BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, ReplicaPrepare};
-use crate::validator;
+use crate::{attester::AttesterSet, validator};
 use bit_vec::BitVec;
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -163,6 +163,7 @@ pub struct Genesis {
     // TODO(gprusak): add blockchain id here.
     /// Set of validators of the chain.
     pub validators: ValidatorSet,
+    pub attesters: AttesterSet,
     /// Fork of the chain to follow.
     pub fork: Fork,
 }

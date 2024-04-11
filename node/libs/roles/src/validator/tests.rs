@@ -1,5 +1,5 @@
 use super::*;
-use crate::validator::testonly::Setup;
+use crate::{attester::AttesterSet, validator::testonly::Setup};
 use assert_matches::assert_matches;
 use rand::{seq::SliceRandom, Rng};
 use std::vec;
@@ -204,6 +204,7 @@ fn test_commit_qc() {
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
         validators: ValidatorSet::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
+        attesters: AttesterSet::new(setup1.genesis.attesters.iter().take(3).cloned()).unwrap(),
         fork: setup1.genesis.fork.clone(),
     };
 
@@ -238,6 +239,7 @@ fn test_prepare_qc() {
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
         validators: ValidatorSet::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
+        attesters: AttesterSet::new(setup1.genesis.attesters.iter().take(3).cloned()).unwrap(),
         fork: setup1.genesis.fork.clone(),
     };
 

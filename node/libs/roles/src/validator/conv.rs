@@ -1,10 +1,14 @@
 use super::{
-    AggregateSignature, BlockHeader, BlockNumber, CommitQC, ConsensusMsg,
-    FinalBlock, Fork, ForkNumber, Genesis, GenesisHash, L1BatchMsg, LeaderCommit, LeaderPrepare,
-    Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
-    ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
+    AggregateSignature, BlockHeader, BlockNumber, CommitQC, ConsensusMsg, FinalBlock, Fork,
+    ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress,
+    Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
+    ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
 };
-use crate::{node::SessionId, proto::validator as proto};
+use crate::{
+    attester::{AttesterSet, BatchPublicKey},
+    node::SessionId,
+    proto::validator as proto,
+};
 use anyhow::Context as _;
 use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
@@ -30,16 +34,23 @@ impl ProtoFmt for Fork {
 impl ProtoFmt for Genesis {
     type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let validators: Vec<_> = r
+        let (validators, attesters) = r
             .validators
             .iter()
+            .zip(r.attesters.iter())
             .enumerate()
-            .map(|(i, v)| PublicKey::read(v).context(i))
-            .collect::<Result<_, _>>()
+            .map(|(i, (pk, bpk))| {
+                (
+                    PublicKey::read(pk).context(i),
+                    BatchPublicKey::read(bpk).context(i),
+                )
+            })
+            .collect()
             .context("validators")?;
         Ok(Self {
             fork: read_required(&r.fork).context("fork")?,
             validators: ValidatorSet::new(validators.into_iter()).context("validators")?,
+            attesters: AttesterSet::new(),
         })
     }
     fn build(&self) -> Self::Proto {
@@ -339,18 +350,6 @@ impl ProtoFmt for NetAddress {
     }
 }
 
-impl ProtoFmt for L1BatchMsg {
-    type Proto = proto::L1BatchMsg;
-
-    fn read(_r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {})
-    }
-
-    fn build(&self) -> Self::Proto {
-        Self::Proto {}
-    }
-}
-
 impl ProtoFmt for Msg {
     type Proto = proto::Msg;
 
@@ -360,7 +359,6 @@ impl ProtoFmt for Msg {
             T::Consensus(r) => Self::Consensus(ProtoFmt::read(r).context("Consensus")?),
             T::SessionId(r) => Self::SessionId(SessionId(r.clone())),
             T::NetAddress(r) => Self::NetAddress(ProtoFmt::read(r).context("NetAddress")?),
-            T::L1Batch(r) => Self::L1Batch(ProtoFmt::read(r).context("L1Batch")?),
         })
     }
 
@@ -371,7 +369,6 @@ impl ProtoFmt for Msg {
             Self::Consensus(x) => T::Consensus(x.build()),
             Self::SessionId(x) => T::SessionId(x.0.clone()),
             Self::NetAddress(x) => T::NetAddress(x.build()),
-            Self::L1Batch(x) => T::L1Batch(x.build()),
         };
 
         Self::Proto { t: Some(t) }

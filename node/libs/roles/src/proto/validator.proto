@@ -12,6 +12,7 @@ message Fork {
 message Genesis {
   optional Fork fork = 1; // required
   repeated PublicKey validators = 2;
+  repeated BatchPublicKey attesters = 3;
 }
 
 message GenesisHash {
@@ -137,15 +138,11 @@ message NetAddress {
   optional std.Timestamp timestamp = 3; // required
 }
 
-message L1BatchMsg {
-}
-
 message Msg {
   oneof t { // required
     ConsensusMsg consensus = 1;
     bytes session_id = 2;
     NetAddress net_address = 3;
-    L1BatchMsg l1_batch = 4;
   }
 }
 

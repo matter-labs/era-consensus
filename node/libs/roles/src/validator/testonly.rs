@@ -1,4 +1,6 @@
 //! Test-only utilities.
+use crate::attester::{AttesterSet, BatchAggregateSignature, BatchPublicKey, BatchSecretKey};
+
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, ConsensusMsg, FinalBlock, Fork,
     ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress,
@@ -21,13 +23,15 @@ pub struct Setup(SetupInner);
 impl Setup {
     /// New `Setup` with a given `fork`.
     pub fn new_with_fork(rng: &mut impl Rng, validators: usize, fork: Fork) -> Self {
-        let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
+        let validator_keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
+        let attester_keys: Vec<BatchSecretKey> = (0..validators).map(|_| rng.gen()).collect();
         let genesis = Genesis {
-            validators: ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap(),
+            validators: ValidatorSet::new(validator_keys.iter().map(|k| k.public())).unwrap(),
+            attesters: AttesterSet::new(attester_keys.iter().map(|k| k.public())).unwrap(),
             fork,
         };
         Self(SetupInner {
-            keys,
+            keys: validator_keys,
             genesis,
             blocks: vec![],
         })
@@ -129,6 +133,24 @@ impl AggregateSignature {
     }
 }
 
+impl Distribution<BatchSecretKey> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchSecretKey {
+        BatchSecretKey(Arc::new(rng.gen()))
+    }
+}
+
+impl Distribution<BatchPublicKey> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchPublicKey {
+        BatchPublicKey(rng.gen())
+    }
+}
+
+impl Distribution<BatchAggregateSignature> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchAggregateSignature {
+        BatchAggregateSignature(rng.gen())
+    }
+}
+
 impl Distribution<AggregateSignature> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateSignature {
         AggregateSignature(rng.gen())
@@ -190,6 +212,7 @@ impl Distribution<Genesis> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
         Genesis {
             validators: rng.gen(),
+            attesters: rng.gen(),
             fork: rng.gen(),
         }
     }
@@ -297,6 +320,14 @@ impl Distribution<ValidatorSet> for Standard {
         let count = rng.gen_range(1..11);
         let public_keys = (0..count).map(|_| rng.gen());
         ValidatorSet::new(public_keys).unwrap()
+    }
+}
+
+impl Distribution<AttesterSet> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AttesterSet {
+        let count = rng.gen_range(1..11);
+        let public_keys = (0..count).map(|_| rng.gen());
+        AttesterSet::new(public_keys).unwrap()
     }
 }
 

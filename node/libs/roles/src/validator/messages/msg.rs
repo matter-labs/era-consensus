@@ -1,5 +1,5 @@
 //! Generic message types.
-use super::{ConsensusMsg, L1BatchMsg, NetAddress};
+use super::{ConsensusMsg, NetAddress};
 use crate::{
     node::SessionId,
     validator::{self},
@@ -17,8 +17,6 @@ pub enum Msg {
     SessionId(SessionId),
     /// validator discovery
     NetAddress(NetAddress),
-    /// l1 batch
-    L1Batch(L1BatchMsg),
 }
 
 impl Msg {
@@ -58,18 +56,6 @@ impl Variant<Msg> for NetAddress {
     }
     fn extract(msg: Msg) -> Result<Self, BadVariantError> {
         let Msg::NetAddress(this) = msg else {
-            return Err(BadVariantError);
-        };
-        Ok(this)
-    }
-}
-
-impl Variant<Msg> for L1BatchMsg {
-    fn insert(self) -> Msg {
-        Msg::L1Batch(self)
-    }
-    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
-        let Msg::L1Batch(this) = msg else {
             return Err(BadVariantError);
         };
         Ok(this)
