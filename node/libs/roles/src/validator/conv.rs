@@ -46,6 +46,7 @@ impl ProtoFmt for Genesis {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             fork: Some(self.fork.build()),
+            validator_keys: vec![],
             validators: self.validators.iter().map(|v| v.build()).collect(),
         }
     }
