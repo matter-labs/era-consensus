@@ -1,9 +1,9 @@
-pub mod batch_aggregate_signature;
-pub mod batch_public_key;
-pub mod batch_secret_key;
-pub mod batch_signature;
+pub mod aggregate_signature;
+pub mod public_key;
+pub mod secret_key;
+pub mod signature;
 
-pub use batch_aggregate_signature::BatchAggregateSignature;
-pub use batch_public_key::BatchPublicKey;
-pub use batch_secret_key::BatchSecretKey;
-pub use batch_signature::BatchSignature;
+pub use aggregate_signature::BatchAggregateSignature;
+pub use public_key::BatchPublicKey;
+pub use secret_key::BatchSecretKey;
+pub use signature::BatchSignature;

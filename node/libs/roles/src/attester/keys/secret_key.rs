@@ -5,12 +5,12 @@ use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// A secret key for the validator role to sign L1 batches.
-/// BatchSecretKey is put into an Arc, so that we can clone it,
+/// SecretKey is put into an Arc, so that we can clone it,
 /// without copying the secret all over the RAM.
 #[derive(Clone, PartialEq)]
-pub struct BatchSecretKey(pub(crate) Arc<bn254::SecretKey>);
+pub struct SecretKey(pub(crate) Arc<bn254::SecretKey>);
 
-impl BatchSecretKey {
+impl SecretKey {
     /// Generates a batch secret key from a cryptographically-secure entropy source.
     pub fn generate() -> Self {
         Self(Arc::new(bn254::SecretKey::generate()))
@@ -37,7 +37,7 @@ impl BatchSecretKey {
     }
 }
 
-impl ByteFmt for BatchSecretKey {
+impl ByteFmt for SecretKey {
     fn encode(&self) -> Vec<u8> {
         ByteFmt::encode(&*self.0)
     }
@@ -47,7 +47,7 @@ impl ByteFmt for BatchSecretKey {
     }
 }
 
-impl TextFmt for BatchSecretKey {
+impl TextFmt for SecretKey {
     fn encode(&self) -> String {
         format!(
             "validator:batch_secret:bn254:{}",
@@ -63,7 +63,7 @@ impl TextFmt for BatchSecretKey {
     }
 }
 
-impl fmt::Debug for BatchSecretKey {
+impl fmt::Debug for SecretKey {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         // The secret itself should never be logged.
         write!(fmt, "<secret for {}>", TextFmt::encode(&self.public()))

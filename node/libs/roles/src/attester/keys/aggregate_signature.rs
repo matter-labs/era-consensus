@@ -7,9 +7,9 @@ use zksync_consensus_utils::enum_util::Variant;
 
 /// An aggregate signature from a validator.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub struct BatchAggregateSignature(pub(crate) bn254::AggregateSignature);
+pub struct AggregateSignature(pub(crate) bn254::AggregateSignature);
 
-impl BatchAggregateSignature {
+impl AggregateSignature {
     /// Add a signature to the aggregation.
     pub fn add(&mut self, sig: &BatchSignature) {
         self.0.add(&sig.0)
@@ -40,7 +40,7 @@ impl BatchAggregateSignature {
     }
 }
 
-impl ByteFmt for BatchAggregateSignature {
+impl ByteFmt for AggregateSignature {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         ByteFmt::decode(bytes).map(Self)
     }
@@ -50,7 +50,7 @@ impl ByteFmt for BatchAggregateSignature {
     }
 }
 
-impl TextFmt for BatchAggregateSignature {
+impl TextFmt for AggregateSignature {
     fn decode(text: Text) -> anyhow::Result<Self> {
         text.strip("attester:aggregate_signature:bn254:")?
             .decode_hex()
@@ -65,7 +65,7 @@ impl TextFmt for BatchAggregateSignature {
     }
 }
 
-impl fmt::Debug for BatchAggregateSignature {
+impl fmt::Debug for AggregateSignature {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(&TextFmt::encode(self))
     }

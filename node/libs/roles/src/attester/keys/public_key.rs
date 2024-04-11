@@ -5,9 +5,9 @@ use crate::validator::PublicKey;
 
 /// A public key for a validator used in L1 batch signing.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BatchPublicKey(pub(crate) bn254::PublicKey);
+pub struct PublicKey(pub(crate) bn254::PublicKey);
 
-impl ByteFmt for BatchPublicKey {
+impl ByteFmt for PublicKey {
     fn encode(&self) -> Vec<u8> {
         ByteFmt::encode(&self.0)
     }
@@ -16,7 +16,7 @@ impl ByteFmt for BatchPublicKey {
     }
 }
 
-impl TextFmt for BatchPublicKey {
+impl TextFmt for PublicKey {
     fn encode(&self) -> String {
         format!(
             "validator:public:bn254:{}",
@@ -30,7 +30,7 @@ impl TextFmt for BatchPublicKey {
     }
 }
 
-impl fmt::Debug for BatchPublicKey {
+impl fmt::Debug for PublicKey {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.write_str(&TextFmt::encode(self))
     }
