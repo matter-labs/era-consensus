@@ -636,7 +636,7 @@ async fn replica_commit_unexpected_proposal() {
 }
 
 /// Proposal should be the same for every ReplicaCommit
-/// Check it doesn't fail if one validator sends a different propsal in
+/// Check it doesn't fail if one validator sends a different proposal in
 /// the ReplicaCommit
 #[tokio::test]
 async fn replica_commit_different_proposals() {
