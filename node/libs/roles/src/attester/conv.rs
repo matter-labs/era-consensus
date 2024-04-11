@@ -21,12 +21,12 @@ impl ProtoFmt for proto::L1Batch {
 impl ProtoFmt for L1Batch {
     type Proto = proto::L1Batch;
 
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self())
+    fn read(_r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self)
     }
 
     fn build(&self) -> Self::Proto {
-        self.build()
+        Self::Proto {}
     }
 }
 

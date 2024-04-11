@@ -43,6 +43,7 @@ pub(crate) struct Network {
     pub(crate) inbound: PoolWatch<validator::PublicKey, ()>,
     /// Set of the currently open outbound connections.
     pub(crate) outbound: PoolWatch<validator::PublicKey, Arc<Connection>>,
+    /// L1 batch QC.
     pub(crate) l1_batch_qc: Option<L1BatchQC>,
 }
 
@@ -82,7 +83,7 @@ impl rpc::Handler<rpc::signature::Rpc> for &L1BatchServer<'_> {
         // FIXME Remove unwrap and find a way to handle the QC.
         let qc = self.0.l1_batch_qc.as_ref().context("no L1BatchQC")?;
         qc.verify(genesis).unwrap();
-        qc.clone().add(req.0.sig.clone(), &req.0, genesis);
+        qc.clone().add(&req.0, genesis);
         return Ok(());
     }
 }

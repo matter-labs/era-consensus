@@ -1,6 +1,6 @@
 //! Defines RPC for passing consensus messages.
 use crate::{consensus::Network, mux, proto::consensus as proto};
-use zksync_consensus_roles::{attester, validator};
+use zksync_consensus_roles::attester;
 use zksync_protobuf::{read_required, ProtoFmt};
 
 /// Signature RPC.
@@ -13,6 +13,7 @@ impl super::Rpc for Rpc {
     type Req = Req;
     type Resp = ();
 }
+/// RPC server for the L1 batch messages.
 pub(crate) struct L1BatchServer<'a>(pub(crate) &'a Network);
 /// Signed consensus message that the receiving peer should process.
 #[derive(Debug, Clone, PartialEq, Eq)]

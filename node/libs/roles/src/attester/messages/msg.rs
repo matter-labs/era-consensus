@@ -11,6 +11,7 @@ use bit_vec::BitVec;
 use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
+/// Message that is sent by an attester.
 pub enum Msg {
     /// L1 batch message.
     L1Batch(L1Batch),
@@ -28,9 +29,7 @@ impl Variant<Msg> for L1Batch {
         Msg::L1Batch(self)
     }
     fn extract(msg: Msg) -> Result<Self, BadVariantError> {
-        let Msg::L1Batch(this) = msg else {
-            return Err(BadVariantError);
-        };
+        let Msg::L1Batch(this) = msg;
         Ok(this)
     }
 }

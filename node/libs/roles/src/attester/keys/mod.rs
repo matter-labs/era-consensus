@@ -1,7 +1,9 @@
-pub mod aggregate_signature;
-pub mod public_key;
-pub mod secret_key;
-pub mod signature;
+//! Keys and signatures used by the attester.
+
+mod aggregate_signature;
+mod public_key;
+mod secret_key;
+mod signature;
 
 pub use aggregate_signature::AggregateSignature;
 pub use public_key::PublicKey;

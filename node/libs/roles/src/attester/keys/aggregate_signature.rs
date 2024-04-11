@@ -5,7 +5,7 @@ use std::fmt;
 use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 
-/// An aggregate signature from a validator.
+/// An aggregate signature from an attester.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct AggregateSignature(pub(crate) bn254::AggregateSignature);
 

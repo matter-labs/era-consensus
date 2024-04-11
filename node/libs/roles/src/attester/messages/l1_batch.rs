@@ -1,14 +1,11 @@
-use crate::{
-    attester::{AggregateSignature, Signature},
-    validator::Genesis,
-};
+use crate::{attester::AggregateSignature, validator::Genesis};
 
 use super::{SignedBatchMsg, Signers};
 
 /// A message to send by validators to the gossip network.
 /// It contains the validators signature to sign the block batches to be sent to L1.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
-pub struct L1Batch();
+pub struct L1Batch;
 
 /// A certificate for a batch of L2 blocks to be sent to L1.
 /// It contains the signatures of the validators that signed the batch.
@@ -22,6 +19,7 @@ pub struct L1BatchQC {
     pub message: L1Batch,
 }
 
+/// Error returned by `L1BatchQC::verify()` if the signature is invalid.
 #[derive(thiserror::Error, Debug)]
 pub enum L1BatchQCVerifyError {
     /// Bad signature.
@@ -30,7 +28,9 @@ pub enum L1BatchQCVerifyError {
 }
 
 impl L1BatchQC {
-    pub fn add(&mut self, signature: Signature, msg: &SignedBatchMsg, genesis: &Genesis) {
+    /// Add a attester's signature.
+    /// Signature is assumed to be already verified.
+    pub fn add(&mut self, msg: &SignedBatchMsg, genesis: &Genesis) {
         if self.message != msg.msg {
             return;
         };
@@ -44,9 +44,8 @@ impl L1BatchQC {
         self.signature.add(&msg.sig);
     }
 
-    /// Verifies the signature of the CommitQC.
+    /// Verifies the signature of the L1BatchQC.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), L1BatchQCVerifyError> {
-        // Now we can verify the signature.
         let messages_and_keys = genesis
             .attesters
             .iter()

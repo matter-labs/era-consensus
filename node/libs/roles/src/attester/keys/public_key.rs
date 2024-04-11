@@ -1,7 +1,7 @@
 use std::fmt;
 use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 
-/// A public key for a validator used in L1 batch signing.
+/// A public key for an attester used in L1 batch signing.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PublicKey(pub(crate) bn254::PublicKey);
 
@@ -17,14 +17,12 @@ impl ByteFmt for PublicKey {
 impl TextFmt for PublicKey {
     fn encode(&self) -> String {
         format!(
-            "validator:public:bn254:{}",
+            "attester:public:bn254:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
     }
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("validator:public:bn254:")?
-            .decode_hex()
-            .map(Self)
+        text.strip("attester:public:bn254:")?.decode_hex().map(Self)
     }
 }
 

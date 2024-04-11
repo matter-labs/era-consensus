@@ -4,7 +4,7 @@ use std::{fmt, sync::Arc};
 use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 
-/// A secret key for the validator role to sign L1 batches.
+/// A secret key for the attester role to sign L1 batches.
 /// SecretKey is put into an Arc, so that we can clone it,
 /// without copying the secret all over the RAM.
 #[derive(Clone, PartialEq)]
@@ -16,12 +16,12 @@ impl SecretKey {
         Self(Arc::new(bn254::SecretKey::generate()))
     }
 
-    /// Batch public key corresponding to this batch secret key.
+    /// Public key corresponding to this secret key.
     pub fn public(&self) -> PublicKey {
         PublicKey(self.0.public())
     }
 
-    /// Signs a strongly typed message.
+    /// Signs a batch message.
     pub fn sign_batch_msg(&self, msg: L1Batch) -> SignedBatchMsg {
         let msg = msg.insert();
         SignedBatchMsg {

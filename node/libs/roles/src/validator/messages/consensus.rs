@@ -163,6 +163,7 @@ pub struct Genesis {
     // TODO(gprusak): add blockchain id here.
     /// Set of validators of the chain.
     pub validators: ValidatorSet,
+    /// Set of attesters of the chain.
     pub attesters: AttesterSet,
     /// Fork of the chain to follow.
     pub fork: Fork,
