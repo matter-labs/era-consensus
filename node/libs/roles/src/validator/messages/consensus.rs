@@ -10,6 +10,9 @@ use std::{
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
+/// Current genesis encoding version
+pub const CURRENT_GENESIS_ENCODING_VERSION: usize = 1;
+
 /// Version of the consensus algorithm that the validator is using.
 /// It allows to prevent misinterpretation of messages signed by validators
 /// using different versions of the binaries.
@@ -75,7 +78,7 @@ impl Default for Fork {
 
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct ValidatorCommittee {
     vec: Vec<WeightedValidator>,
     indexes: BTreeMap<validator::PublicKey, usize>,
@@ -200,6 +203,8 @@ pub fn max_faulty_weight(total_weight: u64) -> u64 {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Genesis {
     // TODO(gprusak): add blockchain id here.
+    /// Genesis encoding version
+    pub encoding_version: usize,
     /// Set of validators of the chain.
     pub validators: ValidatorCommittee,
     /// Fork of the chain to follow.
@@ -214,6 +219,16 @@ impl Genesis {
     /// Hash of the genesis.
     pub fn hash(&self) -> GenesisHash {
         GenesisHash(Keccak256::new(&zksync_protobuf::canonical(self)))
+    }
+}
+
+impl Default for Genesis {
+    fn default() -> Self {
+        Self {
+            encoding_version: CURRENT_GENESIS_ENCODING_VERSION,
+            validators: ValidatorCommittee::default(),
+            fork: Fork::default(),
+        }
     }
 }
 

@@ -224,8 +224,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaPrepare,
     ) -> Signed<LeaderPrepare> {
-        let expected_validator_weight =
-            self.genesis().validators.total_weight() / self.keys.len() as u64;
+        let expected_validator_weight = self.genesis().validators.iter().next().unwrap().weight;
         let mut leader_prepare = None;
         let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
         let mut first_match = true;
@@ -260,8 +259,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaCommit,
     ) -> Signed<LeaderCommit> {
-        let expected_validator_weight =
-            self.genesis().validators.total_weight() / self.keys.len() as u64;
+        let expected_validator_weight = self.genesis().validators.iter().next().unwrap().weight;
         let mut first_match = true;
         for (i, key) in self.keys.iter().enumerate() {
             let res = self

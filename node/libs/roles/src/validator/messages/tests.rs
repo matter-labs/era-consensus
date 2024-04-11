@@ -33,8 +33,13 @@ fn fork() -> Fork {
 /// Hardcoded genesis.
 fn genesis() -> Genesis {
     Genesis {
-        validators: ValidatorSet::new(keys().iter().map(|k| k.public())).unwrap(),
+        validators: ValidatorCommittee::new(keys().iter().map(|k| WeightedValidator {
+            key: k.public(),
+            weight: 1,
+        }))
+        .unwrap(),
         fork: fork(),
+        encoding_version: 0,
     }
 }
 

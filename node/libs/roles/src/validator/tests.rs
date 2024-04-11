@@ -208,6 +208,7 @@ fn test_commit_qc() {
         validators: ValidatorCommittee::new(setup1.genesis.validators.iter().take(3).cloned())
             .unwrap(),
         fork: setup1.genesis.fork.clone(),
+        ..Default::default()
     };
     let validator_weight = setup1.genesis.validators.total_weight() / 6;
 
@@ -246,6 +247,7 @@ fn test_prepare_qc() {
         validators: ValidatorCommittee::new(setup1.genesis.validators.iter().take(3).cloned())
             .unwrap(),
         fork: setup1.genesis.fork.clone(),
+        ..Default::default()
     };
 
     let view: ViewNumber = rng.gen();
@@ -299,6 +301,7 @@ fn test_validator_committee_weights() {
     let genesis = Genesis {
         validators: ValidatorCommittee::new(validators).unwrap(),
         fork: setup.genesis.fork.clone(),
+        ..Default::default()
     };
 
     let view: ViewNumber = rng.gen();
