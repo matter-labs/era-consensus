@@ -1,5 +1,5 @@
 //! CLI tools for the consensus node.
-#![allow(missing_docs)]
+#![allow(missing_docs,unused)]
 mod config;
 pub mod k8s;
 mod proto;

@@ -13,6 +13,7 @@ struct BlockStoreInner {
     first: validator::BlockNumber,
     genesis: validator::Genesis,
     blocks: Mutex<VecDeque<validator::FinalBlock>>,
+    capacity: Option<usize>,
 }
 
 /// In-memory block store.
@@ -31,6 +32,18 @@ impl BlockStore {
             first,
             genesis,
             blocks: Mutex::default(),
+            capacity: None,
+        }))
+    }
+
+    /// New bounded storage. Old blocks get GC'ed onse the storage capacity is full. 
+    pub fn bounded(genesis: validator::Genesis, first: validator::BlockNumber, capacity: usize) -> Self {
+        assert!(genesis.fork.first_block <= first);
+        Self(Arc::new(BlockStoreInner {
+            first,
+            genesis,
+            blocks: Mutex::default(),
+            capacity: Some(capacity),
         }))
     }
 }
@@ -42,13 +55,14 @@ impl PersistentBlockStore for BlockStore {
     }
 
     async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
-        Ok(BlockStoreState {
-            first: self.0.first,
-            last: self
+        let blocks = self
                 .0
                 .blocks
                 .lock()
-                .unwrap()
+                .unwrap();
+        Ok(BlockStoreState {
+            first: blocks.front().map_or(self.0.first,|b|b.number()),
+            last: blocks 
                 .back()
                 .map(|b| b.justification.clone()),
         })
@@ -83,6 +97,11 @@ impl PersistentBlockStore for BlockStore {
             return Err(anyhow::anyhow!("got block {got:?}, while expected {want:?}").into());
         }
         blocks.push_back(block.clone());
+        if let Some(c) = self.0.capacity {
+            if blocks.len()>c {
+                blocks.pop_front();
+            }
+        }
         Ok(())
     }
 }
