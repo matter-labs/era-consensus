@@ -53,7 +53,7 @@ pub fn new_configs(
     setup: &validator::testonly::Setup,
     gossip_peers: usize,
 ) -> Vec<Config> {
-    let configs = setup.keys.iter().map(|key| {
+    let configs = setup.validator_keys.iter().map(|key| {
         let addr = net::tcp::testonly::reserve_listener();
         Config {
             server_addr: addr,

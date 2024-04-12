@@ -1,4 +1,7 @@
-use crate::{attester::AggregateSignature, validator::Genesis};
+use crate::{
+    attester::{self, AggregateSignature},
+    validator::Genesis,
+};
 
 use super::{SignedBatchMsg, Signers};
 
@@ -25,9 +28,26 @@ pub enum L1BatchQCVerifyError {
     /// Bad signature.
     #[error("bad signature: {0:#}")]
     BadSignature(#[source] anyhow::Error),
+    /// Not enough signers.
+    #[error("not enough signers: got {got}, want {want}")]
+    NotEnoughSigners {
+        /// Got signers.
+        got: usize,
+        /// Want signers.
+        want: usize,
+    },
 }
 
 impl L1BatchQC {
+    /// Create a new empty instance for a given `ReplicaCommit` message and a validator set size.
+    pub fn new(message: L1Batch, genesis: &Genesis) -> Self {
+        Self {
+            message,
+            signers: Signers::new(genesis.attesters.len()),
+            signature: attester::AggregateSignature::default(),
+        }
+    }
+
     /// Add a attester's signature.
     /// Signature is assumed to be already verified.
     pub fn add(&mut self, msg: &SignedBatchMsg, genesis: &Genesis) {
@@ -46,6 +66,16 @@ impl L1BatchQC {
 
     /// Verifies the signature of the L1BatchQC.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), L1BatchQCVerifyError> {
+        // Verify that we have enough signers.
+        let num_signers = self.signers.count();
+        let threshold = genesis.attesters.threshold();
+        if num_signers < threshold {
+            return Err(L1BatchQCVerifyError::NotEnoughSigners {
+                got: num_signers,
+                want: threshold,
+            });
+        }
+
         let messages_and_keys = genesis
             .attesters
             .iter()

@@ -57,7 +57,7 @@ fn main() -> anyhow::Result<()> {
     let rng = &mut rand::thread_rng();
 
     let setup = validator::testonly::Setup::new(rng, validator_count);
-    let validator_keys = setup.keys.clone();
+    let validator_keys = setup.validator_keys.clone();
 
     // Each node will have `gossip_peers` outbound peers.
     let nodes = addrs.len();

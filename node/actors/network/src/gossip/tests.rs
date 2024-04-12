@@ -572,7 +572,9 @@ async fn validator_node_restart() {
                 let sub = &mut node1.net.gossip.validator_addrs.subscribe();
                 let want = Some(*cfgs[0].server_addr);
                 sync::wait_for(ctx, sub, |got| {
-                    got.get(&setup.keys[0].public()).map(|x| x.msg.addr) == want
+                    got.get(&setup.validator_keys[0].public())
+                        .map(|x| x.msg.addr)
+                        == want
                 })
                 .await?;
                 Ok(())

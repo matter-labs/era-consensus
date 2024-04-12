@@ -174,7 +174,7 @@ fn make_replica_commit(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> R
 
 fn make_commit_qc(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> CommitQC {
     let mut qc = CommitQC::new(make_replica_commit(rng, view, setup), &setup.genesis);
-    for key in &setup.keys {
+    for key in &setup.validator_keys {
         qc.add(&key.sign_msg(qc.message.clone()), &setup.genesis);
     }
     qc
@@ -208,10 +208,10 @@ fn test_commit_qc() {
         fork: setup1.genesis.fork.clone(),
     };
 
-    for i in 0..setup1.keys.len() + 1 {
+    for i in 0..setup1.validator_keys.len() + 1 {
         let view = rng.gen();
         let mut qc = CommitQC::new(make_replica_commit(rng, view, &setup1), &setup1.genesis);
-        for key in &setup1.keys[0..i] {
+        for key in &setup1.validator_keys[0..i] {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis);
         }
         if i >= setup1.genesis.validators.threshold() {
@@ -248,9 +248,9 @@ fn test_prepare_qc() {
         .map(|_| make_replica_prepare(rng, view, &setup1))
         .collect();
 
-    for n in 0..setup1.keys.len() + 1 {
+    for n in 0..setup1.validator_keys.len() + 1 {
         let mut qc = PrepareQC::new(msgs[0].view.clone());
-        for key in &setup1.keys[0..n] {
+        for key in &setup1.validator_keys[0..n] {
             qc.add(
                 &key.sign_msg(msgs.choose(rng).unwrap().clone()),
                 &setup1.genesis,

@@ -31,7 +31,8 @@ impl Setup {
             fork,
         };
         Self(SetupInner {
-            keys: validator_keys,
+            validator_keys,
+            attester_keys,
             genesis,
             blocks: vec![],
         })
@@ -78,7 +79,7 @@ impl Setup {
         };
         let msg = ReplicaCommit { view, proposal };
         let mut justification = CommitQC::new(msg, &self.0.genesis);
-        for key in &self.0.keys {
+        for key in &self.0.validator_keys {
             justification.add(
                 &key.sign_msg(justification.message.clone()),
                 &self.0.genesis,
@@ -108,7 +109,9 @@ impl Setup {
 #[derive(Debug, Clone)]
 pub struct SetupInner {
     /// Validators' secret keys.
-    pub keys: Vec<SecretKey>,
+    pub validator_keys: Vec<SecretKey>,
+    /// Attesters' secret keys.
+    pub attester_keys: Vec<attester::SecretKey>,
     /// Past blocks.
     pub blocks: Vec<FinalBlock>,
     /// Genesis config.
@@ -133,27 +136,9 @@ impl AggregateSignature {
     }
 }
 
-impl Distribution<attester::SecretKey> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> attester::SecretKey {
-        attester::SecretKey(Arc::new(rng.gen()))
-    }
-}
-
-impl Distribution<attester::PublicKey> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> attester::PublicKey {
-        attester::PublicKey(rng.gen())
-    }
-}
-
 impl Distribution<AggregateSignature> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateSignature {
         AggregateSignature(rng.gen())
-    }
-}
-
-impl Distribution<attester::AggregateSignature> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> attester::AggregateSignature {
-        attester::AggregateSignature(rng.gen())
     }
 }
 
@@ -320,14 +305,6 @@ impl Distribution<ValidatorSet> for Standard {
         let count = rng.gen_range(1..11);
         let public_keys = (0..count).map(|_| rng.gen());
         ValidatorSet::new(public_keys).unwrap()
-    }
-}
-
-impl Distribution<AttesterSet> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AttesterSet {
-        let count = rng.gen_range(1..11);
-        let public_keys = (0..count).map(|_| rng.gen());
-        AttesterSet::new(public_keys).unwrap()
     }
 }
 

@@ -85,11 +85,13 @@ async fn test_genesis_mismatch() {
             .validator_addrs
             .update(
                 &setup.genesis.validators,
-                &[Arc::new(setup.keys[1].sign_msg(validator::NetAddress {
-                    addr: *cfgs[1].server_addr,
-                    version: 0,
-                    timestamp: ctx.now_utc(),
-                }))],
+                &[Arc::new(setup.validator_keys[1].sign_msg(
+                    validator::NetAddress {
+                        addr: *cfgs[1].server_addr,
+                        version: 0,
+                        timestamp: ctx.now_utc(),
+                    },
+                ))],
             )
             .await
             .unwrap();
@@ -103,7 +105,7 @@ async fn test_genesis_mismatch() {
             .context("preface::accept()")?;
         assert_eq!(endpoint, preface::Endpoint::ConsensusNet);
         tracing::info!("Expect the handshake to fail");
-        let res = handshake::inbound(ctx, &setup.keys[1], rng.gen(), &mut stream).await;
+        let res = handshake::inbound(ctx, &setup.validator_keys[1], rng.gen(), &mut stream).await;
         assert_matches!(res, Err(handshake::Error::GenesisMismatch));
 
         tracing::info!("Try to connect to a node with a mismatching genesis.");
@@ -113,10 +115,10 @@ async fn test_genesis_mismatch() {
                 .context("preface::connect")?;
         let res = handshake::outbound(
             ctx,
-            &setup.keys[1],
+            &setup.validator_keys[1],
             rng.gen(),
             &mut stream,
-            &setup.keys[0].public(),
+            &setup.validator_keys[0].public(),
         )
         .await;
         tracing::info!(

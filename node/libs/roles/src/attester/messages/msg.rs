@@ -131,15 +131,33 @@ impl AttesterSet {
         self.get(index).unwrap().clone()
     }
 
-    // /// Signature threshold for this validator set.
-    // pub fn threshold(&self) -> usize {
-    //     threshold(self.len())
-    // }
+    /// Signature threshold for this validator set.
+    pub fn threshold(&self) -> usize {
+        threshold(self.len())
+    }
 
-    // /// Maximal number of faulty replicas allowed in this validator set.
-    // pub fn faulty_replicas(&self) -> usize {
-    //     faulty_replicas(self.len())
-    // }
+    /// Maximal number of faulty replicas allowed in this validator set.
+    pub fn faulty_replicas(&self) -> usize {
+        faulty_replicas(self.len())
+    }
+}
+
+/// Calculate the maximum number of faulty replicas, for a given number of replicas.
+pub fn faulty_replicas(n: usize) -> usize {
+    // Calculate the allowed maximum number of faulty replicas. We want the following relationship to hold:
+    //      n = 5*f + 1
+    // for n total replicas and f faulty replicas. This results in the following formula for the maximum
+    // number of faulty replicas:
+    //      f = floor((n - 1) / 5)
+    // Because of this, it doesn't make sense to have 5*f + 2 or 5*f + 3 replicas. It won't increase the number
+    // of allowed faulty replicas.
+    (n - 1) / 5
+}
+
+/// Calculate the consensus threshold, the minimum number of votes for any consensus action to be valid,
+/// for a given number of replicas.
+pub fn threshold(n: usize) -> usize {
+    n - faulty_replicas(n)
 }
 
 impl std::ops::BitOrAssign<&Self> for Signers {
@@ -164,6 +182,7 @@ impl std::ops::BitAnd for &Signers {
 }
 
 /// The hash of a message.
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct MsgHash(pub(crate) keccak256::Keccak256);
 
 impl ByteFmt for MsgHash {
