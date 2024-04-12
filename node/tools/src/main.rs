@@ -46,6 +46,9 @@ fn check_public_addr(cfg: &mut AppConfig) -> anyhow::Result<()> {
     Ok(())
 }
 
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let args: Cli = Cli::parse();
