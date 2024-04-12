@@ -1,4 +1,5 @@
 //! Peer states tracked by the `SyncBlocks` actor.
+#![allow(unused)]
 use self::events::PeerStateEvent;
 use crate::{io, Config};
 use anyhow::Context as _;
@@ -142,13 +143,11 @@ impl PeerStates {
         number: BlockNumber,
     ) -> ctx::OrCanceled<FinalBlock> {
         while ctx.is_active() {
-            let Some((peer, permit)) = self.try_acquire_peer_permit(number) else {
-                let sleep_interval = self.config.sleep_interval_for_get_block;
-                ctx.sleep(sleep_interval).await?;
+            let Some(peer) = self.select_peer(number) else {
+                ctx.sleep(self.config.sleep_interval_for_get_block).await?;
                 continue;
             };
             let res = self.fetch_block_from_peer(ctx, &peer, number).await;
-            drop(permit);
             match res {
                 Ok(block) => {
                     if let Some(send) = &self.events_sender {
@@ -204,43 +203,9 @@ impl PeerStates {
         Ok(block)
     }
 
-    fn try_acquire_peer_permit(
-        &self,
-        block_number: BlockNumber,
-    ) -> Option<(node::PublicKey, sync::OwnedSemaphorePermit)> {
+    fn select_peer(&self, block_number: BlockNumber) -> Option<node::PublicKey> {
         let peers = self.peers.lock().unwrap();
-        let mut peers_with_no_permits = vec![];
-        let eligible_peers_info = peers.iter().filter(|(peer_key, state)| {
-            if !state.state.contains(block_number) {
-                return false;
-            }
-            let available_permits = state.get_block_semaphore.available_permits();
-            // ^ `available_permits()` provides a lower bound on the actual number of available permits.
-            // Some permits may be released before acquiring a new permit below, but no other permits
-            // are acquired since we hold an exclusive lock on `peers`.
-            if available_permits == 0 {
-                peers_with_no_permits.push(*peer_key);
-            }
-            available_permits > 0
-        });
-        let peer_to_query = eligible_peers_info
-            .max_by_key(|(_, state)| state.get_block_semaphore.available_permits());
-
-        if let Some((peer_key, state)) = peer_to_query {
-            let permit = state
-                .get_block_semaphore
-                .clone()
-                .try_acquire_owned()
-                .unwrap();
-            // ^ `unwrap()` is safe for the reasons described in the above comment
-            Some((peer_key.clone(), permit))
-        } else {
-            tracing::debug!(
-                ?peers_with_no_permits,
-                "No peers to query block #{block_number}"
-            );
-            None
-        }
+        peers.iter().filter(|(_,s)|s.state.contains(block_number)).next().map(|x|x.0.clone())
     }
 
     /// Drops peer state.

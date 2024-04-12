@@ -139,8 +139,7 @@ async fn test_try_acquire_peer_permit() {
             peer_states.update(&peer, s.clone()).unwrap();
             for block in b {
                 let got = peer_states
-                    .try_acquire_peer_permit(block.number())
-                    .map(|p| p.0);
+                    .select_peer(block.number());
                 if s.first <= block.number()
                     && s.last
                         .as_ref()
