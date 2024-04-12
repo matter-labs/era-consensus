@@ -3,10 +3,7 @@ use super::{BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, Replic
 use crate::validator;
 use anyhow::Context;
 use bit_vec::BitVec;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt,
-};
+use std::{collections::BTreeMap, fmt};
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
@@ -86,35 +83,30 @@ pub struct Committee {
 }
 
 impl Committee {
-    /// Creates a new ValidatorCommittee from a list of validator public keys.
+    /// Creates a new Committee from a list of validator public keys.
     pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
-        let mut set = BTreeSet::new();
         let mut weighted_validators = BTreeMap::new();
         let mut total_weight: u64 = 0;
         for validator in validators {
             anyhow::ensure!(
-                set.insert(validator.key.clone()),
-                "Duplicate validator in ValidatorCommittee"
+                !weighted_validators.contains_key(&validator.key),
+                "Duplicate validator in validator Committee"
             );
             total_weight = total_weight
                 .checked_add(validator.weight)
-                .context("Sum of weights overflows in ValidatorCommittee")?;
+                .context("Sum of weights overflows in validator Committee")?;
             weighted_validators.insert(validator.key.clone(), validator);
         }
         anyhow::ensure!(
-            !set.is_empty(),
-            "ValidatorCommittee must contain at least one validator"
+            !weighted_validators.is_empty(),
+            "Validator Committee must contain at least one validator"
         );
         Ok(Self {
-            vec: set
-                .iter()
-                .map(|key| weighted_validators[key].clone())
-                .collect(),
-            indexes: set
-                .clone()
-                .into_iter()
+            vec: weighted_validators.values().cloned().collect(),
+            indexes: weighted_validators
+                .values()
                 .enumerate()
-                .map(|(i, pk)| (pk, i))
+                .map(|(i, v)| (v.key.clone(), i))
                 .collect(),
             total_weight,
         })
@@ -131,7 +123,7 @@ impl Committee {
     }
 
     /// Returns the number of validators.
-    #[allow(clippy::len_without_is_empty)] // a valid `ValidatorCommittee` is always non-empty by construction
+    #[allow(clippy::len_without_is_empty)] // a valid `Committee` is always non-empty by construction
     pub fn len(&self) -> usize {
         self.vec.len()
     }
@@ -375,7 +367,7 @@ impl Signers {
         self.0.iter().filter(|b| *b).count()
     }
 
-    /// Size of the corresponding ValidatorCommittee.
+    /// Size of the corresponding validator Committee.
     pub fn len(&self) -> usize {
         self.0.len()
     }
@@ -432,11 +424,11 @@ pub enum Phase {
     Commit,
 }
 
-/// Validator representation inside a ValidatorCommittee.
+/// Validator representation inside a Committee.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WeightedValidator {
     /// Validator key
     pub key: validator::PublicKey,
-    /// Validator weight inside the ValidatorCommittee.
+    /// Validator weight inside the Committee.
     pub weight: u64,
 }
