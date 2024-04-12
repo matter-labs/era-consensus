@@ -206,7 +206,8 @@ impl PeerStates {
     fn select_peer(&self, block_number: BlockNumber) -> Option<node::PublicKey> {
         let peers = self.peers.lock().unwrap();
         peers
-            .iter().find(|(_, s)| s.state.contains(block_number))
+            .iter()
+            .find(|(_, s)| s.state.contains(block_number))
             .map(|x| x.0.clone())
     }
 
