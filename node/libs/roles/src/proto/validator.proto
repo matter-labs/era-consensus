@@ -11,8 +11,8 @@ message Fork {
 
 message Genesis {
   optional Fork fork = 1; // required
-  repeated PublicKey validator_keys = 2;
-  repeated WeightedValidator validators = 3;
+  repeated PublicKey validators = 2  [deprecated = true];
+  repeated WeightedValidator validators_v1 = 3;
 }
 
 message GenesisHash {

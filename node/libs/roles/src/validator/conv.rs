@@ -28,14 +28,15 @@ impl ProtoFmt for Fork {
     }
 }
 
+#[allow(deprecated)]
 impl ProtoFmt for Genesis {
     type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let (validators, encoding_version) =
             // current genesis encoding version 1
-            if !r.validators.is_empty() {
+            if !r.validators_v1.is_empty() {
                 (
-                    r.validators
+                    r.validators_v1
                         .iter()
                         .enumerate()
                         .map(|(i, v)| WeightedValidator::read(v).context(i))
@@ -44,9 +45,9 @@ impl ProtoFmt for Genesis {
                     1,
                 )
             // legacy genesis encoding version 0
-            } else if !r.validator_keys.is_empty() {
+            } else if !r.validators.is_empty() {
                 (
-                    r.validator_keys
+                    r.validators
                         .iter()
                         .enumerate()
                         .map(|(i, v)| anyhow::Ok(WeightedValidator {
@@ -71,13 +72,13 @@ impl ProtoFmt for Genesis {
         match self.encoding_version {
             0 => Self::Proto {
                 fork: Some(self.fork.build()),
-                validator_keys: self.validators.iter().map(|v| v.key.build()).collect(),
-                validators: vec![],
+                validators: self.validators.iter().map(|v| v.key.build()).collect(),
+                validators_v1: vec![],
             },
             1.. => Self::Proto {
                 fork: Some(self.fork.build()),
-                validator_keys: vec![],
-                validators: self.validators.iter().map(|v| v.build()).collect(),
+                validators: vec![],
+                validators_v1: self.validators.iter().map(|v| v.build()).collect(),
             },
         }
     }
