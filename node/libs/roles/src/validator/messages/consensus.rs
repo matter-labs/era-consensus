@@ -79,13 +79,13 @@ impl Default for Fork {
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct ValidatorCommittee {
+pub struct Committee {
     vec: Vec<WeightedValidator>,
     indexes: BTreeMap<validator::PublicKey, usize>,
     total_weight: u64,
 }
 
-impl ValidatorCommittee {
+impl Committee {
     /// Creates a new ValidatorCommittee from a list of validator public keys.
     pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
         let mut set = BTreeSet::new();
@@ -168,7 +168,9 @@ impl ValidatorCommittee {
     }
 
     /// Compute the sum of signers weights.
+    /// Panics if signers length does not match the number of validators in committee
     pub fn weight(&self, signers: &Signers) -> u64 {
+        assert_eq!(self.vec.len(), signers.len());
         self.vec
             .iter()
             .enumerate()
@@ -206,7 +208,7 @@ pub struct Genesis {
     /// Genesis encoding version
     pub encoding_version: usize,
     /// Set of validators of the chain.
-    pub validators: ValidatorCommittee,
+    pub validators: Committee,
     /// Fork of the chain to follow.
     pub fork: Fork,
 }
@@ -226,7 +228,7 @@ impl Default for Genesis {
     fn default() -> Self {
         Self {
             encoding_version: CURRENT_GENESIS_ENCODING_VERSION,
-            validators: ValidatorCommittee::default(),
+            validators: Committee::default(),
             fork: Fork::default(),
         }
     }

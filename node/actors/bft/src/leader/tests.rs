@@ -375,15 +375,15 @@ async fn replica_prepare_different_messages() {
         }
 
         let mut replica_commit_result = None;
-        // The rest (minus one) of the validators sign other_replica_prepare
-        for i in validators / 2..validators - 1 {
+        // The rest of the validators until threshold sign other_replica_prepare
+        for i in validators / 2..util.genesis().validators.threshold() as usize {
             replica_commit_result = util
                 .process_replica_prepare(ctx, util.keys[i].sign_msg(other_replica_prepare.clone()))
                 .await
                 .unwrap();
         }
 
-        // That should be enough for a proposal to be committed
+        // That should be enough for a proposal to be committed (even with different proposals)
         assert_matches!(replica_commit_result, Some(_));
 
         // Check the first proposal has been committed (as it has more votes)

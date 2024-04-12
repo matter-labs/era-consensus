@@ -204,8 +204,7 @@ fn test_commit_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
-        validators: ValidatorCommittee::new(setup1.genesis.validators.iter().take(3).cloned())
-            .unwrap(),
+        validators: Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
         fork: setup1.genesis.fork.clone(),
         ..Default::default()
     };
@@ -243,8 +242,7 @@ fn test_prepare_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
-        validators: ValidatorCommittee::new(setup1.genesis.validators.iter().take(3).cloned())
-            .unwrap(),
+        validators: Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
         fork: setup1.genesis.fork.clone(),
         ..Default::default()
     };
@@ -298,7 +296,7 @@ fn test_validator_committee_weights() {
         .collect();
 
     let genesis = Genesis {
-        validators: ValidatorCommittee::new(validators).unwrap(),
+        validators: Committee::new(validators).unwrap(),
         fork: setup.genesis.fork.clone(),
         ..Default::default()
     };
@@ -333,5 +331,5 @@ fn test_validator_weights_sanity() {
         .collect();
 
     // Creation should overflow
-    assert_matches!(ValidatorCommittee::new(validators), Err(_));
+    assert_matches!(Committee::new(validators), Err(_));
 }

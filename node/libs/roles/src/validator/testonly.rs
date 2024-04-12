@@ -1,10 +1,10 @@
 //! Test-only utilities.
 use super::{
-    AggregateSignature, BlockHeader, BlockNumber, CommitQC, ConsensusMsg, FinalBlock, Fork,
-    ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress,
+    AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
+    Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress,
     Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
-    ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorCommittee, View, ViewNumber,
-    WeightedValidator, CURRENT_GENESIS_ENCODING_VERSION,
+    ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
+    CURRENT_GENESIS_ENCODING_VERSION,
 };
 use bit_vec::BitVec;
 use rand::{
@@ -24,7 +24,7 @@ impl Setup {
     pub fn new_with_fork(rng: &mut impl Rng, validators: usize, fork: Fork) -> Self {
         let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
         let genesis = Genesis {
-            validators: ValidatorCommittee::new(keys.iter().map(|k| WeightedValidator {
+            validators: Committee::new(keys.iter().map(|k| WeightedValidator {
                 key: k.public(),
                 weight: 1,
             }))
@@ -299,14 +299,14 @@ impl Distribution<Signers> for Standard {
     }
 }
 
-impl Distribution<ValidatorCommittee> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ValidatorCommittee {
+impl Distribution<Committee> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Committee {
         let count = rng.gen_range(1..11);
         let public_keys = (0..count).map(|_| WeightedValidator {
             key: rng.gen(),
             weight: 1,
         });
-        ValidatorCommittee::new(public_keys).unwrap()
+        Committee::new(public_keys).unwrap()
     }
 }
 
