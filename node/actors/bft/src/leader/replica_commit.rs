@@ -96,14 +96,18 @@ impl StateMachine {
             return Err(Error::NotLeaderInView);
         }
 
+        // Get current incrementally-constructed QC to work on it
+        let commit_qc = self
+            .commit_qcs
+            .entry(message.view.number)
+            .or_default()
+            .entry(message.clone())
+            .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()));
+
         // If we already have a message from the same validator and for the same view, we discard it.
-        if let Some(existing_message) = self
-            .commit_message_cache
-            .get(&message.view.number)
-            .and_then(|x| x.get(author))
-        {
+        if commit_qc.signers.0[self.config.genesis().validators.index(author).unwrap()] {
             return Err(Error::DuplicateMessage {
-                existing_message: existing_message.msg.clone(),
+                existing_message: commit_qc.message.clone(),
             });
         }
 
@@ -118,20 +122,8 @@ impl StateMachine {
 
         // ----------- All checks finished. Now we process the message. --------------
 
-        // We add the message to the incrementally-constructed QC.
-        let commit_qc = self
-            .commit_qcs
-            .entry(message.view.number)
-            .or_default()
-            .entry(message.clone())
-            .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()));
+        // Add the message to the QC.
         commit_qc.add(&signed_message, self.config.genesis());
-
-        // We store the message in our cache.
-        self.commit_message_cache
-            .entry(message.view.number)
-            .or_default()
-            .insert(author.clone(), signed_message.clone());
 
         // Now we check if we have enough weight to continue.
         let weight = self.config.genesis().validators.weight(&commit_qc.signers);
@@ -149,10 +141,6 @@ impl StateMachine {
         self.phase_start = now;
 
         // ----------- Prepare our message and send it. --------------
-
-        // Remove replica commit messages for this view, so that we don't create a new leader commit
-        // for this same view if we receive another replica commit message after this.
-        self.commit_message_cache.remove(&message.view.number);
 
         // Consume the incrementally-constructed QC for this view.
         let justification = self
@@ -176,7 +164,6 @@ impl StateMachine {
 
         // Clean the caches.
         self.prepare_message_cache.retain(|k, _| k >= &self.view);
-        self.commit_message_cache.retain(|k, _| k >= &self.view);
 
         Ok(())
     }
