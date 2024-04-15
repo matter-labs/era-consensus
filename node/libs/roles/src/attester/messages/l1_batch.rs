@@ -50,7 +50,7 @@ impl L1BatchQC {
 
     /// Add a attester's signature.
     /// Signature is assumed to be already verified.
-    pub fn add(&mut self, msg: &SignedBatchMsg, genesis: &Genesis) {
+    pub fn add(&mut self, msg: &SignedBatchMsg<L1Batch>, genesis: &Genesis) {
         if self.message != msg.msg {
             return;
         };

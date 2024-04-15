@@ -8,7 +8,7 @@ use rand::seq::SliceRandom;
 use std::{collections::HashSet, sync::Arc};
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope, sync, time};
-use zksync_consensus_roles::attester::{self, L1BatchQC};
+use zksync_consensus_roles::attester::{self, L1Batch, L1BatchQC};
 use zksync_consensus_roles::validator::{self};
 use zksync_protobuf::kB;
 
@@ -132,7 +132,7 @@ impl Network {
     pub(crate) async fn broadcast_signature(
         &self,
         ctx: &ctx::Ctx,
-        signature: attester::SignedBatchMsg,
+        signature: attester::SignedBatchMsg<L1Batch>,
     ) -> anyhow::Result<()> {
         let req = rpc::signature::Req(signature);
         let outbound = self.outbound.current();

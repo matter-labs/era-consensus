@@ -30,11 +30,11 @@ impl ProtoFmt for L1Batch {
     }
 }
 
-impl ProtoFmt for SignedBatchMsg {
+impl<V: Variant<Msg> + Clone> ProtoFmt for SignedBatchMsg<V> {
     type Proto = proto::SignedBatch;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            msg: L1Batch::extract(read_required::<Msg>(&r.msg).context("msg")?)?,
+            msg: V::extract(read_required::<Msg>(&r.msg).context("msg")?)?,
             key: read_required(&r.key).context("key")?,
             sig: read_required(&r.sig).context("sig")?,
         })

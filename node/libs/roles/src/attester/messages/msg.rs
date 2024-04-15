@@ -37,9 +37,9 @@ impl Variant<Msg> for L1Batch {
 /// Strongly typed signed l1 batch message.
 /// WARNING: signature is not guaranteed to be valid.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SignedBatchMsg {
+pub struct SignedBatchMsg<V: Variant<Msg>> {
     /// The message that was signed.
-    pub msg: L1Batch,
+    pub msg: V,
     /// The public key of the signer.
     pub key: PublicKey,
     /// The signature.
@@ -216,7 +216,7 @@ impl fmt::Debug for MsgHash {
     }
 }
 
-impl SignedBatchMsg {
+impl<V: Variant<Msg> + Clone> SignedBatchMsg<V> {
     /// Verify the signature on the message.
     pub fn verify(&self) -> anyhow::Result<()> {
         self.sig.verify_msg(&self.msg.clone().insert(), &self.key)
@@ -224,9 +224,9 @@ impl SignedBatchMsg {
 
     /// Casts a signed message variant to sub/super variant.
     /// It is an equivalent of constructing/deconstructing enum values.
-    pub fn cast(self) -> Result<SignedBatchMsg, BadVariantError> {
+    pub fn cast(self) -> Result<SignedBatchMsg<V>, BadVariantError> {
         Ok(SignedBatchMsg {
-            msg: L1Batch::extract(self.msg.insert())?,
+            msg: V::extract(self.msg.insert())?,
             key: self.key,
             sig: self.sig,
         })

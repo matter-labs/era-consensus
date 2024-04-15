@@ -1,5 +1,5 @@
 use super::{
-    AggregateSignature, AttesterSet, L1Batch, MsgHash, PublicKey, SecretKey, Signature,
+    AggregateSignature, AttesterSet, L1Batch, Msg, MsgHash, PublicKey, SecretKey, Signature,
     SignedBatchMsg,
 };
 use rand::{
@@ -7,6 +7,7 @@ use rand::{
     Rng,
 };
 use std::sync::Arc;
+use zksync_consensus_utils::enum_util::Variant;
 
 impl AggregateSignature {
     /// Generate a new aggregate signature from a list of signatures.
@@ -57,8 +58,8 @@ impl Distribution<Signature> for Standard {
     }
 }
 
-impl Distribution<SignedBatchMsg> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SignedBatchMsg {
+impl<V: Variant<Msg>> Distribution<SignedBatchMsg<V>> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SignedBatchMsg<V> {
         rng.gen::<SecretKey>().sign_batch_msg(rng.gen())
     }
 }
