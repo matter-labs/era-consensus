@@ -151,6 +151,14 @@ impl PrepareQC {
             .verify_messages(messages_and_keys)
             .map_err(Error::BadSignature)
     }
+
+    /// Calculates the weight of current PrepareQC signing validators
+    pub fn weight(&self, committee: &validator::Committee) -> u64 {
+        self.map
+            .values()
+            .map(|signers| committee.weight(signers))
+            .sum()
+    }
 }
 
 /// A Prepare message from a leader.

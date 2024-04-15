@@ -21,12 +21,12 @@ pub struct Setup(SetupInner);
 
 impl Setup {
     /// New `Setup` with a given `fork`.
-    pub fn new_with_fork(rng: &mut impl Rng, validators: usize, fork: Fork) -> Self {
-        let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
+    pub fn new_with_fork(rng: &mut impl Rng, weights: Vec<u64>, fork: Fork) -> Self {
+        let keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
         let genesis = Genesis {
-            validators: Committee::new(keys.iter().map(|k| WeightedValidator {
+            validators: Committee::new(keys.iter().enumerate().map(|(i, k)| WeightedValidator {
                 key: k.public(),
-                weight: 1,
+                weight: weights[i],
             }))
             .unwrap(),
             fork,
@@ -41,11 +41,16 @@ impl Setup {
 
     /// New `Setup`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
+        Self::new_with_weights(rng, vec![1; validators])
+    }
+
+    /// New `Setup`.
+    pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
         let fork = Fork {
             number: ForkNumber(rng.gen_range(0..100)),
             first_block: BlockNumber(rng.gen_range(0..100)),
         };
-        Self::new_with_fork(rng, validators, fork)
+        Self::new_with_fork(rng, weights, fork)
     }
 
     /// Next block to finalize.

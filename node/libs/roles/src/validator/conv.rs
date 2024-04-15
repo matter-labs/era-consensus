@@ -57,7 +57,7 @@ impl ProtoFmt for Genesis {
                         .context("validators")?,
                     0,
                 )
-            // empty validator set
+            // empty validator set, will raise an exception in Committee:new()
             } else {
                 (vec![], 0)
             };
