@@ -2,8 +2,6 @@ syntax = "proto3";
 
 package zksync.roles.attester;
 
-import "zksync/std.proto";
-
 message L1Batch {
 }
 
