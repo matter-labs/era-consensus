@@ -281,25 +281,10 @@ fn test_validator_committee_weights() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let setup = Setup::new(rng, 6);
-    // Validators weights
-    let weights = [1000, 600, 800, 6000, 900, 700];
+    // Validators with non-uniform weights
+    let setup = Setup::new_with_weights(rng, vec![1000, 600, 800, 6000, 900, 700]);
     // Expected sum of the validators weights
     let sums = [1000, 1600, 2400, 8400, 9300, 10000];
-    let validators: Vec<WeightedValidator> = weights
-        .iter()
-        .enumerate()
-        .map(|(i, w)| WeightedValidator {
-            key: setup.keys[i].public(),
-            weight: *w,
-        })
-        .collect();
-
-    let genesis = Genesis {
-        validators: Committee::new(validators).unwrap(),
-        fork: setup.genesis.fork.clone(),
-        ..Default::default()
-    };
 
     let view: ViewNumber = rng.gen();
     let msg = make_replica_prepare(rng, view, &setup);
@@ -308,28 +293,40 @@ fn test_validator_committee_weights() {
         let key = &setup.keys[n];
         qc.add(&key.sign_msg(msg.clone()), &setup.genesis);
         let signers = &qc.map[&msg];
-        assert_eq!(genesis.validators.weight(signers), *weight);
+        assert_eq!(setup.genesis.validators.weight(signers), *weight);
     }
 }
 
 #[test]
-fn test_validator_weights_sanity() {
+fn test_committee_weights_overflow_check() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let setup = Setup::new(rng, 6);
-    // Validators weights
-    let weight = u64::MAX / 5;
-    let weights = [weight; 6];
-    let validators: Vec<WeightedValidator> = weights
+    let validators: Vec<WeightedValidator> = [u64::MAX / 5; 6]
         .iter()
-        .enumerate()
-        .map(|(i, w)| WeightedValidator {
-            key: setup.keys[i].public(),
+        .map(|w| WeightedValidator {
+            key: rng.gen::<SecretKey>().public(),
             weight: *w,
         })
         .collect();
 
     // Creation should overflow
+    assert_matches!(Committee::new(validators), Err(_));
+}
+
+#[test]
+fn test_committee_with_zero_weights() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let validators: Vec<WeightedValidator> = vec![1000, 0, 800, 6000, 0, 700]
+        .iter()
+        .map(|w| WeightedValidator {
+            key: rng.gen::<SecretKey>().public(),
+            weight: *w,
+        })
+        .collect();
+
+    // Committee creation should error on zero weight validators
     assert_matches!(Committee::new(validators), Err(_));
 }

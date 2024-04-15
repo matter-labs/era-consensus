@@ -92,6 +92,10 @@ impl Committee {
                 !weighted_validators.contains_key(&validator.key),
                 "Duplicate validator in validator Committee"
             );
+            anyhow::ensure!(
+                validator.weight > 0,
+                "Validator weight has to be a positive value"
+            );
             total_weight = total_weight
                 .checked_add(validator.weight)
                 .context("Sum of weights overflows in validator Committee")?;
