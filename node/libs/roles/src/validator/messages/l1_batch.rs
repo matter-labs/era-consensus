@@ -1,11 +1,11 @@
-use crate::validator::{self, Signature};
+use crate::validator::{self};
 
 use super::{Genesis, Signed};
 
 /// A message to send by validators to the gossip network.
 /// It contains the validators signature to sign the block batches to be sent to L1.
 #[derive(Debug, Clone, Eq, PartialEq, Default)]
-pub struct L1BatchMsg();
+pub struct L1BatchMsg;
 
 /// A certificate for a batch of L2 blocks to be sent to L1.
 /// It contains the signatures of the validators that signed the batch.
@@ -19,6 +19,7 @@ pub struct L1BatchQC {
     pub message: L1BatchMsg,
 }
 
+/// Error returned by `L1BatchQC::verify()` if the signature is invalid.
 #[derive(thiserror::Error, Debug)]
 pub enum L1BatchQCVerifyError {
     /// Bad signature.
@@ -27,15 +28,18 @@ pub enum L1BatchQCVerifyError {
 }
 
 impl L1BatchQC {
+    /// Create a new empty instance for a given `ReplicaCommit` message and a validator set size.
     pub fn new(validators: usize) -> Self {
         Self {
             signature: validator::AggregateSignature::default(),
             signers: validator::Signers::new(validators),
-            message: L1BatchMsg::default(),
+            message: L1BatchMsg,
         }
     }
 
-    pub fn add(&mut self, signature: Signature, msg: &Signed<L1BatchMsg>, genesis: &Genesis) {
+    /// Add a attester's signature.
+    /// Signature is assumed to be already verified.
+    pub fn add(&mut self, msg: &Signed<L1BatchMsg>, genesis: &Genesis) {
         if self.message != msg.msg {
             return;
         };
