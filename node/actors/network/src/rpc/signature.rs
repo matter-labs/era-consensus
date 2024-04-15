@@ -13,6 +13,7 @@ impl super::Rpc for Rpc {
     type Req = Req;
     type Resp = ();
 }
+
 /// RPC server for the L1 batch messages.
 pub(crate) struct L1BatchServer<'a>(pub(crate) &'a Network);
 /// Signed consensus message that the receiving peer should process.

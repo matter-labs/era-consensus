@@ -32,12 +32,12 @@ impl ByteFmt for Signature {
 impl TextFmt for Signature {
     fn encode(&self) -> String {
         format!(
-            "validator:batch_signature:bn254:{}",
+            "attester:signature:bn254:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
     }
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("validator:batch_signature:bn254:")?
+        text.strip("attester:signature:bn254:")?
             .decode_hex()
             .map(Self)
     }
