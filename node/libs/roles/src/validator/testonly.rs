@@ -53,7 +53,7 @@ impl Setup {
     /// Pushes the next block with the given payload.
     pub fn push_block(&mut self, payload: Payload) {
         let view = View {
-            protocol_version: ProtocolVersion::EARLIEST,
+            protocol_version: ProtocolVersion::CURRENT,
             fork: self.genesis.fork.number,
             number: self
                 .0

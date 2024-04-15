@@ -9,6 +9,8 @@ mod leader_prepare;
 mod msg;
 mod replica_commit;
 mod replica_prepare;
+#[cfg(test)]
+mod tests;
 
 pub use block::*;
 pub use consensus::*;
