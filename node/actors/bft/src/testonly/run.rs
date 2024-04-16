@@ -1,7 +1,7 @@
 use super::{Behavior, Node};
 use std::collections::HashMap;
 use tracing::Instrument as _;
-use zksync_concurrency::{ctx, oneshot, scope, sync};
+use zksync_concurrency::{ctx, oneshot, scope};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::testonly::new_store;
@@ -46,18 +46,16 @@ impl Test {
             s.spawn_bg(run_nodes(ctx, self.network, &nodes));
 
             // Run the nodes until all honest nodes store enough finalized blocks.
+            assert!(self.blocks_to_finalize>0);
             let first = setup.genesis.fork.first_block;
-            let want_next = validator::BlockNumber(first.0 + self.blocks_to_finalize as u64);
+            let last = first + (self.blocks_to_finalize as u64-1);
             for store in &honest {
-                sync::wait_for(ctx, &mut store.subscribe(), |state| {
-                    state.next() > want_next
-                })
-                .await?;
+                store.wait_until_queued(ctx,last).await?;
             }
 
             // Check that the stored blocks are consistent.
-            for i in 0..self.blocks_to_finalize as u64 + 1 {
-                let i = validator::BlockNumber(i);
+            for i in 0..self.blocks_to_finalize as u64 {
+                let i = first + i;
                 let want = honest[0].block(ctx, i).await?;
                 for store in &honest[1..] {
                     assert_eq!(want, store.block(ctx, i).await?);

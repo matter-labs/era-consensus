@@ -124,12 +124,11 @@ impl Network {
 
             // Push block store state updates to peer.
             s.spawn::<()>(async {
-                let mut sub = self.block_store.subscribe();
-                sub.mark_changed();
+                let mut state = self.block_store.queued();
                 loop {
-                    let state = sync::changed(ctx, &mut sub).await?.clone();
-                    let req = rpc::push_block_store_state::Req(state);
+                    let req = rpc::push_block_store_state::Req(state.clone());
                     push_block_store_state_client.call(ctx, &req, kB).await?;
+                    state = self.block_store.wait_until_queued(ctx,state.next()).await?;
                 }
             });
 

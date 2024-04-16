@@ -192,7 +192,7 @@ impl GossipNetworkTest for BasicSynchronization {
         tracing::info!("Check initial node states");
         for node in &nodes {
             node.start();
-            let state = node.store.subscribe().borrow().clone();
+            let state = node.store.queued();
             assert_eq!(state.first, setup.genesis.fork.first_block);
             assert_eq!(state.last, None);
         }
@@ -372,7 +372,7 @@ async fn test_different_first_block() {
             // Find nodes interested in the next block.
             let interested_nodes: Vec<_> = nodes
                 .iter()
-                .filter(|n| n.store.subscribe().borrow().first <= block.number())
+                .filter(|n| n.store.queued().first <= block.number())
                 .collect();
             // Store this block to one of them.
             if let Some(node) = interested_nodes.choose(rng) {

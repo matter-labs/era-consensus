@@ -77,7 +77,7 @@ pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<valid
 
 /// Verifies storage content.
 pub async fn verify(ctx: &ctx::Ctx, store: &BlockStore) -> anyhow::Result<()> {
-    let range = store.available();
+    let range = store.queued();
     for n in (range.first.0..range.next().0).map(validator::BlockNumber) {
         async {
             store

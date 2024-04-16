@@ -56,7 +56,7 @@ async fn test_state_updates() {
         ] {
             store.wait_until_queued(ctx, n).await.unwrap();
             store.wait_until_persisted(ctx, n).await.unwrap();
-            assert_eq!(want, store.available());
+            assert_eq!(want, store.queued());
         }
 
         for block in &setup.blocks {
@@ -68,7 +68,7 @@ async fn test_state_updates() {
                     .wait_until_persisted(ctx, block.number())
                     .await
                     .unwrap();
-                assert_eq!(want, store.available());
+                assert_eq!(want, store.queued());
             } else {
                 // Otherwise the state should be updated as soon as block is queued.
                 assert_eq!(
@@ -76,7 +76,7 @@ async fn test_state_updates() {
                         first: first_block.number(),
                         last: Some(block.justification.clone()),
                     },
-                    store.available()
+                    store.queued()
                 );
             }
         }

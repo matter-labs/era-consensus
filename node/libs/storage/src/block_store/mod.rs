@@ -90,7 +90,7 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
 
 #[derive(Debug)]
 struct Inner {
-    available: BlockStoreState,
+    queued: BlockStoreState,
     persisted: BlockStoreState,
     cache: VecDeque<validator::FinalBlock>,
 }
@@ -107,10 +107,10 @@ impl Inner {
     /// Noop if provided block is not the expected one.
     /// Returns true iff cache has been modified.
     fn try_push(&mut self, block: validator::FinalBlock) -> bool {
-        if self.available.next()!=block.number() {
+        if self.queued.next()!=block.number() {
             return false;
         }
-        self.available.last = Some(block.justification.clone());
+        self.queued.last = Some(block.justification.clone());
         self.cache.push_back(block);
         self.truncate_cache();
         true
@@ -168,7 +168,7 @@ impl BlockStoreRunner {
             // Task queueing blocks to be persisted.
             let inner = &mut self.0.inner.subscribe();
             loop {
-                let block = sync::wait_for(ctx, inner, |inner| !inner.available.contains(queue_next))
+                let block = sync::wait_for(ctx, inner, |inner| inner.queued.contains(queue_next))
                     .await?
                     .block(queue_next)
                     .unwrap();
@@ -205,7 +205,7 @@ impl BlockStore {
         persisted.verify(&genesis).context("state.verify()")?;
         let this = Arc::new(Self {
             inner: sync::watch::channel(Inner {
-                available: persisted.clone(),
+                queued: persisted.clone(),
                 persisted: persisted,
                 cache: VecDeque::new(),
             })
@@ -222,8 +222,8 @@ impl BlockStore {
     }
 
     /// Available blocks (in memory & persisted).
-    pub fn available(&self) -> BlockStoreState {
-        self.inner.borrow().available.clone()
+    pub fn queued(&self) -> BlockStoreState {
+        self.inner.borrow().queued.clone()
     }
 
     /// Fetches a block (from queue or persistent storage).
@@ -234,7 +234,7 @@ impl BlockStore {
     ) -> ctx::Result<Option<validator::FinalBlock>> {
         {
             let inner = self.inner.borrow();
-            if !inner.available.contains(number) {
+            if !inner.queued.contains(number) {
                 return Ok(None);
             }
             if let Some(block) = inner.block(number) {
@@ -263,7 +263,7 @@ impl BlockStore {
         block: validator::FinalBlock,
     ) -> ctx::Result<()> {
         block.verify(&self.genesis).context("block.verify()")?;
-        sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| inner.available.next() >= block.number()).await?;
+        sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| inner.queued.next() >= block.number()).await?;
         self.inner.send_if_modified(|inner| inner.try_push(block));
         Ok(())
     }
@@ -274,9 +274,8 @@ impl BlockStore {
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::OrCanceled<()> {
-        sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| number < inner.available.next()).await?;
-        Ok(())
+    ) -> ctx::OrCanceled<BlockStoreState> {
+        Ok(sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| number < inner.queued.next()).await?.queued.clone())
     }
 
     /// Waits until the given block is stored persistently.
@@ -285,15 +284,14 @@ impl BlockStore {
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::OrCanceled<()> {
-        sync::wait_for(ctx, &mut self.persistent.persisted(), |persisted| number < persisted.next()).await?;
-        Ok(())
+    ) -> ctx::OrCanceled<BlockStoreState> {
+        Ok(sync::wait_for(ctx, &mut self.persistent.persisted(), |persisted| number < persisted.next()).await?.clone())
     }
 
     fn scrape_metrics(&self) -> metrics::BlockStore {
         let m = metrics::BlockStore::default();
         let inner = self.inner.borrow();
-        m.next_queued_block.set(inner.available.next().0);
+        m.next_queued_block.set(inner.queued.next().0);
         m.next_persisted_block.set(inner.persisted.next().0);
         m
     }

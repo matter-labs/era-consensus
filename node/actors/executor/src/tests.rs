@@ -129,8 +129,7 @@ async fn test_validator_syncing_from_fullnode() {
         // `store.state.first`.
         // Validator should fetch the past blocks from the full node before producing next blocks.
         let last_block = node_store
-            .subscribe()
-            .borrow()
+            .queued()
             .last
             .as_ref()
             .unwrap()
