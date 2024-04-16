@@ -83,8 +83,9 @@ impl UTHarness {
     /// Creates a new `UTHarness` with minimally-significant validator set size.
     pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, BlockStoreRunner) {
         let num_validators = 6;
-        assert!(validator::max_faulty_weight(num_validators as u64) > 0);
-        UTHarness::new(ctx, num_validators).await
+        let (util, runner) = UTHarness::new(ctx, num_validators).await;
+        assert!(util.genesis().validators.max_faulty_weight() > 0);
+        (util, runner)
     }
 
     /// Triggers replica timeout, validates the new ReplicaPrepare
