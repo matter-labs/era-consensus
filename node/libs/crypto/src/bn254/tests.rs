@@ -2,7 +2,8 @@ use crate::{
     bn254::{AggregateSignature, PublicKey, SecretKey, Signature},
     ByteFmt,
 };
-use ff_ce::PrimeField;
+use ff_ce::{Field, PrimeField};
+use num_bigint::BigUint;
 use pairing::{
     bn256::{Fr, G2Affine, G2},
     CurveAffine, CurveProjective,
@@ -23,6 +24,15 @@ fn signature_smoke() {
 }
 
 #[test]
+fn test_secret_key_generate() {
+    let mut rng = rand::thread_rng();
+    let sk = rng.gen::<SecretKey>();
+    // assert 1 <= sk < r
+    assert!(sk.0.into_repr() < Fr::char());
+    assert!(!sk.0.is_zero());
+}
+
+#[test]
 fn test_decode_zero_secret_key_failure() {
     let mut bytes: [u8; 1000] = [0; 1000];
     bytes[0] = 1;
@@ -36,6 +46,16 @@ fn test_decode_zero_secret_key_failure() {
 
     let bytes: [u8; 31] = [0; 31];
     SecretKey::decode(&bytes).expect_err("Undersized secret key decoded");
+
+    let bytes: [u8; 32] = [0; 32];
+    SecretKey::decode(&bytes).expect_err("zero secret key decoded");
+
+    // r is taken from https://hackmd.io/@jpw/bn254#Parameter-for-BN254
+    let r_decimal_str =
+        "21888242871839275222246405745257275088548364400416034343698204186575808495617";
+    let decimal_biguint = BigUint::parse_bytes(r_decimal_str.as_bytes(), 10).unwrap();
+    let bytes = decimal_biguint.to_bytes_be();
+    SecretKey::decode(&bytes).expect_err("sk >= r decoded");
 }
 
 #[test]
