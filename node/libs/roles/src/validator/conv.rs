@@ -1,8 +1,8 @@
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
-    Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress,
-    Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
-    ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
+    Fork, ForkNumber, Genesis, GenesisHash, GenesisVersion, LeaderCommit, LeaderPrepare, Msg,
+    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
+    ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
 use crate::{node::SessionId, proto::validator as proto};
 use anyhow::Context as _;
@@ -31,7 +31,7 @@ impl ProtoFmt for Fork {
 impl ProtoFmt for Genesis {
     type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let (validators, encoding_version) =
+        let (validators, version) =
             // current genesis encoding version 1
             if !r.validators_v1.is_empty() {
                 (
@@ -41,7 +41,7 @@ impl ProtoFmt for Genesis {
                         .map(|(i, v)| WeightedValidator::read(v).context(i))
                         .collect::<Result<_, _>>()
                         .context("validators")?,
-                    1,
+                    GenesisVersion(1),
                 )
             // legacy genesis encoding version 0
             } else if !r.validators.is_empty() {
@@ -55,26 +55,26 @@ impl ProtoFmt for Genesis {
                         }))
                         .collect::<Result<_,_>>()
                         .context("validators")?,
-                    0,
+                    GenesisVersion(0),
                 )
-            // empty validator set, will raise an exception in Committee:new()
+            // empty validator set, Committee:new() will later return an error.
             } else {
-                (vec![], 0)
+                (vec![], GenesisVersion::CURRENT)
             };
         Ok(Self {
             fork: read_required(&r.fork).context("fork")?,
             validators: Committee::new(validators.into_iter()).context("validators")?,
-            encoding_version,
+            version,
         })
     }
     fn build(&self) -> Self::Proto {
-        match self.encoding_version {
-            0 => Self::Proto {
+        match self.version {
+            GenesisVersion(0) => Self::Proto {
                 fork: Some(self.fork.build()),
                 validators: self.validators.iter().map(|v| v.key.build()).collect(),
                 validators_v1: vec![],
             },
-            1.. => Self::Proto {
+            GenesisVersion(1..) => Self::Proto {
                 fork: Some(self.fork.build()),
                 validators: vec![],
                 validators_v1: self.validators.iter().map(|v| v.build()).collect(),

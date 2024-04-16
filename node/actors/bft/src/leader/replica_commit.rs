@@ -39,10 +39,10 @@ pub(crate) enum Error {
     #[error("invalid message: {0:#}")]
     InvalidMessage(#[source] anyhow::Error),
     /// Duplicate message from a replica.
-    #[error("duplicate message from a replica (existing message: {existing_message:?}")]
-    DuplicateMessage {
-        /// Existing message from the same replica.
-        existing_message: validator::ReplicaCommit,
+    #[error("Replica signed more than one message for same view (message: {message:?}")]
+    DuplicateSignature {
+        /// Offending message.
+        message: validator::ReplicaCommit,
     },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
@@ -105,11 +105,14 @@ impl StateMachine {
             .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()));
 
         // If we already have a message from the same validator and for the same view, we discard it.
-        if commit_qc.signers.0[self.config.genesis().validators.index(author).unwrap()] {
-            return Err(Error::DuplicateMessage {
-                existing_message: commit_qc.message.clone(),
+        let validator_view = self.validator_views.get(author);
+        if validator_view.is_some_and(|view_number| *view_number >= message.view.number) {
+            return Err(Error::DuplicateSignature {
+                message: commit_qc.message.clone(),
             });
         }
+        self.validator_views
+            .insert(author.clone(), message.view.number);
 
         // ----------- Checking the signed part of the message --------------
 

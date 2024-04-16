@@ -1,10 +1,10 @@
 //! Test-only utilities.
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
-    Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress,
-    Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
-    ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
-    CURRENT_GENESIS_ENCODING_VERSION,
+    Fork, ForkNumber, Genesis, GenesisHash, GenesisVersion, LeaderCommit, LeaderPrepare, Msg,
+    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
+    ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
+    WeightedValidator,
 };
 use bit_vec::BitVec;
 use rand::{
@@ -202,8 +202,14 @@ impl Distribution<Genesis> for Standard {
         Genesis {
             validators: rng.gen(),
             fork: rng.gen(),
-            encoding_version: rng.gen_range(0..=CURRENT_GENESIS_ENCODING_VERSION),
+            version: rng.gen(),
         }
+    }
+}
+
+impl Distribution<GenesisVersion> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisVersion {
+        GenesisVersion(rng.gen_range(0..=GenesisVersion::CURRENT.0))
     }
 }
 

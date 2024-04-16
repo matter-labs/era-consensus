@@ -319,7 +319,7 @@ fn test_committee_with_zero_weights() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let validators: Vec<WeightedValidator> = vec![1000, 0, 800, 6000, 0, 700]
+    let validators: Vec<WeightedValidator> = [1000, 0, 800, 6000, 0, 700]
         .iter()
         .map(|w| WeightedValidator {
             key: rng.gen::<SecretKey>().public(),

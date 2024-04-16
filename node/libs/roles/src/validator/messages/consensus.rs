@@ -7,9 +7,6 @@ use std::{collections::BTreeMap, fmt};
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
-/// Current genesis encoding version
-pub const CURRENT_GENESIS_ENCODING_VERSION: usize = 1;
-
 /// Version of the consensus algorithm that the validator is using.
 /// It allows to prevent misinterpretation of messages signed by validators
 /// using different versions of the binaries.
@@ -197,12 +194,22 @@ pub fn max_faulty_weight(total_weight: u64) -> u64 {
     (total_weight - 1) / 5
 }
 
+/// Version of the Genesis representation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct GenesisVersion(pub u32);
+
+impl GenesisVersion {
+    /// Version 0 - deprecated: Committee encoding does not account weights, assume weight=1 per validator
+    /// Version 1: Validators with weight within Committee
+    pub const CURRENT: Self = Self(1);
+}
+
 /// Genesis of the blockchain, unique for each blockchain instance.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Genesis {
     // TODO(gprusak): add blockchain id here.
     /// Genesis encoding version
-    pub encoding_version: usize,
+    pub version: GenesisVersion,
     /// Set of validators of the chain.
     pub validators: Committee,
     /// Fork of the chain to follow.
@@ -223,7 +230,7 @@ impl Genesis {
 impl Default for Genesis {
     fn default() -> Self {
         Self {
-            encoding_version: CURRENT_GENESIS_ENCODING_VERSION,
+            version: GenesisVersion::CURRENT,
             validators: Committee::default(),
             fork: Fork::default(),
         }

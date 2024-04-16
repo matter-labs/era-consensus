@@ -39,6 +39,8 @@ pub(crate) struct StateMachine {
     /// Commit QCs indexed by view number and then by message.
     pub(crate) commit_qcs:
         BTreeMap<validator::ViewNumber, BTreeMap<validator::ReplicaCommit, validator::CommitQC>>,
+    /// Latest view a validator has signed a message for.
+    pub(crate) validator_views: BTreeMap<validator::PublicKey, validator::ViewNumber>,
 }
 
 impl StateMachine {
@@ -66,6 +68,7 @@ impl StateMachine {
             prepare_qc: sync::watch::channel(None).0,
             commit_qcs: BTreeMap::new(),
             inbound_pipe: recv,
+            validator_views: BTreeMap::new(),
         };
 
         (this, send)

@@ -30,8 +30,8 @@ fn fork() -> Fork {
     }
 }
 
-/// Hardcoded genesis.
-fn genesis(encoding_version: usize) -> Genesis {
+/// Hardcoded v0 genesis.
+fn genesis_v0() -> Genesis {
     Genesis {
         validators: Committee::new(keys().iter().map(|k| WeightedValidator {
             key: k.public(),
@@ -39,7 +39,20 @@ fn genesis(encoding_version: usize) -> Genesis {
         }))
         .unwrap(),
         fork: fork(),
-        encoding_version,
+        version: GenesisVersion(0),
+    }
+}
+
+/// Hardcoded v1 genesis.
+fn genesis_v1() -> Genesis {
+    Genesis {
+        validators: Committee::new(keys().iter().map(|k| WeightedValidator {
+            key: k.public(),
+            weight: 1,
+        }))
+        .unwrap(),
+        fork: fork(),
+        version: GenesisVersion(1),
     }
 }
 
@@ -63,7 +76,7 @@ fn genesis_v0_hash_change_detector() {
     )
     .decode()
     .unwrap();
-    assert_eq!(want, genesis(0).hash());
+    assert_eq!(want, genesis_v0().hash());
 }
 
 #[test]
@@ -73,7 +86,7 @@ fn genesis_v1_hash_change_detector() {
     )
     .decode()
     .unwrap();
-    assert_eq!(want, genesis(1).hash());
+    assert_eq!(want, genesis_v1().hash());
 }
 
 mod version1 {
@@ -122,7 +135,7 @@ mod version1 {
 
     /// Hardcoded `CommitQC`.
     fn commit_qc() -> CommitQC {
-        let genesis = genesis(1);
+        let genesis = genesis_v1();
         let replica_commit = replica_commit();
         let mut x = CommitQC::new(replica_commit.clone(), &genesis);
         for k in keys() {
@@ -150,7 +163,7 @@ mod version1 {
     /// Hardcoded `PrepareQC`.
     fn prepare_qc() -> PrepareQC {
         let mut x = PrepareQC::new(view());
-        let genesis = genesis(1);
+        let genesis = genesis_v1();
         let replica_prepare = replica_prepare();
         for k in keys() {
             x.add(&k.sign_msg(replica_prepare.clone()), &genesis);

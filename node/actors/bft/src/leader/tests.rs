@@ -546,15 +546,31 @@ async fn replica_commit_already_exists() {
             .await
             .unwrap()
             .is_none());
+
+        // Processing twice same ReplicaCommit for same view gets DuplicateSignature error
         let res = util
             .process_replica_commit(ctx, util.sign(replica_commit.clone()))
             .await;
         assert_matches!(
             res,
-            Err(replica_commit::Error::DuplicateMessage { existing_message }) => {
-                assert_eq!(existing_message, replica_commit)
+            Err(replica_commit::Error::DuplicateSignature { message }) => {
+                assert_eq!(message, replica_commit)
             }
         );
+
+        // Processing twice different ReplicaCommit for same view gets DuplicateSignature error too
+        let mut different_replica_commit = replica_commit.clone();
+        different_replica_commit.proposal.number = replica_commit.proposal.number.next();
+        let res = util
+            .process_replica_commit(ctx, util.sign(different_replica_commit.clone()))
+            .await;
+        assert_matches!(
+            res,
+            Err(replica_commit::Error::DuplicateSignature { message }) => {
+                assert_eq!(message, different_replica_commit)
+            }
+        );
+
         Ok(())
     })
     .await
