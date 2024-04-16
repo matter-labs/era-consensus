@@ -1,7 +1,7 @@
 //! Defines storage layer for finalized blocks.
 use anyhow::Context as _;
 use std::{collections::VecDeque, fmt, sync::Arc};
-use zksync_concurrency::{ctx, scope, error::Wrap as _, sync};
+use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::validator;
 
 mod metrics;
@@ -101,13 +101,13 @@ impl Inner {
     /// if persistent storage reads are slow (like in RocksDB).
     /// `BlockStore` may keep in memory more blocks in case
     /// blocks are queued faster than they are persisted.
-    const CACHE_CAPACITY : usize = 100;
+    const CACHE_CAPACITY: usize = 100;
 
     /// Tries to push the next block to cache.
     /// Noop if provided block is not the expected one.
     /// Returns true iff cache has been modified.
     fn try_push(&mut self, block: validator::FinalBlock) -> bool {
-        if self.queued.next()!=block.number() {
+        if self.queued.next() != block.number() {
             return false;
         }
         self.queued.last = Some(block.justification.clone());
@@ -117,7 +117,9 @@ impl Inner {
     }
 
     fn truncate_cache(&mut self) {
-        while self.cache.len()>Self::CACHE_CAPACITY && self.persisted.contains(self.cache[0].number()) {
+        while self.cache.len() > Self::CACHE_CAPACITY
+            && self.persisted.contains(self.cache[0].number())
+        {
             self.cache.pop_front();
         }
     }
@@ -126,7 +128,7 @@ impl Inner {
         // Subtraction is safe, because blocks in cache are
         // stored in increasing order of block number.
         let first = self.cache.front()?;
-        self.cache.get((n.0-first.number().0) as usize).cloned()
+        self.cache.get((n.0 - first.number().0) as usize).cloned()
     }
 }
 
@@ -151,7 +153,7 @@ impl BlockStoreRunner {
         let store_ref = Arc::downgrade(&self.0);
         let _ = COLLECTOR.before_scrape(move || Some(store_ref.upgrade()?.scrape_metrics()));
 
-        let res = scope::run!(ctx, |ctx,s| async {
+        let res = scope::run!(ctx, |ctx, s| async {
             let persisted = self.0.persistent.persisted();
             let mut queue_next = persisted.borrow().next();
             // Task truncating cache whenever a block gets persisted.
@@ -181,7 +183,8 @@ impl BlockStoreRunner {
                 self.0.persistent.queue_next_block(ctx, block).await?;
                 t.observe();
             }
-        }).await;
+        })
+        .await;
         match res {
             Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
             Err(ctx::Error::Internal(err)) => Err(err),
@@ -206,7 +209,7 @@ impl BlockStore {
         let this = Arc::new(Self {
             inner: sync::watch::channel(Inner {
                 queued: persisted.clone(),
-                persisted: persisted,
+                persisted,
                 cache: VecDeque::new(),
             })
             .0,
@@ -263,7 +266,10 @@ impl BlockStore {
         block: validator::FinalBlock,
     ) -> ctx::Result<()> {
         block.verify(&self.genesis).context("block.verify()")?;
-        sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| inner.queued.next() >= block.number()).await?;
+        sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
+            inner.queued.next() >= block.number()
+        })
+        .await?;
         self.inner.send_if_modified(|inner| inner.try_push(block));
         Ok(())
     }
@@ -275,7 +281,12 @@ impl BlockStore {
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
     ) -> ctx::OrCanceled<BlockStoreState> {
-        Ok(sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| number < inner.queued.next()).await?.queued.clone())
+        Ok(sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
+            number < inner.queued.next()
+        })
+        .await?
+        .queued
+        .clone())
     }
 
     /// Waits until the given block is stored persistently.
@@ -285,7 +296,13 @@ impl BlockStore {
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
     ) -> ctx::OrCanceled<BlockStoreState> {
-        Ok(sync::wait_for(ctx, &mut self.persistent.persisted(), |persisted| number < persisted.next()).await?.clone())
+        Ok(
+            sync::wait_for(ctx, &mut self.persistent.persisted(), |persisted| {
+                number < persisted.next()
+            })
+            .await?
+            .clone(),
+        )
     }
 
     fn scrape_metrics(&self) -> metrics::BlockStore {

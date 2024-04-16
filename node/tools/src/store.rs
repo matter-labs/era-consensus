@@ -78,9 +78,10 @@ impl RocksDB {
                 // `RocksDB` is assumed to store all blocks starting from genesis.
                 first: genesis.fork.first_block,
                 last: scope::wait_blocking(|| Self::last_blocking(&db)).await?,
-            }).0,
+            })
+            .0,
             genesis,
-            db: RwLock::new(db),           
+            db: RwLock::new(db),
         })))
     }
 
@@ -142,7 +143,11 @@ impl PersistentBlockStore for RocksDB {
         scope::wait_blocking(|| {
             let db = self.0.db.write().unwrap();
             let want = self.0.persisted.borrow().next();
-            anyhow::ensure!(block.number()==want, "got {:?} want {want:?}",block.number());
+            anyhow::ensure!(
+                block.number() == want,
+                "got {:?} want {want:?}",
+                block.number()
+            );
             let block_number = block.header().number;
             let mut write_batch = rocksdb::WriteBatch::default();
             write_batch.put(
@@ -152,7 +157,9 @@ impl PersistentBlockStore for RocksDB {
             // Commit the transaction.
             db.write(write_batch)
                 .context("Failed writing block to database")?;
-            self.0.persisted.send_modify(|p|p.last = Some(block.justification.clone()));
+            self.0
+                .persisted
+                .send_modify(|p| p.last = Some(block.justification.clone()));
             Ok(())
         })
         .await

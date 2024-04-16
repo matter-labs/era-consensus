@@ -128,13 +128,7 @@ async fn test_validator_syncing_from_fullnode() {
         // Restart the validator with empty store (but preserved replica state) and non-trivial
         // `store.state.first`.
         // Validator should fetch the past blocks from the full node before producing next blocks.
-        let last_block = node_store
-            .queued()
-            .last
-            .as_ref()
-            .unwrap()
-            .header()
-            .number;
+        let last_block = node_store.queued().last.as_ref().unwrap().header().number;
         let (store, runner) =
             new_store_with_first(ctx, &setup.genesis, setup.genesis.fork.first_block + 2).await;
         s.spawn_bg(runner.run(ctx));

@@ -1,6 +1,6 @@
 use super::*;
 use crate::{testonly::new_store_with_first, ReplicaState};
-use zksync_concurrency::{ctx, sync, scope, testonly::abort_on_panic};
+use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
 use zksync_consensus_roles::validator::testonly::Setup;
 
 #[tokio::test]
@@ -18,7 +18,9 @@ async fn test_inmemory_block_store() {
     let mut want = vec![];
     for block in &setup.blocks {
         store.queue_next_block(ctx, block.clone()).await.unwrap();
-        sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(block.number())).await.unwrap();
+        sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(block.number()))
+            .await
+            .unwrap();
         want.push(block.clone());
         assert_eq!(want, testonly::dump(ctx, store).await);
     }

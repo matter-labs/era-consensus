@@ -5,7 +5,7 @@ use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
 };
-use zksync_concurrency::{sync,ctx};
+use zksync_concurrency::{ctx, sync};
 use zksync_consensus_roles::validator;
 
 #[derive(Debug)]
@@ -67,9 +67,11 @@ impl PersistentBlockStore for BlockStore {
         let mut blocks = self.0.blocks.lock().unwrap();
         let want = self.0.persisted.borrow().next();
         if block.number() != want {
-            return Err(anyhow::anyhow!("got block {:?}, want {want:?}",block.number()).into());
+            return Err(anyhow::anyhow!("got block {:?}, want {want:?}", block.number()).into());
         }
-        self.0.persisted.send_modify(|p|p.last = Some(block.justification.clone()));
+        self.0
+            .persisted
+            .send_modify(|p| p.last = Some(block.justification.clone()));
         blocks.push_back(block);
         Ok(())
     }
