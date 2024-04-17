@@ -1,5 +1,6 @@
 //! High-level tests for `Executor`.
 use super::*;
+use tracing::Instrument as _;
 use zksync_concurrency::testonly::abort_on_panic;
 use zksync_consensus_bft as bft;
 use zksync_consensus_network::testonly::{new_configs, new_fullnode};
@@ -105,19 +106,17 @@ async fn test_validator_syncing_from_fullnode() {
     let setup = Setup::new(rng, 1);
     let cfgs = new_configs(rng, &setup, 0);
     scope::run!(ctx, |ctx, s| async {
-        // Spawn full node.
-        let (node_store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        s.spawn_bg(fullnode(&new_fullnode(rng, &cfgs[0]), node_store.clone()).run(ctx));
-
         // Run validator and produce some blocks.
-        // Wait for the blocks to be fetched by the full node.
         let replica_store = in_memory::ReplicaStore::default();
+        let (store, runner) = new_store(ctx, &setup.genesis).await;
+        s.spawn_bg(runner.run(ctx));
         scope::run!(ctx, |ctx, s| async {
-            let (store, runner) = new_store(ctx, &setup.genesis).await;
-            s.spawn_bg(runner.run(ctx));
-            s.spawn_bg(validator(&cfgs[0], store, replica_store.clone()).run(ctx));
-            node_store
+            s.spawn_bg(
+                validator(&cfgs[0], store.clone(), replica_store.clone())
+                    .run(ctx)
+                    .instrument(tracing::info_span!("validator")),
+            );
+            store
                 .wait_until_persisted(ctx, setup.genesis.fork.first_block + 4)
                 .await?;
             Ok(())
@@ -125,16 +124,31 @@ async fn test_validator_syncing_from_fullnode() {
         .await
         .unwrap();
 
+        // Spawn full node with storage used previously by validator -this ensures that
+        // all finalized blocks are available: if we ran a fullnode in parallel to the
+        // validator, there would be a race condition between fullnode syncing and validator
+        // terminating.
+        s.spawn_bg(
+            fullnode(&new_fullnode(rng, &cfgs[0]), store.clone())
+                .run(ctx)
+                .instrument(tracing::info_span!("fullnode")),
+        );
+
         // Restart the validator with empty store (but preserved replica state) and non-trivial
         // `store.state.first`.
         // Validator should fetch the past blocks from the full node before producing next blocks.
-        let last_block = node_store.queued().last.as_ref().unwrap().header().number;
-        let (store, runner) =
+        let last_block = store.queued().last.as_ref().unwrap().header().number;
+        let (store2, runner) =
             new_store_with_first(ctx, &setup.genesis, setup.genesis.fork.first_block + 2).await;
         s.spawn_bg(runner.run(ctx));
-        s.spawn_bg(validator(&cfgs[0], store, replica_store).run(ctx));
-        node_store.wait_until_persisted(ctx, last_block + 3).await?;
+        s.spawn_bg(
+            validator(&cfgs[0], store2, replica_store)
+                .run(ctx)
+                .instrument(tracing::info_span!("validator")),
+        );
 
+        // Wait for the fullnode to fetch the new blocks.
+        store.wait_until_persisted(ctx, last_block + 3).await?;
         Ok(())
     })
     .await

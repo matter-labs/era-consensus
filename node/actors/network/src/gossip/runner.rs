@@ -79,7 +79,6 @@ impl rpc::Handler<rpc::get_block::Rpc> for &BlockStore {
 
 impl Network {
     /// Manages lifecycle of a single connection.
-    #[tracing::instrument(level = "info", name = "gossip", skip_all)]
     async fn run_stream(
         &self,
         ctx: &ctx::Ctx,
@@ -160,6 +159,7 @@ impl Network {
 
     /// Handles an inbound stream.
     /// Closes the stream if there is another inbound stream opened from the same peer.
+    #[tracing::instrument(level = "info", name = "gossip", skip_all)]
     pub(crate) async fn run_inbound_stream(
         &self,
         ctx: &ctx::Ctx,
@@ -178,6 +178,7 @@ impl Network {
     }
 
     /// Connects to a peer and handles the resulting stream.
+    #[tracing::instrument(level = "info", name = "gossip", skip_all)]
     pub(crate) async fn run_outbound_stream(
         &self,
         ctx: &ctx::Ctx,
@@ -200,6 +201,7 @@ impl Network {
             peer,
         )
         .await?;
+        tracing::info!("peer = {peer:?}");
         let conn = Arc::new(Connection {
             get_block: rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate),
         });
