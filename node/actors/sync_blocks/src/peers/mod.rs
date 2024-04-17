@@ -100,7 +100,7 @@ impl PeerStates {
     pub(crate) async fn run_block_fetcher(&self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         let sem = sync::Semaphore::new(self.config.max_concurrent_blocks);
         scope::run!(ctx, |ctx, s| async {
-            let mut next = self.storage.subscribe().borrow().next();
+            let mut next = self.storage.queued().next();
             let mut highest_peer_block = self.highest_peer_block.subscribe();
             loop {
                 sync::wait_for(ctx, &mut highest_peer_block, |highest_peer_block| {

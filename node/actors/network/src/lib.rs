@@ -130,19 +130,19 @@ impl Runner {
 
             // Maintain static gossip connections.
             for (peer, addr) in &self.net.gossip.cfg.gossip.static_outbound {
-                s.spawn(async {
+                s.spawn::<()>(async {
+                    let addr = &*addr;
                     loop {
-                        let run_result = self
+                        let res = self
                             .net
                             .gossip
                             .run_outbound_stream(ctx, peer, addr.clone())
+                            .instrument(tracing::info_span!("out", ?addr))
                             .await;
-                        if let Err(err) = run_result {
-                            tracing::info!("gossip.run_outbound_stream(): {err:#}");
+                        if let Err(err) = res {
+                            tracing::info!("gossip.run_outbound_stream({addr:?}): {err:#}");
                         }
-                        if let Err(ctx::Canceled) = ctx.sleep(CONNECT_RETRY).await {
-                            return Ok(());
-                        }
+                        ctx.sleep(CONNECT_RETRY).await?;
                     }
                 });
             }

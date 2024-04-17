@@ -79,7 +79,6 @@ impl rpc::Handler<rpc::get_block::Rpc> for &BlockStore {
 
 impl Network {
     /// Manages lifecycle of a single connection.
-    #[tracing::instrument(level = "info", name = "gossip", skip_all)]
     async fn run_stream(
         &self,
         ctx: &ctx::Ctx,
@@ -124,12 +123,14 @@ impl Network {
 
             // Push block store state updates to peer.
             s.spawn::<()>(async {
-                let mut sub = self.block_store.subscribe();
-                sub.mark_changed();
+                let mut state = self.block_store.queued();
                 loop {
-                    let state = sync::changed(ctx, &mut sub).await?.clone();
-                    let req = rpc::push_block_store_state::Req(state);
+                    let req = rpc::push_block_store_state::Req(state.clone());
                     push_block_store_state_client.call(ctx, &req, kB).await?;
+                    state = self
+                        .block_store
+                        .wait_until_queued(ctx, state.next())
+                        .await?;
                 }
             });
 
@@ -158,6 +159,7 @@ impl Network {
 
     /// Handles an inbound stream.
     /// Closes the stream if there is another inbound stream opened from the same peer.
+    #[tracing::instrument(level = "info", name = "gossip", skip_all)]
     pub(crate) async fn run_inbound_stream(
         &self,
         ctx: &ctx::Ctx,
@@ -176,6 +178,7 @@ impl Network {
     }
 
     /// Connects to a peer and handles the resulting stream.
+    #[tracing::instrument(level = "info", name = "gossip", skip_all)]
     pub(crate) async fn run_outbound_stream(
         &self,
         ctx: &ctx::Ctx,
@@ -198,6 +201,7 @@ impl Network {
             peer,
         )
         .await?;
+        tracing::info!("peer = {peer:?}");
         let conn = Arc::new(Connection {
             get_block: rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate),
         });
