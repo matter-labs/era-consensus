@@ -30,11 +30,29 @@ fn fork() -> Fork {
     }
 }
 
-/// Hardcoded genesis.
-fn genesis() -> Genesis {
+/// Hardcoded v0 genesis.
+fn genesis_v0() -> Genesis {
     Genesis {
-        validators: ValidatorSet::new(keys().iter().map(|k| k.public())).unwrap(),
+        validators: Committee::new(keys().iter().map(|k| WeightedValidator {
+            key: k.public(),
+            weight: 1,
+        }))
+        .unwrap(),
         fork: fork(),
+        version: GenesisVersion(0),
+    }
+}
+
+/// Hardcoded v1 genesis.
+fn genesis_v1() -> Genesis {
+    Genesis {
+        validators: Committee::new(keys().iter().map(|k| WeightedValidator {
+            key: k.public(),
+            weight: 1,
+        }))
+        .unwrap(),
+        fork: fork(),
+        version: GenesisVersion(1),
     }
 }
 
@@ -52,13 +70,23 @@ fn payload_hash_change_detector() {
 /// Even if it was, ALL versions of genesis need to be supported FOREVER,
 /// unless we introduce dynamic regenesis.
 #[test]
-fn genesis_hash_change_detector() {
+fn genesis_v0_hash_change_detector() {
     let want: GenesisHash = Text::new(
         "genesis_hash:keccak256:9c9bfa303e8d2d451a7fadd327f5f1b957a37c84d7b27b9e1cf7b92fd83af7ae",
     )
     .decode()
     .unwrap();
-    assert_eq!(want, genesis().hash());
+    assert_eq!(want, genesis_v0().hash());
+}
+
+#[test]
+fn genesis_v1_hash_change_detector() {
+    let want: GenesisHash = Text::new(
+        "genesis_hash:keccak256:6370cfce637395629f05599082993c446c2c66145d440287a985ac98ad210b41",
+    )
+    .decode()
+    .unwrap();
+    assert_eq!(want, genesis_v1().hash());
 }
 
 mod version1 {
@@ -107,7 +135,7 @@ mod version1 {
 
     /// Hardcoded `CommitQC`.
     fn commit_qc() -> CommitQC {
-        let genesis = genesis();
+        let genesis = genesis_v1();
         let replica_commit = replica_commit();
         let mut x = CommitQC::new(replica_commit.clone(), &genesis);
         for k in keys() {
@@ -135,7 +163,7 @@ mod version1 {
     /// Hardcoded `PrepareQC`.
     fn prepare_qc() -> PrepareQC {
         let mut x = PrepareQC::new(view());
-        let genesis = genesis();
+        let genesis = genesis_v1();
         let replica_prepare = replica_prepare();
         for k in keys() {
             x.add(&k.sign_msg(replica_prepare.clone()), &genesis);

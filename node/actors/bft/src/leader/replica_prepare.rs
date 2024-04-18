@@ -2,7 +2,7 @@
 use super::StateMachine;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
-use zksync_consensus_roles::validator::{self, ProtocolVersion};
+use zksync_consensus_roles::validator;
 
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]
@@ -11,9 +11,9 @@ pub(crate) enum Error {
     #[error("incompatible protocol version (message version: {message_version:?}, local version: {local_version:?}")]
     IncompatibleProtocolVersion {
         /// Message version.
-        message_version: ProtocolVersion,
+        message_version: validator::ProtocolVersion,
         /// Local version.
-        local_version: ProtocolVersion,
+        local_version: validator::ProtocolVersion,
     },
     /// Message signer isn't part of the validator set.
     #[error("Message signer isn't part of the validator set (signer: {signer:?})")]
@@ -132,33 +132,28 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // We add the message to the incrementally-constructed QC.
-        self.prepare_qcs
+        let prepare_qc = self
+            .prepare_qcs
             .entry(message.view.number)
-            .or_insert_with(|| validator::PrepareQC::new(message.view.clone()))
-            .add(&signed_message, self.config.genesis());
+            .or_insert_with(|| validator::PrepareQC::new(message.view.clone()));
+        prepare_qc.add(&signed_message, self.config.genesis());
 
         // We store the message in our cache.
         self.prepare_message_cache
             .entry(message.view.number)
             .or_default()
-            .insert(author.clone(), signed_message);
+            .insert(author.clone(), signed_message.clone());
 
-        // Now we check if we have enough messages to continue.
-        let num_messages = self
-            .prepare_message_cache
-            .get(&message.view.number)
-            .unwrap()
-            .len();
-
-        if num_messages < self.config.genesis().validators.threshold() {
+        // Now we check if we have enough weight to continue.
+        if prepare_qc.weight(&self.config.genesis().validators)
+            < self.config.genesis().validators.threshold()
+        {
             return Ok(());
         }
 
         // Remove replica prepare messages for this view, so that we don't create a new block proposal
         // for this same view if we receive another replica prepare message after this.
         self.prepare_message_cache.remove(&message.view.number);
-
-        debug_assert_eq!(num_messages, self.config.genesis().validators.threshold());
 
         // ----------- Update the state machine --------------
 

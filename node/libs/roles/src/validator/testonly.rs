@@ -1,9 +1,10 @@
 //! Test-only utilities.
 use super::{
-    AggregateSignature, BlockHeader, BlockNumber, CommitQC, ConsensusMsg, FinalBlock, Fork,
-    ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress,
-    Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
-    ReplicaPrepare, SecretKey, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
+    AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
+    Fork, ForkNumber, Genesis, GenesisHash, GenesisVersion, LeaderCommit, LeaderPrepare, Msg,
+    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
+    ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
+    WeightedValidator,
 };
 use bit_vec::BitVec;
 use rand::{
@@ -20,11 +21,16 @@ pub struct Setup(SetupInner);
 
 impl Setup {
     /// New `Setup` with a given `fork`.
-    pub fn new_with_fork(rng: &mut impl Rng, validators: usize, fork: Fork) -> Self {
-        let keys: Vec<SecretKey> = (0..validators).map(|_| rng.gen()).collect();
+    pub fn new_with_fork(rng: &mut impl Rng, weights: Vec<u64>, fork: Fork) -> Self {
+        let keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
         let genesis = Genesis {
-            validators: ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap(),
+            validators: Committee::new(keys.iter().enumerate().map(|(i, k)| WeightedValidator {
+                key: k.public(),
+                weight: weights[i],
+            }))
+            .unwrap(),
             fork,
+            ..Default::default()
         };
         Self(SetupInner {
             keys,
@@ -35,11 +41,16 @@ impl Setup {
 
     /// New `Setup`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
+        Self::new_with_weights(rng, vec![1; validators])
+    }
+
+    /// New `Setup`.
+    pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
         let fork = Fork {
             number: ForkNumber(rng.gen_range(0..100)),
             first_block: BlockNumber(rng.gen_range(0..100)),
         };
-        Self::new_with_fork(rng, validators, fork)
+        Self::new_with_fork(rng, weights, fork)
     }
 
     /// Next block to finalize.
@@ -191,7 +202,14 @@ impl Distribution<Genesis> for Standard {
         Genesis {
             validators: rng.gen(),
             fork: rng.gen(),
+            version: rng.gen(),
         }
+    }
+}
+
+impl Distribution<GenesisVersion> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisVersion {
+        GenesisVersion(rng.gen_range(0..=GenesisVersion::CURRENT.0))
     }
 }
 
@@ -292,11 +310,14 @@ impl Distribution<Signers> for Standard {
     }
 }
 
-impl Distribution<ValidatorSet> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ValidatorSet {
+impl Distribution<Committee> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Committee {
         let count = rng.gen_range(1..11);
-        let public_keys = (0..count).map(|_| rng.gen());
-        ValidatorSet::new(public_keys).unwrap()
+        let public_keys = (0..count).map(|_| WeightedValidator {
+            key: rng.gen(),
+            weight: 1,
+        });
+        Committee::new(public_keys).unwrap()
     }
 }
 

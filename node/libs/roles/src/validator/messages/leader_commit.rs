@@ -41,13 +41,13 @@ pub enum CommitQCVerifyError {
     /// Bad signer set.
     #[error("signers set doesn't match genesis")]
     BadSignersSet,
-    /// Not enough signers.
-    #[error("not enough signers: got {got}, want {want}")]
+    /// Weight not reached.
+    #[error("Signers have not reached threshold weight: got {got}, want {want}")]
     NotEnoughSigners {
-        /// Got signers.
-        got: usize,
-        /// Want signers.
-        want: usize,
+        /// Got weight.
+        got: u64,
+        /// Want weight.
+        want: u64,
     },
     /// Bad signature.
     #[error("bad signature: {0:#}")]
@@ -100,12 +100,12 @@ impl CommitQC {
             return Err(Error::BadSignersSet);
         }
 
-        // Verify that we have enough signers.
-        let num_signers = self.signers.count();
+        // Verify the signers' weight is enough.
+        let weight = genesis.validators.weight(&self.signers);
         let threshold = genesis.validators.threshold();
-        if num_signers < threshold {
+        if weight < threshold {
             return Err(Error::NotEnoughSigners {
-                got: num_signers,
+                got: weight,
                 want: threshold,
             });
         }
@@ -113,7 +113,7 @@ impl CommitQC {
         // Now we can verify the signature.
         let messages_and_keys = genesis
             .validators
-            .iter()
+            .iter_keys()
             .enumerate()
             .filter(|(i, _)| self.signers.0[*i])
             .map(|(_, pk)| (self.message.clone(), pk));
