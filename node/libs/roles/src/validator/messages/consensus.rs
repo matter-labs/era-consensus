@@ -3,7 +3,7 @@ use super::{BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, Replic
 use crate::validator;
 use anyhow::Context;
 use bit_vec::BitVec;
-use std::{collections::BTreeMap, fmt};
+use std::{collections::BTreeMap, fmt, hash::Hash};
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
@@ -70,6 +70,22 @@ impl Default for Fork {
     }
 }
 
+#[derive(Default, Clone, Debug, Eq, PartialEq)]
+pub enum LeaderSelectionMode {
+    #[default]
+    RoundRobin,
+    Sticky(validator::PublicKey),
+    Weighted,
+}
+
+pub fn weighted_eligibility(input: u64, total_weight: u64) -> u64 {
+    let input_bytes = input.to_be_bytes();
+    let hash = Keccak256::new(&input_bytes);
+    let hash_64 = &hash.as_bytes()[0..8];
+    let hash_num = u64::from_be_bytes(hash_64.try_into().unwrap());
+    hash_num % total_weight
+}
+
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -77,11 +93,15 @@ pub struct Committee {
     vec: Vec<WeightedValidator>,
     indexes: BTreeMap<validator::PublicKey, usize>,
     total_weight: u64,
+    leader_selection: LeaderSelectionMode,
 }
 
 impl Committee {
     /// Creates a new Committee from a list of validator public keys.
-    pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
+    pub fn new(
+        validators: impl IntoIterator<Item = WeightedValidator>,
+        leader_selection: LeaderSelectionMode,
+    ) -> anyhow::Result<Self> {
         let mut weighted_validators = BTreeMap::new();
         let mut total_weight: u64 = 0;
         for validator in validators {
@@ -110,6 +130,7 @@ impl Committee {
                 .map(|(i, v)| (v.key.clone(), i))
                 .collect(),
             total_weight,
+            leader_selection,
         })
     }
 
@@ -146,8 +167,27 @@ impl Committee {
 
     /// Computes the leader for the given view.
     pub fn view_leader(&self, view_number: ViewNumber) -> validator::PublicKey {
-        let index = view_number.0 as usize % self.len();
-        self.get(index).unwrap().key.clone()
+        match &self.leader_selection {
+            LeaderSelectionMode::RoundRobin => {
+                let index = view_number.0 as usize % self.len();
+                self.get(index).unwrap().key.clone()
+            }
+            LeaderSelectionMode::Weighted => {
+                let eligibility = weighted_eligibility(view_number.0, self.total_weight);
+                let mut offset = 0;
+                for val in &self.vec {
+                    offset += val.weight;
+                    if eligibility < offset {
+                        return val.key.clone();
+                    }
+                }
+                unreachable!()
+            }
+            LeaderSelectionMode::Sticky(pk) => {
+                let index = self.index(pk).unwrap();
+                self.get(index).unwrap().key.clone()
+            }
+        }
     }
 
     /// Signature weight threshold for this validator committee.

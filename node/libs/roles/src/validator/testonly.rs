@@ -6,6 +6,7 @@ use super::{
     ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
     WeightedValidator,
 };
+use crate::validator::LeaderSelectionMode;
 use bit_vec::BitVec;
 use rand::{
     distributions::{Distribution, Standard},
@@ -24,10 +25,13 @@ impl Setup {
     pub fn new_with_fork(rng: &mut impl Rng, weights: Vec<u64>, fork: Fork) -> Self {
         let keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
         let genesis = Genesis {
-            validators: Committee::new(keys.iter().enumerate().map(|(i, k)| WeightedValidator {
-                key: k.public(),
-                weight: weights[i],
-            }))
+            validators: Committee::new(
+                keys.iter().enumerate().map(|(i, k)| WeightedValidator {
+                    key: k.public(),
+                    weight: weights[i],
+                }),
+                LeaderSelectionMode::RoundRobin,
+            )
             .unwrap(),
             fork,
             ..Default::default()
@@ -317,7 +321,7 @@ impl Distribution<Committee> for Standard {
             key: rng.gen(),
             weight: 1,
         });
-        Committee::new(public_keys).unwrap()
+        Committee::new(public_keys, LeaderSelectionMode::RoundRobin).unwrap()
     }
 }
 

@@ -4,7 +4,7 @@ use super::{
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
-use crate::{node::SessionId, proto::validator as proto};
+use crate::{node::SessionId, proto::validator as proto, validator::LeaderSelectionMode};
 use anyhow::Context as _;
 use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
@@ -63,7 +63,8 @@ impl ProtoFmt for Genesis {
             };
         Ok(Self {
             fork: read_required(&r.fork).context("fork")?,
-            validators: Committee::new(validators.into_iter()).context("validators")?,
+            validators: Committee::new(validators.into_iter(), LeaderSelectionMode::RoundRobin)
+                .context("validators")?,
             version,
         })
     }

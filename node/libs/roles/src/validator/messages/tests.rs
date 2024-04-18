@@ -1,4 +1,5 @@
 use crate::validator::*;
+use rand::{prelude::StdRng, Rng, SeedableRng};
 use zksync_consensus_crypto::Text;
 use zksync_consensus_utils::enum_util::Variant as _;
 
@@ -33,10 +34,13 @@ fn fork() -> Fork {
 /// Hardcoded v0 genesis.
 fn genesis_v0() -> Genesis {
     Genesis {
-        validators: Committee::new(keys().iter().map(|k| WeightedValidator {
-            key: k.public(),
-            weight: 1,
-        }))
+        validators: Committee::new(
+            keys().iter().map(|k| WeightedValidator {
+                key: k.public(),
+                weight: 1,
+            }),
+            LeaderSelectionMode::RoundRobin,
+        )
         .unwrap(),
         fork: fork(),
         version: GenesisVersion(0),
@@ -87,6 +91,26 @@ fn genesis_v1_hash_change_detector() {
     .decode()
     .unwrap();
     assert_eq!(want, genesis_v1().hash());
+}
+
+#[test]
+fn test_leader_selection_weighted() {
+    let leader_selection = LeaderSelectionMode::Weighted;
+    let weight = 1000;
+    let validators = keys().into_iter().map(|k| WeightedValidator {
+        key: k.public(),
+        weight,
+    });
+    let committee = Committee::new(validators, leader_selection).unwrap();
+
+    let mut rng = StdRng::seed_from_u64(29483920);
+    for i in 0..100 {
+        let view_number: u64 = rng.gen();
+        let eligibility = weighted_eligibility(view_number, committee.total_weight());
+        let leader = committee.view_leader(ViewNumber(view_number));
+        let leader_index = eligibility / weight;
+        assert_eq!(leader, committee.get(leader_index as usize).unwrap().key);
+    }
 }
 
 mod version1 {
