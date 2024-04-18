@@ -5,10 +5,17 @@ use crate::{
 
 use super::{SignedBatchMsg, Signers};
 
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+/// A batch number.
+pub struct BatchNumber(pub u64);
+
 /// A message to send by validators to the gossip network.
 /// It contains the validators signature to sign the block batches to be sent to L1.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
-pub struct L1Batch;
+pub struct L1Batch {
+    /// The number of the batch.
+    pub number: BatchNumber,
+}
 
 /// A certificate for a batch of L2 blocks to be sent to L1.
 /// It contains the signatures of the validators that signed the batch.

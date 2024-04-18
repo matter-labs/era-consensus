@@ -3,6 +3,7 @@ syntax = "proto3";
 package zksync.roles.attester;
 
 message L1Batch {
+  optional uint64 number = 1; // required
 }
 
 message Msg {

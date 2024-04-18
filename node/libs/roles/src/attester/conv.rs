@@ -4,29 +4,19 @@ use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
-use super::{L1Batch, Msg, PublicKey, Signature, SignedBatchMsg};
-
-impl ProtoFmt for proto::L1Batch {
-    type Proto = proto::L1Batch;
-
-    fn read(_r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {})
-    }
-
-    fn build(&self) -> Self::Proto {
-        Self::Proto {}
-    }
-}
+use super::{BatchNumber, L1Batch, Msg, PublicKey, Signature, SignedBatchMsg};
 
 impl ProtoFmt for L1Batch {
     type Proto = proto::L1Batch;
-
-    fn read(_r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self)
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            number: BatchNumber(*required(&r.number).context("number")?),
+        })
     }
-
     fn build(&self) -> Self::Proto {
-        Self::Proto {}
+        Self::Proto {
+            number: Some(self.number.0),
+        }
     }
 }
 

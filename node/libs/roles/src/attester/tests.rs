@@ -116,7 +116,7 @@ fn test_l1_batch_qc() {
     };
 
     for i in 0..setup1.attester_keys.len() + 1 {
-        let mut qc = L1BatchQC::new(L1Batch {}, &setup1.genesis);
+        let mut qc = L1BatchQC::new(L1Batch::default(), &setup1.genesis);
         for key in &setup1.attester_keys[0..i] {
             qc.add(&key.sign_batch_msg(qc.message.clone()), &setup1.genesis);
         }

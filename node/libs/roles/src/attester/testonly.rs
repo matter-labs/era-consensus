@@ -48,7 +48,7 @@ impl Distribution<AttesterSet> for Standard {
 
 impl Distribution<L1Batch> for Standard {
     fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> L1Batch {
-        L1Batch
+        L1Batch::default()
     }
 }
 
