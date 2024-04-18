@@ -1,11 +1,9 @@
 //! Messages related to the consensus protocol.
 use super::{BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, ReplicaPrepare};
 use crate::{attester::AttesterSet, validator};
+use anyhow::Context;
 use bit_vec::BitVec;
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt,
-};
+use std::{collections::BTreeMap, fmt};
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
@@ -74,96 +72,146 @@ impl Default for Fork {
 
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ValidatorSet {
-    vec: Vec<validator::PublicKey>,
-    map: BTreeMap<validator::PublicKey, usize>,
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct Committee {
+    vec: Vec<WeightedValidator>,
+    indexes: BTreeMap<validator::PublicKey, usize>,
+    total_weight: u64,
 }
 
-impl ValidatorSet {
-    /// Creates a new ValidatorSet from a list of validator public keys.
-    pub fn new(validators: impl IntoIterator<Item = validator::PublicKey>) -> anyhow::Result<Self> {
-        let mut set = BTreeSet::new();
+impl Committee {
+    /// Creates a new Committee from a list of validator public keys.
+    pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
+        let mut weighted_validators = BTreeMap::new();
+        let mut total_weight: u64 = 0;
         for validator in validators {
-            anyhow::ensure!(set.insert(validator), "Duplicate validator in ValidatorSet");
+            anyhow::ensure!(
+                !weighted_validators.contains_key(&validator.key),
+                "Duplicate validator in validator Committee"
+            );
+            anyhow::ensure!(
+                validator.weight > 0,
+                "Validator weight has to be a positive value"
+            );
+            total_weight = total_weight
+                .checked_add(validator.weight)
+                .context("Sum of weights overflows in validator Committee")?;
+            weighted_validators.insert(validator.key.clone(), validator);
         }
         anyhow::ensure!(
-            !set.is_empty(),
-            "ValidatorSet must contain at least one validator"
+            !weighted_validators.is_empty(),
+            "Validator Committee must contain at least one validator"
         );
         Ok(Self {
-            vec: set.iter().cloned().collect(),
-            map: set.into_iter().enumerate().map(|(i, pk)| (pk, i)).collect(),
+            vec: weighted_validators.values().cloned().collect(),
+            indexes: weighted_validators
+                .values()
+                .enumerate()
+                .map(|(i, v)| (v.key.clone(), i))
+                .collect(),
+            total_weight,
         })
     }
 
-    /// Iterates over validators.
-    pub fn iter(&self) -> impl Iterator<Item = &validator::PublicKey> {
+    /// Iterates over weighted validators.
+    pub fn iter(&self) -> impl Iterator<Item = &WeightedValidator> {
         self.vec.iter()
     }
 
+    /// Iterates over validator keys.
+    pub fn iter_keys(&self) -> impl Iterator<Item = &validator::PublicKey> {
+        self.vec.iter().map(|v| &v.key)
+    }
+
     /// Returns the number of validators.
-    #[allow(clippy::len_without_is_empty)] // a valid `ValidatorSet` is always non-empty by construction
+    #[allow(clippy::len_without_is_empty)] // a valid `Committee` is always non-empty by construction
     pub fn len(&self) -> usize {
         self.vec.len()
     }
 
-    /// Returns true if the given validator is in the validator set.
+    /// Returns true if the given validator is in the validator committee.
     pub fn contains(&self, validator: &validator::PublicKey) -> bool {
-        self.map.contains_key(validator)
+        self.indexes.contains_key(validator)
     }
 
-    /// Get validator by its index in the set.
-    pub fn get(&self, index: usize) -> Option<&validator::PublicKey> {
+    /// Get validator by its index in the committee.
+    pub fn get(&self, index: usize) -> Option<&WeightedValidator> {
         self.vec.get(index)
     }
 
-    /// Get the index of a validator in the set.
+    /// Get the index of a validator in the committee.
     pub fn index(&self, validator: &validator::PublicKey) -> Option<usize> {
-        self.map.get(validator).copied()
+        self.indexes.get(validator).copied()
     }
 
-    /// Computes the validator for the given view.
+    /// Computes the leader for the given view.
     pub fn view_leader(&self, view_number: ViewNumber) -> validator::PublicKey {
         let index = view_number.0 as usize % self.len();
-        self.get(index).unwrap().clone()
+        self.get(index).unwrap().key.clone()
     }
 
-    /// Signature threshold for this validator set.
-    pub fn threshold(&self) -> usize {
-        threshold(self.len())
+    /// Signature weight threshold for this validator committee.
+    pub fn threshold(&self) -> u64 {
+        threshold(self.total_weight())
     }
 
-    /// Maximal number of faulty replicas allowed in this validator set.
-    pub fn faulty_replicas(&self) -> usize {
-        faulty_replicas(self.len())
+    /// Maximal weight of faulty replicas allowed in this validator committee.
+    pub fn max_faulty_weight(&self) -> u64 {
+        max_faulty_weight(self.total_weight())
+    }
+
+    /// Compute the sum of signers weights.
+    /// Panics if signers length does not match the number of validators in committee
+    pub fn weight(&self, signers: &Signers) -> u64 {
+        assert_eq!(self.vec.len(), signers.len());
+        self.vec
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| signers.0[*i])
+            .map(|(_, v)| v.weight)
+            .sum()
+    }
+
+    /// Sum of all validators' weight in the committee
+    pub fn total_weight(&self) -> u64 {
+        self.total_weight
     }
 }
 
-/// Calculate the consensus threshold, the minimum number of votes for any consensus action to be valid,
-/// for a given number of replicas.
-pub fn threshold(n: usize) -> usize {
-    n - faulty_replicas(n)
+/// Calculate the consensus threshold, the minimum votes' weight for any consensus action to be valid,
+/// for a given committee total weight.
+pub fn threshold(total_weight: u64) -> u64 {
+    total_weight - max_faulty_weight(total_weight)
 }
 
-/// Calculate the maximum number of faulty replicas, for a given number of replicas.
-pub fn faulty_replicas(n: usize) -> usize {
-    // Calculate the allowed maximum number of faulty replicas. We want the following relationship to hold:
+/// Calculate the maximum allowed weight for faulty replicas, for a given total weight.
+pub fn max_faulty_weight(total_weight: u64) -> u64 {
+    // Calculate the allowed maximum weight of faulty replicas. We want the following relationship to hold:
     //      n = 5*f + 1
-    // for n total replicas and f faulty replicas. This results in the following formula for the maximum
-    // number of faulty replicas:
+    // for n total weight and f faulty weight. This results in the following formula for the maximum
+    // weight of faulty replicas:
     //      f = floor((n - 1) / 5)
-    // Because of this, it doesn't make sense to have 5*f + 2 or 5*f + 3 replicas. It won't increase the number
-    // of allowed faulty replicas.
-    (n - 1) / 5
+    (total_weight - 1) / 5
+}
+
+/// Version of the Genesis representation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct GenesisVersion(pub u32);
+
+impl GenesisVersion {
+    /// Version 0 - deprecated: Committee encoding does not account weights, assume weight=1 per validator
+    /// Version 1: Validators with weight within Committee
+    pub const CURRENT: Self = Self(1);
 }
 
 /// Genesis of the blockchain, unique for each blockchain instance.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Genesis {
     // TODO(gprusak): add blockchain id here.
+    /// Genesis encoding version
+    pub version: GenesisVersion,
     /// Set of validators of the chain.
-    pub validators: ValidatorSet,
+    pub validators: Committee,
     /// Set of attesters of the chain.
     pub attesters: AttesterSet,
     /// Fork of the chain to follow.
@@ -178,6 +226,17 @@ impl Genesis {
     /// Hash of the genesis.
     pub fn hash(&self) -> GenesisHash {
         GenesisHash(Keccak256::new(&zksync_protobuf::canonical(self)))
+    }
+}
+
+impl Default for Genesis {
+    fn default() -> Self {
+        Self {
+            version: GenesisVersion::CURRENT,
+            validators: Committee::default(),
+            attesters: AttesterSet::default(),
+            fork: Fork::default(),
+        }
     }
 }
 
@@ -322,7 +381,7 @@ impl Signers {
         self.0.iter().filter(|b| *b).count()
     }
 
-    /// Size of the corresponding ValidatorSet.
+    /// Size of the corresponding validator Committee.
     pub fn len(&self) -> usize {
         self.0.len()
     }
@@ -377,4 +436,13 @@ impl fmt::Display for ViewNumber {
 pub enum Phase {
     Prepare,
     Commit,
+}
+
+/// Validator representation inside a Committee.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WeightedValidator {
+    /// Validator key
+    pub key: validator::PublicKey,
+    /// Validator weight inside the Committee.
+    pub weight: u64,
 }

@@ -14,7 +14,7 @@ use zksync_concurrency::{
     testonly::{abort_on_panic, set_timeout},
     time,
 };
-use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock};
+use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock, WeightedValidator};
 use zksync_consensus_storage::testonly::new_store;
 
 #[tokio::test]
@@ -143,7 +143,11 @@ async fn test_validator_addrs() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
 
     let keys: Vec<validator::SecretKey> = (0..8).map(|_| rng.gen()).collect();
-    let validators = validator::ValidatorSet::new(keys.iter().map(|k| k.public())).unwrap();
+    let validators = validator::Committee::new(keys.iter().map(|k| WeightedValidator {
+        key: k.public(),
+        weight: 1250,
+    }))
+    .unwrap();
     let va = ValidatorAddrsWatch::default();
     let mut sub = va.subscribe();
 

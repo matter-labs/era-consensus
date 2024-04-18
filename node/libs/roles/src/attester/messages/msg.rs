@@ -76,7 +76,7 @@ impl Signers {
 
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct AttesterSet {
     vec: Vec<PublicKey>,
     map: BTreeMap<PublicKey, usize>,

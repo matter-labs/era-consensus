@@ -7,7 +7,7 @@ use crate::{
     testonly, Config, PayloadManager,
 };
 use assert_matches::assert_matches;
-use std::{cmp::Ordering, sync::Arc};
+use std::sync::Arc;
 use zksync_concurrency::ctx;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator::{
@@ -83,8 +83,9 @@ impl UTHarness {
     /// Creates a new `UTHarness` with minimally-significant validator set size.
     pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, BlockStoreRunner) {
         let num_validators = 6;
-        assert!(validator::faulty_replicas(num_validators) > 0);
-        UTHarness::new(ctx, num_validators).await
+        let (util, runner) = UTHarness::new(ctx, num_validators).await;
+        assert!(util.genesis().validators.max_faulty_weight() > 0);
+        (util, runner)
     }
 
     /// Triggers replica timeout, validates the new ReplicaPrepare
@@ -224,15 +225,22 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaPrepare,
     ) -> Signed<LeaderPrepare> {
-        let want_threshold = self.genesis().validators.threshold();
         let mut leader_prepare = None;
         let msgs: Vec<_> = self.keys.iter().map(|k| k.sign_msg(msg.clone())).collect();
+        let mut first_match = true;
         for (i, msg) in msgs.into_iter().enumerate() {
             let res = self.process_replica_prepare(ctx, msg).await;
-            match (i + 1).cmp(&want_threshold) {
-                Ordering::Equal => leader_prepare = res.unwrap(),
-                Ordering::Less => assert!(res.unwrap().is_none()),
-                Ordering::Greater => assert_matches!(res, Err(replica_prepare::Error::Old { .. })),
+            match (
+                (i + 1) as u64 * self.genesis().validators.iter().next().unwrap().weight
+                    < self.genesis().validators.threshold(),
+                first_match,
+            ) {
+                (true, _) => assert!(res.unwrap().is_none()),
+                (false, true) => {
+                    first_match = false;
+                    leader_prepare = res.unwrap()
+                }
+                (false, false) => assert_matches!(res, Err(replica_prepare::Error::Old { .. })),
             }
         }
         leader_prepare.unwrap()
@@ -252,15 +260,22 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         msg: ReplicaCommit,
     ) -> Signed<LeaderCommit> {
+        let mut first_match = true;
         for (i, key) in self.keys.iter().enumerate() {
             let res = self
                 .leader
                 .process_replica_commit(ctx, key.sign_msg(msg.clone()));
-            let want_threshold = self.genesis().validators.threshold();
-            match (i + 1).cmp(&want_threshold) {
-                Ordering::Equal => res.unwrap(),
-                Ordering::Less => res.unwrap(),
-                Ordering::Greater => assert_matches!(res, Err(replica_commit::Error::Old { .. })),
+            match (
+                (i + 1) as u64 * self.genesis().validators.iter().next().unwrap().weight
+                    < self.genesis().validators.threshold(),
+                first_match,
+            ) {
+                (true, _) => res.unwrap(),
+                (false, true) => {
+                    first_match = false;
+                    res.unwrap()
+                }
+                (false, false) => assert_matches!(res, Err(replica_commit::Error::Old { .. })),
             }
         }
         self.try_recv().unwrap()

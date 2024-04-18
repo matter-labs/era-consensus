@@ -10,10 +10,14 @@ message Fork {
   optional uint64 first_block = 2; // required; BlockNumber
 }
 
+// validators and validators_v1 are mutually exclusive.
+// They should be put into a oneof, but it may not recognize this as 
+// a backward compatible change: https://buf.build/docs/breaking/rules#field_same_oneof
 message Genesis {
   optional Fork fork = 1; // required
   repeated PublicKey validators = 2;
-  repeated attester.PublicKey attesters = 3;
+  repeated WeightedValidator validators_v1 = 3;
+  repeated attester.PublicKey attesters = 4;
 }
 
 message GenesisHash {
@@ -167,4 +171,10 @@ message Signature {
 
 message AggregateSignature {
   optional bytes bn254 = 1; // required
+}
+
+message WeightedValidator {
+  optional PublicKey key = 1; // required
+  optional uint64 weight = 2; // required
+
 }

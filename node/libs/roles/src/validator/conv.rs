@@ -1,14 +1,15 @@
-use super::{
-    AggregateSignature, BlockHeader, BlockNumber, CommitQC, ConsensusMsg, FinalBlock, Fork,
-    ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress,
-    Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
-    ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
-};
 use crate::{
     attester::{self, AttesterSet},
     node::SessionId,
-    proto::validator as proto,
 };
+
+use super::{
+    AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
+    Fork, ForkNumber, Genesis, GenesisHash, GenesisVersion, LeaderCommit, LeaderPrepare, Msg,
+    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
+    ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
+};
+use crate::proto::validator as proto;
 use anyhow::Context as _;
 use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
@@ -31,16 +32,41 @@ impl ProtoFmt for Fork {
     }
 }
 
+#[allow(deprecated)]
 impl ProtoFmt for Genesis {
     type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let validators: Vec<_> = r
-            .validators
-            .iter()
-            .enumerate()
-            .map(|(i, v)| PublicKey::read(v).context(i))
-            .collect::<Result<_, _>>()
-            .context("validators")?;
+        let (validators, version) =
+            // current genesis encoding version 1
+            if !r.validators_v1.is_empty() {
+                (
+                    r.validators_v1
+                        .iter()
+                        .enumerate()
+                        .map(|(i, v)| WeightedValidator::read(v).context(i))
+                        .collect::<Result<_, _>>()
+                        .context("validators")?,
+                    GenesisVersion(1),
+                )
+            // legacy genesis encoding version 0
+            } else if !r.validators.is_empty() {
+                (
+                    r.validators
+                        .iter()
+                        .enumerate()
+                        .map(|(i, v)| anyhow::Ok(WeightedValidator {
+                            key: PublicKey::read(v).context(i)?,
+                            weight: 1,
+                        }))
+                        .collect::<Result<_,_>>()
+                        .context("validators")?,
+                    GenesisVersion(0),
+                )
+            // empty validator set, Committee:new() will later return an error.
+            } else {
+                (vec![], GenesisVersion::CURRENT)
+            };
+
         let attesters: Vec<_> = r
             .attesters
             .iter()
@@ -51,15 +77,25 @@ impl ProtoFmt for Genesis {
 
         Ok(Self {
             fork: read_required(&r.fork).context("fork")?,
-            validators: ValidatorSet::new(validators.into_iter()).context("validators")?,
+            validators: Committee::new(validators.into_iter()).context("validators")?,
             attesters: AttesterSet::new(attesters.into_iter()).context("attesters")?,
+            version,
         })
     }
     fn build(&self) -> Self::Proto {
-        Self::Proto {
-            fork: Some(self.fork.build()),
-            validators: self.validators.iter().map(|x| x.build()).collect(),
-            attesters: self.attesters.iter().map(|x| x.build()).collect(),
+        match self.version {
+            GenesisVersion(0) => Self::Proto {
+                fork: Some(self.fork.build()),
+                validators: self.validators.iter().map(|v| v.key.build()).collect(),
+                attesters: self.attesters.iter().map(|v| v.build()).collect(),
+                validators_v1: vec![],
+            },
+            GenesisVersion(1..) => Self::Proto {
+                fork: Some(self.fork.build()),
+                validators: vec![],
+                validators_v1: self.validators.iter().map(|v| v.build()).collect(),
+                attesters: self.attesters.iter().map(|v| v.build()).collect(),
+            },
         }
     }
 }
@@ -448,6 +484,24 @@ impl ProtoFmt for AggregateSignature {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             bn254: Some(self.0.encode()),
+        }
+    }
+}
+
+impl ProtoFmt for WeightedValidator {
+    type Proto = proto::WeightedValidator;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            key: read_required(&r.key).context("key")?,
+            weight: *required(&r.weight).context("weight")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            key: Some(self.key.build()),
+            weight: Some(self.weight),
         }
     }
 }

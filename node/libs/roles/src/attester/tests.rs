@@ -1,4 +1,4 @@
-use crate::validator::{testonly::Setup, Genesis, ValidatorSet};
+use crate::validator::{testonly::Setup, Committee, Genesis};
 
 use super::*;
 use assert_matches::assert_matches;
@@ -110,7 +110,8 @@ fn test_l1_batch_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
-        validators: ValidatorSet::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
+        version: setup1.genesis.version,
+        validators: Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
         attesters: AttesterSet::new(setup1.genesis.attesters.iter().take(3).cloned()).unwrap(),
         fork: setup1.genesis.fork.clone(),
     };
