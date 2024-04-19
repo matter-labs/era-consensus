@@ -1,11 +1,15 @@
+use crate::{
+    attester::{self, AttesterSet},
+    node::SessionId,
+};
+
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
-    Fork, ForkNumber, Genesis, GenesisHash, GenesisVersion, L1BatchMsg, LeaderCommit,
-    LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC,
-    ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View,
-    ViewNumber, WeightedValidator,
+    Fork, ForkNumber, Genesis, GenesisHash, GenesisVersion, LeaderCommit, LeaderPrepare, Msg,
+    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
+    ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
-use crate::{node::SessionId, proto::validator as proto};
+use crate::proto::validator as proto;
 use anyhow::Context as _;
 use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
@@ -62,9 +66,19 @@ impl ProtoFmt for Genesis {
             } else {
                 (vec![], GenesisVersion::CURRENT)
             };
+
+        let attesters: Vec<_> = r
+            .attesters
+            .iter()
+            .enumerate()
+            .map(|(i, v)| attester::PublicKey::read(v).context(i))
+            .collect::<Result<_, _>>()
+            .context("validators")?;
+
         Ok(Self {
             fork: read_required(&r.fork).context("fork")?,
             validators: Committee::new(validators.into_iter()).context("validators")?,
+            attesters: AttesterSet::new(attesters.into_iter()).context("attesters")?,
             version,
         })
     }
@@ -73,12 +87,14 @@ impl ProtoFmt for Genesis {
             GenesisVersion(0) => Self::Proto {
                 fork: Some(self.fork.build()),
                 validators: self.validators.iter().map(|v| v.key.build()).collect(),
+                attesters: self.attesters.iter().map(|v| v.build()).collect(),
                 validators_v1: vec![],
             },
             GenesisVersion(1..) => Self::Proto {
                 fork: Some(self.fork.build()),
                 validators: vec![],
                 validators_v1: self.validators.iter().map(|v| v.build()).collect(),
+                attesters: self.attesters.iter().map(|v| v.build()).collect(),
             },
         }
     }
@@ -373,18 +389,6 @@ impl ProtoFmt for NetAddress {
     }
 }
 
-impl ProtoFmt for L1BatchMsg {
-    type Proto = proto::L1BatchMsg;
-
-    fn read(_r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {})
-    }
-
-    fn build(&self) -> Self::Proto {
-        Self::Proto {}
-    }
-}
-
 impl ProtoFmt for Msg {
     type Proto = proto::Msg;
 
@@ -394,7 +398,6 @@ impl ProtoFmt for Msg {
             T::Consensus(r) => Self::Consensus(ProtoFmt::read(r).context("Consensus")?),
             T::SessionId(r) => Self::SessionId(SessionId(r.clone())),
             T::NetAddress(r) => Self::NetAddress(ProtoFmt::read(r).context("NetAddress")?),
-            T::L1Batch(r) => Self::L1Batch(ProtoFmt::read(r).context("L1Batch")?),
         })
     }
 
@@ -405,7 +408,6 @@ impl ProtoFmt for Msg {
             Self::Consensus(x) => T::Consensus(x.build()),
             Self::SessionId(x) => T::SessionId(x.0.clone()),
             Self::NetAddress(x) => T::NetAddress(x.build()),
-            Self::L1Batch(x) => T::L1Batch(x.build()),
         };
 
         Self::Proto { t: Some(t) }

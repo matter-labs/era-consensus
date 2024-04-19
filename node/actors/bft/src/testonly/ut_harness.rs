@@ -60,7 +60,7 @@ impl UTHarness {
         let (send, recv) = ctx::channel::unbounded();
 
         let cfg = Arc::new(Config {
-            secret_key: setup.keys[0].clone(),
+            secret_key: setup.validator_keys[0].clone(),
             block_store: block_store.clone(),
             replica_store: Box::new(in_memory::ReplicaStore::default()),
             payload_manager,
@@ -74,7 +74,7 @@ impl UTHarness {
             leader,
             replica,
             pipe: recv,
-            keys: setup.keys.clone(),
+            keys: setup.validator_keys.clone(),
         };
         let _: Signed<ReplicaPrepare> = this.try_recv().unwrap();
         (this, runner)

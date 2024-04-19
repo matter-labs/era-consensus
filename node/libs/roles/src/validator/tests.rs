@@ -1,5 +1,5 @@
 use super::*;
-use crate::validator::testonly::Setup;
+use crate::{attester::AttesterSet, validator::testonly::Setup};
 use assert_matches::assert_matches;
 use rand::{seq::SliceRandom, Rng};
 use std::vec;
@@ -174,7 +174,7 @@ fn make_replica_commit(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> R
 
 fn make_commit_qc(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> CommitQC {
     let mut qc = CommitQC::new(make_replica_commit(rng, view, setup), &setup.genesis);
-    for key in &setup.keys {
+    for key in &setup.validator_keys {
         qc.add(&key.sign_msg(qc.message.clone()), &setup.genesis);
     }
     qc
@@ -205,15 +205,16 @@ fn test_commit_qc() {
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
         validators: Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
+        attesters: AttesterSet::new(setup1.genesis.attesters.iter().take(3).cloned()).unwrap(),
         fork: setup1.genesis.fork.clone(),
         ..Default::default()
     };
     let validator_weight = setup1.genesis.validators.total_weight() / 6;
 
-    for i in 0..setup1.keys.len() + 1 {
+    for i in 0..setup1.validator_keys.len() + 1 {
         let view = rng.gen();
         let mut qc = CommitQC::new(make_replica_commit(rng, view, &setup1), &setup1.genesis);
-        for key in &setup1.keys[0..i] {
+        for key in &setup1.validator_keys[0..i] {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis);
         }
         let expected_weight = i as u64 * validator_weight;
@@ -243,6 +244,7 @@ fn test_prepare_qc() {
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
         validators: Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
+        attesters: AttesterSet::new(setup1.genesis.attesters.iter().take(3).cloned()).unwrap(),
         fork: setup1.genesis.fork.clone(),
         ..Default::default()
     };
@@ -252,9 +254,9 @@ fn test_prepare_qc() {
         .map(|_| make_replica_prepare(rng, view, &setup1))
         .collect();
 
-    for n in 0..setup1.keys.len() + 1 {
+    for n in 0..setup1.validator_keys.len() + 1 {
         let mut qc = PrepareQC::new(msgs[0].view.clone());
-        for key in &setup1.keys[0..n] {
+        for key in &setup1.validator_keys[0..n] {
             qc.add(
                 &key.sign_msg(msgs.choose(rng).unwrap().clone()),
                 &setup1.genesis,
@@ -290,7 +292,7 @@ fn test_validator_committee_weights() {
     let msg = make_replica_prepare(rng, view, &setup);
     let mut qc = PrepareQC::new(msg.view.clone());
     for (n, weight) in sums.iter().enumerate() {
-        let key = &setup.keys[n];
+        let key = &setup.validator_keys[n];
         qc.add(&key.sign_msg(msg.clone()), &setup.genesis);
         let signers = &qc.map[&msg];
         assert_eq!(setup.genesis.validators.weight(signers), *weight);

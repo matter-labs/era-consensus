@@ -1,6 +1,9 @@
 #![allow(missing_docs)]
 use zksync_concurrency::oneshot;
-use zksync_consensus_roles::{node, validator};
+use zksync_consensus_roles::{
+    attester::{self, L1Batch},
+    node, validator,
+};
 use zksync_consensus_storage::BlockStoreState;
 
 /// All the messages that other actors can send to the Network actor.
@@ -16,7 +19,7 @@ pub enum InputMessage {
 
 #[derive(Debug)]
 pub struct L1BatchInputMessage {
-    pub message: validator::Signed<validator::L1BatchMsg>,
+    pub message: attester::SignedBatchMsg<L1Batch>,
 }
 
 /// Message types from the Consensus actor.

@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package zksync.roles.attester;
+
+message L1Batch {
+  optional uint64 number = 1; // required
+}
+
+message Msg {
+  oneof t { // required
+    L1Batch l1_batch = 4;
+  }
+}
+
+message SignedBatch {
+  optional Msg msg = 1; // required
+  optional PublicKey key = 2; // required
+  optional Signature sig = 3; // required
+}
+
+message PublicKey {
+  optional bytes bn254 = 1; // required
+}
+
+message Signature {
+  optional bytes bn254 = 1; // required
+}

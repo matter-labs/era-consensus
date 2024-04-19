@@ -1,13 +1,25 @@
+use crate::attester::{self, AttesterSet};
 use crate::validator::*;
 use zksync_consensus_crypto::Text;
 use zksync_consensus_utils::enum_util::Variant as _;
 
 /// Hardcoded secret keys.
-fn keys() -> Vec<SecretKey> {
+fn validator_keys() -> Vec<SecretKey> {
     [
         "validator:secret:bn254:27cb45b1670a1ae8d376a85821d51c7f91ebc6e32788027a84758441aaf0a987",
         "validator:secret:bn254:20132edc08a529e927f155e710ae7295a2a0d249f1b1f37726894d1d0d8f0d81",
         "validator:secret:bn254:0946901f0a6650284726763b12de5da0f06df0016c8ec2144cf6b1903f1979a6",
+    ]
+    .iter()
+    .map(|raw| Text::new(raw).decode().unwrap())
+    .collect()
+}
+
+fn attester_keys() -> Vec<attester::SecretKey> {
+    [
+        "attester:secret:bn254:27cb45b1670a1ae8d376a85821d51c7f91ebc6e32788027a84758441aaf0a987",
+        "attester:secret:bn254:20132edc08a529e927f155e710ae7295a2a0d249f1b1f37726894d1d0d8f0d81",
+        "attester:secret:bn254:0946901f0a6650284726763b12de5da0f06df0016c8ec2144cf6b1903f1979a6",
     ]
     .iter()
     .map(|raw| Text::new(raw).decode().unwrap())
@@ -33,11 +45,12 @@ fn fork() -> Fork {
 /// Hardcoded v0 genesis.
 fn genesis_v0() -> Genesis {
     Genesis {
-        validators: Committee::new(keys().iter().map(|k| WeightedValidator {
+        validators: Committee::new(validator_keys().iter().map(|k| WeightedValidator {
             key: k.public(),
             weight: 1,
         }))
         .unwrap(),
+        attesters: AttesterSet::new(attester_keys().iter().map(|k| k.public())).unwrap(),
         fork: fork(),
         version: GenesisVersion(0),
     }
@@ -46,11 +59,12 @@ fn genesis_v0() -> Genesis {
 /// Hardcoded v1 genesis.
 fn genesis_v1() -> Genesis {
     Genesis {
-        validators: Committee::new(keys().iter().map(|k| WeightedValidator {
+        validators: Committee::new(validator_keys().iter().map(|k| WeightedValidator {
             key: k.public(),
             weight: 1,
         }))
         .unwrap(),
+        attesters: AttesterSet::new(attester_keys().iter().map(|k| k.public())).unwrap(),
         fork: fork(),
         version: GenesisVersion(1),
     }
@@ -72,7 +86,7 @@ fn payload_hash_change_detector() {
 #[test]
 fn genesis_v0_hash_change_detector() {
     let want: GenesisHash = Text::new(
-        "genesis_hash:keccak256:9c9bfa303e8d2d451a7fadd327f5f1b957a37c84d7b27b9e1cf7b92fd83af7ae",
+        "genesis_hash:keccak256:d571e391b15e516f98afc1c286c62eeda54e56f23bf27c456be0c53ca45e6b32",
     )
     .decode()
     .unwrap();
@@ -82,7 +96,7 @@ fn genesis_v0_hash_change_detector() {
 #[test]
 fn genesis_v1_hash_change_detector() {
     let want: GenesisHash = Text::new(
-        "genesis_hash:keccak256:6370cfce637395629f05599082993c446c2c66145d440287a985ac98ad210b41",
+        "genesis_hash:keccak256:6d8be786ae9becb70ba2cd5c53634a7b170ccb9930fba7730d96e0fbf7486756",
     )
     .decode()
     .unwrap();
@@ -100,7 +114,7 @@ mod version1 {
         let hash: MsgHash = Text::new(hash).decode().unwrap();
         assert!(hash == msg.hash(), "bad hash, want {:?}", msg.hash());
         let sig: Signature = Text::new(sig).decode().unwrap();
-        let key = keys()[0].clone();
+        let key = validator_keys()[0].clone();
         assert!(
             sig.verify_hash(&hash, &key.public()).is_ok(),
             "bad signature, want {:?}",
@@ -138,7 +152,7 @@ mod version1 {
         let genesis = genesis_v1();
         let replica_commit = replica_commit();
         let mut x = CommitQC::new(replica_commit.clone(), &genesis);
-        for k in keys() {
+        for k in validator_keys() {
             x.add(&k.sign_msg(replica_commit.clone()), &genesis);
         }
         x
@@ -165,7 +179,7 @@ mod version1 {
         let mut x = PrepareQC::new(view());
         let genesis = genesis_v1();
         let replica_prepare = replica_prepare();
-        for k in keys() {
+        for k in validator_keys() {
             x.add(&k.sign_msg(replica_prepare.clone()), &genesis);
         }
         x

@@ -3,7 +3,6 @@
 mod block;
 mod consensus;
 mod discovery;
-mod l1_batch;
 mod leader_commit;
 mod leader_prepare;
 mod msg;
@@ -15,7 +14,6 @@ mod tests;
 pub use block::*;
 pub use consensus::*;
 pub use discovery::*;
-pub use l1_batch::*;
 pub use leader_commit::*;
 pub use leader_prepare::*;
 pub use msg::*;

@@ -1,4 +1,6 @@
 //! Test-only utilities.
+use crate::attester::{self, AttesterSet};
+
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
     Fork, ForkNumber, Genesis, GenesisHash, GenesisVersion, LeaderCommit, LeaderPrepare, Msg,
@@ -22,18 +24,24 @@ pub struct Setup(SetupInner);
 impl Setup {
     /// New `Setup` with a given `fork`.
     pub fn new_with_fork(rng: &mut impl Rng, weights: Vec<u64>, fork: Fork) -> Self {
-        let keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
+        let validator_keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
+        let attester_keys: Vec<attester::SecretKey> =
+            (0..weights.len()).map(|_| rng.gen()).collect();
         let genesis = Genesis {
-            validators: Committee::new(keys.iter().enumerate().map(|(i, k)| WeightedValidator {
-                key: k.public(),
-                weight: weights[i],
+            validators: Committee::new(validator_keys.iter().enumerate().map(|(i, k)| {
+                WeightedValidator {
+                    key: k.public(),
+                    weight: weights[i],
+                }
             }))
             .unwrap(),
+            attesters: AttesterSet::new(attester_keys.iter().map(|k| k.public())).unwrap(),
             fork,
             ..Default::default()
         };
         Self(SetupInner {
-            keys,
+            validator_keys,
+            attester_keys,
             genesis,
             blocks: vec![],
         })
@@ -85,7 +93,7 @@ impl Setup {
         };
         let msg = ReplicaCommit { view, proposal };
         let mut justification = CommitQC::new(msg, &self.0.genesis);
-        for key in &self.0.keys {
+        for key in &self.0.validator_keys {
             justification.add(
                 &key.sign_msg(justification.message.clone()),
                 &self.0.genesis,
@@ -115,7 +123,9 @@ impl Setup {
 #[derive(Debug, Clone)]
 pub struct SetupInner {
     /// Validators' secret keys.
-    pub keys: Vec<SecretKey>,
+    pub validator_keys: Vec<SecretKey>,
+    /// Attesters' secret keys.
+    pub attester_keys: Vec<attester::SecretKey>,
     /// Past blocks.
     pub blocks: Vec<FinalBlock>,
     /// Genesis config.
@@ -201,6 +211,7 @@ impl Distribution<Genesis> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
         Genesis {
             validators: rng.gen(),
+            attesters: rng.gen(),
             fork: rng.gen(),
             version: rng.gen(),
         }

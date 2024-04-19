@@ -8,7 +8,8 @@ use rand::seq::SliceRandom;
 use std::{collections::HashSet, sync::Arc};
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope, sync, time};
-use zksync_consensus_roles::validator::{self, L1BatchQC};
+use zksync_consensus_roles::attester::{self, L1Batch, L1BatchQC};
+use zksync_consensus_roles::validator::{self};
 use zksync_protobuf::kB;
 
 mod handshake;
@@ -43,7 +44,7 @@ pub(crate) struct Network {
     /// Set of the currently open outbound connections.
     pub(crate) outbound: PoolWatch<validator::PublicKey, Arc<Connection>>,
     /// L1 batch QC.
-    pub(crate) l1_batch_qc: L1BatchQC,
+    pub(crate) l1_batch_qc: Option<L1BatchQC>,
 }
 
 #[async_trait::async_trait]
@@ -79,8 +80,10 @@ impl rpc::Handler<rpc::signature::Rpc> for &L1BatchServer<'_> {
 
     async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::signature::Req) -> anyhow::Result<()> {
         let genesis = self.0.gossip.genesis();
-        self.0.l1_batch_qc.verify(genesis).unwrap();
-        self.0.l1_batch_qc.clone().add(&req.0, genesis);
+        // FIXME Remove unwrap and find a way to handle the QC.
+        let qc = self.0.l1_batch_qc.as_ref().context("no L1BatchQC")?;
+        qc.verify(genesis).unwrap();
+        qc.clone().add(&req.0, genesis);
         return Ok(());
     }
 }
@@ -94,7 +97,7 @@ impl Network {
             key,
             inbound: PoolWatch::new(validators.clone(), 0),
             outbound: PoolWatch::new(validators.clone(), 0),
-            l1_batch_qc: L1BatchQC::new(validators.len()),
+            l1_batch_qc: None,
             gossip,
         }))
     }
@@ -129,7 +132,7 @@ impl Network {
     pub(crate) async fn broadcast_signature(
         &self,
         ctx: &ctx::Ctx,
-        signature: validator::Signed<validator::L1BatchMsg>,
+        signature: attester::SignedBatchMsg<L1Batch>,
     ) -> anyhow::Result<()> {
         let req = rpc::signature::Req(signature);
         let outbound = self.outbound.current();

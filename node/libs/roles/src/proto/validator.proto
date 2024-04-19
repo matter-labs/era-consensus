@@ -3,6 +3,7 @@ syntax = "proto3";
 package zksync.roles.validator;
 
 import "zksync/std.proto";
+import "zksync/roles/attester.proto";
 
 message Fork {
   optional uint64 number = 1; // required; ForkId
@@ -14,8 +15,9 @@ message Fork {
 // a backward compatible change: https://buf.build/docs/breaking/rules#field_same_oneof
 message Genesis {
   optional Fork fork = 1; // required
-  repeated PublicKey validators = 2  [deprecated = true];
+  repeated PublicKey validators = 2;
   repeated WeightedValidator validators_v1 = 3;
+  repeated attester.PublicKey attesters = 4;
 }
 
 message GenesisHash {
@@ -141,15 +143,11 @@ message NetAddress {
   optional std.Timestamp timestamp = 3; // required
 }
 
-message L1BatchMsg {
-}
-
 message Msg {
   oneof t { // required
     ConsensusMsg consensus = 1;
     bytes session_id = 2;
     NetAddress net_address = 3;
-    L1BatchMsg l1_batch = 4;
   }
 }
 
