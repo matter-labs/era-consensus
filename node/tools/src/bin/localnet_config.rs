@@ -4,8 +4,9 @@ use clap::Parser;
 use rand::{seq::SliceRandom as _, Rng};
 use std::{
     collections::{HashMap, HashSet},
-    fs,
+    fs::{self, Permissions},
     net::{Ipv4Addr, SocketAddr},
+    os::unix::fs::PermissionsExt,
     path::PathBuf,
 };
 use zksync_consensus_roles::{node, validator};
@@ -102,7 +103,13 @@ fn main() -> anyhow::Result<()> {
         let root = args.output_dir.join(&cfg.public_addr.0);
         let _ = fs::remove_dir_all(&root);
         fs::create_dir_all(&root).with_context(|| format!("create_dir_all({:?})", root))?;
-        fs::write(root.join("config.json"), encode_json(&Serde(cfg))).context("fs::write()")?;
+        fs::set_permissions(root.clone(), Permissions::from_mode(0o700))
+            .context("fs::set_permissions()")?;
+
+        let config_path = root.join("config.json");
+        fs::write(&config_path, encode_json(&Serde(cfg))).context("fs::write()")?;
+        fs::set_permissions(&config_path, Permissions::from_mode(0o600))
+            .context("fs::set_permissions()")?;
     }
     Ok(())
 }
