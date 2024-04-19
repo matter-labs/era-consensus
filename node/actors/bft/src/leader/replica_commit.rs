@@ -129,12 +129,24 @@ impl StateMachine {
         // Add the message to the QC.
         commit_qc.add(&signed_message, self.config.genesis());
 
+        // Calculate the CommitQC signers weight.
+        let weight = self.config.genesis().validators.weight(&commit_qc.signers);
+
         // Update commit message current view number for author
         self.replica_commit_views
             .insert(author.clone(), message.view.number);
 
+        // Clean up commit_qcs for the case that no replica is at the view
+        // of a given CommitQC
+        // This prevents commit_qcs map from growing indefinitely in case some
+        // malicious replica starts spamming messages for future views
+        self.commit_qcs.retain(|qc_view_number, _| {
+            self.replica_commit_views
+                .values()
+                .any(|validator_view_number| qc_view_number == validator_view_number)
+        });
+
         // Now we check if we have enough weight to continue.
-        let weight = self.config.genesis().validators.weight(&commit_qc.signers);
         if weight < self.config.genesis().validators.threshold() {
             return Ok(());
         };

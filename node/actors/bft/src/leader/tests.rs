@@ -405,21 +405,18 @@ async fn replica_prepare_limit_messages_in_memory() {
         let (mut util, runner) = UTHarness::new(ctx, 2).await;
         s.spawn_bg(runner.run(ctx));
 
-        util.produce_block(ctx).await;
         let mut view = util.replica_view();
         let mut replica_prepare = util.new_replica_prepare();
         // Spam it with 200 messages for different views
         for _ in 0..200 {
-            // Since we have 2 replicas, we have to send only even numbered views
-            // to same leader (the other replica will commit on odd numbered views)
-            view.number = view.number.next();
             replica_prepare.view = view.clone();
             let res = util
                 .process_replica_prepare(ctx, util.sign(replica_prepare.clone()))
                 .await;
             assert_matches!(res, Ok(_));
-            // move to next view number againg (to ensure even numbered views)
-            view.number = view.number.next();
+            // Since we have 2 replicas, we have to send only even numbered views
+            // to hit the same leader (the other replica will be leader on odd numbered views)
+            view.number = view.number.next().next();
         }
         // Ensure only 1 prepare_qc is in memory, as the previous 200 were discarded each time
         // new message is processed
@@ -725,6 +722,38 @@ async fn replica_commit_different_proposals() {
                 );
             }
         );
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+/// Check that leader won't accumulate undefined amount of messages if
+/// it's spammed with ReplicaCommit messages for future views
+#[tokio::test]
+async fn replica_commit_limit_messages_in_memory() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new(ctx, 2).await;
+        s.spawn_bg(runner.run(ctx));
+
+        let mut view = util.replica_view();
+        let mut replica_commit = util.new_replica_commit(ctx).await;
+        // Spam it with 200 messages for different views
+        for _ in 0..200 {
+            replica_commit.view = view.clone();
+            let res = util
+                .process_replica_commit(ctx, util.sign(replica_commit.clone()))
+                .await;
+            assert_matches!(res, Ok(_));
+            // Since we have 2 replicas, we have to send only even numbered views
+            // to hit the same leader (the other replica will be leader on odd numbered views)
+            view.number = view.number.next().next();
+        }
+        // Ensure only 1 commit_qc is in memory, as the previous 200 were discarded each time
+        // new message is processed
+        assert_eq!(util.leader.commit_qcs.len(), 1);
         Ok(())
     })
     .await

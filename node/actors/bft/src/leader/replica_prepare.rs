@@ -135,7 +135,7 @@ impl StateMachine {
             .or_insert_with(|| validator::PrepareQC::new(message.view.clone()));
         prepare_qc.add(&signed_message, self.config.genesis());
 
-        // Calculate the PrepareQC signatures weight.
+        // Calculate the PrepareQC signers weight.
         let weight = prepare_qc.weight(&self.config.genesis().validators);
 
         // Update prepare message current view number for author
@@ -144,7 +144,7 @@ impl StateMachine {
 
         // Clean up prepare_qcs for the case that no replica is at the view
         // of a given PrepareQC
-        // This prevents prepare_qcs map from growing undefinitely in case some
+        // This prevents prepare_qcs map from growing indefinitely in case some
         // malicious replica starts spamming messages for future views
         self.prepare_qcs.retain(|qc_view_number, _| {
             self.replica_prepare_views
