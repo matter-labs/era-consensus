@@ -105,9 +105,11 @@ impl StateMachine {
             .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()));
 
         // If we already have a message from the same validator and for the same view, we discard it.
-        let validator_view = self.commit_message_current_views.get(author);
-        dbg!(&validator_view);
-        if validator_view.is_some_and(|view_number| *view_number >= message.view.number) {
+        if self
+            .replica_commit_views
+            .get(author)
+            .is_some_and(|view_number| *view_number >= message.view.number)
+        {
             return Err(Error::DuplicateSignature {
                 message: commit_qc.message.clone(),
             });
@@ -128,7 +130,7 @@ impl StateMachine {
         commit_qc.add(&signed_message, self.config.genesis());
 
         // Update commit message current view number for author
-        self.commit_message_current_views
+        self.replica_commit_views
             .insert(author.clone(), message.view.number);
 
         // Now we check if we have enough weight to continue.

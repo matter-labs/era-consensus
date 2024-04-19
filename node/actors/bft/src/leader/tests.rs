@@ -413,7 +413,6 @@ async fn replica_prepare_limit_messages_in_memory() {
             // Since we have 2 replicas, we have to send only even numbered views
             // to same leader (the other replica will commit on odd numbered views)
             view.number = view.number.next();
-            //let qc = util.new_commit_qc(|msg| msg.view = view.clone());
             replica_prepare.view = view.clone();
             let res = util
                 .process_replica_prepare(ctx, util.sign(replica_prepare.clone()))

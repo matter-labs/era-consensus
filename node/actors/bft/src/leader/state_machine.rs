@@ -24,7 +24,7 @@ pub(crate) struct StateMachine {
     /// Time when the current phase has started.
     pub(crate) phase_start: time::Instant,
     /// Latest view each validator has signed a ReplicaPrepare message for.
-    pub(crate) prepare_message_current_views: BTreeMap<validator::PublicKey, validator::ViewNumber>,
+    pub(crate) replica_prepare_views: BTreeMap<validator::PublicKey, validator::ViewNumber>,
     /// Prepare QCs indexed by view number.
     pub(crate) prepare_qcs: BTreeMap<validator::ViewNumber, validator::PrepareQC>,
     /// Newest prepare QC composed from the `ReplicaPrepare` messages.
@@ -33,7 +33,7 @@ pub(crate) struct StateMachine {
     pub(crate) commit_qcs:
         BTreeMap<validator::ViewNumber, BTreeMap<validator::ReplicaCommit, validator::CommitQC>>,
     /// Latest view each validator has signed a ReplicaCommit message for.
-    pub(crate) commit_message_current_views: BTreeMap<validator::PublicKey, validator::ViewNumber>,
+    pub(crate) replica_commit_views: BTreeMap<validator::PublicKey, validator::ViewNumber>,
 }
 
 impl StateMachine {
@@ -56,12 +56,12 @@ impl StateMachine {
             view: validator::ViewNumber(0),
             phase: validator::Phase::Prepare,
             phase_start: ctx.now(),
-            prepare_message_current_views: BTreeMap::new(),
+            replica_prepare_views: BTreeMap::new(),
             prepare_qcs: BTreeMap::new(),
             prepare_qc: sync::watch::channel(None).0,
             commit_qcs: BTreeMap::new(),
             inbound_pipe: recv,
-            commit_message_current_views: BTreeMap::new(),
+            replica_commit_views: BTreeMap::new(),
         };
 
         (this, send)

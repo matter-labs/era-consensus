@@ -109,7 +109,7 @@ impl StateMachine {
         }
 
         // If we already have a message from the same validator and for the same view, we discard it.
-        let validator_view = self.prepare_message_current_views.get(author);
+        let validator_view = self.replica_prepare_views.get(author);
         if validator_view.is_some_and(|view_number| *view_number >= message.view.number) {
             return Err(Error::Exists {
                 message: message.clone(),
@@ -139,7 +139,7 @@ impl StateMachine {
         let weight = prepare_qc.weight(&self.config.genesis().validators);
 
         // Update prepare message current view number for author
-        self.prepare_message_current_views
+        self.replica_prepare_views
             .insert(author.clone(), message.view.number);
 
         // Clean up prepare_qcs for the case that no replica is at the view
@@ -147,7 +147,7 @@ impl StateMachine {
         // This prevents prepare_qcs map from growing undefinitely in case some
         // malicious replica starts spamming messages for future views
         self.prepare_qcs.retain(|qc_view_number, _| {
-            self.prepare_message_current_views
+            self.replica_prepare_views
                 .values()
                 .any(|validator_view_number| qc_view_number == validator_view_number)
         });
