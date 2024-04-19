@@ -1,13 +1,9 @@
 use crate::{metrics, Config, OutputSender};
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-    unreachable,
-};
+use std::{collections::BTreeMap, sync::Arc, unreachable};
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_network::io::{ConsensusInputMessage, ConsensusReq, Target};
-use zksync_consensus_roles::validator::{self, ConsensusMsg, Signed};
+use zksync_consensus_roles::validator::{self, ConsensusMsg};
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
@@ -27,11 +23,8 @@ pub(crate) struct StateMachine {
     pub(crate) phase: validator::Phase,
     /// Time when the current phase has started.
     pub(crate) phase_start: time::Instant,
-    /// A cache of replica prepare messages indexed by view number and validator.
-    pub(crate) prepare_message_cache: BTreeMap<
-        validator::ViewNumber,
-        HashMap<validator::PublicKey, Signed<validator::ReplicaPrepare>>,
-    >,
+    /// Latest view each validator has signed a ReplicaPrepare message for.
+    pub(crate) prepare_message_current_views: BTreeMap<validator::PublicKey, validator::ViewNumber>,
     /// Prepare QCs indexed by view number.
     pub(crate) prepare_qcs: BTreeMap<validator::ViewNumber, validator::PrepareQC>,
     /// Newest prepare QC composed from the `ReplicaPrepare` messages.
@@ -39,8 +32,8 @@ pub(crate) struct StateMachine {
     /// Commit QCs indexed by view number and then by message.
     pub(crate) commit_qcs:
         BTreeMap<validator::ViewNumber, BTreeMap<validator::ReplicaCommit, validator::CommitQC>>,
-    /// Latest view a validator has signed a message for.
-    pub(crate) validator_views: BTreeMap<validator::PublicKey, validator::ViewNumber>,
+    /// Latest view each validator has signed a ReplicaCommit message for.
+    pub(crate) commit_message_current_views: BTreeMap<validator::PublicKey, validator::ViewNumber>,
 }
 
 impl StateMachine {
@@ -63,12 +56,12 @@ impl StateMachine {
             view: validator::ViewNumber(0),
             phase: validator::Phase::Prepare,
             phase_start: ctx.now(),
-            prepare_message_cache: BTreeMap::new(),
+            prepare_message_current_views: BTreeMap::new(),
             prepare_qcs: BTreeMap::new(),
             prepare_qc: sync::watch::channel(None).0,
             commit_qcs: BTreeMap::new(),
             inbound_pipe: recv,
-            validator_views: BTreeMap::new(),
+            commit_message_current_views: BTreeMap::new(),
         };
 
         (this, send)

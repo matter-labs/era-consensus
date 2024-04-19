@@ -222,8 +222,8 @@ async fn replica_prepare_already_exists() {
             .await;
         assert_matches!(
             res,
-            Err(replica_prepare::Error::Exists { existing_message }) => {
-                assert_eq!(existing_message, replica_prepare.msg);
+            Err(replica_prepare::Error::Exists { message }) => {
+                assert_eq!(message, replica_prepare.msg);
             }
         );
         Ok(())
@@ -389,6 +389,42 @@ async fn replica_prepare_different_messages() {
         // Check the first proposal has been committed (as it has more votes)
         let message = replica_commit_result.unwrap().msg;
         assert_eq!(message.proposal, proposal);
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+/// Check that leader won't accumulate undefined amount of messages if
+/// it's spammed with ReplicaPrepare messages for future views
+#[tokio::test]
+async fn replica_prepare_limit_messages_in_memory() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new(ctx, 2).await;
+        s.spawn_bg(runner.run(ctx));
+
+        util.produce_block(ctx).await;
+        let mut view = util.replica_view();
+        let mut replica_prepare = util.new_replica_prepare();
+        // Spam it with 200 messages for different views
+        for _ in 0..200 {
+            // Since we have 2 replicas, we have to send only even numbered views
+            // to same leader (the other replica will commit on odd numbered views)
+            view.number = view.number.next();
+            //let qc = util.new_commit_qc(|msg| msg.view = view.clone());
+            replica_prepare.view = view.clone();
+            let res = util
+                .process_replica_prepare(ctx, util.sign(replica_prepare.clone()))
+                .await;
+            assert_matches!(res, Ok(_));
+            // move to next view number againg (to ensure even numbered views)
+            view.number = view.number.next();
+        }
+        // Ensure only 1 prepare_qc is in memory, as the previous 200 were discarded each time
+        // new message is processed
+        assert_eq!(util.leader.prepare_qcs.len(), 1);
         Ok(())
     })
     .await

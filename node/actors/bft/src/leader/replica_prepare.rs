@@ -33,10 +33,10 @@ pub(crate) enum Error {
     #[error("we are not a leader for this message's view")]
     NotLeaderInView,
     /// Duplicate message from a replica.
-    #[error("duplicate message from a replica (existing message: {existing_message:?}")]
+    #[error("duplicate message from a replica (message: {message:?}")]
     Exists {
-        /// Existing message from the same replica.
-        existing_message: validator::ReplicaPrepare,
+        /// Duplicate message from the same replica.
+        message: validator::ReplicaPrepare,
     },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
@@ -109,13 +109,10 @@ impl StateMachine {
         }
 
         // If we already have a message from the same validator and for the same view, we discard it.
-        if let Some(existing_message) = self
-            .prepare_message_cache
-            .get(&message.view.number)
-            .and_then(|x| x.get(author))
-        {
+        let validator_view = self.prepare_message_current_views.get(author);
+        if validator_view.is_some_and(|view_number| *view_number >= message.view.number) {
             return Err(Error::Exists {
-                existing_message: existing_message.msg.clone(),
+                message: message.clone(),
             });
         }
 
@@ -138,22 +135,27 @@ impl StateMachine {
             .or_insert_with(|| validator::PrepareQC::new(message.view.clone()));
         prepare_qc.add(&signed_message, self.config.genesis());
 
-        // We store the message in our cache.
-        self.prepare_message_cache
-            .entry(message.view.number)
-            .or_default()
-            .insert(author.clone(), signed_message.clone());
+        // Calculate the PrepareQC signatures weight.
+        let weight = prepare_qc.weight(&self.config.genesis().validators);
+
+        // Update prepare message current view number for author
+        self.prepare_message_current_views
+            .insert(author.clone(), message.view.number);
+
+        // Clean up prepare_qcs for the case that no replica is at the view
+        // of a given PrepareQC
+        // This prevents prepare_qcs map from growing undefinitely in case some
+        // malicious replica starts spamming messages for future views
+        self.prepare_qcs.retain(|qc_view_number, _| {
+            self.prepare_message_current_views
+                .values()
+                .any(|validator_view_number| qc_view_number == validator_view_number)
+        });
 
         // Now we check if we have enough weight to continue.
-        if prepare_qc.weight(&self.config.genesis().validators)
-            < self.config.genesis().validators.threshold()
-        {
+        if weight < self.config.genesis().validators.threshold() {
             return Ok(());
         }
-
-        // Remove replica prepare messages for this view, so that we don't create a new block proposal
-        // for this same view if we receive another replica prepare message after this.
-        self.prepare_message_cache.remove(&message.view.number);
 
         // ----------- Update the state machine --------------
 
