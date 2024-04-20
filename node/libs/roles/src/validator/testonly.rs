@@ -25,13 +25,10 @@ impl Setup {
     pub fn new_with_fork(rng: &mut impl Rng, weights: Vec<u64>, fork: Fork) -> Self {
         let keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
         let genesis = Genesis {
-            validators: Committee::new(
-                keys.iter().enumerate().map(|(i, k)| WeightedValidator {
-                    key: k.public(),
-                    weight: weights[i],
-                }),
-                LeaderSelectionMode::RoundRobin,
-            )
+            validators: Committee::new(keys.iter().enumerate().map(|(i, k)| WeightedValidator {
+                key: k.public(),
+                weight: weights[i],
+            }))
             .unwrap(),
             fork,
             ..Default::default()
@@ -201,12 +198,23 @@ impl Distribution<Fork> for Standard {
     }
 }
 
+impl Distribution<LeaderSelectionMode> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderSelectionMode {
+        match rng.gen_range(0..=2) {
+            0 => LeaderSelectionMode::RoundRobin,
+            1 => LeaderSelectionMode::Sticky(rng.gen()),
+            _ => LeaderSelectionMode::Weighted,
+        }
+    }
+}
+
 impl Distribution<Genesis> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
         Genesis {
             validators: rng.gen(),
             fork: rng.gen(),
             version: rng.gen(),
+            leader_selection: rng.gen(),
         }
     }
 }
@@ -321,7 +329,7 @@ impl Distribution<Committee> for Standard {
             key: rng.gen(),
             weight: 1,
         });
-        Committee::new(public_keys, LeaderSelectionMode::RoundRobin).unwrap()
+        Committee::new(public_keys).unwrap()
     }
 }
 

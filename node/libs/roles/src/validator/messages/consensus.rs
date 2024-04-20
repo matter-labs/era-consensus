@@ -70,15 +70,21 @@ impl Default for Fork {
     }
 }
 
+/// The mode used for selecting leader for a given view.
 #[derive(Default, Clone, Debug, Eq, PartialEq)]
 pub enum LeaderSelectionMode {
+    /// Select in a round-robin fashion, based on validators' index within the set.
     #[default]
     RoundRobin,
+
+    /// Select based on a sticky assignment to a specific validator.
     Sticky(validator::PublicKey),
+
+    /// Select pseudo-randomly, based on validators' weights.
     Weighted,
 }
 
-pub fn weighted_eligibility(input: u64, total_weight: u64) -> u64 {
+fn leader_weighted_eligibility(input: u64, total_weight: u64) -> u64 {
     let input_bytes = input.to_be_bytes();
     let hash = Keccak256::new(&input_bytes);
     let hash_64 = &hash.as_bytes()[0..8];
@@ -93,15 +99,11 @@ pub struct Committee {
     vec: Vec<WeightedValidator>,
     indexes: BTreeMap<validator::PublicKey, usize>,
     total_weight: u64,
-    leader_selection: LeaderSelectionMode,
 }
 
 impl Committee {
     /// Creates a new Committee from a list of validator public keys.
-    pub fn new(
-        validators: impl IntoIterator<Item = WeightedValidator>,
-        leader_selection: LeaderSelectionMode,
-    ) -> anyhow::Result<Self> {
+    pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
         let mut weighted_validators = BTreeMap::new();
         let mut total_weight: u64 = 0;
         for validator in validators {
@@ -130,7 +132,6 @@ impl Committee {
                 .map(|(i, v)| (v.key.clone(), i))
                 .collect(),
             total_weight,
-            leader_selection,
         })
     }
 
@@ -166,14 +167,18 @@ impl Committee {
     }
 
     /// Computes the leader for the given view.
-    pub fn view_leader(&self, view_number: ViewNumber) -> validator::PublicKey {
-        match &self.leader_selection {
+    pub fn view_leader(
+        &self,
+        view_number: ViewNumber,
+        leader_selection: LeaderSelectionMode,
+    ) -> validator::PublicKey {
+        match &leader_selection {
             LeaderSelectionMode::RoundRobin => {
                 let index = view_number.0 as usize % self.len();
                 self.get(index).unwrap().key.clone()
             }
             LeaderSelectionMode::Weighted => {
-                let eligibility = weighted_eligibility(view_number.0, self.total_weight);
+                let eligibility = leader_weighted_eligibility(view_number.0, self.total_weight);
                 let mut offset = 0;
                 for val in &self.vec {
                     offset += val.weight;
@@ -254,6 +259,8 @@ pub struct Genesis {
     pub validators: Committee,
     /// Fork of the chain to follow.
     pub fork: Fork,
+    /// The mode used for selecting leader for a given view.
+    pub leader_selection: LeaderSelectionMode,
 }
 
 /// Hash of the genesis specification.
@@ -265,6 +272,12 @@ impl Genesis {
     pub fn hash(&self) -> GenesisHash {
         GenesisHash(Keccak256::new(&zksync_protobuf::canonical(self)))
     }
+
+    /// Computes the leader for the given view.
+    pub fn view_leader(&self, view_number: ViewNumber) -> validator::PublicKey {
+        self.validators
+            .view_leader(view_number, self.leader_selection.clone())
+    }
 }
 
 impl Default for Genesis {
@@ -273,6 +286,7 @@ impl Default for Genesis {
             version: GenesisVersion::CURRENT,
             validators: Committee::default(),
             fork: Fork::default(),
+            leader_selection: LeaderSelectionMode::default(),
         }
     }
 }

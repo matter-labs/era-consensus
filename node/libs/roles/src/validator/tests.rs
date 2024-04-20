@@ -100,6 +100,7 @@ fn test_schema_encoding() {
     test_encode_random::<Fork>(rng);
     test_encode_random::<Genesis>(rng);
     test_encode_random::<GenesisHash>(rng);
+    test_encode_random::<LeaderSelectionMode>(rng);
 }
 
 #[test]
@@ -204,11 +205,7 @@ fn test_commit_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
-        validators: Committee::new(
-            setup1.genesis.validators.iter().take(3).cloned(),
-            LeaderSelectionMode::RoundRobin,
-        )
-        .unwrap(),
+        validators: Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
         fork: setup1.genesis.fork.clone(),
         ..Default::default()
     };
@@ -246,11 +243,7 @@ fn test_prepare_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
-        validators: Committee::new(
-            setup1.genesis.validators.iter().take(3).cloned(),
-            LeaderSelectionMode::RoundRobin,
-        )
-        .unwrap(),
+        validators: Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
         fork: setup1.genesis.fork.clone(),
         ..Default::default()
     };
