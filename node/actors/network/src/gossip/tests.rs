@@ -14,9 +14,7 @@ use zksync_concurrency::{
     testonly::{abort_on_panic, set_timeout},
     time,
 };
-use zksync_consensus_roles::validator::{
-    self, BlockNumber, FinalBlock, WeightedValidator,
-};
+use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock, WeightedValidator};
 use zksync_consensus_storage::testonly::new_store;
 
 #[tokio::test]
