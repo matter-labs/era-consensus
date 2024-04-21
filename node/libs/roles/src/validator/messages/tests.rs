@@ -98,7 +98,7 @@ fn leader_selection_mode_roundrobin() {
         key: k.public(),
         weight: 10,
     });
-    let mut committee = Committee::new(validators).unwrap();
+    let committee = Committee::new(validators).unwrap();
     let leader_selection = LeaderSelectionMode::RoundRobin;
 
     let mut rng = StdRng::seed_from_u64(29483920);
@@ -116,12 +116,12 @@ fn leader_selection_mode_sticky() {
         key: k.public(),
         weight: 10,
     });
-    let mut committee = Committee::new(validators).unwrap();
+    let committee = Committee::new(validators).unwrap();
     let validator = committee.get(committee.len() - 1).unwrap().key.clone();
     let leader_selection = LeaderSelectionMode::Sticky(validator.clone());
 
     let mut rng = StdRng::seed_from_u64(29483920);
-    for i in 0..100 {
+    for _ in 0..100 {
         let view_number: u64 = rng.gen();
         let leader = committee.view_leader(ViewNumber(view_number), leader_selection.clone());
         assert_eq!(leader, validator);
@@ -135,7 +135,7 @@ fn leader_selection_mode_weighted() {
         key: k.public(),
         weight,
     });
-    let mut committee = Committee::new(validators).unwrap();
+    let committee = Committee::new(validators).unwrap();
     let leader_selection = LeaderSelectionMode::Weighted;
 
     let mut rng = StdRng::seed_from_u64(29483920);

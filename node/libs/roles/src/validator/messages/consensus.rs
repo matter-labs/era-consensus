@@ -84,7 +84,7 @@ pub enum LeaderSelectionMode {
     Weighted,
 }
 
-fn leader_weighted_eligibility(input: u64, total_weight: u64) -> u64 {
+pub(crate) fn leader_weighted_eligibility(input: u64, total_weight: u64) -> u64 {
     let input_bytes = input.to_be_bytes();
     let hash = Keccak256::new(&input_bytes);
     let hash_64 = &hash.as_bytes()[0..8];

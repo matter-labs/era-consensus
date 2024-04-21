@@ -15,7 +15,7 @@ use zksync_concurrency::{
     time,
 };
 use zksync_consensus_roles::validator::{
-    self, BlockNumber, FinalBlock, LeaderSelectionMode, WeightedValidator,
+    self, BlockNumber, FinalBlock, WeightedValidator,
 };
 use zksync_consensus_storage::testonly::new_store;
 
