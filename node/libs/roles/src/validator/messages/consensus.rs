@@ -84,6 +84,7 @@ pub enum LeaderSelectionMode {
     Weighted,
 }
 
+/// Calculates the pseudo-random eligibility of a leader based on the input and total weight.
 pub(crate) fn leader_weighted_eligibility(input: u64, total_weight: u64) -> u64 {
     let input_bytes = input.to_be_bytes();
     let hash = Keccak256::new(&input_bytes);
