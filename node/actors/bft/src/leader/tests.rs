@@ -418,7 +418,7 @@ async fn replica_prepare_limit_messages_in_memory() {
             // to hit the same leader (the other replica will be leader on odd numbered views)
             view.number = view.number.next().next();
         }
-        // Ensure only 1 prepare_qc is in memory, as the previous 200 were discarded each time
+        // Ensure only 1 prepare_qc is in memory, as the previous 199 were discarded each time
         // new message is processed
         assert_eq!(util.leader.prepare_qcs.len(), 1);
         Ok(())
@@ -585,7 +585,7 @@ async fn replica_commit_already_exists() {
             .await;
         assert_matches!(
             res,
-            Err(replica_commit::Error::DuplicateSignature { message }) => {
+            Err(replica_commit::Error::Exists { message }) => {
                 assert_eq!(message, replica_commit)
             }
         );
@@ -598,7 +598,7 @@ async fn replica_commit_already_exists() {
             .await;
         assert_matches!(
             res,
-            Err(replica_commit::Error::DuplicateSignature { message }) => {
+            Err(replica_commit::Error::Exists { message }) => {
                 assert_eq!(message, different_replica_commit)
             }
         );
@@ -751,7 +751,7 @@ async fn replica_commit_limit_messages_in_memory() {
             // to hit the same leader (the other replica will be leader on odd numbered views)
             view.number = view.number.next().next();
         }
-        // Ensure only 1 commit_qc is in memory, as the previous 200 were discarded each time
+        // Ensure only 1 commit_qc is in memory, as the previous 199 were discarded each time
         // new message is processed
         assert_eq!(util.leader.commit_qcs.len(), 1);
         Ok(())

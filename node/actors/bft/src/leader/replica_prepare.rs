@@ -32,10 +32,10 @@ pub(crate) enum Error {
     /// The node is not a leader for this message's view.
     #[error("we are not a leader for this message's view")]
     NotLeaderInView,
-    /// Duplicate message from a replica.
-    #[error("duplicate message from a replica (message: {message:?}")]
+    /// A message was already sent for a replica at the same view.
+    #[error("Replica sent more than one message for the same view (view: {}, message: {:?}", message.view.number, message)]
     Exists {
-        /// Duplicate message from the same replica.
+        /// Offending message.
         message: validator::ReplicaPrepare,
     },
     /// Invalid message signature.
@@ -109,8 +109,11 @@ impl StateMachine {
         }
 
         // If we already have a message from the same validator and for the same view, we discard it.
-        let validator_view = self.replica_prepare_views.get(author);
-        if validator_view.is_some_and(|view_number| *view_number >= message.view.number) {
+        if self
+            .replica_prepare_views
+            .get(author)
+            .is_some_and(|view_number| *view_number >= message.view.number)
+        {
             return Err(Error::Exists {
                 message: message.clone(),
             });

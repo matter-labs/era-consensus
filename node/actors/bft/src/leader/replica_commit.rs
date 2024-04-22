@@ -38,9 +38,9 @@ pub(crate) enum Error {
     /// Invalid message.
     #[error("invalid message: {0:#}")]
     InvalidMessage(#[source] anyhow::Error),
-    /// Duplicate message from a replica.
-    #[error("Replica signed more than one message for same view (message: {message:?}")]
-    DuplicateSignature {
+    /// A message was already sent for a replica at the same view.
+    #[error("Replica sent more than one message for the same view (view: {}, message: {:?}", message.view.number, message)]
+    Exists {
         /// Offending message.
         message: validator::ReplicaCommit,
     },
@@ -110,7 +110,7 @@ impl StateMachine {
             .get(author)
             .is_some_and(|view_number| *view_number >= message.view.number)
         {
-            return Err(Error::DuplicateSignature {
+            return Err(Error::Exists {
                 message: commit_qc.message.clone(),
             });
         }
