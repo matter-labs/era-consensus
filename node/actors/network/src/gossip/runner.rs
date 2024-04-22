@@ -33,6 +33,11 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'
     }
 }
 
+/*
+struct MatchMaker {
+    HashMap<Arc<Conn>,(BlockStoreState,rpc::ReservedCall<rpc::get_block::Rpc>>,
+}*/
+
 #[derive(Clone, Copy)]
 struct PushBlockStoreStateServer<'a> {
     peer: &'a node::PublicKey,
@@ -100,17 +105,19 @@ impl Network {
             let mut service = rpc::Service::new()
                 .add_client(&push_validator_addrs_client)
                 .add_server(
+                    ctx,
                     push_validator_addrs_server,
                     self.cfg.rpc.push_validator_addrs_rate,
                 )
                 .add_client(&push_block_store_state_client)
                 .add_server(
+                    ctx,
                     push_block_store_state_server,
                     self.cfg.rpc.push_block_store_state_rate,
                 )
                 .add_client(&conn.get_block)
-                .add_server(&*self.block_store, self.cfg.rpc.get_block_rate)
-                .add_server(rpc::ping::Server, rpc::ping::RATE);
+                .add_server(ctx, &*self.block_store, self.cfg.rpc.get_block_rate)
+                .add_server(ctx, rpc::ping::Server, rpc::ping::RATE);
 
             if let Some(ping_timeout) = &self.cfg.ping_timeout {
                 let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx, rpc::ping::RATE);

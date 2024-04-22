@@ -8,7 +8,7 @@ use std::{
         Arc,
     },
 };
-use zksync_concurrency::{ctx, scope, testonly::abort_on_panic};
+use zksync_concurrency::{ctx, scope, testonly::abort_on_panic, limiter};
 
 mod proto;
 
@@ -32,6 +32,7 @@ fn test_masks() {
 
 #[test]
 fn test_mux_verify() {
+    let ctx = &ctx::test_root(&ctx::RealClock);
     let cfg = Arc::new(mux::Config {
         read_buffer_size: 1000,
         read_frame_size: 100,
@@ -47,8 +48,8 @@ fn test_mux_verify() {
     .is_ok());
 
     let mut queues = BTreeMap::new();
-    queues.insert(0, mux::StreamQueue::new(u32::MAX));
-    queues.insert(1, mux::StreamQueue::new(u32::MAX));
+    queues.insert(0, mux::StreamQueue::new(ctx, u32::MAX, limiter::Rate::INF));
+    queues.insert(1, mux::StreamQueue::new(ctx, u32::MAX, limiter::Rate::INF));
     // Total streams overflow:
     assert!(mux::Mux {
         cfg: cfg.clone(),
@@ -208,10 +209,10 @@ fn mux_with_noise() {
                 write_frame_size: 150,
             }),
             accept: (0..caps)
-                .map(|c| (c, mux::StreamQueue::new(rng.gen_range(1..5))))
+                .map(|c| (c, mux::StreamQueue::new(ctx, rng.gen_range(1..5), limiter::Rate::INF)))
                 .collect(),
             connect: (0..caps)
-                .map(|c| (c, mux::StreamQueue::new(rng.gen_range(1..5))))
+                .map(|c| (c, mux::StreamQueue::new(ctx, rng.gen_range(1..5), limiter::Rate::INF)))
                 .collect(),
         };
         let mux2 = mux::Mux {
@@ -222,10 +223,10 @@ fn mux_with_noise() {
                 write_frame_size: 79,
             }),
             accept: (0..caps)
-                .map(|c| (c, mux::StreamQueue::new(rng.gen_range(1..5))))
+                .map(|c| (c, mux::StreamQueue::new(ctx, rng.gen_range(1..5), limiter::Rate::INF)))
                 .collect(),
             connect: (0..caps)
-                .map(|c| (c, mux::StreamQueue::new(rng.gen_range(1..5))))
+                .map(|c| (c, mux::StreamQueue::new(ctx, rng.gen_range(1..5), limiter::Rate::INF)))
                 .collect(),
         };
 
@@ -303,7 +304,7 @@ async fn test_transport_closed() {
                             accept: BTreeMap::default(),
                             connect: BTreeMap::default(),
                         };
-                        let q = mux::StreamQueue::new(1);
+                        let q = mux::StreamQueue::new(ctx, 1, limiter::Rate::INF);
                         mux.connect.insert(cap, q.clone());
                         s.spawn_bg(async {
                             expected(mux.run(ctx, s2).await).context("[connect] mux.run()")
@@ -316,7 +317,7 @@ async fn test_transport_closed() {
                             accept: BTreeMap::default(),
                             connect: BTreeMap::default(),
                         };
-                        let q = mux::StreamQueue::new(1);
+                        let q = mux::StreamQueue::new(ctx, 1, limiter::Rate::INF);
                         mux.accept.insert(cap, q.clone());
                         s.spawn_bg(async {
                             expected(mux.run(ctx, s1).await).context("[accept] mux.run()")

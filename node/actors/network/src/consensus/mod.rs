@@ -175,8 +175,8 @@ impl Network {
         tracing::info!("peer = {peer:?}");
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
-                .add_server(rpc::ping::Server, rpc::ping::RATE)
-                .add_server(self, self.gossip.cfg.rpc.consensus_rate);
+                .add_server(ctx, rpc::ping::Server, rpc::ping::RATE)
+                .add_server(ctx, self, self.gossip.cfg.rpc.consensus_rate);
             if let Some(ping_timeout) = &self.gossip.cfg.ping_timeout {
                 let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx, rpc::ping::RATE);
                 service = service.add_client(&ping_client);
@@ -215,7 +215,7 @@ impl Network {
             rpc::Client::<rpc::consensus::Rpc>::new(ctx, self.gossip.cfg.rpc.consensus_rate);
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
-                .add_server(rpc::ping::Server, rpc::ping::RATE)
+                .add_server(ctx, rpc::ping::Server, rpc::ping::RATE)
                 .add_client(&consensus_cli);
             if let Some(ping_timeout) = &self.gossip.cfg.ping_timeout {
                 let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx, rpc::ping::RATE);
