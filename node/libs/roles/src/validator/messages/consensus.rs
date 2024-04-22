@@ -261,7 +261,7 @@ pub struct Genesis {
     /// Fork of the chain to follow.
     pub fork: Fork,
     /// The mode used for selecting leader for a given view.
-    pub leader_selection: LeaderSelectionMode,
+    pub leader_selection: Option<LeaderSelectionMode>,
 }
 
 /// Hash of the genesis specification.
@@ -276,8 +276,10 @@ impl Genesis {
 
     /// Computes the leader for the given view.
     pub fn view_leader(&self, view_number: ViewNumber) -> validator::PublicKey {
-        self.validators
-            .view_leader(view_number, self.leader_selection.clone())
+        self.validators.view_leader(
+            view_number,
+            self.leader_selection.clone().unwrap_or_default(),
+        )
     }
 }
 
@@ -287,7 +289,7 @@ impl Default for Genesis {
             version: GenesisVersion::CURRENT,
             validators: Committee::default(),
             fork: Fork::default(),
-            leader_selection: LeaderSelectionMode::default(),
+            leader_selection: Some(LeaderSelectionMode::default()),
         }
     }
 }

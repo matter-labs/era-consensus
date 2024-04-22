@@ -41,7 +41,7 @@ fn genesis_v0() -> Genesis {
         .unwrap(),
         fork: fork(),
         version: GenesisVersion(0),
-        leader_selection: LeaderSelectionMode::default(),
+        leader_selection: None,
     }
 }
 
@@ -55,7 +55,7 @@ fn genesis_v1() -> Genesis {
         .unwrap(),
         fork: fork(),
         version: GenesisVersion(1),
-        leader_selection: LeaderSelectionMode::default(),
+        leader_selection: Some(LeaderSelectionMode::Weighted),
     }
 }
 
@@ -85,7 +85,7 @@ fn genesis_v0_hash_change_detector() {
 #[test]
 fn genesis_v1_hash_change_detector() {
     let want: GenesisHash = Text::new(
-        "genesis_hash:keccak256:6370cfce637395629f05599082993c446c2c66145d440287a985ac98ad210b41",
+        "genesis_hash:keccak256:3fc736e5f69784be02ec83ff5f91414ee6b44e545b68eac7f54089bb63085b02",
     )
     .decode()
     .unwrap();

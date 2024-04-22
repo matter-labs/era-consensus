@@ -65,7 +65,12 @@ impl ProtoFmt for Genesis {
             fork: read_required(&r.fork).context("fork")?,
             validators: Committee::new(validators.into_iter()).context("validators")?,
             version,
-            leader_selection: read_required(&r.leader_selection).context("leader_selection")?,
+            leader_selection: r
+                .leader_selection
+                .as_ref()
+                .map(ProtoFmt::read)
+                .transpose()
+                .context("leader_selection")?,
         })
     }
     fn build(&self) -> Self::Proto {
@@ -74,13 +79,13 @@ impl ProtoFmt for Genesis {
                 fork: Some(self.fork.build()),
                 validators: self.validators.iter().map(|v| v.key.build()).collect(),
                 validators_v1: vec![],
-                leader_selection: Some(self.leader_selection.build()),
+                leader_selection: self.leader_selection.as_ref().map(|x| x.build()),
             },
             GenesisVersion(1..) => Self::Proto {
                 fork: Some(self.fork.build()),
                 validators: vec![],
                 validators_v1: self.validators.iter().map(|v| v.build()).collect(),
-                leader_selection: Some(self.leader_selection.build()),
+                leader_selection: self.leader_selection.as_ref().map(|x| x.build()),
             },
         }
     }
