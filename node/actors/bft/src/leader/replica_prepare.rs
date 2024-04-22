@@ -33,7 +33,7 @@ pub(crate) enum Error {
     #[error("we are not a leader for this message's view")]
     NotLeaderInView,
     /// A message was already sent for a replica at the same view.
-    #[error("Replica sent more than one message for the same view (view: {}, message: {:?}", message.view.number, message)]
+    #[error("Replica sent more than one message for the same view (message: {message:?}")]
     Exists {
         /// Offending message.
         message: validator::ReplicaPrepare,

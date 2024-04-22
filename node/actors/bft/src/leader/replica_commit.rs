@@ -39,7 +39,7 @@ pub(crate) enum Error {
     #[error("invalid message: {0:#}")]
     InvalidMessage(#[source] anyhow::Error),
     /// A message was already sent for a replica at the same view.
-    #[error("Replica sent more than one message for the same view (view: {}, message: {:?}", message.view.number, message)]
+    #[error("Replica sent more than one message for the same view (message: {message:?}")]
     Exists {
         /// Offending message.
         message: validator::ReplicaCommit,
