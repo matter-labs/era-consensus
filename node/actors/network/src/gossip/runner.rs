@@ -1,13 +1,13 @@
-use super::{handshake, Connection, Network, ValidatorAddrs};
-use crate::{io, noise, preface, rpc};
+use super::{handshake, Network, ValidatorAddrs};
+use crate::{noise, preface, rpc};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use rand::seq::SliceRandom;
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{atomic::Ordering};
 use tracing::Instrument as _;
-use zksync_concurrency::{ctx, net, oneshot, scope, sync};
+use zksync_concurrency::{ctx, net, scope, sync};
 use zksync_consensus_roles::node;
-use zksync_consensus_storage::BlockStore;
+use zksync_consensus_storage::{BlockStore,BlockStoreState};
 use zksync_protobuf::kB;
 
 struct PushValidatorAddrsServer<'a>(&'a Network);
@@ -33,32 +33,44 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'
     }
 }
 
-#[derive(Clone, Copy)]
 struct PushBlockStoreStateServer<'a> {
-    peer: &'a node::PublicKey,
+    state: sync::watch::Sender<BlockStoreState>,
     net: &'a Network,
 }
 
+impl<'a> PushBlockStoreStateServer<'a> {
+    fn new(net: &'a Network) -> Self {
+        Self {
+            state: sync::watch::channel(BlockStoreState {
+                first: net.genesis().fork.first_block,
+                last: None,
+            }).0,
+            net,
+        }
+    }
+}
+
 #[async_trait]
-impl rpc::Handler<rpc::push_block_store_state::Rpc> for PushBlockStoreStateServer<'_> {
+impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushBlockStoreStateServer<'_> {
     fn max_req_size(&self) -> usize {
         10 * kB
     }
     async fn handle(
         &self,
-        ctx: &ctx::Ctx,
+        _ctx: &ctx::Ctx,
         req: rpc::push_block_store_state::Req,
     ) -> anyhow::Result<()> {
-        let (response, response_receiver) = oneshot::channel();
-        let message = io::SyncBlocksRequest::UpdatePeerSyncState {
-            peer: self.peer.clone(),
-            state: req.0,
-            response,
-        };
-        self.net.sender.send(message.into());
-        // TODO(gprusak): disconnection means that the message was rejected OR
-        // that `SyncBlocks` actor is missing (in tests), which leads to unnecessary disconnects.
-        let _ = response_receiver.recv_or_disconnected(ctx).await?;
+        req.0.verify(self.net.genesis())?;
+        // Update global maximum.
+        self.net.global_next.send_if_modified(|next| {
+            if req.0.next() <= *next {
+                return false;
+            }
+            *next = req.0.next();
+            true
+        });
+        // Update state.
+        self.state.send_replace(req.0);
         Ok(())
     }
 }
@@ -82,14 +94,12 @@ impl Network {
     async fn run_stream(
         &self,
         ctx: &ctx::Ctx,
-        peer: &node::PublicKey,
         stream: noise::Stream,
-        conn: &Connection,
     ) -> anyhow::Result<()> {
         let push_validator_addrs_client = rpc::Client::<rpc::push_validator_addrs::Rpc>::new(ctx,self.cfg.rpc.push_validator_addrs_rate);
         let push_validator_addrs_server = PushValidatorAddrsServer(self);
         let push_block_store_state_client = rpc::Client::<rpc::push_block_store_state::Rpc>::new(ctx, self.cfg.rpc.push_block_store_state_rate);
-        let push_block_store_state_server = PushBlockStoreStateServer { peer, net: self };
+        let push_block_store_state_server = PushBlockStoreStateServer::new(self);
         let get_block_client = rpc::Client::<rpc::get_block::Rpc>::new(ctx,self.cfg.rpc.get_block_rate);
         scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
@@ -102,7 +112,7 @@ impl Network {
                 .add_client(&push_block_store_state_client)
                 .add_server(
                     ctx,
-                    push_block_store_state_server,
+                    &push_block_store_state_server,
                     self.cfg.rpc.push_block_store_state_rate,
                 )
                 .add_client(&get_block_client)
@@ -150,15 +160,26 @@ impl Network {
 
             // Perform get_block calls to peer.
             s.spawn::<()>(async {
-                let state = &mut state.subscribe();
+                let state = &mut push_block_store_state_server.state.subscribe();
                 loop {
                     let call = get_block_client.reserve(ctx).await?;
-                    let (req,send_resp) = self.get_block_calls.accept(ctx,state).await?;
+                    let (req,send_resp) = self.get_block_queue.accept(ctx,state).await?;
+                    let req = rpc::get_block::Req(req);
                     s.spawn(async {
-                        // Ignore disconnection error.
-                        // In particular, the timeout should be enforced by the caller.
-                        // TODO: consider whether verification should be performed here.
-                        let _ = send_resp.send(call.call(ctx,rpc::get_block::Req(req)).await?);
+                        let req = req;
+                        // TODO: consider whether block verification should be performed here,
+                        // and whether to apply a penalty to the peer if the block is missing,
+                        // or is incorrect.
+                        if let Some(block) = call.call(
+                            ctx,
+                            &req,
+                            self.cfg.max_block_size.saturating_add(kB),
+                        ).await?.0 {
+                            // Ignore disconnection error.
+                            // In particular, the timeout should be enforced by the caller.
+                            let _ = send_resp.send(block);
+                        }
+                        Ok(())
                     });
                 }
             });
@@ -180,11 +201,8 @@ impl Network {
         let peer =
             handshake::inbound(ctx, &self.cfg.gossip, self.genesis().hash(), &mut stream).await?;
         tracing::info!("peer = {peer:?}");
-        let conn = Arc::new(Connection {
-            get_block: rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate),
-        });
-        self.inbound.insert(peer.clone(), conn.clone()).await?;
-        let res = self.run_stream(ctx, &peer, stream, &conn).await;
+        self.inbound.insert(peer.clone(), ()).await?;
+        let res = self.run_stream(ctx, stream).await;
         self.inbound.remove(&peer).await;
         res
     }
@@ -214,12 +232,9 @@ impl Network {
         )
         .await?;
         tracing::info!("peer = {peer:?}");
-        let conn = Arc::new(Connection {
-            get_block: rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate),
-        });
-        self.outbound.insert(peer.clone(), conn.clone()).await?;
+        self.outbound.insert(peer.clone(), ()).await?;
         let res = self
-            .run_stream(ctx, peer, stream, &conn)
+            .run_stream(ctx, stream)
             .instrument(tracing::info_span!("out", ?addr))
             .await;
         self.outbound.remove(peer).await;

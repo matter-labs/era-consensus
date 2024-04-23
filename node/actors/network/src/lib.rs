@@ -2,7 +2,7 @@
 use anyhow::Context as _;
 use std::sync::Arc;
 use tracing::Instrument as _;
-use zksync_concurrency::{ctx, ctx::channel, limiter, scope, time};
+use zksync_concurrency::{ctx, ctx::channel, limiter, scope};
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
@@ -71,12 +71,9 @@ impl Network {
     /// Handles a dispatcher message.
     async fn handle_message(
         &self,
-        ctx: &ctx::Ctx,
+        _ctx: &ctx::Ctx,
         message: io::InputMessage,
     ) -> anyhow::Result<()> {
-        /// Timeout for a GetBlock RPC.
-        const GET_BLOCK_TIMEOUT: time::Duration = time::Duration::seconds(10);
-
         match message {
             io::InputMessage::Consensus(message) => {
                 self.consensus
@@ -84,18 +81,6 @@ impl Network {
                     .context("not a validator node")?
                     .msg_pool
                     .send(Arc::new(message));
-            }
-            io::InputMessage::SyncBlocks(io::SyncBlocksInputMessage::GetBlock {
-                recipient,
-                number,
-                response,
-            }) => {
-                let ctx = &ctx.with_timeout(GET_BLOCK_TIMEOUT);
-                let _ = response.send(match self.gossip.get_block(ctx, &recipient, number).await {
-                    Ok(Some(block)) => Ok(block),
-                    Ok(None) => Err(io::GetBlockError::NotAvailable),
-                    Err(err) => Err(io::GetBlockError::Internal(err)),
-                });
             }
         }
         Ok(())

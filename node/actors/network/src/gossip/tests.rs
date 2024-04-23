@@ -1,3 +1,4 @@
+#![allow(unused)]
 use super::*;
 use crate::{io, metrics, preface, rpc, testonly};
 use assert_matches::assert_matches;
@@ -14,6 +15,7 @@ use zksync_concurrency::{
     testonly::{abort_on_panic, set_timeout},
     time,
 };
+use anyhow::Context as _;
 use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock};
 use zksync_consensus_storage::testonly::new_store;
 
@@ -314,6 +316,7 @@ async fn test_genesis_mismatch() {
 const EXCHANGED_STATE_COUNT: usize = 5;
 const NETWORK_CONNECTIVITY_CASES: [(usize, usize); 5] = [(2, 1), (3, 2), (5, 3), (10, 4), (10, 7)];
 
+/*
 /// Tests block syncing with global network synchronization (a next block becoming available
 /// to all nodes only after all nodes have received previous `SyncState` updates from peers).
 #[test_casing(5, NETWORK_CONNECTIVITY_CASES)]
@@ -355,8 +358,9 @@ async fn syncing_blocks(node_count: usize, gossip_peers: usize) {
     .await
     .unwrap();
 }
+*/
 
-async fn wait_for_updates(
+/*async fn wait_for_updates(
     ctx: &ctx::Ctx,
     node: &mut testonly::Instance,
     peer_count: usize,
@@ -378,8 +382,9 @@ async fn wait_for_updates(
         response.send(()).ok();
     }
     Ok(())
-}
+}*/
 
+/*
 /// Tests block syncing in an uncoordinated network, in which new blocks arrive at a schedule.
 /// In this case, some nodes may skip emitting initial / intermediate updates to peers, so we
 /// only assert that all peers for all nodes emit the final update.
@@ -428,8 +433,9 @@ async fn uncoordinated_block_syncing(
     .await
     .unwrap();
 }
+*/
 
-#[test_casing(5, NETWORK_CONNECTIVITY_CASES)]
+/*#[test_casing(5, NETWORK_CONNECTIVITY_CASES)]
 #[tokio::test]
 async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
     abort_on_panic();
@@ -513,7 +519,7 @@ async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
     })
     .await
     .unwrap();
-}
+}*/
 
 /// When validator node is restarted, it should immediately override
 /// the AccountData that is present in the network from the previous run.

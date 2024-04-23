@@ -12,9 +12,12 @@
 //! Static connections constitute a rigid "backbone" of the gossip network, which is insensitive to
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
-use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, rpc, Config};
-use anyhow::Context as _;
+use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config};
 use std::sync::{atomic::AtomicUsize, Arc};
+pub(crate) use validator_addrs::*;
+use zksync_concurrency::{sync, ctx::channel};
+use zksync_consensus_roles::{node, validator};
+use zksync_consensus_storage::BlockStore;
 
 mod handshake;
 mod runner;
@@ -22,12 +25,6 @@ mod get_block;
 #[cfg(test)]
 mod tests;
 mod validator_addrs;
-
-pub(crate) use validator_addrs::*;
-use zksync_concurrency::{ctx, ctx::channel};
-use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::BlockStore;
-use zksync_protobuf::kB;
 
 /// Gossip network state.
 pub(crate) struct Network {
@@ -43,8 +40,10 @@ pub(crate) struct Network {
     pub(crate) block_store: Arc<BlockStore>,
     /// Output pipe of the network actor.
     pub(crate) sender: channel::UnboundedSender<io::OutputMessage>,
-    /// Queue of `get_block` calls.
-    pub(crate) get_block_queue: get_block::Queue, 
+    /// Queue of `get_block` calls to peers.
+    pub(crate) get_block_queue: get_block::Queue,
+    /// Next block number to finalize.
+    pub(crate) global_next: sync::watch::Sender<validator::BlockNumber>,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
 }
@@ -64,8 +63,10 @@ impl Network {
             ),
             outbound: PoolWatch::new(cfg.gossip.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
-            block_store,
             cfg,
+            get_block_queue: get_block::Queue::default(),
+            global_next: sync::watch::channel(block_store.queued().next()).0,
+            block_store,
             push_validator_addrs_calls: 0.into(),
         })
     }
@@ -73,28 +74,5 @@ impl Network {
     /// Genesis.
     pub(crate) fn genesis(&self) -> &validator::Genesis {
         self.block_store.genesis()
-    }
-
-    /// Sends a GetBlock RPC to the given peer.
-    pub(crate) async fn get_block(
-        &self,
-        ctx: &ctx::Ctx,
-        recipient: &node::PublicKey,
-        number: validator::BlockNumber,
-    ) -> anyhow::Result<Option<validator::FinalBlock>> {
-        let outbound = self.outbound.current();
-        let inbound = self.inbound.current();
-        Ok(outbound
-            .get(recipient)
-            .or(inbound.get(recipient))
-            .context("recipient is unreachable")?
-            .get_block
-            .call(
-                ctx,
-                &rpc::get_block::Req(number),
-                self.cfg.max_block_size.saturating_add(kB),
-            )
-            .await?
-            .0)
     }
 }
