@@ -1,5 +1,5 @@
 use crate::{
-    attester::{self, AttesterSet},
+    attester::{self, WeightedAttester},
     node::SessionId,
 };
 
@@ -71,14 +71,19 @@ impl ProtoFmt for Genesis {
             .attesters
             .iter()
             .enumerate()
-            .map(|(i, v)| attester::PublicKey::read(v).context(i))
+            .map(|(i, v)| {
+                anyhow::Ok(WeightedAttester {
+                    key: attester::PublicKey::read(v).context(i)?,
+                    weight: 1,
+                })
+            })
             .collect::<Result<_, _>>()
-            .context("validators")?;
+            .context("attesters")?;
 
         Ok(Self {
             fork: read_required(&r.fork).context("fork")?,
             validators: Committee::new(validators.into_iter()).context("validators")?,
-            attesters: AttesterSet::new(attesters.into_iter()).context("attesters")?,
+            attesters: attester::Committee::new(attesters.into_iter()).context("attesters")?,
             version,
         })
     }
@@ -87,14 +92,14 @@ impl ProtoFmt for Genesis {
             GenesisVersion(0) => Self::Proto {
                 fork: Some(self.fork.build()),
                 validators: self.validators.iter().map(|v| v.key.build()).collect(),
-                attesters: self.attesters.iter().map(|v| v.build()).collect(),
+                attesters: self.attesters.iter().map(|v| v.key.build()).collect(),
                 validators_v1: vec![],
             },
             GenesisVersion(1..) => Self::Proto {
                 fork: Some(self.fork.build()),
                 validators: vec![],
                 validators_v1: self.validators.iter().map(|v| v.build()).collect(),
-                attesters: self.attesters.iter().map(|v| v.build()).collect(),
+                attesters: self.attesters.iter().map(|v| v.key.build()).collect(),
             },
         }
     }

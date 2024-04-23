@@ -1,17 +1,16 @@
-use std::{
-    collections::{BTreeMap, BTreeSet},
-    fmt,
-};
+use std::{collections::BTreeMap, fmt};
 
 use crate::{
     attester::{L1Batch, PublicKey, Signature},
     validator::ViewNumber,
 };
+use anyhow::Context;
 use bit_vec::BitVec;
 use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
 /// Message that is sent by an attester.
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Msg {
     /// L1 batch message.
     L1Batch(L1Batch),
@@ -74,71 +73,113 @@ impl Signers {
     }
 }
 
-/// A struct that represents a set of validators. It is used to store the current validator set.
-/// We represent each validator by its validator public key.
+/// A struct that represents a set of attesters. It is used to store the current attester set.
+/// We represent each attester by its attester public key.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct AttesterSet {
-    vec: Vec<PublicKey>,
-    map: BTreeMap<PublicKey, usize>,
+pub struct Committee {
+    vec: Vec<WeightedAttester>,
+    indexes: BTreeMap<PublicKey, usize>,
+    total_weight: u64,
 }
 
-impl AttesterSet {
-    /// Creates a new AttesterSet from a list of validator public keys.
-    pub fn new(attesters: impl IntoIterator<Item = PublicKey>) -> anyhow::Result<Self> {
-        let mut set = BTreeSet::new();
+impl Committee {
+    /// Creates a new Committee from a list of validator public keys.
+    pub fn new(attesters: impl IntoIterator<Item = WeightedAttester>) -> anyhow::Result<Self> {
+        let mut weighted_attester = BTreeMap::new();
+        let mut total_weight: u64 = 0;
         for attester in attesters {
-            anyhow::ensure!(set.insert(attester), "Duplicate validator in ValidatorSet");
+            anyhow::ensure!(
+                !weighted_attester.contains_key(&attester.key),
+                "Duplicate validator in validator Committee"
+            );
+            anyhow::ensure!(
+                attester.weight > 0,
+                "Validator weight has to be a positive value"
+            );
+            total_weight = total_weight
+                .checked_add(attester.weight)
+                .context("Sum of weights overflows in attester Committee")?;
+            weighted_attester.insert(attester.key.clone(), attester);
         }
         anyhow::ensure!(
-            !set.is_empty(),
-            "ValidatorSet must contain at least one validator"
+            !weighted_attester.is_empty(),
+            "Attester Committee must contain at least one attester"
         );
+        println!("weighted_attesters: {:?}", total_weight);
         Ok(Self {
-            vec: set.iter().cloned().collect(),
-            map: set.into_iter().enumerate().map(|(i, pk)| (pk, i)).collect(),
+            vec: weighted_attester.values().cloned().collect(),
+            indexes: weighted_attester
+                .values()
+                .enumerate()
+                .map(|(i, v)| (v.key.clone(), i))
+                .collect(),
+            total_weight,
         })
     }
 
-    /// Iterates over validators.
-    pub fn iter(&self) -> impl Iterator<Item = &PublicKey> {
+    /// Iterates over weighted validators.
+    pub fn iter(&self) -> impl Iterator<Item = &WeightedAttester> {
         self.vec.iter()
     }
 
+    /// Iterates over validator keys.
+    pub fn iter_keys(&self) -> impl Iterator<Item = &PublicKey> {
+        self.vec.iter().map(|v| &v.key)
+    }
+
     /// Returns the number of validators.
-    #[allow(clippy::len_without_is_empty)] // a valid `ValidatorSet` is always non-empty by construction
+    #[allow(clippy::len_without_is_empty)] // a valid `Committee` is always non-empty by construction
     pub fn len(&self) -> usize {
         self.vec.len()
     }
 
-    /// Returns true if the given validator is in the validator set.
+    /// Returns true if the given validator is in the validator committee.
     pub fn contains(&self, validator: &PublicKey) -> bool {
-        self.map.contains_key(validator)
+        self.indexes.contains_key(validator)
     }
 
-    /// Get validator by its index in the set.
-    pub fn get(&self, index: usize) -> Option<&PublicKey> {
+    /// Get validator by its index in the committee.
+    pub fn get(&self, index: usize) -> Option<&WeightedAttester> {
         self.vec.get(index)
     }
 
-    /// Get the index of a validator in the set.
+    /// Get the index of a validator in the committee.
     pub fn index(&self, validator: &PublicKey) -> Option<usize> {
-        self.map.get(validator).copied()
+        self.indexes.get(validator).copied()
     }
 
-    /// Computes the validator for the given view.
+    /// Computes the leader for the given view.
     pub fn view_leader(&self, view_number: ViewNumber) -> PublicKey {
         let index = view_number.0 as usize % self.len();
-        self.get(index).unwrap().clone()
+        self.get(index).unwrap().key.clone()
     }
 
-    /// Signature threshold for this validator set.
-    pub fn threshold(&self) -> usize {
-        threshold(self.len())
+    /// Signature weight threshold for this validator committee.
+    pub fn threshold(&self) -> u64 {
+        threshold(self.total_weight())
     }
 
-    /// Maximal number of faulty replicas allowed in this validator set.
-    pub fn faulty_replicas(&self) -> usize {
-        faulty_replicas(self.len())
+    /// Compute the sum of signers weights.
+    /// Panics if signers length does not match the number of attesters in committee
+    pub fn weight(&self, signers: &Signers) -> u64 {
+        println!("attester.vec.len: {:?}", self.vec.len());
+        assert_eq!(self.vec.len(), signers.len());
+        self.vec
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| signers.0[*i])
+            .map(|(_, v)| v.weight)
+            .sum()
+    }
+
+    /// Sum of all validators' weight in the committee
+    pub fn total_weight(&self) -> u64 {
+        self.total_weight
+    }
+
+    /// Maximal weight of faulty replicas allowed in this validator committee.
+    pub fn max_faulty_weight(&self) -> u64 {
+        max_faulty_weight(self.total_weight())
     }
 }
 
@@ -154,10 +195,20 @@ pub fn faulty_replicas(n: usize) -> usize {
     (n - 1) / 5
 }
 
-/// Calculate the consensus threshold, the minimum number of votes for any consensus action to be valid,
-/// for a given number of replicas.
-pub fn threshold(n: usize) -> usize {
-    n - faulty_replicas(n)
+/// Calculate the consensus threshold, the minimum votes' weight for any consensus action to be valid,
+/// for a given committee total weight.
+pub fn threshold(total_weight: u64) -> u64 {
+    total_weight - max_faulty_weight(total_weight)
+}
+
+/// Calculate the maximum allowed weight for faulty replicas, for a given total weight.
+pub fn max_faulty_weight(total_weight: u64) -> u64 {
+    // Calculate the allowed maximum weight of faulty replicas. We want the following relationship to hold:
+    //      n = 5*f + 1
+    // for n total weight and f faulty weight. This results in the following formula for the maximum
+    // weight of faulty replicas:
+    //      f = floor((n - 1) / 5)
+    (total_weight - 1) / 5
 }
 
 impl std::ops::BitOrAssign<&Self> for Signers {
@@ -231,4 +282,13 @@ impl<V: Variant<Msg> + Clone> SignedBatchMsg<V> {
             sig: self.sig,
         })
     }
+}
+
+/// Attester representation inside a Committee.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WeightedAttester {
+    /// Validator key
+    pub key: PublicKey,
+    /// Validator weight inside the Committee.
+    pub weight: u64,
 }

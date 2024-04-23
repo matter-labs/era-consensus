@@ -39,9 +39,9 @@ pub enum L1BatchQCVerifyError {
     #[error("not enough signers: got {got}, want {want}")]
     NotEnoughSigners {
         /// Got signers.
-        got: usize,
+        got: u64,
         /// Want signers.
-        want: usize,
+        want: u64,
     },
 }
 
@@ -73,25 +73,28 @@ impl L1BatchQC {
 
     /// Verifies the signature of the L1BatchQC.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), L1BatchQCVerifyError> {
-        // Verify that we have enough signers.
-        let num_signers = self.signers.count();
+        use L1BatchQCVerifyError as Error;
+
+        println!("attester.signers: {:?}", self.signers.len());
+        // Verify the signers' weight is enough.
+        let weight = genesis.attesters.weight(&self.signers);
         let threshold = genesis.attesters.threshold();
-        if num_signers < threshold {
-            return Err(L1BatchQCVerifyError::NotEnoughSigners {
-                got: num_signers,
+        if weight < threshold {
+            return Err(Error::NotEnoughSigners {
+                got: weight,
                 want: threshold,
             });
         }
 
         let messages_and_keys = genesis
             .attesters
-            .iter()
+            .iter_keys()
             .enumerate()
             .filter(|(i, _)| self.signers.0[*i])
             .map(|(_, pk)| (self.message.clone(), pk));
 
         self.signature
             .verify_messages(messages_and_keys)
-            .map_err(L1BatchQCVerifyError::BadSignature)
+            .map_err(Error::BadSignature)
     }
 }

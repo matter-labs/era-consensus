@@ -1,4 +1,4 @@
-use crate::attester::{self, AttesterSet};
+use crate::attester::{self, WeightedAttester};
 use crate::validator::*;
 use zksync_consensus_crypto::Text;
 use zksync_consensus_utils::enum_util::Variant as _;
@@ -50,7 +50,11 @@ fn genesis_v0() -> Genesis {
             weight: 1,
         }))
         .unwrap(),
-        attesters: AttesterSet::new(attester_keys().iter().map(|k| k.public())).unwrap(),
+        attesters: attester::Committee::new(attester_keys().iter().map(|k| WeightedAttester {
+            key: k.public(),
+            weight: 1,
+        }))
+        .unwrap(),
         fork: fork(),
         version: GenesisVersion(0),
     }
@@ -64,7 +68,11 @@ fn genesis_v1() -> Genesis {
             weight: 1,
         }))
         .unwrap(),
-        attesters: AttesterSet::new(attester_keys().iter().map(|k| k.public())).unwrap(),
+        attesters: attester::Committee::new(attester_keys().iter().map(|k| WeightedAttester {
+            key: k.public(),
+            weight: 1,
+        }))
+        .unwrap(),
         fork: fork(),
         version: GenesisVersion(1),
     }

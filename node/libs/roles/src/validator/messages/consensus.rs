@@ -1,6 +1,6 @@
 //! Messages related to the consensus protocol.
 use super::{BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, ReplicaPrepare};
-use crate::{attester::AttesterSet, validator};
+use crate::{attester, validator};
 use anyhow::Context;
 use bit_vec::BitVec;
 use std::{collections::BTreeMap, fmt};
@@ -213,7 +213,7 @@ pub struct Genesis {
     /// Set of validators of the chain.
     pub validators: Committee,
     /// Set of attesters of the chain.
-    pub attesters: AttesterSet,
+    pub attesters: attester::Committee,
     /// Fork of the chain to follow.
     pub fork: Fork,
 }
@@ -234,7 +234,7 @@ impl Default for Genesis {
         Self {
             version: GenesisVersion::CURRENT,
             validators: Committee::default(),
-            attesters: AttesterSet::default(),
+            attesters: attester::Committee::default(),
             fork: Fork::default(),
         }
     }
