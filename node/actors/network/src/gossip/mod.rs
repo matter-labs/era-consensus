@@ -99,11 +99,13 @@ impl Network {
                                 let res = async {
                                     let block = self.get_block_queue.call(ctx, number).await?;
                                     self.block_store.queue_block(ctx, block).await?;
+                                    tracing::info!("fetched block {number}");
                                     ctx::Result::Ok(())
                                 }.await;
                                 match res {
                                     Ok(()) => return Ok(()),
-                                    Err(err) => tracing::info!(%number, "get_block(): {err:#}"),
+                                    Err(ctx::Error::Canceled(_)) => {},
+                                    Err(ctx::Error::Internal(err)) => tracing::info!(%number, "get_block(): {err:#}"),
                                 }
                             }
                             Err(ctx::Canceled)
@@ -112,6 +114,8 @@ impl Network {
                         self.block_store.wait_until_queued(ctx, number).await
                     })
                     .await;
+                    // Wait until the block is actually persisted, so that the amount of blocks
+                    // stored in memory is bounded.
                     self.block_store.wait_until_persisted(ctx, number).await
                 });
             }
