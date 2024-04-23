@@ -4,10 +4,6 @@ use anyhow::Context;
 use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
 use zksync_protobuf::{read_optional, ProtoFmt};
 
-// Timeout for a GetBlock RPC.
-//const GET_BLOCK_TIMEOUT: time::Duration = time::Duration::seconds(10);
-
-
 /// `get_block` RPC.
 #[derive(Debug)]
 pub(crate) struct Rpc;

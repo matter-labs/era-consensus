@@ -13,7 +13,6 @@ zksync_consensus_crypto.workspace = true
 zksync_consensus_network.workspace = true
 zksync_consensus_roles.workspace = true
 zksync_consensus_storage.workspace = true
-zksync_consensus_sync_blocks.workspace = true
 zksync_consensus_utils.workspace = true
 zksync_protobuf.workspace = true
 

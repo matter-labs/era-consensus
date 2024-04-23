@@ -3766,7 +3766,6 @@ dependencies = [
  "zksync_consensus_network",
  "zksync_consensus_roles",
  "zksync_consensus_storage",
- "zksync_consensus_sync_blocks",
  "zksync_consensus_utils",
  "zksync_protobuf",
 ]
@@ -3838,25 +3837,6 @@ dependencies = [
  "zksync_consensus_roles",
  "zksync_protobuf",
  "zksync_protobuf_build",
-]
-
-[[package]]
-name = "zksync_consensus_sync_blocks"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "assert_matches",
- "async-trait",
- "rand 0.8.5",
- "test-casing",
- "thiserror",
- "tokio",
- "tracing",
- "zksync_concurrency",
- "zksync_consensus_network",
- "zksync_consensus_roles",
- "zksync_consensus_storage",
- "zksync_consensus_utils",
 ]
 
 [[package]]

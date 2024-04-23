@@ -11,7 +11,6 @@ use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BlockStore, ReplicaStore};
-use zksync_consensus_sync_blocks as sync_blocks;
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
@@ -126,12 +125,10 @@ impl Executor {
 
         // Generate the communication pipes. We have one for each actor.
         let (consensus_actor_pipe, consensus_dispatcher_pipe) = pipe::new();
-        let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
         let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
         // Create the IO dispatcher.
         let mut dispatcher = Dispatcher::new(
             consensus_dispatcher_pipe,
-            sync_blocks_dispatcher_pipe,
             network_dispatcher_pipe,
         );
 
@@ -162,10 +159,6 @@ impl Executor {
                     .context("Consensus stopped")
                 });
             }
-            sync_blocks::Config::new()
-                .run(ctx, sync_blocks_actor_pipe, self.block_store.clone())
-                .await
-                .context("Syncing blocks stopped")
         })
         .await
     }

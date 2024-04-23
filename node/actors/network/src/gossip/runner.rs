@@ -5,10 +5,13 @@ use async_trait::async_trait;
 use rand::seq::SliceRandom;
 use std::sync::{atomic::Ordering};
 use tracing::Instrument as _;
-use zksync_concurrency::{ctx, net, scope, sync};
+use zksync_concurrency::{ctx, net, scope, sync, time};
 use zksync_consensus_roles::node;
 use zksync_consensus_storage::{BlockStore,BlockStoreState};
 use zksync_protobuf::kB;
+
+// Timeout for a GetBlock RPC.
+const GET_BLOCK_TIMEOUT: time::Duration = time::Duration::seconds(10);
 
 struct PushValidatorAddrsServer<'a>(&'a Network);
 
@@ -171,7 +174,7 @@ impl Network {
                         // and whether to apply a penalty to the peer if the block is missing,
                         // or is incorrect.
                         if let Some(block) = call.call(
-                            ctx,
+                            &ctx.with_timeout(GET_BLOCK_TIMEOUT),
                             &req,
                             self.cfg.max_block_size.saturating_add(kB),
                         ).await?.0 {

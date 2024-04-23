@@ -15,7 +15,7 @@
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config};
 use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
-use zksync_concurrency::{sync, ctx::channel};
+use zksync_concurrency::{sync, ctx::channel, scope, ctx};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 
@@ -74,5 +74,48 @@ impl Network {
     /// Genesis.
     pub(crate) fn genesis(&self) -> &validator::Genesis {
         self.block_store.genesis()
+    }
+
+    /// Task fetching blocks from peers which are not present in storage.
+    pub(crate) async fn run_block_fetcher(&self, ctx: &ctx::Ctx) {
+        const MAX_CONCURRENT_FETCHES: usize = 20;
+        let sem = sync::Semaphore::new(MAX_CONCURRENT_FETCHES);
+        let _ : ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
+            let mut next = self.block_store.queued().next();
+            let global_next = &mut self.global_next.subscribe();
+            loop {
+                sync::wait_for(ctx, global_next, |g| g >= &next).await?;
+                let permit = sync::acquire(ctx, &sem).await?;
+                let number = ctx::NoCopy(next);
+                next = next+1;
+                // Fetch a block asynchronously.
+                s.spawn(async {
+                    let _permit = permit;
+                    let number = number.into();
+                    let _ : ctx::OrCanceled<_> = scope::run!(ctx, |ctx, s| async {
+                        s.spawn_bg(async {
+                            // Retry until fetched.
+                            while ctx.is_active() {
+                                let res = async {
+                                    let block = self.get_block_queue.call(ctx, number).await?;
+                                    self.block_store.queue_block(ctx, block).await?;
+                                    ctx::Result::Ok(())
+                                }.await;
+                                match res {
+                                    Ok(()) => return Ok(()),
+                                    Err(err) => tracing::info!(%number, "get_block(): {err:#}"),
+                                }
+                            }
+                            Err(ctx::Canceled)
+                        });
+                        // Cancel fetching as soon as block is queued for storage.
+                        self.block_store.wait_until_queued(ctx, number).await
+                    })
+                    .await;
+                    self.block_store.wait_until_persisted(ctx, number).await
+                });
+            }
+        })
+        .await;
     }
 }
