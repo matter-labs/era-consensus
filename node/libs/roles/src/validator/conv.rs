@@ -61,16 +61,12 @@ impl ProtoFmt for Genesis {
             } else {
                 (vec![], GenesisVersion::CURRENT)
             };
+
         Ok(Self {
             fork: read_required(&r.fork).context("fork")?,
             validators: Committee::new(validators.into_iter()).context("validators")?,
             version,
-            leader_selection: r
-                .leader_selection
-                .as_ref()
-                .map(ProtoFmt::read)
-                .transpose()
-                .context("leader_selection")?,
+            leader_selection: read_optional(&r.leader_selection).context("leader_selection")?,
         })
     }
     fn build(&self) -> Self::Proto {
