@@ -220,12 +220,7 @@ async fn replica_prepare_already_exists() {
         let res = util
             .process_replica_prepare(ctx, replica_prepare.clone())
             .await;
-        assert_matches!(
-            res,
-            Err(replica_prepare::Error::Exists { message }) => {
-                assert_eq!(message, replica_prepare.msg);
-            }
-        );
+        assert_matches!(res, Err(replica_prepare::Error::Old { .. }));
         Ok(())
     })
     .await
@@ -583,12 +578,7 @@ async fn replica_commit_already_exists() {
         let res = util
             .process_replica_commit(ctx, util.sign(replica_commit.clone()))
             .await;
-        assert_matches!(
-            res,
-            Err(replica_commit::Error::Exists { message }) => {
-                assert_eq!(message, replica_commit)
-            }
-        );
+        assert_matches!(res, Err(replica_commit::Error::Old { .. }));
 
         // Processing twice different ReplicaCommit for same view gets DuplicateSignature error too
         let mut different_replica_commit = replica_commit.clone();
@@ -596,12 +586,7 @@ async fn replica_commit_already_exists() {
         let res = util
             .process_replica_commit(ctx, util.sign(different_replica_commit.clone()))
             .await;
-        assert_matches!(
-            res,
-            Err(replica_commit::Error::Exists { message }) => {
-                assert_eq!(message, different_replica_commit)
-            }
-        );
+        assert_matches!(res, Err(replica_commit::Error::Old { .. }));
 
         Ok(())
     })
