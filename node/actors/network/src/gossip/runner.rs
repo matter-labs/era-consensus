@@ -33,11 +33,6 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'
     }
 }
 
-/*
-struct MatchMaker {
-    HashMap<Arc<Conn>,(BlockStoreState,rpc::ReservedCall<rpc::get_block::Rpc>>,
-}*/
-
 #[derive(Clone, Copy)]
 struct PushBlockStoreStateServer<'a> {
     peer: &'a node::PublicKey,
@@ -91,16 +86,11 @@ impl Network {
         stream: noise::Stream,
         conn: &Connection,
     ) -> anyhow::Result<()> {
-        let push_validator_addrs_client = rpc::Client::<rpc::push_validator_addrs::Rpc>::new(
-            ctx,
-            self.cfg.rpc.push_validator_addrs_rate,
-        );
+        let push_validator_addrs_client = rpc::Client::<rpc::push_validator_addrs::Rpc>::new(ctx,self.cfg.rpc.push_validator_addrs_rate);
         let push_validator_addrs_server = PushValidatorAddrsServer(self);
-        let push_block_store_state_client = rpc::Client::<rpc::push_block_store_state::Rpc>::new(
-            ctx,
-            self.cfg.rpc.push_block_store_state_rate,
-        );
+        let push_block_store_state_client = rpc::Client::<rpc::push_block_store_state::Rpc>::new(ctx, self.cfg.rpc.push_block_store_state_rate);
         let push_block_store_state_server = PushBlockStoreStateServer { peer, net: self };
+        let get_block_client = rpc::Client::<rpc::get_block::Rpc>::new(ctx,self.cfg.rpc.get_block_rate);
         scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_client(&push_validator_addrs_client)
@@ -115,7 +105,7 @@ impl Network {
                     push_block_store_state_server,
                     self.cfg.rpc.push_block_store_state_rate,
                 )
-                .add_client(&conn.get_block)
+                .add_client(&get_block_client)
                 .add_server(ctx, &*self.block_store, self.cfg.rpc.get_block_rate)
                 .add_server(ctx, rpc::ping::Server, rpc::ping::RATE);
 
@@ -141,8 +131,8 @@ impl Network {
                 }
             });
 
+            // Push validator addrs updates to peer.
             s.spawn::<()>(async {
-                // Push validator addrs updates to peer.
                 let mut old = ValidatorAddrs::default();
                 let mut sub = self.validator_addrs.subscribe();
                 sub.mark_changed();
@@ -155,6 +145,21 @@ impl Network {
                     old = new;
                     let req = rpc::push_validator_addrs::Req(diff);
                     push_validator_addrs_client.call(ctx, &req, kB).await?;
+                }
+            });
+
+            // Perform get_block calls to peer.
+            s.spawn::<()>(async {
+                let state = &mut state.subscribe();
+                loop {
+                    let call = get_block_client.reserve(ctx).await?;
+                    let (req,send_resp) = self.get_block_calls.accept(ctx,state).await?;
+                    s.spawn(async {
+                        // Ignore disconnection error.
+                        // In particular, the timeout should be enforced by the caller.
+                        // TODO: consider whether verification should be performed here.
+                        let _ = send_resp.send(call.call(ctx,rpc::get_block::Req(req)).await?);
+                    });
                 }
             });
 

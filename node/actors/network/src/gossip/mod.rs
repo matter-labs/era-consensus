@@ -18,6 +18,7 @@ use std::sync::{atomic::AtomicUsize, Arc};
 
 mod handshake;
 mod runner;
+mod get_block;
 #[cfg(test)]
 mod tests;
 mod validator_addrs;
@@ -28,26 +29,22 @@ use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 use zksync_protobuf::kB;
 
-/// State of the gossip connection.
-pub(crate) struct Connection {
-    /// `get_block` rpc client.
-    pub(crate) get_block: rpc::Client<rpc::get_block::Rpc>,
-}
-
 /// Gossip network state.
 pub(crate) struct Network {
     /// Gossip network configuration.
     pub(crate) cfg: Config,
     /// Currently open inbound connections.
-    pub(crate) inbound: PoolWatch<node::PublicKey, Arc<Connection>>,
+    pub(crate) inbound: PoolWatch<node::PublicKey, ()>,
     /// Currently open outbound connections.
-    pub(crate) outbound: PoolWatch<node::PublicKey, Arc<Connection>>,
+    pub(crate) outbound: PoolWatch<node::PublicKey, ()>,
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
     /// Block store to serve `get_block` requests from.
     pub(crate) block_store: Arc<BlockStore>,
     /// Output pipe of the network actor.
     pub(crate) sender: channel::UnboundedSender<io::OutputMessage>,
+    /// Queue of `get_block` calls.
+    pub(crate) get_block_queue: get_block::Queue, 
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
 }
