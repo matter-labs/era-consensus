@@ -1,4 +1,8 @@
-use crate::validator::{testonly::Setup, Committee, Genesis};
+use crate::{
+    attester,
+    proto::attester::L1BatchQc,
+    validator::{testonly::Setup, Committee, Genesis, ViewNumber},
+};
 
 use super::*;
 use assert_matches::assert_matches;
@@ -9,41 +13,74 @@ use zksync_protobuf::testonly::{test_encode, test_encode_random};
 
 #[test]
 fn test_byte_encoding() {
-    let key = SecretKey::generate();
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let sk: SecretKey = rng.gen();
     assert_eq!(
-        key.public(),
-        <SecretKey as ByteFmt>::decode(&ByteFmt::encode(&key))
+        sk.public(),
+        <SecretKey as ByteFmt>::decode(&ByteFmt::encode(&sk))
             .unwrap()
             .public()
     );
+
+    let pk: PublicKey = rng.gen();
+    assert_eq!(pk, ByteFmt::decode(&ByteFmt::encode(&pk)).unwrap());
+
+    let sig: Signature = rng.gen();
+    assert_eq!(sig, ByteFmt::decode(&ByteFmt::encode(&sig)).unwrap());
+
+    let agg_sig: AggregateSignature = rng.gen();
     assert_eq!(
-        key.public(),
-        ByteFmt::decode(&ByteFmt::encode(&key.public())).unwrap()
+        agg_sig,
+        ByteFmt::decode(&ByteFmt::encode(&agg_sig)).unwrap()
     );
 }
 
 #[test]
 fn test_text_encoding() {
-    let key = SecretKey::generate();
-    let t1 = TextFmt::encode(&key);
-    let t2 = TextFmt::encode(&key.public());
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let sk: SecretKey = rng.gen();
+    let t = TextFmt::encode(&sk);
     assert_eq!(
-        key.public(),
-        Text::new(&t1).decode::<SecretKey>().unwrap().public()
+        sk.public(),
+        Text::new(&t).decode::<SecretKey>().unwrap().public()
     );
-    assert_eq!(key.public(), Text::new(&t2).decode().unwrap());
-    assert!(Text::new(&t1).decode::<PublicKey>().is_err());
-    assert!(Text::new(&t2).decode::<SecretKey>().is_err());
+
+    let pk: PublicKey = rng.gen();
+    let t = TextFmt::encode(&pk);
+    assert_eq!(pk, Text::new(&t).decode::<PublicKey>().unwrap());
+
+    let sig: Signature = rng.gen();
+    let t = TextFmt::encode(&sig);
+    assert_eq!(sig, Text::new(&t).decode::<Signature>().unwrap());
+
+    let agg_sig: AggregateSignature = rng.gen();
+    let t = TextFmt::encode(&agg_sig);
+    assert_eq!(
+        agg_sig,
+        Text::new(&t).decode::<AggregateSignature>().unwrap()
+    );
+
+    let msg_hash: MsgHash = rng.gen();
+    let t = TextFmt::encode(&msg_hash);
+    assert_eq!(msg_hash, Text::new(&t).decode::<MsgHash>().unwrap());
 }
 
 #[test]
 fn test_schema_encoding() {
-    let ctx = &ctx::test_root(&ctx::RealClock);
+    let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     test_encode_random::<SignedBatchMsg<L1Batch>>(rng);
-    let key = rng.gen::<SecretKey>().public();
-    test_encode(rng, &key);
+    test_encode_random::<L1BatchQC>(rng);
+    test_encode_random::<Msg>(rng);
+    test_encode_random::<MsgHash>(rng);
+    test_encode_random::<Signers>(rng);
+    test_encode_random::<PublicKey>(rng);
     test_encode_random::<Signature>(rng);
+    test_encode_random::<AggregateSignature>(rng);
 }
 
 #[test]
@@ -110,18 +147,21 @@ fn test_l1_batch_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
-        version: setup1.genesis.version,
         validators: Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
-        attesters: AttesterSet::new(setup1.genesis.attesters.iter().take(3).cloned()).unwrap(),
+        attesters: attester::Committee::new(setup1.genesis.attesters.iter().take(3).cloned())
+            .unwrap(),
         fork: setup1.genesis.fork.clone(),
+        ..Default::default()
     };
+    let attester_weight = setup1.genesis.attesters.total_weight() / 6;
 
     for i in 0..setup1.attester_keys.len() + 1 {
         let mut qc = L1BatchQC::new(L1Batch::default(), &setup1.genesis);
         for key in &setup1.attester_keys[0..i] {
             qc.add(&key.sign_batch_msg(qc.message.clone()), &setup1.genesis);
         }
-        if i >= setup1.genesis.attesters.threshold() {
+        let expected_weight = i as u64 * attester_weight;
+        if expected_weight >= setup1.genesis.attesters.threshold() {
             assert!(qc.verify(&setup1.genesis).is_ok());
         } else {
             assert_matches!(
@@ -130,8 +170,61 @@ fn test_l1_batch_qc() {
             );
         }
 
-        // Mismatching validator sets.
+        // Mismatching attesters sets.
         assert!(qc.verify(&setup2.genesis).is_err());
         assert!(qc.verify(&genesis3).is_err());
     }
+}
+
+#[test]
+fn test_attester_committee_weights() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    // Attesters with non-uniform weights
+    let setup = Setup::new_with_weights(rng, vec![1000, 600, 800, 6000, 900, 700]);
+    // Expected sum of the attesters weights
+    let sums = [1000, 1600, 2400, 8400, 9300, 10000];
+
+    let msg = L1Batch::default();
+    let mut qc = L1BatchQC::new(msg.clone(), &setup.genesis);
+    for (n, weight) in sums.iter().enumerate() {
+        let key = &setup.attester_keys[n];
+        qc.add(&key.sign_batch_msg(msg.clone()), &setup.genesis);
+        assert_eq!(setup.genesis.attesters.weight(&qc.signers), *weight);
+    }
+}
+
+#[test]
+fn test_committee_weights_overflow_check() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let attesters: Vec<WeightedAttester> = [u64::MAX / 5; 6]
+        .iter()
+        .map(|w| WeightedAttester {
+            key: rng.gen::<SecretKey>().public(),
+            weight: *w,
+        })
+        .collect();
+
+    // Creation should overflow
+    assert_matches!(attester::Committee::new(attesters), Err(_));
+}
+
+#[test]
+fn test_committee_with_zero_weights() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let attesters: Vec<WeightedAttester> = [1000, 0, 800, 6000, 0, 700]
+        .iter()
+        .map(|w| WeightedAttester {
+            key: rng.gen::<SecretKey>().public(),
+            weight: *w,
+        })
+        .collect();
+
+    // Committee creation should error on zero weight attesters
+    assert_matches!(attester::Committee::new(attesters), Err(_));
 }
