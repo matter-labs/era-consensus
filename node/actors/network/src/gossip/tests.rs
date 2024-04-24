@@ -12,7 +12,7 @@ use std::{
 use test_casing::{test_casing, Product};
 use tracing::Instrument as _;
 use zksync_concurrency::{
-    ctx, net, oneshot, scope, sync,
+    ctx, net, oneshot, scope, sync, limiter,
     testonly::{abort_on_panic, set_timeout},
     time,
 };
@@ -325,14 +325,16 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
     abort_on_panic();
     let _guard = set_timeout(time::Duration::seconds(20));
 
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
+    let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::Setup::new(rng, node_count);
     setup.push_blocks(rng, EXCHANGED_STATE_COUNT);
     let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
-        for (i, cfg) in cfgs.into_iter().enumerate() {
+        for (i, mut cfg) in cfgs.into_iter().enumerate() {
+            cfg.rpc.get_block_rate = limiter::Rate::INF;
+            cfg.rpc.get_block_timeout = None;
             let (store, runner) = new_store(ctx, &setup.genesis).await;
             s.spawn_bg(runner.run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, store);
@@ -359,7 +361,7 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
 /// Tests block syncing in an uncoordinated network, in which new blocks arrive at a schedule.
 #[test_casing(10, Product((
     NETWORK_CONNECTIVITY_CASES,
-    [time::Duration::seconds(1), time::Duration::seconds(10)],
+    [time::Duration::milliseconds(50), time::Duration::milliseconds(500)],
 )))]
 #[tokio::test(flavor = "multi_thread")]
 async fn uncoordinated_block_syncing(
@@ -369,14 +371,16 @@ async fn uncoordinated_block_syncing(
     abort_on_panic();
     let _guard = set_timeout(time::Duration::seconds(20));
 
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
+    let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::Setup::new(rng, node_count);
     setup.push_blocks(rng, EXCHANGED_STATE_COUNT);
     let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
-        for (i, cfg) in cfgs.into_iter().enumerate() {
+        for (i, mut cfg) in cfgs.into_iter().enumerate() {
+            cfg.rpc.get_block_rate = limiter::Rate::INF;
+            cfg.rpc.get_block_timeout = None;
             let (store, runner) = new_store(ctx, &setup.genesis).await;
             s.spawn_bg(runner.run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, store);

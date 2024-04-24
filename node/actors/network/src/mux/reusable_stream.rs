@@ -93,6 +93,7 @@ impl StreamQueue {
     }
 
     /// Opens a transient stream from the queue.
+    #[allow(dead_code)]
     pub(crate) async fn open(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<Stream> {
         loop {
             // It may happen that the popped stream has been immediately disconnected

@@ -95,6 +95,7 @@ pub fn new_configs(
             max_block_size: usize::MAX,
             tcp_accept_rate: limiter::Rate::INF,
             rpc: RpcConfig::default(),
+            max_block_queue_size: 10,
         }
     });
     let mut cfgs: Vec<_> = configs.collect();
@@ -131,6 +132,7 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
         max_block_size: usize::MAX,
         tcp_accept_rate: limiter::Rate::INF,
         rpc: RpcConfig::default(),
+        max_block_queue_size: 10,
     }
 }
 

@@ -5,13 +5,10 @@ use async_trait::async_trait;
 use rand::seq::SliceRandom;
 use std::sync::{atomic::Ordering};
 use tracing::Instrument as _;
-use zksync_concurrency::{ctx, net, scope, sync, time};
+use zksync_concurrency::{ctx, net, scope, sync};
 use zksync_consensus_roles::node;
 use zksync_consensus_storage::{BlockStore,BlockStoreState};
 use zksync_protobuf::kB;
-
-// Timeout for a GetBlock RPC.
-const GET_BLOCK_TIMEOUT: time::Duration = time::Duration::seconds(10);
 
 struct PushValidatorAddrsServer<'a>(&'a Network);
 
@@ -64,15 +61,6 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushBlockStoreStateServ
         req: rpc::push_block_store_state::Req,
     ) -> anyhow::Result<()> {
         req.0.verify(self.net.genesis())?;
-        // Update global maximum.
-        self.net.global_next.send_if_modified(|next| {
-            if req.0.next() <= *next {
-                return false;
-            }
-            *next = req.0.next();
-            true
-        });
-        // Update state.
         self.state.send_replace(req.0);
         Ok(())
     }
@@ -166,23 +154,36 @@ impl Network {
                 let state = &mut push_block_store_state_server.state.subscribe();
                 loop {
                     let call = get_block_client.reserve(ctx).await?;
-                    let (req,send_resp) = self.get_block_queue.accept(ctx,state).await?;
+                    let (req,send_resp) = self.fetch_queue.accept(ctx,state).await?;
                     let req = rpc::get_block::Req(req);
                     s.spawn(async {
                         let req = req;
-                        // TODO: consider whether block verification should be performed here,
-                        // and whether to apply a penalty to the peer if the block is missing,
-                        // or is incorrect.
-                        if let Some(block) = call.call(
-                            &ctx.with_timeout(GET_BLOCK_TIMEOUT),
-                            &req,
-                            self.cfg.max_block_size.saturating_add(kB),
-                        ).await?.0 {
+                        // Failing to fetch a block causes a disconnect:
+                        // - peer predeclares which blocks are available and race condition
+                        //   with block pruning should be very rare, so we can consider
+                        //   an empty response to be offending
+                        // - a stream for the call has been already reserved,
+                        //   so the peer is expected to answer immediately. The timeout
+                        //   should be high enough to accommodate network hiccups
+                        // - a disconnect is not a ban, so the peer is free to try to
+                        //   reconnect.
+                        async {
+                            let ctx_with_timeout = self.cfg.rpc.get_block_timeout.map(|t|ctx.with_timeout(t));
+                            let ctx = ctx_with_timeout.as_ref().unwrap_or(ctx);
+                            let block = call.call(
+                                ctx,
+                                &req,
+                                self.cfg.max_block_size.saturating_add(kB),
+                            ).await?.0.context("empty response")?;
+                            // Storing the block will fail in case block
+                            // is invalid.
+                            self.block_store.queue_block(ctx,block).await?;
+                            tracing::info!("fetched block {}",req.0);
+                            // Send a response that fetching was successful.
                             // Ignore disconnection error.
-                            // In particular, the timeout should be enforced by the caller.
-                            let _ = send_resp.send(block);
-                        }
-                        Ok(())
+                            let _ = send_resp.send(());
+                            anyhow::Ok(())
+                        }.await.context("get_block()")
                     });
                 }
             });

@@ -32,7 +32,7 @@ pub(crate) mod testonly;
 #[cfg(test)]
 mod tests;
 
-const MUX_CONFIG: mux::Config = mux::Config {
+pub(crate) const MUX_CONFIG: mux::Config = mux::Config {
     read_buffer_size: 160 * zksync_protobuf::kB as u64,
     read_frame_size: 16 * zksync_protobuf::kB as u64,
     read_frame_count: 100,
@@ -180,51 +180,50 @@ impl<R: Rpc, H: Handler<R>> ServerTrait for Server<R, H> {
     /// max inflight limit.
     async fn serve(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
         scope::run!(ctx, |ctx, s| async {
-            for _ in 0..R::INFLIGHT {
+            loop {
+                let stream = self.queue.reserve(ctx).await?;
                 s.spawn::<()>(async {
-                    loop {
-                        let mut stream = self.queue.open(ctx).await?;
-                        let res = async {
-                            let recv_time = ctx.now();
-                            let (req, msg_size) = frame::mux_recv_proto::<R::Req>(
-                                ctx,
-                                &mut stream.read,
-                                self.handler.max_req_size(),
-                            )
-                            .await?;
+                    let res = async {
+                        let mut stream = stream.open(ctx).await??;
+                        let recv_time = ctx.now();
+                        let (req, msg_size) = frame::mux_recv_proto::<R::Req>(
+                            ctx,
+                            &mut stream.read,
+                            self.handler.max_req_size(),
+                        )
+                        .await?;
 
-                            let size_labels = CallType::ReqRecv.to_labels::<R>(&req);
-                            let resp_size_labels = CallType::RespSent.to_labels::<R>(&req);
-                            RPC_METRICS.message_size[&size_labels].observe(msg_size);
-                            let inflight_labels = CallType::Server.to_labels::<R>(&req);
-                            let _guard = RPC_METRICS.inflight[&inflight_labels].inc_guard(1);
-                            let mut server_process_labels =
-                                CallLatencyType::ServerProcess.to_labels::<R>(&req, &Ok(()));
-                            let mut recv_send_labels =
-                                CallLatencyType::ServerRecvSend.to_labels::<R>(&req, &Ok(()));
+                        let size_labels = CallType::ReqRecv.to_labels::<R>(&req);
+                        let resp_size_labels = CallType::RespSent.to_labels::<R>(&req);
+                        RPC_METRICS.message_size[&size_labels].observe(msg_size);
+                        let inflight_labels = CallType::Server.to_labels::<R>(&req);
+                        let _guard = RPC_METRICS.inflight[&inflight_labels].inc_guard(1);
+                        let mut server_process_labels =
+                            CallLatencyType::ServerProcess.to_labels::<R>(&req, &Ok(()));
+                        let mut recv_send_labels =
+                            CallLatencyType::ServerRecvSend.to_labels::<R>(&req, &Ok(()));
 
-                            let process_time = ctx.now();
-                            let res = self.handler.handle(ctx, req).await.context(R::METHOD);
-                            server_process_labels.set_result(&res);
-                            RPC_METRICS.latency[&server_process_labels]
-                                .observe_latency(ctx.now() - process_time);
+                        let process_time = ctx.now();
+                        let res = self.handler.handle(ctx, req).await.context(R::METHOD);
+                        server_process_labels.set_result(&res);
+                        RPC_METRICS.latency[&server_process_labels]
+                            .observe_latency(ctx.now() - process_time);
 
-                            let res = frame::mux_send_proto(ctx, &mut stream.write, &res?).await;
-                            recv_send_labels.set_result(&res);
-                            RPC_METRICS.latency[&recv_send_labels]
-                                .observe_latency(ctx.now() - recv_time);
-                            let msg_size = res?;
-                            RPC_METRICS.message_size[&resp_size_labels].observe(msg_size);
-                            anyhow::Ok(())
-                        }
-                        .await;
-                        if let Err(err) = res {
-                            tracing::info!("{err:#}");
-                        }
+                        let res = frame::mux_send_proto(ctx, &mut stream.write, &res?).await;
+                        recv_send_labels.set_result(&res);
+                        RPC_METRICS.latency[&recv_send_labels]
+                            .observe_latency(ctx.now() - recv_time);
+                        let msg_size = res?;
+                        RPC_METRICS.message_size[&resp_size_labels].observe(msg_size);
+                        anyhow::Ok(())
                     }
+                    .await;
+                    if let Err(err) = res {
+                        tracing::info!("{err:#}");
+                    }
+                    Ok(())
                 });
             }
-            Ok(())
         })
         .await
     }

@@ -21,7 +21,7 @@ use zksync_consensus_storage::BlockStore;
 
 mod handshake;
 mod runner;
-mod get_block;
+mod fetch;
 #[cfg(test)]
 mod tests;
 mod validator_addrs;
@@ -40,10 +40,8 @@ pub(crate) struct Network {
     pub(crate) block_store: Arc<BlockStore>,
     /// Output pipe of the network actor.
     pub(crate) sender: channel::UnboundedSender<io::OutputMessage>,
-    /// Queue of `get_block` calls to peers.
-    pub(crate) get_block_queue: get_block::Queue,
-    /// Next block number to finalize.
-    pub(crate) global_next: sync::watch::Sender<validator::BlockNumber>,
+    /// Queue of block fetching requests.
+    pub(crate) fetch_queue: fetch::Queue,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
 }
@@ -64,8 +62,7 @@ impl Network {
             outbound: PoolWatch::new(cfg.gossip.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
             cfg,
-            get_block_queue: get_block::Queue::default(),
-            global_next: sync::watch::channel(block_store.queued().next()).0,
+            fetch_queue: fetch::Queue::default(),
             block_store,
             push_validator_addrs_calls: 0.into(),
         })
@@ -78,13 +75,10 @@ impl Network {
 
     /// Task fetching blocks from peers which are not present in storage.
     pub(crate) async fn run_block_fetcher(&self, ctx: &ctx::Ctx) {
-        const MAX_CONCURRENT_FETCHES: usize = 20;
-        let sem = sync::Semaphore::new(MAX_CONCURRENT_FETCHES);
+        let sem = sync::Semaphore::new(self.cfg.max_block_queue_size);
         let _ : ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
             let mut next = self.block_store.queued().next();
-            let global_next = &mut self.global_next.subscribe();
             loop {
-                sync::wait_for(ctx, global_next, |g| g >= &next).await?;
                 let permit = sync::acquire(ctx, &sem).await?;
                 let number = ctx::NoCopy(next);
                 next = next+1;
@@ -96,16 +90,14 @@ impl Network {
                         s.spawn_bg(async {
                             // Retry until fetched.
                             while ctx.is_active() {
-                                let res = async {
-                                    let block = self.get_block_queue.call(ctx, number).await?;
-                                    self.block_store.queue_block(ctx, block).await?;
-                                    tracing::info!("fetched block {number}");
-                                    ctx::Result::Ok(())
-                                }.await;
-                                match res {
+                                // TODO(gprusak): it is a bit obscure that `fetch_queue.request()`
+                                // is actually expected to get the block stored (but required, so
+                                // that we can detect malicious peers). Refactor this
+                                // logic to make it more obvious.
+                                match self.fetch_queue.request(ctx, number).await {
                                     Ok(()) => return Ok(()),
                                     Err(ctx::Error::Canceled(_)) => {},
-                                    Err(ctx::Error::Internal(err)) => tracing::info!(%number, "get_block(): {err:#}"),
+                                    Err(ctx::Error::Internal(err)) => tracing::info!(%number, "get_block({number}): {err:#}"),
                                 }
                             }
                             Err(ctx::Canceled)

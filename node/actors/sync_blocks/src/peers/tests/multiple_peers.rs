@@ -146,10 +146,10 @@ impl Test for RequestingBlocksFromTwoPeers {
     }
 }
 
-/*#[tokio::test]
+#[tokio::test]
 async fn requesting_blocks_from_two_peers() {
     test_peer_states(RequestingBlocksFromTwoPeers).await;
-}*/
+}
 
 #[derive(Debug, Clone, Copy)]
 struct PeerBehavior {

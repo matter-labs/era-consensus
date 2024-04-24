@@ -5,13 +5,13 @@ use zksync_consensus_roles::validator;
 use zksync_consensus_storage::BlockStoreState;
 use anyhow::Context as _;
 
-/// A block request.
-type Call = (validator::BlockNumber, oneshot::Sender<validator::FinalBlock>);
+/// A block fetching request.
+type Call = (validator::BlockNumber, oneshot::Sender<()>);
 
 /// Inner state of the `Queue`.
-type Inner = BTreeMap<validator::BlockNumber, oneshot::Sender<validator::FinalBlock>>;
+type Inner = BTreeMap<validator::BlockNumber, oneshot::Sender<()>>;
 
-/// Queue of `get_block` calls.
+/// Queue of block fetch request.
 pub(crate) struct Queue(sync::watch::Sender<Inner>);
 
 impl Default for Queue {
@@ -24,17 +24,19 @@ impl Queue {
     /// Adds a request to the queue and waits for it to be completed.
     /// Note: in the current implementation concurrent calls for the same block number are
     /// unsupported - second call will override the first call.
-    pub(crate) async fn call(&self, ctx: &ctx::Ctx, n: validator::BlockNumber) -> ctx::Result<validator::FinalBlock> {
+    pub(crate) async fn request(&self, ctx: &ctx::Ctx, n: validator::BlockNumber) -> ctx::Result<()> {
         let (send,recv) = oneshot::channel();
         self.0.send_if_modified(|x|{
             x.insert(n,send);
             // Send iff the lowest requested block changed.
             x.first_key_value().unwrap().0 == &n
         });
-        Ok(recv.recv_or_disconnected(ctx).await?.context("call dropped")?)
+        recv.recv_or_disconnected(ctx).await?.context("call dropped")?;
+        Ok(())
     }
 
-    /// Accepts a block request, which is contained in the available blocks.
+    /// Accepts a block fetch request, which is contained in the available blocks range.
+    /// Caller is responsible for fetching the block and adding it to the block store.
     pub(crate) async fn accept(&self, ctx: &ctx::Ctx, available: &mut sync::watch::Receiver<BlockStoreState>) -> ctx::OrCanceled<Call> {
         let sub = &mut self.0.subscribe();
         while ctx.is_active() {
