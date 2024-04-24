@@ -3810,6 +3810,7 @@ dependencies = [
  "assert_matches",
  "bit-vec",
  "hex",
+ "num-bigint",
  "prost",
  "rand 0.8.5",
  "serde",

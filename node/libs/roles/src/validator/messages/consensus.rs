@@ -3,6 +3,7 @@ use super::{BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, Replic
 use crate::validator;
 use anyhow::Context;
 use bit_vec::BitVec;
+use num_bigint::BigUint;
 use std::{collections::BTreeMap, fmt, hash::Hash};
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
@@ -88,9 +89,11 @@ pub enum LeaderSelectionMode {
 pub(crate) fn leader_weighted_eligibility(input: u64, total_weight: u64) -> u64 {
     let input_bytes = input.to_be_bytes();
     let hash = Keccak256::new(&input_bytes);
-    let hash_64 = &hash.as_bytes()[0..8];
-    let hash_num = u64::from_be_bytes(hash_64.try_into().unwrap());
-    hash_num % total_weight
+    let hash_big = BigUint::from_bytes_be(hash.as_bytes());
+    let total_weight_big = BigUint::from(total_weight);
+    let ret_big = hash_big % total_weight_big;
+    // Assumes that `ret_big` does not exceed 64 bits due to the modulo operation with a 64 bits-capped value.
+    ret_big.to_u64_digits()[0]
 }
 
 /// A struct that represents a set of validators. It is used to store the current validator set.
