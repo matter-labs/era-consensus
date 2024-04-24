@@ -62,7 +62,7 @@ impl Signers {
         self.0.iter().filter(|b| *b).count()
     }
 
-    /// Size of the corresponding attester::Commitee.
+    /// Size of the corresponding attester::Committee.
     pub fn len(&self) -> usize {
         self.0.len()
     }
