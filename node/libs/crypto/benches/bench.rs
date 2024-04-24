@@ -34,7 +34,7 @@ fn bench_bls12_381(c: &mut Criterion) {
             let pks: Vec<PublicKey> = sks.iter().map(|k| k.public()).collect();
             let msg = rng.gen::<[u8; 32]>();
             let sigs: Vec<Signature> = sks.iter().map(|k| k.sign(&msg)).collect();
-            let agg = AggregateSignature::aggregate(&sigs)?;
+            let agg = AggregateSignature::aggregate(&sigs);
             agg.verify(pks.iter().map(|pk| (&msg[..], pk)))
         });
     });
