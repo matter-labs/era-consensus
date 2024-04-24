@@ -94,6 +94,7 @@ impl Executor {
             validator_key: self.validator.as_ref().map(|v| v.key.clone()),
             ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
+            max_block_queue_size: 20,
             tcp_accept_rate: limiter::Rate {
                 burst: 10,
                 refresh: time::Duration::milliseconds(100),
@@ -135,15 +136,6 @@ impl Executor {
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
             s.spawn_blocking(|| dispatcher.run(ctx).context("IO Dispatcher stopped"));
-            s.spawn(async {
-                let (net, runner) = network::Network::new(
-                    network_config,
-                    self.block_store.clone(),
-                    network_actor_pipe,
-                );
-                net.register_metrics();
-                runner.run(ctx).await.context("Network stopped")
-            });
             if let Some(validator) = self.validator {
                 s.spawn(async {
                     let validator = validator;
@@ -159,6 +151,13 @@ impl Executor {
                     .context("Consensus stopped")
                 });
             }
+            let (net, runner) = network::Network::new(
+                network_config,
+                self.block_store.clone(),
+                network_actor_pipe,
+            );
+            net.register_metrics();
+            runner.run(ctx).await.context("Network stopped")
         })
         .await
     }
