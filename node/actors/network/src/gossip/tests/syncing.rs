@@ -1,16 +1,16 @@
 //! Integration tests of block synchronization.
+use crate::testonly;
+use anyhow::Context as _;
 use rand::seq::SliceRandom as _;
-use tracing::Instrument as _;
-use crate::{testonly};
 use test_casing::{test_casing, Product};
+use tracing::Instrument as _;
 use zksync_concurrency::{
-    ctx, scope, limiter,
+    ctx, limiter, scope,
     testonly::{abort_on_panic, set_timeout},
     time,
 };
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::testonly::{new_store,new_store_with_first};
-use anyhow::Context as _;
+use zksync_consensus_storage::testonly::{new_store, new_store_with_first};
 
 const EXCHANGED_STATE_COUNT: usize = 5;
 const NETWORK_CONNECTIVITY_CASES: [(usize, usize); 5] = [(2, 1), (3, 2), (5, 3), (10, 4), (10, 7)];
@@ -42,13 +42,22 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
             nodes.push(node);
         }
         for block in &setup.blocks {
-            nodes.choose(rng).unwrap().net.gossip
-                    .block_store
-                    .queue_block(ctx, block.clone())
-                    .await
-                    .context("queue_block()")?;
+            nodes
+                .choose(rng)
+                .unwrap()
+                .net
+                .gossip
+                .block_store
+                .queue_block(ctx, block.clone())
+                .await
+                .context("queue_block()")?;
             for node in &nodes {
-                node.net.gossip.block_store.wait_until_persisted(ctx,block.number()).await.unwrap();
+                node.net
+                    .gossip
+                    .block_store
+                    .wait_until_persisted(ctx, block.number())
+                    .await
+                    .unwrap();
             }
         }
         Ok(())
@@ -56,7 +65,6 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
     .await
     .unwrap();
 }
-
 
 /// Tests block syncing in an uncoordinated network, in which new blocks arrive at a schedule.
 #[test_casing(10, Product((
@@ -90,16 +98,25 @@ async fn uncoordinated_block_syncing(
             nodes.push(node);
         }
         for block in &setup.blocks {
-            nodes.choose(rng).unwrap().net.gossip
-                    .block_store
-                    .queue_block(ctx, block.clone())
-                    .await
-                    .context("queue_block()")?;
+            nodes
+                .choose(rng)
+                .unwrap()
+                .net
+                .gossip
+                .block_store
+                .queue_block(ctx, block.clone())
+                .await
+                .context("queue_block()")?;
             ctx.sleep(state_generation_interval).await?;
         }
         let last = setup.blocks.last().unwrap().number();
         for node in &nodes {
-            node.net.gossip.block_store.wait_until_persisted(ctx,last).await.unwrap();
+            node.net
+                .gossip
+                .block_store
+                .wait_until_persisted(ctx, last)
+                .await
+                .unwrap();
         }
         Ok(())
     })
@@ -134,17 +151,26 @@ async fn test_switching_on_nodes() {
             let (node, runner) = testonly::Instance::new(cfg, store);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
-            
+
             // Insert a block to storage of a random node.
-            nodes.choose(rng).unwrap().net.gossip
-                    .block_store
-                    .queue_block(ctx, setup.blocks[i].clone())
-                    .await
-                    .context("queue_block()")?;
+            nodes
+                .choose(rng)
+                .unwrap()
+                .net
+                .gossip
+                .block_store
+                .queue_block(ctx, setup.blocks[i].clone())
+                .await
+                .context("queue_block()")?;
 
             // Wait for all the nodes to fetch the block.
             for node in &nodes {
-                node.net.gossip.block_store.wait_until_persisted(ctx,setup.blocks[i].number()).await.unwrap();
+                node.net
+                    .gossip
+                    .block_store
+                    .wait_until_persisted(ctx, setup.blocks[i].number())
+                    .await
+                    .unwrap();
             }
         }
         Ok(())
@@ -182,20 +208,29 @@ async fn test_switching_off_nodes() {
             nodes.push(node);
         }
         nodes.shuffle(rng);
-        
+
         for i in 0..nodes.len() {
             // Insert a block to storage of a random node.
-            nodes[i..].choose(rng).unwrap().net.gossip
-                    .block_store
-                    .queue_block(ctx, setup.blocks[i].clone())
-                    .await
-                    .context("queue_block()")?;
+            nodes[i..]
+                .choose(rng)
+                .unwrap()
+                .net
+                .gossip
+                .block_store
+                .queue_block(ctx, setup.blocks[i].clone())
+                .await
+                .context("queue_block()")?;
 
             // Wait for all the remaining nodes to fetch the block.
             for node in &nodes[i..] {
-                node.net.gossip.block_store.wait_until_persisted(ctx,setup.blocks[i].number()).await.unwrap();
+                node.net
+                    .gossip
+                    .block_store
+                    .wait_until_persisted(ctx, setup.blocks[i].number())
+                    .await
+                    .unwrap();
             }
-            
+
             // Terminate a random node.
             nodes[i].terminate(ctx).await.unwrap();
         }
@@ -236,7 +271,7 @@ async fn test_different_first_block() {
             nodes.push(node);
         }
         nodes.shuffle(rng);
- 
+
         for block in &setup.blocks {
             // Find nodes interested in the next block.
             let interested_nodes: Vec<_> = nodes
@@ -245,16 +280,23 @@ async fn test_different_first_block() {
                 .collect();
             // Store this block to one of them.
             if let Some(node) = interested_nodes.choose(rng) {
-                node.net.gossip.block_store.queue_block(ctx, block.clone()).await.unwrap();
+                node.net
+                    .gossip
+                    .block_store
+                    .queue_block(ctx, block.clone())
+                    .await
+                    .unwrap();
             }
             // Wait until all remaining nodes get the new block.
             for node in interested_nodes {
-                node.net.gossip.block_store
+                node.net
+                    .gossip
+                    .block_store
                     .wait_until_persisted(ctx, block.number())
                     .await
                     .unwrap();
             }
-        }       
+        }
         Ok(())
     })
     .await

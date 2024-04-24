@@ -15,17 +15,17 @@
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config};
 use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
-use zksync_concurrency::{sync, ctx::channel, scope, ctx};
+use zksync_concurrency::{ctx, ctx::channel, scope, sync};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 
+mod fetch;
 mod handshake;
 mod runner;
-mod fetch;
-#[cfg(test)]
-mod tests;
 #[cfg(test)]
 mod testonly;
+#[cfg(test)]
+mod tests;
 mod validator_addrs;
 
 /// Gossip network state.
@@ -78,17 +78,17 @@ impl Network {
     /// Task fetching blocks from peers which are not present in storage.
     pub(crate) async fn run_block_fetcher(&self, ctx: &ctx::Ctx) {
         let sem = sync::Semaphore::new(self.cfg.max_block_queue_size);
-        let _ : ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
+        let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
             let mut next = self.block_store.queued().next();
             loop {
                 let permit = sync::acquire(ctx, &sem).await?;
                 let number = ctx::NoCopy(next);
-                next = next+1;
+                next = next + 1;
                 // Fetch a block asynchronously.
                 s.spawn(async {
                     let _permit = permit;
                     let number = number.into();
-                    let _ : ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
+                    let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
                         s.spawn_bg(self.fetch_queue.request(ctx, number));
                         // Cancel fetching as soon as block is queued for storage.
                         self.block_store.wait_until_queued(ctx, number).await?;

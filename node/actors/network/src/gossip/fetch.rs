@@ -1,9 +1,9 @@
 #![allow(unused)]
+use anyhow::Context as _;
 use std::collections::BTreeMap;
-use zksync_concurrency::{ctx,scope,sync,oneshot};
+use zksync_concurrency::{ctx, oneshot, scope, sync};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::BlockStoreState;
-use anyhow::Context as _;
 
 /// A block fetching request.
 type Call = (validator::BlockNumber, oneshot::Sender<()>);
@@ -21,14 +21,18 @@ impl Default for Queue {
 }
 
 impl Queue {
-    /// Requests a block from peers and waits until it is stored. 
+    /// Requests a block from peers and waits until it is stored.
     /// Note: in the current implementation concurrent calls for the same block number are
     /// unsupported - second call will override the first call.
-    pub(crate) async fn request(&self, ctx: &ctx::Ctx, n: validator::BlockNumber) -> ctx::OrCanceled<()> {
+    pub(crate) async fn request(
+        &self,
+        ctx: &ctx::Ctx,
+        n: validator::BlockNumber,
+    ) -> ctx::OrCanceled<()> {
         loop {
-            let (send,recv) = oneshot::channel();
-            self.0.send_if_modified(|x|{
-                x.insert(n,send);
+            let (send, recv) = oneshot::channel();
+            self.0.send_if_modified(|x| {
+                x.insert(n, send);
                 // Send iff the lowest requested block changed.
                 x.first_key_value().unwrap().0 == &n
             });
@@ -39,8 +43,8 @@ impl Queue {
                 Ok(Err(sync::Disconnected)) => continue,
                 // Remove the request from the queue if canceled.
                 Err(ctx::Canceled) => {
-                    self.0.send_if_modified(|x|{
-                        let modified = x.first_key_value().map_or(false,|(k,_)|k==&n);
+                    self.0.send_if_modified(|x| {
+                        let modified = x.first_key_value().map_or(false, |(k, _)| k == &n);
                         x.remove(&n);
                         // Send iff the lowest requested block changed.
                         modified
@@ -49,36 +53,42 @@ impl Queue {
                 }
             }
         }
-        
     }
 
     /// Accepts a block fetch request, which is contained in the available blocks range.
     /// Caller is responsible for fetching the block and adding it to the block store.
-    pub(crate) async fn accept(&self, ctx: &ctx::Ctx, available: &mut sync::watch::Receiver<BlockStoreState>) -> ctx::OrCanceled<Call> {
+    pub(crate) async fn accept(
+        &self,
+        ctx: &ctx::Ctx,
+        available: &mut sync::watch::Receiver<BlockStoreState>,
+    ) -> ctx::OrCanceled<Call> {
         let sub = &mut self.0.subscribe();
         while ctx.is_active() {
             // Wait for the lowest requested block to be available.
             // This scope is always cancelled, so we ignore the result.
             let mut block_number = None;
-            let _ : Result<(),_> = scope::run!(ctx, |ctx,s| async {
-                if let Some(n) = sub.borrow_and_update().first_key_value().map(|x|*x.0) {
+            let _: Result<(), _> = scope::run!(ctx, |ctx, s| async {
+                if let Some(n) = sub.borrow_and_update().first_key_value().map(|x| *x.0) {
                     let n = ctx::NoCopy(n);
                     s.spawn::<()>(async {
                         let n = n;
-                        sync::wait_for(ctx, available, |a|a.contains(n.0)).await?;
+                        sync::wait_for(ctx, available, |a| a.contains(n.0)).await?;
                         block_number = Some(n.0);
                         Err(ctx::Canceled)
                     });
                 }
                 // If the lowest requested block changes, we need to restart the wait.
-                sync::changed(ctx,sub).await?;
+                sync::changed(ctx, sub).await?;
                 Err(ctx::Canceled)
-            }).await;
-            let Some(block_number) = block_number else { continue };
+            })
+            .await;
+            let Some(block_number) = block_number else {
+                continue;
+            };
 
             // Remove the request from the queue.
             let mut res = None;
-            self.0.send_if_modified(|x|{
+            self.0.send_if_modified(|x| {
                 res = x.remove_entry(&block_number);
                 // Send iff the lowest requested block changed.
                 res.is_some() && !x.is_empty()

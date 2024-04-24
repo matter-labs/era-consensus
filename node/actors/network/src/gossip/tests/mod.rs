@@ -1,5 +1,6 @@
 use super::*;
 use crate::{metrics, preface, rpc, testonly};
+use anyhow::Context as _;
 use assert_matches::assert_matches;
 use pretty_assertions::assert_eq;
 use rand::Rng;
@@ -13,7 +14,6 @@ use zksync_concurrency::{
     testonly::{abort_on_panic, set_timeout},
     time,
 };
-use anyhow::Context as _;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::testonly::new_store;
 

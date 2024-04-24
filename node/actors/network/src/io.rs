@@ -1,6 +1,6 @@
 #![allow(missing_docs)]
 use zksync_concurrency::oneshot;
-use zksync_consensus_roles::{validator};
+use zksync_consensus_roles::validator;
 
 /// All the messages that other actors can send to the Network actor.
 #[derive(Debug)]

@@ -3,10 +3,10 @@ use crate::{noise, preface, rpc};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use rand::seq::SliceRandom;
-use std::sync::{atomic::Ordering};
+use std::sync::atomic::Ordering;
 use zksync_concurrency::{ctx, net, scope, sync};
 use zksync_consensus_roles::node;
-use zksync_consensus_storage::{BlockStore,BlockStoreState};
+use zksync_consensus_storage::{BlockStore, BlockStoreState};
 use zksync_protobuf::kB;
 
 struct PushValidatorAddrsServer<'a>(&'a Network);
@@ -43,7 +43,8 @@ impl<'a> PushBlockStoreStateServer<'a> {
             state: sync::watch::channel(BlockStoreState {
                 first: net.genesis().fork.first_block,
                 last: None,
-            }).0,
+            })
+            .0,
             net,
         }
     }
@@ -81,16 +82,19 @@ impl rpc::Handler<rpc::get_block::Rpc> for &BlockStore {
 
 impl Network {
     /// Manages lifecycle of a single connection.
-    async fn run_stream(
-        &self,
-        ctx: &ctx::Ctx,
-        stream: noise::Stream,
-    ) -> anyhow::Result<()> {
-        let push_validator_addrs_client = rpc::Client::<rpc::push_validator_addrs::Rpc>::new(ctx,self.cfg.rpc.push_validator_addrs_rate);
+    async fn run_stream(&self, ctx: &ctx::Ctx, stream: noise::Stream) -> anyhow::Result<()> {
+        let push_validator_addrs_client = rpc::Client::<rpc::push_validator_addrs::Rpc>::new(
+            ctx,
+            self.cfg.rpc.push_validator_addrs_rate,
+        );
         let push_validator_addrs_server = PushValidatorAddrsServer(self);
-        let push_block_store_state_client = rpc::Client::<rpc::push_block_store_state::Rpc>::new(ctx, self.cfg.rpc.push_block_store_state_rate);
+        let push_block_store_state_client = rpc::Client::<rpc::push_block_store_state::Rpc>::new(
+            ctx,
+            self.cfg.rpc.push_block_store_state_rate,
+        );
         let push_block_store_state_server = PushBlockStoreStateServer::new(self);
-        let get_block_client = rpc::Client::<rpc::get_block::Rpc>::new(ctx,self.cfg.rpc.get_block_rate);
+        let get_block_client =
+            rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate);
         scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_client(&push_validator_addrs_client)
@@ -153,7 +157,7 @@ impl Network {
                 let state = &mut push_block_store_state_server.state.subscribe();
                 loop {
                     let call = get_block_client.reserve(ctx).await?;
-                    let (req,send_resp) = self.fetch_queue.accept(ctx,state).await?;
+                    let (req, send_resp) = self.fetch_queue.accept(ctx, state).await?;
                     let req = rpc::get_block::Req(req);
                     s.spawn(async {
                         let req = req;
@@ -167,18 +171,28 @@ impl Network {
                         // - a disconnect is not a ban, so the peer is free to try to
                         //   reconnect.
                         async {
-                            let ctx_with_timeout = self.cfg.rpc.get_block_timeout.map(|t|ctx.with_timeout(t));
+                            let ctx_with_timeout =
+                                self.cfg.rpc.get_block_timeout.map(|t| ctx.with_timeout(t));
                             let ctx = ctx_with_timeout.as_ref().unwrap_or(ctx);
-                            let block = call.call(ctx,&req,self.cfg.max_block_size.saturating_add(kB)).await?.0.context("empty response")?;
-                            anyhow::ensure!(block.number()==req.0, "received wrong block");
+                            let block = call
+                                .call(ctx, &req, self.cfg.max_block_size.saturating_add(kB))
+                                .await?
+                                .0
+                                .context("empty response")?;
+                            anyhow::ensure!(block.number() == req.0, "received wrong block");
                             // Storing the block will fail in case block is invalid.
-                            self.block_store.queue_block(ctx,block).await.context("queue_block()")?;
-                            tracing::info!("fetched block {}",req.0);
+                            self.block_store
+                                .queue_block(ctx, block)
+                                .await
+                                .context("queue_block()")?;
+                            tracing::info!("fetched block {}", req.0);
                             // Send a response that fetching was successful.
                             // Ignore disconnection error.
                             let _ = send_resp.send(());
                             anyhow::Ok(())
-                        }.await.with_context(||format!("get_block({})",req.0))
+                        }
+                        .await
+                        .with_context(|| format!("get_block({})", req.0))
                     });
                 }
             });
@@ -232,9 +246,7 @@ impl Network {
         .await?;
         tracing::info!("peer = {peer:?}");
         self.outbound.insert(peer.clone(), ()).await?;
-        let res = self
-            .run_stream(ctx, stream)
-            .await;
+        let res = self.run_stream(ctx, stream).await;
         self.outbound.remove(peer).await;
         res
     }

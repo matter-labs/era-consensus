@@ -32,6 +32,7 @@ pub(crate) mod testonly;
 #[cfg(test)]
 mod tests;
 
+/// Multiplexer configuration for the RPC services.
 pub(crate) const MUX_CONFIG: mux::Config = mux::Config {
     read_buffer_size: 160 * zksync_protobuf::kB as u64,
     read_frame_size: 16 * zksync_protobuf::kB as u64,

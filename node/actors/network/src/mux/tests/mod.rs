@@ -8,7 +8,7 @@ use std::{
         Arc,
     },
 };
-use zksync_concurrency::{ctx, scope, testonly::abort_on_panic, limiter};
+use zksync_concurrency::{ctx, limiter, scope, testonly::abort_on_panic};
 
 mod proto;
 
@@ -209,10 +209,20 @@ fn mux_with_noise() {
                 write_frame_size: 150,
             }),
             accept: (0..caps)
-                .map(|c| (c, mux::StreamQueue::new(ctx, rng.gen_range(1..5), limiter::Rate::INF)))
+                .map(|c| {
+                    (
+                        c,
+                        mux::StreamQueue::new(ctx, rng.gen_range(1..5), limiter::Rate::INF),
+                    )
+                })
                 .collect(),
             connect: (0..caps)
-                .map(|c| (c, mux::StreamQueue::new(ctx, rng.gen_range(1..5), limiter::Rate::INF)))
+                .map(|c| {
+                    (
+                        c,
+                        mux::StreamQueue::new(ctx, rng.gen_range(1..5), limiter::Rate::INF),
+                    )
+                })
                 .collect(),
         };
         let mux2 = mux::Mux {
@@ -223,10 +233,20 @@ fn mux_with_noise() {
                 write_frame_size: 79,
             }),
             accept: (0..caps)
-                .map(|c| (c, mux::StreamQueue::new(ctx, rng.gen_range(1..5), limiter::Rate::INF)))
+                .map(|c| {
+                    (
+                        c,
+                        mux::StreamQueue::new(ctx, rng.gen_range(1..5), limiter::Rate::INF),
+                    )
+                })
                 .collect(),
             connect: (0..caps)
-                .map(|c| (c, mux::StreamQueue::new(ctx, rng.gen_range(1..5), limiter::Rate::INF)))
+                .map(|c| {
+                    (
+                        c,
+                        mux::StreamQueue::new(ctx, rng.gen_range(1..5), limiter::Rate::INF),
+                    )
+                })
                 .collect(),
         };
 

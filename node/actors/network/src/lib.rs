@@ -112,7 +112,7 @@ impl Runner {
                 }
                 Ok(())
             });
-            
+
             // Fetch missing blocks in the background.
             s.spawn(async {
                 self.net.gossip.run_block_fetcher(ctx).await;

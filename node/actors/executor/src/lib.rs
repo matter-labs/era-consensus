@@ -128,10 +128,7 @@ impl Executor {
         let (consensus_actor_pipe, consensus_dispatcher_pipe) = pipe::new();
         let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
         // Create the IO dispatcher.
-        let mut dispatcher = Dispatcher::new(
-            consensus_dispatcher_pipe,
-            network_dispatcher_pipe,
-        );
+        let mut dispatcher = Dispatcher::new(consensus_dispatcher_pipe, network_dispatcher_pipe);
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
@@ -151,11 +148,8 @@ impl Executor {
                     .context("Consensus stopped")
                 });
             }
-            let (net, runner) = network::Network::new(
-                network_config,
-                self.block_store.clone(),
-                network_actor_pipe,
-            );
+            let (net, runner) =
+                network::Network::new(network_config, self.block_store.clone(), network_actor_pipe);
             net.register_metrics();
             runner.run(ctx).await.context("Network stopped")
         })

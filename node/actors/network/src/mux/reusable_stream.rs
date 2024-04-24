@@ -4,7 +4,7 @@ use super::{
 };
 use crate::noise::bytes;
 use std::sync::Arc;
-use zksync_concurrency::{ctx, limiter, ctx::channel, oneshot, scope, sync};
+use zksync_concurrency::{ctx, ctx::channel, limiter, oneshot, scope, sync};
 
 /// Read frame allocation permit.
 #[derive(Debug)]
@@ -79,7 +79,7 @@ impl StreamQueue {
         let (send, recv) = channel::bounded(1);
         Arc::new(Self {
             max_streams,
-            limiter: limiter::Limiter::new(ctx,rate),
+            limiter: limiter::Limiter::new(ctx, rate),
             send,
             recv: sync::Mutex::new(recv),
         })
@@ -109,7 +109,7 @@ impl StreamQueue {
     async fn push(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<Reservation> {
         loop {
             let (send, recv) = oneshot::channel();
-            self.send.send(ctx,ReservedStream(send)).await?;
+            self.send.send(ctx, ReservedStream(send)).await?;
             if let Ok(reservation) = recv.recv_or_disconnected(ctx).await? {
                 return Ok(reservation);
             }
@@ -272,7 +272,7 @@ impl ReusableStream {
                 let mut write = write_receiver.wait(ctx).await?;
                 write.send_close(ctx).await?;
 
-                let _open_permit = self.stream_queue.limiter.acquire(ctx,1).await?;
+                let _open_permit = self.stream_queue.limiter.acquire(ctx, 1).await?;
                 let (read, reservation) = match write.stream_kind {
                     StreamKind::ACCEPT => {
                         let read = recv_open_task.join(ctx).await?;
