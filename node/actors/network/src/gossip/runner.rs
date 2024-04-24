@@ -4,7 +4,6 @@ use anyhow::Context as _;
 use async_trait::async_trait;
 use rand::seq::SliceRandom;
 use std::sync::{atomic::Ordering};
-use tracing::Instrument as _;
 use zksync_concurrency::{ctx, net, scope, sync};
 use zksync_consensus_roles::node;
 use zksync_consensus_storage::{BlockStore,BlockStoreState};
@@ -170,20 +169,16 @@ impl Network {
                         async {
                             let ctx_with_timeout = self.cfg.rpc.get_block_timeout.map(|t|ctx.with_timeout(t));
                             let ctx = ctx_with_timeout.as_ref().unwrap_or(ctx);
-                            let block = call.call(
-                                ctx,
-                                &req,
-                                self.cfg.max_block_size.saturating_add(kB),
-                            ).await?.0.context("empty response")?;
-                            // Storing the block will fail in case block
-                            // is invalid.
-                            self.block_store.queue_block(ctx,block).await?;
+                            let block = call.call(ctx,&req,self.cfg.max_block_size.saturating_add(kB)).await?.0.context("empty response")?;
+                            anyhow::ensure!(block.number()==req.0, "received wrong block");
+                            // Storing the block will fail in case block is invalid.
+                            self.block_store.queue_block(ctx,block).await.context("queue_block()")?;
                             tracing::info!("fetched block {}",req.0);
                             // Send a response that fetching was successful.
                             // Ignore disconnection error.
                             let _ = send_resp.send(());
                             anyhow::Ok(())
-                        }.await.context("get_block()")
+                        }.await.with_context(||format!("get_block({})",req.0))
                     });
                 }
             });
@@ -239,7 +234,6 @@ impl Network {
         self.outbound.insert(peer.clone(), ()).await?;
         let res = self
             .run_stream(ctx, stream)
-            .instrument(tracing::info_span!("out", ?addr))
             .await;
         self.outbound.remove(peer).await;
         res

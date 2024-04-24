@@ -24,6 +24,8 @@ mod runner;
 mod fetch;
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod testonly;
 mod validator_addrs;
 
 /// Gossip network state.
@@ -86,24 +88,11 @@ impl Network {
                 s.spawn(async {
                     let _permit = permit;
                     let number = number.into();
-                    let _ : ctx::OrCanceled<_> = scope::run!(ctx, |ctx, s| async {
-                        s.spawn_bg(async {
-                            // Retry until fetched.
-                            while ctx.is_active() {
-                                // TODO(gprusak): it is a bit obscure that `fetch_queue.request()`
-                                // is actually expected to get the block stored (but required, so
-                                // that we can detect malicious peers). Refactor this
-                                // logic to make it more obvious.
-                                match self.fetch_queue.request(ctx, number).await {
-                                    Ok(()) => return Ok(()),
-                                    Err(ctx::Error::Canceled(_)) => {},
-                                    Err(ctx::Error::Internal(err)) => tracing::info!(%number, "get_block({number}): {err:#}"),
-                                }
-                            }
-                            Err(ctx::Canceled)
-                        });
+                    let _ : ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
+                        s.spawn_bg(self.fetch_queue.request(ctx, number));
                         // Cancel fetching as soon as block is queued for storage.
-                        self.block_store.wait_until_queued(ctx, number).await
+                        self.block_store.wait_until_queued(ctx, number).await?;
+                        Err(ctx::Canceled)
                     })
                     .await;
                     // Wait until the block is actually persisted, so that the amount of blocks

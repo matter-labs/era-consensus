@@ -21,18 +21,35 @@ impl Default for Queue {
 }
 
 impl Queue {
-    /// Adds a request to the queue and waits for it to be completed.
+    /// Requests a block from peers and waits until it is stored. 
     /// Note: in the current implementation concurrent calls for the same block number are
     /// unsupported - second call will override the first call.
-    pub(crate) async fn request(&self, ctx: &ctx::Ctx, n: validator::BlockNumber) -> ctx::Result<()> {
-        let (send,recv) = oneshot::channel();
-        self.0.send_if_modified(|x|{
-            x.insert(n,send);
-            // Send iff the lowest requested block changed.
-            x.first_key_value().unwrap().0 == &n
-        });
-        recv.recv_or_disconnected(ctx).await?.context("call dropped")?;
-        Ok(())
+    pub(crate) async fn request(&self, ctx: &ctx::Ctx, n: validator::BlockNumber) -> ctx::OrCanceled<()> {
+        loop {
+            let (send,recv) = oneshot::channel();
+            self.0.send_if_modified(|x|{
+                x.insert(n,send);
+                // Send iff the lowest requested block changed.
+                x.first_key_value().unwrap().0 == &n
+            });
+            match recv.recv_or_disconnected(ctx).await {
+                // Return if completed.
+                Ok(Ok(())) => return Ok(()),
+                // Retry if failed.
+                Ok(Err(sync::Disconnected)) => continue,
+                // Remove the request from the queue if canceled.
+                Err(ctx::Canceled) => {
+                    self.0.send_if_modified(|x|{
+                        let modified = x.first_key_value().map_or(false,|(k,_)|k==&n);
+                        x.remove(&n);
+                        // Send iff the lowest requested block changed.
+                        modified
+                    });
+                    return Err(ctx::Canceled);
+                }
+            }
+        }
+        
     }
 
     /// Accepts a block fetch request, which is contained in the available blocks range.

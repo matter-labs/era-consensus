@@ -1,24 +1,24 @@
-#![allow(unused)]
 use super::*;
-use crate::{io, metrics, preface, rpc, testonly};
+use crate::{metrics, preface, rpc, testonly};
 use assert_matches::assert_matches;
 use pretty_assertions::assert_eq;
 use rand::Rng;
-use rand::seq::SliceRandom as _;
 use std::{
     collections::{HashMap, HashSet},
     sync::{atomic::Ordering, Arc},
 };
-use test_casing::{test_casing, Product};
 use tracing::Instrument as _;
 use zksync_concurrency::{
-    ctx, net, oneshot, scope, sync, limiter,
+    ctx, net, scope, sync,
     testonly::{abort_on_panic, set_timeout},
     time,
 };
 use anyhow::Context as _;
-use zksync_consensus_roles::validator::{self, BlockNumber, FinalBlock};
+use zksync_consensus_roles::validator;
 use zksync_consensus_storage::testonly::new_store;
+
+mod fetch;
+mod syncing;
 
 #[tokio::test]
 async fn test_one_connection_per_node() {
@@ -313,184 +313,6 @@ async fn test_genesis_mismatch() {
     .await
     .unwrap();
 }
-
-const EXCHANGED_STATE_COUNT: usize = 5;
-const NETWORK_CONNECTIVITY_CASES: [(usize, usize); 5] = [(2, 1), (3, 2), (5, 3), (10, 4), (10, 7)];
-
-/// Tests block syncing with global network synchronization (a next block becoming available
-/// on some node only after nodes have received the previous block.
-#[test_casing(5, NETWORK_CONNECTIVITY_CASES)]
-#[tokio::test(flavor = "multi_thread")]
-async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
-    abort_on_panic();
-    let _guard = set_timeout(time::Duration::seconds(20));
-
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::Setup::new(rng, node_count);
-    setup.push_blocks(rng, EXCHANGED_STATE_COUNT);
-    let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
-    scope::run!(ctx, |ctx, s| async {
-        let mut nodes = vec![];
-        for (i, mut cfg) in cfgs.into_iter().enumerate() {
-            cfg.rpc.get_block_rate = limiter::Rate::INF;
-            cfg.rpc.get_block_timeout = None;
-            let (store, runner) = new_store(ctx, &setup.genesis).await;
-            s.spawn_bg(runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store);
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
-            nodes.push(node);
-        }
-        for block in &setup.blocks {
-            nodes.choose(rng).unwrap().net.gossip
-                    .block_store
-                    .queue_block(ctx, block.clone())
-                    .await
-                    .context("queue_block()")?;
-            for node in &nodes {
-                node.net.gossip.block_store.wait_until_persisted(ctx,block.number()).await.unwrap();
-            }
-        }
-        Ok(())
-    })
-    .await
-    .unwrap();
-}
-
-
-/// Tests block syncing in an uncoordinated network, in which new blocks arrive at a schedule.
-#[test_casing(10, Product((
-    NETWORK_CONNECTIVITY_CASES,
-    [time::Duration::milliseconds(50), time::Duration::milliseconds(500)],
-)))]
-#[tokio::test(flavor = "multi_thread")]
-async fn uncoordinated_block_syncing(
-    (node_count, gossip_peers): (usize, usize),
-    state_generation_interval: time::Duration,
-) {
-    abort_on_panic();
-    let _guard = set_timeout(time::Duration::seconds(20));
-
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::Setup::new(rng, node_count);
-    setup.push_blocks(rng, EXCHANGED_STATE_COUNT);
-    let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
-    scope::run!(ctx, |ctx, s| async {
-        let mut nodes = vec![];
-        for (i, mut cfg) in cfgs.into_iter().enumerate() {
-            cfg.rpc.get_block_rate = limiter::Rate::INF;
-            cfg.rpc.get_block_timeout = None;
-            let (store, runner) = new_store(ctx, &setup.genesis).await;
-            s.spawn_bg(runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store);
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
-            nodes.push(node);
-        }
-        for block in &setup.blocks {
-            nodes.choose(rng).unwrap().net.gossip
-                    .block_store
-                    .queue_block(ctx, block.clone())
-                    .await
-                    .context("queue_block()")?;
-            ctx.sleep(state_generation_interval).await?;
-        }
-        let last = setup.blocks.last().unwrap().number();
-        for node in &nodes {
-            node.net.gossip.block_store.wait_until_persisted(ctx,last).await.unwrap();
-        }
-        Ok(())
-    })
-    .await
-    .unwrap();
-}
-
-/*
-#[test_casing(5, NETWORK_CONNECTIVITY_CASES)]
-#[tokio::test]
-async fn getting_blocks_from_peers(node_count: usize, gossip_peers: usize) {
-    abort_on_panic();
-
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::Setup::new(rng, node_count);
-    setup.push_blocks(rng, 1);
-    let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
-
-    // All inbound and outbound peers should answer the request.
-    let expected_successful_responses = (2 * gossip_peers).min(node_count - 1);
-
-    scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        store
-            .queue_block(ctx, setup.blocks[0].clone())
-            .await
-            .unwrap();
-
-        let mut nodes: Vec<_> = cfgs
-            .into_iter()
-            .enumerate()
-            .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(cfg, store.clone());
-                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
-                node
-            })
-            .collect();
-
-        for node in &nodes {
-            node.wait_for_gossip_connections().await;
-            tracing::info!("establish connections");
-            let mut successful_peer_responses = 0;
-            for peer in &nodes {
-                let (response, response_receiver) = oneshot::channel();
-                node.pipe.send(
-                    io::SyncBlocksInputMessage::GetBlock {
-                        recipient: peer.net.gossip.cfg.gossip.key.public(),
-                        number: setup.blocks[0].header().number,
-                        response,
-                    }
-                    .into(),
-                );
-                tracing::info!("wait for response");
-                if let Ok(block) = response_receiver.recv(ctx).await? {
-                    assert_eq!(block, setup.blocks[0]);
-                    successful_peer_responses += 1;
-                }
-            }
-            assert_eq!(successful_peer_responses, expected_successful_responses);
-        }
-
-        tracing::info!("stop the last node");
-        let last = nodes.pop().unwrap();
-        last.terminate(ctx).await?;
-
-        let stopped_node_key = last.net.gossip.cfg.gossip.key.public();
-        for node in &nodes {
-            tracing::info!("wait for disconnection");
-            node.wait_for_gossip_disconnect(ctx, &stopped_node_key)
-                .await
-                .unwrap();
-
-            tracing::info!("wait for disconnection");
-            // Check that the node cannot access the stopped peer.
-            let (response, response_receiver) = oneshot::channel();
-            node.pipe.send(
-                io::SyncBlocksInputMessage::GetBlock {
-                    recipient: stopped_node_key.clone(),
-                    number: BlockNumber(1),
-                    response,
-                }
-                .into(),
-            );
-            assert!(response_receiver.recv(ctx).await?.is_err());
-        }
-
-        Ok(())
-    })
-    .await
-    .unwrap();
-}*/
 
 /// When validator node is restarted, it should immediately override
 /// the AccountData that is present in the network from the previous run.
