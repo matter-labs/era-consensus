@@ -1,7 +1,6 @@
 use crate::{
     attester,
-    proto::attester::L1BatchQc,
-    validator::{testonly::Setup, Committee, Genesis, ViewNumber},
+    validator::{testonly::Setup, Committee, Genesis},
 };
 
 use super::*;
@@ -9,7 +8,7 @@ use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::ctx;
 use zksync_consensus_crypto::{ByteFmt, Text, TextFmt};
-use zksync_protobuf::testonly::{test_encode, test_encode_random};
+use zksync_protobuf::testonly::test_encode_random;
 
 #[test]
 fn test_byte_encoding() {

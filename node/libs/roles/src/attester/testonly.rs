@@ -1,5 +1,3 @@
-use crate::proto;
-
 use super::{
     AggregateSignature, Committee, L1Batch, L1BatchQC, Msg, MsgHash, PublicKey, SecretKey,
     Signature, SignedBatchMsg, Signers, WeightedAttester,
@@ -11,7 +9,6 @@ use rand::{
 };
 use std::sync::Arc;
 use zksync_consensus_utils::enum_util::Variant;
-use zksync_protobuf::ProtoFmt;
 
 impl AggregateSignature {
     /// Generate a new aggregate signature from a list of signatures.
