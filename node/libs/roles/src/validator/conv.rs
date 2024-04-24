@@ -62,12 +62,14 @@ impl ProtoFmt for Genesis {
                 (vec![], GenesisVersion::CURRENT)
             };
 
-        Ok(Self {
+        let genesis = Self {
             fork: read_required(&r.fork).context("fork")?,
             validators: Committee::new(validators.into_iter()).context("validators")?,
             version,
             leader_selection: read_optional(&r.leader_selection).context("leader_selection")?,
-        })
+        };
+        genesis.verify()?;
+        Ok(genesis)
     }
     fn build(&self) -> Self::Proto {
         match self.version {

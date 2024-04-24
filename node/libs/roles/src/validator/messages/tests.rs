@@ -93,6 +93,14 @@ fn genesis_v1_hash_change_detector() {
 }
 
 #[test]
+fn genesis_verify_leader_pubkey_not_in_committee() {
+    let mut rng = StdRng::seed_from_u64(29483920);
+    let mut genesis = rng.gen::<Genesis>();
+    genesis.leader_selection = Some(LeaderSelectionMode::Sticky(rng.gen()));
+    assert!(genesis.verify().is_err())
+}
+
+#[test]
 fn leader_selection_mode_roundrobin() {
     let validators = keys().into_iter().map(|k| WeightedValidator {
         key: k.public(),

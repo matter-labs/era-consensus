@@ -63,6 +63,7 @@ impl Config {
         ctx: &ctx::Ctx,
         mut pipe: ActorPipe<InputMessage, OutputMessage>,
     ) -> anyhow::Result<()> {
+        self.block_store.genesis().verify()?;
         let cfg = Arc::new(self);
         let (leader, leader_send) = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
         let (replica, replica_send) =

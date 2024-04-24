@@ -269,6 +269,17 @@ pub struct Genesis {
 pub struct GenesisHash(pub(crate) Keccak256);
 
 impl Genesis {
+    /// Verifies correctness.
+    pub fn verify(&self) -> anyhow::Result<()> {
+        if let Some(LeaderSelectionMode::Sticky(pk)) = &self.leader_selection {
+            if self.validators.index(pk).is_none() {
+                anyhow::bail!("leader_selection sticky mode public key is not in committee");
+            }
+        }
+
+        Ok(())
+    }
+
     /// Hash of the genesis.
     pub fn hash(&self) -> GenesisHash {
         GenesisHash(Keccak256::new(&zksync_protobuf::canonical(self)))
