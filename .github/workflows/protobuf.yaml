@@ -53,7 +53,6 @@ jobs:
           `find ./after/node/target/debug/build/*/output`
           | xargs cat > ./after.binpb
       - uses: bufbuild/buf-setup-action@v1
-      - uses: bufbuild/buf-setup-action@v1
         with:
           github_token: ${{ github.token }}
       - name: buf breaking
