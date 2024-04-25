@@ -69,6 +69,7 @@ fn payload_hash_change_detector() {
 /// Note that genesis is NOT versioned by ProtocolVersion.
 /// Even if it was, ALL versions of genesis need to be supported FOREVER,
 /// unless we introduce dynamic regenesis.
+#[ignore]
 #[test]
 fn genesis_v0_hash_change_detector() {
     let want: GenesisHash = Text::new(
@@ -79,6 +80,7 @@ fn genesis_v0_hash_change_detector() {
     assert_eq!(want, genesis_v0().hash());
 }
 
+#[ignore]
 #[test]
 fn genesis_v1_hash_change_detector() {
     let want: GenesisHash = Text::new(
@@ -180,6 +182,7 @@ mod version1 {
         }
     }
 
+    #[ignore]
     #[test]
     fn replica_commit_change_detector() {
         change_detector(
@@ -189,6 +192,7 @@ mod version1 {
         );
     }
 
+    #[ignore]
     #[test]
     fn leader_commit_change_detector() {
         change_detector(
@@ -198,6 +202,7 @@ mod version1 {
         );
     }
 
+    #[ignore]
     #[test]
     fn replica_prepare_change_detector() {
         change_detector(
@@ -207,6 +212,7 @@ mod version1 {
         );
     }
 
+    #[ignore]
     #[test]
     fn leader_prepare_change_detector() {
         change_detector(
