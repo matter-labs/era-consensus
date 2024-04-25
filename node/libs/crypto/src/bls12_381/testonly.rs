@@ -31,7 +31,7 @@ impl Distribution<ProofOfPossession> for Standard {
 impl Distribution<AggregateSignature> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateSignature {
         let sig: Signature = self.sample(rng);
-        AggregateSignature(sig.0)
+        AggregateSignature(bls::AggregateSignature::from_signature(&sig.0))
     }
 }
 

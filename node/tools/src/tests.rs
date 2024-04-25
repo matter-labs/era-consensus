@@ -2,14 +2,14 @@ use crate::{store, AppConfig};
 use rand::{distributions::Distribution, Rng};
 use tempfile::TempDir;
 use zksync_concurrency::ctx;
-use zksync_consensus_roles::validator::testonly::Setup;
+use zksync_consensus_roles::validator::{testonly::Setup, LeaderSelectionMode};
 use zksync_consensus_storage::{testonly, PersistentBlockStore};
 use zksync_consensus_utils::EncodeDist;
 use zksync_protobuf::testonly::{test_encode_all_formats, FmtConv};
 
 impl Distribution<AppConfig> for EncodeDist {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AppConfig {
-        AppConfig {
+        let mut config = AppConfig {
             server_addr: self.sample(rng),
             public_addr: self.sample(rng),
             debug_addr: self.sample(rng),
@@ -26,7 +26,17 @@ impl Distribution<AppConfig> for EncodeDist {
                 .sample_range(rng)
                 .map(|_| (rng.gen(), self.sample(rng)))
                 .collect(),
+        };
+
+        // In order for the genesis to be valid, the sticky leader needs to be in the validator committee.
+        if let Some(LeaderSelectionMode::Sticky(_)) = config.genesis.leader_selection {
+            let i = rng.gen_range(0..config.genesis.validators.len());
+            config.genesis.leader_selection = Some(LeaderSelectionMode::Sticky(
+                config.genesis.validators.get(i).unwrap().key.clone(),
+            ));
         }
+
+        config
     }
 }
 
