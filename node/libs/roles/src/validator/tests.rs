@@ -107,8 +107,13 @@ fn test_schema_encoding() {
 fn test_genesis_schema_decode() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
+
     let mut genesis = rng.gen::<Genesis>();
+    assert!(genesis.verify().is_ok());
+    assert!(Genesis::read(&genesis.build()).is_ok());
+
     genesis.leader_selection = Some(LeaderSelectionMode::Sticky(rng.gen()));
+    assert!(genesis.verify().is_err());
     assert!(Genesis::read(&genesis.build()).is_err())
 }
 

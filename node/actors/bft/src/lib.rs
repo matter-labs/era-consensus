@@ -16,6 +16,7 @@
 //! - Blog posts explaining [safety](https://seafooler.com/2022/01/24/understanding-safety-hotstuff/) and [responsiveness](https://seafooler.com/2022/04/02/understanding-responsiveness-hotstuff/)
 
 use crate::io::{InputMessage, OutputMessage};
+use anyhow::Context;
 pub use config::Config;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, scope};
@@ -63,7 +64,10 @@ impl Config {
         ctx: &ctx::Ctx,
         mut pipe: ActorPipe<InputMessage, OutputMessage>,
     ) -> anyhow::Result<()> {
-        self.block_store.genesis().verify()?;
+        self.block_store
+            .genesis()
+            .verify()
+            .context("genesis().verify()")?;
         let cfg = Arc::new(self);
         let (leader, leader_send) = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
         let (replica, replica_send) =
