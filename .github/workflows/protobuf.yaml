@@ -48,7 +48,7 @@ jobs:
           perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/'
           `find ./before/node/target/debug/build/*/output`
           | xargs cat > ./before.binpb
-      
+ 
       # after
       - uses: actions/checkout@v4
         with:
