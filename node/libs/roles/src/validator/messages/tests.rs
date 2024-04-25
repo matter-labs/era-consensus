@@ -1,4 +1,5 @@
 use crate::validator::*;
+use rand::{prelude::StdRng, Rng, SeedableRng};
 use zksync_consensus_crypto::Text;
 use zksync_consensus_utils::enum_util::Variant as _;
 
@@ -40,6 +41,7 @@ fn genesis_v0() -> Genesis {
         .unwrap(),
         fork: fork(),
         version: GenesisVersion(0),
+        leader_selection: None,
     }
 }
 
@@ -53,6 +55,7 @@ fn genesis_v1() -> Genesis {
         .unwrap(),
         fork: fork(),
         version: GenesisVersion(1),
+        leader_selection: Some(LeaderSelectionMode::Weighted),
     }
 }
 
@@ -84,11 +87,75 @@ fn genesis_v0_hash_change_detector() {
 #[test]
 fn genesis_v1_hash_change_detector() {
     let want: GenesisHash = Text::new(
-        "genesis_hash:keccak256:6370cfce637395629f05599082993c446c2c66145d440287a985ac98ad210b41",
+        "genesis_hash:keccak256:3fc736e5f69784be02ec83ff5f91414ee6b44e545b68eac7f54089bb63085b02",
     )
     .decode()
     .unwrap();
     assert_eq!(want, genesis_v1().hash());
+}
+
+#[test]
+fn genesis_verify_leader_pubkey_not_in_committee() {
+    let mut rng = StdRng::seed_from_u64(29483920);
+    let mut genesis = rng.gen::<Genesis>();
+    genesis.leader_selection = Some(LeaderSelectionMode::Sticky(rng.gen()));
+    assert!(genesis.verify().is_err())
+}
+
+#[test]
+fn leader_selection_mode_roundrobin() {
+    let validators = keys().into_iter().map(|k| WeightedValidator {
+        key: k.public(),
+        weight: 10,
+    });
+    let committee = Committee::new(validators).unwrap();
+    let leader_selection = LeaderSelectionMode::RoundRobin;
+
+    let mut rng = StdRng::seed_from_u64(29483920);
+    for _ in 0..100 {
+        let view_number: u64 = rng.gen();
+        let leader = committee.view_leader(ViewNumber(view_number), leader_selection.clone());
+        let leader_index = view_number as usize % committee.len();
+        assert_eq!(leader, committee.get(leader_index).unwrap().key);
+    }
+}
+
+#[test]
+fn leader_selection_mode_sticky() {
+    let validators = keys().into_iter().map(|k| WeightedValidator {
+        key: k.public(),
+        weight: 10,
+    });
+    let committee = Committee::new(validators).unwrap();
+    let validator = committee.get(committee.len() - 1).unwrap().key.clone();
+    let leader_selection = LeaderSelectionMode::Sticky(validator.clone());
+
+    let mut rng = StdRng::seed_from_u64(29483920);
+    for _ in 0..100 {
+        let view_number: u64 = rng.gen();
+        let leader = committee.view_leader(ViewNumber(view_number), leader_selection.clone());
+        assert_eq!(leader, validator);
+    }
+}
+
+#[test]
+fn leader_selection_mode_weighted() {
+    let weight = 1000;
+    let validators = keys().into_iter().map(|k| WeightedValidator {
+        key: k.public(),
+        weight,
+    });
+    let committee = Committee::new(validators).unwrap();
+    let leader_selection = LeaderSelectionMode::Weighted;
+
+    let mut rng = StdRng::seed_from_u64(29483920);
+    for _ in 0..100 {
+        let view_number: u64 = rng.gen();
+        let eligibility = leader_weighted_eligibility(view_number, committee.total_weight());
+        let leader = committee.view_leader(ViewNumber(view_number), leader_selection.clone());
+        let leader_index = eligibility / weight;
+        assert_eq!(leader, committee.get(leader_index as usize).unwrap().key);
+    }
 }
 
 mod version1 {

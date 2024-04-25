@@ -98,12 +98,7 @@ impl StateMachine {
         }
 
         // If the message is for a view when we are not a leader, we discard it.
-        if self
-            .config
-            .genesis()
-            .validators
-            .view_leader(message.view.number)
-            != self.config.secret_key.public()
+        if self.config.genesis().view_leader(message.view.number) != self.config.secret_key.public()
         {
             return Err(Error::NotLeaderInView);
         }
