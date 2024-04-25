@@ -25,7 +25,7 @@ env:
   SCCACHE_GHA_ENABLED: "true"
   RUST_BACKTRACE: "1"
   # github.base_ref -> github.head_ref for pull_request
-  BASE: ${{ github.base_ref && ("origin/" + github.base_ref) || github.event.before }}
+  BASE: ${{ github.event.base.sha || github.event.before }}
   # github.event.before -> github.event.after for push
   HEAD: ${{ github.sha }}
 
@@ -42,7 +42,7 @@ jobs:
           path: before
           fetch-depth: 0 # fetches all branches and tags, which is needed to compute the LCA.
       - name: checkout LCA
-        run: git checkout $(git merge-base origin/$BASE origin/$HEAD)
+        run: git checkout $(git merge-base $BASE $HEAD)
         working-directory: ./before
       - name: compile before
         run: cargo build --all-targets
