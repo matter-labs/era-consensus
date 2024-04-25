@@ -71,7 +71,7 @@ impl ByteFmt for SecretKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         bls::SecretKey::from_bytes(bytes)
             .map(Self)
-            .map_err(|e| anyhow!("Failed to decode secret key: {e:?}"))
+            .map_err(|e| anyhow::format_err!("Failed to decode secret key: {e:?}"))
     }
 
     fn encode(&self) -> Vec<u8> {
@@ -106,7 +106,7 @@ impl ByteFmt for PublicKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         bls::PublicKey::key_validate(bytes)
             .map(Self)
-            .map_err(|e| anyhow!("Failed to decode public key: {e:?}"))
+            .map_err(|e| anyhow::format_err!("Failed to decode public key: {e:?}"))
     }
 
     fn encode(&self) -> Vec<u8> {
@@ -137,7 +137,9 @@ impl Signature {
 
         match result {
             BLST_ERROR::BLST_SUCCESS => Ok(()),
-            err => Err(anyhow!("Signature verification failure: {err:?}")),
+            err => Err(anyhow::format_err!(
+                "Signature verification failure: {err:?}"
+            )),
         }
     }
 }
@@ -147,7 +149,7 @@ impl ByteFmt for Signature {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         bls::Signature::sig_validate(bytes, false)
             .map(Self)
-            .map_err(|err| anyhow!("Error decoding signature: {err:?}"))
+            .map_err(|err| anyhow::format_err!("Error decoding signature: {err:?}"))
     }
 
     fn encode(&self) -> Vec<u8> {
@@ -208,7 +210,9 @@ impl AggregateSignature {
         for (msg, pk) in msgs_and_pks {
             if let Some(existing_pk) = tree_map.get_mut(msg) {
                 if let Err(err) = existing_pk.add_public_key(&pk.0, false) {
-                    return Err(anyhow!("Error aggregating public keys: {err:?}"));
+                    return Err(anyhow::format_err!(
+                        "Error aggregating public keys: {err:?}"
+                    ));
                 }
             } else {
                 tree_map.insert(msg, bls::AggregatePublicKey::from_public_key(&pk.0));
@@ -231,7 +235,9 @@ impl AggregateSignature {
 
         match result {
             BLST_ERROR::BLST_SUCCESS => Ok(()),
-            err => Err(anyhow!("Aggregate signature verification failure: {err:?}")),
+            err => Err(anyhow::format_err!(
+                "Aggregate signature verification failure: {err:?}"
+            )),
         }
     }
 }
@@ -240,7 +246,7 @@ impl ByteFmt for AggregateSignature {
     /// This method also checks if the signature is in the correct subgroup.
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         let sig = bls::Signature::sig_validate(bytes, false)
-            .map_err(|err| anyhow!("Error decoding signature: {err:?}"))?;
+            .map_err(|err| anyhow::format_err!("Error decoding signature: {err:?}"))?;
 
         Ok(AggregateSignature(bls::AggregateSignature::from_signature(
             &sig,
@@ -285,7 +291,9 @@ impl ProofOfPossession {
 
         match result {
             BLST_ERROR::BLST_SUCCESS => Ok(()),
-            err => Err(anyhow!("Proof of possession verification failure: {err:?}")),
+            err => Err(anyhow::format_err!(
+                "Proof of possession verification failure: {err:?}"
+            )),
         }
     }
 }
@@ -295,7 +303,7 @@ impl ByteFmt for ProofOfPossession {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         bls::Signature::sig_validate(bytes, false)
             .map(Self)
-            .map_err(|err| anyhow!("Error decoding proof of possession: {err:?}"))
+            .map_err(|err| anyhow::format_err!("Error decoding proof of possession: {err:?}"))
     }
 
     fn encode(&self) -> Vec<u8> {
