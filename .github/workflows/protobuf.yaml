@@ -42,7 +42,9 @@ jobs:
           path: before
           fetch-depth: 0 # fetches all branches and tags, which is needed to compute the LCA.
       - name: checkout LCA
-        run: git checkout $(git merge-base $BASE $HEAD)
+        run: >
+          echo "${{ github.event }}"
+          git checkout $(git merge-base $BASE $HEAD)
         working-directory: ./before
       - name: compile before
         run: cargo build --all-targets
