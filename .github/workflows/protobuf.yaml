@@ -26,8 +26,12 @@ env:
   RUST_BACKTRACE: "1"
   # github.base_ref -> github.head_ref for pull_request
   BASE: ${{ github.event.base.sha || github.event.before }}
+  BASE_SHA: ${{ github.event.base.sha }}
+  BASE_BEFORE: ${{ github.event.before }}
   # github.event.before -> github.event.after for push
   HEAD: ${{ github.event.head.sha || github.event.after }}
+  HEAD_SHA: ${{ github.event.head.sha }}
+  HEAD_AFTER: ${{ github.event.after }}
 
 jobs:
   compatibility:
