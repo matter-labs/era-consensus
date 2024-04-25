@@ -30,9 +30,28 @@ jobs:
     runs-on: [ubuntu-22.04-github-hosted-16core]
     steps:
       - uses: mozilla-actions/sccache-action@v0.0.3     
+      
+      # before
       - uses: actions/checkout@v4
         with:
-          ref: $HEAD
+          ref: ${{ env.BASE }}
+          path: before
+          fetch-depth: 0 # fetches all branches and tags, which is needed to compute the LCA.
+      - name: checkout LCA
+        run: git checkout $(git merge-base $BASE $HEAD)
+      - name: compile before
+        run: cargo build --all-targets
+        working-directory: ./before/node
+      - name: build before.binpb
+        run: >
+          perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/'
+          `find ./before/node/target/debug/build/*/output`
+          | xargs cat > ./before.binpb
+      
+      # after
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.HEAD }}
           path: after
       - name: compile after
         run: cargo build --all-targets
@@ -43,22 +62,7 @@ jobs:
           `find ./after/node/target/debug/build/*/output`
           | xargs cat > ./after.binpb
       
-      - uses: actions/checkout@v4
-        with:
-          ref: $BASE 
-          path: before
-          fetch-depth: 0 # fetches all branches and tags, which is needed to compute the LCA.
-      - name: checkout LCA 
-        run: git checkout $(git merge-base $BASE $HEAD)
-      - name: compile before
-        run: cargo build --all-targets
-        working-directory: ./before/node
-      - name: build before.binpb
-        run: >
-          perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/'
-          `find ./before/node/target/debug/build/*/output`
-          | xargs cat > ./before.binpb
-     
+      # compare
       - uses: bufbuild/buf-setup-action@v1
         with:
           github_token: ${{ github.token }}
