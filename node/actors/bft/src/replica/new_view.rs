@@ -40,7 +40,7 @@ impl StateMachine {
                         high_qc: self.high_qc.clone(),
                     },
                 )),
-            recipient: Target::Validator(self.config.genesis().validators.view_leader(self.view)),
+            recipient: Target::Validator(self.config.genesis().view_leader(self.view)),
         };
         self.outbound_pipe.send(output_message.into());
 

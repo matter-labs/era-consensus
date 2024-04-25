@@ -2,7 +2,7 @@
 //! manages communication between the actors. It is the main executable in this workspace.
 use anyhow::Context as _;
 use clap::Parser;
-use std::{fs, io::IsTerminal as _, path::PathBuf};
+use std::{fs, fs::Permissions, io::IsTerminal as _, os::unix::fs::PermissionsExt, path::PathBuf};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
@@ -53,8 +53,13 @@ async fn main() -> anyhow::Result<()> {
     tracing::trace!("Starting node");
 
     // Create log file.
-    fs::create_dir_all("logs/")?;
-    let log_file = fs::File::create("logs/output.log")?;
+    let dir_path = "logs/";
+    fs::create_dir_all(dir_path)?;
+    fs::set_permissions(dir_path, Permissions::from_mode(0o700))?;
+
+    let file_path = "logs/output.log";
+    let log_file = fs::File::create(file_path)?;
+    fs::set_permissions(file_path, Permissions::from_mode(0o600))?;
 
     // Create the logger for stdout. This will produce human-readable logs for ERROR events.
     // To see logs for other events, set the RUST_LOG environment to the desired level.

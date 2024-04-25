@@ -18,7 +18,22 @@ message Genesis {
   repeated PublicKey validators = 2;
   repeated WeightedValidator validators_v1 = 3;
   repeated attester.PublicKey attesters = 4;
+  optional LeaderSelectionMode leader_selection = 5;
 }
+
+message LeaderSelectionMode {
+  oneof mode {
+    RoundRobin round_robin = 1;
+    Sticky sticky = 2;
+    Weighted weighted = 3;
+  }
+  message RoundRobin{}
+  message Sticky{
+    optional PublicKey key = 1; // required
+  }
+  message Weighted{}
+}
+
 
 message GenesisHash {
   optional bytes keccak256 = 1; // required
@@ -47,7 +62,7 @@ message View {
 }
 
 message ConsensusMsg {
-  oneof t { // required
+  oneof t {// required
     ReplicaPrepare replica_prepare = 1;
     ReplicaCommit replica_commit = 2;
     LeaderPrepare leader_prepare = 3;
@@ -144,7 +159,7 @@ message NetAddress {
 }
 
 message Msg {
-  oneof t { // required
+  oneof t {// required
     ConsensusMsg consensus = 1;
     bytes session_id = 2;
     NetAddress net_address = 3;
@@ -176,5 +191,4 @@ message AggregateSignature {
 message WeightedValidator {
   optional PublicKey key = 1; // required
   optional uint64 weight = 2; // required
-
 }

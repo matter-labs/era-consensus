@@ -78,11 +78,7 @@ impl StateMachine {
         }
 
         // Check that it comes from the correct leader.
-        let leader = self
-            .config
-            .genesis()
-            .validators
-            .view_leader(message.view().number);
+        let leader = self.config.genesis().view_leader(message.view().number);
         if author != &leader {
             return Err(Error::BadLeader {
                 want: leader,

@@ -9,7 +9,7 @@ use super::{
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
-use crate::proto::validator as proto;
+use crate::{proto::validator as proto, validator::LeaderSelectionMode};
 use anyhow::Context as _;
 use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
@@ -48,7 +48,7 @@ impl ProtoFmt for Genesis {
                         .context("validators")?,
                     GenesisVersion(1),
                 )
-            // legacy genesis encoding version 0
+                // legacy genesis encoding version 0
             } else if !r.validators.is_empty() {
                 (
                     r.validators
@@ -62,7 +62,7 @@ impl ProtoFmt for Genesis {
                         .context("validators")?,
                     GenesisVersion(0),
                 )
-            // empty validator set, Committee:new() will later return an error.
+                // empty validator set, Committee:new() will later return an error.
             } else {
                 (vec![], GenesisVersion::CURRENT)
             };
@@ -80,12 +80,15 @@ impl ProtoFmt for Genesis {
             .collect::<Result<_, _>>()
             .context("attesters")?;
 
-        Ok(Self {
+        let genesis = Genesis {
             fork: read_required(&r.fork).context("fork")?,
             validators: Committee::new(validators.into_iter()).context("validators")?,
             attesters: attester::Committee::new(attesters.into_iter()).context("attesters")?,
             version,
-        })
+            leader_selection: read_optional(&r.leader_selection).context("leader_selection")?,
+        };
+        genesis.verify()?;
+        Ok(genesis)
     }
     fn build(&self) -> Self::Proto {
         match self.version {
@@ -94,12 +97,14 @@ impl ProtoFmt for Genesis {
                 validators: self.validators.iter().map(|v| v.key.build()).collect(),
                 attesters: self.attesters.iter().map(|v| v.key.build()).collect(),
                 validators_v1: vec![],
+                leader_selection: self.leader_selection.as_ref().map(|x| x.build()),
             },
             GenesisVersion(1..) => Self::Proto {
                 fork: Some(self.fork.build()),
                 validators: vec![],
                 validators_v1: self.validators.iter().map(|v| v.build()).collect(),
                 attesters: self.attesters.iter().map(|v| v.key.build()).collect(),
+                leader_selection: self.leader_selection.as_ref().map(|x| x.build()),
             },
         }
     }
@@ -475,6 +480,44 @@ impl ProtoFmt for Signature {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             bn254: Some(self.0.encode()),
+        }
+    }
+}
+
+impl ProtoFmt for LeaderSelectionMode {
+    type Proto = proto::LeaderSelectionMode;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        match required(&r.mode)? {
+            proto::leader_selection_mode::Mode::RoundRobin(_) => {
+                Ok(LeaderSelectionMode::RoundRobin)
+            }
+            proto::leader_selection_mode::Mode::Sticky(inner) => {
+                let key = required(&inner.key).context("key")?;
+                Ok(LeaderSelectionMode::Sticky(PublicKey::read(key)?))
+            }
+            proto::leader_selection_mode::Mode::Weighted(_) => Ok(LeaderSelectionMode::Weighted),
+        }
+    }
+    fn build(&self) -> Self::Proto {
+        match self {
+            LeaderSelectionMode::RoundRobin => proto::LeaderSelectionMode {
+                mode: Some(proto::leader_selection_mode::Mode::RoundRobin(
+                    proto::leader_selection_mode::RoundRobin {},
+                )),
+            },
+            LeaderSelectionMode::Sticky(pk) => proto::LeaderSelectionMode {
+                mode: Some(proto::leader_selection_mode::Mode::Sticky(
+                    proto::leader_selection_mode::Sticky {
+                        key: Some(pk.build()),
+                    },
+                )),
+            },
+            LeaderSelectionMode::Weighted => proto::LeaderSelectionMode {
+                mode: Some(proto::leader_selection_mode::Mode::Weighted(
+                    proto::leader_selection_mode::Weighted {},
+                )),
+            },
         }
     }
 }

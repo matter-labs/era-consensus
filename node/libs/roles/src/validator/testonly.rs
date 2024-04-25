@@ -8,6 +8,7 @@ use super::{
     ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
     WeightedValidator,
 };
+use crate::validator::LeaderSelectionMode;
 use bit_vec::BitVec;
 use rand::{
     distributions::{Distribution, Standard},
@@ -213,6 +214,16 @@ impl Distribution<Fork> for Standard {
     }
 }
 
+impl Distribution<LeaderSelectionMode> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderSelectionMode {
+        match rng.gen_range(0..=2) {
+            0 => LeaderSelectionMode::RoundRobin,
+            1 => LeaderSelectionMode::Sticky(rng.gen()),
+            _ => LeaderSelectionMode::Weighted,
+        }
+    }
+}
+
 impl Distribution<Genesis> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
         Genesis {
@@ -220,6 +231,7 @@ impl Distribution<Genesis> for Standard {
             attesters: rng.gen(),
             fork: rng.gen(),
             version: rng.gen(),
+            leader_selection: rng.gen(),
         }
     }
 }
