@@ -27,7 +27,7 @@ env:
   # github.base_ref -> github.head_ref for pull_request
   BASE: ${{ github.event.base.sha || github.event.before }}
   # github.event.before -> github.event.after for push
-  HEAD: ${{ github.sha }}
+  HEAD: ${{ github.event.head.sha || github.event.after }}
 
 jobs:
   compatibility:
