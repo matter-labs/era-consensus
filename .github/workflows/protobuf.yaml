@@ -13,6 +13,10 @@ on:
     # compatibility check as well (TODO: alerting).
     branches: [ "*" ]
 
+permissions:
+  id-token: write
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
