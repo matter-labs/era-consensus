@@ -42,8 +42,8 @@ jobs:
           path: before
           fetch-depth: 0 # fetches all branches and tags, which is needed to compute the LCA.
       - name: checkout LCA
-        run: >
-          echo "${{ github.event }}"
+        run:
+          echo "${{ toJSON(github.event) }}"
           git checkout $(git merge-base $BASE $HEAD)
         working-directory: ./before
       - name: compile before
