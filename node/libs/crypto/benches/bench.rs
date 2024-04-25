@@ -23,7 +23,6 @@ fn bench_bn254(c: &mut Criterion) {
     group.finish();
 }
 
-#[allow(missing_docs)]
 fn bench_bls12_381(c: &mut Criterion) {
     use zksync_consensus_crypto::bls12_381::{AggregateSignature, PublicKey, SecretKey, Signature};
     let mut rng = rand::thread_rng();
