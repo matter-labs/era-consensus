@@ -39,6 +39,7 @@ jobs:
           fetch-depth: 0 # fetches all branches and tags, which is needed to compute the LCA.
       - name: checkout LCA
         run: git checkout $(git merge-base $BASE $HEAD)
+        working-directory: ./before
       - name: compile before
         run: cargo build --all-targets
         working-directory: ./before/node
