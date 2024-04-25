@@ -11,7 +11,7 @@ on:
     # (unless we improve our github setup).
     # Therefore on post-merge we will execute the
     # compatibility check as well (TODO: alerting).
-    branches: [ "*" ]
+    branches: [ "main" ]
 
 permissions:
   id-token: write
