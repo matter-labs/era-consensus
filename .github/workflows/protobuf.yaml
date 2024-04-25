@@ -20,6 +20,8 @@ env:
   RUSTC_WRAPPER: "sccache"
   SCCACHE_GHA_ENABLED: "true"
   RUST_BACKTRACE: "1"
+  BASE: ${{ github.base_ref || github.event.before }}
+  HEAD: ${{ github.head_ref || github.event.after }}
 
 jobs:
   compatibility:
@@ -28,9 +30,11 @@ jobs:
       # github.base_ref -> github.head_ref for pull_request
       # github.event.before -> github.event.after for push
       - uses: mozilla-actions/sccache-action@v0.0.3
+      - name: compute LCA
+        run: echo "LCA=$(git merge-base $BASE $HEAD)" >> $GITHUB_OUTPUT
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.base_ref || github.event.before }}
+          ref: ${{ steps.vars.outputs.LCA }}
           path: before
       - name: compile before
         run: cargo build --all-targets
@@ -42,7 +46,7 @@ jobs:
           | xargs cat > ./before.binpb
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.head_ref || github.event.after }}
+          ref: $HEAD
           path: after
       - name: compile after
         run: cargo build --all-targets
