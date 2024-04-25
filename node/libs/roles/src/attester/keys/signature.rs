@@ -4,7 +4,7 @@ use super::PublicKey;
 use std::fmt;
 use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 
-/// A signature of an L1 batch from a validator.
+/// A signature of an L1 batch from an attester.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Signature(pub(crate) bn254::Signature);
 

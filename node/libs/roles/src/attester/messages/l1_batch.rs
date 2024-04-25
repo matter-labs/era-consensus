@@ -9,8 +9,8 @@ use super::{SignedBatchMsg, Signers};
 /// A batch number.
 pub struct BatchNumber(pub u64);
 
-/// A message to send by validators to the gossip network.
-/// It contains the validators signature to sign the block batches to be sent to L1.
+/// A message to send by attesters to the gossip network.
+/// It contains the attester signature to sign the block batches to be sent to L1.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
 pub struct L1Batch {
     /// The number of the batch.
@@ -18,12 +18,12 @@ pub struct L1Batch {
 }
 
 /// A certificate for a batch of L2 blocks to be sent to L1.
-/// It contains the signatures of the validators that signed the batch.
+/// It contains the signatures of the attesters that signed the batch.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct L1BatchQC {
     /// The aggregate signature of the signed L1 batches.
     pub signature: AggregateSignature,
-    /// The validators that signed this message.
+    /// The attesters that signed this message.
     pub signers: Signers,
     /// The message that was signed.
     pub message: L1Batch,
@@ -39,14 +39,17 @@ pub enum L1BatchQCVerifyError {
     #[error("not enough signers: got {got}, want {want}")]
     NotEnoughSigners {
         /// Got signers.
-        got: usize,
+        got: u64,
         /// Want signers.
-        want: usize,
+        want: u64,
     },
+    /// Bad signer set.
+    #[error("signers set doesn't match genesis")]
+    BadSignersSet,
 }
 
 impl L1BatchQC {
-    /// Create a new empty instance for a given `ReplicaCommit` message and a validator set size.
+    /// Create a new empty instance for a given `L1Batch` message.
     pub fn new(message: L1Batch, genesis: &Genesis) -> Self {
         Self {
             message,
@@ -73,25 +76,29 @@ impl L1BatchQC {
 
     /// Verifies the signature of the L1BatchQC.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), L1BatchQCVerifyError> {
-        // Verify that we have enough signers.
-        let num_signers = self.signers.count();
+        use L1BatchQCVerifyError as Error;
+        if self.signers.len() != genesis.attesters.len() {
+            return Err(Error::BadSignersSet);
+        }
+        // Verify the signers' weight is enough.
+        let weight = genesis.attesters.weight(&self.signers);
         let threshold = genesis.attesters.threshold();
-        if num_signers < threshold {
-            return Err(L1BatchQCVerifyError::NotEnoughSigners {
-                got: num_signers,
+        if weight < threshold {
+            return Err(Error::NotEnoughSigners {
+                got: weight,
                 want: threshold,
             });
         }
 
         let messages_and_keys = genesis
             .attesters
-            .iter()
+            .iter_keys()
             .enumerate()
             .filter(|(i, _)| self.signers.0[*i])
             .map(|(_, pk)| (self.message.clone(), pk));
 
         self.signature
             .verify_messages(messages_and_keys)
-            .map_err(L1BatchQCVerifyError::BadSignature)
+            .map_err(Error::BadSignature)
     }
 }

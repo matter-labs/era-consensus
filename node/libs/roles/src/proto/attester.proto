@@ -2,8 +2,16 @@ syntax = "proto3";
 
 package zksync.roles.attester;
 
+import "zksync/std.proto";
+
 message L1Batch {
   optional uint64 number = 1; // required
+}
+
+message L1BatchQC {
+  optional L1Batch msg = 1; // required
+  optional std.BitVector signers = 2; // required
+  optional AggregateSignature sig = 3; // required
 }
 
 message Msg {
@@ -24,4 +32,17 @@ message PublicKey {
 
 message Signature {
   optional bytes bn254 = 1; // required
+}
+
+message WeightedAttester {
+  optional PublicKey key = 1; // required
+  optional uint64 weight = 2; // required
+}
+
+message AggregateSignature {
+  optional bytes bn254 = 1; // required
+}
+
+message MsgHash {
+  optional bytes keccak256 = 1; // required
 }

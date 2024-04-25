@@ -1,5 +1,5 @@
 //! Test-only utilities.
-use crate::attester::{self, AttesterSet};
+use crate::attester::{self, WeightedAttester};
 
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
@@ -35,7 +35,13 @@ impl Setup {
                 }
             }))
             .unwrap(),
-            attesters: AttesterSet::new(attester_keys.iter().map(|k| k.public())).unwrap(),
+            attesters: attester::Committee::new(attester_keys.iter().enumerate().map(|(i, k)| {
+                WeightedAttester {
+                    key: k.public(),
+                    weight: weights[i],
+                }
+            }))
+            .unwrap(),
             fork,
             ..Default::default()
         };
