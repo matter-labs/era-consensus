@@ -75,7 +75,7 @@ skip = [
 
     # Old versions required by kube.
     { name = "strsim", version = "0.10.0" },
-
+    
     # Old versions required by k8s-openapi.
     { name = "base64", version = "0.21.7" }
 ]

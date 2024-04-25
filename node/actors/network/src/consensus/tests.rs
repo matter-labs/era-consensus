@@ -1,10 +1,92 @@
+#![allow(irrefutable_let_patterns)]
 use super::*;
 use crate::{io, metrics, preface, rpc, testonly};
 use assert_matches::assert_matches;
 use rand::Rng;
+use std::collections::HashSet;
 use zksync_concurrency::{ctx, net, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::testonly::new_store;
+use zksync_consensus_utils::enum_util::Variant as _;
+
+#[tokio::test]
+async fn test_msg_pool() {
+    use validator::ConsensusMsg as M;
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let pool = MsgPool::new();
+
+    // Generate signed consensus messages of different types and views.
+    let key: validator::SecretKey = rng.gen();
+    let gen = |f: &mut dyn FnMut() -> M| {
+        let mut x: Vec<_> = (0..5).map(|_| key.sign_msg(f())).collect();
+        x.sort_by_key(|m| m.msg.view().number);
+        x
+    };
+    // We keep them sorted by type and view, so that it is easy to
+    // compute the expected state of the pool after insertions.
+    let msgs = [
+        gen(&mut || M::ReplicaPrepare(rng.gen())),
+        gen(&mut || M::ReplicaCommit(rng.gen())),
+        gen(&mut || M::LeaderPrepare(rng.gen())),
+        gen(&mut || M::LeaderCommit(rng.gen())),
+    ];
+
+    // Insert messages at random.
+    let mut want = vec![None; msgs.len()];
+    for _ in 0..30 {
+        // Select a random message from `msgs` and insert it.
+        // Recompute the expected state.
+        let i = rng.gen_range(0..msgs.len());
+        let j = rng.gen_range(0..msgs[i].len());
+        want[i] = Some(want[i].unwrap_or(0).max(j));
+        pool.send(Arc::new(io::ConsensusInputMessage {
+            message: msgs[i][j].clone(),
+            recipient: io::Target::Broadcast,
+        }));
+        // Here we compare the internal state of the pool to the expected state.
+        // Note that we compare sets of crypto hashes of messages, because the messages themselves do not
+        // implement Hash trait. As a result the error message won't be very helpful.
+        // If that's problematic, we can either make all the values implement Hash/PartialOrd.
+        let want: HashSet<_> = want
+            .iter()
+            .enumerate()
+            .filter_map(|(i, j)| j.map(|j| msgs[i][j].msg.clone().insert().hash()))
+            .collect();
+        let mut recv = pool.subscribe();
+        let mut got = HashSet::new();
+        for _ in 0..want.len() {
+            got.insert(
+                recv.recv(ctx)
+                    .await
+                    .unwrap()
+                    .message
+                    .msg
+                    .clone()
+                    .insert()
+                    .hash(),
+            );
+        }
+        assert_eq!(got, want);
+    }
+}
+
+#[tokio::test]
+async fn test_msg_pool_recv() {
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let mut msgs: Vec<io::ConsensusInputMessage> = (0..20).map(|_| rng.gen()).collect();
+    msgs.sort_by_key(|m| m.message.msg.view().number);
+
+    let pool = MsgPool::new();
+    let mut recv = pool.subscribe();
+    for m in msgs {
+        let m = Arc::new(m);
+        pool.send(m.clone());
+        assert_eq!(m, recv.recv(ctx).await.unwrap());
+    }
+}
 
 #[tokio::test]
 async fn test_one_connection_per_validator() {
@@ -217,8 +299,13 @@ async fn test_transmission() {
         for n in &mut nodes {
             n.wait_for_consensus_connections().await;
         }
-        for _ in 0..10 {
-            let want: validator::Signed<validator::ConsensusMsg> = rng.gen();
+        for i in 0..10 {
+            tracing::info!("message {i}");
+            // Construct a message and ensure that view is increasing
+            // (otherwise the message could get filtered out).
+            let mut want: validator::Signed<validator::ReplicaCommit> = rng.gen();
+            want.msg.view.number = validator::ViewNumber(i);
+            let want: validator::Signed<validator::ConsensusMsg> = want.cast().unwrap();
             let in_message = io::ConsensusInputMessage {
                 message: want.clone(),
                 recipient: io::Target::Validator(
@@ -227,14 +314,68 @@ async fn test_transmission() {
             };
             nodes[0].pipe.send(in_message.into());
 
-            let got = loop {
+            loop {
                 let output_message = nodes[1].pipe.recv(ctx).await.unwrap();
-                let io::OutputMessage::Consensus(got) = output_message else {
-                    continue;
+                if let io::OutputMessage::Consensus(got) = output_message {
+                    assert_eq!(want, got.msg);
+                    tracing::info!("OK");
+                    break;
                 };
-                break got;
-            };
-            assert_eq!(want, got.msg);
+            }
+        }
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+/// Test that messages are retransmitted when a node gets reconnected.
+#[tokio::test]
+async fn test_retransmission() {
+    abort_on_panic();
+    // Speed up is needed to make node0 reconnect to node1 fast.
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(40.));
+    let rng = &mut ctx.rng();
+
+    let setup = validator::testonly::Setup::new(rng, 2);
+    let cfgs = testonly::new_configs(rng, &setup, 1);
+
+    scope::run!(ctx, |ctx, s| async {
+        let (store, runner) = new_store(ctx, &setup.genesis).await;
+        s.spawn_bg(runner.run(ctx));
+
+        // Spawn the first node.
+        let (node0, runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
+        s.spawn_bg(runner.run(ctx));
+
+        // Make first node broadcast a message.
+        let want: validator::Signed<validator::ConsensusMsg> = rng.gen();
+        node0.pipe.send(
+            io::ConsensusInputMessage {
+                message: want.clone(),
+                recipient: io::Target::Broadcast,
+            }
+            .into(),
+        );
+
+        // Spawn the second node multiple times.
+        // Each time the node should reconnect and re-receive the broadcasted consensus message.
+        for i in 0..2 {
+            tracing::info!("iteration {i}");
+            scope::run!(ctx, |ctx, s| async {
+                let (mut node1, runner) = testonly::Instance::new(cfgs[1].clone(), store.clone());
+                s.spawn_bg(runner.run(ctx));
+                loop {
+                    if let io::OutputMessage::Consensus(got) = node1.pipe.recv(ctx).await.unwrap() {
+                        assert_eq!(want, got.msg);
+                        tracing::info!("OK");
+                        break;
+                    }
+                }
+                Ok(())
+            })
+            .await
+            .unwrap();
         }
         Ok(())
     })

@@ -63,7 +63,7 @@ impl Variant<Msg> for NetAddress {
 }
 
 /// Hash of a message.
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MsgHash(pub(crate) keccak256::Keccak256);
 
 impl ByteFmt for MsgHash {
