@@ -28,6 +28,7 @@ env:
   BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
   # github.event.before -> github.event.after for push
   HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
+  BASE_ALL: ${{ toJSON(gitub.event.pull_request.base) }}
 
 jobs:
   compatibility:
