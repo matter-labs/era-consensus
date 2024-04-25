@@ -25,9 +25,9 @@ env:
   SCCACHE_GHA_ENABLED: "true"
   RUST_BACKTRACE: "1"
   # github.base_ref -> github.head_ref for pull_request
-  BASE: ${{ github.base_ref || github.event.before }}
+  BASE: ${{ github.base_ref && ("origin/" + github.base_ref) || github.event.before }}
   # github.event.before -> github.event.after for push
-  HEAD: ${{ github.head_ref || github.event.after }}
+  HEAD: ${{ github.sha }}
 
 jobs:
   compatibility:
