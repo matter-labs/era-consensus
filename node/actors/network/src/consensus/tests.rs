@@ -1,3 +1,4 @@
+#![allow(irrefutable_let_patterns)]
 use super::*;
 use crate::{io, metrics, preface, rpc, testonly};
 use assert_matches::assert_matches;
