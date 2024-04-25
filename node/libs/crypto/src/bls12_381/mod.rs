@@ -8,7 +8,6 @@
 //! is sufficient).
 
 use crate::ByteFmt;
-use anyhow::anyhow;
 use blst::{min_sig as bls, BLST_ERROR};
 use rand::Rng as _;
 use std::{
