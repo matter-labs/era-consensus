@@ -25,12 +25,12 @@ env:
   SCCACHE_GHA_ENABLED: "true"
   RUST_BACKTRACE: "1"
   # github.base_ref -> github.head_ref for pull_request
-  BASE: ${{ github.event.base.sha || github.event.before }}
-  BASE_SHA: ${{ github.event.base.sha }}
+  BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+  BASE_SHA: ${{ github.event.pull_request.base.sha }}
   BASE_BEFORE: ${{ github.event.before }}
   # github.event.before -> github.event.after for push
-  HEAD: ${{ github.event.head.sha || github.event.after }}
-  HEAD_SHA: ${{ github.event.head.sha }}
+  HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
+  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
   HEAD_AFTER: ${{ github.event.after }}
 
 jobs:
