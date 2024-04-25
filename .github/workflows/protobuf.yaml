@@ -26,12 +26,8 @@ env:
   RUST_BACKTRACE: "1"
   # github.base_ref -> github.head_ref for pull_request
   BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
-  BASE_SHA: ${{ github.event.pull_request.base.sha }}
-  BASE_BEFORE: ${{ github.event.before }}
   # github.event.before -> github.event.after for push
   HEAD: ${{ github.event.pull_request.head.sha || github.event.after }}
-  HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-  HEAD_AFTER: ${{ github.event.after }}
 
 jobs:
   compatibility:
@@ -47,7 +43,6 @@ jobs:
           fetch-depth: 0 # fetches all branches and tags, which is needed to compute the LCA.
       - name: checkout LCA
         run:
-          echo "${{ toJSON(github.event) }}"
           git checkout $(git merge-base $BASE $HEAD)
         working-directory: ./before
       - name: compile before
