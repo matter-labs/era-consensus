@@ -5,7 +5,7 @@ use rand::{seq::SliceRandom, Rng};
 use std::vec;
 use zksync_concurrency::ctx;
 use zksync_consensus_crypto::{ByteFmt, Text, TextFmt};
-use zksync_protobuf::testonly::test_encode_random;
+use zksync_protobuf::{testonly::test_encode_random, ProtoFmt};
 
 #[test]
 fn test_byte_encoding() {
@@ -100,6 +100,21 @@ fn test_schema_encoding() {
     test_encode_random::<Fork>(rng);
     test_encode_random::<Genesis>(rng);
     test_encode_random::<GenesisHash>(rng);
+    test_encode_random::<LeaderSelectionMode>(rng);
+}
+
+#[test]
+fn test_genesis_schema_decode() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let mut genesis = rng.gen::<Genesis>();
+    assert!(genesis.verify().is_ok());
+    assert!(Genesis::read(&genesis.build()).is_ok());
+
+    genesis.leader_selection = Some(LeaderSelectionMode::Sticky(rng.gen()));
+    assert!(genesis.verify().is_err());
+    assert!(Genesis::read(&genesis.build()).is_err())
 }
 
 #[test]
