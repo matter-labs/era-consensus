@@ -11,8 +11,10 @@ use crate::ByteFmt;
 use anyhow::anyhow;
 use blst::{min_sig as bls, BLST_ERROR};
 use rand::Rng as _;
-use std::collections::BTreeMap;
-use std::fmt::{Debug, Formatter};
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Formatter},
+};
 use zeroize::ZeroizeOnDrop;
 
 #[cfg(test)]
