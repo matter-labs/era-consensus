@@ -20,30 +20,16 @@ env:
   RUSTC_WRAPPER: "sccache"
   SCCACHE_GHA_ENABLED: "true"
   RUST_BACKTRACE: "1"
+  # github.base_ref -> github.head_ref for pull_request
   BASE: ${{ github.base_ref || github.event.before }}
+  # github.event.before -> github.event.after for push
   HEAD: ${{ github.head_ref || github.event.after }}
 
 jobs:
   compatibility:
     runs-on: [ubuntu-22.04-github-hosted-16core]
     steps:
-      # github.base_ref -> github.head_ref for pull_request
-      # github.event.before -> github.event.after for push
-      - uses: mozilla-actions/sccache-action@v0.0.3
-      - name: compute LCA
-        run: echo "LCA=$(git merge-base $BASE $HEAD)" >> $GITHUB_OUTPUT
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ steps.vars.outputs.LCA }}
-          path: before
-      - name: compile before
-        run: cargo build --all-targets
-        working-directory: ./before/node
-      - name: build before.binpb
-        run: >
-          perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/'
-          `find ./before/node/target/debug/build/*/output`
-          | xargs cat > ./before.binpb
+      - uses: mozilla-actions/sccache-action@v0.0.3     
       - uses: actions/checkout@v4
         with:
           ref: $HEAD
@@ -56,6 +42,23 @@ jobs:
           perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/'
           `find ./after/node/target/debug/build/*/output`
           | xargs cat > ./after.binpb
+      
+      - uses: actions/checkout@v4
+        with:
+          ref: $BASE 
+          path: before
+          fetch-depth: 0 # fetches all branches and tags, which is needed to compute the LCA.
+      - name: checkout LCA 
+        run: git checkout $(git merge-base $BASE $HEAD)
+      - name: compile before
+        run: cargo build --all-targets
+        working-directory: ./before/node
+      - name: build before.binpb
+        run: >
+          perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/'
+          `find ./before/node/target/debug/build/*/output`
+          | xargs cat > ./before.binpb
+     
       - uses: bufbuild/buf-setup-action@v1
         with:
           github_token: ${{ github.token }}
