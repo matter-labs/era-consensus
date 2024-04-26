@@ -227,6 +227,15 @@ impl AggregateSignature {
         self.0.add_assign(&sig.0)
     }
 
+    /// Generate a new aggregate signature from a list of signatures.
+    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
+        let mut agg = Self::default();
+        for sig in sigs {
+            agg.add(sig);
+        }
+        agg
+    }
+
     /// This function is intentionally non-generic and disallow inlining to ensure that compilation optimizations can be effectively applied.
     /// This optimization is needed for ensuring that tests can run within a reasonable time frame.
     #[inline(never)]

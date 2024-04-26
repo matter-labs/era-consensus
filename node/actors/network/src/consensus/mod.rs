@@ -1,7 +1,11 @@
 //! Consensus network is a full graph of connections between all validators.
 //! BFT consensus messages are exchanged over this network.
-use crate::rpc::signature::L1BatchServer;
-use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc};
+use crate::{
+    config, gossip, io, noise,
+    pool::PoolWatch,
+    preface,
+    rpc::{self, signature::L1BatchServer},
+};
 use anyhow::Context as _;
 use rand::seq::SliceRandom;
 use std::{
@@ -10,7 +14,7 @@ use std::{
 };
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope, sync, time};
-use zksync_consensus_roles::attester::{self, L1Batch, L1BatchQC};
+use zksync_consensus_roles::attester::L1BatchQC;
 use zksync_consensus_roles::validator::{self};
 use zksync_protobuf::kB;
 
@@ -119,6 +123,7 @@ pub(crate) struct Network {
     pub(crate) inbound: PoolWatch<validator::PublicKey, ()>,
     /// Set of the currently open outbound connections.
     pub(crate) outbound: PoolWatch<validator::PublicKey, ()>,
+    /// Last L1 batch QC.
     pub(crate) l1_batch_qc: Option<L1BatchQC>,
     /// Messages to be sent to validators.
     pub(crate) msg_pool: MsgPool,

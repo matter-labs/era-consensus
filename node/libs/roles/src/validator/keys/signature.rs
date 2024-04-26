@@ -1,11 +1,11 @@
 use super::PublicKey;
 use crate::validator::messages::{Msg, MsgHash};
 use std::fmt;
-use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
+use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
 
 /// A signature from a validator.
 #[derive(Clone, PartialEq, Eq)]
-pub struct Signature(pub(crate) bn254::Signature);
+pub struct Signature(pub(crate) bls12_381::Signature);
 
 impl Signature {
     /// Verify a message against a public key.
@@ -31,12 +31,12 @@ impl ByteFmt for Signature {
 impl TextFmt for Signature {
     fn encode(&self) -> String {
         format!(
-            "validator:signature:bn254:{}",
+            "validator:signature:bls12_381:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
     }
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("validator:signature:bn254:")?
+        text.strip("validator:signature:bls12_381:")?
             .decode_hex()
             .map(Self)
     }
