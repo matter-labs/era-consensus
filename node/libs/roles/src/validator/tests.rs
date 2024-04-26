@@ -5,7 +5,7 @@ use rand::{seq::SliceRandom, Rng};
 use std::vec;
 use zksync_concurrency::ctx;
 use zksync_consensus_crypto::{ByteFmt, Text, TextFmt};
-use zksync_protobuf::testonly::test_encode_random;
+use zksync_protobuf::{testonly::test_encode_random, ProtoFmt};
 
 #[test]
 fn test_byte_encoding() {
@@ -100,6 +100,21 @@ fn test_schema_encoding() {
     test_encode_random::<Fork>(rng);
     test_encode_random::<Genesis>(rng);
     test_encode_random::<GenesisHash>(rng);
+    test_encode_random::<LeaderSelectionMode>(rng);
+}
+
+#[test]
+fn test_genesis_schema_decode() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let mut genesis = rng.gen::<Genesis>();
+    assert!(genesis.verify().is_ok());
+    assert!(Genesis::read(&genesis.build()).is_ok());
+
+    genesis.leader_selection = Some(LeaderSelectionMode::Sticky(rng.gen()));
+    assert!(genesis.verify().is_err());
+    assert!(Genesis::read(&genesis.build()).is_err())
 }
 
 #[test]
@@ -159,7 +174,7 @@ fn test_agg_signature_verify() {
 
 fn make_view(number: ViewNumber, setup: &Setup) -> View {
     View {
-        protocol_version: ProtocolVersion::EARLIEST,
+        protocol_version: ProtocolVersion::CURRENT,
         fork: setup.genesis.fork.number,
         number,
     }
@@ -200,12 +215,15 @@ fn test_commit_qc() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
+    // This will create equally weighted validators
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
-        validators: ValidatorSet::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
+        validators: Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
         fork: setup1.genesis.fork.clone(),
+        ..Default::default()
     };
+    let validator_weight = setup1.genesis.validators.total_weight() / 6;
 
     for i in 0..setup1.keys.len() + 1 {
         let view = rng.gen();
@@ -213,7 +231,8 @@ fn test_commit_qc() {
         for key in &setup1.keys[0..i] {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis);
         }
-        if i >= setup1.genesis.validators.threshold() {
+        let expected_weight = i as u64 * validator_weight;
+        if expected_weight >= setup1.genesis.validators.threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {
             assert_matches!(
@@ -234,11 +253,13 @@ fn test_prepare_qc() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
+    // This will create equally weighted validators
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
-        validators: ValidatorSet::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
+        validators: Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
         fork: setup1.genesis.fork.clone(),
+        ..Default::default()
     };
 
     let view: ViewNumber = rng.gen();
@@ -254,7 +275,8 @@ fn test_prepare_qc() {
                 &setup1.genesis,
             );
         }
-        if n >= setup1.genesis.validators.threshold() {
+        let expected_weight = n as u64 * setup1.genesis.validators.total_weight() / 6;
+        if expected_weight >= setup1.genesis.validators.threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {
             assert_matches!(
@@ -267,4 +289,59 @@ fn test_prepare_qc() {
         assert!(qc.verify(&setup2.genesis).is_err());
         assert!(qc.verify(&genesis3).is_err());
     }
+}
+
+#[test]
+fn test_validator_committee_weights() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    // Validators with non-uniform weights
+    let setup = Setup::new_with_weights(rng, vec![1000, 600, 800, 6000, 900, 700]);
+    // Expected sum of the validators weights
+    let sums = [1000, 1600, 2400, 8400, 9300, 10000];
+
+    let view: ViewNumber = rng.gen();
+    let msg = make_replica_prepare(rng, view, &setup);
+    let mut qc = PrepareQC::new(msg.view.clone());
+    for (n, weight) in sums.iter().enumerate() {
+        let key = &setup.keys[n];
+        qc.add(&key.sign_msg(msg.clone()), &setup.genesis);
+        let signers = &qc.map[&msg];
+        assert_eq!(setup.genesis.validators.weight(signers), *weight);
+    }
+}
+
+#[test]
+fn test_committee_weights_overflow_check() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let validators: Vec<WeightedValidator> = [u64::MAX / 5; 6]
+        .iter()
+        .map(|w| WeightedValidator {
+            key: rng.gen::<SecretKey>().public(),
+            weight: *w,
+        })
+        .collect();
+
+    // Creation should overflow
+    assert_matches!(Committee::new(validators), Err(_));
+}
+
+#[test]
+fn test_committee_with_zero_weights() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let validators: Vec<WeightedValidator> = [1000, 0, 800, 6000, 0, 700]
+        .iter()
+        .map(|w| WeightedValidator {
+            key: rng.gen::<SecretKey>().public(),
+            weight: *w,
+        })
+        .collect();
+
+    // Committee creation should error on zero weight validators
+    assert_matches!(Committee::new(validators), Err(_));
 }

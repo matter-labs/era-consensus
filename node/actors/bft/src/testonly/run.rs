@@ -17,7 +17,7 @@ pub(crate) enum Network {
 #[derive(Clone)]
 pub(crate) struct Test {
     pub(crate) network: Network,
-    pub(crate) nodes: Vec<Behavior>,
+    pub(crate) nodes: Vec<(Behavior, u64)>,
     pub(crate) blocks_to_finalize: usize,
 }
 
@@ -25,7 +25,10 @@ impl Test {
     /// Run a test with the given parameters.
     pub(crate) async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
-        let setup = validator::testonly::Setup::new(rng, self.nodes.len());
+        let setup = validator::testonly::Setup::new_with_weights(
+            rng,
+            self.nodes.iter().map(|(_, w)| *w).collect(),
+        );
         let nets: Vec<_> = network::testonly::new_configs(rng, &setup, 1);
         let mut nodes = vec![];
         let mut honest = vec![];
@@ -33,12 +36,12 @@ impl Test {
             for (i, net) in nets.into_iter().enumerate() {
                 let (store, runner) = new_store(ctx, &setup.genesis).await;
                 s.spawn_bg(runner.run(ctx));
-                if self.nodes[i] == Behavior::Honest {
+                if self.nodes[i].0 == Behavior::Honest {
                     honest.push(store.clone());
                 }
                 nodes.push(Node {
                     net,
-                    behavior: self.nodes[i],
+                    behavior: self.nodes[i].0,
                     block_store: store,
                 });
             }

@@ -143,7 +143,7 @@ impl Runner {
                 // If we are active validator ...
                 if validators.contains(&c.key.public()) {
                     // Maintain outbound connections.
-                    for peer in validators.iter() {
+                    for peer in validators.iter_keys() {
                         s.spawn(async {
                             c.maintain_connection(ctx, peer).await;
                             Ok(())

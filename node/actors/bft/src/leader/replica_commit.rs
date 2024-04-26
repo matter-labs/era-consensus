@@ -1,7 +1,7 @@
 //! Handler of a ReplicaCommit message.
+
 use super::StateMachine;
 use crate::metrics;
-use std::collections::HashMap;
 use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
@@ -39,10 +39,10 @@ pub(crate) enum Error {
     #[error("invalid message: {0:#}")]
     InvalidMessage(#[source] anyhow::Error),
     /// Duplicate message from a replica.
-    #[error("duplicate message from a replica (existing message: {existing_message:?}")]
-    DuplicateMessage {
-        /// Existing message from the same replica.
-        existing_message: validator::ReplicaCommit,
+    #[error("Replica signed more than one message for same view (message: {message:?}")]
+    DuplicateSignature {
+        /// Offending message.
+        message: validator::ReplicaCommit,
     },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
@@ -70,7 +70,7 @@ impl StateMachine {
             });
         }
 
-        // Check that the message signer is in the validator set.
+        // Check that the message signer is in the validator committee.
         if !self.config.genesis().validators.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone(),
@@ -86,26 +86,28 @@ impl StateMachine {
         }
 
         // If the message is for a view when we are not a leader, we discard it.
-        if self
-            .config
-            .genesis()
-            .validators
-            .view_leader(message.view.number)
-            != self.config.secret_key.public()
+        if self.config.genesis().view_leader(message.view.number) != self.config.secret_key.public()
         {
             return Err(Error::NotLeaderInView);
         }
 
+        // Get current incrementally-constructed QC to work on it
+        let commit_qc = self
+            .commit_qcs
+            .entry(message.view.number)
+            .or_default()
+            .entry(message.clone())
+            .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()));
+
         // If we already have a message from the same validator and for the same view, we discard it.
-        if let Some(existing_message) = self
-            .commit_message_cache
-            .get(&message.view.number)
-            .and_then(|x| x.get(author))
-        {
-            return Err(Error::DuplicateMessage {
-                existing_message: existing_message.msg.clone(),
+        let validator_view = self.validator_views.get(author);
+        if validator_view.is_some_and(|view_number| *view_number >= message.view.number) {
+            return Err(Error::DuplicateSignature {
+                message: commit_qc.message.clone(),
             });
         }
+        self.validator_views
+            .insert(author.clone(), message.view.number);
 
         // ----------- Checking the signed part of the message --------------
 
@@ -118,37 +120,16 @@ impl StateMachine {
 
         // ----------- All checks finished. Now we process the message. --------------
 
-        // TODO: we have a bug here since we don't check whether replicas commit
-        // to the same proposal.
+        // Add the message to the QC.
+        commit_qc.add(&signed_message, self.config.genesis());
 
-        // We add the message to the incrementally-constructed QC.
-        self.commit_qcs
-            .entry(message.view.number)
-            .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()))
-            .add(&signed_message, self.config.genesis());
-
-        // We store the message in our cache.
-        let cache_entry = self
-            .commit_message_cache
-            .entry(message.view.number)
-            .or_default();
-        cache_entry.insert(author.clone(), signed_message.clone());
-
-        // Now we check if we have enough messages to continue.
-        let mut by_proposal: HashMap<_, Vec<_>> = HashMap::new();
-        for msg in cache_entry.values() {
-            by_proposal.entry(msg.msg.proposal).or_default().push(msg);
-        }
-        let threshold = self.config.genesis().validators.threshold();
-        let Some((_, replica_messages)) =
-            by_proposal.into_iter().find(|(_, v)| v.len() >= threshold)
-        else {
+        // Now we check if we have enough weight to continue.
+        let weight = self.config.genesis().validators.weight(&commit_qc.signers);
+        if weight < self.config.genesis().validators.threshold() {
             return Ok(());
         };
-        debug_assert_eq!(replica_messages.len(), threshold);
 
         // ----------- Update the state machine --------------
-
         let now = ctx.now();
         metrics::METRICS
             .leader_commit_phase_latency
@@ -159,12 +140,13 @@ impl StateMachine {
 
         // ----------- Prepare our message and send it. --------------
 
-        // Remove replica commit messages for this view, so that we don't create a new leader commit
-        // for this same view if we receive another replica commit message after this.
-        self.commit_message_cache.remove(&message.view.number);
-
         // Consume the incrementally-constructed QC for this view.
-        let justification = self.commit_qcs.remove(&message.view.number).unwrap();
+        let justification = self
+            .commit_qcs
+            .remove(&message.view.number)
+            .unwrap()
+            .remove(message)
+            .unwrap();
 
         // Broadcast the leader commit message to all replicas (ourselves included).
         let output_message = ConsensusInputMessage {
@@ -180,7 +162,6 @@ impl StateMachine {
 
         // Clean the caches.
         self.prepare_message_cache.retain(|k, _| k >= &self.view);
-        self.commit_message_cache.retain(|k, _| k >= &self.view);
 
         Ok(())
     }

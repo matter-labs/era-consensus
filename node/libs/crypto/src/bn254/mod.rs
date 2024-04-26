@@ -30,11 +30,12 @@ pub struct SecretKey(Fr);
 
 impl SecretKey {
     /// Generates a secret key from a cryptographically-secure entropy source.
+    /// The secret key must be statistically close to uniformly random in the range 1 <= SK < r.
     pub fn generate() -> Self {
         loop {
             let fr: Fr = rand04::Rand::rand(&mut rand04::OsRng::new().unwrap());
 
-            if !fr.is_zero() {
+            if !fr.is_zero() && fr.into_repr() < Fr::char() {
                 return Self(fr);
             }
         }
@@ -54,8 +55,8 @@ impl SecretKey {
 
     /// Produces a signature using this [`SecretKey`]
     pub fn sign(&self, msg: &[u8]) -> Signature {
-        let hash_point = hash::hash_to_g1(msg);
-        let sig = hash_point.mul(self.0);
+        let (msg_point, _) = hash::hash_to_point(msg);
+        let sig = msg_point.mul(self.0);
         Signature(sig)
     }
 }
@@ -67,7 +68,12 @@ impl ByteFmt for SecretKey {
         fr_repr.read_be(Cursor::new(sk))?;
         let fr = Fr::from_repr(fr_repr)?;
 
+        // The secret key must be in the range 1 <= SK < r.
         anyhow::ensure!(!fr.is_zero(), "Secret key can't be zero");
+        anyhow::ensure!(
+            fr.into_repr() < Fr::char(),
+            "Secret key can't be more than or equal to r"
+        );
 
         Ok(SecretKey(fr))
     }
@@ -166,10 +172,10 @@ impl Signature {
         // public key when constructing it, this should never fail (in theory).
         pk.verify().unwrap();
 
-        let hash_point = hash::hash_to_g1(msg);
+        let (msg_point, _) = hash::hash_to_point(msg);
 
         // First pair: e(H(m): G1, pk: G2)
-        let a = Bn256::pairing(hash_point, pk.0);
+        let a = Bn256::pairing(msg_point, pk.0);
         // Second pair: e(sig: G1, generator: G2)
         let b = Bn256::pairing(self.0, G2Affine::one());
 
@@ -221,6 +227,15 @@ impl AggregateSignature {
         self.0.add_assign(&sig.0)
     }
 
+    /// Generate a new aggregate signature from a list of signatures.
+    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
+        let mut agg = Self::default();
+        for sig in sigs {
+            agg.add(sig);
+        }
+        agg
+    }
+
     /// This function is intentionally non-generic and disallow inlining to ensure that compilation optimizations can be effectively applied.
     /// This optimization is needed for ensuring that tests can run within a reasonable time frame.
     #[inline(never)]
@@ -246,7 +261,8 @@ impl AggregateSignature {
         // Second pair: e(H(m1): G1, pk1: G2) * ... * e(H(m1000): G1, pk1000: G2)
         let mut b = Fq12::one();
         for (msg, pk) in pairs {
-            b.mul_assign(&Bn256::pairing(hash::hash_to_g1(msg), pk.0))
+            let (msg_point, _) = hash::hash_to_point(msg);
+            b.mul_assign(&Bn256::pairing(msg_point, pk.0))
         }
 
         anyhow::ensure!(a == b, "Aggregate signature verification failure");

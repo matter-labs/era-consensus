@@ -3,8 +3,9 @@
 
 use crate::ByteFmt;
 use anyhow::Context as _;
-use ed::{Signer as _, Verifier as _};
+use ed::Signer as _;
 use ed25519_dalek as ed;
+use zeroize::ZeroizeOnDrop;
 
 pub mod testonly;
 
@@ -12,6 +13,7 @@ pub mod testonly;
 mod tests;
 
 /// ed25519 secret key.
+#[derive(ZeroizeOnDrop)]
 pub struct SecretKey(ed::SigningKey);
 
 impl SecretKey {
@@ -54,7 +56,7 @@ impl PublicKey {
     /// Verifies a signature of a message against this public key.
     pub fn verify(&self, msg: &[u8], sig: &Signature) -> Result<(), InvalidSignatureError> {
         self.0
-            .verify(msg, &sig.0)
+            .verify_strict(msg, &sig.0)
             .map_err(|_| InvalidSignatureError)
     }
 }

@@ -95,7 +95,7 @@ impl StateMachine {
         }
 
         // Check that it comes from the correct leader.
-        let leader = self.config.genesis().validators.view_leader(view);
+        let leader = self.config.genesis().view_leader(view);
         if author != &leader {
             return Err(Error::InvalidLeader {
                 correct_leader: leader,
