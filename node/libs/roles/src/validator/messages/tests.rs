@@ -1,6 +1,7 @@
 use crate::validator::*;
 use rand::{prelude::StdRng, Rng, SeedableRng};
 use zksync_consensus_crypto::Text;
+use zksync_concurrency::ctx;
 use zksync_consensus_utils::enum_util::Variant as _;
 
 /// Hardcoded secret keys.
@@ -13,6 +14,14 @@ fn keys() -> Vec<SecretKey> {
     .iter()
     .map(|raw| Text::new(raw).decode().unwrap())
     .collect()
+}
+
+/// Hardcoded committee.
+fn committee() -> Committee {
+    Committee::new(keys().iter().enumerate().map(|(i,key)| WeightedValidator {
+        key: key.public(),
+        weight: i as u64 + 10,
+    })).unwrap()
 }
 
 /// Hardcoded payload.
@@ -31,32 +40,22 @@ fn fork() -> Fork {
     }
 }
 
-/// Hardcoded v0 genesis.
-fn genesis_v0() -> Genesis {
+/// Hardcoded v1 genesis.
+fn genesis() -> Genesis {
     Genesis {
-        validators: Committee::new(keys().iter().map(|k| WeightedValidator {
-            key: k.public(),
-            weight: 1,
-        }))
-        .unwrap(),
+        chain_id: ChainId(1337),
+        committee: committee(),
         fork: fork(),
-        version: GenesisVersion(0),
-        leader_selection: None,
+        leader_selection: LeaderSelectionMode::Weighted,
     }
 }
 
-/// Hardcoded v1 genesis.
-fn genesis_v1() -> Genesis {
-    Genesis {
-        validators: Committee::new(keys().iter().map(|k| WeightedValidator {
-            key: k.public(),
-            weight: 1,
-        }))
-        .unwrap(),
-        fork: fork(),
-        version: GenesisVersion(1),
-        leader_selection: Some(LeaderSelectionMode::Weighted),
-    }
+/// Checks that the order of validators in a committee is stable.
+#[test]
+fn committee_change_detector() {
+    let want: Vec<PublicKey> = keys().iter().map(|k|k.public()).collect();
+    let got: Vec<_> = committee().iter().map(|v|v.key.clone()).collect();
+    assert_eq!(want,got);
 }
 
 #[test]
@@ -72,89 +71,67 @@ fn payload_hash_change_detector() {
 /// Note that genesis is NOT versioned by ProtocolVersion.
 /// Even if it was, ALL versions of genesis need to be supported FOREVER,
 /// unless we introduce dynamic regenesis.
-#[ignore]
 #[test]
-fn genesis_v0_hash_change_detector() {
-    let want: GenesisHash = Text::new(
-        "genesis_hash:keccak256:9c9bfa303e8d2d451a7fadd327f5f1b957a37c84d7b27b9e1cf7b92fd83af7ae",
-    )
-    .decode()
-    .unwrap();
-    assert_eq!(want, genesis_v0().hash());
-}
-
-#[ignore]
-#[test]
-fn genesis_v1_hash_change_detector() {
+fn genesis_hash_change_detector() {
     let want: GenesisHash = Text::new(
         "genesis_hash:keccak256:3fc736e5f69784be02ec83ff5f91414ee6b44e545b68eac7f54089bb63085b02",
     )
     .decode()
     .unwrap();
-    assert_eq!(want, genesis_v1().hash());
+    assert_eq!(want, genesis().hash());
 }
 
 #[test]
 fn genesis_verify_leader_pubkey_not_in_committee() {
     let mut rng = StdRng::seed_from_u64(29483920);
     let mut genesis = rng.gen::<Genesis>();
-    genesis.leader_selection = Some(LeaderSelectionMode::Sticky(rng.gen()));
+    genesis.leader_selection = LeaderSelectionMode::Sticky(rng.gen());
     assert!(genesis.verify().is_err())
 }
 
 #[test]
-fn leader_selection_mode_roundrobin() {
-    let validators = keys().into_iter().map(|k| WeightedValidator {
-        key: k.public(),
-        weight: 10,
-    });
-    let committee = Committee::new(validators).unwrap();
-    let leader_selection = LeaderSelectionMode::RoundRobin;
-
-    let mut rng = StdRng::seed_from_u64(29483920);
+fn test_sticky() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let committee = committee();
+    let want = committee.get(rng.gen_range(0..committee.len())).unwrap().key.clone();
+    let sticky = LeaderSelectionMode::Sticky(want.clone());
     for _ in 0..100 {
-        let view_number: u64 = rng.gen();
-        let leader = committee.view_leader(ViewNumber(view_number), leader_selection.clone());
-        let leader_index = view_number as usize % committee.len();
-        assert_eq!(leader, committee.get(leader_index).unwrap().key);
+        assert_eq!(want, committee.view_leader(rng.gen(), &sticky));
     }
 }
 
+/// Checks that leader schedule is stable. 
 #[test]
-fn leader_selection_mode_sticky() {
-    let validators = keys().into_iter().map(|k| WeightedValidator {
-        key: k.public(),
-        weight: 10,
-    });
-    let committee = Committee::new(validators).unwrap();
-    let validator = committee.get(committee.len() - 1).unwrap().key.clone();
-    let leader_selection = LeaderSelectionMode::Sticky(validator.clone());
-
-    let mut rng = StdRng::seed_from_u64(29483920);
-    for _ in 0..100 {
-        let view_number: u64 = rng.gen();
-        let leader = committee.view_leader(ViewNumber(view_number), leader_selection.clone());
-        assert_eq!(leader, validator);
+fn roundrobin_change_detector() {
+    let committee = committee();
+    let rr = LeaderSelectionMode::RoundRobin;
+    for (view,want) in [
+        (8394534, 0),
+        (2297894, 0),
+        (9089304, 0),
+        (7203484, 0),
+        (9982111, 0)
+    ] {
+        let got = committee.view_leader(ViewNumber(view), &rr);
+        assert_eq!(want,committee.index(&got).unwrap());
     }
 }
 
+/// Checks that leader schedule is stable. 
 #[test]
-fn leader_selection_mode_weighted() {
-    let weight = 1000;
-    let validators = keys().into_iter().map(|k| WeightedValidator {
-        key: k.public(),
-        weight,
-    });
-    let committee = Committee::new(validators).unwrap();
-    let leader_selection = LeaderSelectionMode::Weighted;
-
-    let mut rng = StdRng::seed_from_u64(29483920);
-    for _ in 0..100 {
-        let view_number: u64 = rng.gen();
-        let eligibility = leader_weighted_eligibility(view_number, committee.total_weight());
-        let leader = committee.view_leader(ViewNumber(view_number), leader_selection.clone());
-        let leader_index = eligibility / weight;
-        assert_eq!(leader, committee.get(leader_index as usize).unwrap().key);
+fn weighted_change_detector() {
+    let committee = committee();
+    let weighted = LeaderSelectionMode::Weighted;
+    for (view,want) in [
+        (8394534, 0),
+        (2297894, 0),
+        (9089304, 0),
+        (7203484, 0),
+        (9982111, 0)
+    ] {
+        let got = committee.view_leader(ViewNumber(view), &weighted);
+        assert_eq!(want,committee.index(&got).unwrap());
     }
 }
 
@@ -204,7 +181,7 @@ mod version1 {
 
     /// Hardcoded `CommitQC`.
     fn commit_qc() -> CommitQC {
-        let genesis = genesis_v1();
+        let genesis = genesis();
         let replica_commit = replica_commit();
         let mut x = CommitQC::new(replica_commit.clone(), &genesis);
         for k in keys() {
@@ -232,7 +209,7 @@ mod version1 {
     /// Hardcoded `PrepareQC`.
     fn prepare_qc() -> PrepareQC {
         let mut x = PrepareQC::new(view());
-        let genesis = genesis_v1();
+        let genesis = genesis();
         let replica_prepare = replica_prepare();
         for k in keys() {
             x.add(&k.sign_msg(replica_prepare.clone()), &genesis);
@@ -249,7 +226,6 @@ mod version1 {
         }
     }
 
-    #[ignore]
     #[test]
     fn replica_commit_change_detector() {
         change_detector(
@@ -259,7 +235,6 @@ mod version1 {
         );
     }
 
-    #[ignore]
     #[test]
     fn leader_commit_change_detector() {
         change_detector(
@@ -269,7 +244,6 @@ mod version1 {
         );
     }
 
-    #[ignore]
     #[test]
     fn replica_prepare_change_detector() {
         change_detector(
@@ -279,7 +253,6 @@ mod version1 {
         );
     }
 
-    #[ignore]
     #[test]
     fn leader_prepare_change_detector() {
         change_detector(

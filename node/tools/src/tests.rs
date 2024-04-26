@@ -29,11 +29,11 @@ impl Distribution<AppConfig> for EncodeDist {
         };
 
         // In order for the genesis to be valid, the sticky leader needs to be in the validator committee.
-        if let Some(LeaderSelectionMode::Sticky(_)) = config.genesis.leader_selection {
-            let i = rng.gen_range(0..config.genesis.validators.len());
-            config.genesis.leader_selection = Some(LeaderSelectionMode::Sticky(
-                config.genesis.validators.get(i).unwrap().key.clone(),
-            ));
+        if let LeaderSelectionMode::Sticky(_) = config.genesis.leader_selection {
+            let i = rng.gen_range(0..config.genesis.committee.len());
+            config.genesis.leader_selection = LeaderSelectionMode::Sticky(
+                config.genesis.committee.get(i).unwrap().key.clone(),
+            );
         }
 
         config

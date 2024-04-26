@@ -59,11 +59,11 @@ impl PrepareQC {
         let mut count: HashMap<_, u64> = HashMap::new();
         for (msg, signers) in &self.map {
             if let Some(v) = &msg.high_vote {
-                *count.entry(v.proposal).or_default() += genesis.validators.weight(signers);
+                *count.entry(v.proposal).or_default() += genesis.committee.weight(signers);
             }
         }
         // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
-        let min = 2 * genesis.validators.max_faulty_weight() + 1;
+        let min = 2 * genesis.committee.max_faulty_weight() + 1;
         count.into_iter().find(|x| x.1 >= min).map(|x| x.0)
     }
 
@@ -83,13 +83,13 @@ impl PrepareQC {
         if msg.msg.view != self.view {
             return;
         }
-        let Some(i) = genesis.validators.index(&msg.key) else {
+        let Some(i) = genesis.committee.index(&msg.key) else {
             return;
         };
         let e = self
             .map
             .entry(msg.msg.clone())
-            .or_insert_with(|| Signers::new(genesis.validators.len()));
+            .or_insert_with(|| Signers::new(genesis.committee.len()));
         if e.0[i] {
             return;
         };
@@ -100,7 +100,7 @@ impl PrepareQC {
     /// Verifies the integrity of the PrepareQC.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), PrepareQCVerifyError> {
         use PrepareQCVerifyError as Error;
-        let mut sum = Signers::new(genesis.validators.len());
+        let mut sum = Signers::new(genesis.committee.len());
 
         // Check the ReplicaPrepare messages.
         for (i, (msg, signers)) in self.map.iter().enumerate() {
@@ -128,8 +128,8 @@ impl PrepareQC {
         }
 
         // Verify the signers' weight is enough.
-        let weight = genesis.validators.weight(&sum);
-        let threshold = genesis.validators.threshold();
+        let weight = genesis.committee.weight(&sum);
+        let threshold = genesis.committee.threshold();
         if weight < threshold {
             return Err(Error::NotEnoughSigners {
                 got: weight,
@@ -139,8 +139,8 @@ impl PrepareQC {
         // Now we can verify the signature.
         let messages_and_keys = self.map.clone().into_iter().flat_map(|(msg, signers)| {
             genesis
-                .validators
-                .iter_keys()
+                .committee
+                .keys()
                 .enumerate()
                 .filter(|(i, _)| signers.0[*i])
                 .map(|(_, pk)| (msg.clone(), pk))

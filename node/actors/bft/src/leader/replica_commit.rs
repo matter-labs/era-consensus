@@ -71,7 +71,7 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator committee.
-        if !self.config.genesis().validators.contains(author) {
+        if !self.config.genesis().committee.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone(),
             });
@@ -124,8 +124,8 @@ impl StateMachine {
         commit_qc.add(&signed_message, self.config.genesis());
 
         // Now we check if we have enough weight to continue.
-        let weight = self.config.genesis().validators.weight(&commit_qc.signers);
-        if weight < self.config.genesis().validators.threshold() {
+        let weight = self.config.genesis().committee.weight(&commit_qc.signers);
+        if weight < self.config.genesis().committee.threshold() {
             return Ok(());
         };
 

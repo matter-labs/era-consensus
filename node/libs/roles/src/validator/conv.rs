@@ -1,6 +1,7 @@
 use super::{
+    ChainId,
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
-    Fork, ForkNumber, Genesis, GenesisHash, GenesisVersion, LeaderCommit, LeaderPrepare, Msg,
+    Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
@@ -31,60 +32,27 @@ impl ProtoFmt for Fork {
 impl ProtoFmt for Genesis {
     type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let (validators, version) =
-            // current genesis encoding version 1
-            if !r.validators_v1.is_empty() {
-                (
-                    r.validators_v1
-                        .iter()
-                        .enumerate()
-                        .map(|(i, v)| WeightedValidator::read(v).context(i))
-                        .collect::<Result<_, _>>()
-                        .context("validators")?,
-                    GenesisVersion(1),
-                )
-                // legacy genesis encoding version 0
-            } else if !r.validators.is_empty() {
-                (
-                    r.validators
-                        .iter()
-                        .enumerate()
-                        .map(|(i, v)| anyhow::Ok(WeightedValidator {
-                            key: PublicKey::read(v).context(i)?,
-                            weight: 1,
-                        }))
-                        .collect::<Result<_,_>>()
-                        .context("validators")?,
-                    GenesisVersion(0),
-                )
-                // empty validator set, Committee:new() will later return an error.
-            } else {
-                (vec![], GenesisVersion::CURRENT)
-            };
-
+        let validators : Vec<_> = r.validators_v1
+            .iter()
+            .enumerate()
+            .map(|(i, v)| WeightedValidator::read(v).context(i))
+            .collect::<Result<_, _>>()
+            .context("validators_v1")?;
         let genesis = Self {
+            chain_id: ChainId(*required(&r.chain_id).context("chain_id")?),
             fork: read_required(&r.fork).context("fork")?,
-            validators: Committee::new(validators.into_iter()).context("validators")?,
-            version,
-            leader_selection: read_optional(&r.leader_selection).context("leader_selection")?,
+            committee: Committee::new(validators.into_iter()).context("validators_v1")?,
+            leader_selection: read_required(&r.leader_selection).context("leader_selection")?,
         };
         genesis.verify()?;
         Ok(genesis)
     }
     fn build(&self) -> Self::Proto {
-        match self.version {
-            GenesisVersion(0) => Self::Proto {
-                fork: Some(self.fork.build()),
-                validators: self.validators.iter().map(|v| v.key.build()).collect(),
-                validators_v1: vec![],
-                leader_selection: self.leader_selection.as_ref().map(|x| x.build()),
-            },
-            GenesisVersion(1..) => Self::Proto {
-                fork: Some(self.fork.build()),
-                validators: vec![],
-                validators_v1: self.validators.iter().map(|v| v.build()).collect(),
-                leader_selection: self.leader_selection.as_ref().map(|x| x.build()),
-            },
+        Self::Proto {
+            chain_id: Some(self.chain_id.0),
+            fork: Some(self.fork.build()),
+            validators_v1: self.committee.iter().map(|v| v.build()).collect(),
+            leader_selection: Some(self.leader_selection.build()),
         }
     }
 }

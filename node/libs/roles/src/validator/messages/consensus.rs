@@ -108,33 +108,30 @@ pub struct Committee {
 impl Committee {
     /// Creates a new Committee from a list of validator public keys.
     pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
-        let mut weighted_validators = BTreeMap::new();
+        let mut map = BTreeMap::new();
         let mut total_weight: u64 = 0;
-        for validator in validators {
+        for v in validators {
             anyhow::ensure!(
-                !weighted_validators.contains_key(&validator.key),
+                !map.contains_key(&v.key),
                 "Duplicate validator in validator Committee"
             );
             anyhow::ensure!(
-                validator.weight > 0,
+                v.weight > 0,
                 "Validator weight has to be a positive value"
             );
             total_weight = total_weight
-                .checked_add(validator.weight)
+                .checked_add(v.weight)
                 .context("Sum of weights overflows in validator Committee")?;
-            weighted_validators.insert(validator.key.clone(), validator);
+            map.insert(v.key.clone(), v);
         }
         anyhow::ensure!(
-            !weighted_validators.is_empty(),
+            !map.is_empty(),
             "Validator Committee must contain at least one validator"
         );
+        let vec : Vec<_> = map.into_values().collect();
         Ok(Self {
-            vec: weighted_validators.values().cloned().collect(),
-            indexes: weighted_validators
-                .values()
-                .enumerate()
-                .map(|(i, v)| (v.key.clone(), i))
-                .collect(),
+            indexes: vec.iter().enumerate().map(|(i,v)|(v.key.clone(),i)).collect(),
+            vec,
             total_weight,
         })
     }
@@ -145,7 +142,7 @@ impl Committee {
     }
 
     /// Iterates over validator keys.
-    pub fn iter_keys(&self) -> impl Iterator<Item = &validator::PublicKey> {
+    pub fn keys(&self) -> impl Iterator<Item = &validator::PublicKey> {
         self.vec.iter().map(|v| &v.key)
     }
 
@@ -174,7 +171,7 @@ impl Committee {
     pub fn view_leader(
         &self,
         view_number: ViewNumber,
-        leader_selection: LeaderSelectionMode,
+        leader_selection: &LeaderSelectionMode,
     ) -> validator::PublicKey {
         match &leader_selection {
             LeaderSelectionMode::RoundRobin => {
@@ -243,28 +240,22 @@ pub fn max_faulty_weight(total_weight: u64) -> u64 {
     (total_weight - 1) / 5
 }
 
-/// Version of the Genesis representation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GenesisVersion(pub u32);
-
-impl GenesisVersion {
-    /// Version 0 - deprecated: Committee encoding does not account weights, assume weight=1 per validator
-    /// Version 1: Validators with weight within Committee
-    pub const CURRENT: Self = Self(1);
-}
+/// Ethereum CHAIN_ID
+/// `https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md`
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ChainId(pub u64);
 
 /// Genesis of the blockchain, unique for each blockchain instance.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Default, Clone, PartialEq)]
 pub struct Genesis {
-    // TODO(gprusak): add blockchain id here.
-    /// Genesis encoding version
-    pub version: GenesisVersion,
-    /// Set of validators of the chain.
-    pub validators: Committee,
+    /// ID of the blockchain.
+    pub chain_id: ChainId,
     /// Fork of the chain to follow.
     pub fork: Fork,
+    /// Set of validators of the chain.
+    pub committee: Committee,
     /// The mode used for selecting leader for a given view.
-    pub leader_selection: Option<LeaderSelectionMode>,
+    pub leader_selection: LeaderSelectionMode,
 }
 
 /// Hash of the genesis specification.
@@ -274,8 +265,8 @@ pub struct GenesisHash(pub(crate) Keccak256);
 impl Genesis {
     /// Verifies correctness.
     pub fn verify(&self) -> anyhow::Result<()> {
-        if let Some(LeaderSelectionMode::Sticky(pk)) = &self.leader_selection {
-            if self.validators.index(pk).is_none() {
+        if let LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
+            if self.committee.index(pk).is_none() {
                 anyhow::bail!("leader_selection sticky mode public key is not in committee");
             }
         }
@@ -289,22 +280,8 @@ impl Genesis {
     }
 
     /// Computes the leader for the given view.
-    pub fn view_leader(&self, view_number: ViewNumber) -> validator::PublicKey {
-        self.validators.view_leader(
-            view_number,
-            self.leader_selection.clone().unwrap_or_default(),
-        )
-    }
-}
-
-impl Default for Genesis {
-    fn default() -> Self {
-        Self {
-            version: GenesisVersion::CURRENT,
-            validators: Committee::default(),
-            fork: Fork::default(),
-            leader_selection: Some(LeaderSelectionMode::default()),
-        }
+    pub fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
+        self.committee.view_leader(view, &self.leader_selection)
     }
 }
 

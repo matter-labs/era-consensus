@@ -112,7 +112,7 @@ fn test_genesis_schema_decode() {
     assert!(genesis.verify().is_ok());
     assert!(Genesis::read(&genesis.build()).is_ok());
 
-    genesis.leader_selection = Some(LeaderSelectionMode::Sticky(rng.gen()));
+    genesis.leader_selection = LeaderSelectionMode::Sticky(rng.gen());
     assert!(genesis.verify().is_err());
     assert!(Genesis::read(&genesis.build()).is_err())
 }
@@ -219,11 +219,11 @@ fn test_commit_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
-        validators: Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
+        committee: Committee::new(setup1.genesis.committee.iter().take(3).cloned()).unwrap(),
         fork: setup1.genesis.fork.clone(),
         ..Default::default()
     };
-    let validator_weight = setup1.genesis.validators.total_weight() / 6;
+    let validator_weight = setup1.genesis.committee.total_weight() / 6;
 
     for i in 0..setup1.keys.len() + 1 {
         let view = rng.gen();
@@ -232,7 +232,7 @@ fn test_commit_qc() {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis);
         }
         let expected_weight = i as u64 * validator_weight;
-        if expected_weight >= setup1.genesis.validators.threshold() {
+        if expected_weight >= setup1.genesis.committee.threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {
             assert_matches!(
@@ -257,7 +257,7 @@ fn test_prepare_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let genesis3 = Genesis {
-        validators: Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
+        committee: Committee::new(setup1.genesis.committee.iter().take(3).cloned()).unwrap(),
         fork: setup1.genesis.fork.clone(),
         ..Default::default()
     };
@@ -275,8 +275,8 @@ fn test_prepare_qc() {
                 &setup1.genesis,
             );
         }
-        let expected_weight = n as u64 * setup1.genesis.validators.total_weight() / 6;
-        if expected_weight >= setup1.genesis.validators.threshold() {
+        let expected_weight = n as u64 * setup1.genesis.committee.total_weight() / 6;
+        if expected_weight >= setup1.genesis.committee.threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {
             assert_matches!(
@@ -308,7 +308,7 @@ fn test_validator_committee_weights() {
         let key = &setup.keys[n];
         qc.add(&key.sign_msg(msg.clone()), &setup.genesis);
         let signers = &qc.map[&msg];
-        assert_eq!(setup.genesis.validators.weight(signers), *weight);
+        assert_eq!(setup.genesis.committee.weight(signers), *weight);
     }
 }
 

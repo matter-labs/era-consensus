@@ -26,7 +26,7 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'
             .fetch_add(1, Ordering::SeqCst);
         self.0
             .validator_addrs
-            .update(&self.0.genesis().validators, &req.0[..])
+            .update(&self.0.genesis().committee, &req.0[..])
             .await?;
         Ok(())
     }

@@ -1,7 +1,8 @@
 //! Test-only utilities.
 use super::{
+    ChainId,
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
-    Fork, ForkNumber, Genesis, GenesisHash, GenesisVersion, LeaderCommit, LeaderPrepare, Msg,
+    Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
     WeightedValidator,
@@ -25,7 +26,7 @@ impl Setup {
     pub fn new_with_fork(rng: &mut impl Rng, weights: Vec<u64>, fork: Fork) -> Self {
         let keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
         let genesis = Genesis {
-            validators: Committee::new(keys.iter().enumerate().map(|(i, k)| WeightedValidator {
+            committee: Committee::new(keys.iter().enumerate().map(|(i, k)| WeightedValidator {
                 key: k.public(),
                 weight: weights[i],
             }))
@@ -183,6 +184,12 @@ impl Distribution<ForkNumber> for Standard {
     }
 }
 
+impl Distribution<ChainId> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChainId {
+        ChainId(rng.gen())
+    }
+}
+
 impl Distribution<GenesisHash> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisHash {
         GenesisHash(rng.gen())
@@ -211,17 +218,11 @@ impl Distribution<LeaderSelectionMode> for Standard {
 impl Distribution<Genesis> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
         Genesis {
-            validators: rng.gen(),
+            chain_id: rng.gen(),
             fork: rng.gen(),
-            version: rng.gen(),
+            committee: rng.gen(),
             leader_selection: rng.gen(),
         }
-    }
-}
-
-impl Distribution<GenesisVersion> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisVersion {
-        GenesisVersion(rng.gen_range(0..=GenesisVersion::CURRENT.0))
     }
 }
 

@@ -84,7 +84,7 @@ impl UTHarness {
     pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, BlockStoreRunner) {
         let num_validators = 6;
         let (util, runner) = UTHarness::new(ctx, num_validators).await;
-        assert!(util.genesis().validators.max_faulty_weight() > 0);
+        assert!(util.genesis().committee.max_faulty_weight() > 0);
         (util, runner)
     }
 
@@ -231,8 +231,8 @@ impl UTHarness {
         for (i, msg) in msgs.into_iter().enumerate() {
             let res = self.process_replica_prepare(ctx, msg).await;
             match (
-                (i + 1) as u64 * self.genesis().validators.iter().next().unwrap().weight
-                    < self.genesis().validators.threshold(),
+                (i + 1) as u64 * self.genesis().committee.iter().next().unwrap().weight
+                    < self.genesis().committee.threshold(),
                 first_match,
             ) {
                 (true, _) => assert!(res.unwrap().is_none()),
@@ -266,8 +266,8 @@ impl UTHarness {
                 .leader
                 .process_replica_commit(ctx, key.sign_msg(msg.clone()));
             match (
-                (i + 1) as u64 * self.genesis().validators.iter().next().unwrap().weight
-                    < self.genesis().validators.threshold(),
+                (i + 1) as u64 * self.genesis().committee.iter().next().unwrap().weight
+                    < self.genesis().committee.threshold(),
                 first_match,
             ) {
                 (true, _) => res.unwrap(),

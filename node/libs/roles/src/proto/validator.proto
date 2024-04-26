@@ -13,10 +13,12 @@ message Fork {
 // They should be put into a oneof, but it may not recognize this as 
 // a backward compatible change: https://buf.build/docs/breaking/rules#field_same_oneof
 message Genesis {
+  reserved 2;
+  reserved "validators";
+  optional uint64 chain_id = 5; // required
   optional Fork fork = 1; // required
-  repeated PublicKey validators = 2  [deprecated = true];
   repeated WeightedValidator validators_v1 = 3;
-  optional LeaderSelectionMode leader_selection = 4;
+  optional LeaderSelectionMode leader_selection = 4; // required
 }
 
 message LeaderSelectionMode {
