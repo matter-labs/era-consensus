@@ -38,7 +38,7 @@ pub(crate) enum Error {
     NotLeaderInView,
     /// Invalid message.
     #[error("invalid message: {0:#}")]
-    InvalidMessage(#[source] anyhow::Error),
+    InvalidMessage(#[source] validator::ReplicaCommitVerifyError),
     /// Duplicate message from a replica.
     #[error("Replica signed more than one message for same view (message: {message:?}")]
     DuplicateSignature {

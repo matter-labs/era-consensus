@@ -113,14 +113,6 @@ impl UTHarness {
             .unwrap();
     }
 
-    pub(crate) fn protocol_version(&self) -> validator::ProtocolVersion {
-        crate::PROTOCOL_VERSION
-    }
-
-    pub(crate) fn incompatible_protocol_version(&self) -> validator::ProtocolVersion {
-        validator::ProtocolVersion(self.protocol_version().0 + 1)
-    }
-
     pub(crate) fn owner_key(&self) -> &SecretKey {
         &self.replica.config.secret_key
     }

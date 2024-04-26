@@ -96,10 +96,7 @@ impl Committee {
                 !map.contains_key(&v.key),
                 "Duplicate validator in validator Committee"
             );
-            anyhow::ensure!(
-                v.weight > 0,
-                "Validator weight has to be a positive value"
-            );
+            anyhow::ensure!(v.weight > 0, "Validator weight has to be a positive value");
             total_weight = total_weight
                 .checked_add(v.weight)
                 .context("Sum of weights overflows in validator Committee")?;
@@ -109,9 +106,13 @@ impl Committee {
             !map.is_empty(),
             "Validator Committee must contain at least one validator"
         );
-        let vec : Vec<_> = map.into_values().collect();
+        let vec: Vec<_> = map.into_values().collect();
         Ok(Self {
-            indexes: vec.iter().enumerate().map(|(i,v)|(v.key.clone(),i)).collect(),
+            indexes: vec
+                .iter()
+                .enumerate()
+                .map(|(i, v)| (v.key.clone(), i))
+                .collect(),
             vec,
             total_weight,
         })
@@ -253,7 +254,7 @@ impl GenesisRaw {
     /// Constructs Genesis with cached hash.
     pub fn with_hash(self) -> Genesis {
         let hash = GenesisHash(Keccak256::new(&zksync_protobuf::canonical(&self)));
-        Genesis(self,hash)
+        Genesis(self, hash)
     }
 }
 
@@ -280,16 +281,18 @@ impl fmt::Debug for GenesisHash {
 
 /// Genesis with cached hash.
 #[derive(Clone)]
-pub struct Genesis(GenesisRaw,GenesisHash);
+pub struct Genesis(GenesisRaw, GenesisHash);
 
 impl std::ops::Deref for Genesis {
     type Target = GenesisRaw;
-    fn deref(&self) -> &Self::Target { &self.0 }
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
 impl PartialEq for Genesis {
     fn eq(&self, other: &Self) -> bool {
-        self.1==other.1
+        self.1 == other.1
     }
 }
 
@@ -317,7 +320,9 @@ impl Genesis {
     }
 
     /// Hash of the genesis.
-    pub fn hash(&self) -> GenesisHash { self.1.clone() }
+    pub fn hash(&self) -> GenesisHash {
+        self.1
+    }
 }
 
 /// Consensus messages.
@@ -417,7 +422,7 @@ pub struct View {
 impl View {
     /// Verifies the view against the genesis.
     pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
-        anyhow::ensure!(self.genesis==genesis.hash(), "genesis mismatch");
+        anyhow::ensure!(self.genesis == genesis.hash(), "genesis mismatch");
         Ok(())
     }
 }

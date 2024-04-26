@@ -66,6 +66,7 @@ impl Dispatcher {
             });
 
             Ok(())
-        }).await
+        })
+        .await
     }
 }

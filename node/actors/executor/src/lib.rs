@@ -132,9 +132,7 @@ impl Executor {
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
-            s.spawn(async {
-                dispatcher.run(ctx).await.context("IO Dispatcher stopped")
-            });
+            s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
             if let Some(validator) = self.validator {
                 s.spawn(async {
                     let validator = validator;

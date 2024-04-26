@@ -47,11 +47,10 @@ async fn leader_prepare_bad_chain() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    scope::run!(ctx, |ctx,s| async {
-        let (mut util,runner) = UTHarness::new(ctx,1).await;
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let incompatible_protocol_version = util.incompatible_protocol_version();
         let mut leader_prepare = util.new_leader_prepare(ctx).await;
         leader_prepare.justification.view.genesis = rng.gen();
         let res = util
@@ -59,13 +58,16 @@ async fn leader_prepare_bad_chain() {
             .await;
         assert_matches!(
             res,
-            Err(leader_prepare::Error::IncompatibleProtocolVersion { message_version, local_version }) => {
-                assert_eq!(message_version, incompatible_protocol_version);
-                assert_eq!(local_version, util.protocol_version());
-            }
+            Err(leader_prepare::Error::InvalidMessage(
+                validator::LeaderPrepareVerifyError::Justification(
+                    validator::PrepareQCVerifyError::View(_)
+                )
+            ))
         );
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -529,27 +531,31 @@ async fn leader_commit_sanity_yield_replica_prepare() {
 }
 
 #[tokio::test]
-async fn leader_commit_incompatible_protocol_version() {
+async fn leader_commit_bad_chain() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    scope::run!(ctx, |ctx,s| async {
-        let (mut util,runner) = UTHarness::new(ctx,1).await;
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let incompatible_protocol_version = util.incompatible_protocol_version();
         let mut leader_commit = util.new_leader_commit(ctx).await;
         leader_commit.justification.message.view.genesis = rng.gen();
-        let res = util.process_leader_commit(ctx, util.sign(leader_commit)).await;
+        let res = util
+            .process_leader_commit(ctx, util.sign(leader_commit))
+            .await;
         assert_matches!(
             res,
-            Err(leader_commit::Error::IncompatibleProtocolVersion { message_version, local_version }) => {
-                assert_eq!(message_version, incompatible_protocol_version);
-                assert_eq!(local_version, util.protocol_version());
-            }
+            Err(leader_commit::Error::InvalidMessage(
+                validator::CommitQCVerifyError::InvalidMessage(
+                    validator::ReplicaCommitVerifyError::View(_)
+                )
+            ))
         );
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test]

@@ -1,4 +1,6 @@
-use super::{CommitQC, CommitQCVerifyError, Genesis, ReplicaCommit, View};
+use super::{
+    CommitQC, CommitQCVerifyError, Genesis, ReplicaCommit, ReplicaCommitVerifyError, View,
+};
 
 /// A Prepare message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -25,7 +27,7 @@ pub enum ReplicaPrepareVerifyError {
     HighQCFutureView,
     /// HighVote.
     #[error("high_vote: {0:#}")]
-    HighVote(anyhow::Error),
+    HighVote(ReplicaCommitVerifyError),
     /// HighQC.
     #[error("high_qc: {0:#}")]
     HighQC(CommitQCVerifyError),

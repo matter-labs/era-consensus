@@ -9,13 +9,12 @@ use zksync_protobuf::testonly::{test_encode_all_formats, FmtConv};
 
 impl Distribution<AppConfig> for EncodeDist {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AppConfig {
-        let mut genesis : validator::GenesisRaw = rng.gen();
+        let mut genesis: validator::GenesisRaw = rng.gen();
         // In order for the genesis to be valid, the sticky leader needs to be in the validator committee.
         if let LeaderSelectionMode::Sticky(_) = genesis.leader_selection {
             let i = rng.gen_range(0..genesis.committee.len());
-            genesis.leader_selection = LeaderSelectionMode::Sticky(
-                genesis.committee.get(i).unwrap().key.clone(),
-            );
+            genesis.leader_selection =
+                LeaderSelectionMode::Sticky(genesis.committee.get(i).unwrap().key.clone());
         }
         AppConfig {
             server_addr: self.sample(rng),

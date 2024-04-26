@@ -1,8 +1,7 @@
 //! Test-only utilities.
 use super::{
-    ChainId,
-    AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
-    ForkNumber, Genesis, GenesisRaw, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
+    AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
+    FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
     WeightedValidator,
@@ -41,7 +40,8 @@ impl Setup {
             first_block: BlockNumber(rng.gen_range(0..100)),
             protocol_version: ProtocolVersion::CURRENT,
             leader_selection: LeaderSelectionMode::RoundRobin,
-        }.with_hash();
+        }
+        .with_hash();
         Self(SetupInner {
             keys,
             genesis,
@@ -218,7 +218,6 @@ impl Distribution<Genesis> for Standard {
         rng.gen::<GenesisRaw>().with_hash()
     }
 }
-
 
 impl Distribution<PayloadHash> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PayloadHash {

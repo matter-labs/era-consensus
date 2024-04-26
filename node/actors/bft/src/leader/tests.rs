@@ -82,22 +82,25 @@ async fn replica_prepare_bad_chain() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    scope::run!(ctx, |ctx,s| async {
-        let (mut util,runner) = UTHarness::new(ctx,1).await;
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let mut replica_prepare = util.new_replica_prepare();
         replica_prepare.view.genesis = rng.gen();
-        let res = util.process_replica_prepare(ctx, util.sign(replica_prepare)).await;
+        let res = util
+            .process_replica_prepare(ctx, util.sign(replica_prepare))
+            .await;
         assert_matches!(
             res,
-            Err(replica_prepare::Error::InvalidMessage(_)) => {
-                todo!();
-            }
+            Err(replica_prepare::Error::InvalidMessage(
+                validator::ReplicaPrepareVerifyError::View(_)
+            ))
         );
-        #[allow(unreachable_code)]
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test]
@@ -440,11 +443,10 @@ async fn replica_commit_bad_chain() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    scope::run!(ctx, |ctx,s| async {
-        let (mut util,runner) = UTHarness::new(ctx,1).await;
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let incompatible_protocol_version = util.incompatible_protocol_version();
         let mut replica_commit = util.new_replica_commit(ctx).await;
         replica_commit.view.genesis = rng.gen();
         let res = util
@@ -452,13 +454,14 @@ async fn replica_commit_bad_chain() {
             .await;
         assert_matches!(
             res,
-            Err(replica_commit::Error::IncompatibleProtocolVersion { message_version, local_version }) => {
-                assert_eq!(message_version, incompatible_protocol_version);
-                assert_eq!(local_version, util.protocol_version());
-            }
+            Err(replica_commit::Error::InvalidMessage(
+                validator::ReplicaCommitVerifyError::View(_)
+            ))
         );
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test]

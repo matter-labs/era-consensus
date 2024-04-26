@@ -11,10 +11,8 @@ async fn test_inmemory_block_store() {
     let mut setup = Setup::new(rng, 3);
     setup.push_blocks(rng, 5);
 
-    let store = &testonly::in_memory::BlockStore::new(
-        setup.genesis.clone(),
-        setup.genesis.first_block,
-    );
+    let store =
+        &testonly::in_memory::BlockStore::new(setup.genesis.clone(), setup.genesis.first_block);
     let mut want = vec![];
     for block in &setup.blocks {
         store.queue_next_block(ctx, block.clone()).await.unwrap();

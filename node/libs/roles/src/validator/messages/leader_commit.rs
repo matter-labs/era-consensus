@@ -1,4 +1,4 @@
-use super::{BlockHeader, Genesis, ReplicaCommit, Signed, Signers, View};
+use super::{BlockHeader, Genesis, ReplicaCommit, ReplicaCommitVerifyError, Signed, Signers, View};
 use crate::validator;
 
 /// A Commit message from a leader.
@@ -36,8 +36,8 @@ pub struct CommitQC {
 #[derive(thiserror::Error, Debug)]
 pub enum CommitQCVerifyError {
     /// Invalid message.
-    #[error("invalid message: {0:#}")]
-    InvalidMessage(#[source] anyhow::Error),
+    #[error(transparent)]
+    InvalidMessage(#[from] ReplicaCommitVerifyError),
     /// Bad signer set.
     #[error("signers set doesn't match genesis")]
     BadSignersSet,

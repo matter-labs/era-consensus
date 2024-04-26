@@ -65,9 +65,9 @@ impl Config {
         mut pipe: ActorPipe<InputMessage, OutputMessage>,
     ) -> anyhow::Result<()> {
         let genesis = self.block_store.genesis();
-        anyhow::ensure!(genesis.protocol_version==validator::ProtocolVersion::CURRENT);
+        anyhow::ensure!(genesis.protocol_version == validator::ProtocolVersion::CURRENT);
         genesis.verify().context("genesis().verify()")?;
-        
+
         let cfg = Arc::new(self);
         let (leader, leader_send) = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
         let (replica, replica_send) =

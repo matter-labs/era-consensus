@@ -21,6 +21,9 @@ pub struct PrepareQC {
 /// Error returned by `PrepareQC::verify()`.
 #[derive(thiserror::Error, Debug)]
 pub enum PrepareQCVerifyError {
+    /// Bad view.
+    #[error("view: {0:#}")]
+    View(anyhow::Error),
     /// Inconsistent views.
     #[error("inconsistent views of signed messages")]
     InconsistentViews,
@@ -100,6 +103,7 @@ impl PrepareQC {
     /// Verifies the integrity of the PrepareQC.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), PrepareQCVerifyError> {
         use PrepareQCVerifyError as Error;
+        self.view.verify(genesis).map_err(Error::View)?;
         let mut sum = Signers::new(genesis.committee.len());
 
         // Check the ReplicaPrepare messages.

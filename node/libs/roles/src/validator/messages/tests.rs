@@ -1,7 +1,8 @@
 use crate::validator::*;
+use anyhow::Context as _;
 use rand::{prelude::StdRng, Rng, SeedableRng};
-use zksync_consensus_crypto::Text;
 use zksync_concurrency::ctx;
+use zksync_consensus_crypto::Text;
 use zksync_consensus_utils::enum_util::Variant as _;
 
 /// Hardcoded secret keys.
@@ -10,6 +11,8 @@ fn keys() -> Vec<SecretKey> {
         "validator:secret:bls12_381:27cb45b1670a1ae8d376a85821d51c7f91ebc6e32788027a84758441aaf0a987",
         "validator:secret:bls12_381:20132edc08a529e927f155e710ae7295a2a0d249f1b1f37726894d1d0d8f0d81",
         "validator:secret:bls12_381:0946901f0a6650284726763b12de5da0f06df0016c8ec2144cf6b1903f1979a6",
+        "validator:secret:bls12_381:3143a64c079b2f50545288d7c9b282281e05c97ac043228830a9660ddd63fea3",
+        "validator:secret:bls12_381:5512f40d33844c1c8107aa630af764005ab6e13f6bf8edb59b4ca3683727e619",
     ]
     .iter()
     .map(|raw| Text::new(raw).decode().unwrap())
@@ -18,10 +21,11 @@ fn keys() -> Vec<SecretKey> {
 
 /// Hardcoded committee.
 fn committee() -> Committee {
-    Committee::new(keys().iter().enumerate().map(|(i,key)| WeightedValidator {
+    Committee::new(keys().iter().enumerate().map(|(i, key)| WeightedValidator {
         key: key.public(),
         weight: i as u64 + 10,
-    })).unwrap()
+    }))
+    .unwrap()
 }
 
 /// Hardcoded payload.
@@ -35,9 +39,12 @@ fn payload() -> Payload {
 /// Checks that the order of validators in a committee is stable.
 #[test]
 fn committee_change_detector() {
-    let want: Vec<PublicKey> = keys().iter().map(|k|k.public()).collect();
-    let got: Vec<_> = committee().iter().map(|v|v.key.clone()).collect();
-    assert_eq!(want,got);
+    let committee = committee();
+    let got: Vec<usize> = keys()
+        .iter()
+        .map(|k| committee.index(&k.public()).unwrap())
+        .collect();
+    assert_eq!(vec![0, 1, 4, 3, 2], got);
 }
 
 #[test]
@@ -55,45 +62,50 @@ fn test_sticky() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let committee = committee();
-    let want = committee.get(rng.gen_range(0..committee.len())).unwrap().key.clone();
+    let want = committee
+        .get(rng.gen_range(0..committee.len()))
+        .unwrap()
+        .key
+        .clone();
     let sticky = LeaderSelectionMode::Sticky(want.clone());
     for _ in 0..100 {
         assert_eq!(want, committee.view_leader(rng.gen(), &sticky));
     }
 }
 
-/// Checks that leader schedule is stable. 
+/// Hardcoded view numbers.
+fn views() -> impl Iterator<Item = ViewNumber> {
+    [8394532, 2297897, 9089304, 7203483, 9982111]
+        .into_iter()
+        .map(ViewNumber)
+}
+
+/// Checks that leader schedule is stable.
 #[test]
 fn roundrobin_change_detector() {
     let committee = committee();
-    let rr = LeaderSelectionMode::RoundRobin;
-    for (view,want) in [
-        (8394534, 0),
-        (2297894, 0),
-        (9089304, 0),
-        (7203484, 0),
-        (9982111, 0)
-    ] {
-        let got = committee.view_leader(ViewNumber(view), &rr);
-        assert_eq!(want,committee.index(&got).unwrap());
-    }
+    let mode = LeaderSelectionMode::RoundRobin;
+    let got: Vec<_> = views()
+        .map(|view| {
+            let got = committee.view_leader(view, &mode);
+            committee.index(&got).unwrap()
+        })
+        .collect();
+    assert_eq!(vec![2, 2, 4, 3, 1], got);
 }
 
-/// Checks that leader schedule is stable. 
+/// Checks that leader schedule is stable.
 #[test]
 fn weighted_change_detector() {
     let committee = committee();
-    let weighted = LeaderSelectionMode::Weighted;
-    for (view,want) in [
-        (8394534, 0),
-        (2297894, 0),
-        (9089304, 0),
-        (7203484, 0),
-        (9982111, 0)
-    ] {
-        let got = committee.view_leader(ViewNumber(view), &weighted);
-        assert_eq!(want,committee.index(&got).unwrap());
-    }
+    let mode = LeaderSelectionMode::Weighted;
+    let got: Vec<_> = views()
+        .map(|view| {
+            let got = committee.view_leader(view, &mode);
+            committee.index(&got).unwrap()
+        })
+        .collect();
+    assert_eq!(vec![4, 2, 2, 2, 1], got);
 }
 
 mod version1 {
@@ -105,11 +117,12 @@ mod version1 {
             chain_id: ChainId(1337),
             fork_number: ForkNumber(402598740274745173),
             first_block: BlockNumber(8902834932452),
-            
+
             protocol_version: ProtocolVersion(1),
             committee: committee(),
             leader_selection: LeaderSelectionMode::Weighted,
-        }.with_hash()
+        }
+        .with_hash()
     }
 
     /// Note that genesis is NOT versioned by ProtocolVersion.
@@ -118,7 +131,7 @@ mod version1 {
     #[test]
     fn genesis_hash_change_detector() {
         let want: GenesisHash = Text::new(
-            "genesis_hash:keccak256:3fc736e5f69784be02ec83ff5f91414ee6b44e545b68eac7f54089bb63085b02",
+            "genesis_hash:keccak256:13a16cfa758c6716b4c4d40a5fe71023a016c7507b7893c7dc775f4420fc5d61",
         )
         .decode()
         .unwrap();
@@ -138,15 +151,15 @@ mod version1 {
     /// valid signature of msg (signed by `keys()[0]`).
     #[track_caller]
     fn change_detector(msg: Msg, hash: &str, sig: &str) {
-        let hash: MsgHash = Text::new(hash).decode().unwrap();
-        assert!(hash == msg.hash(), "bad hash, want {:?}", msg.hash());
-        let sig: Signature = Text::new(sig).decode().unwrap();
         let key = keys()[0].clone();
-        assert!(
-            sig.verify_hash(&hash, &key.public()).is_ok(),
-            "bad signature, want {:?}",
-            key.sign_hash(&hash),
-        );
+        (|| {
+            let hash: MsgHash = Text::new(hash).decode()?;
+            let sig: Signature = Text::new(sig).decode()?;
+            sig.verify_hash(&hash, &key.public())?;
+            anyhow::Ok(())
+        })()
+        .with_context(|| format!("\n{:?},\n{:?}", msg.hash(), key.sign_hash(&msg.hash()),))
+        .unwrap();
     }
 
     /// Hardcoded view.
@@ -224,8 +237,8 @@ mod version1 {
     fn replica_commit_change_detector() {
         change_detector(
             replica_commit().insert(),
-            "validator_msg:keccak256:bc629a46e67d0ceef09f898afe7c773b010f78f474452226364deb12f26bff59",
-            "validator:signature:bn254:09dca52611cf60eba99293a1ffec853ba65370b5c6727c5009748f7f59fefabd",
+            "validator_msg:keccak256:2ec798684e539d417fac1caba74ed1a27a033bc18058ba0a4632f6bb0ae4fe1c",
+            "validator:signature:bls12_381:8de9ad850d78eb4f918c8c3a02310be49fc9ac35f2b1fdd6489293db1d5128f0d4c8389674e6bc2eee4c6e16f58e0b51",
         );
     }
 
@@ -233,8 +246,8 @@ mod version1 {
     fn leader_commit_change_detector() {
         change_detector(
             leader_commit().insert(),
-            "validator_msg:keccak256:340c4f1d075d070a8bbde198c777f89e3c025b8e14e1d32328a52b694d7fb7da",
-            "validator:signature:bn254:08729ad003eee453696b72e56d2a75124730ff17376fca7099a21f32ff1b265a",
+            "validator_msg:keccak256:53b8d7dc77a5ba8b81cd7b46ddc19c224ef46245c26cb7ae12239acc1bf86eda",
+            "validator:signature:bls12_381:81a154a93a8b607031319915728be97c03c3014a4746050f7a32cde98cabe4fbd2b6d6b79400601a71f50350842d1d64",
         );
     }
 
@@ -242,8 +255,8 @@ mod version1 {
     fn replica_prepare_change_detector() {
         change_detector(
             replica_prepare().insert(),
-            "validator_msg:keccak256:361382ac2738d16f2b013f8674550970b8a5d79ab92eb1a437df2e478a0bbf46",
-            "validator:signature:bn254:8bd0a2f83e7fc0321a9d487266ca3e7ad4f717f8bf314ce1bb858f7235f84914",
+            "validator_msg:keccak256:700cf26d50f463cfa908f914d1febb1cbd00ee9d3a691b644f49146ed3e6ac40",
+            "validator:signature:bls12_381:a7cbdf9b8d13ebc39f4a13d654ec30acccd247d46fc6121eb1220256cfc212b418aac85400176e8797d8eb91aa70ae78",
         );
     }
 
@@ -251,8 +264,8 @@ mod version1 {
     fn leader_prepare_change_detector() {
         change_detector(
             leader_prepare().insert(),
-            "validator_msg:keccak256:e29ae451d7bd6a72e1cccb5666fb66ddbd893e506d91e1985e9723a65bd9298b",
-            "validator:signature:bn254:92a42139359540383f90f01f7f69907a4f4e04f1753ffd857266ed4c157f7fa9",
+            "validator_msg:keccak256:aaaaa6b7b232ef5b7c797953ce2a042c024137d7b8f449a1ad8a535730bc269b",
+            "validator:signature:bls12_381:a1926f460fa63470544cc9213e6378f45d75dff3055924766a81ff696a6a6e85ee583707911bb7fef4d1f74b7b28132f",
         );
     }
 }
