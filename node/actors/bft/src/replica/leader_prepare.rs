@@ -115,7 +115,7 @@ impl StateMachine {
         // (because it won't be able to persist and broadcast them once finalized).
         // TODO(gprusak): it should never happen, we should add safety checks to prevent
         // pruning blocks not known to be finalized.
-        if message.proposal.number < self.config.block_store.subscribe().borrow().first {
+        if message.proposal.number < self.config.block_store.queued().first {
             return Err(Error::ProposalAlreadyPruned);
         }
 

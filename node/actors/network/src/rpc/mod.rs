@@ -32,7 +32,8 @@ pub(crate) mod testonly;
 #[cfg(test)]
 mod tests;
 
-const MUX_CONFIG: mux::Config = mux::Config {
+/// Multiplexer configuration for the RPC services.
+pub(crate) const MUX_CONFIG: mux::Config = mux::Config {
     read_buffer_size: 160 * zksync_protobuf::kB as u64,
     read_frame_size: 16 * zksync_protobuf::kB as u64,
     read_frame_count: 100,
@@ -72,13 +73,12 @@ pub(crate) trait Rpc: Sync + Send + 'static {
 /// blindly decide which server to call without knowing their real capacity.
 /// TODO(gprusak): to actually pass around the permit, we should use an OwnedPermit
 /// instead.
-pub(crate) struct ReservedCall<'a, R: Rpc> {
+pub(crate) struct ReservedCall<R: Rpc> {
     stream: mux::ReservedStream,
-    permit: limiter::Permit<'a>,
     _rpc: std::marker::PhantomData<R>,
 }
 
-impl<'a, R: Rpc> ReservedCall<'a, R> {
+impl<R: Rpc> ReservedCall<R> {
     /// Performs the call.
     pub(crate) async fn call(
         self,
@@ -88,7 +88,6 @@ impl<'a, R: Rpc> ReservedCall<'a, R> {
     ) -> anyhow::Result<R::Resp> {
         let send_time = ctx.now();
         let mut stream = self.stream.open(ctx).await??;
-        drop(self.permit);
         let res = async {
             let metric_labels = CallType::Client.to_labels::<R>(req);
             let _guard = RPC_METRICS.inflight[&metric_labels].inc_guard(1);
@@ -104,7 +103,8 @@ impl<'a, R: Rpc> ReservedCall<'a, R> {
         let now = ctx.now();
         let metric_labels = CallLatencyType::ClientSendRecv.to_labels::<R>(req, &res);
         RPC_METRICS.latency[&metric_labels].observe_latency(now - send_time);
-        let (res, msg_size) = res.context(R::METHOD)?;
+        let (res, msg_size) =
+            res.with_context(|| format!("{}.{}", R::METHOD, R::submethod(req)))?;
         RPC_METRICS.message_size[&CallType::RespRecv.to_labels::<R>(req)].observe(msg_size);
         Ok(res)
     }
@@ -112,7 +112,6 @@ impl<'a, R: Rpc> ReservedCall<'a, R> {
 
 /// RPC client used to issue the calls to the server.
 pub(crate) struct Client<R: Rpc> {
-    limiter: limiter::Limiter,
     queue: Arc<mux::StreamQueue>,
     _rpc: std::marker::PhantomData<R>,
 }
@@ -123,24 +122,18 @@ impl<R: Rpc> Client<R> {
     // so perhaps they should be constructed by `Service::add_client` instead?
     pub(crate) fn new(ctx: &ctx::Ctx, rate: limiter::Rate) -> Self {
         Client {
-            limiter: limiter::Limiter::new(ctx, rate),
-            queue: mux::StreamQueue::new(R::INFLIGHT),
+            queue: mux::StreamQueue::new(ctx, R::INFLIGHT, rate),
             _rpc: std::marker::PhantomData,
         }
     }
 
     /// Reserves an RPC.
-    pub(crate) async fn reserve<'a>(
-        &'a self,
-        ctx: &'a ctx::Ctx,
-    ) -> ctx::OrCanceled<ReservedCall<'a, R>> {
+    pub(crate) async fn reserve(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<ReservedCall<R>> {
         let reserve_time = ctx.now();
-        let permit = self.limiter.acquire(ctx, 1).await?;
         let stream = self.queue.reserve(ctx).await?;
         RPC_METRICS.call_reserve_latency[&R::METHOD].observe_latency(ctx.now() - reserve_time);
         Ok(ReservedCall {
             stream,
-            permit,
             _rpc: std::marker::PhantomData,
         })
     }
@@ -174,7 +167,6 @@ pub(crate) trait Handler<R: Rpc>: Sync + Send {
 struct Server<R: Rpc, H: Handler<R>> {
     handler: H,
     queue: Arc<mux::StreamQueue>,
-    rate: limiter::Rate,
     _rpc: std::marker::PhantomData<R>,
 }
 
@@ -188,55 +180,51 @@ impl<R: Rpc, H: Handler<R>> ServerTrait for Server<R, H> {
     /// Serves the incoming RPCs, respecting the rate limit and
     /// max inflight limit.
     async fn serve(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
-        let limiter = limiter::Limiter::new(ctx, self.rate);
         scope::run!(ctx, |ctx, s| async {
-            for _ in 0..R::INFLIGHT {
+            loop {
+                let stream = self.queue.reserve(ctx).await?;
                 s.spawn::<()>(async {
-                    loop {
-                        let permit = limiter.acquire(ctx, 1).await?;
-                        let mut stream = self.queue.open(ctx).await?;
-                        drop(permit);
-                        let res = async {
-                            let recv_time = ctx.now();
-                            let (req, msg_size) = frame::mux_recv_proto::<R::Req>(
-                                ctx,
-                                &mut stream.read,
-                                self.handler.max_req_size(),
-                            )
-                            .await?;
+                    let res = async {
+                        let mut stream = stream.open(ctx).await??;
+                        let recv_time = ctx.now();
+                        let (req, msg_size) = frame::mux_recv_proto::<R::Req>(
+                            ctx,
+                            &mut stream.read,
+                            self.handler.max_req_size(),
+                        )
+                        .await?;
 
-                            let size_labels = CallType::ReqRecv.to_labels::<R>(&req);
-                            let resp_size_labels = CallType::RespSent.to_labels::<R>(&req);
-                            RPC_METRICS.message_size[&size_labels].observe(msg_size);
-                            let inflight_labels = CallType::Server.to_labels::<R>(&req);
-                            let _guard = RPC_METRICS.inflight[&inflight_labels].inc_guard(1);
-                            let mut server_process_labels =
-                                CallLatencyType::ServerProcess.to_labels::<R>(&req, &Ok(()));
-                            let mut recv_send_labels =
-                                CallLatencyType::ServerRecvSend.to_labels::<R>(&req, &Ok(()));
+                        let size_labels = CallType::ReqRecv.to_labels::<R>(&req);
+                        let resp_size_labels = CallType::RespSent.to_labels::<R>(&req);
+                        RPC_METRICS.message_size[&size_labels].observe(msg_size);
+                        let inflight_labels = CallType::Server.to_labels::<R>(&req);
+                        let _guard = RPC_METRICS.inflight[&inflight_labels].inc_guard(1);
+                        let mut server_process_labels =
+                            CallLatencyType::ServerProcess.to_labels::<R>(&req, &Ok(()));
+                        let mut recv_send_labels =
+                            CallLatencyType::ServerRecvSend.to_labels::<R>(&req, &Ok(()));
 
-                            let process_time = ctx.now();
-                            let res = self.handler.handle(ctx, req).await.context(R::METHOD);
-                            server_process_labels.set_result(&res);
-                            RPC_METRICS.latency[&server_process_labels]
-                                .observe_latency(ctx.now() - process_time);
+                        let process_time = ctx.now();
+                        let res = self.handler.handle(ctx, req).await.context(R::METHOD);
+                        server_process_labels.set_result(&res);
+                        RPC_METRICS.latency[&server_process_labels]
+                            .observe_latency(ctx.now() - process_time);
 
-                            let res = frame::mux_send_proto(ctx, &mut stream.write, &res?).await;
-                            recv_send_labels.set_result(&res);
-                            RPC_METRICS.latency[&recv_send_labels]
-                                .observe_latency(ctx.now() - recv_time);
-                            let msg_size = res?;
-                            RPC_METRICS.message_size[&resp_size_labels].observe(msg_size);
-                            anyhow::Ok(())
-                        }
-                        .await;
-                        if let Err(err) = res {
-                            tracing::info!("{err:#}");
-                        }
+                        let res = frame::mux_send_proto(ctx, &mut stream.write, &res?).await;
+                        recv_send_labels.set_result(&res);
+                        RPC_METRICS.latency[&recv_send_labels]
+                            .observe_latency(ctx.now() - recv_time);
+                        let msg_size = res?;
+                        RPC_METRICS.message_size[&resp_size_labels].observe(msg_size);
+                        anyhow::Ok(())
                     }
+                    .await;
+                    if let Err(err) = res {
+                        tracing::info!("{err:#}");
+                    }
+                    Ok(())
                 });
             }
-            Ok(())
         })
         .await
     }
@@ -281,10 +269,11 @@ impl<'a> Service<'a> {
     /// Adds a server to the RPC service.
     pub(crate) fn add_server<R: Rpc>(
         mut self,
+        ctx: &ctx::Ctx,
         handler: impl Handler<R> + 'a,
         rate: limiter::Rate,
     ) -> Self {
-        let queue = mux::StreamQueue::new(R::INFLIGHT);
+        let queue = mux::StreamQueue::new(ctx, R::INFLIGHT, rate);
         if self
             .mux
             .connect
@@ -299,7 +288,6 @@ impl<'a> Service<'a> {
         self.servers.push(Box::new(Server {
             handler,
             queue,
-            rate,
             _rpc: std::marker::PhantomData,
         }));
         self

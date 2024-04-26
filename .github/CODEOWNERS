@@ -1,6 +1,6 @@
 CODEOWNERS @brunoffranca
 
-/node/actors/consensus/ @brunoffranca
+/node/actors/bft/ @brunoffranca
 /node/actors/network/ @pompon0
 
 /node/libs/concurrency/ @pompon0

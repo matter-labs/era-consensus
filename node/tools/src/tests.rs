@@ -1,7 +1,7 @@
 use crate::{store, AppConfig};
 use rand::{distributions::Distribution, Rng};
 use tempfile::TempDir;
-use zksync_concurrency::ctx;
+use zksync_concurrency::{ctx, sync};
 use zksync_consensus_roles::validator::{testonly::Setup, LeaderSelectionMode};
 use zksync_consensus_storage::{testonly, PersistentBlockStore};
 use zksync_consensus_utils::EncodeDist;
@@ -59,7 +59,10 @@ async fn test_reopen_rocksdb() {
         let store = store::RocksDB::open(setup.genesis.clone(), dir.path())
             .await
             .unwrap();
-        store.store_next_block(ctx, b).await.unwrap();
+        store.queue_next_block(ctx, b.clone()).await.unwrap();
+        sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(b.number()))
+            .await
+            .unwrap();
         want.push(b.clone());
         assert_eq!(want, testonly::dump(ctx, &store).await);
     }

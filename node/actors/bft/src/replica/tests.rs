@@ -177,8 +177,7 @@ async fn leader_prepare_pruned_block() {
             .replica
             .config
             .block_store
-            .subscribe()
-            .borrow()
+            .queued()
             .first
             .prev()
             .unwrap();
