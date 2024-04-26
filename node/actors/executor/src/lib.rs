@@ -109,8 +109,8 @@ impl Executor {
             if !self
                 .block_store
                 .genesis()
-                .validators
-                .iter_keys()
+                .committee
+                .keys()
                 .any(|key| key == &validator.key.public())
             {
                 anyhow::bail!("this validator doesn't belong to the consensus");
@@ -128,11 +128,11 @@ impl Executor {
         let (consensus_actor_pipe, consensus_dispatcher_pipe) = pipe::new();
         let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
         // Create the IO dispatcher.
-        let mut dispatcher = Dispatcher::new(consensus_dispatcher_pipe, network_dispatcher_pipe);
+        let dispatcher = Dispatcher::new(consensus_dispatcher_pipe, network_dispatcher_pipe);
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
-            s.spawn_blocking(|| dispatcher.run(ctx).context("IO Dispatcher stopped"));
+            s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
             if let Some(validator) = self.validator {
                 s.spawn(async {
                     let validator = validator;

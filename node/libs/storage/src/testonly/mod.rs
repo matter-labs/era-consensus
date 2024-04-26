@@ -34,7 +34,7 @@ pub async fn new_store(
     ctx: &ctx::Ctx,
     genesis: &validator::Genesis,
 ) -> (Arc<BlockStore>, BlockStoreRunner) {
-    new_store_with_first(ctx, genesis, genesis.fork.first_block).await
+    new_store_with_first(ctx, genesis, genesis.first_block).await
 }
 
 /// Constructs a new in-memory store with a custom expected first block
@@ -56,7 +56,7 @@ pub async fn new_store_with_first(
 pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<validator::FinalBlock> {
     let genesis = store.genesis(ctx).await.unwrap();
     let state = store.persisted().borrow().clone();
-    assert!(genesis.fork.first_block <= state.first);
+    assert!(genesis.first_block <= state.first);
     let mut blocks = vec![];
     let after = state
         .last

@@ -5,19 +5,11 @@ use crate::metrics;
 use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::validator::{self, CommitQC, ProtocolVersion};
+use zksync_consensus_roles::validator;
 
 /// Errors that can occur when processing a "replica commit" message.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    /// Incompatible protocol version.
-    #[error("incompatible protocol version (message version: {message_version:?}, local version: {local_version:?}")]
-    IncompatibleProtocolVersion {
-        /// Message version.
-        message_version: ProtocolVersion,
-        /// Local version.
-        local_version: ProtocolVersion,
-    },
     /// Message signer isn't part of the validator set.
     #[error("Message signer isn't part of the validator set (signer: {signer:?})")]
     NonValidatorSigner {
@@ -37,7 +29,7 @@ pub(crate) enum Error {
     NotLeaderInView,
     /// Invalid message.
     #[error("invalid message: {0:#}")]
-    InvalidMessage(#[source] anyhow::Error),
+    InvalidMessage(#[source] validator::ReplicaCommitVerifyError),
     /// Duplicate message from a replica.
     #[error("Replica signed more than one message for same view (message: {message:?}")]
     DuplicateSignature {
@@ -62,16 +54,8 @@ impl StateMachine {
         let message = &signed_message.msg;
         let author = &signed_message.key;
 
-        // Check protocol version compatibility.
-        if !crate::PROTOCOL_VERSION.compatible(&message.view.protocol_version) {
-            return Err(Error::IncompatibleProtocolVersion {
-                message_version: message.view.protocol_version,
-                local_version: crate::PROTOCOL_VERSION,
-            });
-        }
-
         // Check that the message signer is in the validator committee.
-        if !self.config.genesis().validators.contains(author) {
+        if !self.config.genesis().committee.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone(),
             });
@@ -97,7 +81,7 @@ impl StateMachine {
             .entry(message.view.number)
             .or_default()
             .entry(message.clone())
-            .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()));
+            .or_insert_with(|| validator::CommitQC::new(message.clone(), self.config.genesis()));
 
         // If we already have a message from the same validator and for the same view, we discard it.
         let validator_view = self.validator_views.get(author);
@@ -124,8 +108,8 @@ impl StateMachine {
         commit_qc.add(&signed_message, self.config.genesis());
 
         // Now we check if we have enough weight to continue.
-        let weight = self.config.genesis().validators.weight(&commit_qc.signers);
-        if weight < self.config.genesis().validators.threshold() {
+        let weight = self.config.genesis().committee.weight(&commit_qc.signers);
+        if weight < self.config.genesis().committee.threshold() {
             return Ok(());
         };
 

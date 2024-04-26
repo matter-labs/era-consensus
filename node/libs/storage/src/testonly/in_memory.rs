@@ -26,7 +26,7 @@ pub struct ReplicaStore(Arc<Mutex<ReplicaState>>);
 impl BlockStore {
     /// New In-memory `BlockStore`.
     pub fn new(genesis: validator::Genesis, first: validator::BlockNumber) -> Self {
-        assert!(genesis.fork.first_block <= first);
+        assert!(genesis.first_block <= first);
         Self(Arc::new(BlockStoreInner {
             genesis,
             persisted: sync::watch::channel(BlockStoreState { first, last: None }).0,

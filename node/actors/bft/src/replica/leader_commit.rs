@@ -2,19 +2,11 @@
 use super::StateMachine;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
-use zksync_consensus_roles::validator::{self, ProtocolVersion};
+use zksync_consensus_roles::validator;
 
 /// Errors that can occur when processing a "leader commit" message.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    /// Incompatible protocol version.
-    #[error("incompatible protocol version (message version: {message_version:?}, local version: {local_version:?}")]
-    IncompatibleProtocolVersion {
-        /// Message version.
-        message_version: ProtocolVersion,
-        /// Local version.
-        local_version: ProtocolVersion,
-    },
     /// Invalid leader.
     #[error("bad leader: got {got:?}, want {want:?}")]
     BadLeader {
@@ -68,14 +60,6 @@ impl StateMachine {
         // Unwrap message.
         let message = &signed_message.msg;
         let author = &signed_message.key;
-
-        // Check protocol version compatibility.
-        if !crate::PROTOCOL_VERSION.compatible(&message.view().protocol_version) {
-            return Err(Error::IncompatibleProtocolVersion {
-                message_version: message.view().protocol_version,
-                local_version: crate::PROTOCOL_VERSION,
-            });
-        }
 
         // Check that it comes from the correct leader.
         let leader = self.config.genesis().view_leader(message.view().number);

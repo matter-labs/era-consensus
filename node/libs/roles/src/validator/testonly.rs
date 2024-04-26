@@ -1,7 +1,7 @@
 //! Test-only utilities.
 use super::{
-    AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
-    Fork, ForkNumber, Genesis, GenesisHash, GenesisVersion, LeaderCommit, LeaderPrepare, Msg,
+    AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
+    FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
     WeightedValidator,
@@ -21,25 +21,6 @@ use zksync_consensus_utils::enum_util::Variant;
 pub struct Setup(SetupInner);
 
 impl Setup {
-    /// New `Setup` with a given `fork`.
-    pub fn new_with_fork(rng: &mut impl Rng, weights: Vec<u64>, fork: Fork) -> Self {
-        let keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
-        let genesis = Genesis {
-            validators: Committee::new(keys.iter().enumerate().map(|(i, k)| WeightedValidator {
-                key: k.public(),
-                weight: weights[i],
-            }))
-            .unwrap(),
-            fork,
-            ..Default::default()
-        };
-        Self(SetupInner {
-            keys,
-            genesis,
-            blocks: vec![],
-        })
-    }
-
     /// New `Setup`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
         Self::new_with_weights(rng, vec![1; validators])
@@ -47,26 +28,39 @@ impl Setup {
 
     /// New `Setup`.
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
-        let fork = Fork {
-            number: ForkNumber(rng.gen_range(0..100)),
+        let keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
+        let genesis = GenesisRaw {
+            chain_id: ChainId(1337),
+            committee: Committee::new(keys.iter().enumerate().map(|(i, k)| WeightedValidator {
+                key: k.public(),
+                weight: weights[i],
+            }))
+            .unwrap(),
+            fork_number: ForkNumber(rng.gen_range(0..100)),
             first_block: BlockNumber(rng.gen_range(0..100)),
-        };
-        Self::new_with_fork(rng, weights, fork)
+            protocol_version: ProtocolVersion::CURRENT,
+            leader_selection: LeaderSelectionMode::RoundRobin,
+        }
+        .with_hash();
+        Self(SetupInner {
+            keys,
+            genesis,
+            blocks: vec![],
+        })
     }
 
     /// Next block to finalize.
     pub fn next(&self) -> BlockNumber {
         match self.0.blocks.last() {
             Some(b) => b.header().number.next(),
-            None => self.0.genesis.fork.first_block,
+            None => self.0.genesis.first_block,
         }
     }
 
     /// Pushes the next block with the given payload.
     pub fn push_block(&mut self, payload: Payload) {
         let view = View {
-            protocol_version: ProtocolVersion::CURRENT,
-            fork: self.genesis.fork.number,
+            genesis: self.genesis.hash(),
             number: self
                 .0
                 .blocks
@@ -80,7 +74,7 @@ impl Setup {
                 payload: payload.hash(),
             },
             None => BlockHeader {
-                number: self.genesis.fork.first_block,
+                number: self.genesis.first_block,
                 payload: payload.hash(),
             },
         };
@@ -183,18 +177,15 @@ impl Distribution<ForkNumber> for Standard {
     }
 }
 
-impl Distribution<GenesisHash> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisHash {
-        GenesisHash(rng.gen())
+impl Distribution<ChainId> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChainId {
+        ChainId(rng.gen())
     }
 }
 
-impl Distribution<Fork> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Fork {
-        Fork {
-            number: rng.gen(),
-            first_block: rng.gen(),
-        }
+impl Distribution<GenesisHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisHash {
+        GenesisHash(rng.gen())
     }
 }
 
@@ -208,20 +199,23 @@ impl Distribution<LeaderSelectionMode> for Standard {
     }
 }
 
-impl Distribution<Genesis> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
-        Genesis {
-            validators: rng.gen(),
-            fork: rng.gen(),
-            version: rng.gen(),
+impl Distribution<GenesisRaw> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisRaw {
+        GenesisRaw {
+            chain_id: rng.gen(),
+            fork_number: rng.gen(),
+            first_block: rng.gen(),
+
+            protocol_version: rng.gen(),
+            committee: rng.gen(),
             leader_selection: rng.gen(),
         }
     }
 }
 
-impl Distribution<GenesisVersion> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisVersion {
-        GenesisVersion(rng.gen_range(0..=GenesisVersion::CURRENT.0))
+impl Distribution<Genesis> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
+        rng.gen::<GenesisRaw>().with_hash()
     }
 }
 
@@ -342,8 +336,7 @@ impl Distribution<ViewNumber> for Standard {
 impl Distribution<View> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> View {
         View {
-            protocol_version: rng.gen(),
-            fork: rng.gen(),
+            genesis: rng.gen(),
             number: rng.gen(),
         }
     }

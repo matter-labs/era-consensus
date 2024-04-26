@@ -164,10 +164,9 @@ impl StateMachine {
             }
             // The previous block was finalized, so we can propose a new block.
             _ => {
-                let fork = &cfg.genesis().fork;
                 let number = match high_qc {
                     Some(qc) => qc.header().number.next(),
-                    None => fork.first_block,
+                    None => cfg.genesis().first_block,
                 };
                 // Defensively assume that PayloadManager cannot propose until the previous block is stored.
                 if let Some(prev) = number.prev() {

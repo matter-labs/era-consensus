@@ -7,14 +7,6 @@ use zksync_consensus_roles::validator;
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    /// Incompatible protocol version.
-    #[error("incompatible protocol version (message version: {message_version:?}, local version: {local_version:?}")]
-    IncompatibleProtocolVersion {
-        /// Message version.
-        message_version: validator::ProtocolVersion,
-        /// Local version.
-        local_version: validator::ProtocolVersion,
-    },
     /// Message signer isn't part of the validator set.
     #[error("Message signer isn't part of the validator set (signer: {signer:?})")]
     NonValidatorSigner {
@@ -74,16 +66,8 @@ impl StateMachine {
         let message = signed_message.msg.clone();
         let author = &signed_message.key;
 
-        // Check protocol version compatibility.
-        if !crate::PROTOCOL_VERSION.compatible(&message.view.protocol_version) {
-            return Err(Error::IncompatibleProtocolVersion {
-                message_version: message.view.protocol_version,
-                local_version: crate::PROTOCOL_VERSION,
-            });
-        }
-
         // Check that the message signer is in the validator set.
-        if !self.config.genesis().validators.contains(author) {
+        if !self.config.genesis().committee.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone(),
             });
@@ -140,8 +124,8 @@ impl StateMachine {
             .insert(author.clone(), signed_message.clone());
 
         // Now we check if we have enough weight to continue.
-        if prepare_qc.weight(&self.config.genesis().validators)
-            < self.config.genesis().validators.threshold()
+        if prepare_qc.weight(&self.config.genesis().committee)
+            < self.config.genesis().committee.threshold()
         {
             return Ok(());
         }

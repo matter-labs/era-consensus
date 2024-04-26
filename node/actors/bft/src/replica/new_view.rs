@@ -32,8 +32,7 @@ impl StateMachine {
                 .sign_msg(validator::ConsensusMsg::ReplicaPrepare(
                     validator::ReplicaPrepare {
                         view: validator::View {
-                            protocol_version: crate::PROTOCOL_VERSION,
-                            fork: self.config.genesis().fork.number,
+                            genesis: self.config.genesis().hash(),
                             number: self.view,
                         },
                         high_vote: self.high_vote.clone(),

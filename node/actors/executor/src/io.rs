@@ -38,8 +38,8 @@ impl Dispatcher {
 
     /// Method to start the IO dispatcher. It is simply a loop to receive messages from the actors and then forward them.
     #[instrument(level = "trace", ret)]
-    pub(super) fn run(&mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        scope::run_blocking!(ctx, |ctx, s| {
+    pub(super) async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        scope::run!(ctx, |ctx, s| async {
             // Start a task to handle the messages from the consensus actor.
             s.spawn(async {
                 while let Ok(msg) = self.consensus_output.recv(ctx).await {
@@ -67,5 +67,6 @@ impl Dispatcher {
 
             Ok(())
         })
+        .await
     }
 }
