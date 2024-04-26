@@ -1,7 +1,13 @@
 use crate::{metrics, Config, OutputSender};
 use std::{collections::BTreeMap, sync::Arc, unreachable};
 use tracing::instrument;
-use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
+use zksync_concurrency::{
+    ctx,
+    error::Wrap as _,
+    metrics::LatencyHistogramExt as _,
+    sync::{self, prunable_mpsc::SelectionFunctionResult},
+    time,
+};
 use zksync_consensus_network::io::{ConsensusInputMessage, ConsensusReq, Target};
 use zksync_consensus_roles::validator::{self, ConsensusMsg};
 
@@ -48,7 +54,10 @@ impl StateMachine {
         config: Arc<Config>,
         outbound_pipe: OutputSender,
     ) -> (Self, sync::prunable_mpsc::Sender<ConsensusReq>) {
-        let (send, recv) = sync::prunable_mpsc::channel(StateMachine::inbound_pruning_predicate);
+        let (send, recv) = sync::prunable_mpsc::channel(
+            StateMachine::inbound_filter_function,
+            StateMachine::inbound_selection_function,
+        );
 
         let this = StateMachine {
             config,
@@ -208,15 +217,39 @@ impl StateMachine {
         Ok(())
     }
 
-    #[allow(clippy::match_like_matches_macro)]
-    fn inbound_pruning_predicate(pending_req: &ConsensusReq, new_req: &ConsensusReq) -> bool {
+    fn inbound_filter_function(new_req: &ConsensusReq) -> SelectionFunctionResult {
+        // Verify message signature
+        match new_req.msg.verify() {
+            Ok(_) => SelectionFunctionResult::Keep,
+            _ => SelectionFunctionResult::DiscardNew,
+        }
+    }
+
+    fn inbound_selection_function(
+        pending_req: &ConsensusReq,
+        new_req: &ConsensusReq,
+    ) -> SelectionFunctionResult {
         if pending_req.msg.key != new_req.msg.key {
-            return false;
+            return SelectionFunctionResult::Keep;
         }
         match (&pending_req.msg.msg, &new_req.msg.msg) {
-            (ConsensusMsg::ReplicaPrepare(_), ConsensusMsg::ReplicaPrepare(_)) => true,
-            (ConsensusMsg::ReplicaCommit(_), ConsensusMsg::ReplicaCommit(_)) => true,
-            _ => false,
+            (ConsensusMsg::ReplicaPrepare(pending), ConsensusMsg::ReplicaPrepare(new)) => {
+                // Discard older message
+                if pending.view.number < new.view.number {
+                    SelectionFunctionResult::DiscardOld
+                } else {
+                    SelectionFunctionResult::DiscardNew
+                }
+            }
+            (ConsensusMsg::ReplicaCommit(pending), ConsensusMsg::ReplicaCommit(new)) => {
+                // Discard older message
+                if pending.view.number < new.view.number {
+                    SelectionFunctionResult::DiscardOld
+                } else {
+                    SelectionFunctionResult::DiscardNew
+                }
+            }
+            _ => SelectionFunctionResult::Keep,
         }
     }
 }
