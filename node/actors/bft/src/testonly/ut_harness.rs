@@ -302,7 +302,7 @@ impl UTHarness {
     }
 
     pub(crate) fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
-        self.genesis().validators.view_leader(view)
+        self.genesis().view_leader(view)
     }
 
     pub(crate) fn genesis(&self) -> &validator::Genesis {

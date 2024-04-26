@@ -3,7 +3,8 @@ use super::{BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, Replic
 use crate::validator;
 use anyhow::Context;
 use bit_vec::BitVec;
-use std::{collections::BTreeMap, fmt};
+use num_bigint::BigUint;
+use std::{collections::BTreeMap, fmt, hash::Hash};
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
@@ -68,6 +69,31 @@ impl Default for Fork {
             first_block: BlockNumber(0),
         }
     }
+}
+
+/// The mode used for selecting leader for a given view.
+#[derive(Default, Clone, Debug, Eq, PartialEq)]
+pub enum LeaderSelectionMode {
+    /// Select in a round-robin fashion, based on validators' index within the set.
+    #[default]
+    RoundRobin,
+
+    /// Select based on a sticky assignment to a specific validator.
+    Sticky(validator::PublicKey),
+
+    /// Select pseudo-randomly, based on validators' weights.
+    Weighted,
+}
+
+/// Calculates the pseudo-random eligibility of a leader based on the input and total weight.
+pub(crate) fn leader_weighted_eligibility(input: u64, total_weight: u64) -> u64 {
+    let input_bytes = input.to_be_bytes();
+    let hash = Keccak256::new(&input_bytes);
+    let hash_big = BigUint::from_bytes_be(hash.as_bytes());
+    let total_weight_big = BigUint::from(total_weight);
+    let ret_big = hash_big % total_weight_big;
+    // Assumes that `ret_big` does not exceed 64 bits due to the modulo operation with a 64 bits-capped value.
+    ret_big.to_u64_digits()[0]
 }
 
 /// A struct that represents a set of validators. It is used to store the current validator set.
@@ -145,9 +171,32 @@ impl Committee {
     }
 
     /// Computes the leader for the given view.
-    pub fn view_leader(&self, view_number: ViewNumber) -> validator::PublicKey {
-        let index = view_number.0 as usize % self.len();
-        self.get(index).unwrap().key.clone()
+    pub fn view_leader(
+        &self,
+        view_number: ViewNumber,
+        leader_selection: LeaderSelectionMode,
+    ) -> validator::PublicKey {
+        match &leader_selection {
+            LeaderSelectionMode::RoundRobin => {
+                let index = view_number.0 as usize % self.len();
+                self.get(index).unwrap().key.clone()
+            }
+            LeaderSelectionMode::Weighted => {
+                let eligibility = leader_weighted_eligibility(view_number.0, self.total_weight);
+                let mut offset = 0;
+                for val in &self.vec {
+                    offset += val.weight;
+                    if eligibility < offset {
+                        return val.key.clone();
+                    }
+                }
+                unreachable!()
+            }
+            LeaderSelectionMode::Sticky(pk) => {
+                let index = self.index(pk).unwrap();
+                self.get(index).unwrap().key.clone()
+            }
+        }
     }
 
     /// Signature weight threshold for this validator committee.
@@ -214,6 +263,8 @@ pub struct Genesis {
     pub validators: Committee,
     /// Fork of the chain to follow.
     pub fork: Fork,
+    /// The mode used for selecting leader for a given view.
+    pub leader_selection: Option<LeaderSelectionMode>,
 }
 
 /// Hash of the genesis specification.
@@ -221,9 +272,28 @@ pub struct Genesis {
 pub struct GenesisHash(pub(crate) Keccak256);
 
 impl Genesis {
+    /// Verifies correctness.
+    pub fn verify(&self) -> anyhow::Result<()> {
+        if let Some(LeaderSelectionMode::Sticky(pk)) = &self.leader_selection {
+            if self.validators.index(pk).is_none() {
+                anyhow::bail!("leader_selection sticky mode public key is not in committee");
+            }
+        }
+
+        Ok(())
+    }
+
     /// Hash of the genesis.
     pub fn hash(&self) -> GenesisHash {
         GenesisHash(Keccak256::new(&zksync_protobuf::canonical(self)))
+    }
+
+    /// Computes the leader for the given view.
+    pub fn view_leader(&self, view_number: ViewNumber) -> validator::PublicKey {
+        self.validators.view_leader(
+            view_number,
+            self.leader_selection.clone().unwrap_or_default(),
+        )
     }
 }
 
@@ -233,6 +303,7 @@ impl Default for Genesis {
             version: GenesisVersion::CURRENT,
             validators: Committee::default(),
             fork: Fork::default(),
+            leader_selection: Some(LeaderSelectionMode::default()),
         }
     }
 }
