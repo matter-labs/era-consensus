@@ -78,24 +78,24 @@ async fn replica_prepare_sanity_yield_leader_prepare_reproposal() {
 }
 
 #[tokio::test]
-async fn replica_prepare_incompatible_protocol_version() {
+async fn replica_prepare_bad_chain() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
     scope::run!(ctx, |ctx,s| async {
         let (mut util,runner) = UTHarness::new(ctx,1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let incompatible_protocol_version = util.incompatible_protocol_version();
         let mut replica_prepare = util.new_replica_prepare();
-        replica_prepare.view.protocol_version = incompatible_protocol_version;
+        replica_prepare.view.genesis = rng.gen();
         let res = util.process_replica_prepare(ctx, util.sign(replica_prepare)).await;
         assert_matches!(
             res,
-            Err(replica_prepare::Error::IncompatibleProtocolVersion { message_version, local_version }) => {
-                assert_eq!(message_version, incompatible_protocol_version);
-                assert_eq!(local_version, util.protocol_version());
+            Err(replica_prepare::Error::InvalidMessage(_)) => {
+                todo!();
             }
         );
+        #[allow(unreachable_code)]
         Ok(())
     }).await.unwrap();
 }
@@ -436,16 +436,17 @@ async fn replica_commit_sanity_yield_leader_commit() {
 }
 
 #[tokio::test]
-async fn replica_commit_incompatible_protocol_version() {
+async fn replica_commit_bad_chain() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
     scope::run!(ctx, |ctx,s| async {
         let (mut util,runner) = UTHarness::new(ctx,1).await;
         s.spawn_bg(runner.run(ctx));
 
         let incompatible_protocol_version = util.incompatible_protocol_version();
         let mut replica_commit = util.new_replica_commit(ctx).await;
-        replica_commit.view.protocol_version = incompatible_protocol_version;
+        replica_commit.view.genesis = rng.gen();
         let res = util
             .process_replica_commit(ctx, util.sign(replica_commit))
             .await;

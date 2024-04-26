@@ -11,6 +11,7 @@ use zksync_consensus_roles::validator::{self, CommitQC, ProtocolVersion};
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     /// Incompatible protocol version.
+    #[allow(unused)]
     #[error("incompatible protocol version (message version: {message_version:?}, local version: {local_version:?}")]
     IncompatibleProtocolVersion {
         /// Message version.
@@ -61,14 +62,6 @@ impl StateMachine {
         // Unwrap message.
         let message = &signed_message.msg;
         let author = &signed_message.key;
-
-        // Check protocol version compatibility.
-        if !crate::PROTOCOL_VERSION.compatible(&message.view.protocol_version) {
-            return Err(Error::IncompatibleProtocolVersion {
-                message_version: message.view.protocol_version,
-                local_version: crate::PROTOCOL_VERSION,
-            });
-        }
 
         // Check that the message signer is in the validator committee.
         if !self.config.genesis().committee.contains(author) {

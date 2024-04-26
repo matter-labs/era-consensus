@@ -43,16 +43,17 @@ async fn reproposal_block_production() {
 }
 
 #[tokio::test]
-async fn leader_prepare_incompatible_protocol_version() {
+async fn leader_prepare_bad_chain() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
     scope::run!(ctx, |ctx,s| async {
         let (mut util,runner) = UTHarness::new(ctx,1).await;
         s.spawn_bg(runner.run(ctx));
 
         let incompatible_protocol_version = util.incompatible_protocol_version();
         let mut leader_prepare = util.new_leader_prepare(ctx).await;
-        leader_prepare.justification.view.protocol_version = incompatible_protocol_version;
+        leader_prepare.justification.view.genesis = rng.gen();
         let res = util
             .process_leader_prepare(ctx, util.sign(leader_prepare))
             .await;
@@ -531,13 +532,14 @@ async fn leader_commit_sanity_yield_replica_prepare() {
 async fn leader_commit_incompatible_protocol_version() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
     scope::run!(ctx, |ctx,s| async {
         let (mut util,runner) = UTHarness::new(ctx,1).await;
         s.spawn_bg(runner.run(ctx));
 
         let incompatible_protocol_version = util.incompatible_protocol_version();
         let mut leader_commit = util.new_leader_commit(ctx).await;
-        leader_commit.justification.message.view.protocol_version = incompatible_protocol_version;
+        leader_commit.justification.message.view.genesis = rng.gen();
         let res = util.process_leader_commit(ctx, util.sign(leader_commit)).await;
         assert_matches!(
             res,

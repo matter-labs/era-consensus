@@ -32,24 +32,6 @@ fn payload() -> Payload {
     )
 }
 
-/// Hardcoded fork.
-fn fork() -> Fork {
-    Fork {
-        number: ForkNumber(402598740274745173),
-        first_block: BlockNumber(8902834932452),
-    }
-}
-
-/// Hardcoded v1 genesis.
-fn genesis() -> Genesis {
-    Genesis {
-        chain_id: ChainId(1337),
-        committee: committee(),
-        fork: fork(),
-        leader_selection: LeaderSelectionMode::Weighted,
-    }
-}
-
 /// Checks that the order of validators in a committee is stable.
 #[test]
 fn committee_change_detector() {
@@ -66,27 +48,6 @@ fn payload_hash_change_detector() {
     .decode()
     .unwrap();
     assert_eq!(want, payload().hash());
-}
-
-/// Note that genesis is NOT versioned by ProtocolVersion.
-/// Even if it was, ALL versions of genesis need to be supported FOREVER,
-/// unless we introduce dynamic regenesis.
-#[test]
-fn genesis_hash_change_detector() {
-    let want: GenesisHash = Text::new(
-        "genesis_hash:keccak256:3fc736e5f69784be02ec83ff5f91414ee6b44e545b68eac7f54089bb63085b02",
-    )
-    .decode()
-    .unwrap();
-    assert_eq!(want, genesis().hash());
-}
-
-#[test]
-fn genesis_verify_leader_pubkey_not_in_committee() {
-    let mut rng = StdRng::seed_from_u64(29483920);
-    let mut genesis = rng.gen::<Genesis>();
-    genesis.leader_selection = LeaderSelectionMode::Sticky(rng.gen());
-    assert!(genesis.verify().is_err())
 }
 
 #[test]
@@ -136,8 +97,47 @@ fn weighted_change_detector() {
 }
 
 mod version1 {
-    const VERSION: ProtocolVersion = ProtocolVersion(1);
     use super::*;
+
+    /// Hardcoded fork.
+    fn fork() -> Fork {
+        Fork {
+            number: ForkNumber(402598740274745173),
+            first_block: BlockNumber(8902834932452),
+            protocol_version: ProtocolVersion(1),
+        }
+    }
+
+    /// Hardcoded v1 genesis.
+    fn genesis() -> Genesis {
+        Genesis {
+            chain_id: ChainId(1337),
+            committee: committee(),
+            fork: fork(),
+            leader_selection: LeaderSelectionMode::Weighted,
+        }
+    }
+
+    /// Note that genesis is NOT versioned by ProtocolVersion.
+    /// Even if it was, ALL versions of genesis need to be supported FOREVER,
+    /// unless we introduce dynamic regenesis.
+    #[test]
+    fn genesis_hash_change_detector() {
+        let want: GenesisHash = Text::new(
+            "genesis_hash:keccak256:3fc736e5f69784be02ec83ff5f91414ee6b44e545b68eac7f54089bb63085b02",
+        )
+        .decode()
+        .unwrap();
+        assert_eq!(want, genesis().hash());
+    }
+
+    #[test]
+    fn genesis_verify_leader_pubkey_not_in_committee() {
+        let mut rng = StdRng::seed_from_u64(29483920);
+        let mut genesis = rng.gen::<Genesis>();
+        genesis.leader_selection = LeaderSelectionMode::Sticky(rng.gen());
+        assert!(genesis.verify().is_err())
+    }
 
     /// asserts that msg.hash()==hash and that sig is a
     /// valid signature of msg (signed by `keys()[0]`).
@@ -157,9 +157,8 @@ mod version1 {
     /// Hardcoded view.
     fn view() -> View {
         View {
-            protocol_version: VERSION,
+            genesis: genesis().hash(),
             number: ViewNumber(9136573498460759103),
-            fork: fork().number,
         }
     }
 

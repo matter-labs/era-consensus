@@ -51,6 +51,7 @@ impl Setup {
         let fork = Fork {
             number: ForkNumber(rng.gen_range(0..100)),
             first_block: BlockNumber(rng.gen_range(0..100)),
+            protocol_version: ProtocolVersion::CURRENT,
         };
         Self::new_with_fork(rng, weights, fork)
     }
@@ -66,8 +67,7 @@ impl Setup {
     /// Pushes the next block with the given payload.
     pub fn push_block(&mut self, payload: Payload) {
         let view = View {
-            protocol_version: ProtocolVersion::CURRENT,
-            fork: self.genesis.fork.number,
+            genesis: self.genesis.hash(),
             number: self
                 .0
                 .blocks
@@ -201,6 +201,7 @@ impl Distribution<Fork> for Standard {
         Fork {
             number: rng.gen(),
             first_block: rng.gen(),
+            protocol_version: rng.gen(),
         }
     }
 }
@@ -343,8 +344,7 @@ impl Distribution<ViewNumber> for Standard {
 impl Distribution<View> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> View {
         View {
-            protocol_version: rng.gen(),
-            fork: rng.gen(),
+            genesis: rng.gen(),
             number: rng.gen(),
         }
     }

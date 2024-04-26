@@ -18,12 +18,14 @@ impl ProtoFmt for Fork {
         Ok(Self {
             number: ForkNumber(*required(&r.number).context("number")?),
             first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
+            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
             number: Some(self.number.0),
             first_block: Some(self.first_block.0),
+            protocol_version: Some(self.protocol_version.0),
         }
     }
 }
@@ -148,16 +150,14 @@ impl ProtoFmt for View {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
-            fork: ForkNumber(*required(&r.fork).context("fork")?),
+            genesis: read_required(&r.genesis).context("genesis")?,
             number: ViewNumber(*required(&r.number).context("number")?),
         })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            protocol_version: Some(self.protocol_version.0),
-            fork: Some(self.fork.0),
+            genesis: Some(self.genesis.build()),
             number: Some(self.number.0),
         }
     }

@@ -1,4 +1,5 @@
 use super::{BlockHeader, Genesis, View};
+use anyhow::Context as _;
 
 /// A Commit message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -12,7 +13,7 @@ pub struct ReplicaCommit {
 impl ReplicaCommit {
     /// Verifies the message.
     pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
-        anyhow::ensure!(self.view.fork == genesis.fork.number);
+        self.view.verify(genesis).context("view")?;
         anyhow::ensure!(self.proposal.number >= genesis.fork.first_block);
         Ok(())
     }

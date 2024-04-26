@@ -1,4 +1,4 @@
-use super::{CommitQC, CommitQCVerifyError, ForkNumber, Genesis, ReplicaCommit, View};
+use super::{CommitQC, CommitQCVerifyError, Genesis, ReplicaCommit, View};
 
 /// A Prepare message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -14,14 +14,9 @@ pub struct ReplicaPrepare {
 /// Error returned by `ReplicaPrepare::verify()`.
 #[derive(thiserror::Error, Debug)]
 pub enum ReplicaPrepareVerifyError {
-    /// BadFork.
-    #[error("bad fork: got {got:?}, want {want:?}")]
-    BadFork {
-        /// got
-        got: ForkNumber,
-        /// want
-        want: ForkNumber,
-    },
+    /// View.
+    #[error("view: {0:#}")]
+    View(anyhow::Error),
     /// FutureHighVoteView.
     #[error("high vote from the future")]
     HighVoteFutureView,
@@ -40,12 +35,7 @@ impl ReplicaPrepare {
     /// Verifies the message.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), ReplicaPrepareVerifyError> {
         use ReplicaPrepareVerifyError as Error;
-        if self.view.fork != genesis.fork.number {
-            return Err(Error::BadFork {
-                got: self.view.fork,
-                want: genesis.fork.number,
-            });
-        }
+        self.view.verify(genesis).map_err(Error::View)?;
         if let Some(v) = &self.high_vote {
             if self.view.number <= v.view.number {
                 return Err(Error::HighVoteFutureView);

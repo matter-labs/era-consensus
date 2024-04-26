@@ -7,11 +7,9 @@ import "zksync/std.proto";
 message Fork {
   optional uint64 number = 1; // required; ForkId
   optional uint64 first_block = 2; // required; BlockNumber
+  optional uint32 protocol_version = 3; // required; ProtocolVersion
 }
 
-// validators and validators_v1 are mutually exclusive.
-// They should be put into a oneof, but it may not recognize this as 
-// a backward compatible change: https://buf.build/docs/breaking/rules#field_same_oneof
 message Genesis {
   reserved 2;
   reserved "validators";
@@ -56,8 +54,9 @@ message FinalBlock {
 }
 
 message View {
-  optional uint32 protocol_version = 1; // required; ProtocolVersion
-  optional uint64 fork = 2; // required; ForkId 
+  reserved 1,2;
+  reserved "protocol_version","fork";
+  optional GenesisHash genesis = 4; // required
   optional uint64 number = 3; // required; ViewNumber
 }
 

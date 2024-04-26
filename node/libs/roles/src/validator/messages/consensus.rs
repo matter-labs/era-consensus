@@ -60,6 +60,8 @@ pub struct Fork {
     pub number: ForkNumber,
     /// First block of a fork.
     pub first_block: BlockNumber,
+    /// Protocol version used by this fork.
+    pub protocol_version: ProtocolVersion,
 }
 
 impl Default for Fork {
@@ -67,6 +69,7 @@ impl Default for Fork {
         Self {
             number: ForkNumber(0),
             first_block: BlockNumber(0),
+            protocol_version: ProtocolVersion::CURRENT,
         }
     }
 }
@@ -337,9 +340,9 @@ impl ConsensusMsg {
         }
     }
 
-    /// Protocol version of this message.
-    pub fn protocol_version(&self) -> ProtocolVersion {
-        self.view().protocol_version
+    /// Hash of the genesis that defines the chain.
+    pub fn genesis(&self) -> &GenesisHash {
+        &self.view().genesis
     }
 }
 
@@ -394,18 +397,19 @@ impl Variant<Msg> for LeaderCommit {
 /// View specification.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct View {
-    /// Protocol version.
-    pub protocol_version: ProtocolVersion,
-    /// Fork this message belongs to.
-    pub fork: ForkNumber,
+    /// Genesis of the chain this view belongs to.
+    pub genesis: GenesisHash,
     /// The number of the current view.
     pub number: ViewNumber,
 }
 
 impl View {
     /// Checks if `self` can occur after `b`.
-    pub fn after(&self, b: &Self) -> bool {
-        self.fork == b.fork && self.number > b.number && self.protocol_version >= b.protocol_version
+    // TODO(gprusak): at this point we might be recomputing genesis
+    // hash too often - consider caching it.
+    pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
+        anyhow::ensure!(self.genesis==genesis.hash(), "genesis mismatch");
+        Ok(())
     }
 }
 

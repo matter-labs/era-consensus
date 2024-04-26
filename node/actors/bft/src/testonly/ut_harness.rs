@@ -94,8 +94,7 @@ impl UTHarness {
     pub(crate) async fn produce_block_after_timeout(&mut self, ctx: &ctx::Ctx) {
         let want = ReplicaPrepare {
             view: validator::View {
-                protocol_version: self.protocol_version(),
-                fork: self.genesis().fork.number,
+                genesis: self.genesis().hash(),
                 number: self.replica.view.next(),
             },
             high_qc: self.replica.high_qc.clone(),
@@ -140,8 +139,7 @@ impl UTHarness {
 
     pub(crate) fn replica_view(&self) -> validator::View {
         validator::View {
-            protocol_version: self.protocol_version(),
-            fork: self.genesis().fork.number,
+            genesis: self.genesis().hash(),
             number: self.replica.view,
         }
     }
