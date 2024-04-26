@@ -1,7 +1,7 @@
 use super::{
     ChainId,
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
-    ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
+    ForkNumber, Genesis, GenesisRaw, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
@@ -12,8 +12,7 @@ use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
 
-#[allow(deprecated)]
-impl ProtoFmt for Genesis {
+impl ProtoFmt for GenesisRaw {
     type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let validators : Vec<_> = r.validators_v1
@@ -22,7 +21,7 @@ impl ProtoFmt for Genesis {
             .map(|(i, v)| WeightedValidator::read(v).context(i))
             .collect::<Result<_, _>>()
             .context("validators_v1")?;
-        let genesis = Self {
+        Ok(GenesisRaw {
             chain_id: ChainId(*required(&r.chain_id).context("chain_id")?),
             fork_number: ForkNumber(*required(&r.fork_number).context("fork_number")?),
             first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
@@ -30,9 +29,7 @@ impl ProtoFmt for Genesis {
             protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
             committee: Committee::new(validators.into_iter()).context("validators_v1")?,
             leader_selection: read_required(&r.leader_selection).context("leader_selection")?,
-        };
-        genesis.verify()?;
-        Ok(genesis)
+        })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
@@ -44,6 +41,18 @@ impl ProtoFmt for Genesis {
             validators_v1: self.committee.iter().map(|v| v.build()).collect(),
             leader_selection: Some(self.leader_selection.build()),
         }
+    }
+}
+
+impl ProtoFmt for Genesis {
+    type Proto = proto::Genesis;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        let genesis = GenesisRaw::read(r)?.with_hash();
+        genesis.verify()?;
+        Ok(genesis)
+    }
+    fn build(&self) -> Self::Proto {
+        GenesisRaw::build(self)
     }
 }
 

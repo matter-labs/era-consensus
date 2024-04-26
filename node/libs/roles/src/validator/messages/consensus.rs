@@ -228,7 +228,7 @@ pub struct ChainId(pub u64);
 
 /// Genesis of the blockchain, unique for each blockchain instance.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Genesis {
+pub struct GenesisRaw {
     /// ID of the blockchain.
     pub chain_id: ChainId,
 
@@ -249,26 +249,11 @@ pub struct Genesis {
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GenesisHash(pub(crate) Keccak256);
 
-impl Genesis {
-    /// Verifies correctness.
-    pub fn verify(&self) -> anyhow::Result<()> {
-        if let LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
-            if self.committee.index(pk).is_none() {
-                anyhow::bail!("leader_selection sticky mode public key is not in committee");
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Hash of the genesis.
-    pub fn hash(&self) -> GenesisHash {
-        GenesisHash(Keccak256::new(&zksync_protobuf::canonical(self)))
-    }
-
-    /// Computes the leader for the given view.
-    pub fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
-        self.committee.view_leader(view, &self.leader_selection)
+impl GenesisRaw {
+    /// Constructs Genesis with cached hash.
+    pub fn with_hash(self) -> Genesis {
+        let hash = GenesisHash(Keccak256::new(&zksync_protobuf::canonical(&self)));
+        Genesis(self,hash)
     }
 }
 
@@ -291,6 +276,48 @@ impl fmt::Debug for GenesisHash {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str(&TextFmt::encode(self))
     }
+}
+
+/// Genesis with cached hash.
+#[derive(Clone)]
+pub struct Genesis(GenesisRaw,GenesisHash);
+
+impl std::ops::Deref for Genesis {
+    type Target = GenesisRaw;
+    fn deref(&self) -> &Self::Target { &self.0 }
+}
+
+impl PartialEq for Genesis {
+    fn eq(&self, other: &Self) -> bool {
+        self.1==other.1
+    }
+}
+
+impl fmt::Debug for Genesis {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(fmt)
+    }
+}
+
+impl Genesis {
+    /// Verifies correctness.
+    pub fn verify(&self) -> anyhow::Result<()> {
+        if let LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
+            if self.committee.index(pk).is_none() {
+                anyhow::bail!("leader_selection sticky mode public key is not in committee");
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Computes the leader for the given view.
+    pub fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
+        self.committee.view_leader(view, &self.leader_selection)
+    }
+
+    /// Hash of the genesis.
+    pub fn hash(&self) -> GenesisHash { self.1.clone() }
 }
 
 /// Consensus messages.
@@ -388,9 +415,7 @@ pub struct View {
 }
 
 impl View {
-    /// Checks if `self` can occur after `b`.
-    // TODO(gprusak): at this point we might be recomputing genesis
-    // hash too often - consider caching it.
+    /// Verifies the view against the genesis.
     pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
         anyhow::ensure!(self.genesis==genesis.hash(), "genesis mismatch");
         Ok(())

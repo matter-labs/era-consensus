@@ -101,7 +101,7 @@ mod version1 {
 
     /// Hardcoded genesis.
     fn genesis() -> Genesis {
-        Genesis {
+        GenesisRaw {
             chain_id: ChainId(1337),
             fork_number: ForkNumber(402598740274745173),
             first_block: BlockNumber(8902834932452),
@@ -109,7 +109,7 @@ mod version1 {
             protocol_version: ProtocolVersion(1),
             committee: committee(),
             leader_selection: LeaderSelectionMode::Weighted,
-        }
+        }.with_hash()
     }
 
     /// Note that genesis is NOT versioned by ProtocolVersion.
@@ -128,8 +128,9 @@ mod version1 {
     #[test]
     fn genesis_verify_leader_pubkey_not_in_committee() {
         let mut rng = StdRng::seed_from_u64(29483920);
-        let mut genesis = rng.gen::<Genesis>();
+        let mut genesis = rng.gen::<GenesisRaw>();
         genesis.leader_selection = LeaderSelectionMode::Sticky(rng.gen());
+        let genesis = genesis.with_hash();
         assert!(genesis.verify().is_err())
     }
 

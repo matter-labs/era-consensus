@@ -2,7 +2,7 @@
 use super::{
     ChainId,
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
-    ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
+    ForkNumber, Genesis, GenesisRaw, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
     WeightedValidator,
@@ -30,7 +30,7 @@ impl Setup {
     /// New `Setup`.
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
         let keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
-        let genesis = Genesis {
+        let genesis = GenesisRaw {
             chain_id: ChainId(1337),
             committee: Committee::new(keys.iter().enumerate().map(|(i, k)| WeightedValidator {
                 key: k.public(),
@@ -41,7 +41,7 @@ impl Setup {
             first_block: BlockNumber(rng.gen_range(0..100)),
             protocol_version: ProtocolVersion::CURRENT,
             leader_selection: LeaderSelectionMode::RoundRobin,
-        };
+        }.with_hash();
         Self(SetupInner {
             keys,
             genesis,
@@ -199,9 +199,9 @@ impl Distribution<LeaderSelectionMode> for Standard {
     }
 }
 
-impl Distribution<Genesis> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
-        Genesis {
+impl Distribution<GenesisRaw> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisRaw {
+        GenesisRaw {
             chain_id: rng.gen(),
             fork_number: rng.gen(),
             first_block: rng.gen(),
@@ -212,6 +212,13 @@ impl Distribution<Genesis> for Standard {
         }
     }
 }
+
+impl Distribution<Genesis> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
+        rng.gen::<GenesisRaw>().with_hash()
+    }
+}
+
 
 impl Distribution<PayloadHash> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PayloadHash {
