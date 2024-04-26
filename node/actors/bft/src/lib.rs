@@ -90,15 +90,7 @@ impl Config {
             // This is the infinite loop where the consensus actually runs. The validator waits for either
             // a message from the network or for a timeout, and processes each accordingly.
             loop {
-                let input = pipe.recv.recv(ctx).await;
-
-                // We check if the context is active before processing the input. If the context is not active,
-                // we stop.
-                if !ctx.is_active() {
-                    return Ok(());
-                }
-
-                let InputMessage::Network(req) = input.unwrap();
+                let InputMessage::Network(req) = pipe.recv.recv(ctx).await?;
                 match &req.msg.msg {
                     ConsensusMsg::ReplicaPrepare(_) | ConsensusMsg::ReplicaCommit(_) => {
                         leader_send.send(req);
