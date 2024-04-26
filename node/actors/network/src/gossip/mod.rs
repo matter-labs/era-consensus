@@ -19,6 +19,7 @@ use zksync_concurrency::{ctx, ctx::channel, scope, sync};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 
+mod batch_signatures;
 mod fetch;
 mod handshake;
 mod runner;

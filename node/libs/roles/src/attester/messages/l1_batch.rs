@@ -1,3 +1,5 @@
+use zksync_concurrency::time;
+
 use crate::{
     attester::{self, AggregateSignature},
     validator::Genesis,
@@ -5,16 +7,18 @@ use crate::{
 
 use super::{SignedBatchMsg, Signers};
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Default, PartialOrd)]
 /// A batch number.
 pub struct BatchNumber(pub u64);
 
 /// A message to send by attesters to the gossip network.
 /// It contains the attester signature to sign the block batches to be sent to L1.
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct L1Batch {
     /// The number of the batch.
     pub number: BatchNumber,
+    /// Time at which this message has been signed.
+    pub timestamp: time::Utc,
 }
 
 /// A certificate for a batch of L2 blocks to be sent to L1.
@@ -46,6 +50,12 @@ pub enum L1BatchQCVerifyError {
     /// Bad signer set.
     #[error("signers set doesn't match genesis")]
     BadSignersSet,
+}
+
+impl L1Batch {
+    pub fn is_newer(&self, b: &Self) -> bool {
+        (&self.number, self.timestamp) > (&b.number, b.timestamp)
+    }
 }
 
 impl L1BatchQC {

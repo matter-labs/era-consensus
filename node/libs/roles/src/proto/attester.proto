@@ -6,6 +6,7 @@ import "zksync/std.proto";
 
 message L1Batch {
   optional uint64 number = 1; // required
+  optional std.Timestamp timestamp = 2; // required
 }
 
 message L1BatchQC {

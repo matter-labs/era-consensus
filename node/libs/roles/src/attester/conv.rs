@@ -14,11 +14,13 @@ impl ProtoFmt for L1Batch {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             number: BatchNumber(*required(&r.number).context("number")?),
+            timestamp: read_required(&r.timestamp).context("timestamp")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
             number: Some(self.number.0),
+            timestamp: Some(self.timestamp.build()),
         }
     }
 }

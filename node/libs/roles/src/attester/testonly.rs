@@ -1,6 +1,6 @@
 use super::{
-    AggregateSignature, Committee, L1Batch, L1BatchQC, Msg, MsgHash, PublicKey, SecretKey,
-    Signature, SignedBatchMsg, Signers, WeightedAttester,
+    AggregateSignature, BatchNumber, Committee, L1Batch, L1BatchQC, Msg, MsgHash, PublicKey,
+    SecretKey, Signature, SignedBatchMsg, Signers, WeightedAttester,
 };
 use bit_vec::BitVec;
 use rand::{
@@ -8,6 +8,7 @@ use rand::{
     Rng,
 };
 use std::sync::Arc;
+use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
 
 impl AggregateSignature {
@@ -51,8 +52,11 @@ impl Distribution<Committee> for Standard {
 }
 
 impl Distribution<L1Batch> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, _rng: &mut R) -> L1Batch {
-        L1Batch::default()
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> L1Batch {
+        L1Batch {
+            number: BatchNumber(rng.gen()),
+            timestamp: time::UNIX_EPOCH + time::Duration::seconds(rng.gen_range(0..1000000000)),
+        }
     }
 }
 

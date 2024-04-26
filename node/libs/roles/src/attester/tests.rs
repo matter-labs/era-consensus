@@ -6,7 +6,7 @@ use crate::{
 use super::*;
 use assert_matches::assert_matches;
 use rand::Rng;
-use zksync_concurrency::ctx;
+use zksync_concurrency::{ctx, time};
 use zksync_consensus_crypto::{ByteFmt, Text, TextFmt};
 use zksync_protobuf::testonly::test_encode_random;
 
@@ -137,6 +137,13 @@ fn test_agg_signature_verify() {
         .is_err());
 }
 
+fn make_l1_batch_msg(rng: &mut impl Rng) -> L1Batch {
+    L1Batch {
+        number: BatchNumber(rng.gen()),
+        timestamp: time::UNIX_EPOCH + time::Duration::seconds(rng.gen_range(0..1000000000)),
+    }
+}
+
 #[test]
 fn test_l1_batch_qc() {
     use L1BatchQCVerifyError as Error;
@@ -155,7 +162,7 @@ fn test_l1_batch_qc() {
     let attester_weight = setup1.genesis.attesters.total_weight() / 6;
 
     for i in 0..setup1.attester_keys.len() + 1 {
-        let mut qc = L1BatchQC::new(L1Batch::default(), &setup1.genesis);
+        let mut qc = L1BatchQC::new(make_l1_batch_msg(rng), &setup1.genesis);
         for key in &setup1.attester_keys[0..i] {
             qc.add(&key.sign_batch_msg(qc.message.clone()), &setup1.genesis);
         }
@@ -185,7 +192,7 @@ fn test_attester_committee_weights() {
     // Expected sum of the attesters weights
     let sums = [1000, 1600, 2400, 8400, 9300, 10000];
 
-    let msg = L1Batch::default();
+    let msg = make_l1_batch_msg(rng);
     let mut qc = L1BatchQC::new(msg.clone(), &setup.genesis);
     for (n, weight) in sums.iter().enumerate() {
         let key = &setup.attester_keys[n];
