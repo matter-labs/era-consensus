@@ -53,32 +53,10 @@ impl ForkNumber {
     }
 }
 
-/// Specification of a fork.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Fork {
-    /// Number of the fork.
-    pub number: ForkNumber,
-    /// First block of a fork.
-    pub first_block: BlockNumber,
-    /// Protocol version used by this fork.
-    pub protocol_version: ProtocolVersion,
-}
-
-impl Default for Fork {
-    fn default() -> Self {
-        Self {
-            number: ForkNumber(0),
-            first_block: BlockNumber(0),
-            protocol_version: ProtocolVersion::CURRENT,
-        }
-    }
-}
-
 /// The mode used for selecting leader for a given view.
-#[derive(Default, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LeaderSelectionMode {
     /// Select in a round-robin fashion, based on validators' index within the set.
-    #[default]
     RoundRobin,
 
     /// Select based on a sticky assignment to a specific validator.
@@ -245,16 +223,22 @@ pub fn max_faulty_weight(total_weight: u64) -> u64 {
 
 /// Ethereum CHAIN_ID
 /// `https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md`
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ChainId(pub u64);
 
 /// Genesis of the blockchain, unique for each blockchain instance.
-#[derive(Debug, Default, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Genesis {
     /// ID of the blockchain.
     pub chain_id: ChainId,
-    /// Fork of the chain to follow.
-    pub fork: Fork,
+
+    /// Number of the fork. Should be incremented every time the genesis is updated,
+    /// i.e. whenever a hard fork is performed.
+    pub fork_number: ForkNumber,
+    /// Protocol version used by this fork.
+    pub protocol_version: ProtocolVersion,
+    /// First block of a fork.
+    pub first_block: BlockNumber,
     /// Set of validators of the chain.
     pub committee: Committee,
     /// The mode used for selecting leader for a given view.

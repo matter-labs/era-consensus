@@ -50,7 +50,7 @@ impl Test {
 
             // Run the nodes until all honest nodes store enough finalized blocks.
             assert!(self.blocks_to_finalize > 0);
-            let first = setup.genesis.fork.first_block;
+            let first = setup.genesis.first_block;
             let last = first + (self.blocks_to_finalize as u64 - 1);
             for store in &honest {
                 store.wait_until_queued(ctx, last).await?;

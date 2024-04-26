@@ -235,7 +235,7 @@ impl LeaderPrepare {
                 }
                 let want_number = match high_qc {
                     Some(qc) => qc.header().number.next(),
-                    None => genesis.fork.first_block,
+                    None => genesis.first_block,
                 };
                 if self.proposal.number != want_number {
                     return Err(Error::BadBlockNumber {

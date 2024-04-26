@@ -1,7 +1,7 @@
 use super::{
     ChainId,
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
-    Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
+    ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
@@ -11,24 +11,6 @@ use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
-
-impl ProtoFmt for Fork {
-    type Proto = proto::Fork;
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {
-            number: ForkNumber(*required(&r.number).context("number")?),
-            first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
-            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
-        })
-    }
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            number: Some(self.number.0),
-            first_block: Some(self.first_block.0),
-            protocol_version: Some(self.protocol_version.0),
-        }
-    }
-}
 
 #[allow(deprecated)]
 impl ProtoFmt for Genesis {
@@ -42,7 +24,10 @@ impl ProtoFmt for Genesis {
             .context("validators_v1")?;
         let genesis = Self {
             chain_id: ChainId(*required(&r.chain_id).context("chain_id")?),
-            fork: read_required(&r.fork).context("fork")?,
+            fork_number: ForkNumber(*required(&r.fork_number).context("fork_number")?),
+            first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
+            
+            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
             committee: Committee::new(validators.into_iter()).context("validators_v1")?,
             leader_selection: read_required(&r.leader_selection).context("leader_selection")?,
         };
@@ -52,7 +37,10 @@ impl ProtoFmt for Genesis {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             chain_id: Some(self.chain_id.0),
-            fork: Some(self.fork.build()),
+            fork_number: Some(self.fork_number.0),
+            first_block: Some(self.first_block.0),
+            
+            protocol_version: Some(self.protocol_version.0),
             validators_v1: self.committee.iter().map(|v| v.build()).collect(),
             leader_selection: Some(self.leader_selection.build()),
         }

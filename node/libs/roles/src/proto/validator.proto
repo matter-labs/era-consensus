@@ -4,17 +4,16 @@ package zksync.roles.validator;
 
 import "zksync/std.proto";
 
-message Fork {
-  optional uint64 number = 1; // required; ForkId
-  optional uint64 first_block = 2; // required; BlockNumber
-  optional uint32 protocol_version = 3; // required; ProtocolVersion
-}
-
 message Genesis {
-  reserved 2;
-  reserved "validators";
+  reserved 1,2;
+  reserved "fork","validators";
   optional uint64 chain_id = 5; // required
-  optional Fork fork = 1; // required
+  optional uint64 fork_number = 6; // required; ForkNumber
+  optional uint64 first_block = 7; // required; BlockNumber
+ 
+  // These properties are expected to be overwritten each epoch.
+  // We will either remove them entirely, or keep them for the initial epoch.
+  optional uint32 protocol_version = 8; // required; ProtocolVersion
   repeated WeightedValidator validators_v1 = 3;
   optional LeaderSelectionMode leader_selection = 4; // required
 }

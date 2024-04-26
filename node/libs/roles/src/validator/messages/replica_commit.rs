@@ -14,7 +14,7 @@ impl ReplicaCommit {
     /// Verifies the message.
     pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
         self.view.verify(genesis).context("view")?;
-        anyhow::ensure!(self.proposal.number >= genesis.fork.first_block);
+        anyhow::ensure!(self.proposal.number >= genesis.first_block);
         Ok(())
     }
 }

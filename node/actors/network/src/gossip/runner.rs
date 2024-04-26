@@ -41,7 +41,7 @@ impl<'a> PushBlockStoreStateServer<'a> {
     fn new(net: &'a Network) -> Self {
         Self {
             state: sync::watch::channel(BlockStoreState {
-                first: net.genesis().fork.first_block,
+                first: net.genesis().first_block,
                 last: None,
             })
             .0,

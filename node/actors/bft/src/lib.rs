@@ -20,7 +20,7 @@ use anyhow::Context;
 pub use config::Config;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_roles::validator::{self, ConsensusMsg};
+use zksync_consensus_roles::validator;
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;
@@ -64,10 +64,10 @@ impl Config {
         ctx: &ctx::Ctx,
         mut pipe: ActorPipe<InputMessage, OutputMessage>,
     ) -> anyhow::Result<()> {
-        self.block_store
-            .genesis()
-            .verify()
-            .context("genesis().verify()")?;
+        let genesis = self.block_store.genesis();
+        anyhow::ensure!(genesis.protocol_version==validator::ProtocolVersion::CURRENT);
+        genesis.verify().context("genesis().verify()")?;
+        
         let cfg = Arc::new(self);
         let (leader, leader_send) = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
         let (replica, replica_send) =
@@ -91,13 +91,10 @@ impl Config {
             // a message from the network or for a timeout, and processes each accordingly.
             loop {
                 let InputMessage::Network(req) = pipe.recv.recv(ctx).await?;
+                use validator::ConsensusMsg as M;
                 match &req.msg.msg {
-                    ConsensusMsg::ReplicaPrepare(_) | ConsensusMsg::ReplicaCommit(_) => {
-                        leader_send.send(req);
-                    }
-                    ConsensusMsg::LeaderPrepare(_) | ConsensusMsg::LeaderCommit(_) => {
-                        replica_send.send(req);
-                    }
+                    M::ReplicaPrepare(_) | M::ReplicaCommit(_) => leader_send.send(req),
+                    M::LeaderPrepare(_) | M::LeaderCommit(_) => replica_send.send(req),
                 }
             }
         })

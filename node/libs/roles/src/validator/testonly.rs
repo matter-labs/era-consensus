@@ -2,7 +2,7 @@
 use super::{
     ChainId,
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
-    Fork, ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
+    ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
     WeightedValidator,
@@ -22,17 +22,25 @@ use zksync_consensus_utils::enum_util::Variant;
 pub struct Setup(SetupInner);
 
 impl Setup {
-    /// New `Setup` with a given `fork`.
-    pub fn new_with_fork(rng: &mut impl Rng, weights: Vec<u64>, fork: Fork) -> Self {
+    /// New `Setup`.
+    pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
+        Self::new_with_weights(rng, vec![1; validators])
+    }
+
+    /// New `Setup`.
+    pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
         let keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
         let genesis = Genesis {
+            chain_id: ChainId(1337),
             committee: Committee::new(keys.iter().enumerate().map(|(i, k)| WeightedValidator {
                 key: k.public(),
                 weight: weights[i],
             }))
             .unwrap(),
-            fork,
-            ..Default::default()
+            fork_number: ForkNumber(rng.gen_range(0..100)),
+            first_block: BlockNumber(rng.gen_range(0..100)),
+            protocol_version: ProtocolVersion::CURRENT,
+            leader_selection: LeaderSelectionMode::RoundRobin,
         };
         Self(SetupInner {
             keys,
@@ -41,26 +49,11 @@ impl Setup {
         })
     }
 
-    /// New `Setup`.
-    pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
-        Self::new_with_weights(rng, vec![1; validators])
-    }
-
-    /// New `Setup`.
-    pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
-        let fork = Fork {
-            number: ForkNumber(rng.gen_range(0..100)),
-            first_block: BlockNumber(rng.gen_range(0..100)),
-            protocol_version: ProtocolVersion::CURRENT,
-        };
-        Self::new_with_fork(rng, weights, fork)
-    }
-
     /// Next block to finalize.
     pub fn next(&self) -> BlockNumber {
         match self.0.blocks.last() {
             Some(b) => b.header().number.next(),
-            None => self.0.genesis.fork.first_block,
+            None => self.0.genesis.first_block,
         }
     }
 
@@ -81,7 +74,7 @@ impl Setup {
                 payload: payload.hash(),
             },
             None => BlockHeader {
-                number: self.genesis.fork.first_block,
+                number: self.genesis.first_block,
                 payload: payload.hash(),
             },
         };
@@ -196,16 +189,6 @@ impl Distribution<GenesisHash> for Standard {
     }
 }
 
-impl Distribution<Fork> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Fork {
-        Fork {
-            number: rng.gen(),
-            first_block: rng.gen(),
-            protocol_version: rng.gen(),
-        }
-    }
-}
-
 impl Distribution<LeaderSelectionMode> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderSelectionMode {
         match rng.gen_range(0..=2) {
@@ -220,7 +203,10 @@ impl Distribution<Genesis> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
         Genesis {
             chain_id: rng.gen(),
-            fork: rng.gen(),
+            fork_number: rng.gen(),
+            first_block: rng.gen(),
+
+            protocol_version: rng.gen(),
             committee: rng.gen(),
             leader_selection: rng.gen(),
         }

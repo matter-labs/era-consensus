@@ -97,7 +97,6 @@ fn test_schema_encoding() {
     test_encode_random::<PublicKey>(rng);
     test_encode_random::<Signature>(rng);
     test_encode_random::<AggregateSignature>(rng);
-    test_encode_random::<Fork>(rng);
     test_encode_random::<Genesis>(rng);
     test_encode_random::<GenesisHash>(rng);
     test_encode_random::<LeaderSelectionMode>(rng);
@@ -217,11 +216,8 @@ fn test_commit_qc() {
     // This will create equally weighted validators
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
-    let genesis3 = Genesis {
-        committee: Committee::new(setup1.genesis.committee.iter().take(3).cloned()).unwrap(),
-        fork: setup1.genesis.fork.clone(),
-        ..Default::default()
-    };
+    let mut genesis3 = setup1.genesis.clone();
+    genesis3.committee = Committee::new(setup1.genesis.committee.iter().take(3).cloned()).unwrap();
     let validator_weight = setup1.genesis.committee.total_weight() / 6;
 
     for i in 0..setup1.keys.len() + 1 {
@@ -255,11 +251,8 @@ fn test_prepare_qc() {
     // This will create equally weighted validators
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
-    let genesis3 = Genesis {
-        committee: Committee::new(setup1.genesis.committee.iter().take(3).cloned()).unwrap(),
-        fork: setup1.genesis.fork.clone(),
-        ..Default::default()
-    };
+    let mut genesis3 = setup1.genesis.clone();
+    genesis3.committee = Committee::new(setup1.genesis.committee.iter().take(3).cloned()).unwrap();
 
     let view: ViewNumber = rng.gen();
     let msgs: Vec<_> = (0..3)

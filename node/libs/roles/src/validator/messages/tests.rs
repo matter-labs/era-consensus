@@ -99,21 +99,15 @@ fn weighted_change_detector() {
 mod version1 {
     use super::*;
 
-    /// Hardcoded fork.
-    fn fork() -> Fork {
-        Fork {
-            number: ForkNumber(402598740274745173),
-            first_block: BlockNumber(8902834932452),
-            protocol_version: ProtocolVersion(1),
-        }
-    }
-
-    /// Hardcoded v1 genesis.
+    /// Hardcoded genesis.
     fn genesis() -> Genesis {
         Genesis {
             chain_id: ChainId(1337),
+            fork_number: ForkNumber(402598740274745173),
+            first_block: BlockNumber(8902834932452),
+            
+            protocol_version: ProtocolVersion(1),
             committee: committee(),
-            fork: fork(),
             leader_selection: LeaderSelectionMode::Weighted,
         }
     }
