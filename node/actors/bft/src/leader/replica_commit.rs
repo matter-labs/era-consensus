@@ -5,20 +5,11 @@ use crate::metrics;
 use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::validator::{self, CommitQC, ProtocolVersion};
+use zksync_consensus_roles::validator;
 
 /// Errors that can occur when processing a "replica commit" message.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    /// Incompatible protocol version.
-    #[allow(unused)]
-    #[error("incompatible protocol version (message version: {message_version:?}, local version: {local_version:?}")]
-    IncompatibleProtocolVersion {
-        /// Message version.
-        message_version: ProtocolVersion,
-        /// Local version.
-        local_version: ProtocolVersion,
-    },
     /// Message signer isn't part of the validator set.
     #[error("Message signer isn't part of the validator set (signer: {signer:?})")]
     NonValidatorSigner {
@@ -90,7 +81,7 @@ impl StateMachine {
             .entry(message.view.number)
             .or_default()
             .entry(message.clone())
-            .or_insert_with(|| CommitQC::new(message.clone(), self.config.genesis()));
+            .or_insert_with(|| validator::CommitQC::new(message.clone(), self.config.genesis()));
 
         // If we already have a message from the same validator and for the same view, we discard it.
         let validator_view = self.validator_views.get(author);

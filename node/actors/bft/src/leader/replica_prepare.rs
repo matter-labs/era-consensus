@@ -7,15 +7,6 @@ use zksync_consensus_roles::validator;
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    /// Incompatible protocol version.
-    #[allow(unused)]
-    #[error("incompatible protocol version (message version: {message_version:?}, local version: {local_version:?}")]
-    IncompatibleProtocolVersion {
-        /// Message version.
-        message_version: validator::ProtocolVersion,
-        /// Local version.
-        local_version: validator::ProtocolVersion,
-    },
     /// Message signer isn't part of the validator set.
     #[error("Message signer isn't part of the validator set (signer: {signer:?})")]
     NonValidatorSigner {
