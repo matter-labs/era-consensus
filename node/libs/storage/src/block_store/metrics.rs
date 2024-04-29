@@ -28,4 +28,8 @@ pub(super) struct BlockStore {
     pub(super) next_queued_block: vise::Gauge<u64>,
     /// BlockNumber of the next block to persist.
     pub(super) next_persisted_block: vise::Gauge<u64>,
+    /// Size (in blocks) of the in-memory block cache.
+    pub(super) cache_size: vise::Gauge<usize>,
+    /// Capacity (in blocks) of the in-memory block cache.
+    pub(super) cache_capacity: vise::Gauge<usize>,
 }

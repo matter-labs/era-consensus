@@ -88,7 +88,7 @@ impl PersistentBlockStore for BlockStore {
         }
         blocks.push_back(block.clone());
         if let Some(c) = self.0.capacity {
-            if blocks.len() > c {
+            if blocks.len() >= c {
                 blocks.pop_front();
             }
         }

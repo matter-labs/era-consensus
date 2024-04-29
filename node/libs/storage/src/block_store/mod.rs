@@ -118,7 +118,7 @@ impl Inner {
 
     fn truncate_cache(&mut self) {
         while self.cache.len() > Self::CACHE_CAPACITY
-            && self.persisted.contains(self.cache[0].number())
+            && self.persisted.next() > self.cache[0].number()
         {
             self.cache.pop_front();
         }
@@ -310,6 +310,8 @@ impl BlockStore {
         let inner = self.inner.borrow();
         m.next_queued_block.set(inner.queued.next().0);
         m.next_persisted_block.set(inner.persisted.next().0);
+        m.cache_size.set(inner.cache.len());
+        m.cache_capacity.set(inner.cache.capacity());
         m
     }
 }
