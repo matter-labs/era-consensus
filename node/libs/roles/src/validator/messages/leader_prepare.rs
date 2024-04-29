@@ -50,7 +50,7 @@ pub enum PrepareQCVerifyError {
 #[derive(thiserror::Error, Debug)]
 pub enum PrepareQCAddError {
     /// Inconsistent views.
-    #[error("inconsistent views of signed messages")]
+    #[error("Trying to add a message from a diferent view")]
     InconsistentViews,
     /// Validator not present in the committee.
     #[error("Validator not in committee: {signer:?}")]

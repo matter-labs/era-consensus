@@ -58,7 +58,7 @@ pub enum CommitQCVerifyError {
 #[derive(thiserror::Error, Debug)]
 pub enum CommitQCAddError {
     /// Inconsistent views.
-    #[error("inconsistent views of signed messages")]
+    #[error("Trying to add a message from a diferent view")]
     InconsistentViews,
     /// Validator not present in the committee.
     #[error("Validator not in committee: {signer:?}")]
