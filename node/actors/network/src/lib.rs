@@ -2,7 +2,7 @@
 use anyhow::Context as _;
 use std::sync::Arc;
 use tracing::Instrument as _;
-use zksync_concurrency::{ctx, ctx::channel, limiter, scope, time};
+use zksync_concurrency::{ctx, ctx::channel, limiter, scope};
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
@@ -71,36 +71,16 @@ impl Network {
     /// Handles a dispatcher message.
     async fn handle_message(
         &self,
-        ctx: &ctx::Ctx,
+        _ctx: &ctx::Ctx,
         message: io::InputMessage,
     ) -> anyhow::Result<()> {
-        /// Timeout for handling a consensus message.
-        const CONSENSUS_MSG_TIMEOUT: time::Duration = time::Duration::seconds(10);
-        /// Timeout for a GetBlock RPC.
-        const GET_BLOCK_TIMEOUT: time::Duration = time::Duration::seconds(10);
-
         match message {
             io::InputMessage::Consensus(message) => {
-                let consensus = self.consensus.as_ref().context("not a validator node")?;
-                let ctx = &ctx.with_timeout(CONSENSUS_MSG_TIMEOUT);
-                match message.recipient {
-                    io::Target::Validator(key) => {
-                        consensus.send(ctx, &key, message.message).await?
-                    }
-                    io::Target::Broadcast => consensus.broadcast(ctx, message.message).await?,
-                }
-            }
-            io::InputMessage::SyncBlocks(io::SyncBlocksInputMessage::GetBlock {
-                recipient,
-                number,
-                response,
-            }) => {
-                let ctx = &ctx.with_timeout(GET_BLOCK_TIMEOUT);
-                let _ = response.send(match self.gossip.get_block(ctx, &recipient, number).await {
-                    Ok(Some(block)) => Ok(block),
-                    Ok(None) => Err(io::GetBlockError::NotAvailable),
-                    Err(err) => Err(io::GetBlockError::Internal(err)),
-                });
+                self.consensus
+                    .as_ref()
+                    .context("not a validator node")?
+                    .msg_pool
+                    .send(Arc::new(message));
             }
         }
         Ok(())
@@ -133,31 +113,37 @@ impl Runner {
                 Ok(())
             });
 
+            // Fetch missing blocks in the background.
+            s.spawn(async {
+                self.net.gossip.run_block_fetcher(ctx).await;
+                Ok(())
+            });
+
             // Maintain static gossip connections.
             for (peer, addr) in &self.net.gossip.cfg.gossip.static_outbound {
-                s.spawn(async {
+                s.spawn::<()>(async {
+                    let addr = &*addr;
                     loop {
-                        let run_result = self
+                        let res = self
                             .net
                             .gossip
                             .run_outbound_stream(ctx, peer, addr.clone())
+                            .instrument(tracing::info_span!("out", ?addr))
                             .await;
-                        if let Err(err) = run_result {
-                            tracing::info!("gossip.run_outbound_stream(): {err:#}");
+                        if let Err(err) = res {
+                            tracing::info!("gossip.run_outbound_stream({addr:?}): {err:#}");
                         }
-                        if let Err(ctx::Canceled) = ctx.sleep(CONNECT_RETRY).await {
-                            return Ok(());
-                        }
+                        ctx.sleep(CONNECT_RETRY).await?;
                     }
                 });
             }
 
             if let Some(c) = &self.net.consensus {
-                let validators = &c.gossip.genesis().validators;
+                let validators = &c.gossip.genesis().committee;
                 // If we are active validator ...
                 if validators.contains(&c.key.public()) {
                     // Maintain outbound connections.
-                    for peer in validators.iter_keys() {
+                    for peer in validators.keys() {
                         s.spawn(async {
                             c.maintain_connection(ctx, peer).await;
                             Ok(())
@@ -176,7 +162,7 @@ impl Runner {
                     // This is a syscall which should always succeed on a correctly opened socket.
                     let addr = stream.peer_addr().context("peer_addr()")?;
                     let res = async {
-                        tracing::info!("new inbound TCP connection from");
+                        tracing::info!("new connection");
                         let (stream, endpoint) = preface::accept(ctx, stream)
                             .await
                             .context("preface::accept()")?;
@@ -198,7 +184,7 @@ impl Runner {
                         }
                         anyhow::Ok(())
                     }
-                    .instrument(tracing::info_span!("{addr}"))
+                    .instrument(tracing::info_span!("in", ?addr))
                     .await;
                     if let Err(err) = res {
                         tracing::info!("{addr}: {err:#}");

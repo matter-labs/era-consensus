@@ -28,7 +28,6 @@ pub enum SelectionFunctionResult {
 /// Creates a channel and returns the [`Sender`] and [`Receiver`] handles.
 /// All values sent on [`Sender`] will become available on [`Receiver`] in the same order as it was sent,
 /// unless will be pruned before received.
-/// The Sender can be cloned to send to the same channel from multiple code locations. Only one Receiver is supported.
 ///
 /// * [`T`]: The type of data that will be sent through the channel.
 /// * [`filter_function`]: A function that checks the newly sent value and avoids adding to the queue if it returns false

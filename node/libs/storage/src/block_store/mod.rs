@@ -1,7 +1,7 @@
 //! Defines storage layer for finalized blocks.
 use anyhow::Context as _;
 use std::{collections::VecDeque, fmt, sync::Arc};
-use zksync_concurrency::{ctx, error::Wrap as _, sync};
+use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::validator;
 
 mod metrics;
@@ -36,10 +36,10 @@ impl BlockStoreState {
     /// Verifies `BlockStoreState'.
     pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
         anyhow::ensure!(
-            genesis.fork.first_block <= self.first,
+            genesis.first_block <= self.first,
             "first block ({}) doesn't belong to the fork (which starts at block {})",
             self.first,
-            genesis.fork.first_block
+            genesis.first_block
         );
         if let Some(last) = &self.last {
             anyhow::ensure!(
@@ -63,38 +63,73 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
     /// Consensus code calls this method only once.
     async fn genesis(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::Genesis>;
 
-    /// Range of blocks available in storage.
-    /// Consensus code calls this method only once and then tracks the
-    /// range of available blocks internally.
-    async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState>;
+    /// Range of blocks persisted in storage.
+    fn persisted(&self) -> sync::watch::Receiver<BlockStoreState>;
 
     /// Gets a block by its number.
+    /// All the blocks from `state()` range are expected to be available.
+    /// Blocks that have been queued but haven't been persisted yet don't have to be available.
     /// Returns error if block is missing.
-    /// Caller is expected to know the state (by calling `state()`)
-    /// and only request the blocks contained in the state.
     async fn block(
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
     ) -> ctx::Result<validator::FinalBlock>;
 
-    /// Persistently store a block.
-    /// Implementations are only required to accept a block directly after the current last block,
-    /// so that the stored blocks always constitute a continuous range.
-    /// Implementation should return only after the block is stored PERSISTENTLY -
-    /// consensus liveness property depends on this behavior.
-    async fn store_next_block(
+    /// Queue the block to be persisted in storage.
+    /// `queue_next_block()` may return BEFORE the block is actually persisted,
+    /// but if the call succeeded the block is expected to be persisted eventually.
+    /// Implementations are only required to accept a block directly after the previous queued
+    /// block, starting with `persisted().borrow().next()`.
+    async fn queue_next_block(
         &self,
         ctx: &ctx::Ctx,
-        block: &validator::FinalBlock,
+        block: validator::FinalBlock,
     ) -> ctx::Result<()>;
 }
 
 #[derive(Debug)]
 struct Inner {
-    queued_state: sync::watch::Sender<BlockStoreState>,
-    persisted_state: BlockStoreState,
-    queue: VecDeque<validator::FinalBlock>,
+    queued: BlockStoreState,
+    persisted: BlockStoreState,
+    cache: VecDeque<validator::FinalBlock>,
+}
+
+impl Inner {
+    /// Minimal number of most recent blocks to keep in memory.
+    /// It allows to serve the recent blocks to peers fast, even
+    /// if persistent storage reads are slow (like in RocksDB).
+    /// `BlockStore` may keep in memory more blocks in case
+    /// blocks are queued faster than they are persisted.
+    const CACHE_CAPACITY: usize = 100;
+
+    /// Tries to push the next block to cache.
+    /// Noop if provided block is not the expected one.
+    /// Returns true iff cache has been modified.
+    fn try_push(&mut self, block: validator::FinalBlock) -> bool {
+        if self.queued.next() != block.number() {
+            return false;
+        }
+        self.queued.last = Some(block.justification.clone());
+        self.cache.push_back(block);
+        self.truncate_cache();
+        true
+    }
+
+    fn truncate_cache(&mut self) {
+        while self.cache.len() > Self::CACHE_CAPACITY
+            && self.persisted.contains(self.cache[0].number())
+        {
+            self.cache.pop_front();
+        }
+    }
+
+    fn block(&self, n: validator::BlockNumber) -> Option<validator::FinalBlock> {
+        // Subtraction is safe, because blocks in cache are
+        // stored in increasing order of block number.
+        let first = self.cache.front()?;
+        self.cache.get((n.0 - first.number().0) as usize).cloned()
+    }
 }
 
 /// A wrapper around a PersistentBlockStore which adds caching blocks in-memory
@@ -118,33 +153,37 @@ impl BlockStoreRunner {
         let store_ref = Arc::downgrade(&self.0);
         let _ = COLLECTOR.before_scrape(move || Some(store_ref.upgrade()?.scrape_metrics()));
 
-        let res = async {
+        let res = scope::run!(ctx, |ctx, s| async {
+            let persisted = self.0.persistent.persisted();
+            let mut queue_next = persisted.borrow().next();
+            // Task truncating cache whenever a block gets persisted.
+            s.spawn::<()>(async {
+                let mut persisted = persisted;
+                loop {
+                    let persisted = sync::changed(ctx, &mut persisted).await?.clone();
+                    self.0.inner.send_modify(|inner| {
+                        inner.persisted = persisted;
+                        inner.truncate_cache();
+                    });
+                }
+            });
+            // Task queueing blocks to be persisted.
             let inner = &mut self.0.inner.subscribe();
             loop {
-                let block = sync::wait_for(ctx, inner, |inner| !inner.queue.is_empty())
+                let block = sync::wait_for(ctx, inner, |inner| inner.queued.contains(queue_next))
                     .await?
-                    .queue[0]
-                    .clone();
+                    .block(queue_next)
+                    .unwrap();
+                queue_next = queue_next.next();
 
                 // TODO: monitor errors as well.
                 let t = metrics::PERSISTENT_BLOCK_STORE
-                    .store_next_block_latency
+                    .queue_next_block_latency
                     .start();
-                self.0.persistent.store_next_block(ctx, &block).await?;
+                self.0.persistent.queue_next_block(ctx, block).await?;
                 t.observe();
-                tracing::info!(
-                    "stored block #{}: {:#?}",
-                    block.header().number,
-                    block.header().payload
-                );
-
-                self.0.inner.send_modify(|inner| {
-                    debug_assert_eq!(inner.persisted_state.next(), block.number());
-                    inner.persisted_state.last = Some(block.justification.clone());
-                    inner.queue.pop_front();
-                });
             }
-        }
+        })
         .await;
         match res {
             Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
@@ -165,15 +204,13 @@ impl BlockStore {
         let t = metrics::PERSISTENT_BLOCK_STORE.genesis_latency.start();
         let genesis = persistent.genesis(ctx).await.wrap("persistent.genesis()")?;
         t.observe();
-        let t = metrics::PERSISTENT_BLOCK_STORE.state_latency.start();
-        let state = persistent.state(ctx).await.wrap("persistent.state()")?;
-        t.observe();
-        state.verify(&genesis).context("state.verify()")?;
+        let persisted = persistent.persisted().borrow().clone();
+        persisted.verify(&genesis).context("state.verify()")?;
         let this = Arc::new(Self {
             inner: sync::watch::channel(Inner {
-                queued_state: sync::watch::channel(state.clone()).0,
-                persisted_state: state,
-                queue: VecDeque::new(),
+                queued: persisted.clone(),
+                persisted,
+                cache: VecDeque::new(),
             })
             .0,
             genesis,
@@ -187,6 +224,11 @@ impl BlockStore {
         &self.genesis
     }
 
+    /// Available blocks (in memory & persisted).
+    pub fn queued(&self) -> BlockStoreState {
+        self.inner.borrow().queued.clone()
+    }
+
     /// Fetches a block (from queue or persistent storage).
     pub async fn block(
         &self,
@@ -195,14 +237,11 @@ impl BlockStore {
     ) -> ctx::Result<Option<validator::FinalBlock>> {
         {
             let inner = self.inner.borrow();
-            if !inner.queued_state.borrow().contains(number) {
+            if !inner.queued.contains(number) {
                 return Ok(None);
             }
-            if !inner.persisted_state.contains(number) {
-                // Subtraction is safe, because we know that the block
-                // is in inner.queue at this point.
-                let idx = number.0 - inner.persisted_state.next().0;
-                return Ok(inner.queue.get(idx as usize).cloned());
+            if let Some(block) = inner.block(number) {
+                return Ok(Some(block));
             }
         }
         let t = metrics::PERSISTENT_BLOCK_STORE.block_latency.start();
@@ -215,7 +254,7 @@ impl BlockStore {
         Ok(Some(block))
     }
 
-    /// Insert block to a queue to be persisted eventually.
+    /// Append block to a queue to be persisted eventually.
     /// Since persisting a block may take a significant amount of time,
     /// BlockStore contains a queue of blocks waiting to be persisted.
     /// `queue_block()` adds a block to the queue as soon as all intermediate
@@ -226,74 +265,51 @@ impl BlockStore {
         ctx: &ctx::Ctx,
         block: validator::FinalBlock,
     ) -> ctx::Result<()> {
-        let number = block.number();
-        {
-            let sub = &mut self.subscribe();
-            let queued_state =
-                sync::wait_for(ctx, sub, |queued_state| queued_state.next() >= number).await?;
-            if queued_state.next() > number {
-                return Ok(());
-            }
-            block.verify(&self.genesis).context("block.verify()")?;
-        }
-        self.inner.send_if_modified(|inner| {
-            let modified = inner.queued_state.send_if_modified(|queued_state| {
-                // It may happen that the same block is queued_state by 2 calls.
-                if queued_state.next() != number {
-                    return false;
-                }
-                queued_state.last = Some(block.justification.clone());
-                true
-            });
-            if !modified {
-                return false;
-            }
-            inner.queue.push_back(block);
-            true
-        });
+        block.verify(&self.genesis).context("block.verify()")?;
+        sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
+            inner.queued.next() >= block.number()
+        })
+        .await?;
+        self.inner.send_if_modified(|inner| inner.try_push(block));
         Ok(())
     }
 
-    /// Waits until the given block is queued to be stored.
-    /// If `number < state.first` then it immetiately returns `Ok(())`.
+    /// Waits until the given block is queued (in memory, or persisted).
+    /// Note that it doesn't mean that the block is actually available, as old blocks might get pruned.
     pub async fn wait_until_queued(
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::OrCanceled<()> {
-        sync::wait_for(ctx, &mut self.subscribe(), |queued_state| {
-            number < queued_state.next()
+    ) -> ctx::OrCanceled<BlockStoreState> {
+        Ok(sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
+            number < inner.queued.next()
         })
-        .await?;
-        Ok(())
+        .await?
+        .queued
+        .clone())
     }
 
     /// Waits until the given block is stored persistently.
-    /// If `number < state.first` then it immetiately returns `Ok(())`.
+    /// Note that it doesn't mean that the block is actually available, as old blocks might get pruned.
     pub async fn wait_until_persisted(
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::OrCanceled<()> {
-        sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
-            number < inner.persisted_state.next()
-        })
-        .await?;
-        Ok(())
-    }
-
-    /// Subscribes to the `BlockStoreState` changes.
-    /// Note that this state includes both queue AND stored blocks.
-    pub fn subscribe(&self) -> sync::watch::Receiver<BlockStoreState> {
-        self.inner.borrow().queued_state.subscribe()
+    ) -> ctx::OrCanceled<BlockStoreState> {
+        Ok(
+            sync::wait_for(ctx, &mut self.persistent.persisted(), |persisted| {
+                number < persisted.next()
+            })
+            .await?
+            .clone(),
+        )
     }
 
     fn scrape_metrics(&self) -> metrics::BlockStore {
         let m = metrics::BlockStore::default();
         let inner = self.inner.borrow();
-        m.next_queued_block
-            .set(inner.queued_state.borrow().next().0);
-        m.next_persisted_block.set(inner.persisted_state.next().0);
+        m.next_queued_block.set(inner.queued.next().0);
+        m.next_persisted_block.set(inner.persisted.next().0);
         m
     }
 }

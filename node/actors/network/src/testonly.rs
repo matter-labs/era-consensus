@@ -1,7 +1,13 @@
 //! Testonly utilities.
 #![allow(dead_code)]
-use crate::{Config, GossipConfig, Network, RpcConfig, Runner};
-use rand::Rng;
+use crate::{
+    io::{ConsensusInputMessage, Target},
+    Config, GossipConfig, Network, RpcConfig, Runner,
+};
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -10,6 +16,24 @@ use zksync_concurrency::{ctx, ctx::channel, io, limiter, net, scope, sync};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe;
+
+impl Distribution<Target> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Target {
+        match rng.gen_range(0..2) {
+            0 => Target::Broadcast,
+            _ => Target::Validator(rng.gen()),
+        }
+    }
+}
+
+impl Distribution<ConsensusInputMessage> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ConsensusInputMessage {
+        ConsensusInputMessage {
+            message: rng.gen(),
+            recipient: rng.gen(),
+        }
+    }
+}
 
 /// Synchronously forwards data from one stream to another.
 pub(crate) async fn forward(
@@ -71,6 +95,7 @@ pub fn new_configs(
             max_block_size: usize::MAX,
             tcp_accept_rate: limiter::Rate::INF,
             rpc: RpcConfig::default(),
+            max_block_queue_size: 10,
         }
     });
     let mut cfgs: Vec<_> = configs.collect();
@@ -107,6 +132,7 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
         max_block_size: usize::MAX,
         tcp_accept_rate: limiter::Rate::INF,
         rpc: RpcConfig::default(),
+        max_block_queue_size: 10,
     }
 }
 
@@ -194,7 +220,7 @@ impl Instance {
     pub async fn wait_for_consensus_connections(&self) {
         let consensus_state = self.net.consensus.as_ref().unwrap();
 
-        let want: HashSet<_> = self.genesis().validators.iter_keys().cloned().collect();
+        let want: HashSet<_> = self.genesis().committee.keys().cloned().collect();
         consensus_state
             .inbound
             .subscribe()
@@ -272,7 +298,7 @@ pub async fn instant_network(
         node.net
             .gossip
             .validator_addrs
-            .update(&node.genesis().validators, &addrs)
+            .update(&node.genesis().committee, &addrs)
             .await
             .unwrap();
     }

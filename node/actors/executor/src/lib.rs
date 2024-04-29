@@ -11,7 +11,6 @@ use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BlockStore, ReplicaStore};
-use zksync_consensus_sync_blocks as sync_blocks;
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
@@ -95,6 +94,7 @@ impl Executor {
             validator_key: self.validator.as_ref().map(|v| v.key.clone()),
             ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
+            max_block_queue_size: 20,
             tcp_accept_rate: limiter::Rate {
                 burst: 10,
                 refresh: time::Duration::milliseconds(100),
@@ -109,8 +109,8 @@ impl Executor {
             if !self
                 .block_store
                 .genesis()
-                .validators
-                .iter_keys()
+                .committee
+                .keys()
                 .any(|key| key == &validator.key.public())
             {
                 anyhow::bail!("this validator doesn't belong to the consensus");
@@ -126,27 +126,13 @@ impl Executor {
 
         // Generate the communication pipes. We have one for each actor.
         let (consensus_actor_pipe, consensus_dispatcher_pipe) = pipe::new();
-        let (sync_blocks_actor_pipe, sync_blocks_dispatcher_pipe) = pipe::new();
         let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
         // Create the IO dispatcher.
-        let mut dispatcher = Dispatcher::new(
-            consensus_dispatcher_pipe,
-            sync_blocks_dispatcher_pipe,
-            network_dispatcher_pipe,
-        );
+        let dispatcher = Dispatcher::new(consensus_dispatcher_pipe, network_dispatcher_pipe);
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
-            s.spawn_blocking(|| dispatcher.run(ctx).context("IO Dispatcher stopped"));
-            s.spawn(async {
-                let (net, runner) = network::Network::new(
-                    network_config,
-                    self.block_store.clone(),
-                    network_actor_pipe,
-                );
-                net.register_metrics();
-                runner.run(ctx).await.context("Network stopped")
-            });
+            s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
             if let Some(validator) = self.validator {
                 s.spawn(async {
                     let validator = validator;
@@ -162,10 +148,10 @@ impl Executor {
                     .context("Consensus stopped")
                 });
             }
-            sync_blocks::Config::new()
-                .run(ctx, sync_blocks_actor_pipe, self.block_store.clone())
-                .await
-                .context("Syncing blocks stopped")
+            let (net, runner) =
+                network::Network::new(network_config, self.block_store.clone(), network_actor_pipe);
+            net.register_metrics();
+            runner.run(ctx).await.context("Network stopped")
         })
         .await
     }

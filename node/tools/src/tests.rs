@@ -1,21 +1,28 @@
 use crate::{store, AppConfig};
 use rand::{distributions::Distribution, Rng};
 use tempfile::TempDir;
-use zksync_concurrency::ctx;
-use zksync_consensus_roles::validator::{testonly::Setup, LeaderSelectionMode};
+use zksync_concurrency::{ctx, sync};
+use zksync_consensus_roles::validator::{self, testonly::Setup, LeaderSelectionMode};
 use zksync_consensus_storage::{testonly, PersistentBlockStore};
 use zksync_consensus_utils::EncodeDist;
 use zksync_protobuf::testonly::{test_encode_all_formats, FmtConv};
 
 impl Distribution<AppConfig> for EncodeDist {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AppConfig {
-        let mut config = AppConfig {
+        let mut genesis: validator::GenesisRaw = rng.gen();
+        // In order for the genesis to be valid, the sticky leader needs to be in the validator committee.
+        if let LeaderSelectionMode::Sticky(_) = genesis.leader_selection {
+            let i = rng.gen_range(0..genesis.committee.len());
+            genesis.leader_selection =
+                LeaderSelectionMode::Sticky(genesis.committee.get(i).unwrap().key.clone());
+        }
+        AppConfig {
             server_addr: self.sample(rng),
             public_addr: self.sample(rng),
             debug_addr: self.sample(rng),
             metrics_server_addr: self.sample(rng),
 
-            genesis: rng.gen(),
+            genesis: genesis.with_hash(),
             max_payload_size: rng.gen(),
             validator_key: self.sample_opt(|| rng.gen()),
 
@@ -26,17 +33,7 @@ impl Distribution<AppConfig> for EncodeDist {
                 .sample_range(rng)
                 .map(|_| (rng.gen(), self.sample(rng)))
                 .collect(),
-        };
-
-        // In order for the genesis to be valid, the sticky leader needs to be in the validator committee.
-        if let Some(LeaderSelectionMode::Sticky(_)) = config.genesis.leader_selection {
-            let i = rng.gen_range(0..config.genesis.validators.len());
-            config.genesis.leader_selection = Some(LeaderSelectionMode::Sticky(
-                config.genesis.validators.get(i).unwrap().key.clone(),
-            ));
         }
-
-        config
     }
 }
 
@@ -59,7 +56,10 @@ async fn test_reopen_rocksdb() {
         let store = store::RocksDB::open(setup.genesis.clone(), dir.path())
             .await
             .unwrap();
-        store.store_next_block(ctx, b).await.unwrap();
+        store.queue_next_block(ctx, b.clone()).await.unwrap();
+        sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(b.number()))
+            .await
+            .unwrap();
         want.push(b.clone());
         assert_eq!(want, testonly::dump(ctx, &store).await);
     }
