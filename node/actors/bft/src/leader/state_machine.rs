@@ -20,7 +20,7 @@ pub(crate) struct StateMachine {
     /// Pipe through which leader sends network messages.
     pub(crate) outbound_pipe: OutputSender,
     /// Pipe through which leader receives network requests.
-    inbound_pipe: sync::prunable_mpsc::Receiver<ConsensusReq>,
+    pub(crate) inbound_pipe: sync::prunable_mpsc::Receiver<ConsensusReq>,
     /// The current view number. This might not match the replica's view number, we only have this here
     /// to make the leader advance monotonically in time and stop it from accepting messages from the past.
     pub(crate) view: validator::ViewNumber,
