@@ -81,10 +81,6 @@ impl Node {
                         network::io::OutputMessage::Consensus(req) => {
                             con_send.send(io::InputMessage::Network(req));
                         }
-                        network::io::OutputMessage::SyncBlocks(_) => {
-                            // Drop message related to block syncing; the nodes should work fine
-                            // without them.
-                        }
                     }
                 }
                 Ok(())

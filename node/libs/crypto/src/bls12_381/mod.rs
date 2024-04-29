@@ -8,10 +8,12 @@
 //! is sufficient).
 
 use crate::ByteFmt;
-use anyhow::{anyhow, bail};
-use blst::{min_pk as bls, BLST_ERROR};
+use blst::{min_sig as bls, BLST_ERROR};
 use rand::Rng as _;
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    fmt::{Debug, Formatter},
+};
 use zeroize::ZeroizeOnDrop;
 
 #[cfg(test)]
@@ -25,11 +27,11 @@ pub const DST: &[u8] = b"MATTER_LABS_CONSENSUS_BLS_SIG_BLS12381G2_XMD:SHA-256_SS
 /// The domain separation tag for the proof of possession.
 pub const DST_POP: &[u8] = b"MATTER_LABS_CONSENSUS_BLS_POP_BLS12381G2_XMD:SHA-256_SSWU_RO_";
 
-/// The byte-length of a BLS public key when serialized in compressed form.
-pub const PUBLIC_KEY_BYTES_LEN: usize = 48;
+/// The byte-length of a BLS signature when serialized in compressed form.
+pub const SIGNATURE_BYTES_LEN: usize = 48;
 
-/// Represents the public key at infinity.
-pub const INFINITY_PUBLIC_KEY: [u8; PUBLIC_KEY_BYTES_LEN] = [
+/// Represents the signature at infinity.
+pub const INFINITY_SIGNATURE: [u8; SIGNATURE_BYTES_LEN] = [
     0xc0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
     0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
 ];
@@ -68,11 +70,23 @@ impl ByteFmt for SecretKey {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         bls::SecretKey::from_bytes(bytes)
             .map(Self)
-            .map_err(|e| anyhow!("Failed to decode secret key: {e:?}"))
+            .map_err(|e| anyhow::format_err!("Failed to decode secret key: {e:?}"))
     }
 
     fn encode(&self) -> Vec<u8> {
         self.0.to_bytes().to_vec()
+    }
+}
+
+impl Debug for SecretKey {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "SecretKey({:?})", self.public())
+    }
+}
+
+impl PartialEq for SecretKey {
+    fn eq(&self, other: &Self) -> bool {
+        self.public() == other.public()
     }
 }
 
@@ -87,13 +101,11 @@ impl std::hash::Hash for PublicKey {
 }
 
 impl ByteFmt for PublicKey {
+    /// This method also checks if the public key is not infinity and if it is in the correct subgroup.
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        if bytes == INFINITY_PUBLIC_KEY {
-            bail!(Error::InvalidInfinityPublicKey)
-        }
-        bls::PublicKey::from_bytes(bytes)
+        bls::PublicKey::key_validate(bytes)
             .map(Self)
-            .map_err(|err| anyhow!("Error decoding public key: {err:?}"))
+            .map_err(|e| anyhow::format_err!("Failed to decode public key: {e:?}"))
     }
 
     fn encode(&self) -> Vec<u8> {
@@ -119,21 +131,24 @@ pub struct Signature(bls::Signature);
 
 impl Signature {
     /// Verifies a signature against the provided public key
-    pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> Result<(), Error> {
+    pub fn verify(&self, msg: &[u8], pk: &PublicKey) -> anyhow::Result<()> {
         let result = self.0.verify(true, msg, DST, &[], &pk.0, true);
 
         match result {
             BLST_ERROR::BLST_SUCCESS => Ok(()),
-            err => Err(Error::SignatureVerification(err)),
+            err => Err(anyhow::format_err!(
+                "Signature verification failure: {err:?}"
+            )),
         }
     }
 }
 
 impl ByteFmt for Signature {
+    /// This method also checks if the signature is in the correct subgroup.
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        bls::Signature::from_bytes(bytes)
+        bls::Signature::sig_validate(bytes, false)
             .map(Self)
-            .map_err(|err| anyhow!("Error decoding signature: {err:?}"))
+            .map_err(|err| anyhow::format_err!("Error decoding signature: {err:?}"))
     }
 
     fn encode(&self) -> Vec<u8> {
@@ -153,22 +168,31 @@ impl Ord for Signature {
     }
 }
 
-/// Type safety wrapper around a `blst` signature indicating that it is an aggregated signature
-///
-/// Due to the `blst` aggregated signatures not having a verify method, this is stored converted to
-/// a bare signature internally.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AggregateSignature(bls::Signature);
+/// Type safety wrapper around a `blst` aggregate signature
+#[derive(Clone, Debug)]
+pub struct AggregateSignature(bls::AggregateSignature);
+
+impl Default for AggregateSignature {
+    fn default() -> Self {
+        // This can't fail in production since we are decoding a known value.
+        Self::decode(&INFINITY_SIGNATURE).unwrap()
+    }
+}
 
 impl AggregateSignature {
-    /// Generates an aggregate signature from a list of signatures
-    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Result<Self, Error> {
-        let sigs: Vec<&bls::Signature> = sigs.into_iter().map(|s| &s.0).collect();
+    /// Add a signature to the aggregation.
+    pub fn add(&mut self, sig: &Signature) {
+        // This cannot fail since we are not validating the signature.
+        self.0.add_signature(&sig.0, false).unwrap()
+    }
 
-        let aggregate = bls::AggregateSignature::aggregate(&sigs[..], true)
-            .map_err(Error::SignatureAggregation)?;
-
-        Ok(AggregateSignature(aggregate.to_signature()))
+    /// Generate a new aggregate signature from a list of signatures.
+    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
+        let mut agg = Self::default();
+        for sig in sigs {
+            agg.add(sig);
+        }
+        agg
     }
 
     /// Verifies an aggregated signature for multiple messages against the provided list of public keys.
@@ -177,7 +201,7 @@ impl AggregateSignature {
     pub fn verify<'a>(
         &self,
         msgs_and_pks: impl Iterator<Item = (&'a [u8], &'a PublicKey)>,
-    ) -> Result<(), Error> {
+    ) -> anyhow::Result<()> {
         // Aggregate public keys if they are signing the same hash. Each public key aggregated
         // is one fewer pairing to calculate.
         let mut tree_map: BTreeMap<_, bls::AggregatePublicKey> = BTreeMap::new();
@@ -185,7 +209,9 @@ impl AggregateSignature {
         for (msg, pk) in msgs_and_pks {
             if let Some(existing_pk) = tree_map.get_mut(msg) {
                 if let Err(err) = existing_pk.add_public_key(&pk.0, false) {
-                    return Err(Error::AggregateSignatureVerification(err));
+                    return Err(anyhow::format_err!(
+                        "Error aggregating public keys: {err:?}"
+                    ));
                 }
             } else {
                 tree_map.insert(msg, bls::AggregatePublicKey::from_public_key(&pk.0));
@@ -200,26 +226,34 @@ impl AggregateSignature {
         let public_keys: Vec<&bls::PublicKey> = public_keys.iter().collect();
 
         // Verify the signature.
-        let result = self
-            .0
-            .aggregate_verify(true, &messages, DST, &public_keys, true);
+        // Due to the `blst` aggregated signatures not having a verify method, this is first converted to a bare signature.
+        let result =
+            self.0
+                .to_signature()
+                .aggregate_verify(true, &messages, DST, &public_keys, true);
 
         match result {
             BLST_ERROR::BLST_SUCCESS => Ok(()),
-            err => Err(Error::AggregateSignatureVerification(err)),
+            err => Err(anyhow::format_err!(
+                "Aggregate signature verification failure: {err:?}"
+            )),
         }
     }
 }
 
 impl ByteFmt for AggregateSignature {
+    /// This method also checks if the signature is in the correct subgroup.
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        let signature = bls::Signature::from_bytes(bytes)
-            .map_err(|err| anyhow!("Error decoding signature: {err:?}"))?;
-        Ok(AggregateSignature(signature))
+        let sig = bls::Signature::sig_validate(bytes, false)
+            .map_err(|err| anyhow::format_err!("Error decoding signature: {err:?}"))?;
+
+        Ok(AggregateSignature(bls::AggregateSignature::from_signature(
+            &sig,
+        )))
     }
 
     fn encode(&self) -> Vec<u8> {
-        self.0.to_bytes().to_vec()
+        self.0.to_signature().to_bytes().to_vec()
     }
 }
 
@@ -235,29 +269,40 @@ impl Ord for AggregateSignature {
     }
 }
 
+impl Eq for AggregateSignature {}
+
+impl PartialEq for AggregateSignature {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.to_signature() == other.0.to_signature()
+    }
+}
+
 /// Type safety wrapper around a `blst` proof of possession.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ProofOfPossession(bls::Signature);
 
 impl ProofOfPossession {
     /// Verifies a proof of possession against the provided public key
-    pub fn verify(&self, pk: &PublicKey) -> Result<(), Error> {
+    pub fn verify(&self, pk: &PublicKey) -> anyhow::Result<()> {
         let msg = pk.encode();
 
         let result = self.0.verify(true, &msg, DST_POP, &[], &pk.0, true);
 
         match result {
             BLST_ERROR::BLST_SUCCESS => Ok(()),
-            err => Err(Error::PopVerification(err)),
+            err => Err(anyhow::format_err!(
+                "Proof of possession verification failure: {err:?}"
+            )),
         }
     }
 }
 
 impl ByteFmt for ProofOfPossession {
+    /// This method also checks if the signature is in the correct subgroup.
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        bls::Signature::from_bytes(bytes)
+        bls::Signature::sig_validate(bytes, false)
             .map(Self)
-            .map_err(|err| anyhow!("Error decoding proof of possession: {err:?}"))
+            .map_err(|err| anyhow::format_err!("Error decoding proof of possession: {err:?}"))
     }
 
     fn encode(&self) -> Vec<u8> {
@@ -275,25 +320,4 @@ impl Ord for ProofOfPossession {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         ByteFmt::encode(self).cmp(&ByteFmt::encode(other))
     }
-}
-
-/// Error type for generating and interacting with BLS keys/signatures
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum Error {
-    /// Infinity public key.
-    #[error("Error infinity public key")]
-    InvalidInfinityPublicKey,
-    /// Error aggregating signatures
-    #[error("Error aggregating signatures: {0:?}")]
-    SignatureAggregation(BLST_ERROR),
-    /// Signature verification failure
-    #[error("Signature verification failure: {0:?}")]
-    SignatureVerification(BLST_ERROR),
-    /// Aggregate signature verification failure
-    #[error("Aggregate signature verification failure: {0:?}")]
-    AggregateSignatureVerification(BLST_ERROR),
-    /// Proof of possession verification failure
-    #[error("Proof of possession verification failure: {0:?}")]
-    PopVerification(BLST_ERROR),
 }

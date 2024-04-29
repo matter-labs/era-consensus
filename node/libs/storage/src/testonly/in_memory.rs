@@ -5,13 +5,13 @@ use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
 };
-use zksync_concurrency::ctx;
+use zksync_concurrency::{ctx, sync};
 use zksync_consensus_roles::validator;
 
 #[derive(Debug)]
 struct BlockStoreInner {
-    first: validator::BlockNumber,
     genesis: validator::Genesis,
+    persisted: sync::watch::Sender<BlockStoreState>,
     blocks: Mutex<VecDeque<validator::FinalBlock>>,
     capacity: Option<usize>,
 }
@@ -27,10 +27,10 @@ pub struct ReplicaStore(Arc<Mutex<ReplicaState>>);
 impl BlockStore {
     /// New In-memory `BlockStore`.
     pub fn new(genesis: validator::Genesis, first: validator::BlockNumber) -> Self {
-        assert!(genesis.fork.first_block <= first);
+        assert!(genesis.first_block <= first);
         Self(Arc::new(BlockStoreInner {
-            first,
             genesis,
+            persisted: sync::watch::channel(BlockStoreState { first, last: None }).0,
             blocks: Mutex::default(),
             capacity: None,
         }))
@@ -38,10 +38,10 @@ impl BlockStore {
 
     /// New bounded storage. Old blocks get GC'ed onse the storage capacity is full. 
     pub fn bounded(genesis: validator::Genesis, first: validator::BlockNumber, capacity: usize) -> Self {
-        assert!(genesis.fork.first_block <= first);
+        assert!(genesis.first_block <= first);
         Self(Arc::new(BlockStoreInner {
-            first,
             genesis,
+            persisted: sync::watch::channel(BlockStoreState { first, last: None }).0,
             blocks: Mutex::default(),
             capacity: Some(capacity),
         }))
@@ -54,18 +54,8 @@ impl PersistentBlockStore for BlockStore {
         Ok(self.0.genesis.clone())
     }
 
-    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
-        let blocks = self
-                .0
-                .blocks
-                .lock()
-                .unwrap();
-        Ok(BlockStoreState {
-            first: blocks.front().map_or(self.0.first,|b|b.number()),
-            last: blocks 
-                .back()
-                .map(|b| b.justification.clone()),
-        })
+    fn persisted(&self) -> sync::watch::Receiver<BlockStoreState> {
+        self.0.persisted.subscribe()
     }
 
     async fn block(
@@ -82,19 +72,15 @@ impl PersistentBlockStore for BlockStore {
         Ok(blocks.get(idx as usize).context("not found")?.clone())
     }
 
-    async fn store_next_block(
+    async fn queue_next_block(
         &self,
         _ctx: &ctx::Ctx,
-        block: &validator::FinalBlock,
+        block: validator::FinalBlock,
     ) -> ctx::Result<()> {
         let mut blocks = self.0.blocks.lock().unwrap();
-        let got = block.header().number;
-        let want = match blocks.back() {
-            Some(last) => last.header().number.next(),
-            None => self.0.first,
-        };
-        if got != want {
-            return Err(anyhow::anyhow!("got block {got:?}, while expected {want:?}").into());
+        let want = self.0.persisted.borrow().next();
+        if block.number() != want {
+            return Err(anyhow::anyhow!("got block {:?}, want {want:?}", block.number()).into());
         }
         blocks.push_back(block.clone());
         if let Some(c) = self.0.capacity {
@@ -102,6 +88,15 @@ impl PersistentBlockStore for BlockStore {
                 blocks.pop_front();
             }
         }
+        self.0
+            .persisted
+            .send_modify(|p| {
+                if let Some(first) = blocks.front() {
+                    p.first = first.number();
+                }
+                p.last = Some(block.justification.clone())
+            });
+        blocks.push_back(block);
         Ok(())
     }
 }

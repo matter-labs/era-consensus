@@ -17,7 +17,6 @@ mod tests;
 /// Creates a channel and returns the [`Sender`] and [`Receiver`] handles.
 /// All values sent on [`Sender`] will become available on [`Receiver`] in the same order as it was sent,
 /// unless will be pruned before received.
-/// The Sender can be cloned to send to the same channel from multiple code locations. Only one Receiver is supported.
 ///
 /// * [`T`]: The type of data that will be sent through the channel.
 /// * [`pruning_predicate`]: A function that determines whether an unreceived, pending value in the buffer (represented by the first `T`) should be pruned

@@ -1,12 +1,12 @@
 use super::{PublicKey, Signature};
 use crate::validator::messages::{Msg, MsgHash};
 use std::fmt;
-use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
+use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// An aggregate signature from a validator.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub struct AggregateSignature(pub(crate) bn254::AggregateSignature);
+pub struct AggregateSignature(pub(crate) bls12_381::AggregateSignature);
 
 impl AggregateSignature {
     /// Add a signature to the aggregation.
@@ -51,14 +51,14 @@ impl ByteFmt for AggregateSignature {
 
 impl TextFmt for AggregateSignature {
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("validator:aggregate_signature:bn254:")?
+        text.strip("validator:aggregate_signature:bls12_381:")?
             .decode_hex()
             .map(Self)
     }
 
     fn encode(&self) -> String {
         format!(
-            "validator:aggregate_signature:bn254:{}",
+            "validator:aggregate_signature:bls12_381:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
     }

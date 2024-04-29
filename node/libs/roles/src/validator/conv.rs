@@ -1,28 +1,45 @@
 use super::{
-    AggregateSignature, BlockHeader, BlockNumber, CommitQC, ConsensusMsg, FinalBlock, Fork,
-    ForkNumber, Genesis, GenesisHash, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress,
-    Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit,
-    ReplicaPrepare, Signature, Signed, Signers, ValidatorSet, View, ViewNumber,
+    AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
+    FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
+    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
+    ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
-use crate::{node::SessionId, proto::validator as proto};
+use crate::{node::SessionId, proto::validator as proto, validator::LeaderSelectionMode};
 use anyhow::Context as _;
 use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
 
-impl ProtoFmt for Fork {
-    type Proto = proto::Fork;
+impl ProtoFmt for GenesisRaw {
+    type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {
-            number: ForkNumber(*required(&r.number).context("number")?),
+        let validators: Vec<_> = r
+            .validators_v1
+            .iter()
+            .enumerate()
+            .map(|(i, v)| WeightedValidator::read(v).context(i))
+            .collect::<Result<_, _>>()
+            .context("validators_v1")?;
+        Ok(GenesisRaw {
+            chain_id: ChainId(*required(&r.chain_id).context("chain_id")?),
+            fork_number: ForkNumber(*required(&r.fork_number).context("fork_number")?),
             first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
+
+            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
+            committee: Committee::new(validators.into_iter()).context("validators_v1")?,
+            leader_selection: read_required(&r.leader_selection).context("leader_selection")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            number: Some(self.number.0),
+            chain_id: Some(self.chain_id.0),
+            fork_number: Some(self.fork_number.0),
             first_block: Some(self.first_block.0),
+
+            protocol_version: Some(self.protocol_version.0),
+            validators_v1: self.committee.iter().map(|v| v.build()).collect(),
+            leader_selection: Some(self.leader_selection.build()),
         }
     }
 }
@@ -30,23 +47,12 @@ impl ProtoFmt for Fork {
 impl ProtoFmt for Genesis {
     type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let validators: Vec<_> = r
-            .validators
-            .iter()
-            .enumerate()
-            .map(|(i, v)| PublicKey::read(v).context(i))
-            .collect::<Result<_, _>>()
-            .context("validators")?;
-        Ok(Self {
-            fork: read_required(&r.fork).context("fork")?,
-            validators: ValidatorSet::new(validators.into_iter()).context("validators")?,
-        })
+        let genesis = GenesisRaw::read(r)?.with_hash();
+        genesis.verify()?;
+        Ok(genesis)
     }
     fn build(&self) -> Self::Proto {
-        Self::Proto {
-            fork: Some(self.fork.build()),
-            validators: self.validators.iter().map(|x| x.build()).collect(),
-        }
+        GenesisRaw::build(self)
     }
 }
 
@@ -141,16 +147,14 @@ impl ProtoFmt for View {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
-            fork: ForkNumber(*required(&r.fork).context("fork")?),
+            genesis: read_required(&r.genesis).context("genesis")?,
             number: ViewNumber(*required(&r.number).context("number")?),
         })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            protocol_version: Some(self.protocol_version.0),
-            fork: Some(self.fork.0),
+            genesis: Some(self.genesis.build()),
             number: Some(self.number.0),
         }
     }
@@ -424,6 +428,44 @@ impl ProtoFmt for Signature {
     }
 }
 
+impl ProtoFmt for LeaderSelectionMode {
+    type Proto = proto::LeaderSelectionMode;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        match required(&r.mode)? {
+            proto::leader_selection_mode::Mode::RoundRobin(_) => {
+                Ok(LeaderSelectionMode::RoundRobin)
+            }
+            proto::leader_selection_mode::Mode::Sticky(inner) => {
+                let key = required(&inner.key).context("key")?;
+                Ok(LeaderSelectionMode::Sticky(PublicKey::read(key)?))
+            }
+            proto::leader_selection_mode::Mode::Weighted(_) => Ok(LeaderSelectionMode::Weighted),
+        }
+    }
+    fn build(&self) -> Self::Proto {
+        match self {
+            LeaderSelectionMode::RoundRobin => proto::LeaderSelectionMode {
+                mode: Some(proto::leader_selection_mode::Mode::RoundRobin(
+                    proto::leader_selection_mode::RoundRobin {},
+                )),
+            },
+            LeaderSelectionMode::Sticky(pk) => proto::LeaderSelectionMode {
+                mode: Some(proto::leader_selection_mode::Mode::Sticky(
+                    proto::leader_selection_mode::Sticky {
+                        key: Some(pk.build()),
+                    },
+                )),
+            },
+            LeaderSelectionMode::Weighted => proto::LeaderSelectionMode {
+                mode: Some(proto::leader_selection_mode::Mode::Weighted(
+                    proto::leader_selection_mode::Weighted {},
+                )),
+            },
+        }
+    }
+}
+
 impl ProtoFmt for AggregateSignature {
     type Proto = proto::AggregateSignature;
 
@@ -434,6 +476,24 @@ impl ProtoFmt for AggregateSignature {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             bn254: Some(self.0.encode()),
+        }
+    }
+}
+
+impl ProtoFmt for WeightedValidator {
+    type Proto = proto::WeightedValidator;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            key: read_required(&r.key).context("key")?,
+            weight: *required(&r.weight).context("weight")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            key: Some(self.key.build()),
+            weight: Some(self.weight),
         }
     }
 }

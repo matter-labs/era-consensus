@@ -6,6 +6,7 @@
 pub type Duration = time::Duration;
 
 /// Monotonic clock time.
+#[allow(deprecated)]
 pub type Instant = time::Instant;
 
 /// UTC time in nanoseconds precision.

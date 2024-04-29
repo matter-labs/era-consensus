@@ -12,9 +12,7 @@ The actor crates are where the vast majority of the work is done. Each of them m
 
 - the `executor` crate is responsible for parsing the configuration parameters given by the user, and initializing the actors and the storage. It's basically the bootloader for the node. It also dispatches messages between the rest of the actors. They all send messages to the executor and it then converts and forwards the messages to the desired destination. This improves the encapsulation of the actors.
 
-- the `network` crate which maintains a pool of outbound and inbound connections to other nodes.
-
-- the `sync_blocks` crate implements a block syncing mechanism for nodes. It enables nodes to exchange blocks with each other in a peer-to-peer network, allowing them to keep a copy of the blockchain stored in their local storage up-to-date.
+- the `network` crate which maintains a pool of outbound and inbound connections to other nodes. It also implements a syncing mechanism for nodes (for blocks, batches, attester signatures, etc).
 
 ### Library crates
 
@@ -44,8 +42,7 @@ This section provides a physical map of folders & files in this repository.
 
     - `/bft`: The consensus actor.
     - `/executor`: The actor orchestrator.
-    - `/network`: The networking actor.
-    - `/sync_blocks`: The block syncing actor.
+    - `/network`: The network actor.
 
   - `/lib`: All the library crates used as dependencies of the actor crates above.
 

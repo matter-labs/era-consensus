@@ -187,7 +187,7 @@ impl Configs {
         ctx: &ctx::Ctx,
     ) -> ctx::Result<(executor::Executor, BlockStoreRunner)> {
         //let store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
-        let store = in_memory::BlockStore::bounded(self.app.genesis.clone(), self.app.genesis.fork.first_block, 200);
+        let store = in_memory::BlockStore::bounded(self.app.genesis.clone(), self.app.genesis.first_block, 200);
         let (block_store, runner) = BlockStore::new(ctx, Box::new(store.clone())).await?;
         let e = executor::Executor {
             config: executor::Config {

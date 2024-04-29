@@ -1,19 +1,19 @@
 use super::{PublicKey, Signature};
 use crate::validator::messages::{Msg, MsgHash, Signed};
 use std::{fmt, sync::Arc};
-use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
+use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// A secret key for the validator role.
 /// SecretKey is put into an Arc, so that we can clone it,
 /// without copying the secret all over the RAM.
 #[derive(Clone, PartialEq)]
-pub struct SecretKey(pub(crate) Arc<bn254::SecretKey>);
+pub struct SecretKey(pub(crate) Arc<bls12_381::SecretKey>);
 
 impl SecretKey {
     /// Generates a secret key from a cryptographically-secure entropy source.
     pub fn generate() -> Self {
-        Self(Arc::new(bn254::SecretKey::generate()))
+        Self(Arc::new(bls12_381::SecretKey::generate()))
     }
 
     /// Public key corresponding to this secret key.
@@ -50,13 +50,13 @@ impl ByteFmt for SecretKey {
 impl TextFmt for SecretKey {
     fn encode(&self) -> String {
         format!(
-            "validator:secret:bn254:{}",
+            "validator:secret:bls12_381:{}",
             hex::encode(ByteFmt::encode(&*self.0))
         )
     }
 
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("validator:secret:bn254:")?
+        text.strip("validator:secret:bls12_381:")?
             .decode_hex()
             .map(Arc::new)
             .map(Self)

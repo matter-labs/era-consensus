@@ -4,7 +4,7 @@ use super::{
 };
 use crate::noise::bytes;
 use std::sync::Arc;
-use zksync_concurrency::{ctx, ctx::channel, oneshot, scope, sync};
+use zksync_concurrency::{ctx, ctx::channel, limiter, oneshot, scope, sync};
 
 /// Read frame allocation permit.
 #[derive(Debug)]
@@ -66,18 +66,20 @@ impl ReservedStream {
 /// `queue.pop()` before the OPEN message is sent to the peer.
 pub(crate) struct StreamQueue {
     pub(super) max_streams: u32,
-    send: channel::UnboundedSender<ReservedStream>,
-    recv: sync::Mutex<channel::UnboundedReceiver<ReservedStream>>,
+    limiter: limiter::Limiter,
+    send: channel::Sender<ReservedStream>,
+    recv: sync::Mutex<channel::Receiver<ReservedStream>>,
 }
 
 impl StreamQueue {
     /// Constructs a new StreamQueue with the specified number of reusable streams.
     /// During multiplexer handshake, peers exchange information about
     /// how many reusable streams they support per capability.
-    pub(crate) fn new(max_streams: u32) -> Arc<Self> {
-        let (send, recv) = channel::unbounded();
+    pub(crate) fn new(ctx: &ctx::Ctx, max_streams: u32, rate: limiter::Rate) -> Arc<Self> {
+        let (send, recv) = channel::bounded(1);
         Arc::new(Self {
             max_streams,
+            limiter: limiter::Limiter::new(ctx, rate),
             send,
             recv: sync::Mutex::new(recv),
         })
@@ -91,6 +93,7 @@ impl StreamQueue {
     }
 
     /// Opens a transient stream from the queue.
+    #[allow(dead_code)]
     pub(crate) async fn open(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<Stream> {
         loop {
             // It may happen that the popped stream has been immediately disconnected
@@ -106,7 +109,7 @@ impl StreamQueue {
     async fn push(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<Reservation> {
         loop {
             let (send, recv) = oneshot::channel();
-            self.send.send(ReservedStream(send));
+            self.send.send(ctx, ReservedStream(send)).await?;
             if let Ok(reservation) = recv.recv_or_disconnected(ctx).await? {
                 return Ok(reservation);
             }
@@ -269,6 +272,7 @@ impl ReusableStream {
                 let mut write = write_receiver.wait(ctx).await?;
                 write.send_close(ctx).await?;
 
+                let _open_permit = self.stream_queue.limiter.acquire(ctx, 1).await?;
                 let (read, reservation) = match write.stream_kind {
                     StreamKind::ACCEPT => {
                         let read = recv_open_task.join(ctx).await?;

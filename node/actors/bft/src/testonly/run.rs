@@ -1,7 +1,7 @@
 use super::{Behavior, Node};
 use std::collections::HashMap;
 use tracing::Instrument as _;
-use zksync_concurrency::{ctx, oneshot, scope, sync};
+use zksync_concurrency::{ctx, oneshot, scope};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::testonly::new_store;
@@ -17,7 +17,7 @@ pub(crate) enum Network {
 #[derive(Clone)]
 pub(crate) struct Test {
     pub(crate) network: Network,
-    pub(crate) nodes: Vec<Behavior>,
+    pub(crate) nodes: Vec<(Behavior, u64)>,
     pub(crate) blocks_to_finalize: usize,
 }
 
@@ -25,7 +25,10 @@ impl Test {
     /// Run a test with the given parameters.
     pub(crate) async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let rng = &mut ctx.rng();
-        let setup = validator::testonly::Setup::new(rng, self.nodes.len());
+        let setup = validator::testonly::Setup::new_with_weights(
+            rng,
+            self.nodes.iter().map(|(_, w)| *w).collect(),
+        );
         let nets: Vec<_> = network::testonly::new_configs(rng, &setup, 1);
         let mut nodes = vec![];
         let mut honest = vec![];
@@ -33,12 +36,12 @@ impl Test {
             for (i, net) in nets.into_iter().enumerate() {
                 let (store, runner) = new_store(ctx, &setup.genesis).await;
                 s.spawn_bg(runner.run(ctx));
-                if self.nodes[i] == Behavior::Honest {
+                if self.nodes[i].0 == Behavior::Honest {
                     honest.push(store.clone());
                 }
                 nodes.push(Node {
                     net,
-                    behavior: self.nodes[i],
+                    behavior: self.nodes[i].0,
                     block_store: store,
                 });
             }
@@ -46,18 +49,16 @@ impl Test {
             s.spawn_bg(run_nodes(ctx, self.network, &nodes));
 
             // Run the nodes until all honest nodes store enough finalized blocks.
-            let first = setup.genesis.fork.first_block;
-            let want_next = validator::BlockNumber(first.0 + self.blocks_to_finalize as u64);
+            assert!(self.blocks_to_finalize > 0);
+            let first = setup.genesis.first_block;
+            let last = first + (self.blocks_to_finalize as u64 - 1);
             for store in &honest {
-                sync::wait_for(ctx, &mut store.subscribe(), |state| {
-                    state.next() > want_next
-                })
-                .await?;
+                store.wait_until_queued(ctx, last).await?;
             }
 
             // Check that the stored blocks are consistent.
-            for i in 0..self.blocks_to_finalize as u64 + 1 {
-                let i = validator::BlockNumber(i);
+            for i in 0..self.blocks_to_finalize as u64 {
+                let i = first + i;
                 let want = honest[0].block(ctx, i).await?;
                 for store in &honest[1..] {
                     assert_eq!(want, store.block(ctx, i).await?);

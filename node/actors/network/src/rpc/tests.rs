@@ -50,7 +50,7 @@ async fn test_ping() {
         s.spawn_bg(async {
             expected(
                 Service::new()
-                    .add_server(ping::Server, ping::RATE)
+                    .add_server(ctx, ping::Server, ping::RATE)
                     .run(ctx, s1)
                     .await,
             )
@@ -64,12 +64,10 @@ async fn test_ping() {
             let resp = client.call(ctx, &req, kB).await?;
             assert_eq!(req.0, resp.0);
         }
-        let now = ctx.now();
-        clock.set_advance_on_sleep();
+        clock.advance(ping::RATE.refresh);
         let req = ping::Req(ctx.rng().gen());
         let resp = client.call(ctx, &req, kB).await?;
         assert_eq!(req.0, resp.0);
-        assert!(ctx.now() >= now + ping::RATE.refresh);
         Ok(())
     })
     .await
@@ -120,6 +118,7 @@ async fn test_ping_loop() {
             expected(
                 Service::new()
                     .add_server(
+                        ctx,
                         server,
                         limiter::Rate {
                             burst: 1,
@@ -185,7 +184,7 @@ async fn test_inflight() {
         s.spawn_bg(async {
             expected(
                 Service::new()
-                    .add_server(ExampleServer, RATE)
+                    .add_server(ctx, ExampleServer, RATE)
                     .run(ctx, s1)
                     .await,
             )

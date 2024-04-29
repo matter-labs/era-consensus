@@ -21,6 +21,9 @@ pub struct PrepareQC {
 /// Error returned by `PrepareQC::verify()`.
 #[derive(thiserror::Error, Debug)]
 pub enum PrepareQCVerifyError {
+    /// Bad view.
+    #[error("view: {0:#}")]
+    View(anyhow::Error),
     /// Inconsistent views.
     #[error("inconsistent views of signed messages")]
     InconsistentViews,
@@ -30,13 +33,13 @@ pub enum PrepareQCVerifyError {
     /// Bad message format.
     #[error(transparent)]
     BadFormat(anyhow::Error),
-    /// Not enough signers.
-    #[error("not enough signers: got {got}, want {want}")]
+    /// Weight not reached.
+    #[error("Signers have not reached threshold weight: got {got}, want {want}")]
     NotEnoughSigners {
-        /// Got signers.
-        got: usize,
-        /// Want signers.
-        want: usize,
+        /// Got weight.
+        got: u64,
+        /// Want weight.
+        want: u64,
     },
     /// Bad signature.
     #[error("bad signature: {0:#}")]
@@ -56,14 +59,14 @@ impl PrepareQC {
     /// Get the highest block voted and check if there's a quorum of votes for it. To have a quorum
     /// in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
     pub fn high_vote(&self, genesis: &Genesis) -> Option<BlockHeader> {
-        let mut count: HashMap<_, usize> = HashMap::new();
+        let mut count: HashMap<_, u64> = HashMap::new();
         for (msg, signers) in &self.map {
             if let Some(v) = &msg.high_vote {
-                *count.entry(v.proposal).or_default() += signers.count();
+                *count.entry(v.proposal).or_default() += genesis.committee.weight(signers);
             }
         }
         // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
-        let min = 2 * genesis.validators.faulty_replicas() + 1;
+        let min = 2 * genesis.committee.max_faulty_weight() + 1;
         count.into_iter().find(|x| x.1 >= min).map(|x| x.0)
     }
 
@@ -83,13 +86,13 @@ impl PrepareQC {
         if msg.msg.view != self.view {
             return;
         }
-        let Some(i) = genesis.validators.index(&msg.key) else {
+        let Some(i) = genesis.committee.index(&msg.key) else {
             return;
         };
         let e = self
             .map
             .entry(msg.msg.clone())
-            .or_insert_with(|| Signers::new(genesis.validators.len()));
+            .or_insert_with(|| Signers::new(genesis.committee.len()));
         if e.0[i] {
             return;
         };
@@ -100,7 +103,9 @@ impl PrepareQC {
     /// Verifies the integrity of the PrepareQC.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), PrepareQCVerifyError> {
         use PrepareQCVerifyError as Error;
-        let mut sum = Signers::new(genesis.validators.len());
+        self.view.verify(genesis).map_err(Error::View)?;
+        let mut sum = Signers::new(genesis.committee.len());
+
         // Check the ReplicaPrepare messages.
         for (i, (msg, signers)) in self.map.iter().enumerate() {
             if msg.view != self.view {
@@ -126,19 +131,20 @@ impl PrepareQC {
             sum |= signers;
         }
 
-        // Verify that we have enough signers.
-        let threshold = genesis.validators.threshold();
-        if sum.count() < threshold {
+        // Verify the signers' weight is enough.
+        let weight = genesis.committee.weight(&sum);
+        let threshold = genesis.committee.threshold();
+        if weight < threshold {
             return Err(Error::NotEnoughSigners {
-                got: sum.count(),
+                got: weight,
                 want: threshold,
             });
         }
         // Now we can verify the signature.
         let messages_and_keys = self.map.clone().into_iter().flat_map(|(msg, signers)| {
             genesis
-                .validators
-                .iter()
+                .committee
+                .keys()
                 .enumerate()
                 .filter(|(i, _)| signers.0[*i])
                 .map(|(_, pk)| (msg.clone(), pk))
@@ -148,6 +154,14 @@ impl PrepareQC {
         self.signature
             .verify_messages(messages_and_keys)
             .map_err(Error::BadSignature)
+    }
+
+    /// Calculates the weight of current PrepareQC signing validators
+    pub fn weight(&self, committee: &validator::Committee) -> u64 {
+        self.map
+            .values()
+            .map(|signers| committee.weight(signers))
+            .sum()
     }
 }
 
@@ -225,7 +239,7 @@ impl LeaderPrepare {
                 }
                 let want_number = match high_qc {
                     Some(qc) => qc.header().number.next(),
-                    None => genesis.fork.first_block,
+                    None => genesis.first_block,
                 };
                 if self.proposal.number != want_number {
                     return Err(Error::BadBlockNumber {

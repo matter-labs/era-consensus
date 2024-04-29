@@ -36,13 +36,11 @@ pub(crate) struct StateMachine {
     pub(crate) prepare_qcs: BTreeMap<validator::ViewNumber, validator::PrepareQC>,
     /// Newest prepare QC composed from the `ReplicaPrepare` messages.
     pub(crate) prepare_qc: sync::watch::Sender<Option<validator::PrepareQC>>,
-    /// A cache of replica commit messages indexed by view number and validator.
-    pub(crate) commit_message_cache: BTreeMap<
-        validator::ViewNumber,
-        HashMap<validator::PublicKey, Signed<validator::ReplicaCommit>>,
-    >,
-    /// Commit QCs indexed by view number.
-    pub(crate) commit_qcs: BTreeMap<validator::ViewNumber, validator::CommitQC>,
+    /// Commit QCs indexed by view number and then by message.
+    pub(crate) commit_qcs:
+        BTreeMap<validator::ViewNumber, BTreeMap<validator::ReplicaCommit, validator::CommitQC>>,
+    /// Latest view a validator has signed a message for.
+    pub(crate) validator_views: BTreeMap<validator::PublicKey, validator::ViewNumber>,
 }
 
 impl StateMachine {
@@ -67,10 +65,10 @@ impl StateMachine {
             phase_start: ctx.now(),
             prepare_message_cache: BTreeMap::new(),
             prepare_qcs: BTreeMap::new(),
-            commit_message_cache: BTreeMap::new(),
             prepare_qc: sync::watch::channel(None).0,
             commit_qcs: BTreeMap::new(),
             inbound_pipe: recv,
+            validator_views: BTreeMap::new(),
         };
 
         (this, send)
@@ -166,10 +164,9 @@ impl StateMachine {
             }
             // The previous block was finalized, so we can propose a new block.
             _ => {
-                let fork = &cfg.genesis().fork;
                 let number = match high_qc {
                     Some(qc) => qc.header().number.next(),
-                    None => fork.first_block,
+                    None => cfg.genesis().first_block,
                 };
                 // Defensively assume that PayloadManager cannot propose until the previous block is stored.
                 if let Some(prev) = number.prev() {

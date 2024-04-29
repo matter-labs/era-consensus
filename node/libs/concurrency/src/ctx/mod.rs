@@ -11,16 +11,6 @@
 //! Instead of "awaiting for new data on the channel", you "await for new data on the channel OR
 //! for context to get canceled". This way you can implement graceful shutdown
 //! in a very uniform way.
-//!
-//! Contrary to the golang implementation, we pass the context implicitly
-//! in the thread-local memory. Implicit passing may look like magic, however
-//! * it is built on top of `tokio::Runtime` which is also passed implicitly,
-//!   so the concept should be familiar for the tokio users.
-//! * it prevents misuse of context, as what we actually try to model here
-//!   is a reader monad, which in essence is equivalent to implicit argument passing
-//!   (https://hackage.haskell.org/package/mtl-2.3.1/docs/Control-Monad-Reader.html)
-//! * it presumably makes it easier to onboard new users, without having to add an explicit
-//!   context argument to all functions in their codebase.
 use crate::{signal, time};
 use std::{fmt, future::Future, pin::Pin, sync::Arc, task};
 
@@ -149,9 +139,9 @@ impl Ctx {
             _parent: Some(self.0.clone()),
         }));
         // Spawn a task propagating task cancelation.
-        // This task takes references to only to the `canceled` signals
-        // of parent and child to avoid a reference loop (rather than
-        // the whole context object) to avoid a memory leak:
+        // This task takes references only to the `canceled` signals
+        // of parent and child (rather that the whole context object)
+        // to avoid a reference loop and therefore a memory leak:
         // context is automatically canceled when dropped, which
         // guarantees that this task eventually completes.
         tokio::spawn(async move {
@@ -171,13 +161,6 @@ impl Ctx {
     /// Awaits until this context gets canceled.
     pub fn canceled(&self) -> CtxAware<impl '_ + Future<Output = ()>> {
         CtxAware(self.0.canceled.cancel_safe_recv())
-    }
-
-    /// Awaits until the local context gets canceled. Unlike [`Self::canceled()`], the returned
-    /// future has a static lifetime.
-    pub fn canceled_owned(&self) -> impl Future<Output = ()> {
-        let canceled = self.0.canceled.clone();
-        async move { canceled.cancel_safe_recv().await }
     }
 
     /// Checks if this context is still active (i.e., not canceled).

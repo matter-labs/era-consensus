@@ -14,8 +14,10 @@ pub struct RpcConfig {
     pub push_validator_addrs_rate: limiter::Rate,
     /// Max rate of sending/receiving push_block_store_state messages.
     pub push_block_store_state_rate: limiter::Rate,
-    /// Max rate of sending/receiving get_block RPCs.
+    /// Max rate of sending/receiving `get_block` RPCs.
     pub get_block_rate: limiter::Rate,
+    /// Timeout for the `get_block` RPC.
+    pub get_block_timeout: Option<time::Duration>,
     /// Max rate of sending/receiving consensus messages.
     pub consensus_rate: limiter::Rate,
 }
@@ -35,6 +37,7 @@ impl Default for RpcConfig {
                 burst: 10,
                 refresh: time::Duration::milliseconds(100),
             },
+            get_block_timeout: Some(time::Duration::seconds(10)),
             consensus_rate: limiter::Rate {
                 burst: 10,
                 refresh: time::Duration::ZERO,
@@ -84,4 +87,9 @@ pub struct Config {
     pub tcp_accept_rate: limiter::Rate,
     /// Rate limiting config for RPCs.
     pub rpc: RpcConfig,
+    /// Maximum number of not-yet-persisted blocks fetched from the network.
+    /// If reached, network actor will wait for more blocks to get persisted
+    /// before fetching the next ones. It is useful for limiting memory consumption
+    /// when the block persisting rate is low.
+    pub max_block_queue_size: usize,
 }

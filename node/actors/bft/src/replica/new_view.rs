@@ -32,15 +32,14 @@ impl StateMachine {
                 .sign_msg(validator::ConsensusMsg::ReplicaPrepare(
                     validator::ReplicaPrepare {
                         view: validator::View {
-                            protocol_version: crate::PROTOCOL_VERSION,
-                            fork: self.config.genesis().fork.number,
+                            genesis: self.config.genesis().hash(),
                             number: self.view,
                         },
                         high_vote: self.high_vote.clone(),
                         high_qc: self.high_qc.clone(),
                     },
                 )),
-            recipient: Target::Validator(self.config.genesis().validators.view_leader(self.view)),
+            recipient: Target::Validator(self.config.genesis().view_leader(self.view)),
         };
         self.outbound_pipe.send(output_message.into());
 

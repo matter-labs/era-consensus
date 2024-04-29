@@ -129,6 +129,8 @@ pub async fn wait_for<'a, T>(
     recv: &'a mut watch::Receiver<T>,
     pred: impl Fn(&T) -> bool,
 ) -> ctx::OrCanceled<watch::Ref<'a, T>> {
+    // TODO(gprusak): wait_for is not documented to be cancel-safe.
+    // We should use changed() instead.
     if let Ok(res) = ctx.wait(recv.wait_for(pred)).await? {
         return Ok(res);
     }

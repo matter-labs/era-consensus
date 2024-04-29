@@ -30,11 +30,12 @@ pub struct SecretKey(Fr);
 
 impl SecretKey {
     /// Generates a secret key from a cryptographically-secure entropy source.
+    /// The secret key must be statistically close to uniformly random in the range 1 <= SK < r.
     pub fn generate() -> Self {
         loop {
             let fr: Fr = rand04::Rand::rand(&mut rand04::OsRng::new().unwrap());
 
-            if !fr.is_zero() {
+            if !fr.is_zero() && fr.into_repr() < Fr::char() {
                 return Self(fr);
             }
         }
@@ -67,7 +68,12 @@ impl ByteFmt for SecretKey {
         fr_repr.read_be(Cursor::new(sk))?;
         let fr = Fr::from_repr(fr_repr)?;
 
+        // The secret key must be in the range 1 <= SK < r.
         anyhow::ensure!(!fr.is_zero(), "Secret key can't be zero");
+        anyhow::ensure!(
+            fr.into_repr() < Fr::char(),
+            "Secret key can't be more than or equal to r"
+        );
 
         Ok(SecretKey(fr))
     }
@@ -219,6 +225,15 @@ impl AggregateSignature {
     /// Add a signature to the aggregation.
     pub fn add(&mut self, sig: &Signature) {
         self.0.add_assign(&sig.0)
+    }
+
+    /// Generate a new aggregate signature from a list of signatures.
+    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
+        let mut agg = Self::default();
+        for sig in sigs {
+            agg.add(sig);
+        }
+        agg
     }
 
     /// This function is intentionally non-generic and disallow inlining to ensure that compilation optimizations can be effectively applied.

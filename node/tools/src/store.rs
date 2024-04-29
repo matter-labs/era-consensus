@@ -6,7 +6,7 @@ use std::{
     path::Path,
     sync::{Arc, RwLock},
 };
-use zksync_concurrency::{ctx, error::Wrap as _, scope};
+use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{BlockStoreState, PersistentBlockStore, ReplicaState, ReplicaStore};
 
@@ -49,6 +49,7 @@ impl DatabaseKey {
 
 struct Inner {
     genesis: validator::Genesis,
+    persisted: sync::watch::Sender<BlockStoreState>,
     db: RwLock<rocksdb::DB>,
 }
 
@@ -67,19 +68,24 @@ impl RocksDB {
         let mut options = rocksdb::Options::default();
         options.create_missing_column_families(true);
         options.create_if_missing(true);
+        let db = scope::wait_blocking(|| {
+            rocksdb::DB::open(&options, path).context("Failed opening RocksDB")
+        })
+        .await?;
+
         Ok(Self(Arc::new(Inner {
+            persisted: sync::watch::channel(BlockStoreState {
+                // `RocksDB` is assumed to store all blocks starting from genesis.
+                first: genesis.first_block,
+                last: scope::wait_blocking(|| Self::last_blocking(&db)).await?,
+            })
+            .0,
             genesis,
-            db: RwLock::new(
-                scope::wait_blocking(|| {
-                    rocksdb::DB::open(&options, path).context("Failed opening RocksDB")
-                })
-                .await?,
-            ),
+            db: RwLock::new(db),
         })))
     }
 
-    fn last_blocking(&self) -> anyhow::Result<Option<validator::CommitQC>> {
-        let db = self.0.db.read().unwrap();
+    fn last_blocking(db: &rocksdb::DB) -> anyhow::Result<Option<validator::CommitQC>> {
         let mut options = ReadOptions::default();
         options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
         let Some(res) = db
@@ -107,12 +113,8 @@ impl PersistentBlockStore for RocksDB {
         Ok(self.0.genesis.clone())
     }
 
-    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<BlockStoreState> {
-        Ok(BlockStoreState {
-            // `RocksDB` is assumed to store all blocks starting from genesis.
-            first: self.0.genesis.fork.first_block,
-            last: scope::wait_blocking(|| self.last_blocking()).await?,
-        })
+    fn persisted(&self) -> sync::watch::Receiver<BlockStoreState> {
+        self.0.persisted.subscribe()
     }
 
     async fn block(
@@ -133,26 +135,36 @@ impl PersistentBlockStore for RocksDB {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
-    async fn store_next_block(
+    async fn queue_next_block(
         &self,
         _ctx: &ctx::Ctx,
-        block: &validator::FinalBlock,
+        block: validator::FinalBlock,
     ) -> ctx::Result<()> {
         scope::wait_blocking(|| {
             let db = self.0.db.write().unwrap();
+            let want = self.0.persisted.borrow().next();
+            anyhow::ensure!(
+                block.number() == want,
+                "got {:?} want {want:?}",
+                block.number()
+            );
             let block_number = block.header().number;
             let mut write_batch = rocksdb::WriteBatch::default();
             write_batch.put(
                 DatabaseKey::Block(block_number).encode_key(),
-                zksync_protobuf::encode(block),
+                zksync_protobuf::encode(&block),
             );
             // Commit the transaction.
             db.write(write_batch)
                 .context("Failed writing block to database")?;
+            self.0
+                .persisted
+                .send_modify(|p| p.last = Some(block.justification.clone()));
             Ok(())
         })
         .await
-        .wrap(block.header().number)
+        .context(block.header().number)?;
+        Ok(())
     }
 }
 

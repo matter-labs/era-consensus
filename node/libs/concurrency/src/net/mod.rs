@@ -1,6 +1,7 @@
 //! Context-aware network utilities.
 //! Built on top of `tokio::net`.
 use crate::ctx;
+use std::fmt;
 
 pub mod tcp;
 
@@ -11,8 +12,14 @@ mod tests;
 /// NOT VALIDATED, validation happens at `Host::resolve()` call.
 // TODO: for better type safety consider verifying host to be in the valid
 // format in constructor.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Host(pub String);
+
+impl fmt::Debug for Host {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(fmt)
+    }
+}
 
 impl From<std::net::SocketAddr> for Host {
     fn from(addr: std::net::SocketAddr) -> Self {

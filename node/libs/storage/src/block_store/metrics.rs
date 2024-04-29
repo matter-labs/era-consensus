@@ -15,7 +15,7 @@ pub(super) struct PersistentBlockStore {
     pub(super) block_latency: vise::Histogram<time::Duration>,
     /// Latency of a successful `store_next_block()` call.
     #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
-    pub(super) store_next_block_latency: vise::Histogram<time::Duration>,
+    pub(super) queue_next_block_latency: vise::Histogram<time::Duration>,
 }
 
 #[vise::register]

@@ -20,6 +20,7 @@ final-status-level = "slow"
 
 # Profile for CI runs.
 [profile.ci]
+slow-timeout = { period = "60s", terminate-after = 2, grace-period = "0s" }
 # "retries" defines the number of times a test should be retried. If set to a
 # non-zero value, tests that succeed on a subsequent attempt will be marked as
 # non-flaky. Can be overridden through the `--retries` option.

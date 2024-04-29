@@ -1,4 +1,4 @@
-use super::{BlockHeader, Genesis, ReplicaCommit, Signed, Signers, View};
+use super::{BlockHeader, Genesis, ReplicaCommit, ReplicaCommitVerifyError, Signed, Signers, View};
 use crate::validator;
 
 /// A Commit message from a leader.
@@ -36,18 +36,18 @@ pub struct CommitQC {
 #[derive(thiserror::Error, Debug)]
 pub enum CommitQCVerifyError {
     /// Invalid message.
-    #[error("invalid message: {0:#}")]
-    InvalidMessage(#[source] anyhow::Error),
+    #[error(transparent)]
+    InvalidMessage(#[from] ReplicaCommitVerifyError),
     /// Bad signer set.
     #[error("signers set doesn't match genesis")]
     BadSignersSet,
-    /// Not enough signers.
-    #[error("not enough signers: got {got}, want {want}")]
+    /// Weight not reached.
+    #[error("Signers have not reached threshold weight: got {got}, want {want}")]
     NotEnoughSigners {
-        /// Got signers.
-        got: usize,
-        /// Want signers.
-        want: usize,
+        /// Got weight.
+        got: u64,
+        /// Want weight.
+        want: u64,
     },
     /// Bad signature.
     #[error("bad signature: {0:#}")]
@@ -69,7 +69,7 @@ impl CommitQC {
     pub fn new(message: ReplicaCommit, genesis: &Genesis) -> Self {
         Self {
             message,
-            signers: Signers::new(genesis.validators.len()),
+            signers: Signers::new(genesis.committee.len()),
             signature: validator::AggregateSignature::default(),
         }
     }
@@ -80,7 +80,7 @@ impl CommitQC {
         if self.message != msg.msg {
             return;
         };
-        let Some(i) = genesis.validators.index(&msg.key) else {
+        let Some(i) = genesis.committee.index(&msg.key) else {
             return;
         };
         if self.signers.0[i] {
@@ -96,24 +96,24 @@ impl CommitQC {
         self.message
             .verify(genesis)
             .map_err(Error::InvalidMessage)?;
-        if self.signers.len() != genesis.validators.len() {
+        if self.signers.len() != genesis.committee.len() {
             return Err(Error::BadSignersSet);
         }
 
-        // Verify that we have enough signers.
-        let num_signers = self.signers.count();
-        let threshold = genesis.validators.threshold();
-        if num_signers < threshold {
+        // Verify the signers' weight is enough.
+        let weight = genesis.committee.weight(&self.signers);
+        let threshold = genesis.committee.threshold();
+        if weight < threshold {
             return Err(Error::NotEnoughSigners {
-                got: num_signers,
+                got: weight,
                 want: threshold,
             });
         }
 
         // Now we can verify the signature.
         let messages_and_keys = genesis
-            .validators
-            .iter()
+            .committee
+            .keys()
             .enumerate()
             .filter(|(i, _)| self.signers.0[*i])
             .map(|(_, pk)| (self.message.clone(), pk));
