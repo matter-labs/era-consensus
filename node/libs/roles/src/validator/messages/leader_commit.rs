@@ -73,6 +73,7 @@ pub enum CommitQCAddError {
         existing_message: Box<ReplicaCommit>,
     },
 }
+
 impl CommitQC {
     /// Header of the certified block.
     pub fn header(&self) -> &BlockHeader {
