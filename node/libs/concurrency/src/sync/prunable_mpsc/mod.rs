@@ -30,13 +30,13 @@ pub enum SelectionFunctionResult {
 /// unless will be pruned before received.
 ///
 /// * [`T`]: The type of data that will be sent through the channel.
-/// * [`filter_function`]: A function that checks the newly sent value and avoids adding to the queue if it returns false
+/// * [`filter_predicate`]: A predicate that checks the newly sent value and avoids adding to the queue if it returns false
 /// * [`selection_function`]: A function that determines whether an unreceived, pending value in the buffer (represented by the first `T`) should be pruned
 /// based on a newly sent value (represented by the second `T`) or the new value should be filtered out, or both should be kept.
 /// Both functions return a SelectionFunctionResult for code clarity, but the filter_function should never return a DiscardOld result
 /// as it is not used against any pending message in the queue.
 pub fn channel<T>(
-    filter_function: impl 'static + Sync + Send + Fn(&T) -> SelectionFunctionResult,
+    filter_predicate: impl 'static + Sync + Send + Fn(&T) -> bool,
     selection_function: impl 'static + Sync + Send + Fn(&T, &T) -> SelectionFunctionResult,
 ) -> (Sender<T>, Receiver<T>) {
     let buf = VecDeque::new();
@@ -46,7 +46,7 @@ pub fn channel<T>(
 
     let send = Sender {
         shared: shared.clone(),
-        filter_function: Box::new(filter_function),
+        filter_predicate: Box::new(filter_predicate),
         selection_function: Box::new(selection_function),
     };
 
@@ -67,7 +67,7 @@ struct Shared<T> {
 #[allow(clippy::type_complexity)]
 pub struct Sender<T> {
     shared: Arc<Shared<T>>,
-    filter_function: Box<dyn Sync + Send + Fn(&T) -> SelectionFunctionResult>,
+    filter_predicate: Box<dyn Sync + Send + Fn(&T) -> bool>,
     selection_function: Box<dyn Sync + Send + Fn(&T, &T) -> SelectionFunctionResult>,
 }
 
@@ -77,55 +77,22 @@ impl<T> Sender<T> {
     /// on the buffer of pending values.
     pub fn send(&self, value: T) {
         // Check if new value is valid to keep
-        if (self.filter_function)(&value) != SelectionFunctionResult::Keep {
+        if !(self.filter_predicate)(&value) {
             return;
         }
         self.shared.send.send_modify(|buf| {
-            let len = buf.len();
-            let mut idx = 0;
-            let mut cur = 0;
-
-            // Stage 1: All values are retained.
-            while cur < len {
-                match (self.selection_function)(&mut buf[cur], &value) {
-                    SelectionFunctionResult::Keep => {
-                        cur += 1;
-                        idx += 1;
-                    }
-                    SelectionFunctionResult::DiscardOld => {
-                        cur += 1;
-                        break;
-                    }
-                    SelectionFunctionResult::DiscardNew => return,
+            let mut keep = true;
+            buf.retain(|x| match (self.selection_function)(x, &value) {
+                SelectionFunctionResult::Keep => true,
+                SelectionFunctionResult::DiscardOld => false,
+                SelectionFunctionResult::DiscardNew => {
+                    keep = false;
+                    true
                 }
+            });
+            if keep {
+                buf.push_back(value);
             }
-            // Stage 2: Swap retained value into current idx.
-            while cur < len {
-                match (self.selection_function)(&mut buf[cur], &value) {
-                    SelectionFunctionResult::Keep => {
-                        buf.swap(idx, cur);
-                        cur += 1;
-                        idx += 1;
-                    }
-                    SelectionFunctionResult::DiscardOld => {
-                        cur += 1;
-                        continue;
-                    }
-                    SelectionFunctionResult::DiscardNew => {
-                        if cur != idx {
-                            buf.truncate(idx);
-                        }
-                        return;
-                    }
-                }
-            }
-            // Stage 3: Truncate all values after idx.
-            if cur != idx {
-                buf.truncate(idx);
-            }
-
-            // Finally, push the value to the end of the queue.
-            buf.push_back(value)
         });
     }
 }

@@ -61,7 +61,7 @@ impl StateMachine {
         }
 
         let (send, recv) = sync::prunable_mpsc::channel(
-            StateMachine::inbound_filter_function,
+            StateMachine::inbound_filter_predicate,
             StateMachine::inbound_selection_function,
         );
 
@@ -170,34 +170,31 @@ impl StateMachine {
         Ok(())
     }
 
-    fn inbound_filter_function(new_req: &ConsensusReq) -> SelectionFunctionResult {
+    fn inbound_filter_predicate(new_req: &ConsensusReq) -> bool {
         // Verify message signature
-        match new_req.msg.verify() {
-            Ok(_) => SelectionFunctionResult::Keep,
-            _ => SelectionFunctionResult::DiscardNew,
-        }
+        new_req.msg.verify().is_ok()
     }
 
     fn inbound_selection_function(
-        pending_req: &ConsensusReq,
+        old_req: &ConsensusReq,
         new_req: &ConsensusReq,
     ) -> SelectionFunctionResult {
-        if pending_req.msg.key != new_req.msg.key {
+        if old_req.msg.key != new_req.msg.key {
             return SelectionFunctionResult::Keep;
         }
 
-        match (&pending_req.msg.msg, &new_req.msg.msg) {
-            (ConsensusMsg::LeaderPrepare(pending), ConsensusMsg::LeaderPrepare(new)) => {
+        match (&old_req.msg.msg, &new_req.msg.msg) {
+            (ConsensusMsg::LeaderPrepare(old), ConsensusMsg::LeaderPrepare(new)) => {
                 // Discard older message
-                if pending.view().number < new.view().number {
+                if old.view().number < new.view().number {
                     SelectionFunctionResult::DiscardOld
                 } else {
                     SelectionFunctionResult::DiscardNew
                 }
             }
-            (ConsensusMsg::LeaderCommit(pending), ConsensusMsg::LeaderCommit(new)) => {
+            (ConsensusMsg::LeaderCommit(old), ConsensusMsg::LeaderCommit(new)) => {
                 // Discard older message
-                if pending.view().number < new.view().number {
+                if old.view().number < new.view().number {
                     SelectionFunctionResult::DiscardOld
                 } else {
                     SelectionFunctionResult::DiscardNew

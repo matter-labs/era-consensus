@@ -14,7 +14,7 @@ async fn test_prunable_mpsc() {
     struct ValueType(usize, usize);
 
     let (send, recv): (Sender<ValueType>, Receiver<ValueType>) = channel(
-        |_: &ValueType| SelectionFunctionResult::Keep,
+        |_: &ValueType| true,
         |a, b| {
             // Prune values with the same i.
             if a.1 == b.1 {
@@ -94,11 +94,7 @@ async fn test_prunable_mpsc_sanity() {
     let (send, recv): (Sender<ValueType>, Receiver<ValueType>) = channel(
         |new_value: &ValueType| {
             // Discard values from set 1
-            if new_value.set == 1 {
-                SelectionFunctionResult::DiscardNew
-            } else {
-                SelectionFunctionResult::Keep
-            }
+            new_value.set != 1
         },
         |old_value, new_value| {
             // Discard values with the same id and lower ord.
