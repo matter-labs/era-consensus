@@ -86,7 +86,6 @@ impl PersistentBlockStore for BlockStore {
         if block.number() != want {
             return Err(anyhow::anyhow!("got block {:?}, want {want:?}", block.number()).into());
         }
-        blocks.push_back(block.clone());
         if let Some(c) = self.0.capacity {
             if blocks.len() >= c {
                 blocks.pop_front();
