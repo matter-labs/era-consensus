@@ -18,15 +18,15 @@ use zksync_consensus_utils::enum_util::Variant;
 
 /// Test setup.
 #[derive(Debug, Clone)]
-pub struct Setup(SetupInner);
+pub struct Setup(SetupRaw);
 
-impl Setup {
-    /// New `Setup`.
+impl SetupRaw {
+    /// New `SetupRaw`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
         Self::new_with_weights(rng, vec![1; validators])
     }
 
-    /// New `Setup`.
+    /// New `SetupRaw`.
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
         let keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
         let genesis = GenesisRaw {
@@ -42,11 +42,23 @@ impl Setup {
             leader_selection: LeaderSelectionMode::RoundRobin,
         }
         .with_hash();
-        Self(SetupInner {
+        Self {
             keys,
             genesis,
             blocks: vec![],
-        })
+        }
+    }
+}
+
+impl Setup {
+    /// New `Setup`.
+    pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
+        SetupRaw::new(rng, validators).into()
+    }
+
+    /// New `Setup`.
+    pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
+        SetupRaw::new_with_weights(rng, weights).into()
     }
 
     /// Next block to finalize.
@@ -108,7 +120,7 @@ impl Setup {
 
 /// Setup.
 #[derive(Debug, Clone)]
-pub struct SetupInner {
+pub struct SetupRaw {
     /// Validators' secret keys.
     pub keys: Vec<SecretKey>,
     /// Past blocks.
@@ -118,10 +130,14 @@ pub struct SetupInner {
 }
 
 impl std::ops::Deref for Setup {
-    type Target = SetupInner;
+    type Target = SetupRaw;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
+}
+
+impl From<SetupRaw> for Setup {
+    fn from(x: SetupRaw) -> Self { Self(x) }
 }
 
 impl AggregateSignature {
