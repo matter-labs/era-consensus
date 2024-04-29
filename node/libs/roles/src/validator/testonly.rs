@@ -16,37 +16,55 @@ use std::sync::Arc;
 use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
 
+/// Test setup specification.
+#[derive(Debug, Clone)]
+pub struct SetupSpec {
+    /// ChainId
+    pub chain_id: ChainId,
+    /// Fork number.
+    pub fork_number: ForkNumber,
+    /// First block.
+    pub first_block: BlockNumber,
+
+    /// Protocol version.
+    pub protocol_version: ProtocolVersion,
+    /// Validator secret keys and weights.
+    pub weights: Vec<(SecretKey, u64)>,
+    /// Leader selection.
+    pub leader_selection: LeaderSelectionMode,
+}
+
 /// Test setup.
 #[derive(Debug, Clone)]
 pub struct Setup(SetupInner);
-
-impl Setup {
-    /// New `Setup`.
+impl SetupSpec {
+    /// New `SetupSpec`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
         Self::new_with_weights(rng, vec![1; validators])
     }
 
-    /// New `Setup`.
+    /// New `SetupSpec`.
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
-        let keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
-        let genesis = GenesisRaw {
+        Self {
+            weights: weights.into_iter().map(|w| (rng.gen(), w)).collect(),
             chain_id: ChainId(1337),
-            committee: Committee::new(keys.iter().enumerate().map(|(i, k)| WeightedValidator {
-                key: k.public(),
-                weight: weights[i],
-            }))
-            .unwrap(),
             fork_number: ForkNumber(rng.gen_range(0..100)),
             first_block: BlockNumber(rng.gen_range(0..100)),
             protocol_version: ProtocolVersion::CURRENT,
             leader_selection: LeaderSelectionMode::RoundRobin,
         }
-        .with_hash();
-        Self(SetupInner {
-            keys,
-            genesis,
-            blocks: vec![],
-        })
+    }
+}
+
+impl Setup {
+    /// New `Setup`.
+    pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
+        SetupSpec::new(rng, validators).into()
+    }
+
+    /// New `Setup`.
+    pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
+        SetupSpec::new_with_weights(rng, weights).into()
     }
 
     /// Next block to finalize.
@@ -103,6 +121,29 @@ impl Setup {
     pub fn block(&self, n: BlockNumber) -> Option<&FinalBlock> {
         let first = self.0.blocks.first()?.number();
         self.0.blocks.get(n.0.checked_sub(first.0)? as usize)
+    }
+}
+
+impl From<SetupSpec> for Setup {
+    fn from(spec: SetupSpec) -> Self {
+        Self(SetupInner {
+            genesis: GenesisRaw {
+                chain_id: spec.chain_id,
+                fork_number: spec.fork_number,
+                first_block: spec.first_block,
+
+                protocol_version: spec.protocol_version,
+                committee: Committee::new(spec.weights.iter().map(|(k, w)| WeightedValidator {
+                    key: k.public(),
+                    weight: *w,
+                }))
+                .unwrap(),
+                leader_selection: spec.leader_selection,
+            }
+            .with_hash(),
+            keys: spec.weights.into_iter().map(|(k, _)| k).collect(),
+            blocks: vec![],
+        })
     }
 }
 
