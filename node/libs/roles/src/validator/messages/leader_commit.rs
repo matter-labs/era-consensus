@@ -60,9 +60,9 @@ pub enum CommitQCAddError {
     /// Inconsistent views.
     #[error("Trying to add a message from a diferent view")]
     InconsistentViews,
-    /// Validator not present in the committee.
-    #[error("Validator not in committee: {signer:?}")]
-    ValidatorNotInCommittee {
+    /// Signer not present in the committee.
+    #[error("Signer not in committee: {signer:?}")]
+    SignerNotInCommittee {
         /// Signer of the message.
         signer: Box<validator::PublicKey>,
     },
@@ -106,7 +106,7 @@ impl CommitQC {
             return Err(Error::InconsistentViews);
         };
         let Some(i) = genesis.committee.index(&msg.key) else {
-            return Err(Error::ValidatorNotInCommittee {
+            return Err(Error::SignerNotInCommittee {
                 signer: Box::new(msg.key.clone()),
             });
         };
