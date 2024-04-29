@@ -1,5 +1,5 @@
 //! Node configuration.
-use crate::{proto};
+use crate::proto;
 use anyhow::Context as _;
 use serde_json::{ser::Formatter, Serializer};
 use std::{
@@ -12,7 +12,7 @@ use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BlockStore, BlockStoreRunner, testonly::in_memory};
+use zksync_consensus_storage::{testonly::in_memory, BlockStore, BlockStoreRunner};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
 fn read_required_secret_text<T: TextFmt>(text: &Option<String>) -> anyhow::Result<T> {
@@ -187,7 +187,11 @@ impl Configs {
         ctx: &ctx::Ctx,
     ) -> ctx::Result<(executor::Executor, BlockStoreRunner)> {
         //let store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
-        let store = in_memory::BlockStore::bounded(self.app.genesis.clone(), self.app.genesis.first_block, 200);
+        let store = in_memory::BlockStore::bounded(
+            self.app.genesis.clone(),
+            self.app.genesis.first_block,
+            200,
+        );
         let (block_store, runner) = BlockStore::new(ctx, Box::new(store.clone())).await?;
         let e = executor::Executor {
             config: executor::Config {

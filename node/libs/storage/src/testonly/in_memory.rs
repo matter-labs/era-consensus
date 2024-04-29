@@ -36,8 +36,12 @@ impl BlockStore {
         }))
     }
 
-    /// New bounded storage. Old blocks get GC'ed onse the storage capacity is full. 
-    pub fn bounded(genesis: validator::Genesis, first: validator::BlockNumber, capacity: usize) -> Self {
+    /// New bounded storage. Old blocks get GC'ed onse the storage capacity is full.
+    pub fn bounded(
+        genesis: validator::Genesis,
+        first: validator::BlockNumber,
+        capacity: usize,
+    ) -> Self {
         assert!(genesis.first_block <= first);
         Self(Arc::new(BlockStoreInner {
             genesis,
@@ -84,18 +88,16 @@ impl PersistentBlockStore for BlockStore {
         }
         blocks.push_back(block.clone());
         if let Some(c) = self.0.capacity {
-            if blocks.len()>c {
+            if blocks.len() > c {
                 blocks.pop_front();
             }
         }
-        self.0
-            .persisted
-            .send_modify(|p| {
-                if let Some(first) = blocks.front() {
-                    p.first = first.number();
-                }
-                p.last = Some(block.justification.clone())
-            });
+        self.0.persisted.send_modify(|p| {
+            if let Some(first) = blocks.front() {
+                p.first = first.number();
+            }
+            p.last = Some(block.justification.clone())
+        });
         blocks.push_back(block);
         Ok(())
     }
