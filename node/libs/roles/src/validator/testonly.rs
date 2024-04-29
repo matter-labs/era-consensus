@@ -24,16 +24,15 @@ pub struct SetupSpec {
     /// Fork number.
     pub fork_number: ForkNumber,
     /// First block.
-    pub first_block: BlockNumber,   
+    pub first_block: BlockNumber,
 
     /// Protocol version.
     pub protocol_version: ProtocolVersion,
     /// Validator secret keys and weights.
-    pub weights: Vec<(SecretKey,u64)>, 
+    pub weights: Vec<(SecretKey, u64)>,
     /// Leader selection.
     pub leader_selection: LeaderSelectionMode,
 }
-
 
 /// Test setup.
 #[derive(Debug, Clone)]
@@ -47,7 +46,7 @@ impl SetupSpec {
     /// New `SetupSpec`.
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
         Self {
-            weights: weights.into_iter().map(|w| (rng.gen(),w)).collect(),
+            weights: weights.into_iter().map(|w| (rng.gen(), w)).collect(),
             chain_id: ChainId(1337),
             fork_number: ForkNumber(rng.gen_range(0..100)),
             first_block: BlockNumber(rng.gen_range(0..100)),
@@ -134,13 +133,15 @@ impl From<SetupSpec> for Setup {
                 first_block: spec.first_block,
 
                 protocol_version: spec.protocol_version,
-                committee: Committee::new(spec.weights.iter().map(|(k,w)|WeightedValidator {
+                committee: Committee::new(spec.weights.iter().map(|(k, w)| WeightedValidator {
                     key: k.public(),
                     weight: *w,
-                })).unwrap(),
+                }))
+                .unwrap(),
                 leader_selection: spec.leader_selection,
-            }.with_hash(),
-            keys: spec.weights.into_iter().map(|(k,_)|k).collect(),
+            }
+            .with_hash(),
+            keys: spec.weights.into_iter().map(|(k, _)| k).collect(),
             blocks: vec![],
         })
     }
