@@ -16,36 +16,43 @@ use std::sync::Arc;
 use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
 
+/// Test setup specification.
+#[derive(Debug, Clone)]
+pub struct SetupSpec {
+    /// ChainId
+    pub chain_id: ChainId,
+    /// Fork number.
+    pub fork_number: ForkNumber,
+    /// First block.
+    pub first_block: BlockNumber,   
+
+    /// Protocol version.
+    pub protocol_version: ProtocolVersion,
+    /// Validator secret keys and weights.
+    pub weights: Vec<(SecretKey,u64)>, 
+    /// Leader selection.
+    pub leader_selection: LeaderSelectionMode,
+}
+
+
 /// Test setup.
 #[derive(Debug, Clone)]
-pub struct Setup(SetupRaw);
-
-impl SetupRaw {
-    /// New `SetupRaw`.
+pub struct Setup(SetupInner);
+impl SetupSpec {
+    /// New `SetupSpec`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
         Self::new_with_weights(rng, vec![1; validators])
     }
 
-    /// New `SetupRaw`.
+    /// New `SetupSpec`.
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
-        let keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
-        let genesis = GenesisRaw {
+        Self {
+            weights: weights.into_iter().map(|w| (rng.gen(),w)).collect(),
             chain_id: ChainId(1337),
-            committee: Committee::new(keys.iter().enumerate().map(|(i, k)| WeightedValidator {
-                key: k.public(),
-                weight: weights[i],
-            }))
-            .unwrap(),
             fork_number: ForkNumber(rng.gen_range(0..100)),
             first_block: BlockNumber(rng.gen_range(0..100)),
             protocol_version: ProtocolVersion::CURRENT,
             leader_selection: LeaderSelectionMode::RoundRobin,
-        }
-        .with_hash();
-        Self {
-            keys,
-            genesis,
-            blocks: vec![],
         }
     }
 }
@@ -53,12 +60,12 @@ impl SetupRaw {
 impl Setup {
     /// New `Setup`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
-        SetupRaw::new(rng, validators).into()
+        SetupSpec::new(rng, validators).into()
     }
 
     /// New `Setup`.
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
-        SetupRaw::new_with_weights(rng, weights).into()
+        SetupSpec::new_with_weights(rng, weights).into()
     }
 
     /// Next block to finalize.
@@ -118,9 +125,30 @@ impl Setup {
     }
 }
 
+impl From<SetupSpec> for Setup {
+    fn from(spec: SetupSpec) -> Self {
+        Self(SetupInner {
+            genesis: GenesisRaw {
+                chain_id: spec.chain_id,
+                fork_number: spec.fork_number,
+                first_block: spec.first_block,
+
+                protocol_version: spec.protocol_version,
+                committee: Committee::new(spec.weights.iter().map(|(k,w)|WeightedValidator {
+                    key: k.public(),
+                    weight: *w,
+                })).unwrap(),
+                leader_selection: spec.leader_selection,
+            }.with_hash(),
+            keys: spec.weights.into_iter().map(|(k,_)|k).collect(),
+            blocks: vec![],
+        })
+    }
+}
+
 /// Setup.
 #[derive(Debug, Clone)]
-pub struct SetupRaw {
+pub struct SetupInner {
     /// Validators' secret keys.
     pub keys: Vec<SecretKey>,
     /// Past blocks.
@@ -130,14 +158,10 @@ pub struct SetupRaw {
 }
 
 impl std::ops::Deref for Setup {
-    type Target = SetupRaw;
+    type Target = SetupInner;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
-}
-
-impl From<SetupRaw> for Setup {
-    fn from(x: SetupRaw) -> Self { Self(x) }
 }
 
 impl AggregateSignature {
