@@ -190,7 +190,8 @@ fn make_replica_commit(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> R
 fn make_commit_qc(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> CommitQC {
     let mut qc = CommitQC::new(make_replica_commit(rng, view, setup), &setup.genesis);
     for key in &setup.keys {
-        qc.add(&key.sign_msg(qc.message.clone()), &setup.genesis);
+        qc.add(&key.sign_msg(qc.message.clone()), &setup.genesis)
+            .unwrap();
     }
     qc
 }
@@ -227,7 +228,8 @@ fn test_commit_qc() {
         let view = rng.gen();
         let mut qc = CommitQC::new(make_replica_commit(rng, view, &setup1), &setup1.genesis);
         for key in &setup1.keys[0..i] {
-            qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis);
+            qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis)
+                .unwrap();
         }
         let expected_weight = i as u64 * validator_weight;
         if expected_weight >= setup1.genesis.committee.threshold() {
@@ -269,7 +271,8 @@ fn test_prepare_qc() {
             qc.add(
                 &key.sign_msg(msgs.choose(rng).unwrap().clone()),
                 &setup1.genesis,
-            );
+            )
+            .unwrap();
         }
         let expected_weight = n as u64 * setup1.genesis.committee.total_weight() / 6;
         if expected_weight >= setup1.genesis.committee.threshold() {
@@ -302,7 +305,7 @@ fn test_validator_committee_weights() {
     let mut qc = PrepareQC::new(msg.view.clone());
     for (n, weight) in sums.iter().enumerate() {
         let key = &setup.keys[n];
-        qc.add(&key.sign_msg(msg.clone()), &setup.genesis);
+        qc.add(&key.sign_msg(msg.clone()), &setup.genesis).unwrap();
         let signers = &qc.map[&msg];
         assert_eq!(setup.genesis.committee.weight(signers), *weight);
     }

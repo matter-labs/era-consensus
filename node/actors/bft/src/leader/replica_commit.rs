@@ -105,7 +105,9 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // Add the message to the QC.
-        commit_qc.add(&signed_message, self.config.genesis());
+        commit_qc
+            .add(&signed_message, self.config.genesis())
+            .expect("Could not add message to CommitQC");
 
         // Now we check if we have enough weight to continue.
         let weight = self.config.genesis().committee.weight(&commit_qc.signers);

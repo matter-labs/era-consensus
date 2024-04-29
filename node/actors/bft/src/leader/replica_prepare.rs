@@ -115,7 +115,9 @@ impl StateMachine {
             .prepare_qcs
             .entry(message.view.number)
             .or_insert_with(|| validator::PrepareQC::new(message.view.clone()));
-        prepare_qc.add(&signed_message, self.config.genesis());
+        prepare_qc
+            .add(&signed_message, self.config.genesis())
+            .expect("Could not add message to PrepareQC");
 
         // We store the message in our cache.
         self.prepare_message_cache

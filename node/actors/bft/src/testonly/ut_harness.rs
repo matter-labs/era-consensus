@@ -304,7 +304,8 @@ impl UTHarness {
         mutate_fn(&mut msg);
         let mut qc = CommitQC::new(msg, self.genesis());
         for key in &self.keys {
-            qc.add(&key.sign_msg(qc.message.clone()), self.genesis());
+            qc.add(&key.sign_msg(qc.message.clone()), self.genesis())
+                .unwrap();
         }
         qc
     }
@@ -317,7 +318,7 @@ impl UTHarness {
         mutate_fn(&mut msg);
         let mut qc = PrepareQC::new(msg.view.clone());
         for key in &self.keys {
-            qc.add(&key.sign_msg(msg.clone()), self.genesis());
+            qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
         }
         qc
     }

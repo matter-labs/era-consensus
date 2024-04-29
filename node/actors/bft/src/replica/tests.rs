@@ -214,7 +214,9 @@ async fn leader_prepare_invalid_payload() {
             },
             util.genesis(),
         );
-        justification.add(&util.sign(justification.message.clone()), util.genesis());
+        justification
+            .add(&util.sign(justification.message.clone()), util.genesis())
+            .unwrap();
         let block = validator::FinalBlock {
             payload: leader_prepare.proposal_payload.clone().unwrap(),
             justification,
@@ -417,7 +419,7 @@ async fn leader_prepare_reproposal_without_quorum() {
             replica_prepare.high_vote.as_mut().unwrap().proposal.payload = rng.gen();
             leader_prepare
                 .justification
-                .add(&key.sign_msg(replica_prepare.clone()), util.genesis());
+                .add(&key.sign_msg(replica_prepare.clone()), util.genesis())?;
         }
         let res = util
             .process_leader_prepare(ctx, util.sign(leader_prepare))

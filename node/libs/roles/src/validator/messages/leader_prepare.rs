@@ -46,6 +46,26 @@ pub enum PrepareQCVerifyError {
     BadSignature(#[source] anyhow::Error),
 }
 
+/// Error returned by `PrepareQC::add()`.
+#[derive(thiserror::Error, Debug)]
+pub enum PrepareQCAddError {
+    /// Inconsistent views.
+    #[error("inconsistent views of signed messages")]
+    InconsistentViews,
+    /// Validator not present in the committee.
+    #[error("Validator not in committee: {signer:?}")]
+    ValidatorNotInCommittee {
+        /// Signer of the message.
+        signer: Box<validator::PublicKey>,
+    },
+    /// Message already present in PrepareQC.
+    #[error("Message already signed for PrepareQC: {existing_message:?}")]
+    Exists {
+        /// Existing message from the same replica.
+        existing_message: Box<ReplicaPrepare>,
+    },
+}
+
 impl PrepareQC {
     /// Create a new empty instance for a given `ReplicaCommit` message and a validator set size.
     pub fn new(view: View) -> Self {
@@ -80,24 +100,33 @@ impl PrepareQC {
 
     /// Add a validator's signed message.
     /// Message is assumed to be already verified.
-    // TODO: check if there is already a message from that validator.
     // TODO: verify the message inside instead.
-    pub fn add(&mut self, msg: &Signed<ReplicaPrepare>, genesis: &Genesis) {
+    pub fn add(
+        &mut self,
+        msg: &Signed<ReplicaPrepare>,
+        genesis: &Genesis,
+    ) -> Result<(), PrepareQCAddError> {
+        use PrepareQCAddError as Error;
         if msg.msg.view != self.view {
-            return;
+            return Err(Error::InconsistentViews);
         }
         let Some(i) = genesis.committee.index(&msg.key) else {
-            return;
+            return Err(Error::ValidatorNotInCommittee {
+                signer: Box::new(msg.key.clone()),
+            });
         };
         let e = self
             .map
             .entry(msg.msg.clone())
             .or_insert_with(|| Signers::new(genesis.committee.len()));
         if e.0[i] {
-            return;
+            return Err(Error::Exists {
+                existing_message: Box::new(msg.msg.clone()),
+            });
         };
         e.0.set(i, true);
         self.signature.add(&msg.sig);
+        Ok(())
     }
 
     /// Verifies the integrity of the PrepareQC.
