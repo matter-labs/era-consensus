@@ -267,7 +267,7 @@ fn test_commit_qc_add_errors() {
     msg1.view.number = view.next();
     assert_matches!(
         qc.add(&setup.keys[0].sign_msg(msg1), &setup.genesis),
-        Err(Error::InconsistentViews { .. })
+        Err(Error::InconsistentMessages { .. })
     );
 
     // Try to add a message from a signer not in committee

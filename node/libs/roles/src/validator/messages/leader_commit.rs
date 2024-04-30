@@ -57,9 +57,9 @@ pub enum CommitQCVerifyError {
 /// Error returned by `CommitQC::add()`.
 #[derive(thiserror::Error, Debug)]
 pub enum CommitQCAddError {
-    /// Inconsistent views.
-    #[error("Trying to add a message from a different view")]
-    InconsistentViews,
+    /// Inconsistent messages.
+    #[error("Trying to add signature for a different message")]
+    InconsistentMessages,
     /// Signer not present in the committee.
     #[error("Signer not in committee: {signer:?}")]
     SignerNotInCommittee {
@@ -100,7 +100,7 @@ impl CommitQC {
     ) -> Result<(), CommitQCAddError> {
         use CommitQCAddError as Error;
         if self.message != msg.msg {
-            return Err(Error::InconsistentViews);
+            return Err(Error::InconsistentMessages);
         };
         let Some(i) = genesis.committee.index(&msg.key) else {
             return Err(Error::SignerNotInCommittee {
