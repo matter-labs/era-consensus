@@ -1,8 +1,8 @@
 //! Global state distributed by active validators, observed by all the nodes in the network.
 use crate::watch::Watch;
 use std::{collections::HashSet, sync::Arc};
-use zksync_concurrency::{sync, time};
-use zksync_consensus_roles::attester::{self, BatchNumber, L1Batch};
+use zksync_concurrency::sync;
+use zksync_consensus_roles::attester::{self, L1Batch};
 
 /// Mapping from validator::PublicKey to a signed validator::NetAddress.
 /// Represents the currents state of node's knowledge about the validator endpoints.
@@ -12,13 +12,13 @@ pub(crate) struct L1BatchSignatures(
 );
 
 impl L1BatchSignatures {
-    /// Gets a NetAddress for a given key.
-    pub(crate) fn get(
-        &self,
-        key: &attester::PublicKey,
-    ) -> Option<&Arc<attester::SignedBatchMsg<L1Batch>>> {
-        self.0.get(key)
-    }
+    // /// Gets a NetAddress for a given key.
+    // pub(crate) fn get(
+    //     &self,
+    //     key: &attester::PublicKey,
+    // ) -> Option<&Arc<attester::SignedBatchMsg<L1Batch>>> {
+    //     self.0.get(key)
+    // }
 
     /// Returns a set of entries of `self` which are newer than the entries in `b`.
     pub(super) fn get_newer(&self, b: &Self) -> Vec<Arc<attester::SignedBatchMsg<L1Batch>>> {
@@ -90,22 +90,22 @@ impl L1BatchSignaturesWatch {
         self.0.subscribe()
     }
 
-    /// Inserts a new version of the announcement signed with the given key.
-    pub(crate) async fn announce(
-        &self,
-        key: &attester::SecretKey,
-        batch_number: BatchNumber,
-        timestamp: time::Utc,
-    ) {
-        let this = self.0.lock().await;
-        let mut signatures = this.borrow().clone();
-        let d = Arc::new(key.sign_batch_msg(L1Batch {
-            number: batch_number,
-            timestamp: timestamp,
-        }));
-        signatures.0.insert(d.key.clone(), d);
-        this.send_replace(signatures);
-    }
+    // /// Inserts a new version of the announcement signed with the given key.
+    // pub(crate) async fn announce(
+    //     &self,
+    //     key: &attester::SecretKey,
+    //     batch_number: BatchNumber,
+    //     timestamp: time::Utc,
+    // ) {
+    //     let this = self.0.lock().await;
+    //     let mut signatures = this.borrow().clone();
+    //     let d = Arc::new(key.sign_batch_msg(L1Batch {
+    //         number: batch_number,
+    //         timestamp,
+    //     }));
+    //     signatures.0.insert(d.key.clone(), d);
+    //     this.send_replace(signatures);
+    // }
 
     /// Inserts data to ValidatorAddrs.
     /// Subscribers are notified iff at least 1 new entry has

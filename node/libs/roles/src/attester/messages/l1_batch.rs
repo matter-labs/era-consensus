@@ -53,6 +53,7 @@ pub enum L1BatchQCVerifyError {
 }
 
 impl L1Batch {
+    /// Checks if `self` is a newer version than `b`.
     pub fn is_newer(&self, b: &Self) -> bool {
         (&self.number, self.timestamp) > (&b.number, b.timestamp)
     }
