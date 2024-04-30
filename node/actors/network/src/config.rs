@@ -1,7 +1,7 @@
 //! Network actor configs.
 use std::collections::{HashMap, HashSet};
 use zksync_concurrency::{limiter, net, time};
-use zksync_consensus_roles::{node, validator};
+use zksync_consensus_roles::{attester, node, validator};
 
 /// How often we should retry to establish a connection to a validator.
 /// TODO(gprusak): once it becomes relevant, choose a more appropriate retry strategy.
@@ -83,6 +83,9 @@ pub struct Config {
     /// Private key of the validator.
     /// None if the node is NOT a validator.
     pub validator_key: Option<validator::SecretKey>,
+    /// Private key of the attester.
+    /// None if the node is NOT an attester.
+    pub attester_key: Option<attester::SecretKey>,
     /// Maximal size of the proto-encoded `validator::FinalBlock` in bytes.
     pub max_block_size: usize,
     /// If a peer doesn't respond to a ping message within `ping_timeout`,

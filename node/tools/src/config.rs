@@ -11,7 +11,7 @@ use zksync_concurrency::{ctx, net};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
-use zksync_consensus_roles::{node, validator};
+use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::{BlockStore, BlockStoreRunner};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
@@ -93,6 +93,7 @@ pub struct AppConfig {
     pub genesis: validator::Genesis,
     pub max_payload_size: usize,
     pub validator_key: Option<validator::SecretKey>,
+    pub attester_key: Option<attester::SecretKey>,
 
     pub node_key: node::SecretKey,
     pub gossip_dynamic_inbound_limit: usize,
@@ -133,6 +134,8 @@ impl ProtoFmt for AppConfig {
             // TODO: read secret.
             validator_key: read_optional_secret_text(&r.validator_secret_key)
                 .context("validator_secret_key")?,
+            attester_key: read_optional_secret_text(&r.attester_secret_key)
+                .context("attester_secret_key")?,
 
             node_key: read_required_secret_text(&r.node_secret_key).context("node_secret_key")?,
             gossip_dynamic_inbound_limit: required(&r.gossip_dynamic_inbound_limit)
@@ -153,6 +156,7 @@ impl ProtoFmt for AppConfig {
             genesis: Some(self.genesis.build()),
             max_payload_size: Some(self.max_payload_size.try_into().unwrap()),
             validator_secret_key: self.validator_key.as_ref().map(TextFmt::encode),
+            attester_secret_key: self.attester_key.as_ref().map(TextFmt::encode),
 
             node_secret_key: Some(self.node_key.encode()),
             gossip_dynamic_inbound_limit: Some(
@@ -210,6 +214,7 @@ impl Configs {
                         self.app.max_payload_size,
                     )),
                 }),
+            attester: None,
         };
         Ok((e, runner))
     }

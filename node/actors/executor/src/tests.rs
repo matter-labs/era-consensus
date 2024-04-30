@@ -35,6 +35,7 @@ fn validator(
             replica_store: Box::new(replica_store),
             payload_manager: Box::new(bft::testonly::RandomPayload(1000)),
         }),
+        attester: None,
     }
 }
 
@@ -43,6 +44,7 @@ fn fullnode(cfg: &network::Config, block_store: Arc<BlockStore>) -> Executor {
         config: config(cfg),
         block_store,
         validator: None,
+        attester: None,
     }
 }
 

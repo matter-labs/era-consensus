@@ -9,7 +9,7 @@ use std::{
 use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
-use zksync_consensus_roles::{node, validator};
+use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::{BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
@@ -28,9 +28,23 @@ pub struct Validator {
     pub payload_manager: Box<dyn bft::PayloadManager>,
 }
 
+/// Validator-related part of [`Executor`].
+pub struct Attester {
+    /// Consensus network configuration.
+    pub key: attester::SecretKey,
+}
+
 impl fmt::Debug for Validator {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.debug_struct("ValidatorExecutor")
+            .field("key", &self.key)
+            .finish()
+    }
+}
+
+impl fmt::Debug for Attester {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.debug_struct("AttesterExecutor")
             .field("key", &self.key)
             .finish()
     }
@@ -47,7 +61,6 @@ pub struct Config {
     pub public_addr: net::Host,
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
-
     /// Key of this node. It uniquely identifies the node.
     /// It should match the secret key provided in the `node_key` file.
     pub node_key: node::SecretKey,
@@ -82,6 +95,8 @@ pub struct Executor {
     pub block_store: Arc<BlockStore>,
     /// Validator-specific node data.
     pub validator: Option<Validator>,
+    /// Attester-specific node data.
+    pub attester: Option<Attester>,
 }
 
 impl Executor {
@@ -92,6 +107,7 @@ impl Executor {
             public_addr: self.config.public_addr.clone(),
             gossip: self.config.gossip(),
             validator_key: self.validator.as_ref().map(|v| v.key.clone()),
+            attester_key: self.attester.as_ref().map(|v| v.key.clone()),
             ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
             max_block_queue_size: 20,

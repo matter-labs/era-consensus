@@ -77,27 +77,32 @@ pub fn new_configs(
     setup: &validator::testonly::Setup,
     gossip_peers: usize,
 ) -> Vec<Config> {
-    let configs = setup.validator_keys.iter().map(|key| {
-        let addr = net::tcp::testonly::reserve_listener();
-        Config {
-            server_addr: addr,
-            public_addr: (*addr).into(),
-            // Pings are disabled in tests by default to avoid dropping connections
-            // due to timeouts.
-            ping_timeout: None,
-            validator_key: Some(key.clone()),
-            gossip: GossipConfig {
-                key: rng.gen(),
-                dynamic_inbound_limit: usize::MAX,
-                static_inbound: HashSet::default(),
-                static_outbound: HashMap::default(),
-            },
-            max_block_size: usize::MAX,
-            tcp_accept_rate: limiter::Rate::INF,
-            rpc: RpcConfig::default(),
-            max_block_queue_size: 10,
-        }
-    });
+    let configs = setup
+        .validator_keys
+        .iter()
+        .zip(setup.attester_keys.iter())
+        .map(|(validator_key, attester_key)| {
+            let addr = net::tcp::testonly::reserve_listener();
+            Config {
+                server_addr: addr,
+                public_addr: (*addr).into(),
+                // Pings are disabled in tests by default to avoid dropping connections
+                // due to timeouts.
+                ping_timeout: None,
+                validator_key: Some(validator_key.clone()),
+                attester_key: Some(attester_key.clone()),
+                gossip: GossipConfig {
+                    key: rng.gen(),
+                    dynamic_inbound_limit: usize::MAX,
+                    static_inbound: HashSet::default(),
+                    static_outbound: HashMap::default(),
+                },
+                max_block_size: usize::MAX,
+                tcp_accept_rate: limiter::Rate::INF,
+                rpc: RpcConfig::default(),
+                max_block_queue_size: 10,
+            }
+        });
     let mut cfgs: Vec<_> = configs.collect();
 
     let n = cfgs.len();
@@ -123,6 +128,7 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
         // due to timeouts.
         ping_timeout: None,
         validator_key: None,
+        attester_key: None,
         gossip: GossipConfig {
             key: rng.gen(),
             dynamic_inbound_limit: usize::MAX,
