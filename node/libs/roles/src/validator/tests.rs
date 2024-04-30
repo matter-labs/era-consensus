@@ -248,6 +248,48 @@ fn test_commit_qc() {
 }
 
 #[test]
+fn test_commit_qc_add_errors() {
+    use CommitQCAddError as Error;
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let setup = Setup::new(rng, 2);
+    let view = rng.gen();
+    let mut qc = CommitQC::new(make_replica_commit(rng, view, &setup), &setup.genesis);
+    let msg = qc.message.clone();
+    // Add the message
+    assert_matches!(
+        qc.add(&setup.keys[0].sign_msg(msg.clone()), &setup.genesis),
+        Ok(())
+    );
+
+    // Try to add a message for a different view
+    let mut msg1 = msg.clone();
+    msg1.view.number = view.next();
+    assert_matches!(
+        qc.add(&setup.keys[0].sign_msg(msg1), &setup.genesis),
+        Err(Error::InconsistentViews { .. })
+    );
+
+    // Try to add a message from a signer not in committee
+    assert_matches!(
+        qc.add(
+            &rng.gen::<SecretKey>().sign_msg(msg.clone()),
+            &setup.genesis
+        ),
+        Err(Error::SignerNotInCommittee { .. })
+    );
+
+    // Try to add the same message already added by same validator
+    assert_matches!(
+        qc.add(&setup.keys[0].sign_msg(msg.clone()), &setup.genesis),
+        Err(Error::Exists { .. })
+    );
+
+    // Add same message signed by another validator.
+    assert_matches!(qc.add(&setup.keys[1].sign_msg(msg), &setup.genesis), Ok(()));
+}
+
+#[test]
 fn test_prepare_qc() {
     use PrepareQCVerifyError as Error;
     let ctx = ctx::test_root(&ctx::RealClock);
@@ -288,6 +330,60 @@ fn test_prepare_qc() {
         assert!(qc.verify(&setup2.genesis).is_err());
         assert!(qc.verify(&genesis3).is_err());
     }
+}
+
+#[test]
+fn test_prepare_qc_add_errors() {
+    use PrepareQCAddError as Error;
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let setup = Setup::new(rng, 2);
+    let view = rng.gen();
+    let msg = make_replica_prepare(rng, view, &setup);
+    let mut qc = PrepareQC::new(msg.view.clone());
+    let msg = make_replica_prepare(rng, view, &setup);
+
+    // Add the message
+    assert_matches!(
+        qc.add(&setup.keys[0].sign_msg(msg.clone()), &setup.genesis),
+        Ok(())
+    );
+
+    // Try to add a message for a different view
+    let mut msg1 = msg.clone();
+    msg1.view.number = view.next();
+    assert_matches!(
+        qc.add(&setup.keys[0].sign_msg(msg1), &setup.genesis),
+        Err(Error::InconsistentViews { .. })
+    );
+
+    // Try to add a message from a signer not in committee
+    assert_matches!(
+        qc.add(
+            &rng.gen::<SecretKey>().sign_msg(msg.clone()),
+            &setup.genesis
+        ),
+        Err(Error::SignerNotInCommittee { .. })
+    );
+
+    // Try to add the same message already added by same validator
+    assert_matches!(
+        qc.add(&setup.keys[0].sign_msg(msg.clone()), &setup.genesis),
+        Err(Error::Exists { .. })
+    );
+
+    // Try to add a message for a validator that already added another message
+    let msg2 = make_replica_prepare(rng, view, &setup);
+    assert_matches!(
+        qc.add(&setup.keys[0].sign_msg(msg2), &setup.genesis),
+        Err(Error::Exists { .. })
+    );
+
+    // Add same message signed by another validator.
+    assert_matches!(
+        qc.add(&setup.keys[1].sign_msg(msg.clone()), &setup.genesis),
+        Ok(())
+    );
 }
 
 #[test]
