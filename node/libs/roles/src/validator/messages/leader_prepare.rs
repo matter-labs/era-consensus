@@ -59,11 +59,8 @@ pub enum PrepareQCAddError {
         signer: Box<validator::PublicKey>,
     },
     /// Message already present in PrepareQC.
-    #[error("Message already signed for PrepareQC: {existing_message:?}")]
-    Exists {
-        /// Existing message from the same replica.
-        existing_message: Box<ReplicaPrepare>,
-    },
+    #[error("Message already signed for PrepareQC")]
+    Exists,
 }
 
 impl PrepareQC {
@@ -115,15 +112,13 @@ impl PrepareQC {
                 signer: Box::new(msg.key.clone()),
             });
         };
+        if self.map.values().any(|s| s.0[i]) {
+            return Err(Error::Exists);
+        };
         let e = self
             .map
             .entry(msg.msg.clone())
             .or_insert_with(|| Signers::new(genesis.committee.len()));
-        if e.0[i] {
-            return Err(Error::Exists {
-                existing_message: Box::new(msg.msg.clone()),
-            });
-        };
         e.0.set(i, true);
         self.signature.add(&msg.sig);
         Ok(())

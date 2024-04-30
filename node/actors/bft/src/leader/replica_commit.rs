@@ -105,6 +105,7 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // Add the message to the QC.
+        // Should always succeed as all checks have been already performed
         commit_qc
             .add(&signed_message, self.config.genesis())
             .expect("Could not add message to CommitQC");

@@ -115,6 +115,8 @@ impl StateMachine {
             .prepare_qcs
             .entry(message.view.number)
             .or_insert_with(|| validator::PrepareQC::new(message.view.clone()));
+
+        // Should always succeed as all checks have been already performed
         prepare_qc
             .add(&signed_message, self.config.genesis())
             .expect("Could not add message to PrepareQC");

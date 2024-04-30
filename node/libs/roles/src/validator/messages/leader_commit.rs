@@ -67,11 +67,8 @@ pub enum CommitQCAddError {
         signer: Box<validator::PublicKey>,
     },
     /// Message already present in CommitQC.
-    #[error("Message already signed for CommitQC: {existing_message:?}")]
-    Exists {
-        /// Existing message from the same replica.
-        existing_message: Box<ReplicaCommit>,
-    },
+    #[error("Message already signed for CommitQC")]
+    Exists,
 }
 
 impl CommitQC {
@@ -111,9 +108,7 @@ impl CommitQC {
             });
         };
         if self.signers.0[i] {
-            return Err(Error::Exists {
-                existing_message: Box::new(msg.msg.clone()),
-            });
+            return Err(Error::Exists);
         };
         self.signers.0.set(i, true);
         self.signature.add(&msg.sig);
