@@ -4,6 +4,7 @@ package zksync.network.gossip;
 
 import "zksync/roles/node.proto";
 import "zksync/roles/validator.proto";
+import "zksync/roles/attester.proto";
 
 // First message exchanged in the encrypted session.
 message Handshake {
@@ -15,6 +16,11 @@ message Handshake {
 message PushValidatorAddrs {
   // Signed roles.validator.Msg.net_address.
   repeated roles.validator.Signed net_addresses = 1;
+}
+
+message PushSignature {
+  // Signed roles.validator.Msg.net_address.
+  repeated roles.attester.SignedBatch signatures = 1;
 }
 
 // State of the local block store.
