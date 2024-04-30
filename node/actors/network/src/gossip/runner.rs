@@ -1,5 +1,8 @@
-use super::{handshake, Network, ValidatorAddrs};
-use crate::{noise, preface, rpc};
+use super::{batch_signatures::L1BatchSignatures, handshake, Network, ValidatorAddrs};
+use crate::{
+    noise, preface,
+    rpc::{self},
+};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use rand::seq::SliceRandom;
@@ -26,7 +29,25 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'
             .fetch_add(1, Ordering::SeqCst);
         self.0
             .validator_addrs
-            .update(&self.0.genesis().validators, &req.0[..])
+            .update(&self.0.genesis().validators, &req.0)
+            .await?;
+        Ok(())
+    }
+}
+
+struct L1BatchServer<'a>(&'a Network);
+
+#[async_trait::async_trait]
+impl rpc::Handler<rpc::push_signature::Rpc> for L1BatchServer<'_> {
+    /// Here we bound the buffering of incoming consensus messages.
+    fn max_req_size(&self) -> usize {
+        100 * kB
+    }
+
+    async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::push_signature::Req) -> anyhow::Result<()> {
+        self.0
+            .batch_signatures
+            .update(&self.0.genesis().attesters, &req.0)
             .await?;
         Ok(())
     }
@@ -92,6 +113,11 @@ impl Network {
             ctx,
             self.cfg.rpc.push_block_store_state_rate,
         );
+        let push_signature_client = rpc::Client::<rpc::push_signature::Rpc>::new(
+            ctx,
+            self.cfg.rpc.push_l1_batch_signature_rate,
+        );
+        let push_signature_server = L1BatchServer(self);
         let push_block_store_state_server = PushBlockStoreStateServer::new(self);
         let get_block_client =
             rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate);
@@ -102,6 +128,12 @@ impl Network {
                     ctx,
                     push_validator_addrs_server,
                     self.cfg.rpc.push_validator_addrs_rate,
+                )
+                .add_client(&push_signature_client)
+                .add_server(
+                    ctx,
+                    push_signature_server,
+                    self.cfg.rpc.push_l1_batch_signature_rate,
                 )
                 .add_client(&push_block_store_state_client)
                 .add_server(
@@ -149,6 +181,23 @@ impl Network {
                     old = new;
                     let req = rpc::push_validator_addrs::Req(diff);
                     push_validator_addrs_client.call(ctx, &req, kB).await?;
+                }
+            });
+
+            // Push L1 batch signatures updates to peer.
+            s.spawn::<()>(async {
+                let mut old = L1BatchSignatures::default();
+                let mut sub = self.batch_signatures.subscribe();
+                sub.mark_changed();
+                loop {
+                    let new = sync::changed(ctx, &mut sub).await?.clone();
+                    let diff = new.get_newer(&old);
+                    if diff.is_empty() {
+                        continue;
+                    }
+                    old = new;
+                    let req = rpc::push_signature::Req(diff);
+                    push_signature_client.call(ctx, &req, kB).await?;
                 }
             });
 

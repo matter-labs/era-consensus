@@ -4,7 +4,7 @@ use crate::{
     config, gossip, io, noise,
     pool::PoolWatch,
     preface,
-    rpc::{self, signature::L1BatchServer},
+    rpc::{self},
 };
 use anyhow::Context as _;
 use rand::seq::SliceRandom;
@@ -14,7 +14,6 @@ use std::{
 };
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope, sync, time};
-use zksync_consensus_roles::attester::L1BatchQC;
 use zksync_consensus_roles::validator::{self};
 use zksync_protobuf::kB;
 
@@ -123,8 +122,6 @@ pub(crate) struct Network {
     pub(crate) inbound: PoolWatch<validator::PublicKey, ()>,
     /// Set of the currently open outbound connections.
     pub(crate) outbound: PoolWatch<validator::PublicKey, ()>,
-    /// Last L1 batch QC.
-    pub(crate) l1_batch_qc: Option<L1BatchQC>,
     /// Messages to be sent to validators.
     pub(crate) msg_pool: MsgPool,
 }
@@ -155,23 +152,6 @@ impl rpc::Handler<rpc::consensus::Rpc> for &Network {
     }
 }
 
-#[async_trait::async_trait]
-impl rpc::Handler<rpc::signature::Rpc> for &L1BatchServer<'_> {
-    /// Here we bound the buffering of incoming consensus messages.
-    fn max_req_size(&self) -> usize {
-        self.0.gossip.cfg.max_block_size.saturating_add(kB)
-    }
-
-    async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::signature::Req) -> anyhow::Result<()> {
-        let genesis = self.0.gossip.genesis();
-        // FIXME Remove unwrap and find a way to handle the QC.
-        let qc = self.0.l1_batch_qc.as_ref().context("no L1BatchQC")?;
-        qc.verify(genesis).unwrap();
-        qc.clone().add(&req.0, genesis);
-        return Ok(());
-    }
-}
-
 impl Network {
     /// Constructs a new consensus network state.
     pub(crate) fn new(gossip: Arc<gossip::Network>) -> Option<Arc<Self>> {
@@ -181,7 +161,6 @@ impl Network {
             key,
             inbound: PoolWatch::new(validators.clone(), 0),
             outbound: PoolWatch::new(validators.clone(), 0),
-            l1_batch_qc: None,
             gossip,
             msg_pool: MsgPool::new(),
         }))

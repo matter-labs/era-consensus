@@ -19,6 +19,8 @@ use zksync_concurrency::{ctx, ctx::channel, scope, sync};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 
+use self::batch_signatures::L1BatchSignaturesWatch;
+
 mod batch_signatures;
 mod fetch;
 mod handshake;
@@ -39,6 +41,8 @@ pub(crate) struct Network {
     pub(crate) outbound: PoolWatch<node::PublicKey, ()>,
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
+    /// Current state of knowledge about batch signatures.
+    pub(crate) batch_signatures: L1BatchSignaturesWatch,
     /// Block store to serve `get_block` requests from.
     pub(crate) block_store: Arc<BlockStore>,
     /// Output pipe of the network actor.
@@ -64,6 +68,7 @@ impl Network {
             ),
             outbound: PoolWatch::new(cfg.gossip.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
+            batch_signatures: L1BatchSignaturesWatch::default(),
             cfg,
             fetch_queue: fetch::Queue::default(),
             block_store,

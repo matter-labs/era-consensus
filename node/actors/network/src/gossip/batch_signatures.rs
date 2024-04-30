@@ -20,19 +20,19 @@ impl L1BatchSignatures {
         self.0.get(key)
     }
 
-    // /// Returns a set of entries of `self` which are newer than the entries in `b`.
-    // pub(super) fn get_newer(&self, b: &Self) -> Vec<Arc<validator::Signed<validator::NetAddress>>> {
-    //     let mut newer = vec![];
-    //     for (k, v) in &self.0 {
-    //         if let Some(bv) = b.0.get(k) {
-    //             if !v.msg.is_newer(&bv.msg) {
-    //                 continue;
-    //             }
-    //         }
-    //         newer.push(v.clone());
-    //     }
-    //     newer
-    // }
+    /// Returns a set of entries of `self` which are newer than the entries in `b`.
+    pub(super) fn get_newer(&self, b: &Self) -> Vec<Arc<attester::SignedBatchMsg<L1Batch>>> {
+        let mut newer = vec![];
+        for (k, v) in &self.0 {
+            if let Some(bv) = b.0.get(k) {
+                if !v.msg.is_newer(&bv.msg) {
+                    continue;
+                }
+            }
+            newer.push(v.clone());
+        }
+        newer
+    }
 
     /// Updates the discovery map with entries from `data`.
     /// It exits as soon as an invalid entry is found.
