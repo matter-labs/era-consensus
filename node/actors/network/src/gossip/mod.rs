@@ -13,10 +13,15 @@
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config};
+use im::HashMap;
+use snow::types::Hash;
 use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync};
-use zksync_consensus_roles::{node, validator};
+use zksync_consensus_roles::{
+    attester::{self, BatchNumber, L1Batch, L1BatchQC, SignedBatchMsg},
+    node, validator,
+};
 use zksync_consensus_storage::BlockStore;
 
 use self::batch_signatures::L1BatchSignaturesWatch;
@@ -49,6 +54,10 @@ pub(crate) struct Network {
     pub(crate) sender: channel::UnboundedSender<io::OutputMessage>,
     /// Queue of block fetching requests.
     pub(crate) fetch_queue: fetch::Queue,
+    /// Attester SecretKey, None if the node is not an attester.
+    pub(crate) attester_key: Option<attester::SecretKey>,
+    /// L1 batch qc.
+    pub(crate) l1_batch_qc: HashMap<BatchNumber, L1BatchQC>,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
 }
@@ -69,6 +78,8 @@ impl Network {
             outbound: PoolWatch::new(cfg.gossip.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
             batch_signatures: L1BatchSignaturesWatch::default(),
+            attester_key: cfg.attester_key.clone(),
+            l1_batch_qc: HashMap::new(),
             cfg,
             fetch_queue: fetch::Queue::default(),
             block_store,
@@ -108,5 +119,13 @@ impl Network {
             }
         })
         .await;
+    }
+
+    pub(crate) async fn update_actual_qc(&self, msg: SignedBatchMsg<L1Batch>) {
+        self.l1_batch_qc
+            .clone()
+            .entry(msg.msg.number.clone())
+            .or_insert_with(|| L1BatchQC::new(msg.msg.clone(), self.genesis()))
+            .add(&msg, self.genesis());
     }
 }
