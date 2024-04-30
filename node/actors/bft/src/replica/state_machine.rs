@@ -3,7 +3,13 @@ use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
-use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
+use zksync_concurrency::{
+    ctx,
+    error::Wrap as _,
+    metrics::LatencyHistogramExt as _,
+    sync::{self, prunable_mpsc::SelectionFunctionResult},
+    time,
+};
 use zksync_consensus_network::io::ConsensusReq;
 use zksync_consensus_roles::{validator, validator::ConsensusMsg};
 use zksync_consensus_storage as storage;
@@ -54,7 +60,10 @@ impl StateMachine {
                 .insert(proposal.payload.hash(), proposal.payload);
         }
 
-        let (send, recv) = sync::prunable_mpsc::channel(StateMachine::inbound_pruning_predicate);
+        let (send, recv) = sync::prunable_mpsc::channel(
+            StateMachine::inbound_filter_predicate,
+            StateMachine::inbound_selection_function,
+        );
 
         let mut this = Self {
             config,
@@ -161,15 +170,37 @@ impl StateMachine {
         Ok(())
     }
 
-    #[allow(clippy::match_like_matches_macro)]
-    fn inbound_pruning_predicate(pending_req: &ConsensusReq, new_req: &ConsensusReq) -> bool {
-        if pending_req.msg.key != new_req.msg.key {
-            return false;
+    fn inbound_filter_predicate(new_req: &ConsensusReq) -> bool {
+        // Verify message signature
+        new_req.msg.verify().is_ok()
+    }
+
+    fn inbound_selection_function(
+        old_req: &ConsensusReq,
+        new_req: &ConsensusReq,
+    ) -> SelectionFunctionResult {
+        if old_req.msg.key != new_req.msg.key {
+            return SelectionFunctionResult::Keep;
         }
-        match (&pending_req.msg.msg, &new_req.msg.msg) {
-            (ConsensusMsg::LeaderPrepare(_), ConsensusMsg::LeaderPrepare(_)) => true,
-            (ConsensusMsg::LeaderCommit(_), ConsensusMsg::LeaderCommit(_)) => true,
-            _ => false,
+
+        match (&old_req.msg.msg, &new_req.msg.msg) {
+            (ConsensusMsg::LeaderPrepare(old), ConsensusMsg::LeaderPrepare(new)) => {
+                // Discard older message
+                if old.view().number < new.view().number {
+                    SelectionFunctionResult::DiscardOld
+                } else {
+                    SelectionFunctionResult::DiscardNew
+                }
+            }
+            (ConsensusMsg::LeaderCommit(old), ConsensusMsg::LeaderCommit(new)) => {
+                // Discard older message
+                if old.view().number < new.view().number {
+                    SelectionFunctionResult::DiscardOld
+                } else {
+                    SelectionFunctionResult::DiscardNew
+                }
+            }
+            _ => SelectionFunctionResult::Keep,
         }
     }
 }

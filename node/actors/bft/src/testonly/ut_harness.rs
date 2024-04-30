@@ -8,7 +8,7 @@ use crate::{
 };
 use assert_matches::assert_matches;
 use std::sync::Arc;
-use zksync_concurrency::ctx;
+use zksync_concurrency::{ctx, sync::prunable_mpsc};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator::{
     self, CommitQC, LeaderCommit, LeaderPrepare, Phase, PrepareQC, ReplicaCommit, ReplicaPrepare,
@@ -32,6 +32,7 @@ pub(crate) struct UTHarness {
     pub(crate) leader: leader::StateMachine,
     pub(crate) replica: replica::StateMachine,
     pub(crate) keys: Vec<SecretKey>,
+    pub(crate) leader_send: prunable_mpsc::Sender<network::io::ConsensusReq>,
     pipe: ctx::channel::UnboundedReceiver<OutputMessage>,
 }
 
@@ -66,7 +67,7 @@ impl UTHarness {
             payload_manager,
             max_payload_size: MAX_PAYLOAD_SIZE,
         });
-        let (leader, _) = leader::StateMachine::new(ctx, cfg.clone(), send.clone());
+        let (leader, leader_send) = leader::StateMachine::new(ctx, cfg.clone(), send.clone());
         let (replica, _) = replica::StateMachine::start(ctx, cfg.clone(), send.clone())
             .await
             .unwrap();
@@ -75,6 +76,7 @@ impl UTHarness {
             replica,
             pipe: recv,
             keys: setup.keys.clone(),
+            leader_send,
         };
         let _: Signed<ReplicaPrepare> = this.try_recv().unwrap();
         (this, runner)
@@ -321,5 +323,12 @@ impl UTHarness {
             qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
         }
         qc
+    }
+
+    pub(crate) fn leader_send(&self, msg: Signed<validator::ConsensusMsg>) {
+        self.leader_send.send(network::io::ConsensusReq {
+            msg,
+            ack: zksync_concurrency::oneshot::channel().0,
+        });
     }
 }

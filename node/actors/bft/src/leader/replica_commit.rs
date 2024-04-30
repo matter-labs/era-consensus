@@ -1,5 +1,7 @@
 //! Handler of a ReplicaCommit message.
 
+use std::collections::HashSet;
+
 use super::StateMachine;
 use crate::metrics;
 use tracing::instrument;
@@ -30,12 +32,6 @@ pub(crate) enum Error {
     /// Invalid message.
     #[error("invalid message: {0:#}")]
     InvalidMessage(#[source] validator::ReplicaCommitVerifyError),
-    /// Duplicate message from a replica.
-    #[error("Replica signed more than one message for same view (message: {message:?}")]
-    DuplicateSignature {
-        /// Offending message.
-        message: validator::ReplicaCommit,
-    },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] anyhow::Error),
@@ -62,7 +58,14 @@ impl StateMachine {
         }
 
         // If the message is from the "past", we discard it.
-        if (message.view.number, validator::Phase::Commit) < (self.view, self.phase) {
+        // That is, it's from a previous view or phase, or if we already received a message
+        // from the same validator and for the same view.
+        if (message.view.number, validator::Phase::Commit) < (self.view, self.phase)
+            || self
+                .replica_commit_views
+                .get(author)
+                .is_some_and(|view_number| *view_number >= message.view.number)
+        {
             return Err(Error::Old {
                 current_view: self.view,
                 current_phase: self.phase,
@@ -75,24 +78,6 @@ impl StateMachine {
             return Err(Error::NotLeaderInView);
         }
 
-        // Get current incrementally-constructed QC to work on it
-        let commit_qc = self
-            .commit_qcs
-            .entry(message.view.number)
-            .or_default()
-            .entry(message.clone())
-            .or_insert_with(|| validator::CommitQC::new(message.clone(), self.config.genesis()));
-
-        // If we already have a message from the same validator and for the same view, we discard it.
-        let validator_view = self.validator_views.get(author);
-        if validator_view.is_some_and(|view_number| *view_number >= message.view.number) {
-            return Err(Error::DuplicateSignature {
-                message: commit_qc.message.clone(),
-            });
-        }
-        self.validator_views
-            .insert(author.clone(), message.view.number);
-
         // ----------- Checking the signed part of the message --------------
 
         // Check the signature on the message.
@@ -104,14 +89,35 @@ impl StateMachine {
 
         // ----------- All checks finished. Now we process the message. --------------
 
-        // Add the message to the QC.
+        // We add the message to the incrementally-constructed QC.
+        let commit_qc = self
+            .commit_qcs
+            .entry(message.view.number)
+            .or_default()
+            .entry(message.clone())
+            .or_insert_with(|| validator::CommitQC::new(message.clone(), self.config.genesis()));
+
         // Should always succeed as all checks have been already performed
         commit_qc
             .add(&signed_message, self.config.genesis())
             .expect("Could not add message to CommitQC");
 
-        // Now we check if we have enough weight to continue.
+        // Calculate the CommitQC signers weight.
         let weight = self.config.genesis().committee.weight(&commit_qc.signers);
+
+        // Update commit message current view number for author
+        self.replica_commit_views
+            .insert(author.clone(), message.view.number);
+
+        // Clean up commit_qcs for the case that no replica is at the view
+        // of a given CommitQC
+        // This prevents commit_qcs map from growing indefinitely in case some
+        // malicious replica starts spamming messages for future views
+        let active_views: HashSet<_> = self.replica_commit_views.values().collect();
+        self.commit_qcs
+            .retain(|view_number, _| active_views.contains(view_number));
+
+        // Now we check if we have enough weight to continue.
         if weight < self.config.genesis().committee.threshold() {
             return Ok(());
         };
@@ -146,9 +152,6 @@ impl StateMachine {
             recipient: Target::Broadcast,
         };
         self.outbound_pipe.send(output_message.into());
-
-        // Clean the caches.
-        self.prepare_message_cache.retain(|k, _| k >= &self.view);
 
         Ok(())
     }

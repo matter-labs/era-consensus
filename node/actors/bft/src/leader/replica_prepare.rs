@@ -1,4 +1,6 @@
 //! Handler of a ReplicaPrepare message.
+use std::collections::HashSet;
+
 use super::StateMachine;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
@@ -24,12 +26,6 @@ pub(crate) enum Error {
     /// The node is not a leader for this message's view.
     #[error("we are not a leader for this message's view")]
     NotLeaderInView,
-    /// Duplicate message from a replica.
-    #[error("duplicate message from a replica (existing message: {existing_message:?}")]
-    Exists {
-        /// Existing message from the same replica.
-        existing_message: validator::ReplicaPrepare,
-    },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] anyhow::Error),
@@ -74,7 +70,14 @@ impl StateMachine {
         }
 
         // If the message is from the "past", we discard it.
-        if (message.view.number, validator::Phase::Prepare) < (self.view, self.phase) {
+        // That is, it's from a previous view or phase, or if we already received a message
+        // from the same validator and for the same view.
+        if (message.view.number, validator::Phase::Prepare) < (self.view, self.phase)
+            || self
+                .replica_prepare_views
+                .get(author)
+                .is_some_and(|view_number| *view_number >= message.view.number)
+        {
             return Err(Error::Old {
                 current_view: self.view,
                 current_phase: self.phase,
@@ -85,17 +88,6 @@ impl StateMachine {
         if self.config.genesis().view_leader(message.view.number) != self.config.secret_key.public()
         {
             return Err(Error::NotLeaderInView);
-        }
-
-        // If we already have a message from the same validator and for the same view, we discard it.
-        if let Some(existing_message) = self
-            .prepare_message_cache
-            .get(&message.view.number)
-            .and_then(|x| x.get(author))
-        {
-            return Err(Error::Exists {
-                existing_message: existing_message.msg.clone(),
-            });
         }
 
         // ----------- Checking the signed part of the message --------------
@@ -121,22 +113,25 @@ impl StateMachine {
             .add(&signed_message, self.config.genesis())
             .expect("Could not add message to PrepareQC");
 
-        // We store the message in our cache.
-        self.prepare_message_cache
-            .entry(message.view.number)
-            .or_default()
-            .insert(author.clone(), signed_message.clone());
+        // Calculate the PrepareQC signers weight.
+        let weight = prepare_qc.weight(&self.config.genesis().committee);
+
+        // Update prepare message current view number for author
+        self.replica_prepare_views
+            .insert(author.clone(), message.view.number);
+
+        // Clean up prepare_qcs for the case that no replica is at the view
+        // of a given PrepareQC
+        // This prevents prepare_qcs map from growing indefinitely in case some
+        // malicious replica starts spamming messages for future views
+        let active_views: HashSet<_> = self.replica_prepare_views.values().collect();
+        self.prepare_qcs
+            .retain(|view_number, _| active_views.contains(view_number));
 
         // Now we check if we have enough weight to continue.
-        if prepare_qc.weight(&self.config.genesis().committee)
-            < self.config.genesis().committee.threshold()
-        {
+        if weight < self.config.genesis().committee.threshold() {
             return Ok(());
         }
-
-        // Remove replica prepare messages for this view, so that we don't create a new block proposal
-        // for this same view if we receive another replica prepare message after this.
-        self.prepare_message_cache.remove(&message.view.number);
 
         // ----------- Update the state machine --------------
 

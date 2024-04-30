@@ -14,15 +14,28 @@ use std::{collections::VecDeque, fmt, sync::Arc};
 #[cfg(test)]
 mod tests;
 
+/// Possible results for the filter function
+#[derive(Debug, PartialEq)]
+pub enum SelectionFunctionResult {
+    /// Keep both values.
+    Keep,
+    /// Discard old value.
+    DiscardOld,
+    /// Discard new value.
+    DiscardNew,
+}
+
 /// Creates a channel and returns the [`Sender`] and [`Receiver`] handles.
 /// All values sent on [`Sender`] will become available on [`Receiver`] in the same order as it was sent,
 /// unless will be pruned before received.
 ///
 /// * [`T`]: The type of data that will be sent through the channel.
-/// * [`pruning_predicate`]: A function that determines whether an unreceived, pending value in the buffer (represented by the first `T`) should be pruned
-/// based on a newly sent value (represented by the second `T`).
+/// * [`filter_predicate`]: A predicate that checks the newly sent value and avoids adding to the queue if it returns false
+/// * [`selection_function`]: A function that determines whether an unreceived, pending value in the buffer (represented by the first `T`) should be pruned
+/// based on a newly sent value (represented by the second `T`) or the new value should be filtered out, or both should be kept.
 pub fn channel<T>(
-    pruning_predicate: impl 'static + Sync + Send + Fn(&T, &T) -> bool,
+    filter_predicate: impl 'static + Sync + Send + Fn(&T) -> bool,
+    selection_function: impl 'static + Sync + Send + Fn(&T, &T) -> SelectionFunctionResult,
 ) -> (Sender<T>, Receiver<T>) {
     let buf = VecDeque::new();
     let (send, recv) = watch::channel(buf);
@@ -31,7 +44,8 @@ pub fn channel<T>(
 
     let send = Sender {
         shared: shared.clone(),
-        pruning_predicate: Box::new(pruning_predicate),
+        filter_predicate: Box::new(filter_predicate),
+        selection_function: Box::new(selection_function),
     };
 
     let recv = Receiver {
@@ -51,17 +65,32 @@ struct Shared<T> {
 #[allow(clippy::type_complexity)]
 pub struct Sender<T> {
     shared: Arc<Shared<T>>,
-    pruning_predicate: Box<dyn Sync + Send + Fn(&T, &T) -> bool>,
+    filter_predicate: Box<dyn Sync + Send + Fn(&T) -> bool>,
+    selection_function: Box<dyn Sync + Send + Fn(&T, &T) -> SelectionFunctionResult>,
 }
 
 impl<T> Sender<T> {
     /// Sends a value.
-    /// This initiates the pruning procedure which operates in O(N) time complexity
+    /// This initiates the filter and pruning procedure which operates in O(N) time complexity
     /// on the buffer of pending values.
     pub fn send(&self, value: T) {
+        // Check if new value is valid to keep
+        if !(self.filter_predicate)(&value) {
+            return;
+        }
         self.shared.send.send_modify(|buf| {
-            buf.retain(|pending_value| !(self.pruning_predicate)(pending_value, &value));
-            buf.push_back(value);
+            let mut keep = true;
+            buf.retain(|x| match (self.selection_function)(x, &value) {
+                SelectionFunctionResult::Keep => true,
+                SelectionFunctionResult::DiscardOld => false,
+                SelectionFunctionResult::DiscardNew => {
+                    keep = false;
+                    true
+                }
+            });
+            if keep {
+                buf.push_back(value);
+            }
         });
     }
 }
