@@ -192,7 +192,8 @@ mod version1 {
         let replica_commit = replica_commit();
         let mut x = CommitQC::new(replica_commit.clone(), &genesis);
         for k in keys() {
-            x.add(&k.sign_msg(replica_commit.clone()), &genesis);
+            x.add(&k.sign_msg(replica_commit.clone()), &genesis)
+                .unwrap();
         }
         x
     }
@@ -219,7 +220,8 @@ mod version1 {
         let genesis = genesis();
         let replica_prepare = replica_prepare();
         for k in keys() {
-            x.add(&k.sign_msg(replica_prepare.clone()), &genesis);
+            x.add(&k.sign_msg(replica_prepare.clone()), &genesis)
+                .unwrap();
         }
         x
     }

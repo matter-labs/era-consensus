@@ -190,7 +190,8 @@ fn make_replica_commit(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> R
 fn make_commit_qc(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> CommitQC {
     let mut qc = CommitQC::new(make_replica_commit(rng, view, setup), &setup.genesis);
     for key in &setup.keys {
-        qc.add(&key.sign_msg(qc.message.clone()), &setup.genesis);
+        qc.add(&key.sign_msg(qc.message.clone()), &setup.genesis)
+            .unwrap();
     }
     qc
 }
@@ -227,7 +228,8 @@ fn test_commit_qc() {
         let view = rng.gen();
         let mut qc = CommitQC::new(make_replica_commit(rng, view, &setup1), &setup1.genesis);
         for key in &setup1.keys[0..i] {
-            qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis);
+            qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis)
+                .unwrap();
         }
         let expected_weight = i as u64 * validator_weight;
         if expected_weight >= setup1.genesis.committee.threshold() {
@@ -243,6 +245,48 @@ fn test_commit_qc() {
         assert!(qc.verify(&setup2.genesis).is_err());
         assert!(qc.verify(&genesis3).is_err());
     }
+}
+
+#[test]
+fn test_commit_qc_add_errors() {
+    use CommitQCAddError as Error;
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let setup = Setup::new(rng, 2);
+    let view = rng.gen();
+    let mut qc = CommitQC::new(make_replica_commit(rng, view, &setup), &setup.genesis);
+    let msg = qc.message.clone();
+    // Add the message
+    assert_matches!(
+        qc.add(&setup.keys[0].sign_msg(msg.clone()), &setup.genesis),
+        Ok(())
+    );
+
+    // Try to add a message for a different view
+    let mut msg1 = msg.clone();
+    msg1.view.number = view.next();
+    assert_matches!(
+        qc.add(&setup.keys[0].sign_msg(msg1), &setup.genesis),
+        Err(Error::InconsistentMessages { .. })
+    );
+
+    // Try to add a message from a signer not in committee
+    assert_matches!(
+        qc.add(
+            &rng.gen::<SecretKey>().sign_msg(msg.clone()),
+            &setup.genesis
+        ),
+        Err(Error::SignerNotInCommittee { .. })
+    );
+
+    // Try to add the same message already added by same validator
+    assert_matches!(
+        qc.add(&setup.keys[0].sign_msg(msg.clone()), &setup.genesis),
+        Err(Error::Exists { .. })
+    );
+
+    // Add same message signed by another validator.
+    assert_matches!(qc.add(&setup.keys[1].sign_msg(msg), &setup.genesis), Ok(()));
 }
 
 #[test]
@@ -269,7 +313,8 @@ fn test_prepare_qc() {
             qc.add(
                 &key.sign_msg(msgs.choose(rng).unwrap().clone()),
                 &setup1.genesis,
-            );
+            )
+            .unwrap();
         }
         let expected_weight = n as u64 * setup1.genesis.committee.total_weight() / 6;
         if expected_weight >= setup1.genesis.committee.threshold() {
@@ -288,6 +333,60 @@ fn test_prepare_qc() {
 }
 
 #[test]
+fn test_prepare_qc_add_errors() {
+    use PrepareQCAddError as Error;
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let setup = Setup::new(rng, 2);
+    let view = rng.gen();
+    let msg = make_replica_prepare(rng, view, &setup);
+    let mut qc = PrepareQC::new(msg.view.clone());
+    let msg = make_replica_prepare(rng, view, &setup);
+
+    // Add the message
+    assert_matches!(
+        qc.add(&setup.keys[0].sign_msg(msg.clone()), &setup.genesis),
+        Ok(())
+    );
+
+    // Try to add a message for a different view
+    let mut msg1 = msg.clone();
+    msg1.view.number = view.next();
+    assert_matches!(
+        qc.add(&setup.keys[0].sign_msg(msg1), &setup.genesis),
+        Err(Error::InconsistentViews { .. })
+    );
+
+    // Try to add a message from a signer not in committee
+    assert_matches!(
+        qc.add(
+            &rng.gen::<SecretKey>().sign_msg(msg.clone()),
+            &setup.genesis
+        ),
+        Err(Error::SignerNotInCommittee { .. })
+    );
+
+    // Try to add the same message already added by same validator
+    assert_matches!(
+        qc.add(&setup.keys[0].sign_msg(msg.clone()), &setup.genesis),
+        Err(Error::Exists { .. })
+    );
+
+    // Try to add a message for a validator that already added another message
+    let msg2 = make_replica_prepare(rng, view, &setup);
+    assert_matches!(
+        qc.add(&setup.keys[0].sign_msg(msg2), &setup.genesis),
+        Err(Error::Exists { .. })
+    );
+
+    // Add same message signed by another validator.
+    assert_matches!(
+        qc.add(&setup.keys[1].sign_msg(msg.clone()), &setup.genesis),
+        Ok(())
+    );
+}
+
+#[test]
 fn test_validator_committee_weights() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
@@ -302,7 +401,7 @@ fn test_validator_committee_weights() {
     let mut qc = PrepareQC::new(msg.view.clone());
     for (n, weight) in sums.iter().enumerate() {
         let key = &setup.keys[n];
-        qc.add(&key.sign_msg(msg.clone()), &setup.genesis);
+        qc.add(&key.sign_msg(msg.clone()), &setup.genesis).unwrap();
         let signers = &qc.map[&msg];
         assert_eq!(setup.genesis.committee.weight(signers), *weight);
     }

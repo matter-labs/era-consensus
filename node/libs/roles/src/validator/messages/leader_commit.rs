@@ -54,6 +54,23 @@ pub enum CommitQCVerifyError {
     BadSignature(#[source] anyhow::Error),
 }
 
+/// Error returned by `CommitQC::add()`.
+#[derive(thiserror::Error, Debug)]
+pub enum CommitQCAddError {
+    /// Inconsistent messages.
+    #[error("Trying to add signature for a different message")]
+    InconsistentMessages,
+    /// Signer not present in the committee.
+    #[error("Signer not in committee: {signer:?}")]
+    SignerNotInCommittee {
+        /// Signer of the message.
+        signer: Box<validator::PublicKey>,
+    },
+    /// Message already present in CommitQC.
+    #[error("Message already signed for CommitQC")]
+    Exists,
+}
+
 impl CommitQC {
     /// Header of the certified block.
     pub fn header(&self) -> &BlockHeader {
@@ -76,18 +93,26 @@ impl CommitQC {
 
     /// Add a validator's signature.
     /// Signature is assumed to be already verified.
-    pub fn add(&mut self, msg: &Signed<ReplicaCommit>, genesis: &Genesis) {
+    pub fn add(
+        &mut self,
+        msg: &Signed<ReplicaCommit>,
+        genesis: &Genesis,
+    ) -> Result<(), CommitQCAddError> {
+        use CommitQCAddError as Error;
         if self.message != msg.msg {
-            return;
+            return Err(Error::InconsistentMessages);
         };
         let Some(i) = genesis.committee.index(&msg.key) else {
-            return;
+            return Err(Error::SignerNotInCommittee {
+                signer: Box::new(msg.key.clone()),
+            });
         };
         if self.signers.0[i] {
-            return;
+            return Err(Error::Exists);
         };
         self.signers.0.set(i, true);
         self.signature.add(&msg.sig);
+        Ok(())
     }
 
     /// Verifies the signature of the CommitQC.
