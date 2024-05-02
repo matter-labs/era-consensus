@@ -96,7 +96,11 @@ impl StateMachine {
             .or_default()
             .entry(message.clone())
             .or_insert_with(|| validator::CommitQC::new(message.clone(), self.config.genesis()));
-        commit_qc.add(&signed_message, self.config.genesis());
+
+        // Should always succeed as all checks have been already performed
+        commit_qc
+            .add(&signed_message, self.config.genesis())
+            .expect("Could not add message to CommitQC");
 
         // Calculate the CommitQC signers weight.
         let weight = self.config.genesis().committee.weight(&commit_qc.signers);

@@ -107,7 +107,11 @@ impl StateMachine {
             .prepare_qcs
             .entry(message.view.number)
             .or_insert_with(|| validator::PrepareQC::new(message.view.clone()));
-        prepare_qc.add(&signed_message, self.config.genesis());
+
+        // Should always succeed as all checks have been already performed
+        prepare_qc
+            .add(&signed_message, self.config.genesis())
+            .expect("Could not add message to PrepareQC");
 
         // Calculate the PrepareQC signers weight.
         let weight = prepare_qc.weight(&self.config.genesis().committee);

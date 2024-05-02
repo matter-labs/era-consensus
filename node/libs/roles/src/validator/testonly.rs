@@ -99,10 +99,12 @@ impl Setup {
         let msg = ReplicaCommit { view, proposal };
         let mut justification = CommitQC::new(msg, &self.0.genesis);
         for key in &self.0.keys {
-            justification.add(
-                &key.sign_msg(justification.message.clone()),
-                &self.0.genesis,
-            );
+            justification
+                .add(
+                    &key.sign_msg(justification.message.clone()),
+                    &self.0.genesis,
+                )
+                .unwrap();
         }
         self.0.blocks.push(FinalBlock {
             payload,
