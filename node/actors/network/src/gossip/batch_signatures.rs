@@ -1,25 +1,17 @@
-//! Global state distributed by active validators, observed by all the nodes in the network.
+//! Global state distributed by active attesters, observed by all the nodes in the network.
 use crate::watch::Watch;
 use std::{collections::HashSet, sync::Arc};
 use zksync_concurrency::sync;
 use zksync_consensus_roles::attester::{self, L1Batch};
 
-/// Mapping from validator::PublicKey to a signed validator::NetAddress.
-/// Represents the currents state of node's knowledge about the validator endpoints.
+/// Mapping from attester::PublicKey to a signed attester::L1Batch message.
+/// Represents the currents state of node's knowledge about the attester signatures.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct L1BatchSignatures(
     pub(super) im::HashMap<attester::PublicKey, Arc<attester::SignedBatchMsg<L1Batch>>>,
 );
 
 impl L1BatchSignatures {
-    // /// Gets a NetAddress for a given key.
-    // pub(crate) fn get(
-    //     &self,
-    //     key: &attester::PublicKey,
-    // ) -> Option<&Arc<attester::SignedBatchMsg<L1Batch>>> {
-    //     self.0.get(key)
-    // }
-
     /// Returns a set of entries of `self` which are newer than the entries in `b`.
     pub(super) fn get_newer(&self, b: &Self) -> Vec<Arc<attester::SignedBatchMsg<L1Batch>>> {
         let mut newer = vec![];
@@ -49,7 +41,7 @@ impl L1BatchSignatures {
         let mut done = HashSet::new();
         for d in data {
             // Disallow multiple entries for the same key:
-            // it is important because a malicious validator may spam us with
+            // it is important because a malicious attester may spam us with
             // new versions and verifying signatures is expensive.
             if done.contains(&d.key) {
                 anyhow::bail!("duplicate entry for {:?}", d.key);
@@ -57,8 +49,8 @@ impl L1BatchSignatures {
             done.insert(d.key.clone());
             if !attesters.contains(&d.key) {
                 // We just skip the entries we are not interested in.
-                // For now the set of validators is static, so we could treat this as an error,
-                // however we eventually want the validator set to be dynamic.
+                // For now the set of attesters is static, so we could treat this as an error,
+                // however we eventually want the attester set to be dynamic.
                 continue;
             }
             if let Some(x) = self.0.get(&d.key) {
@@ -74,8 +66,8 @@ impl L1BatchSignatures {
     }
 }
 
-/// Watch wrapper of ValidatorAddrs,
-/// which supports subscribing to ValidatorAddr updates.
+/// Watch wrapper of L1BatchSignatures,
+/// which supports subscribing to L1BatchSignatures updates.
 pub(crate) struct L1BatchSignaturesWatch(Watch<L1BatchSignatures>);
 
 impl Default for L1BatchSignaturesWatch {
@@ -85,29 +77,12 @@ impl Default for L1BatchSignaturesWatch {
 }
 
 impl L1BatchSignaturesWatch {
-    /// Subscribes to ValidatorAddrs updates.
+    /// Subscribes to L1BatchSignatures updates.
     pub(crate) fn subscribe(&self) -> sync::watch::Receiver<L1BatchSignatures> {
         self.0.subscribe()
     }
 
-    // /// Inserts a new version of the announcement signed with the given key.
-    // pub(crate) async fn announce(
-    //     &self,
-    //     key: &attester::SecretKey,
-    //     batch_number: BatchNumber,
-    //     timestamp: time::Utc,
-    // ) {
-    //     let this = self.0.lock().await;
-    //     let mut signatures = this.borrow().clone();
-    //     let d = Arc::new(key.sign_batch_msg(L1Batch {
-    //         number: batch_number,
-    //         timestamp,
-    //     }));
-    //     signatures.0.insert(d.key.clone(), d);
-    //     this.send_replace(signatures);
-    // }
-
-    /// Inserts data to ValidatorAddrs.
+    /// Inserts data to L1BatchSignatures.
     /// Subscribers are notified iff at least 1 new entry has
     /// been inserted. Returns an error iff an invalid
     /// entry in `data` has been found. The provider of the

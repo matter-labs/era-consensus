@@ -11,6 +11,13 @@ use super::{SignedBatchMsg, Signers};
 /// A batch number.
 pub struct BatchNumber(pub u64);
 
+impl BatchNumber {
+    /// Increment the batch number.
+    pub fn next_batch_number(&mut self) -> BatchNumber {
+        BatchNumber(self.0.checked_add(1).unwrap_or(0))
+    }
+}
+
 /// A message to send by attesters to the gossip network.
 /// It contains the attester signature to sign the block batches to be sent to L1.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

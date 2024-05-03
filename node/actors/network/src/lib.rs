@@ -2,7 +2,10 @@
 use anyhow::Context as _;
 use std::sync::Arc;
 use tracing::Instrument as _;
-use zksync_concurrency::{ctx, ctx::channel, limiter, scope};
+use zksync_concurrency::{
+    ctx::{self, channel},
+    limiter, scope,
+};
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
@@ -119,6 +122,12 @@ impl Runner {
                 Ok(())
             });
 
+            // Update QC batches in the background.
+            s.spawn(async {
+                self.net.gossip.update_batch_qc(ctx).await;
+                Ok(())
+            });
+
             // Maintain static gossip connections.
             for (peer, addr) in &self.net.gossip.cfg.gossip.static_outbound {
                 s.spawn::<()>(async {
@@ -150,6 +159,10 @@ impl Runner {
                         });
                     }
                 }
+            }
+
+            if let Some(_c) = &self.net.gossip.attester_key {
+                // TODO: check for batches to sign
             }
 
             let accept_limiter = limiter::Limiter::new(ctx, self.net.gossip.cfg.tcp_accept_rate);
