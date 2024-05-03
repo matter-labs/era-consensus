@@ -8,7 +8,7 @@ use crate::{
 };
 use assert_matches::assert_matches;
 use std::sync::Arc;
-use zksync_concurrency::ctx;
+use zksync_concurrency::{ctx, sync::prunable_mpsc};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator::{
     self, CommitQC, LeaderCommit, LeaderPrepare, Phase, PrepareQC, ReplicaCommit, ReplicaPrepare,
@@ -32,6 +32,7 @@ pub(crate) struct UTHarness {
     pub(crate) leader: leader::StateMachine,
     pub(crate) replica: replica::StateMachine,
     pub(crate) keys: Vec<SecretKey>,
+    pub(crate) leader_send: prunable_mpsc::Sender<network::io::ConsensusReq>,
     pipe: ctx::channel::UnboundedReceiver<OutputMessage>,
 }
 
@@ -66,7 +67,7 @@ impl UTHarness {
             payload_manager,
             max_payload_size: MAX_PAYLOAD_SIZE,
         });
-        let (leader, _) = leader::StateMachine::new(ctx, cfg.clone(), send.clone());
+        let (leader, leader_send) = leader::StateMachine::new(ctx, cfg.clone(), send.clone());
         let (replica, _) = replica::StateMachine::start(ctx, cfg.clone(), send.clone())
             .await
             .unwrap();
@@ -75,6 +76,7 @@ impl UTHarness {
             replica,
             pipe: recv,
             keys: setup.validator_keys.clone(),
+            leader_send,
         };
         let _: Signed<ReplicaPrepare> = this.try_recv().unwrap();
         (this, runner)
@@ -84,7 +86,7 @@ impl UTHarness {
     pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, BlockStoreRunner) {
         let num_validators = 6;
         let (util, runner) = UTHarness::new(ctx, num_validators).await;
-        assert!(util.genesis().validators.max_faulty_weight() > 0);
+        assert!(util.genesis().validators_committee.max_faulty_weight() > 0);
         (util, runner)
     }
 
@@ -94,8 +96,7 @@ impl UTHarness {
     pub(crate) async fn produce_block_after_timeout(&mut self, ctx: &ctx::Ctx) {
         let want = ReplicaPrepare {
             view: validator::View {
-                protocol_version: self.protocol_version(),
-                fork: self.genesis().fork.number,
+                genesis: self.genesis().hash(),
                 number: self.replica.view.next(),
             },
             high_qc: self.replica.high_qc.clone(),
@@ -112,14 +113,6 @@ impl UTHarness {
         self.process_leader_commit(ctx, self.sign(msg))
             .await
             .unwrap();
-    }
-
-    pub(crate) fn protocol_version(&self) -> validator::ProtocolVersion {
-        crate::PROTOCOL_VERSION
-    }
-
-    pub(crate) fn incompatible_protocol_version(&self) -> validator::ProtocolVersion {
-        validator::ProtocolVersion(self.protocol_version().0 + 1)
     }
 
     pub(crate) fn owner_key(&self) -> &SecretKey {
@@ -140,8 +133,7 @@ impl UTHarness {
 
     pub(crate) fn replica_view(&self) -> validator::View {
         validator::View {
-            protocol_version: self.protocol_version(),
-            fork: self.genesis().fork.number,
+            genesis: self.genesis().hash(),
             number: self.replica.view,
         }
     }
@@ -231,8 +223,15 @@ impl UTHarness {
         for (i, msg) in msgs.into_iter().enumerate() {
             let res = self.process_replica_prepare(ctx, msg).await;
             match (
-                (i + 1) as u64 * self.genesis().validators.iter().next().unwrap().weight
-                    < self.genesis().validators.threshold(),
+                (i + 1) as u64
+                    * self
+                        .genesis()
+                        .validators_committee
+                        .iter()
+                        .next()
+                        .unwrap()
+                        .weight
+                    < self.genesis().validators_committee.threshold(),
                 first_match,
             ) {
                 (true, _) => assert!(res.unwrap().is_none()),
@@ -266,8 +265,15 @@ impl UTHarness {
                 .leader
                 .process_replica_commit(ctx, key.sign_msg(msg.clone()));
             match (
-                (i + 1) as u64 * self.genesis().validators.iter().next().unwrap().weight
-                    < self.genesis().validators.threshold(),
+                (i + 1) as u64
+                    * self
+                        .genesis()
+                        .validators_committee
+                        .iter()
+                        .next()
+                        .unwrap()
+                        .weight
+                    < self.genesis().validators_committee.threshold(),
                 first_match,
             ) {
                 (true, _) => res.unwrap(),
@@ -314,7 +320,8 @@ impl UTHarness {
         mutate_fn(&mut msg);
         let mut qc = CommitQC::new(msg, self.genesis());
         for key in &self.keys {
-            qc.add(&key.sign_msg(qc.message.clone()), self.genesis());
+            qc.add(&key.sign_msg(qc.message.clone()), self.genesis())
+                .unwrap();
         }
         qc
     }
@@ -327,8 +334,15 @@ impl UTHarness {
         mutate_fn(&mut msg);
         let mut qc = PrepareQC::new(msg.view.clone());
         for key in &self.keys {
-            qc.add(&key.sign_msg(msg.clone()), self.genesis());
+            qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
         }
         qc
+    }
+
+    pub(crate) fn leader_send(&self, msg: Signed<validator::ConsensusMsg>) {
+        self.leader_send.send(network::io::ConsensusReq {
+            msg,
+            ack: zksync_concurrency::oneshot::channel().0,
+        });
     }
 }

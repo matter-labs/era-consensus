@@ -148,11 +148,11 @@ impl Runner {
             }
 
             if let Some(c) = &self.net.consensus {
-                let validators = &c.gossip.genesis().validators;
+                let validators = &c.gossip.genesis().validators_committee;
                 // If we are active validator ...
                 if validators.contains(&c.key.public()) {
                     // Maintain outbound connections.
-                    for peer in validators.iter_keys() {
+                    for peer in validators.keys() {
                         s.spawn(async {
                             c.maintain_connection(ctx, peer).await;
                             Ok(())

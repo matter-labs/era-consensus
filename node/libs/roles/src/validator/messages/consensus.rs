@@ -53,29 +53,10 @@ impl ForkNumber {
     }
 }
 
-/// Specification of a fork.
-#[derive(Clone, Debug, PartialEq)]
-pub struct Fork {
-    /// Number of the fork.
-    pub number: ForkNumber,
-    /// First block of a fork.
-    pub first_block: BlockNumber,
-}
-
-impl Default for Fork {
-    fn default() -> Self {
-        Self {
-            number: ForkNumber(0),
-            first_block: BlockNumber(0),
-        }
-    }
-}
-
 /// The mode used for selecting leader for a given view.
-#[derive(Default, Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum LeaderSelectionMode {
     /// Select in a round-robin fashion, based on validators' index within the set.
-    #[default]
     RoundRobin,
 
     /// Select based on a sticky assignment to a specific validator.
@@ -108,33 +89,31 @@ pub struct Committee {
 impl Committee {
     /// Creates a new Committee from a list of validator public keys.
     pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
-        let mut weighted_validators = BTreeMap::new();
+        let mut map = BTreeMap::new();
         let mut total_weight: u64 = 0;
-        for validator in validators {
+        for v in validators {
             anyhow::ensure!(
-                !weighted_validators.contains_key(&validator.key),
+                !map.contains_key(&v.key),
                 "Duplicate validator in validator Committee"
             );
-            anyhow::ensure!(
-                validator.weight > 0,
-                "Validator weight has to be a positive value"
-            );
+            anyhow::ensure!(v.weight > 0, "Validator weight has to be a positive value");
             total_weight = total_weight
-                .checked_add(validator.weight)
+                .checked_add(v.weight)
                 .context("Sum of weights overflows in validator Committee")?;
-            weighted_validators.insert(validator.key.clone(), validator);
+            map.insert(v.key.clone(), v);
         }
         anyhow::ensure!(
-            !weighted_validators.is_empty(),
+            !map.is_empty(),
             "Validator Committee must contain at least one validator"
         );
+        let vec: Vec<_> = map.into_values().collect();
         Ok(Self {
-            vec: weighted_validators.values().cloned().collect(),
-            indexes: weighted_validators
-                .values()
+            indexes: vec
+                .iter()
                 .enumerate()
                 .map(|(i, v)| (v.key.clone(), i))
                 .collect(),
+            vec,
             total_weight,
         })
     }
@@ -145,7 +124,7 @@ impl Committee {
     }
 
     /// Iterates over validator keys.
-    pub fn iter_keys(&self) -> impl Iterator<Item = &validator::PublicKey> {
+    pub fn keys(&self) -> impl Iterator<Item = &validator::PublicKey> {
         self.vec.iter().map(|v| &v.key)
     }
 
@@ -174,7 +153,7 @@ impl Committee {
     pub fn view_leader(
         &self,
         view_number: ViewNumber,
-        leader_selection: LeaderSelectionMode,
+        leader_selection: &LeaderSelectionMode,
     ) -> validator::PublicKey {
         match &leader_selection {
             LeaderSelectionMode::RoundRobin => {
@@ -243,71 +222,41 @@ pub fn max_faulty_weight(total_weight: u64) -> u64 {
     (total_weight - 1) / 5
 }
 
-/// Version of the Genesis representation.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct GenesisVersion(pub u32);
-
-impl GenesisVersion {
-    /// Version 0 - deprecated: Committee encoding does not account weights, assume weight=1 per validator
-    /// Version 1: Validators with weight within Committee
-    pub const CURRENT: Self = Self(1);
-}
+/// Ethereum CHAIN_ID
+/// `https://github.com/ethereum/EIPs/blob/master/EIPS/eip-155.md`
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ChainId(pub u64);
 
 /// Genesis of the blockchain, unique for each blockchain instance.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Genesis {
-    // TODO(gprusak): add blockchain id here.
-    /// Genesis encoding version
-    pub version: GenesisVersion,
+pub struct GenesisRaw {
+    /// ID of the blockchain.
+    pub chain_id: ChainId,
+
+    /// Number of the fork. Should be incremented every time the genesis is updated,
+    /// i.e. whenever a hard fork is performed.
+    pub fork_number: ForkNumber,
+    /// Protocol version used by this fork.
+    pub protocol_version: ProtocolVersion,
+    /// First block of a fork.
+    pub first_block: BlockNumber,
     /// Set of validators of the chain.
-    pub validators: Committee,
+    pub validators_committee: Committee,
     /// Set of attesters of the chain.
-    pub attesters: attester::Committee,
-    /// Fork of the chain to follow.
-    pub fork: Fork,
+    pub attesters_committee: attester::Committee,
     /// The mode used for selecting leader for a given view.
-    pub leader_selection: Option<LeaderSelectionMode>,
+    pub leader_selection: LeaderSelectionMode,
 }
 
 /// Hash of the genesis specification.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GenesisHash(pub(crate) Keccak256);
 
-impl Genesis {
-    /// Verifies correctness.
-    pub fn verify(&self) -> anyhow::Result<()> {
-        if let Some(LeaderSelectionMode::Sticky(pk)) = &self.leader_selection {
-            if self.validators.index(pk).is_none() {
-                anyhow::bail!("leader_selection sticky mode public key is not in committee");
-            }
-        }
-
-        Ok(())
-    }
-
-    /// Hash of the genesis.
-    pub fn hash(&self) -> GenesisHash {
-        GenesisHash(Keccak256::new(&zksync_protobuf::canonical(self)))
-    }
-
-    /// Computes the leader for the given view.
-    pub fn view_leader(&self, view_number: ViewNumber) -> validator::PublicKey {
-        self.validators.view_leader(
-            view_number,
-            self.leader_selection.clone().unwrap_or_default(),
-        )
-    }
-}
-
-impl Default for Genesis {
-    fn default() -> Self {
-        Self {
-            version: GenesisVersion::CURRENT,
-            validators: Committee::default(),
-            attesters: attester::Committee::default(),
-            fork: Fork::default(),
-            leader_selection: Some(LeaderSelectionMode::default()),
-        }
+impl GenesisRaw {
+    /// Constructs Genesis with cached hash.
+    pub fn with_hash(self) -> Genesis {
+        let hash = GenesisHash(Keccak256::new(&zksync_protobuf::canonical(&self)));
+        Genesis(self, hash)
     }
 }
 
@@ -329,6 +278,53 @@ impl TextFmt for GenesisHash {
 impl fmt::Debug for GenesisHash {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str(&TextFmt::encode(self))
+    }
+}
+
+/// Genesis with cached hash.
+#[derive(Clone)]
+pub struct Genesis(GenesisRaw, GenesisHash);
+
+impl std::ops::Deref for Genesis {
+    type Target = GenesisRaw;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl PartialEq for Genesis {
+    fn eq(&self, other: &Self) -> bool {
+        self.1 == other.1
+    }
+}
+
+impl fmt::Debug for Genesis {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(fmt)
+    }
+}
+
+impl Genesis {
+    /// Verifies correctness.
+    pub fn verify(&self) -> anyhow::Result<()> {
+        if let LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
+            if self.validators_committee.index(pk).is_none() {
+                anyhow::bail!("leader_selection sticky mode public key is not in committee");
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Computes the leader for the given view.
+    pub fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
+        self.validators_committee
+            .view_leader(view, &self.leader_selection)
+    }
+
+    /// Hash of the genesis.
+    pub fn hash(&self) -> GenesisHash {
+        self.1
     }
 }
 
@@ -363,9 +359,9 @@ impl ConsensusMsg {
         }
     }
 
-    /// Protocol version of this message.
-    pub fn protocol_version(&self) -> ProtocolVersion {
-        self.view().protocol_version
+    /// Hash of the genesis that defines the chain.
+    pub fn genesis(&self) -> &GenesisHash {
+        &self.view().genesis
     }
 }
 
@@ -420,18 +416,17 @@ impl Variant<Msg> for LeaderCommit {
 /// View specification.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct View {
-    /// Protocol version.
-    pub protocol_version: ProtocolVersion,
-    /// Fork this message belongs to.
-    pub fork: ForkNumber,
+    /// Genesis of the chain this view belongs to.
+    pub genesis: GenesisHash,
     /// The number of the current view.
     pub number: ViewNumber,
 }
 
 impl View {
-    /// Checks if `self` can occur after `b`.
-    pub fn after(&self, b: &Self) -> bool {
-        self.fork == b.fork && self.number > b.number && self.protocol_version >= b.protocol_version
+    /// Verifies the view against the genesis.
+    pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
+        anyhow::ensure!(self.genesis == genesis.hash(), "genesis mismatch");
+        Ok(())
     }
 }
 

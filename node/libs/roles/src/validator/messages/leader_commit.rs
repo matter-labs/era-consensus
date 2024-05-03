@@ -1,4 +1,4 @@
-use super::{BlockHeader, Genesis, ReplicaCommit, Signed, Signers, View};
+use super::{BlockHeader, Genesis, ReplicaCommit, ReplicaCommitVerifyError, Signed, Signers, View};
 use crate::validator;
 
 /// A Commit message from a leader.
@@ -36,8 +36,8 @@ pub struct CommitQC {
 #[derive(thiserror::Error, Debug)]
 pub enum CommitQCVerifyError {
     /// Invalid message.
-    #[error("invalid message: {0:#}")]
-    InvalidMessage(#[source] anyhow::Error),
+    #[error(transparent)]
+    InvalidMessage(#[from] ReplicaCommitVerifyError),
     /// Bad signer set.
     #[error("signers set doesn't match genesis")]
     BadSignersSet,
@@ -52,6 +52,23 @@ pub enum CommitQCVerifyError {
     /// Bad signature.
     #[error("bad signature: {0:#}")]
     BadSignature(#[source] anyhow::Error),
+}
+
+/// Error returned by `CommitQC::add()`.
+#[derive(thiserror::Error, Debug)]
+pub enum CommitQCAddError {
+    /// Inconsistent messages.
+    #[error("Trying to add signature for a different message")]
+    InconsistentMessages,
+    /// Signer not present in the committee.
+    #[error("Signer not in committee: {signer:?}")]
+    SignerNotInCommittee {
+        /// Signer of the message.
+        signer: Box<validator::PublicKey>,
+    },
+    /// Message already present in CommitQC.
+    #[error("Message already signed for CommitQC")]
+    Exists,
 }
 
 impl CommitQC {
@@ -69,25 +86,33 @@ impl CommitQC {
     pub fn new(message: ReplicaCommit, genesis: &Genesis) -> Self {
         Self {
             message,
-            signers: Signers::new(genesis.validators.len()),
+            signers: Signers::new(genesis.validators_committee.len()),
             signature: validator::AggregateSignature::default(),
         }
     }
 
     /// Add a validator's signature.
     /// Signature is assumed to be already verified.
-    pub fn add(&mut self, msg: &Signed<ReplicaCommit>, genesis: &Genesis) {
+    pub fn add(
+        &mut self,
+        msg: &Signed<ReplicaCommit>,
+        genesis: &Genesis,
+    ) -> Result<(), CommitQCAddError> {
+        use CommitQCAddError as Error;
         if self.message != msg.msg {
-            return;
+            return Err(Error::InconsistentMessages);
         };
-        let Some(i) = genesis.validators.index(&msg.key) else {
-            return;
+        let Some(i) = genesis.validators_committee.index(&msg.key) else {
+            return Err(Error::SignerNotInCommittee {
+                signer: Box::new(msg.key.clone()),
+            });
         };
         if self.signers.0[i] {
-            return;
+            return Err(Error::Exists);
         };
         self.signers.0.set(i, true);
         self.signature.add(&msg.sig);
+        Ok(())
     }
 
     /// Verifies the signature of the CommitQC.
@@ -96,13 +121,13 @@ impl CommitQC {
         self.message
             .verify(genesis)
             .map_err(Error::InvalidMessage)?;
-        if self.signers.len() != genesis.validators.len() {
+        if self.signers.len() != genesis.validators_committee.len() {
             return Err(Error::BadSignersSet);
         }
 
         // Verify the signers' weight is enough.
-        let weight = genesis.validators.weight(&self.signers);
-        let threshold = genesis.validators.threshold();
+        let weight = genesis.validators_committee.weight(&self.signers);
+        let threshold = genesis.validators_committee.threshold();
         if weight < threshold {
             return Err(Error::NotEnoughSigners {
                 got: weight,
@@ -112,8 +137,8 @@ impl CommitQC {
 
         // Now we can verify the signature.
         let messages_and_keys = genesis
-            .validators
-            .iter_keys()
+            .validators_committee
+            .keys()
             .enumerate()
             .filter(|(i, _)| self.signers.0[*i])
             .map(|(_, pk)| (self.message.clone(), pk));

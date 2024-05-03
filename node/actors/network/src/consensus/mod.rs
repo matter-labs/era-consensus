@@ -156,7 +156,12 @@ impl Network {
     /// Constructs a new consensus network state.
     pub(crate) fn new(gossip: Arc<gossip::Network>) -> Option<Arc<Self>> {
         let key = gossip.cfg.validator_key.clone()?;
-        let validators: HashSet<_> = gossip.genesis().validators.iter_keys().cloned().collect();
+        let validators: HashSet<_> = gossip
+            .genesis()
+            .validators_committee
+            .keys()
+            .cloned()
+            .collect();
         Some(Arc::new(Self {
             key,
             inbound: PoolWatch::new(validators.clone(), 0),

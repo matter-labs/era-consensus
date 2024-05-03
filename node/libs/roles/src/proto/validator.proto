@@ -5,20 +5,19 @@ package zksync.roles.validator;
 import "zksync/std.proto";
 import "zksync/roles/attester.proto";
 
-message Fork {
-  optional uint64 number = 1; // required; ForkId
-  optional uint64 first_block = 2; // required; BlockNumber
-}
-
-// validators and validators_v1 are mutually exclusive.
-// They should be put into a oneof, but it may not recognize this as 
-// a backward compatible change: https://buf.build/docs/breaking/rules#field_same_oneof
 message Genesis {
-  optional Fork fork = 1; // required
-  repeated PublicKey validators = 2;
+  reserved 1,2;
+  reserved "fork","validators";
+  optional uint64 chain_id = 5; // required
+  optional uint64 fork_number = 6; // required; ForkNumber
+  optional uint64 first_block = 7; // required; BlockNumber
+  repeated attester.WeightedAttester attesters = 4;
+ 
+  // These properties are expected to be overwritten each epoch.
+  // We will either remove them entirely, or keep them for the initial epoch.
+  optional uint32 protocol_version = 8; // required; ProtocolVersion
   repeated WeightedValidator validators_v1 = 3;
-  repeated attester.PublicKey attesters = 4;
-  optional LeaderSelectionMode leader_selection = 5;
+  optional LeaderSelectionMode leader_selection = 9; // required
 }
 
 message LeaderSelectionMode {
@@ -56,8 +55,9 @@ message FinalBlock {
 }
 
 message View {
-  optional uint32 protocol_version = 1; // required; ProtocolVersion
-  optional uint64 fork = 2; // required; ForkId 
+  reserved 1,2;
+  reserved "protocol_version","fork";
+  optional GenesisHash genesis = 4; // required
   optional uint64 number = 3; // required; ViewNumber
 }
 

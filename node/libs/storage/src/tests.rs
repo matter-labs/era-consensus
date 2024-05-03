@@ -11,10 +11,8 @@ async fn test_inmemory_block_store() {
     let mut setup = Setup::new(rng, 3);
     setup.push_blocks(rng, 5);
 
-    let store = &testonly::in_memory::BlockStore::new(
-        setup.genesis.clone(),
-        setup.genesis.fork.first_block,
-    );
+    let store =
+        &testonly::in_memory::BlockStore::new(setup.genesis.clone(), setup.genesis.first_block);
     let mut want = vec![];
     for block in &setup.blocks {
         store.queue_next_block(ctx, block.clone()).await.unwrap();
@@ -53,7 +51,7 @@ async fn test_state_updates() {
         // Waiting for blocks before genesis first block (or before `state.first_block`) should be ok
         // and should complete immediately.
         for n in [
-            setup.genesis.fork.first_block.prev().unwrap(),
+            setup.genesis.first_block.prev().unwrap(),
             first_block.number().prev().unwrap(),
         ] {
             store.wait_until_queued(ctx, n).await.unwrap();

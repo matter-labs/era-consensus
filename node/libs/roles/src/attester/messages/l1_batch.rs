@@ -71,7 +71,7 @@ impl L1BatchQC {
     pub fn new(message: L1Batch, genesis: &Genesis) -> Self {
         Self {
             message,
-            signers: Signers::new(genesis.attesters.len()),
+            signers: Signers::new(genesis.attesters_committee.len()),
             signature: attester::AggregateSignature::default(),
         }
     }
@@ -82,7 +82,7 @@ impl L1BatchQC {
         if self.message != msg.msg {
             return;
         };
-        let Some(i) = genesis.attesters.index(&msg.key) else {
+        let Some(i) = genesis.attesters_committee.index(&msg.key) else {
             return;
         };
         if self.signers.0[i] {
@@ -95,12 +95,12 @@ impl L1BatchQC {
     /// Verifies the signature of the L1BatchQC.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), L1BatchQCVerifyError> {
         use L1BatchQCVerifyError as Error;
-        if self.signers.len() != genesis.attesters.len() {
+        if self.signers.len() != genesis.attesters_committee.len() {
             return Err(Error::BadSignersSet);
         }
         // Verify the signers' weight is enough.
-        let weight = genesis.attesters.weight(&self.signers);
-        let threshold = genesis.attesters.threshold();
+        let weight = genesis.attesters_committee.weight(&self.signers);
+        let threshold = genesis.attesters_committee.threshold();
         if weight < threshold {
             return Err(Error::NotEnoughSigners {
                 got: weight,
@@ -109,7 +109,7 @@ impl L1BatchQC {
         }
 
         let messages_and_keys = genesis
-            .attesters
+            .attesters_committee
             .iter_keys()
             .enumerate()
             .filter(|(i, _)| self.signers.0[*i])

@@ -76,7 +76,7 @@ impl RocksDB {
         Ok(Self(Arc::new(Inner {
             persisted: sync::watch::channel(BlockStoreState {
                 // `RocksDB` is assumed to store all blocks starting from genesis.
-                first: genesis.fork.first_block,
+                first: genesis.first_block,
                 last: scope::wait_blocking(|| Self::last_blocking(&db)).await?,
             })
             .0,

@@ -1,11 +1,11 @@
 use crate::{
-    attester::{self, WeightedAttester},
+    attester::{self},
     node::SessionId,
 };
 
 use super::{
-    AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
-    Fork, ForkNumber, Genesis, GenesisHash, GenesisVersion, LeaderCommit, LeaderPrepare, Msg,
+    AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
+    FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
@@ -16,97 +16,55 @@ use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
 
-impl ProtoFmt for Fork {
-    type Proto = proto::Fork;
+impl ProtoFmt for GenesisRaw {
+    type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {
-            number: ForkNumber(*required(&r.number).context("number")?),
+        let validators: Vec<_> = r
+            .validators_v1
+            .iter()
+            .enumerate()
+            .map(|(i, v)| WeightedValidator::read(v).context(i))
+            .collect::<Result<_, _>>()
+            .context("validators_v1")?;
+        Ok(GenesisRaw {
+            chain_id: ChainId(*required(&r.chain_id).context("chain_id")?),
+            fork_number: ForkNumber(*required(&r.fork_number).context("fork_number")?),
             first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
+
+            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
+            validators_committee: Committee::new(validators.into_iter())
+                .context("validators_v1")?,
+            attesters_committee: attester::Committee::new(vec![]).context("attesters")?,
+            leader_selection: read_required(&r.leader_selection).context("leader_selection")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            number: Some(self.number.0),
+            chain_id: Some(self.chain_id.0),
+            fork_number: Some(self.fork_number.0),
             first_block: Some(self.first_block.0),
+
+            protocol_version: Some(self.protocol_version.0),
+            validators_v1: self
+                .validators_committee
+                .iter()
+                .map(|v| v.build())
+                .collect(),
+            attesters: self.attesters_committee.iter().map(|v| v.build()).collect(),
+            leader_selection: Some(self.leader_selection.build()),
         }
     }
 }
 
-#[allow(deprecated)]
 impl ProtoFmt for Genesis {
     type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let (validators, version) =
-            // current genesis encoding version 1
-            if !r.validators_v1.is_empty() {
-                (
-                    r.validators_v1
-                        .iter()
-                        .enumerate()
-                        .map(|(i, v)| WeightedValidator::read(v).context(i))
-                        .collect::<Result<_, _>>()
-                        .context("validators")?,
-                    GenesisVersion(1),
-                )
-                // legacy genesis encoding version 0
-            } else if !r.validators.is_empty() {
-                (
-                    r.validators
-                        .iter()
-                        .enumerate()
-                        .map(|(i, v)| anyhow::Ok(WeightedValidator {
-                            key: PublicKey::read(v).context(i)?,
-                            weight: 1,
-                        }))
-                        .collect::<Result<_,_>>()
-                        .context("validators")?,
-                    GenesisVersion(0),
-                )
-                // empty validator set, Committee:new() will later return an error.
-            } else {
-                (vec![], GenesisVersion::CURRENT)
-            };
-
-        let attesters: Vec<_> = r
-            .attesters
-            .iter()
-            .enumerate()
-            .map(|(i, v)| {
-                anyhow::Ok(WeightedAttester {
-                    key: attester::PublicKey::read(v).context(i)?,
-                    weight: 1,
-                })
-            })
-            .collect::<Result<_, _>>()
-            .context("attesters")?;
-
-        let genesis = Genesis {
-            fork: read_required(&r.fork).context("fork")?,
-            validators: Committee::new(validators.into_iter()).context("validators")?,
-            attesters: attester::Committee::new(attesters.into_iter()).context("attesters")?,
-            version,
-            leader_selection: read_optional(&r.leader_selection).context("leader_selection")?,
-        };
+        let genesis = GenesisRaw::read(r)?.with_hash();
         genesis.verify()?;
         Ok(genesis)
     }
     fn build(&self) -> Self::Proto {
-        match self.version {
-            GenesisVersion(0) => Self::Proto {
-                fork: Some(self.fork.build()),
-                validators: self.validators.iter().map(|v| v.key.build()).collect(),
-                attesters: self.attesters.iter().map(|v| v.key.build()).collect(),
-                validators_v1: vec![],
-                leader_selection: self.leader_selection.as_ref().map(|x| x.build()),
-            },
-            GenesisVersion(1..) => Self::Proto {
-                fork: Some(self.fork.build()),
-                validators: vec![],
-                validators_v1: self.validators.iter().map(|v| v.build()).collect(),
-                attesters: self.attesters.iter().map(|v| v.key.build()).collect(),
-                leader_selection: self.leader_selection.as_ref().map(|x| x.build()),
-            },
-        }
+        GenesisRaw::build(self)
     }
 }
 
@@ -201,16 +159,14 @@ impl ProtoFmt for View {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
-            fork: ForkNumber(*required(&r.fork).context("fork")?),
+            genesis: read_required(&r.genesis).context("genesis")?,
             number: ViewNumber(*required(&r.number).context("number")?),
         })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            protocol_version: Some(self.protocol_version.0),
-            fork: Some(self.fork.0),
+            genesis: Some(self.genesis.build()),
             number: Some(self.number.0),
         }
     }

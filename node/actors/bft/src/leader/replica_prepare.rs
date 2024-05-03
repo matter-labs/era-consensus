@@ -1,4 +1,6 @@
 //! Handler of a ReplicaPrepare message.
+use std::collections::HashSet;
+
 use super::StateMachine;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
@@ -7,14 +9,6 @@ use zksync_consensus_roles::validator;
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
-    /// Incompatible protocol version.
-    #[error("incompatible protocol version (message version: {message_version:?}, local version: {local_version:?}")]
-    IncompatibleProtocolVersion {
-        /// Message version.
-        message_version: validator::ProtocolVersion,
-        /// Local version.
-        local_version: validator::ProtocolVersion,
-    },
     /// Message signer isn't part of the validator set.
     #[error("Message signer isn't part of the validator set (signer: {signer:?})")]
     NonValidatorSigner {
@@ -32,12 +26,6 @@ pub(crate) enum Error {
     /// The node is not a leader for this message's view.
     #[error("we are not a leader for this message's view")]
     NotLeaderInView,
-    /// Duplicate message from a replica.
-    #[error("duplicate message from a replica (existing message: {existing_message:?}")]
-    Exists {
-        /// Existing message from the same replica.
-        existing_message: validator::ReplicaPrepare,
-    },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] anyhow::Error),
@@ -74,23 +62,22 @@ impl StateMachine {
         let message = signed_message.msg.clone();
         let author = &signed_message.key;
 
-        // Check protocol version compatibility.
-        if !crate::PROTOCOL_VERSION.compatible(&message.view.protocol_version) {
-            return Err(Error::IncompatibleProtocolVersion {
-                message_version: message.view.protocol_version,
-                local_version: crate::PROTOCOL_VERSION,
-            });
-        }
-
         // Check that the message signer is in the validator set.
-        if !self.config.genesis().validators.contains(author) {
+        if !self.config.genesis().validators_committee.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone(),
             });
         }
 
         // If the message is from the "past", we discard it.
-        if (message.view.number, validator::Phase::Prepare) < (self.view, self.phase) {
+        // That is, it's from a previous view or phase, or if we already received a message
+        // from the same validator and for the same view.
+        if (message.view.number, validator::Phase::Prepare) < (self.view, self.phase)
+            || self
+                .replica_prepare_views
+                .get(author)
+                .is_some_and(|view_number| *view_number >= message.view.number)
+        {
             return Err(Error::Old {
                 current_view: self.view,
                 current_phase: self.phase,
@@ -101,17 +88,6 @@ impl StateMachine {
         if self.config.genesis().view_leader(message.view.number) != self.config.secret_key.public()
         {
             return Err(Error::NotLeaderInView);
-        }
-
-        // If we already have a message from the same validator and for the same view, we discard it.
-        if let Some(existing_message) = self
-            .prepare_message_cache
-            .get(&message.view.number)
-            .and_then(|x| x.get(author))
-        {
-            return Err(Error::Exists {
-                existing_message: existing_message.msg.clone(),
-            });
         }
 
         // ----------- Checking the signed part of the message --------------
@@ -131,24 +107,31 @@ impl StateMachine {
             .prepare_qcs
             .entry(message.view.number)
             .or_insert_with(|| validator::PrepareQC::new(message.view.clone()));
-        prepare_qc.add(&signed_message, self.config.genesis());
 
-        // We store the message in our cache.
-        self.prepare_message_cache
-            .entry(message.view.number)
-            .or_default()
-            .insert(author.clone(), signed_message.clone());
+        // Should always succeed as all checks have been already performed
+        prepare_qc
+            .add(&signed_message, self.config.genesis())
+            .expect("Could not add message to PrepareQC");
+
+        // Calculate the PrepareQC signers weight.
+        let weight = prepare_qc.weight(&self.config.genesis().validators_committee);
+
+        // Update prepare message current view number for author
+        self.replica_prepare_views
+            .insert(author.clone(), message.view.number);
+
+        // Clean up prepare_qcs for the case that no replica is at the view
+        // of a given PrepareQC
+        // This prevents prepare_qcs map from growing indefinitely in case some
+        // malicious replica starts spamming messages for future views
+        let active_views: HashSet<_> = self.replica_prepare_views.values().collect();
+        self.prepare_qcs
+            .retain(|view_number, _| active_views.contains(view_number));
 
         // Now we check if we have enough weight to continue.
-        if prepare_qc.weight(&self.config.genesis().validators)
-            < self.config.genesis().validators.threshold()
-        {
+        if weight < self.config.genesis().validators_committee.threshold() {
             return Ok(());
         }
-
-        // Remove replica prepare messages for this view, so that we don't create a new block proposal
-        // for this same view if we receive another replica prepare message after this.
-        self.prepare_message_cache.remove(&message.view.number);
 
         // ----------- Update the state machine --------------
 

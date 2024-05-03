@@ -152,14 +152,12 @@ fn test_l1_batch_qc() {
 
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
-    let genesis3 = Genesis {
-        validators: Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap(),
-        attesters: attester::Committee::new(setup1.genesis.attesters.iter().take(3).cloned())
-            .unwrap(),
-        fork: setup1.genesis.fork.clone(),
-        ..Default::default()
-    };
-    let attester_weight = setup1.genesis.attesters.total_weight() / 6;
+    let mut genesis3 = (*setup1.genesis).clone();
+    genesis3.attesters_committee =
+        attester::Committee::new(setup1.genesis.attesters_committee.iter().take(3).cloned())
+            .unwrap();
+    let genesis3 = genesis3.with_hash();
+    let attester_weight = setup1.genesis.attesters_committee.total_weight() / 6;
 
     for i in 0..setup1.attester_keys.len() + 1 {
         let mut qc = L1BatchQC::new(make_l1_batch_msg(rng), &setup1.genesis);
@@ -167,7 +165,7 @@ fn test_l1_batch_qc() {
             qc.add(&key.sign_batch_msg(qc.message.clone()), &setup1.genesis);
         }
         let expected_weight = i as u64 * attester_weight;
-        if expected_weight >= setup1.genesis.attesters.threshold() {
+        if expected_weight >= setup1.genesis.attesters_committee.threshold() {
             assert!(qc.verify(&setup1.genesis).is_ok());
         } else {
             assert_matches!(
@@ -197,7 +195,10 @@ fn test_attester_committee_weights() {
     for (n, weight) in sums.iter().enumerate() {
         let key = &setup.attester_keys[n];
         qc.add(&key.sign_batch_msg(msg.clone()), &setup.genesis);
-        assert_eq!(setup.genesis.attesters.weight(&qc.signers), *weight);
+        assert_eq!(
+            setup.genesis.attesters_committee.weight(&qc.signers),
+            *weight
+        );
     }
 }
 

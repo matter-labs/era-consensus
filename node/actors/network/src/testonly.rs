@@ -226,7 +226,12 @@ impl Instance {
     pub async fn wait_for_consensus_connections(&self) {
         let consensus_state = self.net.consensus.as_ref().unwrap();
 
-        let want: HashSet<_> = self.genesis().validators.iter_keys().cloned().collect();
+        let want: HashSet<_> = self
+            .genesis()
+            .validators_committee
+            .keys()
+            .cloned()
+            .collect();
         consensus_state
             .inbound
             .subscribe()
@@ -304,7 +309,7 @@ pub async fn instant_network(
         node.net
             .gossip
             .validator_addrs
-            .update(&node.genesis().validators, &addrs)
+            .update(&node.genesis().validators_committee, &addrs)
             .await
             .unwrap();
     }

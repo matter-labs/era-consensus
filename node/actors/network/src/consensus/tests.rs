@@ -166,7 +166,7 @@ async fn test_genesis_mismatch() {
             .gossip
             .validator_addrs
             .update(
-                &setup.genesis.validators,
+                &setup.genesis.validators_committee,
                 &[Arc::new(setup.validator_keys[1].sign_msg(
                     validator::NetAddress {
                         addr: *cfgs[1].server_addr,

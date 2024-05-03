@@ -2,8 +2,8 @@
 use crate::attester::{self, L1Batch, SignedBatchMsg, WeightedAttester};
 
 use super::{
-    AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
-    Fork, ForkNumber, Genesis, GenesisHash, GenesisVersion, LeaderCommit, LeaderPrepare, Msg,
+    AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
+    FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
     WeightedValidator,
@@ -18,70 +18,76 @@ use std::sync::Arc;
 use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
 
+/// Test setup specification.
+#[derive(Debug, Clone)]
+pub struct SetupSpec {
+    /// ChainId
+    pub chain_id: ChainId,
+    /// Fork number.
+    pub fork_number: ForkNumber,
+    /// First block.
+    pub first_block: BlockNumber,
+    /// Protocol version.
+    pub protocol_version: ProtocolVersion,
+    /// Validator secret keys and weights.
+    pub validator_weights: Vec<(SecretKey, u64)>,
+    /// Attester secret keys and weights.
+    pub attester_weights: Vec<(attester::SecretKey, u64)>,
+    /// Leader selection.
+    pub leader_selection: LeaderSelectionMode,
+}
+
 /// Test setup.
 #[derive(Debug, Clone)]
 pub struct Setup(SetupInner);
 
-impl Setup {
-    /// New `Setup` with a given `fork`.
-    pub fn new_with_fork(rng: &mut impl Rng, weights: Vec<u64>, fork: Fork) -> Self {
-        let validator_keys: Vec<SecretKey> = (0..weights.len()).map(|_| rng.gen()).collect();
-        let attester_keys: Vec<attester::SecretKey> =
-            (0..weights.len()).map(|_| rng.gen()).collect();
-        let genesis = Genesis {
-            validators: Committee::new(validator_keys.iter().enumerate().map(|(i, k)| {
-                WeightedValidator {
-                    key: k.public(),
-                    weight: weights[i],
-                }
-            }))
-            .unwrap(),
-            attesters: attester::Committee::new(attester_keys.iter().enumerate().map(|(i, k)| {
-                WeightedAttester {
-                    key: k.public(),
-                    weight: weights[i],
-                }
-            }))
-            .unwrap(),
-            fork,
-            ..Default::default()
-        };
-        Self(SetupInner {
-            validator_keys,
-            attester_keys,
-            genesis,
-            blocks: vec![],
-            signed_l1_batches: vec![],
-        })
-    }
-
-    /// New `Setup`.
+impl SetupSpec {
+    /// New `SetupSpec`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
         Self::new_with_weights(rng, vec![1; validators])
     }
 
+    /// New `SetupSpec`.
+    pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
+        Self {
+            validator_weights: weights
+                .clone()
+                .into_iter()
+                .map(|w| (rng.gen(), w))
+                .collect(),
+            attester_weights: weights.into_iter().map(|w| (rng.gen(), w)).collect(),
+            chain_id: ChainId(1337),
+            fork_number: ForkNumber(rng.gen_range(0..100)),
+            first_block: BlockNumber(rng.gen_range(0..100)),
+            protocol_version: ProtocolVersion::CURRENT,
+            leader_selection: LeaderSelectionMode::RoundRobin,
+        }
+    }
+}
+
+impl Setup {
+    /// New `Setup`.
+    pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
+        SetupSpec::new(rng, validators).into()
+    }
+
     /// New `Setup`.
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
-        let fork = Fork {
-            number: ForkNumber(rng.gen_range(0..100)),
-            first_block: BlockNumber(rng.gen_range(0..100)),
-        };
-        Self::new_with_fork(rng, weights, fork)
+        SetupSpec::new_with_weights(rng, weights).into()
     }
 
     /// Next block to finalize.
     pub fn next(&self) -> BlockNumber {
         match self.0.blocks.last() {
             Some(b) => b.header().number.next(),
-            None => self.0.genesis.fork.first_block,
+            None => self.0.genesis.first_block,
         }
     }
 
     /// Pushes the next block with the given payload.
     pub fn push_block(&mut self, payload: Payload) {
         let view = View {
-            protocol_version: ProtocolVersion::CURRENT,
-            fork: self.genesis.fork.number,
+            genesis: self.genesis.hash(),
             number: self
                 .0
                 .blocks
@@ -95,17 +101,19 @@ impl Setup {
                 payload: payload.hash(),
             },
             None => BlockHeader {
-                number: self.genesis.fork.first_block,
+                number: self.genesis.first_block,
                 payload: payload.hash(),
             },
         };
         let msg = ReplicaCommit { view, proposal };
         let mut justification = CommitQC::new(msg, &self.0.genesis);
         for key in &self.0.validator_keys {
-            justification.add(
-                &key.sign_msg(justification.message.clone()),
-                &self.0.genesis,
-            );
+            justification
+                .add(
+                    &key.sign_msg(justification.message.clone()),
+                    &self.0.genesis,
+                )
+                .unwrap();
         }
         self.0.blocks.push(FinalBlock {
             payload,
@@ -132,6 +140,40 @@ impl Setup {
             let signed = key.sign_batch_msg(batch.clone());
             self.0.signed_l1_batches.push(signed);
         }
+    }
+}
+
+impl From<SetupSpec> for Setup {
+    fn from(spec: SetupSpec) -> Self {
+        Self(SetupInner {
+            genesis: GenesisRaw {
+                chain_id: spec.chain_id,
+                fork_number: spec.fork_number,
+                first_block: spec.first_block,
+
+                protocol_version: spec.protocol_version,
+                validators_committee: Committee::new(spec.validator_weights.iter().map(
+                    |(k, w)| WeightedValidator {
+                        key: k.public(),
+                        weight: *w,
+                    },
+                ))
+                .unwrap(),
+                attesters_committee: attester::Committee::new(spec.attester_weights.iter().map(
+                    |(k, w)| WeightedAttester {
+                        key: k.public(),
+                        weight: *w,
+                    },
+                ))
+                .unwrap(),
+                leader_selection: spec.leader_selection,
+            }
+            .with_hash(),
+            validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
+            attester_keys: spec.attester_weights.into_iter().map(|(k, _)| k).collect(),
+            signed_l1_batches: vec![],
+            blocks: vec![],
+        })
     }
 }
 
@@ -210,18 +252,15 @@ impl Distribution<ForkNumber> for Standard {
     }
 }
 
-impl Distribution<GenesisHash> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisHash {
-        GenesisHash(rng.gen())
+impl Distribution<ChainId> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChainId {
+        ChainId(rng.gen())
     }
 }
 
-impl Distribution<Fork> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Fork {
-        Fork {
-            number: rng.gen(),
-            first_block: rng.gen(),
-        }
+impl Distribution<GenesisHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisHash {
+        GenesisHash(rng.gen())
     }
 }
 
@@ -235,21 +274,24 @@ impl Distribution<LeaderSelectionMode> for Standard {
     }
 }
 
-impl Distribution<Genesis> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
-        Genesis {
-            validators: rng.gen(),
-            attesters: rng.gen(),
-            fork: rng.gen(),
-            version: rng.gen(),
+impl Distribution<GenesisRaw> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisRaw {
+        GenesisRaw {
+            chain_id: rng.gen(),
+            fork_number: rng.gen(),
+            first_block: rng.gen(),
+
+            protocol_version: rng.gen(),
+            validators_committee: rng.gen(),
+            attesters_committee: rng.gen(),
             leader_selection: rng.gen(),
         }
     }
 }
 
-impl Distribution<GenesisVersion> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisVersion {
-        GenesisVersion(rng.gen_range(0..=GenesisVersion::CURRENT.0))
+impl Distribution<Genesis> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
+        rng.gen::<GenesisRaw>().with_hash()
     }
 }
 
@@ -370,8 +412,7 @@ impl Distribution<ViewNumber> for Standard {
 impl Distribution<View> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> View {
         View {
-            protocol_version: rng.gen(),
-            fork: rng.gen(),
+            genesis: rng.gen(),
             number: rng.gen(),
         }
     }

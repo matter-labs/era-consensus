@@ -90,7 +90,7 @@ async fn test_fullnode_syncing_from_validator() {
 
         // Wait for blocks in full node store.
         store
-            .wait_until_persisted(ctx, setup.genesis.fork.first_block + 5)
+            .wait_until_persisted(ctx, setup.genesis.first_block + 5)
             .await?;
         Ok(())
     })
@@ -119,7 +119,7 @@ async fn test_validator_syncing_from_fullnode() {
                     .instrument(tracing::info_span!("validator")),
             );
             store
-                .wait_until_persisted(ctx, setup.genesis.fork.first_block + 4)
+                .wait_until_persisted(ctx, setup.genesis.first_block + 4)
                 .await?;
             Ok(())
         })
@@ -141,7 +141,7 @@ async fn test_validator_syncing_from_fullnode() {
         // Validator should fetch the past blocks from the full node before producing next blocks.
         let last_block = store.queued().last.as_ref().unwrap().header().number;
         let (store2, runner) =
-            new_store_with_first(ctx, &setup.genesis, setup.genesis.fork.first_block + 2).await;
+            new_store_with_first(ctx, &setup.genesis, setup.genesis.first_block + 2).await;
         s.spawn_bg(runner.run(ctx));
         s.spawn_bg(
             validator(&cfgs[0], store2, replica_store)

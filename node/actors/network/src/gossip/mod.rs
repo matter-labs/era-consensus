@@ -142,22 +142,22 @@ impl Network {
             }
             // Now we check if we have enough weight to continue.
             if let Some(last_qc) = self.last_viewed_qc.clone() {
-                let weight = self.genesis().attesters.weight(
+                let weight = self.genesis().attesters_committee.weight(
                     &self
                         .l1_batch_qc
                         .get(&last_qc.message.number)
                         .unwrap()
                         .signers,
                 );
-                if weight > self.genesis().attesters.threshold() {
+                if weight > self.genesis().attesters_committee.threshold() {
                     // TODO: Verify and Propagate QC.
                 };
             } else if let Some(qc) = self.l1_batch_qc.get(&BatchNumber(0)) {
                 let weight = self
                     .genesis()
-                    .attesters
+                    .attesters_committee
                     .weight(&self.l1_batch_qc.get(&qc.message.number).unwrap().signers);
-                if weight > self.genesis().attesters.threshold() {
+                if weight > self.genesis().attesters_committee.threshold() {
                     // TODO: Verify and Propagate QC.
                 };
             }
