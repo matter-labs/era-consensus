@@ -1,5 +1,5 @@
 //! Test-only utilities.
-use crate::attester::{self, WeightedAttester};
+use crate::attester::{self, L1Batch, SignedBatchMsg, WeightedAttester};
 
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, CommitQC, Committee, ConsensusMsg, FinalBlock,
@@ -51,6 +51,7 @@ impl Setup {
             attester_keys,
             genesis,
             blocks: vec![],
+            signed_l1_batches: vec![],
         })
     }
 
@@ -124,6 +125,14 @@ impl Setup {
         let first = self.0.blocks.first()?.number();
         self.0.blocks.get(n.0.checked_sub(first.0)? as usize)
     }
+
+    /// Pushes a new L1 batch.
+    pub fn push_batch(&mut self, batch: L1Batch) {
+        for key in &self.0.attester_keys {
+            let signed = key.sign_batch_msg(batch.clone());
+            self.0.signed_l1_batches.push(signed);
+        }
+    }
 }
 
 /// Setup.
@@ -135,6 +144,8 @@ pub struct SetupInner {
     pub attester_keys: Vec<attester::SecretKey>,
     /// Past blocks.
     pub blocks: Vec<FinalBlock>,
+    /// L1 batches
+    pub signed_l1_batches: Vec<SignedBatchMsg<L1Batch>>,
     /// Genesis config.
     pub genesis: Genesis,
 }
