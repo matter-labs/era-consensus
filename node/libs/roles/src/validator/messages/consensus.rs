@@ -232,7 +232,6 @@ pub struct ChainId(pub u64);
 pub struct GenesisRaw {
     /// ID of the blockchain.
     pub chain_id: ChainId,
-
     /// Number of the fork. Should be incremented every time the genesis is updated,
     /// i.e. whenever a hard fork is performed.
     pub fork_number: ForkNumber,

@@ -1,5 +1,5 @@
 use crate::{
-    attester::{self},
+    attester::{self, WeightedAttester},
     node::SessionId,
 };
 
@@ -26,6 +26,13 @@ impl ProtoFmt for GenesisRaw {
             .map(|(i, v)| WeightedValidator::read(v).context(i))
             .collect::<Result<_, _>>()
             .context("validators_v1")?;
+        let attesters: Vec<_> = r
+            .attesters
+            .iter()
+            .enumerate()
+            .map(|(i, v)| WeightedAttester::read(v).context(i))
+            .collect::<Result<_, _>>()
+            .context("attesters")?;
         Ok(GenesisRaw {
             chain_id: ChainId(*required(&r.chain_id).context("chain_id")?),
             fork_number: ForkNumber(*required(&r.fork_number).context("fork_number")?),
@@ -34,7 +41,8 @@ impl ProtoFmt for GenesisRaw {
             protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
             validators_committee: Committee::new(validators.into_iter())
                 .context("validators_v1")?,
-            attesters_committee: attester::Committee::new(vec![]).context("attesters")?,
+            attesters_committee: attester::Committee::new(attesters.into_iter())
+                .context("attesters")?,
             leader_selection: read_required(&r.leader_selection).context("leader_selection")?,
         })
     }

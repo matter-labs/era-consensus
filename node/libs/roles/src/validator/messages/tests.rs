@@ -162,7 +162,7 @@ mod version1 {
     #[test]
     fn genesis_hash_change_detector() {
         let want: GenesisHash = Text::new(
-            "genesis_hash:keccak256:13a16cfa758c6716b4c4d40a5fe71023a016c7507b7893c7dc775f4420fc5d61",
+            "genesis_hash:keccak256:40c04eae06ec38220ae8b2ec070090af9117e6935e66f90e076617a687b7a665",
         )
         .decode()
         .unwrap();

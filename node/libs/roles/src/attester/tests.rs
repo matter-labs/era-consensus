@@ -1,7 +1,4 @@
-use crate::{
-    attester,
-    validator::{testonly::Setup, Committee, Genesis},
-};
+use crate::{attester, validator::testonly::Setup};
 
 use super::*;
 use assert_matches::assert_matches;
