@@ -129,10 +129,13 @@ impl Executor {
         let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
         // Create the IO dispatcher.
         let dispatcher = Dispatcher::new(consensus_dispatcher_pipe, network_dispatcher_pipe);
+        let http_server = network::http::Server::new();
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
             s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
+            s.spawn(async { http_server.run(ctx).await.context("Http Server stopped") });
+
             if let Some(validator) = self.validator {
                 s.spawn(async {
                     let validator = validator;
