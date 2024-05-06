@@ -13,8 +13,12 @@
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config};
+use anyhow::Context;
 use im::HashMap;
-use std::sync::{atomic::AtomicUsize, Arc};
+use std::{
+    borrow::Borrow,
+    sync::{atomic::AtomicUsize, Arc},
+};
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync};
 use zksync_consensus_roles::{
@@ -127,12 +131,16 @@ impl Network {
     }
 
     /// Task that keeps hearing about new signatures and updates the L1 batch qc.
-    /// It also propagates the QC if there's enough signatures.
-    pub(crate) async fn update_batch_qc(&self, ctx: &ctx::Ctx) {
+    /// It will propagate the QC if there's enough signatures.
+    pub(crate) async fn update_batch_qc(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         // FIXME This is not a good way to do this, we shouldn't be verifying the QC every time
+        // Can we get only the latest signatures?
         loop {
             let mut sub = self.batch_signatures.subscribe();
-            let signatures = sync::changed(ctx, &mut sub).await.unwrap().clone();
+            let signatures = sync::changed(ctx, &mut sub)
+                .await
+                .context("batch signatures")?
+                .clone();
             for (_, sig) in signatures.0 {
                 self.l1_batch_qc
                     .clone()
@@ -145,22 +153,27 @@ impl Network {
                 let weight = self.genesis().attesters_committee.weight(
                     &self
                         .l1_batch_qc
-                        .get(&last_qc.message.number)
-                        .unwrap()
+                        .get(&last_qc.message.number.next_batch_number())
+                        .context("last qc")?
                         .signers,
                 );
-                if weight > self.genesis().attesters_committee.threshold() {
-                    // TODO: Verify and Propagate QC.
+                if weight < self.genesis().attesters_committee.threshold() {
+                    return Ok(());
                 };
-            } else if let Some(qc) = self.l1_batch_qc.get(&BatchNumber(0)) {
-                let weight = self
-                    .genesis()
-                    .attesters_committee
-                    .weight(&self.l1_batch_qc.get(&qc.message.number).unwrap().signers);
-                if weight > self.genesis().attesters_committee.threshold() {
-                    // TODO: Verify and Propagate QC.
+            } else {
+                let weight = self.genesis().attesters_committee.weight(
+                    &self
+                        .l1_batch_qc
+                        .get(&BatchNumber(0))
+                        .context("L1 batch QC")?
+                        .signers,
+                );
+                if weight < self.genesis().attesters_committee.threshold() {
+                    return Ok(());
                 };
             }
+
+            // If we have enough weight, we can propagate the QC.
         }
     }
 }

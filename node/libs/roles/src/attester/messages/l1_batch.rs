@@ -13,7 +13,7 @@ pub struct BatchNumber(pub u64);
 
 impl BatchNumber {
     /// Increment the batch number.
-    pub fn next_batch_number(&mut self) -> BatchNumber {
+    pub fn next_batch_number(&self) -> BatchNumber {
         BatchNumber(self.0.checked_add(1).unwrap_or(0))
     }
 }
