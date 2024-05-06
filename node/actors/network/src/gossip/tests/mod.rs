@@ -603,40 +603,8 @@ async fn test_batch_signatures() {
     assert_eq!(want.0, sub.borrow_and_update().0);
 }
 
+// TODO: This test is disabled because the logic for attesters to receive and sign batches is not implemented yet.
+// It should be re-enabled once the logic is implemented.
 // #[tokio::test(flavor = "multi_thread")]
 // async fn test_batch_signatures_propagation() {
-//     abort_on_panic();
-//     let ctx = &ctx::test_root(&ctx::AffineClock::new(40.));
-//     let rng = &mut ctx.rng();
-//     let mut setup = validator::testonly::Setup::new(rng, 10);
-//     let cfgs = testonly::new_configs(rng, &setup, 1);
-//     setup.push_batch(L1Batch {
-//         number: BatchNumber(0),
-//         timestamp: time::UNIX_EPOCH,
-//     });
-
-//     scope::run!(ctx, |ctx, s| async {
-//         let (store, runner) = new_store(ctx, &setup.genesis).await;
-//         s.spawn_bg(runner.run(ctx));
-//         let nodes: Vec<_> = cfgs
-//             .iter()
-//             .enumerate()
-//             .map(|(i, cfg)| {
-//                 let (node, runner) = testonly::Instance::new(cfg.clone(), store.clone());
-//                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
-//                 node
-//             })
-//             .collect();
-//         for (i, node) in nodes.iter().enumerate() {
-//             let sub = &mut node.net.gossip.batch_signatures.subscribe();
-//             sync::wait_for(ctx, sub, |got| {
-//                 println!("{:?}", got.0.values().cloned().collect::<Vec<_>>());
-//                 setup.signed_l1_batches == got.0.values().cloned().collect::<Vec<_>>()
-//             })
-//             .await?;
-//         }
-//         Ok(())
-//     })
-//     .await
-//     .unwrap();
 // }
