@@ -96,8 +96,8 @@ fn test_schema_encoding() {
     test_encode_random::<Signers>(rng);
     test_encode_random::<PublicKey>(rng);
     test_encode_random::<Signature>(rng);
-    test_encode_random::<AggregateSignature>(rng);
     test_encode_random::<Genesis>(rng);
+    test_encode_random::<AggregateSignature>(rng);
     test_encode_random::<GenesisHash>(rng);
     test_encode_random::<LeaderSelectionMode>(rng);
 }
