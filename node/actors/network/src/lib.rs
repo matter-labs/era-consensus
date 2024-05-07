@@ -161,11 +161,7 @@ impl Runner {
                 }
             }
 
-            if let Some(_c) = &self.net.gossip.attester_key {
-                // TODO: check for batches to sign
-                // Sign batches
-                // Broadcast signature
-            }
+            // TODO: check if we are active attester to get new L1 Batches, sign them and broadcast the signature
 
             let accept_limiter = limiter::Limiter::new(ctx, self.net.gossip.cfg.tcp_accept_rate);
             loop {

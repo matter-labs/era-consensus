@@ -57,12 +57,8 @@ pub(crate) struct Network {
     pub(crate) sender: channel::UnboundedSender<io::OutputMessage>,
     /// Queue of block fetching requests.
     pub(crate) fetch_queue: fetch::Queue,
-    /// L1 batches.
-    // pub(crate) l1_batches: sync::watch::Receiver<Option<L1Batch>>,
     /// Last viewed QC.
     pub(crate) last_viewed_qc: Option<L1BatchQC>,
-    /// Attester SecretKey, None if the node is not an attester.
-    pub(crate) attester_key: Option<attester::SecretKey>,
     /// L1 batch qc.
     pub(crate) l1_batch_qc: HashMap<BatchNumber, L1BatchQC>,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
@@ -85,9 +81,7 @@ impl Network {
             outbound: PoolWatch::new(cfg.gossip.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
             batch_signatures: L1BatchSignaturesWatch::default(),
-            attester_key: cfg.attester_key.clone(),
             l1_batch_qc: HashMap::new(),
-            // l1_batches: sync::watch::channel(None).1,
             last_viewed_qc: None,
             cfg,
             fetch_queue: fetch::Queue::default(),

@@ -90,7 +90,6 @@ pub fn new_configs(
                 // due to timeouts.
                 ping_timeout: None,
                 validator_key: Some(validator_key.clone()),
-                attester_key: Some(attester_key.clone()),
                 gossip: GossipConfig {
                     key: rng.gen(),
                     dynamic_inbound_limit: usize::MAX,
@@ -128,7 +127,6 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
         // due to timeouts.
         ping_timeout: None,
         validator_key: None,
-        attester_key: None,
         gossip: GossipConfig {
             key: rng.gen(),
             dynamic_inbound_limit: usize::MAX,
@@ -226,12 +224,7 @@ impl Instance {
     pub async fn wait_for_consensus_connections(&self) {
         let consensus_state = self.net.consensus.as_ref().unwrap();
 
-        let want: HashSet<_> = self
-            .genesis()
-            .validators
-            .keys()
-            .cloned()
-            .collect();
+        let want: HashSet<_> = self.genesis().validators.keys().cloned().collect();
         consensus_state
             .inbound
             .subscribe()

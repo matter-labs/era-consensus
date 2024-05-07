@@ -214,7 +214,6 @@ impl Configs {
                         self.app.max_payload_size,
                     )),
                 }),
-            attester: None,
         };
         Ok((e, runner))
     }

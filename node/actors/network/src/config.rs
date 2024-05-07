@@ -83,9 +83,6 @@ pub struct Config {
     /// Private key of the validator.
     /// None if the node is NOT a validator.
     pub validator_key: Option<validator::SecretKey>,
-    /// Private key of the attester.
-    /// None if the node is NOT an attester.
-    pub attester_key: Option<attester::SecretKey>,
     /// Maximal size of the proto-encoded `validator::FinalBlock` in bytes.
     pub max_block_size: usize,
     /// If a peer doesn't respond to a ping message within `ping_timeout`,

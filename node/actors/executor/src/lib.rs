@@ -80,8 +80,6 @@ pub struct Executor {
     pub block_store: Arc<BlockStore>,
     /// Validator-specific node data.
     pub validator: Option<Validator>,
-    /// Attester-specific node data.
-    pub attester: Option<Attester>,
 }
 
 impl Executor {
@@ -92,7 +90,6 @@ impl Executor {
             public_addr: self.config.public_addr.clone(),
             gossip: self.config.gossip(),
             validator_key: self.validator.as_ref().map(|v| v.key.clone()),
-            attester_key: self.attester.as_ref().map(|v| v.key.clone()),
             ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
             max_block_queue_size: 20,
