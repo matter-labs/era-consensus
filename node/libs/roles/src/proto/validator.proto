@@ -11,13 +11,13 @@ message Genesis {
   optional uint64 chain_id = 5; // required
   optional uint64 fork_number = 6; // required; ForkNumber
   optional uint64 first_block = 7; // required; BlockNumber
-  repeated attester.WeightedAttester attesters = 4;
  
   // These properties are expected to be overwritten each epoch.
   // We will either remove them entirely, or keep them for the initial epoch.
   optional uint32 protocol_version = 8; // required; ProtocolVersion
   repeated WeightedValidator validators_v1 = 3;
-  optional LeaderSelectionMode leader_selection = 9; // required
+  repeated attester.WeightedAttester attesters = 9;
+  optional LeaderSelectionMode leader_selection = 4; // required
 }
 
 message LeaderSelectionMode {
