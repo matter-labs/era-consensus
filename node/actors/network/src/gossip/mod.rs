@@ -141,7 +141,7 @@ impl Network {
                 let weight = self.genesis().attesters.weight(
                     &self
                         .batch_qc
-                        .get(&last_qc.message.number.next_batch_number())
+                        .get(&last_qc.message.number.next())
                         .context("last qc")?
                         .signers,
                 );

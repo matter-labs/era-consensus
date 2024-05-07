@@ -1,9 +1,6 @@
 use zksync_concurrency::time;
 
-use crate::{
-    attester::{self, AggregateSignature},
-    validator::Genesis,
-};
+use crate::{attester, validator::Genesis};
 
 use super::{Signed, Signers};
 
@@ -13,7 +10,7 @@ pub struct BatchNumber(pub u64);
 
 impl BatchNumber {
     /// Increment the batch number.
-    pub fn next_batch_number(&self) -> BatchNumber {
+    pub fn next(&self) -> BatchNumber {
         BatchNumber(self.0.checked_add(1).unwrap_or(0))
     }
 }
@@ -34,7 +31,7 @@ pub struct Batch {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BatchQC {
     /// The aggregate signature of the signed L1 batches.
-    pub signature: AggregateSignature,
+    pub signature: attester::AggregateSignature,
     /// The attesters that signed this message.
     pub signers: Signers,
     /// The message that was signed.
