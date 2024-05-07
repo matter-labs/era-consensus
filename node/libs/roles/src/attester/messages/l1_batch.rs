@@ -26,6 +26,7 @@ pub struct L1Batch {
     pub number: BatchNumber,
     /// Time at which this message has been signed.
     pub timestamp: time::Utc,
+    // TODO: add the hash of the L1 batch as a field
 }
 
 /// A certificate for a batch of L2 blocks to be sent to L1.
