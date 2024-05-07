@@ -14,10 +14,7 @@ use zksync_concurrency::{
     testonly::{abort_on_panic, set_timeout},
     time,
 };
-use zksync_consensus_roles::{
-    attester::{L1Batch, SignedBatchMsg},
-    validator,
-};
+use zksync_consensus_roles::{attester, validator};
 use zksync_consensus_storage::testonly::new_store;
 
 mod fetch;
@@ -90,7 +87,9 @@ fn mk_version<R: Rng>(rng: &mut R) -> u64 {
 struct View(im::HashMap<validator::PublicKey, Arc<validator::Signed<validator::NetAddress>>>);
 
 #[derive(Default)]
-struct Signatures(im::HashMap<attester::PublicKey, Arc<SignedBatchMsg<L1Batch>>>);
+struct Signatures(
+    im::HashMap<attester::PublicKey, Arc<attester::SignedBatchMsg<attester::L1Batch>>>,
+);
 
 fn mk_netaddr(
     key: &validator::SecretKey,
@@ -109,8 +108,8 @@ fn mk_batch(
     key: &attester::SecretKey,
     number: BatchNumber,
     timestamp: time::Utc,
-) -> SignedBatchMsg<L1Batch> {
-    key.sign_batch_msg(L1Batch { number, timestamp })
+) -> attester::SignedBatchMsg<attester::L1Batch> {
+    key.sign_batch_msg(attester::L1Batch { number, timestamp })
 }
 
 fn random_netaddr<R: Rng>(
@@ -128,8 +127,8 @@ fn random_netaddr<R: Rng>(
 fn random_signature<R: Rng>(
     rng: &mut R,
     key: &attester::SecretKey,
-) -> Arc<SignedBatchMsg<L1Batch>> {
-    let batch = L1Batch {
+) -> Arc<attester::SignedBatchMsg<attester::L1Batch>> {
+    let batch = attester::L1Batch {
         timestamp: mk_timestamp(rng),
         number: BatchNumber(rng.gen_range(0..1000)),
     };
@@ -153,12 +152,12 @@ fn update_netaddr<R: Rng>(
 
 fn update_signature<R: Rng>(
     _rng: &mut R,
-    batch: &L1Batch,
+    batch: &attester::L1Batch,
     key: &attester::SecretKey,
     batch_number_diff: i64,
     timestamp_diff: time::Duration,
-) -> Arc<SignedBatchMsg<L1Batch>> {
-    let batch = L1Batch {
+) -> Arc<attester::SignedBatchMsg<attester::L1Batch>> {
+    let batch = attester::L1Batch {
         timestamp: batch.timestamp + timestamp_diff,
         number: BatchNumber((batch.number.0 as i64 + batch_number_diff) as u64),
     };
@@ -180,15 +179,18 @@ impl View {
 }
 
 impl Signatures {
-    fn insert(&mut self, entry: Arc<SignedBatchMsg<L1Batch>>) {
+    fn insert(&mut self, entry: Arc<attester::SignedBatchMsg<attester::L1Batch>>) {
         self.0.insert(entry.key.clone(), entry);
     }
 
-    fn get(&mut self, key: &attester::SecretKey) -> Arc<SignedBatchMsg<L1Batch>> {
+    fn get(
+        &mut self,
+        key: &attester::SecretKey,
+    ) -> Arc<attester::SignedBatchMsg<attester::L1Batch>> {
         self.0.get(&key.public()).unwrap().clone()
     }
 
-    fn as_vec(&self) -> Vec<Arc<SignedBatchMsg<L1Batch>>> {
+    fn as_vec(&self) -> Vec<Arc<attester::SignedBatchMsg<attester::L1Batch>>> {
         self.0.values().cloned().collect()
     }
 }
