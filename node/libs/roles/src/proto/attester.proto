@@ -21,7 +21,7 @@ message Msg {
   }
 }
 
-message SignedBatch {
+message Signed {
   optional Msg msg = 1; // required
   optional PublicKey key = 2; // required
   optional Signature sig = 3; // required
