@@ -20,7 +20,7 @@ message PushValidatorAddrs {
 
 message PushSignature {
   // Signed roles.validator.Msg.net_address.
-  repeated roles.attester.SignedBatch signatures = 1;
+  repeated roles.attester.Signed signatures = 1;
 }
 
 // State of the local block store.

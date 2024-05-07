@@ -6,7 +6,7 @@ import "zksync/roles/attester.proto";
 import "zksync/std.proto";
 
 message SignatureReq {
-  optional roles.attester.SignedBatch msg = 1;
+  optional roles.attester.Signed msg = 1;
 }
 
 message SignatureResp {}
