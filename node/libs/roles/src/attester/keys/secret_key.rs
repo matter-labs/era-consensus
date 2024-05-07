@@ -1,5 +1,5 @@
 use super::{PublicKey, Signature};
-use crate::attester::{L1Batch, Msg, MsgHash, SignedBatchMsg};
+use crate::attester::{Batch, Msg, MsgHash, Signed};
 use std::{fmt, sync::Arc};
 use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
@@ -22,12 +22,12 @@ impl SecretKey {
     }
 
     /// Signs a batch message.
-    pub fn sign_batch_msg<V>(&self, msg: L1Batch) -> SignedBatchMsg<V>
+    pub fn sign_msg<V>(&self, msg: Batch) -> Signed<V>
     where
         V: Variant<Msg>,
     {
         let msg = msg.insert();
-        SignedBatchMsg {
+        Signed {
             sig: self.sign_hash(&msg.hash()),
             key: self.public(),
             msg: V::extract(msg).unwrap(),

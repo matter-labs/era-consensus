@@ -4,21 +4,21 @@ package zksync.roles.attester;
 
 import "zksync/std.proto";
 
-message L1Batch {
+message Batch {
   optional uint64 number = 1; // required
   optional std.Timestamp timestamp = 2; // required
   // TODO: add the hash of the L1 batch as a field
 }
 
-message L1BatchQC {
-  optional L1Batch msg = 1; // required
+message BatchQC {
+  optional Batch msg = 1; // required
   optional std.BitVector signers = 2; // required
   optional AggregateSignature sig = 3; // required
 }
 
 message Msg {
   oneof t { // required
-    L1Batch l1_batch = 4;
+    Batch batch = 4;
   }
 }
 

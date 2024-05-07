@@ -15,19 +15,13 @@
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config};
 use anyhow::Context as _;
 use im::HashMap;
-use std::{
-    borrow::Borrow,
-    sync::{atomic::AtomicUsize, Arc},
-};
+use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync};
-use zksync_consensus_roles::{
-    attester::{self, BatchNumber, L1BatchQC},
-    node, validator,
-};
+use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::BlockStore;
 
-use self::batch_signatures::L1BatchSignaturesWatch;
+use self::batch_signatures::BatchSignaturesWatch;
 
 mod batch_signatures;
 mod fetch;
@@ -50,7 +44,7 @@ pub(crate) struct Network {
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
     /// Current state of knowledge about batch signatures.
-    pub(crate) batch_signatures: L1BatchSignaturesWatch,
+    pub(crate) batch_signatures: BatchSignaturesWatch,
     /// Block store to serve `get_block` requests from.
     pub(crate) block_store: Arc<BlockStore>,
     /// Output pipe of the network actor.
@@ -58,9 +52,9 @@ pub(crate) struct Network {
     /// Queue of block fetching requests.
     pub(crate) fetch_queue: fetch::Queue,
     /// Last viewed QC.
-    pub(crate) last_viewed_qc: Option<L1BatchQC>,
+    pub(crate) last_viewed_qc: Option<attester::BatchQC>,
     /// L1 batch qc.
-    pub(crate) l1_batch_qc: HashMap<BatchNumber, L1BatchQC>,
+    pub(crate) batch_qc: HashMap<attester::BatchNumber, attester::BatchQC>,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
 }
@@ -80,8 +74,8 @@ impl Network {
             ),
             outbound: PoolWatch::new(cfg.gossip.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
-            batch_signatures: L1BatchSignaturesWatch::default(),
-            l1_batch_qc: HashMap::new(),
+            batch_signatures: BatchSignaturesWatch::default(),
+            batch_qc: HashMap::new(),
             last_viewed_qc: None,
             cfg,
             fetch_queue: fetch::Queue::default(),
@@ -136,17 +130,17 @@ impl Network {
                 .context("batch signatures")?
                 .clone();
             for (_, sig) in signatures.0 {
-                self.l1_batch_qc
+                self.batch_qc
                     .clone()
                     .entry(sig.msg.number.clone())
-                    .or_insert_with(|| L1BatchQC::new(sig.msg.clone(), self.genesis()))
+                    .or_insert_with(|| attester::BatchQC::new(sig.msg.clone(), self.genesis()))
                     .add(&sig, self.genesis());
             }
             // Now we check if we have enough weight to continue.
             if let Some(last_qc) = self.last_viewed_qc.clone() {
                 let weight = self.genesis().attesters.weight(
                     &self
-                        .l1_batch_qc
+                        .batch_qc
                         .get(&last_qc.message.number.next_batch_number())
                         .context("last qc")?
                         .signers,
@@ -157,8 +151,8 @@ impl Network {
             } else {
                 let weight = self.genesis().attesters.weight(
                     &self
-                        .l1_batch_qc
-                        .get(&BatchNumber(0))
+                        .batch_qc
+                        .get(&attester::BatchNumber(0))
                         .context("L1 batch QC")?
                         .signers,
                 );

@@ -1,7 +1,7 @@
 //! Network actor configs.
 use std::collections::{HashMap, HashSet};
 use zksync_concurrency::{limiter, net, time};
-use zksync_consensus_roles::{attester, node, validator};
+use zksync_consensus_roles::{node, validator};
 
 /// How often we should retry to establish a connection to a validator.
 /// TODO(gprusak): once it becomes relevant, choose a more appropriate retry strategy.
@@ -21,7 +21,7 @@ pub struct RpcConfig {
     /// Max rate of sending/receiving consensus messages.
     pub consensus_rate: limiter::Rate,
     /// Max rate of sending/receiving l1 batch signature messages.
-    pub push_l1_batch_signature_rate: limiter::Rate,
+    pub push_batch_signature_rate: limiter::Rate,
 }
 
 impl Default for RpcConfig {
@@ -44,7 +44,7 @@ impl Default for RpcConfig {
                 burst: 10,
                 refresh: time::Duration::ZERO,
             },
-            push_l1_batch_signature_rate: limiter::Rate {
+            push_batch_signature_rate: limiter::Rate {
                 burst: 2,
                 refresh: time::Duration::milliseconds(500),
             },

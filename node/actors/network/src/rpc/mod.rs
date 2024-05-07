@@ -25,8 +25,8 @@ pub(crate) mod consensus;
 pub(crate) mod get_block;
 mod metrics;
 pub(crate) mod ping;
+pub(crate) mod push_batch_signature;
 pub(crate) mod push_block_store_state;
-pub(crate) mod push_signature;
 pub(crate) mod push_validator_addrs;
 #[cfg(test)]
 pub(crate) mod testonly;

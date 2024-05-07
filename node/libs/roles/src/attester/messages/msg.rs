@@ -1,7 +1,7 @@
 use std::{collections::BTreeMap, fmt};
 
 use crate::{
-    attester::{L1Batch, PublicKey, Signature},
+    attester::{Batch, PublicKey, Signature},
     validator::ViewNumber,
 };
 use anyhow::Context as _;
@@ -13,7 +13,7 @@ use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Msg {
     /// L1 batch message.
-    L1Batch(L1Batch),
+    Batch(Batch),
 }
 
 impl Msg {
@@ -23,12 +23,12 @@ impl Msg {
     }
 }
 
-impl Variant<Msg> for L1Batch {
+impl Variant<Msg> for Batch {
     fn insert(self) -> Msg {
-        Msg::L1Batch(self)
+        Msg::Batch(self)
     }
     fn extract(msg: Msg) -> Result<Self, BadVariantError> {
-        let Msg::L1Batch(this) = msg;
+        let Msg::Batch(this) = msg;
         Ok(this)
     }
 }
@@ -36,7 +36,7 @@ impl Variant<Msg> for L1Batch {
 /// Strongly typed signed l1 batch message.
 /// WARNING: signature is not guaranteed to be valid.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct SignedBatchMsg<V: Variant<Msg>> {
+pub struct Signed<V: Variant<Msg>> {
     /// The message that was signed.
     pub msg: V,
     /// The public key of the signer.
@@ -46,7 +46,7 @@ pub struct SignedBatchMsg<V: Variant<Msg>> {
 }
 
 /// Struct that represents a bit map of attesters. We use it to compactly store
-/// which attesters signed a given L1Batch message.
+/// which attesters signed a given Batch message.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Signers(pub BitVec);
 
@@ -252,7 +252,7 @@ impl fmt::Debug for MsgHash {
     }
 }
 
-impl<V: Variant<Msg> + Clone> SignedBatchMsg<V> {
+impl<V: Variant<Msg> + Clone> Signed<V> {
     /// Verify the signature on the message.
     pub fn verify(&self) -> anyhow::Result<()> {
         self.sig.verify_msg(&self.msg.clone().insert(), &self.key)
@@ -260,8 +260,8 @@ impl<V: Variant<Msg> + Clone> SignedBatchMsg<V> {
 
     /// Casts a signed message variant to sub/super variant.
     /// It is an equivalent of constructing/deconstructing enum values.
-    pub fn cast(self) -> Result<SignedBatchMsg<V>, BadVariantError> {
-        Ok(SignedBatchMsg {
+    pub fn cast(self) -> Result<Signed<V>, BadVariantError> {
+        Ok(Signed {
             msg: V::extract(self.msg.insert())?,
             key: self.key,
             sig: self.sig,

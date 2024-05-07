@@ -1,6 +1,6 @@
 //! Attester messages.
-mod l1_batch;
+mod batch;
 mod msg;
 
-pub use l1_batch::*;
+pub use batch::*;
 pub use msg::*;

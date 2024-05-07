@@ -1,5 +1,5 @@
 //! Test-only utilities.
-use crate::attester::{self, L1Batch, SignedBatchMsg, WeightedAttester};
+use crate::attester;
 
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
@@ -135,10 +135,10 @@ impl Setup {
     }
 
     /// Pushes a new L1 batch.
-    pub fn push_batch(&mut self, batch: L1Batch) {
+    pub fn push_batch(&mut self, batch: attester::Batch) {
         for key in &self.0.attester_keys {
-            let signed = key.sign_batch_msg(batch.clone());
-            self.0.signed_l1_batches.push(signed);
+            let signed = key.sign_msg(batch.clone());
+            self.0.signed_batches.push(signed);
         }
     }
 }
@@ -152,26 +152,26 @@ impl From<SetupSpec> for Setup {
                 first_block: spec.first_block,
 
                 protocol_version: spec.protocol_version,
-                validators: Committee::new(spec.validator_weights.iter().map(
-                    |(k, w)| WeightedValidator {
+                validators: Committee::new(spec.validator_weights.iter().map(|(k, w)| {
+                    WeightedValidator {
                         key: k.public(),
                         weight: *w,
-                    },
-                ))
+                    }
+                }))
                 .unwrap(),
-                attesters: attester::Committee::new(spec.attester_weights.iter().map(
-                    |(k, w)| WeightedAttester {
+                attesters: attester::Committee::new(spec.attester_weights.iter().map(|(k, w)| {
+                    attester::WeightedAttester {
                         key: k.public(),
                         weight: *w,
-                    },
-                ))
+                    }
+                }))
                 .unwrap(),
                 leader_selection: spec.leader_selection,
             }
             .with_hash(),
             validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
             attester_keys: spec.attester_weights.into_iter().map(|(k, _)| k).collect(),
-            signed_l1_batches: vec![],
+            signed_batches: vec![],
             blocks: vec![],
         })
     }
@@ -187,7 +187,7 @@ pub struct SetupInner {
     /// Past blocks.
     pub blocks: Vec<FinalBlock>,
     /// L1 batches
-    pub signed_l1_batches: Vec<SignedBatchMsg<L1Batch>>,
+    pub signed_batches: Vec<attester::Signed<attester::Batch>>,
     /// Genesis config.
     pub genesis: Genesis,
 }

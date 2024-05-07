@@ -1,4 +1,4 @@
-use crate::attester::{L1Batch, MsgHash};
+use crate::attester::{Batch, MsgHash};
 
 use super::{PublicKey, Signature};
 use std::fmt;
@@ -18,7 +18,7 @@ impl AggregateSignature {
     /// Verify a list of messages against a list of public keys.
     pub(crate) fn verify_messages<'a>(
         &self,
-        messages_and_keys: impl Iterator<Item = (L1Batch, &'a PublicKey)>,
+        messages_and_keys: impl Iterator<Item = (Batch, &'a PublicKey)>,
     ) -> anyhow::Result<()> {
         let hashes_and_keys =
             messages_and_keys.map(|(message, key)| (message.insert().hash(), key));

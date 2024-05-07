@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::{mux, proto::gossip as proto};
 use anyhow::Context as _;
-use zksync_consensus_roles::attester::{self, L1Batch};
+use zksync_consensus_roles::attester::{self, Batch};
 use zksync_protobuf::ProtoFmt;
 
 /// Signature RPC.
@@ -19,10 +19,10 @@ impl super::Rpc for Rpc {
 
 /// Signed consensus message that the receiving peer should process.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Req(pub(crate) Vec<Arc<attester::SignedBatchMsg<L1Batch>>>);
+pub(crate) struct Req(pub(crate) Vec<Arc<attester::Signed<Batch>>>);
 
 impl ProtoFmt for Req {
-    type Proto = proto::PushSignature;
+    type Proto = proto::PushBatchSignature;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let mut signatures = vec![];

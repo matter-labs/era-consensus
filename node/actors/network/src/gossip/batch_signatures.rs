@@ -2,18 +2,18 @@
 use crate::watch::Watch;
 use std::{collections::HashSet, sync::Arc};
 use zksync_concurrency::sync;
-use zksync_consensus_roles::attester::{self, L1Batch};
+use zksync_consensus_roles::attester::{self, Batch};
 
-/// Mapping from attester::PublicKey to a signed attester::L1Batch message.
+/// Mapping from attester::PublicKey to a signed attester::Batch message.
 /// Represents the currents state of node's knowledge about the attester signatures.
 #[derive(Clone, Default, PartialEq, Eq)]
-pub(crate) struct L1BatchSignatures(
-    pub(super) im::HashMap<attester::PublicKey, Arc<attester::SignedBatchMsg<L1Batch>>>,
+pub(crate) struct BatchSignatures(
+    pub(super) im::HashMap<attester::PublicKey, Arc<attester::Signed<Batch>>>,
 );
 
-impl L1BatchSignatures {
+impl BatchSignatures {
     /// Returns a set of entries of `self` which are newer than the entries in `b`.
-    pub(super) fn get_newer(&self, b: &Self) -> Vec<Arc<attester::SignedBatchMsg<L1Batch>>> {
+    pub(super) fn get_newer(&self, b: &Self) -> Vec<Arc<attester::Signed<Batch>>> {
         let mut newer = vec![];
         for (k, v) in &self.0 {
             if let Some(bv) = b.0.get(k) {
@@ -34,7 +34,7 @@ impl L1BatchSignatures {
     pub(super) fn update(
         &mut self,
         attesters: &attester::Committee,
-        data: &[Arc<attester::SignedBatchMsg<L1Batch>>],
+        data: &[Arc<attester::Signed<Batch>>],
     ) -> anyhow::Result<bool> {
         let mut changed = false;
 
@@ -66,23 +66,23 @@ impl L1BatchSignatures {
     }
 }
 
-/// Watch wrapper of L1BatchSignatures,
-/// which supports subscribing to L1BatchSignatures updates.
-pub(crate) struct L1BatchSignaturesWatch(Watch<L1BatchSignatures>);
+/// Watch wrapper of BatchSignatures,
+/// which supports subscribing to BatchSignatures updates.
+pub(crate) struct BatchSignaturesWatch(Watch<BatchSignatures>);
 
-impl Default for L1BatchSignaturesWatch {
+impl Default for BatchSignaturesWatch {
     fn default() -> Self {
-        Self(Watch::new(L1BatchSignatures::default()))
+        Self(Watch::new(BatchSignatures::default()))
     }
 }
 
-impl L1BatchSignaturesWatch {
-    /// Subscribes to L1BatchSignatures updates.
-    pub(crate) fn subscribe(&self) -> sync::watch::Receiver<L1BatchSignatures> {
+impl BatchSignaturesWatch {
+    /// Subscribes to BatchSignatures updates.
+    pub(crate) fn subscribe(&self) -> sync::watch::Receiver<BatchSignatures> {
         self.0.subscribe()
     }
 
-    /// Inserts data to L1BatchSignatures.
+    /// Inserts data to BatchSignatures.
     /// Subscribers are notified iff at least 1 new entry has
     /// been inserted. Returns an error iff an invalid
     /// entry in `data` has been found. The provider of the
@@ -90,7 +90,7 @@ impl L1BatchSignaturesWatch {
     pub(crate) async fn update(
         &self,
         attesters: &attester::Committee,
-        data: &[Arc<attester::SignedBatchMsg<L1Batch>>],
+        data: &[Arc<attester::Signed<Batch>>],
     ) -> anyhow::Result<()> {
         let this = self.0.lock().await;
         let mut signatures = this.borrow().clone();

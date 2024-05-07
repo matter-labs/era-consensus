@@ -69,8 +69,8 @@ fn test_text_encoding() {
 fn test_schema_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    test_encode_random::<SignedBatchMsg<L1Batch>>(rng);
-    test_encode_random::<L1BatchQC>(rng);
+    test_encode_random::<Signed<Batch>>(rng);
+    test_encode_random::<BatchQC>(rng);
     test_encode_random::<Msg>(rng);
     test_encode_random::<MsgHash>(rng);
     test_encode_random::<Signers>(rng);
@@ -134,16 +134,16 @@ fn test_agg_signature_verify() {
         .is_err());
 }
 
-fn make_l1_batch_msg(rng: &mut impl Rng) -> L1Batch {
-    L1Batch {
+fn make_batch_msg(rng: &mut impl Rng) -> Batch {
+    Batch {
         number: BatchNumber(rng.gen()),
         timestamp: time::UNIX_EPOCH + time::Duration::seconds(rng.gen_range(0..1000000000)),
     }
 }
 
 #[test]
-fn test_l1_batch_qc() {
-    use L1BatchQCVerifyError as Error;
+fn test_batch_qc() {
+    use BatchQCVerifyError as Error;
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
@@ -156,9 +156,9 @@ fn test_l1_batch_qc() {
     let attester_weight = setup1.genesis.attesters.total_weight() / 6;
 
     for i in 0..setup1.attester_keys.len() + 1 {
-        let mut qc = L1BatchQC::new(make_l1_batch_msg(rng), &setup1.genesis);
+        let mut qc = BatchQC::new(make_batch_msg(rng), &setup1.genesis);
         for key in &setup1.attester_keys[0..i] {
-            qc.add(&key.sign_batch_msg(qc.message.clone()), &setup1.genesis);
+            qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis);
         }
         let expected_weight = i as u64 * attester_weight;
         if expected_weight >= setup1.genesis.attesters.threshold() {
@@ -186,11 +186,11 @@ fn test_attester_committee_weights() {
     // Expected sum of the attesters weights
     let sums = [1000, 1600, 2400, 8400, 9300, 10000];
 
-    let msg = make_l1_batch_msg(rng);
-    let mut qc = L1BatchQC::new(msg.clone(), &setup.genesis);
+    let msg = make_batch_msg(rng);
+    let mut qc = BatchQC::new(msg.clone(), &setup.genesis);
     for (n, weight) in sums.iter().enumerate() {
         let key = &setup.attester_keys[n];
-        qc.add(&key.sign_batch_msg(msg.clone()), &setup.genesis);
+        qc.add(&key.sign_msg(msg.clone()), &setup.genesis);
         assert_eq!(setup.genesis.attesters.weight(&qc.signers), *weight);
     }
 }

@@ -1,6 +1,6 @@
 use super::{
-    AggregateSignature, BatchNumber, Committee, L1Batch, L1BatchQC, Msg, MsgHash, PublicKey,
-    SecretKey, Signature, SignedBatchMsg, Signers, WeightedAttester,
+    AggregateSignature, Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash, PublicKey, SecretKey,
+    Signature, Signed, Signers, WeightedAttester,
 };
 use bit_vec::BitVec;
 use rand::{
@@ -51,18 +51,18 @@ impl Distribution<Committee> for Standard {
     }
 }
 
-impl Distribution<L1Batch> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> L1Batch {
-        L1Batch {
+impl Distribution<Batch> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Batch {
+        Batch {
             number: BatchNumber(rng.gen()),
             timestamp: time::UNIX_EPOCH + time::Duration::seconds(rng.gen_range(0..1000000000)),
         }
     }
 }
 
-impl Distribution<L1BatchQC> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> L1BatchQC {
-        L1BatchQC {
+impl Distribution<BatchQC> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchQC {
+        BatchQC {
             message: rng.gen(),
             signers: rng.gen(),
             signature: rng.gen(),
@@ -72,7 +72,7 @@ impl Distribution<L1BatchQC> for Standard {
 
 impl Distribution<Msg> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Msg {
-        Msg::L1Batch(rng.gen())
+        Msg::Batch(rng.gen())
     }
 }
 
@@ -88,9 +88,9 @@ impl Distribution<Signature> for Standard {
     }
 }
 
-impl<V: Variant<Msg>> Distribution<SignedBatchMsg<V>> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SignedBatchMsg<V> {
-        rng.gen::<SecretKey>().sign_batch_msg(rng.gen())
+impl<V: Variant<Msg>> Distribution<Signed<V>> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Signed<V> {
+        rng.gen::<SecretKey>().sign_msg(rng.gen())
     }
 }
 

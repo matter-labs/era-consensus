@@ -5,12 +5,12 @@ use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
 use super::{
-    AggregateSignature, BatchNumber, L1Batch, L1BatchQC, Msg, MsgHash, PublicKey, Signature,
-    SignedBatchMsg, Signers, WeightedAttester,
+    AggregateSignature, Batch, BatchNumber, BatchQC, Msg, MsgHash, PublicKey, Signature, Signed,
+    Signers, WeightedAttester,
 };
 
-impl ProtoFmt for L1Batch {
-    type Proto = proto::L1Batch;
+impl ProtoFmt for Batch {
+    type Proto = proto::Batch;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             number: BatchNumber(*required(&r.number).context("number")?),
@@ -25,7 +25,7 @@ impl ProtoFmt for L1Batch {
     }
 }
 
-impl<V: Variant<Msg> + Clone> ProtoFmt for SignedBatchMsg<V> {
+impl<V: Variant<Msg> + Clone> ProtoFmt for Signed<V> {
     type Proto = proto::Signed;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
@@ -49,7 +49,7 @@ impl ProtoFmt for Msg {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         use proto::msg::T;
         Ok(match r.t.as_ref().context("missing")? {
-            T::L1Batch(r) => Self::L1Batch(ProtoFmt::read(r).context("L1Batch")?),
+            T::Batch(r) => Self::Batch(ProtoFmt::read(r).context("Batch")?),
         })
     }
 
@@ -57,7 +57,7 @@ impl ProtoFmt for Msg {
         use proto::msg::T;
 
         let t = match self {
-            Self::L1Batch(x) => T::L1Batch(x.build()),
+            Self::Batch(x) => T::Batch(x.build()),
         };
 
         Self::Proto { t: Some(t) }
@@ -145,8 +145,8 @@ impl ProtoFmt for MsgHash {
     }
 }
 
-impl ProtoFmt for L1BatchQC {
-    type Proto = proto::L1BatchQc;
+impl ProtoFmt for BatchQC {
+    type Proto = proto::BatchQc;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
