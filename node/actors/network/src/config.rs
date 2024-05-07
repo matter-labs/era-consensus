@@ -45,8 +45,8 @@ impl Default for RpcConfig {
                 refresh: time::Duration::ZERO,
             },
             push_l1_batch_signature_rate: limiter::Rate {
-                burst: 10,
-                refresh: time::Duration::ZERO,
+                burst: 2,
+                refresh: time::Duration::milliseconds(500),
             },
         }
     }
