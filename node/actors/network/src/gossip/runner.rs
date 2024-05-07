@@ -29,7 +29,7 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'
             .fetch_add(1, Ordering::SeqCst);
         self.0
             .validator_addrs
-            .update(&self.0.genesis().validators_committee, &req.0)
+            .update(&self.0.genesis().validators, &req.0)
             .await?;
         Ok(())
     }
@@ -47,7 +47,7 @@ impl rpc::Handler<rpc::push_signature::Rpc> for L1BatchServer<'_> {
     async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::push_signature::Req) -> anyhow::Result<()> {
         self.0
             .batch_signatures
-            .update(&self.0.genesis().attesters_committee, &req.0)
+            .update(&self.0.genesis().attesters, &req.0)
             .await?;
         Ok(())
     }

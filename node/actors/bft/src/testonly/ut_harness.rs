@@ -86,7 +86,7 @@ impl UTHarness {
     pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, BlockStoreRunner) {
         let num_validators = 6;
         let (util, runner) = UTHarness::new(ctx, num_validators).await;
-        assert!(util.genesis().validators_committee.max_faulty_weight() > 0);
+        assert!(util.genesis().validators.max_faulty_weight() > 0);
         (util, runner)
     }
 
@@ -226,12 +226,12 @@ impl UTHarness {
                 (i + 1) as u64
                     * self
                         .genesis()
-                        .validators_committee
+                        .validators
                         .iter()
                         .next()
                         .unwrap()
                         .weight
-                    < self.genesis().validators_committee.threshold(),
+                    < self.genesis().validators.threshold(),
                 first_match,
             ) {
                 (true, _) => assert!(res.unwrap().is_none()),
@@ -268,12 +268,12 @@ impl UTHarness {
                 (i + 1) as u64
                     * self
                         .genesis()
-                        .validators_committee
+                        .validators
                         .iter()
                         .next()
                         .unwrap()
                         .weight
-                    < self.genesis().validators_committee.threshold(),
+                    < self.genesis().validators.threshold(),
                 first_match,
             ) {
                 (true, _) => res.unwrap(),

@@ -149,8 +149,8 @@ mod version1 {
             first_block: BlockNumber(8902834932452),
 
             protocol_version: ProtocolVersion(1),
-            validators_committee: validator_committee(),
-            attesters_committee: attester_committee(),
+            validators: validator_committee(),
+            attesters: attester_committee(),
             leader_selection: LeaderSelectionMode::Weighted,
         }
         .with_hash()

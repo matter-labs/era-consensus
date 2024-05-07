@@ -228,7 +228,7 @@ impl Instance {
 
         let want: HashSet<_> = self
             .genesis()
-            .validators_committee
+            .validators
             .keys()
             .cloned()
             .collect();
@@ -309,7 +309,7 @@ pub async fn instant_network(
         node.net
             .gossip
             .validator_addrs
-            .update(&node.genesis().validators_committee, &addrs)
+            .update(&node.genesis().validators, &addrs)
             .await
             .unwrap();
     }

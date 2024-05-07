@@ -63,7 +63,7 @@ impl StateMachine {
         let author = &signed_message.key;
 
         // Check that the message signer is in the validator set.
-        if !self.config.genesis().validators_committee.contains(author) {
+        if !self.config.genesis().validators.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone(),
             });
@@ -114,7 +114,7 @@ impl StateMachine {
             .expect("Could not add message to PrepareQC");
 
         // Calculate the PrepareQC signers weight.
-        let weight = prepare_qc.weight(&self.config.genesis().validators_committee);
+        let weight = prepare_qc.weight(&self.config.genesis().validators);
 
         // Update prepare message current view number for author
         self.replica_prepare_views
@@ -129,7 +129,7 @@ impl StateMachine {
             .retain(|view_number, _| active_views.contains(view_number));
 
         // Now we check if we have enough weight to continue.
-        if weight < self.config.genesis().validators_committee.threshold() {
+        if weight < self.config.genesis().validators.threshold() {
             return Ok(());
         }
 

@@ -150,25 +150,25 @@ impl Network {
             }
             // Now we check if we have enough weight to continue.
             if let Some(last_qc) = self.last_viewed_qc.clone() {
-                let weight = self.genesis().attesters_committee.weight(
+                let weight = self.genesis().attesters.weight(
                     &self
                         .l1_batch_qc
                         .get(&last_qc.message.number.next_batch_number())
                         .context("last qc")?
                         .signers,
                 );
-                if weight < self.genesis().attesters_committee.threshold() {
+                if weight < self.genesis().attesters.threshold() {
                     return Ok(());
                 };
             } else {
-                let weight = self.genesis().attesters_committee.weight(
+                let weight = self.genesis().attesters.weight(
                     &self
                         .l1_batch_qc
                         .get(&BatchNumber(0))
                         .context("L1 batch QC")?
                         .signers,
                 );
-                if weight < self.genesis().attesters_committee.threshold() {
+                if weight < self.genesis().attesters.threshold() {
                     return Ok(());
                 };
             }

@@ -125,7 +125,7 @@ impl Executor {
             if !self
                 .block_store
                 .genesis()
-                .validators_committee
+                .validators
                 .keys()
                 .any(|key| key == &validator.key.public())
             {

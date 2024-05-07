@@ -240,9 +240,9 @@ pub struct GenesisRaw {
     /// First block of a fork.
     pub first_block: BlockNumber,
     /// Set of validators of the chain.
-    pub validators_committee: Committee,
+    pub validators: Committee,
     /// Set of attesters of the chain.
-    pub attesters_committee: attester::Committee,
+    pub attesters: attester::Committee,
     /// The mode used for selecting leader for a given view.
     pub leader_selection: LeaderSelectionMode,
 }
@@ -307,7 +307,7 @@ impl Genesis {
     /// Verifies correctness.
     pub fn verify(&self) -> anyhow::Result<()> {
         if let LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
-            if self.validators_committee.index(pk).is_none() {
+            if self.validators.index(pk).is_none() {
                 anyhow::bail!("leader_selection sticky mode public key is not in committee");
             }
         }
@@ -317,7 +317,7 @@ impl Genesis {
 
     /// Computes the leader for the given view.
     pub fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
-        self.validators_committee
+        self.validators
             .view_leader(view, &self.leader_selection)
     }
 

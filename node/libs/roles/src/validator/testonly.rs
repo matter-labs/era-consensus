@@ -152,14 +152,14 @@ impl From<SetupSpec> for Setup {
                 first_block: spec.first_block,
 
                 protocol_version: spec.protocol_version,
-                validators_committee: Committee::new(spec.validator_weights.iter().map(
+                validators: Committee::new(spec.validator_weights.iter().map(
                     |(k, w)| WeightedValidator {
                         key: k.public(),
                         weight: *w,
                     },
                 ))
                 .unwrap(),
-                attesters_committee: attester::Committee::new(spec.attester_weights.iter().map(
+                attesters: attester::Committee::new(spec.attester_weights.iter().map(
                     |(k, w)| WeightedAttester {
                         key: k.public(),
                         weight: *w,
@@ -282,8 +282,8 @@ impl Distribution<GenesisRaw> for Standard {
             first_block: rng.gen(),
 
             protocol_version: rng.gen(),
-            validators_committee: rng.gen(),
-            attesters_committee: rng.gen(),
+            validators: rng.gen(),
+            attesters: rng.gen(),
             leader_selection: rng.gen(),
         }
     }

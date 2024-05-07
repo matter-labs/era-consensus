@@ -51,7 +51,7 @@ impl StateMachine {
         let author = &signed_message.key;
 
         // Check that the message signer is in the validator committee.
-        if !self.config.genesis().validators_committee.contains(author) {
+        if !self.config.genesis().validators.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone(),
             });
@@ -103,11 +103,7 @@ impl StateMachine {
             .expect("Could not add message to CommitQC");
 
         // Calculate the CommitQC signers weight.
-        let weight = self
-            .config
-            .genesis()
-            .validators_committee
-            .weight(&commit_qc.signers);
+        let weight = self.config.genesis().validators.weight(&commit_qc.signers);
 
         // Update commit message current view number for author
         self.replica_commit_views
@@ -122,7 +118,7 @@ impl StateMachine {
             .retain(|view_number, _| active_views.contains(view_number));
 
         // Now we check if we have enough weight to continue.
-        if weight < self.config.genesis().validators_committee.threshold() {
+        if weight < self.config.genesis().validators.threshold() {
             return Ok(());
         };
 

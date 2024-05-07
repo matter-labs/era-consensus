@@ -158,7 +158,7 @@ impl Network {
         let key = gossip.cfg.validator_key.clone()?;
         let validators: HashSet<_> = gossip
             .genesis()
-            .validators_committee
+            .validators
             .keys()
             .cloned()
             .collect();
