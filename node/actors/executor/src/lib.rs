@@ -3,7 +3,6 @@ use crate::io::Dispatcher;
 use anyhow::Context as _;
 use std::{
     collections::{HashMap, HashSet},
-    fmt,
     sync::Arc,
 };
 use zksync_concurrency::{ctx, limiter, net, scope, time};
@@ -19,6 +18,7 @@ mod io;
 mod tests;
 
 /// Validator-related part of [`Executor`].
+#[derive(Debug)]
 pub struct Validator {
     /// Consensus network configuration.
     pub key: validator::SecretKey,
@@ -29,25 +29,10 @@ pub struct Validator {
 }
 
 /// Validator-related part of [`Executor`].
+#[derive(Debug)]
 pub struct Attester {
     /// Consensus network configuration.
     pub key: attester::SecretKey,
-}
-
-impl fmt::Debug for Validator {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_struct("ValidatorExecutor")
-            .field("key", &self.key)
-            .finish()
-    }
-}
-
-impl fmt::Debug for Attester {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_struct("AttesterExecutor")
-            .field("key", &self.key)
-            .finish()
-    }
 }
 
 /// Config of the node executor.

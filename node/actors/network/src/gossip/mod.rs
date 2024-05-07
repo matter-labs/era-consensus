@@ -13,7 +13,7 @@
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config};
-use anyhow::Context;
+use anyhow::Context as _;
 use im::HashMap;
 use std::{
     borrow::Borrow,

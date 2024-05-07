@@ -1,8 +1,5 @@
 use super::{batch_signatures::L1BatchSignatures, handshake, Network, ValidatorAddrs};
-use crate::{
-    noise, preface,
-    rpc::{self},
-};
+use crate::{noise, preface, rpc};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use rand::seq::SliceRandom;

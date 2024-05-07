@@ -1,11 +1,6 @@
 //! Consensus network is a full graph of connections between all validators.
 //! BFT consensus messages are exchanged over this network.
-use crate::{
-    config, gossip, io, noise,
-    pool::PoolWatch,
-    preface,
-    rpc::{self},
-};
+use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc};
 use anyhow::Context as _;
 use rand::seq::SliceRandom;
 use std::{
@@ -14,7 +9,7 @@ use std::{
 };
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope, sync, time};
-use zksync_consensus_roles::validator::{self};
+use zksync_consensus_roles::validator;
 use zksync_protobuf::kB;
 
 mod handshake;
@@ -156,12 +151,7 @@ impl Network {
     /// Constructs a new consensus network state.
     pub(crate) fn new(gossip: Arc<gossip::Network>) -> Option<Arc<Self>> {
         let key = gossip.cfg.validator_key.clone()?;
-        let validators: HashSet<_> = gossip
-            .genesis()
-            .validators
-            .keys()
-            .cloned()
-            .collect();
+        let validators: HashSet<_> = gossip.genesis().validators.keys().cloned().collect();
         Some(Arc::new(Self {
             key,
             inbound: PoolWatch::new(validators.clone(), 0),

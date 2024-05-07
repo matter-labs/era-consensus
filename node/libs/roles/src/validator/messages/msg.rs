@@ -1,9 +1,6 @@
 //! Generic message types.
 use super::{ConsensusMsg, NetAddress};
-use crate::{
-    node::SessionId,
-    validator::{self},
-};
+use crate::{node::SessionId, validator};
 use std::fmt;
 use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};

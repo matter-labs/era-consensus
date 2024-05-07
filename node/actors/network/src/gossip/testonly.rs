@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use super::*;
 use crate::{frame, mux, noise, preface, rpc, Config, GossipConfig};
-use anyhow::Context;
+use anyhow::Context as _;
 use rand::Rng as _;
 use std::collections::BTreeMap;
 use zksync_concurrency::{ctx, limiter};

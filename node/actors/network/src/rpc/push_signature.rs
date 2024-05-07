@@ -2,7 +2,7 @@
 use std::sync::Arc;
 
 use crate::{mux, proto::gossip as proto};
-use anyhow::Context;
+use anyhow::Context as _;
 use zksync_consensus_roles::attester::{self, L1Batch};
 use zksync_protobuf::ProtoFmt;
 

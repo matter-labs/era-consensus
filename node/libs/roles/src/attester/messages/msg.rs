@@ -4,7 +4,7 @@ use crate::{
     attester::{L1Batch, PublicKey, Signature},
     validator::ViewNumber,
 };
-use anyhow::Context;
+use anyhow::Context as _;
 use bit_vec::BitVec;
 use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
