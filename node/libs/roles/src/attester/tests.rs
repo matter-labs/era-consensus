@@ -143,14 +143,20 @@ fn test_batch_qc() {
     let mut genesis3 = (*setup1.genesis).clone();
     genesis3.attesters = Committee::new(setup1.genesis.attesters.iter().take(3).cloned()).unwrap();
     let genesis3 = genesis3.with_hash();
-    let attester_weight = setup1.genesis.attesters.total_weight() / 6;
 
     for i in 0..setup1.attester_keys.len() + 1 {
         let mut qc = BatchQC::new(make_batch_msg(rng), &setup1.genesis);
         for key in &setup1.attester_keys[0..i] {
-            qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis);
+            qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis)
+                .unwrap();
         }
-        let expected_weight = i as u64 * attester_weight;
+        let expected_weight: u64 = setup1
+            .genesis
+            .attesters
+            .iter()
+            .take(i)
+            .map(|w| w.weight)
+            .sum();
         if expected_weight >= setup1.genesis.attesters.threshold() {
             assert!(qc.verify(&setup1.genesis).is_ok());
         } else {

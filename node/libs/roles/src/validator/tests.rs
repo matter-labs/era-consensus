@@ -215,7 +215,6 @@ fn test_commit_qc() {
     genesis3.validators =
         Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap();
     let genesis3 = genesis3.with_hash();
-    let validator_weight = setup1.genesis.validators.total_weight() / 6;
 
     for i in 0..setup1.validator_keys.len() + 1 {
         let view = rng.gen();
@@ -224,7 +223,13 @@ fn test_commit_qc() {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis)
                 .unwrap();
         }
-        let expected_weight = i as u64 * validator_weight;
+        let expected_weight: u64 = setup1
+            .genesis
+            .attesters
+            .iter()
+            .take(i)
+            .map(|w| w.weight)
+            .sum();
         if expected_weight >= setup1.genesis.validators.threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {
@@ -319,7 +324,13 @@ fn test_prepare_qc() {
             )
             .unwrap();
         }
-        let expected_weight = n as u64 * setup1.genesis.validators.total_weight() / 6;
+        let expected_weight: u64 = setup1
+            .genesis
+            .attesters
+            .iter()
+            .take(n)
+            .map(|w| w.weight)
+            .sum();
         if expected_weight >= setup1.genesis.validators.threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {
