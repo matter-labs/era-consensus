@@ -7,12 +7,7 @@ use zksync_protobuf::testonly::{test_encode, test_encode_random};
 #[test]
 fn test_byte_encoding() {
     let key = SecretKey::generate();
-    assert_eq!(
-        key.public(),
-        <SecretKey as ByteFmt>::decode(&ByteFmt::encode(&key))
-            .unwrap()
-            .public()
-    );
+    assert_eq!(key, ByteFmt::decode(&ByteFmt::encode(&key)).unwrap());
     assert_eq!(
         key.public(),
         ByteFmt::decode(&ByteFmt::encode(&key.public())).unwrap()
@@ -24,10 +19,7 @@ fn test_text_encoding() {
     let key = SecretKey::generate();
     let t1 = TextFmt::encode(&key);
     let t2 = TextFmt::encode(&key.public());
-    assert_eq!(
-        key.public(),
-        Text::new(&t1).decode::<SecretKey>().unwrap().public()
-    );
+    assert_eq!(key, Text::new(&t1).decode::<SecretKey>().unwrap());
     assert_eq!(key.public(), Text::new(&t2).decode().unwrap());
     assert!(Text::new(&t1).decode::<PublicKey>().is_err());
     assert!(Text::new(&t2).decode::<SecretKey>().is_err());

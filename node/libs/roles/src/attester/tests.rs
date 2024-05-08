@@ -1,4 +1,4 @@
-use crate::{attester, validator::testonly::Setup};
+use crate::validator::testonly::Setup;
 
 use super::*;
 use assert_matches::assert_matches;
@@ -13,12 +13,7 @@ fn test_byte_encoding() {
     let rng = &mut ctx.rng();
 
     let sk: SecretKey = rng.gen();
-    assert_eq!(
-        sk.public(),
-        <SecretKey as ByteFmt>::decode(&ByteFmt::encode(&sk))
-            .unwrap()
-            .public()
-    );
+    assert_eq!(sk, ByteFmt::decode(&ByteFmt::encode(&sk)).unwrap());
 
     let pk: PublicKey = rng.gen();
     assert_eq!(pk, ByteFmt::decode(&ByteFmt::encode(&pk)).unwrap());
@@ -40,10 +35,7 @@ fn test_text_encoding() {
 
     let sk: SecretKey = rng.gen();
     let t = TextFmt::encode(&sk);
-    assert_eq!(
-        sk.public(),
-        Text::new(&t).decode::<SecretKey>().unwrap().public()
-    );
+    assert_eq!(sk, Text::new(&t).decode::<SecretKey>().unwrap());
 
     let pk: PublicKey = rng.gen();
     let t = TextFmt::encode(&pk);
@@ -150,8 +142,7 @@ fn test_batch_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let mut genesis3 = (*setup1.genesis).clone();
-    genesis3.attesters =
-        attester::Committee::new(setup1.genesis.attesters.iter().take(3).cloned()).unwrap();
+    genesis3.attesters = Committee::new(setup1.genesis.attesters.iter().take(3).cloned()).unwrap();
     let genesis3 = genesis3.with_hash();
     let attester_weight = setup1.genesis.attesters.total_weight() / 6;
 
@@ -209,7 +200,7 @@ fn test_committee_weights_overflow_check() {
         .collect();
 
     // Creation should overflow
-    assert_matches!(attester::Committee::new(attesters), Err(_));
+    assert_matches!(Committee::new(attesters), Err(_));
 }
 
 #[test]
@@ -226,5 +217,5 @@ fn test_committee_with_zero_weights() {
         .collect();
 
     // Committee creation should error on zero weight attesters
-    assert_matches!(attester::Committee::new(attesters), Err(_));
+    assert_matches!(Committee::new(attesters), Err(_));
 }

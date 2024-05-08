@@ -317,8 +317,7 @@ impl Genesis {
 
     /// Computes the leader for the given view.
     pub fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
-        self.validators
-            .view_leader(view, &self.leader_selection)
+        self.validators.view_leader(view, &self.leader_selection)
     }
 
     /// Hash of the genesis.

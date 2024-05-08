@@ -13,12 +13,7 @@ fn test_byte_encoding() {
     let rng = &mut ctx.rng();
 
     let sk: SecretKey = rng.gen();
-    assert_eq!(
-        sk.public(),
-        <SecretKey as ByteFmt>::decode(&ByteFmt::encode(&sk))
-            .unwrap()
-            .public()
-    );
+    assert_eq!(sk, ByteFmt::decode(&ByteFmt::encode(&sk)).unwrap());
 
     let pk: PublicKey = rng.gen();
     assert_eq!(pk, ByteFmt::decode(&ByteFmt::encode(&pk)).unwrap());
@@ -52,10 +47,7 @@ fn test_text_encoding() {
 
     let sk: SecretKey = rng.gen();
     let t = TextFmt::encode(&sk);
-    assert_eq!(
-        sk.public(),
-        Text::new(&t).decode::<SecretKey>().unwrap().public()
-    );
+    assert_eq!(sk, Text::new(&t).decode::<SecretKey>().unwrap());
 
     let pk: PublicKey = rng.gen();
     let t = TextFmt::encode(&pk);
