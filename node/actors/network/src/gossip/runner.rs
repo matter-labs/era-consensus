@@ -32,11 +32,11 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'
     }
 }
 
-struct BatchServer<'a>(&'a Network);
+struct PushBatchSignatureServer<'a>(&'a Network);
 
 #[async_trait::async_trait]
-impl rpc::Handler<rpc::push_batch_signature::Rpc> for BatchServer<'_> {
-    /// Here we bound the buffering of incoming consensus messages.
+impl rpc::Handler<rpc::push_batch_signature::Rpc> for PushBatchSignatureServer<'_> {
+    /// Here we bound the buffering of incoming batch messages.
     fn max_req_size(&self) -> usize {
         100 * kB
     }
@@ -118,7 +118,7 @@ impl Network {
             ctx,
             self.cfg.rpc.push_batch_signature_rate,
         );
-        let push_signature_server = BatchServer(self);
+        let push_signature_server = PushBatchSignatureServer(self);
         let push_block_store_state_server = PushBlockStoreStateServer::new(self);
         let get_block_client =
             rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate);

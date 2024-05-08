@@ -17,7 +17,7 @@ impl super::Rpc for Rpc {
     type Resp = ();
 }
 
-/// Signed consensus message that the receiving peer should process.
+/// Signed batch message that the receiving peer should process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Req(pub(crate) Vec<Arc<attester::Signed<Batch>>>);
 

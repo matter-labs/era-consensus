@@ -15,8 +15,8 @@ impl BatchNumber {
     }
 }
 
-/// A message to send by attesters to the gossip network.
-/// It contains the attester signature to sign the block batches to be sent to L1.
+/// A message containing information about a batch of blocks.
+/// It is signed by the attesters and then propagated through the gossip network.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Batch {
     /// The number of the batch.
@@ -96,7 +96,7 @@ impl BatchQC {
         if self.signers.len() != genesis.attesters.len() {
             return Err(Error::BadSignersSet);
         }
-        // Verify the signers' weight is enough.
+        // Verify that the signer's weight is sufficient.
         let weight = genesis.attesters.weight(&self.signers);
         let threshold = genesis.attesters.threshold();
         if weight < threshold {

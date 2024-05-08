@@ -1,9 +1,6 @@
 use std::{collections::BTreeMap, fmt};
 
-use crate::{
-    attester::{Batch, PublicKey, Signature},
-    validator::ViewNumber,
-};
+use crate::attester;
 use anyhow::Context as _;
 use bit_vec::BitVec;
 use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
@@ -13,7 +10,7 @@ use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Msg {
     /// L1 batch message.
-    Batch(Batch),
+    Batch(attester::Batch),
 }
 
 impl Msg {
@@ -23,7 +20,7 @@ impl Msg {
     }
 }
 
-impl Variant<Msg> for Batch {
+impl Variant<Msg> for attester::Batch {
     fn insert(self) -> Msg {
         Msg::Batch(self)
     }
@@ -40,9 +37,9 @@ pub struct Signed<V: Variant<Msg>> {
     /// The message that was signed.
     pub msg: V,
     /// The public key of the signer.
-    pub key: PublicKey,
+    pub key: attester::PublicKey,
     /// The signature.
-    pub sig: Signature,
+    pub sig: attester::Signature,
 }
 
 /// Struct that represents a bit map of attesters. We use it to compactly store
@@ -78,7 +75,7 @@ impl Signers {
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Committee {
     vec: Vec<WeightedAttester>,
-    indexes: BTreeMap<PublicKey, usize>,
+    indexes: BTreeMap<attester::PublicKey, usize>,
     total_weight: u64,
 }
 
@@ -122,7 +119,7 @@ impl Committee {
     }
 
     /// Iterates over attester keys.
-    pub fn iter_keys(&self) -> impl Iterator<Item = &PublicKey> {
+    pub fn iter_keys(&self) -> impl Iterator<Item = &attester::PublicKey> {
         self.vec.iter().map(|v| &v.key)
     }
 
@@ -133,7 +130,7 @@ impl Committee {
     }
 
     /// Returns true if the given attester is in the attester committee.
-    pub fn contains(&self, attester: &PublicKey) -> bool {
+    pub fn contains(&self, attester: &attester::PublicKey) -> bool {
         self.indexes.contains_key(attester)
     }
 
@@ -143,14 +140,8 @@ impl Committee {
     }
 
     /// Get the index of a attester in the committee.
-    pub fn index(&self, attester: &PublicKey) -> Option<usize> {
+    pub fn index(&self, attester: &attester::PublicKey) -> Option<usize> {
         self.indexes.get(attester).copied()
-    }
-
-    /// Computes the leader for the given view.
-    pub fn view_leader(&self, view_number: ViewNumber) -> PublicKey {
-        let index = view_number.0 as usize % self.len();
-        self.get(index).unwrap().key.clone()
     }
 
     /// Signature weight threshold for this attester committee.
@@ -180,8 +171,9 @@ impl Committee {
     }
 }
 
-/// Calculate the consensus threshold, the minimum votes' weight for any consensus action to be valid,
+/// Calculate the attester threshold, that is the minimum votes weight for any attesters action to be valid,
 /// for a given committee total weight.
+/// Technically we need just n > f+1, but for now we use a threshold consistent with the validator committee.
 pub fn threshold(total_weight: u64) -> u64 {
     total_weight - max_faulty_weight(total_weight)
 }
@@ -273,7 +265,7 @@ impl<V: Variant<Msg> + Clone> Signed<V> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WeightedAttester {
     /// Attester key
-    pub key: PublicKey,
+    pub key: attester::PublicKey,
     /// Attester weight inside the Committee.
     pub weight: u64,
 }

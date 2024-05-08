@@ -28,13 +28,6 @@ pub struct Validator {
     pub payload_manager: Box<dyn bft::PayloadManager>,
 }
 
-/// Validator-related part of [`Executor`].
-#[derive(Debug)]
-pub struct Attester {
-    /// Consensus network configuration.
-    pub key: attester::SecretKey,
-}
-
 /// Config of the node executor.
 #[derive(Clone, Debug)]
 pub struct Config {
