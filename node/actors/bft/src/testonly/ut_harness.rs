@@ -223,14 +223,7 @@ impl UTHarness {
         for (i, msg) in msgs.into_iter().enumerate() {
             let res = self.process_replica_prepare(ctx, msg).await;
             match (
-                (i + 1) as u64
-                    * self
-                        .genesis()
-                        .validators
-                        .iter()
-                        .next()
-                        .unwrap()
-                        .weight
+                (i + 1) as u64 * self.genesis().validators.iter().next().unwrap().weight
                     < self.genesis().validators.threshold(),
                 first_match,
             ) {
@@ -265,14 +258,7 @@ impl UTHarness {
                 .leader
                 .process_replica_commit(ctx, key.sign_msg(msg.clone()));
             match (
-                (i + 1) as u64
-                    * self
-                        .genesis()
-                        .validators
-                        .iter()
-                        .next()
-                        .unwrap()
-                        .weight
+                (i + 1) as u64 * self.genesis().validators.iter().next().unwrap().weight
                     < self.genesis().validators.threshold(),
                 first_match,
             ) {

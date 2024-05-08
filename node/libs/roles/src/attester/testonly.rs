@@ -8,7 +8,6 @@ use rand::{
     Rng,
 };
 use std::sync::Arc;
-use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
 
 impl AggregateSignature {

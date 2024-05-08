@@ -8,7 +8,7 @@ use std::{
 use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
-use zksync_consensus_roles::{attester, node, validator};
+use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;

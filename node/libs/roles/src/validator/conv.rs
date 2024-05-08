@@ -39,10 +39,8 @@ impl ProtoFmt for GenesisRaw {
             first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
 
             protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
-            validators: Committee::new(validators.into_iter())
-                .context("validators_v1")?,
-            attesters: attester::Committee::new(attesters.into_iter())
-                .context("attesters")?,
+            validators: Committee::new(validators.into_iter()).context("validators_v1")?,
+            attesters: attester::Committee::new(attesters.into_iter()).context("attesters")?,
             leader_selection: read_required(&r.leader_selection).context("leader_selection")?,
         })
     }
@@ -53,11 +51,7 @@ impl ProtoFmt for GenesisRaw {
             first_block: Some(self.first_block.0),
 
             protocol_version: Some(self.protocol_version.0),
-            validators_v1: self
-                .validators
-                .iter()
-                .map(|v| v.build())
-                .collect(),
+            validators_v1: self.validators.iter().map(|v| v.build()).collect(),
             attesters: self.attesters.iter().map(|v| v.build()).collect(),
             leader_selection: Some(self.leader_selection.build()),
         }

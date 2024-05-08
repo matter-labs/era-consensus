@@ -134,7 +134,7 @@ impl Network {
                     .clone()
                     .entry(sig.msg.number.clone())
                     .or_insert_with(|| attester::BatchQC::new(sig.msg.clone(), self.genesis()))
-                    .add(&sig, self.genesis());
+                    .add(&sig, self.genesis())?;
             }
             // Now we check if we have enough weight to continue.
             if let Some(last_qc) = self.last_viewed_qc.clone() {

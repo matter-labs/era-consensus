@@ -3,7 +3,7 @@ use crate::validator::testonly::Setup;
 use super::*;
 use assert_matches::assert_matches;
 use rand::Rng;
-use zksync_concurrency::{ctx, time};
+use zksync_concurrency::ctx;
 use zksync_consensus_crypto::{ByteFmt, Text, TextFmt};
 use zksync_protobuf::testonly::test_encode_random;
 
