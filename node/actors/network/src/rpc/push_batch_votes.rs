@@ -22,7 +22,7 @@ impl super::Rpc for Rpc {
 pub(crate) struct Req(pub(crate) Vec<Arc<attester::Signed<Batch>>>);
 
 impl ProtoFmt for Req {
-    type Proto = proto::PushBatchSignature;
+    type Proto = proto::PushBatchVotes;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let mut signatures = vec![];

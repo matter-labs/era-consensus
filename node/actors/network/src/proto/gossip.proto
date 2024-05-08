@@ -18,7 +18,7 @@ message PushValidatorAddrs {
   repeated roles.validator.Signed net_addresses = 1;
 }
 
-message PushBatchSignature {
+message PushBatchVotes {
   // Signed roles.validator.Msg.net_address.
   repeated roles.attester.Signed signatures = 1;
 }

@@ -17,7 +17,7 @@ fn test_capability_rpc_correspondence() {
         push_block_store_state::Rpc::CAPABILITY_ID,
         get_block::Rpc::CAPABILITY_ID,
         ping::Rpc::CAPABILITY_ID,
-        push_batch_signature::Rpc::CAPABILITY_ID,
+        push_batch_votes::Rpc::CAPABILITY_ID,
     ];
     assert_eq!(ids.len(), HashSet::from(ids).len());
 }

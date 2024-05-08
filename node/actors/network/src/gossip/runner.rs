@@ -32,20 +32,16 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'
     }
 }
 
-struct PushBatchSignatureServer<'a>(&'a Network);
+struct PushBatchVotesServer<'a>(&'a Network);
 
 #[async_trait::async_trait]
-impl rpc::Handler<rpc::push_batch_signature::Rpc> for PushBatchSignatureServer<'_> {
+impl rpc::Handler<rpc::push_batch_votes::Rpc> for PushBatchVotesServer<'_> {
     /// Here we bound the buffering of incoming batch messages.
     fn max_req_size(&self) -> usize {
         100 * kB
     }
 
-    async fn handle(
-        &self,
-        _ctx: &ctx::Ctx,
-        req: rpc::push_batch_signature::Req,
-    ) -> anyhow::Result<()> {
+    async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::push_batch_votes::Req) -> anyhow::Result<()> {
         self.0
             .batch_signatures
             .update(&self.0.genesis().attesters, &req.0)
@@ -114,11 +110,11 @@ impl Network {
             ctx,
             self.cfg.rpc.push_block_store_state_rate,
         );
-        let push_signature_client = rpc::Client::<rpc::push_batch_signature::Rpc>::new(
+        let push_signature_client = rpc::Client::<rpc::push_batch_votes::Rpc>::new(
             ctx,
             self.cfg.rpc.push_batch_signature_rate,
         );
-        let push_signature_server = PushBatchSignatureServer(self);
+        let push_signature_server = PushBatchVotesServer(self);
         let push_block_store_state_server = PushBlockStoreStateServer::new(self);
         let get_block_client =
             rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate);
@@ -197,7 +193,7 @@ impl Network {
                         continue;
                     }
                     old = new;
-                    let req = rpc::push_batch_signature::Req(diff);
+                    let req = rpc::push_batch_votes::Req(diff);
                     push_signature_client.call(ctx, &req, kB).await?;
                 }
             });
