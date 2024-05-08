@@ -3,6 +3,7 @@ use zksync_concurrency::time;
 use crate::{attester, validator::Genesis};
 
 use super::{Signed, Signers};
+use anyhow::ensure;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default, PartialOrd)]
 /// A batch number.
@@ -57,6 +58,23 @@ pub enum BatchQCVerifyError {
     BadSignersSet,
 }
 
+/// Error returned by `BatchQC::add()` if the signature is invalid.
+#[derive(thiserror::Error, Debug)]
+pub enum BatchQCAddError {
+    /// Inconsistent messages.
+    #[error("Trying to add signature for a different message")]
+    InconsistentMessages,
+    /// Signer not present in the committee.
+    #[error("Signer not in committee: {signer:?}")]
+    SignerNotInCommittee {
+        /// Signer of the message.
+        signer: Box<attester::PublicKey>,
+    },
+    /// Message already present in BatchQC.
+    #[error("Message already signed for BatchQC")]
+    Exists,
+}
+
 impl Batch {
     /// Checks if `self` is a newer version than `b`.
     pub fn is_newer(&self, b: &Self) -> bool {
@@ -76,18 +94,19 @@ impl BatchQC {
 
     /// Add a attester's signature.
     /// Signature is assumed to be already verified.
-    pub fn add(&mut self, msg: &Signed<Batch>, genesis: &Genesis) {
-        if self.message != msg.msg {
-            return;
-        };
-        let Some(i) = genesis.attesters.index(&msg.key) else {
-            return;
-        };
-        if self.signers.0[i] {
-            return;
-        };
+    pub fn add(&mut self, msg: &Signed<Batch>, genesis: &Genesis) -> anyhow::Result<()> {
+        use BatchQCAddError as Error;
+        ensure!(self.message != msg.msg, Error::InconsistentMessages);
+        let i = genesis
+            .attesters
+            .index(&msg.key)
+            .ok_or(Error::SignerNotInCommittee {
+                signer: Box::new(msg.key.clone()),
+            })?;
+        ensure!(self.signers.0[i], Error::Exists);
         self.signers.0.set(i, true);
         self.signature.add(&msg.sig);
+        Ok(())
     }
 
     /// Verifies the signature of the BatchQC.
