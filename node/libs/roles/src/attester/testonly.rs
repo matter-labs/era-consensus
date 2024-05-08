@@ -55,7 +55,6 @@ impl Distribution<Batch> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Batch {
         Batch {
             number: BatchNumber(rng.gen()),
-            timestamp: time::UNIX_EPOCH + time::Duration::seconds(rng.gen_range(0..1000000000)),
         }
     }
 }

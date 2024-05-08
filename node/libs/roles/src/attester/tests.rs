@@ -129,7 +129,6 @@ fn test_agg_signature_verify() {
 fn make_batch_msg(rng: &mut impl Rng) -> Batch {
     Batch {
         number: BatchNumber(rng.gen()),
-        timestamp: time::UNIX_EPOCH + time::Duration::seconds(rng.gen_range(0..1000000000)),
     }
 }
 
@@ -181,7 +180,7 @@ fn test_attester_committee_weights() {
     let mut qc = BatchQC::new(msg.clone(), &setup.genesis);
     for (n, weight) in sums.iter().enumerate() {
         let key = &setup.attester_keys[n];
-        qc.add(&key.sign_msg(msg.clone()), &setup.genesis);
+        qc.add(&key.sign_msg(msg.clone()), &setup.genesis).unwrap();
         assert_eq!(setup.genesis.attesters.weight(&qc.signers), *weight);
     }
 }

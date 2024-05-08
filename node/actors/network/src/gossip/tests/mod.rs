@@ -105,9 +105,8 @@ fn mk_netaddr(
 fn mk_batch(
     key: &attester::SecretKey,
     number: attester::BatchNumber,
-    timestamp: time::Utc,
 ) -> attester::Signed<attester::Batch> {
-    key.sign_msg(attester::Batch { number, timestamp })
+    key.sign_msg(attester::Batch { number })
 }
 
 fn random_netaddr<R: Rng>(
@@ -127,7 +126,6 @@ fn random_batch_signature<R: Rng>(
     key: &attester::SecretKey,
 ) -> Arc<attester::Signed<attester::Batch>> {
     let batch = attester::Batch {
-        timestamp: mk_timestamp(rng),
         number: attester::BatchNumber(rng.gen_range(0..1000)),
     };
     Arc::new(key.sign_msg(batch.to_owned()))
@@ -153,10 +151,8 @@ fn update_signature<R: Rng>(
     batch: &attester::Batch,
     key: &attester::SecretKey,
     batch_number_diff: i64,
-    timestamp_diff: time::Duration,
 ) -> Arc<attester::Signed<attester::Batch>> {
     let batch = attester::Batch {
-        timestamp: batch.timestamp + timestamp_diff,
         number: attester::BatchNumber((batch.number.0 as i64 + batch_number_diff) as u64),
     };
     Arc::new(key.sign_msg(batch.to_owned()))
@@ -538,24 +534,12 @@ async fn test_batch_signatures() {
     signatures.update(&attesters, &want.as_vec()).await.unwrap();
     assert_eq!(want.0, sub.borrow_and_update().0);
 
-    // Update values.
-    let delta = time::Duration::seconds(10);
     // newer batch number
-    let k0v2 = update_signature(rng, &want.get(&keys[0]).msg, &keys[0], 1, -delta);
+    let k0v2 = update_signature(rng, &want.get(&keys[0]).msg, &keys[0], 1);
     // same batch number, newer timestamp
-    let k1v2 = update_signature(rng, &want.get(&keys[1]).msg, &keys[1], 0, delta);
-    // same batch number, same timestamp
-    let k2v2 = update_signature(
-        rng,
-        &want.get(&keys[2]).msg,
-        &keys[2],
-        0,
-        time::Duration::ZERO,
-    );
-    // same batch number, older timestamp
-    let k3v2 = update_signature(rng, &want.get(&keys[3]).msg, &keys[3], 0, -delta);
+    let k1v2 = update_signature(rng, &want.get(&keys[1]).msg, &keys[1], 0);
     // older batch number
-    let k4v2 = update_signature(rng, &want.get(&keys[4]).msg, &keys[4], -1, delta);
+    let k4v2 = update_signature(rng, &want.get(&keys[4]).msg, &keys[4], -1);
     // first entry for a key in the config
     let k6v1 = random_batch_signature(rng, &keys[6]);
     // entry for a key outside of the config
@@ -568,8 +552,6 @@ async fn test_batch_signatures() {
     let update = [
         k0v2,
         k1v2,
-        k2v2,
-        k3v2,
         k4v2,
         // no new entry for keys[5]
         k6v1,
@@ -580,11 +562,7 @@ async fn test_batch_signatures() {
     assert_eq!(want.0, sub.borrow_and_update().0);
 
     // Invalid signature.
-    let mut k0v3 = mk_batch(
-        &keys[1],
-        attester::BatchNumber(rng.gen_range(0..1000)),
-        time::UNIX_EPOCH + time::Duration::seconds(rng.gen_range(0..1000000000)),
-    );
+    let mut k0v3 = mk_batch(&keys[1], attester::BatchNumber(rng.gen_range(0..1000)));
     k0v3.key = keys[0].public();
     assert!(signatures
         .update(&attesters, &[Arc::new(k0v3)])

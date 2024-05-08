@@ -1,5 +1,3 @@
-use zksync_concurrency::time;
-
 use crate::{attester, validator::Genesis};
 
 use super::{Signed, Signers};
@@ -18,12 +16,10 @@ impl BatchNumber {
 
 /// A message containing information about a batch of blocks.
 /// It is signed by the attesters and then propagated through the gossip network.
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd)]
 pub struct Batch {
     /// The number of the batch.
     pub number: BatchNumber,
-    /// Time at which this message has been signed.
-    pub timestamp: time::Utc,
     // TODO: add the hash of the L1 batch as a field
 }
 
@@ -75,13 +71,6 @@ pub enum BatchQCAddError {
     Exists,
 }
 
-impl Batch {
-    /// Checks if `self` is a newer version than `b`.
-    pub fn is_newer(&self, b: &Self) -> bool {
-        (&self.number, self.timestamp) > (&b.number, b.timestamp)
-    }
-}
-
 impl BatchQC {
     /// Create a new empty instance for a given `Batch` message.
     pub fn new(message: Batch, genesis: &Genesis) -> Self {
@@ -96,14 +85,14 @@ impl BatchQC {
     /// Signature is assumed to be already verified.
     pub fn add(&mut self, msg: &Signed<Batch>, genesis: &Genesis) -> anyhow::Result<()> {
         use BatchQCAddError as Error;
-        ensure!(self.message != msg.msg, Error::InconsistentMessages);
+        ensure!(self.message == msg.msg, Error::InconsistentMessages);
         let i = genesis
             .attesters
             .index(&msg.key)
             .ok_or(Error::SignerNotInCommittee {
                 signer: Box::new(msg.key.clone()),
             })?;
-        ensure!(self.signers.0[i], Error::Exists);
+        ensure!(!self.signers.0[i], Error::Exists);
         self.signers.0.set(i, true);
         self.signature.add(&msg.sig);
         Ok(())

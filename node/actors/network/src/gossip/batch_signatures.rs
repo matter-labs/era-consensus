@@ -17,7 +17,7 @@ impl BatchSignatures {
         let mut newer = vec![];
         for (k, v) in &self.0 {
             if let Some(bv) = b.0.get(k) {
-                if !v.msg.is_newer(&bv.msg) {
+                if v.msg <= bv.msg {
                     continue;
                 }
             }
@@ -54,7 +54,7 @@ impl BatchSignatures {
                 continue;
             }
             if let Some(x) = self.0.get(&d.key) {
-                if !d.msg.is_newer(&x.msg) {
+                if d.msg <= x.msg {
                     continue;
                 }
             }

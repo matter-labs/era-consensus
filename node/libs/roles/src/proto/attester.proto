@@ -6,7 +6,6 @@ import "zksync/std.proto";
 
 message Batch {
   optional uint64 number = 1; // required
-  optional std.Timestamp timestamp = 2; // required
   // TODO: add the hash of the L1 batch as a field
 }
 
