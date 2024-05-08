@@ -5,7 +5,7 @@ use std::fmt;
 use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 
 /// A signature of an L1 batch from an attester.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Signature(pub(crate) bn254::Signature);
 
 impl Signature {
@@ -46,11 +46,5 @@ impl TextFmt for Signature {
 impl fmt::Debug for Signature {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.write_str(&TextFmt::encode(self))
-    }
-}
-
-impl std::hash::Hash for Signature {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ByteFmt::encode(self).hash(state)
     }
 }

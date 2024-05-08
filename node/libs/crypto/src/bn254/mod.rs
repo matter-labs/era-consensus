@@ -15,7 +15,6 @@ use pairing::{
 use std::{
     collections::HashMap,
     fmt::{Debug, Formatter},
-    hash::{Hash, Hasher},
     io::Cursor,
 };
 
@@ -119,8 +118,8 @@ impl PublicKey {
     }
 }
 
-impl Hash for PublicKey {
-    fn hash<H: Hasher>(&self, state: &mut H) {
+impl std::hash::Hash for PublicKey {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         state.write(&self.encode());
     }
 }
@@ -196,6 +195,12 @@ impl ByteFmt for Signature {
 
     fn encode(&self) -> Vec<u8> {
         self.0.into_affine().into_compressed().as_ref().to_vec()
+    }
+}
+
+impl std::hash::Hash for Signature {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        ByteFmt::encode(self).hash(state)
     }
 }
 
