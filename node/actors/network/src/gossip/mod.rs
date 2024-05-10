@@ -129,37 +129,57 @@ impl Network {
                 .await
                 .context("batch signatures")?
                 .clone();
+
+            // Check next QC to collect signatures for.
+            let new_qc = self
+                .last_viewed_qc
+                .clone()
+                .and_then(|qc| {
+                    Some(attester::BatchQC::new(
+                        attester::Batch {
+                            number: qc.message.number.next(),
+                        },
+                        self.genesis(),
+                    ))
+                })
+                .clone()
+                .unwrap_or_else(|| {
+                    attester::BatchQC::new(
+                        attester::Batch {
+                            number: attester::BatchNumber(0),
+                        },
+                        self.genesis(),
+                    )
+                });
+
+            // Check signatures for the correct QC.
             for (_, sig) in signatures.0 {
-                self.batch_qc
+                if self
+                    .batch_qc
                     .clone()
-                    .entry(sig.msg.number.clone())
-                    .or_insert_with(|| attester::BatchQC::new(sig.msg.clone(), self.genesis()))
-                    .add(&sig, self.genesis())?;
+                    .entry(new_qc.message.number.clone())
+                    .or_insert_with(|| {
+                        attester::BatchQC::new(new_qc.message.clone(), self.genesis())
+                    })
+                    .add(&sig, self.genesis())
+                    .is_err()
+                {
+                    // TODO: Should we ban the peer somehow?
+                    continue;
+                }
             }
-            // Now we check if we have enough weight to continue.
-            if let Some(last_qc) = self.last_viewed_qc.clone() {
-                let weight = self.genesis().attesters.weight(
-                    &self
-                        .batch_qc
-                        .get(&last_qc.message.number.next())
-                        .context("last qc")?
-                        .signers,
-                );
-                if weight < self.genesis().attesters.threshold() {
-                    return Ok(());
-                };
-            } else {
-                let weight = self.genesis().attesters.weight(
-                    &self
-                        .batch_qc
-                        .get(&attester::BatchNumber(0))
-                        .context("L1 batch QC")?
-                        .signers,
-                );
-                if weight < self.genesis().attesters.threshold() {
-                    return Ok(());
-                };
-            }
+
+            let weight = self.genesis().attesters.weight(
+                &self
+                    .batch_qc
+                    .get(&new_qc.message.number)
+                    .context("last qc")?
+                    .signers,
+            );
+
+            if weight < self.genesis().attesters.threshold() {
+                return Ok(());
+            };
 
             // If we have enough weight, we can propagate the QC.
         }
