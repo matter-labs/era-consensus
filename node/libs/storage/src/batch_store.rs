@@ -1,3 +1,4 @@
+//! Defines storage layer for batches of blocks.
 use zksync_consensus_roles::attester;
 
 /// Trait for the shared state of batches between the consensus and the execution layer.

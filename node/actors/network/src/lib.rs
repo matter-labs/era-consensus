@@ -6,7 +6,6 @@ use zksync_concurrency::{
     ctx::{self, channel},
     limiter, scope,
 };
-use zksync_consensus_roles::attester;
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
