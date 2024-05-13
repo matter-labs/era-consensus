@@ -121,7 +121,7 @@ fn random_netaddr<R: Rng>(
     ))
 }
 
-fn random_batch_signature<R: Rng>(
+fn random_batch_votes<R: Rng>(
     rng: &mut R,
     key: &attester::SecretKey,
 ) -> Arc<attester::Signed<attester::Batch>> {
@@ -513,7 +513,7 @@ async fn rate_limiting() {
 }
 
 #[tokio::test]
-async fn test_batch_signatures() {
+async fn test_batch_votes() {
     abort_on_panic();
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
 
@@ -523,15 +523,15 @@ async fn test_batch_signatures() {
         weight: 1250,
     }))
     .unwrap();
-    let signatures = BatchSignaturesWatch::default();
-    let mut sub = signatures.subscribe();
+    let votes = BatchVotesWatch::default();
+    let mut sub = votes.subscribe();
 
     // Initial values.
     let mut want = Signatures::default();
     for k in &keys[0..6] {
-        want.insert(random_batch_signature(rng, k));
+        want.insert(random_batch_votes(rng, k));
     }
-    signatures.update(&attesters, &want.as_vec()).await.unwrap();
+    votes.update(&attesters, &want.as_vec()).await.unwrap();
     assert_eq!(want.0, sub.borrow_and_update().0);
 
     // newer batch number
@@ -541,10 +541,10 @@ async fn test_batch_signatures() {
     // older batch number
     let k4v2 = update_signature(rng, &want.get(&keys[4]).msg, &keys[4], -1);
     // first entry for a key in the config
-    let k6v1 = random_batch_signature(rng, &keys[6]);
+    let k6v1 = random_batch_votes(rng, &keys[6]);
     // entry for a key outside of the config
     let k8 = rng.gen();
-    let k8v1 = random_batch_signature(rng, &k8);
+    let k8v1 = random_batch_votes(rng, &k8);
 
     want.insert(k0v2.clone());
     want.insert(k1v2.clone());
@@ -558,20 +558,17 @@ async fn test_batch_signatures() {
         // no entry at all for keys[7]
         k8v1.clone(),
     ];
-    signatures.update(&attesters, &update).await.unwrap();
+    votes.update(&attesters, &update).await.unwrap();
     assert_eq!(want.0, sub.borrow_and_update().0);
 
     // Invalid signature.
     let mut k0v3 = mk_batch(&keys[1], attester::BatchNumber(rng.gen_range(0..1000)));
     k0v3.key = keys[0].public();
-    assert!(signatures
-        .update(&attesters, &[Arc::new(k0v3)])
-        .await
-        .is_err());
+    assert!(votes.update(&attesters, &[Arc::new(k0v3)]).await.is_err());
     assert_eq!(want.0, sub.borrow_and_update().0);
 
     // Duplicate entry in the update.
-    assert!(signatures
+    assert!(votes
         .update(&attesters, &[k8v1.clone(), k8v1])
         .await
         .is_err());
@@ -581,5 +578,5 @@ async fn test_batch_signatures() {
 // TODO: This test is disabled because the logic for attesters to receive and sign batches is not implemented yet.
 // It should be re-enabled once the logic is implemented.
 // #[tokio::test(flavor = "multi_thread")]
-// async fn test_batch_signatures_propagation() {
+// async fn test_batch_votes_propagation() {
 // }

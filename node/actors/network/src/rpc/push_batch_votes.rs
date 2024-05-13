@@ -25,13 +25,13 @@ impl ProtoFmt for Req {
     type Proto = proto::PushBatchVotes;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let mut signatures = vec![];
+        let mut votes = vec![];
         for (i, e) in r.signatures.iter().enumerate() {
-            signatures.push(Arc::new(
+            votes.push(Arc::new(
                 ProtoFmt::read(e).with_context(|| format!("signatures[{i}]"))?,
             ));
         }
-        Ok(Self(signatures))
+        Ok(Self(votes))
     }
 
     fn build(&self) -> Self::Proto {

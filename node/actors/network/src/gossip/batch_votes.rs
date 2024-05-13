@@ -7,11 +7,11 @@ use zksync_consensus_roles::attester::{self, Batch};
 /// Mapping from attester::PublicKey to a signed attester::Batch message.
 /// Represents the currents state of node's knowledge about the attester signatures.
 #[derive(Clone, Default, PartialEq, Eq)]
-pub(crate) struct BatchSignatures(
+pub(crate) struct BatchVotes(
     pub(super) im::HashMap<attester::PublicKey, Arc<attester::Signed<Batch>>>,
 );
 
-impl BatchSignatures {
+impl BatchVotes {
     /// Returns a set of entries of `self` which are newer than the entries in `b`.
     pub(super) fn get_newer(&self, b: &Self) -> Vec<Arc<attester::Signed<Batch>>> {
         let mut newer = vec![];
@@ -66,23 +66,23 @@ impl BatchSignatures {
     }
 }
 
-/// Watch wrapper of BatchSignatures,
-/// which supports subscribing to BatchSignatures updates.
-pub(crate) struct BatchSignaturesWatch(Watch<BatchSignatures>);
+/// Watch wrapper of BatchVotes,
+/// which supports subscribing to BatchVotes updates.
+pub(crate) struct BatchVotesWatch(Watch<BatchVotes>);
 
-impl Default for BatchSignaturesWatch {
+impl Default for BatchVotesWatch {
     fn default() -> Self {
-        Self(Watch::new(BatchSignatures::default()))
+        Self(Watch::new(BatchVotes::default()))
     }
 }
 
-impl BatchSignaturesWatch {
-    /// Subscribes to BatchSignatures updates.
-    pub(crate) fn subscribe(&self) -> sync::watch::Receiver<BatchSignatures> {
+impl BatchVotesWatch {
+    /// Subscribes to BatchVotes updates.
+    pub(crate) fn subscribe(&self) -> sync::watch::Receiver<BatchVotes> {
         self.0.subscribe()
     }
 
-    /// Inserts data to BatchSignatures.
+    /// Inserts data to BatchVotes.
     /// Subscribers are notified iff at least 1 new entry has
     /// been inserted. Returns an error iff an invalid
     /// entry in `data` has been found. The provider of the
@@ -93,9 +93,9 @@ impl BatchSignaturesWatch {
         data: &[Arc<attester::Signed<Batch>>],
     ) -> anyhow::Result<()> {
         let this = self.0.lock().await;
-        let mut signatures = this.borrow().clone();
-        if signatures.update(attesters, data)? {
-            this.send_replace(signatures);
+        let mut votes = this.borrow().clone();
+        if votes.update(attesters, data)? {
+            this.send_replace(votes);
         }
         Ok(())
     }

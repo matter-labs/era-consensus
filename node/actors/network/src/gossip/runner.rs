@@ -1,4 +1,4 @@
-use super::{batch_signatures::BatchSignatures, handshake, Network, ValidatorAddrs};
+use super::{batch_votes::BatchVotes, handshake, Network, ValidatorAddrs};
 use crate::{noise, preface, rpc};
 use anyhow::Context as _;
 use async_trait::async_trait;
@@ -43,7 +43,7 @@ impl rpc::Handler<rpc::push_batch_votes::Rpc> for PushBatchVotesServer<'_> {
 
     async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::push_batch_votes::Req) -> anyhow::Result<()> {
         self.0
-            .batch_signatures
+            .batch_votes
             .update(&self.0.genesis().attesters, &req.0)
             .await?;
         Ok(())
@@ -110,10 +110,8 @@ impl Network {
             ctx,
             self.cfg.rpc.push_block_store_state_rate,
         );
-        let push_signature_client = rpc::Client::<rpc::push_batch_votes::Rpc>::new(
-            ctx,
-            self.cfg.rpc.push_batch_signature_rate,
-        );
+        let push_signature_client =
+            rpc::Client::<rpc::push_batch_votes::Rpc>::new(ctx, self.cfg.rpc.push_batch_votes_rate);
         let push_signature_server = PushBatchVotesServer(self);
         let push_block_store_state_server = PushBlockStoreStateServer::new(self);
         let get_block_client =
@@ -130,7 +128,7 @@ impl Network {
                 .add_server(
                     ctx,
                     push_signature_server,
-                    self.cfg.rpc.push_batch_signature_rate,
+                    self.cfg.rpc.push_batch_votes_rate,
                 )
                 .add_client(&push_block_store_state_client)
                 .add_server(
@@ -181,10 +179,10 @@ impl Network {
                 }
             });
 
-            // Push L1 batch signatures updates to peer.
+            // Push L1 batch votes updates to peer.
             s.spawn::<()>(async {
-                let mut old = BatchSignatures::default();
-                let mut sub = self.batch_signatures.subscribe();
+                let mut old = BatchVotes::default();
+                let mut sub = self.batch_votes.subscribe();
                 sub.mark_changed();
                 loop {
                     let new = sync::changed(ctx, &mut sub).await?.clone();

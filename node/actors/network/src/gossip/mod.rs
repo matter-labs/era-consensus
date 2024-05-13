@@ -21,9 +21,9 @@ use zksync_concurrency::{ctx, ctx::channel, scope, sync};
 use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::BlockStore;
 
-use self::batch_signatures::BatchSignaturesWatch;
+use self::batch_votes::BatchVotesWatch;
 
-mod batch_signatures;
+mod batch_votes;
 mod fetch;
 mod handshake;
 mod runner;
@@ -43,8 +43,8 @@ pub(crate) struct Network {
     pub(crate) outbound: PoolWatch<node::PublicKey, ()>,
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
-    /// Current state of knowledge about batch signatures.
-    pub(crate) batch_signatures: BatchSignaturesWatch,
+    /// Current state of knowledge about batch votes.
+    pub(crate) batch_votes: BatchVotesWatch,
     /// Block store to serve `get_block` requests from.
     pub(crate) block_store: Arc<BlockStore>,
     /// Output pipe of the network actor.
@@ -74,7 +74,7 @@ impl Network {
             ),
             outbound: PoolWatch::new(cfg.gossip.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
-            batch_signatures: BatchSignaturesWatch::default(),
+            batch_votes: BatchVotesWatch::default(),
             batch_qc: HashMap::new(),
             last_viewed_qc: None,
             cfg,
@@ -118,16 +118,16 @@ impl Network {
         .await;
     }
 
-    /// Task that keeps hearing about new signatures and updates the L1 batch qc.
-    /// It will propagate the QC if there's enough signatures.
+    /// Task that keeps hearing about new votes and updates the L1 batch qc.
+    /// It will propagate the QC if there's enough votes.
     pub(crate) async fn update_batch_qc(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        // FIXME This is not a good way to do this, we shouldn't be verifying the QC every time
-        // Can we get only the latest signatures?
+        // TODO This is not a good way to do this, we shouldn't be verifying the QC every time
+        // Can we get only the latest votes?
         loop {
-            let mut sub = self.batch_signatures.subscribe();
-            let signatures = sync::changed(ctx, &mut sub)
+            let mut sub = self.batch_votes.subscribe();
+            let votes = sync::changed(ctx, &mut sub)
                 .await
-                .context("batch signatures")?
+                .context("batch votes")?
                 .clone();
 
             // Check next QC to collect signatures for.
@@ -152,8 +152,8 @@ impl Network {
                     )
                 });
 
-            // Check signatures for the correct QC.
-            for (_, sig) in signatures.0 {
+            // Check votes for the correct QC.
+            for (_, sig) in votes.0 {
                 if self
                     .batch_qc
                     .clone()
