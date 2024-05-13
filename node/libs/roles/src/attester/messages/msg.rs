@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, fmt};
 
-use crate::attester;
+use crate::{attester, validator};
 use anyhow::Context as _;
 use bit_vec::BitVec;
 use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
@@ -164,28 +164,13 @@ impl Committee {
     pub fn total_weight(&self) -> u64 {
         self.total_weight
     }
-
-    /// Maximal weight of faulty replicas allowed in this attester committee.
-    pub fn max_faulty_weight(&self) -> u64 {
-        max_faulty_weight(self.total_weight())
-    }
 }
 
 /// Calculate the attester threshold, that is the minimum votes weight for any attesters action to be valid,
 /// for a given committee total weight.
 /// Technically we need just n > f+1, but for now we use a threshold consistent with the validator committee.
 pub fn threshold(total_weight: u64) -> u64 {
-    total_weight - max_faulty_weight(total_weight)
-}
-
-/// Calculate the maximum allowed weight for faulty replicas, for a given total weight.
-pub fn max_faulty_weight(total_weight: u64) -> u64 {
-    // Calculate the allowed maximum weight of faulty replicas. We want the following relationship to hold:
-    //      n = 5*f + 1
-    // for n total weight and f faulty weight. This results in the following formula for the maximum
-    // weight of faulty replicas:
-    //      f = floor((n - 1) / 5)
-    (total_weight - 1) / 5
+    total_weight - validator::max_faulty_weight(total_weight)
 }
 
 impl std::ops::BitOrAssign<&Self> for Signers {
