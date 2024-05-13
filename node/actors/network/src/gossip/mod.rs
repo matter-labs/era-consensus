@@ -134,13 +134,13 @@ impl Network {
             let new_qc = self
                 .last_viewed_qc
                 .clone()
-                .and_then(|qc| {
-                    Some(attester::BatchQC::new(
+                .map(|qc| {
+                    attester::BatchQC::new(
                         attester::Batch {
                             number: qc.message.number.next(),
                         },
                         self.genesis(),
-                    ))
+                    )
                 })
                 .clone()
                 .unwrap_or_else(|| {
