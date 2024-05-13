@@ -6,13 +6,13 @@ use anyhow::Context as _;
 use zksync_consensus_roles::attester::{self, Batch};
 use zksync_protobuf::ProtoFmt;
 
-/// Signature RPC.
+/// PushBatchVotes RPC.
 pub(crate) struct Rpc;
 
 impl super::Rpc for Rpc {
     const CAPABILITY_ID: mux::CapabilityId = 5;
     const INFLIGHT: u32 = 1;
-    const METHOD: &'static str = "push_signature";
+    const METHOD: &'static str = "push_batch_votes";
     type Req = Req;
     type Resp = ();
 }
@@ -26,9 +26,9 @@ impl ProtoFmt for Req {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let mut votes = vec![];
-        for (i, e) in r.signatures.iter().enumerate() {
+        for (i, e) in r.votes.iter().enumerate() {
             votes.push(Arc::new(
-                ProtoFmt::read(e).with_context(|| format!("signatures[{i}]"))?,
+                ProtoFmt::read(e).with_context(|| format!("votes[{i}]"))?,
             ));
         }
         Ok(Self(votes))
@@ -36,7 +36,7 @@ impl ProtoFmt for Req {
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            signatures: self.0.iter().map(|a| ProtoFmt::build(a.as_ref())).collect(),
+            votes: self.0.iter().map(|a| ProtoFmt::build(a.as_ref())).collect(),
         }
     }
 }

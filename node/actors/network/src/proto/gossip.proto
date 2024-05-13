@@ -19,8 +19,8 @@ message PushValidatorAddrs {
 }
 
 message PushBatchVotes {
-  // Signed roles.validator.Msg.signatures
-  repeated roles.attester.Signed signatures = 1;
+  // Signed roles.validator.Msg.votes
+  repeated roles.attester.Signed votes = 1;
 }
 
 // State of the local block store.

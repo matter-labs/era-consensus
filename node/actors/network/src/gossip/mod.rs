@@ -130,7 +130,7 @@ impl Network {
                 .context("batch votes")?
                 .clone();
 
-            // Check next QC to collect signatures for.
+            // Check next QC to collect votes for.
             let new_qc = self
                 .last_viewed_qc
                 .clone()

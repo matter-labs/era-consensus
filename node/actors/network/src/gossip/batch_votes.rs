@@ -5,7 +5,7 @@ use zksync_concurrency::sync;
 use zksync_consensus_roles::attester::{self, Batch};
 
 /// Mapping from attester::PublicKey to a signed attester::Batch message.
-/// Represents the currents state of node's knowledge about the attester signatures.
+/// Represents the currents state of node's knowledge about the attester votes.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct BatchVotes(
     pub(super) im::HashMap<attester::PublicKey, Arc<attester::Signed<Batch>>>,
