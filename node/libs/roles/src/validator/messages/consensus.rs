@@ -86,6 +86,14 @@ pub struct Committee {
     total_weight: u64,
 }
 
+impl std::ops::Deref for Committee {
+    type Target = Vec<WeightedValidator>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.vec
+    }
+}
+
 impl Committee {
     /// Creates a new Committee from a list of validator public keys.
     pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
@@ -116,11 +124,6 @@ impl Committee {
             vec,
             total_weight,
         })
-    }
-
-    /// Iterates over weighted validators.
-    pub fn iter(&self) -> impl Iterator<Item = &WeightedValidator> {
-        self.vec.iter()
     }
 
     /// Iterates over validator keys.

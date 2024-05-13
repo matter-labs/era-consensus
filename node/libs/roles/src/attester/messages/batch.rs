@@ -116,7 +116,7 @@ impl BatchQC {
 
         let messages_and_keys = genesis
             .attesters
-            .iter_keys()
+            .keys()
             .enumerate()
             .filter(|(i, _)| self.signers.0[*i])
             .map(|(_, pk)| (self.message.clone(), pk));

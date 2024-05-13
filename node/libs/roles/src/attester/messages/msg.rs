@@ -79,6 +79,14 @@ pub struct Committee {
     total_weight: u64,
 }
 
+impl std::ops::Deref for Committee {
+    type Target = Vec<WeightedAttester>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.vec
+    }
+}
+
 impl Committee {
     /// Creates a new Committee from a list of attester public keys.
     pub fn new(attesters: impl IntoIterator<Item = WeightedAttester>) -> anyhow::Result<Self> {
@@ -113,13 +121,8 @@ impl Committee {
         })
     }
 
-    /// Iterates over weighted attesters.
-    pub fn iter(&self) -> impl Iterator<Item = &WeightedAttester> {
-        self.vec.iter()
-    }
-
     /// Iterates over attester keys.
-    pub fn iter_keys(&self) -> impl Iterator<Item = &attester::PublicKey> {
+    pub fn keys(&self) -> impl Iterator<Item = &attester::PublicKey> {
         self.vec.iter().map(|v| &v.key)
     }
 

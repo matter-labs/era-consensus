@@ -150,6 +150,7 @@ fn test_batch_qc() {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis)
                 .unwrap();
         }
+
         let expected_weight: u64 = setup1
             .genesis
             .attesters
