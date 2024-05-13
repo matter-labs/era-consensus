@@ -120,7 +120,7 @@ impl Network {
 
     /// Task that keeps hearing about new signatures and updates the L1 batch qc.
     /// It will propagate the QC if there's enough signatures.
-    pub(crate) async fn update_batch_qc(&mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub(crate) async fn update_batch_qc(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         // FIXME This is not a good way to do this, we shouldn't be verifying the QC every time
         // Can we get only the latest signatures?
         loop {
