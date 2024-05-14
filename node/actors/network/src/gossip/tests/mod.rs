@@ -1,6 +1,5 @@
 use super::*;
 use crate::{metrics, preface, rpc, testonly};
-use anyhow::Context as _;
 use assert_matches::assert_matches;
 use pretty_assertions::assert_eq;
 use rand::Rng;

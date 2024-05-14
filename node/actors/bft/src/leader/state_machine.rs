@@ -199,13 +199,11 @@ impl StateMachine {
         // Broadcast the leader prepare message to all replicas (ourselves included).
         let msg = cfg
             .secret_key
-            .sign_msg(validator::ConsensusMsg::LeaderPrepare(
-                validator::LeaderPrepare {
-                    proposal,
-                    proposal_payload: payload,
-                    justification,
-                },
-            ));
+            .sign_msg(ConsensusMsg::LeaderPrepare(validator::LeaderPrepare {
+                proposal,
+                proposal_payload: payload,
+                justification,
+            }));
         pipe.send(
             ConsensusInputMessage {
                 message: msg,
