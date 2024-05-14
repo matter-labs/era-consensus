@@ -141,11 +141,22 @@ fn test_batch_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let mut genesis3 = (*setup1.genesis).clone();
-    genesis3.attesters = Committee::new(setup1.genesis.attesters.iter().take(3).cloned()).unwrap();
+    genesis3.attesters = Committee::new(
+        setup1
+            .genesis
+            .attesters
+            .as_ref()
+            .unwrap()
+            .iter()
+            .take(3)
+            .cloned(),
+    )
+    .unwrap()
+    .into();
     let genesis3 = genesis3.with_hash();
 
     for i in 0..setup1.attester_keys.len() + 1 {
-        let mut qc = BatchQC::new(make_batch_msg(rng), &setup1.genesis);
+        let mut qc = BatchQC::new(make_batch_msg(rng), &setup1.genesis).unwrap();
         for key in &setup1.attester_keys[0..i] {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis)
                 .unwrap();
@@ -154,11 +165,13 @@ fn test_batch_qc() {
         let expected_weight: u64 = setup1
             .genesis
             .attesters
+            .as_ref()
+            .unwrap()
             .iter()
             .take(i)
             .map(|w| w.weight)
             .sum();
-        if expected_weight >= setup1.genesis.attesters.threshold() {
+        if expected_weight >= setup1.genesis.attesters.as_ref().unwrap().threshold() {
             assert!(qc.verify(&setup1.genesis).is_ok());
         } else {
             assert_matches!(
@@ -184,11 +197,19 @@ fn test_attester_committee_weights() {
     let sums = [1000, 1600, 2400, 8400, 9300, 10000];
 
     let msg = make_batch_msg(rng);
-    let mut qc = BatchQC::new(msg.clone(), &setup.genesis);
+    let mut qc = BatchQC::new(msg.clone(), &setup.genesis).unwrap();
     for (n, weight) in sums.iter().enumerate() {
         let key = &setup.attester_keys[n];
         qc.add(&key.sign_msg(msg.clone()), &setup.genesis).unwrap();
-        assert_eq!(setup.genesis.attesters.weight(&qc.signers), *weight);
+        assert_eq!(
+            setup
+                .genesis
+                .attesters
+                .as_ref()
+                .unwrap()
+                .weight(&qc.signers),
+            *weight
+        );
     }
 }
 

@@ -142,7 +142,6 @@ impl Network {
                         self.genesis(),
                     )
                 })
-                .clone()
                 .unwrap_or_else(|| {
                     attester::BatchQC::new(
                         attester::Batch {
@@ -150,7 +149,8 @@ impl Network {
                         },
                         self.genesis(),
                     )
-                });
+                })
+                .context("new qc")?;
 
             // Check votes for the correct QC.
             for (_, sig) in votes.0 {
@@ -159,7 +159,7 @@ impl Network {
                     .clone()
                     .entry(new_qc.message.number.clone())
                     .or_insert_with(|| {
-                        attester::BatchQC::new(new_qc.message.clone(), self.genesis())
+                        attester::BatchQC::new(new_qc.message.clone(), self.genesis()).expect("qc")
                     })
                     .add(&sig, self.genesis())
                     .is_err()
@@ -169,15 +169,27 @@ impl Network {
                 }
             }
 
-            let weight = self.genesis().attesters.weight(
-                &self
-                    .batch_qc
-                    .get(&new_qc.message.number)
-                    .context("last qc")?
-                    .signers,
-            );
+            let weight = self
+                .genesis()
+                .attesters
+                .as_ref()
+                .context("attesters")?
+                .weight(
+                    &self
+                        .batch_qc
+                        .get(&new_qc.message.number)
+                        .context("last qc")?
+                        .signers,
+                );
 
-            if weight < self.genesis().attesters.threshold() {
+            if weight
+                < self
+                    .genesis()
+                    .attesters
+                    .as_ref()
+                    .context("attesters")?
+                    .threshold()
+            {
                 return Ok(());
             };
 

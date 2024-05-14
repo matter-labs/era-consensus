@@ -142,7 +142,7 @@ mod version1 {
     use super::*;
 
     /// Hardcoded genesis.
-    fn genesis() -> Genesis {
+    fn genesis_empty_attesters() -> Genesis {
         GenesisRaw {
             chain_id: ChainId(1337),
             fork_number: ForkNumber(402598740274745173),
@@ -150,7 +150,22 @@ mod version1 {
 
             protocol_version: ProtocolVersion(1),
             validators: validator_committee(),
-            attesters: attester_committee(),
+            attesters: None,
+            leader_selection: LeaderSelectionMode::Weighted,
+        }
+        .with_hash()
+    }
+
+    /// Hardcoded genesis.
+    fn genesis_with_attesters() -> Genesis {
+        GenesisRaw {
+            chain_id: ChainId(1337),
+            fork_number: ForkNumber(402598740274745173),
+            first_block: BlockNumber(8902834932452),
+
+            protocol_version: ProtocolVersion(1),
+            validators: validator_committee(),
+            attesters: attester_committee().into(),
             leader_selection: LeaderSelectionMode::Weighted,
         }
         .with_hash()
@@ -167,7 +182,21 @@ mod version1 {
         )
         .decode()
         .unwrap();
-        assert_eq!(want, genesis().hash());
+        assert_eq!(want, genesis_empty_attesters().hash());
+    }
+
+    /// Note that genesis is NOT versioned by ProtocolVersion.
+    /// Even if it was, ALL versions of genesis need to be supported FOREVER,
+    /// unless we introduce dynamic regenesis.
+    /// FIXME: This fails with the new attester committee.
+    #[test]
+    fn genesis_hash_change_detector_2() {
+        let want: GenesisHash = Text::new(
+            "genesis_hash:keccak256:63d6562ea2a27069e64a4005d1aef446907db945d85e06323296d2c0f8336c65",
+        )
+        .decode()
+        .unwrap();
+        assert_eq!(want, genesis_with_attesters().hash());
     }
 
     #[test]
@@ -197,7 +226,7 @@ mod version1 {
     /// Hardcoded view.
     fn view() -> View {
         View {
-            genesis: genesis().hash(),
+            genesis: genesis_empty_attesters().hash(),
             number: ViewNumber(9136573498460759103),
         }
     }
@@ -220,7 +249,7 @@ mod version1 {
 
     /// Hardcoded `CommitQC`.
     fn commit_qc() -> CommitQC {
-        let genesis = genesis();
+        let genesis = genesis_empty_attesters();
         let replica_commit = replica_commit();
         let mut x = CommitQC::new(replica_commit.clone(), &genesis);
         for k in validator_keys() {
@@ -249,7 +278,7 @@ mod version1 {
     /// Hardcoded `PrepareQC`.
     fn prepare_qc() -> PrepareQC {
         let mut x = PrepareQC::new(view());
-        let genesis = genesis();
+        let genesis = genesis_empty_attesters();
         let replica_prepare = replica_prepare();
         for k in validator_keys() {
             x.add(&k.sign_msg(replica_prepare.clone()), &genesis)

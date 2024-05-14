@@ -245,7 +245,7 @@ pub struct GenesisRaw {
     /// Set of validators of the chain.
     pub validators: Committee,
     /// Set of attesters of the chain.
-    pub attesters: attester::Committee,
+    pub attesters: Option<attester::Committee>,
     /// The mode used for selecting leader for a given view.
     pub leader_selection: LeaderSelectionMode,
 }

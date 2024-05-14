@@ -535,7 +535,7 @@ async fn test_batch_votes() {
 
     // newer batch number
     let k0v2 = update_signature(rng, &want.get(&keys[0]).msg, &keys[0], 1);
-    // same batch number, newer timestamp
+    // same batch number
     let k1v2 = update_signature(rng, &want.get(&keys[1]).msg, &keys[1], 0);
     // older batch number
     let k4v2 = update_signature(rng, &want.get(&keys[4]).msg, &keys[4], -1);
@@ -562,7 +562,7 @@ async fn test_batch_votes() {
 
     // Invalid signature.
     let mut k0v3 = mk_batch(&keys[1], attester::BatchNumber(rng.gen_range(0..1000)));
-    k0v3.key = keys[0].public();
+    k0v3.sig = rng.gen();
     assert!(votes.update(&attesters, &[Arc::new(k0v3)]).await.is_err());
     assert_eq!(want.0, sub.borrow_and_update().0);
 

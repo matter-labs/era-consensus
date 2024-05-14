@@ -124,6 +124,7 @@ impl Runner {
 
             // Update QC batches in the background.
             s.spawn(async {
+                // TODO: Handle this correctly.
                 let _ = self.net.gossip.update_batch_qc(ctx).await;
                 Ok(())
             });

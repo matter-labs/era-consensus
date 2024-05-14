@@ -1,7 +1,7 @@
 use crate::{attester, validator::Genesis};
 
 use super::{Signed, Signers};
-use anyhow::ensure;
+use anyhow::{ensure, Context as _};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default, PartialOrd)]
 /// A batch number.
@@ -73,12 +73,12 @@ pub enum BatchQCAddError {
 
 impl BatchQC {
     /// Create a new empty instance for a given `Batch` message.
-    pub fn new(message: Batch, genesis: &Genesis) -> Self {
-        Self {
+    pub fn new(message: Batch, genesis: &Genesis) -> anyhow::Result<Self> {
+        Ok(Self {
             message,
-            signers: Signers::new(genesis.attesters.len()),
+            signers: Signers::new(genesis.attesters.as_ref().context("attesters")?.len()),
             signature: attester::AggregateSignature::default(),
-        }
+        })
     }
 
     /// Add a attester's signature.
@@ -88,6 +88,8 @@ impl BatchQC {
         ensure!(self.message == msg.msg, Error::InconsistentMessages);
         let i = genesis
             .attesters
+            .as_ref()
+            .expect("attesters set is empty in genesis") // This case should never happen
             .index(&msg.key)
             .ok_or(Error::SignerNotInCommittee {
                 signer: Box::new(msg.key.clone()),
@@ -101,12 +103,16 @@ impl BatchQC {
     /// Verifies the signature of the BatchQC.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), BatchQCVerifyError> {
         use BatchQCVerifyError as Error;
-        if self.signers.len() != genesis.attesters.len() {
+        let attesters = genesis
+            .attesters
+            .as_ref()
+            .expect("attesters set is empty in genesis"); // This case should never happen
+        if self.signers.len() != attesters.len() {
             return Err(Error::BadSignersSet);
         }
         // Verify that the signer's weight is sufficient.
-        let weight = genesis.attesters.weight(&self.signers);
-        let threshold = genesis.attesters.threshold();
+        let weight = attesters.weight(&self.signers);
+        let threshold = attesters.threshold();
         if weight < threshold {
             return Err(Error::NotEnoughSigners {
                 got: weight,
@@ -114,8 +120,7 @@ impl BatchQC {
             });
         }
 
-        let messages_and_keys = genesis
-            .attesters
+        let messages_and_keys = attesters
             .keys()
             .enumerate()
             .filter(|(i, _)| self.signers.0[*i])

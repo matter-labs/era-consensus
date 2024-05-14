@@ -226,6 +226,8 @@ fn test_commit_qc() {
         let expected_weight: u64 = setup1
             .genesis
             .attesters
+            .as_ref()
+            .unwrap()
             .iter()
             .take(i)
             .map(|w| w.weight)
@@ -327,6 +329,8 @@ fn test_prepare_qc() {
         let expected_weight: u64 = setup1
             .genesis
             .attesters
+            .as_ref()
+            .unwrap()
             .iter()
             .take(n)
             .map(|w| w.weight)

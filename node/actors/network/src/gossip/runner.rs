@@ -44,7 +44,10 @@ impl rpc::Handler<rpc::push_batch_votes::Rpc> for PushBatchVotesServer<'_> {
     async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::push_batch_votes::Req) -> anyhow::Result<()> {
         self.0
             .batch_votes
-            .update(&self.0.genesis().attesters, &req.0)
+            .update(
+                self.0.genesis().attesters.as_ref().context("attesters")?,
+                &req.0,
+            )
             .await?;
         Ok(())
     }

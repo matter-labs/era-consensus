@@ -165,7 +165,8 @@ impl From<SetupSpec> for Setup {
                         weight: *w,
                     }
                 }))
-                .unwrap(),
+                .unwrap()
+                .into(),
                 leader_selection: spec.leader_selection,
             }
             .with_hash(),
