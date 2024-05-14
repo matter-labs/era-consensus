@@ -177,14 +177,17 @@ message Signed {
 }
 
 message PublicKey {
+  // The name is wrong, it should be bls12_381.
   optional bytes bn254 = 1; // required
 }
 
 message Signature {
+  // The name is wrong, it should be bls12_381.
   optional bytes bn254 = 1; // required
 }
 
 message AggregateSignature {
+  // The name is wrong, it should be bls12_381.
   optional bytes bn254 = 1; // required
 }
 
