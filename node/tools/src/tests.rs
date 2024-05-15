@@ -25,7 +25,6 @@ impl Distribution<AppConfig> for EncodeDist {
             genesis: genesis.with_hash(),
             max_payload_size: rng.gen(),
             validator_key: self.sample_opt(|| rng.gen()),
-            attester_key: self.sample_opt(|| rng.gen()),
 
             node_key: rng.gen(),
             gossip_dynamic_inbound_limit: rng.gen(),
