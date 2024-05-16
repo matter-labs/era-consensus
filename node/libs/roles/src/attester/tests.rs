@@ -155,7 +155,7 @@ fn test_batch_qc() {
         }
 
         let expected_weight: u64 = attesters.iter().take(i).map(|w| w.weight).sum();
-        if expected_weight >= setup1.genesis.attesters.as_ref().unwrap().threshold() {
+        if expected_weight >= attesters.threshold() {
             assert!(qc.verify(&setup1.genesis).is_ok());
         } else {
             assert_matches!(
