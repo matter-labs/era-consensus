@@ -129,9 +129,11 @@ impl Executor {
                 .block_store
                 .genesis()
                 .committee
-                .keys()
-                .any(|key| key == &validator.key.public())
+                .contains(&validator.key.public())
             {
+                tracing::warn!(
+                    "This node is an inactive validator. It will NOT vote in consensus."
+                );
                 return Ok(());
             }
             bft::Config {
