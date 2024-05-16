@@ -14,7 +14,7 @@ impl ProtoFmt for () {
     }
 }
 
-impl ProtoFmt for std::net::SocketAddr {
+impl ProtoFmt for net::SocketAddr {
     type Proto = proto::std::SocketAddr;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
