@@ -10,7 +10,7 @@ pub struct BatchNumber(pub u64);
 impl BatchNumber {
     /// Increment the batch number.
     pub fn next(&self) -> BatchNumber {
-        BatchNumber(self.0 + 1)
+        BatchNumber(self.0.checked_add(1).unwrap())
     }
 }
 
@@ -52,6 +52,9 @@ pub enum BatchQCVerifyError {
     /// Bad signer set.
     #[error("signers set doesn't match genesis")]
     BadSignersSet,
+    /// No attester committee in genesis.
+    #[error("No attester committee in genesis")]
+    AttestersNotInGenesis,
 }
 
 /// Error returned by `BatchQC::add()` if the signature is invalid.
@@ -76,7 +79,13 @@ impl BatchQC {
     pub fn new(message: Batch, genesis: &Genesis) -> anyhow::Result<Self> {
         Ok(Self {
             message,
-            signers: Signers::new(genesis.attesters.as_ref().context("attesters")?.len()),
+            signers: Signers::new(
+                genesis
+                    .attesters
+                    .as_ref()
+                    .context("no attester committee in genesis")?
+                    .len(),
+            ),
             signature: attester::AggregateSignature::default(),
         })
     }
@@ -89,7 +98,7 @@ impl BatchQC {
         let i = genesis
             .attesters
             .as_ref()
-            .expect("attesters set is empty in genesis") // This case should never happen
+            .context("no attester committee in genesis")?
             .index(&msg.key)
             .ok_or(Error::SignerNotInCommittee {
                 signer: Box::new(msg.key.clone()),
@@ -106,7 +115,8 @@ impl BatchQC {
         let attesters = genesis
             .attesters
             .as_ref()
-            .expect("attesters set is empty in genesis"); // This case should never happen
+            .context("no attester committee in genesis")
+            .map_err(|_e| Error::AttestersNotInGenesis)?;
         if self.signers.len() != attesters.len() {
             return Err(Error::BadSignersSet);
         }

@@ -123,6 +123,7 @@ impl Network {
     pub(crate) async fn update_batch_qc(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         // TODO This is not a good way to do this, we shouldn't be verifying the QC every time
         // Can we get only the latest votes?
+        let attesters = self.genesis().attesters.as_ref().context("attesters")?;
         loop {
             let mut sub = self.batch_votes.subscribe();
             let votes = sync::changed(ctx, &mut sub)
@@ -169,27 +170,15 @@ impl Network {
                 }
             }
 
-            let weight = self
-                .genesis()
-                .attesters
-                .as_ref()
-                .context("attesters")?
-                .weight(
-                    &self
-                        .batch_qc
-                        .get(&new_qc.message.number)
-                        .context("last qc")?
-                        .signers,
-                );
+            let weight = attesters.weight(
+                &self
+                    .batch_qc
+                    .get(&new_qc.message.number)
+                    .context("last qc")?
+                    .signers,
+            );
 
-            if weight
-                < self
-                    .genesis()
-                    .attesters
-                    .as_ref()
-                    .context("attesters")?
-                    .threshold()
-            {
+            if weight < attesters.threshold() {
                 return Ok(());
             };
 

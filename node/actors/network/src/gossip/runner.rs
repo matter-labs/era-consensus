@@ -113,9 +113,13 @@ impl Network {
             ctx,
             self.cfg.rpc.push_block_store_state_rate,
         );
-        let push_signature_client =
-            rpc::Client::<rpc::push_batch_votes::Rpc>::new(ctx, self.cfg.rpc.push_batch_votes_rate);
-        let push_signature_server = PushBatchVotesServer(self);
+        let mut push_signature_client: Option<rpc::Client<rpc::push_batch_votes::Rpc>> = None;
+        let mut push_signature_server: Option<PushBatchVotesServer> = None;
+        if self.genesis().attesters.is_some() {
+            push_signature_client =
+                rpc::Client::new(ctx, self.cfg.rpc.push_batch_votes_rate).into();
+            push_signature_server = PushBatchVotesServer(self).into();
+        };
         let push_block_store_state_server = PushBlockStoreStateServer::new(self);
         let get_block_client =
             rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate);
@@ -127,12 +131,6 @@ impl Network {
                     push_validator_addrs_server,
                     self.cfg.rpc.push_validator_addrs_rate,
                 )
-                .add_client(&push_signature_client)
-                .add_server(
-                    ctx,
-                    push_signature_server,
-                    self.cfg.rpc.push_batch_votes_rate,
-                )
                 .add_client(&push_block_store_state_client)
                 .add_server(
                     ctx,
@@ -142,6 +140,13 @@ impl Network {
                 .add_client(&get_block_client)
                 .add_server(ctx, &*self.block_store, self.cfg.rpc.get_block_rate)
                 .add_server(ctx, rpc::ping::Server, rpc::ping::RATE);
+            if let (Some(client), Some(server)) = (&push_signature_client, push_signature_server) {
+                service = service.add_client(client).add_server(
+                    ctx,
+                    server,
+                    self.cfg.rpc.push_batch_votes_rate,
+                );
+            }
 
             if let Some(ping_timeout) = &self.cfg.ping_timeout {
                 let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx, rpc::ping::RATE);
@@ -182,22 +187,24 @@ impl Network {
                 }
             });
 
-            // Push L1 batch votes updates to peer.
-            s.spawn::<()>(async {
-                let mut old = BatchVotes::default();
-                let mut sub = self.batch_votes.subscribe();
-                sub.mark_changed();
-                loop {
-                    let new = sync::changed(ctx, &mut sub).await?.clone();
-                    let diff = new.get_newer(&old);
-                    if diff.is_empty() {
-                        continue;
+            if let Some(client) = &push_signature_client {
+                // Push L1 batch votes updates to peer.
+                s.spawn::<()>(async {
+                    let mut old = BatchVotes::default();
+                    let mut sub = self.batch_votes.subscribe();
+                    sub.mark_changed();
+                    loop {
+                        let new = sync::changed(ctx, &mut sub).await?.clone();
+                        let diff = new.get_newer(&old);
+                        if diff.is_empty() {
+                            continue;
+                        }
+                        old = new;
+                        let req = rpc::push_batch_votes::Req(diff);
+                        client.call(ctx, &req, kB).await?;
                     }
-                    old = new;
-                    let req = rpc::push_batch_votes::Req(diff);
-                    push_signature_client.call(ctx, &req, kB).await?;
-                }
-            });
+                });
+            };
 
             // Perform get_block calls to peer.
             s.spawn::<()>(async {
