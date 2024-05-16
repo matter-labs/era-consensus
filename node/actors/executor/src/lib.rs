@@ -103,25 +103,8 @@ impl Executor {
         }
     }
 
-    /// Verifies correctness of the Executor.
-    fn verify(&self) -> anyhow::Result<()> {
-        if let Some(validator) = self.validator.as_ref() {
-            if !self
-                .block_store
-                .genesis()
-                .committee
-                .keys()
-                .any(|key| key == &validator.key.public())
-            {
-                anyhow::bail!("this validator doesn't belong to the consensus");
-            }
-        }
-        Ok(())
-    }
-
     /// Runs this executor to completion. This should be spawned on a separate task.
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        self.verify().context("verify()")?;
         let network_config = self.network_config();
 
         // Generate the communication pipes. We have one for each actor.
@@ -133,25 +116,34 @@ impl Executor {
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
             s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
-            if let Some(validator) = self.validator {
-                s.spawn(async {
-                    let validator = validator;
-                    bft::Config {
-                        secret_key: validator.key.clone(),
-                        block_store: self.block_store.clone(),
-                        replica_store: validator.replica_store,
-                        payload_manager: validator.payload_manager,
-                        max_payload_size: self.config.max_payload_size,
-                    }
-                    .run(ctx, consensus_actor_pipe)
-                    .await
-                    .context("Consensus stopped")
-                });
-            }
             let (net, runner) =
                 network::Network::new(network_config, self.block_store.clone(), network_actor_pipe);
             net.register_metrics();
-            runner.run(ctx).await.context("Network stopped")
+            s.spawn(async { runner.run(ctx).await.context("Network stopped") });
+
+            // Run the bft actor iff this node is an active validator.
+            let Some(validator) = self.validator else {
+                return Ok(());
+            };
+            if !self
+                .block_store
+                .genesis()
+                .committee
+                .keys()
+                .any(|key| key == &validator.key.public())
+            {
+                return Ok(());
+            }
+            bft::Config {
+                secret_key: validator.key.clone(),
+                block_store: self.block_store.clone(),
+                replica_store: validator.replica_store,
+                payload_manager: validator.payload_manager,
+                max_payload_size: self.config.max_payload_size,
+            }
+            .run(ctx, consensus_actor_pipe)
+            .await
+            .context("Consensus stopped")
         })
         .await
     }
