@@ -95,11 +95,11 @@ fn test_schema_encoding() {
 }
 
 #[test]
-fn test_genesis_schema_decode() {
+fn test_genesis_verify() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let genesis = rng.gen::<Genesis>();
+    let genesis = Setup::new(rng, 1).genesis.clone();
     assert!(genesis.verify().is_ok());
     assert!(Genesis::read(&genesis.build()).is_ok());
 
