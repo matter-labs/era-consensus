@@ -115,8 +115,7 @@ impl BatchQC {
         let attesters = genesis
             .attesters
             .as_ref()
-            .context("no attester committee in genesis")
-            .map_err(|_e| Error::AttestersNotInGenesis)?;
+            .ok_or(Error::AttestersNotInGenesis)?;
         if self.signers.len() != attesters.len() {
             return Err(Error::BadSignersSet);
         }

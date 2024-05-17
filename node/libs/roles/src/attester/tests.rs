@@ -141,9 +141,18 @@ fn test_batch_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let mut genesis3 = (*setup1.genesis).clone();
-    genesis3.attesters = Committee::new(setup1.genesis.attesters.as_ref().unwrap().get(3).cloned())
-        .unwrap()
-        .into();
+    genesis3.attesters = Committee::new(
+        setup1
+            .genesis
+            .attesters
+            .as_ref()
+            .unwrap()
+            .iter()
+            .take(3)
+            .cloned(),
+    )
+    .unwrap()
+    .into();
     let genesis3 = genesis3.with_hash();
     let attesters = setup1.genesis.attesters.as_ref().unwrap();
 
