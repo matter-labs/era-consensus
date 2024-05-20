@@ -123,6 +123,7 @@ impl Executor {
 
             // Run the bft actor iff this node is an active validator.
             let Some(validator) = self.validator else {
+                tracing::info!("Running the node in non-validator mode.");
                 return Ok(());
             };
             if !self
