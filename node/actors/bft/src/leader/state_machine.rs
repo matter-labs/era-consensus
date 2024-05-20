@@ -9,7 +9,7 @@ use zksync_concurrency::{
     time,
 };
 use zksync_consensus_network::io::{ConsensusInputMessage, ConsensusReq, Target};
-use zksync_consensus_roles::validator::{self, ConsensusMsg};
+use zksync_consensus_roles::validator;
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
@@ -84,8 +84,9 @@ impl StateMachine {
             let req = self.inbound_pipe.recv(ctx).await?;
 
             let now = ctx.now();
+            use validator::ConsensusMsg as M;
             let label = match &req.msg.msg {
-                ConsensusMsg::ReplicaPrepare(_) => {
+                M::ReplicaPrepare(_) => {
                     let res = match self
                         .process_replica_prepare(ctx, req.msg.cast().unwrap())
                         .await
@@ -102,7 +103,7 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
                 }
-                ConsensusMsg::ReplicaCommit(_) => {
+                M::ReplicaCommit(_) => {
                     let res = self
                         .process_replica_commit(ctx, req.msg.cast().unwrap())
                         .map_err(|err| {
@@ -199,11 +200,13 @@ impl StateMachine {
         // Broadcast the leader prepare message to all replicas (ourselves included).
         let msg = cfg
             .secret_key
-            .sign_msg(ConsensusMsg::LeaderPrepare(validator::LeaderPrepare {
-                proposal,
-                proposal_payload: payload,
-                justification,
-            }));
+            .sign_msg(validator::ConsensusMsg::LeaderPrepare(
+                validator::LeaderPrepare {
+                    proposal,
+                    proposal_payload: payload,
+                    justification,
+                },
+            ));
         pipe.send(
             ConsensusInputMessage {
                 message: msg,
@@ -226,8 +229,9 @@ impl StateMachine {
         if old_req.msg.key != new_req.msg.key {
             return SelectionFunctionResult::Keep;
         }
+        use validator::ConsensusMsg as M;
         match (&old_req.msg.msg, &new_req.msg.msg) {
-            (ConsensusMsg::ReplicaPrepare(old), ConsensusMsg::ReplicaPrepare(new)) => {
+            (M::ReplicaPrepare(old), M::ReplicaPrepare(new)) => {
                 // Discard older message
                 if old.view.number < new.view.number {
                     SelectionFunctionResult::DiscardOld
@@ -235,7 +239,7 @@ impl StateMachine {
                     SelectionFunctionResult::DiscardNew
                 }
             }
-            (ConsensusMsg::ReplicaCommit(old), ConsensusMsg::ReplicaCommit(new)) => {
+            (M::ReplicaCommit(old), M::ReplicaCommit(new)) => {
                 // Discard older message
                 if old.view.number < new.view.number {
                     SelectionFunctionResult::DiscardOld

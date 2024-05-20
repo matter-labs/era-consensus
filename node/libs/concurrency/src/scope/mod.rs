@@ -315,9 +315,10 @@ impl<'env, E: 'static + Send> Scope<'env, E> {
     /// task (in particular, not from async code).
     /// Behaves analogically to `run`.
     #[doc(hidden)]
-    pub fn run_blocking<T: 'static + Send, F>(&'env mut self, root_task: F) -> Result<T, E>
+    pub fn run_blocking<T, F>(&'env mut self, root_task: F) -> Result<T, E>
     where
         E: 'static + Send,
+        T: 'static + Send,
         F: 'env + Send + FnOnce(&'env ctx::Ctx, &'env Self) -> Result<T, E>,
     {
         let guard = Arc::new(State::make(self.ctx.clone()));
