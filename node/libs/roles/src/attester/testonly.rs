@@ -1,6 +1,6 @@
 use super::{
-    AggregateSignature, Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash, PublicKey, SecretKey,
-    Signature, Signed, Signers, WeightedAttester,
+    AggregateSignature, Batch, BatchHeader, BatchNumber, BatchQC, Committee, Msg, MsgHash,
+    PayloadHash, PublicKey, SecretKey, Signature, Signed, Signers, WeightedAttester,
 };
 use bit_vec::BitVec;
 use rand::{
@@ -53,8 +53,23 @@ impl Distribution<Committee> for Standard {
 impl Distribution<Batch> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Batch {
         Batch {
-            number: BatchNumber(rng.gen()),
+            proposal: rng.gen(),
         }
+    }
+}
+
+impl Distribution<BatchHeader> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchHeader {
+        BatchHeader {
+            number: rng.gen(),
+            payload: rng.gen(),
+        }
+    }
+}
+
+impl Distribution<BatchNumber> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchNumber {
+        BatchNumber(rng.gen())
     }
 }
 
@@ -65,6 +80,12 @@ impl Distribution<BatchQC> for Standard {
             signers: rng.gen(),
             signature: rng.gen(),
         }
+    }
+}
+
+impl Distribution<PayloadHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PayloadHash {
+        PayloadHash(rng.gen())
     }
 }
 

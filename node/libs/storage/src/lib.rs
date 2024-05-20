@@ -9,7 +9,7 @@ pub mod testonly;
 mod tests;
 
 pub use crate::{
-    batch_store::PersistentBatchStore,
+    batch_store::{BatchStore, PersistentBatchStore},
     block_store::{BlockStore, BlockStoreRunner, BlockStoreState, PersistentBlockStore},
     replica_store::{Proposal, ReplicaState, ReplicaStore},
 };

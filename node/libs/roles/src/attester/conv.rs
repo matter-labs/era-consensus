@@ -5,20 +5,48 @@ use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
 use super::{
-    AggregateSignature, Batch, BatchNumber, BatchQC, Msg, MsgHash, PublicKey, Signature, Signed,
-    Signers, WeightedAttester,
+    AggregateSignature, Batch, BatchHeader, BatchNumber, BatchQC, Msg, MsgHash, PayloadHash,
+    PublicKey, Signature, Signed, Signers, WeightedAttester,
 };
 
 impl ProtoFmt for Batch {
     type Proto = proto::Batch;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
+            proposal: read_required(&r.proposal).context("proposal")?,
+        })
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            proposal: Some(self.proposal.build()),
+        }
+    }
+}
+
+impl ProtoFmt for BatchHeader {
+    type Proto = proto::BatchHeader;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
             number: BatchNumber(*required(&r.number).context("number")?),
+            payload: read_required(&r.payload).context("payload")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
             number: Some(self.number.0),
+            payload: Some(self.payload.build()),
+        }
+    }
+}
+
+impl ProtoFmt for PayloadHash {
+    type Proto = proto::PayloadHash;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            keccak256: Some(self.0.encode()),
         }
     }
 }

@@ -5,8 +5,11 @@ package zksync.roles.attester;
 import "zksync/std.proto";
 
 message Batch {
-  optional uint64 number = 1; // required
-  // TODO: add the hash of the L1 batch as a field
+  optional BatchHeader proposal = 1; // required
+}
+
+message PayloadHash {
+  optional bytes keccak256 = 1; // required
 }
 
 message BatchQC {
@@ -19,6 +22,13 @@ message Msg {
   oneof t { // required
     Batch batch = 4;
   }
+}
+
+message BatchHeader {
+  // Sequential number of the batch = parent.number + 1.
+  optional uint64 number = 1; // required
+  // Hash of the batch payload.
+  optional PayloadHash payload = 2; // required
 }
 
 message Signed {
