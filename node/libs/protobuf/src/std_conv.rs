@@ -1,7 +1,6 @@
 //! Proto conversion for messages in std package.
 use crate::{proto, required, ProtoFmt};
 use anyhow::Context as _;
-use std::net;
 use zksync_concurrency::time;
 
 impl ProtoFmt for () {
@@ -20,8 +19,8 @@ impl ProtoFmt for std::net::SocketAddr {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let ip = required(&r.ip).context("ip")?;
         let ip = match ip.len() {
-            4 => net::IpAddr::from(<[u8; 4]>::try_from(&ip[..]).unwrap()),
-            16 => net::IpAddr::from(<[u8; 16]>::try_from(&ip[..]).unwrap()),
+            4 => std::net::IpAddr::from(<[u8; 4]>::try_from(&ip[..]).unwrap()),
+            16 => std::net::IpAddr::from(<[u8; 16]>::try_from(&ip[..]).unwrap()),
             _ => anyhow::bail!("invalid ip length"),
         };
         let port = *required(&r.port).context("port")?;
@@ -32,8 +31,8 @@ impl ProtoFmt for std::net::SocketAddr {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             ip: Some(match self.ip() {
-                net::IpAddr::V4(ip) => ip.octets().to_vec(),
-                net::IpAddr::V6(ip) => ip.octets().to_vec(),
+                std::net::IpAddr::V4(ip) => ip.octets().to_vec(),
+                std::net::IpAddr::V6(ip) => ip.octets().to_vec(),
             }),
             port: Some(self.port() as u32),
         }
