@@ -1,4 +1,4 @@
-use super::{handshake, Network, ValidatorAddrs};
+use super::{batch_votes::BatchVotes, handshake, Network, ValidatorAddrs};
 use crate::{noise, preface, rpc};
 use anyhow::Context as _;
 use async_trait::async_trait;
@@ -26,7 +26,28 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'
             .fetch_add(1, Ordering::SeqCst);
         self.0
             .validator_addrs
-            .update(&self.0.genesis().committee, &req.0[..])
+            .update(&self.0.genesis().validators, &req.0)
+            .await?;
+        Ok(())
+    }
+}
+
+struct PushBatchVotesServer<'a>(&'a Network);
+
+#[async_trait::async_trait]
+impl rpc::Handler<rpc::push_batch_votes::Rpc> for PushBatchVotesServer<'_> {
+    /// Here we bound the buffering of incoming batch messages.
+    fn max_req_size(&self) -> usize {
+        100 * kB
+    }
+
+    async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::push_batch_votes::Req) -> anyhow::Result<()> {
+        self.0
+            .batch_votes
+            .update(
+                self.0.genesis().attesters.as_ref().context("attesters")?,
+                &req.0,
+            )
             .await?;
         Ok(())
     }
@@ -112,6 +133,35 @@ impl Network {
                 .add_client(&get_block_client)
                 .add_server(ctx, &*self.block_store, self.cfg.rpc.get_block_rate)
                 .add_server(ctx, rpc::ping::Server, rpc::ping::RATE);
+            if self.genesis().attesters.as_ref().is_some() {
+                let push_signature_client = rpc::Client::<rpc::push_batch_votes::Rpc>::new(
+                    ctx,
+                    self.cfg.rpc.push_batch_votes_rate,
+                );
+                let push_signature_server = PushBatchVotesServer(self);
+                service = service.add_client(&push_signature_client).add_server(
+                    ctx,
+                    push_signature_server,
+                    self.cfg.rpc.push_batch_votes_rate,
+                );
+                // Push L1 batch votes updates to peer.
+                s.spawn::<()>(async {
+                    let push_signature_client = push_signature_client;
+                    let mut old = BatchVotes::default();
+                    let mut sub = self.batch_votes.subscribe();
+                    sub.mark_changed();
+                    loop {
+                        let new = sync::changed(ctx, &mut sub).await?.clone();
+                        let diff = new.get_newer(&old);
+                        if diff.is_empty() {
+                            continue;
+                        }
+                        old = new;
+                        let req = rpc::push_batch_votes::Req(diff);
+                        push_signature_client.call(ctx, &req, kB).await?;
+                    }
+                });
+            }
 
             if let Some(ping_timeout) = &self.cfg.ping_timeout {
                 let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx, rpc::ping::RATE);

@@ -77,7 +77,7 @@ pub fn new_configs(
     setup: &validator::testonly::Setup,
     gossip_peers: usize,
 ) -> Vec<Config> {
-    let configs = setup.keys.iter().map(|key| {
+    let configs = setup.validator_keys.iter().map(|validator_key| {
         let addr = net::tcp::testonly::reserve_listener();
         Config {
             server_addr: addr,
@@ -85,7 +85,7 @@ pub fn new_configs(
             // Pings are disabled in tests by default to avoid dropping connections
             // due to timeouts.
             ping_timeout: None,
-            validator_key: Some(key.clone()),
+            validator_key: Some(validator_key.clone()),
             gossip: GossipConfig {
                 key: rng.gen(),
                 dynamic_inbound_limit: usize::MAX,
@@ -220,7 +220,7 @@ impl Instance {
     pub async fn wait_for_consensus_connections(&self) {
         let consensus_state = self.net.consensus.as_ref().unwrap();
 
-        let want: HashSet<_> = self.genesis().committee.keys().cloned().collect();
+        let want: HashSet<_> = self.genesis().validators.keys().cloned().collect();
         consensus_state
             .inbound
             .subscribe()
@@ -298,7 +298,7 @@ pub async fn instant_network(
         node.net
             .gossip
             .validator_addrs
-            .update(&node.genesis().committee, &addrs)
+            .update(&node.genesis().validators, &addrs)
             .await
             .unwrap();
     }

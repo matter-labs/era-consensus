@@ -3,7 +3,6 @@ use crate::io::Dispatcher;
 use anyhow::Context as _;
 use std::{
     collections::{HashMap, HashSet},
-    fmt,
     sync::Arc,
 };
 use zksync_concurrency::{ctx, limiter, net, scope, time};
@@ -19,6 +18,7 @@ mod io;
 mod tests;
 
 /// Validator-related part of [`Executor`].
+#[derive(Debug)]
 pub struct Validator {
     /// Consensus network configuration.
     pub key: validator::SecretKey,
@@ -26,14 +26,6 @@ pub struct Validator {
     pub replica_store: Box<dyn ReplicaStore>,
     /// Payload manager.
     pub payload_manager: Box<dyn bft::PayloadManager>,
-}
-
-impl fmt::Debug for Validator {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_struct("ValidatorExecutor")
-            .field("key", &self.key)
-            .finish()
-    }
 }
 
 /// Config of the node executor.
@@ -47,7 +39,6 @@ pub struct Config {
     pub public_addr: net::Host,
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
-
     /// Key of this node. It uniquely identifies the node.
     /// It should match the secret key provided in the `node_key` file.
     pub node_key: node::SecretKey,
@@ -129,7 +120,7 @@ impl Executor {
             if !self
                 .block_store
                 .genesis()
-                .committee
+                .validators
                 .contains(&validator.key.public())
             {
                 tracing::warn!(

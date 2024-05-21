@@ -133,7 +133,6 @@ impl ProtoFmt for AppConfig {
             // TODO: read secret.
             validator_key: read_optional_secret_text(&r.validator_secret_key)
                 .context("validator_secret_key")?,
-
             node_key: read_required_secret_text(&r.node_secret_key).context("node_secret_key")?,
             gossip_dynamic_inbound_limit: required(&r.gossip_dynamic_inbound_limit)
                 .and_then(|x| Ok((*x).try_into()?))

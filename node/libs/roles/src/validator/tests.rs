@@ -13,12 +13,7 @@ fn test_byte_encoding() {
     let rng = &mut ctx.rng();
 
     let sk: SecretKey = rng.gen();
-    assert_eq!(
-        sk.public(),
-        <SecretKey as ByteFmt>::decode(&ByteFmt::encode(&sk))
-            .unwrap()
-            .public()
-    );
+    assert_eq!(sk, ByteFmt::decode(&ByteFmt::encode(&sk)).unwrap());
 
     let pk: PublicKey = rng.gen();
     assert_eq!(pk, ByteFmt::decode(&ByteFmt::encode(&pk)).unwrap());
@@ -52,10 +47,7 @@ fn test_text_encoding() {
 
     let sk: SecretKey = rng.gen();
     let t = TextFmt::encode(&sk);
-    assert_eq!(
-        sk.public(),
-        Text::new(&t).decode::<SecretKey>().unwrap().public()
-    );
+    assert_eq!(sk, Text::new(&t).decode::<SecretKey>().unwrap());
 
     let pk: PublicKey = rng.gen();
     let t = TextFmt::encode(&pk);
@@ -96,18 +88,18 @@ fn test_schema_encoding() {
     test_encode_random::<Signers>(rng);
     test_encode_random::<PublicKey>(rng);
     test_encode_random::<Signature>(rng);
-    test_encode_random::<AggregateSignature>(rng);
     test_encode_random::<Genesis>(rng);
+    test_encode_random::<AggregateSignature>(rng);
     test_encode_random::<GenesisHash>(rng);
     test_encode_random::<LeaderSelectionMode>(rng);
 }
 
 #[test]
-fn test_genesis_schema_decode() {
+fn test_genesis_verify() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let genesis = rng.gen::<Genesis>();
+    let genesis = Setup::new(rng, 1).genesis.clone();
     assert!(genesis.verify().is_ok());
     assert!(Genesis::read(&genesis.build()).is_ok());
 
@@ -189,7 +181,7 @@ fn make_replica_commit(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> R
 
 fn make_commit_qc(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> CommitQC {
     let mut qc = CommitQC::new(make_replica_commit(rng, view, setup), &setup.genesis);
-    for key in &setup.keys {
+    for key in &setup.validator_keys {
         qc.add(&key.sign_msg(qc.message.clone()), &setup.genesis)
             .unwrap();
     }
@@ -220,19 +212,25 @@ fn test_commit_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let mut genesis3 = (*setup1.genesis).clone();
-    genesis3.committee = Committee::new(setup1.genesis.committee.iter().take(3).cloned()).unwrap();
+    genesis3.validators =
+        Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap();
     let genesis3 = genesis3.with_hash();
-    let validator_weight = setup1.genesis.committee.total_weight() / 6;
 
-    for i in 0..setup1.keys.len() + 1 {
+    for i in 0..setup1.validator_keys.len() + 1 {
         let view = rng.gen();
         let mut qc = CommitQC::new(make_replica_commit(rng, view, &setup1), &setup1.genesis);
-        for key in &setup1.keys[0..i] {
+        for key in &setup1.validator_keys[0..i] {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis)
                 .unwrap();
         }
-        let expected_weight = i as u64 * validator_weight;
-        if expected_weight >= setup1.genesis.committee.threshold() {
+        let expected_weight: u64 = setup1
+            .genesis
+            .validators
+            .iter()
+            .take(i)
+            .map(|w| w.weight)
+            .sum();
+        if expected_weight >= setup1.genesis.validators.threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {
             assert_matches!(
@@ -258,7 +256,10 @@ fn test_commit_qc_add_errors() {
     let msg = qc.message.clone();
     // Add the message
     assert_matches!(
-        qc.add(&setup.keys[0].sign_msg(msg.clone()), &setup.genesis),
+        qc.add(
+            &setup.validator_keys[0].sign_msg(msg.clone()),
+            &setup.genesis
+        ),
         Ok(())
     );
 
@@ -266,7 +267,7 @@ fn test_commit_qc_add_errors() {
     let mut msg1 = msg.clone();
     msg1.view.number = view.next();
     assert_matches!(
-        qc.add(&setup.keys[0].sign_msg(msg1), &setup.genesis),
+        qc.add(&setup.validator_keys[0].sign_msg(msg1), &setup.genesis),
         Err(Error::InconsistentMessages { .. })
     );
 
@@ -281,12 +282,18 @@ fn test_commit_qc_add_errors() {
 
     // Try to add the same message already added by same validator
     assert_matches!(
-        qc.add(&setup.keys[0].sign_msg(msg.clone()), &setup.genesis),
+        qc.add(
+            &setup.validator_keys[0].sign_msg(msg.clone()),
+            &setup.genesis
+        ),
         Err(Error::Exists { .. })
     );
 
     // Add same message signed by another validator.
-    assert_matches!(qc.add(&setup.keys[1].sign_msg(msg), &setup.genesis), Ok(()));
+    assert_matches!(
+        qc.add(&setup.validator_keys[1].sign_msg(msg), &setup.genesis),
+        Ok(())
+    );
 }
 
 #[test]
@@ -299,7 +306,8 @@ fn test_prepare_qc() {
     let setup1 = Setup::new(rng, 6);
     let setup2 = Setup::new(rng, 6);
     let mut genesis3 = (*setup1.genesis).clone();
-    genesis3.committee = Committee::new(setup1.genesis.committee.iter().take(3).cloned()).unwrap();
+    genesis3.validators =
+        Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap();
     let genesis3 = genesis3.with_hash();
 
     let view: ViewNumber = rng.gen();
@@ -307,17 +315,23 @@ fn test_prepare_qc() {
         .map(|_| make_replica_prepare(rng, view, &setup1))
         .collect();
 
-    for n in 0..setup1.keys.len() + 1 {
+    for n in 0..setup1.validator_keys.len() + 1 {
         let mut qc = PrepareQC::new(msgs[0].view.clone());
-        for key in &setup1.keys[0..n] {
+        for key in &setup1.validator_keys[0..n] {
             qc.add(
                 &key.sign_msg(msgs.choose(rng).unwrap().clone()),
                 &setup1.genesis,
             )
             .unwrap();
         }
-        let expected_weight = n as u64 * setup1.genesis.committee.total_weight() / 6;
-        if expected_weight >= setup1.genesis.committee.threshold() {
+        let expected_weight: u64 = setup1
+            .genesis
+            .validators
+            .iter()
+            .take(n)
+            .map(|w| w.weight)
+            .sum();
+        if expected_weight >= setup1.genesis.validators.threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {
             assert_matches!(
@@ -345,7 +359,10 @@ fn test_prepare_qc_add_errors() {
 
     // Add the message
     assert_matches!(
-        qc.add(&setup.keys[0].sign_msg(msg.clone()), &setup.genesis),
+        qc.add(
+            &setup.validator_keys[0].sign_msg(msg.clone()),
+            &setup.genesis
+        ),
         Ok(())
     );
 
@@ -353,7 +370,7 @@ fn test_prepare_qc_add_errors() {
     let mut msg1 = msg.clone();
     msg1.view.number = view.next();
     assert_matches!(
-        qc.add(&setup.keys[0].sign_msg(msg1), &setup.genesis),
+        qc.add(&setup.validator_keys[0].sign_msg(msg1), &setup.genesis),
         Err(Error::InconsistentViews { .. })
     );
 
@@ -368,20 +385,26 @@ fn test_prepare_qc_add_errors() {
 
     // Try to add the same message already added by same validator
     assert_matches!(
-        qc.add(&setup.keys[0].sign_msg(msg.clone()), &setup.genesis),
+        qc.add(
+            &setup.validator_keys[0].sign_msg(msg.clone()),
+            &setup.genesis
+        ),
         Err(Error::Exists { .. })
     );
 
     // Try to add a message for a validator that already added another message
     let msg2 = make_replica_prepare(rng, view, &setup);
     assert_matches!(
-        qc.add(&setup.keys[0].sign_msg(msg2), &setup.genesis),
+        qc.add(&setup.validator_keys[0].sign_msg(msg2), &setup.genesis),
         Err(Error::Exists { .. })
     );
 
     // Add same message signed by another validator.
     assert_matches!(
-        qc.add(&setup.keys[1].sign_msg(msg.clone()), &setup.genesis),
+        qc.add(
+            &setup.validator_keys[1].sign_msg(msg.clone()),
+            &setup.genesis
+        ),
         Ok(())
     );
 }
@@ -400,10 +423,10 @@ fn test_validator_committee_weights() {
     let msg = make_replica_prepare(rng, view, &setup);
     let mut qc = PrepareQC::new(msg.view.clone());
     for (n, weight) in sums.iter().enumerate() {
-        let key = &setup.keys[n];
+        let key = &setup.validator_keys[n];
         qc.add(&key.sign_msg(msg.clone()), &setup.genesis).unwrap();
         let signers = &qc.map[&msg];
-        assert_eq!(setup.genesis.committee.weight(signers), *weight);
+        assert_eq!(setup.genesis.validators.weight(signers), *weight);
     }
 }
 

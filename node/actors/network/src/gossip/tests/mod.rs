@@ -1,6 +1,5 @@
 use super::*;
 use crate::{metrics, preface, rpc, testonly};
-use anyhow::Context as _;
 use assert_matches::assert_matches;
 use pretty_assertions::assert_eq;
 use rand::Rng;
@@ -14,7 +13,7 @@ use zksync_concurrency::{
     testonly::{abort_on_panic, set_timeout},
     time,
 };
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::{attester, validator};
 use zksync_consensus_storage::testonly::new_store;
 
 mod fetch;
@@ -86,6 +85,9 @@ fn mk_version<R: Rng>(rng: &mut R) -> u64 {
 #[derive(Default)]
 struct View(im::HashMap<validator::PublicKey, Arc<validator::Signed<validator::NetAddress>>>);
 
+#[derive(Default)]
+struct Signatures(im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>);
+
 fn mk_netaddr(
     key: &validator::SecretKey,
     addr: std::net::SocketAddr,
@@ -99,6 +101,13 @@ fn mk_netaddr(
     })
 }
 
+fn mk_batch(
+    key: &attester::SecretKey,
+    number: attester::BatchNumber,
+) -> attester::Signed<attester::Batch> {
+    key.sign_msg(attester::Batch { number })
+}
+
 fn random_netaddr<R: Rng>(
     rng: &mut R,
     key: &validator::SecretKey,
@@ -109,6 +118,16 @@ fn random_netaddr<R: Rng>(
         mk_version(rng),
         mk_timestamp(rng),
     ))
+}
+
+fn random_batch_votes<R: Rng>(
+    rng: &mut R,
+    key: &attester::SecretKey,
+) -> Arc<attester::Signed<attester::Batch>> {
+    let batch = attester::Batch {
+        number: attester::BatchNumber(rng.gen_range(0..1000)),
+    };
+    Arc::new(key.sign_msg(batch.to_owned()))
 }
 
 fn update_netaddr<R: Rng>(
@@ -126,6 +145,18 @@ fn update_netaddr<R: Rng>(
     ))
 }
 
+fn update_signature<R: Rng>(
+    _rng: &mut R,
+    batch: &attester::Batch,
+    key: &attester::SecretKey,
+    batch_number_diff: i64,
+) -> Arc<attester::Signed<attester::Batch>> {
+    let batch = attester::Batch {
+        number: attester::BatchNumber((batch.number.0 as i64 + batch_number_diff) as u64),
+    };
+    Arc::new(key.sign_msg(batch.to_owned()))
+}
+
 impl View {
     fn insert(&mut self, entry: Arc<validator::Signed<validator::NetAddress>>) {
         self.0.insert(entry.key.clone(), entry);
@@ -136,6 +167,20 @@ impl View {
     }
 
     fn as_vec(&self) -> Vec<Arc<validator::Signed<validator::NetAddress>>> {
+        self.0.values().cloned().collect()
+    }
+}
+
+impl Signatures {
+    fn insert(&mut self, entry: Arc<attester::Signed<attester::Batch>>) {
+        self.0.insert(entry.key.clone(), entry);
+    }
+
+    fn get(&mut self, key: &attester::SecretKey) -> Arc<attester::Signed<attester::Batch>> {
+        self.0.get(&key.public()).unwrap().clone()
+    }
+
+    fn as_vec(&self) -> Vec<Arc<attester::Signed<attester::Batch>>> {
         self.0.values().cloned().collect()
     }
 }
@@ -375,7 +420,9 @@ async fn validator_node_restart() {
                 let sub = &mut node1.net.gossip.validator_addrs.subscribe();
                 let want = Some(*cfgs[0].server_addr);
                 sync::wait_for(ctx, sub, |got| {
-                    got.get(&setup.keys[0].public()).map(|x| x.msg.addr) == want
+                    got.get(&setup.validator_keys[0].public())
+                        .map(|x| x.msg.addr)
+                        == want
                 })
                 .await?;
                 Ok(())
@@ -463,3 +510,72 @@ async fn rate_limiting() {
         assert!((1..=2).contains(&got), "got {got} want 1 or 2");
     }
 }
+
+#[tokio::test]
+async fn test_batch_votes() {
+    abort_on_panic();
+    let rng = &mut ctx::test_root(&ctx::RealClock).rng();
+
+    let keys: Vec<attester::SecretKey> = (0..8).map(|_| rng.gen()).collect();
+    let attesters = attester::Committee::new(keys.iter().map(|k| attester::WeightedAttester {
+        key: k.public(),
+        weight: 1250,
+    }))
+    .unwrap();
+    let votes = BatchVotesWatch::default();
+    let mut sub = votes.subscribe();
+
+    // Initial values.
+    let mut want = Signatures::default();
+    for k in &keys[0..6] {
+        want.insert(random_batch_votes(rng, k));
+    }
+    votes.update(&attesters, &want.as_vec()).await.unwrap();
+    assert_eq!(want.0, sub.borrow_and_update().0);
+
+    // newer batch number
+    let k0v2 = update_signature(rng, &want.get(&keys[0]).msg, &keys[0], 1);
+    // same batch number
+    let k1v2 = update_signature(rng, &want.get(&keys[1]).msg, &keys[1], 0);
+    // older batch number
+    let k4v2 = update_signature(rng, &want.get(&keys[4]).msg, &keys[4], -1);
+    // first entry for a key in the config
+    let k6v1 = random_batch_votes(rng, &keys[6]);
+    // entry for a key outside of the config
+    let k8 = rng.gen();
+    let k8v1 = random_batch_votes(rng, &k8);
+
+    want.insert(k0v2.clone());
+    want.insert(k1v2.clone());
+    want.insert(k6v1.clone());
+    let update = [
+        k0v2,
+        k1v2,
+        k4v2,
+        // no new entry for keys[5]
+        k6v1,
+        // no entry at all for keys[7]
+        k8v1.clone(),
+    ];
+    votes.update(&attesters, &update).await.unwrap();
+    assert_eq!(want.0, sub.borrow_and_update().0);
+
+    // Invalid signature.
+    let mut k0v3 = mk_batch(&keys[1], attester::BatchNumber(rng.gen_range(0..1000)));
+    k0v3.sig = rng.gen();
+    assert!(votes.update(&attesters, &[Arc::new(k0v3)]).await.is_err());
+    assert_eq!(want.0, sub.borrow_and_update().0);
+
+    // Duplicate entry in the update.
+    assert!(votes
+        .update(&attesters, &[k8v1.clone(), k8v1])
+        .await
+        .is_err());
+    assert_eq!(want.0, sub.borrow_and_update().0);
+}
+
+// TODO: This test is disabled because the logic for attesters to receive and sign batches is not implemented yet.
+// It should be re-enabled once the logic is implemented.
+// #[tokio::test(flavor = "multi_thread")]
+// async fn test_batch_votes_propagation() {
+// }

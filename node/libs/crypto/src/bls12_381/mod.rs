@@ -168,6 +168,12 @@ impl Ord for Signature {
     }
 }
 
+impl std::hash::Hash for Signature {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        ByteFmt::encode(self).hash(state)
+    }
+}
+
 /// Type safety wrapper around a `blst` aggregate signature
 #[derive(Clone, Debug)]
 pub struct AggregateSignature(bls::AggregateSignature);

@@ -86,7 +86,7 @@ impl CommitQC {
     pub fn new(message: ReplicaCommit, genesis: &Genesis) -> Self {
         Self {
             message,
-            signers: Signers::new(genesis.committee.len()),
+            signers: Signers::new(genesis.validators.len()),
             signature: validator::AggregateSignature::default(),
         }
     }
@@ -102,7 +102,7 @@ impl CommitQC {
         if self.message != msg.msg {
             return Err(Error::InconsistentMessages);
         };
-        let Some(i) = genesis.committee.index(&msg.key) else {
+        let Some(i) = genesis.validators.index(&msg.key) else {
             return Err(Error::SignerNotInCommittee {
                 signer: Box::new(msg.key.clone()),
             });
@@ -121,13 +121,13 @@ impl CommitQC {
         self.message
             .verify(genesis)
             .map_err(Error::InvalidMessage)?;
-        if self.signers.len() != genesis.committee.len() {
+        if self.signers.len() != genesis.validators.len() {
             return Err(Error::BadSignersSet);
         }
 
         // Verify the signers' weight is enough.
-        let weight = genesis.committee.weight(&self.signers);
-        let threshold = genesis.committee.threshold();
+        let weight = genesis.validators.weight(&self.signers);
+        let threshold = genesis.validators.threshold();
         if weight < threshold {
             return Err(Error::NotEnoughSigners {
                 got: weight,
@@ -137,7 +137,7 @@ impl CommitQC {
 
         // Now we can verify the signature.
         let messages_and_keys = genesis
-            .committee
+            .validators
             .keys()
             .enumerate()
             .filter(|(i, _)| self.signers.0[*i])

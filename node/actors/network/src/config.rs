@@ -20,6 +20,8 @@ pub struct RpcConfig {
     pub get_block_timeout: Option<time::Duration>,
     /// Max rate of sending/receiving consensus messages.
     pub consensus_rate: limiter::Rate,
+    /// Max rate of sending/receiving l1 batch votes messages.
+    pub push_batch_votes_rate: limiter::Rate,
 }
 
 impl Default for RpcConfig {
@@ -41,6 +43,10 @@ impl Default for RpcConfig {
             consensus_rate: limiter::Rate {
                 burst: 10,
                 refresh: time::Duration::ZERO,
+            },
+            push_batch_votes_rate: limiter::Rate {
+                burst: 2,
+                refresh: time::Duration::milliseconds(500),
             },
         }
     }

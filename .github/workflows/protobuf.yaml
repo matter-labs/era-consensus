@@ -2,7 +2,7 @@ name: protobuf_compatibility
 
 on:
   pull_request:
-    branches: [ "*" ]
+    branches: ["*"]
   push:
     # protobuf compatibility is a transitive property,
     # but it requires all the transitions to be checked.
@@ -11,7 +11,7 @@ on:
     # (unless we improve our github setup).
     # Therefore on post-merge we will execute the
     # compatibility check as well (TODO: alerting).
-    branches: [ "main" ]
+    branches: ["main"]
 
 permissions:
   id-token: write
@@ -33,8 +33,8 @@ jobs:
   compatibility:
     runs-on: [ubuntu-22.04-github-hosted-16core]
     steps:
-      - uses: mozilla-actions/sccache-action@v0.0.3     
-      
+      - uses: mozilla-actions/sccache-action@v0.0.3
+
       # before
       - uses: actions/checkout@v4
         with:
@@ -42,8 +42,7 @@ jobs:
           path: before
           fetch-depth: 0 # fetches all branches and tags, which is needed to compute the LCA.
       - name: checkout LCA
-        run:
-          git checkout $(git merge-base $BASE $HEAD)
+        run: git checkout $(git merge-base $BASE $HEAD)
         working-directory: ./before
       - name: compile before
         run: cargo build --all-targets
@@ -53,7 +52,7 @@ jobs:
           perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/'
           `find ./before/node/target/debug/build/*/output`
           | xargs cat > ./before.binpb
- 
+
       # after
       - uses: actions/checkout@v4
         with:
@@ -67,7 +66,7 @@ jobs:
           perl -ne 'print "$1\n" if /PROTOBUF_DESCRIPTOR="(.*)"/'
           `find ./after/node/target/debug/build/*/output`
           | xargs cat > ./after.binpb
-      
+
       # compare
       - uses: bufbuild/buf-setup-action@v1
         with:

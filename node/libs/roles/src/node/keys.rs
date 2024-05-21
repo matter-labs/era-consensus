@@ -99,7 +99,7 @@ impl fmt::Debug for PublicKey {
 }
 
 /// A signature of a message.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Signature(pub(super) ed25519::Signature);
 
 impl ByteFmt for Signature {
