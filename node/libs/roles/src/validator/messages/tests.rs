@@ -103,6 +103,29 @@ fn test_sticky() {
     }
 }
 
+#[test]
+fn test_rota() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let committee = validator_committee();
+    let mut want = Vec::new();
+    for _ in 0..3 {
+        want.push(
+            committee
+                .get(rng.gen_range(0..committee.len()))
+                .unwrap()
+                .key
+                .clone(),
+        );
+    }
+    let rota = LeaderSelectionMode::Rota(want.clone());
+    for _ in 0..100 {
+        let vn: ViewNumber = rng.gen();
+        let pk = &want[vn.0 as usize % want.len()];
+        assert_eq!(*pk, committee.view_leader(vn, &rota));
+    }
+}
+
 /// Hardcoded view numbers.
 fn views() -> impl Iterator<Item = ViewNumber> {
     [8394532, 2297897, 9089304, 7203483, 9982111]
