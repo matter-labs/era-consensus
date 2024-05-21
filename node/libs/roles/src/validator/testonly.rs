@@ -269,7 +269,10 @@ impl Distribution<LeaderSelectionMode> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderSelectionMode {
         match rng.gen_range(0..=2) {
             0 => LeaderSelectionMode::RoundRobin,
-            1 => LeaderSelectionMode::Sticky(rng.gen()),
+            1 => LeaderSelectionMode::Sticky({
+                let n = rng.gen_range(1..=3);
+                rng.sample_iter(Standard).take(n).collect()
+            }),
             _ => LeaderSelectionMode::Weighted,
         }
     }

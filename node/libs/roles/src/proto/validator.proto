@@ -28,7 +28,7 @@ message LeaderSelectionMode {
   }
   message RoundRobin{}
   message Sticky{
-    optional PublicKey key = 1; // required
+    repeated PublicKey keys = 1; // required
   }
   message Weighted{}
 }

@@ -459,8 +459,13 @@ impl ProtoFmt for LeaderSelectionMode {
                 Ok(LeaderSelectionMode::RoundRobin)
             }
             proto::leader_selection_mode::Mode::Sticky(inner) => {
-                let key = required(&inner.key).context("key")?;
-                Ok(LeaderSelectionMode::Sticky(PublicKey::read(key)?))
+                let _ = required(&inner.keys.first()).context("key")?;
+                let pks = inner
+                    .keys
+                    .iter()
+                    .map(PublicKey::read)
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(LeaderSelectionMode::Sticky(pks))
             }
             proto::leader_selection_mode::Mode::Weighted(_) => Ok(LeaderSelectionMode::Weighted),
         }
@@ -472,10 +477,10 @@ impl ProtoFmt for LeaderSelectionMode {
                     proto::leader_selection_mode::RoundRobin {},
                 )),
             },
-            LeaderSelectionMode::Sticky(pk) => proto::LeaderSelectionMode {
+            LeaderSelectionMode::Sticky(pks) => proto::LeaderSelectionMode {
                 mode: Some(proto::leader_selection_mode::Mode::Sticky(
                     proto::leader_selection_mode::Sticky {
-                        key: Some(pk.build()),
+                        keys: pks.iter().map(|pk| pk.build()).collect(),
                     },
                 )),
             },
