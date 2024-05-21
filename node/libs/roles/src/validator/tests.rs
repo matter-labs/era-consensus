@@ -104,7 +104,7 @@ fn test_genesis_verify() {
     assert!(Genesis::read(&genesis.build()).is_ok());
 
     let mut genesis = (*genesis).clone();
-    genesis.leader_selection = LeaderSelectionMode::Sticky(vec![rng.gen()]);
+    genesis.leader_selection = LeaderSelectionMode::Sticky(rng.gen());
     let genesis = genesis.with_hash();
     assert!(genesis.verify().is_err());
     assert!(Genesis::read(&genesis.build()).is_err())

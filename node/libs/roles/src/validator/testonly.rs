@@ -267,9 +267,10 @@ impl Distribution<GenesisHash> for Standard {
 
 impl Distribution<LeaderSelectionMode> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderSelectionMode {
-        match rng.gen_range(0..=2) {
+        match rng.gen_range(0..=3) {
             0 => LeaderSelectionMode::RoundRobin,
-            1 => LeaderSelectionMode::Sticky({
+            1 => LeaderSelectionMode::Sticky(rng.gen()),
+            3 => LeaderSelectionMode::Rota({
                 let n = rng.gen_range(1..=3);
                 rng.sample_iter(Standard).take(n).collect()
             }),

@@ -59,11 +59,14 @@ pub enum LeaderSelectionMode {
     /// Select in a round-robin fashion, based on validators' index within the set.
     RoundRobin,
 
-    /// Select based on a sticky assignment to a non-empty list of specific validators.
-    Sticky(Vec<validator::PublicKey>),
+    /// Select based on a sticky assignment to a specific validator.
+    Sticky(validator::PublicKey),
 
     /// Select pseudo-randomly, based on validators' weights.
     Weighted,
+
+    /// Select on a rotation of specific validator keys.
+    Rota(Vec<validator::PublicKey>),
 }
 
 /// Calculates the pseudo-random eligibility of a leader based on the input and total weight.
@@ -174,7 +177,11 @@ impl Committee {
                 }
                 unreachable!()
             }
-            LeaderSelectionMode::Sticky(pks) => {
+            LeaderSelectionMode::Sticky(pk) => {
+                let index = self.index(pk).unwrap();
+                self.get(index).unwrap().key.clone()
+            }
+            LeaderSelectionMode::Rota(pks) => {
                 let index = view_number.0 as usize % pks.len();
                 let index = self.index(&pks[index]).unwrap();
                 self.get(index).unwrap().key.clone()
@@ -310,11 +317,15 @@ impl fmt::Debug for Genesis {
 impl Genesis {
     /// Verifies correctness.
     pub fn verify(&self) -> anyhow::Result<()> {
-        if let LeaderSelectionMode::Sticky(pks) = &self.leader_selection {
+        if let LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
+            if self.validators.index(pk).is_none() {
+                anyhow::bail!("leader_selection sticky mode public key is not in committee");
+            }
+        } else if let LeaderSelectionMode::Rota(pks) = &self.leader_selection {
             for pk in pks {
                 if self.validators.index(pk).is_none() {
                     anyhow::bail!(
-                        "leader_selection sticky mode public key is not in committee: {pk:?}"
+                        "leader_selection rota mode public key is not in committee: {pk:?}"
                     );
                 }
             }

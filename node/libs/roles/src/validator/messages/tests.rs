@@ -92,6 +92,22 @@ fn test_sticky() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let committee = validator_committee();
+    let want = committee
+        .get(rng.gen_range(0..committee.len()))
+        .unwrap()
+        .key
+        .clone();
+    let sticky = LeaderSelectionMode::Sticky(want.clone());
+    for _ in 0..100 {
+        assert_eq!(want, committee.view_leader(rng.gen(), &sticky));
+    }
+}
+
+#[test]
+fn test_rota() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let committee = validator_committee();
     let mut want = Vec::new();
     for _ in 0..3 {
         want.push(
@@ -102,11 +118,11 @@ fn test_sticky() {
                 .clone(),
         );
     }
-    let sticky = LeaderSelectionMode::Sticky(want.clone());
+    let rota = LeaderSelectionMode::Rota(want.clone());
     for _ in 0..100 {
         let vn: ViewNumber = rng.gen();
         let pk = &want[vn.0 as usize % want.len()];
-        assert_eq!(*pk, committee.view_leader(vn, &sticky));
+        assert_eq!(*pk, committee.view_leader(vn, &rota));
     }
 }
 
@@ -210,7 +226,7 @@ mod version1 {
     fn genesis_verify_leader_pubkey_not_in_committee() {
         let mut rng = StdRng::seed_from_u64(29483920);
         let mut genesis = rng.gen::<GenesisRaw>();
-        genesis.leader_selection = LeaderSelectionMode::Sticky(vec![rng.gen()]);
+        genesis.leader_selection = LeaderSelectionMode::Sticky(rng.gen());
         let genesis = genesis.with_hash();
         assert!(genesis.verify().is_err())
     }

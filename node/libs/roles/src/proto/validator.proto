@@ -25,12 +25,16 @@ message LeaderSelectionMode {
     RoundRobin round_robin = 1;
     Sticky sticky = 2;
     Weighted weighted = 3;
+    Rota rota = 4;
   }
   message RoundRobin{}
   message Sticky{
-    repeated PublicKey keys = 1; // required
+    optional PublicKey key = 1; // required
   }
   message Weighted{}
+  message Rota {
+    repeated PublicKey keys = 1; // required
+  }
 }
 
 

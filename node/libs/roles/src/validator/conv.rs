@@ -459,15 +459,19 @@ impl ProtoFmt for LeaderSelectionMode {
                 Ok(LeaderSelectionMode::RoundRobin)
             }
             proto::leader_selection_mode::Mode::Sticky(inner) => {
-                let _ = required(&inner.keys.first()).context("key")?;
+                let key = required(&inner.key).context("key")?;
+                Ok(LeaderSelectionMode::Sticky(PublicKey::read(key)?))
+            }
+            proto::leader_selection_mode::Mode::Weighted(_) => Ok(LeaderSelectionMode::Weighted),
+            proto::leader_selection_mode::Mode::Rota(inner) => {
+                let _ = required(&inner.keys.first()).context("keys")?;
                 let pks = inner
                     .keys
                     .iter()
                     .map(PublicKey::read)
                     .collect::<Result<Vec<_>, _>>()?;
-                Ok(LeaderSelectionMode::Sticky(pks))
+                Ok(LeaderSelectionMode::Rota(pks))
             }
-            proto::leader_selection_mode::Mode::Weighted(_) => Ok(LeaderSelectionMode::Weighted),
         }
     }
     fn build(&self) -> Self::Proto {
@@ -477,16 +481,23 @@ impl ProtoFmt for LeaderSelectionMode {
                     proto::leader_selection_mode::RoundRobin {},
                 )),
             },
-            LeaderSelectionMode::Sticky(pks) => proto::LeaderSelectionMode {
+            LeaderSelectionMode::Sticky(pk) => proto::LeaderSelectionMode {
                 mode: Some(proto::leader_selection_mode::Mode::Sticky(
                     proto::leader_selection_mode::Sticky {
-                        keys: pks.iter().map(|pk| pk.build()).collect(),
+                        key: Some(pk.build()),
                     },
                 )),
             },
             LeaderSelectionMode::Weighted => proto::LeaderSelectionMode {
                 mode: Some(proto::leader_selection_mode::Mode::Weighted(
                     proto::leader_selection_mode::Weighted {},
+                )),
+            },
+            LeaderSelectionMode::Rota(pks) => proto::LeaderSelectionMode {
+                mode: Some(proto::leader_selection_mode::Mode::Rota(
+                    proto::leader_selection_mode::Rota {
+                        keys: pks.iter().map(|pk| pk.build()).collect(),
+                    },
                 )),
             },
         }
