@@ -15,6 +15,14 @@ impl Distribution<AppConfig> for EncodeDist {
             let i = rng.gen_range(0..genesis.validators.len());
             genesis.leader_selection =
                 LeaderSelectionMode::Sticky(genesis.validators.get(i).unwrap().key.clone());
+        } else if let LeaderSelectionMode::Rota(pks) = genesis.leader_selection {
+            let n = pks.len();
+            let i = rng.gen_range(0..genesis.validators.len());
+            let mut pks = Vec::new();
+            for _ in 0..n {
+                pks.push(genesis.validators.get(i).unwrap().key.clone());
+            }
+            genesis.leader_selection = LeaderSelectionMode::Rota(pks);
         }
         AppConfig {
             server_addr: self.sample(rng),

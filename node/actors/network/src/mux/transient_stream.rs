@@ -19,12 +19,6 @@ pub(crate) struct ReadStream(pub(super) sync::ExclusiveLock<ReadReusableStream>)
 #[derive(Debug)]
 pub(crate) struct WriteStream(pub(super) sync::ExclusiveLock<WriteReusableStream>);
 
-/// Error returned by `ReadStream::read` in case the stream has been closed by peer.
-#[allow(dead_code)]
-#[derive(Debug, thiserror::Error)]
-#[error("end of stream")]
-pub(crate) struct EndOfStream;
-
 impl ReadStream {
     /// Reads until buf is full, or end of stream is reached.
     pub(crate) async fn read_exact(

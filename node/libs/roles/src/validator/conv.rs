@@ -463,6 +463,15 @@ impl ProtoFmt for LeaderSelectionMode {
                 Ok(LeaderSelectionMode::Sticky(PublicKey::read(key)?))
             }
             proto::leader_selection_mode::Mode::Weighted(_) => Ok(LeaderSelectionMode::Weighted),
+            proto::leader_selection_mode::Mode::Rota(inner) => {
+                let _ = required(&inner.keys.first()).context("keys")?;
+                let pks = inner
+                    .keys
+                    .iter()
+                    .map(PublicKey::read)
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(LeaderSelectionMode::Rota(pks))
+            }
         }
     }
     fn build(&self) -> Self::Proto {
@@ -482,6 +491,13 @@ impl ProtoFmt for LeaderSelectionMode {
             LeaderSelectionMode::Weighted => proto::LeaderSelectionMode {
                 mode: Some(proto::leader_selection_mode::Mode::Weighted(
                     proto::leader_selection_mode::Weighted {},
+                )),
+            },
+            LeaderSelectionMode::Rota(pks) => proto::LeaderSelectionMode {
+                mode: Some(proto::leader_selection_mode::Mode::Rota(
+                    proto::leader_selection_mode::Rota {
+                        keys: pks.iter().map(|pk| pk.build()).collect(),
+                    },
                 )),
             },
         }

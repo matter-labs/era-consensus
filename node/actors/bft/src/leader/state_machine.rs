@@ -84,8 +84,9 @@ impl StateMachine {
             let req = self.inbound_pipe.recv(ctx).await?;
 
             let now = ctx.now();
+            use validator::ConsensusMsg as M;
             let label = match &req.msg.msg {
-                ConsensusMsg::ReplicaPrepare(_) => {
+                M::ReplicaPrepare(_) => {
                     let res = match self
                         .process_replica_prepare(ctx, req.msg.cast().unwrap())
                         .await
@@ -102,7 +103,7 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
                 }
-                ConsensusMsg::ReplicaCommit(_) => {
+                M::ReplicaCommit(_) => {
                     let res = self
                         .process_replica_commit(ctx, req.msg.cast().unwrap())
                         .map_err(|err| {
@@ -226,8 +227,9 @@ impl StateMachine {
         if old_req.msg.key != new_req.msg.key {
             return SelectionFunctionResult::Keep;
         }
+        use validator::ConsensusMsg as M;
         match (&old_req.msg.msg, &new_req.msg.msg) {
-            (ConsensusMsg::ReplicaPrepare(old), ConsensusMsg::ReplicaPrepare(new)) => {
+            (M::ReplicaPrepare(old), M::ReplicaPrepare(new)) => {
                 // Discard older message
                 if old.view.number < new.view.number {
                     SelectionFunctionResult::DiscardOld
@@ -235,7 +237,7 @@ impl StateMachine {
                     SelectionFunctionResult::DiscardNew
                 }
             }
-            (ConsensusMsg::ReplicaCommit(old), ConsensusMsg::ReplicaCommit(new)) => {
+            (M::ReplicaCommit(old), M::ReplicaCommit(new)) => {
                 // Discard older message
                 if old.view.number < new.view.number {
                     SelectionFunctionResult::DiscardOld

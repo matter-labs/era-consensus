@@ -64,6 +64,9 @@ pub enum LeaderSelectionMode {
 
     /// Select pseudo-randomly, based on validators' weights.
     Weighted,
+
+    /// Select on a rotation of specific validator keys.
+    Rota(Vec<validator::PublicKey>),
 }
 
 /// Calculates the pseudo-random eligibility of a leader based on the input and total weight.
@@ -176,6 +179,11 @@ impl Committee {
             }
             LeaderSelectionMode::Sticky(pk) => {
                 let index = self.index(pk).unwrap();
+                self.get(index).unwrap().key.clone()
+            }
+            LeaderSelectionMode::Rota(pks) => {
+                let index = view_number.0 as usize % pks.len();
+                let index = self.index(&pks[index]).unwrap();
                 self.get(index).unwrap().key.clone()
             }
         }
@@ -312,6 +320,14 @@ impl Genesis {
         if let LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
             if self.validators.index(pk).is_none() {
                 anyhow::bail!("leader_selection sticky mode public key is not in committee");
+            }
+        } else if let LeaderSelectionMode::Rota(pks) = &self.leader_selection {
+            for pk in pks {
+                if self.validators.index(pk).is_none() {
+                    anyhow::bail!(
+                        "leader_selection rota mode public key is not in committee: {pk:?}"
+                    );
+                }
             }
         }
 

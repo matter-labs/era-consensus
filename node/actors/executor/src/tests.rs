@@ -1,5 +1,6 @@
 //! High-level tests for `Executor`.
 use super::*;
+use rand::Rng as _;
 use tracing::Instrument as _;
 use zksync_concurrency::testonly::abort_on_panic;
 use zksync_consensus_bft as bft;
@@ -99,6 +100,94 @@ async fn test_single_validator() {
             .blocks
             .0
             .wait_until_persisted(ctx, BlockNumber(5))
+            .await?;
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_many_validators() {
+    abort_on_panic();
+    let ctx = &ctx::root();
+    let rng = &mut ctx.rng();
+
+    let setup = Setup::new(rng, 3);
+    let cfgs = new_configs(rng, &setup, 1);
+    scope::run!(ctx, |ctx, s| async {
+        for cfg in cfgs {
+            let replica_store = in_memory::ReplicaStore::default();
+            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+            s.spawn_bg(store.blocks.1.run(ctx));
+            s.spawn_bg(
+                validator(
+                    &cfg,
+                    store.blocks.0.clone(),
+                    store.batches.0.clone(),
+                    replica_store,
+                )
+                .run(ctx),
+            );
+
+            // Spawn a task waiting for blocks to get finalized and delivered to this validator.
+            s.spawn(async {
+                let store = store.blocks.0;
+                store.wait_until_persisted(ctx, BlockNumber(5)).await?;
+                Ok(())
+            });
+        }
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_inactive_validator() {
+    abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(20.0));
+    let rng = &mut ctx.rng();
+
+    let setup = Setup::new(rng, 1);
+    let cfgs = new_configs(rng, &setup, 0);
+    scope::run!(ctx, |ctx, s| async {
+        // Spawn validator.
+        let replica_store = in_memory::ReplicaStore::default();
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.blocks.1.run(ctx));
+        s.spawn_bg(
+            validator(
+                &cfgs[0],
+                store.blocks.0.clone(),
+                store.batches.0.clone(),
+                replica_store,
+            )
+            .run(ctx),
+        );
+
+        // Spawn a validator node, which doesn't belong to the consensus.
+        // Therefore it should behave just like a fullnode.
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.blocks.1.run(ctx));
+        let mut cfg = new_fullnode(rng, &cfgs[0]);
+        cfg.validator_key = Some(rng.gen());
+        let replica_store = in_memory::ReplicaStore::default();
+        s.spawn_bg(
+            validator(
+                &cfg,
+                store.blocks.0.clone(),
+                store.batches.0.clone(),
+                replica_store,
+            )
+            .run(ctx),
+        );
+
+        // Wait for blocks in inactive validator's store.
+        store
+            .blocks
+            .0
+            .wait_until_persisted(ctx, setup.genesis.first_block + 5)
             .await?;
         Ok(())
     })

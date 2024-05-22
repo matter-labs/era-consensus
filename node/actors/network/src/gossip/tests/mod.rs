@@ -599,8 +599,11 @@ async fn test_batch_votes() {
     assert_eq!(want.0, sub.borrow_and_update().0);
 
     // Invalid signature.
-    let random_batch_number = attester::BatchNumber(rng.gen_range(0..1000));
-    let mut k0v3 = mk_batch(rng, &keys[1], random_batch_number);
+    let mut k0v3 = mk_batch(
+        rng,
+        &keys[1],
+        attester::BatchNumber(rng.clone().gen_range(0..1000)),
+    );
     k0v3.sig = rng.gen();
     assert!(votes.update(&attesters, &[Arc::new(k0v3)]).await.is_err());
     assert_eq!(want.0, sub.borrow_and_update().0);

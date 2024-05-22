@@ -154,6 +154,7 @@ fn test_batch_qc() {
     .unwrap()
     .into();
     let genesis3 = genesis3.with_hash();
+    let attesters = setup1.genesis.attesters.as_ref().unwrap();
 
     for i in 0..setup1.attester_keys.len() + 1 {
         let mut qc = BatchQC::new(make_batch_msg(rng), &setup1.genesis).unwrap();
@@ -162,16 +163,8 @@ fn test_batch_qc() {
                 .unwrap();
         }
 
-        let expected_weight: u64 = setup1
-            .genesis
-            .attesters
-            .as_ref()
-            .unwrap()
-            .iter()
-            .take(i)
-            .map(|w| w.weight)
-            .sum();
-        if expected_weight >= setup1.genesis.attesters.as_ref().unwrap().threshold() {
+        let expected_weight: u64 = attesters.iter().take(i).map(|w| w.weight).sum();
+        if expected_weight >= attesters.threshold() {
             assert!(qc.verify(&setup1.genesis).is_ok());
         } else {
             assert_matches!(
