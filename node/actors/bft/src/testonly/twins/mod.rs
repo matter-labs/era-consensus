@@ -56,32 +56,29 @@ impl<'a, T> Partitioner<'a, T> {
     fn generate(items: Partition<'a, T>, num_partitions: usize) -> Vec<Partitioning<'a, T>> {
         if num_partitions == 0 || items.len() < num_partitions {
             // Impossible to partition.
-            Vec::new()
+            return Vec::new();
         } else if num_partitions == items.len() {
             // Each items stands alone.
-            vec![items.into_iter().map(|i| vec![i]).collect()]
+            return vec![items.into_iter().map(|i| vec![i]).collect()];
         } else if num_partitions == 1 {
             // All items are in a single partition.
-            vec![vec![items]]
-        } else {
-            // Create empty partitions for each slot.
-            let acc = (0..num_partitions)
-                .into_iter()
-                .map(|_| Vec::new())
-                .collect();
-
-            let mut ps = Self {
-                num_items: items.len(),
-                num_partitions,
-                items,
-                output: Vec::new(),
-                acc,
-            };
-            // Generate all combinations
-            ps.go(0, 0);
-            // Take the results
-            ps.output
+            return vec![vec![items]];
         }
+
+        // Create empty partitions for each slot.
+        let acc = vec![vec![]; num_partitions];
+
+        let mut ps = Self {
+            num_items: items.len(),
+            num_partitions,
+            items,
+            output: Vec::new(),
+            acc,
+        };
+        // Generate all combinations
+        ps.go(0, 0);
+        // Take the results
+        ps.output
     }
 
     /// Recursively generate partitions.

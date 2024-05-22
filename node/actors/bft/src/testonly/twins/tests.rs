@@ -37,7 +37,7 @@ fn prop_partitions() {
         let got = BTreeSet::from_iter(got.into_iter().map(|ps| {
             BTreeSet::from_iter(
                 ps.into_iter()
-                    .map(|p| BTreeSet::from_iter(p.into_iter().map(|i| *i))),
+                    .map(|p| BTreeSet::from_iter(p.into_iter().copied())),
             )
         }));
 
@@ -55,17 +55,12 @@ fn partitions_naive<T: Ord + Eq + Clone + Debug>(
     items: Vec<T>,
     num_partitions: usize,
 ) -> BTreeSet<BTreeSet<BTreeSet<T>>> {
-    // Create empty partitions.
-    let mut empty = Vec::new();
-    for _ in 0..num_partitions {
-        empty.push(BTreeSet::new());
-    }
     // Seed the accumulator with the single empty partition
     let mut acc = BTreeSet::new();
-    acc.insert(empty);
+    acc.insert(vec![BTreeSet::new(); num_partitions]);
 
     // Allocate each item into every possible partition, replacing the accumulator each time.
-    for item in items.iter() {
+    for item in &items {
         acc = acc
             .into_iter()
             .flat_map(|ps| {
