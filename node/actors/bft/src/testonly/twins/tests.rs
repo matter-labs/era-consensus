@@ -34,6 +34,7 @@ fn prop_partitions() {
         }
 
         let got = partitions(&items.iter().collect::<Vec<_>>(), num_partitions);
+        let got_len = got.len();
         let got = BTreeSet::from_iter(got.into_iter().map(|ps| {
             BTreeSet::from_iter(
                 ps.into_iter()
@@ -44,8 +45,14 @@ fn prop_partitions() {
         let want = partitions_naive(items, num_partitions);
 
         assert_eq!(
+            got_len,
+            want.len(),
+            "length num_items={num_items} num_partitions={num_partitions}"
+        );
+
+        assert_eq!(
             got, want,
-            "num_items={num_items} num_partitions={num_partitions}"
+            "values num_items={num_items} num_partitions={num_partitions}"
         );
     }
 }
