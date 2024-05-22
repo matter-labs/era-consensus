@@ -49,11 +49,23 @@ impl BatchNumber {
     pub fn next(&self) -> BatchNumber {
         BatchNumber(self.0 + 1)
     }
+
+    /// Returns the previous batch number.
+    pub fn prev(self) -> Option<Self> {
+        Some(Self(self.0.checked_sub(1)?))
+    }
 }
 
 impl fmt::Display for BatchNumber {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.0, formatter)
+    }
+}
+
+impl std::ops::Add<u64> for BatchNumber {
+    type Output = BatchNumber;
+    fn add(self, n: u64) -> Self {
+        Self(self.0.checked_add(n).unwrap())
     }
 }
 

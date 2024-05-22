@@ -4,7 +4,7 @@ use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::testonly::new_store;
+use zksync_consensus_storage::testonly::TestMemoryStorage;
 use zksync_consensus_utils::pipe;
 
 #[derive(Clone, Copy)]
@@ -34,15 +34,16 @@ impl Test {
         let mut honest = vec![];
         scope::run!(ctx, |ctx, s| async {
             for (i, net) in nets.into_iter().enumerate() {
-                let (store, runner) = new_store(ctx, &setup.genesis).await;
-                s.spawn_bg(runner.run(ctx));
+                let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+                s.spawn_bg(store.blocks.1.run(ctx));
                 if self.nodes[i].0 == Behavior::Honest {
-                    honest.push(store.clone());
+                    honest.push(store.blocks.0.clone());
                 }
                 nodes.push(Node {
                     net,
                     behavior: self.nodes[i].0,
-                    block_store: store,
+                    block_store: store.blocks.0,
+                    batch_store: store.batches.0,
                 });
             }
             assert!(!honest.is_empty());
@@ -80,6 +81,7 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, specs: &[Node]) -> anyhow::
                     let (node, runner) = network::testonly::Instance::new(
                         spec.net.clone(),
                         spec.block_store.clone(),
+                        spec.batch_store.clone(),
                     );
                     s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                     nodes.push(node);

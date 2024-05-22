@@ -11,8 +11,8 @@ use zksync_concurrency::{ctx, net};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
-use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BlockStore, BlockStoreRunner};
+use zksync_consensus_roles::{attester, node, validator};
+use zksync_consensus_storage::{testonly::TestMemoryStorage, BlockStoreRunner};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
 fn read_required_secret_text<T: TextFmt>(text: &Option<String>) -> anyhow::Result<T> {
@@ -93,6 +93,7 @@ pub struct AppConfig {
     pub genesis: validator::Genesis,
     pub max_payload_size: usize,
     pub validator_key: Option<validator::SecretKey>,
+    pub attester_key: Option<attester::SecretKey>,
 
     pub node_key: node::SecretKey,
     pub gossip_dynamic_inbound_limit: usize,
@@ -133,6 +134,9 @@ impl ProtoFmt for AppConfig {
             // TODO: read secret.
             validator_key: read_optional_secret_text(&r.validator_secret_key)
                 .context("validator_secret_key")?,
+            attester_key: read_optional_secret_text(&r.attester_secret_key)
+                .context("attester_secret_key")?,
+
             node_key: read_required_secret_text(&r.node_secret_key).context("node_secret_key")?,
             gossip_dynamic_inbound_limit: required(&r.gossip_dynamic_inbound_limit)
                 .and_then(|x| Ok((*x).try_into()?))
@@ -152,6 +156,7 @@ impl ProtoFmt for AppConfig {
             genesis: Some(self.genesis.build()),
             max_payload_size: Some(self.max_payload_size.try_into().unwrap()),
             validator_secret_key: self.validator_key.as_ref().map(TextFmt::encode),
+            attester_secret_key: self.attester_key.as_ref().map(TextFmt::encode),
 
             node_secret_key: Some(self.node_key.encode()),
             gossip_dynamic_inbound_limit: Some(
@@ -185,8 +190,8 @@ impl Configs {
         &self,
         ctx: &ctx::Ctx,
     ) -> ctx::Result<(executor::Executor, BlockStoreRunner)> {
-        let store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
-        let (block_store, runner) = BlockStore::new(ctx, Box::new(store.clone())).await?;
+        let replica_store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
+        let store = TestMemoryStorage::new(ctx, &self.app.genesis).await;
         let e = executor::Executor {
             config: executor::Config {
                 server_addr: self.app.server_addr,
@@ -197,19 +202,25 @@ impl Configs {
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
                 max_payload_size: self.app.max_payload_size,
             },
-            block_store,
+            block_store: store.blocks.0,
+            batch_store: store.batches.0,
             validator: self
                 .app
                 .validator_key
                 .as_ref()
                 .map(|key| executor::Validator {
                     key: key.clone(),
-                    replica_store: Box::new(store),
+                    replica_store: Box::new(replica_store),
                     payload_manager: Box::new(bft::testonly::RandomPayload(
                         self.app.max_payload_size,
                     )),
                 }),
+            attester: self
+                .app
+                .attester_key
+                .as_ref()
+                .map(|key| executor::Attester { key: key.clone() }),
         };
-        Ok((e, runner))
+        Ok((e, store.blocks.1))
     }
 }

@@ -123,12 +123,12 @@ impl Runner {
                 Ok(())
             });
 
-            // Update QC batches in the background.
-            s.spawn(async {
-                // TODO: Handle this correctly.
-                let _ = self.net.gossip.update_batch_qc(ctx).await;
-                Ok(())
-            });
+            // // Update QC batches in the background.
+            // s.spawn(async {
+            //     // TODO: Handle this correctly.
+            //     let _ = self.net.gossip.update_batch_qc(ctx).await;
+            //     Ok(())
+            // });
 
             // Fetch missing batches in the background.
             s.spawn(async {

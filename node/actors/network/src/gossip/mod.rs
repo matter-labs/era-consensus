@@ -19,7 +19,7 @@ use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync};
 use zksync_consensus_roles::{attester, node, validator};
-use zksync_consensus_storage::BlockStore;
+use zksync_consensus_storage::{BatchStore, BlockStore};
 
 use self::batch_votes::BatchVotesWatch;
 
@@ -48,7 +48,7 @@ pub(crate) struct Network {
     /// Block store to serve `get_block` requests from.
     pub(crate) block_store: Arc<BlockStore>,
     /// Batch store to serve `get_batch` requests from.
-    pub(crate) batch_store: Arc<BlockStore>,
+    pub(crate) batch_store: Arc<BatchStore>,
     /// Output pipe of the network actor.
     pub(crate) sender: channel::UnboundedSender<io::OutputMessage>,
     /// Queue of block fetching requests.
@@ -107,7 +107,7 @@ impl Network {
                     let _permit = permit;
                     let number = number.into();
                     let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
-                        s.spawn_bg(self.fetch_queue.request(ctx, number));
+                        s.spawn_bg(self.fetch_queue.block_request(ctx, number));
                         // Cancel fetching as soon as block is queued for storage.
                         self.block_store.wait_until_queued(ctx, number).await?;
                         Err(ctx::Canceled)
@@ -136,7 +136,7 @@ impl Network {
                     let _permit = permit;
                     let number = number.into();
                     let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
-                        s.spawn_bg(self.fetch_queue.request(ctx, number));
+                        s.spawn_bg(self.fetch_queue.batch_request(ctx, number));
                         // Cancel fetching as soon as batch is queued for storage.
                         self.batch_store.wait_until_queued(ctx, number).await?;
                         Err(ctx::Canceled)
@@ -154,85 +154,85 @@ impl Network {
     /// Task that keeps hearing about new votes and updates the L1 batch qc.
     /// It will propagate the QC if there's enough votes.
     pub(crate) async fn update_batch_qc(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        // TODO This is not a good way to do this, we shouldn't be verifying the QC every time
-        // Can we get only the latest votes?
-        loop {
-            let mut sub = self.batch_votes.subscribe();
-            let votes = sync::changed(ctx, &mut sub)
-                .await
-                .context("batch votes")?
-                .clone();
+        // // TODO This is not a good way to do this, we shouldn't be verifying the QC every time
+        // // Can we get only the latest votes?
+        // loop {
+        //     let mut sub = self.batch_votes.subscribe();
+        //     let votes = sync::changed(ctx, &mut sub)
+        //         .await
+        //         .context("batch votes")?
+        //         .clone();
 
-            // Check next QC to collect votes for.
-            let new_qc = self
-                .last_viewed_qc
-                .clone()
-                .map(|qc| {
-                    attester::BatchQC::new(
-                        attester::Batch {
-                            proposal: attester::BatchHeader {
-                                number: qc.message.number.next(),
-                                payload: qc.message.proposal.payload,
-                            },
-                        },
-                        self.genesis(),
-                    )
-                })
-                .unwrap_or_else(|| {
-                    attester::BatchQC::new(
-                        attester::Batch {
-                            proposal: attester::BatchHeader {
-                                number: attester::BatchNumber(0),
-                                payload: attester::BatchPayload::default(),
-                            },
-                        },
-                        self.genesis(),
-                    )
-                })
-                .context("new qc")?;
+        //     // Check next QC to collect votes for.
+        //     let new_qc = self
+        //         .last_viewed_qc
+        //         .clone()
+        //         .map(|qc| {
+        //             attester::BatchQC::new(
+        //                 attester::Batch {
+        //                     proposal: attester::BatchHeader {
+        //                         number: qc.message.proposal.number.next(),
+        //                         payload: qc.message.proposal.payload,
+        //                     },
+        //                 },
+        //                 self.genesis(),
+        //             )
+        //         })
+        //         .unwrap_or_else(|| {
+        //             attester::BatchQC::new(
+        //                 attester::Batch {
+        //                     proposal: attester::BatchHeader {
+        //                         number: attester::BatchNumber(0),
+        //                         payload: ,
+        //                     },
+        //                 },
+        //                 self.genesis(),
+        //             )
+        //         })
+        //         .context("new qc")?;
 
-            // Check votes for the correct QC.
-            for (_, sig) in votes.0 {
-                if self
-                    .batch_qc
-                    .clone()
-                    .entry(new_qc.message.number.clone())
-                    .or_insert_with(|| {
-                        attester::BatchQC::new(new_qc.message.clone(), self.genesis()).expect("qc")
-                    })
-                    .add(&sig, self.genesis())
-                    .is_err()
-                {
-                    // TODO: Should we ban the peer somehow?
-                    continue;
-                }
-            }
+        //     // Check votes for the correct QC.
+        //     for (_, sig) in votes.0 {
+        //         if self
+        //             .batch_qc
+        //             .clone()
+        //             .entry(new_qc.message.proposal.number.clone())
+        //             .or_insert_with(|| {
+        //                 attester::BatchQC::new(new_qc.message.clone(), self.genesis()).expect("qc")
+        //             })
+        //             .add(&sig, self.genesis())
+        //             .is_err()
+        //         {
+        //             // TODO: Should we ban the peer somehow?
+        //             continue;
+        //         }
+        //     }
 
-            let weight = self
-                .genesis()
-                .attesters
-                .as_ref()
-                .context("attesters")?
-                .weight(
-                    &self
-                        .batch_qc
-                        .get(&new_qc.message.number)
-                        .context("last qc")?
-                        .signers,
-                );
+        //     let weight = self
+        //         .genesis()
+        //         .attesters
+        //         .as_ref()
+        //         .context("attesters")?
+        //         .weight(
+        //             &self
+        //                 .batch_qc
+        //                 .get(&new_qc.message.proposal.number)
+        //                 .context("last qc")?
+        //                 .signers,
+        //         );
 
-            if weight
-                < self
-                    .genesis()
-                    .attesters
-                    .as_ref()
-                    .context("attesters")?
-                    .threshold()
-            {
-                return Ok(());
-            };
+        //     if weight
+        //         < self
+        //             .genesis()
+        //             .attesters
+        //             .as_ref()
+        //             .context("attesters")?
+        //             .threshold()
+        //     {
+        //         return Ok(());
+        //     };
 
-            // If we have enough weight, we can update the last viewed QC and propagate it.
-        }
+        // If we have enough weight, we can update the last viewed QC and propagate it.
+        todo!();
     }
 }

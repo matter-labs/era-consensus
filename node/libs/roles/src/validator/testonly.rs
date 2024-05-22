@@ -1,5 +1,5 @@
 //! Test-only utilities.
-use crate::attester;
+use crate::attester::{self, Batch, BatchHeader, BatchNumber, BatchQC, FinalBatch};
 
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
@@ -134,12 +134,39 @@ impl Setup {
         self.0.blocks.get(n.0.checked_sub(first.0)? as usize)
     }
 
-    /// Pushes a new L1 batch.
-    pub fn push_batch(&mut self, batch: attester::Batch) {
-        for key in &self.0.attester_keys {
-            let signed = key.sign_msg(batch.clone());
-            self.0.signed_batches.push(signed);
+    /// Pushes `count` batches with a random payload.
+    pub fn push_batches(&mut self, rng: &mut impl Rng, count: usize) {
+        for _ in 0..count {
+            self.push_batch(rng.gen());
         }
+    }
+
+    /// Pushes a new L1 batch.
+    pub fn push_batch(&mut self, payload: attester::Payload) {
+        let proposal = match self.0.batches.last() {
+            Some(b) => BatchHeader {
+                number: b.number().next(),
+                payload: payload.hash(),
+            },
+            None => BatchHeader {
+                number: BatchNumber(0),
+                payload: payload.hash(),
+            },
+        };
+        let msg = Batch { proposal };
+        let mut justification = BatchQC::new(msg, &self.0.genesis).unwrap();
+        for key in &self.0.attester_keys {
+            justification
+                .add(
+                    &key.sign_msg(justification.message.clone()),
+                    &self.0.genesis,
+                )
+                .unwrap();
+        }
+        self.0.batches.push(FinalBatch {
+            payload,
+            justification,
+        });
     }
 }
 
@@ -172,7 +199,7 @@ impl From<SetupSpec> for Setup {
             .with_hash(),
             validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
             attester_keys: spec.attester_weights.into_iter().map(|(k, _)| k).collect(),
-            signed_batches: vec![],
+            batches: vec![],
             blocks: vec![],
         })
     }
@@ -188,7 +215,7 @@ pub struct SetupInner {
     /// Past blocks.
     pub blocks: Vec<FinalBlock>,
     /// L1 batches
-    pub signed_batches: Vec<attester::Signed<attester::Batch>>,
+    pub batches: Vec<FinalBatch>,
     /// Genesis config.
     pub genesis: Genesis,
 }
@@ -315,6 +342,13 @@ impl Distribution<Payload> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Payload {
         let size: usize = rng.gen_range(500..1000);
         Payload((0..size).map(|_| rng.gen()).collect())
+    }
+}
+
+impl Distribution<attester::Payload> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> attester::Payload {
+        let size: usize = rng.gen_range(500..1000);
+        attester::Payload((0..size).map(|_| rng.gen()).collect())
     }
 }
 

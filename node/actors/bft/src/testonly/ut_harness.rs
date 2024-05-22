@@ -15,7 +15,7 @@ use zksync_consensus_roles::validator::{
     SecretKey, Signed, ViewNumber,
 };
 use zksync_consensus_storage::{
-    testonly::{in_memory, new_store},
+    testonly::{in_memory, TestMemoryStorage},
     BlockStoreRunner,
 };
 use zksync_consensus_utils::enum_util::Variant;
@@ -57,12 +57,12 @@ impl UTHarness {
     ) -> (UTHarness, BlockStoreRunner) {
         let rng = &mut ctx.rng();
         let setup = validator::testonly::Setup::new(rng, num_validators);
-        let (block_store, runner) = new_store(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
         let (send, recv) = ctx::channel::unbounded();
 
         let cfg = Arc::new(Config {
             secret_key: setup.validator_keys[0].clone(),
-            block_store: block_store.clone(),
+            block_store: store.blocks.0.clone(),
             replica_store: Box::new(in_memory::ReplicaStore::default()),
             payload_manager,
             max_payload_size: MAX_PAYLOAD_SIZE,
@@ -79,7 +79,7 @@ impl UTHarness {
             leader_send,
         };
         let _: Signed<ReplicaPrepare> = this.try_recv().unwrap();
-        (this, runner)
+        (this, store.blocks.1)
     }
 
     /// Creates a new `UTHarness` with minimally-significant validator set size.

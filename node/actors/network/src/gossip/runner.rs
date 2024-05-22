@@ -204,7 +204,7 @@ impl Network {
                 let state = &mut push_block_store_state_server.state.subscribe();
                 loop {
                     let call = get_block_client.reserve(ctx).await?;
-                    let (req, send_resp) = self.fetch_queue.accept(ctx, state).await?;
+                    let (req, send_resp) = self.fetch_queue.accept_block(ctx, state).await?;
                     let req = rpc::get_block::Req(req);
                     s.spawn(async {
                         let req = req;

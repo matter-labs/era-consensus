@@ -5,7 +5,7 @@ use rand::Rng as _;
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, limiter, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{testonly::new_store, BlockStoreState};
+use zksync_consensus_storage::{testonly::TestMemoryStorage, BlockStoreState};
 
 #[tokio::test]
 async fn test_simple() {
@@ -21,9 +21,13 @@ async fn test_simple() {
     cfg.validator_key = None;
 
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.clone());
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.blocks.1.run(ctx));
+        let (_node, runner) = crate::testonly::Instance::new(
+            cfg.clone(),
+            store.blocks.0.clone(),
+            store.batches.0.clone(),
+        );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis.hash())
@@ -45,6 +49,8 @@ async fn test_simple() {
 
         tracing::info!("Insert a block.");
         store
+            .blocks
+            .0
             .queue_block(ctx, setup.blocks[0].clone())
             .await
             .unwrap();
@@ -99,6 +105,8 @@ async fn test_simple() {
 
         tracing::info!("Wait for the client to store that block");
         store
+            .blocks
+            .0
             .wait_until_persisted(ctx, setup.blocks[1].number())
             .await
             .unwrap();
@@ -124,9 +132,13 @@ async fn test_concurrent_requests() {
     cfg.max_block_queue_size = setup.blocks.len();
 
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.clone());
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.blocks.1.run(ctx));
+        let (_node, runner) = crate::testonly::Instance::new(
+            cfg.clone(),
+            store.blocks.0.clone(),
+            store.batches.0.clone(),
+        );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         let mut conns = vec![];
@@ -195,9 +207,13 @@ async fn test_bad_responses() {
     cfg.validator_key = None;
 
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.clone());
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.blocks.1.run(ctx));
+        let (_node, runner) = crate::testonly::Instance::new(
+            cfg.clone(),
+            store.blocks.0.clone(),
+            store.batches.0.clone(),
+        );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         let state = rpc::push_block_store_state::Req(BlockStoreState {
@@ -267,9 +283,13 @@ async fn test_retry() {
     cfg.validator_key = None;
 
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.clone());
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.blocks.1.run(ctx));
+        let (_node, runner) = crate::testonly::Instance::new(
+            cfg.clone(),
+            store.blocks.0.clone(),
+            store.batches.0.clone(),
+        );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         let state = rpc::push_block_store_state::Req(BlockStoreState {

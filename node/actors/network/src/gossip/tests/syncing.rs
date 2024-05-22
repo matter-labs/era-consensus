@@ -10,7 +10,7 @@ use zksync_concurrency::{
     time,
 };
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::testonly::{new_store, new_store_with_first};
+use zksync_consensus_storage::testonly::TestMemoryStorage;
 
 const EXCHANGED_STATE_COUNT: usize = 5;
 const NETWORK_CONNECTIVITY_CASES: [(usize, usize); 5] = [(2, 1), (3, 2), (5, 3), (10, 4), (10, 7)];
@@ -35,9 +35,9 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let (store, runner) = new_store(ctx, &setup.genesis).await;
-            s.spawn_bg(runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store);
+            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+            s.spawn_bg(store.blocks.1.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks.0, store.batches.0);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -91,9 +91,9 @@ async fn uncoordinated_block_syncing(
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let (store, runner) = new_store(ctx, &setup.genesis).await;
-            s.spawn_bg(runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store);
+            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+            s.spawn_bg(store.blocks.1.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks.0, store.batches.0);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -146,9 +146,9 @@ async fn test_switching_on_nodes() {
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let (store, runner) = new_store(ctx, &setup.genesis).await;
-            s.spawn_bg(runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store);
+            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+            s.spawn_bg(store.blocks.1.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks.0, store.batches.0);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
 
@@ -201,9 +201,9 @@ async fn test_switching_off_nodes() {
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let (store, runner) = new_store(ctx, &setup.genesis).await;
-            s.spawn_bg(runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store);
+            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+            s.spawn_bg(store.blocks.1.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks.0, store.batches.0);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -264,9 +264,10 @@ async fn test_different_first_block() {
             cfg.validator_key = None;
             // Choose the first block for the node at random.
             let first = setup.blocks.choose(rng).unwrap().number();
-            let (store, runner) = new_store_with_first(ctx, &setup.genesis, first).await;
-            s.spawn_bg(runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store);
+            let store =
+                TestMemoryStorage::new_store_with_first_block(ctx, &setup.genesis, first).await;
+            s.spawn_bg(store.blocks.1.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks.0, store.batches.0);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }

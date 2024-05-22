@@ -13,8 +13,11 @@ use zksync_concurrency::{
     testonly::{abort_on_panic, set_timeout},
     time,
 };
-use zksync_consensus_roles::{attester, validator};
-use zksync_consensus_storage::testonly::new_store;
+use zksync_consensus_roles::{
+    attester::{self, BatchHeader},
+    validator,
+};
+use zksync_consensus_storage::testonly::TestMemoryStorage;
 
 mod fetch;
 mod syncing;
@@ -29,10 +32,10 @@ async fn test_one_connection_per_node() {
     let cfgs = testonly::new_configs(rng, &setup, 2);
 
     scope::run!(ctx, |ctx,s| async {
-        let (store,runner) = new_store(ctx,&setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.blocks.1.run(ctx));
         let mut nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
-            let (node,runner) = testonly::Instance::new(cfg.clone(), store.clone());
+            let (node,runner) = testonly::Instance::new(cfg.clone(), store.blocks.0.clone(), store.batches.0.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             node
         }).collect();
@@ -101,11 +104,17 @@ fn mk_netaddr(
     })
 }
 
-fn mk_batch(
+fn mk_batch<R: Rng>(
+    rng: &mut R,
     key: &attester::SecretKey,
     number: attester::BatchNumber,
 ) -> attester::Signed<attester::Batch> {
-    key.sign_msg(attester::Batch { number })
+    key.sign_msg(attester::Batch {
+        proposal: BatchHeader {
+            number,
+            payload: rng.gen(),
+        },
+    })
 }
 
 fn random_netaddr<R: Rng>(
@@ -125,7 +134,10 @@ fn random_batch_votes<R: Rng>(
     key: &attester::SecretKey,
 ) -> Arc<attester::Signed<attester::Batch>> {
     let batch = attester::Batch {
-        number: attester::BatchNumber(rng.gen_range(0..1000)),
+        proposal: BatchHeader {
+            number: attester::BatchNumber(rng.gen_range(0..1000)),
+            payload: rng.gen(),
+        },
     };
     Arc::new(key.sign_msg(batch.to_owned()))
 }
@@ -146,13 +158,18 @@ fn update_netaddr<R: Rng>(
 }
 
 fn update_signature<R: Rng>(
-    _rng: &mut R,
+    rng: &mut R,
     batch: &attester::Batch,
     key: &attester::SecretKey,
     batch_number_diff: i64,
 ) -> Arc<attester::Signed<attester::Batch>> {
     let batch = attester::Batch {
-        number: attester::BatchNumber((batch.number.0 as i64 + batch_number_diff) as u64),
+        proposal: BatchHeader {
+            number: attester::BatchNumber(
+                (batch.proposal.number.0 as i64 + batch_number_diff) as u64,
+            ),
+            payload: rng.gen(),
+        },
     };
     Arc::new(key.sign_msg(batch.to_owned()))
 }
@@ -281,13 +298,17 @@ async fn test_validator_addrs_propagation() {
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.blocks.1.run(ctx));
         let nodes: Vec<_> = cfgs
             .iter()
             .enumerate()
             .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(cfg.clone(), store.clone());
+                let (node, runner) = testonly::Instance::new(
+                    cfg.clone(),
+                    store.blocks.0.clone(),
+                    store.batches.0.clone(),
+                );
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                 node
             })
@@ -324,9 +345,10 @@ async fn test_genesis_mismatch() {
         let mut listener = cfgs[1].server_addr.bind().context("server_addr.bind()")?;
 
         tracing::info!("Start one node, we will simulate the other one.");
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        let (_node, runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.blocks.1.run(ctx));
+        let (_node, runner) =
+            testonly::Instance::new(cfgs[0].clone(), store.blocks.0, store.batches.0.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         tracing::info!("Accept a connection with mismatching genesis.");
@@ -383,10 +405,14 @@ async fn validator_node_restart() {
     for cfg in &mut cfgs {
         cfg.rpc.push_validator_addrs_rate.refresh = time::Duration::ZERO;
     }
-    let (store, store_runner) = new_store(ctx, &setup.genesis).await;
-    let (node1, node1_runner) = testonly::Instance::new(cfgs[1].clone(), store.clone());
+    let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+    let (node1, node1_runner) = testonly::Instance::new(
+        cfgs[1].clone(),
+        store.blocks.0.clone(),
+        store.batches.0.clone(),
+    );
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(store_runner.run(ctx));
+        s.spawn_bg(store.blocks.1.run(ctx));
         s.spawn_bg(
             node1_runner
                 .run(ctx)
@@ -413,7 +439,11 @@ async fn validator_node_restart() {
 
             // _node0 contains pipe, which has to exist to prevent the connection from dying
             // early.
-            let (_node0, runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
+            let (_node0, runner) = testonly::Instance::new(
+                cfgs[0].clone(),
+                store.blocks.0.clone(),
+                store.batches.0.clone(),
+            );
             scope::run!(ctx, |ctx, s| async {
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
                 tracing::info!("wait for the update to arrive to node1");
@@ -466,12 +496,16 @@ async fn rate_limiting() {
     }
     let mut nodes = vec![];
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.blocks.1.run(ctx));
         // Spawn the satellite nodes and wait until they register
         // their own address.
         for (i, cfg) in cfgs[1..].iter().enumerate() {
-            let (node, runner) = testonly::Instance::new(cfg.clone(), store.clone());
+            let (node, runner) = testonly::Instance::new(
+                cfg.clone(),
+                store.blocks.0.clone(),
+                store.batches.0.clone(),
+            );
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             let sub = &mut node.net.gossip.validator_addrs.subscribe();
             sync::wait_for(ctx, sub, |got| {
@@ -484,7 +518,11 @@ async fn rate_limiting() {
         }
 
         // Spawn the center node.
-        let (center, runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
+        let (center, runner) = testonly::Instance::new(
+            cfgs[0].clone(),
+            store.blocks.0.clone(),
+            store.batches.0.clone(),
+        );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node[0]")));
         // Await for the center to receive all validator addrs.
         let sub = &mut center.net.gossip.validator_addrs.subscribe();
@@ -561,7 +599,8 @@ async fn test_batch_votes() {
     assert_eq!(want.0, sub.borrow_and_update().0);
 
     // Invalid signature.
-    let mut k0v3 = mk_batch(&keys[1], attester::BatchNumber(rng.gen_range(0..1000)));
+    let random_batch_number = attester::BatchNumber(rng.gen_range(0..1000));
+    let mut k0v3 = mk_batch(rng, &keys[1], random_batch_number);
     k0v3.sig = rng.gen();
     assert!(votes.update(&attesters, &[Arc::new(k0v3)]).await.is_err());
     assert_eq!(want.0, sub.borrow_and_update().0);
