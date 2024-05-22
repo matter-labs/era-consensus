@@ -54,7 +54,7 @@ struct Partitioner<'a, T> {
 impl<'a, T> Partitioner<'a, T> {
     /// Generate all possible partitioning.
     fn generate(items: Partition<'a, T>, num_partitions: usize) -> Vec<Partitioning<'a, T>> {
-        if items.is_empty() || num_partitions == 0 {
+        if num_partitions == 0 || items.len() < num_partitions {
             // Impossible to partition.
             Vec::new()
         } else if num_partitions == items.len() {
@@ -95,7 +95,7 @@ impl<'a, T> Partitioner<'a, T> {
     /// * `B` can go into minimally into `P1` because there are 2 more items after it, which
     /// is enough to fill all remaining partitions; or it can go into `P2`, because `P1` is filled.
     /// * `C` depends on what we did with `B`: if `B` is in `P1` then `C` has to minimally go into
-    /// `P2` to make sure no paritition will be left empty at the end; if `B` is in `P2` then `C`
+    /// `P2` to make sure no partition will be left empty at the end; if `B` is in `P2` then `C`
     /// can go either in `P1`, `P2` or `P3`
     ///
     /// The algorithm has to traverse all possible placements with backtracking.
