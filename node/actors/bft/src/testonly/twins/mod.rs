@@ -10,8 +10,6 @@
 //! * The test controls who is the leader in each round; when a validator key is leading, its twin is also leading.
 //! * The test generates all possible combinations and permutations, and prune to keep the interesting ones (e.g. make sure there is 4f+1 sized partitions eventually).
 //!   In practice we only take a sample because with practical committee sizes there is a combinatorial explosion.
-//!
-//!
 
 use std::cmp::min;
 
@@ -87,13 +85,13 @@ impl<'a, T> Partitioner<'a, T> {
     /// above it: the minimum and the maximum partition that it can (or has to) insert into.
     ///
     /// Take the table in [partitions] as an example with 4 items and 3 partitions.
-    /// * `A` is the first item, so it can only go into `P1` - `P2` can't be used
-    /// while `P1` is empty, otherwise we'd be generating redundant combinations. After that,
-    /// * `B` can go into minimally into `P1` because there are 2 more items after it, which
-    /// is enough to fill all remaining partitions; or it can go into `P2`, because `P1` is filled.
+    /// * `A` is the first item, so it can only go into `P1`; `P2` can't be used while `P1` is empty,
+    /// otherwise we'd be generating redundant combinations.
+    /// * `B` can go minimally into `P1` because there are 2 more items after it, which is enough
+    /// to fill all remaining partitions; or it can go into `P2`, because `P1` is filled.
     /// * `C` depends on what we did with `B`: if `B` is in `P1` then `C` has to minimally go into
     /// `P2` to make sure no partition will be left empty at the end; if `B` is in `P2` then `C`
-    /// can go either in `P1`, `P2` or `P3`
+    /// can go either in `P1`, `P2` or `P3`.
     ///
     /// The algorithm has to traverse all possible placements with backtracking.
     fn go(&mut self, idx: usize, first_empty: usize) {
