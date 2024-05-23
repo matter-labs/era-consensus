@@ -130,6 +130,29 @@ fn test_scenario_generator() {
     }
 }
 
+#[test]
+fn prop_cluster() {
+    let rng = &mut ctx::test_root(&ctx::RealClock).rng();
+
+    for _ in 0..50 {
+        let num_replicas = rng.gen_range(1..=15);
+
+        let replicas = (0..num_replicas)
+            .map(|i| TestNode {
+                key: i as u64,
+                id: i.to_string(),
+            })
+            .collect::<Vec<_>>();
+
+        let num_twins = rng.gen_range(0..=num_replicas);
+        let cluster = Cluster::new(replicas, num_twins);
+
+        assert_eq!(cluster.replicas().len(), num_replicas);
+        assert_eq!(cluster.twins().len(), num_twins);
+        assert_eq!(cluster.quorum_size(), cluster.num_replicas() * 4 / 5 + 1);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct TestNode {
     id: String,

@@ -64,7 +64,7 @@ where
         (self.num_replicas - 1) / 5
     }
 
-    /// The number of signatures required for a quorum, ie. `4 * f + 1` or more generally `n - f`
+    /// The number of signatures required for a quorum, ie. `4 * f + 1` or more generally `n - f`, which in this case equals `n*4/5+1`
     pub fn quorum_size(&self) -> usize {
         self.num_replicas() - self.num_faulty()
     }
