@@ -122,11 +122,7 @@ where
         assert!(!cluster.nodes().is_empty(), "empty cluster");
 
         // Potential leaders
-        let keys = cluster
-            .replicas()
-            .iter()
-            .map(|r| r.key())
-            .collect::<Vec<_>>();
+        let keys = cluster.replicas().iter().map(|r| r.key()).collect();
 
         // Create all possible partitionings; the paper considers 2 or 3 partitions to be enough.
         let partitions = (1..=max_partitions).flat_map(|np| partitions(cluster.nodes(), np));

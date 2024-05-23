@@ -100,14 +100,7 @@ impl<'a, T> Partitioner<'a, T> {
         // Now generate all possible allocations.
         for ins_part in min_part..=max_part {
             self.acc[ins_part].push(self.items[idx]);
-            self.go(
-                idx + 1,
-                if ins_part == first_empty {
-                    first_empty + 1
-                } else {
-                    first_empty
-                },
-            );
+            self.go(idx + 1, first_empty + ((ins_part == first_empty) as usize));
             // Backtrack
             self.acc[ins_part].pop();
         }

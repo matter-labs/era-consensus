@@ -13,11 +13,12 @@ use super::{partitions, Cluster, HasKey, Partitioning, ScenarioGenerator, Twin};
 #[test]
 fn test_partitions() {
     let got = partitions(&["foo", "bar", "baz"], 2);
-    let want: HashSet<Partitioning<_>> = HashSet::from_iter(vec![
+    let want: HashSet<Partitioning<_>> = [
         vec![vec![&"foo"], vec![&"bar", &"baz"]],
         vec![vec![&"foo", &"bar"], vec![&"baz"]],
         vec![vec![&"foo", &"baz"], vec![&"bar"]],
-    ]);
+    ]
+    .into();
     assert_eq!(got.len(), want.len());
     let got = HashSet::from_iter(got);
     assert_eq!(got, want);
@@ -105,6 +106,7 @@ fn test_scenario_generator() {
         let scenario = generator.generate_one(rng);
 
         assert_eq!(scenario.rounds.len(), num_rounds);
+
         for rc in &scenario.rounds {
             assert!(
                 cluster.replicas().iter().any(|r| r.key == *rc.leader),
