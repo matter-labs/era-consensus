@@ -167,12 +167,5 @@ pub fn unique_key_count<T>(nodes: &[T]) -> usize
 where
     T: HasKey,
 {
-    let mut seen = BTreeSet::new();
-    let mut cnt = 0;
-    for n in nodes {
-        if seen.insert(n.key()) {
-            cnt += 1;
-        }
-    }
-    cnt
+    nodes.iter().map(|n| n.key()).collect::<BTreeSet<_>>().len()
 }
