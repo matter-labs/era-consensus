@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use rand::{seq::SliceRandom, Rng};
 
-use super::{partitions, HasKey, Partitioning, Twin};
+use super::{splits, HasKey, Split, Twin};
 
 /// A cluster holds all the nodes in the simulation, some of which are twins.
 pub struct Cluster<T> {
@@ -93,7 +93,7 @@ where
 /// The configuration for a single round.
 pub struct RoundConfig<'a, T: HasKey> {
     pub leader: &'a T::Key,
-    pub partitions: Partitioning<'a, T>,
+    pub partitions: Split<'a, T>,
 }
 
 /// Configuration for a number of rounds.
@@ -109,8 +109,8 @@ where
     num_rounds: usize,
     /// Unique leader keys.
     keys: Vec<&'a T::Key>,
-    /// All partitionings of various sizes we can choose in a round.
-    partitions: Vec<Partitioning<'a, T>>,
+    /// All splits of various sizes we can choose in a round.
+    splits: Vec<Split<'a, T>>,
 }
 
 impl<'a, T> ScenarioGenerator<'a, T>
@@ -125,11 +125,11 @@ where
         let keys = cluster.replicas().iter().map(|r| r.key()).collect();
 
         // Create all possible partitionings; the paper considers 2 or 3 partitions to be enough.
-        let partitions = (1..=max_partitions).flat_map(|np| partitions(cluster.nodes(), np));
+        let splits = (1..=max_partitions).flat_map(|np| splits(cluster.nodes(), np));
 
         // Prune partitionings so that all of them have at least one where a quorum is possible.
         // Alternatively we could keep all and make sure every scenario has eventually one with a quorum, for liveness.
-        let partitions = partitions
+        let splits = splits
             .filter(|ps| {
                 ps.iter()
                     .any(|p| unique_key_count(p) >= cluster.quorum_size())
@@ -139,7 +139,7 @@ where
         Self {
             num_rounds,
             keys,
-            partitions,
+            splits,
         }
     }
 
@@ -154,7 +154,7 @@ where
         for _ in 0..self.num_rounds {
             rounds.push(RoundConfig {
                 leader: self.keys.choose(rng).cloned().unwrap(),
-                partitions: self.partitions.choose(rng).cloned().unwrap(),
+                partitions: self.splits.choose(rng).cloned().unwrap(),
             })
         }
 

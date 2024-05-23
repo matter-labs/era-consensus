@@ -1,11 +1,13 @@
 use std::cmp::min;
 
 /// A group of nodes that can talk to each other.
+///
+/// This is in line with the language used in the paper, e.g. "we can split the nodes into two partitions".
 pub type Partition<'a, T> = Vec<&'a T>;
 /// A division of nodes into disjunct partitions, with no communication between different groups.
-pub type Partitioning<'a, T> = Vec<Partition<'a, T>>;
+pub type Split<'a, T> = Vec<Partition<'a, T>>;
 
-/// Generate all possible partitioning of `items` into `num_partitions` groups.
+/// Generate all possible splits of `items` into `num_partitions` partitions.
 ///
 /// The idea is to fill out a table such as this:
 /// ```text
@@ -21,7 +23,7 @@ pub type Partitioning<'a, T> = Vec<Partition<'a, T>>;
 /// partition `[A, B, C]` into two groups, we want `[{A, B}, {C}]` to appear in the
 /// results, but not `[{C}, {A, B}]`, or `[{B, A}, {C}]` as they are the same, but
 /// we do want `[{A, C}, {B}]` because they have different labels.
-pub fn partitions<T>(items: &[T], num_partitions: usize) -> Vec<Partitioning<T>> {
+pub fn splits<T>(items: &[T], num_partitions: usize) -> Vec<Split<T>> {
     Partitioner::generate(items.iter().collect(), num_partitions)
 }
 
@@ -31,14 +33,14 @@ struct Partitioner<'a, T> {
     num_items: usize,
     num_partitions: usize,
     // All collected complete partitionings
-    output: Vec<Partitioning<'a, T>>,
+    output: Vec<Split<'a, T>>,
     // Partially complete partitioning currently being built
-    acc: Partitioning<'a, T>,
+    acc: Split<'a, T>,
 }
 
 impl<'a, T> Partitioner<'a, T> {
     /// Generate all possible partitioning.
-    fn generate(items: Partition<'a, T>, num_partitions: usize) -> Vec<Partitioning<'a, T>> {
+    fn generate(items: Partition<'a, T>, num_partitions: usize) -> Vec<Split<'a, T>> {
         if num_partitions == 0 || items.len() < num_partitions {
             // Impossible to partition.
             return Vec::new();

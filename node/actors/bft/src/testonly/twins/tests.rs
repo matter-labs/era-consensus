@@ -8,12 +8,12 @@ use zksync_concurrency::ctx;
 
 use crate::testonly::twins::unique_key_count;
 
-use super::{partitions, Cluster, HasKey, Partitioning, ScenarioGenerator, Twin};
+use super::{splits, Cluster, HasKey, ScenarioGenerator, Split, Twin};
 
 #[test]
-fn test_partitions() {
-    let got = partitions(&["foo", "bar", "baz"], 2);
-    let want: HashSet<Partitioning<_>> = [
+fn test_splits() {
+    let got = splits(&["foo", "bar", "baz"], 2);
+    let want: HashSet<Split<_>> = [
         vec![vec![&"foo"], vec![&"bar", &"baz"]],
         vec![vec![&"foo", &"bar"], vec![&"baz"]],
         vec![vec![&"foo", &"baz"], vec![&"bar"]],
@@ -25,7 +25,7 @@ fn test_partitions() {
 }
 
 #[test]
-fn prop_partitions() {
+fn prop_splits() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
     for _ in 0..100 {
         let num_partitions = rng.gen_range(0..=3);
@@ -36,7 +36,7 @@ fn prop_partitions() {
             items.push(i);
         }
 
-        let got = partitions(&items, num_partitions);
+        let got = splits(&items, num_partitions);
         let got_len = got.len();
         let got = BTreeSet::from_iter(got.into_iter().map(|ps| {
             BTreeSet::from_iter(
@@ -45,7 +45,7 @@ fn prop_partitions() {
             )
         }));
 
-        let want = partitions_naive(items, num_partitions);
+        let want = splits_naive(items, num_partitions);
 
         assert_eq!(
             got_len,
@@ -154,7 +154,7 @@ impl Twin for TestNode {
 }
 
 /// Naive implementation of the partitioning to test against.
-fn partitions_naive<T: Ord + Eq + Clone + Debug>(
+fn splits_naive<T: Ord + Eq + Clone + Debug>(
     items: Vec<T>,
     num_partitions: usize,
 ) -> BTreeSet<BTreeSet<BTreeSet<T>>> {
