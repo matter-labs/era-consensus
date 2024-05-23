@@ -118,7 +118,7 @@ where
     T: Twin,
 {
     /// Initialise a scenario generator from a cluster.
-    pub fn new(cluster: &'a Cluster<T>, num_rounds: usize) -> Self {
+    pub fn new(cluster: &'a Cluster<T>, num_rounds: usize, max_partitions: usize) -> Self {
         assert!(!cluster.nodes().is_empty(), "empty cluster");
 
         // Potential leaders
@@ -128,9 +128,8 @@ where
             .map(|r| r.key())
             .collect::<Vec<_>>();
 
-        // Create all possible partitionings with 1 to 3 partitions.
-        // We could make it configurable; the paper considers 2 or 3 partitions.
-        let partitions = (1..=3).flat_map(|np| partitions(cluster.nodes(), np));
+        // Create all possible partitionings; the paper considers 2 or 3 partitions to be enough.
+        let partitions = (1..=max_partitions).flat_map(|np| partitions(cluster.nodes(), np));
 
         // Prune partitionings so that all of them have at least one where a quorum is possible.
         // Alternatively we could keep all and make sure every scenario has eventually one with a quorum, for liveness.
@@ -148,7 +147,7 @@ where
         }
     }
 
-    /// Generate a singe run for the agreed upon number of rounds.
+    /// Generate a single run for the agreed upon number of rounds.
     pub fn generate_one(&self, rng: &mut impl Rng) -> Scenario<'a, T> {
         let mut rounds = Vec::new();
         // We could implement this with or without replacement.
@@ -168,14 +167,14 @@ where
 }
 
 /// Count the number of node keys that do not have twins in the group.
-fn unique_key_count<T>(nodes: &[T]) -> usize
+pub fn unique_key_count<T>(nodes: &[T]) -> usize
 where
     T: HasKey,
 {
     let mut seen = BTreeSet::new();
     let mut cnt = 0;
     for n in nodes {
-        if !seen.insert(n.key()) {
+        if seen.insert(n.key()) {
             cnt += 1;
         }
     }
