@@ -1,6 +1,8 @@
 use std::collections::BTreeSet;
 
-use super::Twin;
+use rand::{seq::SliceRandom, Rng};
+
+use super::{partitions, HasKey, Partitioning, Twin};
 
 /// A cluster holds all the nodes in the simulation, some of which are twins.
 pub struct Cluster<T> {
@@ -13,13 +15,15 @@ pub struct Cluster<T> {
 impl<T> Cluster<T>
 where
     T: Twin,
-    T::Key: Ord,
 {
     /// Take a number of non-twin replicas and produce a cluster with a desired number of twins.
     pub fn new(replicas: Vec<T>, num_twins: usize) -> Self {
         // Check that the replicas aren't twins.
-        let keys = BTreeSet::from_iter(replicas.iter().map(|r| r.key()));
-        assert_eq!(keys.len(), replicas.len(), "replicas have unique keys");
+        assert_eq!(
+            unique_key_count(&replicas),
+            replicas.len(),
+            "replicas must have unique keys"
+        );
 
         let twins = replicas
             .iter()
@@ -74,4 +78,106 @@ where
     pub fn nodes(&self) -> &[T] {
         &self.nodes
     }
+
+    /// The original replicas in the cluster.
+    pub fn replicas(&self) -> &[T] {
+        &self.nodes[..self.num_replicas]
+    }
+
+    /// The twins we created in the cluster.
+    pub fn twins(&self) -> &[T] {
+        &self.nodes[self.num_replicas..]
+    }
+}
+
+/// The configuration for a single round.
+pub struct RoundConfig<'a, T: HasKey> {
+    pub leader: &'a T::Key,
+    pub partitions: Partitioning<'a, T>,
+}
+
+/// Configuration for a number of rounds.
+pub struct Scenario<'a, T: HasKey> {
+    pub rounds: Vec<RoundConfig<'a, T>>,
+}
+
+pub struct ScenarioGenerator<'a, T>
+where
+    T: Twin,
+{
+    /// Number of rounds (views) to simulate in a scenario
+    num_rounds: usize,
+    /// Unique leader keys.
+    keys: Vec<&'a T::Key>,
+    /// All partitionings of various sizes we can choose in a round.
+    partitions: Vec<Partitioning<'a, T>>,
+}
+
+impl<'a, T> ScenarioGenerator<'a, T>
+where
+    T: Twin,
+{
+    /// Initialise a scenario generator from a cluster.
+    pub fn new(cluster: &'a Cluster<T>, num_rounds: usize) -> Self {
+        assert!(!cluster.nodes().is_empty(), "empty cluster");
+
+        // Potential leaders
+        let keys = cluster
+            .replicas()
+            .iter()
+            .map(|r| r.key())
+            .collect::<Vec<_>>();
+
+        // Create all possible partitionings with 1 to 3 partitions.
+        // We could make it configurable; the paper considers 2 or 3 partitions.
+        let partitions = (1..=3).flat_map(|np| partitions(cluster.nodes(), np));
+
+        // Prune partitionings so that all of them have at least one where a quorum is possible.
+        // Alternatively we could keep all and make sure every scenario has eventually one with a quorum, for liveness.
+        let partitions = partitions
+            .filter(|ps| {
+                ps.iter()
+                    .any(|p| unique_key_count(p) >= cluster.quorum_size())
+            })
+            .collect();
+
+        Self {
+            num_rounds,
+            keys,
+            partitions,
+        }
+    }
+
+    /// Generate a singe run for the agreed upon number of rounds.
+    pub fn generate_one(&self, rng: &mut impl Rng) -> Scenario<'a, T> {
+        let mut rounds = Vec::new();
+        // We could implement this with or without replacement.
+        // In practice there probably are so many combinations that it won't matter.
+        // For example to tolerate 2 faulty nodes we need 11 replicas, with 2 twins that's 13,
+        // which results in hundreds of thousands of potential paritionings, multiplied
+        // by 11 different possible leaders in each round.
+        for _ in 0..self.num_rounds {
+            rounds.push(RoundConfig {
+                leader: self.keys.choose(rng).cloned().unwrap(),
+                partitions: self.partitions.choose(rng).cloned().unwrap(),
+            })
+        }
+
+        Scenario { rounds }
+    }
+}
+
+/// Count the number of node keys that do not have twins in the group.
+fn unique_key_count<T>(nodes: &[T]) -> usize
+where
+    T: HasKey,
+{
+    let mut seen = BTreeSet::new();
+    let mut cnt = 0;
+    for n in nodes {
+        if !seen.insert(n.key()) {
+            cnt += 1;
+        }
+    }
+    cnt
 }

@@ -17,19 +17,30 @@ mod scenario;
 pub use partition::*;
 pub use scenario::*;
 
-/// Abstraction for nodes which can have a twin.
-pub trait Twin
-where
-    Self: PartialEq,
-{
+/// Abstraction for things that can lead a round by the virtue of having a validator key.
+pub trait HasKey {
     /// Validator public key.
-    type Key: PartialEq;
+    type Key: PartialEq + Ord;
 
     /// The validator key of this node, used to identify who is leading a round.
     ///
     /// The twin and its original both have the same key.
     fn key(&self) -> &Self::Key;
+}
 
+impl<T: HasKey> HasKey for &T {
+    type Key = T::Key;
+
+    fn key(&self) -> &Self::Key {
+        (*self).key()
+    }
+}
+
+/// Abstraction for nodes which can have a twin.
+pub trait Twin: HasKey
+where
+    Self: PartialEq,
+{
     /// Create a twin for the node.
     fn to_twin(&self) -> Self;
 
