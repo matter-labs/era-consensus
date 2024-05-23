@@ -10,7 +10,7 @@ use super::{partitions, Partitioning};
 
 #[test]
 fn test_partitions() {
-    let got = partitions(&[&"foo", &"bar", &"baz"], 2);
+    let got = partitions(&["foo", "bar", "baz"], 2);
     let want: HashSet<Partitioning<_>> = HashSet::from_iter(vec![
         vec![vec![&"foo"], vec![&"bar", &"baz"]],
         vec![vec![&"foo", &"bar"], vec![&"baz"]],
@@ -33,7 +33,7 @@ fn prop_partitions() {
             items.push(i);
         }
 
-        let got = partitions(&items.iter().collect::<Vec<_>>(), num_partitions);
+        let got = partitions(&items, num_partitions);
         let got_len = got.len();
         let got = BTreeSet::from_iter(got.into_iter().map(|ps| {
             BTreeSet::from_iter(

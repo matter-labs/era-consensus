@@ -34,8 +34,8 @@ type Partitioning<'a, T> = Vec<Partition<'a, T>>;
 /// partition `[A, B, C]` into two groups, we want `[{A, B}, {C}]` to appear in the
 /// results, but not `[{C}, {A, B}]`, or `[{B, A}, {C}]` as they are the same, but
 /// we do want `[{A, C}, {B}]` because they have different labels.
-pub fn partitions<'a, T>(items: &[&'a T], num_partitions: usize) -> Vec<Partitioning<'a, T>> {
-    Partitioner::generate(items.into(), num_partitions)
+pub fn partitions<T>(items: &[T], num_partitions: usize) -> Vec<Partitioning<T>> {
+    Partitioner::generate(items.iter().collect(), num_partitions)
 }
 
 /// Recursive partition generator.
