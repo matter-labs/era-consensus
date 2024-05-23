@@ -46,7 +46,7 @@ where
 
     /// Check if the other node is a twin of this one.
     ///
-    /// This is a reflexive, they are twins of each other.
+    /// This is symmetric, they are twins of each other.
     fn is_twin_of(&self, other: &Self) -> bool {
         self != other && self.key() == other.key()
     }
