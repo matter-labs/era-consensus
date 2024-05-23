@@ -12,8 +12,34 @@
 //!   In practice we only take a sample because with practical committee sizes there is a combinatorial explosion.
 
 mod partition;
+mod scenario;
 
 pub use partition::*;
+pub use scenario::*;
+
+/// Abstraction for nodes which can have a twin.
+pub trait Twin
+where
+    Self: PartialEq,
+{
+    /// Validator public key.
+    type Key: PartialEq;
+
+    /// The validator key of this node, used to identify who is leading a round.
+    ///
+    /// The twin and its original both have the same key.
+    fn key(&self) -> &Self::Key;
+
+    /// Create a twin for the node.
+    fn to_twin(&self) -> Self;
+
+    /// Check if the other node is a twin of this one.
+    ///
+    /// This is a reflexive, they are twins of each other.
+    fn is_twin_of(&self, other: &Self) -> bool {
+        self != other && self.key() == other.key()
+    }
+}
 
 #[cfg(test)]
 mod tests;
