@@ -129,7 +129,7 @@ fn random_netaddr<R: Rng>(
     ))
 }
 
-fn random_batch_votes<R: Rng>(
+fn random_batch_vote<R: Rng>(
     rng: &mut R,
     key: &attester::SecretKey,
 ) -> Arc<attester::Signed<attester::Batch>> {
@@ -158,7 +158,7 @@ fn update_netaddr<R: Rng>(
 }
 
 fn update_signature<R: Rng>(
-    rng: &mut R,
+    _rng: &mut R,
     batch: &attester::Batch,
     key: &attester::SecretKey,
     batch_number_diff: i64,
@@ -168,7 +168,7 @@ fn update_signature<R: Rng>(
             number: attester::BatchNumber(
                 (batch.proposal.number.0 as i64 + batch_number_diff) as u64,
             ),
-            payload: rng.gen(),
+            payload: batch.proposal.payload.clone(),
         },
     };
     Arc::new(key.sign_msg(batch.to_owned()))
@@ -566,7 +566,7 @@ async fn test_batch_votes() {
     // Initial values.
     let mut want = Signatures::default();
     for k in &keys[0..6] {
-        want.insert(random_batch_votes(rng, k));
+        want.insert(random_batch_vote(rng, k));
     }
     votes.update(&attesters, &want.as_vec()).await.unwrap();
     assert_eq!(want.0, sub.borrow_and_update().0);
@@ -578,10 +578,10 @@ async fn test_batch_votes() {
     // older batch number
     let k4v2 = update_signature(rng, &want.get(&keys[4]).msg, &keys[4], -1);
     // first entry for a key in the config
-    let k6v1 = random_batch_votes(rng, &keys[6]);
+    let k6v1 = random_batch_vote(rng, &keys[6]);
     // entry for a key outside of the config
     let k8 = rng.gen();
-    let k8v1 = random_batch_votes(rng, &k8);
+    let k8v1 = random_batch_vote(rng, &k8);
 
     want.insert(k0v2.clone());
     want.insert(k1v2.clone());
@@ -602,9 +602,9 @@ async fn test_batch_votes() {
     let mut k0v3 = mk_batch(
         rng,
         &keys[1],
-        attester::BatchNumber(rng.clone().gen_range(0..1000)),
+        attester::BatchNumber(want.get(&keys[0]).msg.proposal.number.0 + 1),
     );
-    k0v3.sig = rng.gen();
+    k0v3.key = keys[0].public();
     assert!(votes.update(&attesters, &[Arc::new(k0v3)]).await.is_err());
     assert_eq!(want.0, sub.borrow_and_update().0);
 
