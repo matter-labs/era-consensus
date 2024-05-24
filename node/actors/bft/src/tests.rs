@@ -1,6 +1,19 @@
-use crate::testonly::{ut_harness::UTHarness, Behavior, Network, Test};
-use zksync_concurrency::{ctx, scope, time};
-use zksync_consensus_roles::validator;
+use crate::testonly::{
+    twins::{Cluster, HasKey, ScenarioGenerator, Twin},
+    ut_harness::UTHarness,
+    Behavior, Network, Test,
+};
+use rand::Rng;
+use zksync_concurrency::{
+    ctx::{self, Ctx},
+    scope, time,
+};
+use zksync_consensus_network::testonly::new_configs_for_validators;
+use zksync_consensus_roles::validator::{
+    self,
+    testonly::{Setup, SetupSpec},
+    LeaderSelectionMode, PublicKey,
+};
 
 async fn run_test(behavior: Behavior, network: Network) {
     let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
@@ -194,4 +207,116 @@ async fn non_proposing_leader() {
     .run(ctx)
     .await
     .unwrap()
+}
+
+/// Run Twins scenarios without actual twins, so just random partitions and leaders,
+/// to see that the basic mechanics of the network allow finalizations to happen.
+#[tokio::test(flavor = "multi_thread")]
+async fn honest_no_twins_network() {
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    for _ in 0..5 {
+        let num_replicas = rng.gen_range(1..=11);
+        run_twins(ctx, num_replicas, false);
+    }
+}
+
+async fn run_twins(ctx: &Ctx, num_replicas: usize, use_twins: bool) {
+    #[derive(PartialEq)]
+    struct Replica {
+        id: i64,
+        public_key: PublicKey,
+    }
+
+    impl HasKey for Replica {
+        type Key = PublicKey;
+
+        fn key(&self) -> &Self::Key {
+            &self.public_key
+        }
+    }
+
+    impl Twin for Replica {
+        fn to_twin(&self) -> Self {
+            Self {
+                id: self.id * -1,
+                public_key: self.public_key.clone(),
+            }
+        }
+    }
+
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
+    zksync_concurrency::testonly::abort_on_panic();
+    let rng = &mut ctx.rng();
+
+    // The existing test machinery uses the number of finalized blocks as an exit criteria.
+    let blocks_to_finalize = 5;
+    // The test is going to disrupt the communication by partitioning nodes,
+    // where the leader might not be in a partition with enough replicas to
+    // form a quorum, therefore to allow N blocks to be finalized we need to
+    // go longer.
+    let num_rounds = blocks_to_finalize * 5;
+    // The paper considers 2 or 3 partitions enough.
+    let max_partitions = 3;
+
+    // Everyone on the twins network is honest.
+    // For now assign one power each (not, say, 100 each, or varying weights).
+    let mut nodes = vec![(Behavior::Honest, 1u64); num_replicas];
+    let num_honest = validator::threshold(num_replicas as u64) as usize;
+    let num_faulty = num_replicas - num_honest;
+    let num_twins = if use_twins && num_faulty > 0 {
+        rng.gen_range(1..=num_faulty)
+    } else {
+        0
+    };
+
+    let mut spec = SetupSpec::new_with_weights(rng, nodes.iter().map(|(_, w)| *w).collect());
+
+    let replicas = spec
+        .validator_weights
+        .iter()
+        .enumerate()
+        .map(|(i, (sk, _))| Replica {
+            id: i as i64,
+            public_key: sk.public(),
+        })
+        .collect::<Vec<_>>();
+
+    let cluster = Cluster::new(replicas, num_twins);
+    let scenarios = ScenarioGenerator::new(&cluster, num_rounds, max_partitions);
+
+    // Reuse the same cluster to run a few scenarios.
+    for _ in 0..10 {
+        // Generate a permutation of partitions and leaders for the given number of rounds.
+        let scenario = scenarios.generate_one(rng);
+
+        // Assign the leadership schedule to the consensus.
+        spec.leader_selection =
+            LeaderSelectionMode::Rota(scenario.rounds.iter().map(|rc| rc.leader.clone()).collect());
+
+        // Generate a new setup with this leadership schedule.
+        let setup = Setup::from(spec.clone());
+
+        // Create network config for honest nodes, and then extras for the twins.
+        let validator_keys = setup
+            .validator_keys
+            .iter()
+            .chain(setup.validator_keys.iter().take(num_twins));
+
+        let nets = new_configs_for_validators(rng, validator_keys, 1);
+
+        // TODO: Create a network mode that supports partition schedule,
+        // which requires identifying the sender network (not validator) identity.
+        let network = todo!()
+
+        Test {
+            network,
+            nodes,
+            blocks_to_finalize,
+        }
+        .run_with_config(ctx, nets, &setup.genesis)
+        .await
+        .unwrap()
+    }
 }
