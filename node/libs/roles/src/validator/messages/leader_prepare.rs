@@ -90,10 +90,10 @@ impl PrepareQC {
         let mut high_votes: Vec<_> = count.into_iter().filter(|x| x.1 >= min).collect();
 
         if high_votes.len() == 1 {
-            return high_votes.pop().map(|x| x.0);
+            high_votes.pop().map(|x| x.0)
         } else {
-            return None;
-        };
+            None
+        }
     }
 
     /// Get the highest CommitQC.
