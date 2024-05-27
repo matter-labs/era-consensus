@@ -75,6 +75,9 @@ impl PrepareQC {
 
     /// Get the highest block voted and check if there's a quorum of votes for it. To have a quorum
     /// in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
+    /// Note that it is possible to have 2 quorums: vote A and vote B, each with >2f weight, in a single
+    /// PrepareQC (even in the unweighted case, because QC contains n-f signatures, not 4f+1). In such a
+    /// situation we say that there is no high vote.
     pub fn high_vote(&self, genesis: &Genesis) -> Option<BlockHeader> {
         let mut count: HashMap<_, u64> = HashMap::new();
         for (msg, signers) in &self.map {
@@ -82,9 +85,15 @@ impl PrepareQC {
                 *count.entry(v.proposal).or_default() += genesis.validators.weight(signers);
             }
         }
-        // We only take one value from the iterator because there can only be at most one block with a quorum of 2f+1 votes.
+
         let min = 2 * genesis.validators.max_faulty_weight() + 1;
-        count.into_iter().find(|x| x.1 >= min).map(|x| x.0)
+        let mut high_votes: Vec<_> = count.into_iter().filter(|x| x.1 >= min).collect();
+
+        if high_votes.len() == 1 {
+            return high_votes.pop().map(|x| x.0);
+        } else {
+            return None;
+        };
     }
 
     /// Get the highest CommitQC.
