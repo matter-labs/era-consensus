@@ -106,6 +106,23 @@ impl StateMachine {
 
             let now = ctx.now();
             let label = match &req.msg.msg {
+                ConsensusMsg::ReplicaPrepare(_) => {
+                    let res = match self
+                        .process_replica_prepare(ctx, req.msg.cast().unwrap())
+                        .await
+                        .wrap("process_replica_prepare()")
+                    {
+                        Ok(()) => Ok(()),
+                        Err(super::replica_prepare::Error::Internal(err)) => {
+                            return Err(err);
+                        }
+                        Err(err) => {
+                            tracing::warn!("process_replica_prepare: {err:#}");
+                            Err(())
+                        }
+                    };
+                    metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
+                }
                 ConsensusMsg::LeaderPrepare(_) => {
                     let res = match self
                         .process_leader_prepare(ctx, req.msg.cast().unwrap())
