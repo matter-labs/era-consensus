@@ -2,7 +2,7 @@
 use super::StateMachine;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::validator::{self};
 
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]
@@ -64,9 +64,8 @@ impl StateMachine {
             });
         }
 
-        // If the message is from the "past", we discard it.
-        // That is, it's from a previous view or phase.
-        if (message.view.number, validator::Phase::Prepare) < (self.view, self.phase) {
+        // We only accept this type of message from the future.
+        if message.view.number <= self.view {
             return Err(Error::Old {
                 current_view: self.view,
                 current_phase: self.phase,
@@ -86,17 +85,17 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // Update our high QC, if necessary.
-        if message.high_qc.clone().map(|x| x.view().number)
-            > self.high_qc.clone().map(|x| x.view().number)
-        {
-            self.high_qc = message.high_qc;
+        let qc_view = message.high_qc.clone().map(|x| x.view().number);
+
+        if qc_view > self.high_qc.clone().map(|x| x.view().number) {
+            self.high_qc.clone_from(&message.high_qc)
         }
 
         // Skip to a new view, if necessary.
-        // if message.view.number > self.view {
-        //     self.view = message.view.number;
-        //     self.start_new_view(ctx).await.wrap("start_new_view()")?;
-        // }
+        if qc_view > Some(self.view) {
+            self.view = qc_view.unwrap();
+            self.start_new_view(ctx).await.wrap("start_new_view()")?;
+        }
 
         Ok(())
     }
