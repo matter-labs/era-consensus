@@ -13,6 +13,14 @@ type BatchCall = (attester::BatchNumber, oneshot::Sender<()>);
 type BlockInner = BTreeMap<validator::BlockNumber, oneshot::Sender<()>>;
 type BatchInner = BTreeMap<attester::BatchNumber, oneshot::Sender<()>>;
 
+/// A request for a given resource.
+pub(crate) enum ResourceRequest {
+    /// Request for a block by number.
+    Block(validator::BlockNumber),
+    /// Request for a batch by number.
+    Batch(attester::BatchNumber),
+}
+
 /// Queue of block fetch request.
 pub(crate) struct Queue {
     blocks: sync::watch::Sender<BlockInner>,
@@ -29,21 +37,24 @@ impl Default for Queue {
 }
 
 impl Queue {
-    /// Requests a block from peers and waits until it is stored.
-    /// Note: in the current implementation concurrent calls for the same block number are
+    /// Requests a resource from peers and waits until it is stored.
+    /// Note: in the current implementation concurrent calls for the same resource number are
     /// unsupported - second call will override the first call.
-    pub(crate) async fn block_request(
-        &self,
-        ctx: &ctx::Ctx,
-        n: validator::BlockNumber,
-    ) -> ctx::OrCanceled<()> {
+    pub(crate) async fn request(&self, ctx: &ctx::Ctx, r: ResourceRequest) -> ctx::OrCanceled<()> {
         loop {
             let (send, recv) = oneshot::channel();
-            self.blocks.send_if_modified(|x| {
-                x.insert(n, send);
-                // Send iff the lowest requested block changed.
-                x.first_key_value().unwrap().0 == &n
-            });
+            match r {
+                ResourceRequest::Block(n) => self.blocks.send_if_modified(|x| {
+                    x.insert(n, send);
+                    // Send iff the lowest requested block changed.
+                    x.first_key_value().unwrap().0 == &n
+                }),
+                ResourceRequest::Batch(n) => self.batches.send_if_modified(|x| {
+                    x.insert(n, send);
+                    // Send iff the lowest requested batch changed.
+                    x.first_key_value().unwrap().0 == &n
+                }),
+            };
             match recv.recv_or_disconnected(ctx).await {
                 // Return if completed.
                 Ok(Ok(())) => return Ok(()),
@@ -51,46 +62,20 @@ impl Queue {
                 Ok(Err(sync::Disconnected)) => continue,
                 // Remove the request from the queue if canceled.
                 Err(ctx::Canceled) => {
-                    self.blocks.send_if_modified(|x| {
-                        let modified = x.first_key_value().map_or(false, |(k, _)| k == &n);
-                        x.remove(&n);
-                        // Send iff the lowest requested block changed.
-                        modified
-                    });
-                    return Err(ctx::Canceled);
-                }
-            }
-        }
-    }
-
-    /// Requests a batch from peers and waits until it is stored.
-    /// Note: in the current implementation concurrent calls for the same batch number are
-    /// unsupported - second call will override the first call.
-    pub(crate) async fn batch_request(
-        &self,
-        ctx: &ctx::Ctx,
-        n: attester::BatchNumber,
-    ) -> ctx::OrCanceled<()> {
-        loop {
-            let (send, recv) = oneshot::channel();
-            self.batches.send_if_modified(|x| {
-                x.insert(n, send);
-                // Send iff the lowest requested block changed.
-                x.first_key_value().unwrap().0 == &n
-            });
-            match recv.recv_or_disconnected(ctx).await {
-                // Return if completed.
-                Ok(Ok(())) => return Ok(()),
-                // Retry if failed.
-                Ok(Err(sync::Disconnected)) => continue,
-                // Remove the request from the queue if canceled.
-                Err(ctx::Canceled) => {
-                    self.batches.send_if_modified(|x| {
-                        let modified = x.first_key_value().map_or(false, |(k, _)| k == &n);
-                        x.remove(&n);
-                        // Send iff the lowest requested block changed.
-                        modified
-                    });
+                    match r {
+                        ResourceRequest::Block(n) => self.blocks.send_if_modified(|x| {
+                            let modified = x.first_key_value().map_or(false, |(k, _)| k == &n);
+                            x.remove(&n);
+                            // Send iff the lowest requested block changed.
+                            modified
+                        }),
+                        ResourceRequest::Batch(n) => self.batches.send_if_modified(|x| {
+                            let modified = x.first_key_value().map_or(false, |(k, _)| k == &n);
+                            x.remove(&n);
+                            // Send iff the lowest requested batch changed.
+                            modified
+                        }),
+                    };
                     return Err(ctx::Canceled);
                 }
             }
@@ -144,8 +129,8 @@ impl Queue {
         Err(ctx::Canceled)
     }
 
-    /// Accepts a block fetch request, which is contained in the available blocks range.
-    /// Caller is responsible for fetching the block and adding it to the block store.
+    /// Accepts a batch fetch request, which is contained in the available batches range.
+    /// Caller is responsible for fetching the batch and adding it to the batch store.
     pub(crate) async fn accept_batch(
         &self,
         ctx: &ctx::Ctx,
@@ -155,14 +140,14 @@ impl Queue {
         while ctx.is_active() {
             // Wait for the lowest requested block to be available.
             // This scope is always cancelled, so we ignore the result.
-            let mut block_number = None;
+            let mut batch_number = None;
             let _: Result<(), _> = scope::run!(ctx, |ctx, s| async {
                 if let Some(n) = sub.borrow_and_update().first_key_value().map(|x| *x.0) {
                     let n = ctx::NoCopy(n);
                     s.spawn::<()>(async {
                         let n = n;
                         sync::wait_for(ctx, available, |a| a.contains(n.0)).await?;
-                        block_number = Some(n.0);
+                        batch_number = Some(n.0);
                         Err(ctx::Canceled)
                     });
                 }
@@ -171,14 +156,14 @@ impl Queue {
                 Err(ctx::Canceled)
             })
             .await;
-            let Some(block_number) = block_number else {
+            let Some(batch_number) = batch_number else {
                 continue;
             };
 
             // Remove the request from the queue.
             let mut res = None;
             self.batches.send_if_modified(|x| {
-                res = x.remove_entry(&block_number);
+                res = x.remove_entry(&batch_number);
                 // Send iff the lowest requested block changed.
                 res.is_some() && !x.is_empty()
             });
