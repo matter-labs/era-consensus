@@ -65,14 +65,14 @@ where
         (self.num_replicas - 1) / 5
     }
 
-    /// The number of signatures required for a quorum, ie. `4 * f + 1` or more generally `n - f`, which in this case equals `n*4/5+1`
+    /// The number of signatures required for a quorum, ie. `4 * f + 1` or more generally `n - f`; should be equivalent to `4/5n+1` as well.
     pub fn quorum_size(&self) -> usize {
         self.num_replicas() - self.num_faulty()
     }
 
-    /// The number of signatures required for a high-vote, ie. `2 * f + 1`
+    /// The number of signatures required for a high-vote, ie. `2 * f + 1` or `n - 3*f`; should be equivalent to `2/5n+1` as well.
     pub fn subquorum_size(&self) -> usize {
-        self.num_faulty() * 2 + 1
+        self.num_replicas() - 3 * self.num_faulty()
     }
 
     /// All nodes in the cluster, replicas and twins.
