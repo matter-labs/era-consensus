@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::testonly::{
     twins::{Cluster, HasKey, ScenarioGenerator, Twin},
     ut_harness::UTHarness,
@@ -12,7 +14,7 @@ use zksync_consensus_network::testonly::new_configs_for_validators;
 use zksync_consensus_roles::validator::{
     self,
     testonly::{Setup, SetupSpec},
-    LeaderSelectionMode, PublicKey,
+    LeaderSelectionMode, PublicKey, SecretKey,
 };
 
 async fn run_test(behavior: Behavior, network: Network) {
@@ -212,22 +214,38 @@ async fn non_proposing_leader() {
 /// Run Twins scenarios without actual twins, so just random partitions and leaders,
 /// to see that the basic mechanics of the network allow finalizations to happen.
 #[tokio::test(flavor = "multi_thread")]
-async fn honest_no_twins_network() {
-    // TODO: Speed up the clock.
-    let ctx = &ctx::test_root(&ctx::RealClock);
+async fn twins_network_without_twins() {
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     let rng = &mut ctx.rng();
 
     for _ in 0..5 {
         let num_replicas = rng.gen_range(1..=11);
-        run_twins(ctx, num_replicas, false);
+        run_twins(ctx, num_replicas, false).await.unwrap();
     }
 }
 
-async fn run_twins(ctx: &Ctx, num_replicas: usize, use_twins: bool) {
+/// Run Twins scenarios with actual twins.
+#[tokio::test(flavor = "multi_thread")]
+async fn twins_network_with_twins() {
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
+    let rng = &mut ctx.rng();
+
+    for _ in 0..10 {
+        let num_replicas = rng.gen_range(1..=11);
+        run_twins(ctx, num_replicas, true).await.unwrap();
+    }
+}
+
+async fn run_twins(ctx: &Ctx, num_replicas: usize, use_twins: bool) -> anyhow::Result<()> {
+    zksync_concurrency::testonly::abort_on_panic();
+    // Give 30 seconds for all scenarios to finish.
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
+
     #[derive(PartialEq)]
     struct Replica {
         id: i64,
         public_key: PublicKey,
+        secret_key: SecretKey,
     }
 
     impl HasKey for Replica {
@@ -241,14 +259,13 @@ async fn run_twins(ctx: &Ctx, num_replicas: usize, use_twins: bool) {
     impl Twin for Replica {
         fn to_twin(&self) -> Self {
             Self {
-                id: self.id * -1,
+                id: -self.id,
                 public_key: self.public_key.clone(),
+                secret_key: self.secret_key.clone(),
             }
         }
     }
 
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
-    zksync_concurrency::testonly::abort_on_panic();
     let rng = &mut ctx.rng();
 
     // The existing test machinery uses the number of finalized blocks as an exit criteria.
@@ -261,18 +278,17 @@ async fn run_twins(ctx: &Ctx, num_replicas: usize, use_twins: bool) {
     // The paper considers 2 or 3 partitions enough.
     let max_partitions = 3;
 
-    // Everyone on the twins network is honest.
-    // For now assign one power each (not, say, 100 each, or varying weights).
-    let nodes = vec![(Behavior::Honest, 1u64); num_replicas];
     let num_honest = validator::threshold(num_replicas as u64) as usize;
-    let num_faulty = num_replicas - num_honest;
-    let num_twins = if use_twins && num_faulty > 0 {
-        rng.gen_range(1..=num_faulty)
+    let max_faulty = num_replicas - num_honest;
+    let num_twins = if use_twins && max_faulty > 0 {
+        rng.gen_range(1..=max_faulty)
     } else {
         0
     };
 
-    let mut spec = SetupSpec::new_with_weights(rng, nodes.iter().map(|(_, w)| *w).collect());
+    // Every validator has equal power of 1.
+    const WEIGHT: u64 = 1;
+    let mut spec = SetupSpec::new_with_weights(rng, vec![WEIGHT; num_replicas]);
 
     let replicas = spec
         .validator_weights
@@ -281,13 +297,26 @@ async fn run_twins(ctx: &Ctx, num_replicas: usize, use_twins: bool) {
         .map(|(i, (sk, _))| Replica {
             id: i as i64,
             public_key: sk.public(),
+            secret_key: sk.clone(),
         })
         .collect::<Vec<_>>();
 
     let cluster = Cluster::new(replicas, num_twins);
     let scenarios = ScenarioGenerator::new(&cluster, num_rounds, max_partitions);
 
-    // Reuse the same cluster to run a few scenarios.
+    // Create network config for all nodes in the cluster (assigns unique network addresses).
+    let nets = new_configs_for_validators(rng, cluster.nodes().iter().map(|r| &r.secret_key), 1);
+    let node_to_port = cluster
+        .nodes()
+        .iter()
+        .zip(nets.iter())
+        .map(|(node, net)| (node.id, net.server_addr.port()))
+        .collect::<HashMap<_, _>>();
+
+    // Every network needs a behaviour. They are all honest, just some might be duplicated.
+    let nodes = vec![(Behavior::Honest, WEIGHT); cluster.num_nodes()];
+
+    // Reuse the same cluster and network setup to run a few scenarios.
     for _ in 0..10 {
         // Generate a permutation of partitions and leaders for the given number of rounds.
         let scenario = scenarios.generate_one(rng);
@@ -299,26 +328,28 @@ async fn run_twins(ctx: &Ctx, num_replicas: usize, use_twins: bool) {
         // Generate a new setup with this leadership schedule.
         let setup = Setup::from(spec.clone());
 
-        // Create network config for honest nodes, and then extras for the twins.
-        let validator_keys = setup
-            .validator_keys
-            .iter()
-            .chain(setup.validator_keys.iter().take(num_twins));
-
-        // Create the network configuration, e.g. assign a unique network address to each validator.
-        let nets = new_configs_for_validators(rng, validator_keys, 1);
-
-        // TODO: Create a network mode that supports partition schedule,
-        // which requires identifying the sender network (not validator) identity.
-        let network = todo!()
+        // Create a network with the partition schedule of the scenario.
+        let network = Network::Twins(
+            scenario
+                .rounds
+                .into_iter()
+                .map(|rc| {
+                    rc.partitions
+                        .into_iter()
+                        .map(|p| p.into_iter().map(|r| node_to_port[&r.id]).collect())
+                        .collect()
+                })
+                .collect(),
+        );
 
         Test {
             network,
-            nodes,
+            nodes: nodes.clone(),
             blocks_to_finalize,
         }
-        .run_with_config(ctx, nets, &setup.genesis)
-        .await
-        .unwrap()
+        .run_with_config(ctx, nets.clone(), &setup.genesis)
+        .await?
     }
+
+    Ok(())
 }

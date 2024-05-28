@@ -266,15 +266,15 @@ async fn run_nodes_twins(
                                 match partitions_opt {
                                     None => {
                                         for target_port in target_ports {
-                                            sends[&target_port].send(msg());
+                                            sends[target_port].send(msg());
                                         }
                                     }
                                     Some(ps) => {
                                         for p in ps {
                                             if p.contains(&port) {
                                                 for target_port in target_ports {
-                                                    if p.contains(&target_port) {
-                                                        sends[&target_port].send(msg())
+                                                    if p.contains(target_port) {
+                                                        sends[target_port].send(msg())
                                                     }
                                                 }
                                                 break;
