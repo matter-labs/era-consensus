@@ -224,10 +224,12 @@ async fn run_nodes_twins(
         // * identify the partition they are in based on their network id
         // * either broadcast to all other instances in the partition, or find out the network
         //   identity of the target validator and send to it _iff_ they are in the same partition
-        scope::run!(ctx, |ctx, s| async {
-            for (port, recv) in recvs {
-                s.spawn(async {
-                    let mut recv = recv;
+        let splits = &splits;
+        let sends = &sends;
+        let validator_ports = &validator_ports;
+        scope::run!(ctx, |ctx, s| async move {
+            for (port, mut recv) in recvs {
+                s.spawn(async move {
                     use zksync_consensus_network::io;
                     while let Ok(io::InputMessage::Consensus(message)) = recv.recv(ctx).await {
                         let view_number = message.message.msg.view().number;
@@ -257,11 +259,11 @@ async fn run_nodes_twins(
                                 }
                             },
                             io::Target::Validator(v) => {
-                                let target_ports = validator_ports.get(&v).unwrap();
+                                let target_ports = &validator_ports[&v];
 
                                 match partitions_opt {
                                     None => {
-                                        for target_port in target_ports.iter() {
+                                        for target_port in target_ports {
                                             sends[&target_port].send(msg());
                                         }
                                     }
@@ -270,7 +272,7 @@ async fn run_nodes_twins(
                                             if !p.contains(&port) {
                                                 continue;
                                             }
-                                            for target_port in target_ports.iter() {
+                                            for target_port in target_ports {
                                                 if !p.contains(&target_port) {
                                                     continue;
                                                 }
