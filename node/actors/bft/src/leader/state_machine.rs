@@ -9,7 +9,7 @@ use zksync_concurrency::{
     time,
 };
 use zksync_consensus_network::io::{ConsensusInputMessage, ConsensusReq, Target};
-use zksync_consensus_roles::validator::{self, ConsensusMsg};
+use zksync_consensus_roles::validator;
 
 /// The StateMachine struct contains the state of the leader. This is a simple state machine. We just store
 /// replica messages and produce leader messages (including proposing blocks) when we reach the threshold for
@@ -200,11 +200,13 @@ impl StateMachine {
         // Broadcast the leader prepare message to all replicas (ourselves included).
         let msg = cfg
             .secret_key
-            .sign_msg(ConsensusMsg::LeaderPrepare(validator::LeaderPrepare {
-                proposal,
-                proposal_payload: payload,
-                justification,
-            }));
+            .sign_msg(validator::ConsensusMsg::LeaderPrepare(
+                validator::LeaderPrepare {
+                    proposal,
+                    proposal_payload: payload,
+                    justification,
+                },
+            ));
         pipe.send(
             ConsensusInputMessage {
                 message: msg,

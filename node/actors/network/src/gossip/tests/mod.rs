@@ -169,7 +169,7 @@ fn update_signature<R: Rng>(
             number: attester::BatchNumber(
                 (batch.proposal.number.0 as i64 + batch_number_diff) as u64,
             ),
-            payload: batch.proposal.payload.clone(),
+            payload: batch.proposal.payload,
         },
     };
     Arc::new(key.sign_msg(batch.to_owned()))
