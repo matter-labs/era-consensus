@@ -19,7 +19,8 @@ use zksync_consensus_roles::{
 };
 use zksync_consensus_storage::testonly::TestMemoryStorage;
 
-mod fetch;
+mod fetch_batches;
+mod fetch_blocks;
 mod syncing;
 
 #[tokio::test]

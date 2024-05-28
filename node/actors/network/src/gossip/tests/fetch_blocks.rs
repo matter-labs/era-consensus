@@ -13,7 +13,7 @@ async fn test_simple() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::Setup::new(rng, 1);
-    setup.push_blocks(rng, 2);
+    setup.push_blocks(rng, 1);
     let mut cfg = crate::testonly::new_configs(rng, &setup, 0)[0].clone();
     cfg.rpc.push_block_store_state_rate = limiter::Rate::INF;
     cfg.rpc.get_block_rate = limiter::Rate::INF;
