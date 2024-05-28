@@ -70,7 +70,7 @@ where
     }
 
     /// The number of signatures required for a high-vote, ie. `2 * f + 1`
-    pub fn subqourum_size(&self) -> usize {
+    pub fn subquorum_size(&self) -> usize {
         self.num_faulty() * 2 + 1
     }
 
