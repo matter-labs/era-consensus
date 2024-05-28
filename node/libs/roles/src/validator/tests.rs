@@ -415,7 +415,7 @@ fn test_validator_committee_weights() {
     let rng = &mut ctx.rng();
 
     // Validators with non-uniform weights
-    let setup = Setup::new_with_weights(rng, vec![000, 600, 800, 6000, 900, 700]);
+    let setup = Setup::new_with_weights(rng, vec![1000, 600, 800, 6000, 900, 700]);
     // Expected sum of the validators weights
     let sums = [1000, 1600, 2400, 8400, 9300, 10000];
 
