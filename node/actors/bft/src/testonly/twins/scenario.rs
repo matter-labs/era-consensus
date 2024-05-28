@@ -149,7 +149,7 @@ where
         // We could implement this with or without replacement.
         // In practice there probably are so many combinations that it won't matter.
         // For example to tolerate 2 faulty nodes we need 11 replicas, with 2 twins that's 13,
-        // which results in hundreds of thousands of potential paritionings, multiplied
+        // which results in hundreds of thousands of potential partitionings, multiplied
         // by 11 different possible leaders in each round.
         for _ in 0..self.num_rounds {
             rounds.push(RoundConfig {
