@@ -8,10 +8,11 @@ use zksync_consensus_roles::validator::{self, Genesis};
 use zksync_consensus_storage::testonly::new_store;
 use zksync_consensus_utils::pipe;
 
-#[derive(Clone, Copy)]
+#[derive(Clone)]
 pub(crate) enum Network {
     Real,
     Mock,
+    Twins(PortSplitSchedule),
 }
 
 // Identify different network identities of twins by their listener port.
@@ -65,7 +66,7 @@ impl Test {
                 });
             }
             assert!(!honest.is_empty());
-            s.spawn_bg(run_nodes(ctx, self.network, &nodes));
+            s.spawn_bg(run_nodes(ctx, &self.network, &nodes));
 
             // Run the nodes until all honest nodes store enough finalized blocks.
             assert!(self.blocks_to_finalize > 0);
@@ -90,10 +91,11 @@ impl Test {
 }
 
 /// Run a set of nodes.
-async fn run_nodes(ctx: &ctx::Ctx, network: Network, specs: &[Node]) -> anyhow::Result<()> {
+async fn run_nodes(ctx: &ctx::Ctx, network: &Network, specs: &[Node]) -> anyhow::Result<()> {
     match network {
         Network::Real => run_nodes_real(ctx, specs).await,
         Network::Mock => run_nodes_mock(ctx, specs).await,
+        Network::Twins(splits) => run_nodes_twins(ctx, specs, splits).await,
     }
 }
 
@@ -179,7 +181,7 @@ async fn run_nodes_mock(ctx: &ctx::Ctx, specs: &[Node]) -> anyhow::Result<()> {
 async fn run_nodes_twins(
     ctx: &ctx::Ctx,
     specs: &[Node],
-    splits: PortSplitSchedule,
+    splits: &PortSplitSchedule,
 ) -> anyhow::Result<()> {
     scope::run!(ctx, |ctx, s| async {
         // All known network ports of a validator, so that we can tell if any of
@@ -224,7 +226,6 @@ async fn run_nodes_twins(
         // * identify the partition they are in based on their network id
         // * either broadcast to all other instances in the partition, or find out the network
         //   identity of the target validator and send to it _iff_ they are in the same partition
-        let splits = &splits;
         let sends = &sends;
         let validator_ports = &validator_ports;
         scope::run!(ctx, |ctx, s| async move {
