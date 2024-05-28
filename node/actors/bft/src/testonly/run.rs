@@ -1,6 +1,6 @@
 use super::{Behavior, Node};
 use network::Config;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope};
 use zksync_consensus_network as network;
@@ -13,6 +13,14 @@ pub(crate) enum Network {
     Real,
     Mock,
 }
+
+// Identify different network identities of twins by their listener port.
+// They are all expected to be on localhost, but `ListenerAddr` can't be
+// directly used as a map key.
+type Port = u16;
+type PortPartition = HashSet<Port>;
+type PortSplit = Vec<PortPartition>;
+type PortSplitSchedule = Vec<PortSplit>;
 
 /// Config for the test. Determines the parameters to run the test with.
 #[derive(Clone)]
@@ -127,8 +135,7 @@ async fn run_nodes_mock(ctx: &ctx::Ctx, specs: &[Node]) -> anyhow::Result<()> {
             let key = spec.net.validator_key.as_ref().unwrap().public();
             sends.insert(key, actor_pipe.send);
             recvs.push(actor_pipe.recv);
-            // Run consensus; the dispatcher pipe is its network connection,
-            // which means we can use the actor pipe to:
+            // Run consensus; the dispatcher pipe is its network connection, which means we can use the actor pipe to:
             // * send Output messages from other actors to this consensus instance
             // * receive Input messages sent by this consensus to the other actors
             s.spawn(
@@ -156,6 +163,123 @@ async fn run_nodes_mock(ctx: &ctx::Ctx, specs: &[Node]) -> anyhow::Result<()> {
                         match message.recipient {
                             io::Target::Validator(v) => sends.get(&v).unwrap().send(msg()),
                             io::Target::Broadcast => sends.values().for_each(|s| s.send(msg())),
+                        }
+                    }
+                    Ok(())
+                });
+            }
+            anyhow::Ok(())
+        })
+        .await
+    })
+    .await
+}
+
+/// Run a set of nodes with a Twins network configuration.
+async fn run_nodes_twins(
+    ctx: &ctx::Ctx,
+    specs: &[Node],
+    splits: PortSplitSchedule,
+) -> anyhow::Result<()> {
+    scope::run!(ctx, |ctx, s| async {
+        // All known network ports of a validator, so that we can tell if any of
+        // those addresses are in the same partition as the sender.
+        let mut validator_ports: HashMap<_, Vec<Port>> = HashMap::new();
+        // Outbox of consensus instances, paired with their network identity,
+        // so we can tell which partition they are in in the given view.
+        let mut recvs = vec![];
+        // Inbox of the consensus instances, indexed by their network identity,
+        // so that we can send to the one which is in the same partition as the sender.
+        let mut sends = HashMap::new();
+
+        // TODO: Buffer messages that aren't delivered in partitions until the end
+        // of the test and deliver them then. Need to define when it's time to deliver
+        // all buffered messages: if we allow all partitions to be less than required
+        // for a quorum, they will keep timing out in the same view; one indication is
+        // too many messages received in the same view, e.g. more than 2x the number of nodes.
+
+        for (i, spec) in specs.iter().enumerate() {
+            let (actor_pipe, dispatcher_pipe) = pipe::new();
+            let validator_key = spec.net.validator_key.as_ref().unwrap().public();
+            let port = spec.net.server_addr.port();
+
+            validator_ports.entry(validator_key).or_default().push(port);
+
+            sends.insert(port, actor_pipe.send);
+            recvs.push((port, actor_pipe.recv));
+
+            // Run consensus; the dispatcher pipe is its network connection, which means we can use the actor pipe to:
+            // * send Output messages from other actors to this consensus instance
+            // * receive Input messages sent by this consensus to the other actors
+            s.spawn(
+                async {
+                    let mut network_pipe = dispatcher_pipe;
+                    spec.run(ctx, &mut network_pipe).await
+                }
+                .instrument(tracing::info_span!("node", i)),
+            );
+        }
+        // Run networks by receiving from all consensus instances:
+        // * identify the view they are in from the message
+        // * identify the partition they are in based on their network id
+        // * either broadcast to all other instances in the partition, or find out the network
+        //   identity of the target validator and send to it _iff_ they are in the same partition
+        scope::run!(ctx, |ctx, s| async {
+            for (port, recv) in recvs {
+                s.spawn(async {
+                    let mut recv = recv;
+                    use zksync_consensus_network::io;
+                    while let Ok(io::InputMessage::Consensus(message)) = recv.recv(ctx).await {
+                        let view_number = message.message.msg.view().number;
+                        // Here we assume that all instances start from view 0 in the tests.
+                        // If the view is higher than what we have planned for, assume no partitions.
+                        let partitions_opt = splits.get(view_number.0 as usize);
+
+                        let msg = || {
+                            io::OutputMessage::Consensus(io::ConsensusReq {
+                                msg: message.message.clone(),
+                                ack: oneshot::channel().0,
+                            })
+                        };
+
+                        match message.recipient {
+                            io::Target::Broadcast => match partitions_opt {
+                                None => sends.values().for_each(|s| s.send(msg())),
+                                Some(ps) => {
+                                    for p in ps {
+                                        if !p.contains(&port) {
+                                            continue;
+                                        }
+                                        for target_port in p {
+                                            sends[target_port].send(msg());
+                                        }
+                                    }
+                                }
+                            },
+                            io::Target::Validator(v) => {
+                                let target_ports = validator_ports.get(&v).unwrap();
+
+                                match partitions_opt {
+                                    None => {
+                                        for target_port in target_ports.iter() {
+                                            sends[&target_port].send(msg());
+                                        }
+                                    }
+                                    Some(ps) => {
+                                        for p in ps {
+                                            if !p.contains(&port) {
+                                                continue;
+                                            }
+                                            for target_port in target_ports.iter() {
+                                                if !p.contains(&target_port) {
+                                                    continue;
+                                                }
+                                                sends[&target_port].send(msg())
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
                     Ok(())

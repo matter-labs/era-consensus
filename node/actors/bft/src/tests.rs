@@ -213,6 +213,7 @@ async fn non_proposing_leader() {
 /// to see that the basic mechanics of the network allow finalizations to happen.
 #[tokio::test(flavor = "multi_thread")]
 async fn honest_no_twins_network() {
+    // TODO: Speed up the clock.
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
@@ -262,7 +263,7 @@ async fn run_twins(ctx: &Ctx, num_replicas: usize, use_twins: bool) {
 
     // Everyone on the twins network is honest.
     // For now assign one power each (not, say, 100 each, or varying weights).
-    let mut nodes = vec![(Behavior::Honest, 1u64); num_replicas];
+    let nodes = vec![(Behavior::Honest, 1u64); num_replicas];
     let num_honest = validator::threshold(num_replicas as u64) as usize;
     let num_faulty = num_replicas - num_honest;
     let num_twins = if use_twins && num_faulty > 0 {
@@ -304,6 +305,7 @@ async fn run_twins(ctx: &Ctx, num_replicas: usize, use_twins: bool) {
             .iter()
             .chain(setup.validator_keys.iter().take(num_twins));
 
+        // Create the network configuration, e.g. assign a unique network address to each validator.
         let nets = new_configs_for_validators(rng, validator_keys, 1);
 
         // TODO: Create a network mode that supports partition schedule,
