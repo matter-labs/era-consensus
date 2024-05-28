@@ -108,21 +108,29 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, specs: &[Node]) -> anyhow::
                 }
             }
             Network::Mock => {
+                // Actor inputs, ie. where the test can send messages to the consensus.
                 let mut sends = HashMap::new();
+                // Actor outputs, ie. the messages the actor wants to send to the others.
                 let mut recvs = vec![];
                 for (i, spec) in specs.iter().enumerate() {
-                    let (actor_pipe, pipe) = pipe::new();
+                    let (actor_pipe, dispatcher_pipe) = pipe::new();
                     let key = spec.net.validator_key.as_ref().unwrap().public();
                     sends.insert(key, actor_pipe.send);
                     recvs.push(actor_pipe.recv);
+                    // Run consensus; the dispatcher pipe is its network connection,
+                    // which means we can use the actor pipe to:
+                    // * send Output messages from other actors to this consensus instance
+                    // * receive Input messages sent by this consensus to the other actors
                     s.spawn(
                         async {
-                            let mut pipe = pipe;
-                            spec.run(ctx, &mut pipe).await
+                            let mut network_pipe = dispatcher_pipe;
+                            spec.run(ctx, &mut network_pipe).await
                         }
                         .instrument(tracing::info_span!("node", i)),
                     );
                 }
+                // Run mock networks by receiving the output-turned-input from all consensus
+                // instances and forwarding them to the others.
                 scope::run!(ctx, |ctx, s| async {
                     for recv in recvs {
                         s.spawn(async {

@@ -5,12 +5,30 @@ use std::future::Future;
 use zksync_concurrency::ctx::{self, channel, Ctx};
 
 /// This is the end of the Pipe that should be held by the actor.
+///
+/// The actor can receive `In` and send back `Out` messages.
 pub type ActorPipe<In, Out> = Pipe<In, Out>;
 
 /// This is the end of the Pipe that should be held by the dispatcher.
+///
+/// The dispatcher can send `In` messages and receive `Out` back.
 pub type DispatcherPipe<In, Out> = Pipe<Out, In>;
 
 /// This is a generic Pipe end.
+///
+/// It is used to receive `In` and send `Out` messages.
+///
+/// When viewed from the perspective of [new]:
+/// * messages of type `In` are going right-to-left
+/// * messages of type `Out` are going left-to-right
+///
+/// ```text
+///  In  <- -------- <- In
+///         | Pipe |
+///  Out -> -------- -> Out
+///  ^                  ^
+///  Actor              Dispatcher
+/// ```
 #[derive(Debug)]
 pub struct Pipe<In, Out> {
     /// This is the channel that receives messages.
