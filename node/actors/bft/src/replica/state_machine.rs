@@ -113,11 +113,18 @@ impl StateMachine {
                         .wrap("process_replica_prepare()")
                     {
                         Ok(()) => Ok(()),
-                        Err(super::replica_prepare::Error::Internal(err)) => {
-                            return Err(err);
-                        }
                         Err(err) => {
-                            tracing::warn!("process_replica_prepare: {err:#}");
+                            match err {
+                                super::replica_prepare::Error::Internal(e) => {
+                                    return Err(e);
+                                }
+                                super::replica_prepare::Error::Old { .. } => {
+                                    tracing::info!("process_replica_prepare: {err:#}");
+                                }
+                                _ => {
+                                    tracing::warn!("process_replica_prepare: {err:#}");
+                                }
+                            }
                             Err(())
                         }
                     };
@@ -129,12 +136,21 @@ impl StateMachine {
                         .await
                         .wrap("process_leader_prepare()")
                     {
-                        Err(super::leader_prepare::Error::Internal(err)) => return Err(err),
+                        Ok(()) => Ok(()),
                         Err(err) => {
-                            tracing::warn!("process_leader_prepare(): {err:#}");
+                            match err {
+                                super::leader_prepare::Error::Internal(e) => {
+                                    return Err(e);
+                                }
+                                super::leader_prepare::Error::Old { .. } => {
+                                    tracing::info!("process_leader_prepare: {err:#}");
+                                }
+                                _ => {
+                                    tracing::warn!("process_leader_prepare: {err:#}");
+                                }
+                            }
                             Err(())
                         }
-                        Ok(()) => Ok(()),
                     };
                     metrics::ConsensusMsgLabel::LeaderPrepare.with_result(&res)
                 }
@@ -144,12 +160,21 @@ impl StateMachine {
                         .await
                         .wrap("process_leader_commit()")
                     {
-                        Err(super::leader_commit::Error::Internal(err)) => return Err(err),
+                        Ok(()) => Ok(()),
                         Err(err) => {
-                            tracing::warn!("process_leader_commit(): {err:#}");
+                            match err {
+                                super::leader_commit::Error::Internal(e) => {
+                                    return Err(e);
+                                }
+                                super::leader_commit::Error::Old { .. } => {
+                                    tracing::info!("process_leader_commit: {err:#}");
+                                }
+                                _ => {
+                                    tracing::warn!("process_leader_commit: {err:#}");
+                                }
+                            }
                             Err(())
                         }
-                        Ok(()) => Ok(()),
                     };
                     metrics::ConsensusMsgLabel::LeaderCommit.with_result(&res)
                 }
