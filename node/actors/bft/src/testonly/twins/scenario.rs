@@ -8,7 +8,8 @@ use super::{splits, HasKey, Split, Twin};
 pub struct Cluster<T> {
     /// All nodes, twins and originals.
     nodes: Vec<T>,
-    /// The ideal size of the committee, ie. the `n` in the `n = 5 * f + 1`.
+    /// The ideal size of the committee, ie. the `n` in the `n = 5 * f + 1` equation from the spec.
+    /// Note that the tests don't assume that we have exactly `f=(n-1)/5` twins.
     num_replicas: usize,
 }
 
