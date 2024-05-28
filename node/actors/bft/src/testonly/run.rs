@@ -235,6 +235,7 @@ async fn run_nodes_twins(
                         let view_number = message.message.msg.view().number;
                         // Here we assume that all instances start from view 0 in the tests.
                         // If the view is higher than what we have planned for, assume no partitions.
+                        // Ever node is guaranteed to be present in only one partition.
                         let partitions_opt = splits.get(view_number.0 as usize);
 
                         let msg = || {
@@ -249,11 +250,11 @@ async fn run_nodes_twins(
                                 None => sends.values().for_each(|s| s.send(msg())),
                                 Some(ps) => {
                                     for p in ps {
-                                        if !p.contains(&port) {
-                                            continue;
-                                        }
-                                        for target_port in p {
-                                            sends[target_port].send(msg());
+                                        if p.contains(&port) {
+                                            for target_port in p {
+                                                sends[target_port].send(msg());
+                                            }
+                                            break;
                                         }
                                     }
                                 }
@@ -269,14 +270,13 @@ async fn run_nodes_twins(
                                     }
                                     Some(ps) => {
                                         for p in ps {
-                                            if !p.contains(&port) {
-                                                continue;
-                                            }
-                                            for target_port in target_ports {
-                                                if !p.contains(&target_port) {
-                                                    continue;
+                                            if p.contains(&port) {
+                                                for target_port in target_ports {
+                                                    if p.contains(&target_port) {
+                                                        sends[&target_port].send(msg())
+                                                    }
                                                 }
-                                                sends[&target_port].send(msg())
+                                                break;
                                             }
                                         }
                                     }
