@@ -5,10 +5,7 @@ use tracing::Instrument as _;
 use zksync_concurrency::testonly::abort_on_panic;
 use zksync_consensus_bft as bft;
 use zksync_consensus_network::testonly::{new_configs, new_fullnode};
-use zksync_consensus_roles::{
-    attester::BatchNumber,
-    validator::{testonly::Setup, BlockNumber},
-};
+use zksync_consensus_roles::validator::{testonly::Setup, BlockNumber};
 use zksync_consensus_storage::{
     testonly::{in_memory, TestMemoryStorage},
     BlockStore,
@@ -42,22 +39,6 @@ fn validator(
             payload_manager: Box::new(bft::testonly::RandomPayload(1000)),
         }),
         attester: None,
-    }
-}
-
-fn attester(
-    cfg: &network::Config,
-    block_store: Arc<BlockStore>,
-    batch_store: Arc<BatchStore>,
-) -> Executor {
-    Executor {
-        config: config(cfg),
-        block_store,
-        batch_store,
-        validator: None,
-        attester: Some(Attester {
-            key: cfg.attester_key.clone().unwrap(),
-        }),
     }
 }
 

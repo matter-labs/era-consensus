@@ -5,8 +5,8 @@ use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
 use super::{
-    AggregateSignature, Batch, BatchHeader, BatchNumber, BatchQC, Msg, MsgHash, PayloadHash,
-    PublicKey, Signature, Signed, Signers, WeightedAttester,
+    AggregateSignature, Batch, BatchHeader, BatchNumber, BatchQC, FinalBatch, Msg, MsgHash,
+    Payload, PayloadHash, PublicKey, Signature, Signed, Signers, WeightedAttester,
 };
 
 impl ProtoFmt for Batch {
@@ -19,6 +19,23 @@ impl ProtoFmt for Batch {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             proposal: Some(self.proposal.build()),
+        }
+    }
+}
+
+impl ProtoFmt for FinalBatch {
+    type Proto = proto::FinalBatch;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            payload: Payload(required(&r.payload).context("payload")?.clone()),
+            justification: read_required(&r.justification).context("justification")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            payload: Some(self.payload.0.clone()),
+            justification: Some(self.justification.build()),
         }
     }
 }

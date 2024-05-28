@@ -15,6 +15,7 @@
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config};
 use anyhow::Context as _;
 use im::HashMap;
+use rand::Rng;
 use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync};
@@ -154,85 +155,85 @@ impl Network {
     /// Task that keeps hearing about new votes and updates the L1 batch qc.
     /// It will propagate the QC if there's enough votes.
     pub(crate) async fn update_batch_qc(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        // // TODO This is not a good way to do this, we shouldn't be verifying the QC every time
-        // // Can we get only the latest votes?
-        // loop {
-        //     let mut sub = self.batch_votes.subscribe();
-        //     let votes = sync::changed(ctx, &mut sub)
-        //         .await
-        //         .context("batch votes")?
-        //         .clone();
+        // TODO This is not a good way to do this, we shouldn't be verifying the QC every time
+        // Can we get only the latest votes?
+        loop {
+            let mut sub = self.batch_votes.subscribe();
+            let votes = sync::changed(ctx, &mut sub)
+                .await
+                .context("batch votes")?
+                .clone();
 
-        //     // Check next QC to collect votes for.
-        //     let new_qc = self
-        //         .last_viewed_qc
-        //         .clone()
-        //         .map(|qc| {
-        //             attester::BatchQC::new(
-        //                 attester::Batch {
-        //                     proposal: attester::BatchHeader {
-        //                         number: qc.message.proposal.number.next(),
-        //                         payload: qc.message.proposal.payload,
-        //                     },
-        //                 },
-        //                 self.genesis(),
-        //             )
-        //         })
-        //         .unwrap_or_else(|| {
-        //             attester::BatchQC::new(
-        //                 attester::Batch {
-        //                     proposal: attester::BatchHeader {
-        //                         number: attester::BatchNumber(0),
-        //                         payload: ,
-        //                     },
-        //                 },
-        //                 self.genesis(),
-        //             )
-        //         })
-        //         .context("new qc")?;
+            // Check next QC to collect votes for.
+            let new_qc = self
+                .last_viewed_qc
+                .clone()
+                .map(|qc| {
+                    attester::BatchQC::new(
+                        attester::Batch {
+                            proposal: attester::BatchHeader {
+                                number: qc.message.proposal.number.next(),
+                                payload: qc.message.proposal.payload, // FIXME this is wrong
+                            },
+                        },
+                        self.genesis(),
+                    )
+                })
+                .unwrap_or_else(|| {
+                    attester::BatchQC::new(
+                        attester::Batch {
+                            proposal: attester::BatchHeader {
+                                number: attester::BatchNumber(0),
+                                payload: ctx.rng().gen(), // FIXME this is wrong
+                            },
+                        },
+                        self.genesis(),
+                    )
+                })
+                .context("new qc")?;
 
-        //     // Check votes for the correct QC.
-        //     for (_, sig) in votes.0 {
-        //         if self
-        //             .batch_qc
-        //             .clone()
-        //             .entry(new_qc.message.proposal.number.clone())
-        //             .or_insert_with(|| {
-        //                 attester::BatchQC::new(new_qc.message.clone(), self.genesis()).expect("qc")
-        //             })
-        //             .add(&sig, self.genesis())
-        //             .is_err()
-        //         {
-        //             // TODO: Should we ban the peer somehow?
-        //             continue;
-        //         }
-        //     }
+            // Check votes for the correct QC.
+            for (_, sig) in votes.0 {
+                if self
+                    .batch_qc
+                    .clone()
+                    .entry(new_qc.message.proposal.number)
+                    .or_insert_with(|| {
+                        attester::BatchQC::new(new_qc.message.clone(), self.genesis()).expect("qc")
+                    })
+                    .add(&sig, self.genesis())
+                    .is_err()
+                {
+                    // TODO: Should we ban the peer somehow?
+                    continue;
+                }
+            }
 
-        //     let weight = self
-        //         .genesis()
-        //         .attesters
-        //         .as_ref()
-        //         .context("attesters")?
-        //         .weight(
-        //             &self
-        //                 .batch_qc
-        //                 .get(&new_qc.message.proposal.number)
-        //                 .context("last qc")?
-        //                 .signers,
-        //         );
+            let weight = self
+                .genesis()
+                .attesters
+                .as_ref()
+                .context("attesters")?
+                .weight(
+                    &self
+                        .batch_qc
+                        .get(&new_qc.message.proposal.number)
+                        .context("last qc")?
+                        .signers,
+                );
 
-        //     if weight
-        //         < self
-        //             .genesis()
-        //             .attesters
-        //             .as_ref()
-        //             .context("attesters")?
-        //             .threshold()
-        //     {
-        //         return Ok(());
-        //     };
+            if weight
+                < self
+                    .genesis()
+                    .attesters
+                    .as_ref()
+                    .context("attesters")?
+                    .threshold()
+            {
+                return Ok(());
+            };
 
-        // If we have enough weight, we can update the last viewed QC and propagate it.
-        todo!();
+            // If we have enough weight, we can update the last viewed QC and propagate it.
+        }
     }
 }

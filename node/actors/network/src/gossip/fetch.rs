@@ -63,8 +63,8 @@ impl Queue {
         }
     }
 
-    /// Requests a block from peers and waits until it is stored.
-    /// Note: in the current implementation concurrent calls for the same block number are
+    /// Requests a batch from peers and waits until it is stored.
+    /// Note: in the current implementation concurrent calls for the same batch number are
     /// unsupported - second call will override the first call.
     pub(crate) async fn batch_request(
         &self,

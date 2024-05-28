@@ -8,6 +8,12 @@ message Batch {
   optional BatchHeader proposal = 1; // required
 }
 
+message FinalBatch {
+  optional bytes payload = 1; // required
+  optional BatchQC justification = 2; // required
+
+}
+
 message PayloadHash {
   optional bytes keccak256 = 1; // required
 }

@@ -7,10 +7,7 @@ use anyhow::Context as _;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use std::sync::Arc;
 use zksync_concurrency::ctx;
-use zksync_consensus_roles::{
-    attester::{self, BatchNumber},
-    validator,
-};
+use zksync_consensus_roles::{attester, validator};
 
 pub mod in_memory;
 
@@ -46,8 +43,8 @@ pub struct TestMemoryStorage {
 impl TestMemoryStorage {
     /// Constructs a new in-memory store for both blocks and batches with their respective runners.
     pub async fn new(ctx: &ctx::Ctx, genesis: &validator::Genesis) -> Self {
-        let (blocks, blocks_runner) = new_store(ctx, &genesis).await;
-        let (batches, batches_runner) = new_batch_store(ctx, &genesis).await;
+        let (blocks, blocks_runner) = new_store(ctx, genesis).await;
+        let (batches, batches_runner) = new_batch_store(ctx, genesis).await;
         Self {
             blocks: (blocks, blocks_runner),
             batches: (batches, batches_runner),
@@ -85,7 +82,7 @@ async fn new_batch_store(
 ) -> (Arc<BatchStore>, BatchStoreRunner) {
     BatchStore::new(
         ctx,
-        Box::new(in_memory::BatchStore::new(BatchNumber(0))),
+        Box::new(in_memory::BatchStore::new(attester::BatchNumber(0))),
         genesis.clone(),
     )
     .await
