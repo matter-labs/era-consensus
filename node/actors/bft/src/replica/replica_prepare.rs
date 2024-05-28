@@ -78,11 +78,8 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         // Extract the QC and verify it.
-        let high_qc = match message.high_qc {
-            Some(qc) => qc,
-            None => {
-                return Ok(());
-            }
+        let Some(high_qc) = message.high_qc else {
+            return Ok(());
         };
 
         high_qc.verify(self.config.genesis()).map_err(|err| {
