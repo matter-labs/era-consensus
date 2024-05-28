@@ -22,6 +22,8 @@ pub use make::*;
 pub(crate) use node::*;
 #[cfg(test)]
 pub(crate) use run::*;
+#[cfg(test)]
+pub mod twins;
 
 // Generates a random InputMessage.
 impl Distribution<InputMessage> for Standard {
