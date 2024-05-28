@@ -347,6 +347,65 @@ fn test_prepare_qc() {
 }
 
 #[test]
+fn test_prepare_qc_high_vote() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    // This will create equally weighted validators
+    let setup = Setup::new(rng, 6);
+
+    let view_num: ViewNumber = rng.gen();
+    let msg_a = make_replica_prepare(rng, view_num, &setup);
+    let msg_b = make_replica_prepare(rng, view_num, &setup);
+    let msg_c = make_replica_prepare(rng, view_num, &setup);
+
+    // Case with 1 subquorum.
+    let mut qc = PrepareQC::new(msg_a.view.clone());
+
+    for key in &setup.validator_keys {
+        qc.add(&key.sign_msg(msg_a.clone()), &setup.genesis)
+            .unwrap();
+    }
+
+    assert!(qc.high_vote(&setup.genesis).is_some());
+
+    // Case with 2 subquorums.
+    let mut qc = PrepareQC::new(msg_a.view.clone());
+
+    for key in &setup.validator_keys[0..3] {
+        qc.add(&key.sign_msg(msg_a.clone()), &setup.genesis)
+            .unwrap();
+    }
+
+    for key in &setup.validator_keys[3..6] {
+        qc.add(&key.sign_msg(msg_b.clone()), &setup.genesis)
+            .unwrap();
+    }
+
+    assert!(qc.high_vote(&setup.genesis).is_none());
+
+    // Case with no subquorums.
+    let mut qc = PrepareQC::new(msg_a.view.clone());
+
+    for key in &setup.validator_keys[0..2] {
+        qc.add(&key.sign_msg(msg_a.clone()), &setup.genesis)
+            .unwrap();
+    }
+
+    for key in &setup.validator_keys[2..4] {
+        qc.add(&key.sign_msg(msg_b.clone()), &setup.genesis)
+            .unwrap();
+    }
+
+    for key in &setup.validator_keys[4..6] {
+        qc.add(&key.sign_msg(msg_c.clone()), &setup.genesis)
+            .unwrap();
+    }
+
+    assert!(qc.high_vote(&setup.genesis).is_none());
+}
+
+#[test]
 fn test_prepare_qc_add_errors() {
     use PrepareQCAddError as Error;
     let ctx = ctx::test_root(&ctx::RealClock);
