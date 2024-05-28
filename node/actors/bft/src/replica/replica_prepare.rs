@@ -2,7 +2,7 @@
 use super::StateMachine;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
-use zksync_consensus_roles::validator::{self};
+use zksync_consensus_roles::validator;
 
 /// Errors that can occur when processing a "replica prepare" message.
 #[derive(Debug, thiserror::Error)]
@@ -77,23 +77,33 @@ impl StateMachine {
         // Check the signature on the message.
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
-        // Verify the message.
-        message
-            .verify(self.config.genesis())
-            .map_err(Error::InvalidMessage)?;
+        // Extract the QC and verify it.
+        let high_qc = match message.high_qc {
+            Some(qc) => qc,
+            None => {
+                return Ok(());
+            }
+        };
+
+        high_qc.verify(self.config.genesis()).map_err(|err| {
+            Error::InvalidMessage(validator::ReplicaPrepareVerifyError::HighQC(err))
+        })?;
 
         // ----------- All checks finished. Now we process the message. --------------
 
-        // Update our high QC, if necessary.
-        let qc_view = message.high_qc.clone().map(|x| x.view().number);
+        let qc_view = high_qc.view().number;
 
-        if qc_view > self.high_qc.clone().map(|x| x.view().number) {
-            self.high_qc.clone_from(&message.high_qc)
+        // Try to create a finalized block with this CommitQC and our block proposal cache.
+        self.save_block(ctx, &high_qc).await.wrap("save_block()")?;
+
+        // Update our high QC, if necessary.
+        if Some(qc_view) > self.high_qc.clone().map(|x| x.view().number) {
+            self.high_qc = Some(high_qc);
         }
 
         // Skip to a new view, if necessary.
-        if qc_view > Some(self.view) {
-            self.view = qc_view.unwrap();
+        if qc_view >= self.view {
+            self.view = qc_view;
             self.start_new_view(ctx).await.wrap("start_new_view()")?;
         }
 
