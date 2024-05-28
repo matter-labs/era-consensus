@@ -1,7 +1,7 @@
 //! Node configuration.
 use crate::{proto, store};
 use anyhow::Context as _;
-use serde_json::{ser::Formatter, Serializer};
+use serde_json::ser::Formatter;
 use std::{
     collections::{HashMap, HashSet},
     net::SocketAddr,
@@ -54,7 +54,7 @@ pub fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
 /// Encodes a generated proto message for arbitrary ProtoFmt with provided serializer.
 pub(crate) fn encode_with_serializer<T: serde::ser::Serialize, F: Formatter>(
     x: &T,
-    mut serializer: Serializer<Vec<u8>, F>,
+    mut serializer: serde_json::Serializer<Vec<u8>, F>,
 ) -> String {
     T::serialize(x, &mut serializer).unwrap();
     String::from_utf8(serializer.into_inner()).unwrap()
@@ -139,7 +139,6 @@ impl ProtoFmt for AppConfig {
             // TODO: read secret.
             validator_key: read_optional_secret_text(&r.validator_secret_key)
                 .context("validator_secret_key")?,
-
             node_key: read_required_secret_text(&r.node_secret_key).context("node_secret_key")?,
             gossip_dynamic_inbound_limit: required(&r.gossip_dynamic_inbound_limit)
                 .and_then(|x| Ok((*x).try_into()?))

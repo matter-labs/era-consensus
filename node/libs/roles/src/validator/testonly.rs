@@ -1,4 +1,6 @@
 //! Test-only utilities.
+use crate::attester;
+
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
     FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
@@ -25,11 +27,12 @@ pub struct SetupSpec {
     pub fork_number: ForkNumber,
     /// First block.
     pub first_block: BlockNumber,
-
     /// Protocol version.
     pub protocol_version: ProtocolVersion,
     /// Validator secret keys and weights.
-    pub weights: Vec<(SecretKey, u64)>,
+    pub validator_weights: Vec<(SecretKey, u64)>,
+    /// Attester secret keys and weights.
+    pub attester_weights: Vec<(attester::SecretKey, u64)>,
     /// Leader selection.
     pub leader_selection: LeaderSelectionMode,
 }
@@ -37,6 +40,7 @@ pub struct SetupSpec {
 /// Test setup.
 #[derive(Debug, Clone)]
 pub struct Setup(SetupInner);
+
 impl SetupSpec {
     /// New `SetupSpec`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
@@ -46,7 +50,12 @@ impl SetupSpec {
     /// New `SetupSpec`.
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
         Self {
-            weights: weights.into_iter().map(|w| (rng.gen(), w)).collect(),
+            validator_weights: weights
+                .clone()
+                .into_iter()
+                .map(|w| (rng.gen(), w))
+                .collect(),
+            attester_weights: weights.into_iter().map(|w| (rng.gen(), w)).collect(),
             chain_id: ChainId(1337),
             fork_number: ForkNumber(rng.gen_range(0..100)),
             first_block: BlockNumber(rng.gen_range(0..100)),
@@ -98,7 +107,7 @@ impl Setup {
         };
         let msg = ReplicaCommit { view, proposal };
         let mut justification = CommitQC::new(msg, &self.0.genesis);
-        for key in &self.0.keys {
+        for key in &self.0.validator_keys {
             justification
                 .add(
                     &key.sign_msg(justification.message.clone()),
@@ -124,6 +133,14 @@ impl Setup {
         let first = self.0.blocks.first()?.number();
         self.0.blocks.get(n.0.checked_sub(first.0)? as usize)
     }
+
+    /// Pushes a new L1 batch.
+    pub fn push_batch(&mut self, batch: attester::Batch) {
+        for key in &self.0.attester_keys {
+            let signed = key.sign_msg(batch.clone());
+            self.0.signed_batches.push(signed);
+        }
+    }
 }
 
 impl From<SetupSpec> for Setup {
@@ -135,15 +152,27 @@ impl From<SetupSpec> for Setup {
                 first_block: spec.first_block,
 
                 protocol_version: spec.protocol_version,
-                committee: Committee::new(spec.weights.iter().map(|(k, w)| WeightedValidator {
-                    key: k.public(),
-                    weight: *w,
+                validators: Committee::new(spec.validator_weights.iter().map(|(k, w)| {
+                    WeightedValidator {
+                        key: k.public(),
+                        weight: *w,
+                    }
                 }))
                 .unwrap(),
+                attesters: attester::Committee::new(spec.attester_weights.iter().map(|(k, w)| {
+                    attester::WeightedAttester {
+                        key: k.public(),
+                        weight: *w,
+                    }
+                }))
+                .unwrap()
+                .into(),
                 leader_selection: spec.leader_selection,
             }
             .with_hash(),
-            keys: spec.weights.into_iter().map(|(k, _)| k).collect(),
+            validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
+            attester_keys: spec.attester_weights.into_iter().map(|(k, _)| k).collect(),
+            signed_batches: vec![],
             blocks: vec![],
         })
     }
@@ -153,9 +182,13 @@ impl From<SetupSpec> for Setup {
 #[derive(Debug, Clone)]
 pub struct SetupInner {
     /// Validators' secret keys.
-    pub keys: Vec<SecretKey>,
+    pub validator_keys: Vec<SecretKey>,
+    /// Attesters' secret keys.
+    pub attester_keys: Vec<attester::SecretKey>,
     /// Past blocks.
     pub blocks: Vec<FinalBlock>,
+    /// L1 batches
+    pub signed_batches: Vec<attester::Signed<attester::Batch>>,
     /// Genesis config.
     pub genesis: Genesis,
 }
@@ -234,9 +267,13 @@ impl Distribution<GenesisHash> for Standard {
 
 impl Distribution<LeaderSelectionMode> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderSelectionMode {
-        match rng.gen_range(0..=2) {
+        match rng.gen_range(0..=3) {
             0 => LeaderSelectionMode::RoundRobin,
             1 => LeaderSelectionMode::Sticky(rng.gen()),
+            3 => LeaderSelectionMode::Rota({
+                let n = rng.gen_range(1..=3);
+                rng.sample_iter(Standard).take(n).collect()
+            }),
             _ => LeaderSelectionMode::Weighted,
         }
     }
@@ -250,7 +287,8 @@ impl Distribution<GenesisRaw> for Standard {
             first_block: rng.gen(),
 
             protocol_version: rng.gen(),
-            committee: rng.gen(),
+            validators: rng.gen(),
+            attesters: rng.gen(),
             leader_selection: rng.gen(),
         }
     }

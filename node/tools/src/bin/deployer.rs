@@ -29,7 +29,7 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
     let rng = &mut rand::thread_rng();
 
     let setup = validator::testonly::Setup::new(rng, nodes);
-    let validator_keys = setup.keys.clone();
+    let validator_keys = setup.validator_keys.clone();
 
     // Each node will have `gossip_peers` outbound peers.
     let peers = 2;

@@ -1,6 +1,6 @@
 //! Messages related to the consensus protocol.
 use super::{BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, ReplicaPrepare};
-use crate::validator;
+use crate::{attester, validator};
 use anyhow::Context;
 use bit_vec::BitVec;
 use num_bigint::BigUint;
@@ -64,6 +64,9 @@ pub enum LeaderSelectionMode {
 
     /// Select pseudo-randomly, based on validators' weights.
     Weighted,
+
+    /// Select on a rotation of specific validator keys.
+    Rota(Vec<validator::PublicKey>),
 }
 
 /// Calculates the pseudo-random eligibility of a leader based on the input and total weight.
@@ -84,6 +87,14 @@ pub struct Committee {
     vec: Vec<WeightedValidator>,
     indexes: BTreeMap<validator::PublicKey, usize>,
     total_weight: u64,
+}
+
+impl std::ops::Deref for Committee {
+    type Target = Vec<WeightedValidator>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.vec
+    }
 }
 
 impl Committee {
@@ -116,11 +127,6 @@ impl Committee {
             vec,
             total_weight,
         })
-    }
-
-    /// Iterates over weighted validators.
-    pub fn iter(&self) -> impl Iterator<Item = &WeightedValidator> {
-        self.vec.iter()
     }
 
     /// Iterates over validator keys.
@@ -173,6 +179,11 @@ impl Committee {
             }
             LeaderSelectionMode::Sticky(pk) => {
                 let index = self.index(pk).unwrap();
+                self.get(index).unwrap().key.clone()
+            }
+            LeaderSelectionMode::Rota(pks) => {
+                let index = view_number.0 as usize % pks.len();
+                let index = self.index(&pks[index]).unwrap();
                 self.get(index).unwrap().key.clone()
             }
         }
@@ -232,7 +243,6 @@ pub struct ChainId(pub u64);
 pub struct GenesisRaw {
     /// ID of the blockchain.
     pub chain_id: ChainId,
-
     /// Number of the fork. Should be incremented every time the genesis is updated,
     /// i.e. whenever a hard fork is performed.
     pub fork_number: ForkNumber,
@@ -241,7 +251,9 @@ pub struct GenesisRaw {
     /// First block of a fork.
     pub first_block: BlockNumber,
     /// Set of validators of the chain.
-    pub committee: Committee,
+    pub validators: Committee,
+    /// Set of attesters of the chain.
+    pub attesters: Option<attester::Committee>,
     /// The mode used for selecting leader for a given view.
     pub leader_selection: LeaderSelectionMode,
 }
@@ -306,8 +318,16 @@ impl Genesis {
     /// Verifies correctness.
     pub fn verify(&self) -> anyhow::Result<()> {
         if let LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
-            if self.committee.index(pk).is_none() {
+            if self.validators.index(pk).is_none() {
                 anyhow::bail!("leader_selection sticky mode public key is not in committee");
+            }
+        } else if let LeaderSelectionMode::Rota(pks) = &self.leader_selection {
+            for pk in pks {
+                if self.validators.index(pk).is_none() {
+                    anyhow::bail!(
+                        "leader_selection rota mode public key is not in committee: {pk:?}"
+                    );
+                }
             }
         }
 
@@ -316,7 +336,7 @@ impl Genesis {
 
     /// Computes the leader for the given view.
     pub fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
-        self.committee.view_leader(view, &self.leader_selection)
+        self.validators.view_leader(view, &self.leader_selection)
     }
 
     /// Hash of the genesis.

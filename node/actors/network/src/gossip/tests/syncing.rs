@@ -136,7 +136,7 @@ async fn test_switching_on_nodes() {
     // It is important that all nodes will connect to each other,
     // because we spawn the nodes gradually and we want the network
     // to be connected at all times.
-    let cfgs = testonly::new_configs(rng, &setup, setup.keys.len());
+    let cfgs = testonly::new_configs(rng, &setup, setup.validator_keys.len());
     setup.push_blocks(rng, cfgs.len());
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
@@ -191,7 +191,7 @@ async fn test_switching_off_nodes() {
     // It is important that all nodes will connect to each other,
     // because we spawn the nodes gradually and we want the network
     // to be connected at all times.
-    let cfgs = testonly::new_configs(rng, &setup, setup.keys.len());
+    let cfgs = testonly::new_configs(rng, &setup, setup.validator_keys.len());
     setup.push_blocks(rng, cfgs.len());
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
@@ -253,7 +253,7 @@ async fn test_different_first_block() {
     // It is important that all nodes will connect to each other,
     // because we spawn the nodes gradually and we want the network
     // to be connected at all times.
-    let cfgs = testonly::new_configs(rng, &setup, setup.keys.len());
+    let cfgs = testonly::new_configs(rng, &setup, setup.validator_keys.len());
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
         for (i, mut cfg) in cfgs.into_iter().enumerate() {

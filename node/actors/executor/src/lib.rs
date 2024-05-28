@@ -3,7 +3,6 @@ use crate::io::Dispatcher;
 use anyhow::Context as _;
 use std::{
     collections::{HashMap, HashSet},
-    fmt,
     sync::Arc,
 };
 use zksync_concurrency::{ctx, limiter, net, scope, time};
@@ -19,6 +18,7 @@ mod io;
 mod tests;
 
 /// Validator-related part of [`Executor`].
+#[derive(Debug)]
 pub struct Validator {
     /// Consensus network configuration.
     pub key: validator::SecretKey,
@@ -26,14 +26,6 @@ pub struct Validator {
     pub replica_store: Box<dyn ReplicaStore>,
     /// Payload manager.
     pub payload_manager: Box<dyn bft::PayloadManager>,
-}
-
-impl fmt::Debug for Validator {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.debug_struct("ValidatorExecutor")
-            .field("key", &self.key)
-            .finish()
-    }
 }
 
 /// Config of the node executor.
@@ -47,7 +39,6 @@ pub struct Config {
     pub public_addr: net::Host,
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
-
     /// Key of this node. It uniquely identifies the node.
     /// It should match the secret key provided in the `node_key` file.
     pub node_key: node::SecretKey,
@@ -106,25 +97,8 @@ impl Executor {
         }
     }
 
-    /// Verifies correctness of the Executor.
-    fn verify(&self) -> anyhow::Result<()> {
-        if let Some(validator) = self.validator.as_ref() {
-            if !self
-                .block_store
-                .genesis()
-                .committee
-                .keys()
-                .any(|key| key == &validator.key.public())
-            {
-                anyhow::bail!("this validator doesn't belong to the consensus");
-            }
-        }
-        Ok(())
-    }
-
     /// Runs this executor to completion. This should be spawned on a separate task.
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        self.verify().context("verify()")?;
         let network_config = self.network_config();
 
         // Generate the communication pipes. We have one for each actor.
@@ -144,25 +118,37 @@ impl Executor {
                 });
             }
 
-            if let Some(validator) = self.validator {
-                s.spawn(async {
-                    let validator = validator;
-                    bft::Config {
-                        secret_key: validator.key.clone(),
-                        block_store: self.block_store.clone(),
-                        replica_store: validator.replica_store,
-                        payload_manager: validator.payload_manager,
-                        max_payload_size: self.config.max_payload_size,
-                    }
-                    .run(ctx, consensus_actor_pipe)
-                    .await
-                    .context("Consensus stopped")
-                });
-            }
             let (net, runner) =
                 network::Network::new(network_config, self.block_store.clone(), network_actor_pipe);
             net.register_metrics();
-            runner.run(ctx).await.context("Network stopped")
+            s.spawn(async { runner.run(ctx).await.context("Network stopped") });
+
+            // Run the bft actor iff this node is an active validator.
+            let Some(validator) = self.validator else {
+                tracing::info!("Running the node in non-validator mode.");
+                return Ok(());
+            };
+            if !self
+                .block_store
+                .genesis()
+                .validators
+                .contains(&validator.key.public())
+            {
+                tracing::warn!(
+                    "This node is an inactive validator. It will NOT vote in consensus."
+                );
+                return Ok(());
+            }
+            bft::Config {
+                secret_key: validator.key.clone(),
+                block_store: self.block_store.clone(),
+                replica_store: validator.replica_store,
+                payload_manager: validator.payload_manager,
+                max_payload_size: self.config.max_payload_size,
+            }
+            .run(ctx, consensus_actor_pipe)
+            .await
+            .context("Consensus stopped")
         })
         .await
     }

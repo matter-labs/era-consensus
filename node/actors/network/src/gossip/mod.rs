@@ -13,12 +13,17 @@
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config};
+use anyhow::Context as _;
+use im::HashMap;
 use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync};
-use zksync_consensus_roles::{node, validator};
+use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::BlockStore;
 
+use self::batch_votes::BatchVotesWatch;
+
+mod batch_votes;
 mod fetch;
 mod handshake;
 mod runner;
@@ -38,12 +43,18 @@ pub(crate) struct Network {
     pub(crate) outbound: PoolWatch<node::PublicKey, ()>,
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
+    /// Current state of knowledge about batch votes.
+    pub(crate) batch_votes: BatchVotesWatch,
     /// Block store to serve `get_block` requests from.
     pub(crate) block_store: Arc<BlockStore>,
     /// Output pipe of the network actor.
     pub(crate) sender: channel::UnboundedSender<io::OutputMessage>,
     /// Queue of block fetching requests.
     pub(crate) fetch_queue: fetch::Queue,
+    /// Last viewed QC.
+    pub(crate) last_viewed_qc: Option<attester::BatchQC>,
+    /// L1 batch qc.
+    pub(crate) batch_qc: HashMap<attester::BatchNumber, attester::BatchQC>,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
 }
@@ -63,6 +74,9 @@ impl Network {
             ),
             outbound: PoolWatch::new(cfg.gossip.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
+            batch_votes: BatchVotesWatch::default(),
+            batch_qc: HashMap::new(),
+            last_viewed_qc: None,
             cfg,
             fetch_queue: fetch::Queue::default(),
             block_store,
@@ -102,5 +116,73 @@ impl Network {
             }
         })
         .await;
+    }
+
+    /// Task that keeps hearing about new votes and updates the L1 batch qc.
+    /// It will propagate the QC if there's enough votes.
+    pub(crate) async fn update_batch_qc(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        // TODO This is not a good way to do this, we shouldn't be verifying the QC every time
+        // Can we get only the latest votes?
+        let attesters = self.genesis().attesters.as_ref().context("attesters")?;
+        loop {
+            let mut sub = self.batch_votes.subscribe();
+            let votes = sync::changed(ctx, &mut sub)
+                .await
+                .context("batch votes")?
+                .clone();
+
+            // Check next QC to collect votes for.
+            let new_qc = self
+                .last_viewed_qc
+                .clone()
+                .map(|qc| {
+                    attester::BatchQC::new(
+                        attester::Batch {
+                            number: qc.message.number.next(),
+                        },
+                        self.genesis(),
+                    )
+                })
+                .unwrap_or_else(|| {
+                    attester::BatchQC::new(
+                        attester::Batch {
+                            number: attester::BatchNumber(0),
+                        },
+                        self.genesis(),
+                    )
+                })
+                .context("new qc")?;
+
+            // Check votes for the correct QC.
+            for (_, sig) in votes.0 {
+                if self
+                    .batch_qc
+                    .clone()
+                    .entry(new_qc.message.number.clone())
+                    .or_insert_with(|| {
+                        attester::BatchQC::new(new_qc.message.clone(), self.genesis()).expect("qc")
+                    })
+                    .add(&sig, self.genesis())
+                    .is_err()
+                {
+                    // TODO: Should we ban the peer somehow?
+                    continue;
+                }
+            }
+
+            let weight = attesters.weight(
+                &self
+                    .batch_qc
+                    .get(&new_qc.message.number)
+                    .context("last qc")?
+                    .signers,
+            );
+
+            if weight < attesters.threshold() {
+                return Ok(());
+            };
+
+            // If we have enough weight, we can update the last viewed QC and propagate it.
+        }
     }
 }

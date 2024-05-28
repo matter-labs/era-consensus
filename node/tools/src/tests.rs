@@ -12,9 +12,17 @@ impl Distribution<AppConfig> for EncodeDist {
         let mut genesis: validator::GenesisRaw = rng.gen();
         // In order for the genesis to be valid, the sticky leader needs to be in the validator committee.
         if let LeaderSelectionMode::Sticky(_) = genesis.leader_selection {
-            let i = rng.gen_range(0..genesis.committee.len());
+            let i = rng.gen_range(0..genesis.validators.len());
             genesis.leader_selection =
-                LeaderSelectionMode::Sticky(genesis.committee.get(i).unwrap().key.clone());
+                LeaderSelectionMode::Sticky(genesis.validators.get(i).unwrap().key.clone());
+        } else if let LeaderSelectionMode::Rota(pks) = genesis.leader_selection {
+            let n = pks.len();
+            let i = rng.gen_range(0..genesis.validators.len());
+            let mut pks = Vec::new();
+            for _ in 0..n {
+                pks.push(genesis.validators.get(i).unwrap().key.clone());
+            }
+            genesis.leader_selection = LeaderSelectionMode::Rota(pks);
         }
         AppConfig {
             server_addr: self.sample(rng),

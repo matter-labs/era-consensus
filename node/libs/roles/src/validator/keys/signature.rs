@@ -4,7 +4,7 @@ use std::fmt;
 use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
 
 /// A signature from a validator.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Signature(pub(crate) bls12_381::Signature);
 
 impl Signature {
@@ -45,11 +45,5 @@ impl TextFmt for Signature {
 impl fmt::Debug for Signature {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.write_str(&TextFmt::encode(self))
-    }
-}
-
-impl std::hash::Hash for Signature {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        ByteFmt::encode(self).hash(state)
     }
 }

@@ -1,10 +1,15 @@
+use crate::{
+    attester::{self, WeightedAttester},
+    node::SessionId,
+};
+
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
     FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
-use crate::{node::SessionId, proto::validator as proto, validator::LeaderSelectionMode};
+use crate::{proto::validator as proto, validator::LeaderSelectionMode};
 use anyhow::Context as _;
 use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
@@ -21,13 +26,25 @@ impl ProtoFmt for GenesisRaw {
             .map(|(i, v)| WeightedValidator::read(v).context(i))
             .collect::<Result<_, _>>()
             .context("validators_v1")?;
+        let attesters: Vec<_> = r
+            .attesters
+            .iter()
+            .enumerate()
+            .map(|(i, v)| WeightedAttester::read(v).context(i))
+            .collect::<Result<_, _>>()
+            .context("attesters")?;
         Ok(GenesisRaw {
             chain_id: ChainId(*required(&r.chain_id).context("chain_id")?),
             fork_number: ForkNumber(*required(&r.fork_number).context("fork_number")?),
             first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
 
             protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
-            committee: Committee::new(validators.into_iter()).context("validators_v1")?,
+            validators: Committee::new(validators.into_iter()).context("validators_v1")?,
+            attesters: if attesters.is_empty() {
+                None
+            } else {
+                Some(attester::Committee::new(attesters.into_iter()).context("attesters")?)
+            },
             leader_selection: read_required(&r.leader_selection).context("leader_selection")?,
         })
     }
@@ -38,7 +55,12 @@ impl ProtoFmt for GenesisRaw {
             first_block: Some(self.first_block.0),
 
             protocol_version: Some(self.protocol_version.0),
-            validators_v1: self.committee.iter().map(|v| v.build()).collect(),
+            validators_v1: self.validators.iter().map(|v| v.build()).collect(),
+            attesters: self
+                .attesters
+                .as_ref()
+                .map(|c| c.iter().map(|v| v.build()).collect())
+                .unwrap_or_default(),
             leader_selection: Some(self.leader_selection.build()),
         }
     }
@@ -441,6 +463,15 @@ impl ProtoFmt for LeaderSelectionMode {
                 Ok(LeaderSelectionMode::Sticky(PublicKey::read(key)?))
             }
             proto::leader_selection_mode::Mode::Weighted(_) => Ok(LeaderSelectionMode::Weighted),
+            proto::leader_selection_mode::Mode::Rota(inner) => {
+                let _ = required(&inner.keys.first()).context("keys")?;
+                let pks = inner
+                    .keys
+                    .iter()
+                    .map(PublicKey::read)
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(LeaderSelectionMode::Rota(pks))
+            }
         }
     }
     fn build(&self) -> Self::Proto {
@@ -460,6 +491,13 @@ impl ProtoFmt for LeaderSelectionMode {
             LeaderSelectionMode::Weighted => proto::LeaderSelectionMode {
                 mode: Some(proto::leader_selection_mode::Mode::Weighted(
                     proto::leader_selection_mode::Weighted {},
+                )),
+            },
+            LeaderSelectionMode::Rota(pks) => proto::LeaderSelectionMode {
+                mode: Some(proto::leader_selection_mode::Mode::Rota(
+                    proto::leader_selection_mode::Rota {
+                        keys: pks.iter().map(|pk| pk.build()).collect(),
+                    },
                 )),
             },
         }

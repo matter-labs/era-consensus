@@ -3,6 +3,7 @@ syntax = "proto3";
 package zksync.roles.validator;
 
 import "zksync/std.proto";
+import "zksync/roles/attester.proto";
 
 message Genesis {
   reserved 1,2;
@@ -15,6 +16,7 @@ message Genesis {
   // We will either remove them entirely, or keep them for the initial epoch.
   optional uint32 protocol_version = 8; // required; ProtocolVersion
   repeated WeightedValidator validators_v1 = 3;
+  repeated attester.WeightedAttester attesters = 9; // optional
   optional LeaderSelectionMode leader_selection = 4; // required
 }
 
@@ -23,12 +25,16 @@ message LeaderSelectionMode {
     RoundRobin round_robin = 1;
     Sticky sticky = 2;
     Weighted weighted = 3;
+    Rota rota = 4;
   }
   message RoundRobin{}
   message Sticky{
     optional PublicKey key = 1; // required
   }
   message Weighted{}
+  message Rota {
+    repeated PublicKey keys = 1; // required
+  }
 }
 
 

@@ -123,6 +123,12 @@ impl ByteFmt for Signature {
     }
 }
 
+impl std::hash::Hash for Signature {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        ByteFmt::encode(self).hash(state)
+    }
+}
+
 /// Error returned when an invalid signature is detected.
 #[derive(Debug, thiserror::Error)]
 #[error("invalid signature")]
