@@ -19,6 +19,7 @@ fn config(cfg: &network::Config) -> Config {
         gossip_dynamic_inbound_limit: cfg.gossip.dynamic_inbound_limit,
         gossip_static_inbound: cfg.gossip.static_inbound.clone(),
         gossip_static_outbound: cfg.gossip.static_outbound.clone(),
+        debug_page: None,
     }
 }
 

@@ -3,7 +3,7 @@ use rand::{
     distributions::{Alphanumeric, DistString, Distribution},
     Rng,
 };
-use zksync_concurrency::net;
+use zksync_concurrency::net::{self, http::DebugCredentials};
 
 /// Distribution for testing encodings.
 pub struct EncodeDist {
@@ -119,5 +119,14 @@ impl Distribution<f64> for EncodeDist {
             return rng.gen_range(0..PRECISION) as f64 / PRECISION as f64;
         }
         rng.gen()
+    }
+}
+
+impl Distribution<DebugCredentials> for EncodeDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DebugCredentials {
+        DebugCredentials {
+            user: self.sample(rng),
+            password: self.sample(rng),
+        }
     }
 }

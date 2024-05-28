@@ -18,6 +18,14 @@ tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 vise.workspace = true
+tokio-rustls.workspace = true
+hyper.workspace = true
+http-body-util.workspace = true
+hyper-util.workspace = true
+tls-listener.workspace = true
+rustls-pemfile.workspace = true
+base64.workspace = true
+build_html.workspace = true
 
 [lints]
 workspace = true

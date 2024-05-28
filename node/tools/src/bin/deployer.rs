@@ -42,7 +42,7 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
             config: AppConfig {
                 server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
                 public_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT).into(),
-                debug_addr: None,
+                rpc_addr: None,
                 metrics_server_addr: None,
                 genesis: setup.genesis.clone(),
                 max_payload_size: 1000000,
@@ -51,6 +51,8 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
                 gossip_dynamic_inbound_limit: 2,
                 gossip_static_inbound: [].into(),
                 gossip_static_outbound: [].into(),
+                debug_addr: None,
+                debug_credentials: None,
             },
             node_addr: None, //It's not assigned yet
             is_seed: i < seed_nodes_amount,

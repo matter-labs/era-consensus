@@ -26,11 +26,6 @@ thiserror.workspace = true
 tracing.workspace = true
 vise.workspace = true
 tokio.workspace = true
-tokio-rustls.workspace = true
-hyper.workspace = true
-http-body-util.workspace = true
-hyper-util.workspace = true
-tls-listener.workspace = true
 
 [dev-dependencies]
 assert_matches.workspace = true

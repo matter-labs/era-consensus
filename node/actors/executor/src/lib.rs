@@ -59,6 +59,9 @@ pub struct Config {
     /// Outbound connections that the node should actively try to
     /// establish and maintain.
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
+    /// Http debug page configuration.
+    /// If None, no debug page is enabled
+    pub debug_page: Option<net::http::DebugPageConfig>,
 }
 
 impl Config {
@@ -129,12 +132,17 @@ impl Executor {
         let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
         // Create the IO dispatcher.
         let dispatcher = Dispatcher::new(consensus_dispatcher_pipe, network_dispatcher_pipe);
-        let http_server = network::http::Server::new();
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
             s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
-            s.spawn(async { http_server.run(ctx).await.context("Http Server stopped") });
+
+            if let Some(debug_config) = &self.config.debug_page {
+                s.spawn(async {
+                    let http_server = net::http::Server::new(debug_config.clone());
+                    http_server.run(ctx).await.context("Http Server stopped")
+                });
+            }
 
             if let Some(validator) = self.validator {
                 s.spawn(async {

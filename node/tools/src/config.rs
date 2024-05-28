@@ -7,7 +7,10 @@ use std::{
     net::SocketAddr,
     path::PathBuf,
 };
-use zksync_concurrency::{ctx, net};
+use zksync_concurrency::{
+    ctx,
+    net::{self, http::DebugCredentials},
+};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
@@ -87,6 +90,7 @@ impl ProtoFmt for NodeAddr {
 pub struct AppConfig {
     pub server_addr: SocketAddr,
     pub public_addr: net::Host,
+    pub rpc_addr: Option<SocketAddr>,
     pub debug_addr: Option<SocketAddr>,
     pub metrics_server_addr: Option<SocketAddr>,
 
@@ -98,6 +102,8 @@ pub struct AppConfig {
     pub gossip_dynamic_inbound_limit: usize,
     pub gossip_static_inbound: HashSet<node::PublicKey>,
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
+
+    pub debug_credentials: Option<DebugCredentials>,
 }
 
 impl ProtoFmt for AppConfig {
@@ -122,7 +128,7 @@ impl ProtoFmt for AppConfig {
         Ok(Self {
             server_addr: read_required_text(&r.server_addr).context("server_addr")?,
             public_addr: net::Host(required(&r.public_addr).context("public_addr")?.clone()),
-            debug_addr: read_optional_text(&r.debug_addr).context("debug_addr")?,
+            rpc_addr: read_optional_text(&r.rpc_addr).context("rpc_addr")?,
             metrics_server_addr: read_optional_text(&r.metrics_server_addr)
                 .context("metrics_server_addr")?,
 
@@ -140,6 +146,8 @@ impl ProtoFmt for AppConfig {
                 .context("gossip_dynamic_inbound_limit")?,
             gossip_static_inbound,
             gossip_static_outbound,
+            debug_addr: read_optional_text(&r.debug_addr).context("debug_addr")?,
+            debug_credentials: DebugCredentials::decode(&r.debug_credentials)?,
         })
     }
 
@@ -147,7 +155,7 @@ impl ProtoFmt for AppConfig {
         Self::Proto {
             server_addr: Some(self.server_addr.encode()),
             public_addr: Some(self.public_addr.0.clone()),
-            debug_addr: self.debug_addr.as_ref().map(TextFmt::encode),
+            rpc_addr: self.rpc_addr.as_ref().map(TextFmt::encode),
             metrics_server_addr: self.metrics_server_addr.as_ref().map(TextFmt::encode),
 
             genesis: Some(self.genesis.build()),
@@ -171,6 +179,11 @@ impl ProtoFmt for AppConfig {
                     addr: Some(addr.0.clone()),
                 })
                 .collect(),
+            debug_addr: self.debug_addr.as_ref().map(TextFmt::encode),
+            debug_credentials: self
+                .debug_credentials
+                .as_ref()
+                .map(DebugCredentials::encode),
         }
     }
 }
@@ -197,6 +210,10 @@ impl Configs {
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
                 max_payload_size: self.app.max_payload_size,
+                debug_page: self.app.debug_addr.map(|addr| net::http::DebugPageConfig {
+                    addr,
+                    credentials: self.app.debug_credentials.clone(),
+                }),
             },
             block_store,
             validator: self

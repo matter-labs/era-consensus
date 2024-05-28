@@ -69,7 +69,7 @@ fn main() -> anyhow::Result<()> {
         .map(|i| AppConfig {
             server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), addrs[i].port()),
             public_addr: addrs[i].into(),
-            debug_addr: None,
+            rpc_addr: None,
             metrics_server_addr: args
                 .metrics_server_port
                 .map(|port| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port)),
@@ -80,6 +80,8 @@ fn main() -> anyhow::Result<()> {
             gossip_dynamic_inbound_limit: peers,
             gossip_static_inbound: HashSet::default(),
             gossip_static_outbound: HashMap::default(),
+            debug_addr: None,
+            debug_credentials: None,
         })
         .collect();
 
