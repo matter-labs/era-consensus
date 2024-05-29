@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::testonly::{
     twins::{Cluster, HasKey, ScenarioGenerator, Twin},
     ut_harness::UTHarness,
-    Behavior, Network, Test,
+    Behavior, Network, PortSplitSchedule, Test,
 };
 use rand::Rng;
 use zksync_concurrency::{
@@ -245,8 +245,8 @@ async fn run_twins(
     num_scenarios: usize,
 ) -> anyhow::Result<()> {
     zksync_concurrency::testonly::abort_on_panic();
-    // Give 30 seconds for all scenarios to finish.
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
+    // Use a single timeout for all scenarios to finish.
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(20));
 
     #[derive(PartialEq)]
     struct Replica {
@@ -336,18 +336,35 @@ async fn run_twins(
         let setup = Setup::from(spec.clone());
 
         // Create a network with the partition schedule of the scenario.
-        let splits = scenario
+        let splits: PortSplitSchedule = scenario
             .rounds
-            .into_iter()
+            .iter()
             .map(|rc| {
                 rc.partitions
-                    .into_iter()
-                    .map(|p| p.into_iter().map(|r| node_to_port[&r.id]).collect())
+                    .iter()
+                    .map(|p| p.iter().map(|r| node_to_port[&r.id]).collect())
                     .collect()
             })
             .collect();
 
-        eprintln!("splits = {:?}", splits);
+        for (r, rc) in scenario.rounds.iter().enumerate() {
+            let leader_id = cluster
+                .nodes()
+                .iter()
+                .find(|n| n.public_key == *rc.leader)
+                .unwrap()
+                .id;
+            let leader_port = node_to_port[&leader_id];
+            let partitions = &splits[r];
+            let leader_partition_size = partitions
+                .iter()
+                .find(|p| p.contains(&leader_port))
+                .unwrap()
+                .len();
+            let leader_isolated = leader_partition_size < cluster.quorum_size();
+
+            eprintln!("round={r} partitions={partitions:?} leader={leader_port} leader_partition_size={leader_partition_size} leader_isolated={leader_isolated}");
+        }
 
         Test {
             network: Network::Twins(splits),

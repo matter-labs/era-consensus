@@ -18,10 +18,10 @@ pub(crate) enum Network {
 // Identify different network identities of twins by their listener port.
 // They are all expected to be on localhost, but `ListenerAddr` can't be
 // directly used as a map key.
-type Port = u16;
-type PortPartition = HashSet<Port>;
-type PortSplit = Vec<PortPartition>;
-type PortSplitSchedule = Vec<PortSplit>;
+pub(crate) type Port = u16;
+pub(crate) type PortPartition = HashSet<Port>;
+pub(crate) type PortSplit = Vec<PortPartition>;
+pub(crate) type PortSplitSchedule = Vec<PortSplit>;
 
 /// Config for the test. Determines the parameters to run the test with.
 #[derive(Clone)]
@@ -235,11 +235,11 @@ async fn run_nodes_twins(
                 s.spawn(async move {
                     use zksync_consensus_network::io;
                     while let Ok(io::InputMessage::Consensus(message)) = recv.recv(ctx).await {
-                        let view_number = message.message.msg.view().number;
+                        let view_number = message.message.msg.view().number.0 as usize;
                         // Here we assume that all instances start from view 0 in the tests.
                         // If the view is higher than what we have planned for, assume no partitions.
                         // Ever node is guaranteed to be present in only one partition.
-                        let partitions_opt = splits.get(view_number.0 as usize);
+                        let partitions_opt = splits.get(view_number);
 
                         let msg = || {
                             io::OutputMessage::Consensus(io::ConsensusReq {
@@ -250,10 +250,14 @@ async fn run_nodes_twins(
 
                         match message.recipient {
                             io::Target::Broadcast => match partitions_opt {
-                                None => sends.values().for_each(|s| s.send(msg())),
+                                None => {
+                                    eprintln!("broadcasting view={view_number} from={port} targets=all");
+                                    sends.values().for_each(|s| s.send(msg()))
+                                },
                                 Some(ps) => {
                                     for p in ps {
                                         if p.contains(&port) {
+                                            eprintln!("broadcasting view={view_number} from={port} targets={:?}", p);
                                             for target_port in p {
                                                 sends[target_port].send(msg());
                                             }
@@ -268,15 +272,19 @@ async fn run_nodes_twins(
                                 match partitions_opt {
                                     None => {
                                         for target_port in target_ports {
+                                            eprintln!("sending view={view_number} from={port} to={target_port}");
                                             sends[target_port].send(msg());
                                         }
                                     }
                                     Some(ps) => {
                                         for p in ps {
                                             if p.contains(&port) {
-                                                for target_port in target_ports {
+                                                for target_port in target_ports {                                                    
                                                     if p.contains(target_port) {
+                                                        eprintln!("sending view={view_number} from={port} to={target_port}");
                                                         sends[target_port].send(msg())
+                                                    } else {
+                                                        eprintln!("cannot send view={view_number} from={port} to={target_port}");
                                                     }
                                                 }
                                                 break;
