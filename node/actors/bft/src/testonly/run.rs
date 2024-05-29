@@ -220,6 +220,7 @@ async fn run_nodes_twins(
         // with `async move`, which in turn is necessary otherwise it the spawned process could not borrow `port`.
         let sends = &sends;
         let validator_ports = &validator_ports;
+        let start = &ctx.now();
         // Run networks by receiving from all consensus instances:
         // * identify the view they are in from the message
         // * identify the partition they are in based on their network id
@@ -244,8 +245,16 @@ async fn run_nodes_twins(
                     //   an actual timeout loop and might rely on the network trying to re-broadcast forever.
                     // * OTOH if all partitions are at least quorum sized, then we there will be a subset of nodes that
                     //   can move on to the next view, in which a new partition configuration will allow them to broadcast
-                    //   to previously isolated peers, which will indicate that the buffered messages can be sent as the
-                    //   partition has been "healed".
+                    //   to previously isolated peers. 
+                    // * One idea is to wait until replica A wants to send to replica B in a view when they are no longer 
+                    //   partitioned, and then unstash all previous A-to-B messages. This would _not_ work with HotStuff
+                    //   out of the box, because replicas only communicate with their leader, so if for example B missed
+                    //   a LeaderCommit from A in an earlier view, B will not respond to the LeaderPrepare from C because
+                    //   they can't commit the earlier block until they get a new message from A. However since 
+                    //   https://github.com/matter-labs/era-consensus/pull/119 the ReplicaPrepare messages are broadcasted, 
+                    //   so we shouldn't have to wait long for A to unstash its messages to B.
+                    // * If that wouldn't be acceptable then we could have some kind of global view of stashed messages
+                    //   and unstash them as soon as someone moves on to a new view.
                     let mut stashes: HashMap<Port, Vec<io::OutputMessage>> = HashMap::new();
 
                     // Either stash a message, or unstash all messages and send them to the target along with the new one.
@@ -253,6 +262,7 @@ async fn run_nodes_twins(
                         |can_send: bool, target_port: Port, msg: io::OutputMessage| {
                             let stash = stashes.entry(target_port).or_default();
                             let view = output_msg_view_number(&msg);
+                            let kind = output_msg_label(&msg);
 
                             if can_send {
                                 let s = &sends[&target_port];
@@ -261,13 +271,15 @@ async fn run_nodes_twins(
                                 stash.shuffle(rng);
 
                                 for unstashed in stash.drain(0..) {
-                                    eprintln!("^-> unstashed view={view} unstashed-view={} from={port} to={target_port}", output_msg_view_number(&unstashed));
+                                    let view = output_msg_view_number(&unstashed);
+                                    let kind = output_msg_label(&unstashed);
+                                    eprintln!("   ^^^ unstashed view={view} from={port} to={target_port} kind={kind}");
                                     s.send(unstashed);
                                 }
-                                eprintln!("--> sending view={view} from={port} to={target_port}");
+                                eprintln!("   >>> sending view={view} from={port} to={target_port} kind={kind}");
                                 s.send(msg);
                             } else {
-                                eprintln!("--V stashed view={view} from={port} to={target_port}");
+                                eprintln!("   VVV stashed view={view} from={port} to={target_port} kind={kind}");
                                 stash.push(msg)
                             }
                         };
@@ -297,7 +309,7 @@ async fn run_nodes_twins(
                                 Some(ps) => {
                                     for p in ps {                                        
                                         let can_send = p.contains(&port);
-                                        eprintln!("broadcasting view={view_number} from={port} target={:?} can_send={can_send}", p);
+                                        eprintln!("broadcasting view={view_number} from={port} target={p:?} can_send={can_send} t={}", start.elapsed().as_seconds_f64());
                                         for target_port in p {
                                             send_or_stash(can_send, *target_port, msg());
                                         }
@@ -319,7 +331,7 @@ async fn run_nodes_twins(
                                             let can_send = p.contains(&port);
                                             for target_port in target_ports {
                                                 if p.contains(target_port) {
-                                                    eprintln!("unicasting view={view_number} from={port} target={target_port } can_send={can_send}");
+                                                    eprintln!("unicasting view={view_number} from={port} target={target_port } can_send={can_send} t={}", start.elapsed().as_seconds_f64());
                                                     send_or_stash(
                                                         can_send,
                                                         *target_port,
@@ -346,5 +358,11 @@ async fn run_nodes_twins(
 fn output_msg_view_number(msg: &io::OutputMessage) -> u64 {
     match msg {
         io::OutputMessage::Consensus(cr) => cr.msg.msg.view().number.0,
+    }
+}
+
+fn output_msg_label(msg: &io::OutputMessage) -> &str {
+    match msg {
+        io::OutputMessage::Consensus(cr) => cr.msg.msg.label()
     }
 }

@@ -232,7 +232,7 @@ async fn twins_network_wo_twins_wo_partitions() {
 /// is resilient to temporary network partitions.
 #[tokio::test(flavor = "multi_thread")]
 async fn twins_network_wo_twins_w_partitions() {
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(5.0));
     // TODO: At the moment this test doesn't work with partitions, so just try to do a single scenario to debug.
     run_twins(ctx, 6, false, 1).await.unwrap();
 }
