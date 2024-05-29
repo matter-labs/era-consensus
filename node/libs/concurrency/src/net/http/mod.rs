@@ -11,7 +11,7 @@ use hyper::{
     HeaderMap, Request, Response, StatusCode,
 };
 use hyper_util::rt::tokio::TokioIo;
-use std::{fs, io, net::SocketAddr, sync::Arc};
+use std::{fmt::Display, fs, io, net::SocketAddr, sync::Arc};
 use tls_listener::TlsListener;
 use tokio::net::TcpListener;
 use tokio_rustls::{
@@ -33,24 +33,25 @@ pub struct DebugCredentials {
     pub password: String,
 }
 
-impl DebugCredentials {
-    /// TODO fix this to use FmtText::decode()
-    pub fn decode(field: &Option<String>) -> Result<Option<DebugCredentials>> {
-        let Some(text) = field else { return Ok(None) };
-        let mut credentials = text.split(':');
+impl Display for DebugCredentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.user, self.password)
+    }
+}
+
+impl TryFrom<String> for DebugCredentials {
+    type Error = anyhow::Error;
+
+    fn try_from(value: String) -> Result<Self> {
+        let mut credentials = value.split(':');
         let user = credentials.next().context("Empty debug page credentials")?;
         let password = credentials
             .next()
-            .context("Invalid debug page credentials: expected {user:password}")?;
-        Ok(Some(Self {
+            .context("Invalid debug page credentials: expected '{user:password}'")?;
+        Ok(Self {
             user: user.to_string(),
             password: password.to_string(),
-        }))
-    }
-
-    /// TODO fix this to use FmtText::encode()
-    pub fn encode(&self) -> String {
-        format! {"{}:{}", self.user, self.password}
+        })
     }
 }
 
@@ -143,7 +144,7 @@ impl Server {
                 .context("Failed to base64-decode 'Basic' credentials.")?;
             let incomming_credentials = String::from_utf8(decoded_bytes)
                 .context("The decoded credential string is not valid UTF8.")?;
-            if *credentials.encode() == incomming_credentials {
+            if *credentials.to_string() == incomming_credentials {
                 Ok(())
             } else {
                 Err(anyhow::anyhow!("Invalid password."))

@@ -146,7 +146,11 @@ impl ProtoFmt for AppConfig {
             gossip_static_inbound,
             gossip_static_outbound,
             debug_addr: read_optional_text(&r.debug_addr).context("debug_addr")?,
-            debug_credentials: DebugCredentials::decode(&r.debug_credentials)?,
+            debug_credentials: r
+                .debug_credentials
+                .clone()
+                .map(DebugCredentials::try_from)
+                .transpose()?,
         })
     }
 
@@ -182,7 +186,7 @@ impl ProtoFmt for AppConfig {
             debug_credentials: self
                 .debug_credentials
                 .as_ref()
-                .map(DebugCredentials::encode),
+                .map(DebugCredentials::to_string),
         }
     }
 }
