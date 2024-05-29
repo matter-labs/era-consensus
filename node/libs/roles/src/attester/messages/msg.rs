@@ -1,8 +1,7 @@
-use std::{collections::BTreeMap, fmt};
-
 use crate::{attester, validator};
 use anyhow::Context as _;
 use bit_vec::BitVec;
+use std::{collections::BTreeMap, fmt};
 use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 

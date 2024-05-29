@@ -19,7 +19,8 @@ use crate::io::{InputMessage, OutputMessage};
 use anyhow::Context;
 pub use config::Config;
 use std::sync::Arc;
-use zksync_concurrency::{ctx, scope};
+use zksync_concurrency::{ctx, oneshot, scope};
+use zksync_consensus_network::io::ConsensusReq;
 use zksync_consensus_roles::validator;
 use zksync_consensus_utils::pipe::ActorPipe;
 
@@ -93,7 +94,19 @@ impl Config {
                 let InputMessage::Network(req) = pipe.recv.recv(ctx).await?;
                 use validator::ConsensusMsg as M;
                 match &req.msg.msg {
-                    M::ReplicaPrepare(_) | M::ReplicaCommit(_) => leader_send.send(req),
+                    M::ReplicaPrepare(_) => {
+                        // This is a hacky way to do a clone. This is necessary since we don't want to derive
+                        // Clone for ConsensusReq. When we change to ChonkyBFT this will be removed anyway.
+                        let (ack, _) = oneshot::channel();
+                        let new_req = ConsensusReq {
+                            msg: req.msg.clone(),
+                            ack,
+                        };
+
+                        replica_send.send(new_req);
+                        leader_send.send(req);
+                    }
+                    M::ReplicaCommit(_) => leader_send.send(req),
                     M::LeaderPrepare(_) | M::LeaderCommit(_) => replica_send.send(req),
                 }
             }

@@ -1,7 +1,6 @@
 //! Handler of a ReplicaPrepare message.
-use std::collections::HashSet;
-
 use super::StateMachine;
+use std::collections::HashSet;
 use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_roles::validator;

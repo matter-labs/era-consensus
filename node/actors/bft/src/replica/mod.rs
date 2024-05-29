@@ -6,6 +6,7 @@ mod block;
 pub(crate) mod leader_commit;
 pub(crate) mod leader_prepare;
 mod new_view;
+pub(crate) mod replica_prepare;
 mod state_machine;
 #[cfg(test)]
 mod tests;
