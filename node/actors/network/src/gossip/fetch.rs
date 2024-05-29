@@ -14,7 +14,7 @@ type BlockInner = BTreeMap<validator::BlockNumber, oneshot::Sender<()>>;
 type BatchInner = BTreeMap<attester::BatchNumber, oneshot::Sender<()>>;
 
 /// A request for a given resource.
-pub(crate) enum ResourceRequest {
+pub(crate) enum RequestItem {
     /// Request for a block by number.
     Block(validator::BlockNumber),
     /// Request for a batch by number.
@@ -40,16 +40,16 @@ impl Queue {
     /// Requests a resource from peers and waits until it is stored.
     /// Note: in the current implementation concurrent calls for the same resource number are
     /// unsupported - second call will override the first call.
-    pub(crate) async fn request(&self, ctx: &ctx::Ctx, r: ResourceRequest) -> ctx::OrCanceled<()> {
+    pub(crate) async fn request(&self, ctx: &ctx::Ctx, r: RequestItem) -> ctx::OrCanceled<()> {
         loop {
             let (send, recv) = oneshot::channel();
             match r {
-                ResourceRequest::Block(n) => self.blocks.send_if_modified(|x| {
+                RequestItem::Block(n) => self.blocks.send_if_modified(|x| {
                     x.insert(n, send);
                     // Send iff the lowest requested block changed.
                     x.first_key_value().unwrap().0 == &n
                 }),
-                ResourceRequest::Batch(n) => self.batches.send_if_modified(|x| {
+                RequestItem::Batch(n) => self.batches.send_if_modified(|x| {
                     x.insert(n, send);
                     // Send iff the lowest requested batch changed.
                     x.first_key_value().unwrap().0 == &n
@@ -63,13 +63,13 @@ impl Queue {
                 // Remove the request from the queue if canceled.
                 Err(ctx::Canceled) => {
                     match r {
-                        ResourceRequest::Block(n) => self.blocks.send_if_modified(|x| {
+                        RequestItem::Block(n) => self.blocks.send_if_modified(|x| {
                             let modified = x.first_key_value().map_or(false, |(k, _)| k == &n);
                             x.remove(&n);
                             // Send iff the lowest requested block changed.
                             modified
                         }),
-                        ResourceRequest::Batch(n) => self.batches.send_if_modified(|x| {
+                        RequestItem::Batch(n) => self.batches.send_if_modified(|x| {
                             let modified = x.first_key_value().map_or(false, |(k, _)| k == &n);
                             x.remove(&n);
                             // Send iff the lowest requested batch changed.

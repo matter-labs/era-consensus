@@ -14,7 +14,7 @@
 //! network graph (minimize its diameter, increase connectedness).
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config};
 use anyhow::Context as _;
-use fetch::ResourceRequest;
+use fetch::RequestItem;
 use im::HashMap;
 use rand::Rng;
 use std::sync::{atomic::AtomicUsize, Arc};
@@ -109,10 +109,7 @@ impl Network {
                     let _permit = permit;
                     let number = number.into();
                     let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
-                        s.spawn_bg(
-                            self.fetch_queue
-                                .request(ctx, ResourceRequest::Block(number)),
-                        );
+                        s.spawn_bg(self.fetch_queue.request(ctx, RequestItem::Block(number)));
                         // Cancel fetching as soon as block is queued for storage.
                         self.block_store.wait_until_queued(ctx, number).await?;
                         Err(ctx::Canceled)
@@ -141,10 +138,7 @@ impl Network {
                     let _permit = permit;
                     let number = number.into();
                     let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
-                        s.spawn_bg(
-                            self.fetch_queue
-                                .request(ctx, ResourceRequest::Batch(number)),
-                        );
+                        s.spawn_bg(self.fetch_queue.request(ctx, RequestItem::Batch(number)));
                         // Cancel fetching as soon as batch is queued for storage.
                         self.batch_store.wait_until_queued(ctx, number).await?;
                         Err(ctx::Canceled)
