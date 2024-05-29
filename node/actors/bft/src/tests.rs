@@ -218,31 +218,35 @@ async fn non_proposing_leader() {
 /// This should be a simple sanity check that the network works and consensus
 /// is achieved under the most favourable conditions.
 #[tokio::test(flavor = "multi_thread")]
-async fn twins_network_without_twins_or_partitions() {
+async fn twins_network_wo_twins_wo_partitions() {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
-    let num_replicas = 5; // Implies f=0 and q=5
-    run_twins(ctx, num_replicas, false).await.unwrap();
+    // n<6 implies f=0 and q=n
+    run_twins(ctx, 5, false, 10).await.unwrap();
 }
 
-// /// Run Twins scenarios without actual twins, but enough replicas that partitions
-// /// can play a role, isolating certain nodes (potentially the leader) in some
-// /// rounds.
-// ///
-// /// This should be a sanity check that without Byzantine behaviour the consensus
-// /// is resilient to temporary network partitions.
-// #[tokio::test(flavor = "multi_thread")]
-// async fn twins_network_without_twins() {
-//     let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
-//     let num_replicas = 6; // Implies f=1 and q=5
-//     run_twins(ctx, num_replicas, false).await.unwrap();
-// }
+/// Run Twins scenarios without actual twins, but enough replicas that partitions
+/// can play a role, isolating certain nodes (potentially the leader) in some
+/// rounds.
+///
+/// This should be a sanity check that without Byzantine behaviour the consensus
+/// is resilient to temporary network partitions.
+#[tokio::test(flavor = "multi_thread")]
+async fn twins_network_wo_twins_w_partitions() {
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
+    // TODO: At the moment this test doesn't work with partitions, so just try to do a single scenario to debug.
+    run_twins(ctx, 6, false, 1).await.unwrap();
+}
 
 /// Create network configuration for a given number of replicas with a random number of twins and run [Test].
-async fn run_twins(ctx: &Ctx, num_replicas: usize, use_twins: bool) -> anyhow::Result<()> {
+async fn run_twins(
+    ctx: &Ctx,
+    num_replicas: usize,
+    use_twins: bool,
+    num_scenarios: usize,
+) -> anyhow::Result<()> {
     zksync_concurrency::testonly::abort_on_panic();
     // Give 30 seconds for all scenarios to finish.
     let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
-    const NUM_SCENARIOS: usize = 10;
 
     #[derive(PartialEq)]
     struct Replica {
@@ -320,7 +324,7 @@ async fn run_twins(ctx: &Ctx, num_replicas: usize, use_twins: bool) -> anyhow::R
     let nodes = vec![(Behavior::Honest, WEIGHT); cluster.num_nodes()];
 
     // Reuse the same cluster and network setup to run a few scenarios.
-    for _ in 0..NUM_SCENARIOS {
+    for _ in 0..num_scenarios {
         // Generate a permutation of partitions and leaders for the given number of rounds.
         let scenario = scenarios.generate_one(rng);
 
@@ -332,21 +336,21 @@ async fn run_twins(ctx: &Ctx, num_replicas: usize, use_twins: bool) -> anyhow::R
         let setup = Setup::from(spec.clone());
 
         // Create a network with the partition schedule of the scenario.
-        let network = Network::Twins(
-            scenario
-                .rounds
-                .into_iter()
-                .map(|rc| {
-                    rc.partitions
-                        .into_iter()
-                        .map(|p| p.into_iter().map(|r| node_to_port[&r.id]).collect())
-                        .collect()
-                })
-                .collect(),
-        );
+        let splits = scenario
+            .rounds
+            .into_iter()
+            .map(|rc| {
+                rc.partitions
+                    .into_iter()
+                    .map(|p| p.into_iter().map(|r| node_to_port[&r.id]).collect())
+                    .collect()
+            })
+            .collect();
+
+        eprintln!("splits = {:?}", splits);
 
         Test {
-            network,
+            network: Network::Twins(splits),
             nodes: nodes.clone(),
             blocks_to_finalize,
         }
