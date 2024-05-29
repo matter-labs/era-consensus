@@ -91,12 +91,8 @@ impl StateMachine {
         let qc_view = high_qc.view().number;
 
         // Try to create a finalized block with this CommitQC and our block proposal cache.
+        // It will also update our high QC, if necessary.
         self.save_block(ctx, &high_qc).await.wrap("save_block()")?;
-
-        // Update our high QC, if necessary.
-        if Some(qc_view) > self.high_qc.clone().map(|x| x.view().number) {
-            self.high_qc = Some(high_qc);
-        }
 
         // Skip to a new view, if necessary.
         if qc_view >= self.view {
