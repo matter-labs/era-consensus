@@ -221,13 +221,15 @@ async fn run_nodes_twins(
                 .instrument(tracing::info_span!("node", i)),
             );
         }
+        // Taking these refeferences is necessary for the `scope::run!` environment lifetime rules to compile
+        // with `async move`, which in turn is necessary otherwise it the spawned process could not borrow `port`.
+        let sends = &sends;
+        let validator_ports = &validator_ports;
         // Run networks by receiving from all consensus instances:
         // * identify the view they are in from the message
         // * identify the partition they are in based on their network id
         // * either broadcast to all other instances in the partition, or find out the network
         //   identity of the target validator and send to it _iff_ they are in the same partition
-        let sends = &sends;
-        let validator_ports = &validator_ports;
         scope::run!(ctx, |ctx, s| async move {
             for (port, mut recv) in recvs {
                 s.spawn(async move {
