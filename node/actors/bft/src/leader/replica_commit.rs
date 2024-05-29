@@ -1,9 +1,8 @@
 //! Handler of a ReplicaCommit message.
 
-use std::collections::HashSet;
-
 use super::StateMachine;
 use crate::metrics;
+use std::collections::HashSet;
 use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};

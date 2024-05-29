@@ -1,6 +1,5 @@
-use crate::{attester, validator::Genesis};
-
 use super::{Signed, Signers};
+use crate::{attester, validator::Genesis};
 use anyhow::{ensure, Context as _};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default, PartialOrd)]

@@ -24,7 +24,7 @@ impl StateMachine {
         // Backup our state.
         self.backup_state(ctx).await.wrap("backup_state()")?;
 
-        // Send the replica message to the next leader.
+        // Send the replica message.
         let output_message = ConsensusInputMessage {
             message: self
                 .config
@@ -39,7 +39,7 @@ impl StateMachine {
                         high_qc: self.high_qc.clone(),
                     },
                 )),
-            recipient: Target::Validator(self.config.genesis().view_leader(self.view)),
+            recipient: Target::Broadcast,
         };
         self.outbound_pipe.send(output_message.into());
 
