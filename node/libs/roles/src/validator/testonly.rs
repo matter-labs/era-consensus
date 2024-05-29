@@ -1,6 +1,4 @@
 //! Test-only utilities.
-use crate::attester::{self, Batch, BatchHeader, BatchNumber, BatchQC, FinalBatch};
-
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
     FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
@@ -8,7 +6,10 @@ use super::{
     ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
     WeightedValidator,
 };
-use crate::validator::LeaderSelectionMode;
+use crate::{
+    attester::{self, Batch, BatchHeader, BatchNumber, BatchQC, FinalBatch},
+    validator::LeaderSelectionMode,
+};
 use bit_vec::BitVec;
 use rand::{
     distributions::{Distribution, Standard},

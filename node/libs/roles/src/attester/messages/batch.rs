@@ -1,8 +1,5 @@
-use std::fmt;
-
-use crate::{attester, validator::Genesis};
-
 use super::{Signed, Signers};
+use crate::{attester, validator::Genesis};
 use anyhow::{ensure, Context as _};
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 
@@ -56,9 +53,9 @@ impl BatchNumber {
     }
 }
 
-impl fmt::Display for BatchNumber {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, formatter)
+impl std::fmt::Display for BatchNumber {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.0, formatter)
     }
 }
 
@@ -86,8 +83,8 @@ impl TextFmt for PayloadHash {
     }
 }
 
-impl fmt::Debug for PayloadHash {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl std::fmt::Debug for PayloadHash {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         fmt.write_str(&TextFmt::encode(self))
     }
 }

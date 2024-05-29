@@ -93,11 +93,19 @@ impl StateMachine {
                         .wrap("process_replica_prepare()")
                     {
                         Ok(()) => Ok(()),
-                        Err(super::replica_prepare::Error::Internal(err)) => {
-                            return Err(err);
-                        }
                         Err(err) => {
-                            tracing::warn!("process_replica_prepare: {err:#}");
+                            match err {
+                                super::replica_prepare::Error::Internal(e) => {
+                                    return Err(e);
+                                }
+                                super::replica_prepare::Error::Old { .. }
+                                | super::replica_prepare::Error::NotLeaderInView => {
+                                    tracing::info!("process_replica_prepare: {err:#}");
+                                }
+                                _ => {
+                                    tracing::warn!("process_replica_prepare: {err:#}");
+                                }
+                            }
                             Err(())
                         }
                     };

@@ -1,6 +1,5 @@
-use crate::validator::testonly::Setup;
-
 use super::*;
+use crate::validator::testonly::Setup;
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::ctx;
