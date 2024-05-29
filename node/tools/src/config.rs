@@ -183,10 +183,7 @@ impl ProtoFmt for AppConfig {
                 })
                 .collect(),
             debug_addr: self.debug_addr.as_ref().map(TextFmt::encode),
-            debug_credentials: self
-                .debug_credentials
-                .as_ref()
-                .map(DebugCredentials::to_string),
+            debug_credentials: self.debug_credentials.clone().map(DebugCredentials::into),
         }
     }
 }

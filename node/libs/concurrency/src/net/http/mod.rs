@@ -11,7 +11,7 @@ use hyper::{
     HeaderMap, Request, Response, StatusCode,
 };
 use hyper_util::rt::tokio::TokioIo;
-use std::{fmt::Display, fs, io, net::SocketAddr, sync::Arc};
+use std::{fs, io, net::SocketAddr, sync::Arc};
 use tls_listener::TlsListener;
 use tokio::net::TcpListener;
 use tokio_rustls::{
@@ -33,15 +33,14 @@ pub struct DebugCredentials {
     pub password: String,
 }
 
-impl Display for DebugCredentials {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}:{}", self.user, self.password)
+impl Into<String> for DebugCredentials {
+    fn into(self) -> String {
+        format!("{}:{}", self.user, self.password)
     }
 }
 
 impl TryFrom<String> for DebugCredentials {
     type Error = anyhow::Error;
-
     fn try_from(value: String) -> Result<Self> {
         let mut credentials = value.split(':');
         let user = credentials.next().context("Empty debug page credentials")?;
@@ -144,7 +143,7 @@ impl Server {
                 .context("Failed to base64-decode 'Basic' credentials.")?;
             let incomming_credentials = String::from_utf8(decoded_bytes)
                 .context("The decoded credential string is not valid UTF8.")?;
-            if *credentials.to_string() == incomming_credentials {
+            if Into::<String>::into(credentials) == incomming_credentials {
                 Ok(())
             } else {
                 Err(anyhow::anyhow!("Invalid password."))
