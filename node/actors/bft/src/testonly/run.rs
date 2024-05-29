@@ -1,5 +1,6 @@
 use super::{Behavior, Node};
-use network::Config;
+use network::{io, Config};
+use rand::prelude::SliceRandom;
 use std::collections::{HashMap, HashSet};
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope};
@@ -194,12 +195,6 @@ async fn run_nodes_twins(
         // so that we can send to the one which is in the same partition as the sender.
         let mut sends = HashMap::new();
 
-        // TODO: Buffer messages that aren't delivered in partitions until the end
-        // of the test and deliver them then. Need to define when it's time to deliver
-        // all buffered messages: if we allow all partitions to be less than required
-        // for a quorum, they will keep timing out in the same view; one indication is
-        // too many messages received in the same view, e.g. more than 2x the number of nodes.
-
         for (i, spec) in specs.iter().enumerate() {
             let (actor_pipe, dispatcher_pipe) = pipe::new();
             let validator_key = spec.net.validator_key.as_ref().unwrap().public();
@@ -234,11 +229,54 @@ async fn run_nodes_twins(
             for (port, mut recv) in recvs {
                 s.spawn(async move {
                     use zksync_consensus_network::io;
+                    let rng = &mut ctx.rng();
+
+                    // We need to buffer messages that cannot be delivered due to partitioning, and deliver them later.
+                    // The spec says that the network is expected to deliver messages eventually, potentially out of order,
+                    // caveated by the fact that the actual implementation only keep retrying the last message.
+                    // However with the actors instantiated in by this test, that would not be sufficient because
+                    // there is no gossip network here, and if a replica misses a proposal, it won't get it via gossip,
+                    // and will forever be unable to finalize blocks.
+                    // A separate issue is the definition of "later", without actually adding timing assumptions:
+                    // * If we want to allow partitions which don't have enough replicas for a quorum, and the replicas
+                    //   don't move on from a view until they reach quorum, then "later" could be defined by so many
+                    //   messages in a view that it indicates a timeout loop. NB the consensus might not actually have
+                    //   an actual timeout loop and might rely on the network trying to re-broadcast forever.
+                    // * OTOH if all partitions are at least quorum sized, then we there will be a subset of nodes that
+                    //   can move on to the next view, in which a new partition configuration will allow them to broadcast
+                    //   to previously isolated peers, which will indicate that the buffered messages can be sent as the
+                    //   partition has been "healed".
+                    let mut stashes: HashMap<Port, Vec<io::OutputMessage>> = HashMap::new();
+
+                    // Either stash a message, or unstash all messages and send them to the target along with the new one.
+                    let mut send_or_stash =
+                        |can_send: bool, target_port: Port, msg: io::OutputMessage| {
+                            let stash = stashes.entry(target_port).or_default();
+                            let view = output_msg_view_number(&msg);
+
+                            if can_send {
+                                let s = &sends[&target_port];
+
+                                // Messages can be delivered in arbitrary order.
+                                stash.shuffle(rng);
+
+                                for unstashed in stash.drain(0..) {
+                                    eprintln!("^-> unstashed view={view} unstashed-view={} from={port} to={target_port}", output_msg_view_number(&unstashed));
+                                    s.send(unstashed);
+                                }
+                                eprintln!("--> sending view={view} from={port} to={target_port}");
+                                s.send(msg);
+                            } else {
+                                eprintln!("--V stashed view={view} from={port} to={target_port}");
+                                stash.push(msg)
+                            }
+                        };
+
                     while let Ok(io::InputMessage::Consensus(message)) = recv.recv(ctx).await {
                         let view_number = message.message.msg.view().number.0 as usize;
                         // Here we assume that all instances start from view 0 in the tests.
                         // If the view is higher than what we have planned for, assume no partitions.
-                        // Ever node is guaranteed to be present in only one partition.
+                        // Every node is guaranteed to be present in only one partition.
                         let partitions_opt = splits.get(view_number);
 
                         let msg = || {
@@ -251,17 +289,17 @@ async fn run_nodes_twins(
                         match message.recipient {
                             io::Target::Broadcast => match partitions_opt {
                                 None => {
-                                    eprintln!("broadcasting view={view_number} from={port} targets=all");
-                                    sends.values().for_each(|s| s.send(msg()))
-                                },
+                                    eprintln!("broadcasting view={view_number} from={port} target=all");
+                                    for target_port in sends.keys() {
+                                        send_or_stash(true, *target_port, msg());
+                                    }
+                                }
                                 Some(ps) => {
-                                    for p in ps {
-                                        if p.contains(&port) {
-                                            eprintln!("broadcasting view={view_number} from={port} targets={:?}", p);
-                                            for target_port in p {
-                                                sends[target_port].send(msg());
-                                            }
-                                            break;
+                                    for p in ps {                                        
+                                        let can_send = p.contains(&port);
+                                        eprintln!("broadcasting view={view_number} from={port} target={:?} can_send={can_send}", p);
+                                        for target_port in p {
+                                            send_or_stash(can_send, *target_port, msg());
                                         }
                                     }
                                 }
@@ -272,22 +310,22 @@ async fn run_nodes_twins(
                                 match partitions_opt {
                                     None => {
                                         for target_port in target_ports {
-                                            eprintln!("sending view={view_number} from={port} to={target_port}");
-                                            sends[target_port].send(msg());
+                                            eprintln!("unicasting view={view_number} from={port} target={target_port}");
+                                            send_or_stash(true, *target_port, msg());
                                         }
                                     }
                                     Some(ps) => {
                                         for p in ps {
-                                            if p.contains(&port) {
-                                                for target_port in target_ports {                                                    
-                                                    if p.contains(target_port) {
-                                                        eprintln!("sending view={view_number} from={port} to={target_port}");
-                                                        sends[target_port].send(msg())
-                                                    } else {
-                                                        eprintln!("cannot send view={view_number} from={port} to={target_port}");
-                                                    }
+                                            let can_send = p.contains(&port);
+                                            for target_port in target_ports {
+                                                if p.contains(target_port) {
+                                                    eprintln!("unicasting view={view_number} from={port} target={target_port } can_send={can_send}");
+                                                    send_or_stash(
+                                                        can_send,
+                                                        *target_port,
+                                                        msg(),
+                                                    );
                                                 }
-                                                break;
                                             }
                                         }
                                     }
@@ -303,4 +341,10 @@ async fn run_nodes_twins(
         .await
     })
     .await
+}
+
+fn output_msg_view_number(msg: &io::OutputMessage) -> u64 {
+    match msg {
+        io::OutputMessage::Consensus(cr) => cr.msg.msg.view().number.0,
+    }
 }

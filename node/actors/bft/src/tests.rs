@@ -246,7 +246,7 @@ async fn run_twins(
 ) -> anyhow::Result<()> {
     zksync_concurrency::testonly::abort_on_panic();
     // Use a single timeout for all scenarios to finish.
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(20));
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
 
     #[derive(PartialEq)]
     struct Replica {
