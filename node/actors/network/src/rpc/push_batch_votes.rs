@@ -1,8 +1,7 @@
 //! Defines RPC for passing consensus messages.
-use std::sync::Arc;
-
 use crate::{mux, proto::gossip as proto};
 use anyhow::Context as _;
+use std::sync::Arc;
 use zksync_consensus_roles::attester::{self, Batch};
 use zksync_protobuf::ProtoFmt;
 

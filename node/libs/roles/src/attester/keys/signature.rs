@@ -1,6 +1,5 @@
-use crate::attester::{Msg, MsgHash};
-
 use super::PublicKey;
+use crate::attester::{Msg, MsgHash};
 use std::fmt;
 use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 

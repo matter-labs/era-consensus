@@ -1,5 +1,7 @@
-use crate::attester::{self, WeightedAttester};
-use crate::validator::*;
+use crate::{
+    attester::{self, WeightedAttester},
+    validator::*,
+};
 use anyhow::Context as _;
 use rand::{prelude::StdRng, Rng, SeedableRng};
 use zksync_concurrency::ctx;

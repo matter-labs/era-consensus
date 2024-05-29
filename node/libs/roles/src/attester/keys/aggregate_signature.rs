@@ -1,6 +1,5 @@
-use crate::attester::{Batch, MsgHash};
-
 use super::{PublicKey, Signature};
+use crate::attester::{Batch, MsgHash};
 use std::fmt;
 use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;

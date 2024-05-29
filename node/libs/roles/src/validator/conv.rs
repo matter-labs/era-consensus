@@ -1,15 +1,15 @@
-use crate::{
-    attester::{self, WeightedAttester},
-    node::SessionId,
-};
-
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
     FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
     ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
-use crate::{proto::validator as proto, validator::LeaderSelectionMode};
+use crate::{
+    attester::{self, WeightedAttester},
+    node::SessionId,
+    proto::validator as proto,
+    validator::LeaderSelectionMode,
+};
 use anyhow::Context as _;
 use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
