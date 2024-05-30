@@ -460,17 +460,35 @@ async fn twins_gossip_loop(
     mut recv: UnboundedReceiver<(Port, Port, BlockNumber)>,
 ) -> anyhow::Result<()> {
     scope::run!(ctx, |ctx, s| async move {
-        while let Ok((from, to, number)) = recv.recv(ctx).await {
-            // Perform the storage operations asynchronously because `queue_block` will
-            // wait for all dependencies to be inserted first.
-            s.spawn_bg(async move {
-                let local_store = &stores[&from];
-                let remote_store = &stores[&to];
-                if let Ok(Some(block)) = local_store.block(ctx, number).await {
-                    let _ = remote_store.queue_block(ctx, block).await;
+        while let Ok((from, to, mut number)) = recv.recv(ctx).await {
+            let local_store = &stores[&from];
+            let remote_store = &stores[&to];
+            let first_needed = remote_store.queued().next();
+
+            loop {
+                // Stop going back if the target already has the block.
+                if number < first_needed {
+                    break;
                 }
-                Ok(())
-            });
+                // Stop if the source doesn't actually have this block to give.
+                let Ok(Some(block)) = local_store.block(ctx, number).await else {
+                    break;
+                };
+                // Perform the storing operation asynchronously because `queue_block` will
+                // wait for all dependencies to be inserted first.
+                s.spawn_bg(async move {
+                    let _ = remote_store.queue_block(ctx, block).await;
+                    Ok(())
+                });
+                // Be pessimistic and try to insert all ancestors, to minimise the chance that
+                // for some reason a node doesn't get a finalized block from anyone.
+                // Without this some scenarios with twins actually fail.
+                if let Some(prev) = number.prev() {
+                    number = prev;
+                } else {
+                    break;
+                };
+            }
         }
         Ok(())
     })

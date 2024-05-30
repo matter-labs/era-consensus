@@ -380,7 +380,7 @@ async fn run_twins(
 
             let leader_partition_sizes = leader_ports
                 .iter()
-                .map(|lp| partitions.iter().find(|p| p.contains(&lp)).unwrap().len())
+                .map(|lp| partitions.iter().find(|p| p.contains(lp)).unwrap().len())
                 .collect::<Vec<_>>();
 
             let leader_isolated = leader_partition_sizes
