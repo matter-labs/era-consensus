@@ -251,7 +251,7 @@ async fn run_nodes_twins(
                 .instrument(tracing::info_span!("node", i)),
             );
         }
-        // Taking these refeferences is necessary for the `scope::run!` environment lifetime rules to compile
+        // Taking these references is necessary for the `scope::run!` environment lifetime rules to compile
         // with `async move`, which in turn is necessary otherwise it the spawned process could not borrow `port`.
         // Potentially `ctx::NoCopy` could be used with `port`.
         let validator_ports = &validator_ports;
@@ -264,8 +264,8 @@ async fn run_nodes_twins(
         // * identify the view they are in from the message
         // * identify the partition they are in based on their network id
         // * either broadcast to all other instances in the partition, or find out the network
-        //   identity of the target validator and send to it _iff_ they are in the same partition
-        // * simulating the gossiping of finalized blockss
+        //   identity of the target validator and send to it iff they are in the same partition
+        // * simulate the gossiping of finalized blockss
         scope::run!(ctx, |ctx, s| async move {
             for (port, recv) in recvs {
                 let gossip_send = gossip_send.clone();
@@ -321,10 +321,7 @@ async fn twins_receive_loop(
 
     // We need to buffer messages that cannot be delivered due to partitioning, and deliver them later.
     // The spec says that the network is expected to deliver messages eventually, potentially out of order,
-    // caveated by the fact that the actual implementation only keep retrying the last message.
-    // However with the actors instantiated in by this test, that would not be sufficient because
-    // there is no gossip network here, and if a replica misses a proposal, it won't get it via gossip,
-    // and will forever be unable to finalize blocks.
+    // caveated by the fact that the actual implementation only keeps retrying the last message..
     // A separate issue is the definition of "later", without actually adding timing assumptions:
     // * If we want to allow partitions which don't have enough replicas for a quorum, and the replicas
     //   don't move on from a view until they reach quorum, then "later" could be defined by so many
