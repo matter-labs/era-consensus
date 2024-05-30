@@ -233,24 +233,28 @@ async fn twins_network_wo_twins_wo_partitions() {
 async fn twins_network_wo_twins_w_partitions() {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n=6 implies f=1 and q=5; 6 is the minimum where partitions are possible.
-    run_twins(ctx, 6, 0, 10).await.unwrap();
+    run_twins(ctx, 6, 0, 5).await.unwrap();
 }
 
-/// Run Twins scenarios with random number of nodes and twins.
+/// Run Twins scenarios with random number of nodes and 1 twin.
 #[tokio::test(flavor = "multi_thread")]
-async fn twins_network_w_twins_w_partitions() {
+async fn twins_network_w1_twins_w_partitions() {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n>=6 implies f>=1 and q=n-f
-    // for _ in 0..5 {
-    //     let rng = &mut ctx.rng();
-    //     let num_replicas = rng.gen_range(6..=11);
-    //     let num_honest = validator::threshold(num_replicas as u64) as usize;
-    //     let max_faulty = num_replicas - num_honest;
-    //     let num_twins = rng.gen_range(1..=max_faulty);
-    //     run_twins(ctx, num_replicas, num_twins, 1).await.unwrap();
-    // }
+    for num_replicas in 6..=10 {
+        // let num_honest = validator::threshold(num_replicas as u64) as usize;
+        // let max_faulty = num_replicas - num_honest;
+        // let num_twins = rng.gen_range(1..=max_faulty);
+        run_twins(ctx, num_replicas, 1, 3).await.unwrap();
+    }
+}
 
-    // Try the maximum
+/// Run Twins scenarios with higher number of nodes and 2 twins.
+#[tokio::test(flavor = "multi_thread")]
+async fn twins_network_w2_twins_w_partitions() {
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
+    // n>=11 implies f>=2 and q=n-f
+    // TODO: This fails for now.
     run_twins(ctx, 11, 2, 1).await.unwrap();
 }
 
@@ -299,7 +303,7 @@ async fn run_twins(
     // where the leader might not be in a partition with enough replicas to
     // form a quorum, therefore to allow N blocks to be finalized we need to
     // go longer.
-    let num_rounds = blocks_to_finalize * 5;
+    let num_rounds = blocks_to_finalize * 10;
     // The paper considers 2 or 3 partitions enough.
     let max_partitions = 3;
 

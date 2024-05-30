@@ -1,4 +1,5 @@
 use super::{Behavior, Node};
+use anyhow::bail;
 use network::{io, Config};
 use rand::prelude::SliceRandom;
 use std::{
@@ -377,6 +378,12 @@ async fn twins_receive_loop(
         // If the view is higher than what we have planned for, assume no partitions.
         // Every node is guaranteed to be present in only one partition.
         let partitions_opt = splits.get(view_number);
+
+        if partitions_opt.is_none() {
+            bail!(
+                "ran out of scheduled rounds; most likely cannot finalize blocks even if we go on"
+            );
+        }
 
         let msg = || {
             io::OutputMessage::Consensus(io::ConsensusReq {
