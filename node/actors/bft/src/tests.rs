@@ -237,6 +237,17 @@ async fn twins_network_wo_twins_w_partitions() {
     run_twins(ctx, 6, false, 10).await.unwrap();
 }
 
+/// Run Twins scenarios with random number of nodes and twins.
+#[tokio::test(flavor = "multi_thread")]
+async fn twins_network_w_twins_w_partitions() {
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(5.0));
+    // n>=6 implies f>=1 and q=n-f
+    // let rng = &mut ctx.rng();
+    // let num_replicas = rng.gen_range(6..=11);
+    let num_replicas = 6; // debug with minimum number of nodes
+    run_twins(ctx, num_replicas, true, 1).await.unwrap();
+}
+
 /// Create network configuration for a given number of replicas with a random number of twins and run [Test].
 async fn run_twins(
     ctx: &Ctx,
@@ -246,11 +257,11 @@ async fn run_twins(
 ) -> anyhow::Result<()> {
     zksync_concurrency::testonly::abort_on_panic();
     // Use a single timeout for all scenarios to finish.
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(20));
 
-    #[derive(PartialEq)]
+    #[derive(PartialEq, Debug)]
     struct Replica {
-        id: i64,
+        id: i64, // non-zero ID
         public_key: PublicKey,
         secret_key: SecretKey,
     }
@@ -302,7 +313,7 @@ async fn run_twins(
         .iter()
         .enumerate()
         .map(|(i, (sk, _))| Replica {
-            id: i as i64,
+            id: i as i64 + 1,
             public_key: sk.public(),
             secret_key: sk.clone(),
         })
@@ -311,14 +322,22 @@ async fn run_twins(
     let cluster = Cluster::new(replicas, num_twins);
     let scenarios = ScenarioGenerator::new(&cluster, num_rounds, max_partitions);
 
+    eprintln!(
+        "num_replicas={num_replicas} num_twins={num_twins} num_nodes={}",
+        cluster.num_nodes()
+    );
+
     // Create network config for all nodes in the cluster (assigns unique network addresses).
     let nets = new_configs_for_validators(rng, cluster.nodes().iter().map(|r| &r.secret_key), 1);
+
     let node_to_port = cluster
         .nodes()
         .iter()
         .zip(nets.iter())
         .map(|(node, net)| (node.id, net.server_addr.port()))
         .collect::<HashMap<_, _>>();
+
+    assert_eq!(node_to_port.len(), cluster.num_nodes());
 
     // Every network needs a behaviour. They are all honest, just some might be duplicated.
     let nodes = vec![(Behavior::Honest, WEIGHT); cluster.num_nodes()];
