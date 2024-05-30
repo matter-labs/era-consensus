@@ -245,7 +245,7 @@ async fn twins_network_w1_twins_w_partitions() {
         // let num_honest = validator::threshold(num_replicas as u64) as usize;
         // let max_faulty = num_replicas - num_honest;
         // let num_twins = rng.gen_range(1..=max_faulty);
-        run_twins(ctx, num_replicas, 1, 3).await.unwrap();
+        run_twins(ctx, num_replicas, 1, 5).await.unwrap();
     }
 }
 
@@ -254,8 +254,7 @@ async fn twins_network_w1_twins_w_partitions() {
 async fn twins_network_w2_twins_w_partitions() {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n>=11 implies f>=2 and q=n-f
-    // TODO: This fails for now.
-    run_twins(ctx, 11, 2, 1).await.unwrap();
+    run_twins(ctx, 11, 2, 5).await.unwrap();
 }
 
 /// Create network configuration for a given number of replicas and twins and run [Test].
@@ -268,7 +267,7 @@ async fn run_twins(
     zksync_concurrency::testonly::abort_on_panic();
     // Use a single timeout for all scenarios to finish.
     // A single scenario with 11 replicas took 3-5 seconds.
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(60));
 
     #[derive(PartialEq, Debug)]
     struct Replica {

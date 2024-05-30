@@ -309,7 +309,7 @@ async fn twins_receive_loop(
     mut recv: UnboundedReceiver<io::InputMessage>,
 ) -> anyhow::Result<()> {
     let rng = &mut ctx.rng();
-    let start = &ctx.now();
+    let start = std::time::Instant::now(); // Just to give an idea of how long time passes between rounds.
 
     // Finalized block number iff this node can gossip to the target and the message contains a QC.
     let block_to_gossip = |target_port: Port, msg: &io::OutputMessage| {
@@ -409,7 +409,7 @@ async fn twins_receive_loop(
                 Some(ps) => {
                     for p in ps {
                         let can_send = p.contains(&port);
-                        eprintln!("broadcasting view={view_number} from={port} target={p:?} can_send={can_send} t={}", start.elapsed().as_seconds_f64());
+                        eprintln!("broadcasting view={view_number} from={port} target={p:?} can_send={can_send} t={}", start.elapsed().as_secs());
                         for target_port in p {
                             send_or_stash(can_send, *target_port, msg());
                         }
@@ -433,7 +433,7 @@ async fn twins_receive_loop(
                             let can_send = p.contains(&port);
                             for target_port in target_ports {
                                 if p.contains(target_port) {
-                                    eprintln!("unicasting view={view_number} from={port} target={target_port } can_send={can_send} t={}", start.elapsed().as_seconds_f64());
+                                    eprintln!("unicasting view={view_number} from={port} target={target_port } can_send={can_send} t={}", start.elapsed().as_secs());
                                     send_or_stash(can_send, *target_port, msg());
                                 }
                             }
