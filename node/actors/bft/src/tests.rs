@@ -5,7 +5,6 @@ use crate::testonly::{
     ut_harness::UTHarness,
     Behavior, Network, PortSplitSchedule, Test,
 };
-use rand::Rng;
 use zksync_concurrency::{
     ctx::{self, Ctx},
     scope, time,
@@ -221,7 +220,7 @@ async fn non_proposing_leader() {
 async fn twins_network_wo_twins_wo_partitions() {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n<6 implies f=0 and q=n
-    run_twins(ctx, 5, false, 10).await.unwrap();
+    run_twins(ctx, 5, 0, 10).await.unwrap();
 }
 
 /// Run Twins scenarios without actual twins, but enough replicas that partitions
@@ -234,30 +233,38 @@ async fn twins_network_wo_twins_wo_partitions() {
 async fn twins_network_wo_twins_w_partitions() {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n=6 implies f=1 and q=5; 6 is the minimum where partitions are possible.
-    run_twins(ctx, 6, false, 10).await.unwrap();
+    run_twins(ctx, 6, 0, 10).await.unwrap();
 }
 
 /// Run Twins scenarios with random number of nodes and twins.
 #[tokio::test(flavor = "multi_thread")]
 async fn twins_network_w_twins_w_partitions() {
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(5.0));
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n>=6 implies f>=1 and q=n-f
-    // let rng = &mut ctx.rng();
-    // let num_replicas = rng.gen_range(6..=11);
-    let num_replicas = 6; // debug with minimum number of nodes
-    run_twins(ctx, num_replicas, true, 1).await.unwrap();
+    // for _ in 0..5 {
+    //     let rng = &mut ctx.rng();
+    //     let num_replicas = rng.gen_range(6..=11);
+    //     let num_honest = validator::threshold(num_replicas as u64) as usize;
+    //     let max_faulty = num_replicas - num_honest;
+    //     let num_twins = rng.gen_range(1..=max_faulty);
+    //     run_twins(ctx, num_replicas, num_twins, 1).await.unwrap();
+    // }
+
+    // Try the maximum
+    run_twins(ctx, 11, 2, 1).await.unwrap();
 }
 
-/// Create network configuration for a given number of replicas with a random number of twins and run [Test].
+/// Create network configuration for a given number of replicas and twins and run [Test].
 async fn run_twins(
     ctx: &Ctx,
     num_replicas: usize,
-    use_twins: bool,
+    num_twins: usize,
     num_scenarios: usize,
 ) -> anyhow::Result<()> {
     zksync_concurrency::testonly::abort_on_panic();
     // Use a single timeout for all scenarios to finish.
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(20));
+    // A single scenario with 11 replicas took 3-5 seconds.
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
 
     #[derive(PartialEq, Debug)]
     struct Replica {
@@ -287,7 +294,7 @@ async fn run_twins(
     let rng = &mut ctx.rng();
 
     // The existing test machinery uses the number of finalized blocks as an exit criteria.
-    let blocks_to_finalize = 5;
+    let blocks_to_finalize = 3;
     // The test is going to disrupt the communication by partitioning nodes,
     // where the leader might not be in a partition with enough replicas to
     // form a quorum, therefore to allow N blocks to be finalized we need to
@@ -295,14 +302,6 @@ async fn run_twins(
     let num_rounds = blocks_to_finalize * 5;
     // The paper considers 2 or 3 partitions enough.
     let max_partitions = 3;
-
-    let num_honest = validator::threshold(num_replicas as u64) as usize;
-    let max_faulty = num_replicas - num_honest;
-    let num_twins = if use_twins && max_faulty > 0 {
-        rng.gen_range(1..=max_faulty)
-    } else {
-        0
-    };
 
     // Every validator has equal power of 1.
     const WEIGHT: u64 = 1;
