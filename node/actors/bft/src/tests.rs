@@ -369,22 +369,25 @@ async fn run_twins(
         );
 
         for (r, rc) in scenario.rounds.iter().enumerate() {
-            let leader_id = cluster
+            let partitions = &splits[r];
+
+            let leader_ports = cluster
                 .nodes()
                 .iter()
-                .find(|n| n.public_key == *rc.leader)
-                .unwrap()
-                .id;
-            let leader_port = node_to_port[&leader_id];
-            let partitions = &splits[r];
-            let leader_partition_size = partitions
-                .iter()
-                .find(|p| p.contains(&leader_port))
-                .unwrap()
-                .len();
-            let leader_isolated = leader_partition_size < cluster.quorum_size();
+                .filter(|n| n.public_key == *rc.leader)
+                .map(|n| node_to_port[&n.id])
+                .collect::<Vec<_>>();
 
-            eprintln!("round={r} partitions={partitions:?} leader={leader_port} leader_partition_size={leader_partition_size} leader_isolated={leader_isolated}");
+            let leader_partition_sizes = leader_ports
+                .iter()
+                .map(|lp| partitions.iter().find(|p| p.contains(&lp)).unwrap().len())
+                .collect::<Vec<_>>();
+
+            let leader_isolated = leader_partition_sizes
+                .iter()
+                .all(|s| *s < cluster.quorum_size());
+
+            eprintln!("round={r} partitions={partitions:?} leaders={leader_ports:?} leader_partition_sizes={leader_partition_sizes:?} leader_isolated={leader_isolated}");
         }
 
         Test {
