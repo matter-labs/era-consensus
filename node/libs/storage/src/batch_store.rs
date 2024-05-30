@@ -56,7 +56,9 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     /// Get the L1 batch QC from storage with the highest number.
     fn last_batch_qc(&self) -> attester::BatchQC;
     /// Returns the batch with the given number.
-    fn get_batch(&self, number: attester::BatchNumber) -> Option<attester::FinalBatch>;
+    fn get_batch(&self, number: attester::BatchNumber) -> Option<attester::Batch>;
+    /// Returns the finalized batch with the given number.
+    fn get_finalized_batch(&self, number: attester::BatchNumber) -> Option<attester::FinalBatch>;
     /// Returns the QC of the batch with the given number.
     fn get_batch_qc(&self, number: attester::BatchNumber) -> Option<attester::BatchQC>;
     /// Store the given QC in the storage.
@@ -214,7 +216,7 @@ impl BatchStore {
         }
         let batch = self
             .persistent
-            .get_batch(number)
+            .get_finalized_batch(number)
             .context("persistent.batch()")?;
         Ok(Some(batch))
     }

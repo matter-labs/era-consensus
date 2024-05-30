@@ -1,5 +1,8 @@
-use super::*;
-use crate::{metrics, preface, rpc, testonly};
+use crate::{
+    gossip::{batch_votes::BatchVotesWatch, handshake, validator_addrs::ValidatorAddrsWatch},
+    metrics, preface, rpc, testonly,
+};
+use anyhow::Context as _;
 use assert_matches::assert_matches;
 use pretty_assertions::assert_eq;
 use rand::Rng;
@@ -13,11 +16,10 @@ use zksync_concurrency::{
     testonly::{abort_on_panic, set_timeout},
     time,
 };
-use zksync_consensus_roles::{
-    attester::{self, BatchHeader},
-    validator,
-};
+use zksync_consensus_roles::{attester, validator};
 use zksync_consensus_storage::testonly::TestMemoryStorage;
+
+use super::ValidatorAddrs;
 
 mod fetch_batches;
 mod fetch_blocks;
@@ -111,7 +113,7 @@ fn mk_batch<R: Rng>(
     number: attester::BatchNumber,
 ) -> attester::Signed<attester::Batch> {
     key.sign_msg(attester::Batch {
-        proposal: BatchHeader {
+        proposal: attester::BatchHeader {
             number,
             payload: rng.gen(),
         },
@@ -135,7 +137,7 @@ fn random_batch_vote<R: Rng>(
     key: &attester::SecretKey,
 ) -> Arc<attester::Signed<attester::Batch>> {
     let batch = attester::Batch {
-        proposal: BatchHeader {
+        proposal: attester::BatchHeader {
             number: attester::BatchNumber(rng.gen_range(0..1000)),
             payload: rng.gen(),
         },
@@ -165,7 +167,7 @@ fn update_signature<R: Rng>(
     batch_number_diff: i64,
 ) -> Arc<attester::Signed<attester::Batch>> {
     let batch = attester::Batch {
-        proposal: BatchHeader {
+        proposal: attester::BatchHeader {
             number: attester::BatchNumber(
                 (batch.proposal.number.0 as i64 + batch_number_diff) as u64,
             ),

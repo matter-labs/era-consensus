@@ -120,7 +120,16 @@ impl PersistentBatchStore for BatchStore {
         self.0.persisted.borrow().last.clone().unwrap()
     }
 
-    fn get_batch(&self, number: attester::BatchNumber) -> Option<attester::FinalBatch> {
+    fn get_batch(&self, number: attester::BatchNumber) -> Option<attester::Batch> {
+        let batches = self.0.batches.lock().unwrap();
+        let front = batches.front()?;
+        let idx = number.0.checked_sub(front.number().0)?;
+        batches
+            .get(idx as usize)
+            .map(|b| b.justification.message.clone())
+    }
+
+    fn get_finalized_batch(&self, number: attester::BatchNumber) -> Option<attester::FinalBatch> {
         let batches = self.0.batches.lock().unwrap();
         let front = batches.front()?;
         let idx = number.0.checked_sub(front.number().0)?;
@@ -128,8 +137,10 @@ impl PersistentBatchStore for BatchStore {
     }
 
     fn get_batch_qc(&self, number: attester::BatchNumber) -> Option<attester::BatchQC> {
-        let batch = self.get_batch(number)?;
-        Some(batch.justification.clone())
+        let batches = self.0.batches.lock().unwrap();
+        let front = batches.front()?;
+        let idx = number.0.checked_sub(front.number().0)?;
+        batches.get(idx as usize).map(|b| b.justification.clone())
     }
 
     fn store_qc(&self, qc: attester::BatchQC) {

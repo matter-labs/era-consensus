@@ -39,7 +39,7 @@ async fn test_inmemory_batch_store() {
         sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(batch.number()))
             .await
             .unwrap();
-        want.push(batch.clone());
+        want.push(batch.justification.message.clone());
         assert_eq!(want, testonly::dump_batch(ctx, store).await);
     }
 }
