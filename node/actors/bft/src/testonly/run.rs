@@ -92,9 +92,15 @@ impl Test {
             // Check that the stored blocks are consistent.
             for i in 0..self.blocks_to_finalize as u64 {
                 let i = first + i;
-                let want = honest[0].block(ctx, i).await?;
+                // Only comparing the payload; the signatories might be different,
+                // at least with the simulated gossip of the twins network.
+                let want = honest[0]
+                    .block(ctx, i)
+                    .await?
+                    .expect("checked its existence")
+                    .payload;
                 for store in &honest[1..] {
-                    assert_eq!(want, store.block(ctx, i).await?);
+                    assert_eq!(want, store.block(ctx, i).await?.unwrap().payload);
                 }
             }
             Ok(())

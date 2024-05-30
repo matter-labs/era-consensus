@@ -325,11 +325,6 @@ async fn run_twins(
     let cluster = Cluster::new(replicas, num_twins);
     let scenarios = ScenarioGenerator::new(&cluster, num_rounds, max_partitions);
 
-    eprintln!(
-        "num_replicas={num_replicas} num_twins={num_twins} num_nodes={}",
-        cluster.num_nodes()
-    );
-
     // Create network config for all nodes in the cluster (assigns unique network addresses).
     let nets = new_configs_for_validators(rng, cluster.nodes().iter().map(|r| &r.secret_key), 1);
 
@@ -346,7 +341,7 @@ async fn run_twins(
     let nodes = vec![(Behavior::Honest, WEIGHT); cluster.num_nodes()];
 
     // Reuse the same cluster and network setup to run a few scenarios.
-    for _ in 0..num_scenarios {
+    for i in 0..num_scenarios {
         // Generate a permutation of partitions and leaders for the given number of rounds.
         let scenario = scenarios.generate_one(rng);
 
@@ -368,6 +363,11 @@ async fn run_twins(
                     .collect()
             })
             .collect();
+
+        eprintln!(
+            "num_replicas={num_replicas} num_twins={num_twins} num_nodes={} scenario={i}",
+            cluster.num_nodes()
+        );
 
         for (r, rc) in scenario.rounds.iter().enumerate() {
             let leader_id = cluster
