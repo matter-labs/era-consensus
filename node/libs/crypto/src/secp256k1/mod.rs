@@ -174,9 +174,10 @@ impl AggregateSignature {
 
     /// Verifies an aggregated signature for multiple messages against the provided list of public keys.
     ///
+    /// Verification fails if the total number of messages and signatures do not match.
+    ///
     /// The method expects the public keys to appear in the same order as their signatures have been added
     /// to the aggregate. The protocol has to ensure that the data structures are assembled in this way.
-    /// It fails if less
     ///
     /// This method was added to mimic the bn254 version, but lost its commutative property.
     pub fn verify_hash<'a>(
