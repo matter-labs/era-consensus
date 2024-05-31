@@ -5,7 +5,7 @@ use std::hash::Hash;
 use anyhow::bail;
 use zeroize::ZeroizeOnDrop;
 
-use crate::{keccak256, ByteFmt};
+use crate::{keccak256::Keccak256, ByteFmt};
 
 mod testonly;
 
@@ -31,7 +31,7 @@ impl SecretKey {
 
     /// Hashes the message with Keccak256 and signs it.
     pub fn sign(&self, msg: &[u8]) -> anyhow::Result<Signature> {
-        let hash = keccak256::Keccak256::new(msg);
+        let hash = Keccak256::new(msg);
         self.sign_hash(hash.as_bytes())
     }
 
@@ -105,7 +105,7 @@ impl Signature {
 
     /// Recovers the public key from the signature, taking the Keccak256 hash of the message.
     pub fn recover(&self, msg: &[u8]) -> anyhow::Result<PublicKey> {
-        let hash = keccak256::Keccak256::new(msg);
+        let hash = Keccak256::new(msg);
         self.recover_hash(hash.as_bytes())
     }
 
@@ -128,10 +128,11 @@ impl ByteFmt for Signature {
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         anyhow::ensure!(
             bytes.len() == SIGNATURE_LENGTH,
-            "unexpected signature length",
+            "unexpected signature length: {}",
+            bytes.len()
         );
         let Some(recid) = k256::ecdsa::RecoveryId::from_byte(bytes[64]) else {
-            bail!("unexpected recovery ID");
+            bail!("unexpected recovery ID: {}", bytes[64]);
         };
         let sig = k256::ecdsa::Signature::from_slice(&bytes[..64])?;
         Ok(Self { sig, recid })
@@ -202,6 +203,22 @@ impl AggregateSignature {
             );
         }
         Ok(())
+    }
+
+    /// Verify messages after hashing them with Keccak256
+    pub fn verify<'a>(
+        &self,
+        msgs_and_pks: impl Iterator<Item = (&'a [u8], &'a PublicKey)>,
+    ) -> anyhow::Result<()> {
+        let hashes_and_pks = msgs_and_pks
+            .map(|(msg, pk)| (Keccak256::new(msg), pk))
+            .collect::<Vec<_>>();
+
+        self.verify_hash(
+            hashes_and_pks
+                .iter()
+                .map(|(hash, pk)| (hash.as_bytes().as_slice(), *pk)),
+        )
     }
 }
 
