@@ -1,17 +1,17 @@
 use super::{PublicKey, Signature};
 use crate::attester::{Batch, MsgHash};
 use std::fmt;
-use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
+use zksync_consensus_crypto::{secp256k1, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// An aggregate signature from an attester.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
-pub struct AggregateSignature(pub(crate) bn254::AggregateSignature);
+pub struct AggregateSignature(pub(crate) secp256k1::AggregateSignature);
 
 impl AggregateSignature {
     /// Add a signature to the aggregation.
     pub fn add(&mut self, sig: &Signature) {
-        self.0.add(&sig.0)
+        self.0.add(sig.0.clone())
     }
 
     /// Verify a list of messages against a list of public keys.
@@ -35,7 +35,7 @@ impl AggregateSignature {
 
         let bytes_and_pks = bytes_and_pks.iter().map(|(bytes, pk)| (&bytes[..], *pk));
 
-        self.0.verify(bytes_and_pks)
+        self.0.verify_hash(bytes_and_pks)
     }
 }
 
@@ -51,14 +51,14 @@ impl ByteFmt for AggregateSignature {
 
 impl TextFmt for AggregateSignature {
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("attester:aggregate_signature:bn254:")?
+        text.strip("attester:aggregate_signature:secp256k1:")?
             .decode_hex()
             .map(Self)
     }
 
     fn encode(&self) -> String {
         format!(
-            "attester:aggregate_signature:bn254:{}",
+            "attester:aggregate_signature:secp256k1:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
     }

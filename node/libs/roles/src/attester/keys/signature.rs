@@ -1,11 +1,11 @@
 use super::PublicKey;
 use crate::attester::{Msg, MsgHash};
 use std::fmt;
-use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
+use zksync_consensus_crypto::{secp256k1, ByteFmt, Text, TextFmt};
 
 /// A signature of an L1 batch from an attester.
 #[derive(Clone, PartialEq, Eq, Hash)]
-pub struct Signature(pub(crate) bn254::Signature);
+pub struct Signature(pub(crate) secp256k1::Signature);
 
 impl Signature {
     /// Verify a message against a public key.
@@ -31,12 +31,12 @@ impl ByteFmt for Signature {
 impl TextFmt for Signature {
     fn encode(&self) -> String {
         format!(
-            "attester:signature:bn254:{}",
+            "attester:signature:secp256k1:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
     }
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("attester:signature:bn254:")?
+        text.strip("attester:signature:secp256k1:")?
             .decode_hex()
             .map(Self)
     }
