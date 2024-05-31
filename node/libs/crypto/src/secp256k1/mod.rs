@@ -9,6 +9,9 @@ use crate::{keccak256, ByteFmt};
 
 mod testonly;
 
+#[cfg(test)]
+mod tests;
+
 const SIGNATURE_LENGTH: usize = 65;
 
 /// Secp256k1 secret key
