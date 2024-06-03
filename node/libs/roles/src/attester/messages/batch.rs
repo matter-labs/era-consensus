@@ -44,7 +44,7 @@ pub struct BatchNumber(pub u64);
 impl BatchNumber {
     /// Increment the batch number.
     pub fn next(&self) -> BatchNumber {
-        BatchNumber(self.0 + 1)
+        BatchNumber(self.0.checked_add(1).unwrap())
     }
 
     /// Returns the previous batch number.
