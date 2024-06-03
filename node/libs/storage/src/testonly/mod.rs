@@ -6,7 +6,7 @@ use crate::{
 use anyhow::Context as _;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use std::sync::Arc;
-use zksync_concurrency::ctx;
+use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::{attester, validator};
 
 pub mod in_memory;
@@ -35,9 +35,40 @@ impl Distribution<ReplicaState> for Standard {
 /// Test-only memory storage for blocks and batches.
 pub struct TestMemoryStorage {
     /// In-memory block store with its runner.
-    pub blocks: (Arc<BlockStore>, BlockStoreRunner),
+    pub blocks: Arc<BlockStore>,
     /// In-memory batch store with its runner.
-    pub batches: (Arc<BatchStore>, BatchStoreRunner),
+    pub batches: Arc<BatchStore>,
+    /// In-memory storage runner.
+    pub runner: TestMemoryStorageRunner,
+}
+
+/// Test-only memory storage runner wrapping both block and batch store runners.
+#[derive(Clone, Debug)]
+pub struct TestMemoryStorageRunner {
+    /// In-memory block store runner.
+    blocks: BlockStoreRunner,
+    /// In-memory batch store runner.
+    batches: BatchStoreRunner,
+}
+
+impl TestMemoryStorageRunner {
+    /// Constructs a new in-memory store for both blocks and batches with their respective runners.
+    pub async fn new(blocks_runner: BlockStoreRunner, batches_runner: BatchStoreRunner) -> Self {
+        Self {
+            blocks: blocks_runner,
+            batches: batches_runner,
+        }
+    }
+
+    /// Runs the storage for both blocks and batches.
+    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        scope::run!(ctx, |ctx, s| async {
+            s.spawn(self.blocks.run(ctx));
+            s.spawn(self.batches.run(ctx));
+            Ok(())
+        })
+        .await
+    }
 }
 
 impl TestMemoryStorage {
@@ -45,9 +76,11 @@ impl TestMemoryStorage {
     pub async fn new(ctx: &ctx::Ctx, genesis: &validator::Genesis) -> Self {
         let (blocks, blocks_runner) = new_store(ctx, genesis).await;
         let (batches, batches_runner) = new_batch_store(ctx, genesis).await;
+        let runner = TestMemoryStorageRunner::new(blocks_runner, batches_runner).await;
         Self {
-            blocks: (blocks, blocks_runner),
-            batches: (batches, batches_runner),
+            blocks,
+            batches,
+            runner,
         }
     }
 
@@ -60,9 +93,11 @@ impl TestMemoryStorage {
     ) -> Self {
         let (blocks, blocks_runner) = new_store_with_first(ctx, genesis, first).await;
         let (batches, batches_runner) = new_batch_store(ctx, genesis).await;
+        let runner = TestMemoryStorageRunner::new(blocks_runner, batches_runner).await;
         Self {
-            blocks: (blocks, blocks_runner),
-            batches: (batches, batches_runner),
+            blocks,
+            batches,
+            runner,
         }
     }
 }

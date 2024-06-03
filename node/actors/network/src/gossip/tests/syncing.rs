@@ -36,8 +36,8 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
             let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-            s.spawn_bg(store.blocks.1.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks.0, store.batches.0);
+            s.spawn_bg(store.runner.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -92,8 +92,8 @@ async fn uncoordinated_block_syncing(
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
             let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-            s.spawn_bg(store.blocks.1.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks.0, store.batches.0);
+            s.spawn_bg(store.runner.clone().run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -147,8 +147,8 @@ async fn test_switching_on_nodes() {
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
             let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-            s.spawn_bg(store.blocks.1.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks.0, store.batches.0);
+            s.spawn_bg(store.runner.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
 
@@ -202,8 +202,8 @@ async fn test_switching_off_nodes() {
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
             let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-            s.spawn_bg(store.blocks.1.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks.0, store.batches.0);
+            s.spawn_bg(store.runner.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -266,8 +266,8 @@ async fn test_different_first_block() {
             let first = setup.blocks.choose(rng).unwrap().number();
             let store =
                 TestMemoryStorage::new_store_with_first_block(ctx, &setup.genesis, first).await;
-            s.spawn_bg(store.blocks.1.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks.0, store.batches.0);
+            s.spawn_bg(store.runner.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -326,8 +326,8 @@ async fn coordinated_batch_syncing(node_count: usize, gossip_peers: usize) {
             cfg.validator_key = None;
             cfg.attester_key = None;
             let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-            s.spawn_bg(store.batches.1.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks.0, store.batches.0);
+            s.spawn_bg(store.runner.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -383,8 +383,8 @@ async fn uncoordinated_batch_syncing(
             cfg.validator_key = None;
             cfg.attester_key = None;
             let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-            s.spawn_bg(store.batches.1.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks.0, store.batches.0);
+            s.spawn_bg(store.runner.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }

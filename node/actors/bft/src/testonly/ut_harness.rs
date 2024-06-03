@@ -14,10 +14,7 @@ use zksync_consensus_roles::validator::{
     self, CommitQC, LeaderCommit, LeaderPrepare, Phase, PrepareQC, ReplicaCommit, ReplicaPrepare,
     SecretKey, Signed, ViewNumber,
 };
-use zksync_consensus_storage::{
-    testonly::{in_memory, TestMemoryStorage},
-    BlockStoreRunner,
-};
+use zksync_consensus_storage::testonly::{in_memory, TestMemoryStorage, TestMemoryStorageRunner};
 use zksync_consensus_utils::enum_util::Variant;
 
 pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
@@ -41,7 +38,7 @@ impl UTHarness {
     pub(crate) async fn new(
         ctx: &ctx::Ctx,
         num_validators: usize,
-    ) -> (UTHarness, BlockStoreRunner) {
+    ) -> (UTHarness, TestMemoryStorageRunner) {
         Self::new_with_payload(
             ctx,
             num_validators,
@@ -54,7 +51,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         num_validators: usize,
         payload_manager: Box<dyn PayloadManager>,
-    ) -> (UTHarness, BlockStoreRunner) {
+    ) -> (UTHarness, TestMemoryStorageRunner) {
         let rng = &mut ctx.rng();
         let setup = validator::testonly::Setup::new(rng, num_validators);
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
@@ -62,7 +59,7 @@ impl UTHarness {
 
         let cfg = Arc::new(Config {
             secret_key: setup.validator_keys[0].clone(),
-            block_store: store.blocks.0.clone(),
+            block_store: store.blocks.clone(),
             replica_store: Box::new(in_memory::ReplicaStore::default()),
             payload_manager,
             max_payload_size: MAX_PAYLOAD_SIZE,
@@ -79,11 +76,11 @@ impl UTHarness {
             leader_send,
         };
         let _: Signed<ReplicaPrepare> = this.try_recv().unwrap();
-        (this, store.blocks.1)
+        (this, store.runner)
     }
 
     /// Creates a new `UTHarness` with minimally-significant validator set size.
-    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, BlockStoreRunner) {
+    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, TestMemoryStorageRunner) {
         let num_validators = 6;
         let (util, runner) = UTHarness::new(ctx, num_validators).await;
         assert!(util.genesis().validators.max_faulty_weight() > 0);

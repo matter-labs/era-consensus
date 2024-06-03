@@ -98,9 +98,9 @@ async fn test_one_connection_per_validator() {
 
     scope::run!(ctx, |ctx,s| async {
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-        s.spawn_bg(store.blocks.1.run(ctx));
+        s.spawn_bg(store.runner.run(ctx));
         let nodes : Vec<_> = nodes.into_iter().enumerate().map(|(i,node)| {
-            let (node,runner) = testonly::Instance::new(node, store.blocks.0.clone(), store.batches.0.clone());
+            let (node,runner) = testonly::Instance::new(node, store.blocks.clone(), store.batches.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             node
         }).collect();
@@ -157,12 +157,9 @@ async fn test_genesis_mismatch() {
 
         tracing::info!("Start one node, we will simulate the other one.");
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-        s.spawn_bg(store.blocks.1.run(ctx));
-        let (node, runner) = testonly::Instance::new(
-            cfgs[0].clone(),
-            store.blocks.0.clone(),
-            store.batches.0.clone(),
-        );
+        s.spawn_bg(store.runner.run(ctx));
+        let (node, runner) =
+            testonly::Instance::new(cfgs[0].clone(), store.blocks.clone(), store.batches.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         tracing::info!("Populate the validator_addrs of the running node.");
@@ -227,15 +224,15 @@ async fn test_address_change() {
     let mut cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-        s.spawn_bg(store.blocks.1.run(ctx));
+        s.spawn_bg(store.runner.run(ctx));
         let mut nodes: Vec<_> = cfgs
             .iter()
             .enumerate()
             .map(|(i, cfg)| {
                 let (node, runner) = testonly::Instance::new(
                     cfg.clone(),
-                    store.blocks.0.clone(),
-                    store.batches.0.clone(),
+                    store.blocks.clone(),
+                    store.batches.clone(),
                 );
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                 node
@@ -259,11 +256,8 @@ async fn test_address_change() {
         // should get reconstructed.
         cfgs[0].server_addr = net::tcp::testonly::reserve_listener();
         cfgs[0].public_addr = (*cfgs[0].server_addr).into();
-        let (node0, runner) = testonly::Instance::new(
-            cfgs[0].clone(),
-            store.blocks.0.clone(),
-            store.batches.0.clone(),
-        );
+        let (node0, runner) =
+            testonly::Instance::new(cfgs[0].clone(), store.blocks.clone(), store.batches.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
         nodes[0] = node0;
         for n in &nodes {
@@ -288,15 +282,15 @@ async fn test_transmission() {
 
     scope::run!(ctx, |ctx, s| async {
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-        s.spawn_bg(store.blocks.1.run(ctx));
+        s.spawn_bg(store.runner.run(ctx));
         let mut nodes: Vec<_> = cfgs
             .iter()
             .enumerate()
             .map(|(i, cfg)| {
                 let (node, runner) = testonly::Instance::new(
                     cfg.clone(),
-                    store.blocks.0.clone(),
-                    store.batches.0.clone(),
+                    store.blocks.clone(),
+                    store.batches.clone(),
                 );
                 let i = ctx::NoCopy(i);
                 s.spawn_bg(async {
@@ -358,14 +352,11 @@ async fn test_retransmission() {
 
     scope::run!(ctx, |ctx, s| async {
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-        s.spawn_bg(store.blocks.1.run(ctx));
+        s.spawn_bg(store.runner.run(ctx));
 
         // Spawn the first node.
-        let (node0, runner) = testonly::Instance::new(
-            cfgs[0].clone(),
-            store.blocks.0.clone(),
-            store.batches.0.clone(),
-        );
+        let (node0, runner) =
+            testonly::Instance::new(cfgs[0].clone(), store.blocks.clone(), store.batches.clone());
         s.spawn_bg(runner.run(ctx));
 
         // Make first node broadcast a message.
@@ -385,8 +376,8 @@ async fn test_retransmission() {
             scope::run!(ctx, |ctx, s| async {
                 let (mut node1, runner) = testonly::Instance::new(
                     cfgs[1].clone(),
-                    store.blocks.0.clone(),
-                    store.batches.0.clone(),
+                    store.blocks.clone(),
+                    store.batches.clone(),
                 );
                 s.spawn_bg(runner.run(ctx));
                 loop {

@@ -15,13 +15,13 @@ async fn test_metrics() {
     let cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-        s.spawn_bg(store.blocks.1.run(ctx));
+        s.spawn_bg(store.runner.run(ctx));
         let nodes: Vec<_> = cfgs
             .into_iter()
             .enumerate()
             .map(|(i, cfg)| {
                 let (node, runner) =
-                    testonly::Instance::new(cfg, store.blocks.0.clone(), store.batches.0.clone());
+                    testonly::Instance::new(cfg, store.blocks.clone(), store.batches.clone());
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                 node
             })

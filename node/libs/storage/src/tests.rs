@@ -64,7 +64,7 @@ async fn test_state_updates() {
         TestMemoryStorage::new_store_with_first_block(ctx, &setup.genesis, first_block.number())
             .await;
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(store.blocks.1.run(ctx));
+        s.spawn_bg(store.runner.run(ctx));
         let want = BlockStoreState {
             first: first_block.number(),
             last: None,
@@ -76,33 +76,26 @@ async fn test_state_updates() {
             setup.genesis.first_block.prev().unwrap(),
             first_block.number().prev().unwrap(),
         ] {
-            store.blocks.0.wait_until_queued(ctx, n).await.unwrap();
-            store.blocks.0.wait_until_persisted(ctx, n).await.unwrap();
-            assert_eq!(want, store.blocks.0.queued());
+            store.blocks.wait_until_queued(ctx, n).await.unwrap();
+            store.blocks.wait_until_persisted(ctx, n).await.unwrap();
+            assert_eq!(want, store.blocks.queued());
         }
 
         for block in &setup.blocks {
-            store
-                .blocks
-                .0
-                .queue_block(ctx, block.clone())
-                .await
-                .unwrap();
+            store.blocks.queue_block(ctx, block.clone()).await.unwrap();
             if block.number() < first_block.number() {
                 // Queueing block before first block should be a noop.
                 store
                     .blocks
-                    .0
                     .wait_until_queued(ctx, block.number())
                     .await
                     .unwrap();
                 store
                     .blocks
-                    .0
                     .wait_until_persisted(ctx, block.number())
                     .await
                     .unwrap();
-                assert_eq!(want, store.blocks.0.queued());
+                assert_eq!(want, store.blocks.queued());
             } else {
                 // Otherwise the state should be updated as soon as block is queued.
                 assert_eq!(
@@ -110,7 +103,7 @@ async fn test_state_updates() {
                         first: first_block.number(),
                         last: Some(block.justification.clone()),
                     },
-                    store.blocks.0.queued()
+                    store.blocks.queued()
                 );
             }
         }

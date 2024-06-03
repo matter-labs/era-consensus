@@ -35,15 +35,15 @@ impl Test {
         scope::run!(ctx, |ctx, s| async {
             for (i, net) in nets.into_iter().enumerate() {
                 let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-                s.spawn_bg(store.blocks.1.run(ctx));
+                s.spawn_bg(store.runner.run(ctx));
                 if self.nodes[i].0 == Behavior::Honest {
-                    honest.push(store.blocks.0.clone());
+                    honest.push(store.blocks.clone());
                 }
                 nodes.push(Node {
                     net,
                     behavior: self.nodes[i].0,
-                    block_store: store.blocks.0,
-                    batch_store: store.batches.0,
+                    block_store: store.blocks,
+                    batch_store: store.batches,
                 });
             }
             assert!(!honest.is_empty());

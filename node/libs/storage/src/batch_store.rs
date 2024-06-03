@@ -133,6 +133,7 @@ pub struct BatchStore {
 
 /// Runner of the BatchStore background tasks.
 #[must_use]
+#[derive(Debug, Clone)]
 pub struct BatchStoreRunner(Arc<BatchStore>);
 
 impl BatchStoreRunner {

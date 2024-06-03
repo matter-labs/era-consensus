@@ -23,11 +23,11 @@ async fn test_simple() {
 
     scope::run!(ctx, |ctx, s| async {
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-        s.spawn_bg(store.batches.1.run(ctx));
+        s.spawn_bg(store.runner.run(ctx));
         let (_node, runner) = crate::testonly::Instance::new(
             cfg.clone(),
-            store.blocks.0.clone(),
-            store.batches.0.clone(),
+            store.blocks.clone(),
+            store.batches.clone(),
         );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
@@ -51,7 +51,6 @@ async fn test_simple() {
         tracing::info!("Insert a batch.");
         store
             .batches
-            .0
             .queue_batch(ctx, setup.batches[0].clone(), setup.genesis.clone())
             .await
             .unwrap();
@@ -108,7 +107,6 @@ async fn test_simple() {
         tracing::info!("Wait for the client to store that batch");
         store
             .batches
-            .0
             .wait_until_persisted(ctx, setup.batches[1].number())
             .await
             .unwrap();
@@ -135,11 +133,11 @@ async fn test_concurrent_requests() {
 
     scope::run!(ctx, |ctx, s| async {
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-        s.spawn_bg(store.batches.1.run(ctx));
+        s.spawn_bg(store.runner.run(ctx));
         let (_node, runner) = crate::testonly::Instance::new(
             cfg.clone(),
-            store.blocks.0.clone(),
-            store.batches.0.clone(),
+            store.blocks.clone(),
+            store.batches.clone(),
         );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
@@ -211,11 +209,11 @@ async fn test_bad_responses() {
 
     scope::run!(ctx, |ctx, s| async {
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-        s.spawn_bg(store.batches.1.run(ctx));
+        s.spawn_bg(store.runner.run(ctx));
         let (_node, runner) = crate::testonly::Instance::new(
             cfg.clone(),
-            store.blocks.0.clone(),
-            store.batches.0.clone(),
+            store.blocks.clone(),
+            store.batches.clone(),
         );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
@@ -288,11 +286,11 @@ async fn test_retry() {
 
     scope::run!(ctx, |ctx, s| async {
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-        s.spawn_bg(store.batches.1.run(ctx));
+        s.spawn_bg(store.runner.run(ctx));
         let (_node, runner) = crate::testonly::Instance::new(
             cfg.clone(),
-            store.blocks.0.clone(),
-            store.batches.0.clone(),
+            store.blocks.clone(),
+            store.batches.clone(),
         );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
