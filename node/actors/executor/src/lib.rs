@@ -1,11 +1,16 @@
 //! Library files for the executor. We have it separate from the binary so that we can use these files in the tools crate.
 use crate::io::Dispatcher;
 use anyhow::Context as _;
+use network::http;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
-use zksync_concurrency::{ctx, limiter, net, scope, time};
+use zksync_concurrency::{
+    ctx, limiter,
+    net::{self, http::DebugPageConfig},
+    scope, time,
+};
 use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
@@ -52,7 +57,7 @@ pub struct Config {
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
     /// Http debug page configuration.
     /// If None, no debug page is enabled
-    pub debug_page: Option<net::http::DebugPageConfig>,
+    pub debug_page: Option<DebugPageConfig>,
 }
 
 impl Config {
@@ -111,17 +116,17 @@ impl Executor {
         scope::run!(ctx, |ctx, s| async {
             s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
 
-            if let Some(debug_config) = &self.config.debug_page {
-                s.spawn(async {
-                    let http_server = net::http::Server::new(debug_config.clone());
-                    http_server.run(ctx).await.context("Http Server stopped")
-                });
-            }
-
             let (net, runner) =
                 network::Network::new(network_config, self.block_store.clone(), network_actor_pipe);
             net.register_metrics();
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
+
+            if let Some(debug_config) = &self.config.debug_page {
+                s.spawn(async {
+                    let http_server = http::Server::new(debug_config.clone(), net);
+                    http_server.run(ctx).await.context("Http Server stopped")
+                });
+            }
 
             // Run the bft actor iff this node is an active validator.
             let Some(validator) = self.validator else {
