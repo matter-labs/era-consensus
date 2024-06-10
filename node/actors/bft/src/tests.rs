@@ -245,7 +245,7 @@ async fn twins_network_w1_twins_w_partitions() {
         // let num_honest = validator::threshold(num_replicas as u64) as usize;
         // let max_faulty = num_replicas - num_honest;
         // let num_twins = rng.gen_range(1..=max_faulty);
-        run_twins(ctx, num_replicas, 1, 5).await.unwrap();
+        run_twins(ctx, num_replicas, 1, 10).await.unwrap();
     }
 }
 
@@ -254,7 +254,7 @@ async fn twins_network_w1_twins_w_partitions() {
 async fn twins_network_w2_twins_w_partitions() {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n>=11 implies f>=2 and q=n-f
-    run_twins(ctx, 11, 2, 5).await.unwrap();
+    run_twins(ctx, 11, 2, 10).await.unwrap();
 }
 
 /// Create network configuration for a given number of replicas and twins and run [Test].
@@ -267,7 +267,7 @@ async fn run_twins(
     zksync_concurrency::testonly::abort_on_panic();
     // Use a single timeout for all scenarios to finish.
     // A single scenario with 11 replicas took 3-5 seconds.
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(60));
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
 
     #[derive(PartialEq, Debug)]
     struct Replica {
@@ -324,8 +324,15 @@ async fn run_twins(
     let cluster = Cluster::new(replicas, num_twins);
     let scenarios = ScenarioGenerator::new(&cluster, num_rounds, max_partitions);
 
+    // Gossip with more nodes than what can be faulty.
+    let gossip_peers = num_twins + 1;
+
     // Create network config for all nodes in the cluster (assigns unique network addresses).
-    let nets = new_configs_for_validators(rng, cluster.nodes().iter().map(|r| &r.secret_key), 1);
+    let nets = new_configs_for_validators(
+        rng,
+        cluster.nodes().iter().map(|r| &r.secret_key),
+        gossip_peers,
+    );
 
     let node_to_port = cluster
         .nodes()
@@ -387,7 +394,7 @@ async fn run_twins(
                 .iter()
                 .all(|s| *s < cluster.quorum_size());
 
-            tracing::debug!("round={r} partitions={partitions:?} leaders={leader_ports:?} leader_partition_sizes={leader_partition_sizes:?} leader_isolated={leader_isolated}");
+            tracing::info!("round={r} partitions={partitions:?} leaders={leader_ports:?} leader_partition_sizes={leader_partition_sizes:?} leader_isolated={leader_isolated}");
         }
 
         Test {

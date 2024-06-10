@@ -121,11 +121,13 @@ impl StateMachine {
 
             if let Some(prev) = message.proposal.number.prev() {
                 // Defensively assume that PayloadManager cannot verify proposal until the previous block is stored.
+                tracing::info!("waiting for previous block {prev} to be persisted...");
                 self.config
                     .block_store
                     .wait_until_persisted(ctx, prev)
                     .await
                     .map_err(ctx::Error::Canceled)?;
+                tracing::info!("previous block {prev} persistence confirmed");
             }
             if let Err(err) = self
                 .config
