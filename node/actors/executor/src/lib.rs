@@ -56,7 +56,7 @@ pub struct Config {
     /// establish and maintain.
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
     /// Http debug page configuration.
-    /// If None, no debug page is enabled
+    /// If None, debug page is disabled
     pub debug_page: Option<DebugPageConfig>,
 }
 

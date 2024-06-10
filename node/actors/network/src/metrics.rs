@@ -4,8 +4,12 @@ use crate::Network;
 use std::{
     net::SocketAddr,
     pin::Pin,
-    sync::{Arc, Weak},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Weak,
+    },
     task::{ready, Context, Poll},
+    time::SystemTime,
 };
 use vise::{
     Collector, Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, GaugeGuard, Metrics, Unit,
@@ -186,11 +190,11 @@ impl NetworkGauges {
 #[derive(Debug)]
 pub struct StreamValues {
     /// Total bytes sent over the Stream.
-    pub sent: std::sync::atomic::AtomicU64,
+    pub sent: AtomicU64,
     /// Total bytes received over the Stream.
-    pub received: std::sync::atomic::AtomicU64,
+    pub received: AtomicU64,
     /// TCP connections established since the process started.
-    pub established: std::time::SystemTime,
+    pub established: SystemTime,
     /// Ip Address and port of current connection.
     pub address: Option<SocketAddr>,
 }
@@ -200,18 +204,16 @@ impl StreamValues {
         Self {
             sent: 0.into(),
             received: 0.into(),
-            established: std::time::SystemTime::now(),
+            established: SystemTime::now(),
             address,
         }
     }
 
     fn read(&self, amount: u64) {
-        self.received
-            .fetch_add(amount, std::sync::atomic::Ordering::Relaxed);
+        self.received.fetch_add(amount, Ordering::Relaxed);
     }
 
     fn wrote(&self, amount: u64) {
-        self.sent
-            .fetch_add(amount, std::sync::atomic::Ordering::Relaxed);
+        self.sent.fetch_add(amount, Ordering::Relaxed);
     }
 }
