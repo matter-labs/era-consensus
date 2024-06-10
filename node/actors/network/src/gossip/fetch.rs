@@ -64,7 +64,7 @@ impl Queue {
     ) -> ctx::OrCanceled<Call> {
         let sub = &mut self.0.subscribe();
         while ctx.is_active() {
-            // Wait for the lowest requested block to be available.
+            // Wait for the lowest requested block to be available on the remote peer.
             // This scope is always cancelled, so we ignore the result.
             let mut block_number = None;
             let _: Result<(), _> = scope::run!(ctx, |ctx, s| async {
