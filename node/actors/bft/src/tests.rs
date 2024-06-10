@@ -363,7 +363,7 @@ async fn run_twins(
             })
             .collect();
 
-        eprintln!(
+        tracing::info!(
             "num_replicas={num_replicas} num_twins={num_twins} num_nodes={} scenario={i}",
             cluster.num_nodes()
         );
@@ -387,7 +387,7 @@ async fn run_twins(
                 .iter()
                 .all(|s| *s < cluster.quorum_size());
 
-            eprintln!("round={r} partitions={partitions:?} leaders={leader_ports:?} leader_partition_sizes={leader_partition_sizes:?} leader_isolated={leader_isolated}");
+            tracing::debug!("round={r} partitions={partitions:?} leaders={leader_ports:?} leader_partition_sizes={leader_partition_sizes:?} leader_isolated={leader_isolated}");
         }
 
         Test {

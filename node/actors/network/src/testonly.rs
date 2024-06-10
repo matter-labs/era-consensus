@@ -13,10 +13,7 @@ use std::{
     sync::Arc,
 };
 use zksync_concurrency::{ctx, ctx::channel, io, limiter, net, scope, sync};
-use zksync_consensus_roles::{
-    node,
-    validator::{self, SecretKey},
-};
+use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe;
 
@@ -92,7 +89,7 @@ pub fn new_configs_for_validators<'a, I>(
     gossip_peers: usize,
 ) -> Vec<Config>
 where
-    I: Iterator<Item = &'a SecretKey>,
+    I: Iterator<Item = &'a validator::SecretKey>,
 {
     let configs = validator_keys.map(|validator_key| {
         let addr = net::tcp::testonly::reserve_listener();
