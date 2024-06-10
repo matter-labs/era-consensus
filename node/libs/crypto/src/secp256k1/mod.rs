@@ -189,7 +189,7 @@ impl AggregateSignature {
     /// not rely on message and key ordering; it supported different messages from each signatory as well.
     ///
     /// Here we have a simple list of signatures, and we cannot rely on them having been added in the same
-    /// order in which they are going to be verified, thefore we have to try every message against every
+    /// order in which they are going to be verified, therefore we have to try every message against every
     /// signature.
     ///
     /// The method assumes that there are no repeated pairs in the input, ie. that every signature is used exactly once.
