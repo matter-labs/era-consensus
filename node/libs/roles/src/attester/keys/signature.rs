@@ -15,7 +15,7 @@ impl Signature {
 
     /// Verify a message hash against a public key.
     pub fn verify_hash(&self, msg_hash: &MsgHash, pk: &PublicKey) -> anyhow::Result<()> {
-        self.0.verify(&ByteFmt::encode(msg_hash), &pk.0)
+        self.0.verify_hash(&ByteFmt::encode(msg_hash), &pk.0)
     }
 }
 
