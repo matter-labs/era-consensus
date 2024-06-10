@@ -1,6 +1,6 @@
 //! ECDSA signatures over the Secp256k1 curve, chosen to work with EVM precompiles.
 
-use std::hash::Hash;
+use std::{collections::HashSet, hash::Hash};
 
 use anyhow::bail;
 use zeroize::ZeroizeOnDrop;
@@ -119,7 +119,12 @@ impl Signature {
 
     /// Ensure the recovered public key is the expected one.
     fn verify_pk(expected: &PublicKey, recovered: &PublicKey) -> anyhow::Result<()> {
-        anyhow::ensure!(expected == recovered, "PublicKey mismatch");
+        anyhow::ensure!(
+            expected == recovered,
+            "PublicKey mismatch: expected {}, got {}",
+            hex::encode(expected.encode()),
+            hex::encode(recovered.encode())
+        );
         Ok(())
     }
 }
@@ -180,26 +185,38 @@ impl AggregateSignature {
     ///
     /// Verification fails if the total number of messages and signatures do not match.
     ///
-    /// The method expects the public keys to appear in the same order as their signatures have been added
-    /// to the aggregate. The protocol has to ensure that the data structures are assembled in this way.
+    /// This method was added to mimic the bn254 version, which used BLS signature aggregation and did
+    /// not rely on message and key ordering; it supported different messages from each signatory as well.
     ///
-    /// This method was added to mimic the bn254 version, but lost its commutative property.
+    /// Here we have a simple list of signatures, and we cannot rely on them having been added in the same
+    /// order in which they are going to be verified, thefore we have to try every message against every
+    /// signature.
+    ///
+    /// The method assumes that there are no repeated pairs in the input, ie. that every signature is used exactly once.
     pub fn verify_hash<'a>(
         &self,
         hashes_and_pks: impl Iterator<Item = (&'a [u8], &'a PublicKey)>,
     ) -> anyhow::Result<()> {
-        let mut cnt = 0;
-        for (i, (hash, pk)) in hashes_and_pks.enumerate() {
-            let Some(sig) = self.0.get(i) else {
-                bail!("not enough signatures in aggregate: expected no more than {i}");
-            };
-            sig.verify_hash(hash, pk)?;
-            cnt += 1;
+        // Keep track of which signatures have been verified.
+        let mut verified = HashSet::new();
+
+        'inputs: for (i, (hash, pk)) in hashes_and_pks.enumerate() {
+            'signatures: for (j, sig) in self.0.iter().enumerate() {
+                if verified.contains(&j) {
+                    continue 'signatures;
+                }
+                if sig.verify_hash(hash, pk).is_ok() {
+                    verified.insert(j);
+                    continue 'inputs;
+                }
+            }
+            bail!("failed to verify message {i} against any of the signatures in the aggregate");
         }
-        if cnt < self.0.len() {
+        if verified.len() < self.0.len() {
             bail!(
-                "not enough messages to verify aggregated signature: expected {}; got {cnt}",
-                self.0.len()
+                "not enough messages to verify aggregated signature: expected {}, got {}",
+                self.0.len(),
+                verified.len()
             );
         }
         Ok(())

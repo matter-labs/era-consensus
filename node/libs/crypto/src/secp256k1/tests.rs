@@ -3,6 +3,7 @@ use std::fmt::Debug;
 use rand::{
     distributions::{Distribution, Standard},
     rngs::StdRng,
+    seq::SliceRandom,
     Rng, SeedableRng,
 };
 
@@ -116,6 +117,11 @@ fn prop_sign_verify_agg() {
             agg.add(sig);
             inputs.push((msg, sk.public()));
         }
+
+        // Verification should work for any order of messages and signatures.
+        agg.0.shuffle(rng);
+        inputs.shuffle(rng);
+
         agg.verify(inputs.iter().map(|(msg, pk)| (msg.as_slice(), pk)))
             .unwrap();
     }
@@ -128,7 +134,7 @@ fn prop_sign_verify_agg_fail() {
     for _ in 0..10 {
         let mut agg = AggregateSignature::default();
         let mut inputs = Vec::new();
-        // Minimum two signatures
+        // Minimum two signatures so that we can pop something.
         for _ in 0..=rng.gen_range(2..5) {
             let sk = rng.gen::<SecretKey>();
             let msg = gen_msg(rng);
@@ -137,16 +143,10 @@ fn prop_sign_verify_agg_fail() {
             inputs.push((msg, sk.public()));
         }
         // Do something to mess it up.
-        match rng.gen_range(0..=3) {
-            0 => inputs.reverse(),
-            1 => agg.0.reverse(),
-            2 => {
-                inputs.pop();
-            }
-            3 => {
-                agg.0.pop();
-            }
-            _ => unreachable!(),
+        if rng.gen_bool(0.5) {
+            inputs.pop();
+        } else {
+            agg.0.pop();
         }
         agg.verify(inputs.iter().map(|(msg, pk)| (msg.as_slice(), pk)))
             .unwrap_err();
