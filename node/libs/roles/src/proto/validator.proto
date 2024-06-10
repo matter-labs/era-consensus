@@ -15,6 +15,7 @@ message Genesis {
   // These properties are expected to be overwritten each epoch.
   // We will either remove them entirely, or keep them for the initial epoch.
   optional uint32 protocol_version = 8; // required; ProtocolVersion
+  optional uint64 payload_version = 10; // optional; PayloadVersion
   repeated WeightedValidator validators_v1 = 3;
   repeated attester.WeightedAttester attesters = 9; // optional
   optional LeaderSelectionMode leader_selection = 4; // required

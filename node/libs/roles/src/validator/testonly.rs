@@ -1,11 +1,5 @@
 //! Test-only utilities.
-use super::{
-    AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
-    FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
-    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
-    ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
-    WeightedValidator,
-};
+use super::*;
 use crate::{attester, validator::LeaderSelectionMode};
 use bit_vec::BitVec;
 use rand::{
@@ -150,6 +144,7 @@ impl From<SetupSpec> for Setup {
                 first_block: spec.first_block,
 
                 protocol_version: spec.protocol_version,
+                payload_version: Some(PayloadVersion(10)),
                 validators: Committee::new(spec.validator_weights.iter().map(|(k, w)| {
                     WeightedValidator {
                         key: k.public(),
@@ -245,6 +240,12 @@ impl Distribution<ProtocolVersion> for Standard {
     }
 }
 
+impl Distribution<PayloadVersion> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PayloadVersion {
+        PayloadVersion(rng.gen())
+    }
+}
+
 impl Distribution<ForkNumber> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ForkNumber {
         ForkNumber(rng.gen())
@@ -285,9 +286,13 @@ impl Distribution<GenesisRaw> for Standard {
             first_block: rng.gen(),
 
             protocol_version: rng.gen(),
+            payload_version: Some(rng.gen()),
             validators: rng.gen(),
             attesters: rng.gen(),
-            leader_selection: rng.gen(),
+            // We cannot select at random, because
+            // variants, such as `Sticky` need to contain a member
+            // of the `validators` committee.
+            leader_selection: LeaderSelectionMode::Weighted,
         }
     }
 }

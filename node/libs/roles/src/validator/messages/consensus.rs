@@ -42,6 +42,11 @@ impl TryFrom<u32> for ProtocolVersion {
     }
 }
 
+/// Version of the encoding scheme used to encode the block payloads.
+/// Semantics of this field is chain-dependent.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PayloadVersion(pub u64);
+
 /// Number of the fork. Newer fork has higher number.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ForkNumber(pub u64);
@@ -248,6 +253,9 @@ pub struct GenesisRaw {
     pub fork_number: ForkNumber,
     /// Protocol version used by this fork.
     pub protocol_version: ProtocolVersion,
+    /// Payload version used by this fork.
+    /// It determines what encoding scheme should the leader use to propose new blocks.
+    pub payload_version: Option<PayloadVersion>,
     /// First block of a fork.
     pub first_block: BlockNumber,
     /// Set of validators of the chain.

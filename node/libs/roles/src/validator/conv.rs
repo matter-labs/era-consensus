@@ -1,9 +1,4 @@
-use super::{
-    AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
-    FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
-    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
-    ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
-};
+use super::*;
 use crate::{
     attester::{self, WeightedAttester},
     node::SessionId,
@@ -39,6 +34,7 @@ impl ProtoFmt for GenesisRaw {
             first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
 
             protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
+            payload_version: r.payload_version.map(PayloadVersion),
             validators: Committee::new(validators.into_iter()).context("validators_v1")?,
             attesters: if attesters.is_empty() {
                 None
@@ -55,6 +51,7 @@ impl ProtoFmt for GenesisRaw {
             first_block: Some(self.first_block.0),
 
             protocol_version: Some(self.protocol_version.0),
+            payload_version: self.payload_version.map(|x| x.0),
             validators_v1: self.validators.iter().map(|v| v.build()).collect(),
             attesters: self
                 .attesters

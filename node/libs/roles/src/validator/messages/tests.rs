@@ -167,13 +167,14 @@ mod version1 {
     use super::*;
 
     /// Hardcoded genesis.
-    fn genesis_empty_attesters() -> Genesis {
+    fn genesis() -> Genesis {
         GenesisRaw {
             chain_id: ChainId(1337),
             fork_number: ForkNumber(402598740274745173),
             first_block: BlockNumber(8902834932452),
 
             protocol_version: ProtocolVersion(1),
+            payload_version: None,
             validators: validator_committee(),
             attesters: None,
             leader_selection: LeaderSelectionMode::Weighted,
@@ -181,17 +182,20 @@ mod version1 {
         .with_hash()
     }
 
-    /// Hardcoded genesis.
-    fn genesis_with_attesters() -> Genesis {
+    /// Genesis with attesters.
+    fn genesis2() -> Genesis {
         GenesisRaw {
-            chain_id: ChainId(1337),
-            fork_number: ForkNumber(402598740274745173),
-            first_block: BlockNumber(8902834932452),
-
-            protocol_version: ProtocolVersion(1),
-            validators: validator_committee(),
             attesters: attester_committee().into(),
-            leader_selection: LeaderSelectionMode::Weighted,
+            ..(*genesis()).clone()
+        }
+        .with_hash()
+    }
+
+    /// Genesis payload version.
+    fn genesis3() -> Genesis {
+        GenesisRaw {
+            payload_version: Some(PayloadVersion(12)),
+            ..(*genesis2()).clone()
         }
         .with_hash()
     }
@@ -199,7 +203,6 @@ mod version1 {
     /// Note that genesis is NOT versioned by ProtocolVersion.
     /// Even if it was, ALL versions of genesis need to be supported FOREVER,
     /// unless we introduce dynamic regenesis.
-    /// FIXME: This fails with the new attester committee.
     #[test]
     fn genesis_hash_change_detector() {
         let want: GenesisHash = Text::new(
@@ -207,21 +210,23 @@ mod version1 {
         )
         .decode()
         .unwrap();
-        assert_eq!(want, genesis_empty_attesters().hash());
-    }
+        assert_eq!(want, genesis().hash());
 
-    /// Note that genesis is NOT versioned by ProtocolVersion.
-    /// Even if it was, ALL versions of genesis need to be supported FOREVER,
-    /// unless we introduce dynamic regenesis.
-    /// FIXME: This fails with the new attester committee.
-    #[test]
-    fn genesis_hash_change_detector_2() {
+        // introduced attesters
         let want: GenesisHash = Text::new(
             "genesis_hash:keccak256:63d6562ea2a27069e64a4005d1aef446907db945d85e06323296d2c0f8336c65",
         )
         .decode()
         .unwrap();
-        assert_eq!(want, genesis_with_attesters().hash());
+        assert_eq!(want, genesis2().hash());
+
+        // introduced PayloadVersion.
+        let want: GenesisHash = Text::new(
+            "genesis_hash:keccak256:2a0bd28fe89dd1ce255b1129bd32da6784477643cb5c132a8abd266239292ced",
+        )
+        .decode()
+        .unwrap();
+        assert_eq!(want, genesis3().hash());
     }
 
     #[test]
@@ -251,7 +256,7 @@ mod version1 {
     /// Hardcoded view.
     fn view() -> View {
         View {
-            genesis: genesis_empty_attesters().hash(),
+            genesis: genesis().hash(),
             number: ViewNumber(9136573498460759103),
         }
     }
@@ -274,7 +279,7 @@ mod version1 {
 
     /// Hardcoded `CommitQC`.
     fn commit_qc() -> CommitQC {
-        let genesis = genesis_empty_attesters();
+        let genesis = genesis();
         let replica_commit = replica_commit();
         let mut x = CommitQC::new(replica_commit.clone(), &genesis);
         for k in validator_keys() {
@@ -303,7 +308,7 @@ mod version1 {
     /// Hardcoded `PrepareQC`.
     fn prepare_qc() -> PrepareQC {
         let mut x = PrepareQC::new(view());
-        let genesis = genesis_empty_attesters();
+        let genesis = genesis();
         let replica_prepare = replica_prepare();
         for k in validator_keys() {
             x.add(&k.sign_msg(replica_prepare.clone()), &genesis)
