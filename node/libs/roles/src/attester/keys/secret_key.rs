@@ -57,13 +57,13 @@ impl ByteFmt for SecretKey {
 impl TextFmt for SecretKey {
     fn encode(&self) -> String {
         format!(
-            "attester:secret:bn254:{}",
+            "attester:secret:secp256k1:{}",
             hex::encode(ByteFmt::encode(&*self.0))
         )
     }
 
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("attester:secret:bn254:")?
+        text.strip("attester:secret:secp256k1:")?
             .decode_hex()
             .map(Arc::new)
             .map(Self)

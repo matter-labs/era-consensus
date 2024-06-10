@@ -28,10 +28,12 @@ message Signed {
 }
 
 message PublicKey {
+  // The name is wrong, it should be secp256k1.
   optional bytes bn254 = 1; // required
 }
 
 message Signature {
+  // The name is wrong, it should be secp256k1.
   optional bytes bn254 = 1; // required
 }
 
@@ -41,6 +43,9 @@ message WeightedAttester {
 }
 
 message AggregateSignature {
+  // The name is wrong, it should be secp256k1.
+  // This is aggregate signature itself encoded as bytes, which is why it's not `repeated`,
+  // even though for secp256k1 it's just a list of signatures.
   optional bytes bn254 = 1; // required
 }
 
