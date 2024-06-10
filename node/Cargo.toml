@@ -97,6 +97,7 @@ tls-listener = { version = "0.10.0", features = ["rustls"]}
 rustls-pemfile = "2"
 base64 = "0.21"
 build_html = "2.4.0"
+bytesize = "1.3.0"
 
 # Note that "bench" profile inherits from "release" profile and
 # "test" profile inherits from "dev" profile.

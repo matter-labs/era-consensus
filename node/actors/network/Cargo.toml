@@ -34,6 +34,7 @@ tls-listener.workspace = true
 rustls-pemfile.workspace = true
 base64.workspace = true
 build_html.workspace = true
+bytesize.workspace = true
 
 [dev-dependencies]
 assert_matches.workspace = true

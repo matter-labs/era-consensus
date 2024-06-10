@@ -37,9 +37,9 @@ pub(crate) struct Network {
     /// Gossip network configuration.
     pub(crate) cfg: Config,
     /// Currently open inbound connections.
-    pub(crate) inbound: PoolWatch<node::PublicKey, ()>,
+    pub(crate) inbound: PoolWatch<node::PublicKey, Arc<crate::StreamValues>>,
     /// Currently open outbound connections.
-    pub(crate) outbound: PoolWatch<node::PublicKey, ()>,
+    pub(crate) outbound: PoolWatch<node::PublicKey, Arc<crate::StreamValues>>,
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
     /// Current state of knowledge about batch votes.

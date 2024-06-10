@@ -1,7 +1,7 @@
 //! Http Server to export debug information
 use anyhow::{anyhow, Context, Result};
 use base64::Engine;
-use build_html::{Container, ContainerType, Html, HtmlContainer, HtmlPage};
+use build_html::{Html, HtmlContainer, HtmlPage, Table, TableCell, TableCellType, TableRow};
 use http_body_util::Full;
 use hyper::{
     body::Bytes,
@@ -11,7 +11,13 @@ use hyper::{
     HeaderMap, Request, Response, StatusCode,
 };
 use hyper_util::rt::tokio::TokioIo;
-use std::{fs, io, net::SocketAddr, sync::Arc};
+use im::HashMap;
+use std::{
+    fs, io,
+    net::SocketAddr,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 use tls_listener::TlsListener;
 use tokio::net::TcpListener;
 use tokio_rustls::{
@@ -23,7 +29,9 @@ use tokio_rustls::{
 };
 use zksync_concurrency::net::http::{DebugCredentials, DebugPageConfig};
 
-use crate::{consensus, ctx, scope, Network};
+use crate::{consensus, ctx, scope, Network, StreamValues};
+
+const STYLE: &str = include_str!("style.css");
 
 /// Http Server.
 pub struct Server {
@@ -118,33 +126,90 @@ impl Server {
     fn serve(&self, _request: Request<hyper::body::Incoming>) -> Full<Bytes> {
         let html: String = HtmlPage::new()
             .with_title("Node debug page")
+            .with_style(STYLE)
             .with_header(1, "Active connections")
-            .with_container(
-                Container::new(ContainerType::UnorderedList)
-                    .with_paragraph(format!("{:?}", "s"))
-                    .with_paragraph("connection"),
+            .with_header(2, "Validator network")
+            .with_header(3, "Incomming connections")
+            .with_paragraph(
+                self.connections_html(
+                    <Option<Arc<consensus::Network>> as Clone>::clone(&self.network.consensus)
+                        .unwrap()
+                        .inbound
+                        .current(),
+                ),
             )
-            .with_header(1, "Static gossip connections")
-            .with_header(1, "Validator discovery data")
-            .with_container(
-                Container::new(ContainerType::UnorderedList)
-                    .with_paragraph(format!(
-                        "{:?}",
-                        <Option<Arc<consensus::Network>> as Clone>::clone(&self.network.consensus)
-                            .unwrap()
-                            .inbound
-                            .current()
-                    ))
-                    .with_paragraph(format!(
-                        "{:?}",
-                        <Option<Arc<consensus::Network>> as Clone>::clone(&self.network.consensus)
-                            .unwrap()
-                            .outbound
-                            .current()
-                    )),
+            .with_header(3, "Outgoing connections")
+            .with_paragraph(
+                self.connections_html(
+                    <Option<Arc<consensus::Network>> as Clone>::clone(&self.network.consensus)
+                        .unwrap()
+                        .outbound
+                        .current(),
+                ),
             )
+            .with_header(2, "Gossip network")
+            .with_header(3, "Incomming connections")
+            .with_paragraph(self.connections_html(self.network.gossip.inbound.current()))
+            .with_header(3, "Outgoing connections")
+            .with_paragraph(self.connections_html(self.network.gossip.outbound.current()))
             .to_html_string();
         Full::new(Bytes::from(html))
+    }
+
+    fn connections_html<K>(&self, connections: HashMap<K, Arc<StreamValues>>) -> String
+    where
+        K: std::hash::Hash + Eq + Clone + std::fmt::Debug + zksync_consensus_crypto::TextFmt,
+    {
+        let mut table = Table::new()
+            .with_custom_header_row(
+                TableRow::new()
+                    .with_cell(TableCell::new(TableCellType::Header).with_raw("Public key"))
+                    .with_cell(TableCell::new(TableCellType::Header).with_raw("Address"))
+                    .with_cell(
+                        TableCell::new(TableCellType::Header)
+                            .with_attributes([("colspan", "2")])
+                            .with_raw("Incomming"),
+                    )
+                    .with_cell(
+                        TableCell::new(TableCellType::Header)
+                            .with_attributes([("colspan", "2")])
+                            .with_raw("Outgoing"),
+                    )
+                    .with_cell(TableCell::new(TableCellType::Header).with_raw("Age")),
+            )
+            .with_header_row(vec!["", "", "size", "bandwidth", "size", "bandwidth", ""]);
+        for (key, values) in connections {
+            let age = SystemTime::now()
+                .duration_since(values.established)
+                .ok()
+                .unwrap_or_else(|| Duration::new(1, 0))
+                .max(Duration::new(1, 0)); // Ensure Duration is not 0 to prevent division by zero
+            let received = values.received.load(std::sync::atomic::Ordering::Relaxed);
+            let sent = values.sent.load(std::sync::atomic::Ordering::Relaxed);
+            table.add_body_row(vec![
+                self.shorten(key),
+                values.address.map_or("-".to_string(), |a| a.to_string()),
+                bytesize::to_string(received, false),
+                bytesize::to_string(received / age.as_secs(), false) + "/s",
+                bytesize::to_string(sent, false),
+                bytesize::to_string(sent / age.as_secs(), false) + "/s",
+                format!("{}s", age.as_secs()),
+            ])
+        }
+        table.to_html_string()
+    }
+
+    fn shorten<K>(&self, key: K) -> String
+    where
+        K: std::fmt::Debug + zksync_consensus_crypto::TextFmt,
+    {
+        let key = key.encode();
+        key.strip_prefix("validator:public:bls12_381:")
+            .or(key.strip_prefix("node:public:ed25519:"))
+            .map_or("-".to_string(), |key| {
+                let len = key.len();
+                format!("{}...{}", &key[..10], &key[len - 11..len])
+            })
     }
 }
 

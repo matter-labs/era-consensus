@@ -4,7 +4,7 @@ use crate::Network;
 use std::{
     net::SocketAddr,
     pin::Pin,
-    sync::Weak,
+    sync::{Arc, Weak},
     task::{ready, Context, Poll},
 };
 use vise::{
@@ -17,6 +17,8 @@ use zksync_concurrency::{ctx, io, net};
 pub(crate) struct MeteredStream {
     #[pin]
     stream: net::tcp::Stream,
+    // Collects values to be shown on the Debug http page
+    values: Arc<StreamValues>,
     _active: GaugeGuard,
 }
 
@@ -49,10 +51,17 @@ impl MeteredStream {
 
     fn new(stream: net::tcp::Stream, direction: Direction) -> Self {
         TCP_METRICS.established[&direction].inc();
+        let addr = stream.peer_addr().ok();
         Self {
             stream,
+            values: Arc::new(StreamValues::new(addr)),
             _active: TCP_METRICS.active[&direction].inc_guard(1),
         }
+    }
+
+    /// Returns a reference to the the Stream values for inspection
+    pub(crate) fn get_values(&self) -> Arc<StreamValues> {
+        self.values.clone()
     }
 }
 
@@ -73,8 +82,9 @@ impl io::AsyncRead for MeteredStream {
         let this = self.project();
         let before = buf.remaining();
         let res = this.stream.poll_read(cx, buf);
-        let after = buf.remaining();
-        TCP_METRICS.received.inc_by((before - after) as u64);
+        let amount = (before - buf.remaining()) as u64;
+        TCP_METRICS.received.inc_by(amount);
+        this.values.read(amount);
         res
     }
 }
@@ -85,6 +95,7 @@ impl io::AsyncWrite for MeteredStream {
         let this = self.project();
         let res = ready!(this.stream.poll_write(cx, buf))?;
         TCP_METRICS.sent.inc_by(res as u64);
+        this.values.wrote(res as u64);
         Poll::Ready(Ok(res))
     }
 
@@ -168,5 +179,39 @@ impl NetworkGauges {
         if register_result.is_err() {
             tracing::warn!("Failed registering network metrics collector: already registered");
         }
+    }
+}
+
+/// Metrics reported for TCP connections.
+#[derive(Debug)]
+pub struct StreamValues {
+    /// Total bytes sent over the Stream.
+    pub sent: std::sync::atomic::AtomicU64,
+    /// Total bytes received over the Stream.
+    pub received: std::sync::atomic::AtomicU64,
+    /// TCP connections established since the process started.
+    pub established: std::time::SystemTime,
+    /// Ip Address and port of current connection.
+    pub address: Option<SocketAddr>,
+}
+
+impl StreamValues {
+    fn new(address: Option<SocketAddr>) -> Self {
+        Self {
+            sent: 0.into(),
+            received: 0.into(),
+            established: std::time::SystemTime::now(),
+            address,
+        }
+    }
+
+    fn read(&self, amount: u64) {
+        self.received
+            .fetch_add(amount, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn wrote(&self, amount: u64) {
+        self.sent
+            .fetch_add(amount, std::sync::atomic::Ordering::Relaxed);
     }
 }
