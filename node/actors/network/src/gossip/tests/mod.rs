@@ -101,13 +101,6 @@ fn mk_netaddr(
     })
 }
 
-fn mk_batch(
-    key: &attester::SecretKey,
-    number: attester::BatchNumber,
-) -> attester::Signed<attester::Batch> {
-    key.sign_msg(attester::Batch { number })
-}
-
 fn random_netaddr<R: Rng>(
     rng: &mut R,
     key: &validator::SecretKey,
@@ -560,9 +553,11 @@ async fn test_batch_votes() {
     votes.update(&attesters, &update).await.unwrap();
     assert_eq!(want.0, sub.borrow_and_update().0);
 
-    // Invalid signature.
-    let mut k0v3 = mk_batch(&keys[1], attester::BatchNumber(rng.gen_range(0..1000)));
+    // Invalid signature on a newer message.
+    let mut k0v3 =
+        Arc::try_unwrap(update_signature(rng, &want.get(&keys[0]).msg, &keys[0], 1)).unwrap();
     k0v3.sig = rng.gen();
+
     assert!(votes.update(&attesters, &[Arc::new(k0v3)]).await.is_err());
     assert_eq!(want.0, sub.borrow_and_update().0);
 
