@@ -60,14 +60,16 @@ fn test_text_encoding() {
 fn test_schema_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    test_encode_random::<Signed<Batch>>(rng);
-    test_encode_random::<BatchQC>(rng);
-    test_encode_random::<Msg>(rng);
-    test_encode_random::<MsgHash>(rng);
-    test_encode_random::<Signers>(rng);
-    test_encode_random::<PublicKey>(rng);
-    test_encode_random::<Signature>(rng);
-    test_encode_random::<AggregateSignature>(rng);
+    for _ in 0..10 {
+        test_encode_random::<Signed<Batch>>(rng);
+        test_encode_random::<BatchQC>(rng);
+        test_encode_random::<Msg>(rng);
+        test_encode_random::<MsgHash>(rng);
+        test_encode_random::<Signers>(rng);
+        test_encode_random::<PublicKey>(rng);
+        test_encode_random::<Signature>(rng);
+        test_encode_random::<AggregateSignature>(rng);
+    }
 }
 
 #[test]

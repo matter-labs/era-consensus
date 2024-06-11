@@ -25,12 +25,14 @@ fn test_capability_rpc_correspondence() {
 #[test]
 fn test_schema_encode_decode() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
-    test_encode_random::<consensus::Req>(rng);
-    test_encode_random::<consensus::Resp>(rng);
-    test_encode_random::<push_validator_addrs::Req>(rng);
-    test_encode_random::<push_block_store_state::Req>(rng);
-    test_encode_random::<get_block::Req>(rng);
-    test_encode_random::<get_block::Resp>(rng);
+    for _ in 0..10 {
+        test_encode_random::<consensus::Req>(rng);
+        test_encode_random::<consensus::Resp>(rng);
+        test_encode_random::<push_validator_addrs::Req>(rng);
+        test_encode_random::<push_block_store_state::Req>(rng);
+        test_encode_random::<get_block::Req>(rng);
+        test_encode_random::<get_block::Resp>(rng);
+    }
 }
 
 fn expected(res: Result<(), mux::RunError>) -> Result<(), mux::RunError> {

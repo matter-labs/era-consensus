@@ -34,7 +34,9 @@ impl Distribution<AppConfig> for EncodeDist {
 fn test_schema_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    test_encode_all_formats::<FmtConv<AppConfig>>(rng);
+    for _ in 0..10 {
+        test_encode_all_formats::<FmtConv<AppConfig>>(rng);
+    }
 }
 
 #[tokio::test]

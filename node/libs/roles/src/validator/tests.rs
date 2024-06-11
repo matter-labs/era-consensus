@@ -77,21 +77,23 @@ fn test_text_encoding() {
 fn test_schema_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    test_encode_random::<PayloadHash>(rng);
-    test_encode_random::<BlockHeader>(rng);
-    test_encode_random::<FinalBlock>(rng);
-    test_encode_random::<Signed<ConsensusMsg>>(rng);
-    test_encode_random::<PrepareQC>(rng);
-    test_encode_random::<CommitQC>(rng);
-    test_encode_random::<Msg>(rng);
-    test_encode_random::<MsgHash>(rng);
-    test_encode_random::<Signers>(rng);
-    test_encode_random::<PublicKey>(rng);
-    test_encode_random::<Signature>(rng);
-    test_encode_random::<Genesis>(rng);
-    test_encode_random::<AggregateSignature>(rng);
-    test_encode_random::<GenesisHash>(rng);
-    test_encode_random::<LeaderSelectionMode>(rng);
+    for _ in 0..10 {
+        test_encode_random::<PayloadHash>(rng);
+        test_encode_random::<BlockHeader>(rng);
+        test_encode_random::<FinalBlock>(rng);
+        test_encode_random::<Signed<ConsensusMsg>>(rng);
+        test_encode_random::<PrepareQC>(rng);
+        test_encode_random::<CommitQC>(rng);
+        test_encode_random::<Msg>(rng);
+        test_encode_random::<MsgHash>(rng);
+        test_encode_random::<Signers>(rng);
+        test_encode_random::<PublicKey>(rng);
+        test_encode_random::<Signature>(rng);
+        test_encode_random::<Genesis>(rng);
+        test_encode_random::<AggregateSignature>(rng);
+        test_encode_random::<GenesisHash>(rng);
+        test_encode_random::<LeaderSelectionMode>(rng);
+    }
 }
 
 #[test]
