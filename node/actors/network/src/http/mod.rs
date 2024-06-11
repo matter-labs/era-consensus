@@ -113,9 +113,9 @@ impl Server {
             let decoded_bytes = base64::engine::general_purpose::STANDARD
                 .decode(base64encoded_segment)
                 .context("Failed to base64-decode 'Basic' credentials.")?;
-            let incomming_credentials = String::from_utf8(decoded_bytes)
+            let incoming_credentials = String::from_utf8(decoded_bytes)
                 .context("The decoded credential string is not valid UTF8.")?;
-            if Into::<String>::into(credentials) == incomming_credentials {
+            if Into::<String>::into(credentials) == incoming_credentials {
                 Ok(())
             } else {
                 Err(anyhow::anyhow!("Invalid password."))
@@ -129,7 +129,7 @@ impl Server {
             .with_style(STYLE)
             .with_header(1, "Active connections")
             .with_header(2, "Validator network")
-            .with_header(3, "Incomming connections")
+            .with_header(3, "Incoming connections")
             .with_paragraph(
                 self.connections_html(
                     <Option<Arc<consensus::Network>> as Clone>::clone(&self.network.consensus)
@@ -148,7 +148,7 @@ impl Server {
                 ),
             )
             .with_header(2, "Gossip network")
-            .with_header(3, "Incomming connections")
+            .with_header(3, "Incoming connections")
             .with_paragraph(self.connections_html(self.network.gossip.inbound.current()))
             .with_header(3, "Outgoing connections")
             .with_paragraph(self.connections_html(self.network.gossip.outbound.current()))
@@ -168,7 +168,7 @@ impl Server {
                     .with_cell(
                         TableCell::new(TableCellType::Header)
                             .with_attributes([("colspan", "2")])
-                            .with_raw("Incomming"),
+                            .with_raw("Incoming"),
                     )
                     .with_cell(
                         TableCell::new(TableCellType::Header)

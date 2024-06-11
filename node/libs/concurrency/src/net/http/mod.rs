@@ -35,7 +35,7 @@ impl From<DebugCredentials> for String {
 /// Http debug page configuration.
 #[derive(Debug, Clone)]
 pub struct DebugPageConfig {
-    /// Public Http address to listen incomming http requests.
+    /// Public Http address to listen incoming http requests.
     pub addr: SocketAddr,
     /// Debug page credentials.
     pub credentials: Option<DebugCredentials>,
