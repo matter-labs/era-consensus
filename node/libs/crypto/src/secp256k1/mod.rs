@@ -136,7 +136,8 @@ impl ByteFmt for Signature {
             "unexpected signature length: {}",
             bytes.len()
         );
-        let Some(recid) = k256::ecdsa::RecoveryId::from_byte(bytes[64]) else {
+        let recid = normalize_recovery_id(bytes[64]);
+        let Some(recid) = k256::ecdsa::RecoveryId::from_byte(recid) else {
             bail!("unexpected recovery ID: {}", bytes[64]);
         };
         let sig = k256::ecdsa::Signature::from_slice(&bytes[..64])?;
@@ -256,5 +257,19 @@ impl ByteFmt for AggregateSignature {
 
     fn encode(&self) -> Vec<u8> {
         self.0.iter().flat_map(|s| s.encode()).collect()
+    }
+}
+
+/// Normalize the V in signatures from Ethereum tooling.
+///
+/// Based on <https://github.com/gakonst/ethers-rs/blob/51fe937f6515689b17a3a83b74a05984ad3a7f11/ethers-core/src/types/signature.rs#L202>
+fn normalize_recovery_id(v: u8) -> u8 {
+    match v {
+        // Case 0: raw/bare
+        v @ 0..=26 => (v % 4) as u8,
+        // Case 2: non-eip155 v value
+        v @ 27..=34 => ((v - 27) % 4) as u8,
+        // Case 3: eip155 V value
+        v @ 35.. => ((v - 1) % 2) as u8,
     }
 }
