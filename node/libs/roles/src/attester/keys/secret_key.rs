@@ -39,7 +39,7 @@ impl SecretKey {
         let sig = self
             .0
             .sign_hash(&ByteFmt::encode(msg_hash))
-            .expect("message hash is sufficient in size");
+            .expect("MsgHash should be compatible with hash expectations");
         Signature(sig)
     }
 }
