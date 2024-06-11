@@ -87,7 +87,7 @@ pub struct Signature {
     /// Standard Recover ID.
     ///
     /// To verify signatures with Solidity, for example with the [OpenZeppelin](https://docs.openzeppelin.com/contracts/2.x/api/cryptography#ECDSA-recover-bytes32-bytes-)
-    /// library, we need to shift this by 27 when it's serailized to bytes. See [ECDSA.sol](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/de4154710bcc7c6ca5417097f34ce14e9205c3ac/contracts/utils/cryptography/ECDSA.sol#L128-L136).
+    /// library, we need to shift this by 27 when it's serialized to bytes. See [ECDSA.sol](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/de4154710bcc7c6ca5417097f34ce14e9205c3ac/contracts/utils/cryptography/ECDSA.sol#L128-L136).
     recid: k256::ecdsa::RecoveryId,
 }
 
@@ -269,10 +269,10 @@ impl ByteFmt for AggregateSignature {
 fn normalize_recovery_id(v: u8) -> u8 {
     match v {
         // Case 0: raw/bare
-        v @ 0..=26 => (v % 4) as u8,
+        v @ 0..=26 => v % 4,
         // Case 2: non-eip155 v value
-        v @ 27..=34 => ((v - 27) % 4) as u8,
+        v @ 27..=34 => (v - 27) % 4,
         // Case 3: eip155 V value
-        v @ 35.. => ((v - 1) % 2) as u8,
+        v @ 35.. => (v - 1) % 2,
     }
 }

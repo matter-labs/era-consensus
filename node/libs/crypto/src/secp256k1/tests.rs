@@ -163,7 +163,7 @@ fn prop_sign_verify_agg_fail() {
 fn test_ethereum_example() {
     let unhex = |h| hex::decode(h).unwrap();
     // Hexadecimal values from the web3js example.
-    // The rawTransaction isn't used becuase it itself contains the signature and isn't what has been hashed.
+    // The rawTransaction isn't used because it itself contains the signature and isn't what has been hashed.
     let mh = "88cfbd7e51c7a40540b233cf68b62ad1df3e92462f1c6018d6d67eae0f3b08f5";
     let sk = "4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318";
     let r = "c9cf86333bcb065d140032ecaab5d9281bde80f21b9687b3e94161de42d51895";
