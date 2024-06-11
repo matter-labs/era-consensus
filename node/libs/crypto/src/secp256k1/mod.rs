@@ -197,14 +197,15 @@ impl AggregateSignature {
     /// signature.
     ///
     /// The method assumes that there are no repeated pairs in the input, ie. that every signature is used exactly once.
-    pub fn verify_hash<'a>(
-        &self,
-        hashes_and_pks: impl Iterator<Item = (&'a [u8], &'a PublicKey)>,
-    ) -> anyhow::Result<()> {
+    ///
+    /// The method inherited its non-generic never-inlined nature from the bn254 version, which was marked as such
+    /// to allow the crate level optimisations to take place, which in turn were required for tests to run fast.
+    #[inline(never)]
+    pub fn verify_hash(&self, hashes_and_pks: &[(&[u8], &PublicKey)]) -> anyhow::Result<()> {
         // Keep track of which signatures have been verified.
         let mut verified = HashSet::new();
 
-        'inputs: for (i, (hash, pk)) in hashes_and_pks.enumerate() {
+        'inputs: for (i, (hash, pk)) in hashes_and_pks.iter().enumerate() {
             'signatures: for (j, sig) in self.0.iter().enumerate() {
                 if verified.contains(&j) {
                     continue 'signatures;
@@ -235,11 +236,12 @@ impl AggregateSignature {
             .map(|(msg, pk)| (Keccak256::new(msg), pk))
             .collect::<Vec<_>>();
 
-        self.verify_hash(
-            hashes_and_pks
-                .iter()
-                .map(|(hash, pk)| (hash.as_bytes().as_slice(), *pk)),
-        )
+        let hashes_and_pks = hashes_and_pks
+            .iter()
+            .map(|(hash, pk)| (hash.as_bytes().as_slice(), *pk))
+            .collect::<Vec<_>>();
+
+        self.verify_hash(&hashes_and_pks)
     }
 }
 

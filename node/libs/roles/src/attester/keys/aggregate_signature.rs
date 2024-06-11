@@ -29,13 +29,16 @@ impl AggregateSignature {
         &self,
         hashes_and_keys: impl Iterator<Item = (MsgHash, &'a PublicKey)>,
     ) -> anyhow::Result<()> {
-        let bytes_and_pks: Vec<_> = hashes_and_keys
+        let bytes_and_pks = hashes_and_keys
             .map(|(hash, pk)| (hash.0.as_bytes().to_owned(), &pk.0))
-            .collect();
+            .collect::<Vec<_>>();
 
-        let bytes_and_pks = bytes_and_pks.iter().map(|(bytes, pk)| (&bytes[..], *pk));
+        let bytes_and_pks = bytes_and_pks
+            .iter()
+            .map(|(bytes, pk)| (&bytes[..], *pk))
+            .collect::<Vec<_>>();
 
-        self.0.verify_hash(bytes_and_pks)
+        self.0.verify_hash(bytes_and_pks.as_slice())
     }
 }
 
