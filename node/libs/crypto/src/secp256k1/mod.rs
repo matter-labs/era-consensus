@@ -1,6 +1,6 @@
 //! ECDSA signatures over the Secp256k1 curve, chosen to work with EVM precompiles.
 
-use std::{collections::HashSet, hash::Hash};
+use std::hash::Hash;
 
 use anyhow::bail;
 use zeroize::ZeroizeOnDrop;
@@ -202,27 +202,27 @@ impl AggregateSignature {
     /// to allow the crate level optimisations to take place, which in turn were required for tests to run fast.
     #[inline(never)]
     pub fn verify_hash(&self, hashes_and_pks: &[(&[u8], &PublicKey)]) -> anyhow::Result<()> {
+        if hashes_and_pks.len() != self.0.len() {
+            bail!(
+                "wrong number of inputs vs signatures: expected {}, got {}",
+                self.0.len(),
+                hashes_and_pks.len()
+            );
+        }
         // Keep track of which signatures have been verified.
-        let mut verified = HashSet::new();
+        let mut verified = vec![false; self.0.len()];
 
         'inputs: for (i, (hash, pk)) in hashes_and_pks.iter().enumerate() {
             'signatures: for (j, sig) in self.0.iter().enumerate() {
-                if verified.contains(&j) {
+                if verified[j] {
                     continue 'signatures;
                 }
                 if sig.verify_hash(hash, pk).is_ok() {
-                    verified.insert(j);
+                    verified[j] = true;
                     continue 'inputs;
                 }
             }
             bail!("failed to verify message {i} against any of the signatures in the aggregate");
-        }
-        if verified.len() < self.0.len() {
-            bail!(
-                "not enough messages to verify aggregated signature: expected {}, got {}",
-                self.0.len(),
-                verified.len()
-            );
         }
         Ok(())
     }
