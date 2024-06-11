@@ -84,7 +84,10 @@ impl Hash for PublicKey {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Signature {
     sig: k256::ecdsa::Signature,
-    // TODO: Look up where we need to shift the recovery ID for Solidity
+    /// Standard Recover ID.
+    ///
+    /// To verify signatures with Solidity, for example with the [OpenZeppelin](https://docs.openzeppelin.com/contracts/2.x/api/cryptography#ECDSA-recover-bytes32-bytes-)
+    /// library, we need to shift this by 27 when it's serailized to bytes. See [ECDSA.sol](https://github.com/OpenZeppelin/openzeppelin-contracts/blob/de4154710bcc7c6ca5417097f34ce14e9205c3ac/contracts/utils/cryptography/ECDSA.sol#L128-L136).
     recid: k256::ecdsa::RecoveryId,
 }
 
@@ -149,7 +152,7 @@ impl ByteFmt for Signature {
         let (r, s) = self.sig.split_bytes();
         bz[..32].copy_from_slice(&r);
         bz[32..64].copy_from_slice(&s);
-        bz[64] = self.recid.to_byte();
+        bz[64] = self.recid.to_byte() + 27;
         bz
     }
 }

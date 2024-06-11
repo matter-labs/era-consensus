@@ -188,4 +188,7 @@ fn test_ethereum_example() {
     assert_eq!(hex::encode(sig.sig.r().to_bytes()), r, "r matches");
     assert_eq!(hex::encode(sig.sig.s().to_bytes()), s, "s matches");
     assert_eq!(sig.recid.to_byte(), 0x0, "v is not shifted");
+
+    let bz = sig.encode();
+    assert!(bz[64] == 27 || bz[64] == 28, "v is shifted when encoded");
 }
