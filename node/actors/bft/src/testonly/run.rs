@@ -480,10 +480,14 @@ async fn twins_gossip_loop(
             loop {
                 // Stop going back if the target already has the block.
                 if number < first_needed {
-                    tracing::info!("   ~~x gossip unnecessary from={from} to={to} number={number}");
                     break;
                 }
                 // Stop if the source doesn't actually have this block to give.
+                // NOTE: This introduces some fragility: the source might get the block later,
+                // but it won't re-attempt to gossip. We could change this by moving this retrieval
+                // into the `spawn_bg` and use `wait_until_queued` or `wait_until_persisted` on
+                // the source to effectively try until it succeeds. For now the increase in the
+                // number of gossip peers seems to have solved the issue.
                 let Ok(Some(block)) = local_store.block(ctx, number).await else {
                     tracing::info!("   ~~x gossip unavailable from={from} to={to} number={number}");
                     break;
