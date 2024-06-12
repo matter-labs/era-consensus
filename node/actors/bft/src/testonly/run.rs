@@ -245,7 +245,7 @@ async fn run_nodes_twins(
                     let mut network_pipe = dispatcher_pipe;
                     spec.run(ctx, &mut network_pipe).await
                 }
-                .instrument(tracing::info_span!("node", i)),
+                .instrument(tracing::info_span!("node", i, port)),
             );
         }
         // Taking these references is necessary for the `scope::run!` environment lifetime rules to compile
@@ -264,7 +264,7 @@ async fn run_nodes_twins(
         //   identity of the target validator and send to it iff they are in the same partition
         // * simulate the gossiping of finalized blockss
         scope::run!(ctx, |ctx, s| async move {
-            for (port, recv) in recvs {
+            for (i, (port, recv)) in recvs.into_iter().enumerate() {
                 let gossip_send = gossip_send.clone();
                 s.spawn(async move {
                     twins_receive_loop(
@@ -279,6 +279,7 @@ async fn run_nodes_twins(
                         port,
                         recv,
                     )
+                    .instrument(tracing::info_span!("node", i, port))
                     .await
                 });
             }
@@ -306,7 +307,6 @@ async fn twins_receive_loop(
     mut recv: UnboundedReceiver<io::InputMessage>,
 ) -> anyhow::Result<()> {
     let rng = &mut ctx.rng();
-    let start = std::time::Instant::now(); // Just to give an idea of how long time passes between rounds.
 
     // Finalized block number iff this node can gossip to the target and the message contains a QC.
     let block_to_gossip = |target_port: Port, msg: &io::OutputMessage| {
@@ -359,6 +359,7 @@ async fn twins_receive_loop(
         // Send after taking note of potentially gossipable blocks.
         let send = |msg| {
             if let Some(number) = block_to_gossip(target_port, &msg) {
+                tracing::info!("   ~~~ gossip from={port} to={target_port} number={number}");
                 gossip.send.send(TwinsGossipMessage {
                     from: port,
                     to: target_port,
@@ -383,6 +384,7 @@ async fn twins_receive_loop(
 
     while let Ok(io::InputMessage::Consensus(message)) = recv.recv(ctx).await {
         let view_number = message.message.msg.view().number.0 as usize;
+        let kind = message.message.msg.label();
         // Here we assume that all instances start from view 0 in the tests.
         // If the view is higher than what we have planned for, assume no partitions.
         // Every node is guaranteed to be present in only one partition.
@@ -404,7 +406,9 @@ async fn twins_receive_loop(
         match message.recipient {
             io::Target::Broadcast => match partitions_opt {
                 None => {
-                    tracing::info!("broadcasting view={view_number} from={port} target=all");
+                    tracing::info!(
+                        "broadcasting view={view_number} from={port} target=all kind={kind}"
+                    );
                     for target_port in sends.keys() {
                         send_or_stash(true, *target_port, msg());
                     }
@@ -412,7 +416,7 @@ async fn twins_receive_loop(
                 Some(ps) => {
                     for p in ps {
                         let can_send = p.contains(&port);
-                        tracing::info!("broadcasting view={view_number} from={port} target={p:?} can_send={can_send} t={}", start.elapsed().as_secs());
+                        tracing::info!("broadcasting view={view_number} from={port} target={p:?} kind={kind} can_send={can_send}");
                         for target_port in p {
                             send_or_stash(can_send, *target_port, msg());
                         }
@@ -426,7 +430,7 @@ async fn twins_receive_loop(
                     None => {
                         for target_port in target_ports {
                             tracing::info!(
-                                "unicasting view={view_number} from={port} target={target_port}"
+                                "unicasting view={view_number} from={port} target={target_port} kind={kind}"
                             );
                             send_or_stash(true, *target_port, msg());
                         }
@@ -436,7 +440,7 @@ async fn twins_receive_loop(
                             let can_send = p.contains(&port);
                             for target_port in target_ports {
                                 if p.contains(target_port) {
-                                    tracing::info!("unicasting view={view_number} from={port} target={target_port } can_send={can_send} t={}", start.elapsed().as_secs());
+                                    tracing::info!("unicasting view={view_number} from={port} target={target_port } kind={kind} can_send={can_send}");
                                     send_or_stash(can_send, *target_port, msg());
                                 }
                             }
@@ -479,13 +483,21 @@ async fn twins_gossip_loop(
                     break;
                 }
                 // Stop if the source doesn't actually have this block to give.
+                // NOTE: This introduces some fragility: the source might get the block later,
+                // but it won't re-attempt to gossip. We could change this by moving this retrieval
+                // into the `spawn_bg` and use `wait_until_queued` or `wait_until_persisted` on
+                // the source to effectively try until it succeeds. For now the increase in the
+                // number of gossip peers seems to have solved the issue.
                 let Ok(Some(block)) = local_store.block(ctx, number).await else {
+                    tracing::info!("   ~~x gossip unavailable from={from} to={to} number={number}");
                     break;
                 };
                 // Perform the storing operation asynchronously because `queue_block` will
                 // wait for all dependencies to be inserted first.
                 s.spawn_bg(async move {
+                    tracing::info!("   ~~> gossip queue from={from} to={to} number={number}");
                     let _ = remote_store.queue_block(ctx, block).await;
+                    tracing::info!("   ~~V gossip stored from={from} to={to} number={number}");
                     Ok(())
                 });
                 // Be pessimistic and try to insert all ancestors, to minimise the chance that

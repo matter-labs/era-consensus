@@ -31,8 +31,10 @@ pub fn test_encode_random<T: ProtoFmt + std::fmt::Debug + PartialEq>(rng: &mut i
 where
     Standard: Distribution<T>,
 {
-    let msg = rng.gen::<T>();
-    test_encode(rng, &msg);
+    for _ in 0..10 {
+        let msg = rng.gen::<T>();
+        test_encode(rng, &msg);
+    }
 }
 
 /// shuffles recursively the order of fields in a protobuf encoding.
@@ -166,23 +168,25 @@ where
     X::Type: std::fmt::Debug + PartialEq,
     EncodeDist: Distribution<X::Type>,
 {
-    for required_only in [false, true] {
-        let want: X::Type = EncodeDist {
-            required_only,
-            decimal_fractions: false,
-        }
-        .sample(rng);
-        let got = decode_proto::<X>(&encode_proto::<X>(&want)).unwrap();
-        assert_eq!(&want, &got, "binary encoding");
-        let got = decode_yaml::<X>(&encode_yaml::<X>(&want)).unwrap();
-        assert_eq!(&want, &got, "yaml encoding");
+    for _ in 0..10 {
+        for required_only in [false, true] {
+            let want: X::Type = EncodeDist {
+                required_only,
+                decimal_fractions: false,
+            }
+            .sample(rng);
+            let got = decode_proto::<X>(&encode_proto::<X>(&want)).unwrap();
+            assert_eq!(&want, &got, "binary encoding");
+            let got = decode_yaml::<X>(&encode_yaml::<X>(&want)).unwrap();
+            assert_eq!(&want, &got, "yaml encoding");
 
-        let want: X::Type = EncodeDist {
-            required_only,
-            decimal_fractions: true,
+            let want: X::Type = EncodeDist {
+                required_only,
+                decimal_fractions: true,
+            }
+            .sample(rng);
+            let got = decode_json::<X>(&encode_json::<X>(&want)).unwrap();
+            assert_eq!(&want, &got, "json encoding");
         }
-        .sample(rng);
-        let got = decode_json::<X>(&encode_json::<X>(&want)).unwrap();
-        assert_eq!(&want, &got, "json encoding");
     }
 }

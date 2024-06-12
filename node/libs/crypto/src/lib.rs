@@ -9,3 +9,4 @@ pub mod bn254;
 pub mod ed25519;
 mod fmt;
 pub mod keccak256;
+pub mod secp256k1;

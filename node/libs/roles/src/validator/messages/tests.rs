@@ -24,9 +24,9 @@ fn validator_keys() -> Vec<SecretKey> {
 
 fn attester_keys() -> Vec<attester::SecretKey> {
     [
-        "attester:secret:bn254:27cb45b1670a1ae8d376a85821d51c7f91ebc6e32788027a84758441aaf0a987",
-        "attester:secret:bn254:20132edc08a529e927f155e710ae7295a2a0d249f1b1f37726894d1d0d8f0d81",
-        "attester:secret:bn254:0946901f0a6650284726763b12de5da0f06df0016c8ec2144cf6b1903f1979a6",
+        "attester:secret:secp256k1:27cb45b1670a1ae8d376a85821d51c7f91ebc6e32788027a84758441aaf0a987",
+        "attester:secret:secp256k1:20132edc08a529e927f155e710ae7295a2a0d249f1b1f37726894d1d0d8f0d81",
+        "attester:secret:secp256k1:0946901f0a6650284726763b12de5da0f06df0016c8ec2144cf6b1903f1979a6",
     ]
     .iter()
     .map(|raw| Text::new(raw).decode().unwrap())
@@ -201,7 +201,7 @@ mod version1 {
     /// unless we introduce dynamic regenesis.
     /// FIXME: This fails with the new attester committee.
     #[test]
-    fn genesis_hash_change_detector() {
+    fn genesis_hash_change_detector_empty_attesters() {
         let want: GenesisHash = Text::new(
             "genesis_hash:keccak256:13a16cfa758c6716b4c4d40a5fe71023a016c7507b7893c7dc775f4420fc5d61",
         )
@@ -215,9 +215,9 @@ mod version1 {
     /// unless we introduce dynamic regenesis.
     /// FIXME: This fails with the new attester committee.
     #[test]
-    fn genesis_hash_change_detector_2() {
+    fn genesis_hash_change_detector_nonempty_attesters() {
         let want: GenesisHash = Text::new(
-            "genesis_hash:keccak256:63d6562ea2a27069e64a4005d1aef446907db945d85e06323296d2c0f8336c65",
+            "genesis_hash:keccak256:47a52a5491873fa4ceb369a334b4c09833a06bd34718fb22e530ab4d70b4daf7",
         )
         .decode()
         .unwrap();
