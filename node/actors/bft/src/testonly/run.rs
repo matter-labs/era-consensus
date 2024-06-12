@@ -492,19 +492,19 @@ async fn twins_gossip_loop(
                 if number < first_needed {
                     break;
                 }
-                // Stop if the source doesn't actually have this block to give.
-                // NOTE: This introduces some fragility: the source might get the block later,
-                // but it won't re-attempt to gossip. We could change this by moving this retrieval
-                // into the `spawn_bg` and use `wait_until_queued` or `wait_until_persisted` on
-                // the source to effectively try until it succeeds. For now the increase in the
-                // number of gossip peers seems to have solved the issue.
-                let Ok(Some(block)) = local_store.block(ctx, number).await else {
-                    tracing::info!("   ~~x gossip unavailable from={from} to={to} number={number}");
-                    break;
-                };
-                // Perform the storing operation asynchronously because `queue_block` will
+                // Perform the storage operations asynchronously because `queue_block` will
                 // wait for all dependencies to be inserted first.
                 s.spawn_bg(async move {
+                    // Wait for the source to actually have the block.
+                    if local_store.wait_until_queued(ctx, number).await.is_err() {
+                        return Ok(());
+                    }
+                    let Ok(Some(block)) = local_store.block(ctx, number).await else {
+                        tracing::info!(
+                            "   ~~x gossip unavailable from={from} to={to} number={number}"
+                        );
+                        return Ok(());
+                    };
                     tracing::info!("   ~~> gossip queue from={from} to={to} number={number}");
                     let _ = remote_store.queue_block(ctx, block).await;
                     tracing::info!("   ~~V gossip stored from={from} to={to} number={number}");
