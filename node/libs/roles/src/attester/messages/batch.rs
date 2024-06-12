@@ -128,6 +128,9 @@ impl BatchQC {
         let hash = self.message.clone().insert().hash();
 
         for (pk, sig) in &self.signatures {
+            if !attesters.contains(pk) {
+                return Err(Error::BadSignersSet);
+            }
             sig.verify_hash(&hash, pk).map_err(Error::BadSignature)?;
         }
 
