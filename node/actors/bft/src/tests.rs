@@ -254,9 +254,7 @@ async fn twins_network_w2_twins_w_partitions() {
 #[tokio::test(flavor = "multi_thread")]
 #[should_panic]
 async fn twins_network_to_fail() {
-    run_twins(5, 1, 100)
-        .await
-        .expect_err("will fail with assert");
+    run_twins(5, 1, 100).await.unwrap();
 }
 
 /// Create network configuration for a given number of replicas and twins and run [Test].
@@ -270,10 +268,10 @@ async fn run_twins(
 
     // If we pass more twins than tolerable faulty replicas then it should fail with an assertion error,
     // but if we abort the process on panic then the #[should_panic] attribute doesn't work with `cargo nextest`.
-    // Unfortunately this also turns off logging, but it's fine this is just to make sure Twins catch _something_.
     if num_twins <= max_faulty {
         zksync_concurrency::testonly::abort_on_panic();
     }
+    zksync_concurrency::testonly::init_tracing();
 
     let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // Use a single timeout for all scenarios to finish.

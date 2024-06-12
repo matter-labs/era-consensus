@@ -9,12 +9,7 @@ use std::{future::Future, io::IsTerminal as _};
 // TODO: investigate whether "-Zpanic-abort-tests" could replace this function once the flag
 // becomes stable: https://github.com/rust-lang/rust/issues/67650, so we don't use it.
 pub fn abort_on_panic() {
-    let _ = tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .with_test_writer()
-        .with_ansi(std::env::var("NO_COLOR").is_err() && std::io::stdout().is_terminal())
-        .with_line_number(true)
-        .try_init();
+    init_tracing();
 
     // I don't know a way to set panic=abort for nextest builds in compilation time, so we set it
     // in runtime. https://nexte.st/book/env-vars.html#environment-variables-nextest-sets
@@ -33,6 +28,18 @@ pub fn abort_on_panic() {
         orig_hook(panic_info);
         std::process::abort();
     }));
+}
+
+/// Set up a tracing subscriber.
+///
+/// Use `RUST_LOG=info` to see the logs in testing.
+pub fn init_tracing() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_test_writer()
+        .with_ansi(std::env::var("NO_COLOR").is_err() && std::io::stdout().is_terminal())
+        .with_line_number(true)
+        .try_init();
 }
 
 /// Guard which has to be dropped before timeout is reached.
