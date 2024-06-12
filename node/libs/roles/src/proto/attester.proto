@@ -5,13 +5,13 @@ package zksync.roles.attester;
 import "zksync/std.proto";
 
 message Batch {
-  optional BatchHeader proposal = 1; // required
+  optional uint64 number = 1; // required
 }
 
-message FinalBatch {
-  optional bytes payload = 1; // required
-  optional BatchQC justification = 2; // required
-
+message SyncBatch {
+  optional uint64 number = 1; // required
+  repeated bytes payloads = 2; // required
+  optional bytes proof = 3; // required
 }
 
 message PayloadHash {
@@ -28,13 +28,6 @@ message Msg {
   oneof t { // required
     Batch batch = 4;
   }
-}
-
-message BatchHeader {
-  // Sequential number of the batch = parent.number + 1.
-  optional uint64 number = 1; // required
-  // Hash of the batch payload.
-  optional PayloadHash payload = 2; // required
 }
 
 message Signed {

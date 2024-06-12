@@ -11,6 +11,7 @@ use zksync_consensus_storage::BlockStore;
 pub fn callback(node_storage: Arc<BlockStore>) -> RpcResult<serde_json::Value> {
     let state = node_storage.queued();
     let last_committed_block_header = state
+        .1
         .last
         .context("Failed to get last state")
         .map_err(|_| ErrorObjectOwned::from(ErrorCode::InternalError))?

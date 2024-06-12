@@ -1,6 +1,8 @@
 use super::*;
-use crate::{testonly::TestMemoryStorage, ReplicaState};
-use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
+use crate::ReplicaState;
+use testonly::TestMemoryStorage;
+use zksync_concurrency::scope;
+use zksync_concurrency::{ctx, sync, testonly::abort_on_panic};
 use zksync_consensus_roles::{attester::BatchNumber, validator::testonly::Setup};
 
 #[tokio::test]
@@ -16,9 +18,11 @@ async fn test_inmemory_block_store() {
     let mut want = vec![];
     for block in &setup.blocks {
         store.queue_next_block(ctx, block.clone()).await.unwrap();
-        sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(block.number()))
-            .await
-            .unwrap();
+        sync::wait_for(ctx, &mut store.persisted(), |p| {
+            p.1.contains(block.number())
+        })
+        .await
+        .unwrap();
         want.push(block.clone());
         assert_eq!(want, testonly::dump(ctx, store).await);
     }
@@ -30,17 +34,26 @@ async fn test_inmemory_batch_store() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut setup = Setup::new(rng, 3);
-    setup.push_batches(rng, 5);
+    setup.push_blocks(rng, 5);
 
-    let store = &testonly::in_memory::BatchStore::new(BatchNumber(0));
-    let mut want = vec![];
-    for batch in &setup.batches {
-        store.queue_next_batch(ctx, batch.clone()).await.unwrap();
-        sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(batch.number()))
-            .await
-            .unwrap();
-        want.push(batch.justification.message.clone());
-        assert_eq!(want, testonly::dump_batch(ctx, store).await);
+    let store =
+        &testonly::in_memory::BlockStore::new(setup.genesis.clone(), setup.genesis.first_block);
+    // Queue all five blocks in the setup to generate a batch.
+    for block in &setup.blocks {
+        store.queue_next_block(ctx, block.clone()).await.unwrap();
+    }
+
+    // Wait for the batch to be persisted.
+    sync::wait_for(ctx, &mut store.persisted(), |p| {
+        p.0.contains(BatchNumber(1))
+    })
+    .await
+    .unwrap();
+
+    // Check that the batch contains all the correct blocks.
+    for block in &setup.blocks {
+        let block_payloads = store.batch(BatchNumber(1)).await.unwrap().payloads;
+        assert!(block_payloads.iter().any(|p| block.payload == p.clone()));
     }
 }
 
@@ -76,9 +89,13 @@ async fn test_state_updates() {
             setup.genesis.first_block.prev().unwrap(),
             first_block.number().prev().unwrap(),
         ] {
-            store.blocks.wait_until_queued(ctx, n).await.unwrap();
-            store.blocks.wait_until_persisted(ctx, n).await.unwrap();
-            assert_eq!(want, store.blocks.queued());
+            store.blocks.wait_until_block_queued(ctx, n).await.unwrap();
+            store
+                .blocks
+                .wait_until_block_persisted(ctx, n)
+                .await
+                .unwrap();
+            assert_eq!(want, store.blocks.queued().1);
         }
 
         for block in &setup.blocks {
@@ -87,15 +104,15 @@ async fn test_state_updates() {
                 // Queueing block before first block should be a noop.
                 store
                     .blocks
-                    .wait_until_queued(ctx, block.number())
+                    .wait_until_block_queued(ctx, block.number())
                     .await
                     .unwrap();
                 store
                     .blocks
-                    .wait_until_persisted(ctx, block.number())
+                    .wait_until_block_persisted(ctx, block.number())
                     .await
                     .unwrap();
-                assert_eq!(want, store.blocks.queued());
+                assert_eq!(want, store.blocks.queued().1);
             } else {
                 // Otherwise the state should be updated as soon as block is queued.
                 assert_eq!(
@@ -103,7 +120,7 @@ async fn test_state_updates() {
                         first: first_block.number(),
                         last: Some(block.justification.clone()),
                     },
-                    store.blocks.queued()
+                    store.blocks.queued().1
                 );
             }
         }

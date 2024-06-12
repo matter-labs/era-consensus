@@ -12,7 +12,7 @@ use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
 use zksync_consensus_roles::{attester, node, validator};
-use zksync_consensus_storage::testonly::{TestMemoryStorage, TestMemoryStorageRunner};
+use zksync_consensus_storage::{testonly::TestMemoryStorage, StoreRunner};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
 fn read_required_secret_text<T: TextFmt>(text: &Option<String>) -> anyhow::Result<T> {
@@ -189,7 +189,7 @@ impl Configs {
     pub async fn make_executor(
         &self,
         ctx: &ctx::Ctx,
-    ) -> ctx::Result<(executor::Executor, TestMemoryStorageRunner)> {
+    ) -> ctx::Result<(executor::Executor, StoreRunner)> {
         let replica_store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
         let store = TestMemoryStorage::new(ctx, &self.app.genesis).await;
         let e = executor::Executor {
@@ -203,7 +203,6 @@ impl Configs {
                 max_payload_size: self.app.max_payload_size,
             },
             block_store: store.blocks,
-            batch_store: store.batches,
             validator: self
                 .app
                 .validator_key

@@ -3,7 +3,7 @@ use rand::{distributions::Distribution, Rng};
 use tempfile::TempDir;
 use zksync_concurrency::{ctx, sync};
 use zksync_consensus_roles::validator::{self, testonly::Setup, LeaderSelectionMode};
-use zksync_consensus_storage::{testonly, PersistentBlockStore};
+use zksync_consensus_storage::{testonly, PersistentStore};
 use zksync_consensus_utils::EncodeDist;
 use zksync_protobuf::testonly::{test_encode_all_formats, FmtConv};
 
@@ -66,7 +66,7 @@ async fn test_reopen_rocksdb() {
             .await
             .unwrap();
         store.queue_next_block(ctx, b.clone()).await.unwrap();
-        sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(b.number()))
+        sync::wait_for(ctx, &mut store.persisted(), |p| p.1.contains(b.number()))
             .await
             .unwrap();
         want.push(b.clone());

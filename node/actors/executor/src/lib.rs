@@ -9,7 +9,7 @@ use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{attester, node, validator};
-use zksync_consensus_storage::{BatchStore, BlockStore, ReplicaStore};
+use zksync_consensus_storage::{ReplicaStore, BlockStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
@@ -22,7 +22,7 @@ mod tests;
 pub struct Validator {
     /// Consensus network configuration.
     pub key: validator::SecretKey,
-    /// Store for replica state.
+    /// BlockStore for replica state.
     pub replica_store: Box<dyn ReplicaStore>,
     /// Payload manager.
     pub payload_manager: Box<dyn bft::PayloadManager>,
@@ -78,8 +78,6 @@ pub struct Executor {
     pub config: Config,
     /// Block storage used by the node.
     pub block_store: Arc<BlockStore>,
-    /// Batch storage used by the node.
-    pub batch_store: Arc<BatchStore>,
     /// Validator-specific node data.
     pub validator: Option<Validator>,
     /// Validator-specific node data.
@@ -119,12 +117,8 @@ impl Executor {
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
             s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
-            let (net, runner) = network::Network::new(
-                network_config,
-                self.block_store.clone(),
-                self.batch_store.clone(),
-                network_actor_pipe,
-            );
+            let (net, runner) =
+                network::Network::new(network_config, self.block_store.clone(), network_actor_pipe);
             net.register_metrics();
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
 

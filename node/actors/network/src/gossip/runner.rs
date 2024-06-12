@@ -6,7 +6,7 @@ use rand::seq::SliceRandom;
 use std::sync::atomic::Ordering;
 use zksync_concurrency::{ctx, net, scope, sync};
 use zksync_consensus_roles::{attester::BatchNumber, node};
-use zksync_consensus_storage::{BatchStore, BatchStoreState, BlockStore, BlockStoreState};
+use zksync_consensus_storage::{BatchStoreState, BlockStore, BlockStoreState};
 use zksync_protobuf::kB;
 
 struct PushValidatorAddrsServer<'a>(&'a Network);
@@ -71,20 +71,18 @@ impl<'a> PushBlockStoreStateServer<'a> {
     }
 }
 
-struct PushBatchStoreStateServer<'a> {
+struct PushBatchStoreStateServer {
     state: sync::watch::Sender<BatchStoreState>,
-    net: &'a Network,
 }
 
-impl<'a> PushBatchStoreStateServer<'a> {
-    fn new(net: &'a Network) -> Self {
+impl PushBatchStoreStateServer {
+    fn new() -> Self {
         Self {
             state: sync::watch::channel(BatchStoreState {
                 first: BatchNumber(0),
                 last: None,
             })
             .0,
-            net,
         }
     }
 }
@@ -106,7 +104,7 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushBlockStoreStateServ
 }
 
 #[async_trait]
-impl rpc::Handler<rpc::push_batch_store_state::Rpc> for &PushBatchStoreStateServer<'_> {
+impl rpc::Handler<rpc::push_batch_store_state::Rpc> for &PushBatchStoreStateServer {
     fn max_req_size(&self) -> usize {
         10 * kB
     }
@@ -115,7 +113,7 @@ impl rpc::Handler<rpc::push_batch_store_state::Rpc> for &PushBatchStoreStateServ
         _ctx: &ctx::Ctx,
         req: rpc::push_batch_store_state::Req,
     ) -> anyhow::Result<()> {
-        req.0.verify(self.net.genesis())?;
+        req.0.verify()?;
         self.state.send_replace(req.0);
         Ok(())
     }
@@ -136,7 +134,7 @@ impl rpc::Handler<rpc::get_block::Rpc> for &BlockStore {
 }
 
 #[async_trait]
-impl rpc::Handler<rpc::get_batch::Rpc> for &BatchStore {
+impl rpc::Handler<rpc::get_batch::Rpc> for &BlockStore {
     fn max_req_size(&self) -> usize {
         kB
     }
@@ -170,7 +168,7 @@ impl Network {
             ctx,
             self.cfg.rpc.push_batch_store_state_rate,
         );
-        let push_batch_store_state_server = PushBatchStoreStateServer::new(self);
+        let push_batch_store_state_server = PushBatchStoreStateServer::new();
         scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_client(&push_validator_addrs_client)
@@ -186,9 +184,17 @@ impl Network {
                     self.cfg.rpc.push_block_store_state_rate,
                 )
                 .add_client(&get_block_client)
-                .add_server(ctx, &*self.block_store, self.cfg.rpc.get_block_rate)
+                .add_server::<rpc::get_block::Rpc>(
+                    ctx,
+                    &*self.block_store,
+                    self.cfg.rpc.get_block_rate,
+                )
                 .add_client(&get_batch_client)
-                .add_server(ctx, &*self.batch_store, self.cfg.rpc.get_batch_rate)
+                .add_server::<rpc::get_batch::Rpc>(
+                    ctx,
+                    &*self.block_store,
+                    self.cfg.rpc.get_batch_rate,
+                )
                 .add_client(&push_batch_store_state_client)
                 .add_server(
                     ctx,
@@ -237,26 +243,26 @@ impl Network {
 
             // Push block store state updates to peer.
             s.spawn::<()>(async {
-                let mut state = self.block_store.queued();
+                let mut state = self.block_store.queued().1;
                 loop {
                     let req = rpc::push_block_store_state::Req(state.clone());
                     push_block_store_state_client.call(ctx, &req, kB).await?;
                     state = self
                         .block_store
-                        .wait_until_queued(ctx, state.next())
+                        .wait_until_block_queued(ctx, state.next())
                         .await?;
                 }
             });
 
             // Push batch store state updates to peer.
             s.spawn::<()>(async {
-                let mut state = self.batch_store.queued();
+                let mut state = self.block_store.queued().0;
                 loop {
                     let req = rpc::push_batch_store_state::Req(state.clone());
                     push_batch_store_state_client.call(ctx, &req, kB).await?;
                     state = self
-                        .batch_store
-                        .wait_until_queued(ctx, state.next())
+                        .block_store
+                        .wait_until_batch_queued(ctx, state.next())
                         .await?;
                 }
             });
@@ -350,10 +356,10 @@ impl Network {
                                 .await?
                                 .0
                                 .context("empty response")?;
-                            anyhow::ensure!(batch.number() == req.0, "received wrong batch");
+                            anyhow::ensure!(batch.number == req.0, "received wrong batch");
                             // Storing the batch will fail in case batch is invalid.
-                            self.batch_store
-                                .queue_batch(ctx, batch, self.genesis().clone())
+                            self.block_store
+                                .queue_batch(ctx, batch)
                                 .await
                                 .context("queue_batch()")?;
                             tracing::info!("fetched batch {}", req.0);

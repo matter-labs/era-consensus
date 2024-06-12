@@ -43,7 +43,6 @@ impl Test {
                     net,
                     behavior: self.nodes[i].0,
                     block_store: store.blocks,
-                    batch_store: store.batches,
                 });
             }
             assert!(!honest.is_empty());
@@ -54,7 +53,7 @@ impl Test {
             let first = setup.genesis.first_block;
             let last = first + (self.blocks_to_finalize as u64 - 1);
             for store in &honest {
-                store.wait_until_queued(ctx, last).await?;
+                store.wait_until_block_queued(ctx, last).await?;
             }
 
             // Check that the stored blocks are consistent.
@@ -81,7 +80,6 @@ async fn run_nodes(ctx: &ctx::Ctx, network: Network, specs: &[Node]) -> anyhow::
                     let (node, runner) = network::testonly::Instance::new(
                         spec.net.clone(),
                         spec.block_store.clone(),
-                        spec.batch_store.clone(),
                     );
                     s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                     nodes.push(node);

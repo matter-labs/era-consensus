@@ -181,7 +181,9 @@ impl StateMachine {
                 };
                 // Defensively assume that PayloadManager cannot propose until the previous block is stored.
                 if let Some(prev) = number.prev() {
-                    cfg.block_store.wait_until_persisted(ctx, prev).await?;
+                    cfg.block_store
+                        .wait_until_block_persisted(ctx, prev)
+                        .await?;
                 }
                 let payload = cfg.payload_manager.propose(ctx, number).await?;
                 if payload.0.len() > cfg.max_payload_size {
