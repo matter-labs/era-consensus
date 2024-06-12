@@ -1,6 +1,9 @@
 use super::{Behavior, Node};
 use anyhow::bail;
-use network::{io, Config};
+use network::{
+    io::{self, ConsensusInputMessage},
+    Config,
+};
 use rand::seq::SliceRandom;
 use std::{
     collections::{HashMap, HashSet},
@@ -26,13 +29,19 @@ pub(crate) enum Network {
     Twins(PortSplitSchedule),
 }
 
+// Number of phases within a view.
+pub(crate) const NUM_PHASES: usize = 4;
+
 // Identify different network identities of twins by their listener port.
 // They are all expected to be on localhost, but `ListenerAddr` can't be
 // directly used as a map key.
 pub(crate) type Port = u16;
+// A partition consists of ports that can communicate.
 pub(crate) type PortPartition = HashSet<Port>;
+// A split is a list of disjunct partitions.
 pub(crate) type PortSplit = Vec<PortPartition>;
-pub(crate) type PortSplitSchedule = Vec<PortSplit>;
+// A schedule contains a list of splits (one for each phase) for every view.
+pub(crate) type PortSplitSchedule = Vec<[PortSplit; NUM_PHASES]>;
 
 /// Config for the test. Determines the parameters to run the test with.
 #[derive(Clone)]
@@ -384,11 +393,12 @@ async fn twins_receive_loop(
 
     while let Ok(io::InputMessage::Consensus(message)) = recv.recv(ctx).await {
         let view_number = message.message.msg.view().number.0 as usize;
+        let phase_number = input_msg_phase_number(&message);
         let kind = message.message.msg.label();
         // Here we assume that all instances start from view 0 in the tests.
         // If the view is higher than what we have planned for, assume no partitions.
         // Every node is guaranteed to be present in only one partition.
-        let partitions_opt = splits.get(view_number);
+        let partitions_opt = splits.get(view_number).and_then(|ps| ps.get(phase_number));
 
         if partitions_opt.is_none() {
             bail!(
@@ -536,6 +546,17 @@ fn output_msg_commit_qc(msg: &io::OutputMessage) -> Option<&validator::CommitQC>
             ConsensusMsg::ReplicaCommit(_) => None,
             ConsensusMsg::LeaderCommit(lc) => Some(&lc.justification),
         },
+    }
+}
+
+/// Index of the phase in which the message appears, to decide which partitioning to apply.
+fn input_msg_phase_number(msg: &ConsensusInputMessage) -> usize {
+    use validator::ConsensusMsg;
+    match msg.message.msg {
+        ConsensusMsg::ReplicaPrepare(_) => 0,
+        ConsensusMsg::LeaderPrepare(_) => 1,
+        ConsensusMsg::ReplicaCommit(_) => 2,
+        ConsensusMsg::LeaderCommit(_) => 3,
     }
 }
 

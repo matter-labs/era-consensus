@@ -100,7 +100,7 @@ fn test_scenario_generator() {
     let quorum_size = 4 * num_twins + 1;
 
     let cluster = Cluster::new(replicas, num_twins);
-    let generator = ScenarioGenerator::new(&cluster, num_rounds, max_partitions);
+    let generator = ScenarioGenerator::<_, 2>::new(&cluster, num_rounds, max_partitions);
 
     for _ in 0..100 {
         let scenario = generator.generate_one(rng);
@@ -112,19 +112,24 @@ fn test_scenario_generator() {
                 cluster.replicas().iter().any(|r| r.key == *rc.leader),
                 "leader exists"
             );
-            assert!(rc.partitions.len() <= max_partitions, "not more partitions");
-            assert_eq!(
-                rc.partitions.iter().map(|p| p.len()).sum::<usize>(),
-                num_replicas + num_twins,
-                "all nodes partitioned"
-            );
+            for pp in &rc.phase_partitions {
+                assert!(
+                    pp.len() <= max_partitions,
+                    "no more partitions than configured"
+                );
+                assert_eq!(
+                    pp.iter().map(|p| p.len()).sum::<usize>(),
+                    num_replicas + num_twins,
+                    "all nodes partitioned"
+                );
+            }
         }
 
         assert!(
             scenario.rounds.iter().any(|rc| rc
-                .partitions
+                .phase_partitions
                 .iter()
-                .any(|p| unique_key_count(p) >= quorum_size)),
+                .any(|ps| ps.iter().any(|p| unique_key_count(p) >= quorum_size))),
             "eventually has quorum"
         );
     }

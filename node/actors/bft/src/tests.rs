@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::testonly::{
     twins::{Cluster, HasKey, ScenarioGenerator, Twin},
     ut_harness::UTHarness,
-    Behavior, Network, PortSplitSchedule, Test,
+    Behavior, Network, PortSplitSchedule, Test, NUM_PHASES,
 };
 use zksync_concurrency::{
     ctx::{self, Ctx},
@@ -322,7 +322,7 @@ async fn run_twins(
         .collect::<Vec<_>>();
 
     let cluster = Cluster::new(replicas, num_twins);
-    let scenarios = ScenarioGenerator::new(&cluster, num_rounds, max_partitions);
+    let scenarios = ScenarioGenerator::<_, NUM_PHASES>::new(&cluster, num_rounds, max_partitions);
 
     // Gossip with more nodes than what can be faulty.
     let gossip_peers = num_twins + 1;
@@ -352,6 +352,7 @@ async fn run_twins(
         let scenario = scenarios.generate_one(rng);
 
         // Assign the leadership schedule to the consensus.
+        // We over-produced
         spec.leader_selection =
             LeaderSelectionMode::Rota(scenario.rounds.iter().map(|rc| rc.leader.clone()).collect());
 
@@ -363,10 +364,12 @@ async fn run_twins(
             .rounds
             .iter()
             .map(|rc| {
-                rc.partitions
-                    .iter()
-                    .map(|p| p.iter().map(|r| node_to_port[&r.id]).collect())
-                    .collect()
+                std::array::from_fn(|i| {
+                    rc.phase_partitions[i]
+                        .iter()
+                        .map(|p| p.iter().map(|r| node_to_port[&r.id]).collect())
+                        .collect()
+                })
             })
             .collect();
 
@@ -376,7 +379,8 @@ async fn run_twins(
         );
 
         for (r, rc) in scenario.rounds.iter().enumerate() {
-            let partitions = &splits[r];
+            // Let's just consider the partition of the LeaderCommit phase, for brevity's sake.
+            let partitions = &splits[r][3];
 
             let leader_ports = cluster
                 .nodes()
