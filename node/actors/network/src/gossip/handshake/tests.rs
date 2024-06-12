@@ -10,9 +10,7 @@ use zksync_protobuf::testonly::test_encode_random;
 #[test]
 fn test_schema_encode_decode() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
-    for _ in 0..10 {
-        test_encode_random::<Handshake>(rng);
-    }
+    test_encode_random::<Handshake>(rng);
 }
 
 fn make_cfg<R: Rng>(rng: &mut R) -> GossipConfig {

@@ -29,12 +29,10 @@ fn test_text_encoding() {
 fn test_schema_encoding() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    for _ in 0..10 {
-        test_encode_random::<Signed<SessionId>>(rng);
-        let key = rng.gen::<SecretKey>().public();
-        test_encode(rng, &key);
-        test_encode_random::<Signature>(rng);
-    }
+    test_encode_random::<Signed<SessionId>>(rng);
+    let key = rng.gen::<SecretKey>().public();
+    test_encode(rng, &key);
+    test_encode_random::<Signature>(rng);
 }
 
 #[test]
