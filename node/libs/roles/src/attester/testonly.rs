@@ -1,25 +1,14 @@
 use super::{
-    AggregateSignature, Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash, PublicKey, SecretKey,
-    Signature, Signed, Signers, WeightedAttester,
+    Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash, PublicKey, SecretKey, Signature, Signed,
+    Signers, WeightedAttester,
 };
 use bit_vec::BitVec;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 use zksync_consensus_utils::enum_util::Variant;
-
-impl AggregateSignature {
-    /// Generate a new aggregate signature from a list of signatures.
-    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
-        let mut agg = Self::default();
-        for sig in sigs {
-            agg.add(sig);
-        }
-        agg
-    }
-}
 
 impl Distribution<SecretKey> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SecretKey {
@@ -30,12 +19,6 @@ impl Distribution<SecretKey> for Standard {
 impl Distribution<PublicKey> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PublicKey {
         PublicKey(rng.gen())
-    }
-}
-
-impl Distribution<AggregateSignature> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateSignature {
-        AggregateSignature(rng.gen())
     }
 }
 
@@ -60,10 +43,13 @@ impl Distribution<Batch> for Standard {
 
 impl Distribution<BatchQC> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchQC {
+        let mut signatures = BTreeMap::default();
+        for _ in 0..rng.gen_range(0..5) {
+            signatures.insert(rng.gen(), rng.gen());
+        }
         BatchQC {
             message: rng.gen(),
-            signers: rng.gen(),
-            signature: rng.gen(),
+            signatures,
         }
     }
 }

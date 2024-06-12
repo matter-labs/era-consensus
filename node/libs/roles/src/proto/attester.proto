@@ -10,9 +10,10 @@ message Batch {
 }
 
 message BatchQC {
+  reserved 2, 3; 
+  reserved "signers", "sig";
   optional Batch msg = 1; // required
-  optional std.BitVector signers = 2; // required
-  optional AggregateSignature sig = 3; // required
+  repeated Attestation signatures = 4; 
 }
 
 message Msg {
@@ -44,12 +45,9 @@ message WeightedAttester {
   optional uint64 weight = 2; // required
 }
 
-message AggregateSignature {
-  reserved 1; 
-  reserved "bn254";
-  // This is the aggregate signature itself encoded as bytes, which is why it's not `repeated`,
-  // even though for secp256k1 it's just a list of signatures.
-  optional bytes secp256k1 = 2; // required
+message Attestation {
+  optional PublicKey key = 1; // required
+  optional Signature sig = 2; // required
 }
 
 message MsgHash {

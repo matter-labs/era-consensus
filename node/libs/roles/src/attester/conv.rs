@@ -1,8 +1,8 @@
 use super::{
-    AggregateSignature, Batch, BatchNumber, BatchQC, Msg, MsgHash, PublicKey, Signature, Signed,
-    Signers, WeightedAttester,
+    Batch, BatchNumber, BatchQC, Msg, MsgHash, PublicKey, Signature, Signed, Signers,
+    WeightedAttester,
 };
-use crate::proto::attester::{self as proto};
+use crate::proto::attester::{self as proto, Attestation};
 use anyhow::Context as _;
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
@@ -114,20 +114,6 @@ impl ProtoFmt for Signers {
     }
 }
 
-impl ProtoFmt for AggregateSignature {
-    type Proto = proto::AggregateSignature;
-
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.secp256k1)?)?))
-    }
-
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            secp256k1: Some(self.0.encode()),
-        }
-    }
-}
-
 impl ProtoFmt for MsgHash {
     type Proto = proto::MsgHash;
 
@@ -146,18 +132,35 @@ impl ProtoFmt for BatchQC {
     type Proto = proto::BatchQc;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        let signatures: Vec<(PublicKey, Signature)> = r
+            .signatures
+            .iter()
+            .map(|s| {
+                let key = read_required(&s.key).context("key")?;
+                let sig = read_required(&s.sig).context("sig")?;
+                Ok((key, sig))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        let signatures = signatures.into_iter().collect();
+
         Ok(Self {
             message: read_required(&r.msg).context("message")?,
-            signers: read_required(&r.signers).context("signers")?,
-            signature: read_required(&r.sig).context("signature")?,
+            signatures,
         })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
             msg: Some(self.message.build()),
-            signers: Some(self.signers.build()),
-            sig: Some(self.signature.build()),
+            signatures: self
+                .signatures
+                .iter()
+                .map(|(pk, sig)| Attestation {
+                    key: Some(pk.build()),
+                    sig: Some(sig.build()),
+                })
+                .collect(),
         }
     }
 }
