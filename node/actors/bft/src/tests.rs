@@ -352,7 +352,6 @@ async fn run_twins(
         let scenario = scenarios.generate_one(rng);
 
         // Assign the leadership schedule to the consensus.
-        // We over-produced
         spec.leader_selection =
             LeaderSelectionMode::Rota(scenario.rounds.iter().map(|rc| rc.leader.clone()).collect());
 

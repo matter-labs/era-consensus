@@ -1,9 +1,6 @@
 use super::{Behavior, Node};
 use anyhow::bail;
-use network::{
-    io::{self, ConsensusInputMessage},
-    Config,
-};
+use network::{io, Config};
 use rand::seq::SliceRandom;
 use std::{
     collections::{HashMap, HashSet},
@@ -31,23 +28,23 @@ pub(crate) enum Network {
 
 /// Number of phases within a view for which we consider different partitions.
 ///
-/// Technically there are 4 partitions but that results in tests timing out as
-/// the chance of a consensus happening in any round goes down rapidly.
+/// Technically there are 4 phases but that results in tests timing out as
+/// the chance of a reaching consensus in any round goes down rapidly.
 ///
 /// Instead we can just use two phase-partitions: one for the LeaderCommit,
 /// and another for everything else. This models the typical adversarial
 /// scenario of not everyone getting the QC.
 pub(crate) const NUM_PHASES: usize = 2;
 
-// Identify different network identities of twins by their listener port.
-// They are all expected to be on localhost, but `ListenerAddr` can't be
-// directly used as a map key.
+/// Identify different network identities of twins by their listener port.
+/// They are all expected to be on localhost, but `ListenerAddr` can't be
+/// directly used as a map key.
 pub(crate) type Port = u16;
-// A partition consists of ports that can communicate.
+/// A partition consists of ports that can communicate.
 pub(crate) type PortPartition = HashSet<Port>;
-// A split is a list of disjunct partitions.
+/// A split is a list of disjunct partitions.
 pub(crate) type PortSplit = Vec<PortPartition>;
-// A schedule contains a list of splits (one for each phase) for every view.
+/// A schedule contains a list of splits (one for each phase) for every view.
 pub(crate) type PortSplitSchedule = Vec<[PortSplit; NUM_PHASES]>;
 
 /// Config for the test. Determines the parameters to run the test with.
@@ -557,7 +554,7 @@ fn output_msg_commit_qc(msg: &io::OutputMessage) -> Option<&validator::CommitQC>
 }
 
 /// Index of the phase in which the message appears, to decide which partitioning to apply.
-fn input_msg_phase_number(msg: &ConsensusInputMessage) -> usize {
+fn input_msg_phase_number(msg: &io::ConsensusInputMessage) -> usize {
     use validator::ConsensusMsg;
     let phase = match msg.message.msg {
         ConsensusMsg::ReplicaPrepare(_) => 0,
