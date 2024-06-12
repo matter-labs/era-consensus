@@ -1,6 +1,5 @@
 //! Handler of a LeaderCommit message.
 use super::StateMachine;
-use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_roles::validator;
 
@@ -49,7 +48,6 @@ impl Wrap for Error {
 impl StateMachine {
     /// Processes a leader commit message. We can approve this leader message even if we
     /// don't have the block proposal stored. It is enough to see the justification.
-    #[instrument(level = "trace", err)]
     pub(crate) async fn process_leader_commit(
         &mut self,
         ctx: &ctx::Ctx,

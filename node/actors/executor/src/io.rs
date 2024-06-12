@@ -1,5 +1,4 @@
 //! Module to manage the communication between actors. It simply converts and forwards messages from and to each different actor.
-use tracing::instrument;
 use zksync_concurrency::{
     ctx::{self, channel},
     scope,
@@ -37,7 +36,6 @@ impl Dispatcher {
     }
 
     /// Method to start the IO dispatcher. It is simply a loop to receive messages from the actors and then forward them.
-    #[instrument(level = "trace", ret)]
     pub(super) async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         scope::run!(ctx, |ctx, s| async {
             // Start a task to handle the messages from the consensus actor.

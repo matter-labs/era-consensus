@@ -1,6 +1,5 @@
 //! Handler of a ReplicaPrepare message.
 use super::StateMachine;
-use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_roles::validator;
 
@@ -45,7 +44,6 @@ impl Wrap for Error {
 }
 
 impl StateMachine {
-    #[instrument(level = "trace", skip(self), ret)]
     pub(crate) async fn process_replica_prepare(
         &mut self,
         ctx: &ctx::Ctx,

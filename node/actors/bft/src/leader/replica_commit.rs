@@ -3,7 +3,6 @@
 use super::StateMachine;
 use crate::metrics;
 use std::collections::HashSet;
-use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator;
@@ -37,7 +36,6 @@ pub(crate) enum Error {
 }
 
 impl StateMachine {
-    #[instrument(level = "trace", skip(self), ret)]
     pub(crate) fn process_replica_commit(
         &mut self,
         ctx: &ctx::Ctx,
