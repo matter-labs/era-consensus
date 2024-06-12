@@ -116,7 +116,7 @@ impl BatchQC {
             .ok_or(Error::AttestersNotInGenesis)?;
 
         // Verify that the signer's weight is sufficient.
-        let weight = attesters.weight_of_keys(self.signatures.keys());
+        let weight = attesters.weight(self.signatures.keys());
         let threshold = attesters.threshold();
         if weight < threshold {
             return Err(Error::NotEnoughSigners {
