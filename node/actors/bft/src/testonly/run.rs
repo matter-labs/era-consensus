@@ -29,8 +29,15 @@ pub(crate) enum Network {
     Twins(PortSplitSchedule),
 }
 
-// Number of phases within a view.
-pub(crate) const NUM_PHASES: usize = 4;
+/// Number of phases within a view for which we consider different partitions.
+///
+/// Technically there are 4 partitions but that results in tests timing out as
+/// the chance of a consensus happening in any round goes down rapidly.
+///
+/// Instead we can just use two phase-partitions: one for the LeaderCommit,
+/// and another for everything else. This models the typical adversarial
+/// scenario of not everyone getting the QC.
+pub(crate) const NUM_PHASES: usize = 2;
 
 // Identify different network identities of twins by their listener port.
 // They are all expected to be on localhost, but `ListenerAddr` can't be
@@ -552,12 +559,14 @@ fn output_msg_commit_qc(msg: &io::OutputMessage) -> Option<&validator::CommitQC>
 /// Index of the phase in which the message appears, to decide which partitioning to apply.
 fn input_msg_phase_number(msg: &ConsensusInputMessage) -> usize {
     use validator::ConsensusMsg;
-    match msg.message.msg {
+    let phase = match msg.message.msg {
         ConsensusMsg::ReplicaPrepare(_) => 0,
-        ConsensusMsg::LeaderPrepare(_) => 1,
-        ConsensusMsg::ReplicaCommit(_) => 2,
-        ConsensusMsg::LeaderCommit(_) => 3,
-    }
+        ConsensusMsg::LeaderPrepare(_) => 0,
+        ConsensusMsg::ReplicaCommit(_) => 0,
+        ConsensusMsg::LeaderCommit(_) => 1,
+    };
+    assert!(phase < NUM_PHASES);
+    phase
 }
 
 struct TwinsGossipMessage {

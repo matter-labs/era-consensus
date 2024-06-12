@@ -378,9 +378,10 @@ async fn run_twins(
             cluster.num_nodes()
         );
 
+        // Debug output of round schedule.
         for (r, rc) in scenario.rounds.iter().enumerate() {
             // Let's just consider the partition of the LeaderCommit phase, for brevity's sake.
-            let partitions = &splits[r][3];
+            let partitions = &splits[r].last().unwrap();
 
             let leader_ports = cluster
                 .nodes()
