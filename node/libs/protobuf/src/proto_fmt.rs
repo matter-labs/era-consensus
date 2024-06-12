@@ -285,6 +285,26 @@ pub fn read_optional<T: ProtoFmt>(field: &Option<T::Proto>) -> anyhow::Result<Op
     field.as_ref().map(ProtoFmt::read).transpose()
 }
 
+/// Parses a repeated proto struct into a map.
+pub fn read_map<T, K, V, F, G>(items: &[T], k: F, v: G) -> anyhow::Result<BTreeMap<K, V>>
+where
+    K: ProtoFmt + Ord,
+    V: ProtoFmt,
+    F: Fn(&T) -> &Option<K::Proto>,
+    G: Fn(&T) -> &Option<V::Proto>,
+{
+    let items: Vec<(K, V)> = items
+        .iter()
+        .map(|item| {
+            let k = read_required(k(item)).context("key")?;
+            let v = read_required(v(item)).context("value")?;
+            Ok((k, v))
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+
+    Ok(items.into_iter().collect())
+}
+
 /// Extracts a required field.
 pub fn required<T>(field: &Option<T>) -> anyhow::Result<&T> {
     field.as_ref().context("missing")

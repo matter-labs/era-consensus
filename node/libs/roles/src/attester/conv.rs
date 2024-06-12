@@ -6,7 +6,7 @@ use crate::proto::attester::{self as proto, Attestation};
 use anyhow::Context as _;
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
-use zksync_protobuf::{read_required, required, ProtoFmt};
+use zksync_protobuf::{read_map, read_required, required, ProtoFmt};
 
 impl ProtoFmt for Batch {
     type Proto = proto::Batch;
@@ -132,21 +132,9 @@ impl ProtoFmt for BatchQC {
     type Proto = proto::BatchQc;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let signatures: Vec<(PublicKey, Signature)> = r
-            .signatures
-            .iter()
-            .map(|s| {
-                let key = read_required(&s.key).context("key")?;
-                let sig = read_required(&s.sig).context("sig")?;
-                Ok((key, sig))
-            })
-            .collect::<anyhow::Result<Vec<_>>>()?;
-
-        let signatures = signatures.into_iter().collect();
-
         Ok(Self {
             message: read_required(&r.msg).context("message")?,
-            signatures,
+            signatures: read_map(&r.signatures, |s| &s.key, |s| &s.sig).context("signatures")?,
         })
     }
 
