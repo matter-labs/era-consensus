@@ -5,10 +5,7 @@ use crate::testonly::{
     ut_harness::UTHarness,
     Behavior, Network, PortSplitSchedule, Test, NUM_PHASES,
 };
-use zksync_concurrency::{
-    ctx::{self, Ctx},
-    scope, time,
-};
+use zksync_concurrency::{ctx, scope, time};
 use zksync_consensus_network::testonly::new_configs_for_validators;
 use zksync_consensus_roles::validator::{
     self,
@@ -218,9 +215,8 @@ async fn non_proposing_leader() {
 /// is achieved under the most favourable conditions.
 #[tokio::test(flavor = "multi_thread")]
 async fn twins_network_wo_twins_wo_partitions() {
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n<6 implies f=0 and q=n
-    run_twins(ctx, 5, 0, 10).await.unwrap();
+    run_twins(5, 0, 10).await.unwrap();
 }
 
 /// Run Twins scenarios without actual twins, but enough replicas that partitions
@@ -231,40 +227,55 @@ async fn twins_network_wo_twins_wo_partitions() {
 /// is resilient to temporary network partitions.
 #[tokio::test(flavor = "multi_thread")]
 async fn twins_network_wo_twins_w_partitions() {
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n=6 implies f=1 and q=5; 6 is the minimum where partitions are possible.
-    run_twins(ctx, 6, 0, 5).await.unwrap();
+    run_twins(6, 0, 5).await.unwrap();
 }
 
 /// Run Twins scenarios with random number of nodes and 1 twin.
 #[tokio::test(flavor = "multi_thread")]
 async fn twins_network_w1_twins_w_partitions() {
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n>=6 implies f>=1 and q=n-f
     for num_replicas in 6..=10 {
         // let num_honest = validator::threshold(num_replicas as u64) as usize;
         // let max_faulty = num_replicas - num_honest;
         // let num_twins = rng.gen_range(1..=max_faulty);
-        run_twins(ctx, num_replicas, 1, 10).await.unwrap();
+        run_twins(num_replicas, 1, 10).await.unwrap();
     }
 }
 
 /// Run Twins scenarios with higher number of nodes and 2 twins.
 #[tokio::test(flavor = "multi_thread")]
 async fn twins_network_w2_twins_w_partitions() {
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n>=11 implies f>=2 and q=n-f
-    run_twins(ctx, 11, 2, 10).await.unwrap();
+    run_twins(11, 2, 10).await.unwrap();
+}
+
+/// Run Twins scenario with more twins than tolerable and expect it to fail.
+#[tokio::test(flavor = "multi_thread")]
+#[should_panic]
+async fn twins_network_to_fail() {
+    run_twins(5, 1, 100)
+        .await
+        .expect_err("will fail with assert");
 }
 
 /// Create network configuration for a given number of replicas and twins and run [Test].
 async fn run_twins(
-    ctx: &Ctx,
     num_replicas: usize,
     num_twins: usize,
     num_scenarios: usize,
 ) -> anyhow::Result<()> {
-    zksync_concurrency::testonly::abort_on_panic();
+    let num_honest = validator::threshold(num_replicas as u64) as usize;
+    let max_faulty = num_replicas - num_honest;
+
+    // If we pass more twins than tolerable faulty replicas then it should fail with an assertion error,
+    // but if we abort the process on panic then the #[should_panic] attribute doesn't work with `cargo nextest`.
+    // Unfortunately this also turns off logging, but it's fine this is just to make sure Twins catch _something_.
+    if num_twins <= max_faulty {
+        zksync_concurrency::testonly::abort_on_panic();
+    }
+
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // Use a single timeout for all scenarios to finish.
     // A single scenario with 11 replicas took 3-5 seconds.
     let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
