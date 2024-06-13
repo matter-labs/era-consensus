@@ -26,13 +26,26 @@ pub(crate) enum Network {
     Twins(PortSplitSchedule),
 }
 
-// Identify different network identities of twins by their listener port.
-// They are all expected to be on localhost, but `ListenerAddr` can't be
-// directly used as a map key.
+/// Number of phases within a view for which we consider different partitions.
+///
+/// Technically there are 4 phases but that results in tests timing out as
+/// the chance of a reaching consensus in any round goes down rapidly.
+///
+/// Instead we can just use two phase-partitions: one for the LeaderCommit,
+/// and another for everything else. This models the typical adversarial
+/// scenario of not everyone getting the QC.
+pub(crate) const NUM_PHASES: usize = 2;
+
+/// Identify different network identities of twins by their listener port.
+/// They are all expected to be on localhost, but `ListenerAddr` can't be
+/// directly used as a map key.
 pub(crate) type Port = u16;
+/// A partition consists of ports that can communicate.
 pub(crate) type PortPartition = HashSet<Port>;
+/// A split is a list of disjunct partitions.
 pub(crate) type PortSplit = Vec<PortPartition>;
-pub(crate) type PortSplitSchedule = Vec<PortSplit>;
+/// A schedule contains a list of splits (one for each phase) for every view.
+pub(crate) type PortSplitSchedule = Vec<[PortSplit; NUM_PHASES]>;
 
 /// Config for the test. Determines the parameters to run the test with.
 #[derive(Clone)]
@@ -384,11 +397,12 @@ async fn twins_receive_loop(
 
     while let Ok(io::InputMessage::Consensus(message)) = recv.recv(ctx).await {
         let view_number = message.message.msg.view().number.0 as usize;
+        let phase_number = input_msg_phase_number(&message);
         let kind = message.message.msg.label();
         // Here we assume that all instances start from view 0 in the tests.
         // If the view is higher than what we have planned for, assume no partitions.
         // Every node is guaranteed to be present in only one partition.
-        let partitions_opt = splits.get(view_number);
+        let partitions_opt = splits.get(view_number).and_then(|ps| ps.get(phase_number));
 
         if partitions_opt.is_none() {
             bail!(
@@ -482,19 +496,19 @@ async fn twins_gossip_loop(
                 if number < first_needed {
                     break;
                 }
-                // Stop if the source doesn't actually have this block to give.
-                // NOTE: This introduces some fragility: the source might get the block later,
-                // but it won't re-attempt to gossip. We could change this by moving this retrieval
-                // into the `spawn_bg` and use `wait_until_queued` or `wait_until_persisted` on
-                // the source to effectively try until it succeeds. For now the increase in the
-                // number of gossip peers seems to have solved the issue.
-                let Ok(Some(block)) = local_store.block(ctx, number).await else {
-                    tracing::info!("   ~~x gossip unavailable from={from} to={to} number={number}");
-                    break;
-                };
-                // Perform the storing operation asynchronously because `queue_block` will
+                // Perform the storage operations asynchronously because `queue_block` will
                 // wait for all dependencies to be inserted first.
                 s.spawn_bg(async move {
+                    // Wait for the source to actually have the block.
+                    if local_store.wait_until_queued(ctx, number).await.is_err() {
+                        return Ok(());
+                    }
+                    let Ok(Some(block)) = local_store.block(ctx, number).await else {
+                        tracing::info!(
+                            "   ~~x gossip unavailable from={from} to={to} number={number}"
+                        );
+                        return Ok(());
+                    };
                     tracing::info!("   ~~> gossip queue from={from} to={to} number={number}");
                     let _ = remote_store.queue_block(ctx, block).await;
                     tracing::info!("   ~~V gossip stored from={from} to={to} number={number}");
@@ -537,6 +551,19 @@ fn output_msg_commit_qc(msg: &io::OutputMessage) -> Option<&validator::CommitQC>
             ConsensusMsg::LeaderCommit(lc) => Some(&lc.justification),
         },
     }
+}
+
+/// Index of the phase in which the message appears, to decide which partitioning to apply.
+fn input_msg_phase_number(msg: &io::ConsensusInputMessage) -> usize {
+    use validator::ConsensusMsg;
+    let phase = match msg.message.msg {
+        ConsensusMsg::ReplicaPrepare(_) => 0,
+        ConsensusMsg::LeaderPrepare(_) => 0,
+        ConsensusMsg::ReplicaCommit(_) => 0,
+        ConsensusMsg::LeaderCommit(_) => 1,
+    };
+    assert!(phase < NUM_PHASES);
+    phase
 }
 
 struct TwinsGossipMessage {

@@ -1,6 +1,5 @@
 use super::StateMachine;
 use crate::metrics;
-use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyGaugeExt as _, time};
 use zksync_consensus_roles::validator;
 
@@ -14,7 +13,6 @@ impl StateMachine {
 
     /// Resets the timer. On every timeout we double the duration, starting from a given base duration.
     /// This is a simple exponential backoff.
-    #[instrument(level = "trace", ret)]
     pub(crate) fn reset_timer(&mut self, ctx: &ctx::Ctx) {
         let final_view = match self.high_qc.as_ref() {
             Some(qc) => qc.view().number.next(),
