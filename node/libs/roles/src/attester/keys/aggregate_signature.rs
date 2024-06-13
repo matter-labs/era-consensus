@@ -10,7 +10,7 @@ use crate::attester::{Batch, MsgHash, Signers};
 type BlsSignature = bls12_381::Signature;
 type BlsPublicKey = bls12_381::PublicKey;
 
-/// The index of the attester in the committe.
+/// The index of the attester in the committee.
 type AttesterIndex = usize;
 
 /// The aggregate signature of attesters over the same message.
