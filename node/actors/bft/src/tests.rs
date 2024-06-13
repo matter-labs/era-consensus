@@ -276,11 +276,16 @@ async fn run_twins(
 
     // Use a single timeout for all scenarios to finish.
     // A single scenario with 11 replicas took 3-5 seconds.
-    let timeout = time::Duration::seconds(30);
     // Panic on timeout; works with `cargo nextest` and the `abort_on_panic` above.
-    let _guard = zksync_concurrency::testonly::set_timeout(timeout);
-    // As a fallback, also cancel the context if the `abort_on_panic` isn't active.
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0)).with_timeout(timeout * 10 * 2);
+    // If we are in the mode where we are looking for faults and `abort_on_panic` is disabled,
+    // then this will not have any effect and the simulation will run for as long as it takes to
+    // go through all the configured scenarios, and then fail because it didn't panic if no fault was found.
+    // If it panics for another reason it might be misleading though, so ideally it should finish early.
+    // It would be nicer to actually inspect the panic and make sure it's the right kind of assertion.
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
+    // Using `ctc.with_timeout` would stop a runaway execution even without `abort_on_panic` but
+    // it would make the test pass for a different reason, not because it found an error but because it ran long.
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
 
     #[derive(PartialEq, Debug)]
     struct Replica {
