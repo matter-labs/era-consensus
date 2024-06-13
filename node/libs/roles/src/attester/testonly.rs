@@ -8,7 +8,19 @@ use rand::{
     Rng,
 };
 use std::sync::Arc;
+use zksync_consensus_crypto::bls12_381;
 use zksync_consensus_utils::enum_util::Variant;
+
+impl AggregateSignature {
+    /// Generate a new aggregate signature from a list of signatures.
+    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a bls12_381::Signature>) -> Self {
+        let mut agg = Self::default();
+        for sig in sigs {
+            agg.add(sig);
+        }
+        agg
+    }
+}
 
 impl Distribution<SecretKey> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SecretKey {

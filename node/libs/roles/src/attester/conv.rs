@@ -1,6 +1,6 @@
 use super::{
-    Batch, BatchNumber, BatchQC, Msg, MsgHash, MultiSig, PublicKey, Signature, Signed, Signers,
-    WeightedAttester,
+    AggregateSignature, Batch, BatchNumber, BatchQC, Msg, MsgHash, MultiSig, PublicKey, Signature,
+    Signed, Signers, WeightedAttester,
 };
 use crate::proto::attester::{self as proto, Attestation};
 use anyhow::Context as _;
@@ -111,6 +111,20 @@ impl ProtoFmt for Signers {
 
     fn build(&self) -> Self::Proto {
         self.0.build()
+    }
+}
+
+impl ProtoFmt for AggregateSignature {
+    type Proto = proto::AggregateSignature;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.bls12_381)?)?))
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            bls12_381: Some(self.0.encode()),
+        }
     }
 }
 
