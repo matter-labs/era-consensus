@@ -62,7 +62,9 @@ message MsgHash {
 
 // TODO: Placeholder for EIP-2537
 message AggregateSignature {
-  optional bytes bls12_381 = 1; // required
+  reserved 1, 2;
+  reserved "bn254", "secp256k1";
+  optional bytes bls12_381 = 3; // required
 }
 
 // TODO: Placeholder for EIP-2537
