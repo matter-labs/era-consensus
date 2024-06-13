@@ -286,12 +286,19 @@ pub fn read_optional<T: ProtoFmt>(field: &Option<T::Proto>) -> anyhow::Result<Op
 }
 
 /// Parses a repeated proto struct into a map.
-pub fn read_map<T, K, V, F, G>(items: &[T], k: F, v: G) -> anyhow::Result<BTreeMap<K, V>>
+///
+/// The method assumes that we have a `BTreeMap<K, V>` field that we serialized
+/// as `Vec<T>` into protobuf, where `T` consists of a `K::Proto` and `V::Proto`
+/// field. The `k` and `v` function are getters to project `T` into the key and
+/// value protobuf components, which are individually decoded into `K` and `V`.
+pub fn read_map<T, K, V>(
+    items: &[T],
+    k: impl Fn(&T) -> &Option<K::Proto>,
+    v: impl Fn(&T) -> &Option<V::Proto>,
+) -> anyhow::Result<BTreeMap<K, V>>
 where
     K: ProtoFmt + Ord,
     V: ProtoFmt,
-    F: Fn(&T) -> &Option<K::Proto>,
-    G: Fn(&T) -> &Option<V::Proto>,
 {
     let items: Vec<(K, V)> = items
         .iter()
