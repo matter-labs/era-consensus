@@ -25,8 +25,8 @@ impl AggregateSignature {
         self.0.add(sig)
     }
 
-    /// Verify a a message against a list of public keys.
-    pub(crate) fn verify_message<'a>(
+    /// Verify a message against a list of public keys.
+    pub(crate) fn verify_msg<'a>(
         &self,
         message: Batch,
         keys: impl Iterator<Item = &'a BlsPublicKey>,
@@ -106,7 +106,7 @@ impl AggregateMultiSig {
 
     /// Verify a message against a list of public keys in the attester committee,
     /// if they are part of the ones who actually submitted their signatures.
-    pub(crate) fn verify_message<'a>(
+    pub(crate) fn verify_msg<'a>(
         &self,
         message: Batch,
         keys: impl Iterator<Item = (AttesterIndex, &'a BlsPublicKey)>,
