@@ -430,3 +430,41 @@ async fn run_twins(
 
     Ok(())
 }
+
+/// Test a liveness issue where some validators have the HighQC but don't have the block payload and have to wait for it,
+/// while some other validators have the payload but don't have the HighQC and cannot finalize the block, and therefore
+/// don't gossip it, which causes a deadlock unless the one with the HighQC moves on and broadcasts what they have, which
+/// should cause the others to finalize the block and gossip the payload to them in turn.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_wait_for_finalized_deadlock() {
+    // These are the conditions for the deadlock to occur:
+    // * The problem happens in the handling of LeaderPrepare where the replica waits for the previous block in the justification.
+    // * For that the replica needs to receive a proposal from a leader that knows the previous block is finalized.
+    // * For that the leader needs to receive a finalized proposal from an earlier leader, but this proposal did not make it to the replica.
+    // * Both leaders need to die and never communicate the HighQC they know about to anybody else.
+    // * The replica has the HighQC but not the payload, and all other replicas might have the payload, but not the HighQC.
+    // * With two leaders down, and the replica deadlocked, we must lose quorum, so the other nodes cannot repropose the missing block either.
+    // * In order for 2 leaders to be dow  and quorum still be possible, we need at least 11 nodes.
+
+    // Here are a series of steps to reproduce the issue:
+    // 1. Say we have 11 nodes: [1,2,3,4,5,6,7,8,9,10,11], taking turns leading the views in that order; we need 9 nodes for quorum.
+    // 2. Node 1 sends LeaderPropose with block 1 to nodes [1-9] and puts together a HighQC.
+    // 3. Node 1 sends the LeaderCommit to node 2, then dies.
+    // 4. Node 2 sends LeaderPropose with block 2 to nodes [10, 11], then dies.
+    // 5. Nodes [10,11] get stuck processing LeaderPropose because they are waiting for block 1 to appear in their stores.
+    // 6. Node 3 cannot gather 9 ReplicaPrepare messages for a quorum because nodes [1,2] are down and [10,11] are blocking. Consensus stalls.
+
+    // Here are the steps we can take with the Twins network to simulate the above:
+    // * View 1:
+    //   * Phase 0: P1={1,2,3,4,5,6,7,8,9}, P2={10,11} -> Leader 1 sends LeaderPrepare(B1) to P1; P1 send ReplicaCommit(B1) to leader 1; leader 1 creates HighQC(B1)
+    //   * Phase 1: P1={1,2}, P2={3,4,5,6,7,8,9,10,11} -> Leader 1 sends LeaderCommit(B1) to P1
+    // * View 2:
+    //   * Phase 0: P1={1}, P2={2,3,4,5,6,7,8,9,10,11} -> Alas, if Leader 2 broadcasts its ReplicaPrepare it contains the HighQC already,
+    //                                                    which causes everyone to finalize the B1, but it can't send a LeaderPrepare(B2)
+    //                                                    without gathering 9 ReplicaPrepare from P2. It should not send its own ReplicaPrepare,
+    //                                                    and only send the LeaderPrepare to a subset of P2, but we only have the two phases.
+    //
+    // TODO: We need even more control than what the phases and partitions allow.
+    //       Wrap them up into an enum with a method `allowed_targets(&self, message, from) -> Option<&HashSet<Port>>` that the runner delegates to,
+    //       then add a new variant that has function predicate which describes exactly the above scenario.
+}
