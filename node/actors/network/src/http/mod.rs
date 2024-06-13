@@ -1,5 +1,5 @@
 //! Http Server to export debug information
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Context};
 use base64::Engine;
 use build_html::{Html, HtmlContainer, HtmlPage, Table, TableCell, TableCellType, TableRow};
 use http_body_util::Full;
@@ -51,28 +51,55 @@ impl Server {
     }
 
     /// Runs the Server.
-    pub async fn run(&self, ctx: &ctx::Ctx) -> Result<()> {
-        scope::run!(ctx, |_ctx, s| async {
+    pub async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        // Start a watcher to shut down the server whenever ctx gets cancelled
+        let graceful = hyper_util::server::graceful::GracefulShutdown::new();
+
+        scope::run!(ctx, |ctx, s| async {
+
+            // if this signal completes, start shutdown
+            let mut cancel_signal = std::pin::pin!(async {ctx.canceled().await});
+
             let mut listener =
                 TlsListener::new(tls_acceptor(), TcpListener::bind(self.addr).await?);
 
+            let http = http1::Builder::new();
+
             // Start a loop to continuously accept incoming connections
             loop {
-                match listener.accept().await {
-                    Ok((stream, _)) => {
-                        let io = TokioIo::new(stream);
-                        s.spawn(async {
-                            Ok(http1::Builder::new()
-                                .serve_connection(io, service_fn(|req| self.handle(req)))
-                                .await?)
-                        });
-                    }
-                    Err(err) => {
-                        if let Some(remote_addr) = err.peer_addr() {
-                            tracing::error!("[client {remote_addr}] ");
-                        }
+                tokio::select! {
+                    res = listener.accept() => {
+                        match res {
+                            Ok((stream, _)) => {
+                                let io = TokioIo::new(stream);
+                                let conn = http.serve_connection(io, service_fn(|req| self.handle(req)));
+                                // watch this connection
+                                let fut = graceful.watch(conn);
+                                s.spawn_bg(async move {
+                                    if let Err(e) = fut.await {
+                                        tracing::error!("Error serving connection: {:?}", e);
+                                    }
 
-                        tracing::error!("Error accepting connection: {}", err);
+                                    Ok(())
+                                });
+                            },
+                            Err(err) => {
+                                if let Some(remote_addr) = err.peer_addr() {
+                                    tracing::error!("[client {remote_addr}] ");
+                                }
+
+                                tracing::error!("Error accepting connection: {}", err);
+                            }
+                        }
+                    },
+
+                    _ = &mut cancel_signal => {
+                        tracing::info!("canceled");
+
+                        // Now start the shutdown and wait for them to complete
+                        // Optional: start a timeout to limit how long to wait.
+                        graceful.shutdown().await;
+                        return Ok(())
                     }
                 }
             }
@@ -83,7 +110,7 @@ impl Server {
     async fn handle(
         &self,
         request: Request<hyper::body::Incoming>,
-    ) -> Result<Response<Full<Bytes>>> {
+    ) -> anyhow::Result<Response<Full<Bytes>>> {
         let mut response = Response::new(Full::default());
         match self.basic_authentication(request.headers()) {
             Ok(_) => *response.body_mut() = self.serve(request),
@@ -99,7 +126,7 @@ impl Server {
         Ok(response)
     }
 
-    fn basic_authentication(&self, headers: &HeaderMap) -> Result<()> {
+    fn basic_authentication(&self, headers: &HeaderMap) -> anyhow::Result<()> {
         self.credentials.clone().map_or(Ok(()), |credentials| {
             // The header value, if present, must be a valid UTF8 string
             let header_value = headers
@@ -226,7 +253,7 @@ fn tls_acceptor() -> TlsAcceptor {
 }
 
 // Load public certificate from file.
-fn load_certs(filename: &str) -> Result<Vec<CertificateDer<'static>>> {
+fn load_certs(filename: &str) -> anyhow::Result<Vec<CertificateDer<'static>>> {
     // Open certificate file.
     let certfile =
         fs::File::open(filename).with_context(|| anyhow!("failed to open {}", filename))?;
@@ -239,7 +266,7 @@ fn load_certs(filename: &str) -> Result<Vec<CertificateDer<'static>>> {
 }
 
 // Load private key from file.
-fn load_private_key(filename: &str) -> Result<PrivateKeyDer<'static>> {
+fn load_private_key(filename: &str) -> anyhow::Result<PrivateKeyDer<'static>> {
     // Open keyfile.
     let keyfile =
         fs::File::open(filename).with_context(|| anyhow!("failed to open {}", filename))?;

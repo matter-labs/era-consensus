@@ -123,8 +123,10 @@ impl Executor {
 
             if let Some(debug_config) = &self.config.debug_page {
                 s.spawn(async {
-                    let http_server = http::Server::new(debug_config.clone(), net);
-                    http_server.run(ctx).await.context("Http Server stopped")
+                    http::Server::new(debug_config.clone(), net)
+                        .run(ctx)
+                        .await
+                        .context("Http Server stopped")
                 });
             }
 
