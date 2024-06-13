@@ -1,5 +1,5 @@
 use super::{
-    Batch, BatchNumber, BatchQC, Msg, MsgHash, PublicKey, Signature, Signed, Signers,
+    Batch, BatchNumber, BatchQC, Msg, MsgHash, MultiSig, PublicKey, Signature, Signed, Signers,
     WeightedAttester,
 };
 use crate::proto::attester::{self as proto, Attestation};
@@ -134,7 +134,9 @@ impl ProtoFmt for BatchQC {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             message: read_required(&r.msg).context("message")?,
-            signatures: read_map(&r.signatures, |s| &s.key, |s| &s.sig).context("signatures")?,
+            signatures: MultiSig(
+                read_map(&r.signatures, |s| &s.key, |s| &s.sig).context("signatures")?,
+            ),
         })
     }
 

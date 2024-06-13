@@ -1,13 +1,13 @@
 use super::{
-    Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash, PublicKey, SecretKey, Signature, Signed,
-    Signers, WeightedAttester,
+    Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash, MultiSig, PublicKey, SecretKey,
+    Signature, Signed, Signers, WeightedAttester,
 };
 use bit_vec::BitVec;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 use zksync_consensus_utils::enum_util::Variant;
 
 impl Distribution<SecretKey> for Standard {
@@ -43,9 +43,9 @@ impl Distribution<Batch> for Standard {
 
 impl Distribution<BatchQC> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchQC {
-        let mut signatures = BTreeMap::default();
+        let mut signatures = MultiSig::default();
         for _ in 0..rng.gen_range(0..5) {
-            signatures.insert(rng.gen(), rng.gen());
+            signatures.add(rng.gen(), rng.gen());
         }
         BatchQC {
             message: rng.gen(),

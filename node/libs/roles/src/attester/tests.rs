@@ -159,7 +159,7 @@ fn test_attester_committee_weights() {
                 .attesters
                 .as_ref()
                 .unwrap()
-                .weight(qc.signatures.keys()),
+                .weight_of_keys(qc.signatures.keys()),
             *weight
         );
     }

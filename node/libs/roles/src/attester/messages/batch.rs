@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use super::Signed;
 use crate::{attester, validator::Genesis};
 use anyhow::{ensure, Context as _};
@@ -30,7 +28,7 @@ pub struct Batch {
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BatchQC {
     /// The signatures of the signed L1 batches from all the attesters who signed it.
-    pub signatures: BTreeMap<attester::PublicKey, attester::Signature>,
+    pub signatures: attester::MultiSig,
     /// The message that was signed.
     pub message: Batch,
 }
@@ -79,7 +77,7 @@ impl BatchQC {
     pub fn new(message: Batch) -> anyhow::Result<Self> {
         Ok(Self {
             message,
-            signatures: BTreeMap::default(),
+            signatures: attester::MultiSig::default(),
         })
     }
 
@@ -94,7 +92,7 @@ impl BatchQC {
             .context("no attester committee in genesis")?;
 
         ensure!(self.message == msg.msg, Error::InconsistentMessages);
-        ensure!(!self.signatures.contains_key(&msg.key), Error::Exists);
+        ensure!(!self.signatures.contains(&msg.key), Error::Exists);
         ensure!(
             committee.contains(&msg.key),
             Error::SignerNotInCommittee {
@@ -102,7 +100,7 @@ impl BatchQC {
             }
         );
 
-        self.signatures.insert(msg.key.clone(), msg.sig.clone());
+        self.signatures.add(msg.key.clone(), msg.sig.clone());
 
         Ok(())
     }
@@ -115,8 +113,15 @@ impl BatchQC {
             .as_ref()
             .ok_or(Error::AttestersNotInGenesis)?;
 
+        // Verify that all signers are attesters.
+        for pk in self.signatures.keys() {
+            if !attesters.contains(pk) {
+                return Err(Error::BadSignersSet);
+            }
+        }
+
         // Verify that the signer's weight is sufficient.
-        let weight = attesters.weight(self.signatures.keys());
+        let weight = attesters.weight_of_keys(self.signatures.keys());
         let threshold = attesters.threshold();
         if weight < threshold {
             return Err(Error::NotEnoughSigners {
@@ -125,15 +130,8 @@ impl BatchQC {
             });
         }
 
-        let hash = self.message.clone().insert().hash();
-
-        for (pk, sig) in &self.signatures {
-            if !attesters.contains(pk) {
-                return Err(Error::BadSignersSet);
-            }
-            sig.verify_hash(&hash, pk).map_err(Error::BadSignature)?;
-        }
-
-        Ok(())
+        self.signatures
+            .verify_msg(&self.message.clone().insert())
+            .map_err(Error::BadSignature)
     }
 }

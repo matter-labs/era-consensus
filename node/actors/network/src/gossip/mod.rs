@@ -163,7 +163,7 @@ impl Network {
                 }
             }
 
-            let weight = attesters.weight(
+            let weight = attesters.weight_of_keys(
                 self.batch_qc
                     .get(&new_qc.message.number)
                     .context("last qc")?
