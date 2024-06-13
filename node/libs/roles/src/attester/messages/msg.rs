@@ -151,8 +151,16 @@ impl Committee {
         threshold(self.total_weight())
     }
 
-    /// Compute the sum of signers weights.
-    pub fn weight(&self, signers: &Signers) -> u64 {
+    /// Compute the sum of weights of as a list of public keys.
+    ///
+    /// The method assumes that the keys are unique and does not de-duplicate.
+    pub fn weight_of_keys<'a>(&self, keys: impl Iterator<Item = &'a attester::PublicKey>) -> u64 {
+        keys.filter_map(|pk| self.index(pk).map(|i| self.vec[i].weight))
+            .sum()
+    }
+
+    /// Compute the sum of weights of signers given as a bit vector.
+    pub fn weight_of_signers(&self, signers: &Signers) -> u64 {
         assert_eq!(self.vec.len(), signers.len());
         self.vec
             .iter()

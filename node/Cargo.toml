@@ -51,11 +51,13 @@ blst = "0.3.11"
 clap = { version = "4.3.3", features = ["derive"] }
 criterion = "0.5.1"
 ed25519-dalek = { version = "2.0.0", features = ["rand_core"] }
+elliptic-curve = { version = "0.13" }
 ff_ce = "0.14.3"
 heck = "0.5.0"
 hex = "0.4.3"
 im = "15.1.0"
 jsonrpsee = { version = "0.23.0", features = ["server", "http-client"] }
+k256 = { version = "0.13", features = ["ecdsa"] }
 k8s-openapi = { version = "0.22.0", features = ["latest"] }
 kube = { version = "0.91.0", features = ["runtime", "derive"] }
 num-bigint = "0.4.4"

@@ -3,12 +3,9 @@ use std::collections::HashMap;
 use crate::testonly::{
     twins::{Cluster, HasKey, ScenarioGenerator, Twin},
     ut_harness::UTHarness,
-    Behavior, Network, PortSplitSchedule, Test,
+    Behavior, Network, PortSplitSchedule, Test, NUM_PHASES,
 };
-use zksync_concurrency::{
-    ctx::{self, Ctx},
-    scope, time,
-};
+use zksync_concurrency::{ctx, scope, time};
 use zksync_consensus_network::testonly::new_configs_for_validators;
 use zksync_consensus_roles::validator::{
     self,
@@ -218,9 +215,8 @@ async fn non_proposing_leader() {
 /// is achieved under the most favourable conditions.
 #[tokio::test(flavor = "multi_thread")]
 async fn twins_network_wo_twins_wo_partitions() {
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n<6 implies f=0 and q=n
-    run_twins(ctx, 5, 0, 10).await.unwrap();
+    run_twins(5, 0, 10).await.unwrap();
 }
 
 /// Run Twins scenarios without actual twins, but enough replicas that partitions
@@ -231,43 +227,65 @@ async fn twins_network_wo_twins_wo_partitions() {
 /// is resilient to temporary network partitions.
 #[tokio::test(flavor = "multi_thread")]
 async fn twins_network_wo_twins_w_partitions() {
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n=6 implies f=1 and q=5; 6 is the minimum where partitions are possible.
-    run_twins(ctx, 6, 0, 5).await.unwrap();
+    run_twins(6, 0, 5).await.unwrap();
 }
 
 /// Run Twins scenarios with random number of nodes and 1 twin.
 #[tokio::test(flavor = "multi_thread")]
 async fn twins_network_w1_twins_w_partitions() {
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n>=6 implies f>=1 and q=n-f
     for num_replicas in 6..=10 {
         // let num_honest = validator::threshold(num_replicas as u64) as usize;
         // let max_faulty = num_replicas - num_honest;
         // let num_twins = rng.gen_range(1..=max_faulty);
-        run_twins(ctx, num_replicas, 1, 5).await.unwrap();
+        run_twins(num_replicas, 1, 10).await.unwrap();
     }
 }
 
 /// Run Twins scenarios with higher number of nodes and 2 twins.
 #[tokio::test(flavor = "multi_thread")]
 async fn twins_network_w2_twins_w_partitions() {
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // n>=11 implies f>=2 and q=n-f
-    run_twins(ctx, 11, 2, 5).await.unwrap();
+    run_twins(11, 2, 10).await.unwrap();
+}
+
+/// Run Twins scenario with more twins than tolerable and expect it to fail.
+#[tokio::test(flavor = "multi_thread")]
+#[should_panic]
+async fn twins_network_to_fail() {
+    // With n=5 f=0, so 1 twin means more faulty nodes than expected.
+    run_twins(5, 1, 100).await.unwrap();
 }
 
 /// Create network configuration for a given number of replicas and twins and run [Test].
 async fn run_twins(
-    ctx: &Ctx,
     num_replicas: usize,
     num_twins: usize,
     num_scenarios: usize,
 ) -> anyhow::Result<()> {
-    zksync_concurrency::testonly::abort_on_panic();
+    let num_honest = validator::threshold(num_replicas as u64) as usize;
+    let max_faulty = num_replicas - num_honest;
+
+    // If we pass more twins than tolerable faulty replicas then it should fail with an assertion error,
+    // but if we abort the process on panic then the #[should_panic] attribute doesn't work with `cargo nextest`.
+    if num_twins <= max_faulty {
+        zksync_concurrency::testonly::abort_on_panic();
+    }
+    zksync_concurrency::testonly::init_tracing();
+
     // Use a single timeout for all scenarios to finish.
     // A single scenario with 11 replicas took 3-5 seconds.
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(60));
+    // Panic on timeout; works with `cargo nextest` and the `abort_on_panic` above.
+    // If we are in the mode where we are looking for faults and `abort_on_panic` is disabled,
+    // then this will not have any effect and the simulation will run for as long as it takes to
+    // go through all the configured scenarios, and then fail because it didn't panic if no fault was found.
+    // If it panics for another reason it might be misleading though, so ideally it should finish early.
+    // It would be nicer to actually inspect the panic and make sure it's the right kind of assertion.
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
+    // Using `ctc.with_timeout` would stop a runaway execution even without `abort_on_panic` but
+    // it would make the test pass for a different reason, not because it found an error but because it ran long.
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
 
     #[derive(PartialEq, Debug)]
     struct Replica {
@@ -322,10 +340,17 @@ async fn run_twins(
         .collect::<Vec<_>>();
 
     let cluster = Cluster::new(replicas, num_twins);
-    let scenarios = ScenarioGenerator::new(&cluster, num_rounds, max_partitions);
+    let scenarios = ScenarioGenerator::<_, NUM_PHASES>::new(&cluster, num_rounds, max_partitions);
+
+    // Gossip with more nodes than what can be faulty.
+    let gossip_peers = num_twins + 1;
 
     // Create network config for all nodes in the cluster (assigns unique network addresses).
-    let nets = new_configs_for_validators(rng, cluster.nodes().iter().map(|r| &r.secret_key), 1);
+    let nets = new_configs_for_validators(
+        rng,
+        cluster.nodes().iter().map(|r| &r.secret_key),
+        gossip_peers,
+    );
 
     let node_to_port = cluster
         .nodes()
@@ -356,10 +381,12 @@ async fn run_twins(
             .rounds
             .iter()
             .map(|rc| {
-                rc.partitions
-                    .iter()
-                    .map(|p| p.iter().map(|r| node_to_port[&r.id]).collect())
-                    .collect()
+                std::array::from_fn(|i| {
+                    rc.phase_partitions[i]
+                        .iter()
+                        .map(|p| p.iter().map(|r| node_to_port[&r.id]).collect())
+                        .collect()
+                })
             })
             .collect();
 
@@ -368,8 +395,10 @@ async fn run_twins(
             cluster.num_nodes()
         );
 
+        // Debug output of round schedule.
         for (r, rc) in scenario.rounds.iter().enumerate() {
-            let partitions = &splits[r];
+            // Let's just consider the partition of the LeaderCommit phase, for brevity's sake.
+            let partitions = &splits[r].last().unwrap();
 
             let leader_ports = cluster
                 .nodes()
@@ -387,7 +416,7 @@ async fn run_twins(
                 .iter()
                 .all(|s| *s < cluster.quorum_size());
 
-            tracing::debug!("round={r} partitions={partitions:?} leaders={leader_ports:?} leader_partition_sizes={leader_partition_sizes:?} leader_isolated={leader_isolated}");
+            tracing::info!("round={r} partitions={partitions:?} leaders={leader_ports:?} leader_partition_sizes={leader_partition_sizes:?} leader_isolated={leader_isolated}");
         }
 
         Test {

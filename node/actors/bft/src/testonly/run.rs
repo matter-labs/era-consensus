@@ -26,13 +26,26 @@ pub(crate) enum Network {
     Twins(PortSplitSchedule),
 }
 
-// Identify different network identities of twins by their listener port.
-// They are all expected to be on localhost, but `ListenerAddr` can't be
-// directly used as a map key.
+/// Number of phases within a view for which we consider different partitions.
+///
+/// Technically there are 4 phases but that results in tests timing out as
+/// the chance of a reaching consensus in any round goes down rapidly.
+///
+/// Instead we can just use two phase-partitions: one for the LeaderCommit,
+/// and another for everything else. This models the typical adversarial
+/// scenario of not everyone getting the QC.
+pub(crate) const NUM_PHASES: usize = 2;
+
+/// Identify different network identities of twins by their listener port.
+/// They are all expected to be on localhost, but `ListenerAddr` can't be
+/// directly used as a map key.
 pub(crate) type Port = u16;
+/// A partition consists of ports that can communicate.
 pub(crate) type PortPartition = HashSet<Port>;
+/// A split is a list of disjunct partitions.
 pub(crate) type PortSplit = Vec<PortPartition>;
-pub(crate) type PortSplitSchedule = Vec<PortSplit>;
+/// A schedule contains a list of splits (one for each phase) for every view.
+pub(crate) type PortSplitSchedule = Vec<[PortSplit; NUM_PHASES]>;
 
 /// Config for the test. Determines the parameters to run the test with.
 #[derive(Clone)]
@@ -245,7 +258,7 @@ async fn run_nodes_twins(
                     let mut network_pipe = dispatcher_pipe;
                     spec.run(ctx, &mut network_pipe).await
                 }
-                .instrument(tracing::info_span!("node", i)),
+                .instrument(tracing::info_span!("node", i, port)),
             );
         }
         // Taking these references is necessary for the `scope::run!` environment lifetime rules to compile
@@ -264,7 +277,7 @@ async fn run_nodes_twins(
         //   identity of the target validator and send to it iff they are in the same partition
         // * simulate the gossiping of finalized blockss
         scope::run!(ctx, |ctx, s| async move {
-            for (port, recv) in recvs {
+            for (i, (port, recv)) in recvs.into_iter().enumerate() {
                 let gossip_send = gossip_send.clone();
                 s.spawn(async move {
                     twins_receive_loop(
@@ -279,6 +292,7 @@ async fn run_nodes_twins(
                         port,
                         recv,
                     )
+                    .instrument(tracing::info_span!("node", i, port))
                     .await
                 });
             }
@@ -306,7 +320,6 @@ async fn twins_receive_loop(
     mut recv: UnboundedReceiver<io::InputMessage>,
 ) -> anyhow::Result<()> {
     let rng = &mut ctx.rng();
-    let start = std::time::Instant::now(); // Just to give an idea of how long time passes between rounds.
 
     // Finalized block number iff this node can gossip to the target and the message contains a QC.
     let block_to_gossip = |target_port: Port, msg: &io::OutputMessage| {
@@ -359,6 +372,7 @@ async fn twins_receive_loop(
         // Send after taking note of potentially gossipable blocks.
         let send = |msg| {
             if let Some(number) = block_to_gossip(target_port, &msg) {
+                tracing::info!("   ~~~ gossip from={port} to={target_port} number={number}");
                 gossip.send.send(TwinsGossipMessage {
                     from: port,
                     to: target_port,
@@ -383,10 +397,12 @@ async fn twins_receive_loop(
 
     while let Ok(io::InputMessage::Consensus(message)) = recv.recv(ctx).await {
         let view_number = message.message.msg.view().number.0 as usize;
+        let phase_number = input_msg_phase_number(&message);
+        let kind = message.message.msg.label();
         // Here we assume that all instances start from view 0 in the tests.
         // If the view is higher than what we have planned for, assume no partitions.
         // Every node is guaranteed to be present in only one partition.
-        let partitions_opt = splits.get(view_number);
+        let partitions_opt = splits.get(view_number).and_then(|ps| ps.get(phase_number));
 
         if partitions_opt.is_none() {
             bail!(
@@ -404,7 +420,9 @@ async fn twins_receive_loop(
         match message.recipient {
             io::Target::Broadcast => match partitions_opt {
                 None => {
-                    tracing::info!("broadcasting view={view_number} from={port} target=all");
+                    tracing::info!(
+                        "broadcasting view={view_number} from={port} target=all kind={kind}"
+                    );
                     for target_port in sends.keys() {
                         send_or_stash(true, *target_port, msg());
                     }
@@ -412,7 +430,7 @@ async fn twins_receive_loop(
                 Some(ps) => {
                     for p in ps {
                         let can_send = p.contains(&port);
-                        tracing::info!("broadcasting view={view_number} from={port} target={p:?} can_send={can_send} t={}", start.elapsed().as_secs());
+                        tracing::info!("broadcasting view={view_number} from={port} target={p:?} kind={kind} can_send={can_send}");
                         for target_port in p {
                             send_or_stash(can_send, *target_port, msg());
                         }
@@ -426,7 +444,7 @@ async fn twins_receive_loop(
                     None => {
                         for target_port in target_ports {
                             tracing::info!(
-                                "unicasting view={view_number} from={port} target={target_port}"
+                                "unicasting view={view_number} from={port} target={target_port} kind={kind}"
                             );
                             send_or_stash(true, *target_port, msg());
                         }
@@ -436,7 +454,7 @@ async fn twins_receive_loop(
                             let can_send = p.contains(&port);
                             for target_port in target_ports {
                                 if p.contains(target_port) {
-                                    tracing::info!("unicasting view={view_number} from={port} target={target_port } can_send={can_send} t={}", start.elapsed().as_secs());
+                                    tracing::info!("unicasting view={view_number} from={port} target={target_port } kind={kind} can_send={can_send}");
                                     send_or_stash(can_send, *target_port, msg());
                                 }
                             }
@@ -478,14 +496,22 @@ async fn twins_gossip_loop(
                 if number < first_needed {
                     break;
                 }
-                // Stop if the source doesn't actually have this block to give.
-                let Ok(Some(block)) = local_store.block(ctx, number).await else {
-                    break;
-                };
-                // Perform the storing operation asynchronously because `queue_block` will
+                // Perform the storage operations asynchronously because `queue_block` will
                 // wait for all dependencies to be inserted first.
                 s.spawn_bg(async move {
+                    // Wait for the source to actually have the block.
+                    if local_store.wait_until_queued(ctx, number).await.is_err() {
+                        return Ok(());
+                    }
+                    let Ok(Some(block)) = local_store.block(ctx, number).await else {
+                        tracing::info!(
+                            "   ~~x gossip unavailable from={from} to={to} number={number}"
+                        );
+                        return Ok(());
+                    };
+                    tracing::info!("   ~~> gossip queue from={from} to={to} number={number}");
                     let _ = remote_store.queue_block(ctx, block).await;
+                    tracing::info!("   ~~V gossip stored from={from} to={to} number={number}");
                     Ok(())
                 });
                 // Be pessimistic and try to insert all ancestors, to minimise the chance that
@@ -525,6 +551,19 @@ fn output_msg_commit_qc(msg: &io::OutputMessage) -> Option<&validator::CommitQC>
             ConsensusMsg::LeaderCommit(lc) => Some(&lc.justification),
         },
     }
+}
+
+/// Index of the phase in which the message appears, to decide which partitioning to apply.
+fn input_msg_phase_number(msg: &io::ConsensusInputMessage) -> usize {
+    use validator::ConsensusMsg;
+    let phase = match msg.message.msg {
+        ConsensusMsg::ReplicaPrepare(_) => 0,
+        ConsensusMsg::LeaderPrepare(_) => 0,
+        ConsensusMsg::ReplicaCommit(_) => 0,
+        ConsensusMsg::LeaderCommit(_) => 1,
+    };
+    assert!(phase < NUM_PHASES);
+    phase
 }
 
 struct TwinsGossipMessage {

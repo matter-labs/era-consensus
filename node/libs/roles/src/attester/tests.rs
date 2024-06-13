@@ -3,7 +3,7 @@ use crate::validator::testonly::Setup;
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::ctx;
-use zksync_consensus_crypto::{ByteFmt, Text, TextFmt};
+use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
 use zksync_protobuf::testonly::test_encode_random;
 
 #[test]
@@ -44,16 +44,16 @@ fn test_text_encoding() {
     let t = TextFmt::encode(&sig);
     assert_eq!(sig, Text::new(&t).decode::<Signature>().unwrap());
 
+    let msg_hash: MsgHash = rng.gen();
+    let t = TextFmt::encode(&msg_hash);
+    assert_eq!(msg_hash, Text::new(&t).decode::<MsgHash>().unwrap());
+
     let agg_sig: AggregateSignature = rng.gen();
     let t = TextFmt::encode(&agg_sig);
     assert_eq!(
         agg_sig,
         Text::new(&t).decode::<AggregateSignature>().unwrap()
     );
-
-    let msg_hash: MsgHash = rng.gen();
-    let t = TextFmt::encode(&msg_hash);
-    assert_eq!(msg_hash, Text::new(&t).decode::<MsgHash>().unwrap());
 }
 
 #[test]
@@ -101,27 +101,36 @@ fn test_agg_signature_verify() {
     let msg1: MsgHash = rng.gen();
     let msg2: MsgHash = rng.gen();
 
-    let key1: SecretKey = rng.gen();
-    let key2: SecretKey = rng.gen();
+    let key1: bls12_381::SecretKey = rng.gen();
+    let key2: bls12_381::SecretKey = rng.gen();
+    let key3: bls12_381::SecretKey = rng.gen();
 
-    let sig1 = key1.sign_hash(&msg1);
-    let sig2 = key2.sign_hash(&msg2);
+    let hash = &msg1.0.as_bytes().as_slice();
+    let sig1 = key1.sign(hash);
+    let sig2 = key2.sign(hash);
 
     let agg_sig = AggregateSignature::aggregate(vec![&sig1, &sig2]);
 
     // Matching key and message.
     agg_sig
-        .verify_hash([(msg1, &key1.public()), (msg2, &key2.public())].into_iter())
+        .verify_hash(&msg1, [&key1.public(), &key2.public()].into_iter())
         .unwrap();
 
     // Mismatching message.
     assert!(agg_sig
-        .verify_hash([(msg2, &key1.public()), (msg1, &key2.public())].into_iter())
+        .verify_hash(&msg2, [&key1.public(), &key2.public()].into_iter())
         .is_err());
 
     // Mismatching key.
     assert!(agg_sig
-        .verify_hash([(msg1, &key2.public()), (msg2, &key1.public())].into_iter())
+        .verify_hash(
+            &msg1,
+            [&key1.public(), &key2.public(), &key3.public()].into_iter()
+        )
+        .is_err());
+
+    assert!(agg_sig
+        .verify_hash(&msg1, [&key3.public()].into_iter())
         .is_err());
 }
 
@@ -138,25 +147,31 @@ fn test_batch_qc() {
     let rng = &mut ctx.rng();
 
     let setup1 = Setup::new(rng, 6);
+    // Completely different genesis.
     let setup2 = Setup::new(rng, 6);
-    let mut genesis3 = (*setup1.genesis).clone();
-    genesis3.attesters = Committee::new(
-        setup1
-            .genesis
-            .attesters
-            .as_ref()
-            .unwrap()
-            .iter()
-            .take(3)
-            .cloned(),
-    )
-    .unwrap()
-    .into();
-    let genesis3 = genesis3.with_hash();
+    // Genesis with only a subset of the attesters.
+    let genesis3 = {
+        let mut genesis3 = (*setup1.genesis).clone();
+        genesis3.attesters = Committee::new(
+            setup1
+                .genesis
+                .attesters
+                .as_ref()
+                .unwrap()
+                .iter()
+                .take(3)
+                .cloned(),
+        )
+        .unwrap()
+        .into();
+        genesis3.with_hash()
+    };
+
     let attesters = setup1.genesis.attesters.as_ref().unwrap();
 
+    // Create QCs with increasing number of attesters.
     for i in 0..setup1.attester_keys.len() + 1 {
-        let mut qc = BatchQC::new(make_batch_msg(rng), &setup1.genesis).unwrap();
+        let mut qc = BatchQC::new(make_batch_msg(rng)).unwrap();
         for key in &setup1.attester_keys[0..i] {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis)
                 .unwrap();
@@ -164,7 +179,7 @@ fn test_batch_qc() {
 
         let expected_weight: u64 = attesters.iter().take(i).map(|w| w.weight).sum();
         if expected_weight >= attesters.threshold() {
-            assert!(qc.verify(&setup1.genesis).is_ok());
+            qc.verify(&setup1.genesis).expect("failed to verify QC");
         } else {
             assert_matches!(
                 qc.verify(&setup1.genesis),
@@ -189,7 +204,7 @@ fn test_attester_committee_weights() {
     let sums = [1000, 1600, 2400, 8400, 9300, 10000];
 
     let msg = make_batch_msg(rng);
-    let mut qc = BatchQC::new(msg.clone(), &setup.genesis).unwrap();
+    let mut qc = BatchQC::new(msg.clone()).unwrap();
     for (n, weight) in sums.iter().enumerate() {
         let key = &setup.attester_keys[n];
         qc.add(&key.sign_msg(msg.clone()), &setup.genesis).unwrap();
@@ -199,7 +214,7 @@ fn test_attester_committee_weights() {
                 .attesters
                 .as_ref()
                 .unwrap()
-                .weight(&qc.signers),
+                .weight_of_keys(qc.signatures.keys()),
             *weight
         );
     }

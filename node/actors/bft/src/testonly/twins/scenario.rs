@@ -91,18 +91,18 @@ where
     }
 }
 
-/// The configuration for a single round.
-pub struct RoundConfig<'a, T: HasKey> {
+/// The configuration for a single round of P phases.
+pub struct RoundConfig<'a, T: HasKey, const P: usize> {
     pub leader: &'a T::Key,
-    pub partitions: Split<'a, T>,
+    pub phase_partitions: [Split<'a, T>; P],
 }
 
 /// Configuration for a number of rounds.
-pub struct Scenario<'a, T: HasKey> {
-    pub rounds: Vec<RoundConfig<'a, T>>,
+pub struct Scenario<'a, T: HasKey, const P: usize> {
+    pub rounds: Vec<RoundConfig<'a, T, P>>,
 }
 
-pub struct ScenarioGenerator<'a, T>
+pub struct ScenarioGenerator<'a, T, const P: usize>
 where
     T: Twin,
 {
@@ -114,7 +114,7 @@ where
     splits: Vec<Split<'a, T>>,
 }
 
-impl<'a, T> ScenarioGenerator<'a, T>
+impl<'a, T, const P: usize> ScenarioGenerator<'a, T, P>
 where
     T: Twin,
 {
@@ -145,7 +145,7 @@ where
     }
 
     /// Generate a single run for the agreed upon number of rounds.
-    pub fn generate_one(&self, rng: &mut impl Rng) -> Scenario<'a, T> {
+    pub fn generate_one(&self, rng: &mut impl Rng) -> Scenario<'a, T, P> {
         let mut rounds = Vec::new();
         // We could implement this with or without replacement.
         // In practice there probably are so many combinations that it won't matter.
@@ -155,7 +155,9 @@ where
         for _ in 0..self.num_rounds {
             rounds.push(RoundConfig {
                 leader: self.keys.choose(rng).cloned().unwrap(),
-                partitions: self.splits.choose(rng).cloned().unwrap(),
+                phase_partitions: std::array::from_fn(|_| {
+                    self.splits.choose(rng).cloned().unwrap()
+                }),
             })
         }
 
