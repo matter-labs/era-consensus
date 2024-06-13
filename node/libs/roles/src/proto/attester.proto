@@ -12,6 +12,12 @@ message Batch {
 message BatchQC {
   reserved 2, 3; 
   reserved "signers", "sig";
+
+  // TODO: de-deprecate these when we move back to using BLS aggregates, 
+  // or consider the ones at the bottom.
+  // optional std.BitVector signers = 2; // required
+  // optional AggregateSignature sig = 3; // required
+
   optional Batch msg = 1; // required
   repeated Attestation signatures = 4; 
 }
@@ -52,4 +58,15 @@ message Attestation {
 
 message MsgHash {
   optional bytes keccak256 = 1; // required
+}
+
+// TODO: Placeholder for EIP-2537
+message AggregateSignature {
+  optional bytes bls12_381 = 1; // required
+}
+
+// TODO: Placeholder for EIP-2537
+message AggregateMultiSig {
+  optional std.BitVector signers = 1; // required
+  optional AggregateSignature sig = 2; // required
 }
