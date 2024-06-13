@@ -1,13 +1,11 @@
 use super::StateMachine;
 use crate::metrics;
-use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator;
 
 impl StateMachine {
     /// This blocking method is used whenever we start a new view.
-    #[instrument(level = "trace", err)]
     pub(crate) async fn start_new_view(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         // Update the state machine.
         self.view = self.view.next();
