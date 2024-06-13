@@ -3,7 +3,6 @@ use std::fmt::Debug;
 use rand::{
     distributions::{Distribution, Standard},
     rngs::StdRng,
-    seq::SliceRandom,
     Rng, SeedableRng,
 };
 
@@ -60,11 +59,6 @@ fn prop_sig_format() {
 }
 
 #[test]
-fn prop_aggsig_format() {
-    prop_byte_format::<AggregateSignature>();
-}
-
-#[test]
 fn prop_sign_verify() {
     let rng = &mut make_rng();
 
@@ -100,56 +94,6 @@ fn prop_sign_verify_wrong_msg_fail() {
         let msg2 = gen_msg(rng);
         let sig = sk.sign(&msg1).unwrap();
         sig.verify(&msg2, &sk.public()).unwrap_err();
-    }
-}
-
-#[test]
-fn prop_sign_verify_agg() {
-    let rng = &mut make_rng();
-
-    for _ in 0..10 {
-        let mut agg = AggregateSignature::default();
-        let mut inputs = Vec::new();
-        for _ in 0..rng.gen_range(0..5) {
-            let sk = rng.gen::<SecretKey>();
-            let msg = gen_msg(rng);
-            let sig = sk.sign(&msg).unwrap();
-            agg.add(sig);
-            inputs.push((msg, sk.public()));
-        }
-
-        // Verification should work for any order of messages and signatures.
-        agg.0.shuffle(rng);
-        inputs.shuffle(rng);
-
-        agg.verify(inputs.iter().map(|(msg, pk)| (msg.as_slice(), pk)))
-            .unwrap();
-    }
-}
-
-#[test]
-fn prop_sign_verify_agg_fail() {
-    let rng = &mut make_rng();
-
-    for _ in 0..10 {
-        let mut agg = AggregateSignature::default();
-        let mut inputs = Vec::new();
-        // Minimum two signatures so that we can pop something.
-        for _ in 0..=rng.gen_range(2..5) {
-            let sk = rng.gen::<SecretKey>();
-            let msg = gen_msg(rng);
-            let sig = sk.sign(&msg).unwrap();
-            agg.add(sig);
-            inputs.push((msg, sk.public()));
-        }
-        // Do something to mess it up.
-        if rng.gen_bool(0.5) {
-            inputs.pop();
-        } else {
-            agg.0.pop();
-        }
-        agg.verify(inputs.iter().map(|(msg, pk)| (msg.as_slice(), pk)))
-            .unwrap_err();
     }
 }
 

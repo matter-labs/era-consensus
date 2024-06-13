@@ -1,6 +1,7 @@
-use super::{Signed, Signers};
+use super::Signed;
 use crate::{attester, validator::Genesis};
 use anyhow::{ensure, Context as _};
+use zksync_consensus_utils::enum_util::Variant;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Default, PartialOrd)]
 /// A batch number.
@@ -26,10 +27,8 @@ pub struct Batch {
 /// It contains the signatures of the attesters that signed the batch.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BatchQC {
-    /// The aggregate signature of the signed L1 batches.
-    pub signature: attester::AggregateSignature,
-    /// The attesters that signed this message.
-    pub signers: Signers,
+    /// The signatures of the signed L1 batches from all the attesters who signed it.
+    pub signatures: attester::MultiSig,
     /// The message that was signed.
     pub message: Batch,
 }
@@ -75,17 +74,10 @@ pub enum BatchQCAddError {
 
 impl BatchQC {
     /// Create a new empty instance for a given `Batch` message.
-    pub fn new(message: Batch, genesis: &Genesis) -> anyhow::Result<Self> {
+    pub fn new(message: Batch) -> anyhow::Result<Self> {
         Ok(Self {
             message,
-            signers: Signers::new(
-                genesis
-                    .attesters
-                    .as_ref()
-                    .context("no attester committee in genesis")?
-                    .len(),
-            ),
-            signature: attester::AggregateSignature::default(),
+            signatures: attester::MultiSig::default(),
         })
     }
 
@@ -93,18 +85,23 @@ impl BatchQC {
     /// Signature is assumed to be already verified.
     pub fn add(&mut self, msg: &Signed<Batch>, genesis: &Genesis) -> anyhow::Result<()> {
         use BatchQCAddError as Error;
-        ensure!(self.message == msg.msg, Error::InconsistentMessages);
-        let i = genesis
+
+        let committee = genesis
             .attesters
             .as_ref()
-            .context("no attester committee in genesis")?
-            .index(&msg.key)
-            .ok_or(Error::SignerNotInCommittee {
+            .context("no attester committee in genesis")?;
+
+        ensure!(self.message == msg.msg, Error::InconsistentMessages);
+        ensure!(!self.signatures.contains(&msg.key), Error::Exists);
+        ensure!(
+            committee.contains(&msg.key),
+            Error::SignerNotInCommittee {
                 signer: Box::new(msg.key.clone()),
-            })?;
-        ensure!(!self.signers.0[i], Error::Exists);
-        self.signers.0.set(i, true);
-        self.signature.add(&msg.sig);
+            }
+        );
+
+        self.signatures.add(msg.key.clone(), msg.sig.clone());
+
         Ok(())
     }
 
@@ -115,11 +112,16 @@ impl BatchQC {
             .attesters
             .as_ref()
             .ok_or(Error::AttestersNotInGenesis)?;
-        if self.signers.len() != attesters.len() {
-            return Err(Error::BadSignersSet);
+
+        // Verify that all signers are attesters.
+        for pk in self.signatures.keys() {
+            if !attesters.contains(pk) {
+                return Err(Error::BadSignersSet);
+            }
         }
+
         // Verify that the signer's weight is sufficient.
-        let weight = attesters.weight(&self.signers);
+        let weight = attesters.weight_of_keys(self.signatures.keys());
         let threshold = attesters.threshold();
         if weight < threshold {
             return Err(Error::NotEnoughSigners {
@@ -127,16 +129,9 @@ impl BatchQC {
                 want: threshold,
             });
         }
-        // The enumeration here goes by order of public key, which assumes
-        // that the aggregate signature does not care about ordering.
-        let messages_and_keys = attesters
-            .keys()
-            .enumerate()
-            .filter(|(i, _)| self.signers.0[*i])
-            .map(|(_, pk)| (self.message.clone(), pk));
 
-        self.signature
-            .verify_messages(messages_and_keys)
+        self.signatures
+            .verify_msg(&self.message.clone().insert())
             .map_err(Error::BadSignature)
     }
 }

@@ -285,6 +285,33 @@ pub fn read_optional<T: ProtoFmt>(field: &Option<T::Proto>) -> anyhow::Result<Op
     field.as_ref().map(ProtoFmt::read).transpose()
 }
 
+/// Parses a repeated proto struct into a map.
+///
+/// The method assumes that we have a `BTreeMap<K, V>` field that we serialized
+/// as `Vec<T>` into protobuf, where `T` consists of a `K::Proto` and `V::Proto`
+/// field. The `k` and `v` function are getters to project `T` into the key and
+/// value protobuf components, which are individually decoded into `K` and `V`.
+pub fn read_map<T, K, V>(
+    items: &[T],
+    k: impl Fn(&T) -> &Option<K::Proto>,
+    v: impl Fn(&T) -> &Option<V::Proto>,
+) -> anyhow::Result<BTreeMap<K, V>>
+where
+    K: ProtoFmt + Ord,
+    V: ProtoFmt,
+{
+    let items: Vec<(K, V)> = items
+        .iter()
+        .map(|item| {
+            let k = read_required(k(item)).context("key")?;
+            let v = read_required(v(item)).context("value")?;
+            Ok((k, v))
+        })
+        .collect::<anyhow::Result<Vec<_>>>()?;
+
+    Ok(items.into_iter().collect())
+}
+
 /// Extracts a required field.
 pub fn required<T>(field: &Option<T>) -> anyhow::Result<&T> {
     field.as_ref().context("missing")

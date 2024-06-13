@@ -1,12 +1,12 @@
 use super::{
-    AggregateSignature, Batch, BatchNumber, BatchQC, Msg, MsgHash, PublicKey, Signature, Signed,
-    Signers, WeightedAttester,
+    AggregateSignature, Batch, BatchNumber, BatchQC, Msg, MsgHash, MultiSig, PublicKey, Signature,
+    Signed, Signers, WeightedAttester,
 };
-use crate::proto::attester::{self as proto};
+use crate::proto::attester::{self as proto, Attestation};
 use anyhow::Context as _;
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
-use zksync_protobuf::{read_required, required, ProtoFmt};
+use zksync_protobuf::{read_map, read_required, required, ProtoFmt};
 
 impl ProtoFmt for Batch {
     type Proto = proto::Batch;
@@ -118,12 +118,12 @@ impl ProtoFmt for AggregateSignature {
     type Proto = proto::AggregateSignature;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.secp256k1)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.bls12_381)?)?))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            secp256k1: Some(self.0.encode()),
+            bls12_381: Some(self.0.encode()),
         }
     }
 }
@@ -148,16 +148,23 @@ impl ProtoFmt for BatchQC {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             message: read_required(&r.msg).context("message")?,
-            signers: read_required(&r.signers).context("signers")?,
-            signature: read_required(&r.sig).context("signature")?,
+            signatures: MultiSig(
+                read_map(&r.signatures, |s| &s.key, |s| &s.sig).context("signatures")?,
+            ),
         })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
             msg: Some(self.message.build()),
-            signers: Some(self.signers.build()),
-            sig: Some(self.signature.build()),
+            signatures: self
+                .signatures
+                .iter()
+                .map(|(pk, sig)| Attestation {
+                    key: Some(pk.build()),
+                    sig: Some(sig.build()),
+                })
+                .collect(),
         }
     }
 }

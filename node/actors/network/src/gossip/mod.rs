@@ -137,20 +137,14 @@ impl Network {
                 .last_viewed_qc
                 .clone()
                 .map(|qc| {
-                    attester::BatchQC::new(
-                        attester::Batch {
-                            number: qc.message.number.next(),
-                        },
-                        self.genesis(),
-                    )
+                    attester::BatchQC::new(attester::Batch {
+                        number: qc.message.number.next(),
+                    })
                 })
                 .unwrap_or_else(|| {
-                    attester::BatchQC::new(
-                        attester::Batch {
-                            number: attester::BatchNumber(0),
-                        },
-                        self.genesis(),
-                    )
+                    attester::BatchQC::new(attester::Batch {
+                        number: attester::BatchNumber(0),
+                    })
                 })
                 .context("new qc")?;
 
@@ -160,9 +154,7 @@ impl Network {
                     .batch_qc
                     .clone()
                     .entry(new_qc.message.number.clone())
-                    .or_insert_with(|| {
-                        attester::BatchQC::new(new_qc.message.clone(), self.genesis()).expect("qc")
-                    })
+                    .or_insert_with(|| attester::BatchQC::new(new_qc.message.clone()).expect("qc"))
                     .add(&sig, self.genesis())
                     .is_err()
                 {
@@ -171,12 +163,12 @@ impl Network {
                 }
             }
 
-            let weight = attesters.weight(
-                &self
-                    .batch_qc
+            let weight = attesters.weight_of_keys(
+                self.batch_qc
                     .get(&new_qc.message.number)
                     .context("last qc")?
-                    .signers,
+                    .signatures
+                    .keys(),
             );
 
             if weight < attesters.threshold() {

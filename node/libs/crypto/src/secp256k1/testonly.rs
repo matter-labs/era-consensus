@@ -1,4 +1,4 @@
-use crate::secp256k1::{AggregateSignature, PublicKey, SecretKey, Signature};
+use crate::secp256k1::{PublicKey, SecretKey, Signature};
 use elliptic_curve::ScalarPrimitive;
 use k256::ecdsa::RecoveryId;
 use rand::{
@@ -48,15 +48,5 @@ impl Distribution<Signature> for Standard {
         let recid = rng.gen_range(0u8..=3u8);
         let recid = RecoveryId::from_byte(recid).unwrap();
         Signature { sig, recid }
-    }
-}
-
-impl Distribution<AggregateSignature> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateSignature {
-        let mut agg = AggregateSignature::default();
-        for _ in 0..rng.gen_range(1..=5) {
-            agg.add(rng.gen());
-        }
-        agg
     }
 }
