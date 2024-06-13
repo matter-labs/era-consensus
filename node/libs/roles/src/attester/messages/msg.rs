@@ -152,6 +152,8 @@ impl Committee {
     }
 
     /// Compute the sum of weights of as a list of public keys.
+    ///
+    /// The method assumes that the keys are unique and does not de-duplicate.
     pub fn weight_of_keys<'a>(&self, keys: impl Iterator<Item = &'a attester::PublicKey>) -> u64 {
         keys.filter_map(|pk| self.index(pk).map(|i| self.vec[i].weight))
             .sum()
