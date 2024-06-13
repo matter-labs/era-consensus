@@ -589,7 +589,7 @@ async fn replica_commit_non_validator_signer() {
         assert_matches!(
             res,
             Err(replica_commit::Error::NonValidatorSigner { signer }) => {
-                assert_eq!(signer, non_validator_key.public());
+                assert_eq!(*signer, non_validator_key.public());
             }
         );
         Ok(())

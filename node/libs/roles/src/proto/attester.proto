@@ -44,11 +44,15 @@ message Signed {
 }
 
 message PublicKey {
-  optional bytes bn254 = 1; // required
+  reserved 1; 
+  reserved "bn254";
+  optional bytes secp256k1 = 2; // required
 }
 
 message Signature {
-  optional bytes bn254 = 1; // required
+  reserved 1; 
+  reserved "bn254";
+  optional bytes secp256k1 = 2; // required
 }
 
 message WeightedAttester {
@@ -57,7 +61,11 @@ message WeightedAttester {
 }
 
 message AggregateSignature {
-  optional bytes bn254 = 1; // required
+  reserved 1; 
+  reserved "bn254";
+  // This is the aggregate signature itself encoded as bytes, which is why it's not `repeated`,
+  // even though for secp256k1 it's just a list of signatures.
+  optional bytes secp256k1 = 2; // required
 }
 
 message MsgHash {

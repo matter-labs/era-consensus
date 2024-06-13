@@ -138,23 +138,29 @@ fn test_batch_qc() {
     let rng = &mut ctx.rng();
 
     let setup1 = Setup::new(rng, 6);
+    // Completely different genesis.
     let setup2 = Setup::new(rng, 6);
-    let mut genesis3 = (*setup1.genesis).clone();
-    genesis3.attesters = Committee::new(
-        setup1
-            .genesis
-            .attesters
-            .as_ref()
-            .unwrap()
-            .iter()
-            .take(3)
-            .cloned(),
-    )
-    .unwrap()
-    .into();
-    let genesis3 = genesis3.with_hash();
+    // Genesis with only a subset of the attesters.
+    let genesis3 = {
+        let mut genesis3 = (*setup1.genesis).clone();
+        genesis3.attesters = Committee::new(
+            setup1
+                .genesis
+                .attesters
+                .as_ref()
+                .unwrap()
+                .iter()
+                .take(3)
+                .cloned(),
+        )
+        .unwrap()
+        .into();
+        genesis3.with_hash()
+    };
+
     let attesters = setup1.genesis.attesters.as_ref().unwrap();
 
+    // Create QCs with increasing number of attesters.
     for i in 0..setup1.attester_keys.len() + 1 {
         let mut qc = BatchQC::new(make_batch_msg(rng), &setup1.genesis).unwrap();
         for key in &setup1.attester_keys[0..i] {
@@ -164,7 +170,7 @@ fn test_batch_qc() {
 
         let expected_weight: u64 = attesters.iter().take(i).map(|w| w.weight).sum();
         if expected_weight >= attesters.threshold() {
-            assert!(qc.verify(&setup1.genesis).is_ok());
+            qc.verify(&setup1.genesis).expect("failed to verify QC");
         } else {
             assert_matches!(
                 qc.verify(&setup1.genesis),

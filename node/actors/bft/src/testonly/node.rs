@@ -63,6 +63,7 @@ impl Node {
         let mut con_recv = consensus_pipe.recv;
         let con_send = consensus_pipe.send;
         scope::run!(ctx, |ctx, s| async {
+            // Run the consensus actor
             s.spawn(async {
                 let validator_key = self.net.validator_key.clone().unwrap();
                 crate::Config {
@@ -76,6 +77,8 @@ impl Node {
                 .await
                 .context("consensus.run()")
             });
+            // Forward input messages received from the network to the actor;
+            // turns output from others to input for this instance.
             s.spawn(async {
                 while let Ok(network_message) = net_recv.recv(ctx).await {
                     match network_message {
@@ -86,6 +89,8 @@ impl Node {
                 }
                 Ok(())
             });
+            // Forward output messages from the actor to the network;
+            // turns output from this to inputs for others.
             // Get the next message from the channel. Our response depends on what type of replica we are.
             while let Ok(msg) = con_recv.recv(ctx).await {
                 match msg {

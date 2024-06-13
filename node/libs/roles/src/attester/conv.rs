@@ -109,11 +109,11 @@ impl ProtoFmt for Msg {
 impl ProtoFmt for PublicKey {
     type Proto = proto::PublicKey;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.secp256k1)?)?))
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            bn254: Some(self.0.encode()),
+            secp256k1: Some(self.0.encode()),
         }
     }
 }
@@ -121,11 +121,11 @@ impl ProtoFmt for PublicKey {
 impl ProtoFmt for Signature {
     type Proto = proto::Signature;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.secp256k1)?)?))
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            bn254: Some(self.0.encode()),
+            secp256k1: Some(self.0.encode()),
         }
     }
 }
@@ -163,12 +163,12 @@ impl ProtoFmt for AggregateSignature {
     type Proto = proto::AggregateSignature;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
+        Ok(Self(ByteFmt::decode(required(&r.secp256k1)?)?))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            bn254: Some(self.0.encode()),
+            secp256k1: Some(self.0.encode()),
         }
     }
 }

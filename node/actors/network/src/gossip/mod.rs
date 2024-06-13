@@ -53,6 +53,8 @@ pub(crate) struct Network {
     /// Output pipe of the network actor.
     pub(crate) sender: channel::UnboundedSender<io::OutputMessage>,
     /// Queue of block fetching requests.
+    ///
+    /// These are blocks that this node wants to request from remote peers via RPC.
     pub(crate) fetch_queue: fetch::Queue,
     /// Last viewed QC.
     pub(crate) last_viewed_qc: Option<attester::BatchQC>,

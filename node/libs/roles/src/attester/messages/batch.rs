@@ -251,7 +251,8 @@ impl BatchQC {
                 want: threshold,
             });
         }
-
+        // The enumeration here goes by order of public key, which assumes
+        // that the aggregate signature does not care about ordering.
         let messages_and_keys = attesters
             .keys()
             .enumerate()

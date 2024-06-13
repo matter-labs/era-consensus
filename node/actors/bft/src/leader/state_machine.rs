@@ -1,6 +1,5 @@
 use crate::{metrics, Config, OutputSender};
 use std::{collections::BTreeMap, sync::Arc, unreachable};
-use tracing::instrument;
 use zksync_concurrency::{
     ctx,
     error::Wrap as _,
@@ -48,8 +47,7 @@ impl StateMachine {
     /// Returns a tuple containing:
     /// * The newly created [`StateMachine`] instance.
     /// * A sender handle that should be used to send values to be processed by the instance, asynchronously.
-    #[instrument(level = "trace")]
-    pub fn new(
+    pub(crate) fn new(
         ctx: &ctx::Ctx,
         config: Arc<Config>,
         outbound_pipe: OutputSender,

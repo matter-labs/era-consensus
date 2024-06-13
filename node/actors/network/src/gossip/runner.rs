@@ -280,6 +280,7 @@ impl Network {
 
             // Perform get_block calls to peer.
             s.spawn::<()>(async {
+                // Gossiped state of what range of blocks is available on the remote peer.
                 let state = &mut push_block_store_state_server.state.subscribe();
                 loop {
                     let call = get_block_client.reserve(ctx).await?;

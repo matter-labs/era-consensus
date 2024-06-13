@@ -77,32 +77,42 @@ pub fn new_configs(
     setup: &validator::testonly::Setup,
     gossip_peers: usize,
 ) -> Vec<Config> {
-    let configs = setup
-        .validator_keys
-        .iter()
-        .zip(setup.attester_keys.iter())
-        .map(|(validator_key, attester_key)| {
-            let addr = net::tcp::testonly::reserve_listener();
-            Config {
-                server_addr: addr,
-                public_addr: (*addr).into(),
-                // Pings are disabled in tests by default to avoid dropping connections
-                // due to timeouts.
-                ping_timeout: None,
-                validator_key: Some(validator_key.clone()),
-                attester_key: Some(attester_key.clone()),
-                gossip: GossipConfig {
-                    key: rng.gen(),
-                    dynamic_inbound_limit: usize::MAX,
-                    static_inbound: HashSet::default(),
-                    static_outbound: HashMap::default(),
-                },
-                max_block_size: usize::MAX,
-                tcp_accept_rate: limiter::Rate::INF,
-                rpc: RpcConfig::default(),
-                max_block_queue_size: 10,
-            }
-        });
+    new_configs_for_validators(rng, setup.validator_keys.iter(), gossip_peers)
+}
+
+/// Construct configs for `n` validators of the consensus.
+///
+/// This version allows for repeating keys used in Twins tests.
+pub fn new_configs_for_validators<'a, I>(
+    rng: &mut impl Rng,
+    validator_keys: I,
+    gossip_peers: usize,
+) -> Vec<Config>
+where
+    I: Iterator<Item = &'a validator::SecretKey>,
+{
+    let configs = validator_keys.map(|validator_key| {
+        let addr = net::tcp::testonly::reserve_listener();
+        Config {
+            server_addr: addr,
+            public_addr: (*addr).into(),
+            // Pings are disabled in tests by default to avoid dropping connections
+            // due to timeouts.
+            ping_timeout: None,
+            validator_key: Some(validator_key.clone()),
+            attester_key: None,
+            gossip: GossipConfig {
+                key: rng.gen(),
+                dynamic_inbound_limit: usize::MAX,
+                static_inbound: HashSet::default(),
+                static_outbound: HashMap::default(),
+            },
+            max_block_size: usize::MAX,
+            tcp_accept_rate: limiter::Rate::INF,
+            rpc: RpcConfig::default(),
+            max_block_queue_size: 10,
+        }
+    });
     let mut cfgs: Vec<_> = configs.collect();
 
     let n = cfgs.len();

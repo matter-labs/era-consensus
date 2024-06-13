@@ -1,6 +1,5 @@
 //! Handler of a LeaderPrepare message.
 use super::StateMachine;
-use tracing::instrument;
 use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator;
@@ -65,7 +64,6 @@ impl Wrap for Error {
 
 impl StateMachine {
     /// Processes a leader prepare message.
-    #[instrument(level = "trace", ret)]
     pub(crate) async fn process_leader_prepare(
         &mut self,
         ctx: &ctx::Ctx,

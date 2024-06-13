@@ -309,7 +309,7 @@ impl Distribution<LeaderSelectionMode> for Standard {
 
 impl Distribution<GenesisRaw> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisRaw {
-        GenesisRaw {
+        let mut genesis = GenesisRaw {
             chain_id: rng.gen(),
             fork_number: rng.gen(),
             first_block: rng.gen(),
@@ -318,7 +318,24 @@ impl Distribution<GenesisRaw> for Standard {
             validators: rng.gen(),
             attesters: rng.gen(),
             leader_selection: rng.gen(),
+        };
+
+        // In order for the genesis to be valid, sticky/rota leaders need to be in the validator committee.
+        if let LeaderSelectionMode::Sticky(_) = genesis.leader_selection {
+            let i = rng.gen_range(0..genesis.validators.len());
+            genesis.leader_selection =
+                LeaderSelectionMode::Sticky(genesis.validators.get(i).unwrap().key.clone());
+        } else if let LeaderSelectionMode::Rota(pks) = genesis.leader_selection {
+            let n = pks.len();
+            let mut pks = Vec::new();
+            for _ in 0..n {
+                let i = rng.gen_range(0..genesis.validators.len());
+                pks.push(genesis.validators.get(i).unwrap().key.clone());
+            }
+            genesis.leader_selection = LeaderSelectionMode::Rota(pks);
         }
+
+        genesis
     }
 }
 

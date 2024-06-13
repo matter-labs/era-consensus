@@ -1,9 +1,9 @@
 use std::fmt;
-use zksync_consensus_crypto::{bn254, ByteFmt, Text, TextFmt};
+use zksync_consensus_crypto::{secp256k1, ByteFmt, Text, TextFmt};
 
 /// A public key for an attester used in L1 batch signing.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PublicKey(pub(crate) bn254::PublicKey);
+pub struct PublicKey(pub(crate) secp256k1::PublicKey);
 
 impl ByteFmt for PublicKey {
     fn encode(&self) -> Vec<u8> {
@@ -17,12 +17,14 @@ impl ByteFmt for PublicKey {
 impl TextFmt for PublicKey {
     fn encode(&self) -> String {
         format!(
-            "attester:public:bn254:{}",
+            "attester:public:secp256k1:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
     }
     fn decode(text: Text) -> anyhow::Result<Self> {
-        text.strip("attester:public:bn254:")?.decode_hex().map(Self)
+        text.strip("attester:public:secp256k1:")?
+            .decode_hex()
+            .map(Self)
     }
 }
 

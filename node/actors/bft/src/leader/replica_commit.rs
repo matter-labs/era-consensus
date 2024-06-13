@@ -3,7 +3,6 @@
 use super::StateMachine;
 use crate::metrics;
 use std::collections::HashSet;
-use tracing::instrument;
 use zksync_concurrency::{ctx, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
 use zksync_consensus_roles::validator;
@@ -15,7 +14,7 @@ pub(crate) enum Error {
     #[error("Message signer isn't part of the validator set (signer: {signer:?})")]
     NonValidatorSigner {
         /// Signer of the message.
-        signer: validator::PublicKey,
+        signer: Box<validator::PublicKey>,
     },
     /// Past view or phase.
     #[error("past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
@@ -37,7 +36,7 @@ pub(crate) enum Error {
 }
 
 impl StateMachine {
-    #[instrument(level = "trace", skip(self), ret)]
+    /// Processes `ReplicaCommit` message.
     pub(crate) fn process_replica_commit(
         &mut self,
         ctx: &ctx::Ctx,
@@ -52,7 +51,7 @@ impl StateMachine {
         // Check that the message signer is in the validator committee.
         if !self.config.genesis().validators.contains(author) {
             return Err(Error::NonValidatorSigner {
-                signer: author.clone(),
+                signer: author.clone().into(),
             });
         }
 
