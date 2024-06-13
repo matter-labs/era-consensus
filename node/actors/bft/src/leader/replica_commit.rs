@@ -14,7 +14,7 @@ pub(crate) enum Error {
     #[error("Message signer isn't part of the validator set (signer: {signer:?})")]
     NonValidatorSigner {
         /// Signer of the message.
-        signer: validator::PublicKey,
+        signer: Box<validator::PublicKey>,
     },
     /// Past view or phase.
     #[error("past view/phase (current view: {current_view:?}, current phase: {current_phase:?})")]
@@ -36,6 +36,7 @@ pub(crate) enum Error {
 }
 
 impl StateMachine {
+    /// Processes `ReplicaCommit` message.
     pub(crate) fn process_replica_commit(
         &mut self,
         ctx: &ctx::Ctx,
@@ -50,7 +51,7 @@ impl StateMachine {
         // Check that the message signer is in the validator committee.
         if !self.config.genesis().validators.contains(author) {
             return Err(Error::NonValidatorSigner {
-                signer: author.clone(),
+                signer: author.clone().into(),
             });
         }
 

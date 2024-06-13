@@ -44,6 +44,7 @@ impl Wrap for Error {
 }
 
 impl StateMachine {
+    /// Processes `ReplicaPrepare` message.
     pub(crate) async fn process_replica_prepare(
         &mut self,
         ctx: &ctx::Ctx,
