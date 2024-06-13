@@ -1,8 +1,8 @@
 use super::{
-    AggregateSignature, Batch, BatchNumber, BatchQC, Msg, MsgHash, PublicKey, Signature, Signed,
-    Signers, SyncBatch, WeightedAttester,
+    AggregateSignature, Batch, BatchHeader, BatchNumber, BatchQC, FinalBatch, Msg, MsgHash,
+    Payload, PayloadHash, PublicKey, Signature, Signed, Signers, WeightedAttester,
 };
-use crate::{proto::attester as proto, validator::Payload};
+use crate::proto::attester::{self as proto};
 use anyhow::Context as _;
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
@@ -12,36 +12,57 @@ impl ProtoFmt for Batch {
     type Proto = proto::Batch;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            number: BatchNumber(*required(&r.number).context("number")?),
+            proposal: read_required(&r.proposal).context("proposal")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            number: Some(self.number.0),
+            proposal: Some(self.proposal.build()),
         }
     }
 }
 
-impl ProtoFmt for SyncBatch {
-    type Proto = proto::SyncBatch;
+impl ProtoFmt for FinalBatch {
+    type Proto = proto::FinalBatch;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let payloads = &r
-            .payloads
-            .iter()
-            .map(|a| Payload(a.clone()))
-            .collect::<Vec<Payload>>();
         Ok(Self {
-            number: BatchNumber(*required(&r.number).context("number")?),
-            payloads: payloads.clone(),
-            proof: required(&r.proof).context("proof")?.clone(),
+            payload: Payload(required(&r.payload).context("payload")?.clone()),
+            justification: read_required(&r.justification).context("justification")?,
         })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
+            payload: Some(self.payload.0.clone()),
+            justification: Some(self.justification.build()),
+        }
+    }
+}
+
+impl ProtoFmt for BatchHeader {
+    type Proto = proto::BatchHeader;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            number: BatchNumber(*required(&r.number).context("number")?),
+            payload: read_required(&r.payload).context("payload")?,
+        })
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
             number: Some(self.number.0),
-            payloads: self.payloads.iter().map(|a| a.0.clone()).collect(),
-            proof: Some(self.proof.clone()),
+            payload: Some(self.payload.build()),
+        }
+    }
+}
+
+impl ProtoFmt for PayloadHash {
+    type Proto = proto::PayloadHash;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            keccak256: Some(self.0.encode()),
         }
     }
 }

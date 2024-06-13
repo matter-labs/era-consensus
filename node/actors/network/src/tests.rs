@@ -20,7 +20,8 @@ async fn test_metrics() {
             .into_iter()
             .enumerate()
             .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(cfg, store.blocks.clone());
+                let (node, runner) =
+                    testonly::Instance::new(cfg, store.blocks.clone(), store.batches.clone());
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                 node
             })

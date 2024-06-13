@@ -40,7 +40,7 @@ message PushBatchStoreState {
   // First batch that the node has locally.
   optional uint64 first = 1; // required; BatchNumber
   // Last batch QC that the node has locally.
-  optional roles.attester.SyncBatch last = 2; // optional
+  optional roles.attester.BatchQC last = 2; // optional
 }
 
 // Asks the server to send an L2 block (including its transactions).
@@ -62,5 +62,5 @@ message GetBatchRequest {
 
 // Response to a `GetBatchRequest`.
 message GetBatchResponse {
-  optional roles.attester.SyncBatch batch = 1; // optional; missing if batch is not available
+  optional roles.attester.FinalBatch batch = 1; // optional; missing if batch is not available
 }

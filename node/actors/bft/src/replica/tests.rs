@@ -181,7 +181,6 @@ async fn leader_prepare_pruned_block() {
             .config
             .block_store
             .queued()
-            .1
             .first
             .prev()
             .unwrap();

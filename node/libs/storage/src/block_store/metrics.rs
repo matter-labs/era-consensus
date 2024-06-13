@@ -3,7 +3,7 @@ use std::time;
 
 #[derive(Debug, vise::Metrics)]
 #[metrics(prefix = "zksync_consensus_storage_persistent_block_store")]
-pub(super) struct PersistentStore {
+pub(super) struct PersistentBlockStore {
     /// Latency of a successful `genesis()` call.
     #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
     pub(super) genesis_latency: vise::Histogram<time::Duration>,
@@ -19,7 +19,7 @@ pub(super) struct PersistentStore {
 }
 
 #[vise::register]
-pub(crate) static PERSISTENT_BLOCK_STORE: vise::Global<PersistentStore> = vise::Global::new();
+pub(super) static PERSISTENT_BLOCK_STORE: vise::Global<PersistentBlockStore> = vise::Global::new();
 
 #[derive(Debug, vise::Metrics)]
 #[metrics(prefix = "zksync_consensus_storage_block_store")]

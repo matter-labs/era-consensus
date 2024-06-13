@@ -49,7 +49,7 @@ impl StateMachine {
         // For availability, replica should not proceed until it stores the block persistently.
         self.config
             .block_store
-            .wait_until_block_persisted(ctx, block.header().number)
+            .wait_until_persisted(ctx, block.header().number)
             .await?;
 
         let number_metric = &crate::metrics::METRICS.finalized_block_number;

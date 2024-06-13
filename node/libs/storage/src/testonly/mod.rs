@@ -1,12 +1,12 @@
 //! Test-only utilities.
 use crate::{
-    store::{BlockStore, StoreRunner},
-    PersistentStore, Proposal, ReplicaState,
+    batch_store::BatchStoreRunner, BatchStore, BlockStore, BlockStoreRunner, PersistentBatchStore,
+    PersistentBlockStore, Proposal, ReplicaState,
 };
 use anyhow::Context as _;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use std::sync::Arc;
-use zksync_concurrency::ctx;
+use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::{attester, validator};
 
 pub mod in_memory;
@@ -36,16 +36,50 @@ impl Distribution<ReplicaState> for Standard {
 pub struct TestMemoryStorage {
     /// In-memory block store with its runner.
     pub blocks: Arc<BlockStore>,
+    /// In-memory batch store with its runner.
+    pub batches: Arc<BatchStore>,
     /// In-memory storage runner.
-    pub runner: StoreRunner,
+    pub runner: TestMemoryStorageRunner,
+}
+
+/// Test-only memory storage runner wrapping both block and batch store runners.
+#[derive(Clone, Debug)]
+pub struct TestMemoryStorageRunner {
+    /// In-memory block store runner.
+    blocks: BlockStoreRunner,
+    /// In-memory batch store runner.
+    batches: BatchStoreRunner,
+}
+
+impl TestMemoryStorageRunner {
+    /// Constructs a new in-memory store for both blocks and batches with their respective runners.
+    pub async fn new(blocks_runner: BlockStoreRunner, batches_runner: BatchStoreRunner) -> Self {
+        Self {
+            blocks: blocks_runner,
+            batches: batches_runner,
+        }
+    }
+
+    /// Runs the storage for both blocks and batches.
+    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        scope::run!(ctx, |ctx, s| async {
+            s.spawn(self.blocks.run(ctx));
+            s.spawn(self.batches.run(ctx));
+            Ok(())
+        })
+        .await
+    }
 }
 
 impl TestMemoryStorage {
     /// Constructs a new in-memory store for both blocks and batches with their respective runners.
     pub async fn new(ctx: &ctx::Ctx, genesis: &validator::Genesis) -> Self {
-        let (store, runner) = new_store(ctx, genesis).await;
+        let (blocks, blocks_runner) = new_store(ctx, genesis).await;
+        let (batches, batches_runner) = new_batch_store(ctx, genesis).await;
+        let runner = TestMemoryStorageRunner::new(blocks_runner, batches_runner).await;
         Self {
-            blocks: store,
+            blocks,
+            batches,
             runner,
         }
     }
@@ -57,17 +91,37 @@ impl TestMemoryStorage {
         genesis: &validator::Genesis,
         first: validator::BlockNumber,
     ) -> Self {
-        let (store, runner) = new_store_with_first(ctx, genesis, first).await;
+        let (blocks, blocks_runner) = new_store_with_first(ctx, genesis, first).await;
+        let (batches, batches_runner) = new_batch_store(ctx, genesis).await;
+        let runner = TestMemoryStorageRunner::new(blocks_runner, batches_runner).await;
         Self {
-            blocks: store,
+            blocks,
+            batches,
             runner,
         }
     }
 }
 
 /// Constructs a new in-memory store.
-async fn new_store(ctx: &ctx::Ctx, genesis: &validator::Genesis) -> (Arc<BlockStore>, StoreRunner) {
+async fn new_store(
+    ctx: &ctx::Ctx,
+    genesis: &validator::Genesis,
+) -> (Arc<BlockStore>, BlockStoreRunner) {
     new_store_with_first(ctx, genesis, genesis.first_block).await
+}
+
+/// Constructs a new in-memory batch store.
+async fn new_batch_store(
+    ctx: &ctx::Ctx,
+    genesis: &validator::Genesis,
+) -> (Arc<BatchStore>, BatchStoreRunner) {
+    BatchStore::new(
+        ctx,
+        Box::new(in_memory::BatchStore::new(attester::BatchNumber(0))),
+        genesis.clone(),
+    )
+    .await
+    .unwrap()
 }
 
 /// Constructs a new in-memory store with a custom expected first block
@@ -76,7 +130,7 @@ async fn new_store_with_first(
     ctx: &ctx::Ctx,
     genesis: &validator::Genesis,
     first: validator::BlockNumber,
-) -> (Arc<BlockStore>, StoreRunner) {
+) -> (Arc<BlockStore>, BlockStoreRunner) {
     BlockStore::new(
         ctx,
         Box::new(in_memory::BlockStore::new(genesis.clone(), first)),
@@ -85,24 +139,23 @@ async fn new_store_with_first(
     .unwrap()
 }
 
-/// Dumps all the batches stored in `store`.
-pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentStore) -> Vec<validator::FinalBlock> {
-    // let genesis = store.genesis(ctx).await.unwrap();
+/// Dumps all the blocks stored in `store`.
+pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<validator::FinalBlock> {
+    let genesis = store.genesis(ctx).await.unwrap();
     let state = store.persisted().borrow().clone();
-    // assert!(genesis.first_block <= state.first);
+    assert!(genesis.first_block <= state.first);
     let mut blocks = vec![];
     let after = state
-        .1
         .last
         .as_ref()
         .map(|qc| qc.header().number.next())
-        .unwrap_or(state.1.first);
-    for n in (state.1.first.0..after.0).map(validator::BlockNumber) {
+        .unwrap_or(state.first);
+    for n in (state.first.0..after.0).map(validator::BlockNumber) {
         let block = store.block(ctx, n).await.unwrap();
         assert_eq!(block.header().number, n);
         blocks.push(block);
     }
-    if let Some(before) = state.1.first.prev() {
+    if let Some(before) = state.first.prev() {
         assert!(store.block(ctx, before).await.is_err());
     }
     assert!(store.block(ctx, after).await.is_err());
@@ -110,36 +163,31 @@ pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentStore) -> Vec<validator:
 }
 
 /// Dumps all the batches stored in `store`.
-pub async fn dump_batch(_ctx: &ctx::Ctx, store: &dyn PersistentStore) -> Vec<attester::SyncBatch> {
+pub async fn dump_batch(_ctx: &ctx::Ctx, store: &dyn PersistentBatchStore) -> Vec<attester::Batch> {
     // let genesis = store.genesis(ctx).await.unwrap();
     let state = store.persisted().borrow().clone();
     // assert!(genesis.first_block <= state.first);
     let mut batches = vec![];
     let after = state
-        .0
         .last
         .as_ref()
-        .map(|sb| sb.number.next())
-        .unwrap_or(state.0.first);
-    for n in (state.0.first.0..after.0).map(attester::BatchNumber) {
-        if n.0 == 0 {
-            continue;
-        }
-
-        let batch = store.batch(n).await.unwrap();
-        assert_eq!(batch.number, n);
+        .map(|qc| qc.header().number.next())
+        .unwrap_or(state.first);
+    for n in (state.first.0..after.0).map(attester::BatchNumber) {
+        let batch = store.get_batch(n).unwrap();
+        assert_eq!(batch.proposal.number, n);
         batches.push(batch);
     }
-    if let Some(before) = state.0.first.prev() {
-        assert!(store.batch(before).await.is_err());
+    if let Some(before) = state.first.prev() {
+        assert!(store.get_batch(before).is_none());
     }
-    assert!(store.batch(after).await.is_err());
+    assert!(store.get_batch(after).is_none());
     batches
 }
 
 /// Verifies storage content.
 pub async fn verify(ctx: &ctx::Ctx, store: &BlockStore) -> anyhow::Result<()> {
-    let range = store.queued().1;
+    let range = store.queued();
     for n in (range.first.0..range.next().0).map(validator::BlockNumber) {
         async {
             store

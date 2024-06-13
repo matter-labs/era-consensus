@@ -1,4 +1,4 @@
-//! RocksDB-based implementation of PersistentStore and ReplicaStore.
+//! RocksDB-based implementation of PersistentBlockStore and ReplicaStore.
 use anyhow::Context as _;
 use rocksdb::{Direction, IteratorMode, ReadOptions};
 use std::{
@@ -7,10 +7,8 @@ use std::{
     sync::{Arc, RwLock},
 };
 use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
-use zksync_consensus_roles::{attester, validator};
-use zksync_consensus_storage::{
-    BatchStoreState, BlockStoreState, PersistentStore, ReplicaState, ReplicaStore,
-};
+use zksync_consensus_roles::validator;
+use zksync_consensus_storage::{BlockStoreState, PersistentBlockStore, ReplicaState, ReplicaStore};
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,7 +19,6 @@ enum DatabaseKey {
     /// Key used to store the finalized blocks.
     /// Block(validator::BlockNumber) -> validator::FinalBlock
     Block(validator::BlockNumber),
-    Batch(attester::BatchNumber),
 }
 
 impl DatabaseKey {
@@ -46,14 +43,13 @@ impl DatabaseKey {
             Self::ReplicaState => vec![0],
             // Number encoding that monotonically increases with the number
             Self::Block(number) => number.0.to_be_bytes().to_vec(),
-            Self::Batch(number) => number.0.to_be_bytes().to_vec(),
         }
     }
 }
 
 struct Inner {
     genesis: validator::Genesis,
-    persisted: sync::watch::Sender<(BatchStoreState, BlockStoreState)>,
+    persisted: sync::watch::Sender<BlockStoreState>,
     db: RwLock<rocksdb::DB>,
 }
 
@@ -78,14 +74,11 @@ impl RocksDB {
         .await?;
 
         Ok(Self(Arc::new(Inner {
-            persisted: sync::watch::channel((
-                BatchStoreState::default(),
-                BlockStoreState {
-                    // `RocksDB` is assumed to store all blocks starting from genesis.
-                    first: genesis.first_block,
-                    last: scope::wait_blocking(|| Self::last_blocking(&db)).await?,
-                },
-            ))
+            persisted: sync::watch::channel(BlockStoreState {
+                // `RocksDB` is assumed to store all blocks starting from genesis.
+                first: genesis.first_block,
+                last: scope::wait_blocking(|| Self::last_blocking(&db)).await?,
+            })
             .0,
             genesis,
             db: RwLock::new(db),
@@ -115,12 +108,12 @@ impl fmt::Debug for RocksDB {
 }
 
 #[async_trait::async_trait]
-impl PersistentStore for RocksDB {
+impl PersistentBlockStore for RocksDB {
     async fn genesis(&self, _ctx: &ctx::Ctx) -> ctx::Result<validator::Genesis> {
         Ok(self.0.genesis.clone())
     }
 
-    fn persisted(&self) -> sync::watch::Receiver<(BatchStoreState, BlockStoreState)> {
+    fn persisted(&self) -> sync::watch::Receiver<BlockStoreState> {
         self.0.persisted.subscribe()
     }
 
@@ -141,44 +134,6 @@ impl PersistentStore for RocksDB {
         .wrap(number)
     }
 
-    async fn batch(&self, number: attester::BatchNumber) -> ctx::Result<attester::SyncBatch> {
-        scope::wait_blocking(|| {
-            let db = self.0.db.read().unwrap();
-            let batch = db
-                .get(DatabaseKey::Batch(number).encode_key())
-                .context("RocksDB error")?
-                .context("not found")?;
-            Ok(zksync_protobuf::decode(&batch).context("failed decoding batch")?)
-        })
-        .await
-        .wrap(number)
-    }
-
-    #[tracing::instrument(level = "debug", skip(self))]
-    async fn queue_batch(&self, _ctx: &ctx::Ctx, batch: attester::SyncBatch) -> ctx::Result<()> {
-        scope::wait_blocking(|| {
-            let db = self.0.db.write().unwrap();
-            let want = self.0.persisted.borrow().0.next();
-            anyhow::ensure!(batch.number == want, "got {:?} want {want:?}", batch.number);
-            let batch_number = batch.number;
-            let mut write_batch = rocksdb::WriteBatch::default();
-            write_batch.put(
-                DatabaseKey::Batch(batch_number).encode_key(),
-                zksync_protobuf::encode(&batch),
-            );
-            // Commit the transaction.
-            db.write(write_batch)
-                .context("Failed writing block to database")?;
-            self.0
-                .persisted
-                .send_modify(|p| p.0.last = Some(batch.clone()));
-            Ok(())
-        })
-        .await
-        .context(batch.number)?;
-        Ok(())
-    }
-
     #[tracing::instrument(level = "debug", skip(self))]
     async fn queue_next_block(
         &self,
@@ -187,7 +142,7 @@ impl PersistentStore for RocksDB {
     ) -> ctx::Result<()> {
         scope::wait_blocking(|| {
             let db = self.0.db.write().unwrap();
-            let want = self.0.persisted.borrow().1.next();
+            let want = self.0.persisted.borrow().next();
             anyhow::ensure!(
                 block.number() == want,
                 "got {:?} want {want:?}",
@@ -204,7 +159,7 @@ impl PersistentStore for RocksDB {
                 .context("Failed writing block to database")?;
             self.0
                 .persisted
-                .send_modify(|p| p.1.last = Some(block.justification.clone()));
+                .send_modify(|p| p.last = Some(block.justification.clone()));
             Ok(())
         })
         .await

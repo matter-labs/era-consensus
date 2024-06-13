@@ -14,10 +14,7 @@ use zksync_consensus_roles::validator::{
     self, CommitQC, LeaderCommit, LeaderPrepare, Phase, PrepareQC, ReplicaCommit, ReplicaPrepare,
     SecretKey, Signed, ViewNumber,
 };
-use zksync_consensus_storage::{
-    testonly::{in_memory, TestMemoryStorage},
-    StoreRunner,
-};
+use zksync_consensus_storage::testonly::{in_memory, TestMemoryStorage, TestMemoryStorageRunner};
 use zksync_consensus_utils::enum_util::Variant;
 
 pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
@@ -38,7 +35,10 @@ pub(crate) struct UTHarness {
 
 impl UTHarness {
     /// Creates a new `UTHarness` with the specified validator set size.
-    pub(crate) async fn new(ctx: &ctx::Ctx, num_validators: usize) -> (UTHarness, StoreRunner) {
+    pub(crate) async fn new(
+        ctx: &ctx::Ctx,
+        num_validators: usize,
+    ) -> (UTHarness, TestMemoryStorageRunner) {
         Self::new_with_payload(
             ctx,
             num_validators,
@@ -51,7 +51,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         num_validators: usize,
         payload_manager: Box<dyn PayloadManager>,
-    ) -> (UTHarness, StoreRunner) {
+    ) -> (UTHarness, TestMemoryStorageRunner) {
         let rng = &mut ctx.rng();
         let setup = validator::testonly::Setup::new(rng, num_validators);
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
@@ -80,7 +80,7 @@ impl UTHarness {
     }
 
     /// Creates a new `UTHarness` with minimally-significant validator set size.
-    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, StoreRunner) {
+    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, TestMemoryStorageRunner) {
         let num_validators = 6;
         let (util, runner) = UTHarness::new(ctx, num_validators).await;
         assert!(util.genesis().validators.max_faulty_weight() > 0);

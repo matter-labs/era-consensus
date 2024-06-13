@@ -40,7 +40,7 @@ impl ProtoFmt for Req {
 
 /// Response to a [`GetBatchRequest`] containing a batch or a reason it cannot be retrieved.
 #[derive(Debug, PartialEq)]
-pub(crate) struct Resp(pub(crate) Option<attester::SyncBatch>);
+pub(crate) struct Resp(pub(crate) Option<attester::FinalBatch>);
 
 impl ProtoFmt for Resp {
     type Proto = proto::GetBatchResponse;

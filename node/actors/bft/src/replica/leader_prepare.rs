@@ -99,7 +99,7 @@ impl StateMachine {
         // (because it won't be able to persist and broadcast them once finalized).
         // TODO(gprusak): it should never happen, we should add safety checks to prevent
         // pruning blocks not known to be finalized.
-        if message.proposal.number < self.config.block_store.queued().1.first {
+        if message.proposal.number < self.config.block_store.queued().first {
             return Err(Error::ProposalAlreadyPruned);
         }
 
@@ -123,7 +123,7 @@ impl StateMachine {
                 // Defensively assume that PayloadManager cannot verify proposal until the previous block is stored.
                 self.config
                     .block_store
-                    .wait_until_block_persisted(ctx, prev)
+                    .wait_until_persisted(ctx, prev)
                     .await
                     .map_err(ctx::Error::Canceled)?;
             }
