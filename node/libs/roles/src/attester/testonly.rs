@@ -1,6 +1,6 @@
 use super::{
-    Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash, MultiSig, PublicKey, SecretKey,
-    Signature, Signed, Signers, WeightedAttester,
+    AggregateMultiSig, AggregateSignature, Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash,
+    MultiSig, PublicKey, SecretKey, Signature, Signed, Signers, WeightedAttester,
 };
 use bit_vec::BitVec;
 use rand::{
@@ -69,6 +69,21 @@ impl Distribution<Signers> for Standard {
 impl Distribution<Signature> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Signature {
         Signature(rng.gen())
+    }
+}
+
+impl Distribution<AggregateSignature> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateSignature {
+        AggregateSignature(rng.gen())
+    }
+}
+
+impl Distribution<AggregateMultiSig> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateMultiSig {
+        AggregateMultiSig {
+            signers: rng.gen(),
+            sig: rng.gen(),
+        }
     }
 }
 
