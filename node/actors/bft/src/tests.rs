@@ -254,6 +254,7 @@ async fn twins_network_w2_twins_w_partitions() {
 #[tokio::test(flavor = "multi_thread")]
 #[should_panic]
 async fn twins_network_to_fail() {
+    // With n=5 f=0, so 1 twin means more faulty nodes than expected.
     run_twins(5, 1, 100).await.unwrap();
 }
 
@@ -273,10 +274,13 @@ async fn run_twins(
     }
     zksync_concurrency::testonly::init_tracing();
 
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     // Use a single timeout for all scenarios to finish.
     // A single scenario with 11 replicas took 3-5 seconds.
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
+    let timeout = time::Duration::seconds(30);
+    // Panic on timeout; works with `cargo nextest` and the `abort_on_panic` above.
+    let _guard = zksync_concurrency::testonly::set_timeout(timeout);
+    // As a fallback, also cancel the context if the `abort_on_panic` isn't active.
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0)).with_timeout(timeout * 10 * 2);
 
     #[derive(PartialEq, Debug)]
     struct Replica {
