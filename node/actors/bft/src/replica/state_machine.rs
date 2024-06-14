@@ -116,10 +116,13 @@ impl StateMachine {
                         Err(err) => {
                             match err {
                                 super::replica_prepare::Error::Internal(e) => {
+                                    tracing::error!(
+                                        "process_replica_prepare: internal error: {e:#}"
+                                    );
                                     return Err(e);
                                 }
                                 super::replica_prepare::Error::Old { .. } => {
-                                    tracing::info!("process_replica_prepare: {err:#}");
+                                    tracing::debug!("process_replica_prepare: {err:#}");
                                 }
                                 _ => {
                                     tracing::warn!("process_replica_prepare: {err:#}");
@@ -140,6 +143,9 @@ impl StateMachine {
                         Err(err) => {
                             match err {
                                 super::leader_prepare::Error::Internal(e) => {
+                                    tracing::error!(
+                                        "process_leader_prepare: internal error: {e:#}"
+                                    );
                                     return Err(e);
                                 }
                                 super::leader_prepare::Error::Old { .. } => {
@@ -164,6 +170,7 @@ impl StateMachine {
                         Err(err) => {
                             match err {
                                 super::leader_commit::Error::Internal(e) => {
+                                    tracing::error!("process_leader_commit: internal error: {e:#}");
                                     return Err(e);
                                 }
                                 super::leader_commit::Error::Old { .. } => {
