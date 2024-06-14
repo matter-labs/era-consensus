@@ -2,7 +2,7 @@
 use super::StateMachine;
 use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::validator::{self, BlockNumber};
 
 /// Errors that can occur when processing a "leader prepare" message.
 #[derive(Debug, thiserror::Error)]
@@ -45,6 +45,12 @@ pub(crate) enum Error {
     /// Invalid payload.
     #[error("invalid payload: {0:#}")]
     ProposalInvalidPayload(#[source] anyhow::Error),
+    /// Previous payload missing.
+    #[error("previous block proposal payload missing from store (block number: {prev_number})")]
+    MissingPreviousPayload {
+        /// The number of the missing block
+        prev_number: BlockNumber,
+    },
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error(transparent)]
     Internal(#[from] ctx::Error),
@@ -128,9 +134,9 @@ impl StateMachine {
                 // Defensively assume that PayloadManager cannot verify proposal until the previous block is stored.
                 self.config
                     .block_store
-                    .wait_until_persisted(ctx, prev)
+                    .wait_until_persisted(&ctx.with_deadline(self.timeout_deadline), prev)
                     .await
-                    .map_err(ctx::Error::Canceled)?;
+                    .map_err(|_| Error::MissingPreviousPayload { prev_number: prev })?;
             }
             if let Err(err) = self
                 .config

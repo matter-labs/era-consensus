@@ -462,12 +462,16 @@ async fn test_wait_for_finalized_deadlock() {
     // to its peers, but it must receive their ReplicaPrepare's to be able to construct the PrepareQC; because of this the simple split schedule
     // would not be enough as it allows sending messages in both directions.
 
-    let rng = &mut ctx.rng();
-
-    // We want the 2nd proposal to be finalised despite the waiting for block 1.
-    let blocks_to_finalize = 2;
+    // We need 11 nodes so we can turn 2 leaders off.
     let num_replicas = 11;
-    let gossip_peers = 1;
+    // Let's wait for the first two blocks to be finalised.
+    // Although theoretically node 1 will be dead after view 1, it will still receive messages and gossip.
+    let blocks_to_finalize = 2;
+    // We need more than 1 gossip peer, otherwise the chain of gossip triggers in the Twins network won't kick in,
+    // and while node 0 will gossip to node 1, node 1 will not send it to node 2, and the test will fail.
+    let gossip_peers = 2;
+
+    let rng = &mut ctx.rng();
 
     let mut spec = SetupSpec::new(rng, num_replicas);
 
@@ -518,8 +522,18 @@ async fn test_wait_for_finalized_deadlock() {
         let view_number = msg.view().number;
 
         // If we haven't finalised the blocks in the first few rounds, we failed.
-        if view_number.0 > 5 {
+        if view_number.0 > 7 {
             return None;
+        }
+
+        // Sending to self is ok.
+        // If this wasn't here the test would pass even without adding a timeout in process_leader_prepare.
+        // The reason is that node 2 would move to view 2 as soon as it finalises block 1, but then timeout
+        // and move to view 3 before they receive any of the ReplicaPrepare from the others, who are still
+        // waiting to timeout in view 1. By sending ReplicaPrepare to itself it seems to wait or propose.
+        // Maybe the HighQC doesn't make it from its replica::StateMachine into its leader::StateMachine otherwise.
+        if from == to {
+            return Some(true);
         }
 
         let can_send = match view_number {
