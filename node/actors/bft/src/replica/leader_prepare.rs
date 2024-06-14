@@ -2,7 +2,7 @@
 use super::StateMachine;
 use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_network::io::{ConsensusInputMessage, Target};
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::validator::{self, BlockNumber};
 
 /// Errors that can occur when processing a "leader prepare" message.
 #[derive(Debug, thiserror::Error)]
@@ -45,6 +45,12 @@ pub(crate) enum Error {
     /// Invalid payload.
     #[error("invalid payload: {0:#}")]
     ProposalInvalidPayload(#[source] anyhow::Error),
+    /// Previous payload missing.
+    #[error("previous block proposal payload missing from store (block number: {prev_number})")]
+    MissingPreviousPayload {
+        /// The number of the missing block
+        prev_number: BlockNumber,
+    },
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error(transparent)]
     Internal(#[from] ctx::Error),
@@ -107,7 +113,14 @@ impl StateMachine {
         message
             .verify(self.config.genesis())
             .map_err(Error::InvalidMessage)?;
+
         let high_qc = message.justification.high_qc();
+
+        if let Some(high_qc) = high_qc {
+            // Try to create a finalized block with this CommitQC and our block proposal cache.
+            // This gives us another chance to finalize a block that we may have missed before.
+            self.save_block(ctx, high_qc).await.wrap("save_block()")?;
+        }
 
         // Check that the payload doesn't exceed the maximum size.
         if let Some(payload) = &message.proposal_payload {
@@ -121,9 +134,9 @@ impl StateMachine {
                 // Defensively assume that PayloadManager cannot verify proposal until the previous block is stored.
                 self.config
                     .block_store
-                    .wait_until_persisted(ctx, prev)
+                    .wait_until_persisted(&ctx.with_deadline(self.timeout_deadline), prev)
                     .await
-                    .map_err(ctx::Error::Canceled)?;
+                    .map_err(|_| Error::MissingPreviousPayload { prev_number: prev })?;
             }
             if let Err(err) = self
                 .config
@@ -150,11 +163,6 @@ impl StateMachine {
         self.view = message.view().number;
         self.phase = validator::Phase::Commit;
         self.high_vote = Some(commit_vote.clone());
-        if let Some(high_qc) = high_qc {
-            // Try to create a finalized block with this CommitQC and our block proposal cache.
-            // This gives us another chance to finalize a block that we may have missed before.
-            self.save_block(ctx, high_qc).await.wrap("save_block()")?;
-        }
         // If we received a new block proposal, store it in our cache.
         if let Some(payload) = &message.proposal_payload {
             self.block_proposal_cache
