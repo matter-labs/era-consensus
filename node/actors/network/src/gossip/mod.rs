@@ -158,6 +158,7 @@ impl Network {
     pub(crate) async fn update_batch_qc(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         // TODO This is not a good way to do this, we shouldn't be verifying the QC every time
         // Can we get only the latest votes?
+        let attesters = self.genesis().attesters.as_ref().context("attesters")?;
         loop {
             let mut sub = self.batch_votes.subscribe();
             let votes = sync::changed(ctx, &mut sub)
@@ -170,20 +171,14 @@ impl Network {
                 .last_viewed_qc
                 .clone()
                 .map(|qc| {
-                    attester::BatchQC::new(
-                        attester::Batch {
-                            number: qc.message.number.next(),
-                        },
-                        self.genesis(),
-                    )
+                    attester::BatchQC::new(attester::Batch {
+                        number: qc.message.number.next(),
+                    })
                 })
                 .unwrap_or_else(|| {
-                    attester::BatchQC::new(
-                        attester::Batch {
-                            number: attester::BatchNumber(0),
-                        },
-                        self.genesis(),
-                    )
+                    attester::BatchQC::new(attester::Batch {
+                        number: attester::BatchNumber(0),
+                    })
                 })
                 .context("new qc")?;
 
@@ -193,9 +188,7 @@ impl Network {
                     .batch_qc
                     .clone()
                     .entry(new_qc.message.number)
-                    .or_insert_with(|| {
-                        attester::BatchQC::new(new_qc.message.clone(), self.genesis()).expect("qc")
-                    })
+                    .or_insert_with(|| attester::BatchQC::new(new_qc.message.clone()).expect("qc"))
                     .add(&sig, self.genesis())
                     .is_err()
                 {
@@ -204,27 +197,15 @@ impl Network {
                 }
             }
 
-            let weight = self
-                .genesis()
-                .attesters
-                .as_ref()
-                .context("attesters")?
-                .weight(
-                    &self
-                        .batch_qc
-                        .get(&new_qc.message.number)
-                        .context("last qc")?
-                        .signers,
-                );
+            let weight = attesters.weight_of_keys(
+                self.batch_qc
+                    .get(&new_qc.message.number)
+                    .context("last qc")?
+                    .signatures
+                    .keys(),
+            );
 
-            if weight
-                < self
-                    .genesis()
-                    .attesters
-                    .as_ref()
-                    .context("attesters")?
-                    .threshold()
-            {
+            if weight < attesters.threshold() {
                 return Ok(());
             };
 

@@ -1,6 +1,10 @@
-use super::{Signed, Signers};
-use crate::{attester, validator::Genesis, validator::Payload};
+use super::Signed;
+use crate::{
+    attester,
+    validator::{Genesis, Payload},
+};
 use anyhow::{ensure, Context as _};
+use zksync_consensus_utils::enum_util::Variant;
 
 /// A batch of L2 blocks used for the peers to fetch and keep in sync.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
@@ -12,17 +16,6 @@ pub struct SyncBatch {
     /// The proof of the batch.
     pub proof: Vec<u8>,
 }
-
-// impl SyncBatch {
-//     /// Create a new instance of `SyncBatch` with the given number, payloads, and proof.
-//     pub fn new(number: BatchNumber, payloads: Vec<Payload>, proof: Vec<u8>) -> Self {
-//         Self {
-//             number,
-//             payloads,
-//             proof,
-//         }
-//     }
-// }
 
 impl PartialOrd for SyncBatch {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
@@ -72,10 +65,8 @@ pub struct Batch {
 /// It contains the signatures of the attesters that signed the batch.
 #[derive(Debug, Clone, Eq, PartialEq)]
 pub struct BatchQC {
-    /// The aggregate signature of the signed L1 batches.
-    pub signature: attester::AggregateSignature,
-    /// The attesters that signed this message.
-    pub signers: Signers,
+    /// The signatures of the signed L1 batches from all the attesters who signed it.
+    pub signatures: attester::MultiSig,
     /// The message that was signed.
     pub message: Batch,
 }
@@ -97,6 +88,9 @@ pub enum BatchQCVerifyError {
     /// Bad signer set.
     #[error("signers set doesn't match genesis")]
     BadSignersSet,
+    /// No attester committee in genesis.
+    #[error("No attester committee in genesis")]
+    AttestersNotInGenesis,
 }
 
 /// Error returned by `BatchQC::add()` if the signature is invalid.
@@ -117,17 +111,11 @@ pub enum BatchQCAddError {
 }
 
 impl BatchQC {
-    /// Header of the certified Batch.
-    pub fn number(&self) -> &BatchNumber {
-        &self.message.number
-    }
-
     /// Create a new empty instance for a given `Batch` message.
-    pub fn new(message: Batch, genesis: &Genesis) -> anyhow::Result<Self> {
+    pub fn new(message: Batch) -> anyhow::Result<Self> {
         Ok(Self {
             message,
-            signers: Signers::new(genesis.attesters.as_ref().context("attesters")?.len()),
-            signature: attester::AggregateSignature::default(),
+            signatures: attester::MultiSig::default(),
         })
     }
 
@@ -135,18 +123,23 @@ impl BatchQC {
     /// Signature is assumed to be already verified.
     pub fn add(&mut self, msg: &Signed<Batch>, genesis: &Genesis) -> anyhow::Result<()> {
         use BatchQCAddError as Error;
-        ensure!(self.message == msg.msg, Error::InconsistentMessages);
-        let i = genesis
+
+        let committee = genesis
             .attesters
             .as_ref()
-            .expect("attesters set is empty in genesis") // This case should never happen
-            .index(&msg.key)
-            .ok_or(Error::SignerNotInCommittee {
+            .context("no attester committee in genesis")?;
+
+        ensure!(self.message == msg.msg, Error::InconsistentMessages);
+        ensure!(!self.signatures.contains(&msg.key), Error::Exists);
+        ensure!(
+            committee.contains(&msg.key),
+            Error::SignerNotInCommittee {
                 signer: Box::new(msg.key.clone()),
-            })?;
-        ensure!(!self.signers.0[i], Error::Exists);
-        self.signers.0.set(i, true);
-        self.signature.add(&msg.sig);
+            }
+        );
+
+        self.signatures.add(msg.key.clone(), msg.sig.clone());
+
         Ok(())
     }
 
@@ -156,12 +149,17 @@ impl BatchQC {
         let attesters = genesis
             .attesters
             .as_ref()
-            .expect("attesters set is empty in genesis"); // This case should never happen
-        if self.signers.len() != attesters.len() {
-            return Err(Error::BadSignersSet);
+            .ok_or(Error::AttestersNotInGenesis)?;
+
+        // Verify that all signers are attesters.
+        for pk in self.signatures.keys() {
+            if !attesters.contains(pk) {
+                return Err(Error::BadSignersSet);
+            }
         }
+
         // Verify that the signer's weight is sufficient.
-        let weight = attesters.weight(&self.signers);
+        let weight = attesters.weight_of_keys(self.signatures.keys());
         let threshold = attesters.threshold();
         if weight < threshold {
             return Err(Error::NotEnoughSigners {
@@ -169,16 +167,9 @@ impl BatchQC {
                 want: threshold,
             });
         }
-        // The enumeration here goes by order of public key, which assumes
-        // that the aggregate signature does not care about ordering.
-        let messages_and_keys = attesters
-            .keys()
-            .enumerate()
-            .filter(|(i, _)| self.signers.0[*i])
-            .map(|(_, pk)| (self.message.clone(), pk));
 
-        self.signature
-            .verify_messages(messages_and_keys)
+        self.signatures
+            .verify_msg(&self.message.clone().insert())
             .map_err(Error::BadSignature)
     }
 }

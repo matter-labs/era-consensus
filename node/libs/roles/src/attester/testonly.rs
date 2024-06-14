@@ -1,8 +1,8 @@
 use crate::validator::Payload;
 
 use super::{
-    AggregateSignature, Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash, PublicKey, SecretKey,
-    Signature, Signed, Signers, SyncBatch, WeightedAttester,
+    AggregateMultiSig, AggregateSignature, Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash,
+    MultiSig, PublicKey, SecretKey, Signature, Signed, Signers, SyncBatch, WeightedAttester,
 };
 use bit_vec::BitVec;
 use rand::{
@@ -10,11 +10,12 @@ use rand::{
     Rng,
 };
 use std::sync::Arc;
+use zksync_consensus_crypto::bls12_381;
 use zksync_consensus_utils::enum_util::Variant;
 
 impl AggregateSignature {
     /// Generate a new aggregate signature from a list of signatures.
-    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
+    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a bls12_381::Signature>) -> Self {
         let mut agg = Self::default();
         for sig in sigs {
             agg.add(sig);
@@ -32,12 +33,6 @@ impl Distribution<SecretKey> for Standard {
 impl Distribution<PublicKey> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PublicKey {
         PublicKey(rng.gen())
-    }
-}
-
-impl Distribution<AggregateSignature> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateSignature {
-        AggregateSignature(rng.gen())
     }
 }
 
@@ -77,10 +72,13 @@ impl Distribution<BatchNumber> for Standard {
 
 impl Distribution<BatchQC> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchQC {
+        let mut signatures = MultiSig::default();
+        for _ in 0..rng.gen_range(0..5) {
+            signatures.add(rng.gen(), rng.gen());
+        }
         BatchQC {
             message: rng.gen(),
-            signers: rng.gen(),
-            signature: rng.gen(),
+            signatures,
         }
     }
 }
@@ -100,6 +98,21 @@ impl Distribution<Signers> for Standard {
 impl Distribution<Signature> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Signature {
         Signature(rng.gen())
+    }
+}
+
+impl Distribution<AggregateSignature> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateSignature {
+        AggregateSignature(rng.gen())
+    }
+}
+
+impl Distribution<AggregateMultiSig> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateMultiSig {
+        AggregateMultiSig {
+            signers: rng.gen(),
+            sig: rng.gen(),
+        }
     }
 }
 
