@@ -5,7 +5,7 @@ use crate::{
 };
 use anyhow::Context as _;
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
 };
 use zksync_concurrency::{ctx, sync};
@@ -21,7 +21,9 @@ struct BlockStoreInner {
 #[derive(Debug)]
 struct BatchStoreInner {
     persisted: sync::watch::Sender<BatchStoreState>,
-    batches: Mutex<VecDeque<attester::FinalBatch>>,
+    batches: Mutex<VecDeque<attester::SyncBatch>>,
+    // This field was only added to be able to implement the PersistentBatchStore trait correctly.
+    qcs: Mutex<HashMap<attester::BatchNumber, attester::BatchQC>>,
 }
 
 /// In-memory block store.
@@ -54,6 +56,7 @@ impl BatchStore {
         Self(Arc::new(BatchStoreInner {
             persisted: sync::watch::channel(BatchStoreState { first, last: None }).0,
             batches: Mutex::default(),
+            qcs: Mutex::default(),
         }))
     }
 }
@@ -112,54 +115,45 @@ impl PersistentBatchStore for BatchStore {
             .borrow()
             .last
             .clone()
-            .map(|qc| qc.message.proposal.number)
+            .map(|qc| qc.number)
             .unwrap()
     }
 
     fn last_batch_qc(&self) -> attester::BatchQC {
-        self.0.persisted.borrow().last.clone().unwrap()
-    }
-
-    fn get_batch(&self, number: attester::BatchNumber) -> Option<attester::Batch> {
-        let batches = self.0.batches.lock().unwrap();
-        let front = batches.front()?;
-        let idx = number.0.checked_sub(front.number().0)?;
-        batches
-            .get(idx as usize)
-            .map(|b| b.justification.message.clone())
-    }
-
-    fn get_finalized_batch(&self, number: attester::BatchNumber) -> Option<attester::FinalBatch> {
-        let batches = self.0.batches.lock().unwrap();
-        let front = batches.front()?;
-        let idx = number.0.checked_sub(front.number().0)?;
-        batches.get(idx as usize).cloned()
+        let qcs = self.0.qcs.lock().unwrap();
+        let last_batch_number = qcs.keys().max().unwrap();
+        qcs.get(last_batch_number).unwrap().clone()
     }
 
     fn get_batch_qc(&self, number: attester::BatchNumber) -> Option<attester::BatchQC> {
-        let batches = self.0.batches.lock().unwrap();
-        let front = batches.front()?;
-        let idx = number.0.checked_sub(front.number().0)?;
-        batches.get(idx as usize).map(|b| b.justification.clone())
+        let qcs = self.0.qcs.lock().unwrap();
+        qcs.get(&number).cloned()
     }
 
     fn store_qc(&self, qc: attester::BatchQC) {
-        self.0.persisted.send_modify(|p| p.last = Some(qc.clone()));
+        self.0.qcs.lock().unwrap().insert(qc.message.number, qc);
+    }
+
+    fn get_batch(&self, number: attester::BatchNumber) -> Option<attester::SyncBatch> {
+        let batches = self.0.batches.lock().unwrap();
+        let front = batches.front()?;
+        let idx = number.0.checked_sub(front.number.0)?;
+        batches.get(idx as usize).cloned()
     }
 
     async fn queue_next_batch(
         &self,
         _ctx: &ctx::Ctx,
-        batch: attester::FinalBatch,
+        batch: attester::SyncBatch,
     ) -> ctx::Result<()> {
         let mut batches = self.0.batches.lock().unwrap();
         let want = self.0.persisted.borrow().next();
-        if batch.number() != want {
-            return Err(anyhow::anyhow!("got batch {:?}, want {want:?}", batch.number()).into());
+        if batch.number != want {
+            return Err(anyhow::anyhow!("got batch {:?}, want {want:?}", batch.number).into());
         }
         self.0
             .persisted
-            .send_modify(|p| p.last = Some(batch.justification.clone()));
+            .send_modify(|p| p.last = Some(batch.clone()));
         batches.push_back(batch);
         Ok(())
     }

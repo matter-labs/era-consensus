@@ -14,35 +14,34 @@ pub struct BatchStoreState {
     pub first: attester::BatchNumber,
     /// Stored QC of the latest batch.
     /// None iff store is empty.
-    pub last: Option<attester::BatchQC>,
+    pub last: Option<attester::SyncBatch>,
 }
 
 impl BatchStoreState {
     /// Checks whether batch with the given number is stored in the `BatchStore`.
     pub fn contains(&self, number: attester::BatchNumber) -> bool {
         let Some(last) = &self.last else { return false };
-        self.first <= number && number <= last.header().number
+        self.first <= number && number <= last.number
     }
 
     /// Number of the next batch that can be stored in the `BatchStore`.
     /// (i.e. `last` + 1).
     pub fn next(&self) -> attester::BatchNumber {
         match &self.last {
-            Some(qc) => qc.header().number.next(),
+            Some(last) => last.number.next(),
             None => self.first,
         }
     }
 
     /// Verifies `BatchStoreState'.
-    pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
+    pub fn verify(&self) -> anyhow::Result<()> {
         if let Some(last) = &self.last {
             anyhow::ensure!(
-                self.first <= last.header().number,
+                self.first <= last.clone().number,
                 "first batch {} has bigger number than the last batch {}",
                 self.first,
-                last.header().number
+                last.number
             );
-            last.verify(genesis).context("last.verify()")?;
         }
         Ok(())
     }
@@ -56,9 +55,7 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     /// Get the L1 batch QC from storage with the highest number.
     fn last_batch_qc(&self) -> attester::BatchQC;
     /// Returns the batch with the given number.
-    fn get_batch(&self, number: attester::BatchNumber) -> Option<attester::Batch>;
-    /// Returns the finalized batch with the given number.
-    fn get_finalized_batch(&self, number: attester::BatchNumber) -> Option<attester::FinalBatch>;
+    fn get_batch(&self, number: attester::BatchNumber) -> Option<attester::SyncBatch>;
     /// Returns the QC of the batch with the given number.
     fn get_batch_qc(&self, number: attester::BatchNumber) -> Option<attester::BatchQC>;
     /// Store the given QC in the storage.
@@ -70,11 +67,8 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     /// but if the call succeeded the batch is expected to be persisted eventually.
     /// Implementations are only required to accept a batch directly after the previous queued
     /// batch, starting with `persisted().borrow().next()`.
-    async fn queue_next_batch(
-        &self,
-        ctx: &ctx::Ctx,
-        batch: attester::FinalBatch,
-    ) -> ctx::Result<()>;
+    async fn queue_next_batch(&self, ctx: &ctx::Ctx, batch: attester::SyncBatch)
+        -> ctx::Result<()>;
 }
 
 /// Inner state of the `BatchStore`.
@@ -84,7 +78,7 @@ struct Inner {
     queued: BatchStoreState,
     /// Batches that are already persisted.
     persisted: BatchStoreState,
-    cache: VecDeque<attester::FinalBatch>,
+    cache: VecDeque<attester::SyncBatch>,
 }
 
 impl Inner {
@@ -98,11 +92,11 @@ impl Inner {
     /// Tries to push the next batch to cache.
     /// Noop if provided batch is not the expected one.
     /// Returns true iff cache has been modified.
-    fn try_push(&mut self, batch: attester::FinalBatch) -> bool {
-        if self.queued.next() != batch.number() {
+    fn try_push(&mut self, batch: attester::SyncBatch) -> bool {
+        if self.queued.next() != batch.number {
             return false;
         }
-        self.queued.last = Some(batch.justification.clone());
+        self.queued.last = Some(batch.clone());
         self.cache.push_back(batch.clone());
         self.truncate_cache();
         true
@@ -110,17 +104,17 @@ impl Inner {
 
     fn truncate_cache(&mut self) {
         while self.cache.len() > Self::CACHE_CAPACITY
-            && self.persisted.contains(self.cache[0].number())
+            && self.persisted.contains(self.cache[0].number)
         {
             self.cache.pop_front();
         }
     }
 
-    fn batch(&self, n: attester::BatchNumber) -> Option<attester::FinalBatch> {
+    fn batch(&self, n: attester::BatchNumber) -> Option<attester::SyncBatch> {
         // Subtraction is safe, because batches in cache are
         // stored in increasing order of batch number.
         let first = self.cache.front()?;
-        self.cache.get((n.0 - first.number().0) as usize).cloned()
+        self.cache.get((n.0 - first.number.0) as usize).cloned()
     }
 }
 
@@ -181,10 +175,9 @@ impl BatchStore {
     pub async fn new(
         _ctx: &ctx::Ctx,
         persistent: Box<dyn PersistentBatchStore>,
-        genesis: validator::Genesis,
     ) -> ctx::Result<(Arc<Self>, BatchStoreRunner)> {
         let persisted = persistent.persisted().borrow().clone();
-        persisted.verify(&genesis).context("state.verify()")?;
+        persisted.verify().context("state.verify()")?;
         let this = Arc::new(Self {
             inner: sync::watch::channel(Inner {
                 queued: persisted.clone(),
@@ -207,7 +200,7 @@ impl BatchStore {
         &self,
         _ctx: &ctx::Ctx,
         number: attester::BatchNumber,
-    ) -> ctx::Result<Option<attester::FinalBatch>> {
+    ) -> ctx::Result<Option<attester::SyncBatch>> {
         let inner = self.inner.borrow();
         if !inner.queued.contains(number) {
             return Ok(None);
@@ -217,7 +210,7 @@ impl BatchStore {
         }
         let batch = self
             .persistent
-            .get_finalized_batch(number)
+            .get_batch(number)
             .context("persistent.batch()")?;
         Ok(Some(batch))
     }
@@ -231,13 +224,11 @@ impl BatchStore {
     pub async fn queue_batch(
         &self,
         ctx: &ctx::Ctx,
-        batch: attester::FinalBatch,
-        genesis: validator::Genesis,
+        batch: attester::SyncBatch,
+        _genesis: validator::Genesis,
     ) -> ctx::Result<()> {
-        batch.verify(&genesis).context("batch.verify()")?;
-
         sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
-            inner.queued.next() >= batch.number()
+            inner.queued.next() >= batch.number
         })
         .await?;
 

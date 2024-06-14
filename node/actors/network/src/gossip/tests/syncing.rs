@@ -345,7 +345,7 @@ async fn coordinated_batch_syncing(node_count: usize, gossip_peers: usize) {
                 node.net
                     .gossip
                     .batch_store
-                    .wait_until_persisted(ctx, batch.number())
+                    .wait_until_persisted(ctx, batch.number)
                     .await
                     .unwrap();
             }
@@ -400,7 +400,7 @@ async fn uncoordinated_batch_syncing(
                 .context("queue_batch()")?;
             ctx.sleep(state_generation_interval).await?;
         }
-        let last = setup.batches.last().unwrap().number();
+        let last = setup.batches.last().unwrap().number;
         for node in &nodes {
             node.net
                 .gossip

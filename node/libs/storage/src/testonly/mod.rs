@@ -75,7 +75,7 @@ impl TestMemoryStorage {
     /// Constructs a new in-memory store for both blocks and batches with their respective runners.
     pub async fn new(ctx: &ctx::Ctx, genesis: &validator::Genesis) -> Self {
         let (blocks, blocks_runner) = new_store(ctx, genesis).await;
-        let (batches, batches_runner) = new_batch_store(ctx, genesis).await;
+        let (batches, batches_runner) = new_batch_store(ctx).await;
         let runner = TestMemoryStorageRunner::new(blocks_runner, batches_runner).await;
         Self {
             blocks,
@@ -92,7 +92,7 @@ impl TestMemoryStorage {
         first: validator::BlockNumber,
     ) -> Self {
         let (blocks, blocks_runner) = new_store_with_first(ctx, genesis, first).await;
-        let (batches, batches_runner) = new_batch_store(ctx, genesis).await;
+        let (batches, batches_runner) = new_batch_store(ctx).await;
         let runner = TestMemoryStorageRunner::new(blocks_runner, batches_runner).await;
         Self {
             blocks,
@@ -111,14 +111,10 @@ async fn new_store(
 }
 
 /// Constructs a new in-memory batch store.
-async fn new_batch_store(
-    ctx: &ctx::Ctx,
-    genesis: &validator::Genesis,
-) -> (Arc<BatchStore>, BatchStoreRunner) {
+async fn new_batch_store(ctx: &ctx::Ctx) -> (Arc<BatchStore>, BatchStoreRunner) {
     BatchStore::new(
         ctx,
         Box::new(in_memory::BatchStore::new(attester::BatchNumber(0))),
-        genesis.clone(),
     )
     .await
     .unwrap()
@@ -163,7 +159,10 @@ pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<valid
 }
 
 /// Dumps all the batches stored in `store`.
-pub async fn dump_batch(_ctx: &ctx::Ctx, store: &dyn PersistentBatchStore) -> Vec<attester::Batch> {
+pub async fn dump_batch(
+    _ctx: &ctx::Ctx,
+    store: &dyn PersistentBatchStore,
+) -> Vec<attester::SyncBatch> {
     // let genesis = store.genesis(ctx).await.unwrap();
     let state = store.persisted().borrow().clone();
     // assert!(genesis.first_block <= state.first);
@@ -171,11 +170,11 @@ pub async fn dump_batch(_ctx: &ctx::Ctx, store: &dyn PersistentBatchStore) -> Ve
     let after = state
         .last
         .as_ref()
-        .map(|qc| qc.header().number.next())
+        .map(|sb| sb.number.next())
         .unwrap_or(state.first);
     for n in (state.first.0..after.0).map(attester::BatchNumber) {
         let batch = store.get_batch(n).unwrap();
-        assert_eq!(batch.proposal.number, n);
+        assert_eq!(batch.number, n);
         batches.push(batch);
     }
     if let Some(before) = state.first.prev() {

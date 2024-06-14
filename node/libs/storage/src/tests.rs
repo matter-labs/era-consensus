@@ -36,10 +36,10 @@ async fn test_inmemory_batch_store() {
     let mut want = vec![];
     for batch in &setup.batches {
         store.queue_next_batch(ctx, batch.clone()).await.unwrap();
-        sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(batch.number()))
+        sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(batch.number))
             .await
             .unwrap();
-        want.push(batch.justification.message.clone());
+        want.push(batch.clone());
         assert_eq!(want, testonly::dump_batch(ctx, store).await);
     }
 }

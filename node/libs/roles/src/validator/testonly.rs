@@ -7,7 +7,7 @@ use super::{
     WeightedValidator,
 };
 use crate::{
-    attester::{self, Batch, BatchHeader, BatchNumber, BatchQC, FinalBatch},
+    attester::{self, BatchNumber, SyncBatch},
     validator::LeaderSelectionMode,
 };
 use bit_vec::BitVec;
@@ -138,36 +138,25 @@ impl Setup {
     /// Pushes `count` batches with a random payload.
     pub fn push_batches(&mut self, rng: &mut impl Rng, count: usize) {
         for _ in 0..count {
-            self.push_batch(rng.gen());
+            self.push_batch(rng);
         }
     }
 
     /// Pushes a new L1 batch.
-    pub fn push_batch(&mut self, payload: attester::Payload) {
-        let proposal = match self.0.batches.last() {
-            Some(b) => BatchHeader {
-                number: b.number().next(),
-                payload: payload.hash(),
-            },
-            None => BatchHeader {
-                number: BatchNumber(0),
-                payload: payload.hash(),
-            },
+    pub fn push_batch(&mut self, rng: &mut impl Rng) {
+        let batch_number = match self.0.batches.last() {
+            Some(b) => b.number.next(),
+            None => BatchNumber(0),
         };
-        let msg = Batch { proposal };
-        let mut justification = BatchQC::new(msg, &self.0.genesis).unwrap();
-        for key in &self.0.attester_keys {
-            justification
-                .add(
-                    &key.sign_msg(justification.message.clone()),
-                    &self.0.genesis,
-                )
-                .unwrap();
-        }
-        self.0.batches.push(FinalBatch {
-            payload,
-            justification,
-        });
+        let size: usize = rng.gen_range(500..1000);
+        let payloads = vec![Payload((0..size).map(|_| rng.gen()).collect())];
+        let proof = rng.gen::<[u8; 32]>().to_vec();
+        let batch = SyncBatch {
+            number: batch_number,
+            payloads,
+            proof,
+        };
+        self.0.batches.push(batch);
     }
 }
 
@@ -216,7 +205,7 @@ pub struct SetupInner {
     /// Past blocks.
     pub blocks: Vec<FinalBlock>,
     /// L1 batches
-    pub batches: Vec<FinalBatch>,
+    pub batches: Vec<SyncBatch>,
     /// Genesis config.
     pub genesis: Genesis,
 }
@@ -364,13 +353,6 @@ impl Distribution<Payload> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Payload {
         let size: usize = rng.gen_range(500..1000);
         Payload((0..size).map(|_| rng.gen()).collect())
-    }
-}
-
-impl Distribution<attester::Payload> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> attester::Payload {
-        let size: usize = rng.gen_range(500..1000);
-        attester::Payload((0..size).map(|_| rng.gen()).collect())
     }
 }
 

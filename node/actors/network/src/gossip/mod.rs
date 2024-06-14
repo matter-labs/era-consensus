@@ -17,7 +17,6 @@ use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config};
 use anyhow::Context as _;
 use fetch::RequestItem;
 use im::HashMap;
-use rand::Rng;
 use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync};
@@ -173,10 +172,7 @@ impl Network {
                 .map(|qc| {
                     attester::BatchQC::new(
                         attester::Batch {
-                            proposal: attester::BatchHeader {
-                                number: qc.message.proposal.number.next(),
-                                payload: qc.message.proposal.payload, // FIXME this is wrong
-                            },
+                            number: qc.message.number.next(),
                         },
                         self.genesis(),
                     )
@@ -184,10 +180,7 @@ impl Network {
                 .unwrap_or_else(|| {
                     attester::BatchQC::new(
                         attester::Batch {
-                            proposal: attester::BatchHeader {
-                                number: attester::BatchNumber(0),
-                                payload: ctx.rng().gen(), // FIXME this is wrong
-                            },
+                            number: attester::BatchNumber(0),
                         },
                         self.genesis(),
                     )
@@ -199,7 +192,7 @@ impl Network {
                 if self
                     .batch_qc
                     .clone()
-                    .entry(new_qc.message.proposal.number)
+                    .entry(new_qc.message.number)
                     .or_insert_with(|| {
                         attester::BatchQC::new(new_qc.message.clone(), self.genesis()).expect("qc")
                     })
@@ -219,7 +212,7 @@ impl Network {
                 .weight(
                     &self
                         .batch_qc
-                        .get(&new_qc.message.proposal.number)
+                        .get(&new_qc.message.number)
                         .context("last qc")?
                         .signers,
                 );

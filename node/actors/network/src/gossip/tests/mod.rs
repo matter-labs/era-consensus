@@ -108,16 +108,11 @@ fn mk_netaddr(
 }
 
 fn mk_batch<R: Rng>(
-    rng: &mut R,
+    _rng: &mut R,
     key: &attester::SecretKey,
     number: attester::BatchNumber,
 ) -> attester::Signed<attester::Batch> {
-    key.sign_msg(attester::Batch {
-        proposal: attester::BatchHeader {
-            number,
-            payload: rng.gen(),
-        },
-    })
+    key.sign_msg(attester::Batch { number })
 }
 
 fn random_netaddr<R: Rng>(
@@ -137,10 +132,7 @@ fn random_batch_vote<R: Rng>(
     key: &attester::SecretKey,
 ) -> Arc<attester::Signed<attester::Batch>> {
     let batch = attester::Batch {
-        proposal: attester::BatchHeader {
-            number: attester::BatchNumber(rng.gen_range(0..1000)),
-            payload: rng.gen(),
-        },
+        number: attester::BatchNumber(rng.gen_range(0..1000)),
     };
     Arc::new(key.sign_msg(batch.to_owned()))
 }
@@ -167,12 +159,7 @@ fn update_signature<R: Rng>(
     batch_number_diff: i64,
 ) -> Arc<attester::Signed<attester::Batch>> {
     let batch = attester::Batch {
-        proposal: attester::BatchHeader {
-            number: attester::BatchNumber(
-                (batch.proposal.number.0 as i64 + batch_number_diff) as u64,
-            ),
-            payload: batch.proposal.payload,
-        },
+        number: attester::BatchNumber((batch.number.0 as i64 + batch_number_diff) as u64),
     };
     Arc::new(key.sign_msg(batch.to_owned()))
 }
@@ -596,7 +583,7 @@ async fn test_batch_votes() {
     let mut k0v3 = mk_batch(
         rng,
         &keys[1],
-        attester::BatchNumber(want.get(&keys[0]).msg.proposal.number.0 + 1),
+        attester::BatchNumber(want.get(&keys[0]).msg.number.0 + 1),
     );
     k0v3.key = keys[0].public();
     assert!(votes.update(&attesters, &[Arc::new(k0v3)]).await.is_err());

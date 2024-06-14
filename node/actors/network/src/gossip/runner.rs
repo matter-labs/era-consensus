@@ -71,20 +71,18 @@ impl<'a> PushBlockStoreStateServer<'a> {
     }
 }
 
-struct PushBatchStoreStateServer<'a> {
+struct PushBatchStoreStateServer {
     state: sync::watch::Sender<BatchStoreState>,
-    net: &'a Network,
 }
 
-impl<'a> PushBatchStoreStateServer<'a> {
-    fn new(net: &'a Network) -> Self {
+impl PushBatchStoreStateServer {
+    fn new() -> Self {
         Self {
             state: sync::watch::channel(BatchStoreState {
                 first: BatchNumber(0),
                 last: None,
             })
             .0,
-            net,
         }
     }
 }
@@ -106,7 +104,7 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushBlockStoreStateServ
 }
 
 #[async_trait]
-impl rpc::Handler<rpc::push_batch_store_state::Rpc> for &PushBatchStoreStateServer<'_> {
+impl rpc::Handler<rpc::push_batch_store_state::Rpc> for &PushBatchStoreStateServer {
     fn max_req_size(&self) -> usize {
         10 * kB
     }
@@ -115,7 +113,7 @@ impl rpc::Handler<rpc::push_batch_store_state::Rpc> for &PushBatchStoreStateServ
         _ctx: &ctx::Ctx,
         req: rpc::push_batch_store_state::Req,
     ) -> anyhow::Result<()> {
-        req.0.verify(self.net.genesis())?;
+        req.0.verify()?;
         self.state.send_replace(req.0);
         Ok(())
     }
@@ -170,7 +168,7 @@ impl Network {
             ctx,
             self.cfg.rpc.push_batch_store_state_rate,
         );
-        let push_batch_store_state_server = PushBatchStoreStateServer::new(self);
+        let push_batch_store_state_server = PushBatchStoreStateServer::new();
         scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_client(&push_validator_addrs_client)
@@ -351,7 +349,7 @@ impl Network {
                                 .await?
                                 .0
                                 .context("empty response")?;
-                            anyhow::ensure!(batch.number() == req.0, "received wrong batch");
+                            anyhow::ensure!(batch.number == req.0, "received wrong batch");
                             // Storing the batch will fail in case batch is invalid.
                             self.batch_store
                                 .queue_batch(ctx, batch, self.genesis().clone())

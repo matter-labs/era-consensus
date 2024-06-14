@@ -1,6 +1,8 @@
+use crate::validator::Payload;
+
 use super::{
-    AggregateSignature, Batch, BatchHeader, BatchNumber, BatchQC, Committee, FinalBatch, Msg,
-    MsgHash, PayloadHash, PublicKey, SecretKey, Signature, Signed, Signers, WeightedAttester,
+    AggregateSignature, Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash, PublicKey, SecretKey,
+    Signature, Signed, Signers, SyncBatch, WeightedAttester,
 };
 use bit_vec::BitVec;
 use rand::{
@@ -52,26 +54,17 @@ impl Distribution<Committee> for Standard {
 
 impl Distribution<Batch> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Batch {
-        Batch {
-            proposal: rng.gen(),
-        }
+        Batch { number: rng.gen() }
     }
 }
 
-impl Distribution<FinalBatch> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> FinalBatch {
-        FinalBatch {
-            payload: rng.gen(),
-            justification: rng.gen(),
-        }
-    }
-}
-
-impl Distribution<BatchHeader> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchHeader {
-        BatchHeader {
+impl Distribution<SyncBatch> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SyncBatch {
+        let size: usize = rng.gen_range(500..1000);
+        SyncBatch {
             number: rng.gen(),
-            payload: rng.gen(),
+            payloads: vec![Payload((0..size).map(|_| rng.gen()).collect())],
+            proof: rng.gen::<[u8; 32]>().to_vec(),
         }
     }
 }
@@ -89,12 +82,6 @@ impl Distribution<BatchQC> for Standard {
             signers: rng.gen(),
             signature: rng.gen(),
         }
-    }
-}
-
-impl Distribution<PayloadHash> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PayloadHash {
-        PayloadHash(rng.gen())
     }
 }
 
