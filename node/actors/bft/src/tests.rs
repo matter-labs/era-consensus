@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::testonly::{
     twins::{Cluster, HasKey, ScenarioGenerator, Twin},
     ut_harness::UTHarness,
-    Behavior, Network, PortSplitSchedule, Test, NUM_PHASES,
+    Behavior, Network, PortRouter, PortSplitSchedule, Test, NUM_PHASES,
 };
 use zksync_concurrency::{ctx, scope, time};
 use zksync_consensus_network::testonly::new_configs_for_validators;
@@ -420,7 +420,7 @@ async fn run_twins(
         }
 
         Test {
-            network: Network::Twins(splits),
+            network: Network::Twins(PortRouter::Splits(splits)),
             nodes: nodes.clone(),
             blocks_to_finalize,
         }
@@ -465,6 +465,8 @@ async fn test_wait_for_finalized_deadlock() {
     //                                                    and only send the LeaderPrepare to a subset of P2, but we only have the two phases.
     //
     // TODO: We need even more control than what the phases and partitions allow.
-    //       Wrap them up into an enum with a method `allowed_targets(&self, message, from) -> Option<&HashSet<Port>>` that the runner delegates to,
+    //       Wrap them up into an enum with a method that the runner delegates routing decisions to, e.g.
+    //       `allowed_targets(message, from) -> Option<&HashSet<Port>>`, or
+    //       `can_send(message, from, to) -> Option<bool>`, where `None` would indicate having no schedule for the view;
     //       then add a new variant that has function predicate which describes exactly the above scenario.
 }
