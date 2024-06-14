@@ -82,6 +82,8 @@ fn main() -> anyhow::Result<()> {
             gossip_static_outbound: HashMap::default(),
             debug_addr: None,
             debug_credentials: None,
+            debug_cert_path: None,
+            debug_key_path: None,
         })
         .collect();
 

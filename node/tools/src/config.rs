@@ -104,6 +104,8 @@ pub struct AppConfig {
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
 
     pub debug_credentials: Option<DebugCredentials>,
+    pub debug_cert_path: Option<PathBuf>,
+    pub debug_key_path: Option<PathBuf>,
 }
 
 impl ProtoFmt for AppConfig {
@@ -151,6 +153,8 @@ impl ProtoFmt for AppConfig {
                 .clone()
                 .map(DebugCredentials::try_from)
                 .transpose()?,
+            debug_cert_path: read_optional_text(&r.debug_cert_path).context("debug_cert_path")?,
+            debug_key_path: read_optional_text(&r.debug_key_path).context("debug_key_path")?,
         })
     }
 
@@ -184,6 +188,8 @@ impl ProtoFmt for AppConfig {
                 .collect(),
             debug_addr: self.debug_addr.as_ref().map(TextFmt::encode),
             debug_credentials: self.debug_credentials.clone().map(DebugCredentials::into),
+            debug_cert_path: self.debug_cert_path.as_ref().map(TextFmt::encode),
+            debug_key_path: self.debug_key_path.as_ref().map(TextFmt::encode),
         }
     }
 }
@@ -213,6 +219,16 @@ impl Configs {
                 debug_page: self.app.debug_addr.map(|addr| net::http::DebugPageConfig {
                     addr,
                     credentials: self.app.debug_credentials.clone(),
+                    cert_path: self
+                        .app
+                        .debug_cert_path
+                        .clone()
+                        .unwrap_or(PathBuf::from("cert.pem")),
+                    key_path: self
+                        .app
+                        .debug_key_path
+                        .clone()
+                        .unwrap_or(PathBuf::from("key.pem")),
                 }),
             },
             block_store,

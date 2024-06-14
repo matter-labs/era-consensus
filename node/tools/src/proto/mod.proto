@@ -97,6 +97,10 @@ message AppConfig {
   // establish and maintain.
   repeated NodeAddr gossip_static_outbound = 8;
 
-  // Http debug page access password
+  // Http debug page access credentials
   optional string debug_credentials = 13; // optional
+  // Path to the http debug page tls certificate
+  optional string debug_cert_path = 14; // optional
+  // Path to the http debug page private key
+  optional string debug_key_path = 15; // optional
 }

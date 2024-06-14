@@ -15,6 +15,7 @@ use im::HashMap;
 use std::{
     fs, io,
     net::SocketAddr,
+    path::PathBuf,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -37,6 +38,8 @@ const STYLE: &str = include_str!("style.css");
 pub struct Server {
     addr: SocketAddr,
     credentials: Option<DebugCredentials>,
+    cert_path: PathBuf,
+    key_path: PathBuf,
     network: Arc<Network>,
 }
 
@@ -46,6 +49,8 @@ impl Server {
         Server {
             addr: config.addr,
             credentials: config.credentials,
+            cert_path: config.cert_path,
+            key_path: config.key_path,
             network,
         }
     }
@@ -61,7 +66,7 @@ impl Server {
             let mut cancel_signal = std::pin::pin!(async {ctx.canceled().await});
 
             let mut listener =
-                TlsListener::new(tls_acceptor(), TcpListener::bind(self.addr).await?);
+                TlsListener::new(self.tls_acceptor(), TcpListener::bind(self.addr).await?);
 
             let http = http1::Builder::new();
 
@@ -238,25 +243,24 @@ impl Server {
                 format!("{}...{}", &key[..10], &key[len - 11..len])
             })
     }
-}
 
-fn tls_acceptor() -> TlsAcceptor {
-    let cert_der = load_certs("local.cert").expect("Invalid certificate");
-    let key_der = load_private_key("local.key").expect("Invalid private key");
-    Arc::new(
-        ServerConfig::builder()
-            .with_no_client_auth()
-            .with_single_cert(cert_der, key_der)
-            .unwrap(),
-    )
-    .into()
+    fn tls_acceptor(&self) -> TlsAcceptor {
+        let cert_der = load_certs(&self.cert_path).expect("Invalid certificate");
+        let key_der = load_private_key(&self.key_path).expect("Invalid private key");
+        Arc::new(
+            ServerConfig::builder()
+                .with_no_client_auth()
+                .with_single_cert(cert_der, key_der)
+                .unwrap(),
+        )
+        .into()
+    }
 }
 
 // Load public certificate from file.
-fn load_certs(filename: &str) -> anyhow::Result<Vec<CertificateDer<'static>>> {
+fn load_certs(path: &PathBuf) -> anyhow::Result<Vec<CertificateDer<'static>>> {
     // Open certificate file.
-    let certfile =
-        fs::File::open(filename).with_context(|| anyhow!("failed to open {}", filename))?;
+    let certfile = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
     let mut reader = io::BufReader::new(certfile);
 
     // Load and return certificate.
@@ -266,10 +270,9 @@ fn load_certs(filename: &str) -> anyhow::Result<Vec<CertificateDer<'static>>> {
 }
 
 // Load private key from file.
-fn load_private_key(filename: &str) -> anyhow::Result<PrivateKeyDer<'static>> {
+fn load_private_key(path: &PathBuf) -> anyhow::Result<PrivateKeyDer<'static>> {
     // Open keyfile.
-    let keyfile =
-        fs::File::open(filename).with_context(|| anyhow!("failed to open {}", filename))?;
+    let keyfile = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
     let mut reader = io::BufReader::new(keyfile);
 
     // Load and return a single private key.

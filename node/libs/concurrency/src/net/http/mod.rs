@@ -1,5 +1,5 @@
 //! Http Server configuration structs
-use std::net::SocketAddr;
+use std::{net::SocketAddr, path::PathBuf};
 
 use anyhow::{Context, Result};
 /// Debug Page credentials (user:password)
@@ -39,4 +39,8 @@ pub struct DebugPageConfig {
     pub addr: SocketAddr,
     /// Debug page credentials.
     pub credentials: Option<DebugCredentials>,
+    /// Cert file path
+    pub cert_path: PathBuf,
+    /// Key file path
+    pub key_path: PathBuf,
 }

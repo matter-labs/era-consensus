@@ -28,6 +28,8 @@ impl Distribution<AppConfig> for EncodeDist {
                 .collect(),
             debug_addr: self.sample(rng),
             debug_credentials: self.sample(rng),
+            debug_cert_path: None,
+            debug_key_path: None,
         }
     }
 }
