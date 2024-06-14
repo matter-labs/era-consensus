@@ -19,7 +19,6 @@ use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{testonly::new_store, BlockStore};
 use zksync_consensus_utils::pipe;
 
-#[derive(Clone)]
 pub(crate) enum Network {
     Real,
     Mock,
@@ -46,11 +45,16 @@ pub(crate) type PortPartition = HashSet<Port>;
 pub(crate) type PortSplit = Vec<PortPartition>;
 /// A schedule contains a list of splits (one for each phase) for every view.
 pub(crate) type PortSplitSchedule = Vec<[PortSplit; NUM_PHASES]>;
+/// Function to decide whether a message can go from a source to a target port.
+pub(crate) type PortRouterFn = dyn Fn(&validator::ConsensusMsg, Port, Port) -> Option<bool> + Sync;
 
 /// A predicate to gover who can communicate to whom a given message.
-#[derive(Clone)]
 pub(crate) enum PortRouter {
+    /// List of port splits for each view/phase, where ports in the same partition can send any message to each other.
     Splits(PortSplitSchedule),
+    /// Custom routing function which can take closer control of which message can be sent in which direction,
+    /// in order to reenact particular edge cases.
+    Custom(Box<PortRouterFn>),
 }
 
 impl PortRouter {
@@ -58,14 +62,14 @@ impl PortRouter {
     ///
     /// Returning `None` means the there was no more routing data and the test can decide to
     /// allow all communication or to abort a runaway test.
-    fn can_send(&self, msg: &io::ConsensusInputMessage, from: Port, to: Port) -> Option<bool> {
+    fn can_send(&self, msg: &validator::ConsensusMsg, from: Port, to: Port) -> Option<bool> {
         match self {
             PortRouter::Splits(splits) => {
                 // Here we assume that all instances start from view 0 in the tests.
                 // If the view is higher than what we have planned for, assume no partitions.
                 // Every node is guaranteed to be present in only one partition.
-                let view_number = input_msg_view_number(msg);
-                let phase_number = input_msg_phase_number(msg);
+                let view_number = msg.view().number.0 as usize;
+                let phase_number = msg_phase_number(msg);
                 splits
                     .get(view_number)
                     .and_then(|ps| ps.get(phase_number))
@@ -75,12 +79,12 @@ impl PortRouter {
                             .any(|p| p.contains(&from) && p.contains(&to))
                     })
             }
+            PortRouter::Custom(f) => f(msg, from, to),
         }
     }
 }
 
 /// Config for the test. Determines the parameters to run the test with.
-#[derive(Clone)]
 pub(crate) struct Test {
     pub(crate) network: Network,
     pub(crate) nodes: Vec<(Behavior, u64)>,
@@ -428,7 +432,7 @@ async fn twins_receive_loop(
     };
 
     while let Ok(io::InputMessage::Consensus(message)) = recv.recv(ctx).await {
-        let view_number = input_msg_view_number(&message);
+        let view = message.message.msg.view().number.0 as usize;
         let kind = message.message.msg.label();
 
         let msg = || {
@@ -439,7 +443,7 @@ async fn twins_receive_loop(
         };
 
         let can_send = |to| {
-            match router.can_send(&message, port, to) {
+            match router.can_send(&message.message.msg, port, to) {
                 Some(can_send) => Ok(can_send),
                 None => bail!("ran out of port schedule; we probably wouldn't finalize blocks even if we continued")
             }
@@ -447,7 +451,7 @@ async fn twins_receive_loop(
 
         match message.recipient {
             io::Target::Broadcast => {
-                tracing::info!("broadcasting view={view_number} from={port} kind={kind}");
+                tracing::info!("broadcasting view={view} from={port} kind={kind}");
                 for target_port in sends.keys() {
                     send_or_stash(can_send(*target_port)?, *target_port, msg());
                 }
@@ -455,7 +459,7 @@ async fn twins_receive_loop(
             io::Target::Validator(ref v) => {
                 let target_ports = &validator_ports[v];
                 tracing::info!(
-                    "unicasting view={view_number} from={port} target={target_ports:?} kind={kind}"
+                    "unicasting view={view} from={port} target={target_ports:?} kind={kind}"
                 );
                 for target_port in target_ports {
                     send_or_stash(can_send(*target_port)?, *target_port, msg());
@@ -553,9 +557,9 @@ fn output_msg_commit_qc(msg: &io::OutputMessage) -> Option<&validator::CommitQC>
 }
 
 /// Index of the phase in which the message appears, to decide which partitioning to apply.
-fn input_msg_phase_number(msg: &io::ConsensusInputMessage) -> usize {
+fn msg_phase_number(msg: &validator::ConsensusMsg) -> usize {
     use validator::ConsensusMsg;
-    let phase = match msg.message.msg {
+    let phase = match msg {
         ConsensusMsg::ReplicaPrepare(_) => 0,
         ConsensusMsg::LeaderPrepare(_) => 0,
         ConsensusMsg::ReplicaCommit(_) => 0,
@@ -563,11 +567,6 @@ fn input_msg_phase_number(msg: &io::ConsensusInputMessage) -> usize {
     };
     assert!(phase < NUM_PHASES);
     phase
-}
-
-/// View number of the message, to decide which partitioning to apply.
-fn input_msg_view_number(msg: &io::ConsensusInputMessage) -> usize {
-    msg.message.msg.view().number.0 as usize
 }
 
 struct TwinsGossipMessage {
