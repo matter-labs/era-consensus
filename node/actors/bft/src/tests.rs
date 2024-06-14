@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use crate::testonly::{
     twins::{Cluster, HasKey, ScenarioGenerator, Twin},
     ut_harness::UTHarness,
-    Behavior, Network, PortRouter, PortSplitSchedule, Test, NUM_PHASES,
+    Behavior, Network, Port, PortRouter, PortSplitSchedule, Test, NUM_PHASES,
 };
 use zksync_concurrency::{ctx, scope, time};
 use zksync_consensus_network::testonly::new_configs_for_validators;
@@ -437,10 +437,6 @@ async fn run_twins(
 /// should cause the others to finalize the block and gossip the payload to them in turn.
 #[tokio::test(flavor = "multi_thread")]
 async fn test_wait_for_finalized_deadlock() {
-    zksync_concurrency::testonly::abort_on_panic();
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
-
     // These are the conditions for the deadlock to occur:
     // * The problem happens in the handling of LeaderPrepare where the replica waits for the previous block in the justification.
     // * For that the replica needs to receive a proposal from a leader that knows the previous block is finalized.
@@ -470,6 +466,95 @@ async fn test_wait_for_finalized_deadlock() {
     // We need more than 1 gossip peer, otherwise the chain of gossip triggers in the Twins network won't kick in,
     // and while node 0 will gossip to node 1, node 1 will not send it to node 2, and the test will fail.
     let gossip_peers = 2;
+
+    run_with_custom_router(
+        num_replicas,
+        gossip_peers,
+        blocks_to_finalize,
+        |port_to_id| {
+            PortRouter::Custom(Box::new(move |msg, from, to| {
+                use validator::ConsensusMsg::*;
+                // Map ports back to logical node ID
+                let from = port_to_id[&from];
+                let to = port_to_id[&to];
+                let view_number = msg.view().number;
+
+                // If we haven't finalised the blocks in the first few rounds, we failed.
+                if view_number.0 > 7 {
+                    return None;
+                }
+
+                // Sending to self is ok.
+                // If this wasn't here the test would pass even without adding a timeout in process_leader_prepare.
+                // The reason is that node 2 would move to view 2 as soon as it finalises block 1, but then timeout
+                // and move to view 3 before they receive any of the ReplicaPrepare from the others, who are still
+                // waiting to timeout in view 1. By sending ReplicaPrepare to itself it seems to wait or propose.
+                // Maybe the HighQC doesn't make it from its replica::StateMachine into its leader::StateMachine otherwise.
+                if from == to {
+                    return Some(true);
+                }
+
+                let can_send = match view_number {
+                    ViewNumber(1) => {
+                        match from {
+                            // Current leader
+                            1 => match msg {
+                                // Send the proposal to a subset of nodes
+                                LeaderPrepare(_) => to != 0 && to != 10,
+                                // Send the commit to the next leader only
+                                LeaderCommit(_) => to == 2,
+                                _ => true,
+                            },
+                            // Replicas
+                            _ => true,
+                        }
+                    }
+                    ViewNumber(2) => match from {
+                        // Previous leader is dead
+                        1 => false,
+                        // Current leader
+                        2 => match msg {
+                            // Don't send out the HighQC to the others
+                            ReplicaPrepare(_) => false,
+                            // Send the proposal to the ones which didn't get the previous one
+                            LeaderPrepare(_) => to == 0 || to == 10,
+                            _ => true,
+                        },
+                        // Replicas
+                        _ => true,
+                    },
+                    // Previous leaders dead
+                    _ => from != 1 && from != 2,
+                };
+
+                // eprintln!(
+                //     "view={view_number} from={from} to={to} kind={} can_send={can_send}",
+                //     msg.label()
+                // );
+
+                Some(can_send)
+            }))
+        },
+    )
+    .await
+    .unwrap();
+}
+
+/// Run a test with the Twins network controlling exactly who can send to whom in each round.
+///
+/// The input for the router is a mapping from port to the index of nodes starting from 0.
+/// The first view to be executed is view 1 and will have the node 1 as its leader, and so on,
+/// so a routing function can expect view `i` to be lead by node `i`, and express routing
+/// rules with the logic IDs.
+async fn run_with_custom_router(
+    num_replicas: usize,
+    gossip_peers: usize,
+    blocks_to_finalize: usize,
+    make_router: impl FnOnce(HashMap<Port, usize>) -> PortRouter,
+) -> anyhow::Result<()> {
+    zksync_concurrency::testonly::abort_on_panic();
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
 
     let rng = &mut ctx.rng();
 
@@ -514,75 +599,11 @@ async fn test_wait_for_finalized_deadlock() {
         assert_eq!(port_to_id[&port], 1);
     }
 
-    let router = PortRouter::Custom(Box::new(move |msg, from, to| {
-        use validator::ConsensusMsg::*;
-        // Map ports back to logical node ID
-        let from = port_to_id[&from];
-        let to = port_to_id[&to];
-        let view_number = msg.view().number;
-
-        // If we haven't finalised the blocks in the first few rounds, we failed.
-        if view_number.0 > 7 {
-            return None;
-        }
-
-        // Sending to self is ok.
-        // If this wasn't here the test would pass even without adding a timeout in process_leader_prepare.
-        // The reason is that node 2 would move to view 2 as soon as it finalises block 1, but then timeout
-        // and move to view 3 before they receive any of the ReplicaPrepare from the others, who are still
-        // waiting to timeout in view 1. By sending ReplicaPrepare to itself it seems to wait or propose.
-        // Maybe the HighQC doesn't make it from its replica::StateMachine into its leader::StateMachine otherwise.
-        if from == to {
-            return Some(true);
-        }
-
-        let can_send = match view_number {
-            ViewNumber(1) => {
-                match from {
-                    // Current leader
-                    1 => match msg {
-                        // Send the proposal to a subset of nodes
-                        LeaderPrepare(_) => to != 0 && to != 10,
-                        // Send the commit to the next leader only
-                        LeaderCommit(_) => to == 2,
-                        _ => true,
-                    },
-                    // Replicas
-                    _ => true,
-                }
-            }
-            ViewNumber(2) => match from {
-                // Previous leader is dead
-                1 => false,
-                // Current leader
-                2 => match msg {
-                    // Don't send out the HighQC to the others
-                    ReplicaPrepare(_) => false,
-                    // Send the proposal to the ones which didn't get the previous one
-                    LeaderPrepare(_) => to == 0 || to == 10,
-                    _ => true,
-                },
-                // Replicas
-                _ => true,
-            },
-            // Previous leaders dead
-            _ => from != 1 && from != 2,
-        };
-
-        // eprintln!(
-        //     "view={view_number} from={from} to={to} kind={} can_send={can_send}",
-        //     msg.label()
-        // );
-
-        Some(can_send)
-    }));
-
     Test {
-        network: Network::Twins(router),
+        network: Network::Twins(make_router(port_to_id)),
         nodes,
         blocks_to_finalize,
     }
     .run_with_config(ctx, nets, &setup.genesis)
     .await
-    .unwrap()
 }
