@@ -24,10 +24,9 @@ tracing.workspace = true
 vise.workspace = true
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["full","test-util"]}
+tokio.workspace = true
 assert_matches.workspace = true
 pretty_assertions.workspace = true
-test-casing.workspace = true
 
 [lints]
 workspace = true
