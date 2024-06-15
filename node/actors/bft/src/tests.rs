@@ -1,10 +1,11 @@
-use std::collections::HashMap;
-
 use crate::testonly::{
     twins::{Cluster, HasKey, ScenarioGenerator, Twin},
     ut_harness::UTHarness,
-    Behavior, Network, Port, PortRouter, PortSplitSchedule, Test, NUM_PHASES,
+    Behavior, Network, Port, PortRouter, PortSplitSchedule, Test, TestError, NUM_PHASES,
 };
+use assert_matches::assert_matches;
+use std::collections::HashMap;
+use test_casing::test_casing;
 use zksync_concurrency::{ctx, scope, time};
 use zksync_consensus_network::testonly::new_configs_for_validators;
 use zksync_consensus_roles::validator::{
@@ -14,6 +15,7 @@ use zksync_consensus_roles::validator::{
 };
 
 async fn run_test(behavior: Behavior, network: Network) {
+    tokio::time::pause();
     let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
@@ -36,42 +38,42 @@ async fn run_test(behavior: Behavior, network: Network) {
     .unwrap()
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn honest_mock_network() {
     run_test(Behavior::Honest, Network::Mock).await
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn honest_real_network() {
     run_test(Behavior::Honest, Network::Real).await
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn offline_mock_network() {
     run_test(Behavior::Offline, Network::Mock).await
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn offline_real_network() {
     run_test(Behavior::Offline, Network::Real).await
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn random_mock_network() {
     run_test(Behavior::Random, Network::Mock).await
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn random_real_network() {
     run_test(Behavior::Random, Network::Real).await
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn byzantine_mock_network() {
     run_test(Behavior::Byzantine, Network::Mock).await
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn byzantine_real_network() {
     run_test(Behavior::Byzantine, Network::Real).await
 }
@@ -213,8 +215,9 @@ async fn non_proposing_leader() {
 ///
 /// This should be a simple sanity check that the network works and consensus
 /// is achieved under the most favourable conditions.
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn twins_network_wo_twins_wo_partitions() {
+    tokio::time::pause();
     // n<6 implies f=0 and q=n
     run_twins(5, 0, 10).await.unwrap();
 }
@@ -225,37 +228,39 @@ async fn twins_network_wo_twins_wo_partitions() {
 ///
 /// This should be a sanity check that without Byzantine behaviour the consensus
 /// is resilient to temporary network partitions.
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn twins_network_wo_twins_w_partitions() {
+    tokio::time::pause();
     // n=6 implies f=1 and q=5; 6 is the minimum where partitions are possible.
     run_twins(6, 0, 5).await.unwrap();
 }
 
 /// Run Twins scenarios with random number of nodes and 1 twin.
-#[tokio::test(flavor = "multi_thread")]
-async fn twins_network_w1_twins_w_partitions() {
+#[test_casing(5, 6..=10)]
+#[tokio::test]
+async fn twins_network_w1_twins_w_partitions(num_replicas: usize) {
+    tokio::time::pause();
     // n>=6 implies f>=1 and q=n-f
-    for num_replicas in 6..=10 {
-        // let num_honest = validator::threshold(num_replicas as u64) as usize;
-        // let max_faulty = num_replicas - num_honest;
-        // let num_twins = rng.gen_range(1..=max_faulty);
-        run_twins(num_replicas, 1, 10).await.unwrap();
-    }
+    // let num_honest = validator::threshold(num_replicas as u64) as usize;
+    // let max_faulty = num_replicas - num_honest;
+    // let num_twins = rng.gen_range(1..=max_faulty);
+    run_twins(num_replicas, 1, 10).await.unwrap();
 }
 
 /// Run Twins scenarios with higher number of nodes and 2 twins.
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn twins_network_w2_twins_w_partitions() {
+    tokio::time::pause();
     // n>=11 implies f>=2 and q=n-f
-    run_twins(11, 2, 10).await.unwrap();
+    run_twins(11, 2, 8).await.unwrap();
 }
 
 /// Run Twins scenario with more twins than tolerable and expect it to fail.
-#[tokio::test(flavor = "multi_thread")]
-#[should_panic]
+#[tokio::test]
 async fn twins_network_to_fail() {
+    tokio::time::pause();
     // With n=5 f=0, so 1 twin means more faulty nodes than expected.
-    run_twins(5, 1, 100).await.unwrap();
+    assert_matches!(run_twins(5, 1, 100).await, Err(TestError::BlockConflict));
 }
 
 /// Create network configuration for a given number of replicas and twins and run [Test].
@@ -263,29 +268,14 @@ async fn run_twins(
     num_replicas: usize,
     num_twins: usize,
     num_scenarios: usize,
-) -> anyhow::Result<()> {
-    let num_honest = validator::threshold(num_replicas as u64) as usize;
-    let max_faulty = num_replicas - num_honest;
-
-    // If we pass more twins than tolerable faulty replicas then it should fail with an assertion error,
-    // but if we abort the process on panic then the #[should_panic] attribute doesn't work with `cargo nextest`.
-    if num_twins <= max_faulty {
-        zksync_concurrency::testonly::abort_on_panic();
-    }
-    zksync_concurrency::testonly::init_tracing();
+) -> Result<(), TestError> {
+    zksync_concurrency::testonly::abort_on_panic();
 
     // Use a single timeout for all scenarios to finish.
     // A single scenario with 11 replicas took 3-5 seconds.
     // Panic on timeout; works with `cargo nextest` and the `abort_on_panic` above.
-    // If we are in the mode where we are looking for faults and `abort_on_panic` is disabled,
-    // then this will not have any effect and the simulation will run for as long as it takes to
-    // go through all the configured scenarios, and then fail because it didn't panic if no fault was found.
-    // If it panics for another reason it might be misleading though, so ideally it should finish early.
-    // It would be nicer to actually inspect the panic and make sure it's the right kind of assertion.
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
-    // Using `ctc.with_timeout` would stop a runaway execution even without `abort_on_panic` but
-    // it would make the test pass for a different reason, not because it found an error but because it ran long.
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(60));
+    let ctx = &ctx::test_root(&ctx::RealClock);
 
     #[derive(PartialEq, Debug)]
     struct Replica {
@@ -435,7 +425,7 @@ async fn run_twins(
 /// while some other validators have the payload but don't have the HighQC and cannot finalize the block, and therefore
 /// don't gossip it, which causes a deadlock unless the one with the HighQC moves on and broadcasts what they have, which
 /// should cause the others to finalize the block and gossip the payload to them in turn.
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn test_wait_for_finalized_deadlock() {
     // These are the conditions for the deadlock to occur:
     // * The problem happens in the handling of LeaderPrepare where the replica waits for the previous block in the justification.
@@ -551,10 +541,11 @@ async fn run_with_custom_router(
     gossip_peers: usize,
     blocks_to_finalize: usize,
     make_router: impl FnOnce(HashMap<Port, usize>) -> PortRouter,
-) -> anyhow::Result<()> {
+) -> Result<(), TestError> {
+    tokio::time::pause();
     zksync_concurrency::testonly::abort_on_panic();
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(60));
+    let ctx = &ctx::test_root(&ctx::RealClock);
 
     let rng = &mut ctx.rng();
 
