@@ -106,28 +106,14 @@ impl StateMachine {
             };
 
             let now = ctx.now();
-            let view = req.msg.msg.view().number;
             let label = match &req.msg.msg {
-                ConsensusMsg::ReplicaPrepare(m) => {
-                    let number = m
-                        .high_qc
-                        .as_ref()
-                        .map(|qc| qc.message.proposal.number)
-                        .unwrap_or_else(|| validator::BlockNumber(0));
-
+                ConsensusMsg::ReplicaPrepare(_) => {
                     let res = match self
                         .process_replica_prepare(ctx, req.msg.cast().unwrap())
                         .await
                         .wrap("process_replica_prepare()")
                     {
-                        Ok(()) => {
-                            tracing::trace!(
-                                view = view.0,
-                                number = number.0,
-                                "process_leader_prepare"
-                            );
-                            Ok(())
-                        }
+                        Ok(()) => Ok(()),
                         Err(err) => {
                             match err {
                                 super::replica_prepare::Error::Internal(e) => {
@@ -148,21 +134,13 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
                 }
-                ConsensusMsg::LeaderPrepare(m) => {
-                    let number = m.proposal.number;
+                ConsensusMsg::LeaderPrepare(_) => {
                     let res = match self
                         .process_leader_prepare(ctx, req.msg.cast().unwrap())
                         .await
                         .wrap("process_leader_prepare()")
                     {
-                        Ok(()) => {
-                            tracing::trace!(
-                                view = view.0,
-                                number = number.0,
-                                "process_leader_prepare"
-                            );
-                            Ok(())
-                        }
+                        Ok(()) => Ok(()),
                         Err(err) => {
                             match err {
                                 super::leader_prepare::Error::Internal(e) => {
@@ -183,21 +161,13 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::LeaderPrepare.with_result(&res)
                 }
-                ConsensusMsg::LeaderCommit(m) => {
-                    let number = m.justification.message.proposal.number;
+                ConsensusMsg::LeaderCommit(_) => {
                     let res = match self
                         .process_leader_commit(ctx, req.msg.cast().unwrap())
                         .await
                         .wrap("process_leader_commit()")
                     {
-                        Ok(()) => {
-                            tracing::trace!(
-                                view = view.0,
-                                number = number.0,
-                                "process_leader_commit"
-                            );
-                            Ok(())
-                        }
+                        Ok(()) => Ok(()),
                         Err(err) => {
                             match err {
                                 super::leader_commit::Error::Internal(e) => {

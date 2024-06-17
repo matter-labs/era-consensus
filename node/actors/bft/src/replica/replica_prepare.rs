@@ -93,6 +93,12 @@ impl StateMachine {
         // It will also update our high QC, if necessary.
         self.save_block(ctx, &high_qc).await.wrap("save_block()")?;
 
+        tracing::trace!(
+            view = message.view.number.0,
+            number = high_qc.message.proposal.number.0,
+            "process_replica_prepare"
+        );
+
         // Skip to a new view, if necessary.
         if qc_view >= self.view {
             self.view = qc_view;

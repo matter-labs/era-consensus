@@ -91,6 +91,12 @@ impl StateMachine {
             .await
             .wrap("save_block()")?;
 
+        tracing::trace!(
+            view = message.view().number.0,
+            number = message.justification.message.proposal.number.0,
+            "process_leader_commit"
+        );
+
         // Start a new view. But first we skip to the view of this message.
         self.view = message.view().number;
         self.start_new_view(ctx).await.wrap("start_new_view()")?;

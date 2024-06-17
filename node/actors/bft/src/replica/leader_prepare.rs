@@ -184,6 +184,12 @@ impl StateMachine {
         };
         self.outbound_pipe.send(output_message.into());
 
+        tracing::trace!(
+            view = view.0,
+            number = message.proposal.number.0,
+            "process_leader_prepare"
+        );
+
         Ok(())
     }
 }
