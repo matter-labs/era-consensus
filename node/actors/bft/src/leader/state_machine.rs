@@ -97,7 +97,6 @@ impl StateMachine {
                                     tracing::error!(
                                         "process_replica_prepare: internal error: {e:#}"
                                     );
-
                                     return Err(e);
                                 }
                                 super::replica_prepare::Error::Old { .. }
@@ -207,6 +206,8 @@ impl StateMachine {
         };
 
         // ----------- Prepare our message and send it --------------
+
+        tracing::trace!(number = proposal.number.0, "propose");
 
         // Broadcast the leader prepare message to all replicas (ourselves included).
         let msg = cfg

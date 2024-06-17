@@ -9,6 +9,7 @@ impl StateMachine {
     pub(crate) async fn start_new_view(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         // Update the state machine.
         self.view = self.view.next();
+        tracing::trace!(view = self.view.0, "start_new_view");
         tracing::info!("Starting view {}", self.view);
         metrics::METRICS.replica_view_number.set(self.view.0);
 

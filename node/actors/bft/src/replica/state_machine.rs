@@ -11,7 +11,7 @@ use zksync_concurrency::{
     time,
 };
 use zksync_consensus_network::io::ConsensusReq;
-use zksync_consensus_roles::{validator, validator::ConsensusMsg};
+use zksync_consensus_roles::validator::{self, ConsensusMsg};
 use zksync_consensus_storage as storage;
 
 /// The StateMachine struct contains the state of the replica. This is the most complex state machine and is responsible
@@ -100,19 +100,34 @@ impl StateMachine {
 
             // Check for timeout.
             let Some(req) = recv.ok() else {
+                tracing::trace!(view = self.view.0, "timeout");
                 self.start_new_view(ctx).await?;
                 continue;
             };
 
             let now = ctx.now();
+            let view = req.msg.msg.view().number;
             let label = match &req.msg.msg {
-                ConsensusMsg::ReplicaPrepare(_) => {
+                ConsensusMsg::ReplicaPrepare(m) => {
+                    let number = m
+                        .high_qc
+                        .as_ref()
+                        .map(|qc| qc.message.proposal.number)
+                        .unwrap_or_else(|| validator::BlockNumber(0));
+
                     let res = match self
                         .process_replica_prepare(ctx, req.msg.cast().unwrap())
                         .await
                         .wrap("process_replica_prepare()")
                     {
-                        Ok(()) => Ok(()),
+                        Ok(()) => {
+                            tracing::trace!(
+                                view = view.0,
+                                number = number.0,
+                                "process_leader_prepare"
+                            );
+                            Ok(())
+                        }
                         Err(err) => {
                             match err {
                                 super::replica_prepare::Error::Internal(e) => {
@@ -133,13 +148,21 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
                 }
-                ConsensusMsg::LeaderPrepare(_) => {
+                ConsensusMsg::LeaderPrepare(m) => {
+                    let number = m.proposal.number;
                     let res = match self
                         .process_leader_prepare(ctx, req.msg.cast().unwrap())
                         .await
                         .wrap("process_leader_prepare()")
                     {
-                        Ok(()) => Ok(()),
+                        Ok(()) => {
+                            tracing::trace!(
+                                view = view.0,
+                                number = number.0,
+                                "process_leader_prepare"
+                            );
+                            Ok(())
+                        }
                         Err(err) => {
                             match err {
                                 super::leader_prepare::Error::Internal(e) => {
@@ -160,13 +183,21 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::LeaderPrepare.with_result(&res)
                 }
-                ConsensusMsg::LeaderCommit(_) => {
+                ConsensusMsg::LeaderCommit(m) => {
+                    let number = m.justification.message.proposal.number;
                     let res = match self
                         .process_leader_commit(ctx, req.msg.cast().unwrap())
                         .await
                         .wrap("process_leader_commit()")
                     {
-                        Ok(()) => Ok(()),
+                        Ok(()) => {
+                            tracing::trace!(
+                                view = view.0,
+                                number = number.0,
+                                "process_leader_commit"
+                            );
+                            Ok(())
+                        }
                         Err(err) => {
                             match err {
                                 super::leader_commit::Error::Internal(e) => {
