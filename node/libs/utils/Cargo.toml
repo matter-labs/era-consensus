@@ -10,6 +10,7 @@ license.workspace = true
 zksync_concurrency.workspace = true
 rand.workspace = true
 thiserror.workspace = true
+anyhow.workspace = true
 
 [lints]
 workspace = true

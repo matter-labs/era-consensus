@@ -28,16 +28,19 @@ use tokio_rustls::{
     },
     TlsAcceptor,
 };
-use zksync_concurrency::net::http::{DebugCredentials, DebugPageConfig};
+use zksync_concurrency::{ctx, scope};
+use zksync_consensus_utils::http::{DebugPageConfig, DebugPageCredentials};
 
-use crate::{consensus, ctx, scope, Network, StreamValues};
+use crate::{consensus, MeteredStreamStats, Network};
 
 const STYLE: &str = include_str!("style.css");
 
 /// Http Server.
 pub struct Server {
     addr: SocketAddr,
-    credentials: Option<DebugCredentials>,
+    // When credentials is None, no authentication is required.
+    // Not recommended. It's better to define credentials, or disable debug page at all.
+    credentials: Option<DebugPageCredentials>,
     cert_path: PathBuf,
     key_path: PathBuf,
     network: Arc<Network>,
@@ -121,7 +124,7 @@ impl Server {
             Ok(_) => *response.body_mut() = self.serve(request),
             Err(e) => {
                 *response.status_mut() = StatusCode::UNAUTHORIZED;
-                *response.body_mut() = Full::new(Bytes::from(format!("{}", e)));
+                *response.body_mut() = Full::new(Bytes::from(e.to_string()));
                 let header_value = HeaderValue::from_str(r#"Basic realm="debug""#).unwrap();
                 response
                     .headers_mut()
@@ -147,11 +150,10 @@ impl Server {
                 .context("Failed to base64-decode 'Basic' credentials.")?;
             let incoming_credentials = String::from_utf8(decoded_bytes)
                 .context("The decoded credential string is not valid UTF8.")?;
-            if Into::<String>::into(credentials) == incoming_credentials {
-                Ok(())
-            } else {
-                Err(anyhow::anyhow!("Invalid password."))
+            if String::from(credentials) != incoming_credentials {
+                anyhow::bail!("Invalid password.")
             }
+            Ok(())
         })
     }
 
@@ -188,7 +190,7 @@ impl Server {
         Full::new(Bytes::from(html))
     }
 
-    fn connections_html<K>(&self, connections: HashMap<K, Arc<StreamValues>>) -> String
+    fn connections_html<K>(&self, connections: HashMap<K, Arc<MeteredStreamStats>>) -> String
     where
         K: std::hash::Hash + Eq + Clone + std::fmt::Debug + zksync_consensus_crypto::TextFmt,
     {
@@ -220,7 +222,7 @@ impl Server {
             let sent = values.sent.load(std::sync::atomic::Ordering::Relaxed);
             table.add_body_row(vec![
                 self.shorten(key),
-                values.address.map_or("-".to_string(), |a| a.to_string()),
+                values.peer_addr.to_string(),
                 bytesize::to_string(received, false),
                 bytesize::to_string(received / age.as_secs(), false) + "/s",
                 bytesize::to_string(sent, false),

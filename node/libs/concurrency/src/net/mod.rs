@@ -3,7 +3,6 @@
 use crate::ctx;
 use std::fmt;
 
-pub mod http;
 pub mod tcp;
 
 #[cfg(test)]

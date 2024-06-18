@@ -7,15 +7,13 @@ use std::{
     net::SocketAddr,
     path::PathBuf,
 };
-use zksync_concurrency::{
-    ctx,
-    net::{self, http::DebugCredentials},
-};
+use zksync_concurrency::{ctx, net};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BlockStore, BlockStoreRunner};
+use zksync_consensus_utils::http::{DebugPageConfig, DebugPageCredentials};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
 fn read_required_secret_text<T: TextFmt>(text: &Option<String>) -> anyhow::Result<T> {
@@ -103,7 +101,7 @@ pub struct AppConfig {
     pub gossip_static_inbound: HashSet<node::PublicKey>,
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
 
-    pub debug_credentials: Option<DebugCredentials>,
+    pub debug_credentials: Option<DebugPageCredentials>,
     pub debug_cert_path: Option<PathBuf>,
     pub debug_key_path: Option<PathBuf>,
 }
@@ -151,7 +149,7 @@ impl ProtoFmt for AppConfig {
             debug_credentials: r
                 .debug_credentials
                 .clone()
-                .map(DebugCredentials::try_from)
+                .map(DebugPageCredentials::try_from)
                 .transpose()?,
             debug_cert_path: read_optional_text(&r.debug_cert_path).context("debug_cert_path")?,
             debug_key_path: read_optional_text(&r.debug_key_path).context("debug_key_path")?,
@@ -187,7 +185,10 @@ impl ProtoFmt for AppConfig {
                 })
                 .collect(),
             debug_addr: self.debug_addr.as_ref().map(TextFmt::encode),
-            debug_credentials: self.debug_credentials.clone().map(DebugCredentials::into),
+            debug_credentials: self
+                .debug_credentials
+                .clone()
+                .map(DebugPageCredentials::into),
             debug_cert_path: self.debug_cert_path.as_ref().map(TextFmt::encode),
             debug_key_path: self.debug_key_path.as_ref().map(TextFmt::encode),
         }
@@ -216,7 +217,7 @@ impl Configs {
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
                 max_payload_size: self.app.max_payload_size,
-                debug_page: self.app.debug_addr.map(|addr| net::http::DebugPageConfig {
+                debug_page: self.app.debug_addr.map(|addr| DebugPageConfig {
                     addr,
                     credentials: self.app.debug_credentials.clone(),
                     cert_path: self

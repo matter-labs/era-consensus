@@ -1,6 +1,6 @@
 //! Consensus network is a full graph of connections between all validators.
 //! BFT consensus messages are exchanged over this network.
-use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc, StreamValues};
+use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc, MeteredStreamStats};
 use anyhow::Context as _;
 use rand::seq::SliceRandom;
 use std::{
@@ -114,9 +114,9 @@ pub(crate) struct Network {
     /// This validator's secret key.
     pub(crate) key: validator::SecretKey,
     /// Set of the currently open inbound connections.
-    pub(crate) inbound: PoolWatch<validator::PublicKey, Arc<StreamValues>>,
+    pub(crate) inbound: PoolWatch<validator::PublicKey, Arc<MeteredStreamStats>>,
     /// Set of the currently open outbound connections.
-    pub(crate) outbound: PoolWatch<validator::PublicKey, Arc<StreamValues>>,
+    pub(crate) outbound: PoolWatch<validator::PublicKey, Arc<MeteredStreamStats>>,
     /// Messages to be sent to validators.
     pub(crate) msg_pool: MsgPool,
 }

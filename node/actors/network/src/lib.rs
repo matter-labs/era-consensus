@@ -27,7 +27,7 @@ pub mod testonly;
 #[cfg(test)]
 mod tests;
 mod watch;
-pub use metrics::StreamValues;
+pub use metrics::MeteredStreamStats;
 
 pub use config::*;
 

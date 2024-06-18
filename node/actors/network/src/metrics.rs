@@ -21,8 +21,8 @@ use zksync_concurrency::{ctx, io, net};
 pub(crate) struct MeteredStream {
     #[pin]
     stream: net::tcp::Stream,
-    // Collects values to be shown on the Debug http page
-    values: Arc<StreamValues>,
+    /// Collects values to be shown on the Debug http page
+    stats: Arc<MeteredStreamStats>,
     _active: GaugeGuard,
 }
 
@@ -55,17 +55,17 @@ impl MeteredStream {
 
     fn new(stream: net::tcp::Stream, direction: Direction) -> Self {
         TCP_METRICS.established[&direction].inc();
-        let addr = stream.peer_addr().ok();
+        let addr = stream.peer_addr().expect("Invalid address");
         Self {
             stream,
-            values: Arc::new(StreamValues::new(addr)),
+            stats: Arc::new(MeteredStreamStats::new(addr)),
             _active: TCP_METRICS.active[&direction].inc_guard(1),
         }
     }
 
     /// Returns a reference to the the Stream values for inspection
-    pub(crate) fn get_values(&self) -> Arc<StreamValues> {
-        self.values.clone()
+    pub(crate) fn get_values(&self) -> Arc<MeteredStreamStats> {
+        self.stats.clone()
     }
 }
 
@@ -88,7 +88,7 @@ impl io::AsyncRead for MeteredStream {
         let res = this.stream.poll_read(cx, buf);
         let amount = (before - buf.remaining()) as u64;
         TCP_METRICS.received.inc_by(amount);
-        this.values.read(amount);
+        this.stats.read(amount);
         res
     }
 }
@@ -99,7 +99,7 @@ impl io::AsyncWrite for MeteredStream {
         let this = self.project();
         let res = ready!(this.stream.poll_write(cx, buf))?;
         TCP_METRICS.sent.inc_by(res as u64);
-        this.values.wrote(res as u64);
+        this.stats.wrote(res as u64);
         Poll::Ready(Ok(res))
     }
 
@@ -188,24 +188,24 @@ impl NetworkGauges {
 
 /// Metrics reported for TCP connections.
 #[derive(Debug)]
-pub struct StreamValues {
+pub struct MeteredStreamStats {
     /// Total bytes sent over the Stream.
     pub sent: AtomicU64,
     /// Total bytes received over the Stream.
     pub received: AtomicU64,
-    /// TCP connections established since the process started.
+    /// System time since the connection started.
     pub established: SystemTime,
     /// Ip Address and port of current connection.
-    pub address: Option<SocketAddr>,
+    pub peer_addr: SocketAddr,
 }
 
-impl StreamValues {
-    fn new(address: Option<SocketAddr>) -> Self {
+impl MeteredStreamStats {
+    fn new(peer_addr: SocketAddr) -> Self {
         Self {
             sent: 0.into(),
             received: 0.into(),
             established: SystemTime::now(),
-            address,
+            peer_addr,
         }
     }
 
