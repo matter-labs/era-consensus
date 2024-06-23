@@ -29,33 +29,35 @@ use tokio_rustls::{
     TlsAcceptor,
 };
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_utils::http::{DebugPageConfig, DebugPageCredentials};
+use zksync_consensus_utils::http::DebugPageCredentials;
 
 use crate::{consensus, MeteredStreamStats, Network};
 
 const STYLE: &str = include_str!("style.css");
 
-/// Http Server.
-pub struct Server {
-    addr: SocketAddr,
-    // When credentials is None, no authentication is required.
-    // Not recommended. It's better to define credentials, or disable debug page at all.
-    credentials: Option<DebugPageCredentials>,
-    cert_path: PathBuf,
-    key_path: PathBuf,
+/// Http debug page configuration.
+#[derive(Debug, PartialEq)]
+pub struct DebugPageConfig {
+    /// Public Http address to listen incoming http requests.
+    pub addr: SocketAddr,
+    /// Debug page credentials.
+    pub credentials: Option<DebugPageCredentials>,
+    /// Cert file path
+    pub certs: Vec<CertificateDer<'static>>,
+    /// Key file path
+    pub private_key: PrivateKeyDer<'static>,
+}
+
+/// Http Server for debug page.
+pub struct DebugPageServer {
+    config: DebugPageConfig,
     network: Arc<Network>,
 }
 
-impl Server {
+impl DebugPageServer {
     /// Creates a new Server
-    pub fn new(config: DebugPageConfig, network: Arc<Network>) -> Server {
-        Server {
-            addr: config.addr,
-            credentials: config.credentials,
-            cert_path: config.cert_path,
-            key_path: config.key_path,
-            network,
-        }
+    pub fn new(config: DebugPageConfig, network: Arc<Network>) -> DebugPageServer {
+        DebugPageServer { config, network }
     }
 
     /// Runs the Server.
@@ -64,53 +66,40 @@ impl Server {
         let graceful = hyper_util::server::graceful::GracefulShutdown::new();
 
         scope::run!(ctx, |ctx, s| async {
-
-            // if this signal completes, start shutdown
-            let mut cancel_signal = std::pin::pin!(async {ctx.canceled().await});
-
-            let mut listener =
-                TlsListener::new(self.tls_acceptor(), TcpListener::bind(self.addr).await?);
+            let mut listener = TlsListener::new(
+                self.tls_acceptor(),
+                TcpListener::bind(self.config.addr).await?,
+            );
 
             let http = http1::Builder::new();
 
-            // Start a loop to continuously accept incoming connections
-            loop {
-                tokio::select! {
-                    res = listener.accept() => {
-                        match res {
-                            Ok((stream, _)) => {
-                                let io = TokioIo::new(stream);
-                                let conn = http.serve_connection(io, service_fn(|req| self.handle(req)));
-                                // watch this connection
-                                let fut = graceful.watch(conn);
-                                s.spawn_bg(async move {
-                                    if let Err(e) = fut.await {
-                                        tracing::error!("Error serving connection: {:?}", e);
-                                    }
-
-                                    Ok(())
-                                });
-                            },
-                            Err(err) => {
-                                if let Some(remote_addr) = err.peer_addr() {
-                                    tracing::error!("[client {remote_addr}] ");
-                                }
-
-                                tracing::error!("Error accepting connection: {}", err);
+            // Start a loop to accept incoming connections
+            while let Ok(res) = ctx.wait(listener.accept()).await {
+                match res {
+                    Ok((stream, _)) => {
+                        let io = TokioIo::new(stream);
+                        let conn = http.serve_connection(io, service_fn(|req| self.handle(req)));
+                        // watch this connection
+                        let fut = graceful.watch(conn);
+                        s.spawn_bg(async move {
+                            if let Err(e) = fut.await {
+                                tracing::error!("Error serving connection: {:?}", e);
                             }
+                            Ok(())
+                        });
+                    }
+                    Err(err) => {
+                        if let Some(remote_addr) = err.peer_addr() {
+                            tracing::error!("[client {remote_addr}] ");
                         }
-                    },
 
-                    _ = &mut cancel_signal => {
-                        tracing::info!("canceled");
-
-                        // Now start the shutdown and wait for them to complete
-                        // Optional: start a timeout to limit how long to wait.
-                        graceful.shutdown().await;
-                        return Ok(())
+                        tracing::error!("Error accepting connection: {}", err);
+                        continue;
                     }
                 }
             }
+            graceful.shutdown().await;
+            Ok(())
         })
         .await
     }
@@ -135,26 +124,31 @@ impl Server {
     }
 
     fn basic_authentication(&self, headers: &HeaderMap) -> anyhow::Result<()> {
-        self.credentials.clone().map_or(Ok(()), |credentials| {
-            // The header value, if present, must be a valid UTF8 string
-            let header_value = headers
-                .get("Authorization")
-                .context("The 'Authorization' header was missing")?
-                .to_str()
-                .context("The 'Authorization' header was not a valid UTF8 string.")?;
-            let base64encoded_segment = header_value
-                .strip_prefix("Basic ")
-                .context("The authorization scheme was not 'Basic'.")?;
-            let decoded_bytes = base64::engine::general_purpose::STANDARD
-                .decode(base64encoded_segment)
-                .context("Failed to base64-decode 'Basic' credentials.")?;
-            let incoming_credentials = String::from_utf8(decoded_bytes)
-                .context("The decoded credential string is not valid UTF8.")?;
-            if String::from(credentials) != incoming_credentials {
-                anyhow::bail!("Invalid password.")
-            }
-            Ok(())
-        })
+        self.config
+            .credentials
+            .clone()
+            .map_or(Ok(()), |credentials| {
+                // The header value, if present, must be a valid UTF8 string
+                let header_value = headers
+                    .get("Authorization")
+                    .context("The 'Authorization' header was missing")?
+                    .to_str()
+                    .context("The 'Authorization' header was not a valid UTF8 string.")?;
+                let base64encoded_segment = header_value
+                    .strip_prefix("Basic ")
+                    .context("The authorization scheme was not 'Basic'.")?;
+                let decoded_bytes = base64::engine::general_purpose::STANDARD
+                    .decode(base64encoded_segment)
+                    .context("Failed to base64-decode 'Basic' credentials.")?;
+                let incoming_credentials = DebugPageCredentials::try_from(
+                    String::from_utf8(decoded_bytes)
+                        .context("The decoded credential string is not valid UTF8.")?,
+                )?;
+                if credentials != incoming_credentials {
+                    anyhow::bail!("Invalid password.")
+                }
+                Ok(())
+            })
     }
 
     fn serve(&self, _request: Request<hyper::body::Incoming>) -> Full<Bytes> {
@@ -247,8 +241,8 @@ impl Server {
     }
 
     fn tls_acceptor(&self) -> TlsAcceptor {
-        let cert_der = load_certs(&self.cert_path).expect("Invalid certificate");
-        let key_der = load_private_key(&self.key_path).expect("Invalid private key");
+        let cert_der = self.config.certs.clone();
+        let key_der = self.config.private_key.clone_key();
         Arc::new(
             ServerConfig::builder()
                 .with_no_client_auth()
@@ -259,8 +253,8 @@ impl Server {
     }
 }
 
-// Load public certificate from file.
-fn load_certs(path: &PathBuf) -> anyhow::Result<Vec<CertificateDer<'static>>> {
+/// Load public certificate from file.
+pub fn load_certs(path: &PathBuf) -> anyhow::Result<Vec<CertificateDer<'static>>> {
     // Open certificate file.
     let certfile = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
     let mut reader = io::BufReader::new(certfile);
@@ -271,8 +265,8 @@ fn load_certs(path: &PathBuf) -> anyhow::Result<Vec<CertificateDer<'static>>> {
         .collect())
 }
 
-// Load private key from file.
-fn load_private_key(path: &PathBuf) -> anyhow::Result<PrivateKeyDer<'static>> {
+/// Load private key from file.
+pub fn load_private_key(path: &PathBuf) -> anyhow::Result<PrivateKeyDer<'static>> {
     // Open keyfile.
     let keyfile = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
     let mut reader = io::BufReader::new(keyfile);

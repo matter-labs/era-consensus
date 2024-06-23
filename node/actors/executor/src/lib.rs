@@ -53,7 +53,7 @@ pub struct Config {
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
     /// Http debug page configuration.
     /// If None, debug page is disabled
-    pub debug_page: Option<DebugPageConfig>,
+    pub debug_page_config: Option<DebugPageConfig>,
 }
 
 impl Config {
@@ -98,6 +98,21 @@ impl Executor {
         }
     }
 
+    /// Extracts a debug page config from http crate.
+    fn debug_page_config(&self) -> Option<http::DebugPageConfig> {
+        self.config
+            .debug_page_config
+            .as_ref()
+            .map(|debug_page_config| http::DebugPageConfig {
+                addr: debug_page_config.addr,
+                credentials: debug_page_config.credentials.clone(),
+                certs: http::load_certs(&debug_page_config.cert_path)
+                    .expect("Could not obtain certs for debug page"),
+                private_key: http::load_private_key(&debug_page_config.key_path)
+                    .expect("Could not obtain private key for debug page"),
+            })
+    }
+
     /// Runs this executor to completion. This should be spawned on a separate task.
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let network_config = self.network_config();
@@ -109,7 +124,7 @@ impl Executor {
         let dispatcher = Dispatcher::new(consensus_dispatcher_pipe, network_dispatcher_pipe);
 
         tracing::debug!("Starting actors in separate threads.");
-        scope::run!(ctx, |ctx, s| async {
+        scope::run!(ctx, |ctx, s| async move {
             s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
 
             let (net, runner) =
@@ -117,9 +132,9 @@ impl Executor {
             net.register_metrics();
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
 
-            if let Some(debug_config) = &self.config.debug_page {
-                s.spawn(async {
-                    http::Server::new(debug_config.clone(), net)
+            if let Some(debug_config) = self.debug_page_config() {
+                s.spawn(async move {
+                    http::DebugPageServer::new(debug_config, net)
                         .run(ctx)
                         .await
                         .context("Http Server stopped")

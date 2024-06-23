@@ -26,10 +26,7 @@ impl Distribution<AppConfig> for EncodeDist {
                 .sample_range(rng)
                 .map(|_| (rng.gen(), self.sample(rng)))
                 .collect(),
-            debug_addr: self.sample(rng),
-            debug_credentials: self.sample(rng),
-            debug_cert_path: None,
-            debug_key_path: None,
+            debug_page_config: self.sample(rng),
         }
     }
 }

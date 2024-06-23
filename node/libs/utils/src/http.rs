@@ -42,7 +42,7 @@ impl std::fmt::Debug for DebugPageCredentials {
 }
 
 /// Http debug page configuration.
-#[derive(Debug, Clone)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct DebugPageConfig {
     /// Public Http address to listen incoming http requests.
     pub addr: SocketAddr,

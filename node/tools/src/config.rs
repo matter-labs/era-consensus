@@ -89,7 +89,6 @@ pub struct AppConfig {
     pub server_addr: SocketAddr,
     pub public_addr: net::Host,
     pub rpc_addr: Option<SocketAddr>,
-    pub debug_addr: Option<SocketAddr>,
     pub metrics_server_addr: Option<SocketAddr>,
 
     pub genesis: validator::Genesis,
@@ -101,9 +100,7 @@ pub struct AppConfig {
     pub gossip_static_inbound: HashSet<node::PublicKey>,
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
 
-    pub debug_credentials: Option<DebugPageCredentials>,
-    pub debug_cert_path: Option<PathBuf>,
-    pub debug_key_path: Option<PathBuf>,
+    pub debug_page_config: Option<DebugPageConfig>,
 }
 
 impl ProtoFmt for AppConfig {
@@ -145,14 +142,25 @@ impl ProtoFmt for AppConfig {
                 .context("gossip_dynamic_inbound_limit")?,
             gossip_static_inbound,
             gossip_static_outbound,
-            debug_addr: read_optional_text(&r.debug_addr).context("debug_addr")?,
-            debug_credentials: r
-                .debug_credentials
-                .clone()
-                .map(DebugPageCredentials::try_from)
-                .transpose()?,
-            debug_cert_path: read_optional_text(&r.debug_cert_path).context("debug_cert_path")?,
-            debug_key_path: read_optional_text(&r.debug_key_path).context("debug_key_path")?,
+            debug_page_config: match read_optional_text(&r.debug_addr).context("debug_addr")? {
+                Some(addr) => Some(DebugPageConfig {
+                    addr,
+                    credentials: r
+                        .debug_credentials
+                        .clone()
+                        .map(DebugPageCredentials::try_from)
+                        .transpose()?,
+                    cert_path: read_optional_text(&r.debug_cert_path)
+                        .context("debug_cert_path")?
+                        // default to 'cert.pem' if cert_path is missing
+                        .unwrap_or(PathBuf::from("cert.pem")),
+                    key_path: read_optional_text(&r.debug_key_path)
+                        .context("debug_key_path")?
+                        // default to 'key.pem' if key_path is missing
+                        .unwrap_or(PathBuf::from("key.pem")),
+                }),
+                _ => None,
+            },
         })
     }
 
@@ -184,13 +192,25 @@ impl ProtoFmt for AppConfig {
                     addr: Some(addr.0.clone()),
                 })
                 .collect(),
-            debug_addr: self.debug_addr.as_ref().map(TextFmt::encode),
-            debug_credentials: self
-                .debug_credentials
-                .clone()
-                .map(DebugPageCredentials::into),
-            debug_cert_path: self.debug_cert_path.as_ref().map(TextFmt::encode),
-            debug_key_path: self.debug_key_path.as_ref().map(TextFmt::encode),
+            debug_addr: self
+                .debug_page_config
+                .as_ref()
+                .map(|config| config.addr.encode()),
+            debug_credentials: self.debug_page_config.as_ref().map(|config| {
+                config
+                    .credentials
+                    .clone()
+                    .map(DebugPageCredentials::into)
+                    .unwrap()
+            }),
+            debug_cert_path: self
+                .debug_page_config
+                .as_ref()
+                .map(|config| config.cert_path.encode()),
+            debug_key_path: self
+                .debug_page_config
+                .as_ref()
+                .map(|config| config.key_path.encode()),
         }
     }
 }
@@ -217,20 +237,7 @@ impl Configs {
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
                 max_payload_size: self.app.max_payload_size,
-                debug_page: self.app.debug_addr.map(|addr| DebugPageConfig {
-                    addr,
-                    credentials: self.app.debug_credentials.clone(),
-                    cert_path: self
-                        .app
-                        .debug_cert_path
-                        .clone()
-                        .unwrap_or(PathBuf::from("cert.pem")),
-                    key_path: self
-                        .app
-                        .debug_key_path
-                        .clone()
-                        .unwrap_or(PathBuf::from("key.pem")),
-                }),
+                debug_page_config: self.app.debug_page_config.clone(),
             },
             block_store,
             validator: self

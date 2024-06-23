@@ -1,11 +1,13 @@
 //! Utilities for testing encodings.
+use std::{path::PathBuf, str::FromStr};
+
 use rand::{
     distributions::{Alphanumeric, DistString, Distribution},
     Rng,
 };
 use zksync_concurrency::net;
 
-use crate::http::DebugPageCredentials;
+use crate::http::{DebugPageConfig, DebugPageCredentials};
 
 /// Distribution for testing encodings.
 pub struct EncodeDist {
@@ -121,6 +123,23 @@ impl Distribution<f64> for EncodeDist {
             return rng.gen_range(0..PRECISION) as f64 / PRECISION as f64;
         }
         rng.gen()
+    }
+}
+
+impl Distribution<DebugPageConfig> for EncodeDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DebugPageConfig {
+        DebugPageConfig {
+            addr: self.sample(rng),
+            credentials: self.sample(rng),
+            cert_path: self.sample(rng),
+            key_path: self.sample(rng),
+        }
+    }
+}
+
+impl Distribution<PathBuf> for EncodeDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PathBuf {
+        PathBuf::from_str(&Distribution::<String>::sample(self, rng)).unwrap()
     }
 }
 
