@@ -1,19 +1,21 @@
-use std::collections::HashMap;
-
 use crate::testonly::{
     twins::{Cluster, HasKey, ScenarioGenerator, Twin},
     ut_harness::UTHarness,
-    Behavior, Network, PortSplitSchedule, Test, NUM_PHASES,
+    Behavior, Network, Port, PortRouter, PortSplitSchedule, Test, TestError, NUM_PHASES,
 };
+use assert_matches::assert_matches;
+use std::collections::HashMap;
+use test_casing::test_casing;
 use zksync_concurrency::{ctx, scope, time};
 use zksync_consensus_network::testonly::new_configs_for_validators;
 use zksync_consensus_roles::validator::{
     self,
     testonly::{Setup, SetupSpec},
-    LeaderSelectionMode, PublicKey, SecretKey,
+    LeaderSelectionMode, PublicKey, SecretKey, ViewNumber,
 };
 
 async fn run_test(behavior: Behavior, network: Network) {
+    tokio::time::pause();
     let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
@@ -36,42 +38,42 @@ async fn run_test(behavior: Behavior, network: Network) {
     .unwrap()
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn honest_mock_network() {
     run_test(Behavior::Honest, Network::Mock).await
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn honest_real_network() {
     run_test(Behavior::Honest, Network::Real).await
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn offline_mock_network() {
     run_test(Behavior::Offline, Network::Mock).await
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn offline_real_network() {
     run_test(Behavior::Offline, Network::Real).await
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn random_mock_network() {
     run_test(Behavior::Random, Network::Mock).await
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn random_real_network() {
     run_test(Behavior::Random, Network::Real).await
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn byzantine_mock_network() {
     run_test(Behavior::Byzantine, Network::Mock).await
 }
 
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn byzantine_real_network() {
     run_test(Behavior::Byzantine, Network::Real).await
 }
@@ -213,8 +215,9 @@ async fn non_proposing_leader() {
 ///
 /// This should be a simple sanity check that the network works and consensus
 /// is achieved under the most favourable conditions.
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn twins_network_wo_twins_wo_partitions() {
+    tokio::time::pause();
     // n<6 implies f=0 and q=n
     run_twins(5, 0, 10).await.unwrap();
 }
@@ -225,37 +228,39 @@ async fn twins_network_wo_twins_wo_partitions() {
 ///
 /// This should be a sanity check that without Byzantine behaviour the consensus
 /// is resilient to temporary network partitions.
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn twins_network_wo_twins_w_partitions() {
+    tokio::time::pause();
     // n=6 implies f=1 and q=5; 6 is the minimum where partitions are possible.
     run_twins(6, 0, 5).await.unwrap();
 }
 
 /// Run Twins scenarios with random number of nodes and 1 twin.
-#[tokio::test(flavor = "multi_thread")]
-async fn twins_network_w1_twins_w_partitions() {
+#[test_casing(5, 6..=10)]
+#[tokio::test]
+async fn twins_network_w1_twins_w_partitions(num_replicas: usize) {
+    tokio::time::pause();
     // n>=6 implies f>=1 and q=n-f
-    for num_replicas in 6..=10 {
-        // let num_honest = validator::threshold(num_replicas as u64) as usize;
-        // let max_faulty = num_replicas - num_honest;
-        // let num_twins = rng.gen_range(1..=max_faulty);
-        run_twins(num_replicas, 1, 10).await.unwrap();
-    }
+    // let num_honest = validator::threshold(num_replicas as u64) as usize;
+    // let max_faulty = num_replicas - num_honest;
+    // let num_twins = rng.gen_range(1..=max_faulty);
+    run_twins(num_replicas, 1, 10).await.unwrap();
 }
 
 /// Run Twins scenarios with higher number of nodes and 2 twins.
-#[tokio::test(flavor = "multi_thread")]
+#[tokio::test]
 async fn twins_network_w2_twins_w_partitions() {
+    tokio::time::pause();
     // n>=11 implies f>=2 and q=n-f
-    run_twins(11, 2, 10).await.unwrap();
+    run_twins(11, 2, 8).await.unwrap();
 }
 
 /// Run Twins scenario with more twins than tolerable and expect it to fail.
-#[tokio::test(flavor = "multi_thread")]
-#[should_panic]
+#[tokio::test]
 async fn twins_network_to_fail() {
+    tokio::time::pause();
     // With n=5 f=0, so 1 twin means more faulty nodes than expected.
-    run_twins(5, 1, 100).await.unwrap();
+    assert_matches!(run_twins(5, 1, 100).await, Err(TestError::BlockConflict));
 }
 
 /// Create network configuration for a given number of replicas and twins and run [Test].
@@ -263,29 +268,14 @@ async fn run_twins(
     num_replicas: usize,
     num_twins: usize,
     num_scenarios: usize,
-) -> anyhow::Result<()> {
-    let num_honest = validator::threshold(num_replicas as u64) as usize;
-    let max_faulty = num_replicas - num_honest;
-
-    // If we pass more twins than tolerable faulty replicas then it should fail with an assertion error,
-    // but if we abort the process on panic then the #[should_panic] attribute doesn't work with `cargo nextest`.
-    if num_twins <= max_faulty {
-        zksync_concurrency::testonly::abort_on_panic();
-    }
-    zksync_concurrency::testonly::init_tracing();
+) -> Result<(), TestError> {
+    zksync_concurrency::testonly::abort_on_panic();
 
     // Use a single timeout for all scenarios to finish.
     // A single scenario with 11 replicas took 3-5 seconds.
     // Panic on timeout; works with `cargo nextest` and the `abort_on_panic` above.
-    // If we are in the mode where we are looking for faults and `abort_on_panic` is disabled,
-    // then this will not have any effect and the simulation will run for as long as it takes to
-    // go through all the configured scenarios, and then fail because it didn't panic if no fault was found.
-    // If it panics for another reason it might be misleading though, so ideally it should finish early.
-    // It would be nicer to actually inspect the panic and make sure it's the right kind of assertion.
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
-    // Using `ctc.with_timeout` would stop a runaway execution even without `abort_on_panic` but
-    // it would make the test pass for a different reason, not because it found an error but because it ran long.
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(60));
+    let ctx = &ctx::test_root(&ctx::RealClock);
 
     #[derive(PartialEq, Debug)]
     struct Replica {
@@ -420,7 +410,7 @@ async fn run_twins(
         }
 
         Test {
-            network: Network::Twins(splits),
+            network: Network::Twins(PortRouter::Splits(splits)),
             nodes: nodes.clone(),
             blocks_to_finalize,
         }
@@ -429,4 +419,182 @@ async fn run_twins(
     }
 
     Ok(())
+}
+
+/// Test a liveness issue where some validators have the HighQC but don't have the block payload and have to wait for it,
+/// while some other validators have the payload but don't have the HighQC and cannot finalize the block, and therefore
+/// don't gossip it, which causes a deadlock unless the one with the HighQC moves on and broadcasts what they have, which
+/// should cause the others to finalize the block and gossip the payload to them in turn.
+#[tokio::test]
+async fn test_wait_for_finalized_deadlock() {
+    // These are the conditions for the deadlock to occur:
+    // * The problem happens in the handling of LeaderPrepare where the replica waits for the previous block in the justification.
+    // * For that the replica needs to receive a proposal from a leader that knows the previous block is finalized.
+    // * For that the leader needs to receive a finalized proposal from an earlier leader, but this proposal did not make it to the replica.
+    // * Both leaders need to die and never communicate the HighQC they know about to anybody else.
+    // * The replica has the HighQC but not the payload, and all other replicas might have the payload, but not the HighQC.
+    // * With two leaders down, and the replica deadlocked, we must lose quorum, so the other nodes cannot repropose the missing block either.
+    // * In order for 2 leaders to be dow  and quorum still be possible, we need at least 11 nodes.
+
+    // Here are a series of steps to reproduce the issue:
+    // 1. Say we have 11 nodes: [0,1,2,3,4,5,6,7,8,9,10], taking turns leading the views in that order; we need 9 nodes for quorum. The first view is view 1 lead by node 1.
+    // 2. Node 1 sends LeaderPropose with block 1 to nodes [1-9] and puts together a HighQC.
+    // 3. Node 1 sends the LeaderCommit to node 2, then dies.
+    // 4. Node 2 sends LeaderPropose with block 2 to nodes [0, 10], then dies.
+    // 5. Nodes [0, 10] get stuck processing LeaderPropose because they are waiting for block 1 to appear in their stores.
+    // 6. Node 3 cannot gather 9 ReplicaPrepare messages for a quorum because nodes [1,2] are down and [0,10] are blocking. Consensus stalls.
+
+    // To simulate this with the Twins network we need to use a custom routing function, because the 2nd leader mustn't broadcast the HighQC
+    // to its peers, but it must receive their ReplicaPrepare's to be able to construct the PrepareQC; because of this the simple split schedule
+    // would not be enough as it allows sending messages in both directions.
+
+    // We need 11 nodes so we can turn 2 leaders off.
+    let num_replicas = 11;
+    // Let's wait for the first two blocks to be finalised.
+    // Although theoretically node 1 will be dead after view 1, it will still receive messages and gossip.
+    let blocks_to_finalize = 2;
+    // We need more than 1 gossip peer, otherwise the chain of gossip triggers in the Twins network won't kick in,
+    // and while node 0 will gossip to node 1, node 1 will not send it to node 2, and the test will fail.
+    let gossip_peers = 2;
+
+    run_with_custom_router(
+        num_replicas,
+        gossip_peers,
+        blocks_to_finalize,
+        |port_to_id| {
+            PortRouter::Custom(Box::new(move |msg, from, to| {
+                use validator::ConsensusMsg::*;
+                // Map ports back to logical node ID
+                let from = port_to_id[&from];
+                let to = port_to_id[&to];
+                let view_number = msg.view().number;
+
+                // If we haven't finalised the blocks in the first few rounds, we failed.
+                if view_number.0 > 7 {
+                    return None;
+                }
+
+                // Sending to self is ok.
+                // If this wasn't here the test would pass even without adding a timeout in process_leader_prepare.
+                // The reason is that node 2 would move to view 2 as soon as it finalises block 1, but then timeout
+                // and move to view 3 before they receive any of the ReplicaPrepare from the others, who are still
+                // waiting to timeout in view 1. By sending ReplicaPrepare to itself it seems to wait or propose.
+                // Maybe the HighQC doesn't make it from its replica::StateMachine into its leader::StateMachine otherwise.
+                if from == to {
+                    return Some(true);
+                }
+
+                let can_send = match view_number {
+                    ViewNumber(1) => {
+                        match from {
+                            // Current leader
+                            1 => match msg {
+                                // Send the proposal to a subset of nodes
+                                LeaderPrepare(_) => to != 0 && to != 10,
+                                // Send the commit to the next leader only
+                                LeaderCommit(_) => to == 2,
+                                _ => true,
+                            },
+                            // Replicas
+                            _ => true,
+                        }
+                    }
+                    ViewNumber(2) => match from {
+                        // Previous leader is dead
+                        1 => false,
+                        // Current leader
+                        2 => match msg {
+                            // Don't send out the HighQC to the others
+                            ReplicaPrepare(_) => false,
+                            // Send the proposal to the ones which didn't get the previous one
+                            LeaderPrepare(_) => to == 0 || to == 10,
+                            _ => true,
+                        },
+                        // Replicas
+                        _ => true,
+                    },
+                    // Previous leaders dead
+                    _ => from != 1 && from != 2,
+                };
+
+                // eprintln!(
+                //     "view={view_number} from={from} to={to} kind={} can_send={can_send}",
+                //     msg.label()
+                // );
+
+                Some(can_send)
+            }))
+        },
+    )
+    .await
+    .unwrap();
+}
+
+/// Run a test with the Twins network controlling exactly who can send to whom in each round.
+///
+/// The input for the router is a mapping from port to the index of nodes starting from 0.
+/// The first view to be executed is view 1 and will have the node 1 as its leader, and so on,
+/// so a routing function can expect view `i` to be lead by node `i`, and express routing
+/// rules with the logic IDs.
+async fn run_with_custom_router(
+    num_replicas: usize,
+    gossip_peers: usize,
+    blocks_to_finalize: usize,
+    make_router: impl FnOnce(HashMap<Port, usize>) -> PortRouter,
+) -> Result<(), TestError> {
+    tokio::time::pause();
+    zksync_concurrency::testonly::abort_on_panic();
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(60));
+    let ctx = &ctx::test_root(&ctx::RealClock);
+
+    let rng = &mut ctx.rng();
+
+    let mut spec = SetupSpec::new(rng, num_replicas);
+
+    let nodes = spec
+        .validator_weights
+        .iter()
+        .map(|(_, w)| (Behavior::Honest, *w))
+        .collect();
+
+    let nets = new_configs_for_validators(
+        rng,
+        spec.validator_weights.iter().map(|(sk, _)| sk),
+        gossip_peers,
+    );
+
+    // Assign the validator rota to be in the order of appearance, not ordered by public key.
+    spec.leader_selection = LeaderSelectionMode::Rota(
+        spec.validator_weights
+            .iter()
+            .map(|(sk, _)| sk.public())
+            .collect(),
+    );
+
+    let setup: Setup = spec.into();
+
+    let port_to_id = nets
+        .iter()
+        .enumerate()
+        .map(|(i, net)| (net.server_addr.port(), i))
+        .collect::<HashMap<_, _>>();
+
+    // Sanity check the leader schedule
+    {
+        let pk = setup.genesis.view_leader(ViewNumber(1));
+        let cfg = nets
+            .iter()
+            .find(|net| net.validator_key.as_ref().unwrap().public() == pk)
+            .unwrap();
+        let port = cfg.server_addr.port();
+        assert_eq!(port_to_id[&port], 1);
+    }
+
+    Test {
+        network: Network::Twins(make_router(port_to_id)),
+        nodes,
+        blocks_to_finalize,
+    }
+    .run_with_config(ctx, nets, &setup.genesis)
+    .await
 }

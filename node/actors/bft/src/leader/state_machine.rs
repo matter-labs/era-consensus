@@ -94,11 +94,16 @@ impl StateMachine {
                         Err(err) => {
                             match err {
                                 super::replica_prepare::Error::Internal(e) => {
+                                    tracing::error!(
+                                        "process_replica_prepare: internal error: {e:#}"
+                                    );
+
                                     return Err(e);
                                 }
                                 super::replica_prepare::Error::Old { .. }
                                 | super::replica_prepare::Error::NotLeaderInView => {
-                                    tracing::info!("process_replica_prepare: {err:#}");
+                                    // It's broadcasted now, so everyone gets it.
+                                    tracing::debug!("process_replica_prepare: {err:#}");
                                 }
                                 _ => {
                                     tracing::warn!("process_replica_prepare: {err:#}");
