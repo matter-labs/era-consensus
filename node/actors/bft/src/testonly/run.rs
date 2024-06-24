@@ -21,7 +21,6 @@ use zksync_consensus_utils::pipe;
 
 pub(crate) enum Network {
     Real,
-    Mock,
     Twins(PortRouter),
 }
 
@@ -178,7 +177,6 @@ impl Test {
 async fn run_nodes(ctx: &ctx::Ctx, network: &Network, specs: &[Node]) -> anyhow::Result<()> {
     match network {
         Network::Real => run_nodes_real(ctx, specs).await,
-        Network::Mock => run_nodes_mock(ctx, specs).await,
         Network::Twins(router) => run_nodes_twins(ctx, specs, router).await,
     }
 }
@@ -205,58 +203,6 @@ async fn run_nodes_real(ctx: &ctx::Ctx, specs: &[Node]) -> anyhow::Result<()> {
             );
         }
         Ok(())
-    })
-    .await
-}
-
-/// Run a set of nodes with a mock network.
-async fn run_nodes_mock(ctx: &ctx::Ctx, specs: &[Node]) -> anyhow::Result<()> {
-    scope::run!(ctx, |ctx, s| async {
-        // Actor inputs, ie. where the test can send messages to the consensus.
-        let mut sends = HashMap::new();
-        // Actor outputs, ie. the messages the actor wants to send to the others.
-        let mut recvs = vec![];
-        for (i, spec) in specs.iter().enumerate() {
-            let (actor_pipe, dispatcher_pipe) = pipe::new();
-            let key = spec.net.validator_key.as_ref().unwrap().public();
-            sends.insert(key, actor_pipe.send);
-            recvs.push(actor_pipe.recv);
-            // Run consensus; the dispatcher pipe is its network connection, which means we can use the actor pipe to:
-            // * send Output messages from other actors to this consensus instance
-            // * receive Input messages sent by this consensus to the other actors
-            s.spawn(
-                async {
-                    let mut network_pipe = dispatcher_pipe;
-                    spec.run(ctx, &mut network_pipe).await
-                }
-                .instrument(tracing::info_span!("node", i)),
-            );
-        }
-        // Run mock networks by receiving the output-turned-input from all consensus
-        // instances and forwarding them to the others.
-        scope::run!(ctx, |ctx, s| async {
-            for recv in recvs {
-                s.spawn(async {
-                    use zksync_consensus_network::io;
-                    let mut recv = recv;
-                    while let Ok(io::InputMessage::Consensus(message)) = recv.recv(ctx).await {
-                        let msg = || {
-                            io::OutputMessage::Consensus(io::ConsensusReq {
-                                msg: message.message.clone(),
-                                ack: oneshot::channel().0,
-                            })
-                        };
-                        match message.recipient {
-                            io::Target::Validator(v) => sends.get(&v).unwrap().send(msg()),
-                            io::Target::Broadcast => sends.values().for_each(|s| s.send(msg())),
-                        }
-                    }
-                    Ok(())
-                });
-            }
-            anyhow::Ok(())
-        })
-        .await
     })
     .await
 }

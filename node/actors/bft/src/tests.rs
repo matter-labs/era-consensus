@@ -39,18 +39,8 @@ async fn run_test(behavior: Behavior, network: Network) {
 }
 
 #[tokio::test]
-async fn honest_mock_network() {
-    run_test(Behavior::Honest, Network::Mock).await
-}
-
-#[tokio::test]
 async fn honest_real_network() {
     run_test(Behavior::Honest, Network::Real).await
-}
-
-#[tokio::test]
-async fn offline_mock_network() {
-    run_test(Behavior::Offline, Network::Mock).await
 }
 
 #[tokio::test]
@@ -59,18 +49,8 @@ async fn offline_real_network() {
 }
 
 #[tokio::test]
-async fn random_mock_network() {
-    run_test(Behavior::Random, Network::Mock).await
-}
-
-#[tokio::test]
 async fn random_real_network() {
     run_test(Behavior::Random, Network::Real).await
-}
-
-#[tokio::test]
-async fn byzantine_mock_network() {
-    run_test(Behavior::Byzantine, Network::Mock).await
 }
 
 #[tokio::test]
