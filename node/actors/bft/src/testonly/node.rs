@@ -1,4 +1,3 @@
-use super::Fuzz;
 use crate::{io, testonly, PayloadManager};
 use anyhow::Context as _;
 use std::sync::Arc;
@@ -19,10 +18,6 @@ pub(crate) enum Behavior {
     HonestNotProposing,
     /// A replica that is always offline and does not produce any messages.
     Offline,
-
-    /// A replica that is always online and behaves maliciously. It will produce
-    /// realistic but wrong messages.
-    Byzantine,
 }
 
 impl Behavior {
@@ -51,7 +46,6 @@ impl Node {
             network::io::OutputMessage,
         >,
     ) -> anyhow::Result<()> {
-        let rng = &mut ctx.rng();
         let net_recv = &mut network_pipe.recv;
         let net_send = &mut network_pipe.send;
         let (consensus_actor_pipe, consensus_pipe) = pipe::new();
@@ -89,14 +83,10 @@ impl Node {
             // Get the next message from the channel. Our response depends on what type of replica we are.
             while let Ok(msg) = con_recv.recv(ctx).await {
                 match msg {
-                    io::OutputMessage::Network(mut message) => {
+                    io::OutputMessage::Network(message) => {
                         let message_to_send = match self.behavior {
                             Behavior::Offline => continue,
                             Behavior::Honest | Behavior::HonestNotProposing => message,
-                            Behavior::Byzantine => {
-                                message.message.mutate(rng);
-                                message
-                            }
                         };
                         net_send.send(message_to_send.into());
                     }

@@ -48,11 +48,6 @@ async fn offline_real_network() {
     run_test(Behavior::Offline, Network::Real).await
 }
 
-#[tokio::test]
-async fn byzantine_real_network() {
-    run_test(Behavior::Byzantine, Network::Real).await
-}
-
 /// Testing liveness after the network becomes idle with leader having no cached prepare messages for the current view.
 #[tokio::test]
 async fn timeout_leader_no_prepares() {

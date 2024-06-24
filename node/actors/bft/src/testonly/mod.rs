@@ -5,8 +5,11 @@ use rand::{distributions::Standard, prelude::Distribution, Rng};
 use zksync_concurrency::oneshot;
 use zksync_consensus_network::io::ConsensusReq;
 
+// This could be used in property based testing.
+#[allow(unused)]
 #[cfg(test)]
 mod fuzz;
+
 mod make;
 #[cfg(test)]
 mod node;
@@ -15,8 +18,6 @@ mod run;
 #[cfg(test)]
 pub(crate) mod ut_harness;
 
-#[cfg(test)]
-pub(crate) use fuzz::*;
 pub use make::*;
 #[cfg(test)]
 pub(crate) use node::*;
