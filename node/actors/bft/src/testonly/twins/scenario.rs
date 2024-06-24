@@ -1,8 +1,6 @@
-use std::collections::BTreeSet;
-
-use rand::{seq::SliceRandom, Rng};
-
 use super::{splits, HasKey, Split, Twin};
+use rand::{seq::SliceRandom, Rng};
+use std::collections::BTreeSet;
 
 /// A cluster holds all the nodes in the simulation, some of which are twins.
 pub struct Cluster<T> {

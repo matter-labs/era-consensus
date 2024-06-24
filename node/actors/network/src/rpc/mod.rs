@@ -146,11 +146,7 @@ impl<R: Rpc> Client<R> {
         req: &R::Req,
         max_resp_size: usize,
     ) -> ctx::Result<R::Resp> {
-        Ok(self
-            .reserve(ctx)
-            .await?
-            .call(ctx, req, max_resp_size)
-            .await?)
+        self.reserve(ctx).await?.call(ctx, req, max_resp_size).await
     }
 }
 

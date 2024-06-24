@@ -1,10 +1,5 @@
 //! Loadtest of the gossip endpoint of a node.
-use crate::gossip;
-use crate::mux;
-use crate::noise;
-use crate::preface;
-use crate::rpc;
-use crate::GossipConfig;
+use crate::{gossip, mux, noise, preface, rpc, GossipConfig};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use rand::Rng;
@@ -91,7 +86,7 @@ impl Loadtest {
             .resolve(ctx)
             .await?
             .context("resolve()")?
-            .get(0)
+            .first()
             .context("resolution failed")?;
         let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet)
             .await

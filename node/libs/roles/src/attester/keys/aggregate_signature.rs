@@ -1,9 +1,7 @@
+use crate::attester::{Batch, MsgHash, Signers};
 use std::fmt;
-
 use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
-
-use crate::attester::{Batch, MsgHash, Signers};
 
 // TODO: Once EIP-2537 is merged, `attester::Signature` could be changed to point at the BLS signature.
 //       For now these are just a placeholders so we can keep an `AggregateSignature` around.
