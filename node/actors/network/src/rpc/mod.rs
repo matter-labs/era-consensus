@@ -86,9 +86,9 @@ impl<R: Rpc> ReservedCall<R> {
         ctx: &ctx::Ctx,
         req: &R::Req,
         max_resp_size: usize,
-    ) -> anyhow::Result<R::Resp> {
+    ) -> ctx::Result<R::Resp> {
         let send_time = ctx.now();
-        let mut stream = self.stream.open(ctx).await??;
+        let mut stream = self.stream.open(ctx).await?.context("open()")?;
         let res = async {
             let metric_labels = CallType::Client.to_labels::<R>(req);
             let _guard = RPC_METRICS.inflight[&metric_labels].inc_guard(1);

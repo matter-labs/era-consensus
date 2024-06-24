@@ -158,6 +158,15 @@ pub(crate) enum RunError {
     IO(#[from] io::Error),
 }
 
+impl From<RunError> for ctx::Error {
+    fn from(err: RunError) -> Self {
+        match err {
+            RunError::Canceled(err) => Self::Canceled(err),
+            err => Self::Internal(err.into()),
+        }
+    }
+}
+
 impl Mux {
     async fn spawn_streams<'env>(
         &self,

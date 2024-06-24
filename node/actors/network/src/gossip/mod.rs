@@ -16,6 +16,7 @@ use self::batch_votes::BatchVotesWatch;
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config};
 use anyhow::Context as _;
 use im::HashMap;
+pub use loadtest::Loadtest;
 use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync};
@@ -25,6 +26,7 @@ use zksync_consensus_storage::BlockStore;
 mod batch_votes;
 mod fetch;
 mod handshake;
+mod loadtest;
 mod runner;
 #[cfg(test)]
 mod testonly;
