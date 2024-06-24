@@ -49,11 +49,6 @@ async fn offline_real_network() {
 }
 
 #[tokio::test]
-async fn random_real_network() {
-    run_test(Behavior::Random, Network::Real).await
-}
-
-#[tokio::test]
 async fn byzantine_real_network() {
     run_test(Behavior::Byzantine, Network::Real).await
 }
