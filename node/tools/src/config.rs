@@ -1,19 +1,22 @@
 //! Node configuration.
 use crate::{proto, store};
-use anyhow::Context as _;
+use anyhow::{anyhow, Context as _};
 use serde_json::ser::Formatter;
 use std::{
     collections::{HashMap, HashSet},
+    fs, io,
     net::SocketAddr,
     path::PathBuf,
 };
+use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use zksync_concurrency::{ctx, net};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
+use zksync_consensus_network::http;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BlockStore, BlockStoreRunner};
-use zksync_consensus_utils::http::{DebugPageConfig, DebugPageCredentials};
+use zksync_consensus_utils::debug_page;
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
 fn read_required_secret_text<T: TextFmt>(text: &Option<String>) -> anyhow::Result<T> {
@@ -100,7 +103,7 @@ pub struct AppConfig {
     pub gossip_static_inbound: HashSet<node::PublicKey>,
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
 
-    pub debug_page: Option<DebugPageConfig>,
+    pub debug_page: Option<BasicDebugPageConfig>,
 }
 
 impl ProtoFmt for AppConfig {
@@ -143,12 +146,12 @@ impl ProtoFmt for AppConfig {
             gossip_static_inbound,
             gossip_static_outbound,
             debug_page: match read_optional_text(&r.debug_addr).context("debug_addr")? {
-                Some(addr) => Some(DebugPageConfig {
+                Some(addr) => Some(BasicDebugPageConfig {
                     addr,
                     credentials: r
                         .debug_credentials
                         .clone()
-                        .map(DebugPageCredentials::try_from)
+                        .map(debug_page::Credentials::try_from)
                         .transpose()?,
                     cert_path: read_optional_text(&r.debug_cert_path)
                         .context("debug_cert_path")?
@@ -197,7 +200,7 @@ impl ProtoFmt for AppConfig {
                 config
                     .credentials
                     .clone()
-                    .map(DebugPageCredentials::into)
+                    .map(debug_page::Credentials::into)
                     .unwrap()
             }),
             debug_cert_path: self
@@ -210,6 +213,21 @@ impl ProtoFmt for AppConfig {
                 .map(|config| config.key_path.encode()),
         }
     }
+}
+
+/// Basic http debug page configuration.
+/// Paths will be converted to actual cert and private key
+/// on zksync_consensus_network::http::DebugPageConfig struct
+#[derive(Debug, PartialEq, Clone)]
+pub struct BasicDebugPageConfig {
+    /// Public Http address to listen incoming http requests.
+    pub addr: SocketAddr,
+    /// Debug page credentials.
+    pub credentials: Option<debug_page::Credentials>,
+    /// Cert file path
+    pub cert_path: PathBuf,
+    /// Key file path
+    pub key_path: PathBuf,
 }
 
 #[derive(Debug)]
@@ -234,7 +252,16 @@ impl Configs {
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
                 max_payload_size: self.app.max_payload_size,
-                debug_page: self.app.debug_page.clone(),
+                debug_page: self.app.debug_page.as_ref().map(|debug_page_config| {
+                    http::DebugPageConfig {
+                        addr: debug_page_config.addr,
+                        credentials: debug_page_config.credentials.clone(),
+                        certs: load_certs(&debug_page_config.cert_path)
+                            .expect("Could not obtain certs for debug page"),
+                        private_key: load_private_key(&debug_page_config.key_path)
+                            .expect("Could not obtain private key for debug page"),
+                    }
+                }),
             },
             block_store,
             validator: self
@@ -251,4 +278,26 @@ impl Configs {
         };
         Ok((e, runner))
     }
+}
+
+/// Load public certificate from file.
+fn load_certs(path: &PathBuf) -> anyhow::Result<Vec<CertificateDer<'static>>> {
+    // Open certificate file.
+    let certfile = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
+    let mut reader = io::BufReader::new(certfile);
+
+    // Load and return certificate.
+    Ok(rustls_pemfile::certs(&mut reader)
+        .map(|r| r.expect("Invalid certificate"))
+        .collect())
+}
+
+/// Load private key from file.
+fn load_private_key(path: &PathBuf) -> anyhow::Result<PrivateKeyDer<'static>> {
+    // Open keyfile.
+    let keyfile = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
+    let mut reader = io::BufReader::new(keyfile);
+
+    // Load and return a single private key.
+    Ok(rustls_pemfile::private_key(&mut reader).map(|key| key.expect("Private key not found"))?)
 }

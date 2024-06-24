@@ -1,13 +1,11 @@
 //! Utilities for testing encodings.
-use std::{path::PathBuf, str::FromStr};
-
+use crate::debug_page;
 use rand::{
     distributions::{Alphanumeric, DistString, Distribution},
     Rng,
 };
+use std::{path::PathBuf, str::FromStr};
 use zksync_concurrency::net;
-
-use crate::http::{DebugPageConfig, DebugPageCredentials};
 
 /// Distribution for testing encodings.
 pub struct EncodeDist {
@@ -126,26 +124,15 @@ impl Distribution<f64> for EncodeDist {
     }
 }
 
-impl Distribution<DebugPageConfig> for EncodeDist {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DebugPageConfig {
-        DebugPageConfig {
-            addr: self.sample(rng),
-            credentials: self.sample(rng),
-            cert_path: self.sample(rng),
-            key_path: self.sample(rng),
-        }
-    }
-}
-
 impl Distribution<PathBuf> for EncodeDist {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PathBuf {
         PathBuf::from_str(&Distribution::<String>::sample(self, rng)).unwrap()
     }
 }
 
-impl Distribution<DebugPageCredentials> for EncodeDist {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> DebugPageCredentials {
-        DebugPageCredentials {
+impl Distribution<debug_page::Credentials> for EncodeDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> debug_page::Credentials {
+        debug_page::Credentials {
             user: self.sample(rng),
             password: self.sample(rng),
         }

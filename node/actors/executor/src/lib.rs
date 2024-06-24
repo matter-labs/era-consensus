@@ -11,7 +11,7 @@ use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BlockStore, ReplicaStore};
-use zksync_consensus_utils::{http::DebugPageConfig, pipe};
+use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
 mod io;
@@ -30,7 +30,7 @@ pub struct Validator {
 }
 
 /// Config of the node executor.
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 pub struct Config {
     /// IP:port to listen on, for incoming TCP connections.
     /// Use `0.0.0.0:<port>` to listen on all network interfaces (i.e. on all IPs exposed by this VM).
@@ -53,7 +53,7 @@ pub struct Config {
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
     /// Http debug page configuration.
     /// If None, debug page is disabled
-    pub debug_page: Option<DebugPageConfig>,
+    pub debug_page: Option<http::DebugPageConfig>,
 }
 
 impl Config {
@@ -98,21 +98,6 @@ impl Executor {
         }
     }
 
-    /// Extracts a debug page config from http crate.
-    fn debug_page_config(&self) -> Option<http::DebugPageConfig> {
-        self.config
-            .debug_page
-            .as_ref()
-            .map(|debug_page_config| http::DebugPageConfig {
-                addr: debug_page_config.addr,
-                credentials: debug_page_config.credentials.clone(),
-                certs: http::load_certs(&debug_page_config.cert_path)
-                    .expect("Could not obtain certs for debug page"),
-                private_key: http::load_private_key(&debug_page_config.key_path)
-                    .expect("Could not obtain private key for debug page"),
-            })
-    }
-
     /// Runs this executor to completion. This should be spawned on a separate task.
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let network_config = self.network_config();
@@ -132,7 +117,7 @@ impl Executor {
             net.register_metrics();
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
 
-            if let Some(debug_config) = self.debug_page_config() {
+            if let Some(debug_config) = self.config.debug_page {
                 s.spawn(async {
                     http::DebugPageServer::new(debug_config, net)
                         .run(ctx)

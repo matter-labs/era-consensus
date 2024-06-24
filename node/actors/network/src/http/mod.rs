@@ -1,5 +1,5 @@
 //! Http Server to export debug information
-use anyhow::{anyhow, Context};
+use anyhow::Context as _;
 use base64::Engine;
 use build_html::{Html, HtmlContainer, HtmlPage, Table, TableCell, TableCellType, TableRow};
 use http_body_util::Full;
@@ -13,9 +13,7 @@ use hyper::{
 use hyper_util::rt::tokio::TokioIo;
 use im::HashMap;
 use std::{
-    fs, io,
     net::SocketAddr,
-    path::PathBuf,
     sync::Arc,
     time::{Duration, SystemTime},
 };
@@ -29,7 +27,7 @@ use tokio_rustls::{
     TlsAcceptor,
 };
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_utils::http::DebugPageCredentials;
+use zksync_consensus_utils::debug_page;
 
 use crate::{consensus, MeteredStreamStats, Network};
 
@@ -41,7 +39,7 @@ pub struct DebugPageConfig {
     /// Public Http address to listen incoming http requests.
     pub addr: SocketAddr,
     /// Debug page credentials.
-    pub credentials: Option<DebugPageCredentials>,
+    pub credentials: Option<debug_page::Credentials>,
     /// Cert file path
     pub certs: Vec<CertificateDer<'static>>,
     /// Key file path
@@ -140,7 +138,7 @@ impl DebugPageServer {
                 let decoded_bytes = base64::engine::general_purpose::STANDARD
                     .decode(base64encoded_segment)
                     .context("Failed to base64-decode 'Basic' credentials.")?;
-                let incoming_credentials = DebugPageCredentials::try_from(
+                let incoming_credentials = debug_page::Credentials::try_from(
                     String::from_utf8(decoded_bytes)
                         .context("The decoded credential string is not valid UTF8.")?,
                 )?;
@@ -251,26 +249,4 @@ impl DebugPageServer {
         )
         .into()
     }
-}
-
-/// Load public certificate from file.
-pub fn load_certs(path: &PathBuf) -> anyhow::Result<Vec<CertificateDer<'static>>> {
-    // Open certificate file.
-    let certfile = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
-    let mut reader = io::BufReader::new(certfile);
-
-    // Load and return certificate.
-    Ok(rustls_pemfile::certs(&mut reader)
-        .map(|r| r.expect("Invalid certificate"))
-        .collect())
-}
-
-/// Load private key from file.
-pub fn load_private_key(path: &PathBuf) -> anyhow::Result<PrivateKeyDer<'static>> {
-    // Open keyfile.
-    let keyfile = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
-    let mut reader = io::BufReader::new(keyfile);
-
-    // Load and return a single private key.
-    Ok(rustls_pemfile::private_key(&mut reader).map(|key| key.expect("Private key not found"))?)
 }
