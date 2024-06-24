@@ -30,7 +30,7 @@ We are checking the protocol specification for several configurations:
  this instance.
  
  - [n6f1b3](./n6f1b3.qnt) is the protocol instance for `N=6`, `F=1`, and three
- Byzantines replica. Many invariants are violated in this instance very quickly.
+ Byzantines replicas. Many invariants are violated in this instance very quickly.
  
 ## 2. Finding examples
 
