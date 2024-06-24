@@ -178,7 +178,7 @@ checksum = "16e62a023e7c117e27523144c5d2459f4397fcc3cab0085af8e2224f643a0193"
 dependencies = [
  "proc-macro2",
  "quote",
- "syn 2.0.65",
+ "syn 2.0.66",
 ]
 
 [[package]]
@@ -3650,7 +3650,7 @@ name = "vise-exporter"
 version = "0.1.0"
 source = "git+https://github.com/matter-labs/vise.git?rev=a5bb80c9ce7168663114ee30e794d6dc32159ee4#a5bb80c9ce7168663114ee30e794d6dc32159ee4"
 dependencies = [
- "hyper 0.14.28",
+ "hyper 0.14.29",
  "once_cell",
  "tokio",
  "tracing",
