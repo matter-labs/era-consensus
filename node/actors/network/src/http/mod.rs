@@ -81,7 +81,7 @@ impl DebugPageServer {
                         let conn = http.serve_connection(io, service_fn(|req| self.handle(req)));
                         // watch this connection
                         let fut = graceful.watch(conn);
-                        s.spawn_bg(async move {
+                        s.spawn_bg(async {
                             if let Err(e) = fut.await {
                                 tracing::error!("Error serving connection: {:?}", e);
                             }

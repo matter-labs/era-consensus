@@ -80,7 +80,7 @@ fn main() -> anyhow::Result<()> {
             gossip_dynamic_inbound_limit: peers,
             gossip_static_inbound: HashSet::default(),
             gossip_static_outbound: HashMap::default(),
-            debug_page_config: None,
+            debug_page: None,
         })
         .collect();
 

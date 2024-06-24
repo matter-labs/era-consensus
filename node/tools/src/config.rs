@@ -100,7 +100,7 @@ pub struct AppConfig {
     pub gossip_static_inbound: HashSet<node::PublicKey>,
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
 
-    pub debug_page_config: Option<DebugPageConfig>,
+    pub debug_page: Option<DebugPageConfig>,
 }
 
 impl ProtoFmt for AppConfig {
@@ -142,7 +142,7 @@ impl ProtoFmt for AppConfig {
                 .context("gossip_dynamic_inbound_limit")?,
             gossip_static_inbound,
             gossip_static_outbound,
-            debug_page_config: match read_optional_text(&r.debug_addr).context("debug_addr")? {
+            debug_page: match read_optional_text(&r.debug_addr).context("debug_addr")? {
                 Some(addr) => Some(DebugPageConfig {
                     addr,
                     credentials: r
@@ -192,11 +192,8 @@ impl ProtoFmt for AppConfig {
                     addr: Some(addr.0.clone()),
                 })
                 .collect(),
-            debug_addr: self
-                .debug_page_config
-                .as_ref()
-                .map(|config| config.addr.encode()),
-            debug_credentials: self.debug_page_config.as_ref().map(|config| {
+            debug_addr: self.debug_page.as_ref().map(|config| config.addr.encode()),
+            debug_credentials: self.debug_page.as_ref().map(|config| {
                 config
                     .credentials
                     .clone()
@@ -204,11 +201,11 @@ impl ProtoFmt for AppConfig {
                     .unwrap()
             }),
             debug_cert_path: self
-                .debug_page_config
+                .debug_page
                 .as_ref()
                 .map(|config| config.cert_path.encode()),
             debug_key_path: self
-                .debug_page_config
+                .debug_page
                 .as_ref()
                 .map(|config| config.key_path.encode()),
         }
@@ -237,7 +234,7 @@ impl Configs {
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
                 max_payload_size: self.app.max_payload_size,
-                debug_page_config: self.app.debug_page_config.clone(),
+                debug_page: self.app.debug_page.clone(),
             },
             block_store,
             validator: self

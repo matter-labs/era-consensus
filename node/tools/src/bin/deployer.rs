@@ -51,7 +51,7 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
                 gossip_dynamic_inbound_limit: 2,
                 gossip_static_inbound: [].into(),
                 gossip_static_outbound: [].into(),
-                debug_page_config: None,
+                debug_page: None,
             },
             node_addr: None, //It's not assigned yet
             is_seed: i < seed_nodes_amount,

@@ -53,7 +53,7 @@ pub struct Config {
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
     /// Http debug page configuration.
     /// If None, debug page is disabled
-    pub debug_page_config: Option<DebugPageConfig>,
+    pub debug_page: Option<DebugPageConfig>,
 }
 
 impl Config {
@@ -101,7 +101,7 @@ impl Executor {
     /// Extracts a debug page config from http crate.
     fn debug_page_config(&self) -> Option<http::DebugPageConfig> {
         self.config
-            .debug_page_config
+            .debug_page
             .as_ref()
             .map(|debug_page_config| http::DebugPageConfig {
                 addr: debug_page_config.addr,
@@ -124,7 +124,7 @@ impl Executor {
         let dispatcher = Dispatcher::new(consensus_dispatcher_pipe, network_dispatcher_pipe);
 
         tracing::debug!("Starting actors in separate threads.");
-        scope::run!(ctx, |ctx, s| async move {
+        scope::run!(ctx, |ctx, s| async {
             s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
 
             let (net, runner) =
@@ -133,7 +133,7 @@ impl Executor {
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
 
             if let Some(debug_config) = self.debug_page_config() {
-                s.spawn(async move {
+                s.spawn(async {
                     http::DebugPageServer::new(debug_config, net)
                         .run(ctx)
                         .await
