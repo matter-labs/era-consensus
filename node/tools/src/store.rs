@@ -1,11 +1,7 @@
 //! RocksDB-based implementation of PersistentBlockStore and ReplicaStore.
 use anyhow::Context as _;
 use rocksdb::{Direction, IteratorMode, ReadOptions};
-use std::{
-    fmt,
-    path::Path,
-    sync::{Arc, RwLock},
-};
+use std::{fmt, path::Path, sync::Arc};
 use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{BlockStoreState, PersistentBlockStore, ReplicaState, ReplicaStore};
@@ -50,7 +46,7 @@ impl DatabaseKey {
 struct Inner {
     genesis: validator::Genesis,
     persisted: sync::watch::Sender<BlockStoreState>,
-    db: RwLock<rocksdb::DB>,
+    db: rocksdb::DB,
 }
 
 /// Main struct for the Storage module, it just contains the database. Provides a set of high-level
@@ -81,7 +77,7 @@ impl RocksDB {
             })
             .0,
             genesis,
-            db: RwLock::new(db),
+            db,
         })))
     }
 
@@ -123,8 +119,9 @@ impl PersistentBlockStore for RocksDB {
         number: validator::BlockNumber,
     ) -> ctx::Result<validator::FinalBlock> {
         scope::wait_blocking(|| {
-            let db = self.0.db.read().unwrap();
-            let block = db
+            let block = self
+                .0
+                .db
                 .get(DatabaseKey::Block(number).encode_key())
                 .context("RocksDB error")?
                 .context("not found")?;
@@ -141,7 +138,6 @@ impl PersistentBlockStore for RocksDB {
         block: validator::FinalBlock,
     ) -> ctx::Result<()> {
         scope::wait_blocking(|| {
-            let db = self.0.db.write().unwrap();
             let want = self.0.persisted.borrow().next();
             anyhow::ensure!(
                 block.number() == want,
@@ -155,7 +151,9 @@ impl PersistentBlockStore for RocksDB {
                 zksync_protobuf::encode(&block),
             );
             // Commit the transaction.
-            db.write(write_batch)
+            self.0
+                .db
+                .write(write_batch)
                 .context("Failed writing block to database")?;
             self.0
                 .persisted
@@ -175,8 +173,6 @@ impl ReplicaStore for RocksDB {
             let Some(raw_state) = self
                 .0
                 .db
-                .read()
-                .unwrap()
                 .get(DatabaseKey::ReplicaState.encode_key())
                 .context("Failed to get ReplicaState from RocksDB")?
             else {
@@ -191,8 +187,6 @@ impl ReplicaStore for RocksDB {
         Ok(scope::wait_blocking(|| {
             self.0
                 .db
-                .write()
-                .unwrap()
                 .put(
                     DatabaseKey::ReplicaState.encode_key(),
                     zksync_protobuf::encode(state),
