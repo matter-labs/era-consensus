@@ -25,12 +25,12 @@ We are checking the protocol specification for several configurations:
  be violated.
  
  - [n6f1b2](./n6f1b2.qnt) is the protocol instance for `N=6`, `F=1`, and two
- Byzantines replica. Two Byzantine replicas have the critical mass to partition
+ Byzantine replicas. Two Byzantine replicas have the critical mass to partition
  the correct replicas. Some invariants such as `agreement_inv` are violated in
  this instance.
  
  - [n6f1b3](./n6f1b3.qnt) is the protocol instance for `N=6`, `F=1`, and three
- Byzantines replica. Many invariants are violated in this instance very quickly.
+ Byzantines replicas. Many invariants are violated in this instance very quickly.
  
 ## 2. Finding examples
 
@@ -72,7 +72,7 @@ execution:
 
 In the course of writing the specification, we have developed a number of state
 invariants. By simulating and model checking the specification against these
-invariants increases our confidence in the correctness of the protocol.
+invariants, we have increased our confidence in the correctness of the protocol.
 
 |#| Invariant        | Description                                                   |
 |--| ---------------- | ------------------------------------------------------------- |
@@ -105,7 +105,7 @@ to check correctness of the protocol against state invariants. For example:
 quint run --max-steps=20 --max-samples=100000 --invariant=no_commit_equivocation_inv n6f1b3.qnt
 ```
 
-By changing `--max-steps`, we give the simulator how deep the executions should be, e.g., up to 20 steps. By changing `--max-samples`, we give the simulator the number of executions to try, e.g., 100,000.
+By changing `--max-steps`, we tell the simulator how deep the executions should be, e.g., up to 20 steps. By changing `--max-samples`, we give the simulator the number of executions to try, e.g., 100,000.
 
 **Randomized symbolic execution.** Symbolic execution offloads the task of
 finding an execution to the symbolic model checker, while randomly choosing

@@ -4,6 +4,8 @@
 /// while some other validators have the payload but don't have the HighQC and cannot finalize the block, and therefore
 /// don't gossip it, which causes a deadlock unless the one with the HighQC moves on and broadcasts what they have, which
 /// should cause the others to finalize the block and gossip the payload to them in turn.
+///
+/// This test does not execute all steps, which shows that this concrete deadlock scenario is not feasible.
 //
 // Due to import/export limitations of Quint, use the definitions starting with g_:
 //
