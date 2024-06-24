@@ -196,6 +196,7 @@ impl Configs {
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
                 max_payload_size: self.app.max_payload_size,
+                rpc: executor::RpcConfig::default(),
             },
             block_store,
             validator: self
