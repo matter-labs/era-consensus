@@ -6,10 +6,13 @@ use crate::rpc;
 use crate::GossipConfig;
 use anyhow::Context as _;
 use async_trait::async_trait;
-use zksync_concurrency::{ctx, error::Wrap as _, limiter, scope, sync, time};
+use zksync_concurrency::{ctx, error::Wrap as _, limiter, net, scope, sync, time};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStoreState;
 use zksync_protobuf::kB;
+
+#[cfg(test)]
+mod tests;
 
 struct PushBlockStoreStateServer(sync::watch::Sender<Option<BlockStoreState>>);
 
@@ -59,16 +62,25 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushBlockStoreStateServ
 /// and spamming it with maximal get_blocks throughput.
 pub struct Loadtest {
     /// Address of the peer to spam.
-    pub addr: std::net::SocketAddr,
+    pub addr: net::Host,
     /// Key of the peer to spam.
     pub peer: node::PublicKey,
     /// Genesis of the chain.
     pub genesis: validator::Genesis,
+    /// Channel to send the received responses to.
+    pub output: Option<ctx::channel::Sender<Option<validator::FinalBlock>>>,
 }
 
 impl Loadtest {
     async fn connect(&self, ctx: &ctx::Ctx) -> ctx::Result<noise::Stream> {
-        let mut stream = preface::connect(ctx, self.addr, preface::Endpoint::GossipNet)
+        let addr = *self
+            .addr
+            .resolve(ctx)
+            .await?
+            .context("resolve()")?
+            .get(0)
+            .context("resolution failed")?;
+        let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet)
             .await
             .context("connect()")?;
         let cfg = GossipConfig {
@@ -102,7 +114,10 @@ impl Loadtest {
                 let req = push_block_store_state_server.build_request(ctx).await?;
                 s.spawn(async {
                     let req = req;
-                    call.call(ctx, &req, usize::MAX).await.wrap("call")?;
+                    let resp = call.call(ctx, &req, usize::MAX).await.wrap("call")?;
+                    if let Some(send) = &self.output {
+                        send.send(ctx, resp.0).await?;
+                    }
                     Ok(())
                 });
             }
@@ -111,8 +126,8 @@ impl Loadtest {
     }
 
     /// Run the loadtest.
-    pub async fn run(self, ctx: &ctx::Ctx) -> ctx::Result<()> {
-        scope::run!(ctx, |ctx, s| async {
+    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        let res = scope::run!(ctx, |ctx, s| async {
             loop {
                 match self.connect(ctx).await {
                     Ok(stream) => {
@@ -130,6 +145,10 @@ impl Loadtest {
                 }
             }
         })
-        .await
+        .await;
+        match res {
+            Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
+            Err(ctx::Error::Internal(err)) => Err(err),
+        }
     }
 }
