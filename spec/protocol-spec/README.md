@@ -25,7 +25,7 @@ We are checking the protocol specification for several configurations:
  be violated.
  
  - [n6f1b2](./n6f1b2.qnt) is the protocol instance for `N=6`, `F=1`, and two
- Byzantines replica. Two Byzantine replicas have the critical mass to partition
+ Byzantine replicas. Two Byzantine replicas have the critical mass to partition
  the correct replicas. Some invariants such as `agreement_inv` are violated in
  this instance.
  
