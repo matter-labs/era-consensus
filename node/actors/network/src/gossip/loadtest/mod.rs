@@ -29,7 +29,7 @@ impl<'a> PushBlockStoreStateServer {
         let state =
             sync::wait_for(ctx, sub, |s| (|| s.as_ref()?.last.as_ref())().is_some()).await?;
         let state = state.as_ref().unwrap();
-        Ok(state.first..state.last.as_ref().unwrap().header().number)
+        Ok(state.first..state.last.as_ref().unwrap().header().number+1)
     }
 }
 
