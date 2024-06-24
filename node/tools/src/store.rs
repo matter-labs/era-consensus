@@ -50,6 +50,9 @@ impl DatabaseKey {
 struct Inner {
     genesis: validator::Genesis,
     persisted: sync::watch::Sender<BlockStoreState>,
+    // Surround RocksDB with a read-write lock not because we need write access to its API,
+    // but rather to be able to simulate transactions where only one thread will modify the DB,
+    // after doing some consistency checks against other in-memory data structures.
     db: RwLock<rocksdb::DB>,
 }
 
@@ -141,6 +144,10 @@ impl PersistentBlockStore for RocksDB {
         block: validator::FinalBlock,
     ) -> ctx::Result<()> {
         scope::wait_blocking(|| {
+            // We use an exclusive lock so no other thread can change the expected block number
+            // between the check and the insertion into the database. We could use a RocksDB
+            // transaction instead, but this is probably cheaper.
+            #[allow(clippy::readonly_write_lock)]
             let db = self.0.db.write().unwrap();
             let want = self.0.persisted.borrow().next();
             anyhow::ensure!(
