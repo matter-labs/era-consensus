@@ -38,6 +38,7 @@ async fn test_loadtest() {
                 addr: cfg.public_addr.clone(),
                 peer: cfg.gossip.key.public(),
                 genesis: setup.genesis.clone(),
+                traffic_pattern: TrafficPattern::Random,
                 output: Some(send),
             }
             .run(ctx)

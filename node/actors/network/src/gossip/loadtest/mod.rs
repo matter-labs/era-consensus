@@ -23,27 +23,18 @@ impl<'a> PushBlockStoreStateServer {
         Self(sync::watch::channel(None).0)
     }
 
-    /// Waits until the peer tells us which blocks it has and constructs a `get_block()` request for
-    /// a random one from these blocks.
-    ///
-    /// Requesting a recent would hit the peer's in-memory cache.
-    /// Fetching random block is potentially more resource consuming.
-    /// It is also more realistic because nodes will generate the largest load
-    /// when being out-of-sync.
-    async fn build_request(
+    /// Waits until the peer tells us which blocks it has.
+    /// Guaranteed to return a nonempty range of `BlockNumber`s.
+    async fn wait_for_peer(
         &self,
         ctx: &ctx::Ctx,
-        rng: &mut impl Rng,
-    ) -> ctx::OrCanceled<rpc::get_block::Req> {
+    ) -> ctx::OrCanceled<std::ops::Range<validator::BlockNumber>> {
         let sub = &mut self.0.subscribe();
         // unwraps are safe, because we have checked that in `wait_for`.
         let state =
             sync::wait_for(ctx, sub, |s| (|| s.as_ref()?.last.as_ref())().is_some()).await?;
         let state = state.as_ref().unwrap();
-        let range = state.first.0..state.last.as_ref().unwrap().header().number.0;
-        Ok(rpc::get_block::Req(validator::BlockNumber(
-            rng.gen_range(range),
-        )))
+        Ok(state.first..state.last.as_ref().unwrap().header().number)
     }
 }
 
@@ -62,6 +53,22 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushBlockStoreStateServ
     }
 }
 
+/// Traffic pattern to generate.
+pub enum TrafficPattern {
+    /// Fetch always a random available blocks
+    /// Bypasess all the caches that a node can have.
+    /// This is an adversary traffic pattern.
+    Random,
+    /// Fetch blocks sequentially starting from a random one.
+    /// Bypasses era-consensus cache, but is potentially DB friendly.
+    /// This is the expected traffic pattern for the nodes that are syncing up.
+    Sequential,
+    /// Fetch always the latest available block.
+    /// Hits the era-consensus cache - it is an in-memory query.
+    /// This is the expected traffic pattern for the nodes that are up to date.
+    Latest,
+}
+
 /// Loadtest saturating the unauthenticated gossip connections of a peer
 /// and spamming it with maximal get_blocks throughput.
 pub struct Loadtest {
@@ -71,6 +78,8 @@ pub struct Loadtest {
     pub peer: node::PublicKey,
     /// Genesis of the chain.
     pub genesis: validator::Genesis,
+    /// Traffic pattern to generate.
+    pub traffic_pattern: TrafficPattern,
     /// Channel to send the received responses to.
     pub output: Option<ctx::channel::Sender<Option<validator::FinalBlock>>>,
 }
@@ -102,7 +111,7 @@ impl Loadtest {
     async fn spam(&self, ctx: &ctx::Ctx, stream: noise::Stream) -> ctx::Result<()> {
         let push_block_store_state_server = PushBlockStoreStateServer::new();
         let get_block_client = rpc::Client::<rpc::get_block::Rpc>::new(ctx, limiter::Rate::INF);
-        let rng = &mut ctx.rng();
+        let mut rng = ctx.rng();
         scope::run!(ctx, |ctx, s| async {
             let service = rpc::Service::new()
                 .add_client(&get_block_client)
@@ -118,11 +127,25 @@ impl Loadtest {
                     Err(err) => Err(err.into()),
                 }
             });
+            let mut next = validator::BlockNumber(0);
             loop {
                 let call = get_block_client.reserve(ctx).await?;
-                let req = push_block_store_state_server
-                    .build_request(ctx, rng)
-                    .await?;
+                let range = push_block_store_state_server.wait_for_peer(ctx).await?;
+                let mut sample =
+                    || validator::BlockNumber(rng.gen_range(range.start.0..range.end.0));
+                match self.traffic_pattern {
+                    // unwrap is safe, because the range is guaranteed to be non-empty by
+                    // `wait_for_peer`.
+                    TrafficPattern::Latest => next = range.end.prev().unwrap(),
+                    TrafficPattern::Random => next = sample(),
+                    TrafficPattern::Sequential => {
+                        next = next + 1;
+                        if !range.contains(&next) {
+                            next = sample();
+                        }
+                    }
+                }
+                let req = rpc::get_block::Req(next);
                 s.spawn(async {
                     let req = req;
                     let resp = call.call(ctx, &req, usize::MAX).await.wrap("call")?;
