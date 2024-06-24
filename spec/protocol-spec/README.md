@@ -72,7 +72,7 @@ execution:
 
 In the course of writing the specification, we have developed a number of state
 invariants. By simulating and model checking the specification against these
-invariants increases our confidence in the correctness of the protocol.
+invariants, we have increased our confidence in the correctness of the protocol.
 
 |#| Invariant        | Description                                                   |
 |--| ---------------- | ------------------------------------------------------------- |
