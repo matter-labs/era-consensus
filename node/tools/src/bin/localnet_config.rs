@@ -59,6 +59,7 @@ fn main() -> anyhow::Result<()> {
 
     let setup = validator::testonly::Setup::new(rng, validator_count);
     let validator_keys = setup.validator_keys.clone();
+    let attester_keys = setup.attester_keys.clone();
 
     // Each node will have `gossip_peers` outbound peers.
     let nodes = addrs.len();
@@ -69,7 +70,7 @@ fn main() -> anyhow::Result<()> {
         .map(|i| AppConfig {
             server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), addrs[i].port()),
             public_addr: addrs[i].into(),
-            debug_addr: None,
+            rpc_addr: None,
             metrics_server_addr: args
                 .metrics_server_port
                 .map(|port| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port)),
@@ -77,9 +78,11 @@ fn main() -> anyhow::Result<()> {
             max_payload_size: 1000000,
             node_key: node_keys[i].clone(),
             validator_key: validator_keys.get(i).cloned(),
+            attester_key: attester_keys.get(i).cloned(),
             gossip_dynamic_inbound_limit: peers,
             gossip_static_inbound: HashSet::default(),
             gossip_static_outbound: HashMap::default(),
+            debug_page: None,
         })
         .collect();
 

@@ -14,7 +14,7 @@ use std::{
 };
 use zksync_concurrency::{ctx, ctx::channel, io, limiter, net, scope, sync};
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::BlockStore;
+use zksync_consensus_storage::{BatchStore, BlockStore};
 use zksync_consensus_utils::pipe;
 
 impl Distribution<Target> for Standard {
@@ -100,6 +100,7 @@ where
             // due to timeouts.
             ping_timeout: None,
             validator_key: Some(validator_key.clone()),
+            attester_key: None,
             gossip: GossipConfig {
                 key: rng.gen(),
                 dynamic_inbound_limit: usize::MAX,
@@ -137,6 +138,7 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
         // due to timeouts.
         ping_timeout: None,
         validator_key: None,
+        attester_key: None,
         gossip: GossipConfig {
             key: rng.gen(),
             dynamic_inbound_limit: usize::MAX,
@@ -172,9 +174,13 @@ impl InstanceRunner {
 
 impl Instance {
     /// Construct an instance for a given config.
-    pub fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self, InstanceRunner) {
+    pub fn new(
+        cfg: Config,
+        block_store: Arc<BlockStore>,
+        batch_store: Arc<BatchStore>,
+    ) -> (Self, InstanceRunner) {
         let (actor_pipe, dispatcher_pipe) = pipe::new();
-        let (net, runner) = Network::new(cfg, block_store, actor_pipe);
+        let (net, runner) = Network::new(cfg, block_store, batch_store, actor_pipe);
         let (terminate_send, terminate_recv) = channel::bounded(1);
         (
             Self {

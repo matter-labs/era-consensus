@@ -106,3 +106,12 @@ impl TextFmt for std::net::SocketAddr {
         self.to_string()
     }
 }
+
+impl TextFmt for std::path::PathBuf {
+    fn decode(text: Text) -> anyhow::Result<Self> {
+        Ok(std::path::PathBuf::from(text.inner))
+    }
+    fn encode(&self) -> String {
+        self.to_str().unwrap().to_string()
+    }
+}

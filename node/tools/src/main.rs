@@ -108,8 +108,8 @@ async fn main() -> anyhow::Result<()> {
                 Ok(())
             });
         }
-        if let Some(debug_addr) = &configs.app.debug_addr {
-            s.spawn_bg(RPCServer::new(*debug_addr, executor.block_store.clone()).run(ctx));
+        if let Some(rpc_addr) = &configs.app.rpc_addr {
+            s.spawn_bg(RPCServer::new(*rpc_addr, executor.block_store.clone()).run(ctx));
         }
         executor.run(ctx).await
     })
