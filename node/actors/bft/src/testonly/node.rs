@@ -1,11 +1,8 @@
-use super::Fuzz;
 use crate::{io, testonly, PayloadManager};
 use anyhow::Context as _;
-use rand::Rng;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_network as network;
-use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_storage as storage;
 use zksync_consensus_storage::testonly::in_memory;
 use zksync_consensus_utils::pipe;
@@ -21,12 +18,6 @@ pub(crate) enum Behavior {
     HonestNotProposing,
     /// A replica that is always offline and does not produce any messages.
     Offline,
-    /// A replica that is always online and behaves randomly. It will produce
-    /// completely random messages.
-    Random,
-    /// A replica that is always online and behaves maliciously. It will produce
-    /// realistic but wrong messages.
-    Byzantine,
 }
 
 impl Behavior {
@@ -56,7 +47,6 @@ impl Node {
             network::io::OutputMessage,
         >,
     ) -> anyhow::Result<()> {
-        let rng = &mut ctx.rng();
         let net_recv = &mut network_pipe.recv;
         let net_send = &mut network_pipe.send;
         let (consensus_actor_pipe, consensus_pipe) = pipe::new();
@@ -94,19 +84,10 @@ impl Node {
             // Get the next message from the channel. Our response depends on what type of replica we are.
             while let Ok(msg) = con_recv.recv(ctx).await {
                 match msg {
-                    io::OutputMessage::Network(mut message) => {
+                    io::OutputMessage::Network(message) => {
                         let message_to_send = match self.behavior {
                             Behavior::Offline => continue,
                             Behavior::Honest | Behavior::HonestNotProposing => message,
-                            // Create a random consensus message and broadcast.
-                            Behavior::Random => ConsensusInputMessage {
-                                message: rng.gen(),
-                                recipient: network::io::Target::Broadcast,
-                            },
-                            Behavior::Byzantine => {
-                                message.message.mutate(rng);
-                                message
-                            }
                         };
                         net_send.send(message_to_send.into());
                     }
