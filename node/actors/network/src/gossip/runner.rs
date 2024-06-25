@@ -265,7 +265,9 @@ impl Network {
         let peer =
             handshake::inbound(ctx, &self.cfg.gossip, self.genesis().hash(), &mut stream).await?;
         tracing::info!("peer = {peer:?}");
-        self.inbound.insert(peer.clone(), ()).await?;
+        self.inbound
+            .insert(peer.clone(), stream.get_values())
+            .await?;
         let res = self.run_stream(ctx, stream).await;
         self.inbound.remove(&peer).await;
         res
@@ -296,7 +298,9 @@ impl Network {
         )
         .await?;
         tracing::info!("peer = {peer:?}");
-        self.outbound.insert(peer.clone(), ()).await?;
+        self.outbound
+            .insert(peer.clone(), stream.get_values())
+            .await?;
         let res = self.run_stream(ctx, stream).await;
         self.outbound.remove(peer).await;
         res

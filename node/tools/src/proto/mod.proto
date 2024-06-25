@@ -59,8 +59,12 @@ message AppConfig {
   // Public <IP/domain>:port which forwards to server_addr.
   optional string public_addr = 2; // required
   
-  // IP:port to open a debug rpc endpoint on.
-  // If not set, debug rpc endpoint won't be opened.
+  // IP:port to open a testing rpc endpoint on.
+  // If not set, testing rpc endpoint won't be opened.
+  optional string rpc_addr = 12; // optional; IpAddr
+
+  // IP:port to open a debug http endpoint on.
+  // If not set, debug endpoint won't be opened.
   optional string debug_addr = 9; // optional; IpAddr
 
   // IP:port to serve metrics data for scraping.
@@ -92,4 +96,11 @@ message AppConfig {
   // Outbound gossip network connections that the node should actively try to
   // establish and maintain.
   repeated NodeAddr gossip_static_outbound = 8;
+
+  // Http debug page access credentials
+  optional string debug_credentials = 13; // optional
+  // Path to the http debug page tls certificate
+  optional string debug_cert_path = 14; // optional
+  // Path to the http debug page private key
+  optional string debug_key_path = 15; // optional
 }

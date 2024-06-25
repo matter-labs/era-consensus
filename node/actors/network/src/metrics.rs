@@ -4,8 +4,12 @@ use crate::Network;
 use std::{
     net::SocketAddr,
     pin::Pin,
-    sync::Weak,
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Weak,
+    },
     task::{ready, Context, Poll},
+    time::SystemTime,
 };
 use vise::{
     Collector, Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, GaugeGuard, Metrics, Unit,
@@ -17,6 +21,8 @@ use zksync_concurrency::{ctx, io, net};
 pub(crate) struct MeteredStream {
     #[pin]
     stream: net::tcp::Stream,
+    /// Collects values to be shown on the Debug http page
+    stats: Arc<MeteredStreamStats>,
     _active: GaugeGuard,
 }
 
@@ -49,10 +55,17 @@ impl MeteredStream {
 
     fn new(stream: net::tcp::Stream, direction: Direction) -> Self {
         TCP_METRICS.established[&direction].inc();
+        let addr = stream.peer_addr().expect("Invalid address");
         Self {
             stream,
+            stats: Arc::new(MeteredStreamStats::new(addr)),
             _active: TCP_METRICS.active[&direction].inc_guard(1),
         }
+    }
+
+    /// Returns a reference to the the Stream values for inspection
+    pub(crate) fn get_values(&self) -> Arc<MeteredStreamStats> {
+        self.stats.clone()
     }
 }
 
@@ -73,8 +86,9 @@ impl io::AsyncRead for MeteredStream {
         let this = self.project();
         let before = buf.remaining();
         let res = this.stream.poll_read(cx, buf);
-        let after = buf.remaining();
-        TCP_METRICS.received.inc_by((before - after) as u64);
+        let amount = (before - buf.remaining()) as u64;
+        TCP_METRICS.received.inc_by(amount);
+        this.stats.read(amount);
         res
     }
 }
@@ -85,6 +99,7 @@ impl io::AsyncWrite for MeteredStream {
         let this = self.project();
         let res = ready!(this.stream.poll_write(cx, buf))?;
         TCP_METRICS.sent.inc_by(res as u64);
+        this.stats.wrote(res as u64);
         Poll::Ready(Ok(res))
     }
 
@@ -168,5 +183,37 @@ impl NetworkGauges {
         if register_result.is_err() {
             tracing::warn!("Failed registering network metrics collector: already registered");
         }
+    }
+}
+
+/// Metrics reported for TCP connections.
+#[derive(Debug)]
+pub struct MeteredStreamStats {
+    /// Total bytes sent over the Stream.
+    pub sent: AtomicU64,
+    /// Total bytes received over the Stream.
+    pub received: AtomicU64,
+    /// System time since the connection started.
+    pub established: SystemTime,
+    /// Ip Address and port of current connection.
+    pub peer_addr: SocketAddr,
+}
+
+impl MeteredStreamStats {
+    fn new(peer_addr: SocketAddr) -> Self {
+        Self {
+            sent: 0.into(),
+            received: 0.into(),
+            established: SystemTime::now(),
+            peer_addr,
+        }
+    }
+
+    fn read(&self, amount: u64) {
+        self.received.fetch_add(amount, Ordering::Relaxed);
+    }
+
+    fn wrote(&self, amount: u64) {
+        self.sent.fetch_add(amount, Ordering::Relaxed);
     }
 }

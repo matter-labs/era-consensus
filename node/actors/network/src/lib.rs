@@ -13,6 +13,7 @@ mod config;
 pub mod consensus;
 mod frame;
 pub mod gossip;
+pub mod http;
 pub mod io;
 mod metrics;
 mod mux;
@@ -26,6 +27,7 @@ pub mod testonly;
 #[cfg(test)]
 mod tests;
 mod watch;
+pub use metrics::MeteredStreamStats;
 
 pub use config::*;
 

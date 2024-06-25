@@ -1,4 +1,4 @@
-use crate::{store, AppConfig};
+use crate::{store, AppConfig, BasicDebugPageConfig};
 use rand::{distributions::Distribution, Rng};
 use tempfile::TempDir;
 use zksync_concurrency::{ctx, sync};
@@ -12,7 +12,7 @@ impl Distribution<AppConfig> for EncodeDist {
         AppConfig {
             server_addr: self.sample(rng),
             public_addr: self.sample(rng),
-            debug_addr: self.sample(rng),
+            rpc_addr: self.sample(rng),
             metrics_server_addr: self.sample(rng),
 
             genesis: rng.gen(),
@@ -26,6 +26,18 @@ impl Distribution<AppConfig> for EncodeDist {
                 .sample_range(rng)
                 .map(|_| (rng.gen(), self.sample(rng)))
                 .collect(),
+            debug_page: self.sample(rng),
+        }
+    }
+}
+
+impl Distribution<BasicDebugPageConfig> for EncodeDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BasicDebugPageConfig {
+        BasicDebugPageConfig {
+            addr: self.sample(rng),
+            credentials: self.sample(rng),
+            cert_path: self.sample(rng),
+            key_path: self.sample(rng),
         }
     }
 }
