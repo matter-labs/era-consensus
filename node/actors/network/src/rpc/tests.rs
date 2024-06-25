@@ -18,6 +18,8 @@ fn test_capability_rpc_correspondence() {
         get_block::Rpc::CAPABILITY_ID,
         ping::Rpc::CAPABILITY_ID,
         push_batch_votes::Rpc::CAPABILITY_ID,
+        push_batch_store_state::Rpc::CAPABILITY_ID,
+        get_batch::Rpc::CAPABILITY_ID,
     ];
     assert_eq!(ids.len(), HashSet::from(ids).len());
 }
@@ -31,6 +33,9 @@ fn test_schema_encode_decode() {
     test_encode_random::<push_block_store_state::Req>(rng);
     test_encode_random::<get_block::Req>(rng);
     test_encode_random::<get_block::Resp>(rng);
+    test_encode_random::<get_batch::Req>(rng);
+    test_encode_random::<get_batch::Resp>(rng);
+    test_encode_random::<push_batch_store_state::Req>(rng);
 }
 
 fn expected(res: Result<(), mux::RunError>) -> Result<(), mux::RunError> {

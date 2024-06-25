@@ -6,13 +6,14 @@ use zksync_concurrency::{
     ctx::{self, channel},
     limiter, scope,
 };
-use zksync_consensus_storage::BlockStore;
+use zksync_consensus_storage::{BatchStore, BlockStore};
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;
 pub mod consensus;
 mod frame;
 pub mod gossip;
+pub mod http;
 pub mod io;
 mod metrics;
 mod mux;
@@ -26,6 +27,7 @@ pub mod testonly;
 #[cfg(test)]
 mod tests;
 mod watch;
+pub use metrics::MeteredStreamStats;
 
 pub use config::*;
 
@@ -52,9 +54,10 @@ impl Network {
     pub fn new(
         cfg: Config,
         block_store: Arc<BlockStore>,
+        batch_store: Arc<BatchStore>,
         pipe: ActorPipe<io::InputMessage, io::OutputMessage>,
     ) -> (Arc<Self>, Runner) {
-        let gossip = gossip::Network::new(cfg, block_store, pipe.send);
+        let gossip = gossip::Network::new(cfg, block_store, batch_store, pipe.send);
         let consensus = consensus::Network::new(gossip.clone());
         let net = Arc::new(Self { gossip, consensus });
         (
@@ -126,6 +129,12 @@ impl Runner {
             s.spawn(async {
                 // TODO: Handle this correctly.
                 let _ = self.net.gossip.update_batch_qc(ctx).await;
+                Ok(())
+            });
+
+            // Fetch missing batches in the background.
+            s.spawn(async {
+                self.net.gossip.run_batch_fetcher(ctx).await;
                 Ok(())
             });
 
