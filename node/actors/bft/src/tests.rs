@@ -5,7 +5,7 @@ use crate::testonly::{
 };
 use assert_matches::assert_matches;
 use std::collections::HashMap;
-use test_casing::test_casing;
+use test_casing::{cases, test_casing, TestCases};
 use zksync_concurrency::{ctx, scope, time};
 use zksync_consensus_network::testonly::new_configs_for_validators;
 use zksync_consensus_roles::validator::{
@@ -185,11 +185,14 @@ async fn non_proposing_leader() {
 ///
 /// This should be a simple sanity check that the network works and consensus
 /// is achieved under the most favourable conditions.
+#[test_casing(10,0..10)]
 #[tokio::test]
-async fn twins_network_wo_twins_wo_partitions() {
+async fn twins_network_wo_twins_wo_partitions(num_reseeds: usize) {
     tokio::time::pause();
     // n<6 implies f=0 and q=n
-    run_twins(5, 0, 10).await.unwrap();
+    run_twins(5, 0, TwinsScenarios::Reseeds(num_reseeds))
+        .await
+        .unwrap();
 }
 
 /// Run Twins scenarios without actual twins, but enough replicas that partitions
@@ -198,31 +201,44 @@ async fn twins_network_wo_twins_wo_partitions() {
 ///
 /// This should be a sanity check that without Byzantine behaviour the consensus
 /// is resilient to temporary network partitions.
+#[test_casing(5,0..5)]
 #[tokio::test]
-async fn twins_network_wo_twins_w_partitions() {
+async fn twins_network_wo_twins_w_partitions(num_reseeds: usize) {
     tokio::time::pause();
     // n=6 implies f=1 and q=5; 6 is the minimum where partitions are possible.
-    run_twins(6, 0, 5).await.unwrap();
+    run_twins(6, 0, TwinsScenarios::Reseeds(num_reseeds))
+        .await
+        .unwrap();
 }
 
+/// Test cases with 1 twin, with 6-10 replicas, 10 scenarios each.
+const CASES_TWINS_1: TestCases<(usize, usize)> = cases! {
+    (6..=10).flat_map(|num_replicas| (0..10).map(move |num_reseeds| (num_replicas, num_reseeds)))
+};
+
 /// Run Twins scenarios with random number of nodes and 1 twin.
-#[test_casing(5, 6..=10)]
+#[test_casing(50, CASES_TWINS_1)]
 #[tokio::test]
-async fn twins_network_w1_twins_w_partitions(num_replicas: usize) {
+async fn twins_network_w1_twins_w_partitions(num_replicas: usize, num_reseeds: usize) {
     tokio::time::pause();
     // n>=6 implies f>=1 and q=n-f
     // let num_honest = validator::threshold(num_replicas as u64) as usize;
     // let max_faulty = num_replicas - num_honest;
     // let num_twins = rng.gen_range(1..=max_faulty);
-    run_twins(num_replicas, 1, 10).await.unwrap();
+    run_twins(num_replicas, 1, TwinsScenarios::Reseeds(num_reseeds))
+        .await
+        .unwrap();
 }
 
 /// Run Twins scenarios with higher number of nodes and 2 twins.
+#[test_casing(5,0..5)]
 #[tokio::test]
-async fn twins_network_w2_twins_w_partitions() {
+async fn twins_network_w2_twins_w_partitions(num_reseeds: usize) {
     tokio::time::pause();
     // n>=11 implies f>=2 and q=n-f
-    run_twins(11, 2, 8).await.unwrap();
+    run_twins(11, 2, TwinsScenarios::Reseeds(num_reseeds))
+        .await
+        .unwrap();
 }
 
 /// Run Twins scenario with more twins than tolerable and expect it to fail.
@@ -230,21 +246,35 @@ async fn twins_network_w2_twins_w_partitions() {
 async fn twins_network_to_fail() {
     tokio::time::pause();
     // With n=5 f=0, so 1 twin means more faulty nodes than expected.
-    assert_matches!(run_twins(5, 1, 100).await, Err(TestError::BlockConflict));
+    assert_matches!(
+        run_twins(5, 1, TwinsScenarios::Multiple(100)).await,
+        Err(TestError::BlockConflict)
+    );
 }
 
-/// Create network configuration for a given number of replicas and twins and run [Test].
+/// Govern how many scenarios to execute in the test.
+enum TwinsScenarios {
+    /// Execute N scenarios in a loop.
+    ///
+    /// Use this when looking for a counter example, ie. a scenario where consensus fails.
+    Multiple(usize),
+    /// Execute 1 scenario after doing N reseeds of the RNG.
+    ///
+    /// Use this with the `#[test_casing]` macro to turn scenarios into separate test cases.
+    Reseeds(usize),
+}
+
+/// Create network configuration for a given number of replicas and twins and run [Test],
 async fn run_twins(
     num_replicas: usize,
     num_twins: usize,
-    num_scenarios: usize,
+    scenarios: TwinsScenarios,
 ) -> Result<(), TestError> {
     zksync_concurrency::testonly::abort_on_panic();
 
-    // Use a single timeout for all scenarios to finish.
     // A single scenario with 11 replicas took 3-5 seconds.
     // Panic on timeout; works with `cargo nextest` and the `abort_on_panic` above.
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(60));
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
     let ctx = &ctx::test_root(&ctx::RealClock);
 
     #[derive(PartialEq, Debug)]
@@ -272,7 +302,17 @@ async fn run_twins(
         }
     }
 
-    let rng = &mut ctx.rng();
+    let (num_scenarios, num_reseeds) = match scenarios {
+        TwinsScenarios::Multiple(n) => (n, 0),
+        TwinsScenarios::Reseeds(n) => (1, n),
+    };
+
+    // Keep scenarios separate by generating a different RNG many times.
+    let mut rng = ctx.rng();
+    for _ in 0..num_reseeds {
+        rng = ctx.rng();
+    }
+    let rng = &mut rng;
 
     // The existing test machinery uses the number of finalized blocks as an exit criteria.
     let blocks_to_finalize = 3;
