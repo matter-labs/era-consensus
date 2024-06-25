@@ -1,7 +1,7 @@
 //! Network actor configs.
 use std::collections::{HashMap, HashSet};
 use zksync_concurrency::{limiter, net, time};
-use zksync_consensus_roles::{node, validator};
+use zksync_consensus_roles::{attester, node, validator};
 
 /// How often we should retry to establish a connection to a validator.
 /// TODO(gprusak): once it becomes relevant, choose a more appropriate retry strategy.
@@ -14,10 +14,16 @@ pub struct RpcConfig {
     pub push_validator_addrs_rate: limiter::Rate,
     /// Max rate of sending/receiving push_block_store_state messages.
     pub push_block_store_state_rate: limiter::Rate,
+    /// Max rate of sending/receiving push_batch_store_state messages.
+    pub push_batch_store_state_rate: limiter::Rate,
     /// Max rate of sending/receiving `get_block` RPCs.
     pub get_block_rate: limiter::Rate,
+    /// Max rate of sending/receiving `get_batch` RPCs.
+    pub get_batch_rate: limiter::Rate,
     /// Timeout for the `get_block` RPC.
     pub get_block_timeout: Option<time::Duration>,
+    /// Timeout for the `get_batch` RPC.
+    pub get_batch_timeout: Option<time::Duration>,
     /// Max rate of sending/receiving consensus messages.
     pub consensus_rate: limiter::Rate,
     /// Max rate of sending/receiving l1 batch votes messages.
@@ -35,11 +41,20 @@ impl Default for RpcConfig {
                 burst: 2,
                 refresh: time::Duration::milliseconds(300),
             },
+            push_batch_store_state_rate: limiter::Rate {
+                burst: 2,
+                refresh: time::Duration::milliseconds(300),
+            },
             get_block_rate: limiter::Rate {
                 burst: 10,
                 refresh: time::Duration::milliseconds(100),
             },
+            get_batch_rate: limiter::Rate {
+                burst: 10,
+                refresh: time::Duration::milliseconds(100),
+            },
             get_block_timeout: Some(time::Duration::seconds(10)),
+            get_batch_timeout: Some(time::Duration::seconds(10)),
             consensus_rate: limiter::Rate {
                 burst: 10,
                 refresh: time::Duration::ZERO,
@@ -83,6 +98,9 @@ pub struct Config {
     /// Private key of the validator.
     /// None if the node is NOT a validator.
     pub validator_key: Option<validator::SecretKey>,
+    /// Private key of the attester.
+    /// None if the node is NOT a attester.
+    pub attester_key: Option<attester::SecretKey>,
     /// Maximal size of the proto-encoded `validator::FinalBlock` in bytes.
     pub max_block_size: usize,
     /// If a peer doesn't respond to a ping message within `ping_timeout`,

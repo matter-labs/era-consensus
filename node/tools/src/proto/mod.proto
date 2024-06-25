@@ -83,6 +83,9 @@ message AppConfig {
   // Validator secret key.
   optional string validator_secret_key = 10; // optional; ValidatorSecretKey
 
+   // Attester secret key.
+  optional string attester_secret_key = 16; // optional; AttesterSecretKey
+
   // Gossip network
   
   // Node secret key.

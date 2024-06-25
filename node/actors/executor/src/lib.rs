@@ -9,8 +9,8 @@ use std::{
 use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
-use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BlockStore, ReplicaStore};
+use zksync_consensus_roles::{attester, node, validator};
+use zksync_consensus_storage::{BatchStore, BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
@@ -27,6 +27,13 @@ pub struct Validator {
     pub replica_store: Box<dyn ReplicaStore>,
     /// Payload manager.
     pub payload_manager: Box<dyn bft::PayloadManager>,
+}
+
+/// Validator-related part of [`Executor`].
+#[derive(Debug)]
+pub struct Attester {
+    /// Consensus network configuration.
+    pub key: attester::SecretKey,
 }
 
 /// Config of the node executor.
@@ -75,8 +82,12 @@ pub struct Executor {
     pub config: Config,
     /// Block storage used by the node.
     pub block_store: Arc<BlockStore>,
+    /// Batch storage used by the node.
+    pub batch_store: Arc<BatchStore>,
     /// Validator-specific node data.
     pub validator: Option<Validator>,
+    /// Validator-specific node data.
+    pub attester: Option<Attester>,
 }
 
 impl Executor {
@@ -87,6 +98,7 @@ impl Executor {
             public_addr: self.config.public_addr.clone(),
             gossip: self.config.gossip(),
             validator_key: self.validator.as_ref().map(|v| v.key.clone()),
+            attester_key: self.attester.as_ref().map(|a| a.key.clone()),
             ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
             max_block_queue_size: 20,
@@ -111,9 +123,12 @@ impl Executor {
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
             s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
-
-            let (net, runner) =
-                network::Network::new(network_config, self.block_store.clone(), network_actor_pipe);
+            let (net, runner) = network::Network::new(
+                network_config,
+                self.block_store.clone(),
+                self.batch_store.clone(),
+                network_actor_pipe,
+            );
             net.register_metrics();
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
 

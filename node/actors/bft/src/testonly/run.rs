@@ -16,7 +16,7 @@ use zksync_concurrency::{
 };
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{testonly::new_store, BlockStore};
+use zksync_consensus_storage::{testonly::TestMemoryStorage, BlockStore};
 use zksync_consensus_utils::pipe;
 
 pub(crate) enum Network {
@@ -134,15 +134,16 @@ impl Test {
         let mut honest = vec![];
         scope::run!(ctx, |ctx, s| async {
             for (i, net) in nets.into_iter().enumerate() {
-                let (store, runner) = new_store(ctx, genesis).await;
-                s.spawn_bg(async { Ok(runner.run(ctx).await?) });
+                let store = TestMemoryStorage::new(ctx, genesis).await;
+                s.spawn_bg(async { Ok(store.runner.run(ctx).await?) });
                 if self.nodes[i].0 == Behavior::Honest {
-                    honest.push(store.clone());
+                    honest.push(store.blocks.clone());
                 }
                 nodes.push(Node {
                     net,
                     behavior: self.nodes[i].0,
-                    block_store: store,
+                    block_store: store.blocks,
+                    batch_store: store.batches,
                 });
             }
             assert!(!honest.is_empty());
@@ -188,8 +189,11 @@ async fn run_nodes_real(ctx: &ctx::Ctx, specs: &[Node]) -> anyhow::Result<()> {
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
         for (i, spec) in specs.iter().enumerate() {
-            let (node, runner) =
-                network::testonly::Instance::new(spec.net.clone(), spec.block_store.clone());
+            let (node, runner) = network::testonly::Instance::new(
+                spec.net.clone(),
+                spec.block_store.clone(),
+                spec.batch_store.clone(),
+            );
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
