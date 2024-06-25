@@ -1,5 +1,5 @@
 use super::{Behavior, Node};
-use anyhow::bail;
+use anyhow::Context as _;
 use network::{io, Config};
 use rand::seq::SliceRandom;
 use std::{
@@ -91,9 +91,29 @@ pub(crate) struct Test {
     pub(crate) blocks_to_finalize: usize,
 }
 
+#[derive(thiserror::Error, Debug)]
+pub(crate) enum TestError {
+    #[error("finalized conflicting blocks")]
+    BlockConflict,
+    #[error(transparent)]
+    Other(#[from] ctx::Error),
+}
+
+impl From<anyhow::Error> for TestError {
+    fn from(err: anyhow::Error) -> Self {
+        Self::Other(err.into())
+    }
+}
+
+impl From<ctx::Canceled> for TestError {
+    fn from(err: ctx::Canceled) -> Self {
+        Self::Other(err.into())
+    }
+}
+
 impl Test {
     /// Run a test with the given parameters and a random network setup.
-    pub(crate) async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub(crate) async fn run(&self, ctx: &ctx::Ctx) -> Result<(), TestError> {
         let rng = &mut ctx.rng();
         let setup = validator::testonly::Setup::new_with_weights(
             rng,
@@ -109,13 +129,13 @@ impl Test {
         ctx: &ctx::Ctx,
         nets: Vec<Config>,
         genesis: &validator::Genesis,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), TestError> {
         let mut nodes = vec![];
         let mut honest = vec![];
         scope::run!(ctx, |ctx, s| async {
             for (i, net) in nets.into_iter().enumerate() {
                 let store = TestMemoryStorage::new(ctx, genesis).await;
-                s.spawn_bg(store.runner.run(ctx));
+                s.spawn_bg(async { Ok(store.runner.run(ctx).await?) });
                 if self.nodes[i].0 == Behavior::Honest {
                     honest.push(store.blocks.clone());
                 }
@@ -127,7 +147,7 @@ impl Test {
                 });
             }
             assert!(!honest.is_empty());
-            s.spawn_bg(run_nodes(ctx, &self.network, &nodes));
+            s.spawn_bg(async { Ok(run_nodes(ctx, &self.network, &nodes).await?) });
 
             // Run the nodes until all honest nodes store enough finalized blocks.
             assert!(self.blocks_to_finalize > 0);
@@ -141,16 +161,15 @@ impl Test {
             for i in 0..self.blocks_to_finalize as u64 {
                 let i = first + i;
                 // Only comparing the payload; the justification might be different.
-                let want = honest[0]
-                    .block(ctx, i)
-                    .await?
-                    .expect("checked its existence")
-                    .payload;
+                let want = honest[0].block(ctx, i).await?.context("missing block")?;
                 for store in &honest[1..] {
-                    assert_eq!(want, store.block(ctx, i).await?.unwrap().payload);
+                    let got = store.block(ctx, i).await?.context("missing block")?;
+                    if want.payload != got.payload {
+                        return Err(TestError::BlockConflict);
+                    }
                 }
             }
-            Ok(())
+            Ok::<_, TestError>(())
         })
         .await
     }
@@ -449,7 +468,7 @@ async fn twins_receive_loop(
         let can_send = |to| {
             match router.can_send(&message.message.msg, port, to) {
                 Some(can_send) => Ok(can_send),
-                None => bail!("ran out of port schedule; we probably wouldn't finalize blocks even if we continued")
+                None => anyhow::bail!("ran out of port schedule; we probably wouldn't finalize blocks even if we continued")
             }
         };
 

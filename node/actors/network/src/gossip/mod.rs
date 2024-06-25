@@ -13,7 +13,7 @@
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
 use self::batch_votes::BatchVotesWatch;
-use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config};
+use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
 use anyhow::Context as _;
 use fetch::RequestItem;
 use im::HashMap;
@@ -38,9 +38,9 @@ pub(crate) struct Network {
     /// Gossip network configuration.
     pub(crate) cfg: Config,
     /// Currently open inbound connections.
-    pub(crate) inbound: PoolWatch<node::PublicKey, ()>,
+    pub(crate) inbound: PoolWatch<node::PublicKey, Arc<MeteredStreamStats>>,
     /// Currently open outbound connections.
-    pub(crate) outbound: PoolWatch<node::PublicKey, ()>,
+    pub(crate) outbound: PoolWatch<node::PublicKey, Arc<MeteredStreamStats>>,
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
     /// Current state of knowledge about batch votes.

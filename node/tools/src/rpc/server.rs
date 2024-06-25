@@ -39,17 +39,17 @@ impl RPCServer {
             )?);
 
         let mut module = RpcModule::new(());
-        module.register_method(health_check::method(), |_params, _| {
+        module.register_method(health_check::method(), |_params, _, _| {
             health_check::callback()
         })?;
 
         let node_storage = self.node_storage.clone();
-        module.register_method(last_view::method(), move |_params, _| {
+        module.register_method(last_view::method(), move |_params, _, _| {
             last_view::callback(node_storage.clone())
         })?;
 
         let node_storage = self.node_storage.clone();
-        module.register_method(last_committed_block::method(), move |_params, _| {
+        module.register_method(last_committed_block::method(), move |_params, _, _| {
             last_committed_block::callback(node_storage.clone())
         })?;
 
