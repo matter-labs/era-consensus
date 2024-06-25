@@ -1,7 +1,7 @@
 use super::*;
-use crate::{testonly::new_store_with_first, ReplicaState};
+use crate::{testonly::TestMemoryStorage, ReplicaState};
 use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
-use zksync_consensus_roles::validator::testonly::Setup;
+use zksync_consensus_roles::{attester::BatchNumber, validator::testonly::Setup};
 
 #[tokio::test]
 async fn test_inmemory_block_store() {
@@ -24,6 +24,26 @@ async fn test_inmemory_block_store() {
     }
 }
 
+#[tokio::test]
+async fn test_inmemory_batch_store() {
+    abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let mut setup = Setup::new(rng, 3);
+    setup.push_batches(rng, 5);
+
+    let store = &testonly::in_memory::BatchStore::new(BatchNumber(0));
+    let mut want = vec![];
+    for batch in &setup.batches {
+        store.queue_next_batch(ctx, batch.clone()).await.unwrap();
+        sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(batch.number))
+            .await
+            .unwrap();
+        want.push(batch.clone());
+        assert_eq!(want, testonly::dump_batch(ctx, store).await);
+    }
+}
+
 #[test]
 fn test_schema_encode_decode() {
     let ctx = ctx::test_root(&ctx::RealClock);
@@ -40,9 +60,11 @@ async fn test_state_updates() {
     setup.push_blocks(rng, 5);
     // Create store with non-trivial first block.
     let first_block = &setup.blocks[2];
-    let (store, runner) = new_store_with_first(ctx, &setup.genesis, first_block.number()).await;
+    let store =
+        TestMemoryStorage::new_store_with_first_block(ctx, &setup.genesis, first_block.number())
+            .await;
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(runner.run(ctx));
+        s.spawn_bg(store.runner.run(ctx));
         let want = BlockStoreState {
             first: first_block.number(),
             last: None,
@@ -54,21 +76,26 @@ async fn test_state_updates() {
             setup.genesis.first_block.prev().unwrap(),
             first_block.number().prev().unwrap(),
         ] {
-            store.wait_until_queued(ctx, n).await.unwrap();
-            store.wait_until_persisted(ctx, n).await.unwrap();
-            assert_eq!(want, store.queued());
+            store.blocks.wait_until_queued(ctx, n).await.unwrap();
+            store.blocks.wait_until_persisted(ctx, n).await.unwrap();
+            assert_eq!(want, store.blocks.queued());
         }
 
         for block in &setup.blocks {
-            store.queue_block(ctx, block.clone()).await.unwrap();
+            store.blocks.queue_block(ctx, block.clone()).await.unwrap();
             if block.number() < first_block.number() {
                 // Queueing block before first block should be a noop.
-                store.wait_until_queued(ctx, block.number()).await.unwrap();
                 store
+                    .blocks
+                    .wait_until_queued(ctx, block.number())
+                    .await
+                    .unwrap();
+                store
+                    .blocks
                     .wait_until_persisted(ctx, block.number())
                     .await
                     .unwrap();
-                assert_eq!(want, store.queued());
+                assert_eq!(want, store.blocks.queued());
             } else {
                 // Otherwise the state should be updated as soon as block is queued.
                 assert_eq!(
@@ -76,7 +103,7 @@ async fn test_state_updates() {
                         first: first_block.number(),
                         last: Some(block.justification.clone()),
                     },
-                    store.queued()
+                    store.blocks.queued()
                 );
             }
         }

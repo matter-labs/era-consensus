@@ -143,6 +143,7 @@ pub struct BlockStore {
 
 /// Runner of the BlockStore background tasks.
 #[must_use]
+#[derive(Debug, Clone)]
 pub struct BlockStoreRunner(Arc<BlockStore>);
 
 impl BlockStoreRunner {

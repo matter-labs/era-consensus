@@ -4,9 +4,14 @@ package zksync.roles.attester;
 
 import "zksync/std.proto";
 
+message SyncBatch {
+  optional uint64 number = 1; // required
+  repeated bytes payloads = 2; // required
+  optional bytes proof = 3; // required
+}
+
 message Batch {
   optional uint64 number = 1; // required
-  // TODO: add the hash of the L1 batch as a field
 }
 
 message BatchQC {

@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use super::*;
 use crate::{frame, mux, noise, preface, rpc, Config, GossipConfig};
-use rand::Rng as _;
+use rand::Rng;
 use std::collections::BTreeMap;
 use zksync_concurrency::{ctx, limiter};
 use zksync_consensus_roles::validator;
@@ -60,11 +60,15 @@ pub(super) async fn connect(
         accept: [
             mux_entry::<rpc::get_block::Rpc>(ctx),
             mux_entry::<rpc::push_block_store_state::Rpc>(ctx),
+            mux_entry::<rpc::get_batch::Rpc>(ctx),
+            mux_entry::<rpc::push_batch_store_state::Rpc>(ctx),
         ]
         .into(),
         connect: [
             mux_entry::<rpc::get_block::Rpc>(ctx),
             mux_entry::<rpc::push_block_store_state::Rpc>(ctx),
+            mux_entry::<rpc::get_batch::Rpc>(ctx),
+            mux_entry::<rpc::push_batch_store_state::Rpc>(ctx),
         ]
         .into(),
     };
