@@ -1,0 +1,11 @@
+{
+    "checker": {
+        "tuning": {
+            "search.simulation": true,
+            "search.simulation.maxRun": 100
+        },
+        "--discard-disabled": true,
+        "--no-deadlock": true,
+        "--write-intermediate": true
+    }
+}
