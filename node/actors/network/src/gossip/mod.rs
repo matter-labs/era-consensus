@@ -12,6 +12,7 @@
 //! Static connections constitute a rigid "backbone" of the gossip network, which is insensitive to
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
+pub use self::batch_votes::BatchVotesPublisher;
 use self::batch_votes::BatchVotesWatch;
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
 use anyhow::Context as _;
@@ -44,7 +45,7 @@ pub(crate) struct Network {
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
     /// Current state of knowledge about batch votes.
-    pub(crate) batch_votes: BatchVotesWatch,
+    pub(crate) batch_votes: Arc<BatchVotesWatch>,
     /// Block store to serve `get_block` requests from.
     pub(crate) block_store: Arc<BlockStore>,
     /// Batch store to serve `get_batch` requests from.
@@ -79,7 +80,7 @@ impl Network {
             ),
             outbound: PoolWatch::new(cfg.gossip.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
-            batch_votes: BatchVotesWatch::default(),
+            batch_votes: Arc::new(BatchVotesWatch::default()),
             batch_qc: HashMap::new(),
             last_viewed_qc: None,
             cfg,

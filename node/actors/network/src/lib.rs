@@ -1,5 +1,6 @@
 //! Network actor maintaining a pool of outbound and inbound connections to other nodes.
 use anyhow::Context as _;
+use gossip::BatchVotesPublisher;
 use std::sync::Arc;
 use tracing::Instrument as _;
 use zksync_concurrency::{
@@ -72,6 +73,11 @@ impl Network {
     /// Registers metrics for this state.
     pub fn register_metrics(self: &Arc<Self>) {
         metrics::NetworkGauges::register(Arc::downgrade(self));
+    }
+
+    /// Create a batch vote publisher to push attestations to gossip.
+    pub fn batch_vote_publisher(&self) -> BatchVotesPublisher {
+        BatchVotesPublisher(self.gossip.batch_votes.clone())
     }
 
     /// Handles a dispatcher message.

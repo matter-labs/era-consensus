@@ -132,6 +132,12 @@ impl Executor {
             net.register_metrics();
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
 
+            if let Some(_attester) = self.attester {
+                tracing::info!("Running the node in attester mode.");
+                let _publisher = net.batch_vote_publisher();
+                // TODO: Start a background task that polls the store for new L1 batches and publishes votes.
+            }
+
             if let Some(debug_config) = self.config.debug_page {
                 s.spawn(async {
                     http::DebugPageServer::new(debug_config, net)
