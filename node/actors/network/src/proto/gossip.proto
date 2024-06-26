@@ -33,6 +33,16 @@ message PushBlockStoreState {
   optional roles.validator.CommitQC last = 2; // optional
 }
 
+// State of the local batch store.
+// A node is expected to store a continuous range of batches at all times
+// and actively fetch newest batch.
+message PushBatchStoreState {
+  // First batch that the node has locally.
+  optional uint64 first = 1; // required; BatchNumber
+  // Last batch QC that the node has locally.
+  optional roles.attester.SyncBatch last = 2; // optional
+}
+
 // Asks the server to send an L2 block (including its transactions).
 message GetBlockRequest {
   // Number of the L2 block to send.
@@ -42,4 +52,15 @@ message GetBlockRequest {
 // Response to a `GetBlockRequest`.
 message GetBlockResponse {
   optional roles.validator.FinalBlock block = 1; // optional; missing if block is not available
+}
+
+// Asks the server to send a batch.
+message GetBatchRequest {
+  // Number of the batch to send.
+  optional uint64 number = 1;
+}
+
+// Response to a `GetBatchRequest`.
+message GetBatchResponse {
+  optional roles.attester.SyncBatch batch = 1; // optional; missing if batch is not available
 }

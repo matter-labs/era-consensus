@@ -6,7 +6,10 @@ use super::{
     ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
     WeightedValidator,
 };
-use crate::{attester, validator::LeaderSelectionMode};
+use crate::{
+    attester::{self, BatchNumber, SyncBatch},
+    validator::LeaderSelectionMode,
+};
 use bit_vec::BitVec;
 use rand::{
     distributions::{Distribution, Standard},
@@ -132,12 +135,28 @@ impl Setup {
         self.0.blocks.get(n.0.checked_sub(first.0)? as usize)
     }
 
-    /// Pushes a new L1 batch.
-    pub fn push_batch(&mut self, batch: attester::Batch) {
-        for key in &self.0.attester_keys {
-            let signed = key.sign_msg(batch.clone());
-            self.0.signed_batches.push(signed);
+    /// Pushes `count` batches with a random payload.
+    pub fn push_batches(&mut self, rng: &mut impl Rng, count: usize) {
+        for _ in 0..count {
+            self.push_batch(rng);
         }
+    }
+
+    /// Pushes a new L1 batch.
+    pub fn push_batch(&mut self, rng: &mut impl Rng) {
+        let batch_number = match self.0.batches.last() {
+            Some(b) => b.number.next(),
+            None => BatchNumber(0),
+        };
+        let size: usize = rng.gen_range(500..1000);
+        let payloads = vec![Payload((0..size).map(|_| rng.gen()).collect())];
+        let proof = rng.gen::<[u8; 32]>().to_vec();
+        let batch = SyncBatch {
+            number: batch_number,
+            payloads,
+            proof,
+        };
+        self.0.batches.push(batch);
     }
 }
 
@@ -170,7 +189,7 @@ impl From<SetupSpec> for Setup {
             .with_hash(),
             validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
             attester_keys: spec.attester_weights.into_iter().map(|(k, _)| k).collect(),
-            signed_batches: vec![],
+            batches: vec![],
             blocks: vec![],
         })
     }
@@ -186,7 +205,7 @@ pub struct SetupInner {
     /// Past blocks.
     pub blocks: Vec<FinalBlock>,
     /// L1 batches
-    pub signed_batches: Vec<attester::Signed<attester::Batch>>,
+    pub batches: Vec<SyncBatch>,
     /// Genesis config.
     pub genesis: Genesis,
 }
