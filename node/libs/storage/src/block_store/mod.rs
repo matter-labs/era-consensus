@@ -122,8 +122,11 @@ impl Inner {
             anyhow::bail!("head block has been removed from storage, this is not supported");
         }
         self.persisted = persisted;
+        if self.queued.first < self.persisted.first {
+            self.queued.first = self.persisted.first;
+        }
         // If persisted blocks overtook the queue (blocks were fetched via some side-channel),
-        // it means we need to reset the cache.
+        // it means we need to reset the cache - otherwise we would have a gap.
         if self.queued.next() < self.persisted.next() {
             self.queued = self.persisted.clone();
             self.cache.clear();
@@ -286,6 +289,21 @@ impl BlockStore {
         .await?;
         self.inner.send_if_modified(|inner| inner.try_push(block));
         Ok(())
+    }
+
+    /// Waits until the queued blocks range is different than `old`.
+    pub async fn wait_for_queued_change(
+        &self,
+        ctx: &ctx::Ctx,
+        old: &BlockStoreState,
+    ) -> ctx::OrCanceled<BlockStoreState> {
+        sync::wait_for_some(ctx, &mut self.inner.subscribe(), |inner| {
+            if &inner.queued == old {
+                return None;
+            }
+            Some(inner.queued.clone())
+        })
+        .await
     }
 
     /// Waits until the given block is queued (in memory, or persisted).
