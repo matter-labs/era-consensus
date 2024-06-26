@@ -1,8 +1,9 @@
 name: Specification testing
 
-on: pull_request
-  paths: 
-    - 'spec/**'
+on: 
+  pull_request
+    paths: 
+      - 'spec/**'
 
 jobs:
 
