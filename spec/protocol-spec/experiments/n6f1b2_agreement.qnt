@@ -25,7 +25,7 @@ module n6f1b2_agreement {
       OnProposalStep("n3"),
       OnTimerIsFinishedStep("n1"), OnTimerIsFinishedStep("n2"), OnTimerIsFinishedStep("n3"),
       FaultyStep, FaultyStep, FaultyStep,
-      OnNewViewStep("n1"), OnNewViewStep("n2"), OnNewViewStep("n3"),
+      OnNewViewStep({id:"n1", view:2}), OnNewViewStep({id:"n2", view:2}), OnNewViewStep({id:"n3", view:2}),
       FaultyStep,
       OnProposalStep("n1"), OnProposalStep("n2"), OnProposalStep("n3"),
       FaultyStep,
