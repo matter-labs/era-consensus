@@ -1,3 +1,4 @@
+use super::ValidatorAddrs;
 use crate::{
     gossip::{batch_votes::BatchVotesWatch, handshake, validator_addrs::ValidatorAddrsWatch},
     metrics, preface, rpc, testonly,
@@ -18,8 +19,6 @@ use zksync_concurrency::{
 };
 use zksync_consensus_roles::{attester, validator};
 use zksync_consensus_storage::testonly::TestMemoryStorage;
-
-use super::ValidatorAddrs;
 
 mod fetch_batches;
 mod fetch_blocks;

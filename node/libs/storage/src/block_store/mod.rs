@@ -116,9 +116,26 @@ impl Inner {
         true
     }
 
+    /// Updates `persisted` field.
+    fn update_persisted(&mut self, persisted: BlockStoreState) -> anyhow::Result<()> {
+        if persisted.next() < self.persisted.next() {
+            anyhow::bail!("head block has been removed from storage, this is not supported");
+        }
+        self.persisted = persisted;
+        // If persisted blocks overtook the queue (blocks were fetched via some side-channel),
+        // it means we need to reset the cache.
+        if self.queued.next() < self.persisted.next() {
+            self.queued = self.persisted.clone();
+            self.cache.clear();
+        }
+        self.truncate_cache();
+        Ok(())
+    }
+
+    /// If cache size has been exceeded, remove entries which were already persisted.
     fn truncate_cache(&mut self) {
         while self.cache.len() > Self::CACHE_CAPACITY
-            && self.persisted.contains(self.cache[0].number())
+            && self.persisted.next() > self.cache[0].number()
         {
             self.cache.pop_front();
         }
@@ -155,28 +172,24 @@ impl BlockStoreRunner {
         let _ = COLLECTOR.before_scrape(move || Some(store_ref.upgrade()?.scrape_metrics()));
 
         let res = scope::run!(ctx, |ctx, s| async {
-            let persisted = self.0.persistent.persisted();
-            let mut queue_next = persisted.borrow().next();
-            // Task truncating cache whenever a block gets persisted.
             s.spawn::<()>(async {
-                let mut persisted = persisted;
+                // Task watching the persisted state.
+                let mut persisted = self.0.persistent.persisted();
+                persisted.mark_changed();
                 loop {
-                    let persisted = sync::changed(ctx, &mut persisted).await?.clone();
-                    self.0.inner.send_modify(|inner| {
-                        inner.persisted = persisted;
-                        inner.truncate_cache();
-                    });
+                    let new = sync::changed(ctx, &mut persisted).await?.clone();
+                    sync::try_send_modify(&self.0.inner, |inner| inner.update_persisted(new))?;
                 }
             });
             // Task queueing blocks to be persisted.
             let inner = &mut self.0.inner.subscribe();
+            let mut queue_next = validator::BlockNumber(0);
             loop {
-                let block = sync::wait_for(ctx, inner, |inner| inner.queued.contains(queue_next))
-                    .await?
-                    .block(queue_next)
-                    .unwrap();
-                queue_next = queue_next.next();
-
+                let block = sync::wait_for_some(ctx, inner, |inner| {
+                    inner.block(queue_next.max(inner.persisted.next()))
+                })
+                .await?;
+                queue_next = block.number().next();
                 // TODO: monitor errors as well.
                 let t = metrics::PERSISTENT_BLOCK_STORE
                     .queue_next_block_latency

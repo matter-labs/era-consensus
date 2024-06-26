@@ -107,6 +107,22 @@ pub async fn notified(ctx: &ctx::Ctx, notify: &Notify) -> ctx::OrCanceled<()> {
     ctx.wait(notify.notified()).await
 }
 
+/// Sends the modified value iff
+pub fn try_send_modify<T, R, E>(
+    send: &watch::Sender<T>,
+    f: impl FnOnce(&mut T) -> Result<R, E>,
+) -> Result<R, E> {
+    let mut res = None;
+    send.send_if_modified(|v| {
+        let x = f(v);
+        let s = x.is_ok();
+        res = Some(x);
+        s
+    });
+    // safe, since `res` is set by `send_if_modified`.
+    res.unwrap()
+}
+
 /// Waits for a watch change notification.
 /// Immediately borrows a reference to the new value.
 pub async fn changed<'a, T>(
@@ -136,6 +152,20 @@ pub async fn wait_for<'a, T>(
     }
     ctx.canceled().await;
     Err(ctx::Canceled)
+}
+
+/// Waits until predicate is different than `None`.
+pub async fn wait_for_some<T, R>(
+    ctx: &ctx::Ctx,
+    recv: &mut watch::Receiver<T>,
+    pred: impl Fn(&T) -> Option<R>,
+) -> ctx::OrCanceled<R> {
+    recv.mark_changed();
+    loop {
+        if let Some(v) = pred(&*changed(ctx, recv).await?) {
+            return Ok(v);
+        }
+    }
 }
 
 struct ExclusiveLockInner<T> {

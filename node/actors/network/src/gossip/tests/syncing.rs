@@ -10,7 +10,10 @@ use zksync_concurrency::{
     time,
 };
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::testonly::TestMemoryStorage;
+use zksync_consensus_storage::{
+    testonly::{dump, in_memory, TestMemoryStorage},
+    BlockStore,
+};
 
 const EXCHANGED_STATE_COUNT: usize = 5;
 const NETWORK_CONNECTIVITY_CASES: [(usize, usize); 5] = [(2, 1), (3, 2), (5, 3), (10, 4), (10, 7)];
@@ -408,6 +411,95 @@ async fn uncoordinated_batch_syncing(
                 .wait_until_persisted(ctx, last)
                 .await
                 .unwrap();
+        }
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+/// Test checking that if blocks that weren't queued get persisted,
+/// the syncing can behave accordingly.
+#[tokio::test(flavor = "multi_thread")]
+async fn test_sidechannel_sync() {
+    abort_on_panic();
+    let _guard = set_timeout(time::Duration::seconds(20));
+
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let mut setup = validator::testonly::Setup::new(rng, 2);
+    setup.push_blocks(rng, 10);
+    let cfgs = testonly::new_configs(rng, &setup, 1);
+    scope::run!(ctx, |ctx, s| async {
+        let mut stores = vec![];
+        let mut nodes = vec![];
+        for (i, mut cfg) in cfgs.into_iter().enumerate() {
+            cfg.rpc.push_block_store_state_rate = limiter::Rate::INF;
+            cfg.rpc.get_block_rate = limiter::Rate::INF;
+            cfg.rpc.get_block_timeout = None;
+            cfg.validator_key = None;
+
+            // Build a custom persistent store, so that we can tweak it later.
+            let persistent =
+                in_memory::BlockStore::new(setup.genesis.clone(), setup.genesis.first_block);
+            stores.push(persistent.clone());
+            let (block_store, runner) = BlockStore::new(ctx, Box::new(persistent)).await?;
+            s.spawn_bg(runner.run(ctx));
+            // Use the standard batch store since it doesn't matter.
+            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+            let (node, runner) = testonly::Instance::new(cfg, block_store, store.batches);
+            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            nodes.push(node);
+        }
+
+        {
+            // Truncate at the start.
+            stores[1].truncate(setup.blocks[3].number());
+
+            // Sync a block prefix.
+            let prefix = &setup.blocks[0..5];
+            for b in prefix {
+                nodes[0]
+                    .net
+                    .gossip
+                    .block_store
+                    .queue_block(ctx, b.clone())
+                    .await?;
+            }
+            nodes[1]
+                .net
+                .gossip
+                .block_store
+                .wait_until_persisted(ctx, prefix.last().unwrap().number())
+                .await?;
+
+            // Check that the expected block range is actually stored.
+            assert_eq!(setup.blocks[3..5], dump(ctx, &stores[1]).await);
+        }
+
+        {
+            // Truncate more than prefix.
+            stores[1].truncate(setup.blocks[8].number());
+
+            // Sync a block suffix.
+            let suffix = &setup.blocks[5..10];
+            for b in suffix {
+                nodes[0]
+                    .net
+                    .gossip
+                    .block_store
+                    .queue_block(ctx, b.clone())
+                    .await?;
+            }
+            nodes[1]
+                .net
+                .gossip
+                .block_store
+                .wait_until_persisted(ctx, suffix.last().unwrap().number())
+                .await?;
+
+            // Check that the expected block range is actually stored.
+            assert_eq!(setup.blocks[8..10], dump(ctx, &stores[1]).await);
         }
         Ok(())
     })

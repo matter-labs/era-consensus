@@ -1,4 +1,5 @@
 //! Http Server to export debug information
+use crate::{consensus, MeteredStreamStats, Network};
 use anyhow::Context as _;
 use base64::Engine;
 use build_html::{Html, HtmlContainer, HtmlPage, Table, TableCell, TableCellType, TableRow};
@@ -28,8 +29,6 @@ use tokio_rustls::{
 };
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_utils::debug_page;
-
-use crate::{consensus, MeteredStreamStats, Network};
 
 const STYLE: &str = include_str!("style.css");
 

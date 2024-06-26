@@ -1,9 +1,8 @@
-use crate::validator::Payload;
-
 use super::{
     AggregateMultiSig, AggregateSignature, Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash,
     MultiSig, PublicKey, SecretKey, Signature, Signed, Signers, SyncBatch, WeightedAttester,
 };
+use crate::validator::Payload;
 use bit_vec::BitVec;
 use rand::{
     distributions::{Distribution, Standard},
