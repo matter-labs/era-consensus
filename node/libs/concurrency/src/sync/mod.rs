@@ -107,7 +107,8 @@ pub async fn notified(ctx: &ctx::Ctx, notify: &Notify) -> ctx::OrCanceled<()> {
     ctx.wait(notify.notified()).await
 }
 
-/// Sends the modified value iff
+/// Sends the modified value iff `f()` returns `Ok`.
+/// Forwards the result of `f()` to the caller.
 pub fn try_send_modify<T, R, E>(
     send: &watch::Sender<T>,
     f: impl FnOnce(&mut T) -> Result<R, E>,
