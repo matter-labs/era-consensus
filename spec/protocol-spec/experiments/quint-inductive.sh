@@ -29,12 +29,15 @@ for i in `seq 0 $((max_trans-1))`; do
     "checker": {
       "discard-disabled": false,
       "no-deadlocks": true,
-      "--write-intermediate": true,
+      "write-intermediate": true,
       "tuning": {
         "search.invariant.mode": "after",
         "search.invariantFilter": "(1->.*)",
         "search.transitionFilter": "(0->.*|1->$i)"
       }
+    },
+    "common": {
+      "debug": true
     }
   }
 EOF

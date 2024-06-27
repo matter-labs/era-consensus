@@ -140,6 +140,11 @@ module inductive {
         sig: "n0",
     }
 
+    pure val COMMITTED_BLOCK_SAMPLE: CommittedBlock = {
+        block: "val_b0",
+        commit_qc: COMMIT_QC_SAMPLE,
+    }
+
     pure def commit_vote_shape_inv(v: CommitVote): bool = and {
         r::VIEWS.contains(v.view),
         r::VIEWS.contains(v.block_number),
@@ -195,6 +200,11 @@ module inductive {
         justification_shape_inv(new_view.justification),
     }
 
+    pure def committed_block_shape_inv(cblock: CommittedBlock): bool = and {
+        r::ALL_BLOCKS.contains(cblock.block),
+        commit_qc_shape_inv(cblock.commit_qc),
+    }
+
     // choose arbitrary values for the initial states
     action init: bool = all {
         // non-deterministically choose the leader function
@@ -221,6 +231,8 @@ module inductive {
         nondet high_commit_qcs_is_some = r::REPLICAS.powerset().oneOf()
         nondet high_timeout_qcs = generate(6, r::CORRECT.mapBy(id => TIMEOUT_QC_SAMPLE))
         nondet high_timeout_qcs_is_some = r::REPLICAS.powerset().oneOf()
+        nondet cached_proposals = generate(6, r::CORRECT.mapBy(id => Set((0, "val_b0"))))
+        nondet committed_blocks = generate(6, r::CORRECT.mapBy(id => [COMMITTED_BLOCK_SAMPLE]))
         all {
             high_votes.keys() == r::CORRECT,
             r::CORRECT.forall(id => commit_vote_shape_inv(high_votes.get(id))),
@@ -228,6 +240,16 @@ module inductive {
             r::CORRECT.forall(id => commit_qc_shape_inv(high_commit_qcs.get(id))),
             high_timeout_qcs.keys() == r::CORRECT,
             r::CORRECT.forall(id => timeout_qc_shape_inv(high_timeout_qcs.get(id))),
+            cached_proposals.keys() == r::CORRECT,
+            r::CORRECT.forall(id => cached_proposals.get(id).forall(((bn, bh)) => all {
+                r::VIEWS.contains(bn),
+                r::ALL_BLOCKS.contains(bh),
+            })),
+            committed_blocks.keys() == r::CORRECT,
+            r::CORRECT.forall(id => {
+                val committed = committed_blocks.get(id)
+                committed.indices().forall(i => committed_block_shape_inv(committed[i]))
+            }),
             r::replica_state' = r::CORRECT.mapBy(id => {
                 view: replica_views.get(id),
                 phase: replica_phases.get(id),
@@ -249,10 +271,8 @@ module inductive {
                     } else {
                         HIGH_TIMEOUT_QC_NONE
                     },
-                // TODO: add cached_proposals
-                cached_proposals: Set(),
-                // TODO: add committed_blocks
-                committed_blocks: [],
+                cached_proposals: cached_proposals.get(id),
+                committed_blocks: committed_blocks.get(id),
             }),
         },
         // non-deterministical choose msgs_proposal
