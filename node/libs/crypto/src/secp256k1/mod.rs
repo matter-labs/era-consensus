@@ -1,11 +1,9 @@
 //! ECDSA signatures over the Secp256k1 curve, chosen to work with EVM precompiles.
 
-use std::hash::Hash;
-
-use anyhow::bail;
-use zeroize::ZeroizeOnDrop;
-
 use crate::{keccak256::Keccak256, ByteFmt};
+use anyhow::bail;
+use std::hash::Hash;
+use zeroize::ZeroizeOnDrop;
 
 mod testonly;
 
