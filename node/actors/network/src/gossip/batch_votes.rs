@@ -100,3 +100,22 @@ impl BatchVotesWatch {
         Ok(())
     }
 }
+
+/// Wrapper around [BatchVotesWatch] to publish votes over batches signed by an attester key.
+pub struct BatchVotesPublisher(pub(crate) Arc<BatchVotesWatch>);
+
+impl BatchVotesPublisher {
+    /// Sign an L1 batch and push it into the batch, which should cause it to be gossiped by the network.
+    pub async fn publish(
+        &self,
+        attesters: &attester::Committee,
+        attester: &attester::SecretKey,
+        batch: Batch,
+    ) -> anyhow::Result<()> {
+        if !attesters.contains(&attester.public()) {
+            return Ok(());
+        }
+        let attestation = attester.sign_msg(batch);
+        self.0.update(attesters, &[Arc::new(attestation)]).await
+    }
+}
