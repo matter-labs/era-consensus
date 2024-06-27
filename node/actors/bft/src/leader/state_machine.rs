@@ -151,7 +151,9 @@ impl StateMachine {
                 continue;
             };
             next_view = prepare_qc.view.number.next();
-            Self::propose(ctx, config, prepare_qc, pipe).await.wrap("propose()")?;
+            Self::propose(ctx, config, prepare_qc, pipe)
+                .await
+                .wrap("propose()")?;
         }
     }
 
@@ -186,7 +188,11 @@ impl StateMachine {
                 if let Some(prev) = number.prev() {
                     cfg.block_store.wait_until_persisted(ctx, prev).await?;
                 }
-                let payload = cfg.payload_manager.propose(ctx, number).await.wrap("payload_manager.propose()")?;
+                let payload = cfg
+                    .payload_manager
+                    .propose(ctx, number)
+                    .await
+                    .wrap("payload_manager.propose()")?;
                 if payload.0.len() > cfg.max_payload_size {
                     return Err(anyhow::format_err!(
                         "proposed payload too large: got {}B, max {}B",

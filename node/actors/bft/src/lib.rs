@@ -19,7 +19,7 @@ use crate::io::{InputMessage, OutputMessage};
 use anyhow::Context;
 pub use config::Config;
 use std::sync::Arc;
-use zksync_concurrency::{ctx, oneshot, scope, error::Wrap as _};
+use zksync_concurrency::{ctx, error::Wrap as _, oneshot, scope};
 use zksync_consensus_network::io::ConsensusReq;
 use zksync_consensus_roles::validator;
 use zksync_consensus_utils::pipe::ActorPipe;
@@ -79,13 +79,10 @@ impl Config {
 
             s.spawn_bg(async { replica.run(ctx).await.wrap("replica.run()") });
             s.spawn_bg(async { leader.run(ctx).await.wrap("leader.run()") });
-            s.spawn_bg(async { 
-                leader::StateMachine::run_proposer(
-                    ctx,
-                    &cfg,
-                    prepare_qc_recv,
-                    &pipe.send,
-                ).await.wrap("run_proposer()")
+            s.spawn_bg(async {
+                leader::StateMachine::run_proposer(ctx, &cfg, prepare_qc_recv, &pipe.send)
+                    .await
+                    .wrap("run_proposer()")
             });
 
             tracing::info!("Starting consensus actor {:?}", cfg.secret_key.public());
