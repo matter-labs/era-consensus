@@ -257,6 +257,7 @@ impl Configs {
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
                 max_payload_size: self.app.max_payload_size,
+                rpc: executor::RpcConfig::default(),
                 debug_page: self.app.debug_page.as_ref().map(|debug_page_config| {
                     http::DebugPageConfig {
                         addr: debug_page_config.addr,

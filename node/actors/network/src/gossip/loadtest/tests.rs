@@ -2,7 +2,7 @@ use super::*;
 use crate::testonly;
 use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::testonly::new_store;
+use zksync_consensus_storage::testonly::TestMemoryStorage;
 
 #[tokio::test]
 async fn test_loadtest() {
@@ -17,14 +17,16 @@ async fn test_loadtest() {
 
     scope::run!(ctx, |ctx, s| async {
         // Spawn the node.
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        let (node, runner) = testonly::Instance::new(cfg.clone(), store.clone());
+        let stores = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(stores.runner.run(ctx));
+        let (node, runner) =
+            testonly::Instance::new(cfg.clone(), stores.blocks.clone(), stores.batches.clone());
         s.spawn_bg(runner.run(ctx));
 
         // Fill the storage with some blocks.
         for b in &setup.blocks {
-            store
+            stores
+                .blocks
                 .queue_block(ctx, b.clone())
                 .await
                 .context("queue_block()")?;
