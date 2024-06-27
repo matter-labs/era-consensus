@@ -1,0 +1,12 @@
+{
+    "checker": {
+        "discard-disabled": false,
+        "no-deadlocks": true,
+        "--write-intermediate": true,
+        "tuning": {
+            "search.invariant.mode": "after",
+            "search.invariantFilter": "(1->.*)",
+            "search.transitionFilter": "(0->0|1->0)"
+        }
+    }
+}
