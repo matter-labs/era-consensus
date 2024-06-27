@@ -49,15 +49,15 @@ impl BatchStoreState {
 #[async_trait::async_trait]
 pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     /// Get the L1 batch from storage with the highest number.
-    fn last_batch(&self) -> attester::BatchNumber;
+    async fn last_batch(&self) -> attester::BatchNumber;
     /// Get the L1 batch QC from storage with the highest number.
-    fn last_batch_qc(&self) -> attester::BatchQC;
+    async fn last_batch_qc(&self) -> attester::BatchQC;
     /// Returns the batch with the given number.
-    fn get_batch(&self, number: attester::BatchNumber) -> Option<attester::SyncBatch>;
+    async fn get_batch(&self, number: attester::BatchNumber) -> Option<attester::SyncBatch>;
     /// Returns the QC of the batch with the given number.
-    fn get_batch_qc(&self, number: attester::BatchNumber) -> Option<attester::BatchQC>;
+    async fn get_batch_qc(&self, number: attester::BatchNumber) -> Option<attester::BatchQC>;
     /// Store the given QC in the storage.
-    fn store_qc(&self, qc: attester::BatchQC);
+    async fn store_qc(&self, qc: attester::BatchQC);
     /// Range of batches persisted in storage.
     fn persisted(&self) -> sync::watch::Receiver<BatchStoreState>;
     /// Queue the batch to be persisted in storage.
@@ -199,16 +199,19 @@ impl BatchStore {
         _ctx: &ctx::Ctx,
         number: attester::BatchNumber,
     ) -> ctx::Result<Option<attester::SyncBatch>> {
-        let inner = self.inner.borrow();
-        if !inner.queued.contains(number) {
-            return Ok(None);
-        }
-        if let Some(batch) = inner.batch(number) {
-            return Ok(Some(batch));
+        {
+            let inner = self.inner.borrow();
+            if !inner.queued.contains(number) {
+                return Ok(None);
+            }
+            if let Some(batch) = inner.batch(number) {
+                return Ok(Some(batch));
+            }
         }
         let batch = self
             .persistent
             .get_batch(number)
+            .await
             .context("persistent.batch()")?;
         Ok(Some(batch))
     }
