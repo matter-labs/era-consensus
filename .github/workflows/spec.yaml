@@ -1,0 +1,26 @@
+name: Specification testing
+
+on:
+  pull_request:
+    paths:
+      - "spec/**"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout the repository
+        uses: actions/checkout@v4
+
+      - name: Install node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ">= 18"
+          check-latest: true
+
+      - name: Install quint
+        run: npm i @informalsystems/quint -g
+
+      - name: Run test
+        run: cd spec && make test
