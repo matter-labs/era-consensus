@@ -68,14 +68,17 @@ skip = [
     { name = "rand", version = "0.4" },
     { name = "syn", version = "1.0" },
 
-    # Old versions required by jsonrpsee.
-    { name = "base64", version = "0.13.1" },
+    # Old version required by protox 0.5.1.
     { name = "base64", version = "0.21.7" },
-    { name = "block-buffer", version = "0.9.0" },
-    { name = "digest", version = "0.10.7" },
 
-    # Old versions required by k8s-openapi.
-    { name = "base64", version = "0.21.7" }
+    # Old versions required by vise-exporter.
+    { name = "http", version = "0.2.12"},
+    { name = "http-body", version = "0.4.6"},
+    { name = "hyper", version = "0.14.28"},
+
+    # Old versions required by tls-listener.
+    { name = "tokio-rustls", version = "0.25"},
+    { name = "rustls", version = "0.22.4"},
 ]
 
 [sources]

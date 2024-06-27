@@ -1,18 +1,20 @@
 //! Network actor maintaining a pool of outbound and inbound connections to other nodes.
 use anyhow::Context as _;
+use gossip::BatchVotesPublisher;
 use std::sync::Arc;
 use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx::{self, channel},
     limiter, scope,
 };
-use zksync_consensus_storage::BlockStore;
+use zksync_consensus_storage::{BatchStore, BlockStore};
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;
 pub mod consensus;
 mod frame;
 pub mod gossip;
+pub mod http;
 pub mod io;
 mod metrics;
 mod mux;
@@ -26,8 +28,8 @@ pub mod testonly;
 #[cfg(test)]
 mod tests;
 mod watch;
-
 pub use config::*;
+pub use metrics::MeteredStreamStats;
 
 /// State of the network actor observable outside of the actor.
 pub struct Network {
@@ -52,9 +54,10 @@ impl Network {
     pub fn new(
         cfg: Config,
         block_store: Arc<BlockStore>,
+        batch_store: Arc<BatchStore>,
         pipe: ActorPipe<io::InputMessage, io::OutputMessage>,
     ) -> (Arc<Self>, Runner) {
-        let gossip = gossip::Network::new(cfg, block_store, pipe.send);
+        let gossip = gossip::Network::new(cfg, block_store, batch_store, pipe.send);
         let consensus = consensus::Network::new(gossip.clone());
         let net = Arc::new(Self { gossip, consensus });
         (
@@ -69,6 +72,11 @@ impl Network {
     /// Registers metrics for this state.
     pub fn register_metrics(self: &Arc<Self>) {
         metrics::NetworkGauges::register(Arc::downgrade(self));
+    }
+
+    /// Create a batch vote publisher to push attestations to gossip.
+    pub fn batch_vote_publisher(&self) -> BatchVotesPublisher {
+        BatchVotesPublisher(self.gossip.batch_votes.clone())
     }
 
     /// Handles a dispatcher message.
@@ -126,6 +134,12 @@ impl Runner {
             s.spawn(async {
                 // TODO: Handle this correctly.
                 let _ = self.net.gossip.update_batch_qc(ctx).await;
+                Ok(())
+            });
+
+            // Fetch missing batches in the background.
+            s.spawn(async {
+                self.net.gossip.run_batch_fetcher(ctx).await;
                 Ok(())
             });
 

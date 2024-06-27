@@ -1,11 +1,10 @@
-//! Unit tests of `get_block` RPC.
+//! Unit tests of `get_batch` RPC.
 use crate::{gossip, mux, rpc};
 use assert_matches::assert_matches;
-use rand::Rng as _;
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, limiter, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{testonly::new_store, BlockStoreState};
+use zksync_consensus_storage::{testonly::TestMemoryStorage, BatchStoreState};
 
 #[tokio::test]
 async fn test_simple() {
@@ -13,17 +12,22 @@ async fn test_simple() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::Setup::new(rng, 1);
-    setup.push_blocks(rng, 2);
+    setup.push_batches(rng, 2);
     let mut cfg = crate::testonly::new_configs(rng, &setup, 0)[0].clone();
-    cfg.rpc.push_block_store_state_rate = limiter::Rate::INF;
-    cfg.rpc.get_block_rate = limiter::Rate::INF;
-    cfg.rpc.get_block_timeout = None;
+    cfg.rpc.push_batch_store_state_rate = limiter::Rate::INF;
+    cfg.rpc.get_batch_rate = limiter::Rate::INF;
+    cfg.rpc.get_batch_timeout = None;
+    cfg.attester_key = None;
     cfg.validator_key = None;
 
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.clone());
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
+        let (_node, runner) = crate::testonly::Instance::new(
+            cfg.clone(),
+            store.blocks.clone(),
+            store.batches.clone(),
+        );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis.hash())
@@ -34,72 +38,75 @@ async fn test_simple() {
             Ok(())
         });
 
-        tracing::info!("Store is empty so requesting a block should return an empty response.");
-        let mut stream = conn.open_client::<rpc::get_block::Rpc>(ctx).await.unwrap();
+        tracing::info!("Store is empty so requesting a batch should return an empty response.");
+        let mut stream = conn.open_client::<rpc::get_batch::Rpc>(ctx).await.unwrap();
         stream
-            .send(ctx, &rpc::get_block::Req(setup.blocks[0].number()))
+            .send(ctx, &rpc::get_batch::Req(setup.batches[1].number))
             .await
             .unwrap();
         let resp = stream.recv(ctx).await.unwrap();
         assert_eq!(resp.0, None);
 
-        tracing::info!("Insert a block.");
+        tracing::info!("Insert a batch.");
         store
-            .queue_block(ctx, setup.blocks[0].clone())
+            .batches
+            .queue_batch(ctx, setup.batches[0].clone(), setup.genesis.clone())
             .await
             .unwrap();
         loop {
             let mut stream = conn
-                .open_server::<rpc::push_block_store_state::Rpc>(ctx)
+                .open_server::<rpc::push_batch_store_state::Rpc>(ctx)
                 .await
                 .unwrap();
             let state = stream.recv(ctx).await.unwrap();
             stream.send(ctx, &()).await.unwrap();
-            if state.0.contains(setup.blocks[0].number()) {
-                tracing::info!("peer reported to have a block");
+            if state.0.contains(setup.batches[0].number) {
+                tracing::info!("peer reported to have a batch");
                 break;
             }
         }
-        tracing::info!("fetch that block.");
-        let mut stream = conn.open_client::<rpc::get_block::Rpc>(ctx).await.unwrap();
+        tracing::info!("fetch that batch.");
+
+        let mut stream = conn.open_client::<rpc::get_batch::Rpc>(ctx).await.unwrap();
         stream
-            .send(ctx, &rpc::get_block::Req(setup.blocks[0].number()))
+            .send(ctx, &rpc::get_batch::Req(setup.batches[0].number))
             .await
             .unwrap();
         let resp = stream.recv(ctx).await.unwrap();
-        assert_eq!(resp.0, Some(setup.blocks[0].clone()));
+        assert_eq!(resp.0, Some(setup.batches[0].clone()));
 
-        tracing::info!("Inform the peer that we have {}", setup.blocks[1].number());
+        tracing::info!("Inform the peer that we have {}", setup.batches[1].number);
         let mut stream = conn
-            .open_client::<rpc::push_block_store_state::Rpc>(ctx)
+            .open_client::<rpc::push_batch_store_state::Rpc>(ctx)
             .await
             .unwrap();
         stream
             .send(
                 ctx,
-                &rpc::push_block_store_state::Req(BlockStoreState {
-                    first: setup.blocks[1].number(),
-                    last: Some(setup.blocks[1].justification.clone()),
+                &rpc::push_batch_store_state::Req(BatchStoreState {
+                    first: setup.batches[1].number,
+                    last: Some(setup.batches[1].clone()),
                 }),
             )
             .await
             .unwrap();
         stream.recv(ctx).await.unwrap();
 
-        tracing::info!("Wait for the client to request that block");
-        let mut stream = conn.open_server::<rpc::get_block::Rpc>(ctx).await.unwrap();
+        tracing::info!("Wait for the client to request that batch");
+        let mut stream = conn.open_server::<rpc::get_batch::Rpc>(ctx).await.unwrap();
         let req = stream.recv(ctx).await.unwrap();
-        assert_eq!(req.0, setup.blocks[1].number());
+        assert_eq!(req.0, setup.batches[1].number);
 
-        tracing::info!("Return the requested block");
+        tracing::info!("Return the requested batch");
         stream
-            .send(ctx, &rpc::get_block::Resp(Some(setup.blocks[1].clone())))
+            .send(ctx, &rpc::get_batch::Resp(Some(setup.batches[1].clone())))
             .await
             .unwrap();
 
-        tracing::info!("Wait for the client to store that block");
+        tracing::info!("Wait for the client to store that batch");
         store
-            .wait_until_persisted(ctx, setup.blocks[1].number())
+            .batches
+            .wait_until_persisted(ctx, setup.batches[1].number)
             .await
             .unwrap();
 
@@ -115,18 +122,22 @@ async fn test_concurrent_requests() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::Setup::new(rng, 1);
-    setup.push_blocks(rng, 10);
+    setup.push_batches(rng, 10);
     let mut cfg = crate::testonly::new_configs(rng, &setup, 0)[0].clone();
-    cfg.rpc.push_block_store_state_rate = limiter::Rate::INF;
-    cfg.rpc.get_block_rate = limiter::Rate::INF;
-    cfg.rpc.get_block_timeout = None;
+    cfg.rpc.push_batch_store_state_rate = limiter::Rate::INF;
+    cfg.rpc.get_batch_rate = limiter::Rate::INF;
+    cfg.rpc.get_batch_timeout = None;
+    cfg.attester_key = None;
     cfg.validator_key = None;
-    cfg.max_block_queue_size = setup.blocks.len();
 
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.clone());
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
+        let (_node, runner) = crate::testonly::Instance::new(
+            cfg.clone(),
+            store.blocks.clone(),
+            store.batches.clone(),
+        );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         let mut conns = vec![];
@@ -139,15 +150,15 @@ async fn test_concurrent_requests() {
                 Ok(())
             });
             let mut stream = conn
-                .open_client::<rpc::push_block_store_state::Rpc>(ctx)
+                .open_client::<rpc::push_batch_store_state::Rpc>(ctx)
                 .await
                 .unwrap();
             stream
                 .send(
                     ctx,
-                    &rpc::push_block_store_state::Req(BlockStoreState {
-                        first: setup.blocks[0].number(),
-                        last: Some(setup.blocks.last().unwrap().justification.clone()),
+                    &rpc::push_batch_store_state::Req(BatchStoreState {
+                        first: setup.batches[0].number,
+                        last: Some(setup.batches.last().unwrap().clone()),
                     }),
                 )
                 .await
@@ -158,20 +169,20 @@ async fn test_concurrent_requests() {
 
         // Receive a bunch of concurrent requests on various connections.
         let mut streams = vec![];
-        for (i, block) in setup.blocks.iter().enumerate() {
+        for (i, batch) in setup.batches.iter().enumerate() {
             let mut stream = conns[i % conns.len()]
-                .open_server::<rpc::get_block::Rpc>(ctx)
+                .open_server::<rpc::get_batch::Rpc>(ctx)
                 .await
                 .unwrap();
             let req = stream.recv(ctx).await.unwrap();
-            assert_eq!(req.0, block.number());
+            assert_eq!(req.0, batch.number);
             streams.push(stream);
         }
 
         // Respond to the requests.
         for (i, stream) in streams.into_iter().enumerate() {
             stream
-                .send(ctx, &rpc::get_block::Resp(Some(setup.blocks[i].clone())))
+                .send(ctx, &rpc::get_batch::Resp(Some(setup.batches[i].clone())))
                 .await
                 .unwrap();
         }
@@ -187,35 +198,40 @@ async fn test_bad_responses() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::Setup::new(rng, 1);
-    setup.push_blocks(rng, 2);
+    setup.push_batches(rng, 2);
     let mut cfg = crate::testonly::new_configs(rng, &setup, 0)[0].clone();
-    cfg.rpc.push_block_store_state_rate = limiter::Rate::INF;
-    cfg.rpc.get_block_rate = limiter::Rate::INF;
-    cfg.rpc.get_block_timeout = None;
+    cfg.rpc.push_batch_store_state_rate = limiter::Rate::INF;
+    cfg.rpc.get_batch_rate = limiter::Rate::INF;
+    cfg.rpc.get_batch_timeout = None;
     cfg.validator_key = None;
+    cfg.attester_key = None;
 
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.clone());
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
+        let (_node, runner) = crate::testonly::Instance::new(
+            cfg.clone(),
+            store.blocks.clone(),
+            store.batches.clone(),
+        );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
-        let state = rpc::push_block_store_state::Req(BlockStoreState {
-            first: setup.blocks[0].number(),
-            last: Some(setup.blocks[0].justification.clone()),
+        let state = rpc::push_batch_store_state::Req(BatchStoreState {
+            first: setup.batches[0].number,
+            last: Some(setup.batches[0].clone()),
         });
 
         for resp in [
-            // Empty response even though we declared to have the block.
+            // Empty response even though we declared to have the batch.
             None,
-            // Wrong block.
-            Some(setup.blocks[1].clone()),
-            // Malformed block.
-            {
-                let mut b = setup.blocks[0].clone();
-                b.justification = rng.gen();
-                Some(b)
-            },
+            // Wrong batch.
+            Some(setup.batches[1].clone()),
+            // // Malformed batch.
+            // {
+            //     let mut b = setup.batches[0].clone();
+            //     b.justification = rng.gen();
+            //     Some(b)
+            // },
         ] {
             tracing::info!("bad response = {resp:?}");
 
@@ -225,21 +241,21 @@ async fn test_bad_responses() {
                 .unwrap();
             let conn_task = s.spawn_bg(async { Ok(runner.run(ctx).await) });
 
-            tracing::info!("Inform the peer about the block that we possess");
+            tracing::info!("Inform the peer about the batch that we possess");
             let mut stream = conn
-                .open_client::<rpc::push_block_store_state::Rpc>(ctx)
+                .open_client::<rpc::push_batch_store_state::Rpc>(ctx)
                 .await
                 .unwrap();
             stream.send(ctx, &state).await.unwrap();
             stream.recv(ctx).await.unwrap();
 
-            tracing::info!("Wait for the client to request that block");
-            let mut stream = conn.open_server::<rpc::get_block::Rpc>(ctx).await.unwrap();
+            tracing::info!("Wait for the client to request that batch");
+            let mut stream = conn.open_server::<rpc::get_batch::Rpc>(ctx).await.unwrap();
             let req = stream.recv(ctx).await.unwrap();
-            assert_eq!(req.0, setup.blocks[0].number());
+            assert_eq!(req.0, setup.batches[0].number);
 
             tracing::info!("Return a bad response");
-            stream.send(ctx, &rpc::get_block::Resp(resp)).await.unwrap();
+            stream.send(ctx, &rpc::get_batch::Resp(resp)).await.unwrap();
 
             tracing::info!("Wait for the peer to drop the connection");
             assert_matches!(
@@ -259,22 +275,27 @@ async fn test_retry() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut setup = validator::testonly::Setup::new(rng, 1);
-    setup.push_blocks(rng, 1);
+    setup.push_batches(rng, 1);
     let mut cfg = crate::testonly::new_configs(rng, &setup, 0)[0].clone();
-    cfg.rpc.push_block_store_state_rate = limiter::Rate::INF;
-    cfg.rpc.get_block_rate = limiter::Rate::INF;
-    cfg.rpc.get_block_timeout = None;
+    cfg.rpc.push_batch_store_state_rate = limiter::Rate::INF;
+    cfg.rpc.get_batch_rate = limiter::Rate::INF;
+    cfg.rpc.get_batch_timeout = None;
     cfg.validator_key = None;
+    cfg.attester_key = None;
 
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.clone());
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
+        let (_node, runner) = crate::testonly::Instance::new(
+            cfg.clone(),
+            store.blocks.clone(),
+            store.batches.clone(),
+        );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
-        let state = rpc::push_block_store_state::Req(BlockStoreState {
-            first: setup.blocks[0].number(),
-            last: Some(setup.blocks[0].justification.clone()),
+        let state = rpc::push_batch_store_state::Req(BatchStoreState {
+            first: setup.batches[0].number,
+            last: Some(setup.batches[0].clone()),
         });
 
         tracing::info!("establish a bunch of connections");
@@ -285,7 +306,7 @@ async fn test_retry() {
                 .unwrap();
             let task = s.spawn_bg(async { Ok(runner.run(ctx).await) });
             let mut stream = conn
-                .open_client::<rpc::push_block_store_state::Rpc>(ctx)
+                .open_client::<rpc::push_batch_store_state::Rpc>(ctx)
                 .await
                 .unwrap();
             stream.send(ctx, &state).await.unwrap();
@@ -294,13 +315,13 @@ async fn test_retry() {
         }
 
         for (conn, task) in conns {
-            tracing::info!("Wait for the client to request a block");
-            let mut stream = conn.open_server::<rpc::get_block::Rpc>(ctx).await.unwrap();
+            tracing::info!("Wait for the client to request a batch");
+            let mut stream = conn.open_server::<rpc::get_batch::Rpc>(ctx).await.unwrap();
             let req = stream.recv(ctx).await.unwrap();
-            assert_eq!(req.0, setup.blocks[0].number());
+            assert_eq!(req.0, setup.batches[0].number);
 
             tracing::info!("Return a bad response");
-            stream.send(ctx, &rpc::get_block::Resp(None)).await.unwrap();
+            stream.send(ctx, &rpc::get_batch::Resp(None)).await.unwrap();
 
             tracing::info!("Wait for the peer to drop the connection");
             assert_matches!(task.join(ctx).await.unwrap(), Err(mux::RunError::Closed));

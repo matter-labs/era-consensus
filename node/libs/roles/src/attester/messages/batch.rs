@@ -1,9 +1,29 @@
 use super::Signed;
-use crate::{attester, validator::Genesis};
+use crate::{
+    attester,
+    validator::{Genesis, Payload},
+};
 use anyhow::{ensure, Context as _};
 use zksync_consensus_utils::enum_util::Variant;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Default, PartialOrd)]
+/// A batch of L2 blocks used for the peers to fetch and keep in sync.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct SyncBatch {
+    /// The number of the batch.
+    pub number: BatchNumber,
+    /// The payloads of the blocks the batch contains.
+    pub payloads: Vec<Payload>,
+    /// The proof of the batch.
+    pub proof: Vec<u8>,
+}
+
+impl PartialOrd for SyncBatch {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.number.partial_cmp(&other.number)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 /// A batch number.
 pub struct BatchNumber(pub u64);
 
@@ -12,15 +32,33 @@ impl BatchNumber {
     pub fn next(&self) -> BatchNumber {
         BatchNumber(self.0.checked_add(1).unwrap())
     }
+
+    /// Returns the previous batch number.
+    pub fn prev(self) -> Option<Self> {
+        Some(Self(self.0.checked_sub(1)?))
+    }
+}
+
+impl std::fmt::Display for BatchNumber {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.0, formatter)
+    }
+}
+
+impl std::ops::Add<u64> for BatchNumber {
+    type Output = BatchNumber;
+    fn add(self, n: u64) -> Self {
+        Self(self.0.checked_add(n).unwrap())
+    }
 }
 
 /// A message containing information about a batch of blocks.
 /// It is signed by the attesters and then propagated through the gossip network.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd)]
 pub struct Batch {
-    /// The number of the batch.
+    /// Header of the batch.
     pub number: BatchNumber,
-    // TODO: add the hash of the L1 batch as a field
+    // TODO: Hash of the batch.
 }
 
 /// A certificate for a batch of L2 blocks to be sent to L1.

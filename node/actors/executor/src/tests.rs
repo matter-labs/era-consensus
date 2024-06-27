@@ -7,7 +7,7 @@ use zksync_consensus_bft as bft;
 use zksync_consensus_network::testonly::{new_configs, new_fullnode};
 use zksync_consensus_roles::validator::{testonly::Setup, BlockNumber};
 use zksync_consensus_storage::{
-    testonly::{in_memory, new_store, new_store_with_first},
+    testonly::{in_memory, TestMemoryStorage},
     BlockStore,
 };
 
@@ -20,31 +20,40 @@ fn config(cfg: &network::Config) -> Config {
         gossip_dynamic_inbound_limit: cfg.gossip.dynamic_inbound_limit,
         gossip_static_inbound: cfg.gossip.static_inbound.clone(),
         gossip_static_outbound: cfg.gossip.static_outbound.clone(),
-        rpc: cfg.rpc.clone(),
+        debug_page: None,
     }
 }
 
 fn validator(
     cfg: &network::Config,
     block_store: Arc<BlockStore>,
+    batch_store: Arc<BatchStore>,
     replica_store: impl ReplicaStore,
 ) -> Executor {
     Executor {
         config: config(cfg),
         block_store,
+        batch_store,
         validator: Some(Validator {
             key: cfg.validator_key.clone().unwrap(),
             replica_store: Box::new(replica_store),
             payload_manager: Box::new(bft::testonly::RandomPayload(1000)),
         }),
+        attester: None,
     }
 }
 
-fn fullnode(cfg: &network::Config, block_store: Arc<BlockStore>) -> Executor {
+fn fullnode(
+    cfg: &network::Config,
+    block_store: Arc<BlockStore>,
+    batch_store: Arc<BatchStore>,
+) -> Executor {
     Executor {
         config: config(cfg),
         block_store,
+        batch_store,
         validator: None,
+        attester: None,
     }
 }
 
@@ -58,10 +67,21 @@ async fn test_single_validator() {
     let cfgs = new_configs(rng, &setup, 0);
     scope::run!(ctx, |ctx, s| async {
         let replica_store = in_memory::ReplicaStore::default();
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        s.spawn_bg(validator(&cfgs[0], store.clone(), replica_store).run(ctx));
-        store.wait_until_persisted(ctx, BlockNumber(5)).await?;
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
+        s.spawn_bg(
+            validator(
+                &cfgs[0],
+                store.blocks.clone(),
+                store.batches.clone(),
+                replica_store,
+            )
+            .run(ctx),
+        );
+        store
+            .blocks
+            .wait_until_persisted(ctx, BlockNumber(5))
+            .await?;
         Ok(())
     })
     .await
@@ -79,13 +99,21 @@ async fn test_many_validators() {
     scope::run!(ctx, |ctx, s| async {
         for cfg in cfgs {
             let replica_store = in_memory::ReplicaStore::default();
-            let (store, runner) = new_store(ctx, &setup.genesis).await;
-            s.spawn_bg(runner.run(ctx));
-            s.spawn_bg(validator(&cfg, store.clone(), replica_store).run(ctx));
+            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+            s.spawn_bg(store.runner.run(ctx));
+            s.spawn_bg(
+                validator(
+                    &cfg,
+                    store.blocks.clone(),
+                    store.batches.clone(),
+                    replica_store,
+                )
+                .run(ctx),
+            );
 
             // Spawn a task waiting for blocks to get finalized and delivered to this validator.
             s.spawn(async {
-                let store = store;
+                let store = store.blocks;
                 store.wait_until_persisted(ctx, BlockNumber(5)).await?;
                 Ok(())
             });
@@ -107,21 +135,38 @@ async fn test_inactive_validator() {
     scope::run!(ctx, |ctx, s| async {
         // Spawn validator.
         let replica_store = in_memory::ReplicaStore::default();
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        s.spawn_bg(validator(&cfgs[0], store, replica_store).run(ctx));
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
+        s.spawn_bg(
+            validator(
+                &cfgs[0],
+                store.blocks.clone(),
+                store.batches.clone(),
+                replica_store,
+            )
+            .run(ctx),
+        );
 
         // Spawn a validator node, which doesn't belong to the consensus.
         // Therefore it should behave just like a fullnode.
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
         let mut cfg = new_fullnode(rng, &cfgs[0]);
         cfg.validator_key = Some(rng.gen());
         let replica_store = in_memory::ReplicaStore::default();
-        s.spawn_bg(validator(&cfg, store.clone(), replica_store).run(ctx));
+        s.spawn_bg(
+            validator(
+                &cfg,
+                store.blocks.clone(),
+                store.batches.clone(),
+                replica_store,
+            )
+            .run(ctx),
+        );
 
         // Wait for blocks in inactive validator's store.
         store
+            .blocks
             .wait_until_persisted(ctx, setup.genesis.first_block + 5)
             .await?;
         Ok(())
@@ -141,17 +186,33 @@ async fn test_fullnode_syncing_from_validator() {
     scope::run!(ctx, |ctx, s| async {
         // Spawn validator.
         let replica_store = in_memory::ReplicaStore::default();
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        s.spawn_bg(validator(&cfgs[0], store, replica_store).run(ctx));
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
+        s.spawn_bg(
+            validator(
+                &cfgs[0],
+                store.blocks.clone(),
+                store.batches.clone(),
+                replica_store,
+            )
+            .run(ctx),
+        );
 
         // Spawn full node.
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        s.spawn_bg(fullnode(&new_fullnode(rng, &cfgs[0]), store.clone()).run(ctx));
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
+        s.spawn_bg(
+            fullnode(
+                &new_fullnode(rng, &cfgs[0]),
+                store.blocks.clone(),
+                store.batches.clone(),
+            )
+            .run(ctx),
+        );
 
         // Wait for blocks in full node store.
         store
+            .blocks
             .wait_until_persisted(ctx, setup.genesis.first_block + 5)
             .await?;
         Ok(())
@@ -172,15 +233,21 @@ async fn test_validator_syncing_from_fullnode() {
     scope::run!(ctx, |ctx, s| async {
         // Run validator and produce some blocks.
         let replica_store = in_memory::ReplicaStore::default();
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
         scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(
-                validator(&cfgs[0], store.clone(), replica_store.clone())
-                    .run(ctx)
-                    .instrument(tracing::info_span!("validator")),
+                validator(
+                    &cfgs[0],
+                    store.blocks.clone(),
+                    store.batches.clone(),
+                    replica_store.clone(),
+                )
+                .run(ctx)
+                .instrument(tracing::info_span!("validator")),
             );
             store
+                .blocks
                 .wait_until_persisted(ctx, setup.genesis.first_block + 4)
                 .await?;
             Ok(())
@@ -193,26 +260,42 @@ async fn test_validator_syncing_from_fullnode() {
         // validator, there would be a race condition between fullnode syncing and validator
         // terminating.
         s.spawn_bg(
-            fullnode(&new_fullnode(rng, &cfgs[0]), store.clone())
-                .run(ctx)
-                .instrument(tracing::info_span!("fullnode")),
+            fullnode(
+                &new_fullnode(rng, &cfgs[0]),
+                store.blocks.clone(),
+                store.batches.clone(),
+            )
+            .run(ctx)
+            .instrument(tracing::info_span!("fullnode")),
         );
 
         // Restart the validator with empty store (but preserved replica state) and non-trivial
         // `store.state.first`.
         // Validator should fetch the past blocks from the full node before producing next blocks.
-        let last_block = store.queued().last.as_ref().unwrap().header().number;
-        let (store2, runner) =
-            new_store_with_first(ctx, &setup.genesis, setup.genesis.first_block + 2).await;
-        s.spawn_bg(runner.run(ctx));
+        let last_block = store.blocks.queued().last.as_ref().unwrap().header().number;
+        let store2 = TestMemoryStorage::new_store_with_first_block(
+            ctx,
+            &setup.genesis,
+            setup.genesis.first_block + 2,
+        )
+        .await;
+        s.spawn_bg(store2.runner.run(ctx));
         s.spawn_bg(
-            validator(&cfgs[0], store2, replica_store)
-                .run(ctx)
-                .instrument(tracing::info_span!("validator")),
+            validator(
+                &cfgs[0],
+                store2.blocks.clone(),
+                store.batches.clone(),
+                replica_store,
+            )
+            .run(ctx)
+            .instrument(tracing::info_span!("validator")),
         );
 
         // Wait for the fullnode to fetch the new blocks.
-        store.wait_until_persisted(ctx, last_block + 3).await?;
+        store
+            .blocks
+            .wait_until_persisted(ctx, last_block + 3)
+            .await?;
         Ok(())
     })
     .await

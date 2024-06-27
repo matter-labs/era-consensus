@@ -1,0 +1,24 @@
+.PHONY: test unit check repl integration smoke-tests
+
+repl:
+	cd protocol-spec && echo "init\n step\n step\n step" | quint -r main.qnt::main 
+
+check:
+	cd protocol-spec && quint typecheck main.qnt
+
+integration:
+	cd protocol-spec/tests && quint test ./tests_n6f1b0.qnt
+	cd protocol-spec/tests && quint test ./tests_n6f1b1.qnt
+	cd protocol-spec/tests && quint test ./tests_n6f1b2.qnt
+
+unit:
+	cd protocol-spec/tests && quint test ./unit_tests.qnt	
+
+test: check repl unit integration smoke-tests
+
+smoke-tests:
+	cd protocol-spec/experiments && quint verify --max-steps=1 --invariant=all_invariants n7f1b0.qnt
+	cd protocol-spec/experiments && quint verify --max-steps=1 --invariant=all_invariants n6f1b3.qnt
+	cd protocol-spec/experiments && quint verify --max-steps=1 --invariant=all_invariants n6f1b2.qnt
+	cd protocol-spec/experiments && quint verify --max-steps=1 --invariant=all_invariants n6f1b1.qnt
+	cd protocol-spec/experiments && quint verify --max-steps=1 --invariant=all_invariants n6f1b0.qnt

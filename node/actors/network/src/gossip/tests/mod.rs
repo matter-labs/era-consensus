@@ -1,5 +1,9 @@
-use super::*;
-use crate::{metrics, preface, rpc, testonly};
+use super::ValidatorAddrs;
+use crate::{
+    gossip::{batch_votes::BatchVotesWatch, handshake, validator_addrs::ValidatorAddrsWatch},
+    metrics, preface, rpc, testonly,
+};
+use anyhow::Context as _;
 use assert_matches::assert_matches;
 use pretty_assertions::assert_eq;
 use rand::Rng;
@@ -14,9 +18,10 @@ use zksync_concurrency::{
     time,
 };
 use zksync_consensus_roles::{attester, validator};
-use zksync_consensus_storage::testonly::new_store;
+use zksync_consensus_storage::testonly::TestMemoryStorage;
 
-mod fetch;
+mod fetch_batches;
+mod fetch_blocks;
 mod syncing;
 
 #[tokio::test]
@@ -29,10 +34,10 @@ async fn test_one_connection_per_node() {
     let cfgs = testonly::new_configs(rng, &setup, 2);
 
     scope::run!(ctx, |ctx,s| async {
-        let (store,runner) = new_store(ctx,&setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
         let mut nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
-            let (node,runner) = testonly::Instance::new(cfg.clone(), store.clone());
+            let (node,runner) = testonly::Instance::new(cfg.clone(), store.blocks.clone(), store.batches.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             node
         }).collect();
@@ -101,6 +106,14 @@ fn mk_netaddr(
     })
 }
 
+fn mk_batch<R: Rng>(
+    _rng: &mut R,
+    key: &attester::SecretKey,
+    number: attester::BatchNumber,
+) -> attester::Signed<attester::Batch> {
+    key.sign_msg(attester::Batch { number })
+}
+
 fn random_netaddr<R: Rng>(
     rng: &mut R,
     key: &validator::SecretKey,
@@ -113,7 +126,7 @@ fn random_netaddr<R: Rng>(
     ))
 }
 
-fn random_batch_votes<R: Rng>(
+fn random_batch_vote<R: Rng>(
     rng: &mut R,
     key: &attester::SecretKey,
 ) -> Arc<attester::Signed<attester::Batch>> {
@@ -274,13 +287,17 @@ async fn test_validator_addrs_propagation() {
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
         let nodes: Vec<_> = cfgs
             .iter()
             .enumerate()
             .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(cfg.clone(), store.clone());
+                let (node, runner) = testonly::Instance::new(
+                    cfg.clone(),
+                    store.blocks.clone(),
+                    store.batches.clone(),
+                );
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                 node
             })
@@ -317,9 +334,10 @@ async fn test_genesis_mismatch() {
         let mut listener = cfgs[1].server_addr.bind().context("server_addr.bind()")?;
 
         tracing::info!("Start one node, we will simulate the other one.");
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
-        let (_node, runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
+        let (_node, runner) =
+            testonly::Instance::new(cfgs[0].clone(), store.blocks, store.batches.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         tracing::info!("Accept a connection with mismatching genesis.");
@@ -376,10 +394,11 @@ async fn validator_node_restart() {
     for cfg in &mut cfgs {
         cfg.rpc.push_validator_addrs_rate.refresh = time::Duration::ZERO;
     }
-    let (store, store_runner) = new_store(ctx, &setup.genesis).await;
-    let (node1, node1_runner) = testonly::Instance::new(cfgs[1].clone(), store.clone());
+    let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+    let (node1, node1_runner) =
+        testonly::Instance::new(cfgs[1].clone(), store.blocks.clone(), store.batches.clone());
     scope::run!(ctx, |ctx, s| async {
-        s.spawn_bg(store_runner.run(ctx));
+        s.spawn_bg(store.runner.run(ctx));
         s.spawn_bg(
             node1_runner
                 .run(ctx)
@@ -406,7 +425,11 @@ async fn validator_node_restart() {
 
             // _node0 contains pipe, which has to exist to prevent the connection from dying
             // early.
-            let (_node0, runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
+            let (_node0, runner) = testonly::Instance::new(
+                cfgs[0].clone(),
+                store.blocks.clone(),
+                store.batches.clone(),
+            );
             scope::run!(ctx, |ctx, s| async {
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
                 tracing::info!("wait for the update to arrive to node1");
@@ -459,12 +482,13 @@ async fn rate_limiting() {
     }
     let mut nodes = vec![];
     scope::run!(ctx, |ctx, s| async {
-        let (store, runner) = new_store(ctx, &setup.genesis).await;
-        s.spawn_bg(runner.run(ctx));
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
         // Spawn the satellite nodes and wait until they register
         // their own address.
         for (i, cfg) in cfgs[1..].iter().enumerate() {
-            let (node, runner) = testonly::Instance::new(cfg.clone(), store.clone());
+            let (node, runner) =
+                testonly::Instance::new(cfg.clone(), store.blocks.clone(), store.batches.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             let sub = &mut node.net.gossip.validator_addrs.subscribe();
             sync::wait_for(ctx, sub, |got| {
@@ -477,7 +501,8 @@ async fn rate_limiting() {
         }
 
         // Spawn the center node.
-        let (center, runner) = testonly::Instance::new(cfgs[0].clone(), store.clone());
+        let (center, runner) =
+            testonly::Instance::new(cfgs[0].clone(), store.blocks.clone(), store.batches.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node[0]")));
         // Await for the center to receive all validator addrs.
         let sub = &mut center.net.gossip.validator_addrs.subscribe();
@@ -521,7 +546,7 @@ async fn test_batch_votes() {
     // Initial values.
     let mut want = Signatures::default();
     for k in &keys[0..6] {
-        want.insert(random_batch_votes(rng, k));
+        want.insert(random_batch_vote(rng, k));
     }
     votes.update(&attesters, &want.as_vec()).await.unwrap();
     assert_eq!(want.0, sub.borrow_and_update().0);
@@ -533,10 +558,10 @@ async fn test_batch_votes() {
     // older batch number
     let k4v2 = update_signature(rng, &want.get(&keys[4]).msg, &keys[4], -1);
     // first entry for a key in the config
-    let k6v1 = random_batch_votes(rng, &keys[6]);
+    let k6v1 = random_batch_vote(rng, &keys[6]);
     // entry for a key outside of the config
     let k8 = rng.gen();
-    let k8v1 = random_batch_votes(rng, &k8);
+    let k8v1 = random_batch_vote(rng, &k8);
 
     want.insert(k0v2.clone());
     want.insert(k1v2.clone());
@@ -553,11 +578,13 @@ async fn test_batch_votes() {
     votes.update(&attesters, &update).await.unwrap();
     assert_eq!(want.0, sub.borrow_and_update().0);
 
-    // Invalid signature on a newer message.
-    let mut k0v3 =
-        Arc::try_unwrap(update_signature(rng, &want.get(&keys[0]).msg, &keys[0], 1)).unwrap();
-    k0v3.sig = rng.gen();
-
+    // Invalid signature.
+    let mut k0v3 = mk_batch(
+        rng,
+        &keys[1],
+        attester::BatchNumber(want.get(&keys[0]).msg.number.0 + 1),
+    );
+    k0v3.key = keys[0].public();
     assert!(votes.update(&attesters, &[Arc::new(k0v3)]).await.is_err());
     assert_eq!(want.0, sub.borrow_and_update().0);
 

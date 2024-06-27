@@ -1,7 +1,8 @@
 use super::{
     AggregateMultiSig, AggregateSignature, Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash,
-    MultiSig, PublicKey, SecretKey, Signature, Signed, Signers, WeightedAttester,
+    MultiSig, PublicKey, SecretKey, Signature, Signed, Signers, SyncBatch, WeightedAttester,
 };
+use crate::validator::Payload;
 use bit_vec::BitVec;
 use rand::{
     distributions::{Distribution, Standard},
@@ -47,9 +48,24 @@ impl Distribution<Committee> for Standard {
 
 impl Distribution<Batch> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Batch {
-        Batch {
-            number: BatchNumber(rng.gen()),
+        Batch { number: rng.gen() }
+    }
+}
+
+impl Distribution<SyncBatch> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SyncBatch {
+        let size: usize = rng.gen_range(500..1000);
+        SyncBatch {
+            number: rng.gen(),
+            payloads: vec![Payload((0..size).map(|_| rng.gen()).collect())],
+            proof: rng.gen::<[u8; 32]>().to_vec(),
         }
+    }
+}
+
+impl Distribution<BatchNumber> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchNumber {
+        BatchNumber(rng.gen())
     }
 }
 

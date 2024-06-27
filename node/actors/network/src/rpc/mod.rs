@@ -22,9 +22,11 @@ use std::{collections::BTreeMap, sync::Arc};
 use zksync_concurrency::{ctx, io, limiter, metrics::LatencyHistogramExt as _, scope};
 
 pub(crate) mod consensus;
+pub(crate) mod get_batch;
 pub(crate) mod get_block;
 mod metrics;
 pub(crate) mod ping;
+pub(crate) mod push_batch_store_state;
 pub(crate) mod push_batch_votes;
 pub(crate) mod push_block_store_state;
 pub(crate) mod push_validator_addrs;
