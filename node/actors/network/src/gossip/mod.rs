@@ -27,6 +27,7 @@ use zksync_consensus_storage::{BatchStore, BlockStore};
 mod batch_votes;
 mod fetch;
 mod handshake;
+pub mod loadtest;
 mod runner;
 #[cfg(test)]
 mod testonly;

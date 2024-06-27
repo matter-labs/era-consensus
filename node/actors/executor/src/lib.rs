@@ -14,6 +14,8 @@ use zksync_consensus_storage::{BatchStore, BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
+pub use network::RpcConfig;
+
 mod io;
 #[cfg(test)]
 mod tests;
@@ -58,6 +60,10 @@ pub struct Config {
     /// Outbound connections that the node should actively try to
     /// establish and maintain.
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
+    /// RPC rate limits config.
+    /// Use `RpcConfig::default()` for defaults.
+    pub rpc: RpcConfig,
+
     /// Http debug page configuration.
     /// If None, debug page is disabled
     pub debug_page: Option<http::DebugPageConfig>,
@@ -106,7 +112,7 @@ impl Executor {
                 burst: 10,
                 refresh: time::Duration::milliseconds(100),
             },
-            rpc: network::RpcConfig::default(),
+            rpc: self.config.rpc.clone(),
         }
     }
 
