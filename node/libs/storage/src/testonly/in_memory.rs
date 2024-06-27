@@ -48,6 +48,24 @@ impl BlockStore {
             blocks: Mutex::default(),
         }))
     }
+
+    /// Truncates the storage to blocks `>=first`.
+    pub fn truncate(&mut self, first: validator::BlockNumber) {
+        let mut blocks = self.0.blocks.lock().unwrap();
+        while blocks.front().map_or(false, |b| b.number() < first) {
+            blocks.pop_front();
+        }
+        self.0.persisted.send_if_modified(|s| {
+            if s.first >= first {
+                return false;
+            }
+            if s.next() <= first {
+                s.last = None;
+            }
+            s.first = first;
+            true
+        });
+    }
 }
 
 impl BatchStore {
@@ -92,7 +110,12 @@ impl PersistentBlockStore for BlockStore {
     ) -> ctx::Result<()> {
         let mut blocks = self.0.blocks.lock().unwrap();
         let want = self.0.persisted.borrow().next();
-        if block.number() != want {
+        if block.number() < want {
+            // It may happen that a block gets fetched which is not needed any more.
+            return Ok(());
+        }
+        if block.number() > want {
+            // Blocks should be stored in order though.
             return Err(anyhow::anyhow!("got block {:?}, want {want:?}", block.number()).into());
         }
         self.0

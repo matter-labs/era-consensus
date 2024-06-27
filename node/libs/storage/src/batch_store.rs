@@ -1,10 +1,8 @@
 //! Defines storage layer for batches of blocks.
 use anyhow::Context as _;
-use std::collections::VecDeque;
-use std::{fmt, sync::Arc};
+use std::{collections::VecDeque, fmt, sync::Arc};
 use zksync_concurrency::{ctx, scope, sync};
-use zksync_consensus_roles::attester;
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::{attester, validator};
 
 /// State of the `BatchStore`: continuous range of batches.
 #[derive(Debug, Clone, PartialEq, Eq)]

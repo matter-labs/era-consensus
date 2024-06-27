@@ -239,10 +239,7 @@ impl Network {
                 loop {
                     let req = rpc::push_block_store_state::Req(state.clone());
                     push_block_store_state_client.call(ctx, &req, kB).await?;
-                    state = self
-                        .block_store
-                        .wait_until_queued(ctx, state.next())
-                        .await?;
+                    state = self.block_store.wait_for_queued_change(ctx, &state).await?;
                 }
             });
 

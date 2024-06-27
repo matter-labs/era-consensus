@@ -28,9 +28,8 @@ pub mod testonly;
 #[cfg(test)]
 mod tests;
 mod watch;
-pub use metrics::MeteredStreamStats;
-
 pub use config::*;
+pub use metrics::MeteredStreamStats;
 
 /// State of the network actor observable outside of the actor.
 pub struct Network {

@@ -1,12 +1,10 @@
-use std::fmt::Debug;
-
+use crate::{secp256k1::*, ByteFmt};
 use rand::{
     distributions::{Distribution, Standard},
     rngs::StdRng,
     Rng, SeedableRng,
 };
-
-use crate::{secp256k1::*, ByteFmt};
+use std::fmt::Debug;
 
 fn make_rng() -> StdRng {
     StdRng::seed_from_u64(29483920)

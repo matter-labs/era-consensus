@@ -5,7 +5,10 @@ use rand::Rng as _;
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, limiter, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{testonly::TestMemoryStorage, BlockStoreState};
+use zksync_consensus_storage::{
+    testonly::{in_memory, TestMemoryStorage},
+    BlockStore, BlockStoreState, PersistentBlockStore as _,
+};
 
 #[tokio::test]
 async fn test_simple() {
@@ -324,6 +327,77 @@ async fn test_retry() {
             assert_matches!(task.join(ctx).await.unwrap(), Err(mux::RunError::Closed));
         }
 
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+/// Test checking that if storage is truncated,
+/// then the node announces that to peers.
+#[tokio::test]
+async fn test_announce_truncated_block_range() {
+    abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let mut setup = validator::testonly::Setup::new(rng, 1);
+    setup.push_blocks(rng, 10);
+    let mut cfg = crate::testonly::new_configs(rng, &setup, 0)[0].clone();
+    cfg.rpc.push_block_store_state_rate = limiter::Rate::INF;
+    cfg.rpc.get_block_rate = limiter::Rate::INF;
+    cfg.rpc.get_block_timeout = None;
+    cfg.validator_key = None;
+
+    scope::run!(ctx, |ctx, s| async {
+        // Build a custom persistent store, so that we can tweak it later.
+        let mut persistent =
+            in_memory::BlockStore::new(setup.genesis.clone(), setup.genesis.first_block);
+        let (block_store, runner) = BlockStore::new(ctx, Box::new(persistent.clone())).await?;
+        s.spawn_bg(runner.run(ctx));
+        // Use the standard batch store since it doesn't matter.
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let (_node, runner) =
+            crate::testonly::Instance::new(cfg.clone(), block_store, store.batches);
+        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
+        // Fill in all the blocks.
+        for b in &setup.blocks {
+            persistent.queue_next_block(ctx, b.clone()).await?;
+        }
+
+        // Connect to the node.
+        let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis.hash())
+            .await
+            .unwrap();
+        s.spawn_bg(async {
+            assert_matches!(runner.run(ctx).await, Err(mux::RunError::Canceled(_)));
+            Ok(())
+        });
+
+        let mut first = setup.genesis.first_block;
+        loop {
+            tracing::info!("Truncate up to {first}");
+            persistent.truncate(first);
+            first = first + 3;
+
+            // Listen to `PublicBlockStoreState` messages.
+            // Until it is consistent with storage.
+            loop {
+                let mut stream = conn
+                    .open_server::<rpc::push_block_store_state::Rpc>(ctx)
+                    .await?;
+                let state = stream.recv(ctx).await.unwrap();
+                stream.send(ctx, &()).await.unwrap();
+                if state.0 == *persistent.persisted().borrow() {
+                    break;
+                }
+            }
+
+            // If there are no blocks left, we are done.
+            let left = persistent.persisted().borrow().clone();
+            if left.next() <= left.first {
+                break;
+            }
+        }
         Ok(())
     })
     .await
