@@ -48,3 +48,12 @@ message BitVector {
   // Vector of bits encoded as bytes in big endian order.
   optional bytes bytes_ = 2;
 }
+
+// Rate limiter configuration.
+message RateLimit {
+  // Size of the token bucket.
+  optional uint64 burst = 1;
+  // Rate at which tokens are added to the bucket.
+  optional Duration refresh = 2;
+}
+
