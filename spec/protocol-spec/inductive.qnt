@@ -206,135 +206,145 @@ module inductive {
     }
 
     // choose arbitrary values for the initial states
-    action init: bool = all {
-        // non-deterministically choose the leader function
-        {
-            nondet ldr = r::VIEWS.setOfMaps(r::REPLICAS.map(id => r::sig_of_id(id))).oneOf()
-            r::leader' = ldr
-        },
-        // non-deterministically choose replica_view and proposer_view
-        {
-            nondet rv = r::CORRECT.setOfMaps(r::VIEWS).oneOf()
-            r::replica_view' = rv
-        },
-        {
-            nondet pv = r::CORRECT.setOfMaps(r::VIEWS).oneOf()
-            r::proposer_view' = pv
-        },
-        // non-deterministically choose replica_state
-        nondet replica_views = r::CORRECT.setOfMaps(IVIEWS).oneOf()
-        nondet replica_phases =
-            r::CORRECT.setOfMaps(Set(PhasePrepare, PhaseTimeout, PhaseCommit)).oneOf()
-        nondet high_votes = generate(6, r::CORRECT.mapBy(id => COMMIT_VOTE_SAMPLE))
-        nondet high_votes_is_some = r::REPLICAS.powerset().oneOf()
-        nondet high_commit_qcs = generate(6, r::CORRECT.mapBy(id => COMMIT_QC_SAMPLE))
-        nondet high_commit_qcs_is_some = r::REPLICAS.powerset().oneOf()
-        nondet high_timeout_qcs = generate(6, r::CORRECT.mapBy(id => TIMEOUT_QC_SAMPLE))
-        nondet high_timeout_qcs_is_some = r::REPLICAS.powerset().oneOf()
-        nondet cached_proposals = generate(6, r::CORRECT.mapBy(id => Set((0, "val_b0"))))
-        nondet committed_blocks = generate(6, r::CORRECT.mapBy(id => [COMMITTED_BLOCK_SAMPLE]))
+    action init: bool = {
+        // assign indices to all replicas in some order
+        pure val idx_and_size = r::CORRECT.fold((Map(), 0), (p, r) => (p._1.put(r, p._2), p._2 + 1))
+        pure val replica_idx = idx_and_size._1
+        pure val correct_size = idx_and_size._2
+        pure val all_indices = replica_idx.keys().map(id => replica_idx.get(id))
         all {
-            high_votes.keys() == r::CORRECT,
-            r::CORRECT.forall(id => commit_vote_shape_inv(high_votes.get(id))),
-            high_commit_qcs.keys() == r::CORRECT,
-            r::CORRECT.forall(id => commit_qc_shape_inv(high_commit_qcs.get(id))),
-            high_timeout_qcs.keys() == r::CORRECT,
-            r::CORRECT.forall(id => timeout_qc_shape_inv(high_timeout_qcs.get(id))),
-            cached_proposals.keys() == r::CORRECT,
-            r::CORRECT.forall(id => cached_proposals.get(id).forall(((bn, bh)) => all {
-                r::VIEWS.contains(bn),
-                r::ALL_BLOCKS.contains(bh),
-            })),
-            committed_blocks.keys() == r::CORRECT,
-            r::CORRECT.forall(id => {
-                val committed = committed_blocks.get(id)
-                committed.indices().forall(i => committed_block_shape_inv(committed[i]))
-            }),
-            r::replica_state' = r::CORRECT.mapBy(id => {
-                view: replica_views.get(id),
-                phase: replica_phases.get(id),
-                high_vote:
-                    if (high_votes_is_some.contains(id)) {
-                        Some(high_votes.get(id))
-                    } else {
-                        COMMIT_VOTE_NONE
-                    },
-                high_commit_qc:
-                    if (high_commit_qcs_is_some.contains(id)) {
-                        Some(high_commit_qcs.get(id))
-                    } else {
-                        HIGH_COMMIT_QC_NONE
-                    },
-                high_timeout_qc:
-                    if (high_timeout_qcs_is_some.contains(id)) {
-                        Some(high_timeout_qcs.get(id))
-                    } else {
-                        HIGH_TIMEOUT_QC_NONE
-                    },
-                cached_proposals: cached_proposals.get(id),
-                committed_blocks: committed_blocks.get(id),
-            }),
-        },
-        // non-deterministical choose msgs_proposal
-        {
-            nondet msgs_proposal = generate(12, Set(PROPOSAL_SAMPLE))
+            // non-deterministically choose the leader function
+            {
+                nondet ldr = r::VIEWS.setOfMaps(r::REPLICAS).oneOf()
+                r::leader' = ldr
+            },
+            // non-deterministically choose replica_view and proposer_view
+            {
+                nondet rv = r::CORRECT.setOfMaps(r::VIEWS).oneOf()
+                r::replica_view' = rv
+            },
+            {
+                nondet pv = r::CORRECT.setOfMaps(r::VIEWS).oneOf()
+                r::proposer_view' = pv
+            },
+            // non-deterministically choose replica_state
+            nondet replica_views = r::CORRECT.setOfMaps(IVIEWS).oneOf()
+            nondet replica_phases =
+                r::CORRECT.setOfMaps(Set(PhasePrepare, PhaseTimeout, PhaseCommit)).oneOf()
+            nondet high_votes = generate(6, [COMMIT_VOTE_SAMPLE])
+            nondet high_votes_is_some = r::REPLICAS.powerset().oneOf()
+            nondet high_commit_qcs = generate(6, [COMMIT_QC_SAMPLE])
+            nondet high_commit_qcs_is_some = r::REPLICAS.powerset().oneOf()
+            nondet high_timeout_qcs = generate(6, [TIMEOUT_QC_SAMPLE])
+            nondet high_timeout_qcs_is_some = r::REPLICAS.powerset().oneOf()
+            nondet cached_proposals = generate(6, [Set((0, "val_b0"))])
+            nondet committed_blocks = generate(6, [[COMMITTED_BLOCK_SAMPLE]])
             all {
-                msgs_proposal.forall(proposal_shape_inv),
-                r::msgs_proposal' = msgs_proposal,
-            }
-        },
-        // non-deterministically choose msgs_signed_commit
-        {
-            nondet msgs_signed_commit = generate(12, ALL_SIGNED_COMMIT_VOTES)
-            all {
-                msgs_signed_commit.forall(signed_commit_vote_shape_inv),
-                r::msgs_signed_commit' = msgs_signed_commit
-            }
-        },
-        // non-deterministically choose msgs_signed_timeout
-        {
-            nondet msgs_signed_timeout = generate(12, ALL_SIGNED_TIMEOUT_VOTES)
-            all {
-                msgs_signed_timeout.forall(signed_timeout_vote_shape_inv),
-                r::msgs_signed_timeout' = msgs_signed_timeout,
-            }
-        },
-        // non-deterministically choose msgs_new_view
-        {
-            nondet msgs_new_view = generate(12, Set(VIEW_SAMPLE))
-            all {
-                msgs_new_view.forall(new_view_shape_inv),
-                r::msgs_new_view' = msgs_new_view,
-            }
-        },
-        // non-deterministically choose store_signed_commit
-        {
-            nondet store_signed_commit = generate(12, r::REPLICAS.mapBy(id => ALL_SIGNED_COMMIT_VOTES))
-            all {
-                store_signed_commit.keys() == r::REPLICAS,
-                r::REPLICAS.forall(id => store_signed_commit.get(id).forall(signed_commit_vote_shape_inv)),
-                r::store_signed_commit' = store_signed_commit,
-            }
-        },
-        // non-deterministically choose store_signed_timeout
-        {
-            nondet store_signed_timeout = generate(12, r::REPLICAS.mapBy(id => ALL_SIGNED_TIMEOUT_VOTES))
-            all {
-                store_signed_timeout.keys() == r::REPLICAS,
-                r::REPLICAS.forall(id => store_signed_timeout.get(id).forall(signed_timeout_vote_shape_inv)),
-                r::store_signed_timeout' = store_signed_timeout,
-            }
-        },
-        // non-deterministically choose ghost_justifications
-        {
-            nondet ghost_justifications = generate(12, tuples(r::REPLICAS, r::VIEWS).mapBy(((id, v)) => JUSTIFICATION_SAMPLE))
-            all {
-                ghost_justifications.keys() == tuples(r::REPLICAS, r::VIEWS),
-                ghost_justifications.keys().forall(((id, v)) => justification_shape_inv(ghost_justifications.get((id, v)))),
-                r::ghost_justifications' = ghost_justifications,
-            }
-        },
-        r::ghost_step' = AnyStep,
+                high_votes.length() == correct_size,
+                all_indices.forall(i => commit_vote_shape_inv(high_votes[i])),
+                high_commit_qcs.length() == correct_size,
+                all_indices.forall(i => commit_qc_shape_inv(high_commit_qcs[i])),
+                high_timeout_qcs.length() == correct_size,
+                all_indices.forall(i => timeout_qc_shape_inv(high_timeout_qcs[i])),
+                cached_proposals.length() == correct_size,
+                all_indices.forall(i => cached_proposals[i].forall(((bn, bh)) => all {
+                    r::VIEWS.contains(bn),
+                    r::ALL_BLOCKS.contains(bh),
+                })),
+                committed_blocks.length() == correct_size,
+                all_indices.forall(i => {
+                    val committed = committed_blocks[i]
+                    committed.indices().forall(j => committed_block_shape_inv(committed[j]))
+                }),
+                r::replica_state' = r::CORRECT.mapBy(id =>
+                    val i = replica_idx.get(id)
+                    {
+                        view: replica_views.get(id),
+                        phase: replica_phases.get(id),
+                        high_vote:
+                            if (high_votes_is_some.contains(id)) {
+                                Some(high_votes[i])
+                            } else {
+                                COMMIT_VOTE_NONE
+                            },
+                        high_commit_qc:
+                            if (high_commit_qcs_is_some.contains(id)) {
+                                Some(high_commit_qcs[i])
+                            } else {
+                                HIGH_COMMIT_QC_NONE
+                            },
+                        high_timeout_qc:
+                            if (high_timeout_qcs_is_some.contains(id)) {
+                                Some(high_timeout_qcs[i])
+                            } else {
+                                HIGH_TIMEOUT_QC_NONE
+                            },
+                        cached_proposals: cached_proposals[i],
+                        committed_blocks: committed_blocks[i],
+                    }
+                ),
+            },
+            // non-deterministical choose msgs_proposal
+            {
+                nondet msgs_proposal = generate(12, Set(PROPOSAL_SAMPLE))
+                all {
+                    msgs_proposal.forall(proposal_shape_inv),
+                    r::msgs_proposal' = msgs_proposal,
+                }
+            },
+            // non-deterministically choose msgs_signed_commit
+            {
+                nondet msgs_signed_commit = generate(12, ALL_SIGNED_COMMIT_VOTES)
+                all {
+                    msgs_signed_commit.forall(signed_commit_vote_shape_inv),
+                    r::msgs_signed_commit' = msgs_signed_commit
+                }
+            },
+            // non-deterministically choose msgs_signed_timeout
+            {
+                nondet msgs_signed_timeout = generate(12, ALL_SIGNED_TIMEOUT_VOTES)
+                all {
+                    msgs_signed_timeout.forall(signed_timeout_vote_shape_inv),
+                    r::msgs_signed_timeout' = msgs_signed_timeout,
+                }
+            },
+            // non-deterministically choose msgs_new_view
+            {
+                nondet msgs_new_view = generate(12, Set(VIEW_SAMPLE))
+                all {
+                    msgs_new_view.forall(new_view_shape_inv),
+                    r::msgs_new_view' = msgs_new_view,
+                }
+            },
+            // non-deterministically choose store_signed_commit
+            {
+                nondet store_signed_commit = generate(12, r::REPLICAS.mapBy(id => ALL_SIGNED_COMMIT_VOTES))
+                all {
+                    store_signed_commit.keys() == r::REPLICAS,
+                    r::REPLICAS.forall(id => store_signed_commit.get(id).forall(signed_commit_vote_shape_inv)),
+                    r::store_signed_commit' = store_signed_commit,
+                }
+            },
+            // non-deterministically choose store_signed_timeout
+            {
+                nondet store_signed_timeout = generate(12, r::REPLICAS.mapBy(id => ALL_SIGNED_TIMEOUT_VOTES))
+                all {
+                    store_signed_timeout.keys() == r::REPLICAS,
+                    r::REPLICAS.forall(id => store_signed_timeout.get(id).forall(signed_timeout_vote_shape_inv)),
+                    r::store_signed_timeout' = store_signed_timeout,
+                }
+            },
+            // non-deterministically choose ghost_justifications
+            {
+                nondet ghost_justifications = generate(12, tuples(r::REPLICAS, r::VIEWS).mapBy(((id, v)) => JUSTIFICATION_SAMPLE))
+                all {
+                    ghost_justifications.keys() == tuples(r::REPLICAS, r::VIEWS),
+                    ghost_justifications.keys().forall(((id, v)) => justification_shape_inv(ghost_justifications.get((id, v)))),
+                    r::ghost_justifications' = ghost_justifications,
+                }
+            },
+            r::ghost_step' = AnyStep,
+        }
     }
 
     action step: bool = all {
