@@ -5,7 +5,7 @@ use rand::{
     Rng,
 };
 use std::{path::PathBuf, str::FromStr};
-use zksync_concurrency::net;
+use zksync_concurrency::{limiter, net, time};
 
 /// Distribution for testing encodings.
 pub struct EncodeDist {
@@ -102,6 +102,26 @@ impl Distribution<u64> for EncodeDist {
         rng.gen()
     }
 }
+impl Distribution<i8> for EncodeDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> i8 {
+        rng.gen()
+    }
+}
+impl Distribution<i16> for EncodeDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> i16 {
+        rng.gen()
+    }
+}
+impl Distribution<i32> for EncodeDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> i32 {
+        rng.gen()
+    }
+}
+impl Distribution<i64> for EncodeDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> i64 {
+        rng.gen()
+    }
+}
 impl Distribution<usize> for EncodeDist {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> usize {
         rng.gen()
@@ -135,6 +155,21 @@ impl Distribution<debug_page::Credentials> for EncodeDist {
         debug_page::Credentials {
             user: self.sample(rng),
             password: self.sample(rng),
+        }
+    }
+}
+
+impl Distribution<time::Duration> for EncodeDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> time::Duration {
+        time::Duration::new(self.sample(rng), self.sample(rng))
+    }
+}
+
+impl Distribution<limiter::Rate> for EncodeDist {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> limiter::Rate {
+        limiter::Rate {
+            burst: self.sample(rng),
+            refresh: self.sample(rng),
         }
     }
 }

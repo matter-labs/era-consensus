@@ -1,7 +1,8 @@
 use super::*;
+use crate::testonly::{test_encode_all_formats, FmtConv};
 use anyhow::Context as _;
 use std::net;
-use zksync_concurrency::{ctx, time};
+use zksync_concurrency::{ctx, limiter, time};
 
 mod proto;
 
@@ -104,4 +105,14 @@ fn test_socket_addr() {
         let addr: net::SocketAddr = addr.parse().unwrap();
         testonly::test_encode(rng, &addr);
     }
+}
+
+#[test]
+fn test_encoding() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    test_encode_all_formats::<FmtConv<net::SocketAddr>>(rng);
+    test_encode_all_formats::<FmtConv<time::Duration>>(rng);
+    test_encode_all_formats::<FmtConv<limiter::Rate>>(rng);
 }
