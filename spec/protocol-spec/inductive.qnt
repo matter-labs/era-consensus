@@ -29,6 +29,8 @@ module inductive {
         INVALID_BLOCKS = IINVALID_BLOCKS
     ) as r from "./replica"
 
+    var step_no: int
+
     // to make the state visible to the instances
     val state = {
         replica_state: r::replica_state,
@@ -302,7 +304,7 @@ module inductive {
             },
             // non-deterministically choose msgs_signed_commit
             {
-                nondet msgs_signed_commit = generate(12, ALL_SIGNED_COMMIT_VOTES)
+                nondet msgs_signed_commit = generate(12, Set(SIGNED_COMMIT_VOTE_SAMPLE))
                 all {
                     msgs_signed_commit.forall(signed_commit_vote_shape_inv),
                     r::msgs_signed_commit' = msgs_signed_commit
@@ -310,7 +312,7 @@ module inductive {
             },
             // non-deterministically choose msgs_signed_timeout
             {
-                nondet msgs_signed_timeout = generate(12, ALL_SIGNED_TIMEOUT_VOTES)
+                nondet msgs_signed_timeout = generate(12, Set(SIGNED_TIMEOUT_VOTE_SAMPLE))
                 all {
                     msgs_signed_timeout.forall(signed_timeout_vote_shape_inv),
                     r::msgs_signed_timeout' = msgs_signed_timeout,
@@ -342,22 +344,85 @@ module inductive {
                     r::store_signed_timeout' = r::REPLICAS.mapBy(id => store_signed_timeout[replica_idx.get(id)]),
                 }
             },
-            // TODO: non-deterministically choose ghost_justifications
             {
-                //nondet ghost_justifications = generate(12, tuples(r::REPLICAS, r::VIEWS).mapBy(((id, v)) => JUSTIFICATION_SAMPLE))
+                nondet ghost_justifications = generate(6, [[JUSTIFICATION_SAMPLE]])
                 all {
-                    //ghost_justifications.keys() == tuples(r::REPLICAS, r::VIEWS),
-                    //ghost_justifications.keys().forall(((id, v)) => justification_shape_inv(ghost_justifications.get((id, v)))),
-                    r::ghost_justifications' = Map() //ghost_justifications,
+                    ghost_justifications.indices() == all_indices,
+                    ghost_justifications.indices().forall(i => {
+                        val just = ghost_justifications[i]
+                        just.indices().forall(j => {
+                            justification_shape_inv(just[j])
+                        })
+                    }),
+                    val pairs = tuples(r::CORRECT, r::VIEWS).filter(((id, v)) => {
+                        ghost_justifications[replica_idx.get(id)].indices().contains(v)
+                    })
+                    r::ghost_justifications' = pairs.mapBy(((id, v)) => {
+                        val i = replica_idx.get(id)
+                        ghost_justifications[i][v]
+                    })
                 }
             },
             r::ghost_step' = AnyStep,
+            step_no' = 0,
         }
     }
 
-    action step: bool = all {
+    action init_prof = {
+        pure val idx_and_size = r::CORRECT.fold((Map(), 0), (p, r) => (p._1.put(r, p._2), p._2 + 1))
+        pure val replica_idx = idx_and_size._1
+        pure val correct_size = idx_and_size._2
+        pure val all_indices = replica_idx.keys().map(id => replica_idx.get(id))
+        nondet store_signed_timeout = generate(12, [Set(SIGNED_TIMEOUT_VOTE_SAMPLE)])
+        all {
+            store_signed_timeout.length() == correct_size,
+            store_signed_timeout.indices().forall(i => store_signed_timeout[i].forall(signed_timeout_vote_shape_inv)),
+            r::store_signed_timeout' = r::REPLICAS.mapBy(id => store_signed_timeout[replica_idx.get(id)]),
+            // empty
+            r::replica_state' = Map(),
+            r::msgs_signed_commit' = Set(),
+            r::msgs_signed_timeout' = Set(),
+            r::ghost_justifications' = Map(),
+            r::store_signed_commit' = Map(),
+            r::msgs_new_view' = Set(),
+            r::msgs_proposal' = Set(),
+            r::leader' = Map(),
+            r::replica_view' = Map(),
+            r::proposer_view' = Map(),
+            r::ghost_step' = AnyStep,
+            step_no' = 0,
+        }
+    }
+
+    action step: bool = any {
+        all {
+            step_no == 0,
+            r::all_invariants,
+            step_unchanged,
+            step_no' = 1,
+        },
+        all {
+            step_no == 1,
+            r::step,
+            step_no' = 2,
+        }
+    }
+
+    // use this action to check the impact of init on model checking times
+    action step_unchanged: bool = all {
         r::all_invariants,
-        r::step,
+        r::replica_state' = r::replica_state,
+        r::msgs_signed_commit' = r::msgs_signed_commit,
+        r::msgs_signed_timeout' = r::msgs_signed_timeout,
+        r::ghost_justifications' = r::ghost_justifications,
+        r::store_signed_commit' = r::store_signed_commit,
+        r::store_signed_timeout' = r::store_signed_timeout,
+        r::msgs_new_view' = r::msgs_new_view,
+        r::msgs_proposal' = r::msgs_proposal,
+        r::leader' = r::leader,
+        r::replica_view' = r::replica_view,
+        r::proposer_view' = r::proposer_view,
+        r::ghost_step' = r::ghost_step,
     }
 
     val inv = r::all_invariants

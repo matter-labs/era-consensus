@@ -5,8 +5,8 @@
         "--write-intermediate": true,
         "tuning": {
             "search.invariant.mode": "after",
-            "search.invariantFilter": "(1->.*)",
-            "search.transitionFilter": "(0->0|1->0)"
+            "search.invariantFilter": "(2->.*)",
+            "search.transitionFilter": "([0]->.*|1->0|2->[1-9][0-9]*)"
         }
     }
 }
