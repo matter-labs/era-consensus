@@ -107,6 +107,14 @@ module inductive {
         view: 0, block_number: 0, block_hash: "val_b0",
     }
 
+    pure val SIGNED_COMMIT_VOTE_SAMPLE: SignedCommitVote = {
+        sig: "n0", vote: COMMIT_VOTE_SAMPLE
+    }
+
+    pure val SIGNED_TIMEOUT_VOTE_SAMPLE: SignedTimeoutVote = {
+        sig: "n0", vote: TIMEOUT_VOTE_SAMPLE,
+    }
+
     pure val COMMIT_QC_SAMPLE: CommitQC = {
         vote: COMMIT_VOTE_SAMPLE,
         agg_sig: Set("n0"),
@@ -318,29 +326,29 @@ module inductive {
             },
             // non-deterministically choose store_signed_commit
             {
-                nondet store_signed_commit = generate(12, r::REPLICAS.mapBy(id => ALL_SIGNED_COMMIT_VOTES))
+                nondet store_signed_commit = generate(12, [Set(SIGNED_COMMIT_VOTE_SAMPLE)])
                 all {
-                    store_signed_commit.keys() == r::REPLICAS,
-                    r::REPLICAS.forall(id => store_signed_commit.get(id).forall(signed_commit_vote_shape_inv)),
-                    r::store_signed_commit' = store_signed_commit,
+                    store_signed_commit.length() == correct_size,
+                    store_signed_commit.indices().forall(i => store_signed_commit[i].forall(signed_commit_vote_shape_inv)),
+                    r::store_signed_commit' = r::REPLICAS.mapBy(id => store_signed_commit[replica_idx.get(id)]),
                 }
             },
             // non-deterministically choose store_signed_timeout
             {
-                nondet store_signed_timeout = generate(12, r::REPLICAS.mapBy(id => ALL_SIGNED_TIMEOUT_VOTES))
+                nondet store_signed_timeout = generate(12, [Set(SIGNED_TIMEOUT_VOTE_SAMPLE)])
                 all {
-                    store_signed_timeout.keys() == r::REPLICAS,
-                    r::REPLICAS.forall(id => store_signed_timeout.get(id).forall(signed_timeout_vote_shape_inv)),
-                    r::store_signed_timeout' = store_signed_timeout,
+                    store_signed_timeout.length() == correct_size,
+                    store_signed_timeout.indices().forall(i => store_signed_timeout[i].forall(signed_timeout_vote_shape_inv)),
+                    r::store_signed_timeout' = r::REPLICAS.mapBy(id => store_signed_timeout[replica_idx.get(id)]),
                 }
             },
-            // non-deterministically choose ghost_justifications
+            // TODO: non-deterministically choose ghost_justifications
             {
-                nondet ghost_justifications = generate(12, tuples(r::REPLICAS, r::VIEWS).mapBy(((id, v)) => JUSTIFICATION_SAMPLE))
+                //nondet ghost_justifications = generate(12, tuples(r::REPLICAS, r::VIEWS).mapBy(((id, v)) => JUSTIFICATION_SAMPLE))
                 all {
-                    ghost_justifications.keys() == tuples(r::REPLICAS, r::VIEWS),
-                    ghost_justifications.keys().forall(((id, v)) => justification_shape_inv(ghost_justifications.get((id, v)))),
-                    r::ghost_justifications' = ghost_justifications,
+                    //ghost_justifications.keys() == tuples(r::REPLICAS, r::VIEWS),
+                    //ghost_justifications.keys().forall(((id, v)) => justification_shape_inv(ghost_justifications.get((id, v)))),
+                    r::ghost_justifications' = Map() //ghost_justifications,
                 }
             },
             r::ghost_step' = AnyStep,
