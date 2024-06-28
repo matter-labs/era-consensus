@@ -6,7 +6,7 @@ use std::{fmt, sync::Mutex};
 mod tests;
 
 /// Rate at which limiter should refresh the permits.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Rate {
     /// Maximal number of permits in a limiter.
     /// Whenever limiter already has `burst` fresh permits,
