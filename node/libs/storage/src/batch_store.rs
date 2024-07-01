@@ -52,27 +52,31 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     fn persisted(&self) -> sync::watch::Receiver<BatchStoreState>;
 
     /// Get the L1 batch from storage with the highest number.
-    async fn last_batch(&self, ctx: &ctx::Ctx) -> attester::BatchNumber;
+    ///
+    /// Returns `None` if no batches have been created yet.
+    async fn last_batch(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchNumber>>;
 
     /// Get the L1 batch QC from storage with the highest number.
-    async fn last_batch_qc(&self, ctx: &ctx::Ctx) -> attester::BatchQC;
+    ///
+    /// Returns `None` if we don't have a QC for any of the batches yet.
+    async fn last_batch_qc(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchQC>>;
 
     /// Returns the batch with the given number.
     async fn get_batch(
         &self,
         ctx: &ctx::Ctx,
         number: attester::BatchNumber,
-    ) -> Option<attester::SyncBatch>;
+    ) -> ctx::Result<Option<attester::SyncBatch>>;
 
     /// Returns the QC of the batch with the given number.
     async fn get_batch_qc(
         &self,
         ctx: &ctx::Ctx,
         number: attester::BatchNumber,
-    ) -> Option<attester::BatchQC>;
+    ) -> ctx::Result<Option<attester::BatchQC>>;
 
-    /// Store the given QC in the storage.
-    async fn store_qc(&self, ctx: &ctx::Ctx, qc: attester::BatchQC);
+    /// Store the given batch QC in the storage.
+    async fn store_qc(&self, ctx: &ctx::Ctx, qc: attester::BatchQC) -> ctx::Result<()>;
 
     /// Queue the batch to be persisted in storage.
     /// `queue_next_batch()` may return BEFORE the batch is actually persisted,
@@ -227,7 +231,7 @@ impl BatchStore {
             .get_batch(ctx, number)
             .await
             .context("persistent.batch()")?;
-        Ok(Some(batch))
+        Ok(batch)
     }
 
     /// Append batch to a queue to be persisted eventually.

@@ -132,44 +132,43 @@ impl PersistentBatchStore for BatchStore {
         self.0.persisted.subscribe()
     }
 
-    async fn last_batch(&self, _ctx: &ctx::Ctx) -> attester::BatchNumber {
-        self.0
-            .persisted
-            .borrow()
-            .last
-            .clone()
-            .map(|qc| qc.number)
-            .unwrap()
+    async fn last_batch(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchNumber>> {
+        Ok(self.0.persisted.borrow().last.clone().map(|qc| qc.number))
     }
 
-    async fn last_batch_qc(&self, _ctx: &ctx::Ctx) -> attester::BatchQC {
+    async fn last_batch_qc(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchQC>> {
         let qcs = self.0.qcs.lock().unwrap();
         let last_batch_number = qcs.keys().max().unwrap();
-        qcs.get(last_batch_number).unwrap().clone()
+        Ok(qcs.get(last_batch_number).cloned())
     }
 
     async fn get_batch_qc(
         &self,
         _ctx: &ctx::Ctx,
         number: attester::BatchNumber,
-    ) -> Option<attester::BatchQC> {
+    ) -> ctx::Result<Option<attester::BatchQC>> {
         let qcs = self.0.qcs.lock().unwrap();
-        qcs.get(&number).cloned()
+        Ok(qcs.get(&number).cloned())
     }
 
-    async fn store_qc(&self, _ctx: &ctx::Ctx, qc: attester::BatchQC) {
+    async fn store_qc(&self, _ctx: &ctx::Ctx, qc: attester::BatchQC) -> ctx::Result<()> {
         self.0.qcs.lock().unwrap().insert(qc.message.number, qc);
+        Ok(())
     }
 
     async fn get_batch(
         &self,
         _ctx: &ctx::Ctx,
         number: attester::BatchNumber,
-    ) -> Option<attester::SyncBatch> {
+    ) -> ctx::Result<Option<attester::SyncBatch>> {
         let batches = self.0.batches.lock().unwrap();
-        let front = batches.front()?;
-        let idx = number.0.checked_sub(front.number.0)?;
-        batches.get(idx as usize).cloned()
+        let Some(front) = batches.front() else {
+            return Ok(None);
+        };
+        let Some(idx) = number.0.checked_sub(front.number.0) else {
+            return Ok(None);
+        };
+        Ok(batches.get(idx as usize).cloned())
     }
 
     async fn queue_next_batch(

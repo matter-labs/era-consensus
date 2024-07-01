@@ -173,14 +173,14 @@ pub async fn dump_batch(
         .map(|sb| sb.number.next())
         .unwrap_or(state.first);
     for n in (state.first.0..after.0).map(attester::BatchNumber) {
-        let batch = store.get_batch(ctx, n).await.unwrap();
+        let batch = store.get_batch(ctx, n).await.unwrap().unwrap();
         assert_eq!(batch.number, n);
         batches.push(batch);
     }
     if let Some(before) = state.first.prev() {
-        assert!(store.get_batch(ctx, before).await.is_none());
+        assert!(store.get_batch(ctx, before).await.unwrap().is_none());
     }
-    assert!(store.get_batch(ctx, after).await.is_none());
+    assert!(store.get_batch(ctx, after).await.unwrap().is_none());
     batches
 }
 
