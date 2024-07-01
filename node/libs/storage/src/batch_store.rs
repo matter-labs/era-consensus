@@ -10,7 +10,7 @@ pub struct BatchStoreState {
     /// Stored batch with the lowest number.
     /// If last is `None`, this is the first batch that should be fetched.
     pub first: attester::BatchNumber,
-    /// Stored QC of the latest batch.
+    /// The last stored L1 batch.
     /// None iff store is empty.
     pub last: Option<attester::SyncBatch>,
 }
