@@ -160,7 +160,7 @@ pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<valid
 
 /// Dumps all the batches stored in `store`.
 pub async fn dump_batch(
-    _ctx: &ctx::Ctx,
+    ctx: &ctx::Ctx,
     store: &dyn PersistentBatchStore,
 ) -> Vec<attester::SyncBatch> {
     // let genesis = store.genesis(ctx).await.unwrap();
@@ -173,14 +173,14 @@ pub async fn dump_batch(
         .map(|sb| sb.number.next())
         .unwrap_or(state.first);
     for n in (state.first.0..after.0).map(attester::BatchNumber) {
-        let batch = store.get_batch(n).await.unwrap();
+        let batch = store.get_batch(ctx, n).await.unwrap();
         assert_eq!(batch.number, n);
         batches.push(batch);
     }
     if let Some(before) = state.first.prev() {
-        assert!(store.get_batch(before).await.is_none());
+        assert!(store.get_batch(ctx, before).await.is_none());
     }
-    assert!(store.get_batch(after).await.is_none());
+    assert!(store.get_batch(ctx, after).await.is_none());
     batches
 }
 

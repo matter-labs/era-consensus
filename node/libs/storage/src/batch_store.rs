@@ -48,18 +48,32 @@ impl BatchStoreState {
 /// Trait for the shared state of batches between the consensus and the execution layer.
 #[async_trait::async_trait]
 pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
-    /// Get the L1 batch from storage with the highest number.
-    async fn last_batch(&self) -> attester::BatchNumber;
-    /// Get the L1 batch QC from storage with the highest number.
-    async fn last_batch_qc(&self) -> attester::BatchQC;
-    /// Returns the batch with the given number.
-    async fn get_batch(&self, number: attester::BatchNumber) -> Option<attester::SyncBatch>;
-    /// Returns the QC of the batch with the given number.
-    async fn get_batch_qc(&self, number: attester::BatchNumber) -> Option<attester::BatchQC>;
-    /// Store the given QC in the storage.
-    async fn store_qc(&self, qc: attester::BatchQC);
     /// Range of batches persisted in storage.
     fn persisted(&self) -> sync::watch::Receiver<BatchStoreState>;
+
+    /// Get the L1 batch from storage with the highest number.
+    async fn last_batch(&self, ctx: &ctx::Ctx) -> attester::BatchNumber;
+
+    /// Get the L1 batch QC from storage with the highest number.
+    async fn last_batch_qc(&self, ctx: &ctx::Ctx) -> attester::BatchQC;
+
+    /// Returns the batch with the given number.
+    async fn get_batch(
+        &self,
+        ctx: &ctx::Ctx,
+        number: attester::BatchNumber,
+    ) -> Option<attester::SyncBatch>;
+
+    /// Returns the QC of the batch with the given number.
+    async fn get_batch_qc(
+        &self,
+        ctx: &ctx::Ctx,
+        number: attester::BatchNumber,
+    ) -> Option<attester::BatchQC>;
+
+    /// Store the given QC in the storage.
+    async fn store_qc(&self, ctx: &ctx::Ctx, qc: attester::BatchQC);
+
     /// Queue the batch to be persisted in storage.
     /// `queue_next_batch()` may return BEFORE the batch is actually persisted,
     /// but if the call succeeded the batch is expected to be persisted eventually.
@@ -196,7 +210,7 @@ impl BatchStore {
     /// Fetches a batch (from queue or persistent storage).
     pub async fn batch(
         &self,
-        _ctx: &ctx::Ctx,
+        ctx: &ctx::Ctx,
         number: attester::BatchNumber,
     ) -> ctx::Result<Option<attester::SyncBatch>> {
         {
@@ -210,7 +224,7 @@ impl BatchStore {
         }
         let batch = self
             .persistent
-            .get_batch(number)
+            .get_batch(ctx, number)
             .await
             .context("persistent.batch()")?;
         Ok(Some(batch))

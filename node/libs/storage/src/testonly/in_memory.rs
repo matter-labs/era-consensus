@@ -132,7 +132,7 @@ impl PersistentBatchStore for BatchStore {
         self.0.persisted.subscribe()
     }
 
-    async fn last_batch(&self) -> attester::BatchNumber {
+    async fn last_batch(&self, _ctx: &ctx::Ctx) -> attester::BatchNumber {
         self.0
             .persisted
             .borrow()
@@ -142,22 +142,30 @@ impl PersistentBatchStore for BatchStore {
             .unwrap()
     }
 
-    async fn last_batch_qc(&self) -> attester::BatchQC {
+    async fn last_batch_qc(&self, _ctx: &ctx::Ctx) -> attester::BatchQC {
         let qcs = self.0.qcs.lock().unwrap();
         let last_batch_number = qcs.keys().max().unwrap();
         qcs.get(last_batch_number).unwrap().clone()
     }
 
-    async fn get_batch_qc(&self, number: attester::BatchNumber) -> Option<attester::BatchQC> {
+    async fn get_batch_qc(
+        &self,
+        _ctx: &ctx::Ctx,
+        number: attester::BatchNumber,
+    ) -> Option<attester::BatchQC> {
         let qcs = self.0.qcs.lock().unwrap();
         qcs.get(&number).cloned()
     }
 
-    async fn store_qc(&self, qc: attester::BatchQC) {
+    async fn store_qc(&self, _ctx: &ctx::Ctx, qc: attester::BatchQC) {
         self.0.qcs.lock().unwrap().insert(qc.message.number, qc);
     }
 
-    async fn get_batch(&self, number: attester::BatchNumber) -> Option<attester::SyncBatch> {
+    async fn get_batch(
+        &self,
+        _ctx: &ctx::Ctx,
+        number: attester::BatchNumber,
+    ) -> Option<attester::SyncBatch> {
         let batches = self.0.batches.lock().unwrap();
         let front = batches.front()?;
         let idx = number.0.checked_sub(front.number.0)?;
