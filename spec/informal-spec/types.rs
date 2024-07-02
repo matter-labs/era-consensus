@@ -154,16 +154,19 @@ struct TimeoutVote {
     view: ViewNumber,
     // The commit vote with the highest view that this replica has signed, if any.
     high_vote: Option<CommitVote>,
-    // The commit quorum certificate with the highest view that this replica
+    // The view number of the highest commit quorum certificate that this replica
     // has observed, if any.
-    high_commit_qc: Option<CommitQC>,
+    high_commit_qc_view: Option<ViewNumber>,
 }
 
 struct SignedTimeoutVote {
     // The timeout.
     vote: TimeoutVote,
-    // Signature of the sender.
+    // Signature of the sender. This signature is ONLY over the vote field.
     sig: Signature,
+    // The commit quorum certificate with the highest view that this replica
+    // has observed, if any. It MUST match `high_commit_qc_view` in `vote`.
+    high_commit_qc: Option<CommitQC>,
 }
 
 impl SignedTimeoutVote {
@@ -172,9 +175,9 @@ impl SignedTimeoutVote {
     }
 
     fn verify(self) -> bool {
-        // Technically, only the signature needs to be verified. But if we wish, there are two invariants that are easy to check:
-        // self.view() >= self.high_vote.view() && self.high_vote.view() >= self.high_commit_qc.view()
-        self.verify_sig()
+        // If we wish, there are two invariants that are easy to check but aren't required for correctness:
+        // self.view() >= self.high_vote.view() && self.high_vote.view() >= self.high_commit_qc_view
+        self.vote.high_commit_qc_view == self.high_commit_qc.map(|x| x.view()) && self.verify_sig()
     }
 }
 
@@ -189,6 +192,9 @@ struct TimeoutQC {
     // The aggregate signature of the replicas. We ignore the details here.
     // Can be something as simple as a vector of signatures.
     agg_sig: AggregateSignature,
+    // The commit quorum certificate with the highest view that all replicas in this
+    // QC have observed, if any. It MUST match the highest `high_commit_qc_view` in `votes`.
+    high_commit_qc: Option<CommitQC>,
 }
 
 impl TimeoutQC {
@@ -197,27 +203,27 @@ impl TimeoutQC {
     }
 
     fn verify(self) -> bool {
-        // Check that all votes have the same view.
-        for (_, vote) in votes {
+        // Check that all votes have the same view and get the highest commit QC view of the timeout QC.
+        let high_qc_view = None;
+
+        for (_, vote) in self.votes {
             if vote.view != self.view() {
                 return false;
             }
+            high_qc_view = max(high_qc_view, vote.high_commit_qc_view);
         }
-
-        // Get the high commit QC of the timeout QC. We compare the high QC field of all
-        // timeout votes in the QC, and get the highest one, if it exists.
-        // We then need to verify that it is valid. We don't need to verify the commit QCs
-        // of the other timeout votes, since they don't have any influence in the result.
-        if let Some(high_qc) = self.high_qc() {
-            if !high_qc.verify() {
-                return false;
-            }
-        }
-        
 
         // In here we need to not only check the signature, but also that
         // it has enough weight beyond it.
-        self.verify_agg_sig(QUORUM_WEIGHT)
+        if !self.verify_agg_sig(QUORUM_WEIGHT) {
+            return false;
+        }
+
+        // We check that the high commit QC view matches the high commit QC that we have, and we verify the QC.
+        match self.high_commit_qc {
+            Some(high_qc) => high_qc_view == Some(high_qc.view()) && high_qc.verify();
+            None => high_qc_view.is_none();
+        }
     }
 
     fn high_vote(self) -> Option<CommitVote> {
@@ -244,16 +250,6 @@ impl TimeoutQC {
         } else {
             None
         }
-    }
-
-    fn high_qc(self) -> Option<CommitQC> {
-        let high_qc = None;
-
-        for (_, vote) in votes {
-            high_qc = max(high_qc, vote.high_commit_qc);
-        }
-
-        high_qc
     }
 }
 
