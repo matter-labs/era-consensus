@@ -165,7 +165,7 @@ fn on_proposal(self, proposal: Proposal) {
     match proposal.justification {
         Commit(qc) => self.process_commit_qc(Some(qc)),
         Timeout(qc) => {
-            self.process_commit_qc(qc.high_qc());
+            self.process_commit_qc(qc.high_commit_qc);
             self.high_timeout_qc = max(Some(qc), self.high_timeout_qc);
         }
     };
@@ -177,7 +177,7 @@ fn on_proposal(self, proposal: Proposal) {
 // Processed an (already verified) commit_qc received from the network
 // as part of some message. It bumps the local high_commit_qc and if
 // we have the proposal corresponding to this qc, we append it to the committed_blocks.
-fn process_commit_qc(self, qc_opt: Option[CommitQC]) {
+fn process_commit_qc(self, qc_opt: Option<CommitQC>) {
     if let Some(qc) = qc_opt {
         self.high_commit_qc = max(Some(qc), self.high_commit_qc);
         let Some(block) = self.cached_proposals.get((qc.vote.block_number,qc.vote.block_hash)) else { return };
