@@ -627,7 +627,11 @@ module replica {
             vote: {
                 view: self.view,
                 high_vote: self.high_vote,
-                high_commit_qc_view: self.high_commit_qc.option_map(qc => qc.vote.view),
+                high_commit_qc_view:
+                    match (self.high_commit_qc) {
+                    | None => VIEW_NUMBER_NONE
+                    | Some(qc) => Some(qc.vote.view)
+                    }
             },
             sig: sig_of_id(id),
             high_commit_qc: self.high_commit_qc,
@@ -1049,7 +1053,10 @@ module replica {
 
     pure def signed_timeout_vote_verify(signed_vote: SignedTimeoutVote): bool = all {
         signed_vote.vote.view >= 0,
-        signed_vote.high_commit_qc.option_map(qc => qc.vote.view) == signed_vote.vote.high_commit_qc_view,
+        match (signed_vote.high_commit_qc) {
+        | None => signed_vote.vote.high_commit_qc_view.is_none()
+        | Some(qc) => Some(qc.vote.view) == signed_vote.vote.high_commit_qc_view
+        },
         timeout_vote_verify(signed_vote.vote)
     }
 
@@ -1467,7 +1474,6 @@ module replica {
                 and {
                     qc.ghost_view >= 0,
                     qc.agg_sig.aggregate_verify(),
-                    votes.size() == qc.agg_sig.size(),
                     public_keys == qc.agg_sig,
                     votes.forall(v => v.timeout_vote_verify()),
                     // make sure that all votes are cast for the same view
