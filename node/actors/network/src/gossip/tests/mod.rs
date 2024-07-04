@@ -107,11 +107,14 @@ fn mk_netaddr(
 }
 
 fn mk_batch<R: Rng>(
-    _rng: &mut R,
+    rng: &mut R,
     key: &attester::SecretKey,
     number: attester::BatchNumber,
 ) -> attester::Signed<attester::Batch> {
-    key.sign_msg(attester::Batch { number })
+    key.sign_msg(attester::Batch {
+        number,
+        hash: rng.gen(),
+    })
 }
 
 fn random_netaddr<R: Rng>(
@@ -132,6 +135,7 @@ fn random_batch_vote<R: Rng>(
 ) -> Arc<attester::Signed<attester::Batch>> {
     let batch = attester::Batch {
         number: attester::BatchNumber(rng.gen_range(0..1000)),
+        hash: rng.gen(),
     };
     Arc::new(key.sign_msg(batch.to_owned()))
 }
@@ -152,13 +156,14 @@ fn update_netaddr<R: Rng>(
 }
 
 fn update_signature<R: Rng>(
-    _rng: &mut R,
+    rng: &mut R,
     batch: &attester::Batch,
     key: &attester::SecretKey,
     batch_number_diff: i64,
 ) -> Arc<attester::Signed<attester::Batch>> {
     let batch = attester::Batch {
         number: attester::BatchNumber((batch.number.0 as i64 + batch_number_diff) as u64),
+        hash: rng.gen(),
     };
     Arc::new(key.sign_msg(batch.to_owned()))
 }

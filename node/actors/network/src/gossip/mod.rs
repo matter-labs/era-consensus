@@ -160,56 +160,58 @@ impl Network {
     pub(crate) async fn update_batch_qc(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         // TODO This is not a good way to do this, we shouldn't be verifying the QC every time
         // Can we get only the latest votes?
-        let attesters = self.genesis().attesters.as_ref().context("attesters")?;
+        let _attesters = self.genesis().attesters.as_ref().context("attesters")?;
         loop {
             let mut sub = self.batch_votes.subscribe();
-            let votes = sync::changed(ctx, &mut sub)
+            let _votes = sync::changed(ctx, &mut sub)
                 .await
                 .context("batch votes")?
                 .clone();
 
+            // TODO: Look for a batch which is supported by a threshold of votes.
+
             // Check next QC to collect votes for.
-            let new_qc = self
-                .last_viewed_qc
-                .clone()
-                .map(|qc| {
-                    attester::BatchQC::new(attester::Batch {
-                        number: qc.message.number.next(),
-                    })
-                })
-                .unwrap_or_else(|| {
-                    attester::BatchQC::new(attester::Batch {
-                        number: attester::BatchNumber(0),
-                    })
-                })
-                .context("new qc")?;
+            // let new_qc = self
+            //     .last_viewed_qc
+            //     .clone()
+            //     .map(|qc| {
+            //         attester::BatchQC::new(attester::Batch {
+            //             number: qc.message.number.next(),
+            //         })
+            //     })
+            //     .unwrap_or_else(|| {
+            //         attester::BatchQC::new(attester::Batch {
+            //             number: attester::BatchNumber(0),
+            //         })
+            //     })
+            //     .context("new qc")?;
 
-            // Check votes for the correct QC.
-            for (_, sig) in votes.0 {
-                if self
-                    .batch_qc
-                    .clone()
-                    .entry(new_qc.message.number)
-                    .or_insert_with(|| attester::BatchQC::new(new_qc.message.clone()).expect("qc"))
-                    .add(&sig, self.genesis())
-                    .is_err()
-                {
-                    // TODO: Should we ban the peer somehow?
-                    continue;
-                }
-            }
+            // // Check votes for the correct QC.
+            // for (_, sig) in votes.0 {
+            //     if self
+            //         .batch_qc
+            //         .clone()
+            //         .entry(new_qc.message.number)
+            //         .or_insert_with(|| attester::BatchQC::new(new_qc.message.clone()).expect("qc"))
+            //         .add(&sig, self.genesis())
+            //         .is_err()
+            //     {
+            //         // TODO: Should we ban the peer somehow?
+            //         continue;
+            //     }
+            // }
 
-            let weight = attesters.weight_of_keys(
-                self.batch_qc
-                    .get(&new_qc.message.number)
-                    .context("last qc")?
-                    .signatures
-                    .keys(),
-            );
+            // let weight = attesters.weight_of_keys(
+            //     self.batch_qc
+            //         .get(&new_qc.message.number)
+            //         .context("last qc")?
+            //         .signatures
+            //         .keys(),
+            // );
 
-            if weight < attesters.threshold() {
-                return Ok(());
-            };
+            // if weight < attesters.threshold() {
+            //     return Ok(());
+            // };
 
             // If we have enough weight, we can update the last viewed QC and propagate it.
         }
