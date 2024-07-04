@@ -1,6 +1,7 @@
 use super::{
-    AggregateMultiSig, AggregateSignature, Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash,
-    MultiSig, PublicKey, SecretKey, Signature, Signed, Signers, SyncBatch, WeightedAttester,
+    AggregateMultiSig, AggregateSignature, Batch, BatchHash, BatchNumber, BatchQC, Committee, Msg,
+    MsgHash, MultiSig, PublicKey, SecretKey, Signature, Signed, Signers, SyncBatch,
+    WeightedAttester,
 };
 use crate::validator::Payload;
 use bit_vec::BitVec;
@@ -48,7 +49,10 @@ impl Distribution<Committee> for Standard {
 
 impl Distribution<Batch> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Batch {
-        Batch { number: rng.gen() }
+        Batch {
+            number: rng.gen(),
+            hash: rng.gen(),
+        }
     }
 }
 
@@ -69,15 +73,17 @@ impl Distribution<BatchNumber> for Standard {
     }
 }
 
+impl Distribution<BatchHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchHash {
+        BatchHash(rng.gen())
+    }
+}
+
 impl Distribution<BatchQC> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchQC {
-        let mut signatures = MultiSig::default();
-        for _ in 0..rng.gen_range(0..5) {
-            signatures.add(rng.gen(), rng.gen());
-        }
         BatchQC {
             message: rng.gen(),
-            signatures,
+            signatures: rng.gen(),
         }
     }
 }
@@ -97,6 +103,16 @@ impl Distribution<Signers> for Standard {
 impl Distribution<Signature> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Signature {
         Signature(rng.gen())
+    }
+}
+
+impl Distribution<MultiSig> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MultiSig {
+        let mut sig = MultiSig::default();
+        for _ in 0..rng.gen_range(0..5) {
+            sig.add(rng.gen(), rng.gen());
+        }
+        sig
     }
 }
 

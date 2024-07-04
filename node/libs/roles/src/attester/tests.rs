@@ -135,7 +135,7 @@ fn test_agg_signature_verify() {
 }
 
 fn make_batch_msg(rng: &mut impl Rng) -> Batch {
-    Batch { number: rng.gen() }
+    rng.gen()
 }
 
 #[test]

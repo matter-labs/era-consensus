@@ -4,6 +4,7 @@ use crate::{
     validator::{Genesis, Payload},
 };
 use anyhow::{ensure, Context as _};
+use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// A batch of L2 blocks used for the peers to fetch and keep in sync.
@@ -52,13 +53,34 @@ impl std::ops::Add<u64> for BatchNumber {
     }
 }
 
+/// Hash of the L1 batch.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct BatchHash(pub Keccak256);
+
+impl TextFmt for BatchHash {
+    fn decode(text: Text) -> anyhow::Result<Self> {
+        text.strip("batch:keccak256:")?.decode_hex().map(Self)
+    }
+
+    fn encode(&self) -> String {
+        format!("batch:keccak256:{}", hex::encode(ByteFmt::encode(&self.0)))
+    }
+}
+
+impl std::fmt::Debug for BatchHash {
+    fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        fmt.write_str(&TextFmt::encode(self))
+    }
+}
+
 /// A message containing information about a batch of blocks.
 /// It is signed by the attesters and then propagated through the gossip network.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd)]
 pub struct Batch {
     /// Header of the batch.
     pub number: BatchNumber,
-    // TODO: Hash of the batch.
+    /// Hash of the batch.
+    pub hash: BatchHash,
 }
 
 /// A certificate for a batch of L2 blocks to be sent to L1.
