@@ -134,11 +134,11 @@ pub enum BatchQCAddError {
 
 impl BatchQC {
     /// Create a new empty instance for a given `Batch` message.
-    pub fn new(message: Batch) -> anyhow::Result<Self> {
-        Ok(Self {
+    pub fn new(message: Batch) -> Self {
+        Self {
             message,
             signatures: attester::MultiSig::default(),
-        })
+        }
     }
 
     /// Add a attester's signature.

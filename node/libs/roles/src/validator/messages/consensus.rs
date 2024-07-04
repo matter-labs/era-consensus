@@ -527,5 +527,8 @@ pub struct WeightedValidator {
     /// Validator key
     pub key: validator::PublicKey,
     /// Validator weight inside the Committee.
-    pub weight: u64,
+    pub weight: Weight,
 }
+
+/// Voting weight;
+pub type Weight = u64;

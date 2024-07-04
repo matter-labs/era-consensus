@@ -28,8 +28,6 @@ impl SecretKey {
     {
         let msg = msg.insert();
         Signed {
-            // TODO: This is supposed to be verifyable in Solidity.
-            // Making it into a protobuf message is probably not the way to go.
             sig: self.sign_hash(&msg.hash()),
             key: self.public(),
             msg: V::extract(msg).unwrap(),
