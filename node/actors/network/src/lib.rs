@@ -132,9 +132,7 @@ impl Runner {
 
             // Update QC batches in the background.
             s.spawn(async {
-                // TODO: Handle this correctly.
-                // I guess the idea is to react to changes in `gossip.batch_votes` by looking for a quorum.
-                let _ = self.net.gossip.update_batch_qc(ctx).await;
+                self.net.gossip.run_batch_qc_finder(ctx).await?;
                 Ok(())
             });
 

@@ -169,7 +169,7 @@ fn test_batch_qc() {
 
     // Create QCs with increasing number of attesters.
     for i in 0..setup1.attester_keys.len() + 1 {
-        let mut qc = BatchQC::new(make_batch_msg(rng)).unwrap();
+        let mut qc = BatchQC::new(make_batch_msg(rng));
         for key in &setup1.attester_keys[0..i] {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis)
                 .unwrap();
@@ -202,7 +202,7 @@ fn test_attester_committee_weights() {
     let sums = [1000, 1600, 2400, 8400, 9300, 10000];
 
     let msg = make_batch_msg(rng);
-    let mut qc = BatchQC::new(msg.clone()).unwrap();
+    let mut qc = BatchQC::new(msg.clone());
     for (n, weight) in sums.iter().enumerate() {
         let key = &setup.attester_keys[n];
         qc.add(&key.sign_msg(msg.clone()), &setup.genesis).unwrap();

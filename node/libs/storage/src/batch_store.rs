@@ -257,6 +257,19 @@ impl BatchStore {
         Ok(())
     }
 
+    /// Wait until the database has a batch, then attach the corresponding QC.
+    pub async fn queue_batch_qc(&self, ctx: &ctx::Ctx, qc: attester::BatchQC) -> ctx::Result<()> {
+        // The `store_qc` implementation in `zksync-era` retries the insertion of the QC if the payload
+        // isn't yet available, but to be safe we can wait for the availability signal here as well.
+        sync::wait_for(ctx, &mut self.persistent.persisted(), |persisted| {
+            qc.message.number < persisted.next()
+        })
+        .await?;
+        // Now it's definitely safe to store it.
+        self.persistent.store_qc(ctx, qc).await?;
+        Ok(())
+    }
+
     /// Waits until the given batch is queued (in memory, or persisted).
     /// Note that it doesn't mean that the batch is actually available, as old batches might get pruned.
     pub async fn wait_until_queued(

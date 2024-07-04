@@ -20,19 +20,19 @@ use zksync_consensus_roles::attester::{self, Batch};
 /// previous vote can be removed when a new one is added.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub(crate) struct BatchVotes {
-    /// The minimum batch number for which we are still intersted in votes.
-    min_batch_number: attester::BatchNumber,
     /// The latest vote received from each attester. We only keep the last one
     /// for now, hoping that with 1 minute batches there's plenty of time for
     /// the quorum to be reached, but eventually we'll have to allow multiple
     /// votes across different heights.
-    votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<Batch>>>,
+    pub(crate) votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<Batch>>>,
     /// Total weight of votes at different heights and hashes.
     ///
     /// We will be looking for any hash that reaches a quorum threshold at any of the heights.
     /// At that point we can remove all earlier heights, considering it final. In the future
     /// we can instead keep heights until they are observed on the main node (or L1).
     support: im::OrdMap<attester::BatchNumber, im::HashMap<attester::BatchHash, attester::Weight>>,
+    /// The minimum batch number for which we are still interested in votes.
+    min_batch_number: attester::BatchNumber,
 }
 
 impl BatchVotes {
@@ -105,16 +105,16 @@ impl BatchVotes {
     /// The return value is a vector because eventually we will be potentially waiting for
     /// quorums on multiple heights simultaneously.
     ///
-    /// For repeated queries we can supply a skip list of heights for which we alredy saved the QC.
+    /// For repeated queries we can supply a skip list of heights for which we already saved the QC.
     pub(super) fn find_quorums(
-        &mut self,
+        &self,
         attesters: &attester::Committee,
-        skip: HashSet<attester::BatchNumber>,
+        skip: impl Fn(attester::BatchNumber) -> bool,
     ) -> Vec<attester::BatchQC> {
         let threshold = attesters.threshold();
         self.support
             .iter()
-            .filter(|(number, _)| !skip.contains(number))
+            .filter(|(number, _)| !skip(**number))
             .flat_map(|(number, candidates)| {
                 candidates
                     .iter()
@@ -168,7 +168,7 @@ impl BatchVotes {
     ///
     /// This for for DoS protection, until we have a better control on the acceptable vote range.
     fn remove(&mut self, key: &attester::PublicKey, weight: attester::Weight) {
-        let Some(vote) = self.votes.remove(&key) else {
+        let Some(vote) = self.votes.remove(key) else {
             return;
         };
 
@@ -218,6 +218,12 @@ impl BatchVotesWatch {
             this.send_replace(votes);
         }
         Ok(())
+    }
+
+    /// Set the minimum batch number on the votes and discard old data.
+    pub(crate) async fn set_min_batch_number(&self, min_batch_number: attester::BatchNumber) {
+        let this = self.0.lock().await;
+        this.send_modify(|votes| votes.set_min_batch_number(min_batch_number));
     }
 }
 

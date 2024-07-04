@@ -554,7 +554,7 @@ async fn test_batch_votes() {
         want.insert(random_batch_vote(rng, k));
     }
     votes.update(&attesters, &want.as_vec()).await.unwrap();
-    assert_eq!(want.0, sub.borrow_and_update().0);
+    assert_eq!(want.0, sub.borrow_and_update().votes);
 
     // newer batch number
     let k0v2 = update_signature(rng, &want.get(&keys[0]).msg, &keys[0], 1);
@@ -581,7 +581,7 @@ async fn test_batch_votes() {
         k8v1.clone(),
     ];
     votes.update(&attesters, &update).await.unwrap();
-    assert_eq!(want.0, sub.borrow_and_update().0);
+    assert_eq!(want.0, sub.borrow_and_update().votes);
 
     // Invalid signature.
     let mut k0v3 = mk_batch(
@@ -591,18 +591,19 @@ async fn test_batch_votes() {
     );
     k0v3.key = keys[0].public();
     assert!(votes.update(&attesters, &[Arc::new(k0v3)]).await.is_err());
-    assert_eq!(want.0, sub.borrow_and_update().0);
+    assert_eq!(want.0, sub.borrow_and_update().votes);
 
     // Duplicate entry in the update.
     assert!(votes
         .update(&attesters, &[k8v1.clone(), k8v1])
         .await
         .is_err());
-    assert_eq!(want.0, sub.borrow_and_update().0);
+    assert_eq!(want.0, sub.borrow_and_update().votes);
 }
 
 // TODO: This test is disabled because the logic for attesters to receive and sign batches is not implemented yet.
 // It should be re-enabled once the logic is implemented.
 // #[tokio::test(flavor = "multi_thread")]
 // async fn test_batch_votes_propagation() {
+// TODO: Implement this now that we can update the votes.
 // }
