@@ -234,6 +234,26 @@ impl BatchStore {
         Ok(batch)
     }
 
+    /// Retrieve the number of all batches that don't have a QC yet and potentially need to be signed.
+    ///
+    /// It returns only the numbers which follow the last finalized batch, that is, there might be batches
+    /// before the earliest in these numbers that isn't signed, but it would be futile to sign them any more.
+    pub async fn unsigned_batch_numbers(
+        &self,
+        _ctx: &ctx::Ctx,
+    ) -> ctx::Result<Vec<attester::BatchNumber>> {
+        todo!("retrieve unsigned numbers from persistent store")
+    }
+
+    /// Retrieve a batch to be signed.
+    pub async fn batch_to_sign(
+        &self,
+        _ctx: &ctx::Ctx,
+        _number: attester::BatchNumber,
+    ) -> ctx::Result<Option<attester::Batch>> {
+        todo!("retrieve the batch commitment from persistent store")
+    }
+
     /// Append batch to a queue to be persisted eventually.
     /// Since persisting a batch may take a significant amount of time,
     /// BatchStore contains a queue of batches waiting to be persisted.
