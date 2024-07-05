@@ -1418,8 +1418,10 @@ module replica {
             })
         }
 
-        replica_state.keys()
-            .forall(id => replica_state.get(id).high_timeout_qc.option_has(one_high_vote))
+        replica_state.keys().forall(id => {
+            val timeout_qc = replica_state.get(id).high_timeout_qc
+            timeout_qc.is_none() or timeout_qc.option_has(one_high_vote)
+        })
     }
 
     // There are no two quorums for different block hashes in one view.
