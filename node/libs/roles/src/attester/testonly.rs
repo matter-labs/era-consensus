@@ -131,7 +131,11 @@ impl Distribution<AggregateMultiSig> for Standard {
     }
 }
 
-impl<V: Variant<Msg>> Distribution<Signed<V>> for Standard {
+impl<V> Distribution<Signed<V>> for Standard
+where
+    V: Variant<Msg>,
+    Standard: Distribution<V>,
+{
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Signed<V> {
         rng.gen::<SecretKey>().sign_msg(rng.gen())
     }

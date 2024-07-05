@@ -1,6 +1,10 @@
 use super::ValidatorAddrs;
 use crate::{
-    gossip::{batch_votes::BatchVotesWatch, handshake, validator_addrs::ValidatorAddrsWatch},
+    gossip::{
+        batch_votes::{BatchVotes, BatchVotesWatch},
+        handshake,
+        validator_addrs::ValidatorAddrsWatch,
+    },
     metrics, preface, rpc, testonly,
 };
 use anyhow::Context as _;
@@ -601,6 +605,69 @@ async fn test_batch_votes() {
         .await
         .is_err());
     assert_eq!(want.0, sub.borrow_and_update().votes);
+}
+
+#[test]
+fn test_batch_votes_quorum() {
+    abort_on_panic();
+    let rng = &mut ctx::test_root(&ctx::RealClock).rng();
+
+    for _ in 0..10 {
+        let size = rng.gen_range(1..20);
+        let keys: Vec<attester::SecretKey> = (0..size).map(|_| rng.gen()).collect();
+        let attesters = attester::Committee::new(keys.iter().map(|k| attester::WeightedAttester {
+            key: k.public(),
+            weight: rng.gen_range(1..=100),
+        }))
+        .unwrap();
+
+        let batch0 = rng.gen::<attester::Batch>();
+        let batch1 = attester::Batch {
+            number: batch0.number.next(),
+            hash: rng.gen(),
+        };
+        let mut batches = [(batch0, 0u64), (batch1, 0u64)];
+
+        let mut votes = BatchVotes::default();
+        for sk in &keys {
+            let b = if rng.gen_range(0..100) < 80 { 1 } else { 0 };
+            let batch = &batches[b].0;
+            let vote = sk.sign_msg(batch.clone());
+            votes.update(&attesters, &[Arc::new(vote)]).unwrap();
+            batches[b].1 += attesters.weight(&sk.public()).unwrap();
+
+            // Check that as soon as we have quorum it's found.
+            if batches[b].1 >= attesters.threshold() {
+                let qs = votes.find_quorums(&attesters, |_| false);
+                assert!(!qs.is_empty(), "should find quorum");
+                assert!(qs[0].message == *batch);
+                assert!(qs[0].signatures.keys().count() > 0);
+            }
+        }
+
+        if let Some(quorum) = batches
+            .iter()
+            .find(|b| b.1 >= attesters.threshold())
+            .map(|(b, _)| b)
+        {
+            // Check that a quorum can be skipped
+            assert!(votes
+                .find_quorums(&attesters, |b| b == quorum.number)
+                .is_empty());
+        } else {
+            // Check that if there was no quoroum then we don't find any.
+            assert!(votes.find_quorums(&attesters, |_| false).is_empty());
+        }
+
+        // Check that the minimum batch number prunes data.
+        let last_batch = batches[1].0.number;
+
+        votes.set_min_batch_number(last_batch);
+        assert!(votes.votes.values().all(|v| v.msg.number >= last_batch));
+
+        votes.set_min_batch_number(last_batch.next());
+        assert!(votes.votes.is_empty());
+    }
 }
 
 // TODO: This test is disabled because the logic for attesters to receive and sign batches is not implemented yet.
