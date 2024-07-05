@@ -556,21 +556,23 @@ async fn test_batch_votes() {
     votes.update(&attesters, &want.as_vec()).await.unwrap();
     assert_eq!(want.0, sub.borrow_and_update().votes);
 
-    // newer batch number
+    // newer batch number, should be updated
     let k0v2 = update_signature(rng, &want.get(&keys[0]).msg, &keys[0], 1);
-    // same batch number
+    // same batch number, should be ignored
     let k1v2 = update_signature(rng, &want.get(&keys[1]).msg, &keys[1], 0);
-    // older batch number
+    // older batch number, should be ignored
     let k4v2 = update_signature(rng, &want.get(&keys[4]).msg, &keys[4], -1);
-    // first entry for a key in the config
+    // first entry for a key in the config, should be inserted
     let k6v1 = random_batch_vote(rng, &keys[6]);
-    // entry for a key outside of the config
+    // entry for a key outside of the config, should be ignored
     let k8 = rng.gen();
     let k8v1 = random_batch_vote(rng, &k8);
 
+    // Update the ones we expect to succeed
     want.insert(k0v2.clone());
-    want.insert(k1v2.clone());
     want.insert(k6v1.clone());
+
+    // Send all of them to the votes
     let update = [
         k0v2,
         k1v2,
@@ -583,7 +585,7 @@ async fn test_batch_votes() {
     votes.update(&attesters, &update).await.unwrap();
     assert_eq!(want.0, sub.borrow_and_update().votes);
 
-    // Invalid signature.
+    // Invalid signature, should be rejected.
     let mut k0v3 = mk_batch(
         rng,
         &keys[1],
@@ -593,7 +595,7 @@ async fn test_batch_votes() {
     assert!(votes.update(&attesters, &[Arc::new(k0v3)]).await.is_err());
     assert_eq!(want.0, sub.borrow_and_update().votes);
 
-    // Duplicate entry in the update.
+    // Duplicate entry in the update, should be rejected.
     assert!(votes
         .update(&attesters, &[k8v1.clone(), k8v1])
         .await
