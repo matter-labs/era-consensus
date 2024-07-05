@@ -298,7 +298,7 @@ module tests_n6f1b0 {
     }
 
     action replica_receives_all_timeout_votes(id: ReplicaId, high_vote: Option[CommitVote],
-            high_commit_qc_view: Option[ViewNumber], high_commit_qc: Option[CommitQC], view: ViewNumber):bool = {
+            high_commit_qc_view: Option[ViewNumber], high_commit_qc: Option[CommitQC], view: ViewNumber): bool = {
         val timeout_vote: TimeoutVote = { view: view, high_commit_qc_view: high_commit_qc_view, high_vote: high_vote }
         all {
             on_timeout(id, { vote: timeout_vote, high_commit_qc: high_commit_qc, sig: "n0" }),
