@@ -16,17 +16,19 @@ module tests {
     ).* from "../replica"
 
     // an initial quorum certificate from all replicas
-    val init_timeout_qc: TimeoutQC = {
-        votes: REPLICAS.mapBy(id => { view: 0, high_vote: None, high_commit_qc: None}),
-        agg_sig: REPLICAS,
+    pure val init_timeout_qc: TimeoutQC = {
+        votes: CORRECT.mapBy(id => { view: 0, high_vote: COMMIT_VOTE_NONE, high_commit_qc_view: VIEW_NUMBER_NONE }),
+        agg_sig: CORRECT,
         ghost_view: 0,
+        high_commit_qc: HIGH_COMMIT_QC_NONE,
     }
 
     // an initial quorum certificate from the correct replicas
     val init_timeout_corr_qc: TimeoutQC = {
-        votes: CORRECT.mapBy(id => { view: 0, high_vote: None, high_commit_qc: None}),
+        votes: CORRECT.mapBy(id => { view: 0, high_vote: None, high_commit_qc_view: VIEW_NUMBER_NONE }),
         agg_sig: CORRECT,
         ghost_view: 0,
+        high_commit_qc: HIGH_COMMIT_QC_NONE,
     }
 
     def replica_committed(id: ReplicaId): List[Block] = {
