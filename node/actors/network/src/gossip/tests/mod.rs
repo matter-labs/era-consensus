@@ -665,9 +665,11 @@ fn test_batch_votes_quorum() {
 
         votes.set_min_batch_number(last_batch);
         assert!(votes.votes.values().all(|v| v.msg.number >= last_batch));
+        assert!(votes.support.keys().all(|n| *n >= last_batch));
 
         votes.set_min_batch_number(last_batch.next());
         assert!(votes.votes.is_empty());
+        assert!(votes.support.is_empty());
     }
 }
 

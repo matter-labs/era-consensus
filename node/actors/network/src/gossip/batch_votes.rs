@@ -25,14 +25,17 @@ pub(crate) struct BatchVotes {
     /// the quorum to be reached, but eventually we'll have to allow multiple
     /// votes across different heights.
     pub(crate) votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<Batch>>>,
+
     /// Total weight of votes at different heights and hashes.
     ///
     /// We will be looking for any hash that reaches a quorum threshold at any of the heights.
     /// At that point we can remove all earlier heights, considering it final. In the future
     /// we can instead keep heights until they are observed on the main node (or L1).
-    support: im::OrdMap<attester::BatchNumber, im::HashMap<attester::BatchHash, attester::Weight>>,
+    pub(crate) support:
+        im::OrdMap<attester::BatchNumber, im::HashMap<attester::BatchHash, attester::Weight>>,
+
     /// The minimum batch number for which we are still interested in votes.
-    min_batch_number: attester::BatchNumber,
+    pub(crate) min_batch_number: attester::BatchNumber,
 }
 
 impl BatchVotes {
