@@ -166,7 +166,7 @@ impl BatchVotes {
 
     /// Remove any existing vote.
     ///
-    /// This for for DoS protection, until we have a better control on the acceptable vote range.
+    /// This is for DoS protection, until we have better control over the acceptable vote range.
     fn remove(&mut self, key: &attester::PublicKey, weight: attester::Weight) {
         let Some(vote) = self.votes.remove(key) else {
             return;

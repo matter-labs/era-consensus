@@ -132,8 +132,10 @@ impl Runner {
 
             // Update QC batches in the background.
             s.spawn(async {
-                self.net.gossip.run_batch_qc_finder(ctx).await?;
-                Ok(())
+                match self.net.gossip.run_batch_qc_finder(ctx).await {
+                    Err(ctx::Error::Canceled(_)) => Ok(()),
+                    other => other,
+                }
             });
 
             // Fetch missing batches in the background.

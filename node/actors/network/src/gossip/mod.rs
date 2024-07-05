@@ -150,20 +150,22 @@ impl Network {
 
     /// Task that keeps hearing about new votes and looks for an L1 batch qc.
     /// It will propagate the QC if there's enough votes.
-    pub(crate) async fn run_batch_qc_finder(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        let attesters = self.genesis().attesters.as_ref().context("attesters")?;
+    pub(crate) async fn run_batch_qc_finder(&self, ctx: &ctx::Ctx) -> ctx::Result<()> {
+        let Some(attesters) = self.genesis().attesters.as_ref() else {
+            return Ok(());
+        };
         let mut sub = self.batch_votes.subscribe();
         loop {
             // In the future when we might be gossiping about multiple batches at the same time,
             // we can collect the ones we submitted into a skip list until we see them confirmed
             // on L1 and we can finally increase the minimum as well.
             let quorums = {
-                let votes = sync::changed(ctx, &mut sub).await.context("batch votes")?;
+                let votes = sync::changed(ctx, &mut sub).await?;
                 votes.find_quorums(attesters, |_| false)
             };
 
             for qc in quorums {
-                // TODO: In the future this should come from confirmations, but for now it's best effort.
+                // In the future this should come from confirmations, but for now it's best effort, so we can forget ASAP.
                 // TODO: An initial value could be looked up in the database even now.
                 let next_batch_number = qc.message.number.next();
 
