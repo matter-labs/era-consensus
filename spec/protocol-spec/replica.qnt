@@ -1054,8 +1054,12 @@ module replica {
     pure def signed_timeout_vote_verify(signed_vote: SignedTimeoutVote): bool = all {
         signed_vote.vote.view >= 0,
         match (signed_vote.high_commit_qc) {
-        | None => signed_vote.vote.high_commit_qc_view.is_none()
-        | Some(qc) => Some(qc.vote.view) == signed_vote.vote.high_commit_qc_view
+        | None =>
+                signed_vote.vote.high_commit_qc_view.is_none()
+        | Some(qc) => and {
+                Some(qc.vote.view) == signed_vote.vote.high_commit_qc_view,
+                commit_qc_verify(qc),
+            }
         },
         timeout_vote_verify(signed_vote.vote)
     }
@@ -1364,6 +1368,7 @@ module replica {
     // have justifications for the views below.
     val view_justification_continuous_inv = {
         VIEWS.forall(v => or {
+            v == 0,
             CORRECT.forall(id => replica_state.get(id).view < v),
             ghost_justifications.keys().exists(((id, other_view)) => other_view == v)
         })
