@@ -40,6 +40,10 @@ pub struct TestMemoryStorage {
     pub batches: Arc<BatchStore>,
     /// In-memory storage runner.
     pub runner: TestMemoryStorageRunner,
+    /// The in-memory block store representing the persistent store.
+    pub im_blocks: in_memory::BlockStore,
+    /// The in-memory batch store representing the persistent store.
+    pub im_batches: in_memory::BatchStore,
 }
 
 /// Test-only memory storage runner wrapping both block and batch store runners.
@@ -74,14 +78,7 @@ impl TestMemoryStorageRunner {
 impl TestMemoryStorage {
     /// Constructs a new in-memory store for both blocks and batches with their respective runners.
     pub async fn new(ctx: &ctx::Ctx, genesis: &validator::Genesis) -> Self {
-        let (blocks, blocks_runner) = new_store(ctx, genesis).await;
-        let (batches, batches_runner) = new_batch_store(ctx).await;
-        let runner = TestMemoryStorageRunner::new(blocks_runner, batches_runner).await;
-        Self {
-            blocks,
-            batches,
-            runner,
-        }
+        Self::new_store_with_first_block(ctx, genesis, genesis.first_block).await
     }
 
     /// Constructs a new in-memory store with a custom expected first block
@@ -91,48 +88,35 @@ impl TestMemoryStorage {
         genesis: &validator::Genesis,
         first: validator::BlockNumber,
     ) -> Self {
-        let (blocks, blocks_runner) = new_store_with_first(ctx, genesis, first).await;
-        let (batches, batches_runner) = new_batch_store(ctx).await;
+        let im_blocks = in_memory::BlockStore::new(genesis.clone(), first);
+        let im_batches = in_memory::BatchStore::new(attester::BatchNumber(0));
+        Self::new_with_im(ctx, im_blocks, im_batches).await
+    }
+
+    /// Constructs a new in-memory store for both blocks and batches with their respective runners.
+    async fn new_with_im(
+        ctx: &ctx::Ctx,
+        im_blocks: in_memory::BlockStore,
+        im_batches: in_memory::BatchStore,
+    ) -> Self {
+        let (blocks, blocks_runner) = BlockStore::new(ctx, Box::new(im_blocks.clone()))
+            .await
+            .unwrap();
+
+        let (batches, batches_runner) = BatchStore::new(ctx, Box::new(im_batches.clone()))
+            .await
+            .unwrap();
+
         let runner = TestMemoryStorageRunner::new(blocks_runner, batches_runner).await;
+
         Self {
             blocks,
             batches,
             runner,
+            im_blocks,
+            im_batches,
         }
     }
-}
-
-/// Constructs a new in-memory store.
-async fn new_store(
-    ctx: &ctx::Ctx,
-    genesis: &validator::Genesis,
-) -> (Arc<BlockStore>, BlockStoreRunner) {
-    new_store_with_first(ctx, genesis, genesis.first_block).await
-}
-
-/// Constructs a new in-memory batch store.
-async fn new_batch_store(ctx: &ctx::Ctx) -> (Arc<BatchStore>, BatchStoreRunner) {
-    BatchStore::new(
-        ctx,
-        Box::new(in_memory::BatchStore::new(attester::BatchNumber(0))),
-    )
-    .await
-    .unwrap()
-}
-
-/// Constructs a new in-memory store with a custom expected first block
-/// (i.e. possibly different than `genesis.fork.first_block`).
-async fn new_store_with_first(
-    ctx: &ctx::Ctx,
-    genesis: &validator::Genesis,
-    first: validator::BlockNumber,
-) -> (Arc<BlockStore>, BlockStoreRunner) {
-    BlockStore::new(
-        ctx,
-        Box::new(in_memory::BlockStore::new(genesis.clone(), first)),
-    )
-    .await
-    .unwrap()
 }
 
 /// Dumps all the blocks stored in `store`.
