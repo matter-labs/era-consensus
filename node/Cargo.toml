@@ -20,6 +20,7 @@ edition = "2021"
 authors = ["The Matter Labs Team <hello@matterlabs.dev>"]
 homepage = "https://matter-labs.io/"
 license = "MIT"
+version = "0.1.0"
 
 [workspace.dependencies]
 # Crates from this repo.
@@ -38,9 +39,9 @@ zksync_protobuf = { path = "libs/protobuf" }
 zksync_protobuf_build = { path = "libs/protobuf_build" }
 
 # Crates from Matter Labs.
-pairing = { package = "pairing_ce", git = "https://github.com/matter-labs/pairing.git", rev = "d24f2c5871089c4cd4f54c0ca266bb9fef6115eb" }
-vise = { version = "0.1.0", git = "https://github.com/matter-labs/vise.git", rev = "a5bb80c9ce7168663114ee30e794d6dc32159ee4" }
-vise-exporter = { version = "0.1.0", git = "https://github.com/matter-labs/vise.git", rev = "a5bb80c9ce7168663114ee30e794d6dc32159ee4" }
+pairing = { package = "pairing_ce", version = "=0.28.6" }
+vise = "0.1.0"
+vise-exporter = "0.1.0"
 
 # Crates from third-parties.
 anyhow = "1"
