@@ -8,6 +8,11 @@ use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// A batch of L2 blocks used for the peers to fetch and keep in sync.
+///
+/// The use case for this is for peers to be able to catch up with L1
+/// batches they missed during periods of being offline. These will
+/// come with a proof of having been included on L1, rather than an
+/// attester quorum certificate.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct SyncBatch {
     /// The number of the batch.
@@ -15,6 +20,9 @@ pub struct SyncBatch {
     /// The payloads of the blocks the batch contains.
     pub payloads: Vec<Payload>,
     /// The proof of the batch.
+    ///
+    /// It is going to be a Merkle proof the the batch has been included
+    /// in the state hash of the L1.
     pub proof: Vec<u8>,
 }
 

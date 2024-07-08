@@ -4143,6 +4143,7 @@ dependencies = [
  "tracing",
  "vise",
  "zksync_concurrency",
+ "zksync_consensus_crypto",
  "zksync_consensus_roles",
  "zksync_protobuf",
  "zksync_protobuf_build",
