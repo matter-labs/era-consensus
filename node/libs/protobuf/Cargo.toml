@@ -5,6 +5,8 @@ edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 license.workspace = true
+repository.workspace = true
+keywords.workspace = true
 links = "zksync_protobuf_proto"
 
 [dependencies]

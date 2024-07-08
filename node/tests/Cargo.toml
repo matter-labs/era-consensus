@@ -5,6 +5,9 @@ edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 license.workspace = true
+repository.workspace = true
+keywords.workspace = true
+publish = false
 
 [dependencies]
 zksync_consensus_tools.workspace = true
