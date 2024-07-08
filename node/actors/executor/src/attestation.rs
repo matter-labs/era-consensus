@@ -22,7 +22,7 @@ pub(super) struct AttesterRunner {
 }
 
 impl AttesterRunner {
-    /// Crete a new instance of a runner.
+    /// Create a new instance of a runner.
     pub(super) fn new(
         block_store: Arc<BlockStore>,
         batch_store: Arc<BatchStore>,
