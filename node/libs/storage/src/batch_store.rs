@@ -356,18 +356,6 @@ impl BatchStore {
         Ok(())
     }
 
-    /// Check if a given batch number has a quorum certificate stored for it.
-    pub async fn has_batch_qc(
-        &self,
-        ctx: &ctx::Ctx,
-        number: attester::BatchNumber,
-    ) -> ctx::Result<bool> {
-        self.persistent
-            .get_batch_qc(ctx, number)
-            .await
-            .map(|qc| qc.is_some())
-    }
-
     /// Waits until the given batch is queued (in memory, or persisted).
     /// Note that it doesn't mean that the batch is actually available, as old batches might get pruned.
     pub async fn wait_until_queued(

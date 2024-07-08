@@ -75,21 +75,15 @@ impl AttesterRunner {
                     break;
                 };
 
-                // The certificates might be collected out of order because of how gossip works,
-                // in which case we can skip signing it.
-                let has_batch_qc = self
-                    .batch_store
-                    .has_batch_qc(ctx, earliest_batch_number)
-                    .await
-                    .context("has_batch_qc")?;
+                // The certificates might be collected out of order because of how gossip works;
+                // we could query the DB to see if we already have a QC, or we can just go ahead
+                // and publish our vote, and let others ignore it.
 
-                if !has_batch_qc {
-                    // We only have to publish a vote once; future peers can pull it from the register.
-                    self.publisher
-                        .publish(attesters, &self.attester.key, batch)
-                        .await
-                        .context("publish")?;
-                }
+                // We only have to publish a vote once; future peers can pull it from the register.
+                self.publisher
+                    .publish(attesters, &self.attester.key, batch)
+                    .await
+                    .context("publish")?;
 
                 earliest_batch_number = earliest_batch_number.next();
             }
