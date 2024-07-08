@@ -41,7 +41,8 @@ zksync_protobuf = { version = "=0.1.0-rc.1", path = "libs/protobuf" }
 zksync_protobuf_build = { version = "=0.1.0-rc.1", path = "libs/protobuf_build" }
 
 # Crates from Matter Labs.
-pairing = { package = "pairing_ce", version = "=0.28.6" }
+# Temporarily downgrading from 0.28.6 to 0.28.5 which is locked in zksync-era somewhere
+pairing = { package = "pairing_ce", version = "=0.28.5" }
 vise = "0.1.0"
 vise-exporter = "0.1.0"
 
@@ -98,7 +99,7 @@ zeroize = { version = "1.7.0", features = ["zeroize_derive"] }
 hyper = { version = "1", features = ["full"] }
 http-body-util = "0.1"
 hyper-util = { version = "0.1", features = ["full"] }
-tls-listener = { version = "0.10.0", features = ["rustls"]}
+tls-listener = { version = "0.10.0", features = ["rustls"] }
 rustls-pemfile = "2"
 base64 = "0.22.1"
 build_html = "2.4.0"

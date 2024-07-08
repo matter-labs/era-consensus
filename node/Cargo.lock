@@ -2124,9 +2124,9 @@ checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
 
 [[package]]
 name = "pairing_ce"
-version = "0.28.6"
+version = "0.28.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "843b5b6fb63f00460f611dbc87a50bbbb745f0dfe5cbf67ca89299c79098640e"
+checksum = "db007b21259660d025918e653508f03050bf23fb96a88601f9936329faadc597"
 dependencies = [
  "byteorder",
  "cfg-if",
