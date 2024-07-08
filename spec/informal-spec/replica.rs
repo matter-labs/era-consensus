@@ -218,7 +218,7 @@ fn on_timeout(self, sig_vote: SignedTimeoutVote) {
 
     // Check if we now have a timeout QC for this view.
     if let Some(qc) = self.get_timeout_qc(sig_vote.view()) {
-        self.process_commit_qc(qc.high_qc());
+        self.process_commit_qc(qc.high_commit_qc);
         self.high_timeout_qc = max(Some(qc), self.high_timeout_qc);
         self.start_new_view(sig_vote.view() + 1);
     }
@@ -235,7 +235,7 @@ fn on_new_view(self, new_view: NewView) {
     match new_view.justification {
         Commit(qc) => self.process_commit_qc(Some(qc)),
         Timeout(qc) => {
-            self.process_commit_qc(qc.high_qc());
+            self.process_commit_qc(qc.high_commit_qc);
             self.high_timeout_qc = max(Some(qc), self.high_timeout_qc);
         }
     };

@@ -77,7 +77,7 @@ impl Justification {
 
                 // Get the high commit QC of the timeout QC. We compare the high QC field of
                 // all timeout votes in the QC, and get the highest one, if it exists.
-                let high_qc: Option<CommitQC> = qc.high_qc();
+                let high_qc: Option<CommitQC> = qc.high_commit_qc;
 
                 if high_vote.is_some()
                     && (high_qc.is_none() || high_vote.block_number > high_qc.block_number)
