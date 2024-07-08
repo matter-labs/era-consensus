@@ -1,10 +1,12 @@
 [package]
 name = "zksync_consensus_tools"
-version = "0.1.0"
+version.workspace = true
 edition.workspace = true
 authors.workspace = true
 homepage.workspace = true
 license.workspace = true
+repository.workspace = true
+keywords.workspace = true
 default-run = "executor"
 
 [dependencies]
