@@ -178,6 +178,7 @@ impl SignedTimeoutVote {
         // If we wish, there are two invariants that are easy to check but aren't required for correctness:
         // self.view() >= self.high_vote.view() && self.high_vote.view() >= self.high_commit_qc_view
         self.vote.high_commit_qc_view == self.high_commit_qc.map(|x| x.view()) && self.verify_sig()
+          && self.high_commit_qc.map(|qc| qc.verify())
     }
 }
 
