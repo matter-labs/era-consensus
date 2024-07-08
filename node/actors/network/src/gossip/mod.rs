@@ -17,11 +17,10 @@ use self::batch_votes::BatchVotesWatch;
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
 use anyhow::Context as _;
 use fetch::RequestItem;
-use im::HashMap;
 use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync};
-use zksync_consensus_roles::{attester, node, validator};
+use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore};
 
 mod batch_votes;
@@ -57,10 +56,6 @@ pub(crate) struct Network {
     ///
     /// These are blocks that this node wants to request from remote peers via RPC.
     pub(crate) fetch_queue: fetch::Queue,
-    /// Last viewed QC.
-    pub(crate) last_viewed_qc: Option<attester::BatchQC>,
-    /// L1 batch qc.
-    pub(crate) batch_qc: HashMap<attester::BatchNumber, attester::BatchQC>,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
 }
@@ -82,8 +77,6 @@ impl Network {
             outbound: PoolWatch::new(cfg.gossip.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
             batch_votes: Arc::new(BatchVotesWatch::default()),
-            batch_qc: HashMap::new(),
-            last_viewed_qc: None,
             cfg,
             fetch_queue: fetch::Queue::default(),
             block_store,
@@ -155,63 +148,36 @@ impl Network {
         .await;
     }
 
-    /// Task that keeps hearing about new votes and updates the L1 batch qc.
+    /// Task that keeps hearing about new votes and looks for an L1 batch qc.
     /// It will propagate the QC if there's enough votes.
-    pub(crate) async fn update_batch_qc(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        // TODO This is not a good way to do this, we shouldn't be verifying the QC every time
-        // Can we get only the latest votes?
-        let attesters = self.genesis().attesters.as_ref().context("attesters")?;
+    pub(crate) async fn run_batch_qc_finder(&self, ctx: &ctx::Ctx) -> ctx::Result<()> {
+        let Some(attesters) = self.genesis().attesters.as_ref() else {
+            return Ok(());
+        };
+        let mut sub = self.batch_votes.subscribe();
         loop {
-            let mut sub = self.batch_votes.subscribe();
-            let votes = sync::changed(ctx, &mut sub)
-                .await
-                .context("batch votes")?
-                .clone();
-
-            // Check next QC to collect votes for.
-            let new_qc = self
-                .last_viewed_qc
-                .clone()
-                .map(|qc| {
-                    attester::BatchQC::new(attester::Batch {
-                        number: qc.message.number.next(),
-                    })
-                })
-                .unwrap_or_else(|| {
-                    attester::BatchQC::new(attester::Batch {
-                        number: attester::BatchNumber(0),
-                    })
-                })
-                .context("new qc")?;
-
-            // Check votes for the correct QC.
-            for (_, sig) in votes.0 {
-                if self
-                    .batch_qc
-                    .clone()
-                    .entry(new_qc.message.number)
-                    .or_insert_with(|| attester::BatchQC::new(new_qc.message.clone()).expect("qc"))
-                    .add(&sig, self.genesis())
-                    .is_err()
-                {
-                    // TODO: Should we ban the peer somehow?
-                    continue;
-                }
-            }
-
-            let weight = attesters.weight_of_keys(
-                self.batch_qc
-                    .get(&new_qc.message.number)
-                    .context("last qc")?
-                    .signatures
-                    .keys(),
-            );
-
-            if weight < attesters.threshold() {
-                return Ok(());
+            // In the future when we might be gossiping about multiple batches at the same time,
+            // we can collect the ones we submitted into a skip list until we see them confirmed
+            // on L1 and we can finally increase the minimum as well.
+            let quorums = {
+                let votes = sync::changed(ctx, &mut sub).await?;
+                votes.find_quorums(attesters, |_| false)
             };
 
-            // If we have enough weight, we can update the last viewed QC and propagate it.
+            for qc in quorums {
+                // In the future this should come from confirmations, but for now it's best effort, so we can forget ASAP.
+                // TODO: An initial value could be looked up in the database even now.
+                let next_batch_number = qc.message.number.next();
+
+                self.batch_store
+                    .queue_batch_qc(ctx, qc)
+                    .await
+                    .context("queue_batch_qc")?;
+
+                self.batch_votes
+                    .set_min_batch_number(next_batch_number)
+                    .await;
+            }
         }
     }
 }

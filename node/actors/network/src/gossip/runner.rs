@@ -32,6 +32,9 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'
     }
 }
 
+/// Receive the snapshot of known batch votes from a remote peer.
+///
+/// The server receives the *diff* from remote peers, which it merges into the common register.
 struct PushBatchVotesServer<'a>(&'a Network);
 
 #[async_trait::async_trait]
@@ -53,8 +56,10 @@ impl rpc::Handler<rpc::push_batch_votes::Rpc> for PushBatchVotesServer<'_> {
     }
 }
 
+/// Represents what we know about the state of available blocks on the remote peer.
 struct PushBlockStoreStateServer<'a> {
     state: sync::watch::Sender<BlockStoreState>,
+    /// The network is required for the verification of messages.
     net: &'a Network,
 }
 
@@ -71,11 +76,13 @@ impl<'a> PushBlockStoreStateServer<'a> {
     }
 }
 
+/// Represents what we know about the state of available batches on the remote peer.
 struct PushBatchStoreStateServer {
     state: sync::watch::Sender<BatchStoreState>,
 }
 
 impl PushBatchStoreStateServer {
+    /// Start out not knowing anything about the remote peer.
     fn new() -> Self {
         Self {
             state: sync::watch::channel(BatchStoreState {
@@ -194,6 +201,8 @@ impl Network {
                     self.cfg.rpc.get_batch_rate,
                 )
                 .add_server(ctx, rpc::ping::Server, rpc::ping::RATE);
+
+            // If there is an attester committee then
             if self.genesis().attesters.as_ref().is_some() {
                 let push_signature_client = rpc::Client::<rpc::push_batch_votes::Rpc>::new(
                     ctx,
@@ -208,11 +217,14 @@ impl Network {
                 // Push L1 batch votes updates to peer.
                 s.spawn::<()>(async {
                     let push_signature_client = push_signature_client;
+                    // Snapshot of the batches when we last pushed to the peer.
                     let mut old = BatchVotes::default();
+                    // Subscribe to what we know about the state of the whole network.
                     let mut sub = self.batch_votes.subscribe();
                     sub.mark_changed();
                     loop {
                         let new = sync::changed(ctx, &mut sub).await?.clone();
+                        // Get the *new* votes, which haven't been pushed before.
                         let diff = new.get_newer(&old);
                         if diff.is_empty() {
                             continue;

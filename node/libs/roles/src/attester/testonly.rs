@@ -1,6 +1,7 @@
 use super::{
-    AggregateMultiSig, AggregateSignature, Batch, BatchNumber, BatchQC, Committee, Msg, MsgHash,
-    MultiSig, PublicKey, SecretKey, Signature, Signed, Signers, SyncBatch, WeightedAttester,
+    AggregateMultiSig, AggregateSignature, Batch, BatchHash, BatchNumber, BatchQC, Committee, Msg,
+    MsgHash, MultiSig, PublicKey, SecretKey, Signature, Signed, Signers, SyncBatch,
+    WeightedAttester,
 };
 use crate::validator::Payload;
 use bit_vec::BitVec;
@@ -48,7 +49,10 @@ impl Distribution<Committee> for Standard {
 
 impl Distribution<Batch> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Batch {
-        Batch { number: rng.gen() }
+        Batch {
+            number: rng.gen(),
+            hash: rng.gen(),
+        }
     }
 }
 
@@ -69,15 +73,17 @@ impl Distribution<BatchNumber> for Standard {
     }
 }
 
+impl Distribution<BatchHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchHash {
+        BatchHash(rng.gen())
+    }
+}
+
 impl Distribution<BatchQC> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BatchQC {
-        let mut signatures = MultiSig::default();
-        for _ in 0..rng.gen_range(0..5) {
-            signatures.add(rng.gen(), rng.gen());
-        }
         BatchQC {
             message: rng.gen(),
-            signatures,
+            signatures: rng.gen(),
         }
     }
 }
@@ -100,6 +106,16 @@ impl Distribution<Signature> for Standard {
     }
 }
 
+impl Distribution<MultiSig> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MultiSig {
+        let mut sig = MultiSig::default();
+        for _ in 0..rng.gen_range(0..5) {
+            sig.add(rng.gen(), rng.gen());
+        }
+        sig
+    }
+}
+
 impl Distribution<AggregateSignature> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateSignature {
         AggregateSignature(rng.gen())
@@ -115,7 +131,11 @@ impl Distribution<AggregateMultiSig> for Standard {
     }
 }
 
-impl<V: Variant<Msg>> Distribution<Signed<V>> for Standard {
+impl<V> Distribution<Signed<V>> for Standard
+where
+    V: Variant<Msg>,
+    Standard: Distribution<V>,
+{
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Signed<V> {
         rng.gen::<SecretKey>().sign_msg(rng.gen())
     }

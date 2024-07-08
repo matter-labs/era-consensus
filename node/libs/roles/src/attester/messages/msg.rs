@@ -14,6 +14,9 @@ pub enum Msg {
 
 impl Msg {
     /// Returns the hash of the message.
+    ///
+    /// TODO: Eventually this should be a hash over an ABI encoded payload that
+    /// can be verified in Solidity.
     pub fn hash(&self) -> MsgHash {
         MsgHash(keccak256::Keccak256::new(&zksync_protobuf::canonical(self)))
     }
@@ -154,9 +157,15 @@ impl Committee {
     /// Compute the sum of weights of as a list of public keys.
     ///
     /// The method assumes that the keys are unique and does not de-duplicate.
+    pub fn weight(&self, key: &attester::PublicKey) -> Option<u64> {
+        self.index(key).map(|i| self.vec[i].weight)
+    }
+
+    /// Compute the sum of weights of as a list of public keys.
+    ///
+    /// The method assumes that the keys are unique and does not de-duplicate.
     pub fn weight_of_keys<'a>(&self, keys: impl Iterator<Item = &'a attester::PublicKey>) -> u64 {
-        keys.filter_map(|pk| self.index(pk).map(|i| self.vec[i].weight))
-            .sum()
+        keys.filter_map(|key| self.weight(key)).sum()
     }
 
     /// Compute the sum of weights of signers given as a bit vector.
@@ -262,5 +271,8 @@ pub struct WeightedAttester {
     /// Attester key
     pub key: attester::PublicKey,
     /// Attester weight inside the Committee.
-    pub weight: u64,
+    pub weight: Weight,
 }
+
+/// Voting weight.
+pub type Weight = u64;
