@@ -56,7 +56,7 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     /// Returns `None` if no batches have been created yet.
     async fn last_batch(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchNumber>>;
 
-    /// Get the numbers of L1 batches which are missing the corresponding L1 batch quorum certificates
+    /// Get the earliest of L1 batches which are missing the corresponding L1 batch quorum certificates
     /// and potentially need to be signed by attesters.
     ///
     /// A replica might never have a complete history of L1 batch QCs; once the L1 batch is included on L1,
@@ -65,10 +65,10 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     /// where it's still necessary to gossip votes; for example the main node will want to have a QC on
     /// every batch while it's the one submitting them to L1, while replicas can ask the L1 what is considered
     /// final.
-    async fn unsigned_batch_numbers(
+    async fn earliest_batch_number_to_sign(
         &self,
         ctx: &ctx::Ctx,
-    ) -> ctx::Result<Vec<attester::BatchNumber>>;
+    ) -> ctx::Result<Option<attester::BatchNumber>>;
 
     /// Get the L1 batch QC from storage with the highest number.
     ///
@@ -258,23 +258,55 @@ impl BatchStore {
         Ok(batch)
     }
 
-    /// Retrieve the number of all batches that don't have a QC yet and potentially need to be signed.
-    ///
-    /// It returns only the numbers which follow the last finalized batch, that is, there might be batches
-    /// before the earliest in these numbers that isn't signed, but it would be futile to sign them any more.
-    pub async fn unsigned_batch_numbers(
+    /// Retrieve the maximum batch number that we know about.
+    pub async fn latest_batch_number(
         &self,
         ctx: &ctx::Ctx,
-    ) -> ctx::Result<Vec<attester::BatchNumber>> {
+    ) -> ctx::Result<Option<attester::BatchNumber>> {
+        {
+            let inner = self.inner.borrow();
+            if let Some(ref batch) = inner.queued.last {
+                return Ok(Some(batch.number));
+            }
+            if let Some(ref batch) = inner.persisted.last {
+                return Ok(Some(batch.number));
+            }
+        }
+
+        let batch = self
+            .persistent
+            .last_batch(ctx)
+            .await
+            .context("persistent.last_batch()")?;
+
+        Ok(batch)
+    }
+
+    /// Retrieve the minimum batch number that doesn't have a QC yet and potentially need to be signed.
+    ///
+    /// There might be unsigned batches before this one in the database, however we don't consider it
+    /// necessary to sign them any more, because for example they have already been submitted to L1.
+    ///
+    /// There might also be signed batches *after* this one, due to the way gossiping works, but we
+    /// might still have to fill the gaps by (re)submitting our signature to allow them to be submitted.
+    ///
+    /// Returns `None` if all existing batches are signed, or there are not batches yet to be signed at all.
+    pub async fn earliest_batch_number_to_sign(
+        &self,
+        ctx: &ctx::Ctx,
+    ) -> ctx::Result<Option<attester::BatchNumber>> {
         let unsigned = self
             .persistent
-            .unsigned_batch_numbers(ctx)
+            .earliest_batch_number_to_sign(ctx)
             .await
             .context("persistent.get_batch_to_sign()")?;
         Ok(unsigned)
     }
 
     /// Retrieve a batch to be signed.
+    ///
+    /// This might be `None` even if the L1 batch already exists, because the commitment
+    /// in it is populated asynchronously.
     pub async fn batch_to_sign(
         &self,
         ctx: &ctx::Ctx,
@@ -322,6 +354,18 @@ impl BatchStore {
         // Now it's definitely safe to store it.
         self.persistent.store_qc(ctx, qc).await?;
         Ok(())
+    }
+
+    /// Check if a given batch number has a quorum certificate stored for it.
+    pub async fn has_batch_qc(
+        &self,
+        ctx: &ctx::Ctx,
+        number: attester::BatchNumber,
+    ) -> ctx::Result<bool> {
+        self.persistent
+            .get_batch_qc(ctx, number)
+            .await
+            .map(|qc| qc.is_some())
     }
 
     /// Waits until the given batch is queued (in memory, or persisted).

@@ -141,18 +141,17 @@ impl PersistentBatchStore for BatchStore {
         Ok(certs.get(last_batch_number).cloned())
     }
 
-    async fn unsigned_batch_numbers(
+    async fn earliest_batch_number_to_sign(
         &self,
         _ctx: &ctx::Ctx,
-    ) -> ctx::Result<Vec<attester::BatchNumber>> {
+    ) -> ctx::Result<Option<attester::BatchNumber>> {
         let batches = self.0.batches.lock().unwrap();
         let certs = self.0.certs.lock().unwrap();
 
         Ok(batches
             .iter()
             .map(|b| b.number)
-            .filter(|n| !certs.contains_key(n))
-            .collect())
+            .find(|n| !certs.contains_key(n)))
     }
 
     async fn get_batch_to_sign(
