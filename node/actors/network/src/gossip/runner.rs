@@ -79,17 +79,19 @@ impl<'a> PushBlockStoreStateServer<'a> {
 /// Represents what we know about the state of available batches on the remote peer.
 struct PushBatchStoreStateServer {
     state: sync::watch::Sender<BatchStoreState>,
+    max_batch_size: usize,
 }
 
 impl PushBatchStoreStateServer {
     /// Start out not knowing anything about the remote peer.
-    fn new() -> Self {
+    fn new(max_batch_size: usize) -> Self {
         Self {
             state: sync::watch::channel(BatchStoreState {
                 first: BatchNumber(0),
                 last: None,
             })
             .0,
+            max_batch_size,
         }
     }
 }
@@ -113,7 +115,7 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushBlockStoreStateServ
 #[async_trait]
 impl rpc::Handler<rpc::push_batch_store_state::Rpc> for &PushBatchStoreStateServer {
     fn max_req_size(&self) -> usize {
-        10 * kB
+        self.max_batch_size.saturating_add(kB)
     }
     async fn handle(
         &self,
@@ -175,7 +177,7 @@ impl Network {
             ctx,
             self.cfg.rpc.push_batch_store_state_rate,
         );
-        let push_batch_store_state_server = PushBatchStoreStateServer::new();
+        let push_batch_store_state_server = PushBatchStoreStateServer::new(self.cfg.max_batch_size);
         scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_client(&push_validator_addrs_client)
@@ -354,7 +356,7 @@ impl Network {
                                 self.cfg.rpc.get_batch_timeout.map(|t| ctx.with_timeout(t));
                             let ctx = ctx_with_timeout.as_ref().unwrap_or(ctx);
                             let batch = call
-                                .call(ctx, &req, self.cfg.max_block_size.saturating_add(kB))
+                                .call(ctx, &req, self.cfg.max_batch_size.saturating_add(kB))
                                 .await?
                                 .0
                                 .context("empty response")?;

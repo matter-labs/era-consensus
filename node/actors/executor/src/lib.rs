@@ -49,6 +49,9 @@ pub struct Config {
     pub public_addr: net::Host,
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
+    /// Maximal size of a batch, which includes `max_payload_size` per block in the batch,
+    /// plus the size of the Merkle proof of the commitment being included on L1 (should be ~1kB).
+    pub max_batch_size: usize,
     /// Key of this node. It uniquely identifies the node.
     /// It should match the secret key provided in the `node_key` file.
     pub node_key: node::SecretKey,
@@ -107,6 +110,7 @@ impl Executor {
             attester_key: self.attester.as_ref().map(|a| a.key.clone()),
             ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
+            max_batch_size: self.config.max_batch_size.saturating_add(kB),
             max_block_queue_size: 20,
             tcp_accept_rate: limiter::Rate {
                 burst: 10,

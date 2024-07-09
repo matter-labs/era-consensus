@@ -6,7 +6,7 @@ use anyhow::Context;
 use zksync_concurrency::ctx;
 use zksync_concurrency::time;
 use zksync_consensus_network::gossip::BatchVotesPublisher;
-use zksync_consensus_roles::attester::BatchNumber;
+use zksync_consensus_roles::attester;
 use zksync_consensus_storage::{BatchStore, BlockStore};
 
 use crate::Attester;
@@ -39,51 +39,73 @@ impl AttesterRunner {
     /// Poll the database for new L1 batches and publish our signature over the batch.
     pub(super) async fn run(self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         let public_key = self.attester.key.public();
-        // The first batch number we want to publish our vote for. We don't have to re-publish a vote
-        // because once it enters the vote register even future peers can pull it from there.
-        let mut min_batch_number = BatchNumber(0);
+        // TODO: In the future when we have attester rotation these checks will have to be checked inside the loop.
+        let Some(attesters) = self.block_store.genesis().attesters.as_ref() else {
+            tracing::warn!("Attester key is set, but the attester committee is empty.");
+            return Ok(());
+        };
+        if !attesters.contains(&public_key) {
+            tracing::warn!("Attester key is set, but not part of the attester committee.");
+            return Ok(());
+        }
+
+        // Find the initial range of batches that we want to (re)sign after a (re)start.
+        let last_batch_number = self
+            .batch_store
+            .last_batch_number(ctx)
+            .await
+            .context("last_batch_number")?
+            .unwrap_or_default();
+
+        // Determine the batch to start signing from.
+        let earliest_batch_number = self
+            .batch_store
+            .earliest_batch_number_to_sign(ctx)
+            .await
+            .context("earliest_batch_number_to_sign")?
+            .unwrap_or(last_batch_number);
+
+        tracing::info!(%earliest_batch_number, %last_batch_number, "attesting batches");
+
+        let mut batch_number = earliest_batch_number;
+
         loop {
-            // Pretend that the attesters can evolve.
-            let Some(attesters) = self.block_store.genesis().attesters.as_ref() else {
-                continue;
-            };
-            if !attesters.contains(&public_key) {
-                continue;
-            }
+            // Try to get the next batch to sign; the commitment might not be available just yet.
+            let batch = self.wait_for_batch_to_sign(ctx, batch_number).await?;
 
-            let mut unsigned_batch_numbers = self
-                .batch_store
-                .unsigned_batch_numbers(ctx)
+            // The certificates might be collected out of order because of how gossip works;
+            // we could query the DB to see if we already have a QC, or we can just go ahead
+            // and publish our vote, and let others ignore it.
+
+            tracing::info!(%batch_number, "publishing attestation");
+
+            // We only have to publish a vote once; future peers can pull it from the register.
+            self.publisher
+                .publish(attesters, &self.attester.key, batch)
                 .await
-                .context("unsigned_batch_numbers")?;
+                .context("publish")?;
 
-            // Just to be sure we go from smaller to higher batches.
-            unsigned_batch_numbers.sort();
+            batch_number = batch_number.next();
+        }
+    }
 
-            for bn in unsigned_batch_numbers {
-                // If we have already voted on this we can move on, no need to fetch the payload again.
-                // Batches appear in the store in order, even if we might have QC for a newer and not for an older batch,
-                // so once published our vote for a certain height, we can expect that we only have to vote on newer batches.
-                if bn < min_batch_number {
-                    continue;
-                }
-
-                if let Some(batch) = self
-                    .batch_store
-                    .batch_to_sign(ctx, bn)
-                    .await
-                    .context("batch_to_sign")?
-                {
-                    min_batch_number = batch.number.next();
-
-                    self.publisher
-                        .publish(attesters, &self.attester.key, batch)
-                        .await
-                        .context("publish")?;
-                }
+    /// Wait for the batch commitment to become available.
+    async fn wait_for_batch_to_sign(
+        &self,
+        ctx: &ctx::Ctx,
+        number: attester::BatchNumber,
+    ) -> ctx::Result<attester::Batch> {
+        loop {
+            if let Some(batch) = self
+                .batch_store
+                .batch_to_sign(ctx, number)
+                .await
+                .context("batch_to_sign")?
+            {
+                return Ok(batch);
+            } else {
+                ctx.sleep(POLL_INTERVAL).await?;
             }
-
-            ctx.sleep(POLL_INTERVAL).await?;
         }
     }
 }
