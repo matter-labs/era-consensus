@@ -6,6 +6,7 @@ use anyhow::Context;
 use zksync_concurrency::ctx;
 use zksync_concurrency::time;
 use zksync_consensus_network::gossip::BatchVotesPublisher;
+use zksync_consensus_roles::attester;
 use zksync_consensus_storage::{BatchStore, BlockStore};
 
 use crate::Attester;
@@ -49,56 +50,61 @@ impl AttesterRunner {
         }
 
         // Find the initial range of batches that we want to (re)sign after a (re)start.
-        let mut last_batch_number = self
+        let last_batch_number = self
             .batch_store
             .last_batch_number(ctx)
             .await
             .context("last_batch_number")?
             .unwrap_or_default();
 
-        let mut earliest_batch_number = self
+        // Determine the batch to start signing from.
+        let earliest_batch_number = self
             .batch_store
             .earliest_batch_number_to_sign(ctx)
             .await
             .context("earliest_batch_number_to_sign")?
             .unwrap_or(last_batch_number);
 
+        tracing::info!(%earliest_batch_number, %last_batch_number, "attesting batches");
+
+        let mut batch_number = earliest_batch_number;
+
         loop {
-            while earliest_batch_number <= last_batch_number {
-                // Try to get the next batch to sign; the commitment might not be available just yet.
-                let Some(batch) = self
-                    .batch_store
-                    .batch_to_sign(ctx, earliest_batch_number)
-                    .await
-                    .context("batch_to_sign")?
-                else {
-                    break;
-                };
+            // Try to get the next batch to sign; the commitment might not be available just yet.
+            let batch = self.wait_for_batch_to_sign(ctx, batch_number).await?;
 
-                // The certificates might be collected out of order because of how gossip works;
-                // we could query the DB to see if we already have a QC, or we can just go ahead
-                // and publish our vote, and let others ignore it.
+            // The certificates might be collected out of order because of how gossip works;
+            // we could query the DB to see if we already have a QC, or we can just go ahead
+            // and publish our vote, and let others ignore it.
 
-                // We only have to publish a vote once; future peers can pull it from the register.
-                self.publisher
-                    .publish(attesters, &self.attester.key, batch)
-                    .await
-                    .context("publish")?;
+            tracing::info!(%batch_number, "publishing attestation");
 
-                earliest_batch_number = earliest_batch_number.next();
-            }
+            // We only have to publish a vote once; future peers can pull it from the register.
+            self.publisher
+                .publish(attesters, &self.attester.key, batch)
+                .await
+                .context("publish")?;
 
-            // Wait some time before we poll the database again to see if there is a new batch to sign.
-            ctx.sleep(POLL_INTERVAL).await?;
+            batch_number = batch_number.next();
+        }
+    }
 
-            // Refresh the upper end of the range.
-            if earliest_batch_number > last_batch_number {
-                last_batch_number = self
-                    .batch_store
-                    .last_batch_number(ctx)
-                    .await
-                    .context("last_batch_number")?
-                    .unwrap_or(last_batch_number);
+    /// Wait for the batch commitment to become available.
+    async fn wait_for_batch_to_sign(
+        &self,
+        ctx: &ctx::Ctx,
+        number: attester::BatchNumber,
+    ) -> ctx::Result<attester::Batch> {
+        loop {
+            if let Some(batch) = self
+                .batch_store
+                .batch_to_sign(ctx, number)
+                .await
+                .context("batch_to_sign")?
+            {
+                return Ok(batch);
+            } else {
+                ctx.sleep(POLL_INTERVAL).await?;
             }
         }
     }
