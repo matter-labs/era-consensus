@@ -8,6 +8,7 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 links = "zksync_protobuf_proto"
+description = "ZKsync consensus protobuf types and utilities"
 
 [dependencies]
 zksync_concurrency.workspace = true
