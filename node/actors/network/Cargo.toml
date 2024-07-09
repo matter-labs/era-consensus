@@ -7,6 +7,7 @@ homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 keywords.workspace = true
+description = "ZKsync consensus network actor"
 
 [dependencies]
 zksync_concurrency.workspace = true

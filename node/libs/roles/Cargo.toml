@@ -8,6 +8,7 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 links = "zksync_consensus_roles_proto"
+description = "ZKsync consensus node role types"
 
 [dependencies]
 zksync_concurrency.workspace = true
