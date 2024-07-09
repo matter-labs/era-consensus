@@ -115,8 +115,25 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
 #[derive(Debug)]
 struct Inner {
     /// Batches that are queued to be persisted.
+    ///
+    /// This reflects the state of the `cache`. Its source is mainly the gossip layer (the RPC protocols started in `Network::run_stream`):
+    /// * the node pushes `SyncBatch` records which appear in `queued` to its gossip peers
+    /// * the node pulls `SyncBatch` records that it needs from gossip peers that reported to have them, and adds them to `queued`
+    /// * the `BatchStoreRunner` looks for new items in `queued` and pushes them into the `PersistentBatchStore`
+    ///
+    /// XXX: There doesn't seem to be anything that currently actively pushes into `queued` from outside gossip,
+    /// like it happens with the `BlockStore::queue_block` being called from BFT.
     queued: BatchStoreState,
     /// Batches that are already persisted.
+    ///
+    /// This reflects the state of the database. Its source is mainly the `PersistentBatchStore`:
+    /// * the `BatchStoreRunner` subscribes to `PersistedBatchStore::persisted()` and copies its contents to here;
+    ///   it also uses the opportunity to clear items from the `cache` but notably doesn't update `queued` which
+    ///   which would cause the data to be gossiped
+    ///
+    /// Be careful that the `BatchStoreState` works with `SyncBatch` which requires a `proof` of inclusion on L1,
+    /// so this persistence is much delayed compared to the latest batch physically available in the database:
+    /// the batch also has to be signed by attesters, submitted to L1, and finalised there to appear here.
     persisted: BatchStoreState,
     cache: VecDeque<attester::SyncBatch>,
 }
