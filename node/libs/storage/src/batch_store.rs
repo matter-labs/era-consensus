@@ -258,16 +258,20 @@ impl BatchStore {
         Ok(batch)
     }
 
-    /// Retrieve the maximum batch number that we know about.
+    /// Retrieve the maximum persisted batch number.
     pub async fn latest_batch_number(
         &self,
         ctx: &ctx::Ctx,
     ) -> ctx::Result<Option<attester::BatchNumber>> {
         {
             let inner = self.inner.borrow();
-            if let Some(ref batch) = inner.queued.last {
-                return Ok(Some(batch.number));
-            }
+            // For now we ignore the cache here because it's not clear how it's updated,
+            // validation is missing and it seems to depend entirely on gossip. Don't
+            // want it to somehow get us stuck and prevent voting. At least the persisted
+            // cache is maintained by two background processes copying the data from the DB.
+            // if let Some(ref batch) = inner.queued.last {
+            //     return Ok(Some(batch.number));
+            // }
             if let Some(ref batch) = inner.persisted.last {
                 return Ok(Some(batch.number));
             }
@@ -332,6 +336,9 @@ impl BatchStore {
         batch: attester::SyncBatch,
         _genesis: validator::Genesis,
     ) -> ctx::Result<()> {
+        // XXX: Once we can validate `SyncBatch::proof` we should do it before adding the
+        // batch to the cache, otherwise a malicious peer could serve us data that prevents
+        // other inputs from entering the queue. It will also cause it to be gossiped at the moment.
         sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
             inner.queued.next() >= batch.number
         })

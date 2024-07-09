@@ -113,6 +113,9 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushBlockStoreStateServ
 #[async_trait]
 impl rpc::Handler<rpc::push_batch_store_state::Rpc> for &PushBatchStoreStateServer {
     fn max_req_size(&self) -> usize {
+        // XXX: The request will actually contain a `SyncBatch` which has all the blocks in the batch,
+        // so a constant 10kB cannot be the right limit. There is a `max_block_size` in config which
+        // should come into play, with some other limit on the batch size.
         10 * kB
     }
     async fn handle(
@@ -353,6 +356,8 @@ impl Network {
                             let ctx_with_timeout =
                                 self.cfg.rpc.get_batch_timeout.map(|t| ctx.with_timeout(t));
                             let ctx = ctx_with_timeout.as_ref().unwrap_or(ctx);
+                            // XXX: `max_block_size` isn't the right limit here as the response
+                            // will contain all blocks of a batch.
                             let batch = call
                                 .call(ctx, &req, self.cfg.max_block_size.saturating_add(kB))
                                 .await?
