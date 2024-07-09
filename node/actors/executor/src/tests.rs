@@ -16,6 +16,7 @@ fn config(cfg: &network::Config) -> Config {
         server_addr: *cfg.server_addr,
         public_addr: cfg.public_addr.clone(),
         max_payload_size: usize::MAX,
+        max_batch_size: usize::MAX,
         node_key: cfg.gossip.key.clone(),
         gossip_dynamic_inbound_limit: cfg.gossip.dynamic_inbound_limit,
         gossip_static_inbound: cfg.gossip.static_inbound.clone(),

@@ -17,7 +17,7 @@ use zksync_consensus_network::http;
 use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::testonly::{TestMemoryStorage, TestMemoryStorageRunner};
 use zksync_consensus_utils::debug_page;
-use zksync_protobuf::{read_required, required, ProtoFmt};
+use zksync_protobuf::{kB, read_required, required, ProtoFmt};
 
 fn read_required_secret_text<T: TextFmt>(text: &Option<String>) -> anyhow::Result<T> {
     Text::new(
@@ -96,6 +96,7 @@ pub struct AppConfig {
 
     pub genesis: validator::Genesis,
     pub max_payload_size: usize,
+    pub max_batch_size: usize,
     pub validator_key: Option<validator::SecretKey>,
     pub attester_key: Option<attester::SecretKey>,
 
@@ -126,6 +127,16 @@ impl ProtoFmt for AppConfig {
                 ProtoFmt::read(e).with_context(|| format!("gossip_static_outbound[{i}]"))?;
             gossip_static_outbound.insert(node_addr.key, node_addr.addr);
         }
+
+        let max_payload_size = required(&r.max_payload_size)
+            .and_then(|x| Ok((*x).try_into()?))
+            .context("max_payload_size")?;
+
+        let max_batch_size = match &r.max_batch_size {
+            Some(x) => (*x).try_into().context("max_payload_size")?,
+            None => max_payload_size * 100 + kB, // Merkle proof is ~1kB and we have a batch per minute.
+        };
+
         Ok(Self {
             server_addr: read_required_text(&r.server_addr).context("server_addr")?,
             public_addr: net::Host(required(&r.public_addr).context("public_addr")?.clone()),
@@ -134,9 +145,8 @@ impl ProtoFmt for AppConfig {
                 .context("metrics_server_addr")?,
 
             genesis: read_required(&r.genesis).context("genesis")?,
-            max_payload_size: required(&r.max_payload_size)
-                .and_then(|x| Ok((*x).try_into()?))
-                .context("max_payload_size")?,
+            max_payload_size,
+            max_batch_size,
             // TODO: read secret.
             validator_key: read_optional_secret_text(&r.validator_secret_key)
                 .context("validator_secret_key")?,
@@ -180,6 +190,7 @@ impl ProtoFmt for AppConfig {
 
             genesis: Some(self.genesis.build()),
             max_payload_size: Some(self.max_payload_size.try_into().unwrap()),
+            max_batch_size: Some(self.max_batch_size.try_into().unwrap()),
             validator_secret_key: self.validator_key.as_ref().map(TextFmt::encode),
             attester_secret_key: self.attester_key.as_ref().map(TextFmt::encode),
 
@@ -257,6 +268,7 @@ impl Configs {
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
                 max_payload_size: self.app.max_payload_size,
+                max_batch_size: self.app.max_batch_size,
                 rpc: executor::RpcConfig::default(),
                 debug_page: self.app.debug_page.as_ref().map(|debug_page_config| {
                     http::DebugPageConfig {
