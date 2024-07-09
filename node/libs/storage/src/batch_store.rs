@@ -259,24 +259,32 @@ impl BatchStore {
     }
 
     /// Retrieve the maximum persisted batch number.
-    pub async fn latest_batch_number(
+    pub async fn last_batch_number(
         &self,
         ctx: &ctx::Ctx,
     ) -> ctx::Result<Option<attester::BatchNumber>> {
         {
-            let inner = self.inner.borrow();
-            // For now we ignore the cache here because it's not clear how it's updated,
+            // let inner = self.inner.borrow();
+
+            // For now we ignore `queued` here because it's not clear how it's updated,
             // validation is missing and it seems to depend entirely on gossip. Don't
             // want it to somehow get us stuck and prevent voting. At least the persisted
             // cache is maintained by two background processes copying the data from the DB.
+
             // if let Some(ref batch) = inner.queued.last {
             //     return Ok(Some(batch.number));
             // }
-            if let Some(ref batch) = inner.persisted.last {
-                return Ok(Some(batch.number));
-            }
+
+            // We also have to ignore `persisted` because `last` is an instance of `SyncBatch`
+            // which is conceptually only available once we have a proof that it's been included
+            // on L1, which requires a signature in the first place.
+
+            // if let Some(ref batch) = inner.persisted.last {
+            //     return Ok(Some(batch.number));
+            // }
         }
 
+        // Get the last L1 batch that exists in the DB regardless of its status.
         let batch = self
             .persistent
             .last_batch(ctx)

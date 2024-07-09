@@ -49,11 +49,11 @@ impl AttesterRunner {
         }
 
         // Find the initial range of batches that we want to (re)sign after a (re)start.
-        let mut latest_batch_number = self
+        let mut last_batch_number = self
             .batch_store
-            .latest_batch_number(ctx)
+            .last_batch_number(ctx)
             .await
-            .context("latest_batch_number")?
+            .context("last_batch_number")?
             .unwrap_or_default();
 
         let mut earliest_batch_number = self
@@ -61,10 +61,10 @@ impl AttesterRunner {
             .earliest_batch_number_to_sign(ctx)
             .await
             .context("earliest_batch_number_to_sign")?
-            .unwrap_or(latest_batch_number);
+            .unwrap_or(last_batch_number);
 
         loop {
-            while earliest_batch_number <= latest_batch_number {
+            while earliest_batch_number <= last_batch_number {
                 // Try to get the next batch to sign; the commitment might not be available just yet.
                 let Some(batch) = self
                     .batch_store
@@ -92,12 +92,14 @@ impl AttesterRunner {
             ctx.sleep(POLL_INTERVAL).await?;
 
             // Refresh the upper end of the range.
-            latest_batch_number = self
-                .batch_store
-                .latest_batch_number(ctx)
-                .await
-                .context("latest_batch_number")?
-                .unwrap_or(latest_batch_number)
+            if earliest_batch_number > last_batch_number {
+                last_batch_number = self
+                    .batch_store
+                    .last_batch_number(ctx)
+                    .await
+                    .context("last_batch_number")?
+                    .unwrap_or(last_batch_number);
+            }
         }
     }
 }
