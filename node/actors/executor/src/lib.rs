@@ -9,12 +9,13 @@ use std::{
 };
 use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
-use zksync_consensus_network as network;
+use zksync_consensus_network::{self as network};
 use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
+mod attestation;
 mod io;
 #[cfg(test)]
 mod tests;
@@ -127,7 +128,6 @@ impl Executor {
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
-            s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
             let (net, runner) = network::Network::new(
                 network_config,
                 self.block_store.clone(),
@@ -135,12 +135,22 @@ impl Executor {
                 network_actor_pipe,
             );
             net.register_metrics();
+
+            s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
 
-            if let Some(_attester) = self.attester {
+            if let Some(attester) = self.attester {
                 tracing::info!("Running the node in attester mode.");
-                let _publisher = net.batch_vote_publisher();
-                // TODO: Start a background task that polls the store for new L1 batches and publishes votes.
+                let runner = attestation::AttesterRunner::new(
+                    self.block_store.clone(),
+                    self.batch_store.clone(),
+                    attester,
+                    net.batch_vote_publisher(),
+                );
+                s.spawn::<()>(async {
+                    runner.run(ctx).await?;
+                    Ok(())
+                });
             }
 
             if let Some(debug_config) = self.config.debug_page {

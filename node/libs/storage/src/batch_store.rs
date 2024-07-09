@@ -56,17 +56,41 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     /// Returns `None` if no batches have been created yet.
     async fn last_batch(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchNumber>>;
 
+    /// Get the numbers of L1 batches which are missing the corresponding L1 batch quorum certificates
+    /// and potentially need to be signed by attesters.
+    ///
+    /// A replica might never have a complete history of L1 batch QCs; once the L1 batch is included on L1,
+    /// the replicas might use the [attester::SyncBatch] route to obtain them, in which case they will not
+    /// have a QC and no reason to get them either. The store will have sufficient information to decide
+    /// where it's still necessary to gossip votes; for example the main node will want to have a QC on
+    /// every batch while it's the one submitting them to L1, while replicas can ask the L1 what is considered
+    /// final.
+    async fn unsigned_batch_numbers(
+        &self,
+        ctx: &ctx::Ctx,
+    ) -> ctx::Result<Vec<attester::BatchNumber>>;
+
     /// Get the L1 batch QC from storage with the highest number.
     ///
     /// Returns `None` if we don't have a QC for any of the batches yet.
     async fn last_batch_qc(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchQC>>;
 
-    /// Returns the batch with the given number.
+    /// Returns the [attester::SyncBatch] with the given number, which is used by peers
+    /// to catch up with L1 batches that they might have missed if they went offline.
     async fn get_batch(
         &self,
         ctx: &ctx::Ctx,
         number: attester::BatchNumber,
     ) -> ctx::Result<Option<attester::SyncBatch>>;
+
+    /// Returns the [attester::Batch] with the given number, which is the `message` that
+    /// appears in [attester::BatchQC], and represents the content that needs to be signed
+    /// by the attesters.
+    async fn get_batch_to_sign(
+        &self,
+        ctx: &ctx::Ctx,
+        number: attester::BatchNumber,
+    ) -> ctx::Result<Option<attester::Batch>>;
 
     /// Returns the QC of the batch with the given number.
     async fn get_batch_qc(
@@ -231,6 +255,36 @@ impl BatchStore {
             .get_batch(ctx, number)
             .await
             .context("persistent.batch()")?;
+        Ok(batch)
+    }
+
+    /// Retrieve the number of all batches that don't have a QC yet and potentially need to be signed.
+    ///
+    /// It returns only the numbers which follow the last finalized batch, that is, there might be batches
+    /// before the earliest in these numbers that isn't signed, but it would be futile to sign them any more.
+    pub async fn unsigned_batch_numbers(
+        &self,
+        ctx: &ctx::Ctx,
+    ) -> ctx::Result<Vec<attester::BatchNumber>> {
+        let unsigned = self
+            .persistent
+            .unsigned_batch_numbers(ctx)
+            .await
+            .context("persistent.get_batch_to_sign()")?;
+        Ok(unsigned)
+    }
+
+    /// Retrieve a batch to be signed.
+    pub async fn batch_to_sign(
+        &self,
+        ctx: &ctx::Ctx,
+        number: attester::BatchNumber,
+    ) -> ctx::Result<Option<attester::Batch>> {
+        let batch = self
+            .persistent
+            .get_batch_to_sign(ctx, number)
+            .await
+            .context("persistent.get_batch_to_sign()")?;
         Ok(batch)
     }
 
