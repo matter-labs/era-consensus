@@ -86,6 +86,14 @@ impl AttesterRunner {
                 .context("publish")?;
 
             batch_number = batch_number.next();
+
+            // We can avoid actively polling the database by waiting for the next persisted batch to appear
+            // in the memory (which itself relies on polling). This happens once we have the commitment,
+            // which for nodes that get the blocks through BFT should happen after execution. Nodes which
+            // rely on batch sync don't participate in attestations as they need the batch on L1 first.
+            self.batch_store
+                .wait_until_persisted(ctx, batch_number)
+                .await?;
         }
     }
 

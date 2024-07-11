@@ -128,12 +128,8 @@ struct Inner {
     ///
     /// This reflects the state of the database. Its source is mainly the `PersistentBatchStore`:
     /// * the `BatchStoreRunner` subscribes to `PersistedBatchStore::persisted()` and copies its contents to here;
-    ///   it also uses the opportunity to clear items from the `cache` but notably doesn't update `queued` which
-    ///   which would cause the data to be gossiped
-    ///
-    /// Be careful that the `BatchStoreState` works with `SyncBatch` which requires a `proof` of inclusion on L1,
-    /// so this persistence is much delayed compared to the latest batch physically available in the database:
-    /// the batch also has to be signed by attesters, submitted to L1, and finalised there to appear here.
+    /// * it also uses the opportunity to clear items from the `cache`
+    /// * but notably doesn't update `queued`, which would cause the data to be gossiped
     persisted: BatchStoreState,
     cache: VecDeque<attester::SyncBatch>,
 }
@@ -199,6 +195,7 @@ impl BatchStoreRunner {
                 loop {
                     let persisted = sync::changed(ctx, &mut persisted).await?.clone();
                     self.0.inner.send_modify(|inner| {
+                        // XXX: In `BlockStoreRunner` update both the `queued` and the `persisted` here by calling
                         inner.persisted = persisted;
                         inner.truncate_cache();
                     });
@@ -281,7 +278,7 @@ impl BatchStore {
         ctx: &ctx::Ctx,
     ) -> ctx::Result<Option<attester::BatchNumber>> {
         {
-            // let inner = self.inner.borrow();
+            let inner = self.inner.borrow();
 
             // For now we ignore `queued` here because it's not clear how it's updated,
             // validation is missing and it seems to depend entirely on gossip. Don't
@@ -292,13 +289,16 @@ impl BatchStore {
             //     return Ok(Some(batch.number));
             // }
 
-            // We also have to ignore `persisted` because `last` is an instance of `SyncBatch`
-            // which is conceptually only available once we have a proof that it's been included
-            // on L1, which requires a signature in the first place.
-
-            // if let Some(ref batch) = inner.persisted.last {
-            //     return Ok(Some(batch.number));
-            // }
+            // We can use `persisted`; `last` is an instance of `SyncBatch` which we can construct
+            // as soon as we have the commitment required for the `proof`. This might lag behind
+            // what we would get from `persistent.last_batch` because producing the commitment
+            // is an async process. In practice once we have the first batch we'll always have
+            // this value available, and we won't see regression in values from repeated calls;
+            // I *think* the commitment should be available before the next batch is created.
+            // If that's not true then we shouldn't make the call to the DB below.
+            if let Some(ref batch) = inner.persisted.last {
+                return Ok(Some(batch.number));
+            }
         }
 
         // Get the last L1 batch that exists in the DB regardless of its status.
