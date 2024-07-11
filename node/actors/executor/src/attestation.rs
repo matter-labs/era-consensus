@@ -52,9 +52,11 @@ impl AttesterRunner {
         // Find the initial range of batches that we want to (re)sign after a (re)start.
         let last_batch_number = self
             .batch_store
-            .last_batch_number(ctx)
+            .wait_until_persisted(ctx, attester::BatchNumber(0))
             .await
-            .context("last_batch_number")?
+            .context("wait_until_persisted")?
+            .last
+            .map(|b| b.number)
             .unwrap_or_default();
 
         // Determine the batch to start signing from.
@@ -86,6 +88,14 @@ impl AttesterRunner {
                 .context("publish")?;
 
             batch_number = batch_number.next();
+
+            // We can avoid actively polling the database by waiting for the next persisted batch to appear
+            // in the memory (which itself relies on polling). This happens once we have the commitment,
+            // which for nodes that get the blocks through BFT should happen after execution. Nodes which
+            // rely on batch sync don't participate in attestations as they need the batch on L1 first.
+            self.batch_store
+                .wait_until_persisted(ctx, batch_number)
+                .await?;
         }
     }
 

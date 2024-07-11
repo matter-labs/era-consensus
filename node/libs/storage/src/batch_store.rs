@@ -128,12 +128,8 @@ struct Inner {
     ///
     /// This reflects the state of the database. Its source is mainly the `PersistentBatchStore`:
     /// * the `BatchStoreRunner` subscribes to `PersistedBatchStore::persisted()` and copies its contents to here;
-    ///   it also uses the opportunity to clear items from the `cache` but notably doesn't update `queued` which
-    ///   which would cause the data to be gossiped
-    ///
-    /// Be careful that the `BatchStoreState` works with `SyncBatch` which requires a `proof` of inclusion on L1,
-    /// so this persistence is much delayed compared to the latest batch physically available in the database:
-    /// the batch also has to be signed by attesters, submitted to L1, and finalised there to appear here.
+    /// * it also uses the opportunity to clear items from the `cache`
+    /// * but notably doesn't update `queued`, which would cause the data to be gossiped
     persisted: BatchStoreState,
     cache: VecDeque<attester::SyncBatch>,
 }
@@ -199,6 +195,7 @@ impl BatchStoreRunner {
                 loop {
                     let persisted = sync::changed(ctx, &mut persisted).await?.clone();
                     self.0.inner.send_modify(|inner| {
+                        // XXX: In `BlockStoreRunner` update both the `queued` and the `persisted` here.
                         inner.persisted = persisted;
                         inner.truncate_cache();
                     });
@@ -272,42 +269,6 @@ impl BatchStore {
             .get_batch(ctx, number)
             .await
             .context("persistent.batch()")?;
-        Ok(batch)
-    }
-
-    /// Retrieve the maximum persisted batch number.
-    pub async fn last_batch_number(
-        &self,
-        ctx: &ctx::Ctx,
-    ) -> ctx::Result<Option<attester::BatchNumber>> {
-        {
-            // let inner = self.inner.borrow();
-
-            // For now we ignore `queued` here because it's not clear how it's updated,
-            // validation is missing and it seems to depend entirely on gossip. Don't
-            // want it to somehow get us stuck and prevent voting. At least the persisted
-            // cache is maintained by two background processes copying the data from the DB.
-
-            // if let Some(ref batch) = inner.queued.last {
-            //     return Ok(Some(batch.number));
-            // }
-
-            // We also have to ignore `persisted` because `last` is an instance of `SyncBatch`
-            // which is conceptually only available once we have a proof that it's been included
-            // on L1, which requires a signature in the first place.
-
-            // if let Some(ref batch) = inner.persisted.last {
-            //     return Ok(Some(batch.number));
-            // }
-        }
-
-        // Get the last L1 batch that exists in the DB regardless of its status.
-        let batch = self
-            .persistent
-            .last_batch(ctx)
-            .await
-            .context("persistent.last_batch()")?;
-
         Ok(batch)
     }
 

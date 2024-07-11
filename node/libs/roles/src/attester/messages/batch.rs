@@ -22,7 +22,10 @@ pub struct SyncBatch {
     /// The proof of the batch.
     ///
     /// It is going to be a Merkle proof the the batch has been included
-    /// in the state hash of the L1.
+    /// in the state of the L1 system contract (not the L1 state root hash).
+    /// It can be produced as soon as we have the commitment available
+    /// locally, but validation requires a trusted L1 client to look up
+    /// the system contract state.
     pub proof: Vec<u8>,
 }
 
