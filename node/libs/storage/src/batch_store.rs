@@ -195,7 +195,7 @@ impl BatchStoreRunner {
                 loop {
                     let persisted = sync::changed(ctx, &mut persisted).await?.clone();
                     self.0.inner.send_modify(|inner| {
-                        // XXX: In `BlockStoreRunner` update both the `queued` and the `persisted` here by calling
+                        // XXX: In `BlockStoreRunner` update both the `queued` and the `persisted` here.
                         inner.persisted = persisted;
                         inner.truncate_cache();
                     });
@@ -269,45 +269,6 @@ impl BatchStore {
             .get_batch(ctx, number)
             .await
             .context("persistent.batch()")?;
-        Ok(batch)
-    }
-
-    /// Retrieve the maximum persisted batch number.
-    pub async fn last_batch_number(
-        &self,
-        ctx: &ctx::Ctx,
-    ) -> ctx::Result<Option<attester::BatchNumber>> {
-        {
-            let inner = self.inner.borrow();
-
-            // For now we ignore `queued` here because it's not clear how it's updated,
-            // validation is missing and it seems to depend entirely on gossip. Don't
-            // want it to somehow get us stuck and prevent voting. At least the persisted
-            // cache is maintained by two background processes copying the data from the DB.
-
-            // if let Some(ref batch) = inner.queued.last {
-            //     return Ok(Some(batch.number));
-            // }
-
-            // We can use `persisted`; `last` is an instance of `SyncBatch` which we can construct
-            // as soon as we have the commitment required for the `proof`. This might lag behind
-            // what we would get from `persistent.last_batch` because producing the commitment
-            // is an async process. In practice once we have the first batch we'll always have
-            // this value available, and we won't see regression in values from repeated calls;
-            // I *think* the commitment should be available before the next batch is created.
-            // If that's not true then we shouldn't make the call to the DB below.
-            if let Some(ref batch) = inner.persisted.last {
-                return Ok(Some(batch.number));
-            }
-        }
-
-        // Get the last L1 batch that exists in the DB regardless of its status.
-        let batch = self
-            .persistent
-            .last_batch(ctx)
-            .await
-            .context("persistent.last_batch()")?;
-
         Ok(batch)
     }
 

@@ -52,9 +52,11 @@ impl AttesterRunner {
         // Find the initial range of batches that we want to (re)sign after a (re)start.
         let last_batch_number = self
             .batch_store
-            .last_batch_number(ctx)
+            .wait_until_persisted(ctx, attester::BatchNumber(0))
             .await
-            .context("last_batch_number")?
+            .context("wait_until_persisted")?
+            .last
+            .map(|b| b.number)
             .unwrap_or_default();
 
         // Determine the batch to start signing from.
