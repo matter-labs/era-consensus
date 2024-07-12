@@ -155,6 +155,8 @@ impl Executor {
                     runner.run(ctx).await?;
                     Ok(())
                 });
+            } else {
+                tracing::info!("Running the node in non-attester mode.");
             }
 
             if let Some(debug_config) = self.config.debug_page {
