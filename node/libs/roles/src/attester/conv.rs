@@ -1,6 +1,6 @@
 use super::{
-    AggregateSignature, Batch, BatchNumber, BatchQC, Msg, MsgHash, MultiSig, PublicKey, Signature,
-    Signed, Signers, SyncBatch, WeightedAttester,
+    AggregateSignature, Batch, BatchHash, BatchNumber, BatchQC, Msg, MsgHash, MultiSig, PublicKey,
+    Signature, Signed, Signers, SyncBatch, WeightedAttester,
 };
 use crate::{
     proto::attester::{self as proto, Attestation},
@@ -11,16 +11,30 @@ use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_map, read_required, required, ProtoFmt};
 
+impl ProtoFmt for BatchHash {
+    type Proto = proto::BatchHash;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            keccak256: Some(self.0.encode()),
+        }
+    }
+}
+
 impl ProtoFmt for Batch {
     type Proto = proto::Batch;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            number: BatchNumber(*required(&r.number).context("proposal")?),
+            hash: read_required(&r.hash).context("hash")?,
+            number: BatchNumber(*required(&r.number).context("number")?),
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
             number: Some(self.number.0),
+            hash: Some(self.hash.build()),
         }
     }
 }

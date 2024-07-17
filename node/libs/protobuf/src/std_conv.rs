@@ -1,7 +1,7 @@
 //! Proto conversion for messages in std package.
-use crate::{proto, required, ProtoFmt};
+use crate::{proto, read_required, required, ProtoFmt};
 use anyhow::Context as _;
-use zksync_concurrency::time;
+use zksync_concurrency::{limiter, time};
 
 impl ProtoFmt for () {
     type Proto = proto::std::Void;
@@ -97,6 +97,24 @@ impl ProtoFmt for bit_vec::BitVec {
         Self::Proto {
             size: Some(self.len() as u64),
             bytes: Some(self.to_bytes()),
+        }
+    }
+}
+
+impl ProtoFmt for limiter::Rate {
+    type Proto = proto::std::RateLimit;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            burst: required(&r.burst)
+                .and_then(|x| Ok((*x).try_into()?))
+                .context("burst")?,
+            refresh: read_required(&r.refresh).context("refresh")?,
+        })
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            burst: Some(self.burst.try_into().unwrap()),
+            refresh: Some(self.refresh.build()),
         }
     }
 }

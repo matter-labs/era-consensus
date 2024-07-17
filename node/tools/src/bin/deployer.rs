@@ -47,6 +47,7 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
                 metrics_server_addr: None,
                 genesis: setup.genesis.clone(),
                 max_payload_size: 1000000,
+                max_batch_size: 100000000,
                 validator_key: Some(validator_keys[i].clone()),
                 attester_key: Some(attester_keys[i].clone()),
                 node_key: node_keys[i].clone(),

@@ -103,6 +103,8 @@ pub struct Config {
     pub attester_key: Option<attester::SecretKey>,
     /// Maximal size of the proto-encoded `validator::FinalBlock` in bytes.
     pub max_block_size: usize,
+    /// Maximal size of the proto-encoded `attester::SyncBatch` in bytes.
+    pub max_batch_size: usize,
     /// If a peer doesn't respond to a ping message within `ping_timeout`,
     /// the connection is dropped.
     /// `None` disables sending ping messages (useful for tests).

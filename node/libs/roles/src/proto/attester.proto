@@ -10,8 +10,14 @@ message SyncBatch {
   optional bytes proof = 3; // required
 }
 
+message BatchHash {
+  optional bytes keccak256 = 1; // required
+}
+
+
 message Batch {
   optional uint64 number = 1; // required
+  optional BatchHash hash = 2; // required
 }
 
 message BatchQC {

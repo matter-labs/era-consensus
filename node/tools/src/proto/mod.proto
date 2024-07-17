@@ -80,6 +80,9 @@ message AppConfig {
   // Maximal size of the block payload.
   optional uint64 max_payload_size = 5; // required; bytes
 
+  // Maximal size of the sync batch payload.
+  optional uint64 max_batch_size = 17; // optional; bytes
+
   // Validator secret key.
   optional string validator_secret_key = 10; // optional; ValidatorSecretKey
 

@@ -33,6 +33,7 @@ allow = [
     # Permissive licenses
     "Apache-2.0",
     "BSD-3-Clause",
+    "OpenSSL",
     "ISC",
     "MIT",
     "Unicode-DFS-2016",
