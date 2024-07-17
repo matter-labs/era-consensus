@@ -56,17 +56,41 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     /// Returns `None` if no batches have been created yet.
     async fn last_batch(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchNumber>>;
 
+    /// Get the earliest of L1 batches which are missing the corresponding L1 batch quorum certificates
+    /// and potentially need to be signed by attesters.
+    ///
+    /// A replica might never have a complete history of L1 batch QCs; once the L1 batch is included on L1,
+    /// the replicas might use the [attester::SyncBatch] route to obtain them, in which case they will not
+    /// have a QC and no reason to get them either. The store will have sufficient information to decide
+    /// where it's still necessary to gossip votes; for example the main node will want to have a QC on
+    /// every batch while it's the one submitting them to L1, while replicas can ask the L1 what is considered
+    /// final.
+    async fn earliest_batch_number_to_sign(
+        &self,
+        ctx: &ctx::Ctx,
+    ) -> ctx::Result<Option<attester::BatchNumber>>;
+
     /// Get the L1 batch QC from storage with the highest number.
     ///
     /// Returns `None` if we don't have a QC for any of the batches yet.
     async fn last_batch_qc(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchQC>>;
 
-    /// Returns the batch with the given number.
+    /// Returns the [attester::SyncBatch] with the given number, which is used by peers
+    /// to catch up with L1 batches that they might have missed if they went offline.
     async fn get_batch(
         &self,
         ctx: &ctx::Ctx,
         number: attester::BatchNumber,
     ) -> ctx::Result<Option<attester::SyncBatch>>;
+
+    /// Returns the [attester::Batch] with the given number, which is the `message` that
+    /// appears in [attester::BatchQC], and represents the content that needs to be signed
+    /// by the attesters.
+    async fn get_batch_to_sign(
+        &self,
+        ctx: &ctx::Ctx,
+        number: attester::BatchNumber,
+    ) -> ctx::Result<Option<attester::Batch>>;
 
     /// Returns the QC of the batch with the given number.
     async fn get_batch_qc(
@@ -91,8 +115,21 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
 #[derive(Debug)]
 struct Inner {
     /// Batches that are queued to be persisted.
+    ///
+    /// This reflects the state of the `cache`. Its source is mainly the gossip layer (the RPC protocols started in `Network::run_stream`):
+    /// * the node pushes `SyncBatch` records which appear in `queued` to its gossip peers
+    /// * the node pulls `SyncBatch` records that it needs from gossip peers that reported to have them, and adds them to `queued`
+    /// * the `BatchStoreRunner` looks for new items in `queued` and pushes them into the `PersistentBatchStore`
+    ///
+    /// XXX: There doesn't seem to be anything that currently actively pushes into `queued` from outside gossip,
+    /// like it happens with the `BlockStore::queue_block` being called from BFT.
     queued: BatchStoreState,
     /// Batches that are already persisted.
+    ///
+    /// This reflects the state of the database. Its source is mainly the `PersistentBatchStore`:
+    /// * the `BatchStoreRunner` subscribes to `PersistedBatchStore::persisted()` and copies its contents to here;
+    /// * it also uses the opportunity to clear items from the `cache`
+    /// * but notably doesn't update `queued`, which would cause the data to be gossiped
     persisted: BatchStoreState,
     cache: VecDeque<attester::SyncBatch>,
 }
@@ -158,6 +195,7 @@ impl BatchStoreRunner {
                 loop {
                     let persisted = sync::changed(ctx, &mut persisted).await?.clone();
                     self.0.inner.send_modify(|inner| {
+                        // XXX: In `BlockStoreRunner` update both the `queued` and the `persisted` here.
                         inner.persisted = persisted;
                         inner.truncate_cache();
                     });
@@ -234,6 +272,44 @@ impl BatchStore {
         Ok(batch)
     }
 
+    /// Retrieve the minimum batch number that doesn't have a QC yet and potentially need to be signed.
+    ///
+    /// There might be unsigned batches before this one in the database, however we don't consider it
+    /// necessary to sign them any more, because for example they have already been submitted to L1.
+    ///
+    /// There might also be signed batches *after* this one, due to the way gossiping works, but we
+    /// might still have to fill the gaps by (re)submitting our signature to allow them to be submitted.
+    ///
+    /// Returns `None` if all existing batches are signed, or there are not batches yet to be signed at all.
+    pub async fn earliest_batch_number_to_sign(
+        &self,
+        ctx: &ctx::Ctx,
+    ) -> ctx::Result<Option<attester::BatchNumber>> {
+        let unsigned = self
+            .persistent
+            .earliest_batch_number_to_sign(ctx)
+            .await
+            .context("persistent.get_batch_to_sign()")?;
+        Ok(unsigned)
+    }
+
+    /// Retrieve a batch to be signed.
+    ///
+    /// This might be `None` even if the L1 batch already exists, because the commitment
+    /// in it is populated asynchronously.
+    pub async fn batch_to_sign(
+        &self,
+        ctx: &ctx::Ctx,
+        number: attester::BatchNumber,
+    ) -> ctx::Result<Option<attester::Batch>> {
+        let batch = self
+            .persistent
+            .get_batch_to_sign(ctx, number)
+            .await
+            .context("persistent.get_batch_to_sign()")?;
+        Ok(batch)
+    }
+
     /// Append batch to a queue to be persisted eventually.
     /// Since persisting a batch may take a significant amount of time,
     /// BatchStore contains a queue of batches waiting to be persisted.
@@ -246,6 +322,9 @@ impl BatchStore {
         batch: attester::SyncBatch,
         _genesis: validator::Genesis,
     ) -> ctx::Result<()> {
+        // XXX: Once we can validate `SyncBatch::proof` we should do it before adding the
+        // batch to the cache, otherwise a malicious peer could serve us data that prevents
+        // other inputs from entering the queue. It will also cause it to be gossiped at the moment.
         sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
             inner.queued.next() >= batch.number
         })
@@ -254,6 +333,19 @@ impl BatchStore {
         self.inner
             .send_if_modified(|inner| inner.try_push(batch.clone()));
 
+        Ok(())
+    }
+
+    /// Wait until the database has a batch, then attach the corresponding QC.
+    pub async fn queue_batch_qc(&self, ctx: &ctx::Ctx, qc: attester::BatchQC) -> ctx::Result<()> {
+        // The `store_qc` implementation in `zksync-era` retries the insertion of the QC if the payload
+        // isn't yet available, but to be safe we can wait for the availability signal here as well.
+        sync::wait_for(ctx, &mut self.persistent.persisted(), |persisted| {
+            qc.message.number < persisted.next()
+        })
+        .await?;
+        // Now it's definitely safe to store it.
+        self.persistent.store_qc(ctx, qc).await?;
         Ok(())
     }
 

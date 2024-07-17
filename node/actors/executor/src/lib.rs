@@ -9,12 +9,13 @@ use std::{
 };
 use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
-use zksync_consensus_network as network;
+use zksync_consensus_network::{self as network};
 use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
+mod attestation;
 mod io;
 #[cfg(test)]
 mod tests;
@@ -48,6 +49,9 @@ pub struct Config {
     pub public_addr: net::Host,
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
+    /// Maximal size of a batch, which includes `max_payload_size` per block in the batch,
+    /// plus the size of the Merkle proof of the commitment being included on L1 (should be ~1kB).
+    pub max_batch_size: usize,
     /// Key of this node. It uniquely identifies the node.
     /// It should match the secret key provided in the `node_key` file.
     pub node_key: node::SecretKey,
@@ -106,6 +110,7 @@ impl Executor {
             attester_key: self.attester.as_ref().map(|a| a.key.clone()),
             ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
+            max_batch_size: self.config.max_batch_size.saturating_add(kB),
             max_block_queue_size: 20,
             tcp_accept_rate: limiter::Rate {
                 burst: 10,
@@ -127,7 +132,6 @@ impl Executor {
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
-            s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
             let (net, runner) = network::Network::new(
                 network_config,
                 self.block_store.clone(),
@@ -135,12 +139,24 @@ impl Executor {
                 network_actor_pipe,
             );
             net.register_metrics();
+
+            s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
 
-            if let Some(_attester) = self.attester {
+            if let Some(attester) = self.attester {
                 tracing::info!("Running the node in attester mode.");
-                let _publisher = net.batch_vote_publisher();
-                // TODO: Start a background task that polls the store for new L1 batches and publishes votes.
+                let runner = attestation::AttesterRunner::new(
+                    self.block_store.clone(),
+                    self.batch_store.clone(),
+                    attester,
+                    net.batch_vote_publisher(),
+                );
+                s.spawn::<()>(async {
+                    runner.run(ctx).await?;
+                    Ok(())
+                });
+            } else {
+                tracing::info!("Running the node in non-attester mode.");
             }
 
             if let Some(debug_config) = self.config.debug_page {

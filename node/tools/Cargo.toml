@@ -8,6 +8,7 @@ license.workspace = true
 repository.workspace = true
 keywords.workspace = true
 default-run = "executor"
+description = "ZKsync consensus tools"
 
 [dependencies]
 zksync_concurrency.workspace = true

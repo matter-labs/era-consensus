@@ -7,10 +7,12 @@ homepage.workspace = true
 license.workspace = true
 repository.workspace = true
 keywords.workspace = true
+description = "ZKsync consensus storage"
 
 [dependencies]
 zksync_concurrency.workspace = true
 zksync_consensus_roles.workspace = true
+zksync_consensus_crypto.workspace = true
 zksync_protobuf.workspace = true
 
 anyhow.workspace = true

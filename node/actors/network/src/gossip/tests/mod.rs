@@ -1,6 +1,10 @@
 use super::ValidatorAddrs;
 use crate::{
-    gossip::{batch_votes::BatchVotesWatch, handshake, validator_addrs::ValidatorAddrsWatch},
+    gossip::{
+        batch_votes::{BatchVotes, BatchVotesWatch},
+        handshake,
+        validator_addrs::ValidatorAddrsWatch,
+    },
     metrics, preface, rpc, testonly,
 };
 use anyhow::Context as _;
@@ -18,7 +22,7 @@ use zksync_concurrency::{
     time,
 };
 use zksync_consensus_roles::{attester, validator};
-use zksync_consensus_storage::testonly::TestMemoryStorage;
+use zksync_consensus_storage::{testonly::TestMemoryStorage, PersistentBatchStore};
 
 mod fetch_batches;
 mod fetch_blocks;
@@ -107,11 +111,14 @@ fn mk_netaddr(
 }
 
 fn mk_batch<R: Rng>(
-    _rng: &mut R,
+    rng: &mut R,
     key: &attester::SecretKey,
     number: attester::BatchNumber,
 ) -> attester::Signed<attester::Batch> {
-    key.sign_msg(attester::Batch { number })
+    key.sign_msg(attester::Batch {
+        number,
+        hash: rng.gen(),
+    })
 }
 
 fn random_netaddr<R: Rng>(
@@ -132,6 +139,7 @@ fn random_batch_vote<R: Rng>(
 ) -> Arc<attester::Signed<attester::Batch>> {
     let batch = attester::Batch {
         number: attester::BatchNumber(rng.gen_range(0..1000)),
+        hash: rng.gen(),
     };
     Arc::new(key.sign_msg(batch.to_owned()))
 }
@@ -152,13 +160,14 @@ fn update_netaddr<R: Rng>(
 }
 
 fn update_signature<R: Rng>(
-    _rng: &mut R,
+    rng: &mut R,
     batch: &attester::Batch,
     key: &attester::SecretKey,
     batch_number_diff: i64,
 ) -> Arc<attester::Signed<attester::Batch>> {
     let batch = attester::Batch {
         number: attester::BatchNumber((batch.number.0 as i64 + batch_number_diff) as u64),
+        hash: rng.gen(),
     };
     Arc::new(key.sign_msg(batch.to_owned()))
 }
@@ -549,23 +558,25 @@ async fn test_batch_votes() {
         want.insert(random_batch_vote(rng, k));
     }
     votes.update(&attesters, &want.as_vec()).await.unwrap();
-    assert_eq!(want.0, sub.borrow_and_update().0);
+    assert_eq!(want.0, sub.borrow_and_update().votes);
 
-    // newer batch number
+    // newer batch number, should be updated
     let k0v2 = update_signature(rng, &want.get(&keys[0]).msg, &keys[0], 1);
-    // same batch number
+    // same batch number, should be ignored
     let k1v2 = update_signature(rng, &want.get(&keys[1]).msg, &keys[1], 0);
-    // older batch number
+    // older batch number, should be ignored
     let k4v2 = update_signature(rng, &want.get(&keys[4]).msg, &keys[4], -1);
-    // first entry for a key in the config
+    // first entry for a key in the config, should be inserted
     let k6v1 = random_batch_vote(rng, &keys[6]);
-    // entry for a key outside of the config
+    // entry for a key outside of the config, should be ignored
     let k8 = rng.gen();
     let k8v1 = random_batch_vote(rng, &k8);
 
+    // Update the ones we expect to succeed
     want.insert(k0v2.clone());
-    want.insert(k1v2.clone());
     want.insert(k6v1.clone());
+
+    // Send all of them to the votes
     let update = [
         k0v2,
         k1v2,
@@ -576,9 +587,9 @@ async fn test_batch_votes() {
         k8v1.clone(),
     ];
     votes.update(&attesters, &update).await.unwrap();
-    assert_eq!(want.0, sub.borrow_and_update().0);
+    assert_eq!(want.0, sub.borrow_and_update().votes);
 
-    // Invalid signature.
+    // Invalid signature, should be rejected.
     let mut k0v3 = mk_batch(
         rng,
         &keys[1],
@@ -586,18 +597,151 @@ async fn test_batch_votes() {
     );
     k0v3.key = keys[0].public();
     assert!(votes.update(&attesters, &[Arc::new(k0v3)]).await.is_err());
-    assert_eq!(want.0, sub.borrow_and_update().0);
+    assert_eq!(want.0, sub.borrow_and_update().votes);
 
-    // Duplicate entry in the update.
+    // Duplicate entry in the update, should be rejected.
     assert!(votes
         .update(&attesters, &[k8v1.clone(), k8v1])
         .await
         .is_err());
-    assert_eq!(want.0, sub.borrow_and_update().0);
+    assert_eq!(want.0, sub.borrow_and_update().votes);
 }
 
-// TODO: This test is disabled because the logic for attesters to receive and sign batches is not implemented yet.
-// It should be re-enabled once the logic is implemented.
-// #[tokio::test(flavor = "multi_thread")]
-// async fn test_batch_votes_propagation() {
-// }
+#[test]
+fn test_batch_votes_quorum() {
+    abort_on_panic();
+    let rng = &mut ctx::test_root(&ctx::RealClock).rng();
+
+    for _ in 0..10 {
+        let size = rng.gen_range(1..20);
+        let keys: Vec<attester::SecretKey> = (0..size).map(|_| rng.gen()).collect();
+        let attesters = attester::Committee::new(keys.iter().map(|k| attester::WeightedAttester {
+            key: k.public(),
+            weight: rng.gen_range(1..=100),
+        }))
+        .unwrap();
+
+        let batch0 = rng.gen::<attester::Batch>();
+        let batch1 = attester::Batch {
+            number: batch0.number.next(),
+            hash: rng.gen(),
+        };
+        let mut batches = [(batch0, 0u64), (batch1, 0u64)];
+
+        let mut votes = BatchVotes::default();
+        for sk in &keys {
+            // We need 4/5+1 for quorum, so let's say ~80% vote on the second batch.
+            let b = usize::from(rng.gen_range(0..100) < 80);
+            let batch = &batches[b].0;
+            let vote = sk.sign_msg(batch.clone());
+            votes.update(&attesters, &[Arc::new(vote)]).unwrap();
+            batches[b].1 += attesters.weight(&sk.public()).unwrap();
+
+            // Check that as soon as we have quorum it's found.
+            if batches[b].1 >= attesters.threshold() {
+                let qs = votes.find_quorums(&attesters, |_| false);
+                assert!(!qs.is_empty(), "should find quorum");
+                assert!(qs[0].message == *batch);
+                assert!(qs[0].signatures.keys().count() > 0);
+            }
+        }
+
+        if let Some(quorum) = batches
+            .iter()
+            .find(|b| b.1 >= attesters.threshold())
+            .map(|(b, _)| b)
+        {
+            // Check that a quorum can be skipped
+            assert!(votes
+                .find_quorums(&attesters, |b| b == quorum.number)
+                .is_empty());
+        } else {
+            // Check that if there was no quoroum then we don't find any.
+            assert!(votes.find_quorums(&attesters, |_| false).is_empty());
+        }
+
+        // Check that the minimum batch number prunes data.
+        let last_batch = batches[1].0.number;
+
+        votes.set_min_batch_number(last_batch);
+        assert!(votes.votes.values().all(|v| v.msg.number >= last_batch));
+        assert!(votes.support.keys().all(|n| *n >= last_batch));
+
+        votes.set_min_batch_number(last_batch.next());
+        assert!(votes.votes.is_empty());
+        assert!(votes.support.is_empty());
+    }
+}
+
+//
+#[tokio::test(flavor = "multi_thread")]
+async fn test_batch_votes_propagation() {
+    let _guard = set_timeout(time::Duration::seconds(10));
+    abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.));
+    let rng = &mut ctx.rng();
+
+    let mut setup = validator::testonly::Setup::new(rng, 10);
+
+    let cfgs = testonly::new_configs(rng, &setup, 1);
+
+    scope::run!(ctx, |ctx, s| async {
+        // All nodes share the same in-memory store
+        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        s.spawn_bg(store.runner.run(ctx));
+
+        // Push the first batch into the store so we have something to vote on.
+        setup.push_blocks(rng, 2);
+        setup.push_batch(rng);
+
+        let batch = setup.batches[0].clone();
+
+        store
+            .batches
+            .queue_batch(ctx, batch.clone(), setup.genesis.clone())
+            .await
+            .unwrap();
+
+        let batch = attester::Batch {
+            number: batch.number,
+            hash: rng.gen(),
+        };
+
+        // Start all nodes.
+        let nodes: Vec<testonly::Instance> = cfgs
+            .iter()
+            .enumerate()
+            .map(|(i, cfg)| {
+                let (node, runner) = testonly::Instance::new(
+                    cfg.clone(),
+                    store.blocks.clone(),
+                    store.batches.clone(),
+                );
+                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+                node
+            })
+            .collect();
+
+        // Cast votes on each node. It doesn't matter who signs where in this test,
+        // we just happen to know that we'll have as many nodes as attesters.
+        let attesters = setup.genesis.attesters.as_ref().unwrap();
+        for (node, key) in nodes.iter().zip(setup.attester_keys.iter()) {
+            node.net
+                .batch_vote_publisher()
+                .publish(attesters, key, batch.clone())
+                .await
+                .unwrap();
+        }
+
+        // Wait until one of the nodes collects a quorum over gossip and stores.
+        loop {
+            if let Some(qc) = store.im_batches.get_batch_qc(ctx, batch.number).await? {
+                assert_eq!(qc.message, batch);
+                return Ok(());
+            }
+            ctx.sleep(time::Duration::milliseconds(100)).await?;
+        }
+    })
+    .await
+    .unwrap();
+}
