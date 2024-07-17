@@ -1263,7 +1263,12 @@ module replica {
                 ghost_justifications.keys().exists(((id2, view)) => and {
                     id2 == id,
                     match (ghost_justifications.get((id2, view))) {
-                        | Timeout(qc) => false
+                        | Timeout(qc) =>
+                            qc.high_commit_qc.option_has(hqc => and {
+                                hqc.vote.block_number == block_number,
+                                hqc.vote.block_hash == block_hash,
+                                view == hqc.vote.view or view == hqc.vote.view + 1,
+                            })
                         | Commit(qc) => and {
                             qc.vote.block_number == block_number,
                             qc.vote.block_hash == block_hash,
