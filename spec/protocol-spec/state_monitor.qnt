@@ -16,7 +16,7 @@ module state_monitor {
       INVALID_BLOCKS = Set("inv_b3")
     ) as i from "./replica"
 
-    var old_replica_state: Option[ReplicaPubKey -> ReplicaState]
+    var old_replica_state: Option[ReplicaId -> ReplicaState]
 
     action init = all {
       i::init,
@@ -33,7 +33,7 @@ module state_monitor {
     // Within the same view, a replica’s phase can only change through two paths.
     // 1) Prepare→Commit→Timeout or 2) Prepare→Timeout.
     val phase_inv = {
-      def for_replica(id: ReplicaPubKey): bool = {
+      def for_replica(id: ReplicaId): bool = {
         match (old_replica_state) {
           | None =>
             true

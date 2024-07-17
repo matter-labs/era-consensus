@@ -28,10 +28,11 @@ module option {
         }
     }
 
-    // if is Some(e), test whether `pred(e)` holds true
+    // If is Some(e), test whether `pred(e)` holds true.
+    // If None, return false.
     def option_has(opt: Option[a], pred: a => bool): bool = {
         match (opt) {
-            | None => true
+            | None => false
             | Some(e) => pred(e)
         }
     }

@@ -33,7 +33,8 @@ module tests {
         pure val timeout: Justification = Timeout({
             votes: Map(),
             agg_sig: Set(""),
-            ghost_view: 1
+            ghost_view: 1,
+            high_commit_qc: HIGH_COMMIT_QC_NONE,
         })
 
         all {
@@ -80,13 +81,14 @@ module tests {
         ghost_view: 0,
         votes:
             Map(
-                "n0" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
-                "n1" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
-                "n2" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
-                "n3" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
-                "n4" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
-                "n5" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 }
-            )
+                "n0" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
+                "n1" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
+                "n2" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
+                "n3" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
+                "n4" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
+                "n5" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 }
+            ),
+        high_commit_qc: HIGH_COMMIT_QC_NONE,
     }
 
     val timeout_qc_2: TimeoutQC = {
@@ -94,13 +96,14 @@ module tests {
         ghost_view: 0,
         votes:
             Map(
-                "n0" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote1), view: 0 },
-                "n1" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
-                "n2" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
-                "n3" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
-                "n4" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
-                "n5" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 }
-            )
+                "n0" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote1), view: 0 },
+                "n1" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
+                "n2" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
+                "n3" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
+                "n4" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 },
+                "n5" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 0 }
+            ),
+        high_commit_qc: HIGH_COMMIT_QC_NONE,
     }
 
     val timeout_qc_3: TimeoutQC = {
@@ -108,13 +111,14 @@ module tests {
         ghost_view: 2,
         votes:
             Map(
-                "n0" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote1), view: 2 },
-                "n1" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote1), view: 2 },
-                "n2" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote1), view: 2 },
-                "n3" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote1), view: 2 },
-                "n4" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote1), view: 2 },
-                "n5" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote1), view: 2 }
-            )
+                "n0" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote1), view: 2 },
+                "n1" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote1), view: 2 },
+                "n2" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote1), view: 2 },
+                "n3" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote1), view: 2 },
+                "n4" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote1), view: 2 },
+                "n5" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote1), view: 2 }
+            ),
+        high_commit_qc: HIGH_COMMIT_QC_NONE,
     }
 
     val timeout_qc_4: TimeoutQC = {
@@ -122,13 +126,14 @@ module tests {
         ghost_view: 2,
         votes:
             Map(
-                "n0" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote1), view: 2 },
-                "n1" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote1), view: 2 },
-                "n2" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote1), view: 2 },
-                "n3" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote1), view: 2 },
-                "n4" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote2), view: 2 },
-                "n5" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote2), view: 2 }
-            )
+                "n0" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote1), view: 2 },
+                "n1" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote1), view: 2 },
+                "n2" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote1), view: 2 },
+                "n3" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote1), view: 2 },
+                "n4" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote2), view: 2 },
+                "n5" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote2), view: 2 }
+            ),
+        high_commit_qc: HIGH_COMMIT_QC_NONE,
     }
 
     val timeout_qc_5: TimeoutQC = {
@@ -136,13 +141,14 @@ module tests {
         ghost_view: 2,
         votes:
             Map(
-                "n0" -> { high_commit_qc: Some(commit_qc_1), high_vote: Some(vote1), view: 2 },
-                "n1" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote1), view: 2 },
-                "n2" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote2), view: 2 },
-                "n3" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote2), view: 2 },
-                "n4" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote3), view: 2 },
-                "n5" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote3), view: 2 }
-            )
+                "n0" -> { high_commit_qc_view: Some(2), high_vote: Some(vote1), view: 2 },
+                "n1" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote1), view: 2 },
+                "n2" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote2), view: 2 },
+                "n3" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote2), view: 2 },
+                "n4" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote3), view: 2 },
+                "n5" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote3), view: 2 }
+            ),
+        high_commit_qc: Some(commit_qc_1),
     }
 
     val timeout_qc_6: TimeoutQC = {
@@ -150,13 +156,14 @@ module tests {
         ghost_view: 2,
         votes:
             Map(
-                "n0" -> { high_commit_qc: Some(commit_qc_1), high_vote: Some(vote1), view: 2 },
-                "n1" -> { high_commit_qc: Some(commit_qc_2), high_vote: Some(vote1), view: 2 },
-                "n2" -> { high_commit_qc: Some(commit_qc_3), high_vote: Some(vote2), view: 2 },
-                "n3" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote2), view: 2 },
-                "n4" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote3), view: 2 },
-                "n5" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote3), view: 2 }
-            )
+                "n0" -> { high_commit_qc_view: Some(1), high_vote: Some(vote1), view: 2 },
+                "n1" -> { high_commit_qc_view: Some(1), high_vote: Some(vote1), view: 2 },
+                "n2" -> { high_commit_qc_view: Some(2), high_vote: Some(vote2), view: 2 },
+                "n3" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote2), view: 2 },
+                "n4" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote3), view: 2 },
+                "n5" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote3), view: 2 }
+            ),
+        high_commit_qc: Some(commit_qc_1),
     }
 
     val timeout_qc_7: TimeoutQC = {
@@ -164,13 +171,14 @@ module tests {
         ghost_view: 2,
         votes:
             Map(
-                "n0" -> { high_commit_qc: Some(commit_qc_1), high_vote: Some(vote1), view: 2 },
-                "n1" -> { high_commit_qc: Some(commit_qc_2), high_vote: Some(vote1), view: 2 },
-                "n2" -> { high_commit_qc: Some(commit_qc_3), high_vote: Some(vote1), view: 2 },
-                "n3" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote2), view: 2 },
-                "n4" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote2), view: 2 },
-                "n5" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(vote2), view: 2 }
-            )
+                "n0" -> { high_commit_qc_view: Some(1), high_vote: Some(vote1), view: 2 },
+                "n1" -> { high_commit_qc_view: Some(2), high_vote: Some(vote1), view: 2 },
+                "n2" -> { high_commit_qc_view: Some(2), high_vote: Some(vote1), view: 2 },
+                "n3" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote2), view: 2 },
+                "n4" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote2), view: 2 },
+                "n5" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(vote2), view: 2 }
+            ),
+        high_commit_qc: Some(commit_qc_1),
     }
 
     val timeout_qc_8: TimeoutQC = {
@@ -178,13 +186,14 @@ module tests {
         ghost_view: 2,
         votes:
             Map(
-                "n0" -> { high_commit_qc: Some(commit_qc_1), high_vote: Some(vote1), view: 2 },
-                "n1" -> { high_commit_qc: Some(commit_qc_1), high_vote: Some(vote1), view: 2 },
-                "n2" -> { high_commit_qc: Some(commit_qc_1), high_vote: Some(vote1), view: 2 },
-                "n3" -> { high_commit_qc: Some(commit_qc_1), high_vote: Some(vote1), view: 2 },
-                "n4" -> { high_commit_qc: Some(commit_qc_1), high_vote: Some(vote1), view: 2 },
-                "n5" -> { high_commit_qc: Some(commit_qc_1), high_vote: Some(vote1), view: 2 }
-            )
+                "n0" -> { high_commit_qc_view: Some(1), high_vote: Some(vote1), view: 2 },
+                "n1" -> { high_commit_qc_view: Some(1), high_vote: Some(vote1), view: 2 },
+                "n2" -> { high_commit_qc_view: Some(1), high_vote: Some(vote1), view: 2 },
+                "n3" -> { high_commit_qc_view: Some(1), high_vote: Some(vote1), view: 2 },
+                "n4" -> { high_commit_qc_view: Some(1), high_vote: Some(vote1), view: 2 },
+                "n5" -> { high_commit_qc_view: Some(1), high_vote: Some(vote1), view: 2 }
+            ),
+        high_commit_qc: Some(commit_qc_1),
     }
 
     run high_vote_Test = {
@@ -197,15 +206,6 @@ module tests {
             assert(high_vote(timeout_qc_5) == None),
             assert(high_vote(timeout_qc_6) == None),
             assert(high_vote(timeout_qc_7) == None),
-        }
-
-    }
-
-    run high_qc_Test = {
-        all {
-            assert(high_qc(timeout_qc_1) == HIGH_COMMIT_QC_NONE),
-            assert(high_qc(timeout_qc_5) == Some(commit_qc_1)),
-            assert(high_qc(timeout_qc_6) == Some(commit_qc_3)),
         }
 
     }
@@ -235,9 +235,10 @@ module tests {
             vote: {
                 view: 10,
                 high_vote: COMMIT_VOTE_NONE,
-                high_commit_qc: HIGH_COMMIT_QC_NONE
+                high_commit_qc_view: VIEW_NUMBER_NONE,
             },
             sig: "n1",
+            high_commit_qc: HIGH_COMMIT_QC_NONE,
         }
     )   
      val signed_timeout_votes_2 = Set( 
@@ -245,57 +246,62 @@ module tests {
             vote: {
                 view: 10,
                 high_vote: COMMIT_VOTE_NONE,
-                high_commit_qc: HIGH_COMMIT_QC_NONE
+                high_commit_qc_view: VIEW_NUMBER_NONE,
             },
             sig: "n2",
+            high_commit_qc: HIGH_COMMIT_QC_NONE,
         },
         {
             vote: {
                 view: 10,
                 high_vote: COMMIT_VOTE_NONE,
-                high_commit_qc: HIGH_COMMIT_QC_NONE
+                high_commit_qc_view: VIEW_NUMBER_NONE,
             },
             sig: "n3",
+            high_commit_qc: HIGH_COMMIT_QC_NONE,
         },
         {
             vote: {
                 view: 10,
                 high_vote: COMMIT_VOTE_NONE,
-                high_commit_qc: HIGH_COMMIT_QC_NONE
+                high_commit_qc_view: VIEW_NUMBER_NONE,
             },
             sig: "n4",
+            high_commit_qc: HIGH_COMMIT_QC_NONE,
         },
         {
             vote: {
                 view: 10,
                 high_vote: COMMIT_VOTE_NONE,
-                high_commit_qc: HIGH_COMMIT_QC_NONE
+                high_commit_qc_view: VIEW_NUMBER_NONE,
             },
             sig: "n1",
+            high_commit_qc: HIGH_COMMIT_QC_NONE,
         },
         {
             vote: {
                 view: 10,
                 high_vote: COMMIT_VOTE_NONE,
-                high_commit_qc: HIGH_COMMIT_QC_NONE
+                high_commit_qc_view: VIEW_NUMBER_NONE,
             },
             sig: "n0",
+            high_commit_qc: HIGH_COMMIT_QC_NONE,
         }
-
     )
 
     run get_timeout_qc_Test = {
-        val qc = {
+        val qc: TimeoutQC = {
                 ghost_view: 10,
                 agg_sig: Set("n0", "n1", "n2", "n3", "n4"),
                 votes: 
                     Map(
-                        "n0" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 10 },
-                        "n1" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 10 },
-                        "n2" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 10 },
-                        "n3" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 10 },
-                        "n4" -> { high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: COMMIT_VOTE_NONE, view: 10 }
-                    )
+                        "n0" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 10 },
+                        "n1" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 10 },
+                        "n2" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 10 },
+                        "n3" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 10 },
+                        "n4" -> { high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: COMMIT_VOTE_NONE, view: 10 }
+                    ),
+                high_commit_qc: HIGH_COMMIT_QC_NONE,
             }
         all {
             get_timeout_qc(signed_timeout_votes_1, 10) == HIGH_TIMEOUT_QC_NONE,

@@ -18,9 +18,10 @@ module tests_n6f1b0 {
 
     // an initial quorum certificate
     pure val init_timeout_qc: TimeoutQC = {
-        votes: CORRECT.mapBy(id => { view: 0, high_vote: COMMIT_VOTE_NONE, high_commit_qc: HIGH_COMMIT_QC_NONE}),
+        votes: CORRECT.mapBy(id => { view: 0, high_vote: COMMIT_VOTE_NONE, high_commit_qc_view: VIEW_NUMBER_NONE }),
         agg_sig: CORRECT,
         ghost_view: 0,
+        high_commit_qc: HIGH_COMMIT_QC_NONE,
     }
 
     def replica_committed(id: ReplicaId): List[Block] = {
@@ -121,14 +122,15 @@ module tests_n6f1b0 {
         }
         val timeout_qc_v1: TimeoutQC = {
             votes: Map(
-                "n0" -> { view: 2, high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(commit_vote_v1_b0) },
-                "n1" -> { view: 2, high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(commit_vote_v1_b0) },
-                "n2" -> { view: 2, high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(commit_vote_v1_b0) },
-                "n3" -> { view: 2, high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(commit_vote_v1_b0) },
-                "n5" -> { view: 2, high_commit_qc: HIGH_COMMIT_QC_NONE, high_vote: Some(commit_vote_v1_b0) }
+                "n0" -> { view: 2, high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(commit_vote_v1_b0) },
+                "n1" -> { view: 2, high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(commit_vote_v1_b0) },
+                "n2" -> { view: 2, high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(commit_vote_v1_b0) },
+                "n3" -> { view: 2, high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(commit_vote_v1_b0) },
+                "n5" -> { view: 2, high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: Some(commit_vote_v1_b0) }
             ), 
             agg_sig: Set("n0", "n1", "n2", "n3", "n5"),
-            ghost_view: 2
+            ghost_view: 2,
+            high_commit_qc: HIGH_COMMIT_QC_NONE,
         }
         init_view_1_with_leader(Map(0 -> "n0", 1 -> "n5", 2 -> "n1", 3 -> "n2", 4 -> "n3", 5 -> "n4"))
             // the leader proposes, all replicas in view=1
@@ -250,15 +252,15 @@ module tests_n6f1b0 {
                 replica_state.get("n1").high_commit_qc==Some({ vote: commit_vote_v1_b0, agg_sig: Set("n0", "n1", "n2", "n3", "n5")}), unchanged_all
             })
             .expect(all_invariants)
-            .then(replica_receives_all_timeout_votes("n0", COMMIT_VOTE_NONE, HIGH_COMMIT_QC_NONE, 1))
+            .then(replica_receives_all_timeout_votes("n0", COMMIT_VOTE_NONE, VIEW_NUMBER_NONE, HIGH_COMMIT_QC_NONE, 1))
             .expect(all_invariants)
-            .then(replica_receives_all_timeout_votes("n2", COMMIT_VOTE_NONE, HIGH_COMMIT_QC_NONE, 1))
+            .then(replica_receives_all_timeout_votes("n2", COMMIT_VOTE_NONE, VIEW_NUMBER_NONE, HIGH_COMMIT_QC_NONE, 1))
             .expect(all_invariants)
-            .then(replica_receives_all_timeout_votes("n3", COMMIT_VOTE_NONE, HIGH_COMMIT_QC_NONE, 1))
+            .then(replica_receives_all_timeout_votes("n3", COMMIT_VOTE_NONE, VIEW_NUMBER_NONE, HIGH_COMMIT_QC_NONE, 1))
             .expect(all_invariants)
-            .then(replica_receives_all_timeout_votes("n4", COMMIT_VOTE_NONE, HIGH_COMMIT_QC_NONE, 1))
+            .then(replica_receives_all_timeout_votes("n4", COMMIT_VOTE_NONE, VIEW_NUMBER_NONE, HIGH_COMMIT_QC_NONE, 1))
             .expect(all_invariants)
-            .then(replica_receives_all_timeout_votes("n5", COMMIT_VOTE_NONE, HIGH_COMMIT_QC_NONE, 1))
+            .then(replica_receives_all_timeout_votes("n5", COMMIT_VOTE_NONE, VIEW_NUMBER_NONE, HIGH_COMMIT_QC_NONE, 1))
             .expect(all_invariants)
             .then(all {
                 proposer_step("n1", "val_b1"),
@@ -295,26 +297,30 @@ module tests_n6f1b0 {
         })
     }
 
-    action replica_receives_all_timeout_votes(id: ReplicaId, high_vote: Option[CommitVote], high_commit_qc: Option[CommitQC], view: ViewNumber):bool = all {
-        on_timeout(id, {vote: { view: view, high_commit_qc: high_commit_qc, high_vote: high_vote}, sig: "n0"} ),
-        unchanged_leader_replica,
+    action replica_receives_all_timeout_votes(id: ReplicaId, high_vote: Option[CommitVote],
+            high_commit_qc_view: Option[ViewNumber], high_commit_qc: Option[CommitQC], view: ViewNumber): bool = {
+        val timeout_vote: TimeoutVote = { view: view, high_commit_qc_view: high_commit_qc_view, high_vote: high_vote }
+        all {
+            on_timeout(id, { vote: timeout_vote, high_commit_qc: high_commit_qc, sig: "n0" }),
+            unchanged_leader_replica,
+        }
+        .then(all {
+            on_timeout(id, { vote: timeout_vote, high_commit_qc: high_commit_qc, sig: "n1" }),
+            unchanged_leader_replica,
+        })
+        .then(all {
+            on_timeout(id, { vote: timeout_vote, high_commit_qc: high_commit_qc, sig: "n2" }),
+            unchanged_leader_replica,
+        })
+        .then(all {
+            on_timeout(id, { vote: timeout_vote, high_commit_qc: high_commit_qc, sig: "n3" }),
+            unchanged_leader_replica,
+        })
+        .then(all {
+            on_timeout(id, { vote: timeout_vote, high_commit_qc: high_commit_qc, sig: "n4" }),
+            unchanged_leader_replica,
+        })
     }
-    .then(all {
-        on_timeout(id, {vote: { view: view, high_commit_qc: high_commit_qc, high_vote: high_vote}, sig: "n1"} ),
-        unchanged_leader_replica,
-    })
-    .then(all {
-        on_timeout(id, {vote: { view: view, high_commit_qc: high_commit_qc, high_vote: high_vote}, sig: "n2"} ),
-        unchanged_leader_replica,
-    })
-    .then(all {
-        on_timeout(id, {vote: { view: view, high_commit_qc: high_commit_qc, high_vote: high_vote}, sig: "n3"} ),
-        unchanged_leader_replica,
-    })
-    .then(all {
-        on_timeout(id, {vote: { view: view, high_commit_qc: high_commit_qc, high_vote: high_vote}, sig: "n4"} ),
-        unchanged_leader_replica,
-    })
 
     action five_replicas_get_propose(block: Block, block_number: BlockNumber,
             leader: ReplicaId, justification: Justification): bool = {
