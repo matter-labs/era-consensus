@@ -41,70 +41,6 @@ module inductive {
         msgs_signed_timeout: r::msgs_signed_timeout,
     }
 
-    // All possible values of CommitVote under fixed parameters.
-    // For |VIEWS| = 4, |ALL_BLOCKS| = 3, we have 48 elements.
-    pure val ALL_COMMIT_VOTES: Set[CommitVote] =
-        tuples(r::VIEWS, r::VIEWS, r::ALL_BLOCKS).map(((v, bn, bh)) => {
-            view: v, block_number: bn, block_hash: bh,
-        })
-
-    // All possible values of SignedCommitVote under fixed parameters.
-    // For |REPLICAS| = 6, |VIEWS| = 4, |ALL_BLOCKS| = 3, we have 288 elements.
-    pure val ALL_SIGNED_COMMIT_VOTES: Set[SignedCommitVote] =
-        tuples(r::REPLICAS, r::VIEWS, r::VIEWS, r::ALL_BLOCKS).map(((id, v, bn, bh)) => {
-            sig: r::sig_of_id(id),
-            vote: { view: v, block_number: bn, block_hash: bh },
-        })
-
-    // All possible values of CommitQC under fixed parameters.
-    // For |REPLICAS| = 6, |VIEWS| = 4, |ALL_BLOCKS| = 3, we have 18432 elements.
-    pure val ALL_COMMIT_QCS: Set[CommitQC] =
-        tuples(ALL_COMMIT_VOTES, r::REPLICAS.powerset()).map(((vote, agg_sig)) => {
-            vote: vote, agg_sig: agg_sig,
-        })
-
-    // All possible values of TimeoutVote under fixed parameters.
-    // For |REPLICAS| = 6, |VIEWS| = 4, |ALL_BLOCKS| = 3, we have 2359296 elements.
-    pure val ALL_TIMEOUT_VOTES: Set[TimeoutVote] =
-        tuples(r::VIEWS, ALL_COMMIT_VOTES, Bool, ALL_COMMIT_VOTES, r::REPLICAS.powerset(), Bool)
-            .map(((v, hv, is_some_hv, qc_vote, qc_agg_sig, is_some_qc)) => {
-                view: v,
-                high_vote: if (is_some_hv) Some(hv) else COMMIT_VOTE_NONE,
-                high_commit_qc:
-                    if (is_some_qc) {
-                        Some({ vote: qc_vote, agg_sig: qc_agg_sig })
-                    } else {
-                        HIGH_COMMIT_QC_NONE
-                    },
-            })
-
-    // all possible values of SignedTimeoutVote under fixed parameters
-    // For |REPLICAS| = 6, |VIEWS| = 4, |ALL_BLOCKS| = 3, we have 14155776 elements.
-    pure val ALL_SIGNED_TIMEOUT_VOTES: Set[SignedTimeoutVote] =
-        tuples(r::REPLICAS, r::VIEWS, ALL_COMMIT_VOTES, Bool, ALL_COMMIT_VOTES, r::REPLICAS.powerset(), Bool)
-            .map(((id, v, hv, is_some_hv, qc_vote, qc_agg_sig, is_some_qc)) => {
-                sig: r::sig_of_id(id),
-                vote: {
-                    view: v,
-                    high_vote: if (is_some_hv) Some(hv) else COMMIT_VOTE_NONE,
-                    high_commit_qc:
-                        if (is_some_qc) {
-                            Some({ vote: qc_vote, agg_sig: qc_agg_sig })
-                        } else {
-                            HIGH_COMMIT_QC_NONE
-                        },
-                }
-            })
-
-    // All possible values of TimeoutQC under fixed parameters.
-    // For |REPLICAS| = 6, |VIEWS| = 4,
-    // we have 2359296^(2^6) * (2^6) * 4 = about 10^410 elements.
-    pure val ALL_TIMEOUT_QCS: Set[TimeoutQC] =
-        pure val ALL_VOTES = r::REPLICAS.powerset().map(voters => voters.setOfMaps(ALL_TIMEOUT_VOTES)).flatten()
-        tuples(ALL_VOTES, r::REPLICAS.powerset(), r::VIEWS).map(((votes, agg_sig, ghost_view)) => {
-            votes: votes, agg_sig: agg_sig, ghost_view: ghost_view
-        })
-
     pure val COMMIT_VOTE_SAMPLE: CommitVote = {
         view: 0, block_number: 0, block_hash: "val_b0",
     }
@@ -113,19 +49,21 @@ module inductive {
         sig: "n0", vote: COMMIT_VOTE_SAMPLE
     }
 
-    pure val SIGNED_TIMEOUT_VOTE_SAMPLE: SignedTimeoutVote = {
-        sig: "n0", vote: TIMEOUT_VOTE_SAMPLE,
-    }
-
     pure val COMMIT_QC_SAMPLE: CommitQC = {
         vote: COMMIT_VOTE_SAMPLE,
         agg_sig: Set("n0"),
     }
 
+    pure val SIGNED_TIMEOUT_VOTE_SAMPLE: SignedTimeoutVote = {
+        sig: "n0",
+        vote: TIMEOUT_VOTE_SAMPLE,
+        high_commit_qc: Some(COMMIT_QC_SAMPLE),
+    }
+
     pure val TIMEOUT_VOTE_SAMPLE: TimeoutVote = {
         view: 0,
         high_vote: Some(COMMIT_VOTE_SAMPLE),
-        high_commit_qc: Some(COMMIT_QC_SAMPLE),
+        high_commit_qc_view: Some(0),
     }
 
     pure val JUSTIFICATION_SAMPLE: Justification = {
@@ -142,6 +80,7 @@ module inductive {
     pure val TIMEOUT_QC_SAMPLE: TimeoutQC = {
         votes: Set("n0").mapBy(id => TIMEOUT_VOTE_SAMPLE),
         agg_sig: Set("n0"),
+        high_commit_qc: Some(COMMIT_QC_SAMPLE),
         ghost_view: 0,
     }
 
@@ -174,12 +113,13 @@ module inductive {
     pure def timeout_vote_shape_inv(v: TimeoutVote): bool = and {
         r::VIEWS.contains(v.view),
         v.high_vote.option_has(commit_vote_shape_inv),
-        v.high_commit_qc.option_has(commit_qc_shape_inv),
+        v.high_commit_qc_view.option_has(v_view => r::VIEWS.contains(v_view)),
     }
 
     pure def signed_timeout_vote_shape_inv(sv: SignedTimeoutVote): bool = and {
         r::REPLICAS.contains(sv.sig),
         timeout_vote_shape_inv(sv.vote),
+        sv.high_commit_qc.option_has(qc => commit_qc_shape_inv(qc)),
     }
 
     pure def timeout_qc_shape_inv(qc: TimeoutQC): bool = and {
@@ -188,6 +128,7 @@ module inductive {
             timeout_vote_shape_inv(qc.votes.get(id)),
         }),
         qc.agg_sig.subseteq(r::REPLICAS),
+        qc.high_commit_qc.option_has(hqc => commit_qc_shape_inv(hqc)),
         r::VIEWS.contains(qc.ghost_view),
     }
 
