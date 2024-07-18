@@ -338,7 +338,7 @@ module inductive {
     action step: bool = any {
         all {
             step_no == 0,
-            r::all_invariants,
+            ind_inv,
             step_unchanged,
             step_no' = 1,
         },
@@ -366,5 +366,43 @@ module inductive {
         r::ghost_step' = r::ghost_step,
     }
 
+    val ind_inv = all {
+        r::store_signed_commit_all_inv,
+        r::store_signed_timeout_all_inv,
+        r::no_commit_equivocation_inv,
+        r::no_timeout_equivocation_inv,
+        r::no_new_view_equivocation_inv,
+        r::no_proposal_equivocation_inv,
+        r::msgs_signed_timeout_inv,
+        r::msgs_signed_commit_inv,
+        r::justification_is_supported_inv,
+        r::one_high_vote_in_timeout_qc_inv,
+        r::one_commit_quorum_inv,
+        r::all_replicas_high_commit_qc_inv,
+        r::all_replicas_high_timeout_qc_inv,
+        r::all_replicas_high_vote_inv,
+        r::view_justification_inv,
+        r::timeout_high_vote_is_highest_inv,
+        r::committed_blocks_have_justification_inv,
+    }
+
     val inv = r::all_invariants
+
+    val store_signed_commit_all_inv = r::store_signed_commit_all_inv
+    val store_signed_timeout_all_inv = r::store_signed_timeout_all_inv
+    val no_commit_equivocation_inv = r::no_commit_equivocation_inv
+    val no_timeout_equivocation_inv = r::no_timeout_equivocation_inv
+    val no_new_view_equivocation_inv = r::no_new_view_equivocation_inv
+    val no_proposal_equivocation_inv = r::no_proposal_equivocation_inv
+    val msgs_signed_timeout_inv = r::msgs_signed_timeout_inv
+    val msgs_signed_commit_inv = r::msgs_signed_commit_inv
+    val justification_is_supported_inv = r::justification_is_supported_inv
+    val one_high_vote_in_timeout_qc_inv = r::one_high_vote_in_timeout_qc_inv
+    val one_commit_quorum_inv = r::one_commit_quorum_inv
+    val all_replicas_high_commit_qc_inv = r::all_replicas_high_commit_qc_inv
+    val all_replicas_high_timeout_qc_inv = r::all_replicas_high_timeout_qc_inv
+    val all_replicas_high_vote_inv = r::all_replicas_high_vote_inv
+    val view_justification_inv = r::view_justification_inv
+    val timeout_high_vote_is_highest_inv = r::timeout_high_vote_is_highest_inv
+    val committed_blocks_have_justification_inv = r::committed_blocks_have_justification_inv
 }

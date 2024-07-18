@@ -1607,14 +1607,14 @@ module replica {
     // All invariants
     // TODO: add the latest invariant about quorum of votes for each proposed block
     val all_invariants = all {
-        msgs_signed_timeout_inv,
-        msgs_signed_commit_inv,
         store_signed_commit_all_inv,
         store_signed_timeout_all_inv,
         no_commit_equivocation_inv,
         no_timeout_equivocation_inv,
         no_new_view_equivocation_inv,
         no_proposal_equivocation_inv,
+        msgs_signed_timeout_inv,
+        msgs_signed_commit_inv,
         justification_is_supported_inv,
         one_high_vote_in_timeout_qc_inv,
         one_commit_quorum_inv,
