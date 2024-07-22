@@ -15,11 +15,10 @@
 pub use self::batch_votes::BatchVotesPublisher;
 use self::batch_votes::BatchVotesWatch;
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
-use anyhow::Context as _;
 use fetch::RequestItem;
 use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
-use zksync_concurrency::{ctx, ctx::channel, scope, sync};
+use zksync_concurrency::{ctx, ctx::channel, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore};
 
@@ -170,9 +169,9 @@ impl Network {
                 let next_batch_number = qc.message.number.next();
 
                 self.batch_store
-                    .queue_batch_qc(ctx, qc)
+                    .persist_batch_qc(ctx, qc)
                     .await
-                    .context("queue_batch_qc")?;
+                    .wrap("queue_batch_qc")?;
 
                 self.batch_votes
                     .set_min_batch_number(next_batch_number)

@@ -9,7 +9,7 @@ use std::{
 };
 use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
-use zksync_consensus_network::{self as network};
+use zksync_consensus_network as network;
 use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
@@ -50,7 +50,7 @@ pub struct Config {
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
     /// Maximal size of a batch, which includes `max_payload_size` per block in the batch,
-    /// plus the size of the Merkle proof of the commitment being included on L1 (should be ~1kB).
+    /// plus the size of the Merkle proof of the commitment being included on L1.
     pub max_batch_size: usize,
     /// Key of this node. It uniquely identifies the node.
     /// It should match the secret key provided in the `node_key` file.
@@ -132,6 +132,7 @@ impl Executor {
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
+            s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
             let (net, runner) = network::Network::new(
                 network_config,
                 self.block_store.clone(),
@@ -139,8 +140,6 @@ impl Executor {
                 network_actor_pipe,
             );
             net.register_metrics();
-
-            s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
 
             if let Some(attester) = self.attester {
@@ -151,7 +150,7 @@ impl Executor {
                     attester,
                     net.batch_vote_publisher(),
                 );
-                s.spawn::<()>(async {
+                s.spawn(async {
                     runner.run(ctx).await?;
                     Ok(())
                 });

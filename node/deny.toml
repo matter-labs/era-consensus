@@ -76,13 +76,8 @@ skip = [
     { name = "http", version = "0.2.12"},
     { name = "http-body", version = "0.4.6"},
     { name = "hyper", version = "0.14.28"},
-
-    # Old versions required by tls-listener.
-    { name = "tokio-rustls", version = "0.25"},
-    { name = "rustls", version = "0.22.4"},
 ]
 
 [sources]
 unknown-registry = "deny"
 unknown-git = "deny"
-allow-org = { github = ["matter-labs"] } # TODO: remove once `vise` is published
