@@ -1,7 +1,7 @@
 //! Defines storage layer for batches of blocks.
 use anyhow::Context as _;
 use std::{collections::VecDeque, fmt, sync::Arc};
-use zksync_concurrency::{ctx, scope, sync};
+use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::{attester, validator};
 
 /// State of the `BatchStore`: continuous range of batches.
@@ -12,33 +12,33 @@ pub struct BatchStoreState {
     pub first: attester::BatchNumber,
     /// The last stored L1 batch.
     /// None iff store is empty.
-    pub last: Option<attester::SyncBatch>,
+    pub last: Option<attester::BatchNumber>,
 }
 
 impl BatchStoreState {
     /// Checks whether batch with the given number is stored in the `BatchStore`.
     pub fn contains(&self, number: attester::BatchNumber) -> bool {
-        let Some(last) = &self.last else { return false };
-        self.first <= number && number <= last.number
+        let Some(last) = self.last else { return false };
+        self.first <= number && number <= last
     }
 
     /// Number of the next batch that can be stored in the `BatchStore`.
     /// (i.e. `last` + 1).
     pub fn next(&self) -> attester::BatchNumber {
         match &self.last {
-            Some(last) => last.number.next(),
+            Some(last) => last.next(),
             None => self.first,
         }
     }
 
     /// Verifies `BatchStoreState'.
     pub fn verify(&self) -> anyhow::Result<()> {
-        if let Some(last) = &self.last {
+        if let Some(last) = self.last {
             anyhow::ensure!(
-                self.first <= last.clone().number,
+                self.first <= last,
                 "first batch {} has bigger number than the last batch {}",
                 self.first,
-                last.number
+                last
             );
         }
         Ok(())
@@ -50,11 +50,6 @@ impl BatchStoreState {
 pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     /// Range of batches persisted in storage.
     fn persisted(&self) -> sync::watch::Receiver<BatchStoreState>;
-
-    /// Get the L1 batch from storage with the highest number.
-    ///
-    /// Returns `None` if no batches have been created yet.
-    async fn last_batch(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchNumber>>;
 
     /// Get the earliest of L1 batches which are missing the corresponding L1 batch quorum certificates
     /// and potentially need to be signed by attesters.
@@ -99,7 +94,7 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
         number: attester::BatchNumber,
     ) -> ctx::Result<Option<attester::BatchQC>>;
 
-    /// Store the given batch QC in the storage.
+    /// Store the given batch QC in the storage persistently.
     async fn store_qc(&self, ctx: &ctx::Ctx, qc: attester::BatchQC) -> ctx::Result<()>;
 
     /// Queue the batch to be persisted in storage.
@@ -149,7 +144,7 @@ impl Inner {
         if self.queued.next() != batch.number {
             return false;
         }
-        self.queued.last = Some(batch.clone());
+        self.queued.last = Some(batch.number);
         self.cache.push_back(batch.clone());
         self.truncate_cache();
         true
@@ -264,12 +259,10 @@ impl BatchStore {
                 return Ok(Some(batch));
             }
         }
-        let batch = self
-            .persistent
+        self.persistent
             .get_batch(ctx, number)
             .await
-            .context("persistent.batch()")?;
-        Ok(batch)
+            .wrap("persistent.batch()")
     }
 
     /// Retrieve the minimum batch number that doesn't have a QC yet and potentially need to be signed.
@@ -285,12 +278,10 @@ impl BatchStore {
         &self,
         ctx: &ctx::Ctx,
     ) -> ctx::Result<Option<attester::BatchNumber>> {
-        let unsigned = self
-            .persistent
+        self.persistent
             .earliest_batch_number_to_sign(ctx)
             .await
-            .context("persistent.get_batch_to_sign()")?;
-        Ok(unsigned)
+            .wrap("persistent.get_batch_to_sign()")
     }
 
     /// Retrieve a batch to be signed.
@@ -302,12 +293,10 @@ impl BatchStore {
         ctx: &ctx::Ctx,
         number: attester::BatchNumber,
     ) -> ctx::Result<Option<attester::Batch>> {
-        let batch = self
-            .persistent
+        self.persistent
             .get_batch_to_sign(ctx, number)
             .await
-            .context("persistent.get_batch_to_sign()")?;
-        Ok(batch)
+            .wrap("persistent.get_batch_to_sign()")
     }
 
     /// Append batch to a queue to be persisted eventually.
@@ -337,7 +326,7 @@ impl BatchStore {
     }
 
     /// Wait until the database has a batch, then attach the corresponding QC.
-    pub async fn queue_batch_qc(&self, ctx: &ctx::Ctx, qc: attester::BatchQC) -> ctx::Result<()> {
+    pub async fn persist_batch_qc(&self, ctx: &ctx::Ctx, qc: attester::BatchQC) -> ctx::Result<()> {
         // The `store_qc` implementation in `zksync-era` retries the insertion of the QC if the payload
         // isn't yet available, but to be safe we can wait for the availability signal here as well.
         sync::wait_for(ctx, &mut self.persistent.persisted(), |persisted| {
@@ -345,8 +334,7 @@ impl BatchStore {
         })
         .await?;
         // Now it's definitely safe to store it.
-        self.persistent.store_qc(ctx, qc).await?;
-        Ok(())
+        self.persistent.store_qc(ctx, qc).await
     }
 
     /// Waits until the given batch is queued (in memory, or persisted).

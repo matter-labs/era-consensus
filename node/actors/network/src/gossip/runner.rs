@@ -9,65 +9,24 @@ use zksync_consensus_roles::{attester::BatchNumber, node};
 use zksync_consensus_storage::{BatchStore, BatchStoreState, BlockStore, BlockStoreState};
 use zksync_protobuf::kB;
 
-struct PushValidatorAddrsServer<'a>(&'a Network);
-
-#[async_trait]
-impl rpc::Handler<rpc::push_validator_addrs::Rpc> for PushValidatorAddrsServer<'_> {
-    fn max_req_size(&self) -> usize {
-        100 * kB
-    }
-    async fn handle(
-        &self,
-        _ctx: &ctx::Ctx,
-        req: rpc::push_validator_addrs::Req,
-    ) -> anyhow::Result<()> {
-        self.0
-            .push_validator_addrs_calls
-            .fetch_add(1, Ordering::SeqCst);
-        self.0
-            .validator_addrs
-            .update(&self.0.genesis().validators, &req.0)
-            .await?;
-        Ok(())
-    }
-}
-
-/// Receive the snapshot of known batch votes from a remote peer.
-///
-/// The server receives the *diff* from remote peers, which it merges into the common register.
-struct PushBatchVotesServer<'a>(&'a Network);
-
-#[async_trait::async_trait]
-impl rpc::Handler<rpc::push_batch_votes::Rpc> for PushBatchVotesServer<'_> {
-    /// Here we bound the buffering of incoming batch messages.
-    fn max_req_size(&self) -> usize {
-        100 * kB
-    }
-
-    async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::push_batch_votes::Req) -> anyhow::Result<()> {
-        self.0
-            .batch_votes
-            .update(
-                self.0.genesis().attesters.as_ref().context("attesters")?,
-                &req.0,
-            )
-            .await?;
-        Ok(())
-    }
-}
-
-/// Represents what we know about the state of available blocks on the remote peer.
-struct PushBlockStoreStateServer<'a> {
-    state: sync::watch::Sender<BlockStoreState>,
+/// Receiver of push messages from the peers.
+struct PushServer<'a> {
+    blocks: sync::watch::Sender<BlockStoreState>,
+    batches: sync::watch::Sender<BatchStoreState>,
     /// The network is required for the verification of messages.
     net: &'a Network,
 }
 
-impl<'a> PushBlockStoreStateServer<'a> {
+impl<'a> PushServer<'a> {
     fn new(net: &'a Network) -> Self {
         Self {
-            state: sync::watch::channel(BlockStoreState {
+            blocks: sync::watch::channel(BlockStoreState {
                 first: net.genesis().first_block,
+                last: None,
+            })
+            .0,
+            batches: sync::watch::channel(BatchStoreState {
+                first: BatchNumber(0),
                 last: None,
             })
             .0,
@@ -76,28 +35,48 @@ impl<'a> PushBlockStoreStateServer<'a> {
     }
 }
 
-/// Represents what we know about the state of available batches on the remote peer.
-struct PushBatchStoreStateServer {
-    state: sync::watch::Sender<BatchStoreState>,
-    max_batch_size: usize,
+#[async_trait]
+impl rpc::Handler<rpc::push_validator_addrs::Rpc> for &PushServer<'_> {
+    fn max_req_size(&self) -> usize {
+        100 * kB
+    }
+    async fn handle(
+        &self,
+        _ctx: &ctx::Ctx,
+        req: rpc::push_validator_addrs::Req,
+    ) -> anyhow::Result<()> {
+        self.net
+            .push_validator_addrs_calls
+            .fetch_add(1, Ordering::SeqCst);
+        self.net
+            .validator_addrs
+            .update(&self.net.genesis().validators, &req.0)
+            .await?;
+        Ok(())
+    }
 }
 
-impl PushBatchStoreStateServer {
-    /// Start out not knowing anything about the remote peer.
-    fn new(max_batch_size: usize) -> Self {
-        Self {
-            state: sync::watch::channel(BatchStoreState {
-                first: BatchNumber(0),
-                last: None,
-            })
-            .0,
-            max_batch_size,
-        }
+#[async_trait::async_trait]
+impl rpc::Handler<rpc::push_batch_votes::Rpc> for &PushServer<'_> {
+    /// Here we bound the buffering of incoming batch messages.
+    fn max_req_size(&self) -> usize {
+        100 * kB
+    }
+
+    async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::push_batch_votes::Req) -> anyhow::Result<()> {
+        self.net
+            .batch_votes
+            .update(
+                self.net.genesis().attesters.as_ref().context("attesters")?,
+                &req.0,
+            )
+            .await?;
+        Ok(())
     }
 }
 
 #[async_trait]
-impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushBlockStoreStateServer<'_> {
+impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushServer<'_> {
     fn max_req_size(&self) -> usize {
         10 * kB
     }
@@ -107,15 +86,15 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushBlockStoreStateServ
         req: rpc::push_block_store_state::Req,
     ) -> anyhow::Result<()> {
         req.0.verify(self.net.genesis())?;
-        self.state.send_replace(req.0);
+        self.blocks.send_replace(req.0);
         Ok(())
     }
 }
 
 #[async_trait]
-impl rpc::Handler<rpc::push_batch_store_state::Rpc> for &PushBatchStoreStateServer {
+impl rpc::Handler<rpc::push_batch_store_state::Rpc> for &PushServer<'_> {
     fn max_req_size(&self) -> usize {
-        self.max_batch_size.saturating_add(kB)
+        10 * kB
     }
     async fn handle(
         &self,
@@ -123,7 +102,7 @@ impl rpc::Handler<rpc::push_batch_store_state::Rpc> for &PushBatchStoreStateServ
         req: rpc::push_batch_store_state::Req,
     ) -> anyhow::Result<()> {
         req.0.verify()?;
-        self.state.send_replace(req.0);
+        self.batches.send_replace(req.0);
         Ok(())
     }
 }
@@ -159,66 +138,66 @@ impl rpc::Handler<rpc::get_batch::Rpc> for &BatchStore {
 impl Network {
     /// Manages lifecycle of a single connection.
     async fn run_stream(&self, ctx: &ctx::Ctx, stream: noise::Stream) -> anyhow::Result<()> {
+        let push_server = PushServer::new(self);
         let push_validator_addrs_client = rpc::Client::<rpc::push_validator_addrs::Rpc>::new(
             ctx,
             self.cfg.rpc.push_validator_addrs_rate,
         );
-        let push_validator_addrs_server = PushValidatorAddrsServer(self);
         let push_block_store_state_client = rpc::Client::<rpc::push_block_store_state::Rpc>::new(
             ctx,
             self.cfg.rpc.push_block_store_state_rate,
         );
-        let push_block_store_state_server = PushBlockStoreStateServer::new(self);
-        let get_block_client =
-            rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate);
-        let get_batch_client =
-            rpc::Client::<rpc::get_batch::Rpc>::new(ctx, self.cfg.rpc.get_batch_rate);
         let push_batch_store_state_client = rpc::Client::<rpc::push_batch_store_state::Rpc>::new(
             ctx,
             self.cfg.rpc.push_batch_store_state_rate,
         );
-        let push_batch_store_state_server = PushBatchStoreStateServer::new(self.cfg.max_batch_size);
+        let get_block_client =
+            rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate);
+        let get_batch_client =
+            rpc::Client::<rpc::get_batch::Rpc>::new(ctx, self.cfg.rpc.get_batch_rate);
+
         scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_client(&push_validator_addrs_client)
-                .add_server(
+                .add_server::<rpc::push_validator_addrs::Rpc>(
                     ctx,
-                    push_validator_addrs_server,
+                    &push_server,
                     self.cfg.rpc.push_validator_addrs_rate,
                 )
                 .add_client(&push_block_store_state_client)
-                .add_server(
+                .add_client(&push_batch_store_state_client)
+                .add_server::<rpc::push_block_store_state::Rpc>(
                     ctx,
-                    &push_block_store_state_server,
+                    &push_server,
                     self.cfg.rpc.push_block_store_state_rate,
+                )
+                .add_server::<rpc::push_batch_store_state::Rpc>(
+                    ctx,
+                    &push_server,
+                    self.cfg.rpc.push_batch_store_state_rate,
                 )
                 .add_client(&get_block_client)
                 .add_server(ctx, &*self.block_store, self.cfg.rpc.get_block_rate)
                 .add_client(&get_batch_client)
                 .add_server(ctx, &*self.batch_store, self.cfg.rpc.get_batch_rate)
-                .add_client(&push_batch_store_state_client)
-                .add_server(
-                    ctx,
-                    &push_batch_store_state_server,
-                    self.cfg.rpc.get_batch_rate,
-                )
                 .add_server(ctx, rpc::ping::Server, rpc::ping::RATE);
 
             // If there is an attester committee then
             if self.genesis().attesters.as_ref().is_some() {
-                let push_signature_client = rpc::Client::<rpc::push_batch_votes::Rpc>::new(
+                let push_batch_votes_client = rpc::Client::<rpc::push_batch_votes::Rpc>::new(
                     ctx,
                     self.cfg.rpc.push_batch_votes_rate,
                 );
-                let push_signature_server = PushBatchVotesServer(self);
-                service = service.add_client(&push_signature_client).add_server(
-                    ctx,
-                    push_signature_server,
-                    self.cfg.rpc.push_batch_votes_rate,
-                );
+                service = service
+                    .add_client(&push_batch_votes_client)
+                    .add_server::<rpc::push_batch_votes::Rpc>(
+                        ctx,
+                        &push_server,
+                        self.cfg.rpc.push_batch_votes_rate,
+                    );
                 // Push L1 batch votes updates to peer.
                 s.spawn::<()>(async {
-                    let push_signature_client = push_signature_client;
+                    let push_batch_votes_client = push_batch_votes_client;
                     // Snapshot of the batches when we last pushed to the peer.
                     let mut old = BatchVotes::default();
                     // Subscribe to what we know about the state of the whole network.
@@ -233,7 +212,7 @@ impl Network {
                         }
                         old = new;
                         let req = rpc::push_batch_votes::Req(diff);
-                        push_signature_client.call(ctx, &req, kB).await?;
+                        push_batch_votes_client.call(ctx, &req, kB).await?;
                     }
                 });
             }
@@ -290,7 +269,7 @@ impl Network {
             // Perform get_block calls to peer.
             s.spawn::<()>(async {
                 // Gossiped state of what range of blocks is available on the remote peer.
-                let state = &mut push_block_store_state_server.state.subscribe();
+                let state = &mut push_server.blocks.subscribe();
                 loop {
                     let call = get_block_client.reserve(ctx).await?;
                     let (req, send_resp) = self.fetch_queue.accept_block(ctx, state).await?;
@@ -335,7 +314,7 @@ impl Network {
 
             // Perform get_batch calls to peer.
             s.spawn::<()>(async {
-                let state = &mut push_batch_store_state_server.state.subscribe();
+                let state = &mut push_server.batches.subscribe();
                 loop {
                     let call = get_batch_client.reserve(ctx).await?;
                     let (req, send_resp) = self.fetch_queue.accept_batch(ctx, state).await?;

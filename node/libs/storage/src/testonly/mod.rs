@@ -154,7 +154,7 @@ pub async fn dump_batch(
     let after = state
         .last
         .as_ref()
-        .map(|sb| sb.number.next())
+        .map(|sb| sb.next())
         .unwrap_or(state.first);
     for n in (state.first.0..after.0).map(attester::BatchNumber) {
         let batch = store.get_batch(ctx, n).await.unwrap().unwrap();

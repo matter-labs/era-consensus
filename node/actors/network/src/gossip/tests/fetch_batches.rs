@@ -85,7 +85,7 @@ async fn test_simple() {
                 ctx,
                 &rpc::push_batch_store_state::Req(BatchStoreState {
                     first: setup.batches[1].number,
-                    last: Some(setup.batches[1].clone()),
+                    last: Some(setup.batches[1].number),
                 }),
             )
             .await
@@ -158,7 +158,7 @@ async fn test_concurrent_requests() {
                     ctx,
                     &rpc::push_batch_store_state::Req(BatchStoreState {
                         first: setup.batches[0].number,
-                        last: Some(setup.batches.last().unwrap().clone()),
+                        last: Some(setup.batches.last().unwrap().number),
                     }),
                 )
                 .await
@@ -218,7 +218,7 @@ async fn test_bad_responses() {
 
         let state = rpc::push_batch_store_state::Req(BatchStoreState {
             first: setup.batches[0].number,
-            last: Some(setup.batches[0].clone()),
+            last: Some(setup.batches[0].number),
         });
 
         for resp in [
@@ -295,7 +295,7 @@ async fn test_retry() {
 
         let state = rpc::push_batch_store_state::Req(BatchStoreState {
             first: setup.batches[0].number,
-            last: Some(setup.batches[0].clone()),
+            last: Some(setup.batches[0].number),
         });
 
         tracing::info!("establish a bunch of connections");

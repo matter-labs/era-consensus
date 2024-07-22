@@ -134,7 +134,10 @@ impl ProtoFmt for AppConfig {
 
         let max_batch_size = match &r.max_batch_size {
             Some(x) => (*x).try_into().context("max_payload_size")?,
-            None => max_payload_size * 100 + kB, // Merkle proof is ~1kB and we have a batch per minute.
+            // Arbitrary estimate of 100 blocks  + 1kB for the merkle proof.
+            // NOTE: this test node currently doesn't implement batches at all.
+            // Once it does, do the estimates again.
+            None => max_payload_size * 100 + kB,
         };
 
         Ok(Self {

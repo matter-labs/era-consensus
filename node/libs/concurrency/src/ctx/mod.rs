@@ -253,6 +253,11 @@ impl Ctx {
 /// anyhow::Error + "canceled" variant.
 /// Useful for working with concurrent code which doesn't need structured errors,
 /// but needs to handle cancelation explicitly.
+///
+/// WARNING: this error type implements both `Wrap` and `From<anyhow::Error>`.
+/// You should be careful to NOT use `context()` instead of `wrap()`,
+/// because otherwise the `Canceled` error will get silently translated
+/// to `Internal` error.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
     /// Context has been canceled before call completion.

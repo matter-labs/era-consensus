@@ -131,10 +131,6 @@ impl PersistentBatchStore for BatchStore {
         self.0.persisted.subscribe()
     }
 
-    async fn last_batch(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchNumber>> {
-        Ok(self.0.persisted.borrow().last.clone().map(|qc| qc.number))
-    }
-
     async fn last_batch_qc(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchQC>> {
         let certs = self.0.certs.lock().unwrap();
         let last_batch_number = certs.keys().max().unwrap();
@@ -215,7 +211,7 @@ impl PersistentBatchStore for BatchStore {
         }
         self.0
             .persisted
-            .send_modify(|p| p.last = Some(batch.clone()));
+            .send_modify(|p| p.last = Some(batch.number));
         batches.push_back(batch);
         Ok(())
     }

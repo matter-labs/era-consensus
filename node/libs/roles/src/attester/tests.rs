@@ -134,10 +134,6 @@ fn test_agg_signature_verify() {
         .is_err());
 }
 
-fn make_batch_msg(rng: &mut impl Rng) -> Batch {
-    rng.gen()
-}
-
 #[test]
 fn test_batch_qc() {
     use BatchQCVerifyError as Error;
@@ -169,7 +165,7 @@ fn test_batch_qc() {
 
     // Create QCs with increasing number of attesters.
     for i in 0..setup1.attester_keys.len() + 1 {
-        let mut qc = BatchQC::new(make_batch_msg(rng));
+        let mut qc = BatchQC::new(rng.gen());
         for key in &setup1.attester_keys[0..i] {
             qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis)
                 .unwrap();
@@ -201,7 +197,7 @@ fn test_attester_committee_weights() {
     // Expected sum of the attesters weights
     let sums = [1000, 1600, 2400, 8400, 9300, 10000];
 
-    let msg = make_batch_msg(rng);
+    let msg: Batch = rng.gen();
     let mut qc = BatchQC::new(msg.clone());
     for (n, weight) in sums.iter().enumerate() {
         let key = &setup.attester_keys[n];
