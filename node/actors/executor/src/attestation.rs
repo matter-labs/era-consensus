@@ -53,7 +53,6 @@ impl AttesterRunner {
             .await
             .context("wait_until_persisted")?
             .last
-            .map(|b| b.number)
             .unwrap_or_default();
 
         // Determine the batch to start signing from.

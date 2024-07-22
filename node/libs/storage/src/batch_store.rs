@@ -12,33 +12,33 @@ pub struct BatchStoreState {
     pub first: attester::BatchNumber,
     /// The last stored L1 batch.
     /// None iff store is empty.
-    pub last: Option<attester::SyncBatch>,
+    pub last: Option<attester::BatchNumber>,
 }
 
 impl BatchStoreState {
     /// Checks whether batch with the given number is stored in the `BatchStore`.
     pub fn contains(&self, number: attester::BatchNumber) -> bool {
-        let Some(last) = &self.last else { return false };
-        self.first <= number && number <= last.number
+        let Some(last) = self.last else { return false };
+        self.first <= number && number <= last
     }
 
     /// Number of the next batch that can be stored in the `BatchStore`.
     /// (i.e. `last` + 1).
     pub fn next(&self) -> attester::BatchNumber {
         match &self.last {
-            Some(last) => last.number.next(),
+            Some(last) => last.next(),
             None => self.first,
         }
     }
 
     /// Verifies `BatchStoreState'.
     pub fn verify(&self) -> anyhow::Result<()> {
-        if let Some(last) = &self.last {
+        if let Some(last) = self.last {
             anyhow::ensure!(
-                self.first <= last.clone().number,
+                self.first <= last,
                 "first batch {} has bigger number than the last batch {}",
                 self.first,
-                last.number
+                last
             );
         }
         Ok(())
@@ -50,11 +50,6 @@ impl BatchStoreState {
 pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     /// Range of batches persisted in storage.
     fn persisted(&self) -> sync::watch::Receiver<BatchStoreState>;
-
-    /// Get the L1 batch from storage with the highest number.
-    ///
-    /// Returns `None` if no batches have been created yet.
-    async fn last_batch(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchNumber>>;
 
     /// Get the earliest of L1 batches which are missing the corresponding L1 batch quorum certificates
     /// and potentially need to be signed by attesters.
@@ -149,7 +144,7 @@ impl Inner {
         if self.queued.next() != batch.number {
             return false;
         }
-        self.queued.last = Some(batch.clone());
+        self.queued.last = Some(batch.number);
         self.cache.push_back(batch.clone());
         self.truncate_cache();
         true
