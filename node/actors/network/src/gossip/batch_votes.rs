@@ -4,7 +4,7 @@ use std::{collections::HashSet, fmt, sync::Arc};
 use zksync_concurrency::sync;
 use zksync_consensus_roles::attester;
 
-/// Represents the currents state of node's knowledge about the attester votes.
+/// Represents the current state of node's knowledge about the attester votes.
 ///
 /// Eventually this data structure will have to track voting potentially happening
 /// simultaneously on multiple heights, if we decrease the batch interval to be
