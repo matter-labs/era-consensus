@@ -3305,7 +3305,7 @@ dependencies = [
 
 [[package]]
 name = "tester"
-version = "0.1.0-rc.2"
+version = "0.1.0-rc.3"
 dependencies = [
  "anyhow",
  "clap",
@@ -4059,7 +4059,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_concurrency"
-version = "0.1.0-rc.2"
+version = "0.1.0-rc.3"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -4077,7 +4077,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_bft"
-version = "0.1.0-rc.2"
+version = "0.1.0-rc.3"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -4101,7 +4101,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_crypto"
-version = "0.1.0-rc.2"
+version = "0.1.0-rc.3"
 dependencies = [
  "anyhow",
  "blst",
@@ -4124,7 +4124,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_executor"
-version = "0.1.0-rc.2"
+version = "0.1.0-rc.3"
 dependencies = [
  "anyhow",
  "rand 0.8.5",
@@ -4144,7 +4144,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_network"
-version = "0.1.0-rc.2"
+version = "0.1.0-rc.3"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -4180,7 +4180,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_roles"
-version = "0.1.0-rc.2"
+version = "0.1.0-rc.3"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -4201,7 +4201,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_storage"
-version = "0.1.0-rc.2"
+version = "0.1.0-rc.3"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -4223,7 +4223,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_tools"
-version = "0.1.0-rc.2"
+version = "0.1.0-rc.3"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4258,7 +4258,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_utils"
-version = "0.1.0-rc.2"
+version = "0.1.0-rc.3"
 dependencies = [
  "anyhow",
  "rand 0.8.5",
@@ -4268,7 +4268,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_protobuf"
-version = "0.1.0-rc.2"
+version = "0.1.0-rc.3"
 dependencies = [
  "anyhow",
  "bit-vec",
@@ -4290,7 +4290,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_protobuf_build"
-version = "0.1.0-rc.2"
+version = "0.1.0-rc.3"
 dependencies = [
  "anyhow",
  "heck",
