@@ -1,4 +1,4 @@
-/// Metrics realted to the gossiping of L1 batch votes.
+/// Metrics related to the gossiping of L1 batch votes.
 #[derive(Debug, vise::Metrics)]
 #[metrics(prefix = "network_gossip_batch_votes")]
 pub(crate) struct BatchVotesMetrics {
