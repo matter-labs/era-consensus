@@ -9,12 +9,14 @@ use super::metrics;
 #[derive(Debug, Default)]
 pub(super) struct BatchUpdateStats {
     num_added: usize,
+    weight_added: u64,
     last_added: Option<attester::BatchNumber>,
 }
 
 impl BatchUpdateStats {
-    fn added(&mut self, number: attester::BatchNumber) {
+    fn added(&mut self, number: attester::BatchNumber, weight: u64) {
         self.num_added += 1;
+        self.weight_added += weight;
         self.last_added = Some(number);
     }
 }
@@ -113,7 +115,7 @@ impl BatchVotes {
             d.verify()?;
 
             self.add(d.clone(), weight);
-            stats.added(d.msg.number);
+            stats.added(d.msg.number, weight);
         }
 
         Ok(stats)
@@ -237,6 +239,9 @@ impl BatchVotesWatch {
         if let Some(last_added) = stats.last_added {
             this.send_replace(votes);
 
+            #[allow(clippy::float_arithmetic)]
+            let weight_added = stats.weight_added as f64 / attesters.total_weight() as f64;
+
             metrics::BATCH_VOTES_METRICS
                 .last_added_vote_batch_number
                 .set(last_added.0);
@@ -244,6 +249,10 @@ impl BatchVotesWatch {
             metrics::BATCH_VOTES_METRICS
                 .votes_added
                 .inc_by(stats.num_added as u64);
+
+            metrics::BATCH_VOTES_METRICS
+                .weight_added
+                .inc_by(weight_added);
         }
 
         metrics::BATCH_VOTES_METRICS

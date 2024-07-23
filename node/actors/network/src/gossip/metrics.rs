@@ -11,6 +11,12 @@ pub(crate) struct BatchVotesMetrics {
     /// save for any new joiner casting their historic votes in a burst.
     pub(crate) votes_added: vise::Counter,
 
+    /// Weight of votes added to the tally normalized by the total committee weight.
+    ///
+    /// Its rate of change should correlate with the attester committee weight and batch production rate,
+    /// that is, it should go up up by 1.0 with each new batch if everyone attests.
+    pub(crate) weight_added: vise::Counter<f64>,
+
     /// The minimum batch number we still expect votes for.
     ///
     /// This should go up as the main node indicates the finalisation of batches,
