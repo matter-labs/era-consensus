@@ -26,6 +26,7 @@ mod batch_votes;
 mod fetch;
 mod handshake;
 pub mod loadtest;
+mod metrics;
 mod runner;
 #[cfg(test)]
 mod testonly;
@@ -171,7 +172,7 @@ impl Network {
                 self.batch_store
                     .persist_batch_qc(ctx, qc)
                     .await
-                    .wrap("queue_batch_qc")?;
+                    .wrap("persist_batch_qc")?;
 
                 self.batch_votes
                     .set_min_batch_number(next_batch_number)
