@@ -33,6 +33,8 @@ pub(super) struct BatchStore {
     /// Overall latency of a `wait_until_persisted()` call.
     #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
     pub(super) wait_until_persisted: vise::Histogram<time::Duration>,
+    /// Last persisted batch QC.
+    pub(super) last_persisted_batch_qc: vise::Gauge<u64>,
 }
 
 #[vise::register]

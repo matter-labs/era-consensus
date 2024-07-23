@@ -368,7 +368,12 @@ impl BatchStore {
         })
         .await?;
         // Now it's definitely safe to store it.
+        metrics::BATCH_STORE
+            .last_persisted_batch_qc
+            .set(qc.message.number.0);
+
         self.persistent.store_qc(ctx, qc).await?;
+
         t.observe();
         Ok(())
     }
