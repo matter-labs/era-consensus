@@ -73,7 +73,7 @@ impl BatchVotes {
     /// `self` might get modified even if an error is returned
     /// (all entries verified so far are added).
     ///
-    /// Returns true iff some new entry was added.
+    /// Returns statistics about new entries added.
     pub(super) fn update(
         &mut self,
         attesters: &attester::Committee,
