@@ -4,6 +4,23 @@ use std::{collections::HashSet, fmt, sync::Arc};
 use zksync_concurrency::sync;
 use zksync_consensus_roles::attester;
 
+use super::metrics;
+
+#[derive(Debug, Default)]
+pub(super) struct BatchUpdateStats {
+    num_added: usize,
+    weight_added: u64,
+    last_added: Option<attester::BatchNumber>,
+}
+
+impl BatchUpdateStats {
+    fn added(&mut self, number: attester::BatchNumber, weight: u64) {
+        self.num_added += 1;
+        self.weight_added += weight;
+        self.last_added = Some(number);
+    }
+}
+
 /// Represents the current state of node's knowledge about the attester votes.
 ///
 /// Eventually this data structure will have to track voting potentially happening
@@ -57,13 +74,14 @@ impl BatchVotes {
     /// It exits as soon as an invalid entry is found.
     /// `self` might get modified even if an error is returned
     /// (all entries verified so far are added).
-    /// Returns true iff some new entry was added.
+    ///
+    /// Returns statistics about new entries added.
     pub(super) fn update(
         &mut self,
         attesters: &attester::Committee,
         data: &[Arc<attester::Signed<attester::Batch>>],
-    ) -> anyhow::Result<bool> {
-        let mut changed = false;
+    ) -> anyhow::Result<BatchUpdateStats> {
+        let mut stats = BatchUpdateStats::default();
 
         let mut done = HashSet::new();
         for d in data {
@@ -97,10 +115,10 @@ impl BatchVotes {
             d.verify()?;
 
             self.add(d.clone(), weight);
-
-            changed = true;
+            stats.added(d.msg.number, weight);
         }
-        Ok(changed)
+
+        Ok(stats)
     }
 
     /// Check if we have achieved quorum for any of the batch hashes.
@@ -216,9 +234,31 @@ impl BatchVotesWatch {
     ) -> anyhow::Result<()> {
         let this = self.0.lock().await;
         let mut votes = this.borrow().clone();
-        if votes.update(attesters, data)? {
+        let stats = votes.update(attesters, data)?;
+
+        if let Some(last_added) = stats.last_added {
             this.send_replace(votes);
+
+            #[allow(clippy::float_arithmetic)]
+            let weight_added = stats.weight_added as f64 / attesters.total_weight() as f64;
+
+            metrics::BATCH_VOTES_METRICS
+                .last_added_vote_batch_number
+                .set(last_added.0);
+
+            metrics::BATCH_VOTES_METRICS
+                .votes_added
+                .inc_by(stats.num_added as u64);
+
+            metrics::BATCH_VOTES_METRICS
+                .weight_added
+                .inc_by(weight_added);
         }
+
+        metrics::BATCH_VOTES_METRICS
+            .committee_size
+            .set(attesters.len());
+
         Ok(())
     }
 
@@ -226,6 +266,10 @@ impl BatchVotesWatch {
     pub(crate) async fn set_min_batch_number(&self, min_batch_number: attester::BatchNumber) {
         let this = self.0.lock().await;
         this.send_modify(|votes| votes.set_min_batch_number(min_batch_number));
+
+        metrics::BATCH_VOTES_METRICS
+            .min_batch_number
+            .set(min_batch_number.0);
     }
 }
 
@@ -251,6 +295,11 @@ impl BatchVotesPublisher {
             return Ok(());
         }
         let attestation = attester.sign_msg(batch);
+
+        metrics::BATCH_VOTES_METRICS
+            .last_signed_batch_number
+            .set(attestation.msg.number.0);
+
         self.0.update(attesters, &[Arc::new(attestation)]).await
     }
 }
