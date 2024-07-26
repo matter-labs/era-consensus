@@ -27,14 +27,16 @@ impl ProtoFmt for Batch {
     type Proto = proto::Batch;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            hash: read_required(&r.hash).context("hash")?,
             number: BatchNumber(*required(&r.number).context("number")?),
+            hash: read_required(&r.hash).context("hash")?,
+            genesis: read_required(&r.genesis).context("genesis")?,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
             number: Some(self.number.0),
             hash: Some(self.hash.build()),
+            genesis: Some(self.genesis.build()),
         }
     }
 }

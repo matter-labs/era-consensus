@@ -52,6 +52,7 @@ impl Distribution<Batch> for Standard {
         Batch {
             number: rng.gen(),
             hash: rng.gen(),
+            genesis: rng.gen(),
         }
     }
 }

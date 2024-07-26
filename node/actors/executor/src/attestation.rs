@@ -46,6 +46,8 @@ impl AttesterRunner {
             return Ok(());
         }
 
+        let genesis = self.block_store.genesis().hash();
+
         // Find the initial range of batches that we want to (re)sign after a (re)start.
         let last_batch_number = self
             .batch_store
@@ -79,7 +81,7 @@ impl AttesterRunner {
 
             // We only have to publish a vote once; future peers can pull it from the register.
             self.publisher
-                .publish(attesters, &self.attester.key, batch)
+                .publish(attesters, &genesis, &self.attester.key, batch)
                 .await
                 .context("publish")?;
 
