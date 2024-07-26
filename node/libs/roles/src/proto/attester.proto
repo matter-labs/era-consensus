@@ -3,6 +3,7 @@ syntax = "proto3";
 package zksync.roles.attester;
 
 import "zksync/std.proto";
+import public "zksync/roles/validator/keys.proto";
 
 message SyncBatch {
   optional uint64 number = 1; // required

@@ -3,7 +3,7 @@ syntax = "proto3";
 package zksync.roles.validator;
 
 import "zksync/std.proto";
-import "zksync/roles/attester.proto";
+import public "zksync/roles/attester.proto";
 
 message Genesis {
   reserved 1,2;
