@@ -330,7 +330,10 @@ impl Config {
                     .relative_to(&manifest.proto_root.to_name()?)
                     .unwrap();
                 let rust_path = root_path.clone().join(proto_rel.to_rust_module()?);
-                if extern_paths.insert(file.package(), rust_path.clone()).is_none() {
+                if extern_paths
+                    .insert(file.package(), rust_path.clone())
+                    .is_none()
+                {
                     config.extern_path(format!(".{}", file.package()), rust_path.to_string());
                 }
             }
@@ -340,7 +343,9 @@ impl Config {
             let code = config
                 .generate(vec![(module.clone(), file.clone())])
                 .context("generation failed")?;
-            let Some(code) = code.get(&module) else { continue };
+            let Some(code) = code.get(&module) else {
+                continue;
+            };
             let code = syn::parse_str(code).with_context(|| {
                 format!("prost_build generated invalid code for {}", file.name())
             })?;
