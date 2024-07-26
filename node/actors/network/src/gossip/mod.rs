@@ -157,15 +157,12 @@ impl Network {
         let genesis = self.genesis().hash();
         let mut sub = self.batch_votes.subscribe();
         loop {
-            // In the future when we might be gossiping about multiple batches at the same time,
-            // we can collect the ones we submitted into a skip list until we see them confirmed
-            // on L1 and we can finally increase the minimum as well.
-            let quorums = {
+            let quorum_opt = {
                 let votes = sync::changed(ctx, &mut sub).await?;
-                votes.find_quorums(attesters, &genesis, |_| false)
+                votes.find_quorum(attesters, &genesis)
             };
 
-            for qc in quorums {
+            if let Some(qc) = quorum_opt {
                 // In the future this should come from confirmations, but for now it's best effort, so we can forget ASAP.
                 // TODO: An initial value could be looked up in the database even now.
                 let next_batch_number = qc.message.number.next();

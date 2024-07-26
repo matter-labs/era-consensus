@@ -673,27 +673,21 @@ fn test_batch_votes_quorum() {
 
             // Check that as soon as we have quorum it's found.
             if batches[b].1 >= attesters.threshold() {
-                let qs = votes.find_quorums(&attesters, &genesis, |_| false);
-                assert!(!qs.is_empty(), "should find quorum");
-                assert!(qs[0].message == *batch);
-                assert!(qs[0].signatures.keys().count() > 0);
+                let qc = votes
+                    .find_quorum(&attesters, &genesis)
+                    .expect("should find quorum");
+                assert!(qc.message == *batch);
+                assert!(qc.signatures.keys().count() > 0);
             }
         }
 
-        if let Some(quorum) = batches
+        if batches
             .iter()
             .find(|b| b.1 >= attesters.threshold())
-            .map(|(b, _)| b)
+            .is_none()
         {
-            // Check that a quorum can be skipped
-            assert!(votes
-                .find_quorums(&attesters, &genesis, |b| b == quorum.number)
-                .is_empty());
-        } else {
             // Check that if there was no quoroum then we don't find any.
-            assert!(votes
-                .find_quorums(&attesters, &genesis, |_| false)
-                .is_empty());
+            assert!(votes.find_quorum(&attesters, &genesis).is_none());
         }
 
         // Check that the minimum batch number prunes data.
