@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package zksync.roles.validator;
 
-message PublicKeyo {
+message PublicKey {
   // The name is wrong, it should be bls12_381.
   optional bytes bn254 = 1; // required
 }
