@@ -1,7 +1,0 @@
-syntax = "proto3";
-
-package zksync.roles.common;
-
-message GenesisHash {
-  optional bytes keccak256 = 1; // required
-}

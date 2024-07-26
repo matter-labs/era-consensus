@@ -11,6 +11,27 @@ use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_map, read_required, required, ProtoFmt};
 
+// This is here because `attester::GenesisHash` is a type alias for `validator::GenesisHash`,
+// and `validator::GenesisHash` serializes to the type in `validator.proto`. We can't import
+// `validator.proto` into `attester.proto` because it would be circular, and we can't move
+// `GenesisHash` to a separate `common.proto` file because the compatibility checker complains
+// about the change in package name. This way the massaging from one type to another is limited
+// to here, but in the domain model we can work with the same types.
+struct GenesisHashWrapper(super::GenesisHash);
+
+impl ProtoFmt for GenesisHashWrapper {
+    type Proto = proto::GenesisHash;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        let hash = super::GenesisHash(ByteFmt::decode(required(&r.keccak256)?)?);
+        Ok(Self(hash))
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            keccak256: self.0.build().keccak256,
+        }
+    }
+}
+
 impl ProtoFmt for BatchHash {
     type Proto = proto::BatchHash;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
@@ -29,14 +50,16 @@ impl ProtoFmt for Batch {
         Ok(Self {
             number: BatchNumber(*required(&r.number).context("number")?),
             hash: read_required(&r.hash).context("hash")?,
-            genesis: read_required(&r.genesis).context("genesis")?,
+            genesis: read_required::<GenesisHashWrapper>(&r.genesis)
+                .context("genesis")?
+                .0,
         })
     }
     fn build(&self) -> Self::Proto {
         Self::Proto {
             number: Some(self.number.0),
             hash: Some(self.hash.build()),
-            genesis: Some(self.genesis.build()),
+            genesis: Some(GenesisHashWrapper(self.genesis).build()),
         }
     }
 }

@@ -2,14 +2,13 @@ syntax = "proto3";
 
 package zksync.network.consensus;
 
-import "zksync/roles/common.proto";
 import "zksync/roles/validator.proto";
 import "zksync/std.proto";
 
 // First message exchanged in the encrypted session.
 message Handshake {
   optional roles.validator.Signed session_id = 1; // required
-  optional roles.common.GenesisHash genesis = 2; // required
+  optional roles.validator.GenesisHash genesis = 2; // required
 }
 
 message ConsensusReq {

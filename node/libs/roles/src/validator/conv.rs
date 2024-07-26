@@ -79,7 +79,7 @@ impl ProtoFmt for Genesis {
 }
 
 impl ProtoFmt for GenesisHash {
-    type Proto = crate::proto::common::GenesisHash;
+    type Proto = proto::GenesisHash;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
     }

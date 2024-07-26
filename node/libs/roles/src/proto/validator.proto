@@ -3,7 +3,6 @@ syntax = "proto3";
 package zksync.roles.validator;
 
 import "zksync/std.proto";
-import "zksync/roles/common.proto";
 import "zksync/roles/attester.proto";
 
 message Genesis {
@@ -38,6 +37,10 @@ message LeaderSelectionMode {
   }
 }
 
+message GenesisHash {
+  optional bytes keccak256 = 1; // required
+}
+
 message PayloadHash {
   optional bytes keccak256 = 1; // required
 }
@@ -57,7 +60,7 @@ message FinalBlock {
 message View {
   reserved 1,2;
   reserved "protocol_version","fork";
-  optional common.GenesisHash genesis = 4; // required
+  optional GenesisHash genesis = 4; // required
   optional uint64 number = 3; // required; ViewNumber
 }
 

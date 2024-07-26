@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package zksync.network.gossip;
 
-import "zksync/roles/common.proto";
 import "zksync/roles/node.proto";
 import "zksync/roles/validator.proto";
 import "zksync/roles/attester.proto";
@@ -10,7 +9,7 @@ import "zksync/roles/attester.proto";
 // First message exchanged in the encrypted session.
 message Handshake {
   optional roles.node.Signed session_id = 1; // required
-  optional roles.common.GenesisHash genesis = 3; // required
+  optional roles.validator.GenesisHash genesis = 3; // required
   optional bool is_static = 2; // required
 }
 

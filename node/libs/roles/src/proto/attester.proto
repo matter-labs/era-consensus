@@ -3,7 +3,6 @@ syntax = "proto3";
 package zksync.roles.attester;
 
 import "zksync/std.proto";
-import "zksync/roles/common.proto";
 
 message SyncBatch {
   optional uint64 number = 1; // required
@@ -15,10 +14,14 @@ message BatchHash {
   optional bytes keccak256 = 1; // required
 }
 
+message GenesisHash {
+  optional bytes keccak256 = 1; // required
+}
+
 message Batch {
   optional uint64 number = 1; // required
   optional BatchHash hash = 2; // required
-  optional common.GenesisHash genesis = 3; // required
+  optional GenesisHash genesis = 3; // required
 }
 
 message BatchQC {
