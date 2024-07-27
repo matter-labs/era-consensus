@@ -1,3 +1,4 @@
+// -*- mode: Bluespec; -*-
 // A state monitor that allows us to compare new state against the old states.
 // For example, we compare phase transitions.
 // To do so, we save the old replica states in old_replica_state.

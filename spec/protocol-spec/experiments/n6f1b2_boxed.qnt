@@ -1,3 +1,5 @@
+// -*- mode: Bluespec; -*-
+//
 // A specification instance for n=6, f=1, and 2 Byzantine faults.
 // We box the number of different steps.
 module n6f1b2_boxed {

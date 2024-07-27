@@ -1,3 +1,4 @@
+// -*- mode: Bluespec; -*-
 // A restriction of replica.qnt to guide the model checker's search
 module guided_replica {
     import types.* from "./types"

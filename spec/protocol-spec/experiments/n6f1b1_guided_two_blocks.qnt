@@ -1,3 +1,5 @@
+// -*- mode: Bluespec; -*-
+//
 // A specification instance for n=6, f=1, and 1 Byzantine fault
 //
 // Due to import/export limitations of Quint, use the definitions starting with g_:
