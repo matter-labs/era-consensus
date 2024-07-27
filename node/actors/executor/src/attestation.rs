@@ -1,15 +1,12 @@
 //! Module to publish attestations over batches.
 
-use std::sync::Arc;
-
+use crate::Attester;
 use anyhow::Context;
-use zksync_concurrency::ctx;
-use zksync_concurrency::time;
+use std::sync::Arc;
+use zksync_concurrency::{ctx, time};
 use zksync_consensus_network::gossip::BatchVotesPublisher;
 use zksync_consensus_roles::attester;
 use zksync_consensus_storage::{BatchStore, BlockStore};
-
-use crate::Attester;
 
 const POLL_INTERVAL: time::Duration = time::Duration::seconds(1);
 
@@ -56,7 +53,6 @@ impl AttesterRunner {
             .await
             .context("wait_until_persisted")?
             .last
-            .map(|b| b.number)
             .unwrap_or_default();
 
         // Determine the batch to start signing from.

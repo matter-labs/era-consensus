@@ -1,10 +1,27 @@
 //! Global state distributed by active attesters, observed by all the nodes in the network.
 use crate::watch::Watch;
-use std::{collections::HashSet, sync::Arc};
+use std::{collections::HashSet, fmt, sync::Arc};
 use zksync_concurrency::sync;
-use zksync_consensus_roles::attester::{self, Batch};
+use zksync_consensus_roles::attester;
 
-/// Represents the currents state of node's knowledge about the attester votes.
+use super::metrics;
+
+#[derive(Debug, Default)]
+pub(super) struct BatchUpdateStats {
+    num_added: usize,
+    weight_added: u64,
+    last_added: Option<attester::BatchNumber>,
+}
+
+impl BatchUpdateStats {
+    fn added(&mut self, number: attester::BatchNumber, weight: u64) {
+        self.num_added += 1;
+        self.weight_added += weight;
+        self.last_added = Some(number);
+    }
+}
+
+/// Represents the current state of node's knowledge about the attester votes.
 ///
 /// Eventually this data structure will have to track voting potentially happening
 /// simultaneously on multiple heights, if we decrease the batch interval to be
@@ -24,7 +41,7 @@ pub(crate) struct BatchVotes {
     /// for now, hoping that with 1 minute batches there's plenty of time for
     /// the quorum to be reached, but eventually we'll have to allow multiple
     /// votes across different heights.
-    pub(crate) votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<Batch>>>,
+    pub(crate) votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>,
 
     /// Total weight of votes at different heights and hashes.
     ///
@@ -40,7 +57,7 @@ pub(crate) struct BatchVotes {
 
 impl BatchVotes {
     /// Returns a set of votes of `self` which are newer than the entries in `b`.
-    pub(super) fn get_newer(&self, b: &Self) -> Vec<Arc<attester::Signed<Batch>>> {
+    pub(super) fn get_newer(&self, b: &Self) -> Vec<Arc<attester::Signed<attester::Batch>>> {
         let mut newer = vec![];
         for (k, v) in &self.votes {
             if let Some(bv) = b.votes.get(k) {
@@ -57,13 +74,14 @@ impl BatchVotes {
     /// It exits as soon as an invalid entry is found.
     /// `self` might get modified even if an error is returned
     /// (all entries verified so far are added).
-    /// Returns true iff some new entry was added.
+    ///
+    /// Returns statistics about new entries added.
     pub(super) fn update(
         &mut self,
         attesters: &attester::Committee,
-        data: &[Arc<attester::Signed<Batch>>],
-    ) -> anyhow::Result<bool> {
-        let mut changed = false;
+        data: &[Arc<attester::Signed<attester::Batch>>],
+    ) -> anyhow::Result<BatchUpdateStats> {
+        let mut stats = BatchUpdateStats::default();
 
         let mut done = HashSet::new();
         for d in data {
@@ -97,10 +115,10 @@ impl BatchVotes {
             d.verify()?;
 
             self.add(d.clone(), weight);
-
-            changed = true;
+            stats.added(d.msg.number, weight);
         }
-        Ok(changed)
+
+        Ok(stats)
     }
 
     /// Check if we have achieved quorum for any of the batch hashes.
@@ -133,7 +151,7 @@ impl BatchVotes {
                                 sigs
                             });
                         attester::BatchQC {
-                            message: Batch {
+                            message: attester::Batch {
                                 number: *number,
                                 hash: *hash,
                             },
@@ -151,13 +169,12 @@ impl BatchVotes {
         self.min_batch_number = min_batch_number;
         self.votes.retain(|_, v| v.msg.number >= min_batch_number);
         if let Some(prev) = min_batch_number.prev() {
-            let (_, support) = self.support.split(&prev);
-            self.support = support;
+            self.support = self.support.split(&prev).1;
         }
     }
 
     /// Add an already validated vote from an attester into the register.
-    fn add(&mut self, vote: Arc<attester::Signed<Batch>>, weight: attester::Weight) {
+    fn add(&mut self, vote: Arc<attester::Signed<attester::Batch>>, weight: attester::Weight) {
         self.remove(&vote.key, weight);
 
         let batch = self.support.entry(vote.msg.number).or_default();
@@ -213,13 +230,35 @@ impl BatchVotesWatch {
     pub(crate) async fn update(
         &self,
         attesters: &attester::Committee,
-        data: &[Arc<attester::Signed<Batch>>],
+        data: &[Arc<attester::Signed<attester::Batch>>],
     ) -> anyhow::Result<()> {
         let this = self.0.lock().await;
         let mut votes = this.borrow().clone();
-        if votes.update(attesters, data)? {
+        let stats = votes.update(attesters, data)?;
+
+        if let Some(last_added) = stats.last_added {
             this.send_replace(votes);
+
+            #[allow(clippy::float_arithmetic)]
+            let weight_added = stats.weight_added as f64 / attesters.total_weight() as f64;
+
+            metrics::BATCH_VOTES_METRICS
+                .last_added_vote_batch_number
+                .set(last_added.0);
+
+            metrics::BATCH_VOTES_METRICS
+                .votes_added
+                .inc_by(stats.num_added as u64);
+
+            metrics::BATCH_VOTES_METRICS
+                .weight_added
+                .inc_by(weight_added);
         }
+
+        metrics::BATCH_VOTES_METRICS
+            .committee_size
+            .set(attesters.len());
+
         Ok(())
     }
 
@@ -227,11 +266,22 @@ impl BatchVotesWatch {
     pub(crate) async fn set_min_batch_number(&self, min_batch_number: attester::BatchNumber) {
         let this = self.0.lock().await;
         this.send_modify(|votes| votes.set_min_batch_number(min_batch_number));
+
+        metrics::BATCH_VOTES_METRICS
+            .min_batch_number
+            .set(min_batch_number.0);
     }
 }
 
 /// Wrapper around [BatchVotesWatch] to publish votes over batches signed by an attester key.
 pub struct BatchVotesPublisher(pub(crate) Arc<BatchVotesWatch>);
+
+impl fmt::Debug for BatchVotesPublisher {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("BatchVotesPublisher")
+            .finish_non_exhaustive()
+    }
+}
 
 impl BatchVotesPublisher {
     /// Sign an L1 batch and push it into the batch, which should cause it to be gossiped by the network.
@@ -239,12 +289,17 @@ impl BatchVotesPublisher {
         &self,
         attesters: &attester::Committee,
         attester: &attester::SecretKey,
-        batch: Batch,
+        batch: attester::Batch,
     ) -> anyhow::Result<()> {
         if !attesters.contains(&attester.public()) {
             return Ok(());
         }
         let attestation = attester.sign_msg(batch);
+
+        metrics::BATCH_VOTES_METRICS
+            .last_signed_batch_number
+            .set(attestation.msg.number.0);
+
         self.0.update(attesters, &[Arc::new(attestation)]).await
     }
 }

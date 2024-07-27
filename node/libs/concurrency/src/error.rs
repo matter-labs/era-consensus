@@ -1,8 +1,12 @@
 //! Generalization of anyhow::Context to more structured errors.
 use std::fmt::Display;
 
-/// Trait complementary to anyhow::Context which allows for
-/// adding context to error types which contain anyhow::Error.
+/// Trait complementary to `anyhow::Context` which allows for
+/// adding context to error types which contain `anyhow::Error`.
+///
+/// If an error type implements both `Wrap` and `From<anyhow::Error>`
+/// you should be careful to NOT use `context()` instead of `wrap()`,
+/// because `context()` will just hide all the error details.
 pub trait Wrap: Sized {
     /// Appends context `c` to the error.
     fn wrap<C: Display + Send + Sync + 'static>(self, c: C) -> Self {

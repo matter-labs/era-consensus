@@ -23,7 +23,7 @@ pub(super) static PERSISTENT_BLOCK_STORE: vise::Global<PersistentBlockStore> = v
 
 #[derive(Debug, vise::Metrics)]
 #[metrics(prefix = "zksync_consensus_storage_block_store")]
-pub(super) struct BlockStore {
+pub(super) struct BlockStoreState {
     /// BlockNumber of the next block to queue.
     pub(super) next_queued_block: vise::Gauge<u64>,
     /// BlockNumber of the next block to persist.

@@ -3,7 +3,7 @@ use crate::{mux, proto::gossip as proto};
 use anyhow::Context as _;
 use zksync_consensus_roles::attester;
 use zksync_consensus_storage::BatchStoreState;
-use zksync_protobuf::{read_optional, required, ProtoFmt};
+use zksync_protobuf::{required, ProtoFmt};
 
 /// PushBatchStoreState RPC.
 #[derive(Debug)]
@@ -28,14 +28,14 @@ impl ProtoFmt for Req {
     fn read(message: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self(BatchStoreState {
             first: attester::BatchNumber(*required(&message.first).context("first")?),
-            last: read_optional(&message.last).context("last")?,
+            last: message.last_v2.map(attester::BatchNumber),
         }))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
             first: Some(self.0.first.0),
-            last: self.0.last.as_ref().map(|x| x.build()),
+            last_v2: self.0.last.as_ref().map(|n| n.0),
         }
     }
 }

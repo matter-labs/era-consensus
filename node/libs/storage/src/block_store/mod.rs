@@ -170,7 +170,8 @@ impl BlockStoreRunner {
     /// Runs the background tasks of the BlockStore.
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         #[vise::register]
-        static COLLECTOR: vise::Collector<Option<metrics::BlockStore>> = vise::Collector::new();
+        static COLLECTOR: vise::Collector<Option<metrics::BlockStoreState>> =
+            vise::Collector::new();
         let store_ref = Arc::downgrade(&self.0);
         let _ = COLLECTOR.before_scrape(move || Some(store_ref.upgrade()?.scrape_metrics()));
 
@@ -337,8 +338,8 @@ impl BlockStore {
         )
     }
 
-    fn scrape_metrics(&self) -> metrics::BlockStore {
-        let m = metrics::BlockStore::default();
+    fn scrape_metrics(&self) -> metrics::BlockStoreState {
+        let m = metrics::BlockStoreState::default();
         let inner = self.inner.borrow();
         m.next_queued_block.set(inner.queued.next().0);
         m.next_persisted_block.set(inner.persisted.next().0);
