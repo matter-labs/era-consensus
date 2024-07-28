@@ -528,7 +528,15 @@ pub struct WeightedValidator {
     pub key: validator::PublicKey,
     /// Validator weight inside the Committee.
     pub weight: Weight,
+    /// Proof-of-possession (PoP) of the validator's public key (a signature over the public key)
+    pub pop: validator::Signature,
 }
 
 /// Voting weight;
 pub type Weight = u64;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ValidatorCommittee {
+    pub members: Vec<WeightedValidator>
+}
+

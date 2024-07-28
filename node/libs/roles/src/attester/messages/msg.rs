@@ -276,3 +276,8 @@ pub struct WeightedAttester {
 
 /// Voting weight.
 pub type Weight = u64;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AttesterCommittee {
+    pub members: Vec<WeightedAttester>
+}

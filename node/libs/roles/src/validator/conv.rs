@@ -1,9 +1,4 @@
-use super::{
-    AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
-    FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
-    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
-    ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
-};
+use super::{AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg, FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, ValidatorCommittee, View, ViewNumber, WeightedValidator};
 use crate::{
     attester::{self, WeightedAttester},
     node::SessionId,
@@ -525,6 +520,7 @@ impl ProtoFmt for WeightedValidator {
         Ok(Self {
             key: read_required(&r.key).context("key")?,
             weight: *required(&r.weight).context("weight")?,
+            pop: read_required(&r.pop).context("pop")?,
         })
     }
 
@@ -532,6 +528,29 @@ impl ProtoFmt for WeightedValidator {
         Self::Proto {
             key: Some(self.key.build()),
             weight: Some(self.weight),
+            pop: Some(self.pop.build()),
         }
     }
 }
+
+impl ProtoFmt for ValidatorCommittee {
+    type Proto = proto::ValidatorCommittee;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            members: r
+                .members
+                .iter()
+                .map(ProtoFmt::read)
+                .collect::<Result<_, _>>()
+                .context("members")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            members: self.members.iter().map(|x| x.build()).collect(),
+        }
+    }
+}
+

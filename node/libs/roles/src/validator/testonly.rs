@@ -17,6 +17,7 @@ use rand::{
 };
 use std::sync::Arc;
 use zksync_concurrency::time;
+use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
 
 /// Test setup specification.
@@ -173,6 +174,7 @@ impl From<SetupSpec> for Setup {
                     WeightedValidator {
                         key: k.public(),
                         weight: *w,
+                        pop: Signature::decode(&vec![]).unwrap(), // TODO(moshababo): implement
                     }
                 }))
                 .unwrap(),
@@ -437,6 +439,7 @@ impl Distribution<Committee> for Standard {
         let public_keys = (0..count).map(|_| WeightedValidator {
             key: rng.gen(),
             weight: 1,
+            pop: Signature::decode(&vec![]).unwrap(), // TODO(moshababo): implement
         });
         Committee::new(public_keys).unwrap()
     }

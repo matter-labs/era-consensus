@@ -62,6 +62,10 @@ message WeightedAttester {
   optional uint64 weight = 2; // required
 }
 
+message AttesterCommittee {
+   repeated WeightedAttester members = 1; // required
+}
+
 message Attestation {
   optional PublicKey key = 1; // required
   optional Signature sig = 2; // required

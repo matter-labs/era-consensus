@@ -1,7 +1,4 @@
-use super::{
-    AggregateSignature, Batch, BatchHash, BatchNumber, BatchQC, Msg, MsgHash, MultiSig, PublicKey,
-    Signature, Signed, Signers, SyncBatch, WeightedAttester,
-};
+use super::{AggregateSignature, AttesterCommittee, Batch, BatchHash, BatchNumber, BatchQC, Msg, MsgHash, MultiSig, PublicKey, Signature, Signed, Signers, SyncBatch, WeightedAttester};
 use crate::{
     proto::attester::{self as proto, Attestation},
     validator::Payload,
@@ -141,6 +138,28 @@ impl ProtoFmt for WeightedAttester {
         }
     }
 }
+
+impl ProtoFmt for AttesterCommittee {
+    type Proto = proto::AttesterCommittee;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            members: r
+                .members
+                .iter()
+                .map(ProtoFmt::read)
+                .collect::<Result<_, _>>()
+                .context("members")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            members: self.members.iter().map(|x| x.build()).collect(),
+        }
+    }
+}
+
 
 impl ProtoFmt for Signers {
     type Proto = zksync_protobuf::proto::std::BitVector;
