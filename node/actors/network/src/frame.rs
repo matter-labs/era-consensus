@@ -1,6 +1,7 @@
 //! Simple frame encoding format (length ++ value) for protobuf messages,
 //! since protobuf messages do not have delimiters.
 use crate::{mux, noise::bytes};
+use anyhow::Context as _;
 use zksync_concurrency::{ctx, io};
 
 /// Reads a raw frame of bytes from the stream and interprets it as proto.
@@ -53,17 +54,22 @@ pub(crate) async fn recv_proto<T: zksync_protobuf::ProtoFmt, S: io::AsyncRead + 
     ctx: &ctx::Ctx,
     stream: &mut S,
     max_size: usize,
-) -> anyhow::Result<T> {
+) -> ctx::Result<T> {
     let mut msg_size = [0u8; 4];
-    io::read_exact(ctx, stream, &mut msg_size).await??;
+    io::read_exact(ctx, stream, &mut msg_size)
+        .await?
+        .context("read_exact(len)")?;
     let msg_size = u32::from_le_bytes(msg_size);
-    anyhow::ensure!(
-        msg_size as usize <= max_size,
-        "message too large: max = {max_size}, got {msg_size}",
-    );
+    if msg_size as usize > max_size {
+        return Err(
+            anyhow::format_err!("message too large: max = {max_size}, got {msg_size}",).into(),
+        );
+    }
     let mut msg = vec![0u8; msg_size as usize];
-    io::read_exact(ctx, stream, &mut msg[..]).await??;
-    zksync_protobuf::decode(&msg)
+    io::read_exact(ctx, stream, &mut msg[..])
+        .await?
+        .context("read_exact(msg)")?;
+    Ok(zksync_protobuf::decode(&msg).context("decode()")?)
 }
 
 /// Sends a proto serialized to a raw frame of bytes to the stream.
@@ -71,10 +77,18 @@ pub(crate) async fn send_proto<T: zksync_protobuf::ProtoFmt, S: io::AsyncWrite +
     ctx: &ctx::Ctx,
     stream: &mut S,
     msg: &T,
-) -> anyhow::Result<()> {
+) -> ctx::Result<()> {
     let msg = zksync_protobuf::encode(msg);
-    io::write_all(ctx, stream, &u32::to_le_bytes(msg.len().try_into()?)).await??;
-    io::write_all(ctx, stream, &msg).await??;
-    io::flush(ctx, stream).await??;
+    io::write_all(
+        ctx,
+        stream,
+        &u32::to_le_bytes(msg.len().try_into().context("msg.len()")?),
+    )
+    .await?
+    .context("write(len)")?;
+    io::write_all(ctx, stream, &msg)
+        .await?
+        .context("write(msg)")?;
+    io::flush(ctx, stream).await?.context("flush")?;
     Ok(())
 }

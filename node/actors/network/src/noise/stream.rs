@@ -1,6 +1,7 @@
 //! `tokio::io` stream using Noise encryption.
 use super::bytes;
 use crate::metrics::MeteredStream;
+use anyhow::Context as _;
 use std::{
     pin::Pin,
     task::{ready, Context, Poll},
@@ -99,13 +100,25 @@ where
     S: io::AsyncRead + io::AsyncWrite + Unpin,
 {
     /// Performs a server-side noise handshake and returns the encrypted stream.
-    pub(crate) async fn server_handshake(ctx: &ctx::Ctx, stream: S) -> anyhow::Result<Self> {
-        Self::handshake(ctx, stream, snow::Builder::new(params()).build_responder()?).await
+    pub(crate) async fn server_handshake(ctx: &ctx::Ctx, stream: S) -> ctx::Result<Self> {
+        // Unwrap is ok, because snow builder should never fail.
+        Self::handshake(
+            ctx,
+            stream,
+            snow::Builder::new(params()).build_responder().unwrap(),
+        )
+        .await
     }
 
     /// Performs a client-side noise handshake and returns the encrypted stream.
-    pub(crate) async fn client_handshake(ctx: &ctx::Ctx, stream: S) -> anyhow::Result<Self> {
-        Self::handshake(ctx, stream, snow::Builder::new(params()).build_initiator()?).await
+    pub(crate) async fn client_handshake(ctx: &ctx::Ctx, stream: S) -> ctx::Result<Self> {
+        // Unwrap is ok, because snow builder should never fail.
+        Self::handshake(
+            ctx,
+            stream,
+            snow::Builder::new(params()).build_initiator().unwrap(),
+        )
+        .await
     }
 
     /// Performs the noise handshake given the HandshakeState.
@@ -113,32 +126,44 @@ where
         ctx: &ctx::Ctx,
         mut stream: S,
         mut hs: snow::HandshakeState,
-    ) -> anyhow::Result<Self> {
+    ) -> ctx::Result<Self> {
         let mut buf = vec![0; 65536];
         let mut payload = vec![];
         loop {
             if hs.is_handshake_finished() {
                 return Ok(Self {
+                    // Unwrap is ok, because handshake hash has a constant length.
                     id: ByteFmt::decode(hs.get_handshake_hash()).unwrap(),
                     inner: stream,
-                    noise: hs.into_transport_mode()?,
+                    noise: hs.into_transport_mode().context("into_transport_mode()")?,
                     read_buf: Box::default(),
                     write_buf: Box::default(),
                 });
             }
             if hs.is_my_turn() {
-                let n = hs.write_message(&payload, &mut buf)?;
+                let n = hs
+                    .write_message(&payload, &mut buf)
+                    .context("write_message()")?;
                 // TODO(gprusak): writing/reading length field and the frame content could be
                 // done in a single syscall.
-                io::write_all(ctx, &mut stream, &u16::to_le_bytes(n as u16)).await??;
-                io::write_all(ctx, &mut stream, &buf[..n]).await??;
-                io::flush(ctx, &mut stream).await??;
+                io::write_all(ctx, &mut stream, &u16::to_le_bytes(n as u16))
+                    .await?
+                    .context("write(len)")?;
+                io::write_all(ctx, &mut stream, &buf[..n])
+                    .await?
+                    .context("write(msg")?;
+                io::flush(ctx, &mut stream).await?.context("flush")?;
             } else {
                 let mut msg_size = [0u8, 2];
-                io::read_exact(ctx, &mut stream, &mut msg_size).await??;
+                io::read_exact(ctx, &mut stream, &mut msg_size)
+                    .await?
+                    .context("read_exact(len)")?;
                 let n = u16::from_le_bytes(msg_size) as usize;
-                io::read_exact(ctx, &mut stream, &mut buf[..n]).await??;
-                hs.read_message(&buf[..n], &mut payload)?;
+                io::read_exact(ctx, &mut stream, &mut buf[..n])
+                    .await?
+                    .context("read_exact(msg)")?;
+                hs.read_message(&buf[..n], &mut payload)
+                    .context("read_message()")?;
             }
         }
     }
