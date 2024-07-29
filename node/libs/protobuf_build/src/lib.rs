@@ -332,9 +332,15 @@ impl Config {
                 let rust_path = root_path.clone().join(proto_rel.to_rust_module()?);
                 match extern_paths.insert(file.package(), rust_path.clone()) {
                     // If missing, add to config.
-                    None => { config.extern_path(format!(".{}", file.package()), rust_path.to_string()); }
+                    None => {
+                        config.extern_path(format!(".{}", file.package()), rust_path.to_string());
+                    }
                     // If already present, make sure that it is the same.
-                    Some(old) => anyhow::ensure!(rust_path==old, "ambiguous rust path for proto package {}",file.package()),
+                    Some(old) => anyhow::ensure!(
+                        rust_path == old,
+                        "ambiguous rust path for proto package {}",
+                        file.package()
+                    ),
                 }
             }
         }
