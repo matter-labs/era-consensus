@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+package zksync.roles.attester;
+
+import "zksync/std.proto";
+
+message PublicKey {
+  reserved 1; 
+  reserved "bn254";
+  optional bytes secp256k1 = 2; // required
+}
+
+message Signature {
+  reserved 1; 
+  reserved "bn254";
+  optional bytes secp256k1 = 2; // required
+}
+
+// TODO: Placeholder for EIP-2537
+message AggregateSignature {
+  reserved 1, 2;
+  reserved "bn254", "secp256k1";
+  optional bytes bls12_381 = 3; // required
+}
+
+// TODO: Placeholder for EIP-2537
+message AggregateMultiSig {
+  optional std.BitVector signers = 1; // required
+  optional AggregateSignature sig = 2; // required
+}
+
+message WeightedAttester {
+  optional PublicKey key = 1; // required
+  optional uint64 weight = 2; // required
+}
+
+message Attestation {
+  optional PublicKey key = 1; // required
+  optional Signature sig = 2; // required
+}
