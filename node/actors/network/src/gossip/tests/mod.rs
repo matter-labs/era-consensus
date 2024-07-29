@@ -17,7 +17,9 @@ use std::{
 };
 use tracing::Instrument as _;
 use zksync_concurrency::{
-    ctx, net, scope, sync,
+    ctx,
+    error::Wrap as _,
+    net, scope, sync,
     testonly::{abort_on_panic, set_timeout},
     time,
 };
@@ -356,11 +358,11 @@ async fn test_genesis_mismatch() {
 
         tracing::info!("Accept a connection with mismatching genesis.");
         let stream = metrics::MeteredStream::accept(ctx, &mut listener)
-            .await?
-            .context("accept()")?;
+            .await
+            .wrap("accept()")?;
         let (mut stream, endpoint) = preface::accept(ctx, stream)
             .await
-            .context("preface::accept()")?;
+            .wrap("preface::accept()")?;
         assert_eq!(endpoint, preface::Endpoint::GossipNet);
         tracing::info!("Expect the handshake to fail");
         let res = handshake::inbound(ctx, &cfgs[1].gossip, rng.gen(), &mut stream).await;

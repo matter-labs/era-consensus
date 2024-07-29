@@ -4,7 +4,7 @@ use crate::{io, metrics, preface, rpc, testonly};
 use assert_matches::assert_matches;
 use rand::Rng;
 use std::collections::HashSet;
-use zksync_concurrency::{ctx, net, scope, testonly::abort_on_panic};
+use zksync_concurrency::{ctx, error::Wrap as _, net, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::testonly::TestMemoryStorage;
 use zksync_consensus_utils::enum_util::Variant as _;
@@ -181,11 +181,11 @@ async fn test_genesis_mismatch() {
 
         tracing::info!("Accept a connection with mismatching genesis.");
         let stream = metrics::MeteredStream::accept(ctx, &mut listener)
-            .await?
-            .context("accept()")?;
+            .await
+            .wrap("accept()")?;
         let (mut stream, endpoint) = preface::accept(ctx, stream)
             .await
-            .context("preface::accept()")?;
+            .wrap("preface::accept()")?;
         assert_eq!(endpoint, preface::Endpoint::ConsensusNet);
         tracing::info!("Expect the handshake to fail");
         let res = handshake::inbound(ctx, &setup.validator_keys[1], rng.gen(), &mut stream).await;

@@ -8,7 +8,7 @@
 //! Hence, the preface protocol is used to enable encryption
 //! and multiplex between multiple endpoints available on the same TCP port.
 use crate::{frame, metrics, noise, proto::preface as proto};
-use zksync_concurrency::{ctx, time};
+use zksync_concurrency::{ctx, error::Wrap as _, time};
 use zksync_protobuf::{kB, required, ProtoFmt};
 
 /// Timeout on executing the preface protocol.
@@ -74,12 +74,20 @@ pub(crate) async fn connect(
     ctx: &ctx::Ctx,
     addr: std::net::SocketAddr,
     endpoint: Endpoint,
-) -> anyhow::Result<noise::Stream> {
+) -> ctx::Result<noise::Stream> {
     let ctx = &ctx.with_timeout(TIMEOUT);
-    let mut stream = metrics::MeteredStream::connect(ctx, addr).await??;
-    frame::send_proto(ctx, &mut stream, &Encryption::NoiseNN).await?;
-    let mut stream = noise::Stream::client_handshake(ctx, stream).await?;
-    frame::send_proto(ctx, &mut stream, &endpoint).await?;
+    let mut stream = metrics::MeteredStream::connect(ctx, addr)
+        .await
+        .wrap("connect()")?;
+    frame::send_proto(ctx, &mut stream, &Encryption::NoiseNN)
+        .await
+        .wrap("frame::send_proto(encryption)")?;
+    let mut stream = noise::Stream::client_handshake(ctx, stream)
+        .await
+        .wrap("client_handshake()")?;
+    frame::send_proto(ctx, &mut stream, &endpoint)
+        .await
+        .wrap("frame::send_proto(endpoint)")?;
     Ok(stream)
 }
 
@@ -87,13 +95,19 @@ pub(crate) async fn connect(
 pub(crate) async fn accept(
     ctx: &ctx::Ctx,
     mut stream: metrics::MeteredStream,
-) -> anyhow::Result<(noise::Stream, Endpoint)> {
+) -> ctx::Result<(noise::Stream, Endpoint)> {
     let ctx = &ctx.with_timeout(TIMEOUT);
-    let encryption: Encryption = frame::recv_proto(ctx, &mut stream, MAX_FRAME).await?;
+    let encryption: Encryption = frame::recv_proto(ctx, &mut stream, MAX_FRAME)
+        .await
+        .wrap("recv_proto(encryption)")?;
     if encryption != Encryption::NoiseNN {
-        anyhow::bail!("unsupported encryption protocol: {encryption:?}");
+        return Err(anyhow::format_err!("unsupported encryption protocol: {encryption:?}").into());
     }
-    let mut stream = noise::Stream::server_handshake(ctx, stream).await?;
-    let endpoint = frame::recv_proto(ctx, &mut stream, MAX_FRAME).await?;
+    let mut stream = noise::Stream::server_handshake(ctx, stream)
+        .await
+        .wrap("server_handshake()")?;
+    let endpoint = frame::recv_proto(ctx, &mut stream, MAX_FRAME)
+        .await
+        .wrap("recv_proto(endpoint)")?;
     Ok((stream, endpoint))
 }

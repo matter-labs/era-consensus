@@ -223,7 +223,7 @@ async fn test_invalid_signature() {
             frame::send_proto(ctx, &mut s1, &h).await
         });
         match inbound(ctx, &cfg0, genesis, &mut s0).await {
-            Err(Error::Signature(..)) => anyhow::Ok(()),
+            Err(Error::Signature(..)) => Ok(()),
             res => panic!("unexpected res: {res:?}"),
         }
     })
