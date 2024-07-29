@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package zksync.roles.validator;
+
+import "zksync/roles/attester/keys.proto";
+import "zksync/roles/validator/keys.proto";
+
+message LeaderSelectionMode {
+  oneof mode {
+    RoundRobin round_robin = 1;
+    Sticky sticky = 2;
+    Weighted weighted = 3;
+    Rota rota = 4;
+  }
+  message RoundRobin{}
+  message Sticky{
+    optional PublicKey key = 1; // required
+  }
+  message Weighted{}
+  message Rota {
+    repeated PublicKey keys = 1; // required
+  }
+}
+
+message Genesis {
+  reserved 1,2;
+  reserved "fork","validators";
+  optional uint64 chain_id = 5; // required
+  optional uint64 fork_number = 6; // required; ForkNumber
+  optional uint64 first_block = 7; // required; BlockNumber
+ 
+  // These properties are expected to be overwritten each epoch.
+  // We will either remove them entirely, or keep them for the initial epoch.
+  optional uint32 protocol_version = 8; // required; ProtocolVersion
+  repeated WeightedValidator validators_v1 = 3;
+  repeated attester.WeightedAttester attesters = 9; // optional
+  optional LeaderSelectionMode leader_selection = 4; // required
+}
+
+message GenesisHash {
+  optional bytes keccak256 = 1; // required
+}

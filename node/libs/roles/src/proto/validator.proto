@@ -3,4 +3,5 @@ syntax = "proto3";
 package zksync.roles.validator;
 
 import public "zksync/roles/validator/keys.proto";
-import public "zksync/roles/validator/other.proto";
+import public "zksync/roles/validator/genesis.proto";
+import public "zksync/roles/validator/messages.proto";

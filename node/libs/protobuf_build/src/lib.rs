@@ -330,11 +330,11 @@ impl Config {
                     .relative_to(&manifest.proto_root.to_name()?)
                     .unwrap();
                 let rust_path = root_path.clone().join(proto_rel.to_rust_module()?);
-                if extern_paths
-                    .insert(file.package(), rust_path.clone())
-                    .is_none()
-                {
-                    config.extern_path(format!(".{}", file.package()), rust_path.to_string());
+                match extern_paths.insert(file.package(), rust_path.clone()) {
+                    // If missing, add to config.
+                    None => { config.extern_path(format!(".{}", file.package()), rust_path.to_string()); }
+                    // If already present, make sure that it is the same.
+                    Some(old) => anyhow::ensure!(rust_path==old, "ambiguous rust path for proto package {}",file.package()),
                 }
             }
         }
@@ -343,6 +343,8 @@ impl Config {
             let code = config
                 .generate(vec![(module.clone(), file.clone())])
                 .context("generation failed")?;
+            // It may happen that the proto package is empty,
+            // in which case no code gets generated.
             let Some(code) = code.get(&module) else {
                 continue;
             };
