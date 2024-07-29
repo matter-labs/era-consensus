@@ -1,6 +1,6 @@
 use crate::{frame, noise, proto::consensus as proto};
 use anyhow::Context as _;
-use zksync_concurrency::{ctx, time};
+use zksync_concurrency::{ctx, error::Wrap as _, time};
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_roles::{node, validator};
 use zksync_protobuf::{kB, read_required, ProtoFmt};
@@ -54,8 +54,8 @@ pub(super) enum Error {
     PeerMismatch,
     #[error("validator signature {0}")]
     Signature(#[from] anyhow::Error),
-    #[error("stream {0}")]
-    Stream(#[source] anyhow::Error),
+    #[error(transparent)]
+    Stream(#[from] ctx::Error),
 }
 
 pub(super) async fn outbound(
@@ -76,10 +76,10 @@ pub(super) async fn outbound(
         },
     )
     .await
-    .map_err(Error::Stream)?;
+    .wrap("send_proto()")?;
     let h: Handshake = frame::recv_proto(ctx, stream, MAX_FRAME)
         .await
-        .map_err(Error::Stream)?;
+        .wrap("recv_proto()")?;
     if h.genesis != genesis {
         return Err(Error::GenesisMismatch);
     }
@@ -103,7 +103,7 @@ pub(super) async fn inbound(
     let session_id = node::SessionId(stream.id().encode());
     let h: Handshake = frame::recv_proto(ctx, stream, MAX_FRAME)
         .await
-        .map_err(Error::Stream)?;
+        .wrap("recv_proto()")?;
     if h.genesis != genesis {
         return Err(Error::GenesisMismatch);
     }
@@ -120,6 +120,6 @@ pub(super) async fn inbound(
         },
     )
     .await
-    .map_err(Error::Stream)?;
+    .wrap("send_proto()")?;
     Ok(h.session_id.key)
 }

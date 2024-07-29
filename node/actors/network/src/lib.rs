@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx::{self, channel},
+    error::Wrap as _,
     limiter, scope,
 };
 use zksync_consensus_storage::{BatchStore, BlockStore};
@@ -178,10 +179,10 @@ impl Runner {
             loop {
                 accept_limiter.acquire(ctx, 1).await?;
                 let stream = metrics::MeteredStream::accept(ctx, &mut listener)
-                    .await?
-                    .context("accept()")?;
+                    .await
+                    .wrap("accept()")?;
                 s.spawn(async {
-                    // This is a syscall which should always succeed on a correctly opened socket.
+                    // May fail if the socket got closed.
                     let addr = stream.peer_addr().context("peer_addr()")?;
                     let res = async {
                         tracing::info!("new connection");

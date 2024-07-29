@@ -1,6 +1,6 @@
 //! General-purpose network metrics.
-
 use crate::Network;
+use anyhow::Context as _;
 use std::{
     net::SocketAddr,
     pin::Pin,
@@ -28,39 +28,36 @@ pub(crate) struct MeteredStream {
 
 impl MeteredStream {
     /// Opens a TCP connection to a remote host and returns a metered stream.
-    pub(crate) async fn connect(
-        ctx: &ctx::Ctx,
-        addr: SocketAddr,
-    ) -> ctx::OrCanceled<io::Result<Self>> {
-        let io_result = net::tcp::connect(ctx, addr).await?;
-        Ok(io_result.map(|stream| Self::new(stream, Direction::Outbound)))
+    pub(crate) async fn connect(ctx: &ctx::Ctx, addr: SocketAddr) -> ctx::Result<Self> {
+        let stream = net::tcp::connect(ctx, addr).await?.context("connect()")?;
+        Ok(Self::new(stream, Direction::Outbound)?)
     }
 
     /// Accepts an inbound connection and returns a metered stream.
     pub(crate) async fn accept(
         ctx: &ctx::Ctx,
         listener: &mut net::tcp::Listener,
-    ) -> ctx::OrCanceled<io::Result<Self>> {
-        let io_result = net::tcp::accept(ctx, listener).await?;
-        Ok(io_result.map(|stream| Self::new(stream, Direction::Inbound)))
+    ) -> ctx::Result<Self> {
+        let stream = net::tcp::accept(ctx, listener).await?.context("accept()")?;
+        Ok(Self::new(stream, Direction::Inbound)?)
     }
 
     #[cfg(test)]
     pub(crate) async fn test_pipe(ctx: &ctx::Ctx) -> (Self, Self) {
         let (outbound_stream, inbound_stream) = net::tcp::testonly::pipe(ctx).await;
-        let outbound_stream = Self::new(outbound_stream, Direction::Outbound);
-        let inbound_stream = Self::new(inbound_stream, Direction::Inbound);
+        let outbound_stream = Self::new(outbound_stream, Direction::Outbound).unwrap();
+        let inbound_stream = Self::new(inbound_stream, Direction::Inbound).unwrap();
         (outbound_stream, inbound_stream)
     }
 
-    fn new(stream: net::tcp::Stream, direction: Direction) -> Self {
+    fn new(stream: net::tcp::Stream, direction: Direction) -> anyhow::Result<Self> {
         TCP_METRICS.established[&direction].inc();
-        let addr = stream.peer_addr().expect("Invalid address");
-        Self {
+        let addr = stream.peer_addr().context("peer_addr()")?;
+        Ok(Self {
             stream,
             stats: Arc::new(MeteredStreamStats::new(addr)),
             _active: TCP_METRICS.active[&direction].inc_guard(1),
-        }
+        })
     }
 
     /// Returns a reference to the the Stream values for inspection

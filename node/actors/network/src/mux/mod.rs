@@ -80,7 +80,7 @@
 use crate::{frame, noise::bytes};
 use anyhow::Context as _;
 use std::{collections::BTreeMap, sync::Arc};
-use zksync_concurrency::{ctx, ctx::channel, io, scope, sync};
+use zksync_concurrency::{ctx, ctx::channel, error::Wrap as _, io, scope, sync};
 
 mod config;
 mod handshake;
@@ -282,15 +282,23 @@ impl Mux {
     ) -> Result<(), RunError> {
         self.verify().map_err(RunError::Config)?;
         let (mut read, mut write) = io::split(transport);
-        let handshake: Handshake = scope::run!(ctx, |ctx, s| async {
+        let res = scope::run!(ctx, |ctx, s| async {
             s.spawn(async {
                 let h = self.handshake();
-                frame::send_proto(ctx, &mut write, &h).await
+                frame::send_proto(ctx, &mut write, &h)
+                    .await
+                    .wrap("send_proto()")
             });
-            frame::recv_proto(ctx, &mut read, handshake::MAX_FRAME).await
+            frame::recv_proto(ctx, &mut read, handshake::MAX_FRAME)
+                .await
+                .wrap("recv_proto()")
         })
-        .await
-        .map_err(RunError::Protocol)?;
+        .await;
+
+        let handshake = res.map_err(|err| match err {
+            ctx::Error::Canceled(err) => RunError::Canceled(err),
+            ctx::Error::Internal(err) => RunError::Protocol(err),
+        })?;
 
         let (write_send, write_recv) = channel::bounded(1);
         let flush = Arc::new(sync::Notify::new());
