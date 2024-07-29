@@ -25,7 +25,7 @@ message BatchQC {
   reserved "signers", "sig";
 
   // TODO: de-deprecate these when we move back to using BLS aggregates, 
-  // or consider the ones at the bottom.
+  // or consider using `AggregateMultiSig`
   // optional std.BitVector signers = 2; // required
   // optional AggregateSignature sig = 3; // required
 
