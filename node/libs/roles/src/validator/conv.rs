@@ -520,7 +520,7 @@ impl ProtoFmt for WeightedValidator {
         Ok(Self {
             key: read_required(&r.key).context("key")?,
             weight: *required(&r.weight).context("weight")?,
-            pop: read_required(&r.pop).context("pop")?,
+            proof_of_possession: read_optional(&r.proof_of_possession).context("proof_of_possession")?,
         })
     }
 
@@ -528,7 +528,7 @@ impl ProtoFmt for WeightedValidator {
         Self::Proto {
             key: Some(self.key.build()),
             weight: Some(self.weight),
-            pop: Some(self.pop.build()),
+            proof_of_possession: self.proof_of_possession.as_ref().map(ProtoFmt::build),
         }
     }
 }

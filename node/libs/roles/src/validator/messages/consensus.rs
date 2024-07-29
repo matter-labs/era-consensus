@@ -529,7 +529,7 @@ pub struct WeightedValidator {
     /// Validator weight inside the Committee.
     pub weight: Weight,
     /// Proof-of-possession (PoP) of the validator's public key (a signature over the public key)
-    pub pop: validator::Signature,
+    pub proof_of_possession: Option<validator::Signature>,
 }
 
 /// Voting weight;

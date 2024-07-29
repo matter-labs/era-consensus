@@ -198,7 +198,7 @@ message AggregateSignature {
 message WeightedValidator {
   optional PublicKey key = 1; // required
   optional uint64 weight = 2; // required
-  optional Signature pop = 3; // required
+  optional Signature proof_of_possession = 3; // optional
 }
 
 message ValidatorCommittee {

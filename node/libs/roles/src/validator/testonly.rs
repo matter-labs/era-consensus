@@ -174,7 +174,7 @@ impl From<SetupSpec> for Setup {
                     WeightedValidator {
                         key: k.public(),
                         weight: *w,
-                        pop: Signature::decode(&vec![]).unwrap(), // TODO(moshababo): implement
+                        proof_of_possession: None,
                     }
                 }))
                 .unwrap(),
@@ -439,7 +439,7 @@ impl Distribution<Committee> for Standard {
         let public_keys = (0..count).map(|_| WeightedValidator {
             key: rng.gen(),
             weight: 1,
-            pop: Signature::decode(&vec![]).unwrap(), // TODO(moshababo): implement
+            proof_of_possession: None,
         });
         Committee::new(public_keys).unwrap()
     }
