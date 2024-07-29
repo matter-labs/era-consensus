@@ -4127,6 +4127,7 @@ name = "zksync_consensus_executor"
 version = "0.1.0-rc.4"
 dependencies = [
  "anyhow",
+ "async-trait",
  "rand 0.8.5",
  "test-casing",
  "tokio",

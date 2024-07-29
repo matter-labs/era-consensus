@@ -4,7 +4,10 @@ use rand::Rng as _;
 use tracing::Instrument as _;
 use zksync_concurrency::testonly::abort_on_panic;
 use zksync_consensus_bft as bft;
-use zksync_consensus_network::testonly::{new_configs, new_fullnode};
+use zksync_consensus_network::{
+    gossip::LocalAttestationStatus,
+    testonly::{new_configs, new_fullnode},
+};
 use zksync_consensus_roles::validator::{testonly::Setup, BlockNumber};
 use zksync_consensus_storage::{
     testonly::{in_memory, TestMemoryStorage},
@@ -26,12 +29,21 @@ fn config(cfg: &network::Config) -> Config {
     }
 }
 
+/// The test executors below are not running with attesters, so it doesn't matter if the clients
+/// are returning views based on the store of main node or each to their own. For simplicity this
+/// returns an implementation that queries the local store of each instance. Alternatively we  
+/// could implement an instance that never queries anything.
+fn mk_attestation_status_client(batch_store: &Arc<BatchStore>) -> impl AttestationStatusClient {
+    LocalAttestationStatus::new(batch_store.clone())
+}
+
 fn validator(
     cfg: &network::Config,
     block_store: Arc<BlockStore>,
     batch_store: Arc<BatchStore>,
     replica_store: impl ReplicaStore,
 ) -> Executor {
+    let attestation_status_client = Box::new(mk_attestation_status_client(&batch_store));
     Executor {
         config: config(cfg),
         block_store,
@@ -42,6 +54,7 @@ fn validator(
             payload_manager: Box::new(bft::testonly::RandomPayload(1000)),
         }),
         attester: None,
+        attestation_status_client,
     }
 }
 
@@ -50,12 +63,14 @@ fn fullnode(
     block_store: Arc<BlockStore>,
     batch_store: Arc<BatchStore>,
 ) -> Executor {
+    let attestation_status_client = Box::new(mk_attestation_status_client(&batch_store));
     Executor {
         config: config(cfg),
         block_store,
         batch_store,
         validator: None,
         attester: None,
+        attestation_status_client,
     }
 }
 

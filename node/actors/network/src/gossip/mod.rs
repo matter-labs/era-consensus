@@ -12,16 +12,22 @@
 //! Static connections constitute a rigid "backbone" of the gossip network, which is insensitive to
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
+pub use self::attestation_status::{
+    AttestationStatusClient, AttestationStatusReceiver, LocalAttestationStatus,
+};
 pub use self::batch_votes::BatchVotesPublisher;
 use self::batch_votes::BatchVotesWatch;
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
+use attestation_status::AttestationStatusWatch;
 use fetch::RequestItem;
 use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
+use zksync_concurrency::time::Duration;
 use zksync_concurrency::{ctx, ctx::channel, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore};
 
+mod attestation_status;
 mod batch_votes;
 mod fetch;
 mod handshake;
@@ -58,6 +64,10 @@ pub(crate) struct Network {
     pub(crate) fetch_queue: fetch::Queue,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
+    /// Shared watch over the current attestation status as indicated by the main node.
+    pub(crate) attestation_status: Arc<AttestationStatusWatch>,
+    /// Client to use to check the current attestation status on the main node.
+    pub(crate) attestation_status_client: Box<dyn AttestationStatusClient>,
 }
 
 impl Network {
@@ -67,6 +77,7 @@ impl Network {
         block_store: Arc<BlockStore>,
         batch_store: Arc<BatchStore>,
         sender: channel::UnboundedSender<io::OutputMessage>,
+        attestation_status_client: Box<dyn AttestationStatusClient>,
     ) -> Arc<Self> {
         Arc::new(Self {
             sender,
@@ -82,6 +93,8 @@ impl Network {
             block_store,
             batch_store,
             push_validator_addrs_calls: 0.into(),
+            attestation_status: Arc::new(AttestationStatusWatch::default()),
+            attestation_status_client,
         })
     }
 
@@ -148,34 +161,91 @@ impl Network {
         .await;
     }
 
-    /// Task that keeps hearing about new votes and looks for an L1 batch qc.
-    /// It will propagate the QC if there's enough votes.
+    /// Task that reacts to new votes being added and looks for an L1 batch QC.
+    /// It persists the certificate once the quorum threshold is passed.
     pub(crate) async fn run_batch_qc_finder(&self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         let Some(attesters) = self.genesis().attesters.as_ref() else {
+            tracing::info!("no attesters in genesis, not looking for batch QCs");
             return Ok(());
         };
         let genesis = self.genesis().hash();
-        let mut sub = self.batch_votes.subscribe();
-        loop {
-            let quorum_opt = {
-                let votes = sync::changed(ctx, &mut sub).await?;
-                votes.find_quorum(attesters, &genesis)
-            };
 
-            if let Some(qc) = quorum_opt {
-                // In the future this should come from confirmations, but for now it's best effort, so we can forget ASAP.
-                // TODO: An initial value could be looked up in the database even now.
-                let next_batch_number = qc.message.number.next();
+        let mut recv_votes = self.batch_votes.subscribe();
+        let mut recv_status = self.attestation_status.subscribe();
 
-                self.batch_store
-                    .persist_batch_qc(ctx, qc)
-                    .await
-                    .wrap("persist_batch_qc")?;
+        let mut prev_batch_number = None;
 
-                self.batch_votes
-                    .set_min_batch_number(next_batch_number)
-                    .await;
+        'status: loop {
+            // Wait until the status indicates that we're ready to sign the next batch.
+            // This is not strictly necessary but avoids repeatedly finding the same quorum, or having to skip it until it changes.
+            let next_batch_number =
+                sync::wait_for_some(ctx, &mut recv_status, |s| match s.next_batch_to_attest {
+                    next if next == prev_batch_number => None,
+                    next => next,
+                })
+                .await?;
+
+            // Next time we'll look for something new.
+            prev_batch_number = Some(next_batch_number);
+
+            // Get rid of all previous votes. We don't expect this to go backwards without regenesis, which will involve a restart.
+            self.batch_votes
+                .set_min_batch_number(next_batch_number)
+                .await;
+
+            // Now wait until we find the next quorum, whatever it is:
+            // * on the main node, if attesters are honest, they will vote on the next batch number and the main node will not see gaps
+            // * on external nodes the votes might be affected by changes in the value returned by the API, and there might be gaps
+            // What is important, though, is that the batch number does not move backwards while we look for a quorum, because attesters
+            // (re)casting earlier votes will go ignored by those fixed on a higher min_batch_number, and gossip will only be attempted once.
+            // The possibility of this will be fixed by deterministally picking a start batch number based on fork indicated by genesis.
+            loop {
+                let quorum_opt = {
+                    let votes = sync::changed(ctx, &mut recv_votes).await?;
+                    votes.find_quorum(attesters, &genesis)
+                };
+
+                if let Some(qc) = quorum_opt {
+                    self.batch_store
+                        .persist_batch_qc(ctx, qc)
+                        .await
+                        .wrap("persist_batch_qc")?;
+
+                    continue 'status;
+                }
             }
+        }
+    }
+
+    /// Poll the attestation status and update the watch.
+    pub(crate) async fn run_attestation_client(&self, ctx: &ctx::Ctx) -> ctx::Result<()> {
+        if self.genesis().attesters.is_none() {
+            tracing::info!("no attesters in genesis, not polling the attestation status");
+            return Ok(());
+        };
+
+        const POLL_INTERVAL: Duration = Duration::seconds(5);
+
+        loop {
+            match self
+                .attestation_status_client
+                .next_batch_to_attest(ctx)
+                .await
+            {
+                Ok(Some(batch_number)) => {
+                    self.attestation_status.update(batch_number).await;
+                    // We could also update the minimum batch number here, which might
+                    // help mitigate the problem of missing a vote if the batch number
+                    // happened to decrease. But we decided to fix it at the source,
+                    // so the only place that is adjusted is before looking for a QC.
+                }
+                Ok(None) => tracing::debug!("waiting for attestation status..."),
+                Err(error) => tracing::error!(
+                    ?error,
+                    "failed to poll attestation status, retrying later..."
+                ),
+            }
+            ctx.sleep(POLL_INTERVAL).await?;
         }
     }
 }

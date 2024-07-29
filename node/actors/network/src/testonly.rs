@@ -1,6 +1,7 @@
 //! Testonly utilities.
 #![allow(dead_code)]
 use crate::{
+    gossip::LocalAttestationStatus,
     io::{ConsensusInputMessage, Target},
     Config, GossipConfig, Network, RpcConfig, Runner,
 };
@@ -181,8 +182,17 @@ impl Instance {
         block_store: Arc<BlockStore>,
         batch_store: Arc<BatchStore>,
     ) -> (Self, InstanceRunner) {
+        // For now let everyone cast their votes on batches based on their own database.
+        let attestation_status_client = Box::new(LocalAttestationStatus::new(batch_store.clone()));
+
         let (actor_pipe, dispatcher_pipe) = pipe::new();
-        let (net, runner) = Network::new(cfg, block_store, batch_store, actor_pipe);
+        let (net, runner) = Network::new(
+            cfg,
+            block_store,
+            batch_store,
+            actor_pipe,
+            attestation_status_client,
+        );
         let (terminate_send, terminate_recv) = channel::bounded(1);
         (
             Self {

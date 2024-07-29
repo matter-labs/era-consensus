@@ -13,7 +13,7 @@ use zksync_concurrency::{ctx, net};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor as executor;
-use zksync_consensus_network::http;
+use zksync_consensus_network::{gossip::LocalAttestationStatus, http};
 use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::testonly::{TestMemoryStorage, TestMemoryStorageRunner};
 use zksync_consensus_utils::debug_page;
@@ -262,6 +262,11 @@ impl Configs {
     ) -> ctx::Result<(executor::Executor, TestMemoryStorageRunner)> {
         let replica_store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
         let store = TestMemoryStorage::new(ctx, &self.app.genesis).await;
+
+        // We don't have an implementation of an API in these servers, we can only use the stores.
+        let attestation_status_client =
+            Box::new(LocalAttestationStatus::new(store.batches.clone()));
+
         let e = executor::Executor {
             config: executor::Config {
                 server_addr: self.app.server_addr,
@@ -302,6 +307,7 @@ impl Configs {
                 .attester_key
                 .as_ref()
                 .map(|key| executor::Attester { key: key.clone() }),
+            attestation_status_client,
         };
         Ok((e, store.runner))
     }

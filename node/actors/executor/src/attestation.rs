@@ -3,8 +3,8 @@
 use crate::Attester;
 use anyhow::Context;
 use std::sync::Arc;
-use zksync_concurrency::{ctx, time};
-use zksync_consensus_network::gossip::BatchVotesPublisher;
+use zksync_concurrency::{ctx, sync, time};
+use zksync_consensus_network::gossip::{AttestationStatusReceiver, BatchVotesPublisher};
 use zksync_consensus_roles::attester;
 use zksync_consensus_storage::{BatchStore, BlockStore};
 
@@ -16,6 +16,7 @@ pub(super) struct AttesterRunner {
     batch_store: Arc<BatchStore>,
     attester: Attester,
     publisher: BatchVotesPublisher,
+    status: AttestationStatusReceiver,
 }
 
 impl AttesterRunner {
@@ -25,16 +26,18 @@ impl AttesterRunner {
         batch_store: Arc<BatchStore>,
         attester: Attester,
         publisher: BatchVotesPublisher,
+        status: AttestationStatusReceiver,
     ) -> Self {
         Self {
             block_store,
             batch_store,
             attester,
             publisher,
+            status,
         }
     }
     /// Poll the database for new L1 batches and publish our signature over the batch.
-    pub(super) async fn run(self, ctx: &ctx::Ctx) -> ctx::Result<()> {
+    pub(super) async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         let public_key = self.attester.key.public();
         // TODO: In the future when we have attester rotation these checks will have to be checked inside the loop.
         let Some(attesters) = self.block_store.genesis().attesters.as_ref() else {
@@ -48,28 +51,26 @@ impl AttesterRunner {
 
         let genesis = self.block_store.genesis().hash();
 
-        // Find the initial range of batches that we want to (re)sign after a (re)start.
-        let last_batch_number = self
-            .batch_store
-            .wait_until_persisted(ctx, attester::BatchNumber(0))
-            .await
-            .context("wait_until_persisted")?
-            .last
-            .unwrap_or_default();
-
-        // Determine the batch to start signing from.
-        let earliest_batch_number = self
-            .batch_store
-            .earliest_batch_number_to_sign(ctx)
-            .await
-            .context("earliest_batch_number_to_sign")?
-            .unwrap_or(last_batch_number);
-
-        tracing::info!(%earliest_batch_number, %last_batch_number, "attesting batches");
-
-        let mut batch_number = earliest_batch_number;
+        let mut prev = None;
 
         loop {
+            let batch_number =
+                sync::wait_for_some(ctx, &mut self.status, |s| match s.next_batch_to_attest {
+                    next if next == prev => None,
+                    next => next,
+                })
+                .await?;
+
+            tracing::info!(%batch_number, "attestation status");
+
+            // We can avoid actively polling the database in `wait_for_batch_to_sign` by waiting its existence
+            // to be indicated in memory (which itself relies on polling). This happens once we have the commitment,
+            // which for nodes that get the blocks through BFT should happen after execution. Nodes which
+            // rely on batch sync don't participate in attestations as they need the batch on L1 first.
+            self.batch_store
+                .wait_until_persisted(ctx, batch_number)
+                .await?;
+
             // Try to get the next batch to sign; the commitment might not be available just yet.
             let batch = self.wait_for_batch_to_sign(ctx, batch_number).await?;
 
@@ -85,15 +86,7 @@ impl AttesterRunner {
                 .await
                 .context("publish")?;
 
-            batch_number = batch_number.next();
-
-            // We can avoid actively polling the database by waiting for the next persisted batch to appear
-            // in the memory (which itself relies on polling). This happens once we have the commitment,
-            // which for nodes that get the blocks through BFT should happen after execution. Nodes which
-            // rely on batch sync don't participate in attestations as they need the batch on L1 first.
-            self.batch_store
-                .wait_until_persisted(ctx, batch_number)
-                .await?;
+            prev = Some(batch_number);
         }
     }
 

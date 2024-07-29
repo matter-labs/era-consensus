@@ -139,7 +139,7 @@ impl PersistentBatchStore for BatchStore {
         Ok(certs.get(last_batch_number).cloned())
     }
 
-    async fn earliest_batch_number_to_sign(
+    async fn next_batch_to_attest(
         &self,
         _ctx: &ctx::Ctx,
     ) -> ctx::Result<Option<attester::BatchNumber>> {

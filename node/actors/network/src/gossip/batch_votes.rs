@@ -53,8 +53,9 @@ pub(crate) struct BatchVotes {
     /// The minimum batch number for which we are still interested in votes.
     ///
     /// Because we only store 1 vote per attester the memory is very much bounded,
-    /// but this extra pruning mechanism can ge used to get rid of votes of attesters
-    /// who rotated out of the committee (which currently requires a re-genesis, but still).
+    /// but this extra pruning mechanism can be used to clear votes of attesters
+    /// who have been removed from the committee, as well as to get rid of the
+    /// last quorum we found and stored, and look for the a new one in the next round.
     pub(crate) min_batch_number: attester::BatchNumber,
 }
 

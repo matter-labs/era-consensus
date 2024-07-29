@@ -53,16 +53,12 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     /// Range of batches persisted in storage.
     fn persisted(&self) -> sync::watch::Receiver<BatchStoreState>;
 
-    /// Get the earliest of L1 batches which are missing the corresponding L1 batch quorum certificates
-    /// and potentially need to be signed by attesters.
+    /// Get the next L1 batch for which attesters are expected to produce a quorum certificate.
     ///
-    /// A replica might never have a complete history of L1 batch QCs; once the L1 batch is included on L1,
-    /// the replicas might use the [attester::SyncBatch] route to obtain them, in which case they will not
-    /// have a QC and no reason to get them either. The store will have sufficient information to decide
-    /// where it's still necessary to gossip votes; for example the main node will want to have a QC on
-    /// every batch while it's the one submitting them to L1, while replicas can ask the L1 what is considered
-    /// final.
-    async fn earliest_batch_number_to_sign(
+    /// An external node might never have a complete history of L1 batch QCs. Once the L1 batch is included on L1,
+    /// the external nodes might use the [attester::SyncBatch] route to obtain them, in which case they will not
+    /// have a QC and no reason to get them either. The main node, however, will want to have a QC for all batches.
+    async fn next_batch_to_attest(
         &self,
         ctx: &ctx::Ctx,
     ) -> ctx::Result<Option<attester::BatchNumber>>;
@@ -279,28 +275,20 @@ impl BatchStore {
         Ok(batch)
     }
 
-    /// Retrieve the minimum batch number that doesn't have a QC yet and potentially need to be signed.
-    ///
-    /// There might be unsigned batches before this one in the database, however we don't consider it
-    /// necessary to sign them any more, because for example they have already been submitted to L1.
-    ///
-    /// There might also be signed batches *after* this one, due to the way gossiping works, but we
-    /// might still have to fill the gaps by (re)submitting our signature to allow them to be submitted.
-    ///
-    /// Returns `None` if all existing batches are signed, or there are not batches yet to be signed at all.
-    pub async fn earliest_batch_number_to_sign(
+    /// Retrieve the next batch number that doesn't have a QC yet and will need to be signed.
+    pub async fn next_batch_to_attest(
         &self,
         ctx: &ctx::Ctx,
     ) -> ctx::Result<Option<attester::BatchNumber>> {
         let t = metrics::PERSISTENT_BATCH_STORE
-            .earliest_batch_latency
+            .next_batch_to_attest_latency
             .start();
 
         let batch = self
             .persistent
-            .earliest_batch_number_to_sign(ctx)
+            .next_batch_to_attest(ctx)
             .await
-            .wrap("persistent.get_batch_to_sign()")?;
+            .wrap("persistent.next_batch_to_attest()")?;
 
         t.observe();
         Ok(batch)

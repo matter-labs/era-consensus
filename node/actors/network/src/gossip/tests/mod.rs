@@ -643,8 +643,8 @@ fn test_batch_votes_quorum() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
 
     for _ in 0..10 {
-        let size = rng.gen_range(1..20);
-        let keys: Vec<attester::SecretKey> = (0..size).map(|_| rng.gen()).collect();
+        let committee_size = rng.gen_range(1..20);
+        let keys: Vec<attester::SecretKey> = (0..committee_size).map(|_| rng.gen()).collect();
         let attesters = attester::Committee::new(keys.iter().map(|k| attester::WeightedAttester {
             key: k.public(),
             weight: rng.gen_range(1..=100),
@@ -681,12 +681,8 @@ fn test_batch_votes_quorum() {
             }
         }
 
-        if batches
-            .iter()
-            .find(|b| b.1 >= attesters.threshold())
-            .is_none()
-        {
-            // Check that if there was no quoroum then we don't find any.
+        // Check that if there was no quoroum then we don't find any.
+        if !batches.iter().any(|b| b.1 >= attesters.threshold()) {
             assert!(votes.find_quorum(&attesters, &genesis).is_none());
         }
 
