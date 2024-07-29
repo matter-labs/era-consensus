@@ -20,6 +20,7 @@ struct BlockStoreInner {
 
 #[derive(Debug)]
 struct BatchStoreInner {
+    genesis: validator::Genesis,
     persisted: sync::watch::Sender<BatchStoreState>,
     batches: Mutex<VecDeque<attester::SyncBatch>>,
     certs: Mutex<HashMap<attester::BatchNumber, attester::BatchQC>>,
@@ -69,8 +70,9 @@ impl BlockStore {
 
 impl BatchStore {
     /// New In-memory `BatchStore`.
-    pub fn new(first: attester::BatchNumber) -> Self {
+    pub fn new(genesis: validator::Genesis, first: attester::BatchNumber) -> Self {
         Self(Arc::new(BatchStoreInner {
+            genesis,
             persisted: sync::watch::channel(BatchStoreState { first, last: None }).0,
             batches: Mutex::default(),
             certs: Mutex::default(),
@@ -167,6 +169,7 @@ impl PersistentBatchStore for BatchStore {
         Ok(Some(attester::Batch {
             number,
             hash: attester::BatchHash(hash),
+            genesis: self.0.genesis.hash(),
         }))
     }
 

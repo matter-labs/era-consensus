@@ -18,6 +18,7 @@ message BatchHash {
 message Batch {
   optional uint64 number = 1; // required
   optional BatchHash hash = 2; // required
+  optional validator.GenesisHash genesis = 3; // required
 }
 
 message BatchQC {

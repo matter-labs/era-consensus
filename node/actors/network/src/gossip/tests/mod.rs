@@ -116,10 +116,12 @@ fn mk_batch<R: Rng>(
     rng: &mut R,
     key: &attester::SecretKey,
     number: attester::BatchNumber,
+    genesis: attester::GenesisHash,
 ) -> attester::Signed<attester::Batch> {
     key.sign_msg(attester::Batch {
         number,
         hash: rng.gen(),
+        genesis,
     })
 }
 
@@ -138,10 +140,12 @@ fn random_netaddr<R: Rng>(
 fn random_batch_vote<R: Rng>(
     rng: &mut R,
     key: &attester::SecretKey,
+    genesis: attester::GenesisHash,
 ) -> Arc<attester::Signed<attester::Batch>> {
     let batch = attester::Batch {
         number: attester::BatchNumber(rng.gen_range(0..1000)),
         hash: rng.gen(),
+        genesis,
     };
     Arc::new(key.sign_msg(batch.to_owned()))
 }
@@ -170,6 +174,7 @@ fn update_signature<R: Rng>(
     let batch = attester::Batch {
         number: attester::BatchNumber((batch.number.0 as i64 + batch_number_diff) as u64),
         hash: rng.gen(),
+        genesis: batch.genesis,
     };
     Arc::new(key.sign_msg(batch.to_owned()))
 }
@@ -554,12 +559,17 @@ async fn test_batch_votes() {
     let votes = BatchVotesWatch::default();
     let mut sub = votes.subscribe();
 
+    let genesis = rng.gen::<attester::GenesisHash>();
+
     // Initial values.
     let mut want = Signatures::default();
     for k in &keys[0..6] {
-        want.insert(random_batch_vote(rng, k));
+        want.insert(random_batch_vote(rng, k, genesis));
     }
-    votes.update(&attesters, &want.as_vec()).await.unwrap();
+    votes
+        .update(&attesters, &genesis, &want.as_vec())
+        .await
+        .unwrap();
     assert_eq!(want.0, sub.borrow_and_update().votes);
 
     // newer batch number, should be updated
@@ -569,10 +579,10 @@ async fn test_batch_votes() {
     // older batch number, should be ignored
     let k4v2 = update_signature(rng, &want.get(&keys[4]).msg, &keys[4], -1);
     // first entry for a key in the config, should be inserted
-    let k6v1 = random_batch_vote(rng, &keys[6]);
+    let k6v1 = random_batch_vote(rng, &keys[6], genesis);
     // entry for a key outside of the config, should be ignored
     let k8 = rng.gen();
-    let k8v1 = random_batch_vote(rng, &k8);
+    let k8v1 = random_batch_vote(rng, &k8, genesis);
 
     // Update the ones we expect to succeed
     want.insert(k0v2.clone());
@@ -588,7 +598,7 @@ async fn test_batch_votes() {
         // no entry at all for keys[7]
         k8v1.clone(),
     ];
-    votes.update(&attesters, &update).await.unwrap();
+    votes.update(&attesters, &genesis, &update).await.unwrap();
     assert_eq!(want.0, sub.borrow_and_update().votes);
 
     // Invalid signature, should be rejected.
@@ -596,14 +606,32 @@ async fn test_batch_votes() {
         rng,
         &keys[1],
         attester::BatchNumber(want.get(&keys[0]).msg.number.0 + 1),
+        genesis,
     );
     k0v3.key = keys[0].public();
-    assert!(votes.update(&attesters, &[Arc::new(k0v3)]).await.is_err());
+    assert!(votes
+        .update(&attesters, &genesis, &[Arc::new(k0v3)])
+        .await
+        .is_err());
+
+    // Invalid genesis, should be rejected.
+    let other_genesis = rng.gen();
+    let k1v3 = mk_batch(
+        rng,
+        &keys[1],
+        attester::BatchNumber(want.get(&keys[1]).msg.number.0 + 1),
+        other_genesis,
+    );
+    assert!(votes
+        .update(&attesters, &genesis, &[Arc::new(k1v3)])
+        .await
+        .is_err());
+
     assert_eq!(want.0, sub.borrow_and_update().votes);
 
     // Duplicate entry in the update, should be rejected.
     assert!(votes
-        .update(&attesters, &[k8v1.clone(), k8v1])
+        .update(&attesters, &genesis, &[k8v1.clone(), k8v1])
         .await
         .is_err());
     assert_eq!(want.0, sub.borrow_and_update().votes);
@@ -627,7 +655,9 @@ fn test_batch_votes_quorum() {
         let batch1 = attester::Batch {
             number: batch0.number.next(),
             hash: rng.gen(),
+            genesis: batch0.genesis,
         };
+        let genesis = batch0.genesis;
         let mut batches = [(batch0, 0u64), (batch1, 0u64)];
 
         let mut votes = BatchVotes::default();
@@ -636,12 +666,14 @@ fn test_batch_votes_quorum() {
             let b = usize::from(rng.gen_range(0..100) < 80);
             let batch = &batches[b].0;
             let vote = sk.sign_msg(batch.clone());
-            votes.update(&attesters, &[Arc::new(vote)]).unwrap();
+            votes
+                .update(&attesters, &genesis, &[Arc::new(vote)])
+                .unwrap();
             batches[b].1 += attesters.weight(&sk.public()).unwrap();
 
             // Check that as soon as we have quorum it's found.
             if batches[b].1 >= attesters.threshold() {
-                let qs = votes.find_quorums(&attesters, |_| false);
+                let qs = votes.find_quorums(&attesters, &genesis, |_| false);
                 assert!(!qs.is_empty(), "should find quorum");
                 assert!(qs[0].message == *batch);
                 assert!(qs[0].signatures.keys().count() > 0);
@@ -655,11 +687,13 @@ fn test_batch_votes_quorum() {
         {
             // Check that a quorum can be skipped
             assert!(votes
-                .find_quorums(&attesters, |b| b == quorum.number)
+                .find_quorums(&attesters, &genesis, |b| b == quorum.number)
                 .is_empty());
         } else {
             // Check that if there was no quoroum then we don't find any.
-            assert!(votes.find_quorums(&attesters, |_| false).is_empty());
+            assert!(votes
+                .find_quorums(&attesters, &genesis, |_| false)
+                .is_empty());
         }
 
         // Check that the minimum batch number prunes data.
@@ -707,6 +741,7 @@ async fn test_batch_votes_propagation() {
         let batch = attester::Batch {
             number: batch.number,
             hash: rng.gen(),
+            genesis: setup.genesis.hash(),
         };
 
         // Start all nodes.
@@ -730,7 +765,7 @@ async fn test_batch_votes_propagation() {
         for (node, key) in nodes.iter().zip(setup.attester_keys.iter()) {
             node.net
                 .batch_vote_publisher()
-                .publish(attesters, key, batch.clone())
+                .publish(attesters, &setup.genesis.hash(), key, batch.clone())
                 .await
                 .unwrap();
         }

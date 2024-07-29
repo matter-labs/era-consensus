@@ -154,6 +154,7 @@ impl Network {
         let Some(attesters) = self.genesis().attesters.as_ref() else {
             return Ok(());
         };
+        let genesis = self.genesis().hash();
         let mut sub = self.batch_votes.subscribe();
         loop {
             // In the future when we might be gossiping about multiple batches at the same time,
@@ -161,7 +162,7 @@ impl Network {
             // on L1 and we can finally increase the minimum as well.
             let quorums = {
                 let votes = sync::changed(ctx, &mut sub).await?;
-                votes.find_quorums(attesters, |_| false)
+                votes.find_quorums(attesters, &genesis, |_| false)
             };
 
             for qc in quorums {
