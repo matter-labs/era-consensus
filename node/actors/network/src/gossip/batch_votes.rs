@@ -1,10 +1,9 @@
 //! Global state distributed by active attesters, observed by all the nodes in the network.
+use super::metrics;
 use crate::watch::Watch;
 use std::{collections::HashSet, fmt, sync::Arc};
 use zksync_concurrency::sync;
 use zksync_consensus_roles::attester;
-
-use super::metrics;
 
 #[derive(Debug, Default)]
 pub(super) struct BatchUpdateStats {

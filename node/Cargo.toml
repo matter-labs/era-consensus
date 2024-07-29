@@ -84,7 +84,7 @@ serde_json = "1.0.95"
 serde_yaml = "0.9"
 sha3 = "0.10.8"
 snow = "0.9.3"
-syn = "2.0.17"
+syn = { version = "2.0.17", features = ["extra-traits"] }
 tempfile = "3"
 test-casing = "0.1.0"
 thiserror = "1.0.40"

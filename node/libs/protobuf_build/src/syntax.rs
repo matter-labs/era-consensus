@@ -102,7 +102,7 @@ impl fmt::Display for ProtoPath {
 /// generated code is location agnostic (it can be embedded in an arbitrary module within the crate),
 /// you need to manually (in the Config) specify the rust modules containing the generated code
 /// of the dependencies, so that it can be referenced from the newly generated code.
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct RustName(syn::Path);
 
 impl RustName {
