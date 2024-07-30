@@ -22,7 +22,7 @@ use attestation_status::AttestationStatusWatch;
 use fetch::RequestItem;
 use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
-use zksync_concurrency::time::Duration;
+use zksync_concurrency::time;
 use zksync_concurrency::{ctx, ctx::channel, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore};
@@ -199,7 +199,7 @@ impl Network {
             // What is important, though, is that the batch number does not move backwards while we look for a quorum, because attesters
             // (re)casting earlier votes will go ignored by those fixed on a higher min_batch_number, and gossip will only be attempted once.
             // The possibility of this will be fixed by deterministally picking a start batch number based on fork indicated by genesis.
-            let quorum = sync::wait_for_some(ctx, &mut recv_votes, |votes| {
+            let qc = sync::wait_for_some(ctx, &mut recv_votes, |votes| {
                 votes.find_quorum(attesters, &genesis)
             })
             .await?;
@@ -218,7 +218,7 @@ impl Network {
             return Ok(());
         };
 
-        const POLL_INTERVAL: Duration = Duration::seconds(5);
+        const POLL_INTERVAL: time::Duration = time::Duration::seconds(5);
 
         loop {
             match self
