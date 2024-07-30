@@ -1,7 +1,7 @@
 //! Testonly utilities.
 #![allow(dead_code)]
 use crate::{
-    gossip::{AttestationStatusRunner, AttestationStatusWatch, LocalAttestationStatusClient},
+    gossip::AttestationStatusWatch,
     io::{ConsensusInputMessage, Target},
     Config, GossipConfig, Network, RpcConfig, Runner,
 };
@@ -161,7 +161,8 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
 /// Runner for Instance.
 pub struct InstanceRunner {
     net_runner: Runner,
-    attestation_status_runner: AttestationStatusRunner,
+    attestation_status: Arc<AttestationStatusWatch>,
+    batch_store: Arc<BatchStore>,
     terminate: channel::Receiver<()>,
 }
 
@@ -170,7 +171,16 @@ impl InstanceRunner {
     pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(self.net_runner.run(ctx));
-            s.spawn_bg(self.attestation_status_runner.run(ctx));
+            s.spawn_bg(async {
+                loop {
+                    if let Ok(Some(n)) = self.batch_store.next_batch_to_attest(ctx).await {
+                        self.attestation_status.update(n).await;
+                    }
+                    if ctx.sleep(time::Duration::seconds(1)).await.is_err() {
+                        return Ok(());
+                    }
+                }
+            });
             let _ = self.terminate.recv(ctx).await;
             Ok(())
         })
@@ -188,17 +198,16 @@ impl Instance {
         batch_store: Arc<BatchStore>,
     ) -> (Self, InstanceRunner) {
         // Semantically we'd want this to be created at the same level as the stores,
-        // but doing so would introduce a lot of extra cruft in setting
-        // up tests that don't make any use of attestations.
-        let (attestation_status, attestation_status_runner) =
-            new_local_attestation_status(batch_store.clone());
+        // but doing so would introduce a lot of extra cruft in setting up tests.
+        let attestation_status = Arc::new(AttestationStatusWatch::default());
+
         let (actor_pipe, dispatcher_pipe) = pipe::new();
         let (net, net_runner) = Network::new(
             cfg,
             block_store,
-            batch_store,
+            batch_store.clone(),
             actor_pipe,
-            attestation_status,
+            attestation_status.clone(),
         );
         let (terminate_send, terminate_recv) = channel::bounded(1);
         (
@@ -209,7 +218,8 @@ impl Instance {
             },
             InstanceRunner {
                 net_runner,
-                attestation_status_runner,
+                attestation_status,
+                batch_store,
                 terminate: terminate_recv,
             },
         )
@@ -348,14 +358,4 @@ pub async fn instant_network(
     }
     tracing::info!("consensus network established");
     Ok(())
-}
-
-/// Create an attestation status and its runner based on a [BatchStore].
-pub fn new_local_attestation_status(
-    store: Arc<BatchStore>,
-) -> (Arc<AttestationStatusWatch>, AttestationStatusRunner) {
-    AttestationStatusWatch::new(
-        Box::new(LocalAttestationStatusClient::new(store)),
-        time::Duration::seconds(5),
-    )
 }

@@ -7,16 +7,14 @@ use std::{
     fs, io,
     net::SocketAddr,
     path::PathBuf,
+    sync::Arc,
 };
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use zksync_concurrency::{ctx, net, scope, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
-use zksync_consensus_executor as executor;
-use zksync_consensus_network::{
-    gossip::{AttestationStatusRunner, AttestationStatusWatch, LocalAttestationStatusClient},
-    http,
-};
+use zksync_consensus_executor::{self as executor, attestation::AttestationStatusRunner};
+use zksync_consensus_network::{gossip::AttestationStatusWatch, http};
 use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::testonly::{TestMemoryStorage, TestMemoryStorageRunner};
 use zksync_consensus_utils::debug_page;
@@ -267,8 +265,10 @@ impl Configs {
         let store = TestMemoryStorage::new(ctx, &self.app.genesis).await;
 
         // We don't have an API to poll in this setup, we can only create a local store based attestation client.
-        let (attestation_status, attestation_status_runner) = AttestationStatusWatch::new(
-            Box::new(LocalAttestationStatusClient::new(store.batches.clone())),
+        let attestation_status = Arc::new(AttestationStatusWatch::default());
+        let attestation_status_runner = AttestationStatusRunner::new_from_store(
+            attestation_status.clone(),
+            store.batches.clone(),
             time::Duration::seconds(1),
         );
 

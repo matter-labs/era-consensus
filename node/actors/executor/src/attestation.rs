@@ -4,11 +4,11 @@ use crate::Attester;
 use anyhow::Context;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, sync, time};
-use zksync_consensus_network::gossip::{AttestationStatusReceiver, BatchVotesPublisher};
+use zksync_consensus_network::gossip::{
+    AttestationStatusReceiver, AttestationStatusWatch, BatchVotesPublisher,
+};
 use zksync_consensus_roles::attester;
 use zksync_consensus_storage::{BatchStore, BlockStore};
-
-const POLL_INTERVAL: time::Duration = time::Duration::seconds(1);
 
 /// Polls the database for new batches to be signed and publishes them to the gossip channel.
 pub(super) struct AttesterRunner {
@@ -17,6 +17,7 @@ pub(super) struct AttesterRunner {
     attester: Attester,
     publisher: BatchVotesPublisher,
     status: AttestationStatusReceiver,
+    poll_interval: time::Duration,
 }
 
 impl AttesterRunner {
@@ -27,6 +28,7 @@ impl AttesterRunner {
         attester: Attester,
         publisher: BatchVotesPublisher,
         status: AttestationStatusReceiver,
+        poll_interval: time::Duration,
     ) -> Self {
         Self {
             block_store,
@@ -34,6 +36,7 @@ impl AttesterRunner {
             attester,
             publisher,
             status,
+            poll_interval,
         }
     }
     /// Poll the database for new L1 batches and publish our signature over the batch.
@@ -104,8 +107,93 @@ impl AttesterRunner {
             {
                 return Ok(batch);
             } else {
-                ctx.sleep(POLL_INTERVAL).await?;
+                ctx.sleep(self.poll_interval).await?;
             }
         }
+    }
+}
+
+/// An interface which is used by attesters and nodes collecting votes over gossip to determine
+/// which is the next batch they are all supposed to be voting on, according to the main node.
+///
+/// This is a convenience interface to be used with the [AttestationStatusRunner].
+#[async_trait::async_trait]
+pub trait AttestationStatusClient: 'static + Send + Sync {
+    /// Get the next batch number for which the main node expects a batch QC to be formed.
+    ///
+    /// The API might return an error while genesis is being created, which we represent with `None`
+    /// here and mean that we'll have to try again later.
+    async fn next_batch_to_attest(
+        &self,
+        ctx: &ctx::Ctx,
+    ) -> ctx::Result<Option<attester::BatchNumber>>;
+}
+
+/// Use an [AttestationStatusClient] to periodically poll the main node and update the [AttestationStatusWatch].
+///
+/// This is provided for convenience.
+pub struct AttestationStatusRunner {
+    status: Arc<AttestationStatusWatch>,
+    client: Box<dyn AttestationStatusClient>,
+    poll_interval: time::Duration,
+}
+
+impl AttestationStatusRunner {
+    /// Create a new runner to poll the main node.
+    pub fn new(
+        status: Arc<AttestationStatusWatch>,
+        client: Box<dyn AttestationStatusClient>,
+        poll_interval: time::Duration,
+    ) -> Self {
+        Self {
+            status,
+            client,
+            poll_interval,
+        }
+    }
+
+    /// Runner based on a [BatchStore].
+    pub fn new_from_store(
+        status: Arc<AttestationStatusWatch>,
+        store: Arc<BatchStore>,
+        poll_interval: time::Duration,
+    ) -> Self {
+        Self::new(
+            status,
+            Box::new(LocalAttestationStatusClient(store)),
+            poll_interval,
+        )
+    }
+
+    /// Run the poll loop.
+    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        loop {
+            match self.client.next_batch_to_attest(ctx).await {
+                Ok(Some(batch_number)) => {
+                    self.status.update(batch_number).await;
+                }
+                Ok(None) => tracing::debug!("waiting for attestation status..."),
+                Err(error) => tracing::error!(
+                    ?error,
+                    "failed to poll attestation status, retrying later..."
+                ),
+            }
+            if let Err(ctx::Canceled) = ctx.sleep(self.poll_interval).await {
+                return Ok(());
+            }
+        }
+    }
+}
+
+/// Implement the attestation status for the main node by returning the next to vote on from the [BatchStore].
+struct LocalAttestationStatusClient(Arc<BatchStore>);
+
+#[async_trait::async_trait]
+impl AttestationStatusClient for LocalAttestationStatusClient {
+    async fn next_batch_to_attest(
+        &self,
+        ctx: &ctx::Ctx,
+    ) -> ctx::Result<Option<attester::BatchNumber>> {
+        self.0.next_batch_to_attest(ctx).await
     }
 }

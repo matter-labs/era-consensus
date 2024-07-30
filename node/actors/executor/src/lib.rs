@@ -15,7 +15,7 @@ use zksync_consensus_storage::{BatchStore, BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
-mod attestation;
+pub mod attestation;
 mod io;
 #[cfg(test)]
 mod tests;
@@ -153,6 +153,7 @@ impl Executor {
                     attester,
                     net.batch_vote_publisher(),
                     self.attestation_status.subscribe(),
+                    time::Duration::seconds(1), // TODO: Move to config?
                 );
                 s.spawn(async {
                     runner.run(ctx).await?;
