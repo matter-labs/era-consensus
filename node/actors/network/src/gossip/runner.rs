@@ -68,6 +68,7 @@ impl rpc::Handler<rpc::push_batch_votes::Rpc> for &PushServer<'_> {
             .batch_votes
             .update(
                 self.net.genesis().attesters.as_ref().context("attesters")?,
+                &self.net.genesis().hash(),
                 &req.0,
             )
             .await?;

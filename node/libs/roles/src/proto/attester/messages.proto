@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package zksync.roles.attester;
+
+import "zksync/roles/attester/keys.proto";
+import "zksync/roles/validator/genesis.proto";
+
+message SyncBatch {
+  optional uint64 number = 1; // required
+  repeated bytes payloads = 2; // required
+  optional bytes proof = 3; // required
+}
+
+message BatchHash {
+  optional bytes keccak256 = 1; // required
+}
+
+message Batch {
+  optional uint64 number = 1; // required
+  optional BatchHash hash = 2; // required
+  optional validator.GenesisHash genesis = 3; // required
+}
+
+message BatchQC {
+  reserved 2, 3; 
+  reserved "signers", "sig";
+
+  // TODO: de-deprecate these when we move back to using BLS aggregates, 
+  // or consider using `AggregateMultiSig`
+  // optional std.BitVector signers = 2; // required
+  // optional AggregateSignature sig = 3; // required
+
+  optional Batch msg = 1; // required
+  repeated Attestation signatures = 4; 
+}
+
+message Msg {
+  oneof t { // required
+    Batch batch = 4;
+  }
+}
+
+message Signed {
+  optional Msg msg = 1; // required
+  optional PublicKey key = 2; // required
+  optional Signature sig = 3; // required
+}
+
+message MsgHash {
+  optional bytes keccak256 = 1; // required
+}

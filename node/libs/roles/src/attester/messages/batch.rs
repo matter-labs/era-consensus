@@ -1,4 +1,4 @@
-use super::Signed;
+use super::{GenesisHash, Signed};
 use crate::{
     attester,
     validator::{Genesis, Payload},
@@ -92,6 +92,12 @@ pub struct Batch {
     pub number: BatchNumber,
     /// Hash of the batch.
     pub hash: BatchHash,
+    /// Hash of the genesis.
+    ///
+    /// This includes the chain ID and the current fork number, which prevents
+    /// replay attacks from other chains where the same attesters might operate,
+    /// or from earlier forks, which are created after a revert of L1 batches.
+    pub genesis: GenesisHash,
 }
 
 /// A certificate for a batch of L2 blocks to be sent to L1.

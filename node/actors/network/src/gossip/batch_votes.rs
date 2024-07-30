@@ -1,10 +1,9 @@
 //! Global state distributed by active attesters, observed by all the nodes in the network.
+use super::metrics;
 use crate::watch::Watch;
 use std::{collections::HashSet, fmt, sync::Arc};
 use zksync_concurrency::sync;
 use zksync_consensus_roles::attester;
-
-use super::metrics;
 
 #[derive(Debug, Default)]
 pub(super) struct BatchUpdateStats {
@@ -79,6 +78,7 @@ impl BatchVotes {
     pub(super) fn update(
         &mut self,
         attesters: &attester::Committee,
+        genesis: &attester::GenesisHash,
         data: &[Arc<attester::Signed<attester::Batch>>],
     ) -> anyhow::Result<BatchUpdateStats> {
         let mut stats = BatchUpdateStats::default();
@@ -92,6 +92,14 @@ impl BatchVotes {
                 anyhow::bail!("duplicate entry for {:?}", d.key);
             }
             done.insert(d.key.clone());
+
+            // Disallow votes from different genesis. It might indicate a reorg,
+            // in which case either this node or the remote peer has to be restarted.
+            anyhow::ensure!(
+                d.msg.genesis == *genesis,
+                "vote for batch with different genesis hash: {:?}",
+                d.msg.genesis
+            );
 
             if d.msg.number < self.min_batch_number {
                 continue;
@@ -130,6 +138,7 @@ impl BatchVotes {
     pub(super) fn find_quorums(
         &self,
         attesters: &attester::Committee,
+        genesis: &attester::GenesisHash,
         skip: impl Fn(attester::BatchNumber) -> bool,
     ) -> Vec<attester::BatchQC> {
         let threshold = attesters.threshold();
@@ -154,6 +163,8 @@ impl BatchVotes {
                             message: attester::Batch {
                                 number: *number,
                                 hash: *hash,
+                                // This was checked during insertion; we could look up the first in `votes`
+                                genesis: *genesis,
                             },
                             signatures: sigs,
                         }
@@ -230,11 +241,12 @@ impl BatchVotesWatch {
     pub(crate) async fn update(
         &self,
         attesters: &attester::Committee,
+        genesis: &attester::GenesisHash,
         data: &[Arc<attester::Signed<attester::Batch>>],
     ) -> anyhow::Result<()> {
         let this = self.0.lock().await;
         let mut votes = this.borrow().clone();
-        let stats = votes.update(attesters, data)?;
+        let stats = votes.update(attesters, genesis, data)?;
 
         if let Some(last_added) = stats.last_added {
             this.send_replace(votes);
@@ -288,6 +300,7 @@ impl BatchVotesPublisher {
     pub async fn publish(
         &self,
         attesters: &attester::Committee,
+        genesis: &attester::GenesisHash,
         attester: &attester::SecretKey,
         batch: attester::Batch,
     ) -> anyhow::Result<()> {
@@ -300,6 +313,8 @@ impl BatchVotesPublisher {
             .last_signed_batch_number
             .set(attestation.msg.number.0);
 
-        self.0.update(attesters, &[Arc::new(attestation)]).await
+        self.0
+            .update(attesters, genesis, &[Arc::new(attestation)])
+            .await
     }
 }
