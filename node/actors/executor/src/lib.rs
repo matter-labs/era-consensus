@@ -70,6 +70,9 @@ pub struct Config {
     /// Http debug page configuration.
     /// If None, debug page is disabled
     pub debug_page: Option<http::DebugPageConfig>,
+
+    /// How often to poll the database looking for the batch commitment.
+    pub batch_poll_interval: time::Duration,
 }
 
 impl Config {
@@ -153,7 +156,7 @@ impl Executor {
                     attester,
                     net.batch_vote_publisher(),
                     self.attestation_status.subscribe(),
-                    time::Duration::seconds(1), // TODO: Move to config?
+                    self.config.batch_poll_interval,
                 );
                 s.spawn(async {
                     runner.run(ctx).await?;

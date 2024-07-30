@@ -23,6 +23,7 @@ fn config(cfg: &network::Config) -> Config {
         gossip_static_outbound: cfg.gossip.static_outbound.clone(),
         rpc: cfg.rpc.clone(),
         debug_page: None,
+        batch_poll_interval: time::Duration::seconds(1),
     }
 }
 

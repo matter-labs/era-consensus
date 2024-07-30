@@ -298,6 +298,7 @@ impl Configs {
                             .expect("Could not obtain private key for debug page"),
                     }
                 }),
+                batch_poll_interval: time::Duration::seconds(1),
             },
             block_store: store.blocks,
             batch_store: store.batches,
