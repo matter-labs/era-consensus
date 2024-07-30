@@ -169,20 +169,17 @@ impl Network {
         let mut recv_votes = self.batch_votes.subscribe();
         let mut recv_status = self.attestation_status.subscribe();
 
-        let mut prev_batch_number = None;
+        // Subscribe starts as seen but we don't want to miss the first item.
+        recv_status.mark_changed();
 
         loop {
             // Wait until the status indicates that we're ready to sign the next batch.
-            // This is not strictly necessary but avoids repeatedly finding the same quorum, or having to skip it until it changes.
-            let next_batch_number =
-                sync::wait_for_some(ctx, &mut recv_status, |s| match s.next_batch_to_attest {
-                    next if next == prev_batch_number => None,
-                    next => next,
-                })
-                .await?;
-
-            // Next time we'll look for something new.
-            prev_batch_number = Some(next_batch_number);
+            let Some(next_batch_number) = sync::changed(ctx, &mut recv_status)
+                .await?
+                .next_batch_to_attest
+            else {
+                continue;
+            };
 
             // Get rid of all previous votes. We don't expect this to go backwards without regenesis, which will involve a restart.
             self.batch_votes

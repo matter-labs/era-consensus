@@ -51,15 +51,16 @@ impl AttesterRunner {
 
         let genesis = self.block_store.genesis().hash();
 
-        let mut prev = None;
+        // Subscribe starts as seen but we don't want to miss the first item.
+        self.status.mark_changed();
 
         loop {
-            let batch_number =
-                sync::wait_for_some(ctx, &mut self.status, |s| match s.next_batch_to_attest {
-                    next if next == prev => None,
-                    next => next,
-                })
-                .await?;
+            let Some(batch_number) = sync::changed(ctx, &mut self.status)
+                .await?
+                .next_batch_to_attest
+            else {
+                continue;
+            };
 
             tracing::info!(%batch_number, "attestation status");
 
@@ -85,8 +86,6 @@ impl AttesterRunner {
                 .publish(attesters, &genesis, &self.attester.key, batch)
                 .await
                 .context("publish")?;
-
-            prev = Some(batch_number);
         }
     }
 
