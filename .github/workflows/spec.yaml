@@ -20,7 +20,7 @@ jobs:
           check-latest: true
 
       - name: Install quint
-        run: npm i @informalsystems/quint@0.20.0 -g
+        run: npm i @informalsystems/quint@0.21.0 -g
 
       - name: Run test
         run: cd spec && make test
