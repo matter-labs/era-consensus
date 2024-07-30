@@ -152,7 +152,7 @@ impl Executor {
                     self.batch_store.clone(),
                     attester,
                     net.batch_vote_publisher(),
-                    net.attestation_status_receiver(),
+                    self.attestation_status.subscribe(),
                 );
                 s.spawn(async {
                     runner.run(ctx).await?;
