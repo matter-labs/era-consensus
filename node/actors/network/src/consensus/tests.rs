@@ -256,9 +256,11 @@ async fn test_address_change() {
         // should get reconstructed.
         cfgs[0].server_addr = net::tcp::testonly::reserve_listener();
         cfgs[0].public_addr = (*cfgs[0].server_addr).into();
+
         let (node0, runner) =
             testonly::Instance::new(cfgs[0].clone(), store.blocks.clone(), store.batches.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
+
         nodes[0] = node0;
         for n in &nodes {
             n.wait_for_consensus_connections().await;

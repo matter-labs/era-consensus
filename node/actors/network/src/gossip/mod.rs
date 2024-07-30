@@ -13,16 +13,15 @@
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
 pub use self::attestation_status::{
-    AttestationStatusClient, AttestationStatusReceiver, LocalAttestationStatus,
+    AttestationStatusClient, AttestationStatusReceiver, AttestationStatusRunner,
+    AttestationStatusWatch, LocalAttestationStatusClient,
 };
 pub use self::batch_votes::BatchVotesPublisher;
 use self::batch_votes::BatchVotesWatch;
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
-use attestation_status::AttestationStatusWatch;
 use fetch::RequestItem;
 use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
-use zksync_concurrency::time;
 use zksync_concurrency::{ctx, ctx::channel, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore};
@@ -66,8 +65,6 @@ pub(crate) struct Network {
     pub(crate) push_validator_addrs_calls: AtomicUsize,
     /// Shared watch over the current attestation status as indicated by the main node.
     pub(crate) attestation_status: Arc<AttestationStatusWatch>,
-    /// Client to use to check the current attestation status on the main node.
-    pub(crate) attestation_status_client: Box<dyn AttestationStatusClient>,
 }
 
 impl Network {
@@ -77,7 +74,7 @@ impl Network {
         block_store: Arc<BlockStore>,
         batch_store: Arc<BatchStore>,
         sender: channel::UnboundedSender<io::OutputMessage>,
-        attestation_status_client: Box<dyn AttestationStatusClient>,
+        attestation_status: Arc<AttestationStatusWatch>,
     ) -> Arc<Self> {
         Arc::new(Self {
             sender,
@@ -93,8 +90,7 @@ impl Network {
             block_store,
             batch_store,
             push_validator_addrs_calls: 0.into(),
-            attestation_status: Arc::new(AttestationStatusWatch::default()),
-            attestation_status_client,
+            attestation_status,
         })
     }
 
@@ -208,38 +204,6 @@ impl Network {
                 .persist_batch_qc(ctx, qc)
                 .await
                 .wrap("persist_batch_qc")?;
-        }
-    }
-
-    /// Poll the attestation status and update the watch.
-    pub(crate) async fn run_attestation_client(&self, ctx: &ctx::Ctx) -> ctx::Result<()> {
-        if self.genesis().attesters.is_none() {
-            tracing::info!("no attesters in genesis, not polling the attestation status");
-            return Ok(());
-        };
-
-        const POLL_INTERVAL: time::Duration = time::Duration::seconds(5);
-
-        loop {
-            match self
-                .attestation_status_client
-                .next_batch_to_attest(ctx)
-                .await
-            {
-                Ok(Some(batch_number)) => {
-                    self.attestation_status.update(batch_number).await;
-                    // We could also update the minimum batch number here, which might
-                    // help mitigate the problem of missing a vote if the batch number
-                    // happened to decrease. But we decided to fix it at the source,
-                    // so the only place that is adjusted is before looking for a QC.
-                }
-                Ok(None) => tracing::debug!("waiting for attestation status..."),
-                Err(error) => tracing::error!(
-                    ?error,
-                    "failed to poll attestation status, retrying later..."
-                ),
-            }
-            ctx.sleep(POLL_INTERVAL).await?;
         }
     }
 }

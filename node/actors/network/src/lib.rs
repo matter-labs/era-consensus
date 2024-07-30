@@ -1,6 +1,6 @@
 //! Network actor maintaining a pool of outbound and inbound connections to other nodes.
 use anyhow::Context as _;
-use gossip::{AttestationStatusClient, AttestationStatusReceiver, BatchVotesPublisher};
+use gossip::{AttestationStatusReceiver, AttestationStatusWatch, BatchVotesPublisher};
 use std::sync::Arc;
 use tracing::Instrument as _;
 use zksync_concurrency::{
@@ -57,15 +57,10 @@ impl Network {
         block_store: Arc<BlockStore>,
         batch_store: Arc<BatchStore>,
         pipe: ActorPipe<io::InputMessage, io::OutputMessage>,
-        attestation_status_client: Box<dyn AttestationStatusClient>,
+        attestation_status: Arc<AttestationStatusWatch>,
     ) -> (Arc<Self>, Runner) {
-        let gossip = gossip::Network::new(
-            cfg,
-            block_store,
-            batch_store,
-            pipe.send,
-            attestation_status_client,
-        );
+        let gossip =
+            gossip::Network::new(cfg, block_store, batch_store, pipe.send, attestation_status);
         let consensus = consensus::Network::new(gossip.clone());
         let net = Arc::new(Self { gossip, consensus });
         (
@@ -145,9 +140,6 @@ impl Runner {
 
             // Update QC batches in the background.
             s.spawn(self.net.gossip.run_batch_qc_finder(ctx));
-
-            // Update attestation status in the background.
-            s.spawn(self.net.gossip.run_attestation_client(ctx));
 
             // Fetch missing batches in the background.
             s.spawn(async {

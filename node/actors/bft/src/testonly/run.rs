@@ -14,7 +14,7 @@ use zksync_concurrency::{
     },
     oneshot, scope,
 };
-use zksync_consensus_network as network;
+use zksync_consensus_network::{self as network};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{testonly::TestMemoryStorage, BlockStore};
 use zksync_consensus_utils::pipe;
@@ -135,9 +135,11 @@ impl Test {
             for (i, net) in nets.into_iter().enumerate() {
                 let store = TestMemoryStorage::new(ctx, genesis).await;
                 s.spawn_bg(async { Ok(store.runner.run(ctx).await?) });
+
                 if self.nodes[i].0 == Behavior::Honest {
                     honest.push(store.blocks.clone());
                 }
+
                 nodes.push(Node {
                     net,
                     behavior: self.nodes[i].0,

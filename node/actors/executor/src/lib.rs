@@ -9,7 +9,7 @@ use std::{
 };
 use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
-use zksync_consensus_network::{self as network, gossip::AttestationStatusClient};
+use zksync_consensus_network::{self as network, gossip::AttestationStatusWatch};
 use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
@@ -97,8 +97,8 @@ pub struct Executor {
     pub validator: Option<Validator>,
     /// Validator-specific node data.
     pub attester: Option<Attester>,
-    /// Client to use to poll attestation status: either through the main node API or the DB.
-    pub attestation_status_client: Box<dyn AttestationStatusClient>,
+    /// Status showing where the main node wants attester to cast their votes.
+    pub attestation_status: Arc<AttestationStatusWatch>,
 }
 
 impl Executor {
@@ -140,7 +140,7 @@ impl Executor {
                 self.block_store.clone(),
                 self.batch_store.clone(),
                 network_actor_pipe,
-                self.attestation_status_client,
+                self.attestation_status.clone(),
             );
             net.register_metrics();
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
