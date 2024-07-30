@@ -175,7 +175,7 @@ impl Network {
 
         let mut prev_batch_number = None;
 
-        'status: loop {
+        loop {
             // Wait until the status indicates that we're ready to sign the next batch.
             // This is not strictly necessary but avoids repeatedly finding the same quorum, or having to skip it until it changes.
             let next_batch_number =
@@ -199,21 +199,15 @@ impl Network {
             // What is important, though, is that the batch number does not move backwards while we look for a quorum, because attesters
             // (re)casting earlier votes will go ignored by those fixed on a higher min_batch_number, and gossip will only be attempted once.
             // The possibility of this will be fixed by deterministally picking a start batch number based on fork indicated by genesis.
-            loop {
-                let quorum_opt = {
-                    let votes = sync::changed(ctx, &mut recv_votes).await?;
-                    votes.find_quorum(attesters, &genesis)
-                };
+            let quorum = sync::wait_for_some(ctx, &mut recv_votes, |votes| {
+                votes.find_quorum(attesters, &genesis)
+            })
+            .await?;
 
-                if let Some(qc) = quorum_opt {
-                    self.batch_store
-                        .persist_batch_qc(ctx, qc)
-                        .await
-                        .wrap("persist_batch_qc")?;
-
-                    continue 'status;
-                }
-            }
+            self.batch_store
+                .persist_batch_qc(ctx, qc)
+                .await
+                .wrap("persist_batch_qc")?;
         }
     }
 
