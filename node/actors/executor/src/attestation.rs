@@ -188,9 +188,10 @@ impl AttestationStatusRunner {
             match self.client.next_batch_to_attest(ctx).await {
                 Ok(Some(next_batch_to_attest)) => {
                     self.status.update(next_batch_to_attest).await;
+                    return Ok(());
                 }
                 Ok(None) => {
-                    tracing::debug!("waiting for attestation status...")
+                    tracing::info!("waiting for attestation status...")
                 }
                 Err(error) => {
                     tracing::error!(

@@ -1,8 +1,11 @@
 //! High-level tests for `Executor`.
+use std::sync::atomic::AtomicU64;
+
 use super::*;
+use attestation::{AttestationStatusClient, AttestationStatusRunner};
 use rand::Rng as _;
 use tracing::Instrument as _;
-use zksync_concurrency::testonly::abort_on_panic;
+use zksync_concurrency::{sync, testonly::abort_on_panic};
 use zksync_consensus_bft as bft;
 use zksync_consensus_network::testonly::{new_configs, new_fullnode};
 use zksync_consensus_roles::validator::{testonly::Setup, BlockNumber};
@@ -307,6 +310,67 @@ async fn test_validator_syncing_from_fullnode() {
             .blocks
             .wait_until_persisted(ctx, last_block + 3)
             .await?;
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+/// Test that the AttestationStatusRunner initialises and then polls the status.
+#[tokio::test]
+async fn test_attestation_status_runner() {
+    abort_on_panic();
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(5));
+    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
+
+    #[derive(Default)]
+    struct MockAttestationStatus {
+        batch_number: AtomicU64,
+    }
+
+    #[async_trait::async_trait]
+    impl AttestationStatusClient for MockAttestationStatus {
+        async fn next_batch_to_attest(
+            &self,
+            _ctx: &ctx::Ctx,
+        ) -> ctx::Result<Option<attester::BatchNumber>> {
+            let curr = self
+                .batch_number
+                .fetch_add(1u64, std::sync::atomic::Ordering::Relaxed);
+            if curr == 0 {
+                // Return None initially to see that the runner will deal with it.
+                Ok(None)
+            } else {
+                // The first actual result will be 1 on the 2nd poll.
+                Ok(Some(attester::BatchNumber(curr)))
+            }
+        }
+    }
+
+    scope::run!(ctx, |ctx, s| async {
+        let (status, runner) = AttestationStatusRunner::init(
+            ctx,
+            Box::new(MockAttestationStatus::default()),
+            time::Duration::milliseconds(100),
+        )
+        .await
+        .unwrap();
+
+        let mut recv_status = status.subscribe();
+        recv_status.mark_changed();
+
+        // Check that the value has been initialised to a non-default value.
+        {
+            let status = sync::changed(ctx, &mut recv_status).await?;
+            assert_eq!(status.next_batch_to_attest.0, 1);
+        }
+        // Now start polling for new values.
+        s.spawn_bg(runner.run(ctx));
+        // Check that polling sets the value.
+        {
+            let status = sync::changed(ctx, &mut recv_status).await?;
+            assert_eq!(status.next_batch_to_attest.0, 2);
+        }
         Ok(())
     })
     .await
