@@ -1,6 +1,7 @@
 //! Global state distributed by active attesters, observed by all the nodes in the network.
 use super::metrics;
 use crate::watch::Watch;
+use crate::gossip::AttestationStatus;
 use std::{collections::HashSet, fmt, sync::Arc};
 use zksync_concurrency::sync;
 use zksync_consensus_roles::attester;
@@ -34,44 +35,28 @@ impl BatchUpdateStats {
 /// save it to the database, if not, we move on. For that, a simple protection
 /// mechanism is to only allow one active vote per attester, which means any
 /// previous vote can be removed when a new one is added.
-#[derive(Clone, Default, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub(crate) struct BatchVotes {
-    /// The latest vote received from each attester. We only keep the last one
-    /// for now, hoping that with 1 minute batches there's plenty of time for
-    /// the quorum to be reached, but eventually we might have to allow multiple
-    /// votes across different heights.
-    pub(crate) votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>,
-
-    /// Total weight of votes at different heights and hashes.
-    ///
-    /// We will be looking for any hash that reaches a quorum threshold at any of the heights.
-    /// At that point we can remove all earlier heights, considering it final. In the future
-    /// we can instead keep heights until they are observed on the main node (or L1).
-    pub(crate) support:
-        im::OrdMap<attester::BatchNumber, im::HashMap<attester::BatchHash, attester::Weight>>,
-
-    /// The minimum batch number for which we are still interested in votes.
-    ///
-    /// Because we only store 1 vote per attester the memory is very much bounded,
-    /// but this extra pruning mechanism can be used to clear votes of attesters
-    /// who have been removed from the committee, as well as to get rid of the
-    /// last quorum we found and stored, and look for the a new one in the next round.
-    pub(crate) min_batch_number: attester::BatchNumber,
+    status: Arc<AttestationStatus>,
+    votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>,
+    partial_qc: attester::BatchQC,
 }
 
 impl BatchVotes {
-    /// Returns a set of votes of `self` which are newer than the entries in `b`.
-    pub(super) fn get_newer(&self, b: &Self) -> Vec<Arc<attester::Signed<attester::Batch>>> {
-        let mut newer = vec![];
-        for (k, v) in &self.votes {
-            if let Some(bv) = b.votes.get(k) {
-                if v.msg <= bv.msg {
-                    continue;
-                }
-            }
-            newer.push(v.clone());
+    fn new(status: Arc<AttestationStatus>) -> Self {
+        Self { status, votes: [].into(), partial_qcs: [].into() }
+    }
+
+    /// Returns a set of votes of `self` which are newer than the entries in `old`.
+    pub(super) fn get_newer(&self, old: &Self) -> Vec<Arc<attester::Signed<attester::Batch>>> {
+        match self.status.batch_to_attest.number.cmp(old.status.batch_to_attest.number) {
+            Ordering::Less => vec![],
+            Ordering::Greater => self.votes.values().cloned().collect(),
+            Ordering::Equal => self.votes.iter()
+                .filter(|(k,_)|!old.contains(k))
+                .map(|(_,v)|v.clone())
+                .collect()
         }
-        newer
     }
 
     /// Updates the discovery map with entries from `data`.
@@ -82,142 +67,67 @@ impl BatchVotes {
     /// Returns statistics about new entries added.
     pub(super) fn update(
         &mut self,
-        attesters: &attester::Committee,
-        genesis: &attester::GenesisHash,
-        data: &[Arc<attester::Signed<attester::Batch>>],
+        votes: &[Arc<attester::Signed<attester::Batch>>],
     ) -> anyhow::Result<BatchUpdateStats> {
         let mut stats = BatchUpdateStats::default();
-
         let mut done = HashSet::new();
-        for d in data {
+        for vote in votes {
             // Disallow multiple entries for the same key:
             // it is important because a malicious attester may spam us with
             // new versions and verifying signatures is expensive.
             if done.contains(&d.key) {
                 anyhow::bail!("duplicate entry for {:?}", d.key);
             }
-            done.insert(d.key.clone());
-
-            // Disallow votes from different genesis. It might indicate a reorg,
-            // in which case either this node or the remote peer has to be restarted.
-            anyhow::ensure!(
-                d.msg.genesis == *genesis,
-                "vote for batch with different genesis hash: {:?}",
-                d.msg.genesis
-            );
-
-            if d.msg.number < self.min_batch_number {
-                continue;
-            }
-
-            let Some(weight) = attesters.weight(&d.key) else {
-                // We just skip the entries we are not interested in.
-                // For now the set of attesters is static, so we could treat this as an error,
-                // however we eventually want the attester set to be dynamic.
-                continue;
-            };
-
-            // If we already have a newer vote for this key, we can ignore this one.
-            if let Some(x) = self.votes.get(&d.key) {
-                if d.msg <= x.msg {
-                    continue;
-                }
-            }
-
-            // Check the signature before insertion.
-            d.verify()?;
-
-            self.add(d.clone(), weight);
-            stats.added(d.msg.number, weight);
+            done.insert(vote.key.clone());
+            self.add(vote, &mut stats)?;
         }
-
         Ok(stats)
     }
 
-    /// Check if we have achieved quorum for any of the batch hashes.
-    ///
-    /// Returns the first quorum it finds, after which we expect that the state of the main node or L1
-    /// will indicate that attestation on the next height can happen, which will either naturally move
-    /// the QC, or we can do so by increasing the `min_batch_number`.
-    ///
-    /// While we only store 1 vote per attester we'll only ever have at most one quorum anyway.
-    pub(super) fn find_quorum(
-        &self,
-        attesters: &attester::Committee,
-        genesis: &attester::GenesisHash,
-    ) -> Option<attester::BatchQC> {
-        let threshold = attesters.threshold();
-        self.support
-            .iter()
-            .flat_map(|(number, candidates)| {
-                candidates
-                    .iter()
-                    .filter(|(_, weight)| **weight >= threshold)
-                    .map(|(hash, _)| {
-                        let sigs = self
-                            .votes
-                            .values()
-                            .filter(|vote| vote.msg.hash == *hash)
-                            .map(|vote| (vote.key.clone(), vote.sig.clone()))
-                            .fold(attester::MultiSig::default(), |mut sigs, (key, sig)| {
-                                sigs.add(key, sig);
-                                sigs
-                            });
-                        attester::BatchQC {
-                            message: attester::Batch {
-                                number: *number,
-                                hash: *hash,
-                                // This was checked during insertion; we could look up the first in `votes`
-                                genesis: *genesis,
-                            },
-                            signatures: sigs,
-                        }
-                    })
-            })
-            .next()
-    }
-
-    /// Set the minimum batch number for which we admit votes.
-    ///
-    /// Discards data about earlier heights.
-    pub(super) fn set_min_batch_number(&mut self, min_batch_number: attester::BatchNumber) {
-        self.min_batch_number = min_batch_number;
-        self.votes.retain(|_, v| v.msg.number >= min_batch_number);
-        if let Some(prev) = min_batch_number.prev() {
-            self.support = self.support.split(&prev).1;
+    /// Check if we have achieved quorum for the current batch number.
+    pub(super) fn find_quorum(&self) -> Option<attester::BatchQC> {
+        match self.partial_qc.verify() {
+            Ok(()) => Some(self.partial_qc.clone()),
+            Err(_) => None
         }
     }
 
-    /// Add an already validated vote from an attester into the register.
-    fn add(&mut self, vote: Arc<attester::Signed<attester::Batch>>, weight: attester::Weight) {
-        self.remove(&vote.key, weight);
-
-        let batch = self.support.entry(vote.msg.number).or_default();
-        let support = batch.entry(vote.msg.hash).or_default();
-        *support = support.saturating_add(weight);
-
-        self.votes.insert(vote.key.clone(), vote);
+    /// Discards data about earlier heights.
+    pub(super) fn set_status(&mut self, status: Arc<AttestationStatus>) {
+        self.votes.clear();
+        self.partial_qc = attester::BatchQC::new(status.batch_to_attest.clone());
+        self.status = status;
     }
 
-    /// Remove any existing vote.
-    ///
-    /// This is for DoS protection, until we have better control over the acceptable vote range.
-    fn remove(&mut self, key: &attester::PublicKey, weight: attester::Weight) {
-        let Some(vote) = self.votes.remove(key) else {
-            return;
+    /// Verifies and adds a vote.
+    fn add(&mut self, vote: Arc<attester::Signed<attester::Batch>>, stats: &mut BatchUpdateStats) -> anyhow::Result<()> {
+        // Genesis has to match 
+        anyhow::ensure!(
+            vote.msg.genesis == self.status.genesis,
+            "vote for batch with different genesis hash: {:?}",
+            vote.msg.genesis
+        );
+
+        // Skip the signatures for the irrelevant batch.
+        if vote.message != self.status.batch_to_attest {
+            return Ok(());
+        }
+
+        // We just skip the entries we are not interested in.
+        let Some(weight) = self.status.committee.weight(&vote.key) else {
+            return Ok(());
         };
 
-        let batch = self.support.entry(vote.msg.number).or_default();
-        let support = batch.entry(vote.msg.hash).or_default();
-        *support = support.saturating_sub(weight);
+        // If we already have a newer vote for this key, we can ignore this one.
+        if self.votes.contains(&vote.key) { return Ok(()) }
 
-        if *support == 0u64 {
-            batch.remove(&vote.msg.hash);
-        }
-
-        if batch.is_empty() {
-            self.support.remove(&vote.msg.number);
-        }
+        // Check the signature before insertion.
+        vote.verify().context("verify()")?;
+       
+        // Insert the vote.
+        stats.added(vote.msg.number, weight);
+        self.partial_qc.signatures.add(vote.key, vote.sig);
+        Ok(())
     }
 }
 
@@ -225,13 +135,11 @@ impl BatchVotes {
 /// which supports subscribing to BatchVotes updates.
 pub(crate) struct BatchVotesWatch(Watch<BatchVotes>);
 
-impl Default for BatchVotesWatch {
-    fn default() -> Self {
-        Self(Watch::new(BatchVotes::default()))
-    }
-}
-
 impl BatchVotesWatch {
+    pub(crate) fn new(status: AttestationStatus) -> Self {
+        Self(Watch::new(BatchVotes::new(status))
+    }
+
     /// Subscribes to BatchVotes updates.
     pub(crate) fn subscribe(&self) -> sync::watch::Receiver<BatchVotes> {
         self.0.subscribe()
@@ -244,19 +152,17 @@ impl BatchVotesWatch {
     /// invalid entry should be banned.
     pub(crate) async fn update(
         &self,
-        attesters: &attester::Committee,
-        genesis: &attester::GenesisHash,
         data: &[Arc<attester::Signed<attester::Batch>>],
     ) -> anyhow::Result<()> {
         let this = self.0.lock().await;
         let mut votes = this.borrow().clone();
-        let stats = votes.update(attesters, genesis, data)?;
+        let stats = votes.update(data)?;
 
         if let Some(last_added) = stats.last_added {
             this.send_replace(votes);
 
             #[allow(clippy::float_arithmetic)]
-            let weight_added = stats.weight_added as f64 / attesters.total_weight() as f64;
+            let weight_added = stats.weight_added as f64 / votes.status.committee.total_weight() as f64;
 
             metrics::BATCH_VOTES_METRICS
                 .last_added_vote_batch_number
@@ -270,22 +176,14 @@ impl BatchVotesWatch {
                 .weight_added
                 .inc_by(weight_added);
         }
-
-        metrics::BATCH_VOTES_METRICS
-            .committee_size
-            .set(attesters.len());
-
         Ok(())
     }
 
     /// Set the minimum batch number on the votes and discard old data.
-    pub(crate) async fn set_min_batch_number(&self, min_batch_number: attester::BatchNumber) {
+    pub(crate) async fn set_status(&self, status: Arc<AttestationStatus>) {
+        metrics::BATCH_VOTES_METRICS.min_batch_number.set(status.next_batch_to_attest.0);
         let this = self.0.lock().await;
-        this.send_modify(|votes| votes.set_min_batch_number(min_batch_number));
-
-        metrics::BATCH_VOTES_METRICS
-            .min_batch_number
-            .set(min_batch_number.0);
+        this.send_modify(|votes| votes.set_status(status));
     }
 }
 
@@ -301,24 +199,16 @@ impl fmt::Debug for BatchVotesPublisher {
 
 impl BatchVotesPublisher {
     /// Sign an L1 batch and push it into the batch, which should cause it to be gossiped by the network.
-    pub async fn publish(
-        &self,
-        attesters: &attester::Committee,
-        genesis: &attester::GenesisHash,
-        attester: &attester::SecretKey,
-        batch: attester::Batch,
-    ) -> anyhow::Result<()> {
-        if !attesters.contains(&attester.public()) {
+    pub async fn publish(&self, attester: &attester::SecretKey) -> anyhow::Result<()> {
+        if !self.committee.contains(&attester.public()) {
             return Ok(());
         }
-        let attestation = attester.sign_msg(batch);
+        let attestation = attester.sign_msg(self.batch_to_attest);
 
         metrics::BATCH_VOTES_METRICS
             .last_signed_batch_number
             .set(attestation.msg.number.0);
 
-        self.0
-            .update(attesters, genesis, &[Arc::new(attestation)])
-            .await
+        self.0.update(&[Arc::new(attestation)]).await
     }
 }

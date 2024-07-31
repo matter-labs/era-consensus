@@ -12,7 +12,7 @@
 //! Static connections constitute a rigid "backbone" of the gossip network, which is insensitive to
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
-pub use self::attestation_status::{AttestationStatusReceiver, AttestationStatusWatch};
+pub use self::attestation_status::{AttestationStatus,AttestationStatusReceiver, AttestationStatusWatch};
 pub use self::batch_votes::BatchVotesPublisher;
 use self::batch_votes::BatchVotesWatch;
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
@@ -169,18 +169,14 @@ impl Network {
         // Subscribe starts as seen but we don't want to miss the first item.
         recv_status.mark_changed();
 
+        let next = attester::BatchNumber(0);
         loop {
             // Wait until the status indicates that we're ready to sign the next batch.
-            let Some(next_batch_number) = sync::changed(ctx, &mut recv_status)
-                .await?
-                .next_batch_to_attest
-            else {
-                continue;
-            };
+            let status = sync::wait_for(ctx, &mut recv_status, |s| s.next_batch_to_attest >= next).await?.clone();
 
             // Get rid of all previous votes. We don't expect this to go backwards without regenesis, which will involve a restart.
             self.batch_votes
-                .set_min_batch_number(next_batch_number)
+                .set_min_batch_number(status.next_batch_number)
                 .await;
 
             // Now wait until we find the next quorum, whatever it is:
