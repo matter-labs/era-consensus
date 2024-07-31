@@ -20,6 +20,7 @@ zksync_consensus_utils.workspace = true
 zksync_protobuf.workspace = true
 
 anyhow.workspace = true
+async-trait.workspace = true
 rand.workspace = true
 tracing.workspace = true
 vise.workspace = true

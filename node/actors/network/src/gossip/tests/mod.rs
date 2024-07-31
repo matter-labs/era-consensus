@@ -643,8 +643,8 @@ fn test_batch_votes_quorum() {
     let rng = &mut ctx::test_root(&ctx::RealClock).rng();
 
     for _ in 0..10 {
-        let size = rng.gen_range(1..20);
-        let keys: Vec<attester::SecretKey> = (0..size).map(|_| rng.gen()).collect();
+        let committee_size = rng.gen_range(1..20);
+        let keys: Vec<attester::SecretKey> = (0..committee_size).map(|_| rng.gen()).collect();
         let attesters = attester::Committee::new(keys.iter().map(|k| attester::WeightedAttester {
             key: k.public(),
             weight: rng.gen_range(1..=100),
@@ -673,27 +673,17 @@ fn test_batch_votes_quorum() {
 
             // Check that as soon as we have quorum it's found.
             if batches[b].1 >= attesters.threshold() {
-                let qs = votes.find_quorums(&attesters, &genesis, |_| false);
-                assert!(!qs.is_empty(), "should find quorum");
-                assert!(qs[0].message == *batch);
-                assert!(qs[0].signatures.keys().count() > 0);
+                let qc = votes
+                    .find_quorum(&attesters, &genesis)
+                    .expect("should find quorum");
+                assert!(qc.message == *batch);
+                assert!(qc.signatures.keys().count() > 0);
             }
         }
 
-        if let Some(quorum) = batches
-            .iter()
-            .find(|b| b.1 >= attesters.threshold())
-            .map(|(b, _)| b)
-        {
-            // Check that a quorum can be skipped
-            assert!(votes
-                .find_quorums(&attesters, &genesis, |b| b == quorum.number)
-                .is_empty());
-        } else {
-            // Check that if there was no quoroum then we don't find any.
-            assert!(votes
-                .find_quorums(&attesters, &genesis, |_| false)
-                .is_empty());
+        // Check that if there was no quoroum then we don't find any.
+        if !batches.iter().any(|b| b.1 >= attesters.threshold()) {
+            assert!(votes.find_quorum(&attesters, &genesis).is_none());
         }
 
         // Check that the minimum batch number prunes data.

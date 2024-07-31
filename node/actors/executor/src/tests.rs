@@ -23,7 +23,14 @@ fn config(cfg: &network::Config) -> Config {
         gossip_static_outbound: cfg.gossip.static_outbound.clone(),
         rpc: cfg.rpc.clone(),
         debug_page: None,
+        batch_poll_interval: time::Duration::seconds(1),
     }
+}
+
+/// The test executors below are not running with attesters, so we just create an [AttestationStatusWatch]
+/// that will never be updated.
+fn never_attest() -> Arc<AttestationStatusWatch> {
+    Arc::new(AttestationStatusWatch::default())
 }
 
 fn validator(
@@ -42,6 +49,7 @@ fn validator(
             payload_manager: Box::new(bft::testonly::RandomPayload(1000)),
         }),
         attester: None,
+        attestation_status: never_attest(),
     }
 }
 
@@ -56,6 +64,7 @@ fn fullnode(
         batch_store,
         validator: None,
         attester: None,
+        attestation_status: never_attest(),
     }
 }
 

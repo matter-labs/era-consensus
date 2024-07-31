@@ -38,7 +38,7 @@ impl BatchUpdateStats {
 pub(crate) struct BatchVotes {
     /// The latest vote received from each attester. We only keep the last one
     /// for now, hoping that with 1 minute batches there's plenty of time for
-    /// the quorum to be reached, but eventually we'll have to allow multiple
+    /// the quorum to be reached, but eventually we might have to allow multiple
     /// votes across different heights.
     pub(crate) votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>,
 
@@ -51,6 +51,11 @@ pub(crate) struct BatchVotes {
         im::OrdMap<attester::BatchNumber, im::HashMap<attester::BatchHash, attester::Weight>>,
 
     /// The minimum batch number for which we are still interested in votes.
+    ///
+    /// Because we only store 1 vote per attester the memory is very much bounded,
+    /// but this extra pruning mechanism can be used to clear votes of attesters
+    /// who have been removed from the committee, as well as to get rid of the
+    /// last quorum we found and stored, and look for the a new one in the next round.
     pub(crate) min_batch_number: attester::BatchNumber,
 }
 
@@ -131,20 +136,19 @@ impl BatchVotes {
 
     /// Check if we have achieved quorum for any of the batch hashes.
     ///
-    /// The return value is a vector because eventually we will be potentially waiting for
-    /// quorums on multiple heights simultaneously.
+    /// Returns the first quorum it finds, after which we expect that the state of the main node or L1
+    /// will indicate that attestation on the next height can happen, which will either naturally move
+    /// the QC, or we can do so by increasing the `min_batch_number`.
     ///
-    /// For repeated queries we can supply a skip list of heights for which we already saved the QC.
-    pub(super) fn find_quorums(
+    /// While we only store 1 vote per attester we'll only ever have at most one quorum anyway.
+    pub(super) fn find_quorum(
         &self,
         attesters: &attester::Committee,
         genesis: &attester::GenesisHash,
-        skip: impl Fn(attester::BatchNumber) -> bool,
-    ) -> Vec<attester::BatchQC> {
+    ) -> Option<attester::BatchQC> {
         let threshold = attesters.threshold();
         self.support
             .iter()
-            .filter(|(number, _)| !skip(**number))
             .flat_map(|(number, candidates)| {
                 candidates
                     .iter()
@@ -170,7 +174,7 @@ impl BatchVotes {
                         }
                     })
             })
-            .collect()
+            .next()
     }
 
     /// Set the minimum batch number for which we admit votes.
