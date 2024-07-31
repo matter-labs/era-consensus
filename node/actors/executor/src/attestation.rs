@@ -136,48 +136,70 @@ pub struct AttestationStatusRunner {
 }
 
 impl AttestationStatusRunner {
-    /// Create a new runner to poll the main node.
-    pub fn new(
-        status: Arc<AttestationStatusWatch>,
+    /// Create a new [AttestationStatusWatch] and an [AttestationStatusRunner] to poll the main node.
+    ///
+    /// It polls the [AttestationStatusClient] until it returns a value to initialize the status with.
+    pub async fn init(
+        ctx: &ctx::Ctx,
         client: Box<dyn AttestationStatusClient>,
         poll_interval: time::Duration,
-    ) -> Self {
-        Self {
-            status,
+    ) -> ctx::OrCanceled<(Arc<AttestationStatusWatch>, Self)> {
+        let status = Arc::new(AttestationStatusWatch::new(attester::BatchNumber(0)));
+        let mut runner = Self {
+            status: status.clone(),
             client,
             poll_interval,
-        }
+        };
+        runner.poll_until_some(ctx).await?;
+        Ok((status, runner))
     }
 
-    /// Runner based on a [BatchStore].
-    pub fn new_from_store(
-        status: Arc<AttestationStatusWatch>,
+    /// Initialize an [AttestationStatusWatch] based on a [BatchStore] and return it along with the [AttestationStatusRunner].
+    pub async fn init_from_store(
+        ctx: &ctx::Ctx,
         store: Arc<BatchStore>,
         poll_interval: time::Duration,
-    ) -> Self {
-        Self::new(
-            status,
+    ) -> ctx::OrCanceled<(Arc<AttestationStatusWatch>, Self)> {
+        Self::init(
+            ctx,
             Box::new(LocalAttestationStatusClient(store)),
             poll_interval,
         )
+        .await
     }
 
     /// Run the poll loop.
-    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        let _ = self.poll_forever(ctx).await;
+        Ok(())
+    }
+
+    /// Poll the client forever in a loop or until canceled.
+    async fn poll_forever(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
+        loop {
+            self.poll_until_some(ctx).await?;
+            ctx.sleep(self.poll_interval).await?;
+        }
+    }
+
+    /// Poll the client until some data is returned and write it into the status.
+    async fn poll_until_some(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
         loop {
             match self.client.next_batch_to_attest(ctx).await {
-                Ok(Some(batch_number)) => {
-                    self.status.update(batch_number).await;
+                Ok(Some(next_batch_to_attest)) => {
+                    self.status.update(next_batch_to_attest).await;
                 }
-                Ok(None) => tracing::debug!("waiting for attestation status..."),
-                Err(error) => tracing::error!(
-                    ?error,
-                    "failed to poll attestation status, retrying later..."
-                ),
+                Ok(None) => {
+                    tracing::debug!("waiting for attestation status...")
+                }
+                Err(error) => {
+                    tracing::error!(
+                        ?error,
+                        "failed to poll attestation status, retrying later..."
+                    )
+                }
             }
-            if let Err(ctx::Canceled) = ctx.sleep(self.poll_interval).await {
-                return Ok(());
-            }
+            ctx.sleep(self.poll_interval).await?;
         }
     }
 }
