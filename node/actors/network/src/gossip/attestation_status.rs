@@ -10,9 +10,9 @@ use crate::watch::Watch;
 pub struct AttestationStatus {
     /// Next batch number where voting is expected.
     ///
-    /// Its value is `None` until the background process polling the main node
-    /// can establish a value to start from.
-    pub next_batch_to_attest: Option<attester::BatchNumber>,
+    /// The node is expected to poll the main node during initialization until
+    /// the batch to start from is established.
+    pub next_batch_to_attest: attester::BatchNumber,
 }
 
 /// The subscription over the attestation status which voters can monitor for change.
@@ -29,15 +29,14 @@ impl fmt::Debug for AttestationStatusWatch {
     }
 }
 
-impl Default for AttestationStatusWatch {
-    fn default() -> Self {
+impl AttestationStatusWatch {
+    /// Create a new watch going from a specific batch number.
+    pub fn new(next_batch_to_attest: attester::BatchNumber) -> Self {
         Self(Watch::new(AttestationStatus {
-            next_batch_to_attest: None,
+            next_batch_to_attest,
         }))
     }
-}
 
-impl AttestationStatusWatch {
     /// Subscribes to AttestationStatus updates.
     pub fn subscribe(&self) -> AttestationStatusReceiver {
         self.0.subscribe()
@@ -47,10 +46,10 @@ impl AttestationStatusWatch {
     pub async fn update(&self, next_batch_to_attest: attester::BatchNumber) {
         let this = self.0.lock().await;
         this.send_if_modified(|status| {
-            if status.next_batch_to_attest == Some(next_batch_to_attest) {
+            if status.next_batch_to_attest == next_batch_to_attest {
                 return false;
             }
-            status.next_batch_to_attest = Some(next_batch_to_attest);
+            status.next_batch_to_attest = next_batch_to_attest;
             true
         });
     }

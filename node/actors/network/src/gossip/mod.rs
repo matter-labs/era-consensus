@@ -171,12 +171,9 @@ impl Network {
 
         loop {
             // Wait until the status indicates that we're ready to sign the next batch.
-            let Some(next_batch_number) = sync::changed(ctx, &mut recv_status)
+            let next_batch_number = sync::changed(ctx, &mut recv_status)
                 .await?
-                .next_batch_to_attest
-            else {
-                continue;
-            };
+                .next_batch_to_attest;
 
             // Get rid of all previous votes. We don't expect this to go backwards without regenesis, which will involve a restart.
             self.batch_votes
