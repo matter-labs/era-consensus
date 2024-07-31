@@ -30,7 +30,7 @@ fn config(cfg: &network::Config) -> Config {
 /// The test executors below are not running with attesters, so we just create an [AttestationStatusWatch]
 /// that will never be updated.
 fn never_attest() -> Arc<AttestationStatusWatch> {
-    Arc::new(AttestationStatusWatch::default())
+    Arc::new(AttestationStatusWatch::new(attester::BatchNumber(0)))
 }
 
 fn validator(

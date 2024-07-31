@@ -264,8 +264,14 @@ impl Configs {
         let replica_store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
         let store = TestMemoryStorage::new(ctx, &self.app.genesis).await;
 
+        let next_batch = store
+            .batches
+            .next_batch_to_attest(ctx)
+            .await?
+            .unwrap_or_default();
+
         // We don't have an API to poll in this setup, we can only create a local store based attestation client.
-        let attestation_status = Arc::new(AttestationStatusWatch::default());
+        let attestation_status = Arc::new(AttestationStatusWatch::new(next_batch));
         let attestation_status_runner = AttestationStatusRunner::new_from_store(
             attestation_status.clone(),
             store.batches.clone(),

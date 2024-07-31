@@ -58,12 +58,9 @@ impl AttesterRunner {
         self.status.mark_changed();
 
         loop {
-            let Some(batch_number) = sync::changed(ctx, &mut self.status)
+            let batch_number = sync::changed(ctx, &mut self.status)
                 .await?
-                .next_batch_to_attest
-            else {
-                continue;
-            };
+                .next_batch_to_attest;
 
             tracing::info!(%batch_number, "attestation status");
 
