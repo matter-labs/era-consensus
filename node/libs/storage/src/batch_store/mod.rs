@@ -58,10 +58,10 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     /// An external node might never have a complete history of L1 batch QCs. Once the L1 batch is included on L1,
     /// the external nodes might use the [attester::SyncBatch] route to obtain them, in which case they will not
     /// have a QC and no reason to get them either. The main node, however, will want to have a QC for all batches.
-    async fn next_batch_to_attest(
+    async fn attestation_status(
         &self,
         ctx: &ctx::Ctx,
-    ) -> ctx::Result<Option<attester::BatchNumber>>;
+    ) -> ctx::Result<Option<(attester::GenesisHash, attester::BatchNumber)>>;
 
     /// Get the L1 batch QC from storage with the highest number.
     ///
@@ -276,22 +276,27 @@ impl BatchStore {
     }
 
     /// Retrieve the next batch number that doesn't have a QC yet and will need to be signed.
-    pub async fn next_batch_to_attest(
+    ///
+    /// The `GenesisHash` is returned just so that the results are atomic and consistent;
+    /// it is not expected to differ from `BlockStore::genesis()` unless it happened to
+    /// change between the calls. It is for future compatibility, currently `BlockStore::genesis()`
+    /// returns a `Genesis` instance cached when the `BlockStore` is created.
+    pub async fn attestation_status(
         &self,
         ctx: &ctx::Ctx,
-    ) -> ctx::Result<Option<attester::BatchNumber>> {
+    ) -> ctx::Result<Option<(attester::GenesisHash, attester::BatchNumber)>> {
         let t = metrics::PERSISTENT_BATCH_STORE
             .next_batch_to_attest_latency
             .start();
 
-        let batch = self
+        let status = self
             .persistent
-            .next_batch_to_attest(ctx)
+            .attestation_status(ctx)
             .await
-            .wrap("persistent.next_batch_to_attest()")?;
+            .wrap("persistent.attestation_status()")?;
 
         t.observe();
-        Ok(batch)
+        Ok(status)
     }
 
     /// Retrieve a batch to be signed.

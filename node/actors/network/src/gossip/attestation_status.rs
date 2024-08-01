@@ -6,13 +6,27 @@ use zksync_consensus_roles::attester;
 use crate::watch::Watch;
 
 /// Coordinate the attestation by showing the status as seen by the main node.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AttestationStatus {
     /// Next batch number where voting is expected.
     ///
     /// The node is expected to poll the main node during initialization until
     /// the batch to start from is established.
     pub next_batch_to_attest: attester::BatchNumber,
+    // The hash of the genesis of the chain to which the L1 batches belong.
+    //
+    // A change in this value would indicate a reorg on the main node.
+    // On the main node itself this is not expected to change because
+    // a reorg involves a restart, and a regenesis happens before the
+    // executor is started. If it could happen, it could be used to
+    // signal to the `BatchVotes` that votes need to be cleared and
+    // potentially discarded votes received over gossip would need
+    // to be re-acquired (which doesn't happen at the moment unless
+    // the connection is re-established).
+    //
+    // It is not added yet as the system is not expected to be able
+    // to handle changes in the value.
+    //pub genesis: attester::GenesisHash,
 }
 
 /// The subscription over the attestation status which voters can monitor for change.

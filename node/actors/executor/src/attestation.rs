@@ -120,10 +120,13 @@ pub trait AttestationStatusClient: 'static + Send + Sync {
     ///
     /// The API might return an error while genesis is being created, which we represent with `None`
     /// here and mean that we'll have to try again later.
-    async fn next_batch_to_attest(
+    ///
+    /// The genesis hash is returned along with the new batch number to facilitate detecting reorgs
+    /// on the main node as soon as possible and prevent inconsistent state from entering the system.
+    async fn attestation_status(
         &self,
         ctx: &ctx::Ctx,
-    ) -> ctx::Result<Option<attester::BatchNumber>>;
+    ) -> ctx::Result<Option<(attester::GenesisHash, attester::BatchNumber)>>;
 }
 
 /// Use an [AttestationStatusClient] to periodically poll the main node and update the [AttestationStatusWatch].
@@ -133,6 +136,7 @@ pub struct AttestationStatusRunner {
     status: Arc<AttestationStatusWatch>,
     client: Box<dyn AttestationStatusClient>,
     poll_interval: time::Duration,
+    genesis: attester::GenesisHash,
 }
 
 impl AttestationStatusRunner {
@@ -143,12 +147,14 @@ impl AttestationStatusRunner {
         ctx: &ctx::Ctx,
         client: Box<dyn AttestationStatusClient>,
         poll_interval: time::Duration,
-    ) -> ctx::OrCanceled<(Arc<AttestationStatusWatch>, Self)> {
-        let status = Arc::new(AttestationStatusWatch::new(attester::BatchNumber(0)));
+        genesis: attester::GenesisHash,
+    ) -> ctx::Result<(Arc<AttestationStatusWatch>, Self)> {
+        let status = Arc::new(AttestationStatusWatch::new(attester::BatchNumber::default()));
         let mut runner = Self {
             status: status.clone(),
             client,
             poll_interval,
+            genesis,
         };
         runner.poll_until_some(ctx).await?;
         Ok((status, runner))
@@ -159,23 +165,27 @@ impl AttestationStatusRunner {
         ctx: &ctx::Ctx,
         store: Arc<BatchStore>,
         poll_interval: time::Duration,
-    ) -> ctx::OrCanceled<(Arc<AttestationStatusWatch>, Self)> {
+        genesis: attester::GenesisHash,
+    ) -> ctx::Result<(Arc<AttestationStatusWatch>, Self)> {
         Self::init(
             ctx,
             Box::new(LocalAttestationStatusClient(store)),
             poll_interval,
+            genesis,
         )
         .await
     }
 
     /// Run the poll loop.
     pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        let _ = self.poll_forever(ctx).await;
-        Ok(())
+        match self.poll_forever(ctx).await {
+            Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
+            Err(ctx::Error::Internal(err)) => Err(err),
+        }
     }
 
     /// Poll the client forever in a loop or until canceled.
-    async fn poll_forever(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
+    async fn poll_forever(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         loop {
             self.poll_until_some(ctx).await?;
             ctx.sleep(self.poll_interval).await?;
@@ -183,11 +193,21 @@ impl AttestationStatusRunner {
     }
 
     /// Poll the client until some data is returned and write it into the status.
-    async fn poll_until_some(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
+    async fn poll_until_some(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         loop {
-            match self.client.next_batch_to_attest(ctx).await {
-                Ok(Some(next_batch_to_attest)) => {
-                    self.status.update(next_batch_to_attest).await;
+            match self.client.attestation_status(ctx).await {
+                Ok(Some((genesis, batch_number))) => {
+                    // A change in the genesis wouldn't necessarily be a problem, but at the moment
+                    // the machinery the relies on the status notification cannot handle reorgs
+                    // without restarting the application. On external nodes this happens by polling
+                    // the main node API for any update in the genesis; on the main node it shouldn't
+                    // happen at the moment because `zksync-era` first adjusts the genesis and then
+                    // creates this component. If handing genesis changes on the fly becomes possible
+                    // we can remove this and let the updated status propagate through the system.
+                    if self.genesis != genesis {
+                        return Err(anyhow::format_err!("the attestation status genesis changed since we started the runner: {:?} -> {:?}", self.genesis, genesis).into());
+                    }
+                    self.status.update(batch_number).await;
                     return Ok(());
                 }
                 Ok(None) => {
@@ -210,10 +230,10 @@ struct LocalAttestationStatusClient(Arc<BatchStore>);
 
 #[async_trait::async_trait]
 impl AttestationStatusClient for LocalAttestationStatusClient {
-    async fn next_batch_to_attest(
+    async fn attestation_status(
         &self,
         ctx: &ctx::Ctx,
-    ) -> ctx::Result<Option<attester::BatchNumber>> {
-        self.0.next_batch_to_attest(ctx).await
+    ) -> ctx::Result<Option<(attester::GenesisHash, attester::BatchNumber)>> {
+        self.0.attestation_status(ctx).await
     }
 }

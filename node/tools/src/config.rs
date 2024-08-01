@@ -269,6 +269,7 @@ impl Configs {
                 ctx,
                 store.batches.clone(),
                 time::Duration::seconds(1),
+                self.app.genesis.hash(),
             )
             .await?;
 

@@ -1,5 +1,5 @@
 //! High-level tests for `Executor`.
-use std::sync::atomic::AtomicU64;
+use std::sync::{atomic::AtomicU64, Mutex};
 
 use super::*;
 use attestation::{AttestationStatusClient, AttestationStatusRunner};
@@ -322,18 +322,22 @@ async fn test_attestation_status_runner() {
     abort_on_panic();
     let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(5));
     let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
+    let rng = &mut ctx.rng();
 
-    #[derive(Default)]
+    let genesis: attester::GenesisHash = rng.gen();
+
+    #[derive(Clone)]
     struct MockAttestationStatus {
-        batch_number: AtomicU64,
+        genesis: Arc<Mutex<attester::GenesisHash>>,
+        batch_number: Arc<AtomicU64>,
     }
 
     #[async_trait::async_trait]
     impl AttestationStatusClient for MockAttestationStatus {
-        async fn next_batch_to_attest(
+        async fn attestation_status(
             &self,
             _ctx: &ctx::Ctx,
-        ) -> ctx::Result<Option<attester::BatchNumber>> {
+        ) -> ctx::Result<Option<(attester::GenesisHash, attester::BatchNumber)>> {
             let curr = self
                 .batch_number
                 .fetch_add(1u64, std::sync::atomic::Ordering::Relaxed);
@@ -342,16 +346,24 @@ async fn test_attestation_status_runner() {
                 Ok(None)
             } else {
                 // The first actual result will be 1 on the 2nd poll.
-                Ok(Some(attester::BatchNumber(curr)))
+                Ok(Some((
+                    *self.genesis.lock().unwrap(),
+                    attester::BatchNumber(curr),
+                )))
             }
         }
     }
 
-    scope::run!(ctx, |ctx, s| async {
+    let res = scope::run!(ctx, |ctx, s| async {
+        let client = MockAttestationStatus {
+            genesis: Arc::new(Mutex::new(genesis)),
+            batch_number: Arc::new(AtomicU64::default()),
+        };
         let (status, runner) = AttestationStatusRunner::init(
             ctx,
-            Box::new(MockAttestationStatus::default()),
+            Box::new(client.clone()),
             time::Duration::milliseconds(100),
+            genesis,
         )
         .await
         .unwrap();
@@ -364,15 +376,27 @@ async fn test_attestation_status_runner() {
             let status = sync::changed(ctx, &mut recv_status).await?;
             assert_eq!(status.next_batch_to_attest.0, 1);
         }
-        // Now start polling for new values.
-        s.spawn_bg(runner.run(ctx));
+        // Now start polling for new values. Starting in the foreground because we want it to fail in the end.
+        s.spawn(runner.run(ctx));
         // Check that polling sets the value.
         {
             let status = sync::changed(ctx, &mut recv_status).await?;
             assert_eq!(status.next_batch_to_attest.0, 2);
         }
+        // Change the genesis returned by the client. It should cause the scope to fail.
+        {
+            let mut genesis = client.genesis.lock().unwrap();
+            *genesis = rng.gen();
+        }
         Ok(())
     })
-    .await
-    .unwrap();
+    .await;
+
+    match res {
+        Ok(()) => panic!("expected to fail when the genesis changed"),
+        Err(e) => assert!(
+            e.to_string().contains("genesis changed"),
+            "only expect failures due to genesis change"
+        ),
+    }
 }

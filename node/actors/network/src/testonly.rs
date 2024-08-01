@@ -173,8 +173,8 @@ impl InstanceRunner {
             s.spawn_bg(self.net_runner.run(ctx));
             s.spawn_bg(async {
                 loop {
-                    if let Ok(Some(n)) = self.batch_store.next_batch_to_attest(ctx).await {
-                        self.attestation_status.update(n).await;
+                    if let Ok(Some((_, bn))) = self.batch_store.attestation_status(ctx).await {
+                        self.attestation_status.update(bn).await;
                     }
                     if ctx.sleep(time::Duration::seconds(1)).await.is_err() {
                         return Ok(());
