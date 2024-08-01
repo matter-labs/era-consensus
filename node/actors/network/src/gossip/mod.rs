@@ -12,7 +12,9 @@
 //! Static connections constitute a rigid "backbone" of the gossip network, which is insensitive to
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
-pub use self::attestation_status::{AttestationStatusReceiver, AttestationStatusWatch};
+pub use self::attestation_status::{
+    AttestationStatus, AttestationStatusReceiver, AttestationStatusWatch,
+};
 pub use self::batch_votes::BatchVotesPublisher;
 use self::batch_votes::BatchVotesWatch;
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};

@@ -162,6 +162,7 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
 pub struct InstanceRunner {
     net_runner: Runner,
     attestation_status: Arc<AttestationStatusWatch>,
+    block_store: Arc<BlockStore>,
     batch_store: Arc<BatchStore>,
     terminate: channel::Receiver<()>,
 }
@@ -172,9 +173,13 @@ impl InstanceRunner {
         scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(self.net_runner.run(ctx));
             s.spawn_bg(async {
+                let genesis = self.block_store.genesis().hash();
                 loop {
-                    if let Ok(Some(n)) = self.batch_store.next_batch_to_attest(ctx).await {
-                        self.attestation_status.update(n).await;
+                    if let Ok(Some(batch_number)) = self.batch_store.next_batch_to_attest(ctx).await
+                    {
+                        self.attestation_status
+                            .update(genesis, batch_number)
+                            .await?;
                     }
                     if ctx.sleep(time::Duration::seconds(1)).await.is_err() {
                         return Ok(());
@@ -199,13 +204,15 @@ impl Instance {
     ) -> (Self, InstanceRunner) {
         // Semantically we'd want this to be created at the same level as the stores,
         // but doing so would introduce a lot of extra cruft in setting up tests.
-        let attestation_status =
-            Arc::new(AttestationStatusWatch::new(attester::BatchNumber::default()));
+        let attestation_status = Arc::new(AttestationStatusWatch::new(
+            block_store.genesis().hash(),
+            attester::BatchNumber::default(),
+        ));
 
         let (actor_pipe, dispatcher_pipe) = pipe::new();
         let (net, net_runner) = Network::new(
             cfg,
-            block_store,
+            block_store.clone(),
             batch_store.clone(),
             actor_pipe,
             attestation_status.clone(),
@@ -220,6 +227,7 @@ impl Instance {
             InstanceRunner {
                 net_runner,
                 attestation_status,
+                block_store,
                 batch_store,
                 terminate: terminate_recv,
             },
