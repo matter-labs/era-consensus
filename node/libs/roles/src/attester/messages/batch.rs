@@ -1,9 +1,8 @@
 use super::{GenesisHash, Signed};
 use crate::{
     attester,
-    validator::{Genesis, Payload},
+    validator::{Payload},
 };
-use anyhow::{ensure, Context as _};
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 
@@ -127,6 +126,7 @@ pub enum BatchQCVerifyError {
     /// Bad signer set.
     #[error("signers not in committee")]
     BadSignersSet,
+    /// Genesis mismatch.
     #[error("genesis mismatch")]
     GenesisMismatch,
 }
@@ -167,8 +167,8 @@ impl BatchQC {
         Ok(())
     }
 
-    /// Verifies the signature of the BatchQC.
-    pub fn verify(&self, genesis: &GenesisHash, committee: &Committee) -> Result<(), BatchQCVerifyError> {
+    /// Verifies the the BatchQC.
+    pub fn verify(&self, genesis: GenesisHash, committee: &attester::Committee) -> Result<(), BatchQCVerifyError> {
         use BatchQCVerifyError as Error;
         
         if self.message.genesis!=genesis {

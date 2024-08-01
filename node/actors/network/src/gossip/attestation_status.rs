@@ -1,7 +1,7 @@
 use std::fmt;
-
+use std::sync::Arc;
 use zksync_concurrency::sync;
-use zksync_consensus_roles::{validator,attester};
+use zksync_consensus_roles::{attester};
 
 use crate::watch::Watch;
 

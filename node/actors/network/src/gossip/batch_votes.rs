@@ -2,6 +2,7 @@
 use super::metrics;
 use crate::watch::Watch;
 use crate::gossip::AttestationStatus;
+use std::cmp::Ordering;
 use std::{collections::HashSet, fmt, sync::Arc};
 use zksync_concurrency::sync;
 use zksync_consensus_roles::attester;
@@ -75,8 +76,8 @@ impl BatchVotes {
             // Disallow multiple entries for the same key:
             // it is important because a malicious attester may spam us with
             // new versions and verifying signatures is expensive.
-            if done.contains(&d.key) {
-                anyhow::bail!("duplicate entry for {:?}", d.key);
+            if done.contains(&vote.key) {
+                anyhow::bail!("duplicate entry for {:?}", vote.key);
             }
             done.insert(vote.key.clone());
             self.add(vote, &mut stats)?;
@@ -137,7 +138,7 @@ pub(crate) struct BatchVotesWatch(Watch<BatchVotes>);
 
 impl BatchVotesWatch {
     pub(crate) fn new(status: AttestationStatus) -> Self {
-        Self(Watch::new(BatchVotes::new(status))
+        Self(Watch::new(BatchVotes::new(status)))
     }
 
     /// Subscribes to BatchVotes updates.

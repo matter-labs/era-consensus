@@ -20,7 +20,7 @@ use fetch::RequestItem;
 use std::sync::{atomic::AtomicUsize, Arc};
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, error::Wrap as _, scope, sync};
-use zksync_consensus_roles::{node, validator};
+use zksync_consensus_roles::{node, validator, attester};
 use zksync_consensus_storage::{BatchStore, BlockStore};
 
 mod attestation_status;
@@ -172,12 +172,10 @@ impl Network {
         let next = attester::BatchNumber(0);
         loop {
             // Wait until the status indicates that we're ready to sign the next batch.
-            let status = sync::wait_for(ctx, &mut recv_status, |s| s.next_batch_to_attest >= next).await?.clone();
+            let status = sync::wait_for(ctx, &mut recv_status, |s| s.batch_to_attest.number >= next).await?.clone();
 
             // Get rid of all previous votes. We don't expect this to go backwards without regenesis, which will involve a restart.
-            self.batch_votes
-                .set_min_batch_number(status.next_batch_number)
-                .await;
+            self.batch_votes.set_status(status).await;
 
             // Now wait until we find the next quorum, whatever it is:
             // * on the main node, if attesters are honest, they will vote on the next batch number and the main node will not see gaps
