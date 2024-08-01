@@ -139,19 +139,17 @@ impl PersistentBatchStore for BatchStore {
         Ok(certs.get(last_batch_number).cloned())
     }
 
-    async fn attestation_status(
+    async fn next_batch_to_attest(
         &self,
         _ctx: &ctx::Ctx,
-    ) -> ctx::Result<Option<(attester::GenesisHash, attester::BatchNumber)>> {
+    ) -> ctx::Result<Option<attester::BatchNumber>> {
         let batches = self.0.batches.lock().unwrap();
         let certs = self.0.certs.lock().unwrap();
 
-        let bn = batches
+        Ok(batches
             .iter()
             .map(|b| b.number)
-            .find(|n| !certs.contains_key(n));
-
-        Ok(bn.map(|bn| (self.0.genesis.hash(), bn)))
+            .find(|n| !certs.contains_key(n)))
     }
 
     async fn get_batch_to_sign(

@@ -164,13 +164,16 @@ impl AttestationStatusRunner {
     /// Initialize an [AttestationStatusWatch] based on a [BatchStore] and return it along with the [AttestationStatusRunner].
     pub async fn init_from_store(
         ctx: &ctx::Ctx,
-        store: Arc<BatchStore>,
+        batch_store: Arc<BatchStore>,
         poll_interval: time::Duration,
         genesis: attester::GenesisHash,
     ) -> ctx::Result<(Arc<AttestationStatusWatch>, Self)> {
         Self::init(
             ctx,
-            Box::new(LocalAttestationStatusClient(store)),
+            Box::new(LocalAttestationStatusClient {
+                genesis,
+                batch_store,
+            }),
             poll_interval,
             genesis,
         )
@@ -217,7 +220,12 @@ impl AttestationStatusRunner {
 }
 
 /// Implement the attestation status for the main node by returning the next to vote on from the [BatchStore].
-struct LocalAttestationStatusClient(Arc<BatchStore>);
+struct LocalAttestationStatusClient {
+    /// We don't expect the genesis to change while the main node is running,
+    /// so we can just cache the genesis hash and return it for every request.
+    genesis: attester::GenesisHash,
+    batch_store: Arc<BatchStore>,
+}
 
 #[async_trait::async_trait]
 impl AttestationStatusClient for LocalAttestationStatusClient {
@@ -225,6 +233,7 @@ impl AttestationStatusClient for LocalAttestationStatusClient {
         &self,
         ctx: &ctx::Ctx,
     ) -> ctx::Result<Option<(attester::GenesisHash, attester::BatchNumber)>> {
-        self.0.attestation_status(ctx).await
+        let batch_number = self.batch_store.next_batch_to_attest(ctx).await?;
+        Ok(batch_number.map(|n| (self.genesis, n)))
     }
 }
