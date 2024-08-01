@@ -72,6 +72,17 @@ impl AttestationStatusWatch {
                 status.genesis,
                 genesis
             );
+            // The next batch to attest moving backwards could cause the voting process
+            // to get stuck due to the way gossiping works and the BatchVotes discards
+            // votes below the expected minimum: even if we clear the votes, we might
+            // not get them again from any peer. By returning an error we can cause
+            // the node to be restarted and connections re-established for fresh gossip.
+            anyhow::ensure!(
+                status.next_batch_to_attest <= next_batch_to_attest,
+                "next batch to attest moved backwards: {} -> {}",
+                status.next_batch_to_attest,
+                next_batch_to_attest
+            );
         }
         this.send_if_modified(|status| {
             if status.next_batch_to_attest == next_batch_to_attest {
