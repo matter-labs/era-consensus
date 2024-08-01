@@ -136,7 +136,6 @@ pub struct AttestationStatusRunner {
     status: Arc<AttestationStatusWatch>,
     client: Box<dyn AttestationStatusClient>,
     poll_interval: time::Duration,
-    genesis: attester::GenesisHash,
 }
 
 impl AttestationStatusRunner {
@@ -149,12 +148,14 @@ impl AttestationStatusRunner {
         poll_interval: time::Duration,
         genesis: attester::GenesisHash,
     ) -> ctx::Result<(Arc<AttestationStatusWatch>, Self)> {
-        let status = Arc::new(AttestationStatusWatch::new(attester::BatchNumber::default()));
+        let status = Arc::new(AttestationStatusWatch::new(
+            genesis,
+            attester::BatchNumber::default(),
+        ));
         let mut runner = Self {
             status: status.clone(),
             client,
             poll_interval,
-            genesis,
         };
         runner.poll_until_some(ctx).await?;
         Ok((status, runner))
@@ -197,17 +198,7 @@ impl AttestationStatusRunner {
         loop {
             match self.client.attestation_status(ctx).await {
                 Ok(Some((genesis, batch_number))) => {
-                    // A change in the genesis wouldn't necessarily be a problem, but at the moment
-                    // the machinery the relies on the status notification cannot handle reorgs
-                    // without restarting the application. On external nodes this happens by polling
-                    // the main node API for any update in the genesis; on the main node it shouldn't
-                    // happen at the moment because `zksync-era` first adjusts the genesis and then
-                    // creates this component. If handing genesis changes on the fly becomes possible
-                    // we can remove this and let the updated status propagate through the system.
-                    if self.genesis != genesis {
-                        return Err(anyhow::format_err!("the attestation status genesis changed since we started the runner: {:?} -> {:?}", self.genesis, genesis).into());
-                    }
-                    self.status.update(batch_number).await;
+                    self.status.update(genesis, batch_number).await?;
                     return Ok(());
                 }
                 Ok(None) => {

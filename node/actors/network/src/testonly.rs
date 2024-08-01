@@ -173,8 +173,8 @@ impl InstanceRunner {
             s.spawn_bg(self.net_runner.run(ctx));
             s.spawn_bg(async {
                 loop {
-                    if let Ok(Some((_, bn))) = self.batch_store.attestation_status(ctx).await {
-                        self.attestation_status.update(bn).await;
+                    if let Ok(Some((g, bn))) = self.batch_store.attestation_status(ctx).await {
+                        self.attestation_status.update(g, bn).await?;
                     }
                     if ctx.sleep(time::Duration::seconds(1)).await.is_err() {
                         return Ok(());
@@ -199,8 +199,10 @@ impl Instance {
     ) -> (Self, InstanceRunner) {
         // Semantically we'd want this to be created at the same level as the stores,
         // but doing so would introduce a lot of extra cruft in setting up tests.
-        let attestation_status =
-            Arc::new(AttestationStatusWatch::new(attester::BatchNumber::default()));
+        let attestation_status = Arc::new(AttestationStatusWatch::new(
+            block_store.genesis().hash(),
+            attester::BatchNumber::default(),
+        ));
 
         let (actor_pipe, dispatcher_pipe) = pipe::new();
         let (net, net_runner) = Network::new(

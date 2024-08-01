@@ -13,20 +13,13 @@ pub struct AttestationStatus {
     /// The node is expected to poll the main node during initialization until
     /// the batch to start from is established.
     pub next_batch_to_attest: attester::BatchNumber,
-    // The hash of the genesis of the chain to which the L1 batches belong.
-    //
-    // A change in this value would indicate a reorg on the main node.
-    // On the main node itself this is not expected to change because
-    // a reorg involves a restart, and a regenesis happens before the
-    // executor is started. If it could happen, it could be used to
-    // signal to the `BatchVotes` that votes need to be cleared and
-    // potentially discarded votes received over gossip would need
-    // to be re-acquired (which doesn't happen at the moment unless
-    // the connection is re-established).
-    //
-    // It is not added yet as the system is not expected to be able
-    // to handle changes in the value.
-    //pub genesis: attester::GenesisHash,
+    /// The hash of the genesis of the chain to which the L1 batches belong.
+    ///
+    /// We don't expect to handle a regenesis on the fly without restarting the
+    /// node, so this value is not expected to change; it's here only to stop
+    /// any attempt at updating the status with a batch number that refers
+    /// to a different fork.
+    pub genesis: attester::GenesisHash,
 }
 
 /// The subscription over the attestation status which voters can monitor for change.
@@ -45,8 +38,12 @@ impl fmt::Debug for AttestationStatusWatch {
 
 impl AttestationStatusWatch {
     /// Create a new watch going from a specific batch number.
-    pub fn new(next_batch_to_attest: attester::BatchNumber) -> Self {
+    pub fn new(
+        genesis: attester::GenesisHash,
+        next_batch_to_attest: attester::BatchNumber,
+    ) -> Self {
         Self(Watch::new(AttestationStatus {
+            genesis,
             next_batch_to_attest,
         }))
     }
@@ -57,8 +54,25 @@ impl AttestationStatusWatch {
     }
 
     /// Set the next batch number to attest on and notify subscribers it changed.
-    pub async fn update(&self, next_batch_to_attest: attester::BatchNumber) {
+    ///
+    /// Fails if the genesis we want to update to is not the same as the watch was started with,
+    /// because the rest of the system is not expected to be able to handle reorgs without a
+    /// restart of the node.
+    pub async fn update(
+        &self,
+        genesis: attester::GenesisHash,
+        next_batch_to_attest: attester::BatchNumber,
+    ) -> anyhow::Result<()> {
         let this = self.0.lock().await;
+        {
+            let status = this.borrow();
+            anyhow::ensure!(
+                status.genesis == genesis,
+                "the attestation status genesis changed: {:?} -> {:?}",
+                status.genesis,
+                genesis
+            );
+        }
         this.send_if_modified(|status| {
             if status.next_batch_to_attest == next_batch_to_attest {
                 return false;
@@ -66,5 +80,6 @@ impl AttestationStatusWatch {
             status.next_batch_to_attest = next_batch_to_attest;
             true
         });
+        Ok(())
     }
 }

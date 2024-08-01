@@ -32,8 +32,11 @@ fn config(cfg: &network::Config) -> Config {
 
 /// The test executors below are not running with attesters, so we just create an [AttestationStatusWatch]
 /// that will never be updated.
-fn never_attest() -> Arc<AttestationStatusWatch> {
-    Arc::new(AttestationStatusWatch::new(attester::BatchNumber(0)))
+fn never_attest(genesis: &validator::Genesis) -> Arc<AttestationStatusWatch> {
+    Arc::new(AttestationStatusWatch::new(
+        genesis.hash(),
+        attester::BatchNumber::default(),
+    ))
 }
 
 fn validator(
@@ -42,6 +45,7 @@ fn validator(
     batch_store: Arc<BatchStore>,
     replica_store: impl ReplicaStore,
 ) -> Executor {
+    let attestation_status = never_attest(block_store.genesis());
     Executor {
         config: config(cfg),
         block_store,
@@ -52,7 +56,7 @@ fn validator(
             payload_manager: Box::new(bft::testonly::RandomPayload(1000)),
         }),
         attester: None,
-        attestation_status: never_attest(),
+        attestation_status,
     }
 }
 
@@ -61,13 +65,14 @@ fn fullnode(
     block_store: Arc<BlockStore>,
     batch_store: Arc<BatchStore>,
 ) -> Executor {
+    let attestation_status = never_attest(block_store.genesis());
     Executor {
         config: config(cfg),
         block_store,
         batch_store,
         validator: None,
         attester: None,
-        attestation_status: never_attest(),
+        attestation_status,
     }
 }
 
