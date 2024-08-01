@@ -7,7 +7,10 @@ use rand::Rng as _;
 use tracing::Instrument as _;
 use zksync_concurrency::{sync, testonly::abort_on_panic};
 use zksync_consensus_bft as bft;
-use zksync_consensus_network::testonly::{new_configs, new_fullnode};
+use zksync_consensus_network::{
+    gossip::AttestationStatus,
+    testonly::{new_configs, new_fullnode},
+};
 use zksync_consensus_roles::validator::{testonly::Setup, BlockNumber};
 use zksync_consensus_storage::{
     testonly::{in_memory, TestMemoryStorage},
@@ -342,7 +345,7 @@ async fn test_attestation_status_runner() {
         async fn attestation_status(
             &self,
             _ctx: &ctx::Ctx,
-        ) -> ctx::Result<Option<(attester::GenesisHash, attester::BatchNumber)>> {
+        ) -> ctx::Result<Option<AttestationStatus>> {
             let curr = self
                 .batch_number
                 .fetch_add(1u64, std::sync::atomic::Ordering::Relaxed);
@@ -351,10 +354,11 @@ async fn test_attestation_status_runner() {
                 Ok(None)
             } else {
                 // The first actual result will be 1 on the 2nd poll.
-                Ok(Some((
-                    *self.genesis.lock().unwrap(),
-                    attester::BatchNumber(curr),
-                )))
+                let status = AttestationStatus {
+                    genesis: *self.genesis.lock().unwrap(),
+                    next_batch_to_attest: attester::BatchNumber(curr),
+                };
+                Ok(Some(status))
             }
         }
     }

@@ -5,7 +5,7 @@ use anyhow::Context;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, sync, time};
 use zksync_consensus_network::gossip::{
-    AttestationStatusReceiver, AttestationStatusWatch, BatchVotesPublisher,
+    AttestationStatus, AttestationStatusReceiver, AttestationStatusWatch, BatchVotesPublisher,
 };
 use zksync_consensus_roles::attester;
 use zksync_consensus_storage::{BatchStore, BlockStore};
@@ -123,10 +123,7 @@ pub trait AttestationStatusClient: 'static + Send + Sync {
     ///
     /// The genesis hash is returned along with the new batch number to facilitate detecting reorgs
     /// on the main node as soon as possible and prevent inconsistent state from entering the system.
-    async fn attestation_status(
-        &self,
-        ctx: &ctx::Ctx,
-    ) -> ctx::Result<Option<(attester::GenesisHash, attester::BatchNumber)>>;
+    async fn attestation_status(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<AttestationStatus>>;
 }
 
 /// Use an [AttestationStatusClient] to periodically poll the main node and update the [AttestationStatusWatch].
@@ -200,8 +197,10 @@ impl AttestationStatusRunner {
     async fn poll_until_some(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         loop {
             match self.client.attestation_status(ctx).await {
-                Ok(Some((genesis, batch_number))) => {
-                    self.status.update(genesis, batch_number).await?;
+                Ok(Some(status)) => {
+                    self.status
+                        .update(status.genesis, status.next_batch_to_attest)
+                        .await?;
                     return Ok(());
                 }
                 Ok(None) => {
@@ -229,11 +228,11 @@ struct LocalAttestationStatusClient {
 
 #[async_trait::async_trait]
 impl AttestationStatusClient for LocalAttestationStatusClient {
-    async fn attestation_status(
-        &self,
-        ctx: &ctx::Ctx,
-    ) -> ctx::Result<Option<(attester::GenesisHash, attester::BatchNumber)>> {
+    async fn attestation_status(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<AttestationStatus>> {
         let batch_number = self.batch_store.next_batch_to_attest(ctx).await?;
-        Ok(batch_number.map(|n| (self.genesis, n)))
+        Ok(batch_number.map(|n| AttestationStatus {
+            genesis: self.genesis,
+            next_batch_to_attest: n,
+        }))
     }
 }
