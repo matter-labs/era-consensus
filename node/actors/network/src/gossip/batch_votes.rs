@@ -38,9 +38,7 @@ impl BatchUpdateStats {
 /// previous vote can be removed when a new one is added.
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct BatchVotes {
-    status: Arc<AttestationStatus>,
-    votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>,
-    partial_qc: attester::BatchQC,
+    status: Arc<AttestationStatusWatch>,
 }
 
 impl BatchVotes {
@@ -66,31 +64,13 @@ impl BatchVotes {
     /// (all entries verified so far are added).
     ///
     /// Returns statistics about new entries added.
-    pub(super) fn update(
+    pub(super) async fn update(
         &mut self,
         votes: &[Arc<attester::Signed<attester::Batch>>],
     ) -> anyhow::Result<BatchUpdateStats> {
         let mut stats = BatchUpdateStats::default();
-        let mut done = HashSet::new();
-        for vote in votes {
-            // Disallow multiple entries for the same key:
-            // it is important because a malicious attester may spam us with
-            // new versions and verifying signatures is expensive.
-            if done.contains(&vote.key) {
-                anyhow::bail!("duplicate entry for {:?}", vote.key);
-            }
-            done.insert(vote.key.clone());
-            self.add(vote, &mut stats)?;
-        }
+        votes. 
         Ok(stats)
-    }
-
-    /// Check if we have achieved quorum for the current batch number.
-    pub(super) fn find_quorum(&self) -> Option<attester::BatchQC> {
-        match self.partial_qc.verify() {
-            Ok(()) => Some(self.partial_qc.clone()),
-            Err(_) => None
-        }
     }
 
     /// Discards data about earlier heights.
@@ -98,37 +78,6 @@ impl BatchVotes {
         self.votes.clear();
         self.partial_qc = attester::BatchQC::new(status.batch_to_attest.clone());
         self.status = status;
-    }
-
-    /// Verifies and adds a vote.
-    fn add(&mut self, vote: Arc<attester::Signed<attester::Batch>>, stats: &mut BatchUpdateStats) -> anyhow::Result<()> {
-        // Genesis has to match 
-        anyhow::ensure!(
-            vote.msg.genesis == self.status.genesis,
-            "vote for batch with different genesis hash: {:?}",
-            vote.msg.genesis
-        );
-
-        // Skip the signatures for the irrelevant batch.
-        if vote.message != self.status.batch_to_attest {
-            return Ok(());
-        }
-
-        // We just skip the entries we are not interested in.
-        let Some(weight) = self.status.committee.weight(&vote.key) else {
-            return Ok(());
-        };
-
-        // If we already have a newer vote for this key, we can ignore this one.
-        if self.votes.contains(&vote.key) { return Ok(()) }
-
-        // Check the signature before insertion.
-        vote.verify().context("verify()")?;
-       
-        // Insert the vote.
-        stats.added(vote.msg.number, weight);
-        self.partial_qc.signatures.add(vote.key, vote.sig);
-        Ok(())
     }
 }
 
@@ -178,13 +127,6 @@ impl BatchVotesWatch {
                 .inc_by(weight_added);
         }
         Ok(())
-    }
-
-    /// Set the minimum batch number on the votes and discard old data.
-    pub(crate) async fn set_status(&self, status: Arc<AttestationStatus>) {
-        metrics::BATCH_VOTES_METRICS.min_batch_number.set(status.next_batch_to_attest.0);
-        let this = self.0.lock().await;
-        this.send_modify(|votes| votes.set_status(status));
     }
 }
 

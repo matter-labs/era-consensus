@@ -187,11 +187,6 @@ impl Network {
                 votes.find_quorum(attesters, &genesis)
             })
             .await?;
-
-            self.batch_store
-                .persist_batch_qc(ctx, qc)
-                .await
-                .wrap("persist_batch_qc")?;
         }
     }
 }
