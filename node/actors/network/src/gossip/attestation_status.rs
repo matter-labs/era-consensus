@@ -10,9 +10,9 @@ use crate::watch::Watch;
 pub struct AttestationStatus {
     /// Next batch number where voting is expected.
     ///
-    /// The node is expected to poll the main node during initialization until
-    /// the batch to start from is established.
-    pub next_batch_to_attest: attester::BatchNumber,
+    /// The field is optional so that we can start an external node without the main node API
+    /// already deployed, which is how the initial rollout is.
+    pub next_batch_to_attest: Option<attester::BatchNumber>,
     /// The hash of the genesis of the chain to which the L1 batches belong.
     ///
     /// We don't expect to handle a regenesis on the fly without restarting the
@@ -37,14 +37,11 @@ impl fmt::Debug for AttestationStatusWatch {
 }
 
 impl AttestationStatusWatch {
-    /// Create a new watch going from a specific batch number.
-    pub fn new(
-        genesis: attester::GenesisHash,
-        next_batch_to_attest: attester::BatchNumber,
-    ) -> Self {
+    /// Create a new watch with the current genesis, and a yet-to-be-determined batch number.
+    pub fn new(genesis: attester::GenesisHash) -> Self {
         Self(Watch::new(AttestationStatus {
             genesis,
-            next_batch_to_attest,
+            next_batch_to_attest: None,
         }))
     }
 
@@ -77,18 +74,20 @@ impl AttestationStatusWatch {
             // votes below the expected minimum: even if we clear the votes, we might
             // not get them again from any peer. By returning an error we can cause
             // the node to be restarted and connections re-established for fresh gossip.
-            anyhow::ensure!(
-                status.next_batch_to_attest <= next_batch_to_attest,
-                "next batch to attest moved backwards: {} -> {}",
-                status.next_batch_to_attest,
-                next_batch_to_attest
-            );
+            if let Some(old_batch_to_attest) = status.next_batch_to_attest {
+                anyhow::ensure!(
+                    old_batch_to_attest <= next_batch_to_attest,
+                    "next batch to attest moved backwards: {} -> {}",
+                    old_batch_to_attest,
+                    next_batch_to_attest
+                );
+            }
         }
         this.send_if_modified(|status| {
-            if status.next_batch_to_attest == next_batch_to_attest {
+            if status.next_batch_to_attest == Some(next_batch_to_attest) {
                 return false;
             }
-            status.next_batch_to_attest = next_batch_to_attest;
+            status.next_batch_to_attest = Some(next_batch_to_attest);
             true
         });
         Ok(())

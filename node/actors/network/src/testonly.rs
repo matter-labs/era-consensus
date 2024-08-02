@@ -17,7 +17,7 @@ use zksync_concurrency::{
     ctx::{self, channel},
     io, limiter, net, scope, sync, time,
 };
-use zksync_consensus_roles::{attester, node, validator};
+use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore};
 use zksync_consensus_utils::pipe;
 
@@ -204,10 +204,8 @@ impl Instance {
     ) -> (Self, InstanceRunner) {
         // Semantically we'd want this to be created at the same level as the stores,
         // but doing so would introduce a lot of extra cruft in setting up tests.
-        let attestation_status = Arc::new(AttestationStatusWatch::new(
-            block_store.genesis().hash(),
-            attester::BatchNumber::default(),
-        ));
+        let attestation_status =
+            Arc::new(AttestationStatusWatch::new(block_store.genesis().hash()));
 
         let (actor_pipe, dispatcher_pipe) = pipe::new();
         let (net, net_runner) = Network::new(
