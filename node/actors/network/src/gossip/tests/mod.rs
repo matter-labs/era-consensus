@@ -1,7 +1,6 @@
 use super::ValidatorAddrs;
 use crate::{
     gossip::{
-        batch_votes::{BatchVotes, BatchVotesWatch},
         handshake,
         validator_addrs::ValidatorAddrsWatch,
     },
@@ -24,7 +23,7 @@ use zksync_concurrency::{
     time,
 };
 use zksync_consensus_roles::{attester, validator};
-use zksync_consensus_storage::{testonly::TestMemoryStorage, PersistentBatchStore};
+use zksync_consensus_storage::{testonly::TestMemoryStorage};
 
 mod fetch_batches;
 mod fetch_blocks;
@@ -96,9 +95,6 @@ fn mk_version<R: Rng>(rng: &mut R) -> u64 {
 #[derive(Default)]
 struct View(im::HashMap<validator::PublicKey, Arc<validator::Signed<validator::NetAddress>>>);
 
-#[derive(Default)]
-struct Signatures(im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>);
-
 fn mk_netaddr(
     key: &validator::SecretKey,
     addr: std::net::SocketAddr,
@@ -137,19 +133,6 @@ fn random_netaddr<R: Rng>(
     ))
 }
 
-fn random_batch_vote<R: Rng>(
-    rng: &mut R,
-    key: &attester::SecretKey,
-    genesis: attester::GenesisHash,
-) -> Arc<attester::Signed<attester::Batch>> {
-    let batch = attester::Batch {
-        number: attester::BatchNumber(rng.gen_range(0..1000)),
-        hash: rng.gen(),
-        genesis,
-    };
-    Arc::new(key.sign_msg(batch.to_owned()))
-}
-
 fn update_netaddr<R: Rng>(
     rng: &mut R,
     addr: &validator::NetAddress,
@@ -165,20 +148,6 @@ fn update_netaddr<R: Rng>(
     ))
 }
 
-fn update_signature<R: Rng>(
-    rng: &mut R,
-    batch: &attester::Batch,
-    key: &attester::SecretKey,
-    batch_number_diff: i64,
-) -> Arc<attester::Signed<attester::Batch>> {
-    let batch = attester::Batch {
-        number: attester::BatchNumber((batch.number.0 as i64 + batch_number_diff) as u64),
-        hash: rng.gen(),
-        genesis: batch.genesis,
-    };
-    Arc::new(key.sign_msg(batch.to_owned()))
-}
-
 impl View {
     fn insert(&mut self, entry: Arc<validator::Signed<validator::NetAddress>>) {
         self.0.insert(entry.key.clone(), entry);
@@ -189,20 +158,6 @@ impl View {
     }
 
     fn as_vec(&self) -> Vec<Arc<validator::Signed<validator::NetAddress>>> {
-        self.0.values().cloned().collect()
-    }
-}
-
-impl Signatures {
-    fn insert(&mut self, entry: Arc<attester::Signed<attester::Batch>>) {
-        self.0.insert(entry.key.clone(), entry);
-    }
-
-    fn get(&mut self, key: &attester::SecretKey) -> Arc<attester::Signed<attester::Batch>> {
-        self.0.get(&key.public()).unwrap().clone()
-    }
-
-    fn as_vec(&self) -> Vec<Arc<attester::Signed<attester::Batch>>> {
         self.0.values().cloned().collect()
     }
 }
@@ -545,161 +500,7 @@ async fn rate_limiting() {
     }
 }
 
-#[tokio::test]
-async fn test_batch_votes() {
-    abort_on_panic();
-    let rng = &mut ctx::test_root(&ctx::RealClock).rng();
-
-    let keys: Vec<attester::SecretKey> = (0..8).map(|_| rng.gen()).collect();
-    let attesters = attester::Committee::new(keys.iter().map(|k| attester::WeightedAttester {
-        key: k.public(),
-        weight: 1250,
-    }))
-    .unwrap();
-    let votes = BatchVotesWatch::default();
-    let mut sub = votes.subscribe();
-
-    let genesis = rng.gen::<attester::GenesisHash>();
-
-    // Initial values.
-    let mut want = Signatures::default();
-    for k in &keys[0..6] {
-        want.insert(random_batch_vote(rng, k, genesis));
-    }
-    votes
-        .update(&attesters, &genesis, &want.as_vec())
-        .await
-        .unwrap();
-    assert_eq!(want.0, sub.borrow_and_update().votes);
-
-    // newer batch number, should be updated
-    let k0v2 = update_signature(rng, &want.get(&keys[0]).msg, &keys[0], 1);
-    // same batch number, should be ignored
-    let k1v2 = update_signature(rng, &want.get(&keys[1]).msg, &keys[1], 0);
-    // older batch number, should be ignored
-    let k4v2 = update_signature(rng, &want.get(&keys[4]).msg, &keys[4], -1);
-    // first entry for a key in the config, should be inserted
-    let k6v1 = random_batch_vote(rng, &keys[6], genesis);
-    // entry for a key outside of the config, should be ignored
-    let k8 = rng.gen();
-    let k8v1 = random_batch_vote(rng, &k8, genesis);
-
-    // Update the ones we expect to succeed
-    want.insert(k0v2.clone());
-    want.insert(k6v1.clone());
-
-    // Send all of them to the votes
-    let update = [
-        k0v2,
-        k1v2,
-        k4v2,
-        // no new entry for keys[5]
-        k6v1,
-        // no entry at all for keys[7]
-        k8v1.clone(),
-    ];
-    votes.update(&attesters, &genesis, &update).await.unwrap();
-    assert_eq!(want.0, sub.borrow_and_update().votes);
-
-    // Invalid signature, should be rejected.
-    let mut k0v3 = mk_batch(
-        rng,
-        &keys[1],
-        attester::BatchNumber(want.get(&keys[0]).msg.number.0 + 1),
-        genesis,
-    );
-    k0v3.key = keys[0].public();
-    assert!(votes
-        .update(&attesters, &genesis, &[Arc::new(k0v3)])
-        .await
-        .is_err());
-
-    // Invalid genesis, should be rejected.
-    let other_genesis = rng.gen();
-    let k1v3 = mk_batch(
-        rng,
-        &keys[1],
-        attester::BatchNumber(want.get(&keys[1]).msg.number.0 + 1),
-        other_genesis,
-    );
-    assert!(votes
-        .update(&attesters, &genesis, &[Arc::new(k1v3)])
-        .await
-        .is_err());
-
-    assert_eq!(want.0, sub.borrow_and_update().votes);
-
-    // Duplicate entry in the update, should be rejected.
-    assert!(votes
-        .update(&attesters, &genesis, &[k8v1.clone(), k8v1])
-        .await
-        .is_err());
-    assert_eq!(want.0, sub.borrow_and_update().votes);
-}
-
-#[test]
-fn test_batch_votes_quorum() {
-    abort_on_panic();
-    let rng = &mut ctx::test_root(&ctx::RealClock).rng();
-
-    for _ in 0..10 {
-        let committee_size = rng.gen_range(1..20);
-        let keys: Vec<attester::SecretKey> = (0..committee_size).map(|_| rng.gen()).collect();
-        let attesters = attester::Committee::new(keys.iter().map(|k| attester::WeightedAttester {
-            key: k.public(),
-            weight: rng.gen_range(1..=100),
-        }))
-        .unwrap();
-
-        let batch0 = rng.gen::<attester::Batch>();
-        let batch1 = attester::Batch {
-            number: batch0.number.next(),
-            hash: rng.gen(),
-            genesis: batch0.genesis,
-        };
-        let genesis = batch0.genesis;
-        let mut batches = [(batch0, 0u64), (batch1, 0u64)];
-
-        let mut votes = BatchVotes::default();
-        for sk in &keys {
-            // We need 4/5+1 for quorum, so let's say ~80% vote on the second batch.
-            let b = usize::from(rng.gen_range(0..100) < 80);
-            let batch = &batches[b].0;
-            let vote = sk.sign_msg(batch.clone());
-            votes
-                .update(&attesters, &genesis, &[Arc::new(vote)])
-                .unwrap();
-            batches[b].1 += attesters.weight(&sk.public()).unwrap();
-
-            // Check that as soon as we have quorum it's found.
-            if batches[b].1 >= attesters.threshold() {
-                let qc = votes
-                    .find_quorum(&attesters, &genesis)
-                    .expect("should find quorum");
-                assert!(qc.message == *batch);
-                assert!(qc.signatures.keys().count() > 0);
-            }
-        }
-
-        // Check that if there was no quoroum then we don't find any.
-        if !batches.iter().any(|b| b.1 >= attesters.threshold()) {
-            assert!(votes.find_quorum(&attesters, &genesis).is_none());
-        }
-
-        // Check that the minimum batch number prunes data.
-        let last_batch = batches[1].0.number;
-
-        votes.set_min_batch_number(last_batch);
-        assert!(votes.votes.values().all(|v| v.msg.number >= last_batch));
-        assert!(votes.support.keys().all(|n| *n >= last_batch));
-
-        votes.set_min_batch_number(last_batch.next());
-        assert!(votes.votes.is_empty());
-        assert!(votes.support.is_empty());
-    }
-}
-
-//
+/*
 #[tokio::test(flavor = "multi_thread")]
 async fn test_batch_votes_propagation() {
     let _guard = set_timeout(time::Duration::seconds(10));
@@ -771,4 +572,4 @@ async fn test_batch_votes_propagation() {
     })
     .await
     .unwrap();
-}
+}*/

@@ -8,6 +8,9 @@ use std::collections::HashSet;
 use anyhow::Context as _;
 use crate::watch::Watch;
 
+#[cfg(test)]
+mod tests;
+
 /// Coordinate the attestation by showing the config as seen by the main node.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {

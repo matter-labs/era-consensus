@@ -327,7 +327,6 @@ async fn coordinated_batch_syncing(node_count: usize, gossip_peers: usize) {
             cfg.rpc.get_batch_rate = limiter::Rate::INF;
             cfg.rpc.get_batch_timeout = None;
             cfg.validator_key = None;
-            cfg.attester_key = None;
             let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
             s.spawn_bg(store.runner.run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
@@ -384,7 +383,6 @@ async fn uncoordinated_batch_syncing(
             cfg.rpc.get_batch_rate = limiter::Rate::INF;
             cfg.rpc.get_batch_timeout = None;
             cfg.validator_key = None;
-            cfg.attester_key = None;
             let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
             s.spawn_bg(store.runner.run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
