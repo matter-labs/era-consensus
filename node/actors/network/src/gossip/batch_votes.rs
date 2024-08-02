@@ -131,7 +131,7 @@ impl BatchVotes {
 
             // Check the signature before insertion.
             if let Err(e) = d.verify() {
-                tracing::error!(error =? e, "failed to verify batch vote");
+                tracing::error!(error =? e, "failed to verify batch vote: {e:#}");
             } else {
                 self.add(d.clone(), weight);
                 stats.added(d.msg.number, weight);
