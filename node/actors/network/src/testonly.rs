@@ -104,7 +104,6 @@ where
             // due to timeouts.
             ping_timeout: None,
             validator_key: Some(validator_key.clone()),
-            attester_key: None,
             gossip: GossipConfig {
                 key: rng.gen(),
                 dynamic_inbound_limit: usize::MAX,
@@ -143,7 +142,6 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
         // due to timeouts.
         ping_timeout: None,
         validator_key: None,
-        attester_key: None,
         gossip: GossipConfig {
             key: rng.gen(),
             dynamic_inbound_limit: usize::MAX,

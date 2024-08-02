@@ -1,6 +1,5 @@
 //! Library files for the executor. We have it separate from the binary so that we can use these files in the tools crate.
 use crate::io::Dispatcher;
-use anyhow::Context as _;
 use network::http;
 pub use network::RpcConfig;
 use std::{
@@ -9,11 +8,12 @@ use std::{
 };
 use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
-use zksync_consensus_network::{self as network, gossip::AttestationStatusWatch};
-use zksync_consensus_roles::{attester, node, validator};
+use zksync_consensus_network::{self as network};
+use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
+use anyhow::Context as _;
 
 pub mod attestation;
 mod io;
@@ -29,13 +29,6 @@ pub struct Validator {
     pub replica_store: Box<dyn ReplicaStore>,
     /// Payload manager.
     pub payload_manager: Box<dyn bft::PayloadManager>,
-}
-
-/// Validator-related part of [`Executor`].
-#[derive(Debug)]
-pub struct Attester {
-    /// Consensus network configuration.
-    pub key: attester::SecretKey,
 }
 
 /// Config of the node executor.
@@ -98,10 +91,8 @@ pub struct Executor {
     pub batch_store: Arc<BatchStore>,
     /// Validator-specific node data.
     pub validator: Option<Validator>,
-    /// Validator-specific node data.
-    pub attester: Option<Attester>,
     /// Status showing where the main node wants attester to cast their votes.
-    pub attestation_status: Arc<AttestationStatusWatch>,
+    pub attestation_state: Arc<attestation::StateWatch>,
 }
 
 impl Executor {
@@ -112,7 +103,6 @@ impl Executor {
             public_addr: self.config.public_addr.clone(),
             gossip: self.config.gossip(),
             validator_key: self.validator.as_ref().map(|v| v.key.clone()),
-            attester_key: self.attester.as_ref().map(|a| a.key.clone()),
             ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
             max_batch_size: self.config.max_batch_size.saturating_add(kB),
@@ -137,35 +127,17 @@ impl Executor {
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
-            s.spawn(async { dispatcher.run(ctx).await.context("IO Dispatcher stopped") });
+            s.spawn(async { dispatcher.run(ctx).await; Ok(()) });
             let (net, runner) = network::Network::new(
                 network_config,
                 self.block_store.clone(),
                 self.batch_store.clone(),
                 network_actor_pipe,
-                self.attestation_status.clone(),
+                self.attestation_state,
             );
             net.register_metrics();
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
-
-            if let Some(attester) = self.attester {
-                tracing::info!("Running the node in attester mode.");
-                let runner = attestation::AttesterRunner::new(
-                    self.block_store.clone(),
-                    self.batch_store.clone(),
-                    attester,
-                    net.batch_vote_publisher(),
-                    self.attestation_status.subscribe(),
-                    self.config.batch_poll_interval,
-                );
-                s.spawn(async {
-                    runner.run(ctx).await?;
-                    Ok(())
-                });
-            } else {
-                tracing::info!("Running the node in non-attester mode.");
-            }
-
+            
             if let Some(debug_config) = self.config.debug_page {
                 s.spawn(async {
                     http::DebugPageServer::new(debug_config, net)

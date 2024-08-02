@@ -1,3 +1,5 @@
+//! Attestation.
+use std::fmt;
 use std::sync::Arc;
 use std::cmp::Ordering;
 use zksync_concurrency::{ctx,sync};
@@ -7,10 +9,11 @@ use anyhow::Context as _;
 use crate::watch::Watch;
 
 /// Coordinate the attestation by showing the config as seen by the main node.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Config {
+    /// Batch to attest.
     pub batch_to_attest: attester::Batch,
-    /// Committee for that batch.
+    /// Committee that should attest the batch.
     /// NOTE: the committee is not supposed to change often,
     /// so you might want to use `Arc<attester::Committee>` instead
     /// to avoid extra copying.
@@ -28,7 +31,7 @@ pub(crate) struct State {
 
 impl State {
     /// Returns a set of votes of `self` which are newer than the entries in `old`.
-    pub fn new_votes(&self, old: &Option<Self>) -> Vec<Arc<attester::Signed<attester::Batch>>> {
+    fn new_votes(&self, old: &Option<Self>) -> Vec<Arc<attester::Signed<attester::Batch>>> {
         let Some(old) = old.as_ref() else { return self.votes.values().cloned().collect() };
         match self.config.batch_to_attest.number.cmp(&old.config.batch_to_attest.number) {
             Ordering::Less => vec![],
@@ -55,7 +58,7 @@ impl State {
         Ok(())
     }
 
-    pub fn insert_votes(&mut self, votes: impl Iterator<Item=Arc<attester::Signed<attester::Batch>>>) -> anyhow::Result<()> {
+    fn insert_votes(&mut self, votes: impl Iterator<Item=Arc<attester::Signed<attester::Batch>>>) -> anyhow::Result<()> {
         let mut done = HashSet::new();
         for vote in votes {
             // Disallow multiple entries for the same key:
@@ -65,7 +68,7 @@ impl State {
                 anyhow::bail!("duplicate entry for {:?}", vote.key);
             }
             done.insert(vote.key.clone());
-            self.insert_vote(vote);
+            self.insert_vote(vote)?;
         }
         Ok(())
     }
@@ -77,7 +80,7 @@ pub(crate) struct StateReceiver {
 }
 
 impl StateReceiver {
-    pub async fn wait_for_new_votes(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<Vec<Arc<attester::Signed<attester::Batch>>>> {
+    pub(crate) async fn wait_for_new_votes(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<Vec<Arc<attester::Signed<attester::Batch>>>> {
         loop {
             let Some(new) = (*sync::changed(ctx, &mut self.recv).await?).clone() else { continue };
             let new_votes = new.new_votes(&self.prev);
@@ -89,9 +92,17 @@ impl StateReceiver {
     }
 }
 
+/// Watch of the attestation state.
 pub struct StateWatch {
     key: Option<attester::SecretKey>,
     state: Watch<Option<State>>,
+}
+
+impl fmt::Debug for StateWatch {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.debug_struct("StateWatch")
+            .finish_non_exhaustive()
+    }
 }
 
 impl StateWatch {
@@ -106,7 +117,7 @@ impl StateWatch {
         StateReceiver { prev: None, recv }
     }
 
-    pub async fn insert_votes(&self, votes: impl Iterator<Item=Arc<attester::Signed<attester::Batch>>>) -> anyhow::Result<()> {
+    pub(crate) async fn insert_votes(&self, votes: impl Iterator<Item=Arc<attester::Signed<attester::Batch>>>) -> anyhow::Result<()> {
         let locked = self.state.lock().await;
         let Some(mut state) = locked.borrow().clone() else { return Ok(()) };
         let before = state.weight;
@@ -117,6 +128,7 @@ impl StateWatch {
         res
     }
 
+    /// Waits for the certificate to be collected.
     pub async fn wait_for_qc(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<attester::BatchQC> {
         sync::wait_for_some(ctx, &mut self.state.subscribe(), |state| {
             let state = state.as_ref()?;
@@ -134,10 +146,14 @@ impl StateWatch {
         }).await
     }
 
-    pub async fn set_config(&self, config: Config) -> anyhow::Result<()> {
+    /// Updates the attestation config.
+    /// Clears the votes collected for the previous config.
+    /// Batch number has to increase with each update.
+    pub async fn update_config(&self, config: Config) -> anyhow::Result<()> {
         let locked = self.state.lock().await;
         let old = locked.borrow().clone();
         if let Some(old) = old.as_ref() {
+            if *old.config == config { return Ok(()) }
             anyhow::ensure!(old.config.batch_to_attest.genesis == config.batch_to_attest.genesis, "tried to change genesis");
             anyhow::ensure!(old.config.batch_to_attest.number < config.batch_to_attest.number, "tried to decrease batch number");
         }
