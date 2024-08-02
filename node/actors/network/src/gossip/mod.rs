@@ -173,14 +173,15 @@ impl Network {
 
         loop {
             // Wait until the status indicates that we're ready to sign the next batch.
-            let next_batch_number = sync::changed(ctx, &mut recv_status)
+            let Some(batch_number) = sync::changed(ctx, &mut recv_status)
                 .await?
-                .next_batch_to_attest;
+                .next_batch_to_attest
+            else {
+                continue;
+            };
 
             // Get rid of all previous votes. We don't expect this to go backwards without regenesis, which will involve a restart.
-            self.batch_votes
-                .set_min_batch_number(next_batch_number)
-                .await;
+            self.batch_votes.set_min_batch_number(batch_number).await;
 
             // Now wait until we find the next quorum, whatever it is:
             // * on the main node, if attesters are honest, they will vote on the next batch number and the main node will not see gaps

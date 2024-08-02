@@ -5,7 +5,7 @@ use anyhow::Context;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, sync, time};
 use zksync_consensus_network::gossip::{
-    AttestationStatus, AttestationStatusReceiver, AttestationStatusWatch, BatchVotesPublisher,
+    AttestationStatusReceiver, AttestationStatusWatch, BatchVotesPublisher,
 };
 use zksync_consensus_roles::attester;
 use zksync_consensus_storage::{BatchStore, BlockStore};
@@ -58,9 +58,12 @@ impl AttesterRunner {
         self.status.mark_changed();
 
         loop {
-            let batch_number = sync::changed(ctx, &mut self.status)
+            let Some(batch_number) = sync::changed(ctx, &mut self.status)
                 .await?
-                .next_batch_to_attest;
+                .next_batch_to_attest
+            else {
+                continue;
+            };
 
             tracing::info!(%batch_number, "attestation status");
 
@@ -123,7 +126,10 @@ pub trait AttestationStatusClient: 'static + Send + Sync {
     ///
     /// The genesis hash is returned along with the new batch number to facilitate detecting reorgs
     /// on the main node as soon as possible and prevent inconsistent state from entering the system.
-    async fn attestation_status(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<AttestationStatus>>;
+    async fn attestation_status(
+        &self,
+        ctx: &ctx::Ctx,
+    ) -> ctx::Result<Option<(attester::GenesisHash, attester::BatchNumber)>>;
 }
 
 /// Use an [AttestationStatusClient] to periodically poll the main node and update the [AttestationStatusWatch].
@@ -140,21 +146,19 @@ impl AttestationStatusRunner {
     ///
     /// It polls the [AttestationStatusClient] until it returns a value to initialize the status with.
     pub async fn init(
-        ctx: &ctx::Ctx,
+        _ctx: &ctx::Ctx,
         client: Box<dyn AttestationStatusClient>,
         poll_interval: time::Duration,
         genesis: attester::GenesisHash,
     ) -> ctx::Result<(Arc<AttestationStatusWatch>, Self)> {
-        let status = Arc::new(AttestationStatusWatch::new(
-            genesis,
-            attester::BatchNumber::default(),
-        ));
-        let mut runner = Self {
+        let status = Arc::new(AttestationStatusWatch::new(genesis));
+        let runner = Self {
             status: status.clone(),
             client,
             poll_interval,
         };
-        runner.poll_until_some(ctx).await?;
+        // This would initialise the status to some value, however the EN was rolled out first without the main node API.
+        // runner.poll_until_some(ctx).await?;
         Ok((status, runner))
     }
 
@@ -197,10 +201,8 @@ impl AttestationStatusRunner {
     async fn poll_until_some(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         loop {
             match self.client.attestation_status(ctx).await {
-                Ok(Some(status)) => {
-                    self.status
-                        .update(status.genesis, status.next_batch_to_attest)
-                        .await?;
+                Ok(Some((genesis, next_batch_to_attest))) => {
+                    self.status.update(genesis, next_batch_to_attest).await?;
                     return Ok(());
                 }
                 Ok(None) => {
@@ -228,11 +230,12 @@ struct LocalAttestationStatusClient {
 
 #[async_trait::async_trait]
 impl AttestationStatusClient for LocalAttestationStatusClient {
-    async fn attestation_status(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<AttestationStatus>> {
-        let batch_number = self.batch_store.next_batch_to_attest(ctx).await?;
-        Ok(batch_number.map(|n| AttestationStatus {
-            genesis: self.genesis,
-            next_batch_to_attest: n,
-        }))
+    async fn attestation_status(
+        &self,
+        ctx: &ctx::Ctx,
+    ) -> ctx::Result<Option<(attester::GenesisHash, attester::BatchNumber)>> {
+        let next_batch_to_attest = self.batch_store.next_batch_to_attest(ctx).await?;
+
+        Ok(next_batch_to_attest.map(|n| (self.genesis, n)))
     }
 }
