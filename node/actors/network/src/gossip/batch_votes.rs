@@ -80,6 +80,11 @@ impl BatchVotes {
     /// (all entries verified so far are added).
     ///
     /// Returns statistics about new entries added.
+    ///
+    /// For now it doesn't return an error if a vote with an invalid signature
+    /// is encountered, so that the node doesn't disconnect from peer if it
+    /// happens to have a new field in `Batch`. This is only until the feature
+    /// is stabilized.
     pub(super) fn update(
         &mut self,
         attesters: &attester::Committee,
@@ -125,10 +130,10 @@ impl BatchVotes {
             }
 
             // Check the signature before insertion.
-            d.verify()?;
-
-            self.add(d.clone(), weight);
-            stats.added(d.msg.number, weight);
+            if d.verify().is_ok() {
+                self.add(d.clone(), weight);
+                stats.added(d.msg.number, weight);
+            }
         }
 
         Ok(stats)

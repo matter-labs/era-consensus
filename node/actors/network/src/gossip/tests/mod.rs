@@ -601,7 +601,7 @@ async fn test_batch_votes() {
     votes.update(&attesters, &genesis, &update).await.unwrap();
     assert_eq!(want.0, sub.borrow_and_update().votes);
 
-    // Invalid signature, should be rejected.
+    // Invalid signature, should be ignored.
     let mut k0v3 = mk_batch(
         rng,
         &keys[1],
@@ -612,7 +612,8 @@ async fn test_batch_votes() {
     assert!(votes
         .update(&attesters, &genesis, &[Arc::new(k0v3)])
         .await
-        .is_err());
+        .is_ok());
+    assert_eq!(want.0, sub.borrow_and_update().votes);
 
     // Invalid genesis, should be rejected.
     let other_genesis = rng.gen();
