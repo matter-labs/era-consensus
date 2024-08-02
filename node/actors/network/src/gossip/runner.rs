@@ -1,4 +1,4 @@
-use super::{batch_votes::BatchVotes, handshake, Network, ValidatorAddrs};
+use super::{handshake, Network, ValidatorAddrs};
 use crate::{noise, preface, rpc};
 use anyhow::Context as _;
 use async_trait::async_trait;
@@ -64,15 +64,7 @@ impl rpc::Handler<rpc::push_batch_votes::Rpc> for &PushServer<'_> {
     }
 
     async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::push_batch_votes::Req) -> anyhow::Result<()> {
-        self.net
-            .batch_votes
-            .update(
-                self.net.genesis().attesters.as_ref().context("attesters")?,
-                &self.net.genesis().hash(),
-                &req.0,
-            )
-            .await?;
-        Ok(())
+        self.net.attestation_state.insert_votes(req.0.into_iter()).await
     }
 }
 
@@ -199,20 +191,11 @@ impl Network {
                 // Push L1 batch votes updates to peer.
                 s.spawn::<()>(async {
                     let push_batch_votes_client = push_batch_votes_client;
-                    // Snapshot of the batches when we last pushed to the peer.
-                    let mut old = BatchVotes::default();
                     // Subscribe to what we know about the state of the whole network.
-                    let mut sub = self.batch_votes.subscribe();
-                    sub.mark_changed();
+                    let mut recv = self.attestation_state.subscribe();
                     loop {
-                        let new = sync::changed(ctx, &mut sub).await?.clone();
-                        // Get the *new* votes, which haven't been pushed before.
-                        let diff = new.get_newer(&old);
-                        if diff.is_empty() {
-                            continue;
-                        }
-                        old = new;
-                        let req = rpc::push_batch_votes::Req(diff);
+                        let new = recv.wait_for_new_votes(ctx).await?;
+                        let req = rpc::push_batch_votes::Req(new);
                         push_batch_votes_client.call(ctx, &req, kB).await?;
                     }
                 });

@@ -1,7 +1,7 @@
 //! Testonly utilities.
 #![allow(dead_code)]
 use crate::{
-    gossip::AttestationStatusWatch,
+    gossip::attestation,
     io::{ConsensusInputMessage, Target},
     Config, GossipConfig, Network, RpcConfig, Runner,
 };
@@ -15,7 +15,7 @@ use std::{
 };
 use zksync_concurrency::{
     ctx::{self, channel},
-    io, limiter, net, scope, sync, time,
+    io, limiter, net, scope, sync,
 };
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore};
@@ -161,7 +161,6 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
 /// Runner for Instance.
 pub struct InstanceRunner {
     net_runner: Runner,
-    attestation_status: Arc<AttestationStatusWatch>,
     batch_store: Arc<BatchStore>,
     terminate: channel::Receiver<()>,
 }
@@ -171,16 +170,6 @@ impl InstanceRunner {
     pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(self.net_runner.run(ctx));
-            s.spawn_bg(async {
-                loop {
-                    if let Ok(Some(n)) = self.batch_store.next_batch_to_attest(ctx).await {
-                        self.attestation_status.update(n).await;
-                    }
-                    if ctx.sleep(time::Duration::seconds(1)).await.is_err() {
-                        return Ok(());
-                    }
-                }
-            });
             let _ = self.terminate.recv(ctx).await;
             Ok(())
         })
@@ -199,7 +188,7 @@ impl Instance {
     ) -> (Self, InstanceRunner) {
         // Semantically we'd want this to be created at the same level as the stores,
         // but doing so would introduce a lot of extra cruft in setting up tests.
-        let attestation_status = Arc::new(AttestationStatusWatch::default());
+        let attestation_state = Arc::new(attestation::StateWatch::new(None));
 
         let (actor_pipe, dispatcher_pipe) = pipe::new();
         let (net, net_runner) = Network::new(
@@ -207,7 +196,7 @@ impl Instance {
             block_store,
             batch_store.clone(),
             actor_pipe,
-            attestation_status.clone(),
+            attestation_state,
         );
         let (terminate_send, terminate_recv) = channel::bounded(1);
         (
@@ -218,7 +207,6 @@ impl Instance {
             },
             InstanceRunner {
                 net_runner,
-                attestation_status,
                 batch_store,
                 terminate: terminate_recv,
             },

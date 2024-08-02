@@ -5,7 +5,7 @@ use crate::{
 };
 use anyhow::Context as _;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{VecDeque},
     sync::{Arc, Mutex},
 };
 use zksync_concurrency::{ctx, sync};
@@ -20,10 +20,8 @@ struct BlockStoreInner {
 
 #[derive(Debug)]
 struct BatchStoreInner {
-    genesis: validator::Genesis,
     persisted: sync::watch::Sender<BatchStoreState>,
     batches: Mutex<VecDeque<attester::SyncBatch>>,
-    certs: Mutex<HashMap<attester::BatchNumber, attester::BatchQC>>,
 }
 
 /// In-memory block store.
@@ -70,12 +68,10 @@ impl BlockStore {
 
 impl BatchStore {
     /// New In-memory `BatchStore`.
-    pub fn new(genesis: validator::Genesis, first: attester::BatchNumber) -> Self {
+    pub fn new(first: attester::BatchNumber) -> Self {
         Self(Arc::new(BatchStoreInner {
-            genesis,
             persisted: sync::watch::channel(BatchStoreState { first, last: None }).0,
             batches: Mutex::default(),
-            certs: Mutex::default(),
         }))
     }
 }
@@ -131,60 +127,6 @@ impl PersistentBlockStore for BlockStore {
 impl PersistentBatchStore for BatchStore {
     fn persisted(&self) -> sync::watch::Receiver<BatchStoreState> {
         self.0.persisted.subscribe()
-    }
-
-    async fn last_batch_qc(&self, _ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchQC>> {
-        let certs = self.0.certs.lock().unwrap();
-        let last_batch_number = certs.keys().max().unwrap();
-        Ok(certs.get(last_batch_number).cloned())
-    }
-
-    async fn next_batch_to_attest(
-        &self,
-        _ctx: &ctx::Ctx,
-    ) -> ctx::Result<Option<attester::BatchNumber>> {
-        let batches = self.0.batches.lock().unwrap();
-        let certs = self.0.certs.lock().unwrap();
-
-        Ok(batches
-            .iter()
-            .map(|b| b.number)
-            .find(|n| !certs.contains_key(n)))
-    }
-
-    async fn get_batch_to_sign(
-        &self,
-        ctx: &ctx::Ctx,
-        number: attester::BatchNumber,
-    ) -> ctx::Result<Option<attester::Batch>> {
-        // Here we just produce some deterministic mock hash. The real hash is available in the database.
-        // and contains a commitment to the data submitted to L1. It is *not* over SyncBatch.
-        let Some(batch) = self.get_batch(ctx, number).await? else {
-            return Ok(None);
-        };
-
-        let bz = zksync_protobuf::canonical(&batch);
-        let hash = zksync_consensus_crypto::keccak256::Keccak256::new(&bz);
-
-        Ok(Some(attester::Batch {
-            number,
-            hash: attester::BatchHash(hash),
-            genesis: self.0.genesis.hash(),
-        }))
-    }
-
-    async fn get_batch_qc(
-        &self,
-        _ctx: &ctx::Ctx,
-        number: attester::BatchNumber,
-    ) -> ctx::Result<Option<attester::BatchQC>> {
-        let certs = self.0.certs.lock().unwrap();
-        Ok(certs.get(&number).cloned())
-    }
-
-    async fn store_qc(&self, _ctx: &ctx::Ctx, qc: attester::BatchQC) -> ctx::Result<()> {
-        self.0.certs.lock().unwrap().insert(qc.message.number, qc);
-        Ok(())
     }
 
     async fn get_batch(
