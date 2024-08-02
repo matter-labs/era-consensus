@@ -37,7 +37,6 @@ jobs:
         uses: baptiste0928/cargo-install@v2
         with:
           crate: cargo-deny
-          version: "0.15.1"
       - name: deny
         run: cargo deny check
       - name: fmt
