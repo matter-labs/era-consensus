@@ -2,7 +2,7 @@ name: Rust
 
 on:
   pull_request:
-    branches: [ "*" ]
+    branches: ["*"]
   push:
     # Caches of different branches are isolated, so first presubmit on a given pull request is slow.
     # However workflows of pull request have read-only access to the cache of the target branch.
@@ -19,7 +19,6 @@ env:
 
 jobs:
   check-build-test:
-
     runs-on: [ubuntu-22.04-github-hosted-16core]
 
     defaults:
@@ -38,6 +37,7 @@ jobs:
         uses: baptiste0928/cargo-install@v2
         with:
           crate: cargo-deny
+          version: "0.15.1"
       - name: deny
         run: cargo deny check
       - name: fmt
