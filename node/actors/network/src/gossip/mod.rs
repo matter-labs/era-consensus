@@ -9,6 +9,7 @@
 //! * static connections (explicitly declared in configs of both ends of the connection).
 //! * dynamic connections (additional randomized connections which are established to improve
 //!   the throughput of the network).
+//!
 //! Static connections constitute a rigid "backbone" of the gossip network, which is insensitive to
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).

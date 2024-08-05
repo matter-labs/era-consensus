@@ -236,6 +236,7 @@ where
     /// * The amount of data read can be determined by the increase
     ///   in the length of the slice returned by ReadBuf::filled.
     /// * If the difference is 0, EOF has been reached.
+    ///
     /// From std::io::Read:
     /// * If error was returned, no bytes were read.
     ///
@@ -309,6 +310,7 @@ where
 {
     /// from futures::io::AsyncWrite:
     /// * poll_write must try to make progress by flushing if needed to become writable
+    ///
     /// from std::io::Write:
     /// * call to write represents at most one attempt to write to any wrapped object.
     /// * 0 TYPICALLY means that that the underlying object is no longer able to accept bytes OR

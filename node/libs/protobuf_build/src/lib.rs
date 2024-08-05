@@ -14,6 +14,7 @@
 //!    cargo cache.
 //! 2. grep through all target/debug/build/*/output files to find all "PROTOBUF_DESCRIPTOR=..."
 //!    lines and merge the descriptor files by simply concatenating them.
+//!
 //! Note that you can run this procedure for 2 revisions of the repo and look for breaking
 //! changes by running "buf breaking <after.binpb> --against <before.binpb>" where before.binpb
 //! and after.binpb are the concatenated descriptors from those 2 revisions.
