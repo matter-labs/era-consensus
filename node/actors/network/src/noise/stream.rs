@@ -48,7 +48,7 @@ const MAX_PAYLOAD_LEN: usize = MAX_TRANSPORT_MSG_LEN - AUTHDATA_LEN;
 /// <frame len:u16> ++ <frame data:[u8;len]>.
 ///
 /// Length of the frame len field.
-const LENGTH_FIELD_LEN: usize = std::mem::size_of::<u16>();
+const LENGTH_FIELD_LEN: usize = size_of::<u16>();
 
 /// Max size of the whole frame (length field + data).
 const MAX_FRAME_LEN: usize = MAX_TRANSPORT_MSG_LEN + LENGTH_FIELD_LEN;
