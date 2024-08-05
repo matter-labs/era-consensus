@@ -1,9 +1,8 @@
 //! High-level tests for `Executor`.
-use std::sync::{atomic::AtomicU64, Mutex};
-
 use super::*;
 use attestation::{AttestationStatusClient, AttestationStatusRunner};
 use rand::Rng as _;
+use std::sync::{atomic::AtomicU64, Mutex};
 use tracing::Instrument as _;
 use zksync_concurrency::{sync, testonly::abort_on_panic};
 use zksync_consensus_bft as bft;
