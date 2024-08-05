@@ -8,8 +8,18 @@ use zksync_protobuf::ProtoFmt;
 /// PushBatchVotes RPC.
 pub(crate) struct Rpc;
 
+/// Deprecated, because adding `genesis_hash` to `validator::Batch`
+/// was not backward compatible - old binaries couldn't verify
+/// signatures on messages with `genesis_hash` and were treating it
+/// as malicious behavior.
+#[allow(dead_code)]
+pub(super) const V1: mux::CapabilityId = 5;
+
+/// Current version.
+pub(super) const V2: mux::CapabilityId = 8;
+
 impl super::Rpc for Rpc {
-    const CAPABILITY_ID: mux::CapabilityId = 5;
+    const CAPABILITY_ID: mux::CapabilityId = V2;
     const INFLIGHT: u32 = 1;
     const METHOD: &'static str = "push_batch_votes";
     type Req = Req;

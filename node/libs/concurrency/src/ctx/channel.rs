@@ -3,6 +3,7 @@
 //! Note that channel disconnection is not observable by default:
 //! * send() always succeeds, unless canceled
 //! * recv() always succeeds, unless canceled
+//!
 //! This
 //! * simplifies the channel interface
 //! * prevents users from relying on send/recv failure

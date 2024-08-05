@@ -40,10 +40,12 @@
 //! * capability 0 has 4 reusable streams
 //! * capability 1 has 3 reusable streams
 //! * capability 2 has 5 reusable streams
+//!
 //! then
 //! * streams 0,1,2,3 belong to capability 0.
 //! * streams 4,5,6 belong to capability 1.
 //! * streams 7,8,9,10,11 belong to capability 2.
+//!
 //! NOTE that the 2^13 limit applies to the TOTAL number of reusable streams across all
 //! capabilities.
 //!
@@ -59,7 +61,7 @@
 //! Multipexer protocol:
 //! 1. peer A and B exchange their multiplexer configs.
 //! 2. based on both configs, A and B determine how many stream IDs will be used and to which
-//!   capabilities they will belong.
+//!    capabilities they will belong.
 //! 3. For every stream IDs in use execute Reusable Stream protocol concurrently.
 //!
 //! Reusable stream protocol (for stream ID = x, with capability = c, where A is outbound peer and

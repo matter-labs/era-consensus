@@ -1,9 +1,7 @@
+use crate::watch::Watch;
 use std::fmt;
-
 use zksync_concurrency::sync;
 use zksync_consensus_roles::attester;
-
-use crate::watch::Watch;
 
 /// Coordinate the attestation by showing the status as seen by the main node.
 #[derive(Debug, Clone, PartialEq, Eq)]
