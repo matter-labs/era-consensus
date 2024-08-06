@@ -1,6 +1,8 @@
 //! Defines storage layer for batches of blocks.
 use anyhow::Context as _;
+use std::borrow::Borrow;
 use std::{collections::VecDeque, fmt, sync::Arc};
+use tracing::Instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::{attester, validator};
 
@@ -148,6 +150,7 @@ impl Inner {
         true
     }
 
+    #[tracing::instrument(skip_all)]
     fn truncate_cache(&mut self) {
         while self.cache.len() > Self::CACHE_CAPACITY
             && self.persisted.contains(self.cache[0].number)
@@ -185,6 +188,45 @@ impl BatchStoreRunner {
         let store_ref = Arc::downgrade(&self.0);
         let _ = COLLECTOR.before_scrape(move || Some(store_ref.upgrade()?.scrape_metrics()));
 
+        #[tracing::instrument(skip_all)]
+        async fn truncate_batch_cache_iteration(
+            ctx: &ctx::Ctx,
+            persisted: &mut sync::watch::Receiver<BatchStoreState>,
+            inner: &sync::watch::Sender<Inner>,
+        ) -> ctx::Result<()> {
+            let persisted = sync::changed(ctx, persisted)
+                .instrument(tracing::info_span!("wait_for_batch_store_change"))
+                .await?
+                .clone();
+            inner.send_modify(|inner| {
+                // XXX: In `BlockStoreRunner` update both the `queued` and the `persisted` here.
+                inner.persisted = persisted;
+                inner.truncate_cache();
+            });
+
+            Ok(())
+        }
+
+        #[tracing::instrument(skip_all)]
+        async fn queue_persist_batch_iteration(
+            ctx: &ctx::Ctx,
+            queue_next: &mut attester::BatchNumber,
+            inner: &mut sync::watch::Receiver<Inner>,
+            persistent: &dyn PersistentBatchStore,
+        ) -> ctx::Result<()> {
+            let batch = sync::wait_for(ctx, inner, |inner| inner.queued.contains(*queue_next))
+                .instrument(tracing::info_span!("wait_for_next_batch"))
+                .await?
+                .batch(*queue_next)
+                .unwrap();
+
+            *queue_next = queue_next.next();
+
+            persistent.queue_next_batch(ctx, batch).await?;
+
+            Ok(())
+        }
+
         let res = scope::run!(ctx, |ctx, s| async {
             let persisted = self.0.persistent.persisted();
             let mut queue_next = persisted.borrow().next();
@@ -192,24 +234,18 @@ impl BatchStoreRunner {
             s.spawn::<()>(async {
                 let mut persisted = persisted;
                 loop {
-                    let persisted = sync::changed(ctx, &mut persisted).await?.clone();
-                    self.0.inner.send_modify(|inner| {
-                        // XXX: In `BlockStoreRunner` update both the `queued` and the `persisted` here.
-                        inner.persisted = persisted;
-                        inner.truncate_cache();
-                    });
+                    truncate_batch_cache_iteration(ctx, &mut persisted, &self.0.inner).await?;
                 }
             });
             let inner = &mut self.0.inner.subscribe();
             loop {
-                let batch = sync::wait_for(ctx, inner, |inner| inner.queued.contains(queue_next))
-                    .await?
-                    .batch(queue_next)
-                    .unwrap();
-
-                queue_next = queue_next.next();
-
-                self.0.persistent.queue_next_batch(ctx, batch).await?;
+                queue_persist_batch_iteration(
+                    ctx,
+                    &mut queue_next,
+                    inner,
+                    self.0.persistent.borrow(),
+                )
+                .await?;
             }
         })
         .await;
@@ -347,6 +383,7 @@ impl BatchStore {
     }
 
     /// Wait until the database has a batch, then attach the corresponding QC.
+    #[tracing::instrument(skip_all, fields(l1_batch = %qc.message.number))]
     pub async fn persist_batch_qc(&self, ctx: &ctx::Ctx, qc: attester::BatchQC) -> ctx::Result<()> {
         let t = metrics::BATCH_STORE.persist_batch_qc.start();
         // The `store_qc` implementation in `zksync-era` retries the insertion of the QC if the payload
@@ -368,6 +405,7 @@ impl BatchStore {
 
     /// Waits until the given batch is queued (in memory, or persisted).
     /// Note that it doesn't mean that the batch is actually available, as old batches might get pruned.
+    #[tracing::instrument(skip_all, fields(l1_batch = %number))]
     pub async fn wait_until_queued(
         &self,
         ctx: &ctx::Ctx,
@@ -388,6 +426,7 @@ impl BatchStore {
 
     /// Waits until the given batch is stored persistently.
     /// Note that it doesn't mean that the batch is actually available, as old batches might get pruned.
+    #[tracing::instrument(skip_all, fields(l1_batch = %number))]
     pub async fn wait_until_persisted(
         &self,
         ctx: &ctx::Ctx,

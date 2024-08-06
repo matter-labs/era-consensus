@@ -202,6 +202,7 @@ impl PersistentBatchStore for BatchStore {
         Ok(batches.get(idx as usize).cloned())
     }
 
+    #[tracing::instrument(skip_all, fields(l1_batch = %batch.number))]
     async fn queue_next_batch(
         &self,
         _ctx: &ctx::Ctx,

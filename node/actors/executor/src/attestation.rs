@@ -3,11 +3,12 @@
 use crate::Attester;
 use anyhow::Context;
 use std::sync::Arc;
+use tracing::Instrument;
 use zksync_concurrency::{ctx, sync, time};
 use zksync_consensus_network::gossip::{
     AttestationStatusReceiver, AttestationStatusWatch, BatchVotesPublisher,
 };
-use zksync_consensus_roles::attester;
+use zksync_consensus_roles::{attester, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore};
 
 /// Polls the database for new batches to be signed and publishes them to the gossip channel.
@@ -57,12 +58,23 @@ impl AttesterRunner {
         // Subscribe starts as seen but we don't want to miss the first item.
         self.status.mark_changed();
 
-        loop {
-            let Some(batch_number) = sync::changed(ctx, &mut self.status)
+        #[tracing::instrument(skip_all)]
+        async fn attestation_iter(
+            ctx: &ctx::Ctx,
+            status: &mut AttestationStatusReceiver,
+            batch_store: &BatchStore,
+            publisher: &BatchVotesPublisher,
+            attester: &Attester,
+            poll_interval: time::Duration,
+            attesters: &attester::Committee,
+            genesis: &validator::GenesisHash,
+        ) -> anyhow::Result<()> {
+            let Some(batch_number) = sync::changed(ctx, status)
+                .instrument(tracing::info_span!("wait_for_attestation_status"))
                 .await?
                 .next_batch_to_attest
             else {
-                continue;
+                return Ok(());
             };
 
             tracing::info!(%batch_number, "attestation status");
@@ -71,12 +83,16 @@ impl AttesterRunner {
             // to be indicated in memory (which itself relies on polling). This happens once we have the commitment,
             // which for nodes that get the blocks through BFT should happen after execution. Nodes which
             // rely on batch sync don't participate in attestations as they need the batch on L1 first.
-            self.batch_store
-                .wait_until_persisted(ctx, batch_number)
-                .await?;
+            batch_store.wait_until_persisted(ctx, batch_number).await?;
 
             // Try to get the next batch to sign; the commitment might not be available just yet.
-            let batch = self.wait_for_batch_to_sign(ctx, batch_number).await?;
+            let batch = AttesterRunner::wait_for_batch_to_sign(
+                ctx,
+                batch_number,
+                batch_store,
+                poll_interval,
+            )
+            .await?;
 
             // The certificates might be collected out of order because of how gossip works;
             // we could query the DB to see if we already have a QC, or we can just go ahead
@@ -85,29 +101,46 @@ impl AttesterRunner {
             tracing::info!(%batch_number, "publishing attestation");
 
             // We only have to publish a vote once; future peers can pull it from the register.
-            self.publisher
-                .publish(attesters, &genesis, &self.attester.key, batch)
+            publisher
+                .publish(attesters, &genesis, &attester.key, batch)
                 .await
                 .context("publish")?;
+
+            Ok(())
+        }
+
+        loop {
+            attestation_iter(
+                ctx,
+                &mut self.status,
+                &self.batch_store,
+                &self.publisher,
+                &self.attester,
+                self.poll_interval,
+                &attesters,
+                &genesis,
+            )
+            .await?;
         }
     }
 
     /// Wait for the batch commitment to become available.
+    #[tracing::instrument(skip_all, fields(l1_batch = %number))]
     async fn wait_for_batch_to_sign(
-        &self,
         ctx: &ctx::Ctx,
         number: attester::BatchNumber,
+        batch_store: &BatchStore,
+        poll_interval: time::Duration,
     ) -> ctx::Result<attester::Batch> {
         loop {
-            if let Some(batch) = self
-                .batch_store
+            if let Some(batch) = batch_store
                 .batch_to_sign(ctx, number)
                 .await
                 .context("batch_to_sign")?
             {
                 return Ok(batch);
             } else {
-                ctx.sleep(self.poll_interval).await?;
+                ctx.sleep(poll_interval).await?;
             }
         }
     }

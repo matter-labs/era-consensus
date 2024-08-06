@@ -17,12 +17,14 @@ pub use self::attestation_status::{
 };
 pub use self::batch_votes::BatchVotesPublisher;
 use self::batch_votes::BatchVotesWatch;
+use crate::gossip::batch_votes::BatchVotes;
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
 use fetch::RequestItem;
 use std::sync::{atomic::AtomicUsize, Arc};
+use tracing::Instrument;
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, error::Wrap as _, scope, sync};
-use zksync_consensus_roles::{node, validator};
+use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore};
 
 mod attestation_status;
@@ -108,20 +110,32 @@ impl Network {
                 let number = ctx::NoCopy(next);
                 next = next + 1;
                 // Fetch a block asynchronously.
-                s.spawn(async {
-                    let _permit = permit;
-                    let number = number.into();
-                    let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
-                        s.spawn_bg(self.fetch_queue.request(ctx, RequestItem::Block(number)));
-                        // Cancel fetching as soon as block is queued for storage.
-                        self.block_store.wait_until_queued(ctx, number).await?;
-                        Err(ctx::Canceled)
-                    })
-                    .await;
-                    // Wait until the block is actually persisted, so that the amount of blocks
-                    // stored in memory is bounded.
-                    self.block_store.wait_until_persisted(ctx, number).await
-                });
+                s.spawn(
+                    async {
+                        let _permit = permit;
+                        let number = number.into();
+                        let queue_span = tracing::info_span!("wait_for_block_to_queue");
+                        let queue_span_copy = queue_span.clone();
+                        let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
+                            let request_span = tracing::info_span!("fetch_block_request");
+                            request_span.follows_from(queue_span_copy.id());
+                            s.spawn_bg(
+                                self.fetch_queue
+                                    .request(ctx, RequestItem::Block(number))
+                                    .instrument(request_span),
+                            );
+                            // Cancel fetching as soon as block is queued for storage.
+                            self.block_store.wait_until_queued(ctx, number).await?;
+                            Err(ctx::Canceled)
+                        })
+                        .instrument(queue_span)
+                        .await;
+                        // Wait until the block is actually persisted, so that the amount of blocks
+                        // stored in memory is bounded.
+                        self.block_store.wait_until_persisted(ctx, number).await
+                    }
+                    .instrument(tracing::info_span!("fetch_block_from_peer", l2_block = %next)),
+                );
             }
         })
         .await;
@@ -137,20 +151,32 @@ impl Network {
                 let number = ctx::NoCopy(next);
                 next = next + 1;
                 // Fetch a batch asynchronously.
-                s.spawn(async {
-                    let _permit = permit;
-                    let number = number.into();
-                    let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
-                        s.spawn_bg(self.fetch_queue.request(ctx, RequestItem::Batch(number)));
-                        // Cancel fetching as soon as batch is queued for storage.
-                        self.batch_store.wait_until_queued(ctx, number).await?;
-                        Err(ctx::Canceled)
-                    })
-                    .await;
-                    // Wait until the batch is actually persisted, so that the amount of batches
-                    // stored in memory is bounded.
-                    self.batch_store.wait_until_persisted(ctx, number).await
-                });
+                s.spawn(
+                    async {
+                        let _permit = permit;
+                        let number = number.into();
+                        let queue_span = tracing::info_span!("wait_for_batch_to_queue");
+                        let queue_span_copy = queue_span.clone();
+                        let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
+                            let request_span = tracing::info_span!("fetch_block_request");
+                            request_span.follows_from(queue_span_copy.id());
+                            s.spawn_bg(
+                                self.fetch_queue
+                                    .request(ctx, RequestItem::Batch(number))
+                                    .instrument(request_span),
+                            );
+                            // Cancel fetching as soon as batch is queued for storage.
+                            self.batch_store.wait_until_queued(ctx, number).await?;
+                            Err(ctx::Canceled)
+                        })
+                        .instrument(queue_span)
+                        .await;
+                        // Wait until the batch is actually persisted, so that the amount of batches
+                        // stored in memory is bounded.
+                        self.batch_store.wait_until_persisted(ctx, number).await
+                    }
+                    .instrument(tracing::info_span!("fetch_batch_from_peer", l1_batch = %next)),
+                );
             }
         })
         .await;
@@ -171,17 +197,27 @@ impl Network {
         // Subscribe starts as seen but we don't want to miss the first item.
         recv_status.mark_changed();
 
-        loop {
+        #[tracing::instrument(skip_all)]
+        async fn new_votes_iter(
+            ctx: &ctx::Ctx,
+            attesters: &attester::Committee,
+            genesis: &validator::GenesisHash,
+            recv_votes: &mut sync::watch::Receiver<BatchVotes>,
+            recv_status: &mut AttestationStatusReceiver,
+            batch_votes: &BatchVotesWatch,
+            batch_store: &BatchStore,
+        ) -> ctx::Result<()> {
             // Wait until the status indicates that we're ready to sign the next batch.
-            let Some(batch_number) = sync::changed(ctx, &mut recv_status)
+            let Some(batch_number) = sync::changed(ctx, recv_status)
+                .instrument(tracing::info_span!("wait_for_attestation_status"))
                 .await?
                 .next_batch_to_attest
             else {
-                continue;
+                return Ok(());
             };
 
             // Get rid of all previous votes. We don't expect this to go backwards without regenesis, which will involve a restart.
-            self.batch_votes.set_min_batch_number(batch_number).await;
+            batch_votes.set_min_batch_number(batch_number).await;
 
             // Now wait until we find the next quorum, whatever it is:
             // * on the main node, if attesters are honest, they will vote on the next batch number and the main node will not see gaps
@@ -189,15 +225,31 @@ impl Network {
             // What is important, though, is that the batch number does not move backwards while we look for a quorum, because attesters
             // (re)casting earlier votes will go ignored by those fixed on a higher min_batch_number, and gossip will only be attempted once.
             // The possibility of this will be fixed by deterministally picking a start batch number based on fork indicated by genesis.
-            let qc = sync::wait_for_some(ctx, &mut recv_votes, |votes| {
-                votes.find_quorum(attesters, &genesis)
+            let qc = sync::wait_for_some(ctx, recv_votes, |votes| {
+                votes.find_quorum(attesters, genesis)
             })
+            .instrument(tracing::info_span!("wait_for_quorum"))
             .await?;
 
-            self.batch_store
+            batch_store
                 .persist_batch_qc(ctx, qc)
                 .await
                 .wrap("persist_batch_qc")?;
+
+            Ok(())
+        }
+
+        loop {
+            new_votes_iter(
+                ctx,
+                attesters,
+                &genesis,
+                &mut recv_votes,
+                &mut recv_status,
+                &self.batch_votes,
+                &self.batch_store,
+            )
+            .await?;
         }
     }
 }

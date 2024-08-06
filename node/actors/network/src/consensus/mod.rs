@@ -1,5 +1,6 @@
 //! Consensus network is a full graph of connections between all validators.
 //! BFT consensus messages are exchanged over this network.
+use crate::gossip::ValidatorAddrs;
 use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc, MeteredStreamStats};
 use anyhow::Context as _;
 use rand::seq::SliceRandom;
@@ -163,7 +164,7 @@ impl Network {
 
     /// Performs handshake of an inbound stream.
     /// Closes the stream if there is another inbound stream opened from the same validator.
-    #[tracing::instrument(level = "info", name = "consensus", skip_all)]
+    #[tracing::instrument(name = "consensus::run_inbound_stream", skip_all)]
     pub(crate) async fn run_inbound_stream(
         &self,
         ctx: &ctx::Ctx,
@@ -195,7 +196,7 @@ impl Network {
         res
     }
 
-    #[tracing::instrument(level = "info", name = "consensus", skip_all)]
+    #[tracing::instrument(name = "consensus::run_outbound_stream", skip_all, fields(?peer, %addr))]
     async fn run_outbound_stream(
         &self,
         ctx: &ctx::Ctx,
@@ -282,6 +283,7 @@ impl Network {
         res
     }
 
+    #[tracing::instrument(skip_all)]
     async fn run_loopback_stream(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let addr = *self
             .gossip
@@ -295,8 +297,30 @@ impl Network {
                 format!("{:?} resolved to no addresses", self.gossip.cfg.public_addr)
             })?;
         self.run_outbound_stream(ctx, &self.key.public(), addr)
-            .instrument(tracing::info_span!("loopback", ?addr))
             .await
+    }
+
+    #[tracing::instrument(skip_all, fields(?peer, ?addr))]
+    async fn maintain_connection_iter(
+        &self,
+        ctx: &ctx::Ctx,
+        peer: &validator::PublicKey,
+        addrs: &mut sync::watch::Receiver<ValidatorAddrs>,
+        addr: &mut Option<std::net::SocketAddr>,
+    ) {
+        // Wait for a new address, or retry with the old one after timeout.
+        if let Ok(new) = sync::wait_for(&ctx.with_timeout(config::CONNECT_RETRY), addrs, |addrs| {
+            &addrs.get(peer).map(|x| x.msg.addr) != addr
+        })
+        .instrument(tracing::info_span!("wait_for_address"))
+        .await
+        {
+            *addr = new.get(peer).map(|x| x.msg.addr);
+        }
+        let Some(addr) = addr else { return };
+        if let Err(err) = self.run_outbound_stream(ctx, peer, *addr).await {
+            tracing::info!("run_outbound_stream({peer:?},{addr}): {err:#}");
+        }
     }
 
     /// Maintains a connection to the given validator.
@@ -314,24 +338,10 @@ impl Network {
         }
         let addrs = &mut self.gossip.validator_addrs.subscribe();
         let mut addr = None;
+
         while ctx.is_active() {
-            // Wait for a new address, or retry with the old one after timeout.
-            if let Ok(new) =
-                sync::wait_for(&ctx.with_timeout(config::CONNECT_RETRY), addrs, |addrs| {
-                    addrs.get(peer).map(|x| x.msg.addr) != addr
-                })
-                .await
-            {
-                addr = new.get(peer).map(|x| x.msg.addr);
-            }
-            let Some(addr) = addr else { continue };
-            if let Err(err) = self
-                .run_outbound_stream(ctx, peer, addr)
-                .instrument(tracing::info_span!("out", ?addr))
-                .await
-            {
-                tracing::info!("run_outbound_stream({peer:?},{addr}): {err:#}");
-            }
+            self.maintain_connection_iter(ctx, peer, addrs, &mut addr)
+                .await;
         }
     }
 }
