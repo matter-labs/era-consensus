@@ -13,7 +13,6 @@ use zksync_protobuf::kB;
 struct PushServer<'a> {
     blocks: sync::watch::Sender<BlockStoreState>,
     batches: sync::watch::Sender<BatchStoreState>,
-    /// The network is required for the verification of messages.
     net: &'a Network,
 }
 
@@ -156,6 +155,10 @@ impl Network {
             rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate);
         let get_batch_client =
             rpc::Client::<rpc::get_batch::Rpc>::new(ctx, self.cfg.rpc.get_batch_rate);
+        let push_batch_votes_client = rpc::Client::<rpc::batch_votes::PushRpc>::new(
+            ctx,
+            self.cfg.rpc.push_batch_votes_rate,
+        );
 
         scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
@@ -181,33 +184,32 @@ impl Network {
                 .add_server(ctx, &*self.block_store, self.cfg.rpc.get_block_rate)
                 .add_client(&get_batch_client)
                 .add_server(ctx, &*self.batch_store, self.cfg.rpc.get_batch_rate)
-                .add_server(ctx, rpc::ping::Server, rpc::ping::RATE);
-
-            // If there is an attester committee then
-            if self.genesis().attesters.as_ref().is_some() {
-                let push_batch_votes_client = rpc::Client::<rpc::batch_votes::PushRpc>::new(
+                .add_server(ctx, rpc::ping::Server, rpc::ping::RATE)
+                .add_client(&push_batch_votes_client)
+                .add_server::<rpc::batch_votes::PushRpc>(
                     ctx,
+                    &push_server,
                     self.cfg.rpc.push_batch_votes_rate,
-                );
-                service = service
-                    .add_client(&push_batch_votes_client)
-                    .add_server::<rpc::batch_votes::PushRpc>(
-                        ctx,
-                        &push_server,
-                        self.cfg.rpc.push_batch_votes_rate,
-                    );
-                // Push L1 batch votes updates to peer.
-                s.spawn::<()>(async {
-                    let push_batch_votes_client = push_batch_votes_client;
-                    // Subscribe to what we know about the state of the whole network.
-                    let mut recv = self.attestation_state.subscribe();
-                    loop {
-                        let new = recv.wait_for_new_votes(ctx).await?;
-                        let req = rpc::batch_votes::Msg(new);
-                        push_batch_votes_client.call(ctx, &req, kB).await?;
-                    }
-                });
-            }
+                )
+                .add_server(ctx, &*self.attestation_state, self.cfg.rpc.pull_batch_votes_rate);
+
+            // Push L1 batch votes updates to peer.
+            s.spawn::<()>(async {
+                let push_batch_votes_client = push_batch_votes_client;
+                // Subscribe to what we know about the state of the whole network.
+                let mut recv = self.attestation_state.subscribe();
+                loop {
+                    let new = recv.wait_for_new_votes(ctx).await?;
+                    let req = rpc::batch_votes::Msg(new);
+                    push_batch_votes_client.call(ctx, &req, kB).await?;
+                }
+            });
+
+            // Pull L1 batch votes from peers.
+            s.spawn(async {
+                // TODO
+                Ok(())
+            });
 
             if let Some(ping_timeout) = &self.cfg.ping_timeout {
                 let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx, rpc::ping::RATE);
