@@ -1,16 +1,17 @@
 //! RPC for fetching a batch from peer.
-use crate::{mux, proto::gossip as proto};
+use crate::{proto::gossip as proto};
 use anyhow::Context as _;
 use zksync_consensus_roles::attester;
 use zksync_consensus_storage::BatchStoreState;
 use zksync_protobuf::{required, ProtoFmt};
+use super::Capability;
 
 /// PushBatchStoreState RPC.
 #[derive(Debug)]
 pub(crate) struct Rpc;
 
 impl super::Rpc for Rpc {
-    const CAPABILITY_ID: mux::CapabilityId = 7;
+    const CAPABILITY: Capability = Capability::PushBatchStoreState;
     const INFLIGHT: u32 = 1;
     const METHOD: &'static str = "push_batch_store_state";
 

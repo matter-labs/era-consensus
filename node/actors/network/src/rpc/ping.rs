@@ -1,15 +1,16 @@
 //! Defines an RPC for sending ping messages.
-use crate::{mux, proto::ping as proto};
+use crate::{proto::ping as proto};
 use anyhow::Context as _;
 use rand::Rng;
 use zksync_concurrency::{ctx, limiter, time};
 use zksync_protobuf::{kB, required, ProtoFmt};
+use super::Capability;
 
 /// Ping RPC.
 pub(crate) struct Rpc;
 
 impl super::Rpc for Rpc {
-    const CAPABILITY_ID: mux::CapabilityId = 2;
+    const CAPABILITY : Capability = Capability::Ping; 
     const INFLIGHT: u32 = 1;
     const METHOD: &'static str = "ping";
     type Req = Req;

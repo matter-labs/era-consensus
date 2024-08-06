@@ -2,29 +2,10 @@ use super::*;
 use crate::noise;
 use rand::Rng as _;
 use std::{
-    collections::HashSet,
     sync::atomic::{AtomicU64, Ordering},
 };
 use zksync_concurrency::{ctx, testonly::abort_on_panic, time};
 use zksync_protobuf::{kB, testonly::test_encode_random};
-
-/// CAPABILITY_ID should uniquely identify the RPC.
-#[test]
-fn test_capability_rpc_correspondence() {
-    let ids = [
-        consensus::Rpc::CAPABILITY_ID,
-        push_validator_addrs::Rpc::CAPABILITY_ID,
-        push_block_store_state::Rpc::CAPABILITY_ID,
-        get_block::Rpc::CAPABILITY_ID,
-        ping::Rpc::CAPABILITY_ID,
-        batch_votes::PUSH_V1,
-        batch_votes::PUSH_V2,
-        batch_votes::PullRpc::CAPABILITY_ID,
-        push_batch_store_state::Rpc::CAPABILITY_ID,
-        get_batch::Rpc::CAPABILITY_ID,
-    ];
-    assert_eq!(ids.len(), HashSet::from(ids).len());
-}
 
 #[test]
 fn test_schema_encode_decode() {
@@ -162,7 +143,7 @@ const RATE: limiter::Rate = limiter::Rate {
 };
 
 impl Rpc for ExampleRpc {
-    const CAPABILITY_ID: mux::CapabilityId = 0;
+    const CAPABILITY: Capability = Capability::Ping;
     const INFLIGHT: u32 = 5;
     const METHOD: &'static str = "example";
     type Req = ();

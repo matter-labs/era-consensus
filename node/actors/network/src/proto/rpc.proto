@@ -8,6 +8,10 @@ enum Capability {
   PUSH_VALIDATOR_ADDRS = 1;
   PUSH_BLOCK_STORE_STATE = 3;
   GET_BLOCK = 4;
+  /// Deprecated, because adding `genesis_hash` to `attester::Batch`
+  /// was not backward compatible - old binaries couldn't verify
+  /// signatures on messages with `genesis_hash` and were treating it
+  /// as malicious behavior.
   PUSH_BATCH_VOTES_V1 = 5;
   PUSH_BATCH_VOTES_V2 = 8;
   PULL_BATCH_VOTES = 9;

@@ -1,13 +1,14 @@
 //! Defines RPC for passing consensus messages.
-use crate::{mux, proto::consensus as proto};
+use crate::{proto::consensus as proto};
 use zksync_consensus_roles::validator;
 use zksync_protobuf::{read_required, ProtoFmt};
+use super::Capability;
 
 /// Consensus RPC.
 pub(crate) struct Rpc;
 
 impl super::Rpc for Rpc {
-    const CAPABILITY_ID: mux::CapabilityId = 0;
+    const CAPABILITY: Capability = Capability::Consensus;
     const INFLIGHT: u32 = 3;
     const METHOD: &'static str = "consensus";
     type Req = Req;

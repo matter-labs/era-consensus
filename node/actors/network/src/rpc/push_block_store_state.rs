@@ -1,16 +1,17 @@
 //! RPC for notifying peer about our BlockStore state.
-use crate::{mux, proto::gossip as proto};
+use crate::{proto::gossip as proto};
 use anyhow::Context;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::BlockStoreState;
 use zksync_protobuf::{read_optional, required, ProtoFmt};
+use super::Capability;
 
 /// PushBlockStoreState RPC.
 #[derive(Debug)]
 pub(crate) struct Rpc;
 
 impl super::Rpc for Rpc {
-    const CAPABILITY_ID: mux::CapabilityId = 3;
+    const CAPABILITY: Capability = Capability::PushBlockStoreState;
     const INFLIGHT: u32 = 1;
     const METHOD: &'static str = "push_block_store_state";
 
