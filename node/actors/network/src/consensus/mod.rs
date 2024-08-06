@@ -1,6 +1,5 @@
 //! Consensus network is a full graph of connections between all validators.
 //! BFT consensus messages are exchanged over this network.
-use crate::gossip::ValidatorAddrs;
 use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc, MeteredStreamStats};
 use anyhow::Context as _;
 use rand::seq::SliceRandom;
@@ -300,29 +299,6 @@ impl Network {
             .await
     }
 
-    #[tracing::instrument(skip_all, fields(?peer, ?addr))]
-    async fn maintain_connection_iter(
-        &self,
-        ctx: &ctx::Ctx,
-        peer: &validator::PublicKey,
-        addrs: &mut sync::watch::Receiver<ValidatorAddrs>,
-        addr: &mut Option<std::net::SocketAddr>,
-    ) {
-        // Wait for a new address, or retry with the old one after timeout.
-        if let Ok(new) = sync::wait_for(&ctx.with_timeout(config::CONNECT_RETRY), addrs, |addrs| {
-            &addrs.get(peer).map(|x| x.msg.addr) != addr
-        })
-        .instrument(tracing::info_span!("wait_for_address"))
-        .await
-        {
-            *addr = new.get(peer).map(|x| x.msg.addr);
-        }
-        let Some(addr) = addr else { return };
-        if let Err(err) = self.run_outbound_stream(ctx, peer, *addr).await {
-            tracing::info!("run_outbound_stream({peer:?},{addr}): {err:#}");
-        }
-    }
-
     /// Maintains a connection to the given validator.
     /// If connection breaks, it tries to reconnect periodically.
     pub(crate) async fn maintain_connection(&self, ctx: &ctx::Ctx, peer: &validator::PublicKey) {
@@ -340,8 +316,24 @@ impl Network {
         let mut addr = None;
 
         while ctx.is_active() {
-            self.maintain_connection_iter(ctx, peer, addrs, &mut addr)
-                .await;
+            async {
+                // Wait for a new address, or retry with the old one after timeout.
+                if let Ok(new) =
+                    sync::wait_for(&ctx.with_timeout(config::CONNECT_RETRY), addrs, |addrs| {
+                        addrs.get(peer).map(|x| x.msg.addr) != addr
+                    })
+                    .instrument(tracing::info_span!("wait_for_address"))
+                    .await
+                {
+                    addr = new.get(peer).map(|x| x.msg.addr);
+                }
+                let Some(addr) = addr else { return };
+                if let Err(err) = self.run_outbound_stream(ctx, peer, addr).await {
+                    tracing::info!("run_outbound_stream({peer:?},{addr}): {err:#}");
+                }
+            }
+            .instrument(tracing::info_span!("maintain_connection_iter"))
+            .await;
         }
     }
 }

@@ -1,6 +1,5 @@
 //! Defines storage layer for finalized blocks.
 use anyhow::Context as _;
-use std::borrow::Borrow;
 use std::{collections::VecDeque, fmt, sync::Arc};
 use tracing::Instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
@@ -184,63 +183,46 @@ impl BlockStoreRunner {
         let store_ref = Arc::downgrade(&self.0);
         let _ = COLLECTOR.before_scrape(move || Some(store_ref.upgrade()?.scrape_metrics()));
 
-        #[tracing::instrument(skip_all)]
-        async fn watch_persistent_state_iteration(
-            ctx: &ctx::Ctx,
-            persisted: &mut sync::watch::Receiver<BlockStoreState>,
-            inner: &sync::watch::Sender<Inner>,
-        ) -> ctx::Result<()> {
-            let new = sync::changed(ctx, persisted)
-                .instrument(tracing::info_span!("wait_for_block_store_change"))
-                .await?
-                .clone();
-            sync::try_send_modify(inner, |inner| inner.update_persisted(new))?;
-
-            Ok(())
-        }
-
-        #[tracing::instrument(skip_all)]
-        async fn queue_persist_block_iteration(
-            ctx: &ctx::Ctx,
-            queue_next: &mut validator::BlockNumber,
-            inner: &mut sync::watch::Receiver<Inner>,
-            persistent: &dyn PersistentBlockStore,
-        ) -> ctx::Result<()> {
-            let block = sync::wait_for_some(ctx, inner, |inner| {
-                inner.block((*queue_next).max(inner.persisted.next()))
-            })
-            .instrument(tracing::info_span!("wait_for_next_block"))
-            .await?;
-            *queue_next = block.number().next();
-            // TODO: monitor errors as well.
-            let t = metrics::PERSISTENT_BLOCK_STORE
-                .queue_next_block_latency
-                .start();
-            persistent.queue_next_block(ctx, block).await?;
-            t.observe();
-
-            Ok(())
-        }
-
         let res = scope::run!(ctx, |ctx, s| async {
             s.spawn::<()>(async {
                 // Task watching the persisted state.
                 let mut persisted = self.0.persistent.persisted();
                 persisted.mark_changed();
                 loop {
-                    watch_persistent_state_iteration(ctx, &mut persisted, &self.0.inner).await?;
+                    async {
+                        let new = sync::changed(ctx, &mut persisted)
+                            .instrument(tracing::info_span!("wait_for_block_store_change"))
+                            .await?
+                            .clone();
+                        sync::try_send_modify(&self.0.inner, |inner| inner.update_persisted(new))?;
+
+                        ctx::Ok(())
+                    }
+                    .instrument(tracing::info_span!("watch_persistent_state_iteration"))
+                    .await?;
                 }
             });
             // Task queueing blocks to be persisted.
             let inner = &mut self.0.inner.subscribe();
             let mut queue_next = validator::BlockNumber(0);
             loop {
-                queue_persist_block_iteration(
-                    ctx,
-                    &mut queue_next,
-                    inner,
-                    self.0.persistent.borrow(),
-                )
+                async {
+                    let block = sync::wait_for_some(ctx, inner, |inner| {
+                        inner.block(queue_next.max(inner.persisted.next()))
+                    })
+                    .instrument(tracing::info_span!("wait_for_next_block"))
+                    .await?;
+                    queue_next = block.number().next();
+                    // TODO: monitor errors as well.
+                    let t = metrics::PERSISTENT_BLOCK_STORE
+                        .queue_next_block_latency
+                        .start();
+                    self.0.persistent.queue_next_block(ctx, block).await?;
+                    t.observe();
+
+                    ctx::Ok(())
+                }
+                .instrument(tracing::info_span!("queue_persist_block_iteration"))
                 .await?;
             }
         })

@@ -18,14 +18,13 @@ pub use self::{
     attestation_status::{AttestationStatus, AttestationStatusReceiver, AttestationStatusWatch},
     batch_votes::BatchVotesPublisher,
 };
-use crate::gossip::batch_votes::BatchVotes;
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
 use fetch::RequestItem;
 use std::sync::{atomic::AtomicUsize, Arc};
 use tracing::Instrument;
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, error::Wrap as _, scope, sync};
-use zksync_consensus_roles::{attester, node, validator};
+use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore};
 
 mod attestation_status;
@@ -198,58 +197,40 @@ impl Network {
         // Subscribe starts as seen but we don't want to miss the first item.
         recv_status.mark_changed();
 
-        #[tracing::instrument(skip_all)]
-        async fn new_votes_iter(
-            ctx: &ctx::Ctx,
-            attesters: &attester::Committee,
-            genesis: &validator::GenesisHash,
-            recv_votes: &mut sync::watch::Receiver<BatchVotes>,
-            recv_status: &mut AttestationStatusReceiver,
-            batch_votes: &BatchVotesWatch,
-            batch_store: &BatchStore,
-        ) -> ctx::Result<()> {
-            // Wait until the status indicates that we're ready to sign the next batch.
-            let Some(batch_number) = sync::changed(ctx, recv_status)
-                .instrument(tracing::info_span!("wait_for_attestation_status"))
-                .await?
-                .next_batch_to_attest
-            else {
-                return Ok(());
-            };
-
-            // Get rid of all previous votes. We don't expect this to go backwards without regenesis, which will involve a restart.
-            batch_votes.set_min_batch_number(batch_number).await;
-
-            // Now wait until we find the next quorum, whatever it is:
-            // * on the main node, if attesters are honest, they will vote on the next batch number and the main node will not see gaps
-            // * on external nodes the votes might be affected by changes in the value returned by the API, and there might be gaps
-            // What is important, though, is that the batch number does not move backwards while we look for a quorum, because attesters
-            // (re)casting earlier votes will go ignored by those fixed on a higher min_batch_number, and gossip will only be attempted once.
-            // The possibility of this will be fixed by deterministally picking a start batch number based on fork indicated by genesis.
-            let qc = sync::wait_for_some(ctx, recv_votes, |votes| {
-                votes.find_quorum(attesters, genesis)
-            })
-            .instrument(tracing::info_span!("wait_for_quorum"))
-            .await?;
-
-            batch_store
-                .persist_batch_qc(ctx, qc)
-                .await
-                .wrap("persist_batch_qc")?;
-
-            Ok(())
-        }
-
         loop {
-            new_votes_iter(
-                ctx,
-                attesters,
-                &genesis,
-                &mut recv_votes,
-                &mut recv_status,
-                &self.batch_votes,
-                &self.batch_store,
-            )
+            async {
+                // Wait until the status indicates that we're ready to sign the next batch.
+                let Some(batch_number) = sync::changed(ctx, &mut recv_status)
+                    .instrument(tracing::info_span!("wait_for_attestation_status"))
+                    .await?
+                    .next_batch_to_attest
+                else {
+                    return Ok(());
+                };
+
+                // Get rid of all previous votes. We don't expect this to go backwards without regenesis, which will involve a restart.
+                self.batch_votes.set_min_batch_number(batch_number).await;
+
+                // Now wait until we find the next quorum, whatever it is:
+                // * on the main node, if attesters are honest, they will vote on the next batch number and the main node will not see gaps
+                // * on external nodes the votes might be affected by changes in the value returned by the API, and there might be gaps
+                // What is important, though, is that the batch number does not move backwards while we look for a quorum, because attesters
+                // (re)casting earlier votes will go ignored by those fixed on a higher min_batch_number, and gossip will only be attempted once.
+                // The possibility of this will be fixed by deterministally picking a start batch number based on fork indicated by genesis.
+                let qc = sync::wait_for_some(ctx, &mut recv_votes, |votes| {
+                    votes.find_quorum(attesters, &genesis)
+                })
+                .instrument(tracing::info_span!("wait_for_quorum"))
+                .await?;
+
+                self.batch_store
+                    .persist_batch_qc(ctx, qc)
+                    .await
+                    .wrap("persist_batch_qc")?;
+
+                ctx::Ok(())
+            }
+            .instrument(tracing::info_span!("new_votes_iter"))
             .await?;
         }
     }

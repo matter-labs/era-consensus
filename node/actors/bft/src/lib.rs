@@ -20,7 +20,7 @@ use anyhow::Context;
 pub use config::Config;
 use std::sync::Arc;
 use tracing::Instrument;
-use zksync_concurrency::{ctx, error::Wrap as _, oneshot, scope, sync};
+use zksync_concurrency::{ctx, error::Wrap as _, oneshot, scope};
 use zksync_consensus_network::io::ConsensusReq;
 use zksync_consensus_roles::validator;
 use zksync_consensus_utils::pipe::ActorPipe;
@@ -57,8 +57,6 @@ pub trait PayloadManager: std::fmt::Debug + Send + Sync {
 
 /// Channel through which bft actor sends network messages.
 pub(crate) type OutputSender = ctx::channel::UnboundedSender<OutputMessage>;
-/// Channel through which bft actor receives network messages.
-pub(crate) type InputReceiver = ctx::channel::UnboundedReceiver<InputMessage>;
 
 impl Config {
     /// Starts the bft actor. It will start running, processing incoming messages and
@@ -90,42 +88,37 @@ impl Config {
 
             tracing::info!("Starting consensus actor {:?}", cfg.secret_key.public());
 
-            #[tracing::instrument(skip_all)]
-            async fn bft_iter(
-                ctx: &ctx::Ctx,
-                pipe_recv: &mut InputReceiver,
-                leader_send: &sync::prunable_mpsc::Sender<ConsensusReq>,
-                replica_send: &sync::prunable_mpsc::Sender<ConsensusReq>,
-            ) -> anyhow::Result<()> {
-                let InputMessage::Network(req) = pipe_recv
-                    .recv(ctx)
-                    .instrument(tracing::info_span!("wait_for_message"))
-                    .await?;
-                use validator::ConsensusMsg as M;
-                match &req.msg.msg {
-                    M::ReplicaPrepare(_) => {
-                        // This is a hacky way to do a clone. This is necessary since we don't want to derive
-                        // Clone for ConsensusReq. When we change to ChonkyBFT this will be removed anyway.
-                        let (ack, _) = oneshot::channel();
-                        let new_req = ConsensusReq {
-                            msg: req.msg.clone(),
-                            ack,
-                        };
-
-                        replica_send.send(new_req);
-                        leader_send.send(req);
-                    }
-                    M::ReplicaCommit(_) => leader_send.send(req),
-                    M::LeaderPrepare(_) | M::LeaderCommit(_) => replica_send.send(req),
-                }
-
-                Ok(())
-            }
-
             // This is the infinite loop where the consensus actually runs. The validator waits for either
             // a message from the network or for a timeout, and processes each accordingly.
             loop {
-                bft_iter(ctx, &mut pipe.recv, &leader_send, &replica_send).await?;
+                async {
+                    let InputMessage::Network(req) = pipe
+                        .recv
+                        .recv(ctx)
+                        .instrument(tracing::info_span!("wait_for_message"))
+                        .await?;
+                    use validator::ConsensusMsg as M;
+                    match &req.msg.msg {
+                        M::ReplicaPrepare(_) => {
+                            // This is a hacky way to do a clone. This is necessary since we don't want to derive
+                            // Clone for ConsensusReq. When we change to ChonkyBFT this will be removed anyway.
+                            let (ack, _) = oneshot::channel();
+                            let new_req = ConsensusReq {
+                                msg: req.msg.clone(),
+                                ack,
+                            };
+
+                            replica_send.send(new_req);
+                            leader_send.send(req);
+                        }
+                        M::ReplicaCommit(_) => leader_send.send(req),
+                        M::LeaderPrepare(_) | M::LeaderCommit(_) => replica_send.send(req),
+                    }
+
+                    anyhow::Ok(())
+                }
+                .instrument(tracing::info_span!("bft_iter"))
+                .await?;
             }
         })
         .await;

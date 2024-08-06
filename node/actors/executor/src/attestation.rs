@@ -8,7 +8,7 @@ use zksync_concurrency::{ctx, sync, time};
 use zksync_consensus_network::gossip::{
     AttestationStatusReceiver, AttestationStatusWatch, BatchVotesPublisher,
 };
-use zksync_consensus_roles::{attester, validator};
+use zksync_consensus_roles::attester;
 use zksync_consensus_storage::{BatchStore, BlockStore};
 
 /// Polls the database for new batches to be signed and publishes them to the gossip channel.
@@ -58,68 +58,50 @@ impl AttesterRunner {
         // Subscribe starts as seen but we don't want to miss the first item.
         self.status.mark_changed();
 
-        #[tracing::instrument(skip_all)]
-        async fn attestation_iter(
-            ctx: &ctx::Ctx,
-            status: &mut AttestationStatusReceiver,
-            batch_store: &BatchStore,
-            publisher: &BatchVotesPublisher,
-            attester: &Attester,
-            poll_interval: time::Duration,
-            attesters: &attester::Committee,
-            genesis: &validator::GenesisHash,
-        ) -> anyhow::Result<()> {
-            let Some(batch_number) = sync::changed(ctx, status)
-                .instrument(tracing::info_span!("wait_for_attestation_status"))
-                .await?
-                .next_batch_to_attest
-            else {
-                return Ok(());
-            };
-
-            tracing::info!(%batch_number, "attestation status");
-
-            // We can avoid actively polling the database in `wait_for_batch_to_sign` by waiting its existence
-            // to be indicated in memory (which itself relies on polling). This happens once we have the commitment,
-            // which for nodes that get the blocks through BFT should happen after execution. Nodes which
-            // rely on batch sync don't participate in attestations as they need the batch on L1 first.
-            batch_store.wait_until_persisted(ctx, batch_number).await?;
-
-            // Try to get the next batch to sign; the commitment might not be available just yet.
-            let batch = AttesterRunner::wait_for_batch_to_sign(
-                ctx,
-                batch_number,
-                batch_store,
-                poll_interval,
-            )
-            .await?;
-
-            // The certificates might be collected out of order because of how gossip works;
-            // we could query the DB to see if we already have a QC, or we can just go ahead
-            // and publish our vote, and let others ignore it.
-
-            tracing::info!(%batch_number, "publishing attestation");
-
-            // We only have to publish a vote once; future peers can pull it from the register.
-            publisher
-                .publish(attesters, &genesis, &attester.key, batch)
-                .await
-                .context("publish")?;
-
-            Ok(())
-        }
-
         loop {
-            attestation_iter(
-                ctx,
-                &mut self.status,
-                &self.batch_store,
-                &self.publisher,
-                &self.attester,
-                self.poll_interval,
-                &attesters,
-                &genesis,
-            )
+            async {
+                let Some(batch_number) = sync::changed(ctx, &mut self.status)
+                    .instrument(tracing::info_span!("wait_for_attestation_status"))
+                    .await?
+                    .next_batch_to_attest
+                else {
+                    return Ok(());
+                };
+
+                tracing::info!(%batch_number, "attestation status");
+
+                // We can avoid actively polling the database in `wait_for_batch_to_sign` by waiting its existence
+                // to be indicated in memory (which itself relies on polling). This happens once we have the commitment,
+                // which for nodes that get the blocks through BFT should happen after execution. Nodes which
+                // rely on batch sync don't participate in attestations as they need the batch on L1 first.
+                self.batch_store
+                    .wait_until_persisted(ctx, batch_number)
+                    .await?;
+
+                // Try to get the next batch to sign; the commitment might not be available just yet.
+                let batch = AttesterRunner::wait_for_batch_to_sign(
+                    ctx,
+                    batch_number,
+                    &self.batch_store,
+                    self.poll_interval,
+                )
+                .await?;
+
+                // The certificates might be collected out of order because of how gossip works;
+                // we could query the DB to see if we already have a QC, or we can just go ahead
+                // and publish our vote, and let others ignore it.
+
+                tracing::info!(%batch_number, "publishing attestation");
+
+                // We only have to publish a vote once; future peers can pull it from the register.
+                self.publisher
+                    .publish(attesters, &genesis, &self.attester.key, batch)
+                    .await
+                    .context("publish")?;
+
+                ctx::Ok(())
+            }
+            .instrument(tracing::info_span!("attestation_iter"))
             .await?;
         }
     }
