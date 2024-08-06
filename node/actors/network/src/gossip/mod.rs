@@ -14,11 +14,11 @@
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
 use self::batch_votes::BatchVotesWatch;
-use crate::gossip::batch_votes::BatchVotes;
 pub use self::{
     attestation_status::{AttestationStatus, AttestationStatusReceiver, AttestationStatusWatch},
     batch_votes::BatchVotesPublisher,
 };
+use crate::gossip::batch_votes::BatchVotes;
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
 use fetch::RequestItem;
 use std::sync::{atomic::AtomicUsize, Arc};
