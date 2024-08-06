@@ -131,6 +131,11 @@ impl StateWatch {
         res
     }
 
+    /// All votes kept in the state.
+    pub(crate) fn votes(&self) -> Vec<Arc<attester::Signed<attester::Batch>>>  {
+        self.state.subscribe().borrow().iter().map(|s|s.votes.values().cloned()).flatten().collect()
+    }
+
     /// Waits for the certificate to be collected.
     pub async fn wait_for_qc(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<attester::BatchQC> {
         sync::wait_for_some(ctx, &mut self.state.subscribe(), |state| {

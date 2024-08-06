@@ -34,7 +34,15 @@ pub struct Runner {
 
 impl Runner {
     /// Run the poll loop.
-    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        match self.poll_forever(ctx).await {
+            Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
+            Err(ctx::Error::Internal(err)) => Err(err),
+        }
+    }
+
+    /// Poll the client forever in a loop or until canceled.
+    async fn poll_forever(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         loop {
             match self.client.config(ctx).await {
                 Ok(Some(config)) => {
@@ -49,6 +57,7 @@ impl Runner {
             if let Err(ctx::Canceled) = ctx.sleep(self.poll_interval).await {
                 return Ok(());
             }
+            ctx.sleep(self.poll_interval).await?;
         }
     }
 }

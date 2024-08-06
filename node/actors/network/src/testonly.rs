@@ -191,7 +191,7 @@ impl Instance {
         let (actor_pipe, dispatcher_pipe) = pipe::new();
         let (net, net_runner) = Network::new(
             cfg,
-            block_store,
+            block_store.clone(),
             batch_store.clone(),
             actor_pipe,
             attestation_state,

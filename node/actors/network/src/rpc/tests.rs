@@ -17,7 +17,9 @@ fn test_capability_rpc_correspondence() {
         push_block_store_state::Rpc::CAPABILITY_ID,
         get_block::Rpc::CAPABILITY_ID,
         ping::Rpc::CAPABILITY_ID,
-        push_batch_votes::Rpc::CAPABILITY_ID,
+        batch_votes::PUSH_V1,
+        batch_votes::PUSH_V2,
+        batch_votes::PullRpc::CAPABILITY_ID,
         push_batch_store_state::Rpc::CAPABILITY_ID,
         get_batch::Rpc::CAPABILITY_ID,
     ];

@@ -22,7 +22,7 @@ use zksync_concurrency::{
     testonly::{abort_on_panic, set_timeout},
     time,
 };
-use zksync_consensus_roles::{attester, validator};
+use zksync_consensus_roles::{validator};
 use zksync_consensus_storage::{testonly::TestMemoryStorage};
 
 mod fetch_batches;
@@ -105,19 +105,6 @@ fn mk_netaddr(
         addr,
         version,
         timestamp,
-    })
-}
-
-fn mk_batch<R: Rng>(
-    rng: &mut R,
-    key: &attester::SecretKey,
-    number: attester::BatchNumber,
-    genesis: attester::GenesisHash,
-) -> attester::Signed<attester::Batch> {
-    key.sign_msg(attester::Batch {
-        number,
-        hash: rng.gen(),
-        genesis,
     })
 }
 

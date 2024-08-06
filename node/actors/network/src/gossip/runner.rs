@@ -1,4 +1,4 @@
-use super::{handshake, Network, ValidatorAddrs};
+use super::{handshake, attestation, Network, ValidatorAddrs};
 use crate::{noise, preface, rpc};
 use anyhow::Context as _;
 use async_trait::async_trait;
@@ -57,13 +57,13 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for &PushServer<'_> {
 }
 
 #[async_trait::async_trait]
-impl rpc::Handler<rpc::push_batch_votes::Rpc> for &PushServer<'_> {
+impl rpc::Handler<rpc::batch_votes::PushRpc> for &PushServer<'_> {
     /// Here we bound the buffering of incoming batch messages.
     fn max_req_size(&self) -> usize {
         100 * kB
     }
 
-    async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::push_batch_votes::Req) -> anyhow::Result<()> {
+    async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::batch_votes::Msg) -> anyhow::Result<()> {
         self.net.attestation_state.insert_votes(req.0.into_iter()).await
     }
 }
@@ -128,6 +128,14 @@ impl rpc::Handler<rpc::get_batch::Rpc> for &BatchStore {
     }
 }
 
+#[async_trait]
+impl rpc::Handler<rpc::batch_votes::PullRpc> for &attestation::StateWatch {
+    fn max_req_size(&self) -> usize { kB }
+    async fn handle(&self, _ctx: &ctx::Ctx, _req: ()) -> anyhow::Result<rpc::batch_votes::Msg> {
+        Ok(rpc::batch_votes::Msg(self.votes()))
+    }
+}
+
 impl Network {
     /// Manages lifecycle of a single connection.
     async fn run_stream(&self, ctx: &ctx::Ctx, stream: noise::Stream) -> anyhow::Result<()> {
@@ -177,13 +185,13 @@ impl Network {
 
             // If there is an attester committee then
             if self.genesis().attesters.as_ref().is_some() {
-                let push_batch_votes_client = rpc::Client::<rpc::push_batch_votes::Rpc>::new(
+                let push_batch_votes_client = rpc::Client::<rpc::batch_votes::PushRpc>::new(
                     ctx,
                     self.cfg.rpc.push_batch_votes_rate,
                 );
                 service = service
                     .add_client(&push_batch_votes_client)
-                    .add_server::<rpc::push_batch_votes::Rpc>(
+                    .add_server::<rpc::batch_votes::PushRpc>(
                         ctx,
                         &push_server,
                         self.cfg.rpc.push_batch_votes_rate,
@@ -195,7 +203,7 @@ impl Network {
                     let mut recv = self.attestation_state.subscribe();
                     loop {
                         let new = recv.wait_for_new_votes(ctx).await?;
-                        let req = rpc::push_batch_votes::Req(new);
+                        let req = rpc::batch_votes::Msg(new);
                         push_batch_votes_client.call(ctx, &req, kB).await?;
                     }
                 });

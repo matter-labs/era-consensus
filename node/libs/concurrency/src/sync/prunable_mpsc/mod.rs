@@ -32,7 +32,7 @@ pub enum SelectionFunctionResult {
 /// * [`T`]: The type of data that will be sent through the channel.
 /// * [`filter_predicate`]: A predicate that checks the newly sent value and avoids adding to the queue if it returns false
 /// * [`selection_function`]: A function that determines whether an unreceived, pending value in the buffer (represented by the first `T`) should be pruned
-/// based on a newly sent value (represented by the second `T`) or the new value should be filtered out, or both should be kept.
+///   based on a newly sent value (represented by the second `T`) or the new value should be filtered out, or both should be kept.
 pub fn channel<T>(
     filter_predicate: impl 'static + Sync + Send + Fn(&T) -> bool,
     selection_function: impl 'static + Sync + Send + Fn(&T, &T) -> SelectionFunctionResult,

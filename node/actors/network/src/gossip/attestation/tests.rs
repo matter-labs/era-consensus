@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use super::*;
 use zksync_concurrency::testonly::abort_on_panic;
 use rand::Rng as _;
@@ -45,7 +46,7 @@ async fn test_insert_votes() {
             weight: 1250,
         })).unwrap(),
     };
-    state.update_config(config.clone());
+    state.update_config(config.clone()).await.unwrap();
     let mut recv = state.subscribe();
 
     let all_votes : Vec<Vote> = keys.iter().map(|k| k.sign_msg(config.batch_to_attest.clone().into()).into()).collect();
