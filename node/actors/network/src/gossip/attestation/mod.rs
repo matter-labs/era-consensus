@@ -76,7 +76,7 @@ impl State {
         Ok(())
     }
 
-    fn qc(&self) -> Option<attester::BatchQC> { {
+    fn qc(&self) -> Option<attester::BatchQC> {
         if self.weight < self.config.committee.threshold() {
             return None;
         }

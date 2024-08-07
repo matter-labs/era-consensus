@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use super::*;
 use zksync_concurrency::testonly::abort_on_panic;
-use rand::Rng as _;
+use rand::{seq::SliceRandom as _, Rng as _};
 
 type Vote = Arc<attester::Signed<attester::Batch>>;
 
@@ -106,7 +106,7 @@ async fn test_insert_votes() {
 }
 
 #[tokio::test]
-fn test_wait_for_qc() {
+async fn test_wait_for_qc() {
     abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock); 
     let rng = &mut ctx.rng();
@@ -116,6 +116,7 @@ fn test_wait_for_qc() {
     let first : attester::BatchNumber = rng.gen();
 
     for i in 0..10 {
+        tracing::info!("iteration {i}");
         let committee_size = rng.gen_range(1..20);
         let keys: Vec<attester::SecretKey> = (0..committee_size).map(|_| rng.gen()).collect();
         let config = Config {
@@ -129,42 +130,20 @@ fn test_wait_for_qc() {
                 weight: rng.gen_range(1..=100),
             })).unwrap(),
         };
+        let mut all_votes : Vec<Vote> = keys.iter().map(|k| k.sign_msg(config.batch_to_attest.clone().into()).into()).collect();
+        all_votes.shuffle(rng);
         state.update_config(config.clone()).await.unwrap();
-        // TODO: add votes gradually, extract qc each time and verify the qc.
-        for k in &keys {
-            // We need 4/5+1 for quorum, so let's say ~80% vote on the second batch.
-            let b = usize::from(rng.gen_range(0..100) < 80);
-            let batch = &batches[b].0;
-            let vote = sk.sign_msg(batch.clone());
-            votes
-                .update(&attesters, &genesis, &[Arc::new(vote)])
-                .unwrap();
-            batches[b].1 += attesters.weight(&sk.public()).unwrap();
-
-            // Check that as soon as we have quorum it's found.
-            if batches[b].1 >= attesters.threshold() {
-                let qc = votes
-                    .find_quorum(&attesters, &genesis)
-                    .expect("should find quorum");
-                assert!(qc.message == *batch);
-                assert!(qc.signatures.keys().count() > 0);
+        loop {
+            let end = rng.gen_range(0..=committee_size);
+            tracing::info!("end = {end}");
+            state.insert_votes(all_votes[..end].iter().cloned()).await.unwrap();
+            if config.committee.weight_of_keys(all_votes[..end].iter().map(|v|&v.key)) >= config.committee.threshold() {
+                let qc = state.wait_for_qc(ctx).await.unwrap();
+                assert_eq!(qc.message, config.batch_to_attest);
+                qc.verify(genesis,&config.committee).unwrap();
+                break;
             }
+            assert_eq!(None, state.state.subscribe().borrow().as_ref().unwrap().qc());
         }
-
-        // Check that if there was no quoroum then we don't find any.
-        if !batches.iter().any(|b| b.1 >= attesters.threshold()) {
-            assert!(votes.find_quorum(&attesters, &genesis).is_none());
-        }
-
-        // Check that the minimum batch number prunes data.
-        let last_batch = batches[1].0.number;
-
-        votes.set_min_batch_number(last_batch);
-        assert!(votes.votes.values().all(|v| v.msg.number >= last_batch));
-        assert!(votes.support.keys().all(|n| *n >= last_batch));
-
-        votes.set_min_batch_number(last_batch.next());
-        assert!(votes.votes.is_empty());
-        assert!(votes.support.is_empty());
     }
 }
