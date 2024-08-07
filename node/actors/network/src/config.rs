@@ -28,8 +28,6 @@ pub struct RpcConfig {
     pub consensus_rate: limiter::Rate,
     /// Max rate of sending/receiving PushBatchVotes RPCs.
     pub push_batch_votes_rate: limiter::Rate,
-    /// Max rate of sending/reciving PullBatchVotes RPCs.
-    pub pull_batch_votes_rate: limiter::Rate,
 }
 
 impl Default for RpcConfig {
@@ -62,10 +60,6 @@ impl Default for RpcConfig {
                 refresh: time::Duration::ZERO,
             },
             push_batch_votes_rate: limiter::Rate {
-                burst: 2,
-                refresh: time::Duration::milliseconds(500),
-            },
-            pull_batch_votes_rate: limiter::Rate {
                 burst: 2,
                 refresh: time::Duration::milliseconds(500),
             },

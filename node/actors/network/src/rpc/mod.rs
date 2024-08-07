@@ -28,7 +28,7 @@ pub(crate) mod get_block;
 mod metrics;
 pub(crate) mod ping;
 pub(crate) mod push_batch_store_state;
-pub(crate) mod batch_votes;
+pub(crate) mod push_batch_votes;
 pub(crate) mod push_block_store_state;
 pub(crate) mod push_validator_addrs;
 #[cfg(test)]
