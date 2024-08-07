@@ -75,6 +75,20 @@ impl State {
         }
         Ok(())
     }
+
+    fn qc(&self) -> Option<attester::BatchQC> { {
+        if self.weight < self.config.committee.threshold() {
+            return None;
+        }
+        let mut sigs = attester::MultiSig::default();
+        for vote in self.votes.values() {
+            sigs.add(vote.key.clone(),vote.sig.clone());
+        }
+        Some(attester::BatchQC {
+            message: self.config.batch_to_attest.clone(),
+            signatures: sigs,
+        })
+    }
 }
 
 pub(crate) struct StateReceiver {
@@ -138,20 +152,7 @@ impl StateWatch {
 
     /// Waits for the certificate to be collected.
     pub async fn wait_for_qc(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<attester::BatchQC> {
-        sync::wait_for_some(ctx, &mut self.state.subscribe(), |state| {
-            let state = state.as_ref()?;
-            if state.weight < state.config.committee.threshold() {
-                return None;
-            }
-            let mut sigs = attester::MultiSig::default();
-            for vote in state.votes.values() {
-                sigs.add(vote.key.clone(),vote.sig.clone());
-            }
-            Some(attester::BatchQC {
-                message: state.config.batch_to_attest.clone(),
-                signatures: sigs,
-            })
-        }).await
+        sync::wait_for_some(ctx, &mut self.state.subscribe(), |s| s.as_ref()?.qc()).await
     }
 
     /// Updates the attestation config.
