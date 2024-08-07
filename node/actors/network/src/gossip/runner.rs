@@ -199,8 +199,8 @@ impl Network {
                 // Subscribe to what we know about the state of the whole network.
                 let mut recv = self.attestation_state.subscribe();
                 loop {
-                    let new = recv.wait_for_new_votes(ctx).await?;
-                    let req = rpc::batch_votes::Msg(new);
+                    let new = recv.wait_for_diff(ctx).await?;
+                    let req = rpc::batch_votes::Msg(new.votes);
                     push_batch_votes_client.call(ctx, &req, kB).await?;
                 }
             });

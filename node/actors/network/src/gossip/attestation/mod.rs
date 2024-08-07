@@ -32,17 +32,36 @@ pub(crate) struct State {
     weight: attester::Weight,
 }
 
+pub(crate) struct Diff {
+    pub(crate) votes: Vec<Arc<attester::Signed<attester::Batch>>>,
+    pub(crate) config_changed: bool,
+}
+
+impl Diff {
+    fn is_empty(&self) -> bool {
+        self.votes.is_empty() && !self.config_changed
+    }
+}
+
 impl State {
     /// Returns a set of votes of `self` which are newer than the entries in `old`.
-    fn new_votes(&self, old: &Option<Self>) -> Vec<Arc<attester::Signed<attester::Batch>>> {
-        let Some(old) = old.as_ref() else { return self.votes.values().cloned().collect() };
+    fn diff(&self, old: &Option<Self>) -> Diff {
+        let Some(old) = old.as_ref() else {
+            return Diff {
+                config_changed: true,
+                votes: self.votes.values().cloned().collect()
+            };
+        };
         match self.config.batch_to_attest.number.cmp(&old.config.batch_to_attest.number) {
-            Ordering::Less => vec![],
-            Ordering::Greater => self.votes.values().cloned().collect(),
-            Ordering::Equal => self.votes.iter()
-                .filter(|(k,_)|!old.votes.contains_key(k))
-                .map(|(_,v)|v.clone())
-                .collect()
+            Ordering::Less => Diff { config_changed: true, votes: vec![] },
+            Ordering::Greater => Diff { config_changed: true, votes: self.votes.values().cloned().collect() },
+            Ordering::Equal => Diff {
+                config_changed: false,
+                votes: self.votes.iter()
+                    .filter(|(k,_)|!old.votes.contains_key(k))
+                    .map(|(_,v)|v.clone())
+                    .collect(),
+            },
         }
     }
 
@@ -76,7 +95,7 @@ impl State {
         Ok(())
     }
 
-    fn qc(&self) -> Option<attester::BatchQC> { {
+    fn qc(&self) -> Option<attester::BatchQC> {
         if self.weight < self.config.committee.threshold() {
             return None;
         }
@@ -91,19 +110,19 @@ impl State {
     }
 }
 
-pub(crate) struct StateReceiver {
+pub(crate) struct DiffReceiver {
     prev: Option<State>,
     recv: sync::watch::Receiver<Option<State>>,
 }
 
-impl StateReceiver {
-    pub(crate) async fn wait_for_new_votes(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<Vec<Arc<attester::Signed<attester::Batch>>>> {
+impl DiffReceiver {
+    pub(crate) async fn wait_for_diff(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<Diff> {
         loop {
             let Some(new) = (*sync::changed(ctx, &mut self.recv).await?).clone() else { continue };
-            let new_votes = new.new_votes(&self.prev);
+            let diff = new.diff(&self.prev);
             self.prev = Some(new);
-            if !new_votes.is_empty() {
-                return Ok(new_votes)
+            if !diff.is_empty() {
+                return Ok(diff)
             }
         }
     }
@@ -128,10 +147,10 @@ impl StateWatch {
         Self { key, state: Watch::new(None) }
     }
 
-    pub(crate) fn subscribe(&self) -> StateReceiver {
+    pub(crate) fn subscribe(&self) -> DiffReceiver {
         let mut recv = self.state.subscribe();
         recv.mark_changed();
-        StateReceiver { prev: None, recv }
+        DiffReceiver { prev: None, recv }
     }
 
     pub(crate) async fn insert_votes(&self, votes: impl Iterator<Item=Arc<attester::Signed<attester::Batch>>>) -> anyhow::Result<()> {
@@ -156,7 +175,8 @@ impl StateWatch {
         let recv = &mut self.state.subscribe();
         recv.mark_changed();
         loop {
-            let Some(state) = sync::changed(ctx, recv).await? else { continue };
+            let state = sync::changed(ctx, recv).await?;
+            let Some(state) = state.as_ref() else { continue };
             if state.config.batch_to_attest.number < n { continue };
             if state.config.batch_to_attest.number > n { return Ok(None); }
             if let Some(qc) = state.qc() { return Ok(Some(qc)); }

@@ -8,23 +8,6 @@ type Vote = Arc<attester::Signed<attester::Batch>>;
 #[derive(Default, Debug, PartialEq)]
 struct Votes(im::HashMap<attester::PublicKey, Vote>);
 
-impl Votes {
-    fn insert(&mut self, vote: Vote) {
-        self.0.insert(vote.key.clone(), vote);
-    }
-
-    fn get(&mut self, key: &attester::SecretKey) -> Vote {
-        self.0.get(&key.public()).unwrap().clone()
-    }
-}
-
-impl StateReceiver {
-    fn snapshot(&self) -> Votes {
-        let Some(state) = self.recv.borrow().clone() else { return Votes::default() };
-        state.votes.values().cloned().into()
-    }
-}
-
 impl<T: IntoIterator<Item=Vote>> From<T> for Votes {
     fn from(x: T) -> Self {
         Self(x.into_iter().map(|v|(v.key.clone(),v)).collect())
@@ -62,13 +45,13 @@ async fn test_insert_votes() {
         // Initial votes.
         state.insert_votes(all_votes[0..3].iter().cloned()).await.unwrap();
         assert_eq!(Votes::from(all_votes[0..3].iter().cloned()), state.votes().into());
-        assert_eq!(Votes::from(all_votes[0..3].iter().cloned()), recv.wait_for_new_votes(ctx).await.unwrap().into());
+        assert_eq!(Votes::from(all_votes[0..3].iter().cloned()), recv.wait_for_diff(ctx).await.unwrap().votes.into());
 
         // Adding votes gradually.
         state.insert_votes(all_votes[3..5].iter().cloned()).await.unwrap();
         state.insert_votes(all_votes[5..7].iter().cloned()).await.unwrap();
         assert_eq!(Votes::from(all_votes[0..7].iter().cloned()), state.votes().into());
-        assert_eq!(Votes::from(all_votes[3..7].iter().cloned()), recv.wait_for_new_votes(ctx).await.unwrap().into());
+        assert_eq!(Votes::from(all_votes[3..7].iter().cloned()), recv.wait_for_diff(ctx).await.unwrap().votes.into());
 
         // Readding already inserded votes (noop).
         state.insert_votes(all_votes[2..6].iter().cloned()).await.unwrap();
@@ -101,7 +84,7 @@ async fn test_insert_votes() {
         // Add the last vote mixed with already added votes.
         state.insert_votes(all_votes[5..].iter().cloned()).await.unwrap();
         assert_eq!(Votes::from(all_votes.clone()), state.votes().into());
-        assert_eq!(Votes::from(all_votes[7..].iter().cloned()), recv.wait_for_new_votes(ctx).await.unwrap().into());
+        assert_eq!(Votes::from(all_votes[7..].iter().cloned()), recv.wait_for_diff(ctx).await.unwrap().votes.into());
     }
 }
 
@@ -137,8 +120,10 @@ async fn test_wait_for_qc() {
             let end = rng.gen_range(0..=committee_size);
             tracing::info!("end = {end}");
             state.insert_votes(all_votes[..end].iter().cloned()).await.unwrap();
+            // Waiting for the previous qc should immediately return None.
+            assert_eq!(None,state.wait_for_qc(ctx, config.batch_to_attest.number.prev().unwrap()).await.unwrap());
             if config.committee.weight_of_keys(all_votes[..end].iter().map(|v|&v.key)) >= config.committee.threshold() {
-                let qc = state.wait_for_qc(ctx).await.unwrap();
+                let qc = state.wait_for_qc(ctx, config.batch_to_attest.number).await.unwrap().unwrap();
                 assert_eq!(qc.message, config.batch_to_attest);
                 qc.verify(genesis,&config.committee).unwrap();
                 break;
