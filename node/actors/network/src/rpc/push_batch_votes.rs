@@ -20,16 +20,20 @@ impl super::Rpc for Rpc {
 /// Signed batch message that the receiving peer should process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Req {
+    /// Whether the client would like to receive a snapshot of all server's votes
+    /// in response.
     pub(crate) want_snapshot: Option<bool>,
+    /// New votes that server might be not aware of.
     pub(crate) votes: Vec<Arc<attester::Signed<attester::Batch>>>,
 }
 
 pub(crate) struct Resp {
-    // Empty if `req.want_snapshot` was not set.
+    /// Snapshot of all server's votes (if requested by the client).
     pub(crate) votes: Vec<Arc<attester::Signed<attester::Batch>>>,
 }
 
 impl Req {
+    /// Getter for `want_snapshot`.
     pub(crate) fn want_snapshot(&self) -> bool {
         self.want_snapshot.unwrap_or(false)
     }

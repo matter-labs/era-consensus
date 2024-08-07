@@ -29,8 +29,11 @@ pub(crate) struct State {
     weight: attester::Weight,
 }
 
+/// Diff between 2 states.
 pub(crate) struct Diff {
+    /// New votes.
     pub(crate) votes: Vec<Arc<attester::Signed<attester::Batch>>>,
+    /// Whether the config has changed.
     pub(crate) config_changed: bool,
 }
 
@@ -132,12 +135,14 @@ impl State {
     }
 }
 
+/// Received of state diffs.
 pub(crate) struct DiffReceiver {
     prev: Option<State>,
     recv: sync::watch::Receiver<Option<State>>,
 }
 
 impl DiffReceiver {
+    /// Waits for the next state diff.
     pub(crate) async fn wait_for_diff(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<Diff> {
         loop {
             let Some(new) = (*sync::changed(ctx, &mut self.recv).await?).clone() else {
@@ -173,12 +178,18 @@ impl StateWatch {
         }
     }
 
+    /// Subscribes to state diffs.
     pub(crate) fn subscribe(&self) -> DiffReceiver {
         let mut recv = self.state.subscribe();
         recv.mark_changed();
         DiffReceiver { prev: None, recv }
     }
 
+    /// Inserts votes to the state.
+    /// Irrelevant votes are silently ignored.
+    /// Returns an error if an invalid vote has been found.
+    /// It is possible that the state has been updated even if an error
+    /// was returned.
     pub(crate) async fn insert_votes(
         &self,
         votes: impl Iterator<Item = Arc<attester::Signed<attester::Batch>>>,

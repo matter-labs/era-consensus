@@ -37,6 +37,7 @@ pub(crate) mod testonly;
 mod tests;
 
 impl Capability {
+    /// Converts capability to `mux::CapabilityId`.
     pub(crate) fn id(self) -> mux::CapabilityId {
         self as mux::CapabilityId
     }
