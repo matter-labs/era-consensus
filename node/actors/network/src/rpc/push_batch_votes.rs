@@ -1,12 +1,12 @@
 //! Defines RPC for passing consensus messages.
-use crate::{proto::gossip as proto};
+use super::Capability;
+use crate::proto::gossip as proto;
 use anyhow::Context as _;
 use std::sync::Arc;
 use zksync_consensus_roles::attester;
 use zksync_protobuf::ProtoFmt;
-use super::Capability;
 
-/// RPC pushing fresh batch votes. 
+/// RPC pushing fresh batch votes.
 pub(crate) struct Rpc;
 
 impl super::Rpc for Rpc {
@@ -54,11 +54,14 @@ impl ProtoFmt for Req {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             want_snapshot: self.want_snapshot,
-            votes: self.votes.iter().map(|a| ProtoFmt::build(a.as_ref())).collect(),
+            votes: self
+                .votes
+                .iter()
+                .map(|a| ProtoFmt::build(a.as_ref()))
+                .collect(),
         }
     }
 }
-
 
 impl ProtoFmt for Resp {
     type Proto = proto::PushBatchVotesResp;
@@ -75,7 +78,11 @@ impl ProtoFmt for Resp {
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            votes: self.votes.iter().map(|a| ProtoFmt::build(a.as_ref())).collect(),
+            votes: self
+                .votes
+                .iter()
+                .map(|a| ProtoFmt::build(a.as_ref()))
+                .collect(),
         }
     }
 }

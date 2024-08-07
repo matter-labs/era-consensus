@@ -1,10 +1,10 @@
 //! RPC for fetching a batch from peer.
-use crate::{proto::gossip as proto};
+use super::Capability;
+use crate::proto::gossip as proto;
 use anyhow::Context as _;
 use zksync_consensus_roles::attester;
 use zksync_consensus_storage::BatchStoreState;
 use zksync_protobuf::{required, ProtoFmt};
-use super::Capability;
 
 /// PushBatchStoreState RPC.
 #[derive(Debug)]

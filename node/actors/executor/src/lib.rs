@@ -1,5 +1,6 @@
 //! Library files for the executor. We have it separate from the binary so that we can use these files in the tools crate.
 use crate::io::Dispatcher;
+use anyhow::Context as _;
 use network::http;
 pub use network::RpcConfig;
 use std::{
@@ -13,7 +14,6 @@ use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
-use anyhow::Context as _;
 
 pub mod attestation;
 mod io;
@@ -127,7 +127,10 @@ impl Executor {
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
-            s.spawn(async { dispatcher.run(ctx).await; Ok(()) });
+            s.spawn(async {
+                dispatcher.run(ctx).await;
+                Ok(())
+            });
             let (net, runner) = network::Network::new(
                 network_config,
                 self.block_store.clone(),
@@ -137,7 +140,7 @@ impl Executor {
             );
             net.register_metrics();
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
-            
+
             if let Some(debug_config) = self.config.debug_page {
                 s.spawn(async {
                     http::DebugPageServer::new(debug_config, net)

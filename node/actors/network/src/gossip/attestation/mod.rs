@@ -1,12 +1,9 @@
 //! Attestation.
-use std::fmt;
-use std::sync::Arc;
-use std::cmp::Ordering;
-use zksync_concurrency::{ctx,sync};
-use zksync_consensus_roles::attester;
-use std::collections::HashSet;
-use anyhow::Context as _;
 use crate::watch::Watch;
+use anyhow::Context as _;
+use std::{cmp::Ordering, collections::HashSet, fmt, sync::Arc};
+use zksync_concurrency::{ctx, sync};
+use zksync_consensus_roles::attester;
 
 #[cfg(test)]
 mod tests;
@@ -20,7 +17,7 @@ pub struct Config {
     /// NOTE: the committee is not supposed to change often,
     /// so you might want to use `Arc<attester::Committee>` instead
     /// to avoid extra copying.
-    pub committee: attester::Committee, 
+    pub committee: attester::Committee,
 }
 
 /// A [Watch] over an [AttestationStatus] which we can use to notify components about
@@ -49,17 +46,30 @@ impl State {
         let Some(old) = old.as_ref() else {
             return Diff {
                 config_changed: true,
-                votes: self.votes.values().cloned().collect()
+                votes: self.votes.values().cloned().collect(),
             };
         };
-        match self.config.batch_to_attest.number.cmp(&old.config.batch_to_attest.number) {
-            Ordering::Less => Diff { config_changed: true, votes: vec![] },
-            Ordering::Greater => Diff { config_changed: true, votes: self.votes.values().cloned().collect() },
+        match self
+            .config
+            .batch_to_attest
+            .number
+            .cmp(&old.config.batch_to_attest.number)
+        {
+            Ordering::Less => Diff {
+                config_changed: true,
+                votes: vec![],
+            },
+            Ordering::Greater => Diff {
+                config_changed: true,
+                votes: self.votes.values().cloned().collect(),
+            },
             Ordering::Equal => Diff {
                 config_changed: false,
-                votes: self.votes.iter()
-                    .filter(|(k,_)|!old.votes.contains_key(k))
-                    .map(|(_,v)|v.clone())
+                votes: self
+                    .votes
+                    .iter()
+                    .filter(|(k, _)| !old.votes.contains_key(k))
+                    .map(|(_, v)| v.clone())
                     .collect(),
             },
         }
@@ -69,18 +79,30 @@ impl State {
     /// Noop if vote is not signed by a committee memver or already inserted.
     /// Returns an error if genesis doesn't match or the signature is invalid.
     fn insert_vote(&mut self, vote: Arc<attester::Signed<attester::Batch>>) -> anyhow::Result<()> {
-        anyhow::ensure!(vote.msg.genesis == self.config.batch_to_attest.genesis, "Genesis mismatch");
-        if vote.msg != self.config.batch_to_attest { return Ok(()) }
-        let Some(weight) = self.config.committee.weight(&vote.key) else { return Ok(()) };
-        if self.votes.contains_key(&vote.key) { return Ok(()) }
-        // Verify signature only after checking all the other preconditions. 
+        anyhow::ensure!(
+            vote.msg.genesis == self.config.batch_to_attest.genesis,
+            "Genesis mismatch"
+        );
+        if vote.msg != self.config.batch_to_attest {
+            return Ok(());
+        }
+        let Some(weight) = self.config.committee.weight(&vote.key) else {
+            return Ok(());
+        };
+        if self.votes.contains_key(&vote.key) {
+            return Ok(());
+        }
+        // Verify signature only after checking all the other preconditions.
         vote.verify().context("verify")?;
-        self.votes.insert(vote.key.clone(),vote);
+        self.votes.insert(vote.key.clone(), vote);
         self.weight += weight;
         Ok(())
     }
 
-    fn insert_votes(&mut self, votes: impl Iterator<Item=Arc<attester::Signed<attester::Batch>>>) -> anyhow::Result<()> {
+    fn insert_votes(
+        &mut self,
+        votes: impl Iterator<Item = Arc<attester::Signed<attester::Batch>>>,
+    ) -> anyhow::Result<()> {
         let mut done = HashSet::new();
         for vote in votes {
             // Disallow multiple entries for the same key:
@@ -101,7 +123,7 @@ impl State {
         }
         let mut sigs = attester::MultiSig::default();
         for vote in self.votes.values() {
-            sigs.add(vote.key.clone(),vote.sig.clone());
+            sigs.add(vote.key.clone(), vote.sig.clone());
         }
         Some(attester::BatchQC {
             message: self.config.batch_to_attest.clone(),
@@ -118,11 +140,13 @@ pub(crate) struct DiffReceiver {
 impl DiffReceiver {
     pub(crate) async fn wait_for_diff(&mut self, ctx: &ctx::Ctx) -> ctx::OrCanceled<Diff> {
         loop {
-            let Some(new) = (*sync::changed(ctx, &mut self.recv).await?).clone() else { continue };
+            let Some(new) = (*sync::changed(ctx, &mut self.recv).await?).clone() else {
+                continue;
+            };
             let diff = new.diff(&self.prev);
             self.prev = Some(new);
             if !diff.is_empty() {
-                return Ok(diff)
+                return Ok(diff);
             }
         }
     }
@@ -136,15 +160,17 @@ pub struct StateWatch {
 
 impl fmt::Debug for StateWatch {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.debug_struct("StateWatch")
-            .finish_non_exhaustive()
+        fmt.debug_struct("StateWatch").finish_non_exhaustive()
     }
 }
 
 impl StateWatch {
     /// Constructs AttestationStatusWatch.
     pub fn new(key: Option<attester::SecretKey>) -> Self {
-        Self { key, state: Watch::new(None) }
+        Self {
+            key,
+            state: Watch::new(None),
+        }
     }
 
     pub(crate) fn subscribe(&self) -> DiffReceiver {
@@ -153,9 +179,14 @@ impl StateWatch {
         DiffReceiver { prev: None, recv }
     }
 
-    pub(crate) async fn insert_votes(&self, votes: impl Iterator<Item=Arc<attester::Signed<attester::Batch>>>) -> anyhow::Result<()> {
+    pub(crate) async fn insert_votes(
+        &self,
+        votes: impl Iterator<Item = Arc<attester::Signed<attester::Batch>>>,
+    ) -> anyhow::Result<()> {
         let locked = self.state.lock().await;
-        let Some(mut state) = locked.borrow().clone() else { return Ok(()) };
+        let Some(mut state) = locked.borrow().clone() else {
+            return Ok(());
+        };
         let before = state.weight;
         let res = state.insert_votes(votes);
         if state.weight > before {
@@ -165,21 +196,38 @@ impl StateWatch {
     }
 
     /// All votes kept in the state.
-    pub(crate) fn votes(&self) -> Vec<Arc<attester::Signed<attester::Batch>>>  {
-        self.state.subscribe().borrow().iter().map(|s|s.votes.values().cloned()).flatten().collect()
+    pub(crate) fn votes(&self) -> Vec<Arc<attester::Signed<attester::Batch>>> {
+        self.state
+            .subscribe()
+            .borrow()
+            .iter()
+            .flat_map(|s| s.votes.values().cloned())
+            .collect()
     }
 
     /// Waits for the certificate for a batch with the given number to be collected.
     /// Returns None iff attestation already skipped to collecting certificate some later batch.
-    pub async fn wait_for_qc(&self, ctx: &ctx::Ctx, n: attester::BatchNumber) -> ctx::OrCanceled<Option<attester::BatchQC>> {
+    pub async fn wait_for_qc(
+        &self,
+        ctx: &ctx::Ctx,
+        n: attester::BatchNumber,
+    ) -> ctx::OrCanceled<Option<attester::BatchQC>> {
         let recv = &mut self.state.subscribe();
         recv.mark_changed();
         loop {
             let state = sync::changed(ctx, recv).await?;
-            let Some(state) = state.as_ref() else { continue };
-            if state.config.batch_to_attest.number < n { continue };
-            if state.config.batch_to_attest.number > n { return Ok(None); }
-            if let Some(qc) = state.qc() { return Ok(Some(qc)); }
+            let Some(state) = state.as_ref() else {
+                continue;
+            };
+            if state.config.batch_to_attest.number < n {
+                continue;
+            };
+            if state.config.batch_to_attest.number > n {
+                return Ok(None);
+            }
+            if let Some(qc) = state.qc() {
+                return Ok(Some(qc));
+            }
         }
     }
 
@@ -190,14 +238,26 @@ impl StateWatch {
         let locked = self.state.lock().await;
         let old = locked.borrow().clone();
         if let Some(old) = old.as_ref() {
-            if *old.config == config { return Ok(()) }
-            anyhow::ensure!(old.config.batch_to_attest.genesis == config.batch_to_attest.genesis, "tried to change genesis");
-            anyhow::ensure!(old.config.batch_to_attest.number < config.batch_to_attest.number, "tried to decrease batch number");
+            if *old.config == config {
+                return Ok(());
+            }
+            anyhow::ensure!(
+                old.config.batch_to_attest.genesis == config.batch_to_attest.genesis,
+                "tried to change genesis"
+            );
+            anyhow::ensure!(
+                old.config.batch_to_attest.number < config.batch_to_attest.number,
+                "tried to decrease batch number"
+            );
         }
-        let mut new = State { config: Arc::new(config), votes: im::HashMap::new(), weight: 0 };
+        let mut new = State {
+            config: Arc::new(config),
+            votes: im::HashMap::new(),
+            weight: 0,
+        };
         if let Some(key) = self.key.as_ref() {
             if new.config.committee.contains(&key.public()) {
-                let vote = key.sign_msg(new.config.batch_to_attest.clone()); 
+                let vote = key.sign_msg(new.config.batch_to_attest.clone());
                 // This is our own vote, so it always should be valid.
                 new.insert_vote(Arc::new(vote)).unwrap();
             }

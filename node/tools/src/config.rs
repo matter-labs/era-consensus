@@ -265,9 +265,8 @@ impl Configs {
         let store = TestMemoryStorage::new(ctx, &self.app.genesis).await;
 
         // We don't have an API to poll in this setup, we can only create a local store based attestation client.
-        let attestation_state = Arc::new(attestation::StateWatch::new(
-            self.app.attester_key.clone()
-        ));
+        let attestation_state =
+            Arc::new(attestation::StateWatch::new(self.app.attester_key.clone()));
         let runner = store.runner;
 
         let e = executor::Executor {
@@ -306,7 +305,7 @@ impl Configs {
                         self.app.max_payload_size,
                     )),
                 }),
-           attestation_state,
+            attestation_state,
         };
         Ok((e, runner))
     }

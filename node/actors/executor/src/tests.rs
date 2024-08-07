@@ -3,10 +3,10 @@ use super::*;
 use rand::Rng as _;
 //use std::sync::{atomic::AtomicU64, Mutex};
 use tracing::Instrument as _;
-use zksync_concurrency::{testonly::abort_on_panic};
+use zksync_concurrency::testonly::abort_on_panic;
 use zksync_consensus_bft as bft;
 use zksync_consensus_network::testonly::{new_configs, new_fullnode};
-use zksync_consensus_roles::{ validator::{testonly::Setup, BlockNumber}};
+use zksync_consensus_roles::validator::{testonly::Setup, BlockNumber};
 use zksync_consensus_storage::{
     testonly::{in_memory, TestMemoryStorage},
     BlockStore,

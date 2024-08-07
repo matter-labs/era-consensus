@@ -165,29 +165,37 @@ fn test_batch_qc() {
 
     // Create QCs with increasing number of attesters.
     for i in 0..setup1.attester_keys.len() + 1 {
-        let mut qc = BatchQC::new(Batch{
+        let mut qc = BatchQC::new(Batch {
             genesis: setup1.genesis.hash(),
             number: rng.gen(),
             hash: rng.gen(),
         });
         for key in &setup1.attester_keys[0..i] {
-            qc.add(&key.sign_msg(qc.message.clone()), &attesters)
+            qc.add(&key.sign_msg(qc.message.clone()), attesters)
                 .unwrap();
         }
 
         let expected_weight: u64 = attesters.iter().take(i).map(|w| w.weight).sum();
         if expected_weight >= attesters.threshold() {
-            qc.verify(setup1.genesis.hash(), &attesters).expect("failed to verify QC");
+            qc.verify(setup1.genesis.hash(), attesters)
+                .expect("failed to verify QC");
         } else {
             assert_matches!(
-                qc.verify(setup1.genesis.hash(), &attesters),
+                qc.verify(setup1.genesis.hash(), attesters),
                 Err(Error::NotEnoughSigners { .. })
             );
         }
 
         // Mismatching attesters sets.
-        assert!(qc.verify(setup1.genesis.hash(), setup2.genesis.attesters.as_ref().unwrap()).is_err());
-        assert!(qc.verify(setup1.genesis.hash(), genesis3.attesters.as_ref().unwrap()).is_err());
+        assert!(qc
+            .verify(
+                setup1.genesis.hash(),
+                setup2.genesis.attesters.as_ref().unwrap()
+            )
+            .is_err());
+        assert!(qc
+            .verify(setup1.genesis.hash(), genesis3.attesters.as_ref().unwrap())
+            .is_err());
     }
 }
 
@@ -200,17 +208,13 @@ fn test_attester_committee_weights() {
     let setup = Setup::new_with_weights(rng, vec![1000, 600, 800, 6000, 900, 700]);
     // Expected sum of the attesters weights
     let sums = [1000, 1600, 2400, 8400, 9300, 10000];
-    let attesters = setup
-        .genesis
-        .attesters
-        .as_ref()
-        .unwrap();
+    let attesters = setup.genesis.attesters.as_ref().unwrap();
 
     let msg: Batch = rng.gen();
     let mut qc = BatchQC::new(msg.clone());
     for (i, weight) in sums.iter().enumerate() {
         let key = &setup.attester_keys[i];
-        qc.add(&key.sign_msg(msg.clone()), &attesters).unwrap();
+        qc.add(&key.sign_msg(msg.clone()), attesters).unwrap();
         assert_eq!(attesters.weight_of_keys(qc.signatures.keys()), *weight);
     }
 }

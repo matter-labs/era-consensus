@@ -1,9 +1,9 @@
 //! RPC for fetching a block from peer.
-use crate::{proto::gossip as proto};
+use super::Capability;
+use crate::proto::gossip as proto;
 use anyhow::Context;
 use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
 use zksync_protobuf::{read_optional, ProtoFmt};
-use super::Capability;
 
 /// `get_block` RPC.
 #[derive(Debug)]
@@ -11,7 +11,7 @@ pub(crate) struct Rpc;
 
 // TODO: determine more precise `INFLIGHT` / `RATE` values as a result of load testing
 impl super::Rpc for Rpc {
-    const CAPABILITY: Capability = Capability::GetBlock; 
+    const CAPABILITY: Capability = Capability::GetBlock;
     const INFLIGHT: u32 = 5;
     const METHOD: &'static str = "get_block";
 

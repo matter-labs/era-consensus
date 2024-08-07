@@ -1,8 +1,8 @@
 //! Module to publish attestations over batches.
+use anyhow::Context as _;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, time};
 pub use zksync_consensus_network::gossip::attestation::*;
-use anyhow::Context as _;
 
 /// An interface which is used by attesters and nodes collecting votes over gossip to determine
 /// which is the next batch they are all supposed to be voting on, according to the main node.
@@ -14,10 +14,7 @@ pub trait Client: 'static + Send + Sync {
     ///
     /// The API might return an error while genesis is being created, which we represent with `None`
     /// here and mean that we'll have to try again later.
-    async fn config(
-        &self,
-        ctx: &ctx::Ctx,
-    ) -> ctx::Result<Option<Config>>;
+    async fn config(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<Config>>;
 }
 
 /// Use an [Client] to periodically poll the main node and update the [AttestationStatusWatch].
@@ -46,7 +43,10 @@ impl Runner {
         loop {
             match self.client.config(ctx).await {
                 Ok(Some(config)) => {
-                    self.state.update_config(config).await.context("update_config")?;
+                    self.state
+                        .update_config(config)
+                        .await
+                        .context("update_config")?;
                 }
                 Ok(None) => tracing::debug!("waiting for attestation config..."),
                 Err(error) => tracing::error!(

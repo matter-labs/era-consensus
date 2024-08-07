@@ -61,9 +61,16 @@ impl rpc::Handler<rpc::push_batch_votes::Rpc> for &PushServer<'_> {
         100 * kB
     }
 
-    async fn handle(&self, _ctx: &ctx::Ctx, req: rpc::push_batch_votes::Req) -> anyhow::Result<rpc::push_batch_votes::Resp> {
+    async fn handle(
+        &self,
+        _ctx: &ctx::Ctx,
+        req: rpc::push_batch_votes::Req,
+    ) -> anyhow::Result<rpc::push_batch_votes::Resp> {
         let want_snapshot = req.want_snapshot();
-        self.net.attestation_state.insert_votes(req.votes.into_iter()).await?;
+        self.net
+            .attestation_state
+            .insert_votes(req.votes.into_iter())
+            .await?;
         Ok(rpc::push_batch_votes::Resp {
             votes: if want_snapshot {
                 self.net.attestation_state.votes()
@@ -154,10 +161,8 @@ impl Network {
             rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate);
         let get_batch_client =
             rpc::Client::<rpc::get_batch::Rpc>::new(ctx, self.cfg.rpc.get_batch_rate);
-        let push_batch_votes_client = rpc::Client::<rpc::push_batch_votes::Rpc>::new(
-            ctx,
-            self.cfg.rpc.push_batch_votes_rate,
-        );
+        let push_batch_votes_client =
+            rpc::Client::<rpc::push_batch_votes::Rpc>::new(ctx, self.cfg.rpc.push_batch_votes_rate);
 
         scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
@@ -199,6 +204,8 @@ impl Network {
                 loop {
                     let diff = recv.wait_for_diff(ctx).await?;
                     let req = rpc::push_batch_votes::Req {
+                        // If the config has changed, we need to re-request all the votes
+                        // from peer that we might have ignored earlier.
                         want_snapshot: Some(diff.config_changed),
                         votes: diff.votes,
                     };
@@ -207,16 +214,16 @@ impl Network {
                     // such a case.
                     let resp = push_batch_votes_client.call(ctx, &req, 100 * kB).await?;
                     if !resp.votes.is_empty() {
-                        anyhow::ensure!(req.want_snapshot(), "expected empty response, but votes were returned");
-                        self.attestation_state.insert_votes(resp.votes.into_iter()).await.context("insert_votes")?;
+                        anyhow::ensure!(
+                            req.want_snapshot(),
+                            "expected empty response, but votes were returned"
+                        );
+                        self.attestation_state
+                            .insert_votes(resp.votes.into_iter())
+                            .await
+                            .context("insert_votes")?;
                     }
                 }
-            });
-
-            // Pull L1 batch votes from peers.
-            s.spawn(async {
-                // TODO
-                Ok(())
             });
 
             if let Some(ping_timeout) = &self.cfg.ping_timeout {

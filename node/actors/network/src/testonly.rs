@@ -177,24 +177,42 @@ impl InstanceRunner {
     }
 }
 
+/// InstanceConfig
+pub struct InstanceConfig {
+    /// cfg
+    pub cfg: Config,
+    /// block_store
+    pub block_store: Arc<BlockStore>,
+    /// batch_store
+    pub batch_store: Arc<BatchStore>,
+    /// attestation_state
+    pub attestation_state: Arc<attestation::StateWatch>,
+}
+
 impl Instance {
-    /// Construct an instance for a given config.
+    /// Constructs a new instance.
     pub fn new(
         cfg: Config,
         block_store: Arc<BlockStore>,
         batch_store: Arc<BatchStore>,
     ) -> (Self, InstanceRunner) {
-        // Semantically we'd want this to be created at the same level as the stores,
-        // but doing so would introduce a lot of extra cruft in setting up tests.
-        let attestation_state = Arc::new(attestation::StateWatch::new(None));
+        Self::new_from_config(InstanceConfig {
+            cfg,
+            block_store,
+            batch_store,
+            attestation_state: attestation::StateWatch::new(None).into(),
+        })
+    }
 
+    /// Construct an instance for a given config.
+    pub fn new_from_config(cfg: InstanceConfig) -> (Self, InstanceRunner) {
         let (actor_pipe, dispatcher_pipe) = pipe::new();
         let (net, net_runner) = Network::new(
-            cfg,
-            block_store.clone(),
-            batch_store.clone(),
+            cfg.cfg,
+            cfg.block_store.clone(),
+            cfg.batch_store.clone(),
             actor_pipe,
-            attestation_state,
+            cfg.attestation_state,
         );
         let (terminate_send, terminate_recv) = channel::bounded(1);
         (
@@ -205,7 +223,7 @@ impl Instance {
             },
             InstanceRunner {
                 net_runner,
-                batch_store,
+                batch_store: cfg.batch_store.clone(),
                 terminate: terminate_recv,
             },
         )

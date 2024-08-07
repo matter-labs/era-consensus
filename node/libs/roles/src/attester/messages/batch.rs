@@ -1,8 +1,5 @@
 use super::{GenesisHash, Signed};
-use crate::{
-    attester,
-    validator::{Payload},
-};
+use crate::{attester, validator::Payload};
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 
@@ -159,19 +156,30 @@ impl BatchQC {
 
     /// Add a attester's signature.
     /// Signature is assumed to be already verified.
-    pub fn add(&mut self, msg: &Signed<Batch>, committee: &attester::Committee) -> anyhow::Result<()> {
+    pub fn add(
+        &mut self,
+        msg: &Signed<Batch>,
+        committee: &attester::Committee,
+    ) -> anyhow::Result<()> {
         anyhow::ensure!(self.message == msg.msg, "inconsistent messages");
-        anyhow::ensure!(!self.signatures.contains(&msg.key), "signature already present");
+        anyhow::ensure!(
+            !self.signatures.contains(&msg.key),
+            "signature already present"
+        );
         anyhow::ensure!(committee.contains(&msg.key), "not in committee");
         self.signatures.add(msg.key.clone(), msg.sig.clone());
         Ok(())
     }
 
     /// Verifies the the BatchQC.
-    pub fn verify(&self, genesis: GenesisHash, committee: &attester::Committee) -> Result<(), BatchQCVerifyError> {
+    pub fn verify(
+        &self,
+        genesis: GenesisHash,
+        committee: &attester::Committee,
+    ) -> Result<(), BatchQCVerifyError> {
         use BatchQCVerifyError as Error;
-        
-        if self.message.genesis!=genesis {
+
+        if self.message.genesis != genesis {
             return Err(Error::GenesisMismatch);
         }
 

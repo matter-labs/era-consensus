@@ -1,10 +1,10 @@
 //! RPC for notifying peer about our BlockStore state.
-use crate::{proto::gossip as proto};
+use super::Capability;
+use crate::proto::gossip as proto;
 use anyhow::Context;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::BlockStoreState;
 use zksync_protobuf::{read_optional, required, ProtoFmt};
-use super::Capability;
 
 /// PushBlockStoreState RPC.
 #[derive(Debug)]

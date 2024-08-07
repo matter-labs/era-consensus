@@ -5,7 +5,7 @@ use crate::{
 };
 use anyhow::Context as _;
 use std::{
-    collections::{VecDeque},
+    collections::VecDeque,
     sync::{Arc, Mutex},
 };
 use zksync_concurrency::{ctx, sync};
