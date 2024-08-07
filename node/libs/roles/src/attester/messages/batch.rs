@@ -161,7 +161,7 @@ impl BatchQC {
     /// Signature is assumed to be already verified.
     pub fn add(&mut self, msg: &Signed<Batch>, committee: &attester::Committee) -> anyhow::Result<()> {
         anyhow::ensure!(self.message == msg.msg, "inconsistent messages");
-        anyhow::ensure!(self.signatures.contains(&msg.key), "signature already present");
+        anyhow::ensure!(!self.signatures.contains(&msg.key), "signature already present");
         anyhow::ensure!(committee.contains(&msg.key), "not in committee");
         self.signatures.add(msg.key.clone(), msg.sig.clone());
         Ok(())
