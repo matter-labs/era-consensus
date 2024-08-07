@@ -1,6 +1,7 @@
 use super::ValidatorAddrs;
 use crate::{
     gossip::{
+        attestation,
         handshake,
         validator_addrs::ValidatorAddrsWatch,
     },
@@ -22,7 +23,7 @@ use zksync_concurrency::{
     testonly::{abort_on_panic, set_timeout},
     time,
 };
-use zksync_consensus_roles::{validator};
+use zksync_consensus_roles::{attester, validator};
 use zksync_consensus_storage::{testonly::TestMemoryStorage};
 
 mod fetch_batches;
@@ -487,7 +488,6 @@ async fn rate_limiting() {
     }
 }
 
-/*
 #[tokio::test(flavor = "multi_thread")]
 async fn test_batch_votes_propagation() {
     let _guard = set_timeout(time::Duration::seconds(10));
@@ -496,65 +496,53 @@ async fn test_batch_votes_propagation() {
     let rng = &mut ctx.rng();
 
     let mut setup = validator::testonly::Setup::new(rng, 10);
-
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
+    // Fixed attestation schedule.
+    let first attester::BatchNumber = rng.gen();
+    let schedule = (0..10).map(|i| attestation::Config {
+        batch_to_attest : attester::Batch {
+            genesis: setup.genesis.hash(),
+            number: first + i,
+            hash: rng.gen(),
+        },
+        committee: attester::Committee::new(setup.attester_keys.iter().filter(|_|rng.gen()).map(|k|
+            attester::WeightedAttester {
+                key: k.public(),
+                weight: rng.gen_range(5..10),
+            },
+        )).unwrap(),
+    }).collect();
+
+    // Round of the schedule that nodes should collect the votes for.
+    let round = sync::watch::channel(0).0;
+
     scope::run!(ctx, |ctx, s| async {
-        // All nodes share the same in-memory store
+        // All nodes share the same store - store is not used in this test anyway.
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
         s.spawn_bg(store.runner.run(ctx));
 
-        // Push the first batch into the store so we have something to vote on.
-        setup.push_blocks(rng, 2);
-        setup.push_batch(rng);
-
-        let batch = setup.batches[0].clone();
-
-        store
-            .batches
-            .queue_batch(ctx, batch.clone(), setup.genesis.clone())
-            .await
-            .unwrap();
-
-        let batch = attester::Batch {
-            number: batch.number,
-            hash: rng.gen(),
-            genesis: setup.genesis.hash(),
-        };
-
         // Start all nodes.
-        let nodes: Vec<testonly::Instance> = cfgs
-            .iter()
-            .enumerate()
-            .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(
-                    cfg.clone(),
-                    store.blocks.clone(),
-                    store.batches.clone(),
-                );
-                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
-                node
-            })
-            .collect();
+        let mut nodes = vec![];
+        for (i,cfg) in cfgs.iter().enumerate() {
+            let (node, runner) = testonly::Instance::new(
+                cfg.clone(),
+                store.blocks.clone(),
+                store.batches.clone(),
+            );
+            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            // Task updating config whenever we advance to the next view.
+            s.spawn_bg(async {
+                let mut round = round.subscribe();
+                round.mark_changed();
+                loop {
+                    let round = *sync::changed(ctx, &mut round).await;
+                    let Some(cfg) = schedule.get(round) else { return Ok(()) };
+                    node.net.gossip.attestation_state.update_config(cfg.clone()).unwrap();
+                }
+            });
 
-        // Cast votes on each node. It doesn't matter who signs where in this test,
-        // we just happen to know that we'll have as many nodes as attesters.
-        let attesters = setup.genesis.attesters.as_ref().unwrap();
-        for (node, key) in nodes.iter().zip(setup.attester_keys.iter()) {
-            node.net
-                .batch_vote_publisher()
-                .publish(attesters, &setup.genesis.hash(), key, batch.clone())
-                .await
-                .unwrap();
-        }
-
-        // Wait until one of the nodes collects a quorum over gossip and stores.
-        loop {
-            if let Some(qc) = store.im_batches.get_batch_qc(ctx, batch.number).await? {
-                assert_eq!(qc.message, batch);
-                return Ok(());
-            }
-            ctx.sleep(time::Duration::milliseconds(100)).await?;
+            nodes.push(node);
         }
     })
     .await

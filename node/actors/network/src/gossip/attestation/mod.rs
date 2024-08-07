@@ -76,7 +76,7 @@ impl State {
         Ok(())
     }
 
-    fn qc(&self) -> Option<attester::BatchQC> {
+    fn qc(&self) -> Option<attester::BatchQC> { {
         if self.weight < self.config.committee.threshold() {
             return None;
         }
@@ -150,9 +150,17 @@ impl StateWatch {
         self.state.subscribe().borrow().iter().map(|s|s.votes.values().cloned()).flatten().collect()
     }
 
-    /// Waits for the certificate to be collected.
-    pub async fn wait_for_qc(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<attester::BatchQC> {
-        sync::wait_for_some(ctx, &mut self.state.subscribe(), |s| s.as_ref()?.qc()).await
+    /// Waits for the certificate for a batch with the given number to be collected.
+    /// Returns None iff attestation already skipped to collecting certificate some later batch.
+    pub async fn wait_for_qc(&self, ctx: &ctx::Ctx, n: attester::BatchNumber) -> ctx::OrCanceled<Option<attester::BatchQC>> {
+        let recv = &mut self.state.subscribe();
+        recv.mark_changed();
+        loop {
+            let Some(state) = sync::changed(ctx, recv).await? else { continue };
+            if state.config.batch_to_attest.number < n { continue };
+            if state.config.batch_to_attest.number > n { return Ok(None); }
+            if let Some(qc) = state.qc() { return Ok(Some(qc)); }
+        }
     }
 
     /// Updates the attestation config.
