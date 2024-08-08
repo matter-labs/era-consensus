@@ -115,7 +115,7 @@ impl Config {
                         M::LeaderPrepare(_) | M::LeaderCommit(_) => replica_send.send(req),
                     }
 
-                    anyhow::Ok(())
+                    ctx::Ok(())
                 }
                 .instrument(tracing::info_span!("bft_iter"))
                 .await?;
