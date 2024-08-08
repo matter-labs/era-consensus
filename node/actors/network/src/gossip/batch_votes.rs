@@ -38,7 +38,7 @@ impl BatchUpdateStats {
 pub(crate) struct BatchVotes {
     /// The latest vote received from each attester. We only keep the last one
     /// for now, hoping that with 1 minute batches there's plenty of time for
-    /// the quorum to be reached, but eventually we'll have to allow multiple
+    /// the quorum to be reached, but eventually we might have to allow multiple
     /// votes across different heights.
     pub(crate) votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>,
 
@@ -51,6 +51,11 @@ pub(crate) struct BatchVotes {
         im::OrdMap<attester::BatchNumber, im::HashMap<attester::BatchHash, attester::Weight>>,
 
     /// The minimum batch number for which we are still interested in votes.
+    ///
+    /// Because we only store 1 vote per attester the memory is very much bounded,
+    /// but this extra pruning mechanism can be used to clear votes of attesters
+    /// who have been removed from the committee, as well as to get rid of the
+    /// last quorum we found and stored, and look for the a new one in the next round.
     pub(crate) min_batch_number: attester::BatchNumber,
 }
 
@@ -75,6 +80,11 @@ impl BatchVotes {
     /// (all entries verified so far are added).
     ///
     /// Returns statistics about new entries added.
+    ///
+    /// For now it doesn't return an error if a vote with an invalid signature
+    /// is encountered, so that the node doesn't disconnect from peer if it
+    /// happens to have a new field in `Batch`. This is only until the feature
+    /// is stabilized.
     pub(super) fn update(
         &mut self,
         attesters: &attester::Committee,
@@ -120,10 +130,12 @@ impl BatchVotes {
             }
 
             // Check the signature before insertion.
-            d.verify()?;
-
-            self.add(d.clone(), weight);
-            stats.added(d.msg.number, weight);
+            if let Err(e) = d.verify() {
+                tracing::error!(error =? e, "failed to verify batch vote: {e:#}");
+            } else {
+                self.add(d.clone(), weight);
+                stats.added(d.msg.number, weight);
+            }
         }
 
         Ok(stats)
@@ -131,20 +143,19 @@ impl BatchVotes {
 
     /// Check if we have achieved quorum for any of the batch hashes.
     ///
-    /// The return value is a vector because eventually we will be potentially waiting for
-    /// quorums on multiple heights simultaneously.
+    /// Returns the first quorum it finds, after which we expect that the state of the main node or L1
+    /// will indicate that attestation on the next height can happen, which will either naturally move
+    /// the QC, or we can do so by increasing the `min_batch_number`.
     ///
-    /// For repeated queries we can supply a skip list of heights for which we already saved the QC.
-    pub(super) fn find_quorums(
+    /// While we only store 1 vote per attester we'll only ever have at most one quorum anyway.
+    pub(super) fn find_quorum(
         &self,
         attesters: &attester::Committee,
         genesis: &attester::GenesisHash,
-        skip: impl Fn(attester::BatchNumber) -> bool,
-    ) -> Vec<attester::BatchQC> {
+    ) -> Option<attester::BatchQC> {
         let threshold = attesters.threshold();
         self.support
             .iter()
-            .filter(|(number, _)| !skip(**number))
             .flat_map(|(number, candidates)| {
                 candidates
                     .iter()
@@ -170,7 +181,7 @@ impl BatchVotes {
                         }
                     })
             })
-            .collect()
+            .next()
     }
 
     /// Set the minimum batch number for which we admit votes.
@@ -275,6 +286,7 @@ impl BatchVotesWatch {
     }
 
     /// Set the minimum batch number on the votes and discard old data.
+    #[tracing::instrument(skip_all, fields(%min_batch_number))]
     pub(crate) async fn set_min_batch_number(&self, min_batch_number: attester::BatchNumber) {
         let this = self.0.lock().await;
         this.send_modify(|votes| votes.set_min_batch_number(min_batch_number));
@@ -297,6 +309,7 @@ impl fmt::Debug for BatchVotesPublisher {
 
 impl BatchVotesPublisher {
     /// Sign an L1 batch and push it into the batch, which should cause it to be gossiped by the network.
+    #[tracing::instrument(skip_all, fields(l1_batch = %batch.number))]
     pub async fn publish(
         &self,
         attesters: &attester::Committee,

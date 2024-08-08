@@ -139,7 +139,7 @@ impl PersistentBatchStore for BatchStore {
         Ok(certs.get(last_batch_number).cloned())
     }
 
-    async fn earliest_batch_number_to_sign(
+    async fn next_batch_to_attest(
         &self,
         _ctx: &ctx::Ctx,
     ) -> ctx::Result<Option<attester::BatchNumber>> {
@@ -202,6 +202,7 @@ impl PersistentBatchStore for BatchStore {
         Ok(batches.get(idx as usize).cloned())
     }
 
+    #[tracing::instrument(skip_all, fields(l1_batch = %batch.number))]
     async fn queue_next_batch(
         &self,
         _ctx: &ctx::Ctx,

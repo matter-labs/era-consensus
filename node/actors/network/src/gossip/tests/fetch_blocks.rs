@@ -26,6 +26,7 @@ async fn test_simple() {
     scope::run!(ctx, |ctx, s| async {
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
         s.spawn_bg(store.runner.run(ctx));
+
         let (_node, runner) = crate::testonly::Instance::new(
             cfg.clone(),
             store.blocks.clone(),

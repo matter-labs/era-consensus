@@ -9,7 +9,7 @@ async fn test_run_canceled() {
     scope::run!(ctx, |ctx, s| async {
         s.cancel();
         assert!(!ctx.is_active());
-        Ok::<(), ()>(())
+        std::result::Result::Ok::<(), ()>(())
     })
     .await
     .unwrap();
@@ -46,7 +46,7 @@ async fn test_sleep_until() {
         });
         clock.advance(1001 * sec);
         tracing::info!("root task terminating");
-        Ok(())
+        std::result::Result::Ok(())
     })
     .await;
     assert_eq!(Err(9), res);
@@ -55,7 +55,7 @@ async fn test_sleep_until() {
     let res = scope::run!(ctx, |ctx, s| async {
         s.spawn(async {
             assert!(ctx.sleep_until(t).await.is_err());
-            Ok(())
+            std::result::Result::Ok(())
         });
         clock.advance_until(t - sec);
         R::Err(1)

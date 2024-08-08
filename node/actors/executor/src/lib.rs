@@ -9,13 +9,13 @@ use std::{
 };
 use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
-use zksync_consensus_network as network;
+use zksync_consensus_network::{self as network, gossip::AttestationStatusWatch};
 use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
-mod attestation;
+pub mod attestation;
 mod io;
 #[cfg(test)]
 mod tests;
@@ -70,6 +70,9 @@ pub struct Config {
     /// Http debug page configuration.
     /// If None, debug page is disabled
     pub debug_page: Option<http::DebugPageConfig>,
+
+    /// How often to poll the database looking for the batch commitment.
+    pub batch_poll_interval: time::Duration,
 }
 
 impl Config {
@@ -97,6 +100,8 @@ pub struct Executor {
     pub validator: Option<Validator>,
     /// Validator-specific node data.
     pub attester: Option<Attester>,
+    /// Status showing where the main node wants attester to cast their votes.
+    pub attestation_status: Arc<AttestationStatusWatch>,
 }
 
 impl Executor {
@@ -138,6 +143,7 @@ impl Executor {
                 self.block_store.clone(),
                 self.batch_store.clone(),
                 network_actor_pipe,
+                self.attestation_status.clone(),
             );
             net.register_metrics();
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
@@ -149,6 +155,8 @@ impl Executor {
                     self.batch_store.clone(),
                     attester,
                     net.batch_vote_publisher(),
+                    self.attestation_status.subscribe(),
+                    self.config.batch_poll_interval,
                 );
                 s.spawn(async {
                     runner.run(ctx).await?;

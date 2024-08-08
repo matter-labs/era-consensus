@@ -58,6 +58,7 @@ pub(super) enum Error {
     Stream(#[from] ctx::Error),
 }
 
+#[tracing::instrument(name = "handshake::outbound", skip_all)]
 pub(super) async fn outbound(
     ctx: &ctx::Ctx,
     me: &validator::SecretKey,
@@ -93,6 +94,7 @@ pub(super) async fn outbound(
     Ok(())
 }
 
+#[tracing::instrument(name = "handshake::inbound", skip_all)]
 pub(super) async fn inbound(
     ctx: &ctx::Ctx,
     me: &validator::SecretKey,

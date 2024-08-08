@@ -1,6 +1,7 @@
 //! Defines storage layer for batches of blocks.
 use anyhow::Context as _;
 use std::{collections::VecDeque, fmt, sync::Arc};
+use tracing::Instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::{attester, validator};
 
@@ -53,16 +54,12 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     /// Range of batches persisted in storage.
     fn persisted(&self) -> sync::watch::Receiver<BatchStoreState>;
 
-    /// Get the earliest of L1 batches which are missing the corresponding L1 batch quorum certificates
-    /// and potentially need to be signed by attesters.
+    /// Get the next L1 batch for which attesters are expected to produce a quorum certificate.
     ///
-    /// A replica might never have a complete history of L1 batch QCs; once the L1 batch is included on L1,
-    /// the replicas might use the [attester::SyncBatch] route to obtain them, in which case they will not
-    /// have a QC and no reason to get them either. The store will have sufficient information to decide
-    /// where it's still necessary to gossip votes; for example the main node will want to have a QC on
-    /// every batch while it's the one submitting them to L1, while replicas can ask the L1 what is considered
-    /// final.
-    async fn earliest_batch_number_to_sign(
+    /// An external node might never have a complete history of L1 batch QCs. Once the L1 batch is included on L1,
+    /// the external nodes might use the [attester::SyncBatch] route to obtain them, in which case they will not
+    /// have a QC and no reason to get them either. The main node, however, will want to have a QC for all batches.
+    async fn next_batch_to_attest(
         &self,
         ctx: &ctx::Ctx,
     ) -> ctx::Result<Option<attester::BatchNumber>>;
@@ -152,6 +149,7 @@ impl Inner {
         true
     }
 
+    #[tracing::instrument(skip_all)]
     fn truncate_cache(&mut self) {
         while self.cache.len() > Self::CACHE_CAPACITY
             && self.persisted.contains(self.cache[0].number)
@@ -196,24 +194,41 @@ impl BatchStoreRunner {
             s.spawn::<()>(async {
                 let mut persisted = persisted;
                 loop {
-                    let persisted = sync::changed(ctx, &mut persisted).await?.clone();
-                    self.0.inner.send_modify(|inner| {
-                        // XXX: In `BlockStoreRunner` update both the `queued` and the `persisted` here.
-                        inner.persisted = persisted;
-                        inner.truncate_cache();
-                    });
+                    async {
+                        let persisted = sync::changed(ctx, &mut persisted)
+                            .instrument(tracing::info_span!("wait_for_batch_store_change"))
+                            .await?
+                            .clone();
+                        self.0.inner.send_modify(|inner| {
+                            // XXX: In `BlockStoreRunner` update both the `queued` and the `persisted` here.
+                            inner.persisted = persisted;
+                            inner.truncate_cache();
+                        });
+
+                        ctx::Ok(())
+                    }
+                    .instrument(tracing::info_span!("truncate_batch_cache_iter"))
+                    .await?;
                 }
             });
             let inner = &mut self.0.inner.subscribe();
             loop {
-                let batch = sync::wait_for(ctx, inner, |inner| inner.queued.contains(queue_next))
-                    .await?
-                    .batch(queue_next)
-                    .unwrap();
+                async {
+                    let batch =
+                        sync::wait_for(ctx, inner, |inner| inner.queued.contains(queue_next))
+                            .instrument(tracing::info_span!("wait_for_next_batch"))
+                            .await?
+                            .batch(queue_next)
+                            .unwrap();
 
-                queue_next = queue_next.next();
+                    queue_next = queue_next.next();
 
-                self.0.persistent.queue_next_batch(ctx, batch).await?;
+                    self.0.persistent.queue_next_batch(ctx, batch).await?;
+
+                    ctx::Ok(())
+                }
+                .instrument(tracing::info_span!("queue_persist_batch_iter"))
+                .await?;
             }
         })
         .await;
@@ -279,28 +294,20 @@ impl BatchStore {
         Ok(batch)
     }
 
-    /// Retrieve the minimum batch number that doesn't have a QC yet and potentially need to be signed.
-    ///
-    /// There might be unsigned batches before this one in the database, however we don't consider it
-    /// necessary to sign them any more, because for example they have already been submitted to L1.
-    ///
-    /// There might also be signed batches *after* this one, due to the way gossiping works, but we
-    /// might still have to fill the gaps by (re)submitting our signature to allow them to be submitted.
-    ///
-    /// Returns `None` if all existing batches are signed, or there are not batches yet to be signed at all.
-    pub async fn earliest_batch_number_to_sign(
+    /// Retrieve the next batch number that doesn't have a QC yet and will need to be signed.
+    pub async fn next_batch_to_attest(
         &self,
         ctx: &ctx::Ctx,
     ) -> ctx::Result<Option<attester::BatchNumber>> {
         let t = metrics::PERSISTENT_BATCH_STORE
-            .earliest_batch_latency
+            .next_batch_to_attest_latency
             .start();
 
         let batch = self
             .persistent
-            .earliest_batch_number_to_sign(ctx)
+            .next_batch_to_attest(ctx)
             .await
-            .wrap("persistent.get_batch_to_sign()")?;
+            .wrap("persistent.next_batch_to_attest()")?;
 
         t.observe();
         Ok(batch)
@@ -359,6 +366,7 @@ impl BatchStore {
     }
 
     /// Wait until the database has a batch, then attach the corresponding QC.
+    #[tracing::instrument(skip_all, fields(l1_batch = %qc.message.number))]
     pub async fn persist_batch_qc(&self, ctx: &ctx::Ctx, qc: attester::BatchQC) -> ctx::Result<()> {
         let t = metrics::BATCH_STORE.persist_batch_qc.start();
         // The `store_qc` implementation in `zksync-era` retries the insertion of the QC if the payload
@@ -380,6 +388,7 @@ impl BatchStore {
 
     /// Waits until the given batch is queued (in memory, or persisted).
     /// Note that it doesn't mean that the batch is actually available, as old batches might get pruned.
+    #[tracing::instrument(skip_all, fields(l1_batch = %number))]
     pub async fn wait_until_queued(
         &self,
         ctx: &ctx::Ctx,
@@ -400,6 +409,7 @@ impl BatchStore {
 
     /// Waits until the given batch is stored persistently.
     /// Note that it doesn't mean that the batch is actually available, as old batches might get pruned.
+    #[tracing::instrument(skip_all, fields(l1_batch = %number))]
     pub async fn wait_until_persisted(
         &self,
         ctx: &ctx::Ctx,

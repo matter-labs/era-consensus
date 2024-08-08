@@ -185,8 +185,8 @@ impl Ctx {
     ) -> CtxAware<impl 'a + Future<Output = OrCanceled<F::Output>>> {
         CtxAware(async {
             tokio::select! {
-                output = fut => Ok(output),
-                () = self.0.canceled.cancel_safe_recv() => Err(Canceled),
+                output = fut => OrCanceled::Ok(output),
+                () = self.0.canceled.cancel_safe_recv() => OrCanceled::Err(Canceled),
             }
         })
     }
@@ -270,6 +270,16 @@ pub enum Error {
 
 /// Alias for Result with `ctx::Error`.
 pub type Result<T> = std::result::Result<T, Error>;
+
+/// Equivalent to Ok::<_, ctx::Error>(value).
+///
+/// This simplifies creation of an ctx::Result in places where type inference
+/// cannot deduce the `E` type of the result &mdash; without needing to write
+/// `Ok::<_, ctx::Error>(value)`.
+#[allow(non_snake_case)]
+pub fn Ok<T>(t: T) -> Result<T> {
+    Result::Ok(t)
+}
 
 impl crate::error::Wrap for Error {
     fn with_wrap<C: fmt::Display + Send + Sync + 'static, F: FnOnce() -> C>(self, f: F) -> Self {

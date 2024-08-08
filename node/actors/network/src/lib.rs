@@ -1,6 +1,6 @@
 //! Network actor maintaining a pool of outbound and inbound connections to other nodes.
 use anyhow::Context as _;
-use gossip::BatchVotesPublisher;
+use gossip::{AttestationStatusWatch, BatchVotesPublisher};
 use std::sync::Arc;
 use tracing::Instrument as _;
 use zksync_concurrency::{
@@ -57,8 +57,10 @@ impl Network {
         block_store: Arc<BlockStore>,
         batch_store: Arc<BatchStore>,
         pipe: ActorPipe<io::InputMessage, io::OutputMessage>,
+        attestation_status: Arc<AttestationStatusWatch>,
     ) -> (Arc<Self>, Runner) {
-        let gossip = gossip::Network::new(cfg, block_store, batch_store, pipe.send);
+        let gossip =
+            gossip::Network::new(cfg, block_store, batch_store, pipe.send, attestation_status);
         let consensus = consensus::Network::new(gossip.clone());
         let net = Arc::new(Self { gossip, consensus });
         (
@@ -149,7 +151,6 @@ impl Runner {
                             .net
                             .gossip
                             .run_outbound_stream(ctx, peer, addr.clone())
-                            .instrument(tracing::info_span!("out", ?addr))
                             .await;
                         if let Err(err) = res {
                             tracing::info!("gossip.run_outbound_stream({addr:?}): {err:#}");
@@ -207,7 +208,7 @@ impl Runner {
                         }
                         anyhow::Ok(())
                     }
-                    .instrument(tracing::info_span!("in", ?addr))
+                    .instrument(tracing::info_span!("accept_connection", ?addr))
                     .await;
                     if let Err(err) = res {
                         tracing::info!("{addr}: {err:#}");

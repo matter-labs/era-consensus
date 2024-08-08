@@ -7,9 +7,9 @@ pub(super) struct PersistentBatchStore {
     /// Latency of a successful `get_batch()` call.
     #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
     pub(super) batch_latency: vise::Histogram<time::Duration>,
-    /// Latency of a successful `earliest_batch_number_to_sign()` call.
+    /// Latency of a successful `next_batch_to_attest_latency()` call.
     #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
-    pub(super) earliest_batch_latency: vise::Histogram<time::Duration>,
+    pub(super) next_batch_to_attest_latency: vise::Histogram<time::Duration>,
     /// Latency of a successful `get_batch_to_sign()` call.
     #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
     pub(super) batch_to_sign_latency: vise::Histogram<time::Duration>,
