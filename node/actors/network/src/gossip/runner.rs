@@ -366,7 +366,7 @@ impl Network {
 
     /// Handles an inbound stream.
     /// Closes the stream if there is another inbound stream opened from the same peer.
-    #[tracing::instrument(level = "info", name = "gossip", skip_all)]
+    #[tracing::instrument(name = "gossip::run_inbound_stream", skip_all)]
     pub(crate) async fn run_inbound_stream(
         &self,
         ctx: &ctx::Ctx,
@@ -384,7 +384,7 @@ impl Network {
     }
 
     /// Connects to a peer and handles the resulting stream.
-    #[tracing::instrument(level = "info", name = "gossip", skip_all)]
+    #[tracing::instrument(name = "gossip::run_outbound_stream", skip_all)]
     pub(crate) async fn run_outbound_stream(
         &self,
         ctx: &ctx::Ctx,

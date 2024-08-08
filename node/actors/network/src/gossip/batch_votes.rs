@@ -286,6 +286,7 @@ impl BatchVotesWatch {
     }
 
     /// Set the minimum batch number on the votes and discard old data.
+    #[tracing::instrument(skip_all, fields(%min_batch_number))]
     pub(crate) async fn set_min_batch_number(&self, min_batch_number: attester::BatchNumber) {
         let this = self.0.lock().await;
         this.send_modify(|votes| votes.set_min_batch_number(min_batch_number));
@@ -308,6 +309,7 @@ impl fmt::Debug for BatchVotesPublisher {
 
 impl BatchVotesPublisher {
     /// Sign an L1 batch and push it into the batch, which should cause it to be gossiped by the network.
+    #[tracing::instrument(skip_all, fields(l1_batch = %batch.number))]
     pub async fn publish(
         &self,
         attesters: &attester::Committee,
