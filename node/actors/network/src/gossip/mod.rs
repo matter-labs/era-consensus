@@ -114,21 +114,17 @@ impl Network {
                     async {
                         let _permit = permit;
                         let number = number.into();
-                        let queue_span = tracing::info_span!("wait_for_block_to_queue");
-                        let queue_span_copy = queue_span.clone();
                         let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
-                            let request_span = tracing::info_span!("fetch_block_request");
-                            request_span.follows_from(queue_span_copy.id());
                             s.spawn_bg(
                                 self.fetch_queue
                                     .request(ctx, RequestItem::Block(number))
-                                    .instrument(request_span),
+                                    .instrument(tracing::info_span!("fetch_block_request")),
                             );
                             // Cancel fetching as soon as block is queued for storage.
                             self.block_store.wait_until_queued(ctx, number).await?;
                             Err(ctx::Canceled)
                         })
-                        .instrument(queue_span)
+                        .instrument(tracing::info_span!("wait_for_block_to_queue"))
                         .await;
                         // Wait until the block is actually persisted, so that the amount of blocks
                         // stored in memory is bounded.
@@ -155,21 +151,17 @@ impl Network {
                     async {
                         let _permit = permit;
                         let number = number.into();
-                        let queue_span = tracing::info_span!("wait_for_batch_to_queue");
-                        let queue_span_copy = queue_span.clone();
                         let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
-                            let request_span = tracing::info_span!("fetch_block_request");
-                            request_span.follows_from(queue_span_copy.id());
                             s.spawn_bg(
                                 self.fetch_queue
                                     .request(ctx, RequestItem::Batch(number))
-                                    .instrument(request_span),
+                                    .instrument(tracing::info_span!("fetch_block_request")),
                             );
                             // Cancel fetching as soon as batch is queued for storage.
                             self.batch_store.wait_until_queued(ctx, number).await?;
                             Err(ctx::Canceled)
                         })
-                        .instrument(queue_span)
+                        .instrument(tracing::info_span!("wait_for_batch_to_queue"))
                         .await;
                         // Wait until the batch is actually persisted, so that the amount of batches
                         // stored in memory is bounded.
