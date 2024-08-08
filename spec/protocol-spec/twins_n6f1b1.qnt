@@ -1,3 +1,4 @@
+// -*- mode: Bluespec; -*-
 // This is an explorative module applying the Twins approach 
 // to model byzantine behaviour with 1 faulty replicas and 5 correct replicas.
 module twins {

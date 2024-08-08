@@ -1,3 +1,5 @@
+// -*- mode: Bluespec; -*-
+//
 // A specification instance for n=7, f=1, and 0 byzantine nodes.
 //
 // Due to import/export limitations of Quint, use the definitions starting with g_:

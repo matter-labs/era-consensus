@@ -9,7 +9,7 @@ module types {
     type Block = str
 
     // For specification purposes, we represent a hash of a string `s` as
-    // the string `s`. This representation is collision-free, 
+    // the string `s`. This representation is collision-free,
     // and we interpret it as opaque.
     type BlockHash = str
 
@@ -98,9 +98,9 @@ module types {
             // This proposal is being proposed after a view where we timed out.
             // A timeout QC is just a collection of timeout votes (with at least
             // QUORUM_WEIGHT) for the previous view. Unlike with the Commit QC,
-            // timeout votes don't need to be identical. 
+            // timeout votes don't need to be identical.
         |   Timeout(TimeoutQC)
-        
+
 
     type CommitVote = {
         // The current view.
@@ -138,16 +138,21 @@ module types {
         view: ViewNumber,
         // The commit vote with the highest view that this replica has signed.
         high_vote: Option[CommitVote],
-        // The commit quorum certificate with the highest view that this replica
-	    // has observed.
-        high_commit_qc: Option[CommitQC],
+        // The view number of the highest commit quorum certificate that this replica
+        // has observed, if any.
+        high_commit_qc_view: Option[ViewNumber],
     }
+
+    pure val VIEW_NUMBER_NONE: Option[ViewNumber] = None
 
     type SignedTimeoutVote = {
         // The timeout.
         vote: TimeoutVote,
-        // Signature of the sender.
+        // Signature of the sender. This signature is ONLY over the vote field.
         sig: Signature,
+        // The commit quorum certificate with the highest view that this replica
+        // has observed, if any. It MUST match `high_commit_qc_view` in `vote`.
+        high_commit_qc: Option[CommitQC],
     }
 
     // If we have timeout votes with at least QUORUM_WEIGHT for the same
@@ -161,6 +166,9 @@ module types {
         // The aggregate signature of the replicas. We ignore the details here.
         // Can be something as simple as a vector of signatures.
         agg_sig: AggregateSignature,
+        // The commit quorum certificate with the highest view that all replicas in this
+        // QC have observed, if any. It MUST match the highest `high_commit_qc_view` in `votes`.
+        high_commit_qc: Option[CommitQC],
 
         // current view computed from the votes (not present in the original specification).
         ghost_view: ViewNumber,

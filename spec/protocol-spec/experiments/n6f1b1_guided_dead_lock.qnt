@@ -1,3 +1,5 @@
+// -*- mode: Bluespec; -*-
+//
 // A specification instance for n=6, f=1, and 1 Byzantine fault
 //
 /// Test a liveness issue where some validators have the HighQC but don't have the block payload and have to wait for it,
