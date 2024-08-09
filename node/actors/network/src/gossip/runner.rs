@@ -67,10 +67,19 @@ impl rpc::Handler<rpc::push_batch_votes::Rpc> for &PushServer<'_> {
         req: rpc::push_batch_votes::Req,
     ) -> anyhow::Result<rpc::push_batch_votes::Resp> {
         let want_snapshot = req.want_snapshot();
-        self.net
+        if let Err(err) = self
+            .net
             .attestation_state
             .insert_votes(req.votes.into_iter())
-            .await?;
+            .await
+            .context("insert_votes()")
+        {
+            // Attestation feature is still evolving, so for forward
+            // compatibility we just ignore any invalid data.
+            // Once stabilized we will drop the connection instead of
+            // logging the error.
+            tracing::warn!("{err:#}");
+        }
         Ok(rpc::push_batch_votes::Resp {
             votes: if want_snapshot {
                 self.net.attestation_state.votes()
@@ -218,10 +227,18 @@ impl Network {
                             req.want_snapshot(),
                             "expected empty response, but votes were returned"
                         );
-                        self.attestation_state
+                        if let Err(err) = self
+                            .attestation_state
                             .insert_votes(resp.votes.into_iter())
                             .await
-                            .context("insert_votes")?;
+                            .context("insert_votes")
+                        {
+                            // Attestation feature is still evolving, so for forward
+                            // compatibility we just ignore any invalid data.
+                            // Once stabilized we will drop the connection instead of
+                            // logging the error.
+                            tracing::warn!("{err:#}");
+                        }
                     }
                 }
             });
