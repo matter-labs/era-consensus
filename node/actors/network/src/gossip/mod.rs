@@ -26,7 +26,6 @@ pub mod attestation;
 mod fetch;
 mod handshake;
 pub mod loadtest;
-mod metrics;
 mod runner;
 #[cfg(test)]
 mod testonly;

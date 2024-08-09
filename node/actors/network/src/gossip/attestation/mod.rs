@@ -5,6 +5,7 @@ use std::{cmp::Ordering, collections::HashSet, fmt, sync::Arc};
 use zksync_concurrency::{ctx, sync};
 use zksync_consensus_roles::attester;
 
+mod metrics;
 #[cfg(test)]
 mod tests;
 
@@ -201,6 +202,10 @@ impl StateWatch {
         let before = state.weight;
         let res = state.insert_votes(votes);
         if state.weight > before {
+            metrics::METRICS.votes_collected.set(state.votes.len());
+            metrics::METRICS
+                .weight_collected
+                .set(state.weight as f64 / state.config.committee.total_weight() as f64);
             locked.send_replace(Some(state));
         }
         res
@@ -273,6 +278,16 @@ impl StateWatch {
                 new.insert_vote(Arc::new(vote)).unwrap();
             }
         }
+        metrics::METRICS
+            .batch_number
+            .set(new.config.batch_to_attest.number.0);
+        metrics::METRICS
+            .committee_size
+            .set(new.config.committee.len());
+        metrics::METRICS.votes_collected.set(new.votes.len());
+        metrics::METRICS
+            .weight_collected
+            .set(new.weight as f64 / new.config.committee.total_weight() as f64);
         locked.send_replace(Some(new));
         Ok(())
     }
