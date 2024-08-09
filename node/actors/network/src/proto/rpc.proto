@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package zksync.network.rpc;
+
+enum Capability {
+  reserved 5;
+  CONSENSUS = 0;
+  PING = 2;
+  PUSH_VALIDATOR_ADDRS = 1;
+  PUSH_BLOCK_STORE_STATE = 3;
+  GET_BLOCK = 4;
+  PUSH_BATCH_VOTES = 8;
+  PUSH_BATCH_STORE_STATE = 7;
+  GET_BATCH = 6;
+}

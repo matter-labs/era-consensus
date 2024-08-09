@@ -32,7 +32,7 @@ async fn test_inmemory_batch_store() {
     let mut setup = Setup::new(rng, 3);
     setup.push_batches(rng, 5);
 
-    let store = &testonly::in_memory::BatchStore::new(setup.genesis.clone(), BatchNumber(0));
+    let store = &testonly::in_memory::BatchStore::new(BatchNumber(0));
     let mut want = vec![];
     for batch in &setup.batches {
         store.queue_next_batch(ctx, batch.clone()).await.unwrap();

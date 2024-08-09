@@ -1,5 +1,6 @@
 //! RPC for fetching a batch from peer.
-use crate::{mux, proto::gossip as proto};
+use super::Capability;
+use crate::proto::gossip as proto;
 use anyhow::Context;
 use zksync_consensus_roles::attester;
 use zksync_protobuf::{read_optional, ProtoFmt};
@@ -10,7 +11,7 @@ pub(crate) struct Rpc;
 
 // TODO: determine more precise `INFLIGHT` / `RATE` values as a result of load testing
 impl super::Rpc for Rpc {
-    const CAPABILITY_ID: mux::CapabilityId = 6;
+    const CAPABILITY: Capability = Capability::GetBatch;
     const INFLIGHT: u32 = 5;
     const METHOD: &'static str = "get_batch";
 

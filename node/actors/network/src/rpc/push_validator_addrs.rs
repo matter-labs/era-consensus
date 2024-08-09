@@ -1,5 +1,6 @@
 //! RPC for synchronizing ValidatorAddrs data.
-use crate::{mux, proto::gossip as proto};
+use super::Capability;
+use crate::proto::gossip as proto;
 use anyhow::Context as _;
 use std::sync::Arc;
 use zksync_consensus_roles::validator;
@@ -9,7 +10,7 @@ use zksync_protobuf::ProtoFmt;
 pub(crate) struct Rpc;
 
 impl super::Rpc for Rpc {
-    const CAPABILITY_ID: mux::CapabilityId = 1;
+    const CAPABILITY: Capability = Capability::PushValidatorAddrs;
     const INFLIGHT: u32 = 1;
     const METHOD: &'static str = "push_validator_addrs";
 

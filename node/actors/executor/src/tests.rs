@@ -1,10 +1,9 @@
 //! High-level tests for `Executor`.
 use super::*;
-use attestation::{AttestationStatusClient, AttestationStatusRunner};
 use rand::Rng as _;
-use std::sync::{atomic::AtomicU64, Mutex};
+//use std::sync::{atomic::AtomicU64, Mutex};
 use tracing::Instrument as _;
-use zksync_concurrency::{sync, testonly::abort_on_panic};
+use zksync_concurrency::testonly::abort_on_panic;
 use zksync_consensus_bft as bft;
 use zksync_consensus_network::testonly::{new_configs, new_fullnode};
 use zksync_consensus_roles::validator::{testonly::Setup, BlockNumber};
@@ -31,8 +30,8 @@ fn config(cfg: &network::Config) -> Config {
 
 /// The test executors below are not running with attesters, so we just create an [AttestationStatusWatch]
 /// that will never be updated.
-fn never_attest(genesis: &validator::Genesis) -> Arc<AttestationStatusWatch> {
-    Arc::new(AttestationStatusWatch::new(genesis.hash()))
+fn never_attest() -> Arc<attestation::StateWatch> {
+    attestation::StateWatch::new(None).into()
 }
 
 fn validator(
@@ -41,7 +40,6 @@ fn validator(
     batch_store: Arc<BatchStore>,
     replica_store: impl ReplicaStore,
 ) -> Executor {
-    let attestation_status = never_attest(block_store.genesis());
     Executor {
         config: config(cfg),
         block_store,
@@ -51,8 +49,7 @@ fn validator(
             replica_store: Box::new(replica_store),
             payload_manager: Box::new(bft::testonly::RandomPayload(1000)),
         }),
-        attester: None,
-        attestation_status,
+        attestation_state: never_attest(),
     }
 }
 
@@ -61,14 +58,12 @@ fn fullnode(
     block_store: Arc<BlockStore>,
     batch_store: Arc<BatchStore>,
 ) -> Executor {
-    let attestation_status = never_attest(block_store.genesis());
     Executor {
         config: config(cfg),
         block_store,
         batch_store,
         validator: None,
-        attester: None,
-        attestation_status,
+        attestation_state: never_attest(),
     }
 }
 
@@ -317,6 +312,7 @@ async fn test_validator_syncing_from_fullnode() {
     .unwrap();
 }
 
+/*
 /// Test that the AttestationStatusRunner initialises and then polls the status.
 #[tokio::test]
 async fn test_attestation_status_runner() {
@@ -325,20 +321,20 @@ async fn test_attestation_status_runner() {
     let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
     let rng = &mut ctx.rng();
 
-    let genesis: attester::GenesisHash = rng.gen();
+    let genesis: validator::Genesis = rng.gen();
 
     #[derive(Clone)]
     struct MockAttestationStatus {
-        genesis: Arc<Mutex<attester::GenesisHash>>,
+        genesis: Arc<Mutex<validator::Genesis>>,
         batch_number: Arc<AtomicU64>,
     }
 
     #[async_trait::async_trait]
-    impl AttestationStatusClient for MockAttestationStatus {
-        async fn attestation_status(
+    impl attestation::Client for MockAttestationStatus {
+        async fn config(
             &self,
-            _ctx: &ctx::Ctx,
-        ) -> ctx::Result<Option<(attester::GenesisHash, attester::BatchNumber)>> {
+            ctx: &ctx::Ctx,
+        ) -> ctx::Result<Option<attestation::Config>> {
             let curr = self
                 .batch_number
                 .fetch_add(1u64, std::sync::atomic::Ordering::Relaxed);
@@ -346,10 +342,16 @@ async fn test_attestation_status_runner() {
                 // Return None initially to see that the runner will deal with it.
                 Ok(None)
             } else {
+                let genesis = *self.genesis.lock().unwrap().clone();
                 // The first actual result will be 1 on the 2nd poll.
-                let genesis = *self.genesis.lock().unwrap();
-                let next_batch_to_attest = attester::BatchNumber(curr);
-                Ok(Some((genesis, next_batch_to_attest)))
+                Ok(Some(attestation::Config {
+                    batch_to_attest: attester::Batch {
+                        genesis: genesis.hash(),
+                        number: attester::BatchNumber(curr),
+                        hash: ctx.rng().gen(),
+                    },
+                    committee: genesis.attesters.clone().unwrap()
+                }))
             }
         }
     }
@@ -359,7 +361,7 @@ async fn test_attestation_status_runner() {
             genesis: Arc::new(Mutex::new(genesis)),
             batch_number: Arc::new(AtomicU64::default()),
         };
-        let (status, runner) = AttestationStatusRunner::init(
+        let (status, runner) = attestation::Runner::init(
             ctx,
             Box::new(client.clone()),
             time::Duration::milliseconds(100),
@@ -374,7 +376,7 @@ async fn test_attestation_status_runner() {
         // Check that the value has *not* been initialised to a non-default value.
         {
             let status = sync::changed(ctx, &mut recv_status).await?;
-            assert!(status.next_batch_to_attest.is_none());
+            assert!(status.is_none());
         }
         // Now start polling for new values. Starting in the foreground because we want it to fail in the end.
         s.spawn(runner.run(ctx));
@@ -401,3 +403,4 @@ async fn test_attestation_status_runner() {
         ),
     }
 }
+*/

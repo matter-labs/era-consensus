@@ -16,6 +16,7 @@
 //! at the same time (max 1 client + server per CapabilityId).
 
 use self::metrics::{CallLatencyType, CallType, RPC_METRICS};
+pub(crate) use crate::proto::rpc::Capability;
 use crate::{frame, mux};
 use anyhow::Context as _;
 use std::{collections::BTreeMap, sync::Arc};
@@ -35,6 +36,13 @@ pub(crate) mod testonly;
 #[cfg(test)]
 mod tests;
 
+impl Capability {
+    /// Converts capability to `mux::CapabilityId`.
+    pub(crate) fn id(self) -> mux::CapabilityId {
+        self as mux::CapabilityId
+    }
+}
+
 /// Multiplexer configuration for the RPC services.
 pub(crate) const MUX_CONFIG: mux::Config = mux::Config {
     read_buffer_size: 160 * zksync_protobuf::kB as u64,
@@ -47,16 +55,21 @@ pub(crate) const MUX_CONFIG: mux::Config = mux::Config {
 /// It is just a collection of associated types
 /// and constants.
 pub(crate) trait Rpc: Sync + Send + 'static {
-    /// CapabilityId used to identify the RPC.
-    /// Client and Server have to agree on CAPABILITY_ID
-    /// of all supported RPC, for the RPC to actually work.
+    /// Capability used to identify the RPC.
+    /// Client and Server both have to support the given
+    /// capability for the RPC to work.
     /// Each type implementing `Rpc` should use an unique
-    /// `CAPABILITY_ID`.
-    const CAPABILITY_ID: mux::CapabilityId;
+    /// capability. We use a protobuf enum as a
+    /// register of capabilitues to enforce uniqueness
+    /// and compatibility.
+    const CAPABILITY: Capability;
     /// Maximal number of calls executed in parallel.
     /// Both client and server enforce this limit.
     const INFLIGHT: u32;
     /// Name of the RPC, used in prometheus metrics.
+    /// TODO: we can derive it automatically from EnumValueDescriptor of the
+    /// CAPABILITY (or form Debug implementation of Capability, but Debug formats
+    /// are not stable).
     const METHOD: &'static str;
     /// Type of the request message.
     type Req: zksync_protobuf::ProtoFmt + Send + Sync;
@@ -254,12 +267,12 @@ impl<'a> Service<'a> {
         if self
             .mux
             .accept
-            .insert(R::CAPABILITY_ID, client.queue.clone())
+            .insert(R::CAPABILITY.id(), client.queue.clone())
             .is_some()
         {
             panic!(
-                "client for capability {} already registered",
-                R::CAPABILITY_ID
+                "client for capability {:?} already registered",
+                R::CAPABILITY
             );
         }
         self
@@ -276,12 +289,12 @@ impl<'a> Service<'a> {
         if self
             .mux
             .connect
-            .insert(R::CAPABILITY_ID, queue.clone())
+            .insert(R::CAPABILITY.id(), queue.clone())
             .is_some()
         {
             panic!(
-                "server for capability {} already registered",
-                R::CAPABILITY_ID
+                "server for capability {:?} already registered",
+                R::CAPABILITY
             );
         }
         self.servers.push(Box::new(Server {

@@ -17,7 +17,6 @@ async fn test_simple() {
     cfg.rpc.push_batch_store_state_rate = limiter::Rate::INF;
     cfg.rpc.get_batch_rate = limiter::Rate::INF;
     cfg.rpc.get_batch_timeout = None;
-    cfg.attester_key = None;
     cfg.validator_key = None;
 
     scope::run!(ctx, |ctx, s| async {
@@ -127,7 +126,6 @@ async fn test_concurrent_requests() {
     cfg.rpc.push_batch_store_state_rate = limiter::Rate::INF;
     cfg.rpc.get_batch_rate = limiter::Rate::INF;
     cfg.rpc.get_batch_timeout = None;
-    cfg.attester_key = None;
     cfg.validator_key = None;
 
     scope::run!(ctx, |ctx, s| async {
@@ -204,7 +202,6 @@ async fn test_bad_responses() {
     cfg.rpc.get_batch_rate = limiter::Rate::INF;
     cfg.rpc.get_batch_timeout = None;
     cfg.validator_key = None;
-    cfg.attester_key = None;
 
     scope::run!(ctx, |ctx, s| async {
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
@@ -281,7 +278,6 @@ async fn test_retry() {
     cfg.rpc.get_batch_rate = limiter::Rate::INF;
     cfg.rpc.get_batch_timeout = None;
     cfg.validator_key = None;
-    cfg.attester_key = None;
 
     scope::run!(ctx, |ctx, s| async {
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;

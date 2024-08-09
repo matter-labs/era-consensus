@@ -28,7 +28,7 @@ impl ConnRunner {
 
 fn mux_entry<R: rpc::Rpc>(ctx: &ctx::Ctx) -> (mux::CapabilityId, Arc<mux::StreamQueue>) {
     (
-        R::CAPABILITY_ID,
+        R::CAPABILITY.id(),
         mux::StreamQueue::new(ctx, R::INFLIGHT, limiter::Rate::INF),
     )
 }
@@ -89,7 +89,7 @@ impl Conn {
     ) -> ctx::OrCanceled<ServerStream<R>> {
         Ok(ServerStream(
             self.connect
-                .get(&R::CAPABILITY_ID)
+                .get(&R::CAPABILITY.id())
                 .unwrap()
                 .open(ctx)
                 .await?,
@@ -104,7 +104,7 @@ impl Conn {
     ) -> ctx::OrCanceled<ClientStream<R>> {
         Ok(ClientStream(
             self.accept
-                .get(&R::CAPABILITY_ID)
+                .get(&R::CAPABILITY.id())
                 .unwrap()
                 .open(ctx)
                 .await?,

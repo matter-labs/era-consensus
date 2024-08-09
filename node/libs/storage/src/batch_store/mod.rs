@@ -54,21 +54,6 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
     /// Range of batches persisted in storage.
     fn persisted(&self) -> sync::watch::Receiver<BatchStoreState>;
 
-    /// Get the next L1 batch for which attesters are expected to produce a quorum certificate.
-    ///
-    /// An external node might never have a complete history of L1 batch QCs. Once the L1 batch is included on L1,
-    /// the external nodes might use the [attester::SyncBatch] route to obtain them, in which case they will not
-    /// have a QC and no reason to get them either. The main node, however, will want to have a QC for all batches.
-    async fn next_batch_to_attest(
-        &self,
-        ctx: &ctx::Ctx,
-    ) -> ctx::Result<Option<attester::BatchNumber>>;
-
-    /// Get the L1 batch QC from storage with the highest number.
-    ///
-    /// Returns `None` if we don't have a QC for any of the batches yet.
-    async fn last_batch_qc(&self, ctx: &ctx::Ctx) -> ctx::Result<Option<attester::BatchQC>>;
-
     /// Returns the [attester::SyncBatch] with the given number, which is used by peers
     /// to catch up with L1 batches that they might have missed if they went offline.
     async fn get_batch(
@@ -76,25 +61,6 @@ pub trait PersistentBatchStore: 'static + fmt::Debug + Send + Sync {
         ctx: &ctx::Ctx,
         number: attester::BatchNumber,
     ) -> ctx::Result<Option<attester::SyncBatch>>;
-
-    /// Returns the [attester::Batch] with the given number, which is the `message` that
-    /// appears in [attester::BatchQC], and represents the content that needs to be signed
-    /// by the attesters.
-    async fn get_batch_to_sign(
-        &self,
-        ctx: &ctx::Ctx,
-        number: attester::BatchNumber,
-    ) -> ctx::Result<Option<attester::Batch>>;
-
-    /// Returns the QC of the batch with the given number.
-    async fn get_batch_qc(
-        &self,
-        ctx: &ctx::Ctx,
-        number: attester::BatchNumber,
-    ) -> ctx::Result<Option<attester::BatchQC>>;
-
-    /// Store the given batch QC in the storage persistently.
-    async fn store_qc(&self, ctx: &ctx::Ctx, qc: attester::BatchQC) -> ctx::Result<()>;
 
     /// Queue the batch to be persisted in storage.
     /// `queue_next_batch()` may return BEFORE the batch is actually persisted,
@@ -294,48 +260,6 @@ impl BatchStore {
         Ok(batch)
     }
 
-    /// Retrieve the next batch number that doesn't have a QC yet and will need to be signed.
-    pub async fn next_batch_to_attest(
-        &self,
-        ctx: &ctx::Ctx,
-    ) -> ctx::Result<Option<attester::BatchNumber>> {
-        let t = metrics::PERSISTENT_BATCH_STORE
-            .next_batch_to_attest_latency
-            .start();
-
-        let batch = self
-            .persistent
-            .next_batch_to_attest(ctx)
-            .await
-            .wrap("persistent.next_batch_to_attest()")?;
-
-        t.observe();
-        Ok(batch)
-    }
-
-    /// Retrieve a batch to be signed.
-    ///
-    /// This might be `None` even if the L1 batch already exists, because the commitment
-    /// in it is populated asynchronously.
-    pub async fn batch_to_sign(
-        &self,
-        ctx: &ctx::Ctx,
-        number: attester::BatchNumber,
-    ) -> ctx::Result<Option<attester::Batch>> {
-        let t = metrics::PERSISTENT_BATCH_STORE
-            .batch_to_sign_latency
-            .start();
-
-        let batch = self
-            .persistent
-            .get_batch_to_sign(ctx, number)
-            .await
-            .wrap("persistent.get_batch_to_sign()")?;
-
-        t.observe();
-        Ok(batch)
-    }
-
     /// Append batch to a queue to be persisted eventually.
     /// Since persisting a batch may take a significant amount of time,
     /// BatchStore contains a queue of batches waiting to be persisted.
@@ -360,27 +284,6 @@ impl BatchStore {
 
         self.inner
             .send_if_modified(|inner| inner.try_push(batch.clone()));
-
-        t.observe();
-        Ok(())
-    }
-
-    /// Wait until the database has a batch, then attach the corresponding QC.
-    #[tracing::instrument(skip_all, fields(l1_batch = %qc.message.number))]
-    pub async fn persist_batch_qc(&self, ctx: &ctx::Ctx, qc: attester::BatchQC) -> ctx::Result<()> {
-        let t = metrics::BATCH_STORE.persist_batch_qc.start();
-        // The `store_qc` implementation in `zksync-era` retries the insertion of the QC if the payload
-        // isn't yet available, but to be safe we can wait for the availability signal here as well.
-        sync::wait_for(ctx, &mut self.persistent.persisted(), |persisted| {
-            qc.message.number < persisted.next()
-        })
-        .await?;
-        // Now it's definitely safe to store it.
-        metrics::BATCH_STORE
-            .last_persisted_batch_qc
-            .set(qc.message.number.0);
-
-        self.persistent.store_qc(ctx, qc).await?;
 
         t.observe();
         Ok(())

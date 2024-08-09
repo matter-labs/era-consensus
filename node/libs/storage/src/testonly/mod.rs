@@ -89,7 +89,7 @@ impl TestMemoryStorage {
         first: validator::BlockNumber,
     ) -> Self {
         let im_blocks = in_memory::BlockStore::new(genesis.clone(), first);
-        let im_batches = in_memory::BatchStore::new(genesis.clone(), attester::BatchNumber(0));
+        let im_batches = in_memory::BatchStore::new(attester::BatchNumber(0));
         Self::new_with_im(ctx, im_blocks, im_batches).await
     }
 
