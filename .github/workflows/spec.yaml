@@ -16,11 +16,11 @@ jobs:
       - name: Install node
         uses: actions/setup-node@v4
         with:
-          node-version: ">= 18"
+          node-version: 20
           check-latest: true
 
       - name: Install quint
-        run: npm i @informalsystems/quint -g
+        run: npm i @informalsystems/quint@0.21.0 -g
 
       - name: Run test
         run: cd spec && make test

@@ -1,3 +1,4 @@
+// -*- mode: Bluespec; -*-
 /// A few handy small models that are good for debugging and inspection
 module main {
     // A specification instance for n=6, f=1, and 1 Byzantine fault

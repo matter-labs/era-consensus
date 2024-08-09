@@ -1,3 +1,4 @@
+// -*- mode: Bluespec; -*-
 // A specification instance for n=6, f=1, and 1 Byzantine fault
 module n6f1b1 {
   import replica(

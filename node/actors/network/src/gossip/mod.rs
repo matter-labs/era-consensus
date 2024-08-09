@@ -16,6 +16,7 @@
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
 use fetch::RequestItem;
 use std::sync::{atomic::AtomicUsize, Arc};
+use tracing::Instrument;
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync};
 use zksync_consensus_roles::{node, validator};
@@ -100,20 +101,28 @@ impl Network {
                 let number = ctx::NoCopy(next);
                 next = next + 1;
                 // Fetch a block asynchronously.
-                s.spawn(async {
-                    let _permit = permit;
-                    let number = number.into();
-                    let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
-                        s.spawn_bg(self.fetch_queue.request(ctx, RequestItem::Block(number)));
-                        // Cancel fetching as soon as block is queued for storage.
-                        self.block_store.wait_until_queued(ctx, number).await?;
-                        Err(ctx::Canceled)
-                    })
-                    .await;
-                    // Wait until the block is actually persisted, so that the amount of blocks
-                    // stored in memory is bounded.
-                    self.block_store.wait_until_persisted(ctx, number).await
-                });
+                s.spawn(
+                    async {
+                        let _permit = permit;
+                        let number = number.into();
+                        let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
+                            s.spawn_bg(
+                                self.fetch_queue
+                                    .request(ctx, RequestItem::Block(number))
+                                    .instrument(tracing::info_span!("fetch_block_request")),
+                            );
+                            // Cancel fetching as soon as block is queued for storage.
+                            self.block_store.wait_until_queued(ctx, number).await?;
+                            Err(ctx::Canceled)
+                        })
+                        .instrument(tracing::info_span!("wait_for_block_to_queue"))
+                        .await;
+                        // Wait until the block is actually persisted, so that the amount of blocks
+                        // stored in memory is bounded.
+                        self.block_store.wait_until_persisted(ctx, number).await
+                    }
+                    .instrument(tracing::info_span!("fetch_block_from_peer", l2_block = %next)),
+                );
             }
         })
         .await;
@@ -129,20 +138,28 @@ impl Network {
                 let number = ctx::NoCopy(next);
                 next = next + 1;
                 // Fetch a batch asynchronously.
-                s.spawn(async {
-                    let _permit = permit;
-                    let number = number.into();
-                    let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
-                        s.spawn_bg(self.fetch_queue.request(ctx, RequestItem::Batch(number)));
-                        // Cancel fetching as soon as batch is queued for storage.
-                        self.batch_store.wait_until_queued(ctx, number).await?;
-                        Err(ctx::Canceled)
-                    })
-                    .await;
-                    // Wait until the batch is actually persisted, so that the amount of batches
-                    // stored in memory is bounded.
-                    self.batch_store.wait_until_persisted(ctx, number).await
-                });
+                s.spawn(
+                    async {
+                        let _permit = permit;
+                        let number = number.into();
+                        let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
+                            s.spawn_bg(
+                                self.fetch_queue
+                                    .request(ctx, RequestItem::Batch(number))
+                                    .instrument(tracing::info_span!("fetch_block_request")),
+                            );
+                            // Cancel fetching as soon as batch is queued for storage.
+                            self.batch_store.wait_until_queued(ctx, number).await?;
+                            Err(ctx::Canceled)
+                        })
+                        .instrument(tracing::info_span!("wait_for_batch_to_queue"))
+                        .await;
+                        // Wait until the batch is actually persisted, so that the amount of batches
+                        // stored in memory is bounded.
+                        self.batch_store.wait_until_persisted(ctx, number).await
+                    }
+                    .instrument(tracing::info_span!("fetch_batch_from_peer", l1_batch = %next)),
+                );
             }
         })
         .await;

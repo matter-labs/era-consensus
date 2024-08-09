@@ -19,6 +19,7 @@ use crate::io::{InputMessage, OutputMessage};
 use anyhow::Context;
 pub use config::Config;
 use std::sync::Arc;
+use tracing::Instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, oneshot, scope};
 use zksync_consensus_network::io::ConsensusReq;
 use zksync_consensus_roles::validator;
@@ -90,24 +91,34 @@ impl Config {
             // This is the infinite loop where the consensus actually runs. The validator waits for either
             // a message from the network or for a timeout, and processes each accordingly.
             loop {
-                let InputMessage::Network(req) = pipe.recv.recv(ctx).await?;
-                use validator::ConsensusMsg as M;
-                match &req.msg.msg {
-                    M::ReplicaPrepare(_) => {
-                        // This is a hacky way to do a clone. This is necessary since we don't want to derive
-                        // Clone for ConsensusReq. When we change to ChonkyBFT this will be removed anyway.
-                        let (ack, _) = oneshot::channel();
-                        let new_req = ConsensusReq {
-                            msg: req.msg.clone(),
-                            ack,
-                        };
+                async {
+                    let InputMessage::Network(req) = pipe
+                        .recv
+                        .recv(ctx)
+                        .instrument(tracing::info_span!("wait_for_message"))
+                        .await?;
+                    use validator::ConsensusMsg as M;
+                    match &req.msg.msg {
+                        M::ReplicaPrepare(_) => {
+                            // This is a hacky way to do a clone. This is necessary since we don't want to derive
+                            // Clone for ConsensusReq. When we change to ChonkyBFT this will be removed anyway.
+                            let (ack, _) = oneshot::channel();
+                            let new_req = ConsensusReq {
+                                msg: req.msg.clone(),
+                                ack,
+                            };
 
-                        replica_send.send(new_req);
-                        leader_send.send(req);
+                            replica_send.send(new_req);
+                            leader_send.send(req);
+                        }
+                        M::ReplicaCommit(_) => leader_send.send(req),
+                        M::LeaderPrepare(_) | M::LeaderCommit(_) => replica_send.send(req),
                     }
-                    M::ReplicaCommit(_) => leader_send.send(req),
-                    M::LeaderPrepare(_) | M::LeaderCommit(_) => replica_send.send(req),
+
+                    ctx::Ok(())
                 }
+                .instrument(tracing::info_span!("bft_iter"))
+                .await?;
             }
         })
         .await;

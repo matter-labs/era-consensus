@@ -1,6 +1,7 @@
 //! Defines storage layer for batches of blocks.
 use anyhow::Context as _;
 use std::{collections::VecDeque, fmt, sync::Arc};
+use tracing::Instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::{attester, validator};
 
@@ -114,6 +115,7 @@ impl Inner {
         true
     }
 
+    #[tracing::instrument(skip_all)]
     fn truncate_cache(&mut self) {
         while self.cache.len() > Self::CACHE_CAPACITY
             && self.persisted.contains(self.cache[0].number)
@@ -158,24 +160,41 @@ impl BatchStoreRunner {
             s.spawn::<()>(async {
                 let mut persisted = persisted;
                 loop {
-                    let persisted = sync::changed(ctx, &mut persisted).await?.clone();
-                    self.0.inner.send_modify(|inner| {
-                        // XXX: In `BlockStoreRunner` update both the `queued` and the `persisted` here.
-                        inner.persisted = persisted;
-                        inner.truncate_cache();
-                    });
+                    async {
+                        let persisted = sync::changed(ctx, &mut persisted)
+                            .instrument(tracing::info_span!("wait_for_batch_store_change"))
+                            .await?
+                            .clone();
+                        self.0.inner.send_modify(|inner| {
+                            // XXX: In `BlockStoreRunner` update both the `queued` and the `persisted` here.
+                            inner.persisted = persisted;
+                            inner.truncate_cache();
+                        });
+
+                        ctx::Ok(())
+                    }
+                    .instrument(tracing::info_span!("truncate_batch_cache_iter"))
+                    .await?;
                 }
             });
             let inner = &mut self.0.inner.subscribe();
             loop {
-                let batch = sync::wait_for(ctx, inner, |inner| inner.queued.contains(queue_next))
-                    .await?
-                    .batch(queue_next)
-                    .unwrap();
+                async {
+                    let batch =
+                        sync::wait_for(ctx, inner, |inner| inner.queued.contains(queue_next))
+                            .instrument(tracing::info_span!("wait_for_next_batch"))
+                            .await?
+                            .batch(queue_next)
+                            .unwrap();
 
-                queue_next = queue_next.next();
+                    queue_next = queue_next.next();
 
-                self.0.persistent.queue_next_batch(ctx, batch).await?;
+                    self.0.persistent.queue_next_batch(ctx, batch).await?;
+
+                    ctx::Ok(())
+                }
+                .instrument(tracing::info_span!("queue_persist_batch_iter"))
+                .await?;
             }
         })
         .await;
@@ -272,6 +291,7 @@ impl BatchStore {
 
     /// Waits until the given batch is queued (in memory, or persisted).
     /// Note that it doesn't mean that the batch is actually available, as old batches might get pruned.
+    #[tracing::instrument(skip_all, fields(l1_batch = %number))]
     pub async fn wait_until_queued(
         &self,
         ctx: &ctx::Ctx,
@@ -292,6 +312,7 @@ impl BatchStore {
 
     /// Waits until the given batch is stored persistently.
     /// Note that it doesn't mean that the batch is actually available, as old batches might get pruned.
+    #[tracing::instrument(skip_all, fields(l1_batch = %number))]
     pub async fn wait_until_persisted(
         &self,
         ctx: &ctx::Ctx,

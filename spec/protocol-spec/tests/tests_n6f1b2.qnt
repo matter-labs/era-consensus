@@ -18,9 +18,10 @@ module tests_n6f1b2 {
 
     // an initial quorum certificate
     pure val init_timeout_qc: TimeoutQC = {
-        votes: REPLICAS.mapBy(id => { view: 0, high_vote: COMMIT_VOTE_NONE, high_commit_qc: HIGH_COMMIT_QC_NONE}),
+        votes: REPLICAS.mapBy(id => { view: 0, high_vote: COMMIT_VOTE_NONE, high_commit_qc_view: VIEW_NUMBER_NONE }),
         agg_sig: REPLICAS,
         ghost_view: 0,
+        high_commit_qc: HIGH_COMMIT_QC_NONE,
     }
 
     def replica_committed(id: ReplicaId): List[Block] = {
@@ -33,8 +34,8 @@ module tests_n6f1b2 {
     run disagreement_Test = {
         val high_vote_b0 = Some({ view: 1, block_number: 0, block_hash: "val_b0" })
         val high_vote_b1 = Some({ view: 1, block_number: 0, block_hash: "val_b1" })
-        val timeout_vote_b0: TimeoutVote = { view: 1, high_commit_qc: None, high_vote: high_vote_b0 }
-        val timeout_vote_b1: TimeoutVote = { view: 1, high_commit_qc: None, high_vote: high_vote_b1 }
+        val timeout_vote_b0: TimeoutVote = { view: 1, high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: high_vote_b0 }
+        val timeout_vote_b1: TimeoutVote = { view: 1, high_commit_qc_view: VIEW_NUMBER_NONE, high_vote: high_vote_b1 }
         // n4 and n5 partition the correct replicas into n0, n1, n2 and n1, n2, n3
         val timeout_qc: TimeoutQC = {
             ghost_view: 1,
@@ -45,7 +46,8 @@ module tests_n6f1b2 {
                 } else {
                     timeout_vote_b1
                 }
-            })
+            }),
+            high_commit_qc: HIGH_COMMIT_QC_NONE,
         }
         val new_view_timeout: NewView = {
             sig: "n4",
@@ -123,10 +125,12 @@ module tests_n6f1b2 {
                 val timeout_vote_n4: SignedTimeoutVote = {
                     vote: timeout_vote_b1,
                     sig: "n4",
+                    high_commit_qc: HIGH_COMMIT_QC_NONE,
                 }
                 val timeout_vote_n5: SignedTimeoutVote = {
                     vote: timeout_vote_b1,
                     sig: "n5",
+                    high_commit_qc: HIGH_COMMIT_QC_NONE,
                 }
                 all {
                     msgs_signed_timeout' = msgs_signed_timeout.union(Set(timeout_vote_n4, timeout_vote_n5)),

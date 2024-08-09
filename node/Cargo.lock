@@ -754,6 +754,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctor"
+version = "0.2.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "edb49164822f3ee45b17acd4a208cfc1251410cf0cad9a833234c9890774dd9f"
+dependencies = [
+ "quote",
+ "syn 2.0.72",
+]
+
+[[package]]
 name = "ctr"
 version = "0.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1918,26 +1928,6 @@ dependencies = [
  "cc",
  "pkg-config",
  "vcpkg",
-]
-
-[[package]]
-name = "linkme"
-version = "0.3.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ccb76662d78edc9f9bf56360d6919bdacc8b7761227727e5082f128eeb90bbf5"
-dependencies = [
- "linkme-impl",
-]
-
-[[package]]
-name = "linkme-impl"
-version = "0.3.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f8dccda732e04fa3baf2e17cf835bfe2601c7c2edafd64417c627dabae3a8cda"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.72",
 ]
 
 [[package]]
@@ -3309,7 +3299,7 @@ dependencies = [
 
 [[package]]
 name = "tester"
-version = "0.1.0-rc.8"
+version = "0.1.0-rc.9"
 dependencies = [
  "anyhow",
  "clap",
@@ -3698,13 +3688,13 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vise"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "229baafe01d5177b63c6ee1def80d8e39a2365e64caf69ddb05a57594b15647c"
+checksum = "90ade36f3548b1524396f4de7b36f4f210c8a01dfab568eb2bff466af64eb6e5"
 dependencies = [
  "compile-fmt",
+ "ctor",
  "elsa",
- "linkme",
  "once_cell",
  "prometheus-client",
  "vise-macros",
@@ -3712,9 +3702,9 @@ dependencies = [
 
 [[package]]
 name = "vise-exporter"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23981b18d697026f5430249ab01ba739ef2edc463e400042394331cb2bb63494"
+checksum = "671d3b894d5d0849f0a597f56bf071f42d4f2a1cbcf2f78ca21f870ab7c0cc2b"
 dependencies = [
  "hyper 0.14.30",
  "once_cell",
@@ -3725,9 +3715,9 @@ dependencies = [
 
 [[package]]
 name = "vise-macros"
-version = "0.1.0"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8bb19c33cd5f04dcf4e767635e058a998edbc2b7fca32ade0a4a1cea0f8e9b34"
+checksum = "6a511871dc5de990a3b2a0e715facfbc5da848c0c0395597a1415029fb7c250a"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -4017,7 +4007,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_concurrency"
-version = "0.1.0-rc.8"
+version = "0.1.0-rc.9"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -4035,7 +4025,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_bft"
-version = "0.1.0-rc.8"
+version = "0.1.0-rc.9"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -4059,7 +4049,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_crypto"
-version = "0.1.0-rc.8"
+version = "0.1.0-rc.9"
 dependencies = [
  "anyhow",
  "blst",
@@ -4082,7 +4072,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_executor"
-version = "0.1.0-rc.8"
+version = "0.1.0-rc.9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4103,7 +4093,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_network"
-version = "0.1.0-rc.8"
+version = "0.1.0-rc.9"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -4139,7 +4129,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_roles"
-version = "0.1.0-rc.8"
+version = "0.1.0-rc.9"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -4160,7 +4150,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_storage"
-version = "0.1.0-rc.8"
+version = "0.1.0-rc.9"
 dependencies = [
  "anyhow",
  "assert_matches",
@@ -4182,7 +4172,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_tools"
-version = "0.1.0-rc.8"
+version = "0.1.0-rc.9"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4217,7 +4207,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_consensus_utils"
-version = "0.1.0-rc.8"
+version = "0.1.0-rc.9"
 dependencies = [
  "anyhow",
  "rand 0.8.5",
@@ -4227,7 +4217,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_protobuf"
-version = "0.1.0-rc.8"
+version = "0.1.0-rc.9"
 dependencies = [
  "anyhow",
  "bit-vec",
@@ -4249,7 +4239,7 @@ dependencies = [
 
 [[package]]
 name = "zksync_protobuf_build"
-version = "0.1.0-rc.8"
+version = "0.1.0-rc.9"
 dependencies = [
  "anyhow",
  "heck",

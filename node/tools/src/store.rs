@@ -137,7 +137,7 @@ impl PersistentBlockStore for RocksDB {
         .wrap(number)
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(skip_all, fields(l2_block = %block.justification.message.proposal.number))]
     async fn queue_next_block(
         &self,
         _ctx: &ctx::Ctx,
