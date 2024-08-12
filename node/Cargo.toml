@@ -50,7 +50,14 @@ anyhow = "1"
 assert_matches = "1.5.0"
 async-trait = "0.1.71"
 bit-vec = "0.6"
-blst = "0.3.11"
+# portable feature makes blst code check in runtime if ADX instruction set is
+# supported at every bigint multiplication:
+# https://github.com/supranational/blst/commit/0dbc2ce4138e9e5d2aa941ca4cd731d8814a67a2
+# and falls back to a portable implementation if not.
+# Apparently the cost of the check is negligible.
+# This is an undocumented feature, present since release 0.3.11:
+# https://github.com/supranational/blst/releases/tag/v0.3.11
+blst = { version = "0.3.13", features = ["portable"] }
 clap = { version = "4.3.3", features = ["derive"] }
 criterion = "0.5.1"
 ed25519-dalek = { version = "2.0.0", features = ["rand_core"] }
