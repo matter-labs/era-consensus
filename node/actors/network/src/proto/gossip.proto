@@ -27,7 +27,7 @@ message PushBatchVotes {
 
 message PushBatchVotesResp {
   // Signed roles.validator.Msg.votes
-  // Empty if want_snapshot in request was not set.
+  // Empty if want_votes_for in request was not set.
   repeated roles.attester.Signed votes = 1;
 }
 
