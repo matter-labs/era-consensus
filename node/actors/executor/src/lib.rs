@@ -2,7 +2,7 @@
 use crate::io::Dispatcher;
 use anyhow::Context as _;
 use network::http;
-pub use network::RpcConfig;
+pub use network::{gossip::attestation, RpcConfig};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -14,7 +14,6 @@ use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
-pub use network::gossip::attestation;
 
 mod io;
 #[cfg(test)]

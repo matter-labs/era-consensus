@@ -128,23 +128,6 @@ pub enum BatchQCVerifyError {
     GenesisMismatch,
 }
 
-/// Error returned by `BatchQC::add()` if the signature is invalid.
-#[derive(thiserror::Error, Debug)]
-pub enum BatchQCAddError {
-    /// Inconsistent messages.
-    #[error("Trying to add signature for a different message")]
-    InconsistentMessages,
-    /// Signer not present in the committee.
-    #[error("Signer not in committee: {signer:?}")]
-    SignerNotInCommittee {
-        /// Signer of the message.
-        signer: Box<attester::PublicKey>,
-    },
-    /// Message already present in BatchQC.
-    #[error("Message already signed for BatchQC")]
-    Exists,
-}
-
 impl BatchQC {
     /// Create a new empty instance for a given `Batch` message.
     pub fn new(message: Batch) -> Self {

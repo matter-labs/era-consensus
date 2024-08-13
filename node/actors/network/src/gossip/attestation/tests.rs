@@ -35,9 +35,10 @@ async fn test_insert_votes() {
                 key: k.public(),
                 weight: 1250,
             }))
-            .unwrap().into(),
+            .unwrap()
+            .into(),
         });
-        let ctrl_votes = ||Votes::from(ctrl.votes(&config.batch_to_attest));
+        let ctrl_votes = || Votes::from(ctrl.votes(&config.batch_to_attest));
         ctrl.update_config(config.clone()).await.unwrap();
         assert_eq!(Votes::from([]), ctrl_votes());
         let mut recv = ctrl.subscribe();
@@ -51,14 +52,10 @@ async fn test_insert_votes() {
             .collect();
 
         tracing::info!("Initial votes.");
-        ctrl
-            .insert_votes(all_votes[0..3].iter().cloned())
+        ctrl.insert_votes(all_votes[0..3].iter().cloned())
             .await
             .unwrap();
-        assert_eq!(
-            Votes::from(all_votes[0..3].iter().cloned()),
-            ctrl_votes()
-        );
+        assert_eq!(Votes::from(all_votes[0..3].iter().cloned()), ctrl_votes());
         let diff = recv.wait_for_diff(ctx).await.unwrap();
         assert!(diff.config.is_none());
         assert_eq!(
@@ -67,18 +64,13 @@ async fn test_insert_votes() {
         );
 
         tracing::info!("Adding votes gradually.");
-        ctrl
-            .insert_votes(all_votes[3..5].iter().cloned())
+        ctrl.insert_votes(all_votes[3..5].iter().cloned())
             .await
             .unwrap();
-        ctrl
-            .insert_votes(all_votes[5..7].iter().cloned())
+        ctrl.insert_votes(all_votes[5..7].iter().cloned())
             .await
             .unwrap();
-        assert_eq!(
-            Votes::from(all_votes[0..7].iter().cloned()),
-            ctrl_votes()
-        );
+        assert_eq!(Votes::from(all_votes[0..7].iter().cloned()), ctrl_votes());
         let diff = recv.wait_for_diff(ctx).await.unwrap();
         assert!(diff.config.is_none());
         assert_eq!(
@@ -87,14 +79,10 @@ async fn test_insert_votes() {
         );
 
         tracing::info!("Readding already inserded votes (noop).");
-        ctrl
-            .insert_votes(all_votes[2..6].iter().cloned())
+        ctrl.insert_votes(all_votes[2..6].iter().cloned())
             .await
             .unwrap();
-        assert_eq!(
-            Votes::from(all_votes[0..7].iter().cloned()),
-            ctrl_votes()
-        );
+        assert_eq!(Votes::from(all_votes[0..7].iter().cloned()), ctrl_votes());
 
         tracing::info!("Adding votes out of committee (error).");
         assert!(ctrl
@@ -104,28 +92,21 @@ async fn test_insert_votes() {
             }))
             .await
             .is_err());
-        assert_eq!(
-            Votes::from(all_votes[0..7].iter().cloned()),
-            ctrl_votes()
-        );
+        assert_eq!(Votes::from(all_votes[0..7].iter().cloned()), ctrl_votes());
 
         tracing::info!("Adding votes for different batch (noop).");
-        ctrl
-            .insert_votes((0..3).map(|_| {
-                let k: attester::SecretKey = rng.gen();
-                k.sign_msg(attester::Batch {
-                    genesis: config.batch_to_attest.genesis,
-                    number: rng.gen(),
-                    hash: rng.gen(),
-                })
-                .into()
-            }))
-            .await
-            .unwrap();
-        assert_eq!(
-            Votes::from(all_votes[0..7].iter().cloned()),
-            ctrl_votes()
-        );
+        ctrl.insert_votes((0..3).map(|_| {
+            let k: attester::SecretKey = rng.gen();
+            k.sign_msg(attester::Batch {
+                genesis: config.batch_to_attest.genesis,
+                number: rng.gen(),
+                hash: rng.gen(),
+            })
+            .into()
+        }))
+        .await
+        .unwrap();
+        assert_eq!(Votes::from(all_votes[0..7].iter().cloned()), ctrl_votes());
 
         tracing::info!("Adding incorrect votes (error).");
         let mut bad_vote = (*all_votes[7]).clone();
@@ -134,14 +115,10 @@ async fn test_insert_votes() {
             .insert_votes([bad_vote.into()].into_iter())
             .await
             .is_err());
-        assert_eq!(
-            Votes::from(all_votes[0..7].iter().cloned()),
-            ctrl_votes()
-        );
+        assert_eq!(Votes::from(all_votes[0..7].iter().cloned()), ctrl_votes());
 
         tracing::info!("Add the last vote mixed with already added votes.");
-        ctrl
-            .insert_votes(all_votes[5..].iter().cloned())
+        ctrl.insert_votes(all_votes[5..].iter().cloned())
             .await
             .unwrap();
         assert_eq!(Votes::from(all_votes.clone()), ctrl_votes());
@@ -178,7 +155,8 @@ async fn test_wait_for_qc() {
                 key: k.public(),
                 weight: rng.gen_range(1..=100),
             }))
-            .unwrap().into(),
+            .unwrap()
+            .into(),
         });
         let mut all_votes: Vec<Vote> = keys
             .iter()
@@ -189,15 +167,13 @@ async fn test_wait_for_qc() {
         loop {
             let end = rng.gen_range(0..=committee_size);
             tracing::info!("end = {end}");
-            ctrl
-                .insert_votes(all_votes[..end].iter().cloned())
+            ctrl.insert_votes(all_votes[..end].iter().cloned())
                 .await
                 .unwrap();
             // Waiting for the previous qc should immediately return None.
             assert_eq!(
                 None,
-                ctrl
-                    .wait_for_qc(ctx, config.batch_to_attest.number.prev().unwrap())
+                ctrl.wait_for_qc(ctx, config.batch_to_attest.number.prev().unwrap())
                     .await
                     .unwrap()
             );
@@ -215,10 +191,7 @@ async fn test_wait_for_qc() {
                 qc.verify(genesis, &config.committee).unwrap();
                 break;
             }
-            assert_eq!(
-                None,
-                ctrl.state.subscribe().borrow().as_ref().unwrap().qc()
-            );
+            assert_eq!(None, ctrl.state.subscribe().borrow().as_ref().unwrap().qc());
         }
     }
 }

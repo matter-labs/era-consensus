@@ -50,17 +50,13 @@ impl State {
                 votes: self.votes.values().cloned().collect(),
             };
         };
-        if self
-            .config
-            .batch_to_attest
-            .number != old.config.batch_to_attest.number
-        {
+        if self.config.batch_to_attest.number != old.config.batch_to_attest.number {
             return Diff {
                 config: Some(self.config.clone()),
                 votes: self.votes.values().cloned().collect(),
             };
         }
-        
+
         Diff {
             config: None,
             votes: self
@@ -83,9 +79,15 @@ impl State {
         if vote.msg.number != self.config.batch_to_attest.number {
             return Ok(());
         }
-        anyhow::ensure!(vote.msg.hash == self.config.batch_to_attest.hash, "batch hash mismatch");
+        anyhow::ensure!(
+            vote.msg.hash == self.config.batch_to_attest.hash,
+            "batch hash mismatch"
+        );
         let Some(weight) = self.config.committee.weight(&vote.key) else {
-            anyhow::bail!("received vote signed by an inactive attester: {:?}",vote.key);
+            anyhow::bail!(
+                "received vote signed by an inactive attester: {:?}",
+                vote.key
+            );
         };
         if self.votes.contains_key(&vote.key) {
             return Ok(());
@@ -158,10 +160,32 @@ impl DiffReceiver {
 /// * adding votes to the state
 /// * subscribing to the vote set changes
 /// * waiting for the certificate to be collected
-/// 
+///
 /// It also keeps an attester key used to sign the batch vote,
 /// whenever it belongs the current attester committee.
 /// Signing happens automatically whenever the committee is updated.
+///
+/// Expected usage:
+/// ```
+/// let ctrl = attestation::Controller::new(Some(key));
+/// loop {
+///     // Check the global attestation registry.
+///     // Compute the next expected batch and the committee that should attest it.
+///     ...
+///     let config = attestation::Config {
+///         batch_to_attest: ...,
+///         committee: ...,
+///     };
+///     ctrl.update_config(Arc::new(config.clone())).unwrap();
+///     s.spawn(async {
+///         if let Some(qc) = ctrl.wait_for_qc(ctx, config.batch_to_attest.number).await?;
+///         // Submit the certificate `qc` to the global registry
+///         ...
+///     });
+///     // Wait for the global registry to include the certificate.
+///     ...
+/// }
+/// ```
 pub struct Controller {
     key: Option<attester::SecretKey>,
     state: Watch<Option<State>>,
@@ -169,15 +193,14 @@ pub struct Controller {
 
 impl fmt::Debug for Controller {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt
-            .debug_struct("StateWatch")
+        fmt.debug_struct("StateWatch")
             .field("key", &self.key)
             .finish_non_exhaustive()
     }
 }
 
 impl Controller {
-    /// Constructs AttestationStatusWatch.
+    /// Constructs Controller.
     /// `key` will be used for automatically signing votes.
     pub fn new(key: Option<attester::SecretKey>) -> Self {
         Self {
@@ -220,11 +243,16 @@ impl Controller {
     }
 
     /// Returns votes matching the `want` batch.
-    pub(crate) fn votes(&self, want: &attester::Batch) -> Vec<Arc<attester::Signed<attester::Batch>>> {
+    pub(crate) fn votes(
+        &self,
+        want: &attester::Batch,
+    ) -> Vec<Arc<attester::Signed<attester::Batch>>> {
         let state = self.state.subscribe();
         let state = state.borrow();
         let Some(state) = &*state else { return vec![] };
-        if &state.config.batch_to_attest != want { return vec![] }
+        if &state.config.batch_to_attest != want {
+            return vec![];
+        }
         state.votes.values().cloned().collect()
     }
 

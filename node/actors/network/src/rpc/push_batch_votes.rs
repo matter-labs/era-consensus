@@ -4,7 +4,7 @@ use crate::proto::gossip as proto;
 use anyhow::Context as _;
 use std::sync::Arc;
 use zksync_consensus_roles::attester;
-use zksync_protobuf::{read_optional,ProtoFmt};
+use zksync_protobuf::{read_optional, ProtoFmt};
 
 /// RPC pushing fresh batch votes.
 pub(crate) struct Rpc;
@@ -20,14 +20,14 @@ impl super::Rpc for Rpc {
 /// Signed batch message that the receiving peer should process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Req {
-    // Requesting the peer to respond with votes for the batch. 
+    /// Requesting the peer to respond with votes for the batch.
     pub(crate) want_votes_for: Option<attester::Batch>,
     /// New votes that server might be not aware of.
     pub(crate) votes: Vec<Arc<attester::Signed<attester::Batch>>>,
 }
 
 pub(crate) struct Resp {
-    /// Votes requested by the peer. 
+    /// Votes requested by the peer.
     pub(crate) votes: Vec<Arc<attester::Signed<attester::Batch>>>,
 }
 

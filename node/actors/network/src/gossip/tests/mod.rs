@@ -497,24 +497,26 @@ async fn test_batch_votes_propagation() {
     // Fixed attestation schedule.
     let first: attester::BatchNumber = rng.gen();
     let schedule: Vec<_> = (0..10)
-        .map(|r| Arc::new(attestation::Config {
-            batch_to_attest: attester::Batch {
-                genesis: setup.genesis.hash(),
-                number: first + r,
-                hash: rng.gen(),
-            },
-            committee: {
-                // We select a random subset here. It would be incorrect to choose an empty subset, but
-                // the chances of that are negligible.
-                let subset: Vec<_> = setup.attester_keys.iter().filter(|_| rng.gen()).collect();
-                attester::Committee::new(subset.iter().map(|k| attester::WeightedAttester {
-                    key: k.public(),
-                    weight: rng.gen_range(5..10),
-                }))
-                .unwrap()
-                .into()
-            },
-        }))
+        .map(|r| {
+            Arc::new(attestation::Config {
+                batch_to_attest: attester::Batch {
+                    genesis: setup.genesis.hash(),
+                    number: first + r,
+                    hash: rng.gen(),
+                },
+                committee: {
+                    // We select a random subset here. It would be incorrect to choose an empty subset, but
+                    // the chances of that are negligible.
+                    let subset: Vec<_> = setup.attester_keys.iter().filter(|_| rng.gen()).collect();
+                    attester::Committee::new(subset.iter().map(|k| attester::WeightedAttester {
+                        key: k.public(),
+                        weight: rng.gen_range(5..10),
+                    }))
+                    .unwrap()
+                    .into()
+                },
+            })
+        })
         .collect();
 
     // Round of the schedule that nodes should collect the votes for.
@@ -533,10 +535,8 @@ async fn test_batch_votes_propagation() {
                 cfg: cfg.clone(),
                 block_store: store.blocks.clone(),
                 batch_store: store.batches.clone(),
-                attestation: attestation::Controller::new(Some(
-                    setup.attester_keys[i].clone(),
-                ))
-                .into(),
+                attestation: attestation::Controller::new(Some(setup.attester_keys[i].clone()))
+                    .into(),
             });
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             // Task going through the schedule, waiting for ANY node to collect the certificate
