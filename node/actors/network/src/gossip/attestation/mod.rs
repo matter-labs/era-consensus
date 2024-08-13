@@ -36,7 +36,7 @@ pub(crate) struct Diff {
 
 impl Diff {
     fn is_empty(&self) -> bool {
-        self.votes.is_empty() && !self.config.is_none()
+        self.votes.is_empty() && self.config.is_none()
     }
 }
 

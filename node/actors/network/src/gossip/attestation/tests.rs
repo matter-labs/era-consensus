@@ -23,6 +23,7 @@ async fn test_insert_votes() {
     let genesis: attester::GenesisHash = rng.gen();
     let first: attester::BatchNumber = rng.gen();
     for i in 0..3 {
+        tracing::info!("iteration {i}");
         let keys: Vec<attester::SecretKey> = (0..8).map(|_| rng.gen()).collect();
         let config = Arc::new(Config {
             batch_to_attest: attester::Batch {
@@ -49,7 +50,7 @@ async fn test_insert_votes() {
             .map(|k| k.sign_msg(config.batch_to_attest.clone()).into())
             .collect();
 
-        // Initial votes.
+        tracing::info!("Initial votes.");
         ctrl
             .insert_votes(all_votes[0..3].iter().cloned())
             .await
@@ -65,7 +66,7 @@ async fn test_insert_votes() {
             diff.votes.into()
         );
 
-        // Adding votes gradually.
+        tracing::info!("Adding votes gradually.");
         ctrl
             .insert_votes(all_votes[3..5].iter().cloned())
             .await
@@ -85,7 +86,7 @@ async fn test_insert_votes() {
             diff.votes.into()
         );
 
-        // Readding already inserded votes (noop).
+        tracing::info!("Readding already inserded votes (noop).");
         ctrl
             .insert_votes(all_votes[2..6].iter().cloned())
             .await
@@ -95,20 +96,20 @@ async fn test_insert_votes() {
             ctrl_votes()
         );
 
-        // Adding votes out of committee (noop).
-        ctrl
+        tracing::info!("Adding votes out of committee (error).");
+        assert!(ctrl
             .insert_votes((0..3).map(|_| {
                 let k: attester::SecretKey = rng.gen();
                 k.sign_msg(config.batch_to_attest.clone()).into()
             }))
             .await
-            .unwrap();
+            .is_err());
         assert_eq!(
             Votes::from(all_votes[0..7].iter().cloned()),
             ctrl_votes()
         );
 
-        // Adding votes for different batch (noop).
+        tracing::info!("Adding votes for different batch (noop).");
         ctrl
             .insert_votes((0..3).map(|_| {
                 let k: attester::SecretKey = rng.gen();
@@ -126,7 +127,7 @@ async fn test_insert_votes() {
             ctrl_votes()
         );
 
-        // Adding incorrect votes (error).
+        tracing::info!("Adding incorrect votes (error).");
         let mut bad_vote = (*all_votes[7]).clone();
         bad_vote.sig = rng.gen();
         assert!(ctrl
@@ -138,7 +139,7 @@ async fn test_insert_votes() {
             ctrl_votes()
         );
 
-        // Add the last vote mixed with already added votes.
+        tracing::info!("Add the last vote mixed with already added votes.");
         ctrl
             .insert_votes(all_votes[5..].iter().cloned())
             .await

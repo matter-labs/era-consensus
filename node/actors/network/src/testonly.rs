@@ -186,6 +186,9 @@ pub struct InstanceConfig {
     /// batch_store
     pub batch_store: Arc<BatchStore>,
     /// Attestation controller.
+    /// It is not configured by default.
+    /// Attestation tests should configure it and consume
+    /// the certificates on their own (see `attestation::Controller`).
     pub attestation: Arc<attestation::Controller>,
 }
 
