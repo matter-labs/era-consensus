@@ -185,8 +185,8 @@ pub struct InstanceConfig {
     pub block_store: Arc<BlockStore>,
     /// batch_store
     pub batch_store: Arc<BatchStore>,
-    /// attestation_state
-    pub attestation_state: Arc<attestation::StateWatch>,
+    /// Attestation controller.
+    pub attestation: Arc<attestation::Controller>,
 }
 
 impl Instance {
@@ -200,7 +200,7 @@ impl Instance {
             cfg,
             block_store,
             batch_store,
-            attestation_state: attestation::StateWatch::new(None).into(),
+            attestation: attestation::Controller::new(None).into(),
         })
     }
 
@@ -212,7 +212,7 @@ impl Instance {
             cfg.block_store.clone(),
             cfg.batch_store.clone(),
             actor_pipe,
-            cfg.attestation_state,
+            cfg.attestation,
         );
         let (terminate_send, terminate_recv) = channel::bounded(1);
         (

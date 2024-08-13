@@ -57,10 +57,10 @@ impl Network {
         block_store: Arc<BlockStore>,
         batch_store: Arc<BatchStore>,
         pipe: ActorPipe<io::InputMessage, io::OutputMessage>,
-        attestation_state: Arc<attestation::StateWatch>,
+        attestation: Arc<attestation::Controller>,
     ) -> (Arc<Self>, Runner) {
         let gossip =
-            gossip::Network::new(cfg, block_store, batch_store, pipe.send, attestation_state);
+            gossip::Network::new(cfg, block_store, batch_store, pipe.send, attestation);
         let consensus = consensus::Network::new(gossip.clone());
         let net = Arc::new(Self { gossip, consensus });
         (

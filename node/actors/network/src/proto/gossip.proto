@@ -19,8 +19,8 @@ message PushValidatorAddrs {
 }
 
 message PushBatchVotes {
-  // Whether peer should send back snapshot of its votes. 
-  optional bool want_snapshot = 2; // optional
+  // Requesting the peer to respond with votes for the batch. 
+  optional roles.attester.Batch want_votes_for = 2; // optional
   // Signed roles.validator.Msg.votes
   repeated roles.attester.Signed votes = 1;
 }

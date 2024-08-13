@@ -497,7 +497,7 @@ async fn test_batch_votes_propagation() {
     // Fixed attestation schedule.
     let first: attester::BatchNumber = rng.gen();
     let schedule: Vec<_> = (0..10)
-        .map(|r| attestation::Config {
+        .map(|r| Arc::new(attestation::Config {
             batch_to_attest: attester::Batch {
                 genesis: setup.genesis.hash(),
                 number: first + r,
@@ -512,8 +512,9 @@ async fn test_batch_votes_propagation() {
                     weight: rng.gen_range(5..10),
                 }))
                 .unwrap()
+                .into()
             },
-        })
+        }))
         .collect();
 
     // Round of the schedule that nodes should collect the votes for.
@@ -532,7 +533,7 @@ async fn test_batch_votes_propagation() {
                 cfg: cfg.clone(),
                 block_store: store.blocks.clone(),
                 batch_store: store.batches.clone(),
-                attestation_state: attestation::StateWatch::new(Some(
+                attestation: attestation::Controller::new(Some(
                     setup.attester_keys[i].clone(),
                 ))
                 .into(),
@@ -552,13 +553,13 @@ async fn test_batch_votes_propagation() {
                         let Some(cfg) = schedule.get(*r) else {
                             return Ok(());
                         };
-                        let attestation_state = node.net.gossip.attestation_state.clone();
-                        attestation_state.update_config(cfg.clone()).await.unwrap();
+                        let attestation = node.net.gossip.attestation.clone();
+                        attestation.update_config(cfg.clone()).await.unwrap();
                         // Wait for the certificate in the background.
                         s.spawn_bg(async {
                             let r = r;
-                            let attestation_state = attestation_state;
-                            let Ok(Some(qc)) = attestation_state
+                            let attestation = attestation;
+                            let Ok(Some(qc)) = attestation
                                 .wait_for_qc(ctx, cfg.batch_to_attest.number)
                                 .await
                             else {

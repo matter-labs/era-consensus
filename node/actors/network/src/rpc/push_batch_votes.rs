@@ -4,7 +4,7 @@ use crate::proto::gossip as proto;
 use anyhow::Context as _;
 use std::sync::Arc;
 use zksync_consensus_roles::attester;
-use zksync_protobuf::ProtoFmt;
+use zksync_protobuf::{read_optional,ProtoFmt};
 
 /// RPC pushing fresh batch votes.
 pub(crate) struct Rpc;
@@ -20,23 +20,15 @@ impl super::Rpc for Rpc {
 /// Signed batch message that the receiving peer should process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Req {
-    /// Whether the client would like to receive a snapshot of all server's votes
-    /// in response.
-    pub(crate) want_snapshot: Option<bool>,
+    // Requesting the peer to respond with votes for the batch. 
+    pub(crate) want_votes_for: Option<attester::Batch>,
     /// New votes that server might be not aware of.
     pub(crate) votes: Vec<Arc<attester::Signed<attester::Batch>>>,
 }
 
 pub(crate) struct Resp {
-    /// Snapshot of all server's votes (if requested by the client).
+    /// Votes requested by the peer. 
     pub(crate) votes: Vec<Arc<attester::Signed<attester::Batch>>>,
-}
-
-impl Req {
-    /// Getter for `want_snapshot`.
-    pub(crate) fn want_snapshot(&self) -> bool {
-        self.want_snapshot.unwrap_or(false)
-    }
 }
 
 impl ProtoFmt for Req {
@@ -50,14 +42,14 @@ impl ProtoFmt for Req {
             ));
         }
         Ok(Self {
-            want_snapshot: r.want_snapshot,
+            want_votes_for: read_optional(&r.want_votes_for).context("want_votes_for")?,
             votes,
         })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            want_snapshot: self.want_snapshot,
+            want_votes_for: self.want_votes_for.as_ref().map(ProtoFmt::build),
             votes: self
                 .votes
                 .iter()

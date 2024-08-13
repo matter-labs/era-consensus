@@ -19,12 +19,12 @@ async fn test_insert_votes() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let state = StateWatch::new(None);
+    let ctrl = Controller::new(None);
     let genesis: attester::GenesisHash = rng.gen();
     let first: attester::BatchNumber = rng.gen();
     for i in 0..3 {
         let keys: Vec<attester::SecretKey> = (0..8).map(|_| rng.gen()).collect();
-        let config = Config {
+        let config = Arc::new(Config {
             batch_to_attest: attester::Batch {
                 genesis,
                 number: first + i,
@@ -34,13 +34,14 @@ async fn test_insert_votes() {
                 key: k.public(),
                 weight: 1250,
             }))
-            .unwrap(),
-        };
-        state.update_config(config.clone()).await.unwrap();
-        assert_eq!(Votes::from([]), state.votes().into());
-        let mut recv = state.subscribe();
+            .unwrap().into(),
+        });
+        let ctrl_votes = ||Votes::from(ctrl.votes(&config.batch_to_attest));
+        ctrl.update_config(config.clone()).await.unwrap();
+        assert_eq!(Votes::from([]), ctrl_votes());
+        let mut recv = ctrl.subscribe();
         let diff = recv.wait_for_diff(ctx).await.unwrap();
-        assert!(diff.config_changed);
+        assert_eq!(diff.config.as_ref(), Some(&config));
         assert_eq!(Votes::default(), diff.votes.into());
 
         let all_votes: Vec<Vote> = keys
@@ -49,53 +50,53 @@ async fn test_insert_votes() {
             .collect();
 
         // Initial votes.
-        state
+        ctrl
             .insert_votes(all_votes[0..3].iter().cloned())
             .await
             .unwrap();
         assert_eq!(
             Votes::from(all_votes[0..3].iter().cloned()),
-            state.votes().into()
+            ctrl_votes()
         );
         let diff = recv.wait_for_diff(ctx).await.unwrap();
-        assert!(!diff.config_changed);
+        assert!(diff.config.is_none());
         assert_eq!(
             Votes::from(all_votes[0..3].iter().cloned()),
             diff.votes.into()
         );
 
         // Adding votes gradually.
-        state
+        ctrl
             .insert_votes(all_votes[3..5].iter().cloned())
             .await
             .unwrap();
-        state
+        ctrl
             .insert_votes(all_votes[5..7].iter().cloned())
             .await
             .unwrap();
         assert_eq!(
             Votes::from(all_votes[0..7].iter().cloned()),
-            state.votes().into()
+            ctrl_votes()
         );
         let diff = recv.wait_for_diff(ctx).await.unwrap();
-        assert!(!diff.config_changed);
+        assert!(diff.config.is_none());
         assert_eq!(
             Votes::from(all_votes[3..7].iter().cloned()),
             diff.votes.into()
         );
 
         // Readding already inserded votes (noop).
-        state
+        ctrl
             .insert_votes(all_votes[2..6].iter().cloned())
             .await
             .unwrap();
         assert_eq!(
             Votes::from(all_votes[0..7].iter().cloned()),
-            state.votes().into()
+            ctrl_votes()
         );
 
         // Adding votes out of committee (noop).
-        state
+        ctrl
             .insert_votes((0..3).map(|_| {
                 let k: attester::SecretKey = rng.gen();
                 k.sign_msg(config.batch_to_attest.clone()).into()
@@ -104,11 +105,11 @@ async fn test_insert_votes() {
             .unwrap();
         assert_eq!(
             Votes::from(all_votes[0..7].iter().cloned()),
-            state.votes().into()
+            ctrl_votes()
         );
 
         // Adding votes for different batch (noop).
-        state
+        ctrl
             .insert_votes((0..3).map(|_| {
                 let k: attester::SecretKey = rng.gen();
                 k.sign_msg(attester::Batch {
@@ -122,29 +123,29 @@ async fn test_insert_votes() {
             .unwrap();
         assert_eq!(
             Votes::from(all_votes[0..7].iter().cloned()),
-            state.votes().into()
+            ctrl_votes()
         );
 
         // Adding incorrect votes (error).
         let mut bad_vote = (*all_votes[7]).clone();
         bad_vote.sig = rng.gen();
-        assert!(state
+        assert!(ctrl
             .insert_votes([bad_vote.into()].into_iter())
             .await
             .is_err());
         assert_eq!(
             Votes::from(all_votes[0..7].iter().cloned()),
-            state.votes().into()
+            ctrl_votes()
         );
 
         // Add the last vote mixed with already added votes.
-        state
+        ctrl
             .insert_votes(all_votes[5..].iter().cloned())
             .await
             .unwrap();
-        assert_eq!(Votes::from(all_votes.clone()), state.votes().into());
+        assert_eq!(Votes::from(all_votes.clone()), ctrl_votes());
         let diff = recv.wait_for_diff(ctx).await.unwrap();
-        assert!(!diff.config_changed);
+        assert!(diff.config.is_none());
         assert_eq!(
             Votes::from(all_votes[7..].iter().cloned()),
             diff.votes.into()
@@ -158,7 +159,7 @@ async fn test_wait_for_qc() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
-    let state = StateWatch::new(None);
+    let ctrl = Controller::new(None);
     let genesis: attester::GenesisHash = rng.gen();
     let first: attester::BatchNumber = rng.gen();
 
@@ -166,7 +167,7 @@ async fn test_wait_for_qc() {
         tracing::info!("iteration {i}");
         let committee_size = rng.gen_range(1..20);
         let keys: Vec<attester::SecretKey> = (0..committee_size).map(|_| rng.gen()).collect();
-        let config = Config {
+        let config = Arc::new(Config {
             batch_to_attest: attester::Batch {
                 genesis,
                 number: first + i,
@@ -176,25 +177,25 @@ async fn test_wait_for_qc() {
                 key: k.public(),
                 weight: rng.gen_range(1..=100),
             }))
-            .unwrap(),
-        };
+            .unwrap().into(),
+        });
         let mut all_votes: Vec<Vote> = keys
             .iter()
             .map(|k| k.sign_msg(config.batch_to_attest.clone()).into())
             .collect();
         all_votes.shuffle(rng);
-        state.update_config(config.clone()).await.unwrap();
+        ctrl.update_config(config.clone()).await.unwrap();
         loop {
             let end = rng.gen_range(0..=committee_size);
             tracing::info!("end = {end}");
-            state
+            ctrl
                 .insert_votes(all_votes[..end].iter().cloned())
                 .await
                 .unwrap();
             // Waiting for the previous qc should immediately return None.
             assert_eq!(
                 None,
-                state
+                ctrl
                     .wait_for_qc(ctx, config.batch_to_attest.number.prev().unwrap())
                     .await
                     .unwrap()
@@ -204,7 +205,7 @@ async fn test_wait_for_qc() {
                 .weight_of_keys(all_votes[..end].iter().map(|v| &v.key))
                 >= config.committee.threshold()
             {
-                let qc = state
+                let qc = ctrl
                     .wait_for_qc(ctx, config.batch_to_attest.number)
                     .await
                     .unwrap()
@@ -215,7 +216,7 @@ async fn test_wait_for_qc() {
             }
             assert_eq!(
                 None,
-                state.state.subscribe().borrow().as_ref().unwrap().qc()
+                ctrl.state.subscribe().borrow().as_ref().unwrap().qc()
             );
         }
     }

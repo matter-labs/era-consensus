@@ -9,13 +9,13 @@ use std::{
 };
 use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
-use zksync_consensus_network::{self as network};
+use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
+pub use network::gossip::attestation;
 
-pub mod attestation;
 mod io;
 #[cfg(test)]
 mod tests;
@@ -91,8 +91,9 @@ pub struct Executor {
     pub batch_store: Arc<BatchStore>,
     /// Validator-specific node data.
     pub validator: Option<Validator>,
-    /// Status showing where the main node wants attester to cast their votes.
-    pub attestation_state: Arc<attestation::StateWatch>,
+    /// Attestation controller. Caller should actively configure the batch
+    /// for which the attestation votes should be collected.
+    pub attestation: Arc<attestation::Controller>,
 }
 
 impl Executor {
@@ -136,7 +137,7 @@ impl Executor {
                 self.block_store.clone(),
                 self.batch_store.clone(),
                 network_actor_pipe,
-                self.attestation_state,
+                self.attestation,
             );
             net.register_metrics();
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });

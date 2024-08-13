@@ -55,8 +55,10 @@ pub(crate) struct Network {
     pub(crate) fetch_queue: fetch::Queue,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
-    /// Shared watch over the current attestation status as indicated by the main node.
-    pub(crate) attestation_state: Arc<attestation::StateWatch>,
+    /// Attestation controller, maintaining a set of batch votes.
+    /// Gossip network exchanges the votes with peers.
+    /// The batch for which the votes are collected is configured externally.
+    pub(crate) attestation: Arc<attestation::Controller>,
 }
 
 impl Network {
@@ -66,7 +68,7 @@ impl Network {
         block_store: Arc<BlockStore>,
         batch_store: Arc<BatchStore>,
         sender: channel::UnboundedSender<io::OutputMessage>,
-        attestation_state: Arc<attestation::StateWatch>,
+        attestation: Arc<attestation::Controller>,
     ) -> Arc<Self> {
         Arc::new(Self {
             sender,
@@ -81,7 +83,7 @@ impl Network {
             block_store,
             batch_store,
             push_validator_addrs_calls: 0.into(),
-            attestation_state,
+            attestation,
         })
     }
 

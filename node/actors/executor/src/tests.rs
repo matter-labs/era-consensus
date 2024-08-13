@@ -30,8 +30,8 @@ fn config(cfg: &network::Config) -> Config {
 
 /// The test executors below are not running with attesters, so we just create an [AttestationStatusWatch]
 /// that will never be updated.
-fn never_attest() -> Arc<attestation::StateWatch> {
-    attestation::StateWatch::new(None).into()
+fn never_attest() -> Arc<attestation::Controller> {
+    attestation::Controller::new(None).into()
 }
 
 fn validator(
@@ -49,7 +49,7 @@ fn validator(
             replica_store: Box::new(replica_store),
             payload_manager: Box::new(bft::testonly::RandomPayload(1000)),
         }),
-        attestation_state: never_attest(),
+        attestation: never_attest(),
     }
 }
 
@@ -63,7 +63,7 @@ fn fullnode(
         block_store,
         batch_store,
         validator: None,
-        attestation_state: never_attest(),
+        attestation: never_attest(),
     }
 }
 
@@ -311,96 +311,3 @@ async fn test_validator_syncing_from_fullnode() {
     .await
     .unwrap();
 }
-
-/*
-/// Test that the AttestationStatusRunner initialises and then polls the status.
-#[tokio::test]
-async fn test_attestation_status_runner() {
-    abort_on_panic();
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(5));
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
-    let rng = &mut ctx.rng();
-
-    let genesis: validator::Genesis = rng.gen();
-
-    #[derive(Clone)]
-    struct MockAttestationStatus {
-        genesis: Arc<Mutex<validator::Genesis>>,
-        batch_number: Arc<AtomicU64>,
-    }
-
-    #[async_trait::async_trait]
-    impl attestation::Client for MockAttestationStatus {
-        async fn config(
-            &self,
-            ctx: &ctx::Ctx,
-        ) -> ctx::Result<Option<attestation::Config>> {
-            let curr = self
-                .batch_number
-                .fetch_add(1u64, std::sync::atomic::Ordering::Relaxed);
-            if curr == 0 {
-                // Return None initially to see that the runner will deal with it.
-                Ok(None)
-            } else {
-                let genesis = *self.genesis.lock().unwrap().clone();
-                // The first actual result will be 1 on the 2nd poll.
-                Ok(Some(attestation::Config {
-                    batch_to_attest: attester::Batch {
-                        genesis: genesis.hash(),
-                        number: attester::BatchNumber(curr),
-                        hash: ctx.rng().gen(),
-                    },
-                    committee: genesis.attesters.clone().unwrap()
-                }))
-            }
-        }
-    }
-
-    let res = scope::run!(ctx, |ctx, s| async {
-        let client = MockAttestationStatus {
-            genesis: Arc::new(Mutex::new(genesis)),
-            batch_number: Arc::new(AtomicU64::default()),
-        };
-        let (status, runner) = attestation::Runner::init(
-            ctx,
-            Box::new(client.clone()),
-            time::Duration::milliseconds(100),
-            genesis,
-        )
-        .await
-        .unwrap();
-
-        let mut recv_status = status.subscribe();
-        recv_status.mark_changed();
-
-        // Check that the value has *not* been initialised to a non-default value.
-        {
-            let status = sync::changed(ctx, &mut recv_status).await?;
-            assert!(status.is_none());
-        }
-        // Now start polling for new values. Starting in the foreground because we want it to fail in the end.
-        s.spawn(runner.run(ctx));
-        // Check that polling sets the value.
-        {
-            let status = sync::changed(ctx, &mut recv_status).await?;
-            assert!(status.next_batch_to_attest.is_some());
-            assert_eq!(status.next_batch_to_attest.unwrap().0, 1);
-        }
-        // Change the genesis returned by the client. It should cause the scope to fail.
-        {
-            let mut genesis = client.genesis.lock().unwrap();
-            *genesis = rng.gen();
-        }
-        Ok(())
-    })
-    .await;
-
-    match res {
-        Ok(()) => panic!("expected to fail when the genesis changed"),
-        Err(e) => assert!(
-            e.to_string().contains("genesis changed"),
-            "only expect failures due to genesis change; got: {e}"
-        ),
-    }
-}
-*/

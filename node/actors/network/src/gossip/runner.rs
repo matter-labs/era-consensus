@@ -66,10 +66,9 @@ impl rpc::Handler<rpc::push_batch_votes::Rpc> for &PushServer<'_> {
         _ctx: &ctx::Ctx,
         req: rpc::push_batch_votes::Req,
     ) -> anyhow::Result<rpc::push_batch_votes::Resp> {
-        let want_snapshot = req.want_snapshot();
         if let Err(err) = self
             .net
-            .attestation_state
+            .attestation
             .insert_votes(req.votes.into_iter())
             .await
             .context("insert_votes()")
@@ -81,10 +80,9 @@ impl rpc::Handler<rpc::push_batch_votes::Rpc> for &PushServer<'_> {
             tracing::warn!("{err:#}");
         }
         Ok(rpc::push_batch_votes::Resp {
-            votes: if want_snapshot {
-                self.net.attestation_state.votes()
-            } else {
-                vec![]
+            votes: match req.want_votes_for.as_ref() {
+                Some(batch) => self.net.attestation.votes(batch),
+                None => vec![],
             },
         })
     }
@@ -209,13 +207,13 @@ impl Network {
             s.spawn::<()>(async {
                 let push_batch_votes_client = push_batch_votes_client;
                 // Subscribe to what we know about the state of the whole network.
-                let mut recv = self.attestation_state.subscribe();
+                let mut recv = self.attestation.subscribe();
                 loop {
                     let diff = recv.wait_for_diff(ctx).await?;
                     let req = rpc::push_batch_votes::Req {
                         // If the config has changed, we need to re-request all the votes
                         // from peer that we might have ignored earlier.
-                        want_snapshot: Some(diff.config_changed),
+                        want_votes_for: diff.config.as_ref().map(|c|c.batch_to_attest.clone()),
                         votes: diff.votes,
                     };
                     // NOTE: The response should be non-empty only iff we requested a snapshot.
@@ -224,11 +222,11 @@ impl Network {
                     let resp = push_batch_votes_client.call(ctx, &req, 100 * kB).await?;
                     if !resp.votes.is_empty() {
                         anyhow::ensure!(
-                            req.want_snapshot(),
+                            req.want_votes_for.is_some(),
                             "expected empty response, but votes were returned"
                         );
                         if let Err(err) = self
-                            .attestation_state
+                            .attestation
                             .insert_votes(resp.votes.into_iter())
                             .await
                             .context("insert_votes")
