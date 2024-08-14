@@ -151,6 +151,7 @@ impl Runner {
                             .net
                             .gossip
                             .run_outbound_stream(ctx, peer, addr.clone())
+                            .instrument(tracing::info_span!("out", ?addr))
                             .await;
                         if let Err(err) = res {
                             tracing::info!("gossip.run_outbound_stream({addr:?}): {err:#}");
@@ -208,7 +209,7 @@ impl Runner {
                         }
                         anyhow::Ok(())
                     }
-                    .instrument(tracing::info_span!("accept_connection", ?addr))
+                    .instrument(tracing::info_span!("in", ?addr))
                     .await;
                     if let Err(err) = res {
                         tracing::info!("{addr}: {err:#}");
