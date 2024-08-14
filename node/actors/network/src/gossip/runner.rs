@@ -211,9 +211,9 @@ impl Network {
                 loop {
                     let diff = recv.wait_for_diff(ctx).await?;
                     let req = rpc::push_batch_votes::Req {
-                        // If the config has changed, we need to re-request all the votes
+                        // If the info has changed, we need to re-request all the votes
                         // from peer that we might have ignored earlier.
-                        want_votes_for: diff.config.as_ref().map(|c| c.batch_to_attest.clone()),
+                        want_votes_for: diff.info.as_ref().map(|c| c.batch_to_attest.clone()),
                         votes: diff.votes,
                     };
                     // NOTE: The response should be non-empty only iff we requested a snapshot.

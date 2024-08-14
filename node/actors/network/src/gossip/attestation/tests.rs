@@ -25,7 +25,7 @@ async fn test_insert_votes() {
     for i in 0..3 {
         tracing::info!("iteration {i}");
         let keys: Vec<attester::SecretKey> = (0..8).map(|_| rng.gen()).collect();
-        let config = Arc::new(Config {
+        let info = Arc::new(Info {
             batch_to_attest: attester::Batch {
                 genesis,
                 number: first + i,
@@ -38,17 +38,17 @@ async fn test_insert_votes() {
             .unwrap()
             .into(),
         });
-        let ctrl_votes = || Votes::from(ctrl.votes(&config.batch_to_attest));
-        ctrl.start_attestation(config.clone()).await.unwrap();
+        let ctrl_votes = || Votes::from(ctrl.votes(&info.batch_to_attest));
+        ctrl.start_attestation(info.clone()).await.unwrap();
         assert_eq!(Votes::from([]), ctrl_votes());
         let mut recv = ctrl.subscribe();
         let diff = recv.wait_for_diff(ctx).await.unwrap();
-        assert_eq!(diff.config.as_ref(), Some(&config));
+        assert_eq!(diff.info.as_ref(), Some(&info));
         assert_eq!(Votes::default(), diff.votes.into());
 
         let all_votes: Vec<Vote> = keys
             .iter()
-            .map(|k| k.sign_msg(config.batch_to_attest.clone()).into())
+            .map(|k| k.sign_msg(info.batch_to_attest.clone()).into())
             .collect();
 
         tracing::info!("Initial votes.");
@@ -57,7 +57,7 @@ async fn test_insert_votes() {
             .unwrap();
         assert_eq!(Votes::from(all_votes[0..3].iter().cloned()), ctrl_votes());
         let diff = recv.wait_for_diff(ctx).await.unwrap();
-        assert!(diff.config.is_none());
+        assert!(diff.info.is_none());
         assert_eq!(
             Votes::from(all_votes[0..3].iter().cloned()),
             diff.votes.into()
@@ -72,7 +72,7 @@ async fn test_insert_votes() {
             .unwrap();
         assert_eq!(Votes::from(all_votes[0..7].iter().cloned()), ctrl_votes());
         let diff = recv.wait_for_diff(ctx).await.unwrap();
-        assert!(diff.config.is_none());
+        assert!(diff.info.is_none());
         assert_eq!(
             Votes::from(all_votes[3..7].iter().cloned()),
             diff.votes.into()
@@ -88,7 +88,7 @@ async fn test_insert_votes() {
         assert!(ctrl
             .insert_votes((0..3).map(|_| {
                 let k: attester::SecretKey = rng.gen();
-                k.sign_msg(config.batch_to_attest.clone()).into()
+                k.sign_msg(info.batch_to_attest.clone()).into()
             }))
             .await
             .is_err());
@@ -98,7 +98,7 @@ async fn test_insert_votes() {
         ctrl.insert_votes((0..3).map(|_| {
             let k: attester::SecretKey = rng.gen();
             k.sign_msg(attester::Batch {
-                genesis: config.batch_to_attest.genesis,
+                genesis: info.batch_to_attest.genesis,
                 number: rng.gen(),
                 hash: rng.gen(),
             })
@@ -123,7 +123,7 @@ async fn test_insert_votes() {
             .unwrap();
         assert_eq!(Votes::from(all_votes.clone()), ctrl_votes());
         let diff = recv.wait_for_diff(ctx).await.unwrap();
-        assert!(diff.config.is_none());
+        assert!(diff.info.is_none());
         assert_eq!(
             Votes::from(all_votes[7..].iter().cloned()),
             diff.votes.into()
@@ -145,7 +145,7 @@ async fn test_wait_for_cert() {
         tracing::info!("iteration {i}");
         let committee_size = rng.gen_range(1..20);
         let keys: Vec<attester::SecretKey> = (0..committee_size).map(|_| rng.gen()).collect();
-        let config = Arc::new(Config {
+        let info = Arc::new(Info {
             batch_to_attest: attester::Batch {
                 genesis,
                 number: first + i,
@@ -160,10 +160,10 @@ async fn test_wait_for_cert() {
         });
         let mut all_votes: Vec<Vote> = keys
             .iter()
-            .map(|k| k.sign_msg(config.batch_to_attest.clone()).into())
+            .map(|k| k.sign_msg(info.batch_to_attest.clone()).into())
             .collect();
         all_votes.shuffle(rng);
-        ctrl.start_attestation(config.clone()).await.unwrap();
+        ctrl.start_attestation(info.clone()).await.unwrap();
         loop {
             let end = rng.gen_range(0..=committee_size);
             tracing::info!("end = {end}");
@@ -173,22 +173,22 @@ async fn test_wait_for_cert() {
             // Waiting for the previous qc should immediately return None.
             assert_eq!(
                 None,
-                ctrl.wait_for_cert(ctx, config.batch_to_attest.number.prev().unwrap())
+                ctrl.wait_for_cert(ctx, info.batch_to_attest.number.prev().unwrap())
                     .await
                     .unwrap()
             );
-            if config
+            if info
                 .committee
                 .weight_of_keys(all_votes[..end].iter().map(|v| &v.key))
-                >= config.committee.threshold()
+                >= info.committee.threshold()
             {
                 let qc = ctrl
-                    .wait_for_cert(ctx, config.batch_to_attest.number)
+                    .wait_for_cert(ctx, info.batch_to_attest.number)
                     .await
                     .unwrap()
                     .unwrap();
-                assert_eq!(qc.message, config.batch_to_attest);
-                qc.verify(genesis, &config.committee).unwrap();
+                assert_eq!(qc.message, info.batch_to_attest);
+                qc.verify(genesis, &info.committee).unwrap();
                 break;
             }
             assert_eq!(

@@ -12,17 +12,17 @@ mod tests;
 /// Configuration of the attestation Controller.
 /// It determines what should be attested and by whom.
 #[derive(Debug, Clone, PartialEq)]
-pub struct Config {
+pub struct Info {
     /// Batch to attest.
     pub batch_to_attest: attester::Batch,
     /// Committee that should attest the batch.
     pub committee: Arc<attester::Committee>,
 }
 
-// Internal attestation state: config and the set of votes collected so far.
+// Internal attestation state: info and the set of votes collected so far.
 #[derive(Clone)]
 struct State {
-    config: Arc<Config>,
+    info: Arc<Info>,
     /// Votes collected so far.
     votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>,
     // Total weight of the votes collected.
@@ -33,13 +33,13 @@ struct State {
 pub(crate) struct Diff {
     /// New votes.
     pub(crate) votes: Vec<Arc<attester::Signed<attester::Batch>>>,
-    /// New config, if changed.
-    pub(crate) config: Option<Arc<Config>>,
+    /// New info, if changed.
+    pub(crate) info: Option<Arc<Info>>,
 }
 
 impl Diff {
     fn is_empty(&self) -> bool {
-        self.votes.is_empty() && self.config.is_none()
+        self.votes.is_empty() && self.info.is_none()
     }
 }
 
@@ -49,19 +49,19 @@ impl State {
     fn diff(&self, old: &Option<Self>) -> Diff {
         let Some(old) = old.as_ref() else {
             return Diff {
-                config: Some(self.config.clone()),
+                info: Some(self.info.clone()),
                 votes: self.votes.values().cloned().collect(),
             };
         };
-        if self.config.batch_to_attest.number != old.config.batch_to_attest.number {
+        if self.info.batch_to_attest.number != old.info.batch_to_attest.number {
             return Diff {
-                config: Some(self.config.clone()),
+                info: Some(self.info.clone()),
                 votes: self.votes.values().cloned().collect(),
             };
         }
 
         Diff {
-            config: None,
+            info: None,
             votes: self
                 .votes
                 .iter()
@@ -76,17 +76,17 @@ impl State {
     /// Returns an error if genesis doesn't match or the signature is invalid.
     fn insert_vote(&mut self, vote: Arc<attester::Signed<attester::Batch>>) -> anyhow::Result<()> {
         anyhow::ensure!(
-            vote.msg.genesis == self.config.batch_to_attest.genesis,
+            vote.msg.genesis == self.info.batch_to_attest.genesis,
             "Genesis mismatch"
         );
-        if vote.msg.number != self.config.batch_to_attest.number {
+        if vote.msg.number != self.info.batch_to_attest.number {
             return Ok(());
         }
         anyhow::ensure!(
-            vote.msg.hash == self.config.batch_to_attest.hash,
+            vote.msg.hash == self.info.batch_to_attest.hash,
             "batch hash mismatch"
         );
-        let Some(weight) = self.config.committee.weight(&vote.key) else {
+        let Some(weight) = self.info.committee.weight(&vote.key) else {
             anyhow::bail!(
                 "received vote signed by an inactive attester: {:?}",
                 vote.key
@@ -122,7 +122,7 @@ impl State {
     }
 
     fn cert(&self) -> Option<attester::BatchQC> {
-        if self.total_weight < self.config.committee.threshold() {
+        if self.total_weight < self.info.committee.threshold() {
             return None;
         }
         let mut sigs = attester::MultiSig::default();
@@ -130,7 +130,7 @@ impl State {
             sigs.add(vote.key.clone(), vote.sig.clone());
         }
         Some(attester::BatchQC {
-            message: self.config.batch_to_attest.clone(),
+            message: self.info.batch_to_attest.clone(),
             signatures: sigs,
         })
     }
@@ -159,7 +159,7 @@ impl DiffReceiver {
 }
 
 /// `Controller` manages the attestation state.
-/// It maintains a set of votes matching the attestation config.
+/// It maintains a set of votes matching the attestation info.
 /// It allows for
 /// * adding votes to the state
 /// * subscribing to the vote set changes
@@ -183,14 +183,14 @@ impl DiffReceiver {
 ///             // Based on the local storage, compute the next expected batch hash
 ///             // and the committee that should attest it.
 ///             ...
-///             let config = attestation::Config {
+///             let info = attestation::Info {
 ///                 batch_to_attest: attester::Batch {
 ///                     number: next,
 ///                     ...
 ///                 },
 ///                 committee: ...,
 ///             };
-///             ctrl.start_attestation(Arc::new(config)).unwrap();
+///             ctrl.start_attestation(Arc::new(info)).unwrap();
 ///             // Wait for the attestation to progress, by observing the
 ///             // global attestation registry.
 ///             next = ...;
@@ -269,7 +269,7 @@ impl Controller {
             #[allow(clippy::float_arithmetic)]
             metrics::METRICS
                 .weight_collected
-                .set(state.total_weight as f64 / state.config.committee.total_weight() as f64);
+                .set(state.total_weight as f64 / state.info.committee.total_weight() as f64);
             locked.send_replace(Some(state));
         }
         res
@@ -283,7 +283,7 @@ impl Controller {
         let state = self.state.subscribe();
         let state = state.borrow();
         let Some(state) = &*state else { return vec![] };
-        if &state.config.batch_to_attest != want {
+        if &state.info.batch_to_attest != want {
             return vec![];
         }
         state.votes.values().cloned().collect()
@@ -303,10 +303,10 @@ impl Controller {
             let Some(state) = state.as_ref() else {
                 continue;
             };
-            if state.config.batch_to_attest.number < n {
+            if state.info.batch_to_attest.number < n {
                 continue;
             };
-            if state.config.batch_to_attest.number > n {
+            if state.info.batch_to_attest.number > n {
                 return Ok(None);
             }
             if let Some(qc) = state.cert() {
@@ -315,53 +315,53 @@ impl Controller {
         }
     }
 
-    /// Updates the attestation config.
-    /// Clears the votes collected for the previous config.
+    /// Updates the internal configuration to start collecting votes for a new batch.
+    /// Clears the votes collected for the previous info.
     /// Batch number has to increase with each update.
     #[tracing::instrument(name = "attestation::Controller::start_attestation", skip_all)]
-    pub async fn start_attestation(&self, config: Arc<Config>) -> anyhow::Result<()> {
+    pub async fn start_attestation(&self, info: Arc<Info>) -> anyhow::Result<()> {
         let locked = self.state.lock().await;
         let old = locked.borrow().clone();
         if let Some(old) = old.as_ref() {
-            if *old.config == *config {
+            if *old.info == *info {
                 return Ok(());
             }
             anyhow::ensure!(
-                old.config.batch_to_attest.genesis == config.batch_to_attest.genesis,
+                old.info.batch_to_attest.genesis == info.batch_to_attest.genesis,
                 "tried to change genesis"
             );
             anyhow::ensure!(
-                old.config.batch_to_attest.number < config.batch_to_attest.number,
+                old.info.batch_to_attest.number < info.batch_to_attest.number,
                 "tried to decrease batch number"
             );
         }
         tracing::info!(
             "started collecting votes for batch {:?}",
-            config.batch_to_attest.number
+            info.batch_to_attest.number
         );
         let mut new = State {
-            config,
+            info,
             votes: im::HashMap::new(),
             total_weight: 0,
         };
         if let Some(key) = self.key.as_ref() {
-            if new.config.committee.contains(&key.public()) {
-                let vote = key.sign_msg(new.config.batch_to_attest.clone());
+            if new.info.committee.contains(&key.public()) {
+                let vote = key.sign_msg(new.info.batch_to_attest.clone());
                 // This is our own vote, so it always should be valid.
                 new.insert_vote(Arc::new(vote)).unwrap();
             }
         }
         metrics::METRICS
             .batch_number
-            .set(new.config.batch_to_attest.number.0);
+            .set(new.info.batch_to_attest.number.0);
         metrics::METRICS
             .committee_size
-            .set(new.config.committee.len());
+            .set(new.info.committee.len());
         metrics::METRICS.votes_collected.set(new.votes.len());
         #[allow(clippy::float_arithmetic)]
         metrics::METRICS
             .weight_collected
-            .set(new.total_weight as f64 / new.config.committee.total_weight() as f64);
+            .set(new.total_weight as f64 / new.info.committee.total_weight() as f64);
         locked.send_replace(Some(new));
         Ok(())
     }

@@ -498,7 +498,7 @@ async fn test_batch_votes_propagation() {
     let first: attester::BatchNumber = rng.gen();
     let schedule: Vec<_> = (0..10)
         .map(|r| {
-            Arc::new(attestation::Config {
+            Arc::new(attestation::Info {
                 batch_to_attest: attester::Batch {
                     genesis: setup.genesis.hash(),
                     number: first + r,
