@@ -9,7 +9,8 @@ mod metrics;
 #[cfg(test)]
 mod tests;
 
-/// Coordinate the attestation by showing the config as seen by the main node.
+/// Configuration of the attestation Controller.
+/// It determines what should be attested and by whom.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Config {
     /// Batch to attest.
@@ -22,8 +23,10 @@ pub struct Config {
 #[derive(Clone)]
 struct State {
     config: Arc<Config>,
+    /// Votes collected so far.
     votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>,
-    weight: attester::Weight,
+    // Total weight of the votes collected.
+    total_weight: attester::Weight,
 }
 
 /// Diff between 2 states.
@@ -94,8 +97,9 @@ impl State {
         }
         // Verify signature only after checking all the other preconditions.
         vote.verify().context("verify")?;
+        tracing::info!("collected vote with weight {weight} from {:?}", vote.key);
         self.votes.insert(vote.key.clone(), vote);
-        self.weight += weight;
+        self.total_weight += weight;
         Ok(())
     }
 
@@ -117,8 +121,8 @@ impl State {
         Ok(())
     }
 
-    fn qc(&self) -> Option<attester::BatchQC> {
-        if self.weight < self.config.committee.threshold() {
+    fn cert(&self) -> Option<attester::BatchQC> {
+        if self.total_weight < self.config.committee.threshold() {
             return None;
         }
         let mut sigs = attester::MultiSig::default();
@@ -167,27 +171,56 @@ impl DiffReceiver {
 ///
 /// Expected usage:
 /// ```
-/// let ctrl = attestation::Controller::new(Some(key));
-/// loop {
-///     // Check the global attestation registry.
-///     // Compute the next expected batch and the committee that should attest it.
-///     ...
-///     let config = attestation::Config {
-///         batch_to_attest: ...,
-///         committee: ...,
-///     };
-///     ctrl.update_config(Arc::new(config.clone())).unwrap();
+/// let ctrl = Arc::new(attestation::Controller::new(Some(key)));
+/// // Check what is the number of the next batch to be attested in a
+/// // global attestation registry (i.e. L1 chain state).
+/// let first : attester::BatchNumber = ...
+/// scope::run!(ctx, |ctx,s| async {
+///     // Loop starting attestation whenever global attestation state progresses.
 ///     s.spawn(async {
-///         if let Some(qc) = ctrl.wait_for_qc(ctx, config.batch_to_attest.number).await?;
-///         // Submit the certificate `qc` to the global registry
-///         ...
+///         let mut next = first;
+///         loop {
+///             // Based on the local storage, compute the next expected batch hash
+///             // and the committee that should attest it.
+///             ...
+///             let config = attestation::Config {
+///                 batch_to_attest: attester::Batch {
+///                     number: next,
+///                     ...
+///                 },
+///                 committee: ...,
+///             };
+///             ctrl.start_attestation(Arc::new(config)).unwrap();
+///             // Wait for the attestation to progress, by observing the
+///             // global attestation registry.
+///             next = ...;
+///         }
 ///     });
-///     // Wait for the global registry to include the certificate.
-///     ...
+///     s.spawn(async {
+///         // Loop waiting for a certificate to be collected and submitting
+///         // it to the global registry
+///         loop {
+///             let mut next = first;
+///             if let Some(qc) = ctrl.wait_for_cert(ctx, next).await?;
+///             // Submit the certificate to the global registry.
+///             ...
+///             next = next.next();
+///         }
+///     });
+///
+///     // Make the executor establish the p2p network and
+///     // collect the attestation votes.
+///     executor::Executor {
+///         ...
+///         attestation: ctrl.clone(),
+///     }.run(ctx).await;
 /// }
 /// ```
 pub struct Controller {
+    /// Key to automatically vote for batches.
+    /// None, if the current node is not an attester.
     key: Option<attester::SecretKey>,
+    /// Internal state of the controller.
     state: Watch<Option<State>>,
 }
 
@@ -229,14 +262,14 @@ impl Controller {
         let Some(mut state) = locked.borrow().clone() else {
             return Ok(());
         };
-        let before = state.weight;
+        let before = state.total_weight;
         let res = state.insert_votes(votes);
-        if state.weight > before {
+        if state.total_weight > before {
             metrics::METRICS.votes_collected.set(state.votes.len());
             #[allow(clippy::float_arithmetic)]
             metrics::METRICS
                 .weight_collected
-                .set(state.weight as f64 / state.config.committee.total_weight() as f64);
+                .set(state.total_weight as f64 / state.config.committee.total_weight() as f64);
             locked.send_replace(Some(state));
         }
         res
@@ -258,7 +291,7 @@ impl Controller {
 
     /// Waits for the certificate for a batch with the given number to be collected.
     /// Returns None iff attestation already skipped to collecting certificate for some later batch.
-    pub async fn wait_for_qc(
+    pub async fn wait_for_cert(
         &self,
         ctx: &ctx::Ctx,
         n: attester::BatchNumber,
@@ -276,7 +309,7 @@ impl Controller {
             if state.config.batch_to_attest.number > n {
                 return Ok(None);
             }
-            if let Some(qc) = state.qc() {
+            if let Some(qc) = state.cert() {
                 return Ok(Some(qc));
             }
         }
@@ -285,7 +318,8 @@ impl Controller {
     /// Updates the attestation config.
     /// Clears the votes collected for the previous config.
     /// Batch number has to increase with each update.
-    pub async fn update_config(&self, config: Arc<Config>) -> anyhow::Result<()> {
+    #[tracing::instrument(name = "attestation::Controller::start_attestation", skip_all)]
+    pub async fn start_attestation(&self, config: Arc<Config>) -> anyhow::Result<()> {
         let locked = self.state.lock().await;
         let old = locked.borrow().clone();
         if let Some(old) = old.as_ref() {
@@ -301,10 +335,14 @@ impl Controller {
                 "tried to decrease batch number"
             );
         }
+        tracing::info!(
+            "started collecting votes for batch {:?}",
+            config.batch_to_attest.number
+        );
         let mut new = State {
             config,
             votes: im::HashMap::new(),
-            weight: 0,
+            total_weight: 0,
         };
         if let Some(key) = self.key.as_ref() {
             if new.config.committee.contains(&key.public()) {
@@ -323,7 +361,7 @@ impl Controller {
         #[allow(clippy::float_arithmetic)]
         metrics::METRICS
             .weight_collected
-            .set(new.weight as f64 / new.config.committee.total_weight() as f64);
+            .set(new.total_weight as f64 / new.config.committee.total_weight() as f64);
         locked.send_replace(Some(new));
         Ok(())
     }

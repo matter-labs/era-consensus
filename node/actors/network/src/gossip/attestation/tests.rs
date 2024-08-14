@@ -39,7 +39,7 @@ async fn test_insert_votes() {
             .into(),
         });
         let ctrl_votes = || Votes::from(ctrl.votes(&config.batch_to_attest));
-        ctrl.update_config(config.clone()).await.unwrap();
+        ctrl.start_attestation(config.clone()).await.unwrap();
         assert_eq!(Votes::from([]), ctrl_votes());
         let mut recv = ctrl.subscribe();
         let diff = recv.wait_for_diff(ctx).await.unwrap();
@@ -132,7 +132,7 @@ async fn test_insert_votes() {
 }
 
 #[tokio::test]
-async fn test_wait_for_qc() {
+async fn test_wait_for_cert() {
     abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
@@ -163,7 +163,7 @@ async fn test_wait_for_qc() {
             .map(|k| k.sign_msg(config.batch_to_attest.clone()).into())
             .collect();
         all_votes.shuffle(rng);
-        ctrl.update_config(config.clone()).await.unwrap();
+        ctrl.start_attestation(config.clone()).await.unwrap();
         loop {
             let end = rng.gen_range(0..=committee_size);
             tracing::info!("end = {end}");
@@ -173,7 +173,7 @@ async fn test_wait_for_qc() {
             // Waiting for the previous qc should immediately return None.
             assert_eq!(
                 None,
-                ctrl.wait_for_qc(ctx, config.batch_to_attest.number.prev().unwrap())
+                ctrl.wait_for_cert(ctx, config.batch_to_attest.number.prev().unwrap())
                     .await
                     .unwrap()
             );
@@ -183,7 +183,7 @@ async fn test_wait_for_qc() {
                 >= config.committee.threshold()
             {
                 let qc = ctrl
-                    .wait_for_qc(ctx, config.batch_to_attest.number)
+                    .wait_for_cert(ctx, config.batch_to_attest.number)
                     .await
                     .unwrap()
                     .unwrap();
@@ -191,7 +191,10 @@ async fn test_wait_for_qc() {
                 qc.verify(genesis, &config.committee).unwrap();
                 break;
             }
-            assert_eq!(None, ctrl.state.subscribe().borrow().as_ref().unwrap().qc());
+            assert_eq!(
+                None,
+                ctrl.state.subscribe().borrow().as_ref().unwrap().cert()
+            );
         }
     }
 }

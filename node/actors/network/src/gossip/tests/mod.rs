@@ -554,13 +554,13 @@ async fn test_batch_votes_propagation() {
                             return Ok(());
                         };
                         let attestation = node.net.gossip.attestation.clone();
-                        attestation.update_config(cfg.clone()).await.unwrap();
+                        attestation.start_attestation(cfg.clone()).await.unwrap();
                         // Wait for the certificate in the background.
                         s.spawn_bg(async {
                             let r = r;
                             let attestation = attestation;
                             let Ok(Some(qc)) = attestation
-                                .wait_for_qc(ctx, cfg.batch_to_attest.number)
+                                .wait_for_cert(ctx, cfg.batch_to_attest.number)
                                 .await
                             else {
                                 return Ok(());
