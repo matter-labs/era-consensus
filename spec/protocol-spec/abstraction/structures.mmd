@@ -1,0 +1,99 @@
+classDiagram
+    class ReplicaState {
+      view: int
+      phase: str
+      high_vote: Option[CommitVote]
+      high_commit_qc: Option[CommitQC]
+      high_timeout_qc: Option[TimeoutQC]
+      cached_proposals: Set[int, str]
+      committed_blocks: List[CommittedBlock]
+    }
+    class CommitVote {
+      view: int
+      block_number: int
+      block_hash: str
+    }
+    class SignedCommitVote {
+        vote: CommitVote
+        sig: str
+    }
+    class CommitQC {
+        vote: CommitVote
+        agg_sig: Set[ReplicaKey]
+    }
+    class TimeoutVote {
+        view: int
+        high_vote: Option[CommitVote]
+        high_commit_qc_view: int
+    }
+    class SignedTimeoutVote {
+        vote: TimeoutVote
+        sig: str
+        high_commit_qc: Option[CommitQC]
+    }
+    class TimeoutQC {
+        votes: ReplicaKey -> TimeoutVote
+        agg_sig: Set[ReplicaKey]
+        high_commit_qc: Option[CommitQC]
+        ghost_view: int
+    }
+    class CommittedBlock {
+        block: str
+        commit_qc: CommitQC
+    }
+    class Proposal {
+        block: Option[str]
+        justification: Justification
+        sig: str
+        ghost_block_number: int
+    }
+    class Justification {
+    }
+    class NewView {
+        justification: Justification
+        sig: str
+    }
+
+    ReplicaState --> "0..1" CommitVote
+    ReplicaState --> "0..1" CommitQC
+    ReplicaState --> "0..1" TimeoutQC
+    ReplicaState o-- "*" CommittedBlock
+    CommitQC --> CommitVote
+    CommitQC o-- "*" ReplicaKey
+    TimeoutQC o-- "*" TimeoutVote
+    TimeoutQC o-- "*" ReplicaKey
+    TimeoutQC --> "0..1" CommitQC
+    TimeoutVote --> "*" CommitVote
+    CommittedBlock --> CommitQC
+    Proposal --> Justification
+    NewView --> Justification
+    Justification <|-- CommitQC
+    Justification <|-- TimeoutQC
+    SignedCommitVote --> CommitVote
+    SignedTimeoutVote --> TimeoutVote
+    SignedTimeoutVote --> "0..1" CommitQC
+
+    class StateMachine {
+        replica_id: ReplicaKey -> ReplicaState
+        leader: int -> ReplicaKey
+        replica_view: ReplicaKey -> int
+        proposer_view: ReplicaKey -> int
+        msgs_signed_timeout: Set[SignedTimeoutVote]
+        msgs_signed_commit: Set[SignedCommitVote]
+        msgs_new_view: Set[NewView]
+        msgs_proposal: Set[Proposal]
+
+        store_signed_timeout: Set[SignedTimeoutVote]
+        store_signed_commit: Set[SignedCommitVote]
+
+        ghost_justifications: [ReplicaKey, int] -> Justification
+    }
+
+    StateMachine o-- "*" ReplicaState
+    StateMachine o-- "*" ReplicaKey
+    StateMachine o-- "*" SignedTimeoutVote
+    StateMachine o-- "*" SignedCommitVote
+    StateMachine o-- "*" NewView
+    StateMachine o-- "*" Proposal
+    StateMachine o-- "*" Justification
+
