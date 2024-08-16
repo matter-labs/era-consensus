@@ -1,10 +1,6 @@
 use super::ValidatorAddrs;
 use crate::{
-    gossip::{
-        batch_votes::{BatchVotes, BatchVotesWatch},
-        handshake,
-        validator_addrs::ValidatorAddrsWatch,
-    },
+    gossip::{attestation, handshake, validator_addrs::ValidatorAddrsWatch},
     metrics, preface, rpc, testonly,
 };
 use anyhow::Context as _;
@@ -19,12 +15,12 @@ use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx,
     error::Wrap as _,
-    net, scope, sync,
+    limiter, net, scope, sync,
     testonly::{abort_on_panic, set_timeout},
     time,
 };
 use zksync_consensus_roles::{attester, validator};
-use zksync_consensus_storage::{testonly::TestMemoryStorage, PersistentBatchStore};
+use zksync_consensus_storage::testonly::TestMemoryStorage;
 
 mod fetch_batches;
 mod fetch_blocks;
@@ -96,9 +92,6 @@ fn mk_version<R: Rng>(rng: &mut R) -> u64 {
 #[derive(Default)]
 struct View(im::HashMap<validator::PublicKey, Arc<validator::Signed<validator::NetAddress>>>);
 
-#[derive(Default)]
-struct Signatures(im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>);
-
 fn mk_netaddr(
     key: &validator::SecretKey,
     addr: std::net::SocketAddr,
@@ -112,19 +105,6 @@ fn mk_netaddr(
     })
 }
 
-fn mk_batch<R: Rng>(
-    rng: &mut R,
-    key: &attester::SecretKey,
-    number: attester::BatchNumber,
-    genesis: attester::GenesisHash,
-) -> attester::Signed<attester::Batch> {
-    key.sign_msg(attester::Batch {
-        number,
-        hash: rng.gen(),
-        genesis,
-    })
-}
-
 fn random_netaddr<R: Rng>(
     rng: &mut R,
     key: &validator::SecretKey,
@@ -135,19 +115,6 @@ fn random_netaddr<R: Rng>(
         mk_version(rng),
         mk_timestamp(rng),
     ))
-}
-
-fn random_batch_vote<R: Rng>(
-    rng: &mut R,
-    key: &attester::SecretKey,
-    genesis: attester::GenesisHash,
-) -> Arc<attester::Signed<attester::Batch>> {
-    let batch = attester::Batch {
-        number: attester::BatchNumber(rng.gen_range(0..1000)),
-        hash: rng.gen(),
-        genesis,
-    };
-    Arc::new(key.sign_msg(batch.to_owned()))
 }
 
 fn update_netaddr<R: Rng>(
@@ -165,20 +132,6 @@ fn update_netaddr<R: Rng>(
     ))
 }
 
-fn update_signature<R: Rng>(
-    rng: &mut R,
-    batch: &attester::Batch,
-    key: &attester::SecretKey,
-    batch_number_diff: i64,
-) -> Arc<attester::Signed<attester::Batch>> {
-    let batch = attester::Batch {
-        number: attester::BatchNumber((batch.number.0 as i64 + batch_number_diff) as u64),
-        hash: rng.gen(),
-        genesis: batch.genesis,
-    };
-    Arc::new(key.sign_msg(batch.to_owned()))
-}
-
 impl View {
     fn insert(&mut self, entry: Arc<validator::Signed<validator::NetAddress>>) {
         self.0.insert(entry.key.clone(), entry);
@@ -189,20 +142,6 @@ impl View {
     }
 
     fn as_vec(&self) -> Vec<Arc<validator::Signed<validator::NetAddress>>> {
-        self.0.values().cloned().collect()
-    }
-}
-
-impl Signatures {
-    fn insert(&mut self, entry: Arc<attester::Signed<attester::Batch>>) {
-        self.0.insert(entry.key.clone(), entry);
-    }
-
-    fn get(&mut self, key: &attester::SecretKey) -> Arc<attester::Signed<attester::Batch>> {
-        self.0.get(&key.public()).unwrap().clone()
-    }
-
-    fn as_vec(&self) -> Vec<Arc<attester::Signed<attester::Batch>>> {
         self.0.values().cloned().collect()
     }
 }
@@ -545,230 +484,105 @@ async fn rate_limiting() {
     }
 }
 
-#[tokio::test]
-async fn test_batch_votes() {
-    abort_on_panic();
-    let rng = &mut ctx::test_root(&ctx::RealClock).rng();
-
-    let keys: Vec<attester::SecretKey> = (0..8).map(|_| rng.gen()).collect();
-    let attesters = attester::Committee::new(keys.iter().map(|k| attester::WeightedAttester {
-        key: k.public(),
-        weight: 1250,
-    }))
-    .unwrap();
-    let votes = BatchVotesWatch::default();
-    let mut sub = votes.subscribe();
-
-    let genesis = rng.gen::<attester::GenesisHash>();
-
-    // Initial values.
-    let mut want = Signatures::default();
-    for k in &keys[0..6] {
-        want.insert(random_batch_vote(rng, k, genesis));
-    }
-    votes
-        .update(&attesters, &genesis, &want.as_vec())
-        .await
-        .unwrap();
-    assert_eq!(want.0, sub.borrow_and_update().votes);
-
-    // newer batch number, should be updated
-    let k0v2 = update_signature(rng, &want.get(&keys[0]).msg, &keys[0], 1);
-    // same batch number, should be ignored
-    let k1v2 = update_signature(rng, &want.get(&keys[1]).msg, &keys[1], 0);
-    // older batch number, should be ignored
-    let k4v2 = update_signature(rng, &want.get(&keys[4]).msg, &keys[4], -1);
-    // first entry for a key in the config, should be inserted
-    let k6v1 = random_batch_vote(rng, &keys[6], genesis);
-    // entry for a key outside of the config, should be ignored
-    let k8 = rng.gen();
-    let k8v1 = random_batch_vote(rng, &k8, genesis);
-
-    // Update the ones we expect to succeed
-    want.insert(k0v2.clone());
-    want.insert(k6v1.clone());
-
-    // Send all of them to the votes
-    let update = [
-        k0v2,
-        k1v2,
-        k4v2,
-        // no new entry for keys[5]
-        k6v1,
-        // no entry at all for keys[7]
-        k8v1.clone(),
-    ];
-    votes.update(&attesters, &genesis, &update).await.unwrap();
-    assert_eq!(want.0, sub.borrow_and_update().votes);
-
-    // Invalid signature, should be ignored.
-    let mut k0v3 = mk_batch(
-        rng,
-        &keys[1],
-        attester::BatchNumber(want.get(&keys[0]).msg.number.0 + 1),
-        genesis,
-    );
-    k0v3.key = keys[0].public();
-    assert!(votes
-        .update(&attesters, &genesis, &[Arc::new(k0v3)])
-        .await
-        .is_ok());
-    assert_eq!(want.0, sub.borrow_and_update().votes);
-
-    // Invalid genesis, should be rejected.
-    let other_genesis = rng.gen();
-    let k1v3 = mk_batch(
-        rng,
-        &keys[1],
-        attester::BatchNumber(want.get(&keys[1]).msg.number.0 + 1),
-        other_genesis,
-    );
-    assert!(votes
-        .update(&attesters, &genesis, &[Arc::new(k1v3)])
-        .await
-        .is_err());
-
-    assert_eq!(want.0, sub.borrow_and_update().votes);
-
-    // Duplicate entry in the update, should be rejected.
-    assert!(votes
-        .update(&attesters, &genesis, &[k8v1.clone(), k8v1])
-        .await
-        .is_err());
-    assert_eq!(want.0, sub.borrow_and_update().votes);
-}
-
-#[test]
-fn test_batch_votes_quorum() {
-    abort_on_panic();
-    let rng = &mut ctx::test_root(&ctx::RealClock).rng();
-
-    for _ in 0..10 {
-        let committee_size = rng.gen_range(1..20);
-        let keys: Vec<attester::SecretKey> = (0..committee_size).map(|_| rng.gen()).collect();
-        let attesters = attester::Committee::new(keys.iter().map(|k| attester::WeightedAttester {
-            key: k.public(),
-            weight: rng.gen_range(1..=100),
-        }))
-        .unwrap();
-
-        let batch0 = rng.gen::<attester::Batch>();
-        let batch1 = attester::Batch {
-            number: batch0.number.next(),
-            hash: rng.gen(),
-            genesis: batch0.genesis,
-        };
-        let genesis = batch0.genesis;
-        let mut batches = [(batch0, 0u64), (batch1, 0u64)];
-
-        let mut votes = BatchVotes::default();
-        for sk in &keys {
-            // We need 4/5+1 for quorum, so let's say ~80% vote on the second batch.
-            let b = usize::from(rng.gen_range(0..100) < 80);
-            let batch = &batches[b].0;
-            let vote = sk.sign_msg(batch.clone());
-            votes
-                .update(&attesters, &genesis, &[Arc::new(vote)])
-                .unwrap();
-            batches[b].1 += attesters.weight(&sk.public()).unwrap();
-
-            // Check that as soon as we have quorum it's found.
-            if batches[b].1 >= attesters.threshold() {
-                let qc = votes
-                    .find_quorum(&attesters, &genesis)
-                    .expect("should find quorum");
-                assert!(qc.message == *batch);
-                assert!(qc.signatures.keys().count() > 0);
-            }
-        }
-
-        // Check that if there was no quoroum then we don't find any.
-        if !batches.iter().any(|b| b.1 >= attesters.threshold()) {
-            assert!(votes.find_quorum(&attesters, &genesis).is_none());
-        }
-
-        // Check that the minimum batch number prunes data.
-        let last_batch = batches[1].0.number;
-
-        votes.set_min_batch_number(last_batch);
-        assert!(votes.votes.values().all(|v| v.msg.number >= last_batch));
-        assert!(votes.support.keys().all(|n| *n >= last_batch));
-
-        votes.set_min_batch_number(last_batch.next());
-        assert!(votes.votes.is_empty());
-        assert!(votes.support.is_empty());
-    }
-}
-
-//
 #[tokio::test(flavor = "multi_thread")]
 async fn test_batch_votes_propagation() {
-    let _guard = set_timeout(time::Duration::seconds(10));
     abort_on_panic();
+    let _guard = set_timeout(time::Duration::seconds(10));
     let ctx = &ctx::test_root(&ctx::AffineClock::new(10.));
     let rng = &mut ctx.rng();
 
-    let mut setup = validator::testonly::Setup::new(rng, 10);
+    let setup = validator::testonly::Setup::new(rng, 10);
+    let cfgs = testonly::new_configs(rng, &setup, 2);
 
-    let cfgs = testonly::new_configs(rng, &setup, 1);
+    // Fixed attestation schedule.
+    let first: attester::BatchNumber = rng.gen();
+    let schedule: Vec<_> = (0..10)
+        .map(|r| {
+            Arc::new(attestation::Info {
+                batch_to_attest: attester::Batch {
+                    genesis: setup.genesis.hash(),
+                    number: first + r,
+                    hash: rng.gen(),
+                },
+                committee: {
+                    // We select a random subset here. It would be incorrect to choose an empty subset, but
+                    // the chances of that are negligible.
+                    let subset: Vec<_> = setup.attester_keys.iter().filter(|_| rng.gen()).collect();
+                    attester::Committee::new(subset.iter().map(|k| attester::WeightedAttester {
+                        key: k.public(),
+                        weight: rng.gen_range(5..10),
+                    }))
+                    .unwrap()
+                    .into()
+                },
+            })
+        })
+        .collect();
+
+    // Round of the schedule that nodes should collect the votes for.
+    let round = sync::watch::channel(0).0;
 
     scope::run!(ctx, |ctx, s| async {
-        // All nodes share the same in-memory store
+        // All nodes share the same store - store is not used in this test anyway.
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
         s.spawn_bg(store.runner.run(ctx));
 
-        // Push the first batch into the store so we have something to vote on.
-        setup.push_blocks(rng, 2);
-        setup.push_batch(rng);
-
-        let batch = setup.batches[0].clone();
-
-        store
-            .batches
-            .queue_batch(ctx, batch.clone(), setup.genesis.clone())
-            .await
-            .unwrap();
-
-        let batch = attester::Batch {
-            number: batch.number,
-            hash: rng.gen(),
-            genesis: setup.genesis.hash(),
-        };
-
         // Start all nodes.
-        let nodes: Vec<testonly::Instance> = cfgs
-            .iter()
-            .enumerate()
-            .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(
-                    cfg.clone(),
-                    store.blocks.clone(),
-                    store.batches.clone(),
-                );
-                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
-                node
-            })
-            .collect();
-
-        // Cast votes on each node. It doesn't matter who signs where in this test,
-        // we just happen to know that we'll have as many nodes as attesters.
-        let attesters = setup.genesis.attesters.as_ref().unwrap();
-        for (node, key) in nodes.iter().zip(setup.attester_keys.iter()) {
-            node.net
-                .batch_vote_publisher()
-                .publish(attesters, &setup.genesis.hash(), key, batch.clone())
-                .await
-                .unwrap();
+        for (i, mut cfg) in cfgs.into_iter().enumerate() {
+            cfg.rpc.push_batch_votes_rate = limiter::Rate::INF;
+            cfg.validator_key = None;
+            let (node, runner) = testonly::Instance::new_from_config(testonly::InstanceConfig {
+                cfg: cfg.clone(),
+                block_store: store.blocks.clone(),
+                batch_store: store.batches.clone(),
+                attestation: attestation::Controller::new(Some(setup.attester_keys[i].clone()))
+                    .into(),
+            });
+            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            // Task going through the schedule, waiting for ANY node to collect the certificate
+            // to advance to the next round of the schedule.
+            // Test succeeds if all tasks successfully iterate through the whole schedule.
+            s.spawn(
+                async {
+                    let node = node;
+                    let sub = &mut round.subscribe();
+                    sub.mark_changed();
+                    loop {
+                        let r = ctx::NoCopy(*sync::changed(ctx, sub).await?);
+                        tracing::info!("starting round {}", *r);
+                        let Some(cfg) = schedule.get(*r) else {
+                            return Ok(());
+                        };
+                        let attestation = node.net.gossip.attestation.clone();
+                        attestation.start_attestation(cfg.clone()).await.unwrap();
+                        // Wait for the certificate in the background.
+                        s.spawn_bg(async {
+                            let r = r;
+                            let attestation = attestation;
+                            let Ok(Some(qc)) = attestation
+                                .wait_for_cert(ctx, cfg.batch_to_attest.number)
+                                .await
+                            else {
+                                return Ok(());
+                            };
+                            assert_eq!(qc.message, cfg.batch_to_attest);
+                            qc.verify(setup.genesis.hash(), &cfg.committee).unwrap();
+                            tracing::info!("got cert for {}", *r);
+                            round.send_if_modified(|round| {
+                                if *round != *r {
+                                    return false;
+                                }
+                                *round = *r + 1;
+                                true
+                            });
+                            Ok(())
+                        });
+                    }
+                }
+                .instrument(tracing::info_span!("attester", i)),
+            );
         }
-
-        // Wait until one of the nodes collects a quorum over gossip and stores.
-        loop {
-            if let Some(qc) = store.im_batches.get_batch_qc(ctx, batch.number).await? {
-                assert_eq!(qc.message, batch);
-                return Ok(());
-            }
-            ctx.sleep(time::Duration::milliseconds(100)).await?;
-        }
+        Ok(())
     })
     .await
     .unwrap();

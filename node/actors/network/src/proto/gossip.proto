@@ -19,7 +19,15 @@ message PushValidatorAddrs {
 }
 
 message PushBatchVotes {
+  // Requesting the peer to respond with votes for the batch. 
+  optional roles.attester.Batch want_votes_for = 2; // optional
   // Signed roles.validator.Msg.votes
+  repeated roles.attester.Signed votes = 1;
+}
+
+message PushBatchVotesResp {
+  // Signed roles.validator.Msg.votes
+  // Empty if want_votes_for in request was not set.
   repeated roles.attester.Signed votes = 1;
 }
 

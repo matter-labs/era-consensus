@@ -6,10 +6,7 @@ use super::{
     ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
     WeightedValidator,
 };
-use crate::{
-    attester::{self, BatchNumber, SyncBatch},
-    validator::LeaderSelectionMode,
-};
+use crate::{attester, validator::LeaderSelectionMode};
 use bit_vec::BitVec;
 use rand::{
     distributions::{Distribution, Standard},
@@ -146,12 +143,12 @@ impl Setup {
     pub fn push_batch(&mut self, rng: &mut impl Rng) {
         let batch_number = match self.0.batches.last() {
             Some(b) => b.number.next(),
-            None => BatchNumber(0),
+            None => attester::BatchNumber(0),
         };
         let size: usize = rng.gen_range(500..1000);
         let payloads = vec![Payload((0..size).map(|_| rng.gen()).collect())];
         let proof = rng.gen::<[u8; 32]>().to_vec();
-        let batch = SyncBatch {
+        let batch = attester::SyncBatch {
             number: batch_number,
             payloads,
             proof,
@@ -205,7 +202,7 @@ pub struct SetupInner {
     /// Past blocks.
     pub blocks: Vec<FinalBlock>,
     /// L1 batches
-    pub batches: Vec<SyncBatch>,
+    pub batches: Vec<attester::SyncBatch>,
     /// Genesis config.
     pub genesis: Genesis,
 }

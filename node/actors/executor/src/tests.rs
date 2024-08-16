@@ -1,10 +1,9 @@
 //! High-level tests for `Executor`.
 use super::*;
-use attestation::{AttestationStatusClient, AttestationStatusRunner};
 use rand::Rng as _;
-use std::sync::{atomic::AtomicU64, Mutex};
+//use std::sync::{atomic::AtomicU64, Mutex};
 use tracing::Instrument as _;
-use zksync_concurrency::{sync, testonly::abort_on_panic};
+use zksync_concurrency::testonly::abort_on_panic;
 use zksync_consensus_bft as bft;
 use zksync_consensus_network::testonly::{new_configs, new_fullnode};
 use zksync_consensus_roles::validator::{testonly::Setup, BlockNumber};
@@ -31,8 +30,8 @@ fn config(cfg: &network::Config) -> Config {
 
 /// The test executors below are not running with attesters, so we just create an [AttestationStatusWatch]
 /// that will never be updated.
-fn never_attest(genesis: &validator::Genesis) -> Arc<AttestationStatusWatch> {
-    Arc::new(AttestationStatusWatch::new(genesis.hash()))
+fn never_attest() -> Arc<attestation::Controller> {
+    attestation::Controller::new(None).into()
 }
 
 fn validator(
@@ -41,7 +40,6 @@ fn validator(
     batch_store: Arc<BatchStore>,
     replica_store: impl ReplicaStore,
 ) -> Executor {
-    let attestation_status = never_attest(block_store.genesis());
     Executor {
         config: config(cfg),
         block_store,
@@ -51,8 +49,7 @@ fn validator(
             replica_store: Box::new(replica_store),
             payload_manager: Box::new(bft::testonly::RandomPayload(1000)),
         }),
-        attester: None,
-        attestation_status,
+        attestation: never_attest(),
     }
 }
 
@@ -61,14 +58,12 @@ fn fullnode(
     block_store: Arc<BlockStore>,
     batch_store: Arc<BatchStore>,
 ) -> Executor {
-    let attestation_status = never_attest(block_store.genesis());
     Executor {
         config: config(cfg),
         block_store,
         batch_store,
         validator: None,
-        attester: None,
-        attestation_status,
+        attestation: never_attest(),
     }
 }
 
@@ -315,89 +310,4 @@ async fn test_validator_syncing_from_fullnode() {
     })
     .await
     .unwrap();
-}
-
-/// Test that the AttestationStatusRunner initialises and then polls the status.
-#[tokio::test]
-async fn test_attestation_status_runner() {
-    abort_on_panic();
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(5));
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.0));
-    let rng = &mut ctx.rng();
-
-    let genesis: attester::GenesisHash = rng.gen();
-
-    #[derive(Clone)]
-    struct MockAttestationStatus {
-        genesis: Arc<Mutex<attester::GenesisHash>>,
-        batch_number: Arc<AtomicU64>,
-    }
-
-    #[async_trait::async_trait]
-    impl AttestationStatusClient for MockAttestationStatus {
-        async fn attestation_status(
-            &self,
-            _ctx: &ctx::Ctx,
-        ) -> ctx::Result<Option<(attester::GenesisHash, attester::BatchNumber)>> {
-            let curr = self
-                .batch_number
-                .fetch_add(1u64, std::sync::atomic::Ordering::Relaxed);
-            if curr == 0 {
-                // Return None initially to see that the runner will deal with it.
-                Ok(None)
-            } else {
-                // The first actual result will be 1 on the 2nd poll.
-                let genesis = *self.genesis.lock().unwrap();
-                let next_batch_to_attest = attester::BatchNumber(curr);
-                Ok(Some((genesis, next_batch_to_attest)))
-            }
-        }
-    }
-
-    let res = scope::run!(ctx, |ctx, s| async {
-        let client = MockAttestationStatus {
-            genesis: Arc::new(Mutex::new(genesis)),
-            batch_number: Arc::new(AtomicU64::default()),
-        };
-        let (status, runner) = AttestationStatusRunner::init(
-            ctx,
-            Box::new(client.clone()),
-            time::Duration::milliseconds(100),
-            genesis,
-        )
-        .await
-        .unwrap();
-
-        let mut recv_status = status.subscribe();
-        recv_status.mark_changed();
-
-        // Check that the value has *not* been initialised to a non-default value.
-        {
-            let status = sync::changed(ctx, &mut recv_status).await?;
-            assert!(status.next_batch_to_attest.is_none());
-        }
-        // Now start polling for new values. Starting in the foreground because we want it to fail in the end.
-        s.spawn(runner.run(ctx));
-        // Check that polling sets the value.
-        {
-            let status = sync::changed(ctx, &mut recv_status).await?;
-            assert!(status.next_batch_to_attest.is_some());
-            assert_eq!(status.next_batch_to_attest.unwrap().0, 1);
-        }
-        // Change the genesis returned by the client. It should cause the scope to fail.
-        {
-            let mut genesis = client.genesis.lock().unwrap();
-            *genesis = rng.gen();
-        }
-        Ok(())
-    })
-    .await;
-
-    match res {
-        Ok(()) => panic!("expected to fail when the genesis changed"),
-        Err(e) => assert!(
-            e.to_string().contains("genesis changed"),
-            "only expect failures due to genesis change; got: {e}"
-        ),
-    }
 }

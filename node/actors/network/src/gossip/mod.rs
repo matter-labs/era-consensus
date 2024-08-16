@@ -13,26 +13,19 @@
 //! Static connections constitute a rigid "backbone" of the gossip network, which is insensitive to
 //! eclipse attack. Dynamic connections are supposed to improve the properties of the gossip
 //! network graph (minimize its diameter, increase connectedness).
-use self::batch_votes::BatchVotesWatch;
-pub use self::{
-    attestation_status::{AttestationStatus, AttestationStatusReceiver, AttestationStatusWatch},
-    batch_votes::BatchVotesPublisher,
-};
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
 use fetch::RequestItem;
 use std::sync::{atomic::AtomicUsize, Arc};
 use tracing::Instrument;
 pub(crate) use validator_addrs::*;
-use zksync_concurrency::{ctx, ctx::channel, error::Wrap as _, scope, sync};
+use zksync_concurrency::{ctx, ctx::channel, scope, sync};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BatchStore, BlockStore};
 
-mod attestation_status;
-mod batch_votes;
+pub mod attestation;
 mod fetch;
 mod handshake;
 pub mod loadtest;
-mod metrics;
 mod runner;
 #[cfg(test)]
 mod testonly;
@@ -50,8 +43,6 @@ pub(crate) struct Network {
     pub(crate) outbound: PoolWatch<node::PublicKey, Arc<MeteredStreamStats>>,
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
-    /// Current state of knowledge about batch votes.
-    pub(crate) batch_votes: Arc<BatchVotesWatch>,
     /// Block store to serve `get_block` requests from.
     pub(crate) block_store: Arc<BlockStore>,
     /// Batch store to serve `get_batch` requests from.
@@ -64,8 +55,10 @@ pub(crate) struct Network {
     pub(crate) fetch_queue: fetch::Queue,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
-    /// Shared watch over the current attestation status as indicated by the main node.
-    pub(crate) attestation_status: Arc<AttestationStatusWatch>,
+    /// Attestation controller, maintaining a set of batch votes.
+    /// Gossip network exchanges the votes with peers.
+    /// The batch for which the votes are collected is configured externally.
+    pub(crate) attestation: Arc<attestation::Controller>,
 }
 
 impl Network {
@@ -75,7 +68,7 @@ impl Network {
         block_store: Arc<BlockStore>,
         batch_store: Arc<BatchStore>,
         sender: channel::UnboundedSender<io::OutputMessage>,
-        attestation_status: Arc<AttestationStatusWatch>,
+        attestation: Arc<attestation::Controller>,
     ) -> Arc<Self> {
         Arc::new(Self {
             sender,
@@ -85,13 +78,12 @@ impl Network {
             ),
             outbound: PoolWatch::new(cfg.gossip.static_outbound.keys().cloned().collect(), 0),
             validator_addrs: ValidatorAddrsWatch::default(),
-            batch_votes: Arc::new(BatchVotesWatch::default()),
             cfg,
             fetch_queue: fetch::Queue::default(),
             block_store,
             batch_store,
             push_validator_addrs_calls: 0.into(),
-            attestation_status,
+            attestation,
         })
     }
 
@@ -172,58 +164,5 @@ impl Network {
             }
         })
         .await;
-    }
-
-    /// Task that reacts to new votes being added and looks for an L1 batch QC.
-    /// It persists the certificate once the quorum threshold is passed.
-    pub(crate) async fn run_batch_qc_finder(&self, ctx: &ctx::Ctx) -> ctx::Result<()> {
-        let Some(attesters) = self.genesis().attesters.as_ref() else {
-            tracing::info!("no attesters in genesis, not looking for batch QCs");
-            return Ok(());
-        };
-        let genesis = self.genesis().hash();
-
-        let mut recv_votes = self.batch_votes.subscribe();
-        let mut recv_status = self.attestation_status.subscribe();
-
-        // Subscribe starts as seen but we don't want to miss the first item.
-        recv_status.mark_changed();
-
-        loop {
-            async {
-                // Wait until the status indicates that we're ready to sign the next batch.
-                let Some(batch_number) = sync::changed(ctx, &mut recv_status)
-                    .instrument(tracing::info_span!("wait_for_attestation_status"))
-                    .await?
-                    .next_batch_to_attest
-                else {
-                    return Ok(());
-                };
-
-                // Get rid of all previous votes. We don't expect this to go backwards without regenesis, which will involve a restart.
-                self.batch_votes.set_min_batch_number(batch_number).await;
-
-                // Now wait until we find the next quorum, whatever it is:
-                // * on the main node, if attesters are honest, they will vote on the next batch number and the main node will not see gaps
-                // * on external nodes the votes might be affected by changes in the value returned by the API, and there might be gaps
-                // What is important, though, is that the batch number does not move backwards while we look for a quorum, because attesters
-                // (re)casting earlier votes will go ignored by those fixed on a higher min_batch_number, and gossip will only be attempted once.
-                // The possibility of this will be fixed by deterministally picking a start batch number based on fork indicated by genesis.
-                let qc = sync::wait_for_some(ctx, &mut recv_votes, |votes| {
-                    votes.find_quorum(attesters, &genesis)
-                })
-                .instrument(tracing::info_span!("wait_for_quorum"))
-                .await?;
-
-                self.batch_store
-                    .persist_batch_qc(ctx, qc)
-                    .await
-                    .wrap("persist_batch_qc")?;
-
-                ctx::Ok(())
-            }
-            .instrument(tracing::info_span!("new_votes_iter"))
-            .await?;
-        }
     }
 }

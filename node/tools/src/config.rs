@@ -7,12 +7,13 @@ use std::{
     fs, io,
     net::SocketAddr,
     path::PathBuf,
+    sync::Arc,
 };
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use zksync_concurrency::{ctx, net, scope, time};
+use zksync_concurrency::{ctx, net, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
-use zksync_consensus_executor::{self as executor, attestation::AttestationStatusRunner};
+use zksync_consensus_executor::{self as executor, attestation};
 use zksync_consensus_network::http;
 use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::testonly::{TestMemoryStorage, TestMemoryStorageRunner};
@@ -259,24 +260,12 @@ impl Configs {
     pub async fn make_executor(
         &self,
         ctx: &ctx::Ctx,
-    ) -> ctx::Result<(executor::Executor, TestExecutorRunner)> {
+    ) -> ctx::Result<(executor::Executor, TestMemoryStorageRunner)> {
         let replica_store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
         let store = TestMemoryStorage::new(ctx, &self.app.genesis).await;
 
-        // We don't have an API to poll in this setup, we can only create a local store based attestation client.
-        let (attestation_status, attestation_status_runner) =
-            AttestationStatusRunner::init_from_store(
-                ctx,
-                store.batches.clone(),
-                time::Duration::seconds(1),
-                self.app.genesis.hash(),
-            )
-            .await?;
-
-        let runner = TestExecutorRunner {
-            storage_runner: store.runner,
-            attestation_status_runner,
-        };
+        let attestation = Arc::new(attestation::Controller::new(self.app.attester_key.clone()));
+        let runner = store.runner;
 
         let e = executor::Executor {
             config: executor::Config {
@@ -314,12 +303,7 @@ impl Configs {
                         self.app.max_payload_size,
                     )),
                 }),
-            attester: self
-                .app
-                .attester_key
-                .as_ref()
-                .map(|key| executor::Attester { key: key.clone() }),
-            attestation_status,
+            attestation,
         };
         Ok((e, runner))
     }
@@ -345,21 +329,4 @@ fn load_private_key(path: &PathBuf) -> anyhow::Result<PrivateKeyDer<'static>> {
 
     // Load and return a single private key.
     Ok(rustls_pemfile::private_key(&mut reader).map(|key| key.expect("Private key not found"))?)
-}
-
-pub struct TestExecutorRunner {
-    storage_runner: TestMemoryStorageRunner,
-    attestation_status_runner: AttestationStatusRunner,
-}
-
-impl TestExecutorRunner {
-    /// Runs the storage and the attestation status.
-    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        scope::run!(ctx, |ctx, s| async {
-            s.spawn(self.storage_runner.run(ctx));
-            s.spawn(self.attestation_status_runner.run(ctx));
-            Ok(())
-        })
-        .await
-    }
 }

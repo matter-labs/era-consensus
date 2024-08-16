@@ -1,6 +1,6 @@
 //! Network actor maintaining a pool of outbound and inbound connections to other nodes.
 use anyhow::Context as _;
-use gossip::{AttestationStatusWatch, BatchVotesPublisher};
+use gossip::attestation;
 use std::sync::Arc;
 use tracing::Instrument as _;
 use zksync_concurrency::{
@@ -57,10 +57,9 @@ impl Network {
         block_store: Arc<BlockStore>,
         batch_store: Arc<BatchStore>,
         pipe: ActorPipe<io::InputMessage, io::OutputMessage>,
-        attestation_status: Arc<AttestationStatusWatch>,
+        attestation: Arc<attestation::Controller>,
     ) -> (Arc<Self>, Runner) {
-        let gossip =
-            gossip::Network::new(cfg, block_store, batch_store, pipe.send, attestation_status);
+        let gossip = gossip::Network::new(cfg, block_store, batch_store, pipe.send, attestation);
         let consensus = consensus::Network::new(gossip.clone());
         let net = Arc::new(Self { gossip, consensus });
         (
@@ -75,11 +74,6 @@ impl Network {
     /// Registers metrics for this state.
     pub fn register_metrics(self: &Arc<Self>) {
         metrics::NetworkGauges::register(Arc::downgrade(self));
-    }
-
-    /// Create a batch vote publisher to push attestations to gossip.
-    pub fn batch_vote_publisher(&self) -> BatchVotesPublisher {
-        BatchVotesPublisher(self.gossip.batch_votes.clone())
     }
 
     /// Handles a dispatcher message.
@@ -133,9 +127,6 @@ impl Runner {
                 Ok(())
             });
 
-            // Update QC batches in the background.
-            s.spawn(self.net.gossip.run_batch_qc_finder(ctx));
-
             // Fetch missing batches in the background.
             s.spawn(async {
                 self.net.gossip.run_batch_fetcher(ctx).await;
@@ -174,8 +165,6 @@ impl Runner {
                     }
                 }
             }
-
-            // TODO: check if we are active attester to get new L1 Batches, sign them and broadcast the signature
 
             let accept_limiter = limiter::Limiter::new(ctx, self.net.gossip.cfg.tcp_accept_rate);
             loop {
