@@ -2,6 +2,7 @@
 use crate::Network;
 use anyhow::Context as _;
 use std::{
+    fmt,
     net::SocketAddr,
     pin::Pin,
     sync::{
@@ -141,6 +142,18 @@ struct TcpMetrics {
 #[vise::register]
 static TCP_METRICS: vise::Global<TcpMetrics> = vise::Global::new();
 
+/// `build_version` label.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, EncodeLabelSet, EncodeLabelValue)]
+#[metrics(label = "build_version")]
+pub(crate) struct BuildVersion(String);
+
+// For the isolated metric label to work, you should implement `Display` for it:
+impl fmt::Display for BuildVersion {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(fmt)
+    }
+}
+
 /// General-purpose network metrics exposed via a collector.
 #[derive(Debug, Metrics)]
 #[metrics(prefix = "network")]
@@ -153,6 +166,12 @@ pub(crate) struct NetworkGauges {
     consensus_inbound_connections: Gauge<usize>,
     /// Number of active outbound consensus connections.
     consensus_outbound_connections: Gauge<usize>,
+    /// Number of peers (both inbound and outbound) with the given `build_version`.
+    /// Label "" corresponds to peers with build_version not set.
+    /// WARNING: with the current implementation we do not bound
+    /// the allowed set of BuildVersion values. This is not a threat
+    /// to the node itself, but the prometheus scraper might be.
+    gossip_peers_by_build_version: Family<BuildVersion, Gauge<usize>>,
 }
 
 impl NetworkGauges {
@@ -164,10 +183,18 @@ impl NetworkGauges {
         let register_result = COLLECTOR.before_scrape(move || {
             state_ref.upgrade().map(|state| {
                 let gauges = NetworkGauges::default();
-                let len = state.gossip.inbound.current().len();
-                gauges.gossip_inbound_connections.set(len);
-                let len = state.gossip.outbound.current().len();
-                gauges.gossip_outbound_connections.set(len);
+                let inbound = state.gossip.inbound.current();
+                gauges.gossip_inbound_connections.set(inbound.len());
+                for conn in inbound.values() {
+                    let v = BuildVersion(conn.build_version.clone().unwrap_or_default());
+                    gauges.gossip_peers_by_build_version[&v].inc_by(1);
+                }
+                let outbound = state.gossip.outbound.current();
+                gauges.gossip_outbound_connections.set(outbound.len());
+                for conn in outbound.values() {
+                    let v = BuildVersion(conn.build_version.clone().unwrap_or_default());
+                    gauges.gossip_peers_by_build_version[&v].inc_by(1);
+                }
                 if let Some(consensus_state) = &state.consensus {
                     let len = consensus_state.inbound.current().len();
                     gauges.consensus_inbound_connections.set(len);
