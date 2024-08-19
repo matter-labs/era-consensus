@@ -20,6 +20,8 @@ use zksync_consensus_storage::testonly::{TestMemoryStorage, TestMemoryStorageRun
 use zksync_consensus_utils::debug_page;
 use zksync_protobuf::{kB, read_required, required, ProtoFmt};
 
+const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
+
 fn read_required_secret_text<T: TextFmt>(text: &Option<String>) -> anyhow::Result<T> {
     Text::new(
         text.as_ref()
@@ -269,6 +271,7 @@ impl Configs {
 
         let e = executor::Executor {
             config: executor::Config {
+                build_version: Some(CRATE_VERSION.into()),
                 server_addr: self.app.server_addr,
                 public_addr: self.app.public_addr.clone(),
                 node_key: self.app.node_key.clone(),

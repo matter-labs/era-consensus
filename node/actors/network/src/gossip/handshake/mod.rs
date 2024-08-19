@@ -1,4 +1,4 @@
-use crate::{frame, noise, proto::gossip as proto, GossipConfig};
+use crate::{frame, noise, proto::gossip as proto, Config};
 use anyhow::Context as _;
 use zksync_concurrency::{ctx, error::Wrap as _, time};
 use zksync_consensus_crypto::ByteFmt;
@@ -65,7 +65,7 @@ pub(super) enum Error {
 
 pub(super) async fn outbound(
     ctx: &ctx::Ctx,
-    cfg: &GossipConfig,
+    cfg: &Config,
     genesis: validator::GenesisHash,
     stream: &mut noise::Stream,
     peer: &node::PublicKey,
@@ -76,9 +76,9 @@ pub(super) async fn outbound(
         ctx,
         stream,
         &Handshake {
-            session_id: cfg.key.sign_msg(session_id.clone()),
+            session_id: cfg.gossip.key.sign_msg(session_id.clone()),
             genesis,
-            is_static: cfg.static_outbound.contains_key(peer),
+            is_static: cfg.gossip.static_outbound.contains_key(peer),
         },
     )
     .await
@@ -101,7 +101,7 @@ pub(super) async fn outbound(
 
 pub(super) async fn inbound(
     ctx: &ctx::Ctx,
-    cfg: &GossipConfig,
+    cfg: &Config,
     genesis: validator::GenesisHash,
     stream: &mut noise::Stream,
 ) -> Result<node::PublicKey, Error> {
@@ -121,9 +121,9 @@ pub(super) async fn inbound(
         ctx,
         stream,
         &Handshake {
-            session_id: cfg.key.sign_msg(session_id.clone()),
+            session_id: cfg.gossip.key.sign_msg(session_id.clone()),
             genesis,
-            is_static: cfg.static_inbound.contains(&h.session_id.key),
+            is_static: cfg.gossip.static_inbound.contains(&h.session_id.key),
         },
     )
     .await

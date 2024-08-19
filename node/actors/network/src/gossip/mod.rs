@@ -34,6 +34,7 @@ mod tests;
 mod validator_addrs;
 
 pub(crate) struct Connection {
+    pub(crate) build_version: Option<String>,
     pub(crate) stats: Arc<MeteredStreamStats>,
 }
 

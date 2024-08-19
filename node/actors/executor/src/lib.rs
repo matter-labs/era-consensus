@@ -33,6 +33,9 @@ pub struct Validator {
 /// Config of the node executor.
 #[derive(Debug)]
 pub struct Config {
+    /// Label identifying the build version of the binary that this node is running.
+    /// There is no specific semantics assigned to it.
+    pub build_version: Option<String>,
     /// IP:port to listen on, for incoming TCP connections.
     /// Use `0.0.0.0:<port>` to listen on all network interfaces (i.e. on all IPs exposed by this VM).
     pub server_addr: std::net::SocketAddr,
@@ -99,6 +102,7 @@ impl Executor {
     /// Extracts a network crate config.
     fn network_config(&self) -> network::Config {
         network::Config {
+            build_version: self.config.build_version.clone(),
             server_addr: net::tcp::ListenerAddr::new(self.config.server_addr),
             public_addr: self.config.public_addr.clone(),
             gossip: self.config.gossip(),

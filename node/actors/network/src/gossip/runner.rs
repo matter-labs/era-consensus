@@ -396,10 +396,10 @@ impl Network {
         mut stream: noise::Stream,
     ) -> anyhow::Result<()> {
         let peer =
-            handshake::inbound(ctx, &self.cfg.gossip, self.genesis().hash(), &mut stream).await?;
+            handshake::inbound(ctx, &self.cfg, self.genesis().hash(), &mut stream).await?;
         tracing::info!("peer = {peer:?}");
         self.inbound
-            .insert(peer.clone(), Connection { stats: stream.stats() }.into())
+            .insert(peer.clone(), Connection { build_version: None, stats: stream.stats() }.into())
             .await?;
         let res = self.run_stream(ctx, stream).await;
         self.inbound.remove(&peer).await;
@@ -424,7 +424,7 @@ impl Network {
         let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet).await?;
         handshake::outbound(
             ctx,
-            &self.cfg.gossip,
+            &self.cfg,
             self.genesis().hash(),
             &mut stream,
             peer,
@@ -432,7 +432,7 @@ impl Network {
         .await?;
         tracing::info!("peer = {peer:?}");
         self.outbound
-            .insert(peer.clone(), Connection { stats: stream.stats() }.into())
+            .insert(peer.clone(), Connection { build_version: None, stats: stream.stats() }.into())
             .await?;
         let res = self.run_stream(ctx, stream).await;
         self.outbound.remove(peer).await;
