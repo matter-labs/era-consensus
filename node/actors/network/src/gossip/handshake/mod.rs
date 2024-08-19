@@ -31,7 +31,7 @@ pub(crate) struct Handshake {
     /// It is informational only, it doesn't affect the logic of the node.
     pub(crate) is_static: bool,
     /// Version at which peer's binary has been built.
-    /// It is declared by peer (i.e. not verifed in any way).
+    /// It is declared by peer (i.e. not verified in any way).
     pub(crate) build_version: Option<String>,
 }
 
@@ -42,7 +42,6 @@ impl ProtoFmt for Handshake {
             session_id: read_required(&r.session_id).context("session_id")?,
             genesis: read_required(&r.genesis).context("genesis")?,
             is_static: *required(&r.is_static).context("is_static")?,
-
             build_version: r.build_version.clone(),
         })
     }
