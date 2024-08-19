@@ -61,7 +61,7 @@ impl MeteredStream {
     }
 
     /// Returns a reference to the the Stream values for inspection
-    pub(crate) fn get_values(&self) -> Arc<MeteredStreamStats> {
+    pub(crate) fn stats(&self) -> Arc<MeteredStreamStats> {
         self.stats.clone()
     }
 }

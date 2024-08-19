@@ -172,7 +172,7 @@ impl Network {
         let peer =
             handshake::inbound(ctx, &self.key, self.gossip.genesis().hash(), &mut stream).await?;
         self.inbound
-            .insert(peer.clone(), stream.get_values())
+            .insert(peer.clone(), stream.stats())
             .await?;
         tracing::info!("peer = {peer:?}");
         let res = scope::run!(ctx, |ctx, s| async {
@@ -212,7 +212,7 @@ impl Network {
         )
         .await?;
         self.outbound
-            .insert(peer.clone(), stream.get_values())
+            .insert(peer.clone(), stream.stats())
             .await?;
         tracing::info!("peer = {peer:?}");
         let consensus_cli =

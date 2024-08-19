@@ -33,14 +33,18 @@ mod testonly;
 mod tests;
 mod validator_addrs;
 
+pub(crate) struct Connection {
+    pub(crate) stats: Arc<MeteredStreamStats>,
+}
+
 /// Gossip network state.
 pub(crate) struct Network {
     /// Gossip network configuration.
     pub(crate) cfg: Config,
     /// Currently open inbound connections.
-    pub(crate) inbound: PoolWatch<node::PublicKey, Arc<MeteredStreamStats>>,
+    pub(crate) inbound: PoolWatch<node::PublicKey, Arc<Connection>>,
     /// Currently open outbound connections.
-    pub(crate) outbound: PoolWatch<node::PublicKey, Arc<MeteredStreamStats>>,
+    pub(crate) outbound: PoolWatch<node::PublicKey, Arc<Connection>>,
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
     /// Block store to serve `get_block` requests from.

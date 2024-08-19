@@ -1,5 +1,6 @@
 //! Http Server to export debug information
-use crate::{consensus, MeteredStreamStats, Network};
+use crate::{MeteredStreamStats, Network};
+use zksync_consensus_crypto::TextFmt as _;
 use anyhow::Context as _;
 use base64::Engine;
 use build_html::{Html, HtmlContainer, HtmlPage, Table, TableCell, TableCellType, TableRow};
@@ -11,8 +12,8 @@ use hyper::{
     service::service_fn,
     HeaderMap, Request, Response, StatusCode,
 };
+use std::sync::atomic::Ordering;
 use hyper_util::rt::tokio::TokioIo;
-use im::HashMap;
 use std::{
     net::SocketAddr,
     sync::Arc,
@@ -149,42 +150,28 @@ impl DebugPageServer {
     }
 
     fn serve(&self, _request: Request<hyper::body::Incoming>) -> Full<Bytes> {
-        let html: String = HtmlPage::new()
+        let mut html = HtmlPage::new()
             .with_title("Node debug page")
             .with_style(STYLE)
-            .with_header(1, "Active connections")
-            .with_header(2, "Validator network")
-            .with_header(3, "Incoming connections")
-            .with_paragraph(
-                self.connections_html(
-                    <Option<Arc<consensus::Network>> as Clone>::clone(&self.network.consensus)
-                        .unwrap()
-                        .inbound
-                        .current(),
-                ),
-            )
-            .with_header(3, "Outgoing connections")
-            .with_paragraph(
-                self.connections_html(
-                    <Option<Arc<consensus::Network>> as Clone>::clone(&self.network.consensus)
-                        .unwrap()
-                        .outbound
-                        .current(),
-                ),
-            )
+            .with_header(1, "Active connections");
+        if let Some(consensus) = self.network.consensus.as_ref() {
+            html = html
+                .with_header(2, "Validator network")
+                .with_header(3, "Incoming connections")
+                .with_paragraph(self.connections_html(consensus.inbound.current().iter().map(|(k,v)|(k.encode(),v))))
+                .with_header(3, "Outgoing connections")
+                .with_paragraph(self.connections_html(consensus.outbound.current().iter().map(|(k,v)|(k.encode(),v))));
+        }
+        html = html
             .with_header(2, "Gossip network")
             .with_header(3, "Incoming connections")
-            .with_paragraph(self.connections_html(self.network.gossip.inbound.current()))
+            .with_paragraph(self.connections_html(self.network.gossip.inbound.current().iter().map(|(k,v)|(k.encode(),&v.stats))))
             .with_header(3, "Outgoing connections")
-            .with_paragraph(self.connections_html(self.network.gossip.outbound.current()))
-            .to_html_string();
-        Full::new(Bytes::from(html))
+            .with_paragraph(self.connections_html(self.network.gossip.outbound.current().iter().map(|(k,v)|(k.encode(),&v.stats))));
+        Full::new(Bytes::from(html.to_html_string()))
     }
 
-    fn connections_html<K>(&self, connections: HashMap<K, Arc<MeteredStreamStats>>) -> String
-    where
-        K: std::hash::Hash + Eq + Clone + std::fmt::Debug + zksync_consensus_crypto::TextFmt,
-    {
+    fn connections_html<'a>(&self, connections: impl Iterator<Item=(String,&'a Arc<MeteredStreamStats>)>) -> String {
         let mut table = Table::new()
             .with_custom_header_row(
                 TableRow::new()
@@ -209,10 +196,10 @@ impl DebugPageServer {
                 .ok()
                 .unwrap_or_else(|| Duration::new(1, 0))
                 .max(Duration::new(1, 0)); // Ensure Duration is not 0 to prevent division by zero
-            let received = values.received.load(std::sync::atomic::Ordering::Relaxed);
-            let sent = values.sent.load(std::sync::atomic::Ordering::Relaxed);
+            let received = values.received.load(Ordering::Relaxed);
+            let sent = values.sent.load(Ordering::Relaxed);
             table.add_body_row(vec![
-                self.shorten(key),
+                Self::shorten(key),
                 values.peer_addr.to_string(),
                 bytesize::to_string(received, false),
                 bytesize::to_string(received / age.as_secs(), false) + "/s",
@@ -224,11 +211,7 @@ impl DebugPageServer {
         table.to_html_string()
     }
 
-    fn shorten<K>(&self, key: K) -> String
-    where
-        K: std::fmt::Debug + zksync_consensus_crypto::TextFmt,
-    {
-        let key = key.encode();
+    fn shorten(key: String) -> String {
         key.strip_prefix("validator:public:bls12_381:")
             .or(key.strip_prefix("node:public:ed25519:"))
             .map_or("-".to_string(), |key| {
