@@ -242,6 +242,11 @@ impl Controller {
         }
     }
 
+    /// Registers metrics for this controller.
+    pub(crate) fn register_metrics(self: &Arc<Self>) {
+        metrics::Metrics::register(Arc::downgrade(self));
+    }
+
     /// Subscribes to state diffs.
     pub(crate) fn subscribe(&self) -> DiffReceiver {
         let mut recv = self.state.subscribe();
@@ -265,11 +270,6 @@ impl Controller {
         let before = state.total_weight;
         let res = state.insert_votes(votes);
         if state.total_weight > before {
-            metrics::METRICS.votes_collected.set(state.votes.len());
-            #[allow(clippy::float_arithmetic)]
-            metrics::METRICS
-                .weight_collected
-                .set(state.total_weight as f64 / state.info.committee.total_weight() as f64);
             locked.send_replace(Some(state));
         }
         res
@@ -351,17 +351,6 @@ impl Controller {
                 new.insert_vote(Arc::new(vote)).unwrap();
             }
         }
-        metrics::METRICS
-            .batch_number
-            .set(new.info.batch_to_attest.number.0);
-        metrics::METRICS
-            .committee_size
-            .set(new.info.committee.len());
-        metrics::METRICS.votes_collected.set(new.votes.len());
-        #[allow(clippy::float_arithmetic)]
-        metrics::METRICS
-            .weight_collected
-            .set(new.total_weight as f64 / new.info.committee.total_weight() as f64);
         locked.send_replace(Some(new));
         Ok(())
     }

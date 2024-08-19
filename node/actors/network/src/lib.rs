@@ -74,6 +74,7 @@ impl Network {
     /// Registers metrics for this state.
     pub fn register_metrics(self: &Arc<Self>) {
         metrics::NetworkGauges::register(Arc::downgrade(self));
+        self.gossip.attestation.register_metrics();
     }
 
     /// Handles a dispatcher message.
