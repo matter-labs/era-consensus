@@ -33,7 +33,9 @@ mod testonly;
 mod tests;
 mod validator_addrs;
 
+#[derive(Debug)]
 pub(crate) struct Connection {
+    pub(crate) key: node::PublicKey,
     pub(crate) build_version: Option<String>,
     pub(crate) stats: Arc<MeteredStreamStats>,
 }

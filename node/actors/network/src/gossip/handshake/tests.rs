@@ -68,6 +68,7 @@ async fn test_session_id_mismatch() {
                     session_id: cfg1.gossip.key.sign_msg(rng.gen::<node::SessionId>()),
                     genesis,
                     is_static: false,
+                    build_version: None,
                 },
             )
             .await?;
@@ -100,7 +101,7 @@ async fn test_peer_mismatch() {
             let mut s0 = s0;
             assert_eq!(
                 cfg1.gossip.key.public(),
-                inbound(ctx, &cfg0, genesis, &mut s0).await?
+                inbound(ctx, &cfg0, genesis, &mut s0).await?.key
             );
             Ok(())
         });
@@ -160,6 +161,7 @@ async fn test_genesis_mismatch() {
                 session_id: cfg1.gossip.key.sign_msg(session_id),
                 genesis: rng.gen(),
                 is_static: false,
+                build_version: None,
             },
         )
         .await
@@ -208,6 +210,7 @@ async fn test_invalid_signature() {
                 session_id: cfg0.gossip.key.sign_msg(node::SessionId(s1.id().encode())),
                 genesis,
                 is_static: true,
+                build_version: None,
             };
             h.session_id.key = cfg1.gossip.key.public();
             frame::send_proto(ctx, &mut s1, &h).await

@@ -1,4 +1,4 @@
-use super::{handshake, Connection, Network, ValidatorAddrs};
+use super::{handshake, Network, ValidatorAddrs};
 use crate::{noise, preface, rpc};
 use anyhow::Context as _;
 use async_trait::async_trait;
@@ -395,14 +395,14 @@ impl Network {
         ctx: &ctx::Ctx,
         mut stream: noise::Stream,
     ) -> anyhow::Result<()> {
-        let peer =
+        let conn =
             handshake::inbound(ctx, &self.cfg, self.genesis().hash(), &mut stream).await?;
-        tracing::info!("peer = {peer:?}");
+        tracing::info!("peer = {:?}", conn.key);
         self.inbound
-            .insert(peer.clone(), Connection { build_version: None, stats: stream.stats() }.into())
+            .insert(conn.key.clone(), conn.clone())
             .await?;
         let res = self.run_stream(ctx, stream).await;
-        self.inbound.remove(&peer).await;
+        self.inbound.remove(&conn.key).await;
         res
     }
 
@@ -422,7 +422,7 @@ impl Network {
             .with_context(|| "{addr:?} resolved to empty address set")?;
 
         let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet).await?;
-        handshake::outbound(
+        let conn = handshake::outbound(
             ctx,
             &self.cfg,
             self.genesis().hash(),
@@ -432,7 +432,7 @@ impl Network {
         .await?;
         tracing::info!("peer = {peer:?}");
         self.outbound
-            .insert(peer.clone(), Connection { build_version: None, stats: stream.stats() }.into())
+            .insert(peer.clone(), conn.into())
             .await?;
         let res = self.run_stream(ctx, stream).await;
         self.outbound.remove(peer).await;

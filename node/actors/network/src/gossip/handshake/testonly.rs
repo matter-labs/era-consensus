@@ -4,7 +4,7 @@
 //! if tests require stricter properties of the generated data.
 use super::Handshake;
 use rand::{
-    distributions::{Distribution, Standard},
+    distributions::{Distribution, DistString, Standard, Alphanumeric},
     Rng,
 };
 use zksync_consensus_roles::node;
@@ -17,6 +17,7 @@ impl Distribution<Handshake> for Standard {
             session_id: key.sign_msg(session_id),
             genesis: rng.gen(),
             is_static: rng.gen(),
+            build_version: Some(Alphanumeric.sample_string(rng, 10)),
         }
     }
 }

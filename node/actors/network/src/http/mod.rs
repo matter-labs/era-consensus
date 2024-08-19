@@ -158,53 +158,58 @@ impl DebugPageServer {
             html = html
                 .with_header(2, "Validator network")
                 .with_header(3, "Incoming connections")
-                .with_paragraph(self.connections_html(consensus.inbound.current().iter().map(|(k,v)|(k.encode(),v))))
+                .with_paragraph(self.connections_html(consensus.inbound.current().iter().map(|(k,v)|(k.encode(),v, None))))
                 .with_header(3, "Outgoing connections")
-                .with_paragraph(self.connections_html(consensus.outbound.current().iter().map(|(k,v)|(k.encode(),v))));
+                .with_paragraph(self.connections_html(consensus.outbound.current().iter().map(|(k,v)|(k.encode(),v,None))));
         }
         html = html
             .with_header(2, "Gossip network")
             .with_header(3, "Incoming connections")
-            .with_paragraph(self.connections_html(self.network.gossip.inbound.current().iter().map(|(k,v)|(k.encode(),&v.stats))))
+            .with_paragraph(self.connections_html(self.network.gossip.inbound.current().values().map(|c|(c.key.encode(),&c.stats, c.build_version.clone()))))
             .with_header(3, "Outgoing connections")
-            .with_paragraph(self.connections_html(self.network.gossip.outbound.current().iter().map(|(k,v)|(k.encode(),&v.stats))));
+            .with_paragraph(self.connections_html(self.network.gossip.outbound.current().values().map(|c|(c.key.encode(),&c.stats, c.build_version.clone()))));
         Full::new(Bytes::from(html.to_html_string()))
     }
 
-    fn connections_html<'a>(&self, connections: impl Iterator<Item=(String,&'a Arc<MeteredStreamStats>)>) -> String {
+    fn connections_html<'a>(&self, connections: impl Iterator<Item=(String,&'a Arc<MeteredStreamStats>, Option<String>)>) -> String {
         let mut table = Table::new()
             .with_custom_header_row(
                 TableRow::new()
                     .with_cell(TableCell::new(TableCellType::Header).with_raw("Public key"))
                     .with_cell(TableCell::new(TableCellType::Header).with_raw("Address"))
+                    .with_cell(TableCell::new(TableCellType::Header).with_raw("Build version"))
                     .with_cell(
                         TableCell::new(TableCellType::Header)
                             .with_attributes([("colspan", "2")])
-                            .with_raw("Incoming"),
+                            .with_raw("received [B]"),
                     )
                     .with_cell(
                         TableCell::new(TableCellType::Header)
                             .with_attributes([("colspan", "2")])
-                            .with_raw("Outgoing"),
+                            .with_raw("sent [B]"),
                     )
                     .with_cell(TableCell::new(TableCellType::Header).with_raw("Age")),
             )
-            .with_header_row(vec!["", "", "size", "bandwidth", "size", "bandwidth", ""]);
-        for (key, values) in connections {
+            .with_header_row(vec!["", "", "", "total", "avg", "total", "avg", ""]);
+        for (key, stats, build_version) in connections {
             let age = SystemTime::now()
-                .duration_since(values.established)
+                .duration_since(stats.established)
                 .ok()
                 .unwrap_or_else(|| Duration::new(1, 0))
                 .max(Duration::new(1, 0)); // Ensure Duration is not 0 to prevent division by zero
-            let received = values.received.load(Ordering::Relaxed);
-            let sent = values.sent.load(Ordering::Relaxed);
+            let received = stats.received.load(Ordering::Relaxed);
+            let sent = stats.sent.load(Ordering::Relaxed);
             table.add_body_row(vec![
                 Self::shorten(key),
-                values.peer_addr.to_string(),
+                stats.peer_addr.to_string(),
+                build_version.unwrap_or_default(),
                 bytesize::to_string(received, false),
+                // TODO: this is not useful - we should display avg from the last ~1min instead.
                 bytesize::to_string(received / age.as_secs(), false) + "/s",
                 bytesize::to_string(sent, false),
                 bytesize::to_string(sent / age.as_secs(), false) + "/s",
+                // TODO: this is not a human-friendly format, use days + hours + minutes + seconds,
+                // or similar.
                 format!("{}s", age.as_secs()),
             ])
         }
