@@ -39,6 +39,9 @@ impl Distribution<ConsensusInputMessage> for Standard {
     }
 }
 
+/// Generates a new default testonly config for a node
+/// with a fresh reserved local port as `server_addr`.
+/// Output can be customized afterwards, depending on the test's needs.
 pub(crate) fn make_config(key: node::SecretKey) -> Config {
     let addr = net::tcp::testonly::reserve_listener();
     Config {
@@ -122,7 +125,7 @@ where
     let configs = validator_keys.map(|validator_key| {
         let mut cfg = make_config(rng.gen());
         cfg.validator_key = Some(validator_key.clone());
-        cfg 
+        cfg
     });
     let mut cfgs: Vec<_> = configs.collect();
 

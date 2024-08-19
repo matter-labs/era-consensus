@@ -1,6 +1,5 @@
 //! Http Server to export debug information
 use crate::{MeteredStreamStats, Network};
-use zksync_consensus_crypto::TextFmt as _;
 use anyhow::Context as _;
 use base64::Engine;
 use build_html::{Html, HtmlContainer, HtmlPage, Table, TableCell, TableCellType, TableRow};
@@ -12,11 +11,10 @@ use hyper::{
     service::service_fn,
     HeaderMap, Request, Response, StatusCode,
 };
-use std::sync::atomic::Ordering;
 use hyper_util::rt::tokio::TokioIo;
 use std::{
     net::SocketAddr,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
     time::{Duration, SystemTime},
 };
 use tls_listener::TlsListener;
@@ -29,6 +27,7 @@ use tokio_rustls::{
     TlsAcceptor,
 };
 use zksync_concurrency::{ctx, scope};
+use zksync_consensus_crypto::TextFmt as _;
 use zksync_consensus_utils::debug_page;
 
 const STYLE: &str = include_str!("style.css");
@@ -158,20 +157,57 @@ impl DebugPageServer {
             html = html
                 .with_header(2, "Validator network")
                 .with_header(3, "Incoming connections")
-                .with_paragraph(self.connections_html(consensus.inbound.current().iter().map(|(k,v)|(k.encode(),v, None))))
+                .with_paragraph(
+                    self.connections_html(
+                        consensus
+                            .inbound
+                            .current()
+                            .iter()
+                            .map(|(k, v)| (k.encode(), v, None)),
+                    ),
+                )
                 .with_header(3, "Outgoing connections")
-                .with_paragraph(self.connections_html(consensus.outbound.current().iter().map(|(k,v)|(k.encode(),v,None))));
+                .with_paragraph(
+                    self.connections_html(
+                        consensus
+                            .outbound
+                            .current()
+                            .iter()
+                            .map(|(k, v)| (k.encode(), v, None)),
+                    ),
+                );
         }
         html = html
             .with_header(2, "Gossip network")
             .with_header(3, "Incoming connections")
-            .with_paragraph(self.connections_html(self.network.gossip.inbound.current().values().map(|c|(c.key.encode(),&c.stats, c.build_version.clone()))))
+            .with_paragraph(
+                self.connections_html(
+                    self.network
+                        .gossip
+                        .inbound
+                        .current()
+                        .values()
+                        .map(|c| (c.key.encode(), &c.stats, c.build_version.clone())),
+                ),
+            )
             .with_header(3, "Outgoing connections")
-            .with_paragraph(self.connections_html(self.network.gossip.outbound.current().values().map(|c|(c.key.encode(),&c.stats, c.build_version.clone()))));
+            .with_paragraph(
+                self.connections_html(
+                    self.network
+                        .gossip
+                        .outbound
+                        .current()
+                        .values()
+                        .map(|c| (c.key.encode(), &c.stats, c.build_version.clone())),
+                ),
+            );
         Full::new(Bytes::from(html.to_html_string()))
     }
 
-    fn connections_html<'a>(&self, connections: impl Iterator<Item=(String,&'a Arc<MeteredStreamStats>, Option<String>)>) -> String {
+    fn connections_html<'a>(
+        &self,
+        connections: impl Iterator<Item = (String, &'a Arc<MeteredStreamStats>, Option<String>)>,
+    ) -> String {
         let mut table = Table::new()
             .with_custom_header_row(
                 TableRow::new()

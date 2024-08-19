@@ -1,11 +1,11 @@
-use crate::{frame, noise, proto::gossip as proto, Config};
 use super::Connection;
+use crate::{frame, noise, proto::gossip as proto, Config};
 use anyhow::Context as _;
+use std::sync::Arc;
 use zksync_concurrency::{ctx, error::Wrap as _, time};
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_roles::{node, validator};
 use zksync_protobuf::{kB, read_required, required, ProtoFmt};
-use std::sync::Arc;
 
 #[cfg(test)]
 mod testonly;
@@ -30,7 +30,8 @@ pub(crate) struct Handshake {
     /// Information whether the peer treats this connection as static.
     /// It is informational only, it doesn't affect the logic of the node.
     pub(crate) is_static: bool,
-
+    /// Version at which peer's binary has been built.
+    /// It is declared by peer (i.e. not verifed in any way).
     pub(crate) build_version: Option<String>,
 }
 
@@ -41,7 +42,7 @@ impl ProtoFmt for Handshake {
             session_id: read_required(&r.session_id).context("session_id")?,
             genesis: read_required(&r.genesis).context("genesis")?,
             is_static: *required(&r.is_static).context("is_static")?,
-        
+
             build_version: r.build_version.clone(),
         })
     }
@@ -108,7 +109,7 @@ pub(super) async fn outbound(
         key: h.session_id.key,
         build_version: h.build_version,
         stats: stream.stats(),
-    }.into())
+    })
 }
 
 pub(super) async fn inbound(
@@ -145,5 +146,6 @@ pub(super) async fn inbound(
         key: h.session_id.key,
         build_version: h.build_version,
         stats: stream.stats(),
-    }.into())
+    }
+    .into())
 }

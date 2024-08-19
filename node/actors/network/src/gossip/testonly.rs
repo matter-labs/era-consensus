@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use super::*;
-use crate::{testonly::make_config, frame, mux, noise, preface, rpc, Config};
+use crate::{frame, mux, noise, preface, rpc, testonly::make_config, Config};
 use anyhow::Context as _;
 use rand::Rng;
 use std::collections::BTreeMap;

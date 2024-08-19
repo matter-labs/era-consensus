@@ -132,7 +132,14 @@ async fn test_genesis_mismatch() {
         let (s0, mut s1) = noise::testonly::pipe(ctx).await;
         s.spawn(async {
             let mut s0 = s0;
-            let res = outbound(ctx, &cfg0, ctx.rng().gen(), &mut s0, &cfg1.gossip.key.public()).await;
+            let res = outbound(
+                ctx,
+                &cfg0,
+                ctx.rng().gen(),
+                &mut s0,
+                &cfg1.gossip.key.public(),
+            )
+            .await;
             assert_matches!(res, Err(Error::Stream(_)));
             Ok(())
         });
@@ -148,7 +155,14 @@ async fn test_genesis_mismatch() {
         let (s0, mut s1) = noise::testonly::pipe(ctx).await;
         s.spawn(async {
             let mut s0 = s0;
-            let res = outbound(ctx, &cfg0, ctx.rng().gen(), &mut s0, &cfg1.gossip.key.public()).await;
+            let res = outbound(
+                ctx,
+                &cfg0,
+                ctx.rng().gen(),
+                &mut s0,
+                &cfg1.gossip.key.public(),
+            )
+            .await;
             assert_matches!(res, Err(Error::GenesisMismatch));
             Ok(())
         });

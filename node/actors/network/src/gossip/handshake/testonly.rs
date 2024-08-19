@@ -4,7 +4,7 @@
 //! if tests require stricter properties of the generated data.
 use super::Handshake;
 use rand::{
-    distributions::{Distribution, DistString, Standard, Alphanumeric},
+    distributions::{Alphanumeric, DistString, Distribution, Standard},
     Rng,
 };
 use zksync_consensus_roles::node;
