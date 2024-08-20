@@ -1,11 +1,10 @@
 //! Test-only utilities.
 use super::{
-    ProofOfPossession,
     AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
     FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
-    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
-    ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
-    WeightedValidator,
+    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProofOfPossession,
+    ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed,
+    Signers, View, ViewNumber, WeightedValidator,
 };
 use crate::{attester, validator::LeaderSelectionMode};
 use bit_vec::BitVec;
