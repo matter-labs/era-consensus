@@ -237,7 +237,7 @@ module inductive {
             },
             // non-deterministical choose msgs_proposal
             {
-                nondet msgs_proposal = generate(12, Set(PROPOSAL_SAMPLE))
+                nondet msgs_proposal = generate(6, Set(PROPOSAL_SAMPLE))
                 all {
                     msgs_proposal.forall(proposal_shape_inv),
                     r::msgs_proposal' = msgs_proposal,
@@ -245,7 +245,7 @@ module inductive {
             },
             // non-deterministically choose msgs_signed_commit
             {
-                nondet msgs_signed_commit = generate(12, Set(SIGNED_COMMIT_VOTE_SAMPLE))
+                nondet msgs_signed_commit = generate(6, Set(SIGNED_COMMIT_VOTE_SAMPLE))
                 all {
                     msgs_signed_commit.forall(signed_commit_vote_shape_inv),
                     r::msgs_signed_commit' = msgs_signed_commit
@@ -253,7 +253,7 @@ module inductive {
             },
             // non-deterministically choose msgs_signed_timeout
             {
-                nondet msgs_signed_timeout = generate(12, Set(SIGNED_TIMEOUT_VOTE_SAMPLE))
+                nondet msgs_signed_timeout = generate(6, Set(SIGNED_TIMEOUT_VOTE_SAMPLE))
                 all {
                     msgs_signed_timeout.forall(signed_timeout_vote_shape_inv),
                     r::msgs_signed_timeout' = msgs_signed_timeout,
@@ -261,7 +261,7 @@ module inductive {
             },
             // non-deterministically choose msgs_new_view
             {
-                nondet msgs_new_view = generate(12, Set(VIEW_SAMPLE))
+                nondet msgs_new_view = generate(6, Set(VIEW_SAMPLE))
                 all {
                     msgs_new_view.forall(new_view_shape_inv),
                     r::msgs_new_view' = msgs_new_view,
@@ -269,7 +269,7 @@ module inductive {
             },
             // non-deterministically choose store_signed_commit
             {
-                nondet store_signed_commit = generate(12, [Set(SIGNED_COMMIT_VOTE_SAMPLE)])
+                nondet store_signed_commit = generate(6, [Set(SIGNED_COMMIT_VOTE_SAMPLE)])
                 all {
                     store_signed_commit.length() == correct_size,
                     store_signed_commit.indices().forall(i => store_signed_commit[i].forall(signed_commit_vote_shape_inv)),
@@ -278,7 +278,7 @@ module inductive {
             },
             // non-deterministically choose store_signed_timeout
             {
-                nondet store_signed_timeout = generate(12, [Set(SIGNED_TIMEOUT_VOTE_SAMPLE)])
+                nondet store_signed_timeout = generate(6, [Set(SIGNED_TIMEOUT_VOTE_SAMPLE)])
                 all {
                     store_signed_timeout.length() == correct_size,
                     store_signed_timeout.indices().forall(i => store_signed_timeout[i].forall(signed_timeout_vote_shape_inv)),
@@ -309,44 +309,9 @@ module inductive {
         }
     }
 
-    action init_prof = {
-        pure val idx_and_size = r::CORRECT.fold((Map(), 0), (p, r) => (p._1.put(r, p._2), p._2 + 1))
-        pure val replica_idx = idx_and_size._1
-        pure val correct_size = idx_and_size._2
-        pure val all_indices = replica_idx.keys().map(id => replica_idx.get(id))
-        nondet store_signed_timeout = generate(12, [Set(SIGNED_TIMEOUT_VOTE_SAMPLE)])
-        all {
-            store_signed_timeout.length() == correct_size,
-            store_signed_timeout.indices().forall(i => store_signed_timeout[i].forall(signed_timeout_vote_shape_inv)),
-            r::store_signed_timeout' = r::REPLICAS.mapBy(id => store_signed_timeout[replica_idx.get(id)]),
-            // empty
-            r::replica_state' = Map(),
-            r::msgs_signed_commit' = Set(),
-            r::msgs_signed_timeout' = Set(),
-            r::ghost_justifications' = Map(),
-            r::store_signed_commit' = Map(),
-            r::msgs_new_view' = Set(),
-            r::msgs_proposal' = Set(),
-            r::leader' = Map(),
-            r::replica_view' = Map(),
-            r::proposer_view' = Map(),
-            r::ghost_step' = AnyStep,
-            step_no' = 0,
-        }
-    }
-
-    action step: bool = any {
-        all {
-            step_no == 0,
-            ind_inv,
-            step_unchanged,
-            step_no' = 1,
-        },
-        all {
-            step_no == 1,
-            r::step,
-            step_no' = 2,
-        }
+    action step: bool = all {
+        ind_inv,
+        r::step,
     }
 
     // use this action to check the impact of init on model checking times

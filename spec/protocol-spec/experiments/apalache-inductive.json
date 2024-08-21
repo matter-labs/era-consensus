@@ -6,8 +6,7 @@
 	"algo": "offline",
         "tuning": {
             "search.invariant.mode": "before",
-            "search.invariantFilter": "(2->.*)",
-            "search.transitionFilter": "([0]->.*|1->0|2->([1-9]|1[0-9]))"
+            "search.invariantFilter": "(1->.*)"
         }
     }
 }
