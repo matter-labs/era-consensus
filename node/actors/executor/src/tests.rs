@@ -14,6 +14,7 @@ use zksync_consensus_storage::{
 
 fn config(cfg: &network::Config) -> Config {
     Config {
+        build_version: None,
         server_addr: *cfg.server_addr,
         public_addr: cfg.public_addr.clone(),
         max_payload_size: usize::MAX,

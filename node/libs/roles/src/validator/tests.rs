@@ -27,6 +27,9 @@ fn test_byte_encoding() {
         ByteFmt::decode(&ByteFmt::encode(&agg_sig)).unwrap()
     );
 
+    let pop: ProofOfPossession = rng.gen();
+    assert_eq!(pop, ByteFmt::decode(&ByteFmt::encode(&pop)).unwrap());
+
     let final_block: FinalBlock = rng.gen();
     assert_eq!(
         final_block,
@@ -56,6 +59,10 @@ fn test_text_encoding() {
     let sig: Signature = rng.gen();
     let t = TextFmt::encode(&sig);
     assert_eq!(sig, Text::new(&t).decode::<Signature>().unwrap());
+
+    let pop: ProofOfPossession = rng.gen();
+    let t = TextFmt::encode(&pop);
+    assert_eq!(pop, Text::new(&t).decode::<ProofOfPossession>().unwrap());
 
     let agg_sig: AggregateSignature = rng.gen();
     let t = TextFmt::encode(&agg_sig);

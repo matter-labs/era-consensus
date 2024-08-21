@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 use super::*;
-use crate::{frame, mux, noise, preface, rpc, Config, GossipConfig};
+use crate::{frame, mux, noise, preface, rpc, testonly::make_config, Config};
 use anyhow::Context as _;
 use rand::Rng;
 use std::collections::BTreeMap;
@@ -48,12 +48,7 @@ pub(super) async fn connect(
     let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet)
         .await
         .context("preface::connect()")?;
-    let cfg = GossipConfig {
-        key: ctx.rng().gen(),
-        dynamic_inbound_limit: 0,
-        static_outbound: [].into(),
-        static_inbound: [].into(),
-    };
+    let cfg = make_config(ctx.rng().gen());
     handshake::outbound(ctx, &cfg, genesis, &mut stream, &peer.gossip.key.public())
         .await
         .context("handshake::outbound()")?;

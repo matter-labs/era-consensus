@@ -85,6 +85,9 @@ pub struct GossipConfig {
 /// Network actor config.
 #[derive(Debug, Clone)]
 pub struct Config {
+    /// Label identifying the build version of the binary that this node is running.
+    /// There is no specific semantics assigned to it.
+    pub build_version: Option<semver::Version>,
     /// TCP socket address to listen for inbound connections at.
     pub server_addr: net::tcp::ListenerAddr,
     /// Public TCP address that other nodes are expected to connect to.

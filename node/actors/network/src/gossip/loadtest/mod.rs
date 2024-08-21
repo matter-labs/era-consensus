@@ -1,5 +1,5 @@
 //! Loadtest of the gossip endpoint of a node.
-use crate::{gossip, mux, noise, preface, rpc, GossipConfig};
+use crate::{gossip, mux, noise, preface, rpc, testonly};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use rand::Rng;
@@ -91,12 +91,7 @@ impl Loadtest {
         let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet)
             .await
             .context("connect()")?;
-        let cfg = GossipConfig {
-            key: node::SecretKey::generate(),
-            dynamic_inbound_limit: 0,
-            static_inbound: [].into(),
-            static_outbound: [].into(),
-        };
+        let cfg = testonly::make_config(ctx.rng().gen());
         gossip::handshake::outbound(ctx, &cfg, self.genesis.hash(), &mut stream, &self.peer)
             .await
             .context("handshake")?;

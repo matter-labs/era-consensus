@@ -1,5 +1,5 @@
 //! Http Server to export debug information
-use crate::{consensus, MeteredStreamStats, Network};
+use crate::{MeteredStreamStats, Network};
 use anyhow::Context as _;
 use base64::Engine;
 use build_html::{Html, HtmlContainer, HtmlPage, Table, TableCell, TableCellType, TableRow};
@@ -12,10 +12,9 @@ use hyper::{
     HeaderMap, Request, Response, StatusCode,
 };
 use hyper_util::rt::tokio::TokioIo;
-use im::HashMap;
 use std::{
     net::SocketAddr,
-    sync::Arc,
+    sync::{atomic::Ordering, Arc},
     time::{Duration, SystemTime},
 };
 use tls_listener::TlsListener;
@@ -28,6 +27,7 @@ use tokio_rustls::{
     TlsAcceptor,
 };
 use zksync_concurrency::{ctx, scope};
+use zksync_consensus_crypto::TextFmt as _;
 use zksync_consensus_utils::debug_page;
 
 const STYLE: &str = include_str!("style.css");
@@ -149,86 +149,112 @@ impl DebugPageServer {
     }
 
     fn serve(&self, _request: Request<hyper::body::Incoming>) -> Full<Bytes> {
-        let html: String = HtmlPage::new()
+        let mut html = HtmlPage::new()
             .with_title("Node debug page")
             .with_style(STYLE)
-            .with_header(1, "Active connections")
-            .with_header(2, "Validator network")
-            .with_header(3, "Incoming connections")
-            .with_paragraph(
-                self.connections_html(
-                    <Option<Arc<consensus::Network>> as Clone>::clone(&self.network.consensus)
-                        .unwrap()
-                        .inbound
-                        .current(),
-                ),
-            )
-            .with_header(3, "Outgoing connections")
-            .with_paragraph(
-                self.connections_html(
-                    <Option<Arc<consensus::Network>> as Clone>::clone(&self.network.consensus)
-                        .unwrap()
-                        .outbound
-                        .current(),
-                ),
-            )
+            .with_header(1, "Active connections");
+        if let Some(consensus) = self.network.consensus.as_ref() {
+            html = html
+                .with_header(2, "Validator network")
+                .with_header(3, "Incoming connections")
+                .with_paragraph(
+                    self.connections_html(
+                        consensus
+                            .inbound
+                            .current()
+                            .iter()
+                            .map(|(k, v)| (k.encode(), v, None)),
+                    ),
+                )
+                .with_header(3, "Outgoing connections")
+                .with_paragraph(
+                    self.connections_html(
+                        consensus
+                            .outbound
+                            .current()
+                            .iter()
+                            .map(|(k, v)| (k.encode(), v, None)),
+                    ),
+                );
+        }
+        html = html
             .with_header(2, "Gossip network")
             .with_header(3, "Incoming connections")
-            .with_paragraph(self.connections_html(self.network.gossip.inbound.current()))
+            .with_paragraph(
+                self.connections_html(
+                    self.network
+                        .gossip
+                        .inbound
+                        .current()
+                        .values()
+                        .map(|c| (c.key.encode(), &c.stats, c.build_version.clone())),
+                ),
+            )
             .with_header(3, "Outgoing connections")
-            .with_paragraph(self.connections_html(self.network.gossip.outbound.current()))
-            .to_html_string();
-        Full::new(Bytes::from(html))
+            .with_paragraph(
+                self.connections_html(
+                    self.network
+                        .gossip
+                        .outbound
+                        .current()
+                        .values()
+                        .map(|c| (c.key.encode(), &c.stats, c.build_version.clone())),
+                ),
+            );
+        Full::new(Bytes::from(html.to_html_string()))
     }
 
-    fn connections_html<K>(&self, connections: HashMap<K, Arc<MeteredStreamStats>>) -> String
-    where
-        K: std::hash::Hash + Eq + Clone + std::fmt::Debug + zksync_consensus_crypto::TextFmt,
-    {
+    fn connections_html<'a>(
+        &self,
+        connections: impl Iterator<
+            Item = (String, &'a Arc<MeteredStreamStats>, Option<semver::Version>),
+        >,
+    ) -> String {
         let mut table = Table::new()
             .with_custom_header_row(
                 TableRow::new()
                     .with_cell(TableCell::new(TableCellType::Header).with_raw("Public key"))
                     .with_cell(TableCell::new(TableCellType::Header).with_raw("Address"))
+                    .with_cell(TableCell::new(TableCellType::Header).with_raw("Build version"))
                     .with_cell(
                         TableCell::new(TableCellType::Header)
                             .with_attributes([("colspan", "2")])
-                            .with_raw("Incoming"),
+                            .with_raw("received [B]"),
                     )
                     .with_cell(
                         TableCell::new(TableCellType::Header)
                             .with_attributes([("colspan", "2")])
-                            .with_raw("Outgoing"),
+                            .with_raw("sent [B]"),
                     )
                     .with_cell(TableCell::new(TableCellType::Header).with_raw("Age")),
             )
-            .with_header_row(vec!["", "", "size", "bandwidth", "size", "bandwidth", ""]);
-        for (key, values) in connections {
+            .with_header_row(vec!["", "", "", "total", "avg", "total", "avg", ""]);
+        for (key, stats, build_version) in connections {
             let age = SystemTime::now()
-                .duration_since(values.established)
+                .duration_since(stats.established)
                 .ok()
                 .unwrap_or_else(|| Duration::new(1, 0))
                 .max(Duration::new(1, 0)); // Ensure Duration is not 0 to prevent division by zero
-            let received = values.received.load(std::sync::atomic::Ordering::Relaxed);
-            let sent = values.sent.load(std::sync::atomic::Ordering::Relaxed);
+            let received = stats.received.load(Ordering::Relaxed);
+            let sent = stats.sent.load(Ordering::Relaxed);
             table.add_body_row(vec![
-                self.shorten(key),
-                values.peer_addr.to_string(),
+                Self::shorten(key),
+                stats.peer_addr.to_string(),
+                build_version.map(|v| v.to_string()).unwrap_or_default(),
                 bytesize::to_string(received, false),
+                // TODO: this is not useful - we should display avg from the last ~1min instead.
                 bytesize::to_string(received / age.as_secs(), false) + "/s",
                 bytesize::to_string(sent, false),
                 bytesize::to_string(sent / age.as_secs(), false) + "/s",
+                // TODO: this is not a human-friendly format, use days + hours + minutes + seconds,
+                // or similar.
                 format!("{}s", age.as_secs()),
             ])
         }
         table.to_html_string()
     }
 
-    fn shorten<K>(&self, key: K) -> String
-    where
-        K: std::fmt::Debug + zksync_consensus_crypto::TextFmt,
-    {
-        let key = key.encode();
+    fn shorten(key: String) -> String {
         key.strip_prefix("validator:public:bls12_381:")
             .or(key.strip_prefix("node:public:ed25519:"))
             .map_or("-".to_string(), |key| {

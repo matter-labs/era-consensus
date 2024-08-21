@@ -82,7 +82,7 @@ pub(crate) fn leader_weighted_eligibility(input: u64, total_weight: u64) -> u64 
 
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Committee {
     vec: Vec<WeightedValidator>,
     indexes: BTreeMap<validator::PublicKey, usize>,
