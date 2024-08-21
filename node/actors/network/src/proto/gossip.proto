@@ -11,6 +11,9 @@ message Handshake {
   optional roles.node.Signed session_id = 1; // required
   optional roles.validator.GenesisHash genesis = 3; // required
   optional bool is_static = 2; // required
+
+  // Optional information about the node.
+  optional string build_version = 4; // SemVer; optional
 }
 
 message PushValidatorAddrs {

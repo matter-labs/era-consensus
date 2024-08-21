@@ -2,9 +2,9 @@
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
     FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
-    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
-    ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber,
-    WeightedValidator,
+    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProofOfPossession,
+    ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed,
+    Signers, View, ViewNumber, WeightedValidator,
 };
 use crate::{attester, validator::LeaderSelectionMode};
 use bit_vec::BitVec;
@@ -240,6 +240,12 @@ impl Distribution<PublicKey> for Standard {
 impl Distribution<Signature> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Signature {
         Signature(rng.gen())
+    }
+}
+
+impl Distribution<ProofOfPossession> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ProofOfPossession {
+        ProofOfPossession(rng.gen())
     }
 }
 

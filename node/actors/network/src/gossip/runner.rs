@@ -395,14 +395,11 @@ impl Network {
         ctx: &ctx::Ctx,
         mut stream: noise::Stream,
     ) -> anyhow::Result<()> {
-        let peer =
-            handshake::inbound(ctx, &self.cfg.gossip, self.genesis().hash(), &mut stream).await?;
-        tracing::info!("peer = {peer:?}");
-        self.inbound
-            .insert(peer.clone(), stream.get_values())
-            .await?;
+        let conn = handshake::inbound(ctx, &self.cfg, self.genesis().hash(), &mut stream).await?;
+        tracing::info!("peer = {:?}", conn.key);
+        self.inbound.insert(conn.key.clone(), conn.clone()).await?;
         let res = self.run_stream(ctx, stream).await;
-        self.inbound.remove(&peer).await;
+        self.inbound.remove(&conn.key).await;
         res
     }
 
@@ -422,18 +419,10 @@ impl Network {
             .with_context(|| "{addr:?} resolved to empty address set")?;
 
         let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet).await?;
-        handshake::outbound(
-            ctx,
-            &self.cfg.gossip,
-            self.genesis().hash(),
-            &mut stream,
-            peer,
-        )
-        .await?;
+        let conn =
+            handshake::outbound(ctx, &self.cfg, self.genesis().hash(), &mut stream, peer).await?;
         tracing::info!("peer = {peer:?}");
-        self.outbound
-            .insert(peer.clone(), stream.get_values())
-            .await?;
+        self.outbound.insert(peer.clone(), conn.into()).await?;
         let res = self.run_stream(ctx, stream).await;
         self.outbound.remove(peer).await;
         res

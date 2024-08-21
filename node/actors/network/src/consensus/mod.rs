@@ -171,9 +171,7 @@ impl Network {
     ) -> anyhow::Result<()> {
         let peer =
             handshake::inbound(ctx, &self.key, self.gossip.genesis().hash(), &mut stream).await?;
-        self.inbound
-            .insert(peer.clone(), stream.get_values())
-            .await?;
+        self.inbound.insert(peer.clone(), stream.stats()).await?;
         tracing::info!("peer = {peer:?}");
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
@@ -211,9 +209,7 @@ impl Network {
             peer,
         )
         .await?;
-        self.outbound
-            .insert(peer.clone(), stream.get_values())
-            .await?;
+        self.outbound.insert(peer.clone(), stream.stats()).await?;
         tracing::info!("peer = {peer:?}");
         let consensus_cli =
             rpc::Client::<rpc::consensus::Rpc>::new(ctx, self.gossip.cfg.rpc.consensus_rate);

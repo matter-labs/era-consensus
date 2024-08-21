@@ -74,7 +74,7 @@ impl Signers {
 
 /// A struct that represents a set of attesters. It is used to store the current attester set.
 /// We represent each attester by its attester public key.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Committee {
     vec: Vec<WeightedAttester>,
     indexes: BTreeMap<attester::PublicKey, usize>,

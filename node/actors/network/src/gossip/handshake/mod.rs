@@ -1,5 +1,7 @@
-use crate::{frame, noise, proto::gossip as proto, GossipConfig};
+use super::Connection;
+use crate::{frame, noise, proto::gossip as proto, Config};
 use anyhow::Context as _;
+use std::sync::Arc;
 use zksync_concurrency::{ctx, error::Wrap as _, time};
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_roles::{node, validator};
@@ -28,6 +30,9 @@ pub(crate) struct Handshake {
     /// Information whether the peer treats this connection as static.
     /// It is informational only, it doesn't affect the logic of the node.
     pub(crate) is_static: bool,
+    /// Version at which peer's binary has been built.
+    /// It is declared by peer (i.e. not verified in any way).
+    pub(crate) build_version: Option<semver::Version>,
 }
 
 impl ProtoFmt for Handshake {
@@ -37,6 +42,12 @@ impl ProtoFmt for Handshake {
             session_id: read_required(&r.session_id).context("session_id")?,
             genesis: read_required(&r.genesis).context("genesis")?,
             is_static: *required(&r.is_static).context("is_static")?,
+            build_version: r
+                .build_version
+                .as_ref()
+                .map(|x| x.parse())
+                .transpose()
+                .context("build_version")?,
         })
     }
     fn build(&self) -> Self::Proto {
@@ -44,6 +55,7 @@ impl ProtoFmt for Handshake {
             session_id: Some(self.session_id.build()),
             genesis: Some(self.genesis.build()),
             is_static: Some(self.is_static),
+            build_version: self.build_version.as_ref().map(|x| x.to_string()),
         }
     }
 }
@@ -65,20 +77,21 @@ pub(super) enum Error {
 
 pub(super) async fn outbound(
     ctx: &ctx::Ctx,
-    cfg: &GossipConfig,
+    cfg: &Config,
     genesis: validator::GenesisHash,
     stream: &mut noise::Stream,
     peer: &node::PublicKey,
-) -> Result<(), Error> {
+) -> Result<Connection, Error> {
     let ctx = &ctx.with_timeout(TIMEOUT);
     let session_id = node::SessionId(stream.id().encode());
     frame::send_proto(
         ctx,
         stream,
         &Handshake {
-            session_id: cfg.key.sign_msg(session_id.clone()),
+            session_id: cfg.gossip.key.sign_msg(session_id.clone()),
             genesis,
-            is_static: cfg.static_outbound.contains_key(peer),
+            is_static: cfg.gossip.static_outbound.contains_key(peer),
+            build_version: cfg.build_version.clone(),
         },
     )
     .await
@@ -96,15 +109,19 @@ pub(super) async fn outbound(
         return Err(Error::PeerMismatch);
     }
     h.session_id.verify()?;
-    Ok(())
+    Ok(Connection {
+        key: h.session_id.key,
+        build_version: h.build_version,
+        stats: stream.stats(),
+    })
 }
 
 pub(super) async fn inbound(
     ctx: &ctx::Ctx,
-    cfg: &GossipConfig,
+    cfg: &Config,
     genesis: validator::GenesisHash,
     stream: &mut noise::Stream,
-) -> Result<node::PublicKey, Error> {
+) -> Result<Arc<Connection>, Error> {
     let ctx = &ctx.with_timeout(TIMEOUT);
     let session_id = node::SessionId(stream.id().encode());
     let h: Handshake = frame::recv_proto(ctx, stream, MAX_FRAME)
@@ -121,12 +138,18 @@ pub(super) async fn inbound(
         ctx,
         stream,
         &Handshake {
-            session_id: cfg.key.sign_msg(session_id.clone()),
+            build_version: cfg.build_version.clone(),
+            session_id: cfg.gossip.key.sign_msg(session_id.clone()),
             genesis,
-            is_static: cfg.static_inbound.contains(&h.session_id.key),
+            is_static: cfg.gossip.static_inbound.contains(&h.session_id.key),
         },
     )
     .await
     .wrap("send_proto()")?;
-    Ok(h.session_id.key)
+    Ok(Connection {
+        key: h.session_id.key,
+        build_version: h.build_version,
+        stats: stream.stats(),
+    }
+    .into())
 }

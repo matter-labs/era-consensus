@@ -39,6 +39,33 @@ impl Distribution<ConsensusInputMessage> for Standard {
     }
 }
 
+/// Generates a new default testonly config for a node
+/// with a fresh reserved local port as `server_addr`.
+/// Output can be customized afterwards, depending on the test's needs.
+pub(crate) fn make_config(key: node::SecretKey) -> Config {
+    let addr = net::tcp::testonly::reserve_listener();
+    Config {
+        build_version: None,
+        server_addr: addr,
+        public_addr: (*addr).into(),
+        // Pings are disabled in tests by default to avoid dropping connections
+        // due to timeouts.
+        ping_timeout: None,
+        validator_key: None,
+        gossip: GossipConfig {
+            key,
+            dynamic_inbound_limit: usize::MAX,
+            static_inbound: HashSet::default(),
+            static_outbound: HashMap::default(),
+        },
+        max_block_size: usize::MAX,
+        max_batch_size: usize::MAX,
+        tcp_accept_rate: limiter::Rate::INF,
+        rpc: RpcConfig::default(),
+        max_block_queue_size: 10,
+    }
+}
+
 /// Synchronously forwards data from one stream to another.
 pub(crate) async fn forward(
     ctx: &ctx::Ctx,
@@ -96,26 +123,9 @@ where
     I: Iterator<Item = &'a validator::SecretKey>,
 {
     let configs = validator_keys.map(|validator_key| {
-        let addr = net::tcp::testonly::reserve_listener();
-        Config {
-            server_addr: addr,
-            public_addr: (*addr).into(),
-            // Pings are disabled in tests by default to avoid dropping connections
-            // due to timeouts.
-            ping_timeout: None,
-            validator_key: Some(validator_key.clone()),
-            gossip: GossipConfig {
-                key: rng.gen(),
-                dynamic_inbound_limit: usize::MAX,
-                static_inbound: HashSet::default(),
-                static_outbound: HashMap::default(),
-            },
-            max_block_size: usize::MAX,
-            max_batch_size: usize::MAX,
-            tcp_accept_rate: limiter::Rate::INF,
-            rpc: RpcConfig::default(),
-            max_block_queue_size: 10,
-        }
+        let mut cfg = make_config(rng.gen());
+        cfg.validator_key = Some(validator_key.clone());
+        cfg
     });
     let mut cfgs: Vec<_> = configs.collect();
 
@@ -136,6 +146,7 @@ where
 pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
     let addr = net::tcp::testonly::reserve_listener();
     Config {
+        build_version: None,
         server_addr: addr,
         public_addr: (*addr).into(),
         // Pings are disabled in tests by default to avoid dropping connections

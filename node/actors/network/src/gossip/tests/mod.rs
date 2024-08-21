@@ -61,7 +61,7 @@ async fn test_one_connection_per_node() {
         .await
         .context("preface::connect")?;
 
-        handshake::outbound(ctx, &cfgs[0].gossip, setup.genesis.hash(), &mut stream, peer)
+        handshake::outbound(ctx, &cfgs[0], setup.genesis.hash(), &mut stream, peer)
             .await
             .context("handshake::outbound")?;
         tracing::info!("The connection is expected to be closed automatically by peer.");
@@ -304,7 +304,7 @@ async fn test_genesis_mismatch() {
             .wrap("preface::accept()")?;
         assert_eq!(endpoint, preface::Endpoint::GossipNet);
         tracing::info!("Expect the handshake to fail");
-        let res = handshake::inbound(ctx, &cfgs[1].gossip, rng.gen(), &mut stream).await;
+        let res = handshake::inbound(ctx, &cfgs[1], rng.gen(), &mut stream).await;
         assert_matches!(res, Err(handshake::Error::GenesisMismatch));
 
         tracing::info!("Try to connect to a node with a mismatching genesis.");
@@ -313,7 +313,7 @@ async fn test_genesis_mismatch() {
             .context("preface::connect")?;
         let res = handshake::outbound(
             ctx,
-            &cfgs[1].gossip,
+            &cfgs[1],
             rng.gen(),
             &mut stream,
             &cfgs[0].gossip.key.public(),
