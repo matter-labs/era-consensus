@@ -1319,8 +1319,6 @@ module replica {
     val store_signed_commit_all_inv: bool = {
         CORRECT.forall(id => {
             val signed_votes = store_signed_commit.get(id)
-            msgs_signed_commit.subseteq(signed_votes)
-            /*
             signed_votes.forall(v1 => and {
                 or {
                     aux_commit_vote_inv(v1),
@@ -1331,7 +1329,6 @@ module replica {
                     (v1.sig == v2.sig and v1.vote.view == v2.vote.view) implies (v1.vote == v2.vote),
                 })
             })
-            */
         })
     }
 
@@ -1339,8 +1336,6 @@ module replica {
     val store_signed_timeout_all_inv: bool = {
         CORRECT.forall(id => {
             val signed_votes = store_signed_timeout.get(id)
-            msgs_signed_timeout.subseteq(signed_votes)
-            /*
             signed_votes.forall(v1 => {
                 signed_votes.forall(v2 => and {
                     // no duplicates
@@ -1360,7 +1355,6 @@ module replica {
                     }
                 })
             })
-            */
         })
     }
 
