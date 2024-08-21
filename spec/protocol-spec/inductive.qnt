@@ -29,8 +29,6 @@ module inductive {
         INVALID_BLOCKS = IINVALID_BLOCKS
     ) as r from "./replica"
 
-    var step_no: int
-
     // to make the state visible to the instances
     val state = {
         replica_state: r::replica_state,
@@ -305,7 +303,6 @@ module inductive {
                 }
             },
             r::ghost_step' = AnyStep,
-            step_no' = 0,
         }
     }
 
