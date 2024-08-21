@@ -39,7 +39,7 @@ pub(crate) struct Connection {
     /// Peer's public key.
     pub(crate) key: node::PublicKey,
     /// Build version of peer's binary (not verified).
-    pub(crate) build_version: Option<String>,
+    pub(crate) build_version: Option<semver::Version>,
     /// TCP connection stats.
     pub(crate) stats: Arc<MeteredStreamStats>,
 }

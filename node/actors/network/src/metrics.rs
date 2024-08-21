@@ -186,13 +186,23 @@ impl NetworkGauges {
                 let inbound = state.gossip.inbound.current();
                 gauges.gossip_inbound_connections.set(inbound.len());
                 for conn in inbound.values() {
-                    let v = BuildVersion(conn.build_version.clone().unwrap_or_default());
+                    let v = BuildVersion(
+                        conn.build_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_default(),
+                    );
                     gauges.gossip_peers_by_build_version[&v].inc_by(1);
                 }
                 let outbound = state.gossip.outbound.current();
                 gauges.gossip_outbound_connections.set(outbound.len());
                 for conn in outbound.values() {
-                    let v = BuildVersion(conn.build_version.clone().unwrap_or_default());
+                    let v = BuildVersion(
+                        conn.build_version
+                            .as_ref()
+                            .map(|v| v.to_string())
+                            .unwrap_or_default(),
+                    );
                     gauges.gossip_peers_by_build_version[&v].inc_by(1);
                 }
                 if let Some(consensus_state) = &state.consensus {

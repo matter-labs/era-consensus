@@ -206,7 +206,9 @@ impl DebugPageServer {
 
     fn connections_html<'a>(
         &self,
-        connections: impl Iterator<Item = (String, &'a Arc<MeteredStreamStats>, Option<String>)>,
+        connections: impl Iterator<
+            Item = (String, &'a Arc<MeteredStreamStats>, Option<semver::Version>),
+        >,
     ) -> String {
         let mut table = Table::new()
             .with_custom_header_row(
@@ -238,7 +240,7 @@ impl DebugPageServer {
             table.add_body_row(vec![
                 Self::shorten(key),
                 stats.peer_addr.to_string(),
-                build_version.unwrap_or_default(),
+                build_version.map(|v| v.to_string()).unwrap_or_default(),
                 bytesize::to_string(received, false),
                 // TODO: this is not useful - we should display avg from the last ~1min instead.
                 bytesize::to_string(received / age.as_secs(), false) + "/s",

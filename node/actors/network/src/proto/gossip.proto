@@ -13,7 +13,7 @@ message Handshake {
   optional bool is_static = 2; // required
 
   // Optional information about the node.
-  optional string build_version = 4; // optional
+  optional string build_version = 4; // SemVer; optional
 }
 
 message PushValidatorAddrs {

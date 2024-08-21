@@ -271,7 +271,7 @@ impl Configs {
 
         let e = executor::Executor {
             config: executor::Config {
-                build_version: Some(CRATE_VERSION.into()),
+                build_version: Some(CRATE_VERSION.parse().context("CRATE_VERSION.parse()")?),
                 server_addr: self.app.server_addr,
                 public_addr: self.app.public_addr.clone(),
                 node_key: self.app.node_key.clone(),

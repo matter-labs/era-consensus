@@ -34,8 +34,7 @@ pub struct Validator {
 #[derive(Debug)]
 pub struct Config {
     /// Label identifying the build version of the binary that this node is running.
-    /// There is no specific semantics assigned to it.
-    pub build_version: Option<String>,
+    pub build_version: Option<semver::Version>,
     /// IP:port to listen on, for incoming TCP connections.
     /// Use `0.0.0.0:<port>` to listen on all network interfaces (i.e. on all IPs exposed by this VM).
     pub server_addr: std::net::SocketAddr,

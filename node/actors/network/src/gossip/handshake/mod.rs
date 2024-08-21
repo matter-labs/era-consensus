@@ -32,7 +32,7 @@ pub(crate) struct Handshake {
     pub(crate) is_static: bool,
     /// Version at which peer's binary has been built.
     /// It is declared by peer (i.e. not verified in any way).
-    pub(crate) build_version: Option<String>,
+    pub(crate) build_version: Option<semver::Version>,
 }
 
 impl ProtoFmt for Handshake {
@@ -42,7 +42,12 @@ impl ProtoFmt for Handshake {
             session_id: read_required(&r.session_id).context("session_id")?,
             genesis: read_required(&r.genesis).context("genesis")?,
             is_static: *required(&r.is_static).context("is_static")?,
-            build_version: r.build_version.clone(),
+            build_version: r
+                .build_version
+                .as_ref()
+                .map(|x| x.parse())
+                .transpose()
+                .context("build_version")?,
         })
     }
     fn build(&self) -> Self::Proto {
@@ -50,7 +55,7 @@ impl ProtoFmt for Handshake {
             session_id: Some(self.session_id.build()),
             genesis: Some(self.genesis.build()),
             is_static: Some(self.is_static),
-            build_version: self.build_version.clone(),
+            build_version: self.build_version.as_ref().map(|x| x.to_string()),
         }
     }
 }
