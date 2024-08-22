@@ -14,6 +14,7 @@ module inductive {
     const ICORRECT: Set[ReplicaId]
     const IFAULTY: Set[ReplicaId]
     const IVIEWS: Set[ViewNumber]
+    const IBLOCK_NUMBERS: Set[BlockNumber]
     const IVALID_BLOCKS: Set[Block]
     const IINVALID_BLOCKS: Set[Block]
 
@@ -93,8 +94,8 @@ module inductive {
     }
 
     pure def commit_vote_shape_inv(v: CommitVote): bool = and {
-        r::VIEWS.contains(v.view),
-        r::VIEWS.contains(v.block_number),
+        IVIEWS.contains(v.view),
+        IBLOCK_NUMBERS.contains(v.block_number),
         r::ALL_BLOCKS.contains(v.block_hash),
     }
 
@@ -109,9 +110,9 @@ module inductive {
     }
 
     pure def timeout_vote_shape_inv(v: TimeoutVote): bool = and {
-        r::VIEWS.contains(v.view),
+        IVIEWS.contains(v.view),
         v.high_vote.option_has(commit_vote_shape_inv),
-        v.high_commit_qc_view.option_has(v_view => r::VIEWS.contains(v_view)),
+        v.high_commit_qc_view.option_has(v_view => IVIEWS.contains(v_view)),
     }
 
     pure def signed_timeout_vote_shape_inv(sv: SignedTimeoutVote): bool = and {
@@ -127,7 +128,7 @@ module inductive {
         }),
         qc.agg_sig.subseteq(r::REPLICAS),
         qc.high_commit_qc.option_has(hqc => commit_qc_shape_inv(hqc)),
-        r::VIEWS.contains(qc.ghost_view),
+        IVIEWS.contains(qc.ghost_view),
     }
 
     pure def justification_shape_inv(justification: Justification): bool = {
@@ -141,7 +142,7 @@ module inductive {
         proposal.block.option_has(block => r::ALL_BLOCKS.contains(block)),
         justification_shape_inv(proposal.justification),
         r::REPLICAS.contains(proposal.sig),
-        r::VIEWS.contains(proposal.ghost_block_number),
+        IBLOCK_NUMBERS.contains(proposal.ghost_block_number),
     }
 
     pure def new_view_shape_inv(new_view: NewView): bool = and {
@@ -203,7 +204,8 @@ module inductive {
                 committed_blocks.length() == correct_size,
                 all_indices.forall(i => {
                     val committed = committed_blocks[i]
-                    committed.indices().forall(j => committed_block_shape_inv(committed[j]))
+                    committed.indices().forall(j => committed_block_shape_inv(committed[j])),
+                    committed.indices().subseteq(IBLOCK_NUMBERS),
                 }),
                 r::replica_state' = r::CORRECT.mapBy(id =>
                     val i = replica_idx.get(id)
