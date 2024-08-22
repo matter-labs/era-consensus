@@ -25,7 +25,7 @@ pub struct ProofOfPossession(pub(crate) bls12_381::ProofOfPossession);
 
 impl ProofOfPossession {
     /// Verifies the proof against the public key.
-    pub fn verify(&self, pk: PublicKey) -> anyhow::Result<()> {
+    pub fn verify(&self, pk: &PublicKey) -> anyhow::Result<()> {
         self.0.verify(&pk.0)
     }
 }
