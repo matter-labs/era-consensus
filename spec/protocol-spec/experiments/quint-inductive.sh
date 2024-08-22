@@ -46,7 +46,7 @@ done
 # set -j <cpus> to the number of CPUs - 1
 seq 0 $((max_trans-1)) \
   | parallel -j ${max_jobs} -v --delay 1 --halt now,fail=${max_failing_jobs} --results out \
-  JVM_ARGS=-Xmx16G quint verify --max-steps=1 --init=${init} --step=${step} \
+  JVM_ARGS=-Xmx120G quint verify --max-steps=1 --init=${init} --step=${step} \
     --apalache-config=$TMPDIR/apalache-inductive{}.json \
     --invariant=${inv} ${spec}
 
