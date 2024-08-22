@@ -335,8 +335,6 @@ module inductive {
         r::no_timeout_equivocation_inv,
         r::no_new_view_equivocation_inv,
         r::no_proposal_equivocation_inv,
-        /*
-        // TODO: first, check the invariants above
         r::msgs_signed_timeout_inv,
         r::msgs_signed_commit_inv,
         r::justification_is_supported_inv,
@@ -347,7 +345,6 @@ module inductive {
         r::view_justification_inv,
         r::timeout_high_vote_is_highest_inv,
         r::committed_blocks_have_justification_inv,
-        */
         // this invariant is quite expensive!
         //r::one_high_vote_in_timeout_qc_inv,
     }
