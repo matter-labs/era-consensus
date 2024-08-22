@@ -15,6 +15,7 @@ module guided_replica {
     const G_CORRECT: Set[ReplicaId]
     const G_FAULTY: Set[ReplicaId]
     const G_VIEWS: Set[ViewNumber]
+    const G_BLOCK_NUMBERS: Set[BlockNumber]
     const G_VALID_BLOCKS: Set[Block]
     const G_INVALID_BLOCKS: Set[Block]
 
@@ -26,6 +27,7 @@ module guided_replica {
         CORRECT = G_CORRECT,
         FAULTY = G_FAULTY,
         VIEWS = G_VIEWS,
+        BLOCK_NUMBERS = G_BLOCK_NUMBERS,
         VALID_BLOCKS = G_VALID_BLOCKS,
         INVALID_BLOCKS = G_INVALID_BLOCKS
     ).* from "./replica"

@@ -24,6 +24,7 @@ module n6f1b1_two_blocks {
         G_N = 6,
         G_F = 1,
         G_VIEWS = 0.to(5),
+        G_BLOCK_NUMBERS = 0.to(2),
         G_VALID_BLOCKS = Set("val_b0", "val_b1"),
         G_INVALID_BLOCKS = Set("inv_b3"),
         G_INPUT_TRACE = [

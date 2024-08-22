@@ -40,6 +40,9 @@ module replica {
     // The set of all views.
     const VIEWS: Set[ViewNumber]
 
+    // The set of all block numbers.
+    const BLOCK_NUMBERS: Set[BlockNumber]
+
     // the set of all blocks
     const VALID_BLOCKS: Set[Block]
     const INVALID_BLOCKS: Set[Block]
@@ -73,7 +76,7 @@ module replica {
     var ghost_step: StepKind
 
     val ALL_FAULTY_SIGNED_COMMIT_VOTES = 
-        tuples(VIEWS, FAULTY, ALL_BLOCKS, VIEWS)
+        tuples(VIEWS, FAULTY, ALL_BLOCKS, BLOCK_NUMBERS)
             .map( ((v, r, b, n)) => 
                 {
                     vote:{
@@ -251,7 +254,7 @@ module replica {
             nondet senders = FAULTY.powerset().oneOf()
             nondet commit_view = VIEWS.oneOf()
             nondet block_hash = ALL_BLOCKS.oneOf()
-            nondet block_number = VIEWS.oneOf()
+            nondet block_number = BLOCK_NUMBERS.oneOf()
             val signed_commits = senders.map(s => {
                 vote:{
                     view: commit_view, block_number: block_number, block_hash: block_hash
@@ -266,7 +269,7 @@ module replica {
             nondet sig = oneOf(FAULTY)
             nondet commit_vote: SignedCommitVote = oneOf(msgs_signed_commit.union(ALL_FAULTY_SIGNED_COMMIT_VOTES))
             nondet commit_qc_view = oneOf(VIEWS)
-            nondet commit_qc_block_number = oneOf(VIEWS)
+            nondet commit_qc_block_number = oneOf(BLOCK_NUMBERS)
             nondet commit_qc_block_hash = oneOf(ALL_BLOCKS)
             nondet commit_qc_agg_sig = REPLICAS.powerset().oneOf()
             val commit_qc_vote: CommitVote = {
@@ -307,7 +310,7 @@ module replica {
             nondet justification_case = Set("commit", "timeout").oneOf()
             // introduce a commit qc
             nondet commit_qc_view = oneOf(VIEWS)
-            nondet commit_qc_block_number = oneOf(VIEWS)
+            nondet commit_qc_block_number = oneOf(BLOCK_NUMBERS)
             nondet commit_qc_block_hash = oneOf(ALL_BLOCKS)
             nondet commit_qc_agg_sig = REPLICAS.powerset().oneOf()
             val commit_qc_vote: CommitVote = {
@@ -364,7 +367,7 @@ module replica {
             nondet justification_case = Set("commit", "timeout").oneOf()
             // introduce a commit qc
             nondet commit_qc_view = oneOf(VIEWS)
-            nondet commit_qc_block_number = oneOf(VIEWS)
+            nondet commit_qc_block_number = oneOf(BLOCK_NUMBERS)
             nondet commit_qc_block_hash = oneOf(ALL_BLOCKS)
             nondet commit_qc_agg_sig = REPLICAS.powerset().oneOf()
             val commit_qc_vote: CommitVote = {
@@ -391,7 +394,7 @@ module replica {
             }
             // non-deterministically select a block
             nondet block = ALL_BLOCKS.oneOf()
-            nondet block_number = VIEWS.oneOf()
+            nondet block_number = BLOCK_NUMBERS.oneOf()
             nondet has_block = oneOf(Bool)
             // make new proposal
             val proposal: Proposal = {
@@ -520,6 +523,8 @@ module replica {
             all {
                 // Vote only if you have collected all committed blocks so far (see a check in all {...}).
                 block_number == length(self.committed_blocks),
+                // Restrict the block number to BLOCK_NUMBERS for verification efficiency.
+                BLOCK_NUMBERS.contains(block_number),
                 // Validation.
                 if (is_some(opt_block_hash)) {
                     // For sanity reasons, we'll check that there's no block in the proposal.
@@ -777,6 +782,8 @@ module replica {
                 // Propose only if you have collected all committed blocks so far.
                 val committed_blocks = replica_state.get(replica_id).committed_blocks
                 block_number == length(committed_blocks),
+                // Restrict the block number to BLOCK_NUMBERS for verification efficiency.
+                BLOCK_NUMBERS.contains(block_number),
                 // check that we have received the previous block, if we are proposing a new one
                 or {
                     is_none(block),

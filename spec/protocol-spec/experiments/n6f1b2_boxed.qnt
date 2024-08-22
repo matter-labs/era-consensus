@@ -11,6 +11,7 @@ module n6f1b2_boxed {
     N = 6,
     F = 1,
     VIEWS = 0.to(5),
+    BLOCK_NUMBERS = 0.to(2),
     VALID_BLOCKS = Set("val_b0", "val_b1"),
     INVALID_BLOCKS = Set("inv_b3")
   ) as i from "../replica"

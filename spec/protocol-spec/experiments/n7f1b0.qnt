@@ -10,6 +10,7 @@ module n7f1b0 {
     N = 7,
     F = 1,
     VIEWS = 0.to(3),
+    BLOCK_NUMBERS = 0.to(2),
     VALID_BLOCKS = Set("val_b0", "val_b1"),
     INVALID_BLOCKS = Set("inv_b3")
   ).* from "../replica"
