@@ -204,8 +204,10 @@ module inductive {
                 committed_blocks.length() == correct_size,
                 all_indices.forall(i => {
                     val committed = committed_blocks[i]
-                    committed.indices().forall(j => committed_block_shape_inv(committed[j])),
-                    committed.indices().subseteq(IBLOCK_NUMBERS),
+                    and {
+                        committed.indices().forall(j => committed_block_shape_inv(committed[j])),
+                        committed.indices().subseteq(IBLOCK_NUMBERS),
+                    }
                 }),
                 r::replica_state' = r::CORRECT.mapBy(id =>
                     val i = replica_idx.get(id)
