@@ -1,4 +1,4 @@
-use super::{PublicKey, Signature};
+use super::{ProofOfPossession, PublicKey, Signature};
 use crate::validator::messages::{Msg, MsgHash, Signed};
 use std::{fmt, sync::Arc};
 use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
@@ -34,6 +34,11 @@ impl SecretKey {
     /// Sign a message hash.
     pub fn sign_hash(&self, msg_hash: &MsgHash) -> Signature {
         Signature(self.0.sign(&ByteFmt::encode(msg_hash)))
+    }
+
+    /// Sign a proof of possession.
+    pub fn sign_pop(&self) -> ProofOfPossession {
+        ProofOfPossession(self.0.sign_pop())
     }
 }
 
