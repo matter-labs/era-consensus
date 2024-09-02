@@ -36,7 +36,7 @@ impl SecretKey {
         Signature(self.0.sign(&ByteFmt::encode(msg_hash)))
     }
 
-    /// Signa a proof of possession.
+    /// Sign a proof of possession.
     pub fn sign_pop(&self) -> ProofOfPossession {
         ProofOfPossession(self.0.sign_pop())
     }
