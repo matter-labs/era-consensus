@@ -97,7 +97,11 @@ impl State {
         }
         // Verify signature only after checking all the other preconditions.
         vote.verify().context("verify")?;
-        tracing::info!("collected vote with weight {weight} from {:?}", vote.key);
+        tracing::info!(
+            "collected vote for {:?} with weight {weight} from {:?}",
+            vote.msg.number,
+            vote.key
+        );
         self.votes.insert(vote.key.clone(), vote);
         self.total_weight += weight;
         Ok(())
