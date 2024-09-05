@@ -68,7 +68,6 @@ module replica {
 
     // vote storage for each correct replica
     var store_signed_timeout: ReplicaId -> Set[SignedTimeoutVote]
-    var store_signed_commit: ReplicaId -> Set[SignedCommitVote]
 
     // global storages of quorum certificates
     var ghost_timeout_qc: List[TimeoutQC]
@@ -123,7 +122,6 @@ module replica {
         msgs_new_view' = Set(),
         msgs_proposal' = Set(),
         store_signed_timeout' = CORRECT.mapBy(id => Set()),
-        store_signed_commit' = CORRECT.mapBy(id => Set()),
         ghost_justifications' = Map(),
         leader' = ldr,
         ghost_commit_qc' = [],
@@ -176,7 +174,6 @@ module replica {
                 // the leader stores all timeout votes, the others receive NewView
                 if (sig_of_id(id) == ldr.get(0)) timeout_votes0 else Set()
             }),
-            store_signed_commit' = CORRECT.mapBy(id => Set()),
             // all correct correct replicas have Timeout(init_timeout_qc)
             ghost_justifications' =
                 tuples(CORRECT, Set(1)).mapBy(((id, view)) => Timeout(init_timeout_qc_id)),
@@ -464,8 +461,8 @@ module replica {
         any {
             all {
                 msgs_signed_commit != Set(),
-                nondet signed_vote = oneOf(msgs_signed_commit)
-                on_commit(id, signed_vote),
+                nondet signed_votes = msgs_signed_commit.powerset().oneOf()
+                on_commit(id, signed_votes),
             },
             all {
                 msgs_signed_timeout != Set(),
@@ -610,7 +607,6 @@ module replica {
                 // unchanged variables
                 msgs_signed_timeout' = msgs_signed_timeout, msgs_new_view' = msgs_new_view,
                 msgs_proposal' = msgs_proposal, store_signed_timeout' = store_signed_timeout,
-                store_signed_commit' = store_signed_commit,
                 proposer_view' = proposer_view,
                 ghost_commit_qc' = ghost_commit_qc,
                 ghost_timeout_qc' = ghost_timeout_qc,
@@ -620,22 +616,23 @@ module replica {
     }
 
     // a replica receives SignedCommitVote
-    action on_commit(id: ReplicaId, signed_vote: SignedCommitVote): bool = all {
+    action on_commit(id: ReplicaId, signed_votes: Set[SignedCommitVote]): bool = all {
+        signed_votes != Set(),
         val self = replica_state.get(id)
+        nondet base_vote = signed_votes.oneOf()
         all {
             // if the vote isn't current, just ignore it.
-            signed_vote.vote.view >= self.view,
+            base_vote.vote.view >= self.view,
+            signed_votes.forall(v => v.vote.view == base_vote.vote.view),
             // Check that the signed vote is valid.
-            signed_commit_vote_verify(signed_vote),
+            signed_votes.forall(v => signed_commit_vote_verify(v)),
 
-            // Store the vote. We will never store duplicate (same view and sender) votes.
-            is_new_signed_commit_vote_for_replica(id, signed_vote),
-            val new_store = store_signed_commit.get(id).union(Set(signed_vote))
+            // We will never store duplicate (same view and sender) votes.
+            signed_votes.forall(v1 => signed_votes.forall(v2 => v1.sig != v2.sig or v1.vote == v2.vote)),
 
             all {
-                store_signed_commit' = store_signed_commit.set(id, new_store),
                 // Check if we now have a commit QC for this view.
-                val qc_opt = get_commit_qc(new_store, signed_vote)
+                val qc_opt = get_commit_qc(signed_votes, base_vote)
                 match (qc_opt) {
                     | None => all {
                         replica_state' = replica_state,
@@ -649,7 +646,7 @@ module replica {
                         val self1 = self.process_commit_qc(Some(qc_id))
                         all {
                             ghost_commit_qc' = ghost_commit_qc.append(qc),
-                            start_new_view(id, self1, signed_vote.vote.view + 1, Commit(qc_id))
+                            start_new_view(id, self1, base_vote.vote.view + 1, Commit(qc_id))
                         }
                     }
                 },
@@ -696,7 +693,6 @@ module replica {
             // unchanged variables
             msgs_signed_commit' = msgs_signed_commit, msgs_new_view' = msgs_new_view,
             msgs_proposal' = msgs_proposal, store_signed_timeout' = store_signed_timeout,
-            store_signed_commit' = store_signed_commit,
             proposer_view' = proposer_view, ghost_justifications' = ghost_justifications,
             ghost_timeout_qc' = ghost_timeout_qc,
             ghost_commit_qc' = ghost_commit_qc,
@@ -741,7 +737,6 @@ module replica {
                 // unchanged variables
                 msgs_signed_timeout' = msgs_signed_timeout, msgs_signed_commit' = msgs_signed_commit,
                 msgs_proposal' = msgs_proposal, proposer_view' = proposer_view,
-                store_signed_commit' = store_signed_commit,
                 ghost_commit_qc' = ghost_commit_qc,
                 ghost_step' = OnTimeoutStep(id),
             }
@@ -782,7 +777,6 @@ module replica {
             // unchanged variables
             msgs_signed_timeout' = msgs_signed_timeout, msgs_signed_commit' = msgs_signed_commit,
             msgs_proposal' = msgs_proposal, store_signed_timeout' = store_signed_timeout,
-            store_signed_commit' = store_signed_commit,
             proposer_view' = proposer_view,
             ghost_commit_qc' = ghost_commit_qc,
             ghost_timeout_qc' = ghost_timeout_qc,
@@ -854,7 +848,6 @@ module replica {
             replica_state' = replica_state, msgs_signed_timeout' = msgs_signed_timeout,
             msgs_signed_commit' = msgs_signed_commit, msgs_new_view' = msgs_new_view,
             store_signed_timeout' = store_signed_timeout, ghost_justifications' = ghost_justifications,
-            store_signed_commit' = store_signed_commit,
             ghost_commit_qc' = ghost_commit_qc, ghost_timeout_qc' = ghost_timeout_qc,
             ghost_step' = ProposerStep(replica_id),
         }
@@ -947,7 +940,7 @@ module replica {
                     }
                 },
                 ghost_step' = FetchStep(id),
-                store_signed_timeout' = store_signed_timeout, store_signed_commit' = store_signed_commit,
+                store_signed_timeout' = store_signed_timeout,
                 proposer_view' = proposer_view, ghost_justifications' = ghost_justifications, replica_view' = replica_view,
                 msgs_signed_timeout' = msgs_signed_timeout, msgs_new_view' = msgs_new_view,
                 msgs_proposal' = msgs_proposal, msgs_signed_commit' = msgs_signed_commit,
@@ -958,7 +951,7 @@ module replica {
 
     // part of the state that is not touched by the Byzantine validators
     action unchanged_replica = all {
-        store_signed_timeout' = store_signed_timeout, store_signed_commit' = store_signed_commit,
+        store_signed_timeout' = store_signed_timeout,
         proposer_view' = proposer_view, ghost_justifications' = ghost_justifications,
         replica_view' = replica_view, replica_state' = replica_state,
     }
@@ -1223,13 +1216,6 @@ module replica {
         }
     }
 
-    def is_new_signed_commit_vote_for_replica(id: ReplicaId, signed_vote: SignedCommitVote):bool = {
-        store_signed_commit.get(id).forall(v => or {
-            v.vote.view != signed_vote.vote.view,
-            v.sig != signed_vote.sig,
-        })
-    }
-
     def is_new_signed_timeout_vote_for_replica(id: ReplicaId, signed_vote: SignedTimeoutVote):bool = {
         store_signed_timeout.get(id).forall(v => or {
             v.vote.view != signed_vote.vote.view,
@@ -1404,23 +1390,6 @@ module replica {
             m1.sig != m2.sig,
             m1.justification.view() != m2.justification.view(),
             m1.justification == m2.justification,
-        })
-    }
-
-    // Make sure that the commit votes in the store are well-formed.
-    val store_signed_commit_all_inv: bool = {
-        CORRECT.forall(id => {
-            val signed_votes = store_signed_commit.get(id)
-            signed_votes.forall(v1 => and {
-                or {
-                    aux_commit_vote_inv(v1),
-                    FAULTY.exists(id => sig_of_id(id) == v1.sig),
-                },
-                signed_votes.forall(v2 => and {
-                    // no duplicates
-                    (v1.sig == v2.sig and v1.vote.view == v2.vote.view) implies (v1.vote == v2.vote),
-                })
-            })
         })
     }
 
@@ -1718,7 +1687,6 @@ module replica {
         no_commit_equivocation_inv,
         no_timeout_equivocation_inv,
         no_new_view_equivocation_inv,
-        store_signed_commit_all_inv,
         store_signed_timeout_all_inv,
         view_justification_inv,
         justification_is_supported_inv,
