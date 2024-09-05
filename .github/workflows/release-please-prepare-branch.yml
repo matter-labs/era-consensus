@@ -1,0 +1,71 @@
+on:
+  push:
+    branches:
+      - release-please--branches--main--components--era-consensus
+
+env:
+  EXPECTED_COMMIT_MESSAGE: "Update version in Cargo.toml"
+  CARGO_TERM_COLOR: "always"
+  CARGO_INCREMENTAL: "0"
+  # Rust version to use.
+  # Should be aligned with the version used in core to prevent regressions on publish.
+  nightly: nightly-2024-08-01
+
+name: release-please-update-versions
+jobs:
+  check_state:
+    name: "release-please: Check if Cargo.toml is updated"
+    runs-on: [ubuntu-latest]
+    outputs:
+      already_committed: ${{ steps.condition.outputs.already_committed }}
+
+    steps:
+      - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4
+
+      - name: Check last commit
+        id: condition
+        run: |
+          COMMIT=$(git log -1 --pretty=%B)
+          if [[ "$COMMIT" == "$EXPECTED_COMMIT_MESSAGE" ]]; then
+            echo "Cargo.toml is already updated"
+            echo "already_committed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Cargo.toml should be updated"
+            echo "already_committed=false" >> "$GITHUB_OUTPUT"
+          fi
+    
+  update_version:
+    runs-on: [ubuntu-latest]
+    name: "release-please: Update version in Cargo.toml"
+    needs: [check_state]
+    if: ${{ needs.check_state.outputs.already_committed != 'true' }}
+    steps:
+      - uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: ${{ env.nightly }}
+          components: rustfmt, clippy
+          # Remove default `-D warnings`. This is a temporary measure.
+          rustflags: ""
+
+      # cargo-workspaces fails to update versions in some cases.
+      - name: Install cargo-edit
+        run: cargo install cargo-edit
+
+      - name: Bump version
+        run: |
+          NEW_VERSION=$(cat .github/release-please/manifest.json | jq -r '."."')
+          cargo-set-version set-version $NEW_VERSION --workspace --manifest-path node/Cargo.toml
+
+      - name: Push changes
+        run: |
+          git config --global user.email "zksync-era-bot@users.noreply.github.com"
+          git config --global user.name "zksync-era-bot"
+          git remote set-url origin 'https://${{ secrets.RELEASE_TOKEN }}@github.com/matter-labs/era-consensus.git'
+          git add ./Cargo.toml
+          git commit -m "$EXPECTED_COMMIT_MESSAGE"
+          git push
