@@ -11,5 +11,5 @@ module n6f1b1 {
     VIEWS = 0.to(5),
     VALID_BLOCKS = Set("val_b0", "val_b1"),
     INVALID_BLOCKS = Set("inv_b3")
-  ).* from "../replica"
+  ).* from "./replica"
 }

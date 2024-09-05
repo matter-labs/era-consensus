@@ -294,6 +294,7 @@ module replica {
                     vote: commit_qc_vote,
                     agg_sig: commit_qc_agg_sig
                 }
+                val commit_qc_id = ghost_commit_qc.length()
                 nondet has_high_vote = oneOf(Bool)
                 nondet has_commit_qc = oneOf(Bool)
                 nondet high_commit_qc_view = oneOf(VIEWS)
@@ -304,7 +305,7 @@ module replica {
                         high_vote: if (has_high_vote) Some(commit_vote.vote) else COMMIT_VOTE_NONE,
                         high_commit_qc_view: if (has_high_commit_qc_view) Some(high_commit_qc_view) else VIEW_NUMBER_NONE,
                     },
-                    high_commit_qc: if (has_commit_qc) Some(commit_qc) else HIGH_COMMIT_QC_NONE,
+                    high_commit_qc: if (has_commit_qc) Some(commit_qc_id) else HIGH_COMMIT_QC_NONE,
                     sig: sig,
                 }
                 all {
@@ -339,6 +340,7 @@ module replica {
                 val commit_qc = {
                     vote: commit_qc_vote, agg_sig: commit_qc_agg_sig,
                 }
+                val commit_qc_id = ghost_commit_qc.length()
                 // Introduce a timeout qc.
                 // We recycle commit_qc when constructing timeout_qc, as commit_qc and timeout_qc
                 // are not used at the same time, see justification_case.
@@ -352,14 +354,14 @@ module replica {
                     votes: timeout_qc_votes,
                     agg_sig: timeout_qc_agg_sig,
                     high_commit_qc:
-                        if (has_high_commit_qc_view) Some(commit_qc) else HIGH_COMMIT_QC_NONE,
+                        if (has_high_commit_qc_view) Some(commit_qc_id) else HIGH_COMMIT_QC_NONE,
                     ghost_view: timeout_qc_view,
                 }
                 // make new view
                 val new_view: NewView = {
                     justification:
                         if (justification_case == "commit") {
-                            Commit(commit_qc)
+                            Commit(commit_qc_id)
                         } else {
                             Timeout(timeout_qc)
                         },
@@ -400,6 +402,7 @@ module replica {
                 val commit_qc = {
                     vote: commit_qc_vote, agg_sig: commit_qc_agg_sig,
                 }
+                val commit_qc_id = ghost_commit_qc.length()
                 // Introduce a timeout qc.
                 // We recycle commit_qc when constructing timeout_qc, as commit_qc and timeout_qc
                 // are not used at the same time, see justification_case.
@@ -412,7 +415,7 @@ module replica {
                 val timeout_qc: TimeoutQC = {
                     votes: timeout_qc_votes,
                     agg_sig: timeout_qc_agg_sig,
-                    high_commit_qc: if (has_high_commit_qc_view) Some(commit_qc) else HIGH_COMMIT_QC_NONE,
+                    high_commit_qc: if (has_high_commit_qc_view) Some(commit_qc_id) else HIGH_COMMIT_QC_NONE,
                     ghost_view: timeout_qc_view,
                 }
                 // non-deterministically select a block
@@ -424,7 +427,7 @@ module replica {
                     block: if (has_block) Some(block) else None,
                     justification:
                         if (justification_case == "commit") {
-                            Commit(commit_qc)
+                            Commit(commit_qc_id)
                         } else {
                             Timeout(timeout_qc)
                         },
@@ -630,15 +633,16 @@ module replica {
                     | None => all {
                         replica_state' = replica_state,
                         msgs_new_view' = msgs_new_view,
-                        ghost_justifications' = ghost_justifications,
                         ghost_commit_qc' = ghost_commit_qc,
+                        ghost_justifications' = ghost_justifications,
                     }
 
                     | Some(qc) => {
-                        val self1 = self.process_commit_qc(Some(qc))
+                        val qc_id = ghost_commit_qc.length()
+                        val self1 = self.process_commit_qc(Some(qc_id))
                         all {
                             ghost_commit_qc' = ghost_commit_qc.append(qc),
-                            start_new_view(id, self1, signed_vote.vote.view + 1, Commit(qc))
+                            start_new_view(id, self1, signed_vote.vote.view + 1, Commit(qc_id))
                         }
                     }
                 },
@@ -669,7 +673,9 @@ module replica {
                 high_commit_qc_view:
                     match (self.high_commit_qc) {
                     | None => VIEW_NUMBER_NONE
-                    | Some(qc) => Some(qc.vote.view)
+                    | Some(qc_id) =>
+                        val qc = ghost_commit_qc[qc_id]
+                        Some(qc.vote.view)
                     }
             },
             sig: sig_of_id(id),
@@ -876,8 +882,9 @@ module replica {
                 ghost_step' = ghost_step,
             }
 
-        | Some(qc) =>
+        | Some(qc_id) =>
             val next_block_number = self.committed_blocks.length()
+            val qc = ghost_commit_qc[qc_id]
             all {
                 qc.vote.block_number >= next_block_number,
                 // query other replicas whether they have a CommittedBlock
@@ -894,7 +901,8 @@ module replica {
                             ...self,
                             committed_blocks: self.committed_blocks.append(fetched_block)
                         }
-                        replica_state' = replica_state.set(id, new_self)
+                        replica_state' = replica_state.set(id, new_self),
+                        ghost_commit_qc' = ghost_commit_qc,
                     },
                     // fetch the block from a faulty replica
                     // introduce a commit qc
@@ -907,7 +915,8 @@ module replica {
                         block_hash: commit_qc_block
                     }
                     val commit_qc = { vote: commit_qc_vote, agg_sig: commit_qc_agg_sig }
-                    val fetched_block: CommittedBlock = { commit_qc: qc, block: commit_qc_block }
+                    val commit_qc_id = length(ghost_commit_qc)
+                    val fetched_block: CommittedBlock = { commit_qc: commit_qc_id, block: commit_qc_block }
                     // verify the block
                     all {
                         FAULTY != Set(),
@@ -924,6 +933,7 @@ module replica {
                             committed_blocks: self.committed_blocks.append(fetched_block)
                         }
                         replica_state' = replica_state.set(id, new_self),
+                        ghost_commit_qc' = ghost_commit_qc.append(commit_qc),
                     }
                 },
                 ghost_step' = FetchStep(id),
@@ -931,7 +941,7 @@ module replica {
                 proposer_view' = proposer_view, ghost_justifications' = ghost_justifications, replica_view' = replica_view,
                 msgs_signed_timeout' = msgs_signed_timeout, msgs_new_view' = msgs_new_view,
                 msgs_proposal' = msgs_proposal, msgs_signed_commit' = msgs_signed_commit,
-                ghost_commit_qc' = ghost_commit_qc, ghost_timeout_qc' = ghost_timeout_qc,
+                ghost_timeout_qc' = ghost_timeout_qc,
             }
         }
     }
@@ -966,11 +976,12 @@ module replica {
     // Processed an (already verified) commit_qc received from the network
     // as part of some message. It bumps the local high_commit_qc and if
     // we have the proposal corresponding to this qc, we append it to the committed_blocks.
-    def process_commit_qc(self: ReplicaState, qc_opt: Option[CommitQC]): ReplicaState = {
+    def process_commit_qc(self: ReplicaState, qc_opt: Option[QCName]): ReplicaState = {
         match (qc_opt) {
             | None => self
 
-            | Some(qc) =>
+            | Some(qc_id) =>
+                val qc = ghost_commit_qc[qc_id]
                 if (self.cached_proposals.contains((qc.vote.block_number, qc.vote.block_hash))
                         and self.committed_blocks.length() == qc.vote.block_number) {
                     // NOTE: the implementation retrieves the block by its hash from cached_proposals.
@@ -978,13 +989,13 @@ module replica {
                     val block = qc.vote.block_hash
                     {
                         ...self,
-                        committed_blocks: self.committed_blocks.append({ block: block, commit_qc: qc }),
-                        high_commit_qc: max_commit_qc(Some(qc), self.high_commit_qc)
+                        committed_blocks: self.committed_blocks.append({ block: block, commit_qc: qc_id }),
+                        high_commit_qc: max_commit_qc(Some(qc_id), self.high_commit_qc)
                     }
                 } else {
                     {
                         ...self,
-                        high_commit_qc: max_commit_qc(Some(qc), self.high_commit_qc)
+                        high_commit_qc: max_commit_qc(Some(qc_id), self.high_commit_qc)
                     }
                 }
         }
@@ -1006,13 +1017,15 @@ module replica {
 
     // given two QCs, return the one with the largest view,
     // or the left one, in case of the same view
-    def max_commit_qc(qc1_opt: Option[CommitQC], qc2_opt: Option[CommitQC]): Option[CommitQC] = {
+    def max_commit_qc(qc1_opt: Option[QCName], qc2_opt: Option[QCName]): Option[QCName] = {
         match (qc2_opt) {
             | None => qc1_opt
-            | Some(qc2) =>
+            | Some(qc2_id) =>
                 match(qc1_opt) {
                     | None => qc2_opt
-                    | Some(qc1) =>
+                    | Some(qc1_id) =>
+                        val qc1 = ghost_commit_qc[qc1_id]
+                        val qc2 = ghost_commit_qc[qc2_id]
                         if (qc1.vote.view >= qc2.vote.view) qc1_opt else qc2_opt
                 }
         }
@@ -1025,7 +1038,7 @@ module replica {
         if (view_signed_votes.size() < QUORUM_WEIGHT) {
             None
         } else {
-            val high_commit_qc: Option[CommitQC] = view_signed_votes.fold(HIGH_COMMIT_QC_NONE,
+            val high_commit_qc: Option[QCName] = view_signed_votes.fold(HIGH_COMMIT_QC_NONE,
                 (prev_max_qc, sv) => max_commit_qc(prev_max_qc, sv.high_commit_qc))
             // Importantly, view_signed_votes does not have two votes with the same signature.
             // We check that in store_signed_timeout_all_inv.
@@ -1070,7 +1083,8 @@ module replica {
             | Timeout(qc) =>
                 qc.timeout_qc_verify()
 
-            | Commit(qc) =>
+            | Commit(qc_id) =>
+                val qc = ghost_commit_qc[qc_id]
                 qc.commit_qc_verify()
         }
     }
@@ -1080,14 +1094,14 @@ module replica {
     }
 
     // Get the view of a justification
-    pure def view(justification: Justification): ViewNumber = {
+    def view(justification: Justification): ViewNumber = {
         match (justification) {
-            | Commit(qc) => qc.vote.view + 1
+            | Commit(qc_id) => ghost_commit_qc[qc_id].vote.view + 1
             | Timeout(qc) => qc.ghost_view + 1
         }
     }
 
-    pure def new_view_verify(new_view: NewView): bool = all {
+    def new_view_verify(new_view: NewView): bool = all {
         // Check that the justification is valid.
         new_view.justification.justification_verify()
     }
@@ -1100,12 +1114,14 @@ module replica {
         agg_sig.subseteq(REPLICAS.map(id => sig_of_id(id))),
     }
 
-    pure def signed_timeout_vote_verify(signed_vote: SignedTimeoutVote): bool = all {
+    def signed_timeout_vote_verify(signed_vote: SignedTimeoutVote): bool = all {
         signed_vote.vote.view >= 0,
         match (signed_vote.high_commit_qc) {
         | None =>
                 signed_vote.vote.high_commit_qc_view.is_none()
-        | Some(qc) => and {
+        | Some(qc_id) =>
+            val qc = ghost_commit_qc[qc_id]
+            and {
                 Some(qc.vote.view) == signed_vote.vote.high_commit_qc_view,
                 commit_qc_verify(qc),
             }
@@ -1151,7 +1167,7 @@ module replica {
     }
 
     // Timeout QC verification that a replica can do locally
-    pure def timeout_qc_verify(qc: TimeoutQC): bool =  {
+    def timeout_qc_verify(qc: TimeoutQC): bool =  {
         val votes = qc.votes.keys().map(pk => qc.votes.get(pk))
         and {
             // all votes are valid
@@ -1184,10 +1200,12 @@ module replica {
                 | None =>
                     high_qc_view.is_none()
 
-                | Some (high_qc) => and {
-                    high_qc_view == Some(high_qc.vote.view),
-                    commit_qc_verify(high_qc),
-                }
+                | Some(high_qc_id) =>
+                    val high_qc = ghost_commit_qc[high_qc_id]
+                    and {
+                        high_qc_view == Some(high_qc.vote.view),
+                        commit_qc_verify(high_qc),
+                    }
             }
         }
     }
@@ -1209,10 +1227,11 @@ module replica {
     // This returns the block number that is implied by this justification.
     // If the justification requires a block reproposal, it also returns
     // the hash of the block that must be reproposed.
-    pure def get_implied_block(justification: Justification): (BlockNumber, Option[BlockHash]) = {
+    def get_implied_block(justification: Justification): (BlockNumber, Option[BlockHash]) = {
         match (justification) {
-            | Commit(qc) => {
+            | Commit(qc_id) => {
                 // The previous proposal was finalized, so we can propose a new block.
+                val qc = ghost_commit_qc[qc_id]
                 (qc.vote.block_number + 1, None)
             }
 
@@ -1229,7 +1248,8 @@ module replica {
                 match (qc_high_vote) {
                 | Some(hv) =>
                         match (qc.high_commit_qc) {
-                        | Some(hqc) =>
+                        | Some(hqc_id) =>
+                            val hqc = ghost_commit_qc[hqc_id]
                             if (hv.block_number > hqc.vote.block_number) {
                                 // There was some proposal last view that might have been finalized.
                                 // We need to repropose it.
@@ -1252,7 +1272,10 @@ module replica {
                         // that it couldn't have been finalized. Either way, we can propose
                         // a new block.
                         match (qc.high_commit_qc) {
-                            | Some(hqc) => (hqc.vote.block_number + 1, None)
+                            | Some(hqc_id) =>
+                                val hqc = ghost_commit_qc[hqc_id]
+                                (hqc.vote.block_number + 1, None)
+
                             | None => (0, None)
                         }
                 }
@@ -1313,16 +1336,21 @@ module replica {
                     id2 == id,
                     match (ghost_justifications.get((id2, view))) {
                         | Timeout(qc) =>
-                            qc.high_commit_qc.option_has(hqc => and {
-                                hqc.vote.block_number == block_number,
-                                hqc.vote.block_hash == block_hash,
-                                view == hqc.vote.view or view == hqc.vote.view + 1,
-                            })
-                        | Commit(qc) => and {
-                            qc.vote.block_number == block_number,
-                            qc.vote.block_hash == block_hash,
-                            view == qc.vote.view or view == qc.vote.view + 1,
-                        }
+                            qc.high_commit_qc.option_has(hqc_id =>
+                                val hqc = ghost_commit_qc[hqc_id]
+                                and {
+                                    hqc.vote.block_number == block_number,
+                                    hqc.vote.block_hash == block_hash,
+                                    view == hqc.vote.view or view == hqc.vote.view + 1,
+                                })
+
+                        | Commit(qc_id) =>
+                            val qc = ghost_commit_qc[qc_id]
+                            and {
+                                qc.vote.block_number == block_number,
+                                qc.vote.block_hash == block_hash,
+                                view == qc.vote.view or view == qc.vote.view + 1,
+                            }
                     }
                 })
             })
@@ -1392,14 +1420,17 @@ module replica {
                     // the quorums have an intersection
                     match (v1.high_commit_qc) {
                         | None => true
-                        | Some(qc1) =>
+                        | Some(qc1_id) =>
                             match (v2.high_commit_qc) {
                                 | None => true
-                                | Some(qc2) => or {
-                                    qc1.vote.view != qc2.vote.view,
-                                    // TODO: use QUORUM_WEIGHT - F?
-                                    qc1.agg_sig.intersect(qc2.agg_sig).size() >= SUBQUORUM_WEIGHT,
-                                }
+                                | Some(qc2_id) =>
+                                    val qc1 = ghost_commit_qc[qc1_id]
+                                    val qc2 = ghost_commit_qc[qc2_id]
+                                    or {
+                                        qc1.vote.view != qc2.vote.view,
+                                        // TODO: use QUORUM_WEIGHT - F?
+                                        qc1.agg_sig.intersect(qc2.agg_sig).size() >= SUBQUORUM_WEIGHT,
+                                    }
                             }
                     }
                 })
@@ -1444,10 +1475,11 @@ module replica {
                     })
                 }
 
-                | Commit(qc) => and {
+                | Commit(qc_id) => and {
                     replica_view > 0,
                     // Only check that quorums are supported by the sent votes.
                     // The quorum invariants are checked in view_justification_inv.
+                    val qc = ghost_commit_qc[qc_id]
                     qc.agg_sig.forall(pk2 => or {
                         FAULTY.map(id => sig_of_id(id)).contains(pk2),
                         msgs_signed_commit.exists(signed_vote => signed_vote.vote == qc.vote)
@@ -1506,15 +1538,17 @@ module replica {
     }
 
     // basic integrity invariant for commit_qc
-    def aux_commit_qc_inv(qc_opt: Option[CommitQC]): bool = {
+    def aux_commit_qc_inv(qc_opt: Option[QCName]): bool = {
         match (qc_opt) {
             | None => true
-            | Some(qc) => and {
-                qc.vote.view >= 0,
-                qc.vote.block_number >= 0,
-                VALID_BLOCKS.contains(qc.vote.block_hash),
-                qc.agg_sig.aggregate_verify()
-            }
+            | Some(qc_id) =>
+                val qc = ghost_commit_qc[qc_id]
+                and {
+                    qc.vote.view >= 0,
+                    qc.vote.block_number >= 0,
+                    VALID_BLOCKS.contains(qc.vote.block_hash),
+                    qc.agg_sig.aggregate_verify()
+                }
         }
     }
 
@@ -1545,7 +1579,9 @@ module replica {
                     | None =>
                         votes.forall(v => v.high_commit_qc_view.is_none())
 
-                    | Some(commit_qc) => and {
+                    | Some(commit_qc_id) =>
+                        val commit_qc = ghost_commit_qc[commit_qc_id]
+                        and {
                             votes.forall(v => v.view <= commit_qc.vote.view),
                             votes.exists(v => v.view == commit_qc.vote.view)
                         }
@@ -1601,7 +1637,9 @@ module replica {
                     replica_view >= high_vote.view,
                     match (replica_state.get(id).high_commit_qc) {
                         | None => true
-                        | Some(qc) => high_vote.view >= qc.vote.view
+                        | Some(qc_id) =>
+                            val qc = ghost_commit_qc[qc_id]
+                            high_vote.view >= qc.vote.view
                     }
                 }
             }

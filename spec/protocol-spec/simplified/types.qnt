@@ -52,7 +52,7 @@ module types {
     /// invariants: hash(block) == commit_qc.vote.block_hash
     type CommittedBlock = {
         block: Block,
-        commit_qc: CommitQC,
+        commit_qc: QCName,
     }
 
     type ReplicaState = {
@@ -65,7 +65,7 @@ module types {
         high_vote: Option[CommitVote],
         // The commit quorum certificate with the highest view that this replica
         // has observed, if any.
-        high_commit_qc: Option[CommitQC],
+        high_commit_qc: Option[QCName],
         // The timeout quorum certificate with the highest view that this replica
         // has observed, if any.
         high_timeout_qc: Option[TimeoutQC],
@@ -100,7 +100,7 @@ module types {
             // A commit QC is just a collection of commit votes (with at least
             // QUORUM_WEIGHT) for the previous view. Note that the commit votes MUST
             // be identical.
-            Commit(CommitQC)
+            Commit(QCName)
             // This proposal is being proposed after a view where we timed out.
             // A timeout QC is just a collection of timeout votes (with at least
             // QUORUM_WEIGHT) for the previous view. Unlike with the Commit QC,
@@ -136,7 +136,7 @@ module types {
         agg_sig: AggregateSignature,
     }
 
-    pure val HIGH_COMMIT_QC_NONE: Option[CommitQC] = None
+    pure val HIGH_COMMIT_QC_NONE: Option[QCName] = None
 
     // Timeout votes are sent from replicas to replicas.
     type TimeoutVote = {
@@ -158,7 +158,7 @@ module types {
         sig: Signature,
         // The commit quorum certificate with the highest view that this replica
         // has observed, if any. It MUST match `high_commit_qc_view` in `vote`.
-        high_commit_qc: Option[CommitQC],
+        high_commit_qc: Option[QCName],
     }
 
     // If we have timeout votes with at least QUORUM_WEIGHT for the same
@@ -174,7 +174,7 @@ module types {
         agg_sig: AggregateSignature,
         // The commit quorum certificate with the highest view that all replicas in this
         // QC have observed, if any. It MUST match the highest `high_commit_qc_view` in `votes`.
-        high_commit_qc: Option[CommitQC],
+        high_commit_qc: Option[QCName],
 
         // current view computed from the votes (not present in the original specification).
         ghost_view: ViewNumber,
