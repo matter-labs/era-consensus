@@ -68,7 +68,7 @@ module types {
         high_commit_qc: Option[QCName],
         // The timeout quorum certificate with the highest view that this replica
         // has observed, if any.
-        high_timeout_qc: Option[TimeoutQC],
+        high_timeout_qc: Option[QCName],
         // A cache of not-yet-committed proposals.
         // Collects all received proposals sent by the proposers.
         // In real implementation this cache would be actively pruned.
@@ -105,7 +105,7 @@ module types {
             // A timeout QC is just a collection of timeout votes (with at least
             // QUORUM_WEIGHT) for the previous view. Unlike with the Commit QC,
             // timeout votes don't need to be identical.
-        |   Timeout(TimeoutQC)
+        |   Timeout(QCName)
 
 
     type CommitVote = {
@@ -180,7 +180,7 @@ module types {
         ghost_view: ViewNumber,
     }
 
-    pure val HIGH_TIMEOUT_QC_NONE: Option[TimeoutQC] = None
+    pure val HIGH_TIMEOUT_QC_NONE: Option[QCName] = None
 
     // New view messages are sent from replicas to replicas.
     // These are used to synchronize replicas.

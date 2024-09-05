@@ -137,6 +137,7 @@ module replica {
         // We use all the correct + faulty replicas. Otherwise, when a quorum
         // of correct replicas is impossible, e.g., the actual number of faults is above F,
         // we cannot reach this state.
+        pure val init_timeout_qc_id = 0
         pure val init_timeout_qc: TimeoutQC = {
             votes: REPLICAS.map(id => sig_of_id(id)).mapBy(_ => {
                 view: 0,
@@ -157,7 +158,7 @@ module replica {
                 view: 1,
                 high_vote: COMMIT_VOTE_NONE,
                 high_commit_qc: HIGH_COMMIT_QC_NONE,
-                high_timeout_qc: Some(init_timeout_qc),
+                high_timeout_qc: Some(init_timeout_qc_id),
                 phase: PhasePrepare,
                 cached_proposals: Set(),
                 committed_blocks: [],
@@ -167,7 +168,7 @@ module replica {
             // all replicas have sent TimeoutVote in view 0
             msgs_signed_timeout' = timeout_votes0,
             msgs_new_view' = CORRECT.map(id => {
-                    { sig: sig_of_id(id), justification: Timeout(init_timeout_qc) }
+                    { sig: sig_of_id(id), justification: Timeout(init_timeout_qc_id) }
                 }),
             msgs_signed_commit' = Set(),
             msgs_proposal' = Set(),
@@ -178,7 +179,7 @@ module replica {
             store_signed_commit' = CORRECT.mapBy(id => Set()),
             // all correct correct replicas have Timeout(init_timeout_qc)
             ghost_justifications' =
-                tuples(CORRECT, Set(1)).mapBy(((id, view)) => Timeout(init_timeout_qc)),
+                tuples(CORRECT, Set(1)).mapBy(((id, view)) => Timeout(init_timeout_qc_id)),
             leader' = ldr,
             ghost_commit_qc' = [],
             ghost_timeout_qc' = [init_timeout_qc],
@@ -357,13 +358,14 @@ module replica {
                         if (has_high_commit_qc_view) Some(commit_qc_id) else HIGH_COMMIT_QC_NONE,
                     ghost_view: timeout_qc_view,
                 }
+                val timeout_qc_id = ghost_timeout_qc.length()
                 // make new view
                 val new_view: NewView = {
                     justification:
                         if (justification_case == "commit") {
                             Commit(commit_qc_id)
                         } else {
-                            Timeout(timeout_qc)
+                            Timeout(timeout_qc_id)
                         },
                     sig: sig,
                 }
@@ -418,6 +420,7 @@ module replica {
                     high_commit_qc: if (has_high_commit_qc_view) Some(commit_qc_id) else HIGH_COMMIT_QC_NONE,
                     ghost_view: timeout_qc_view,
                 }
+                val timeout_qc_id = ghost_timeout_qc.length()
                 // non-deterministically select a block
                 nondet block = ALL_BLOCKS.oneOf()
                 nondet block_number = VIEWS.oneOf()
@@ -429,7 +432,7 @@ module replica {
                         if (justification_case == "commit") {
                             Commit(commit_qc_id)
                         } else {
-                            Timeout(timeout_qc)
+                            Timeout(timeout_qc_id)
                         },
                     sig: sig,
                     ghost_block_number: block_number,
@@ -587,10 +590,14 @@ module replica {
                 }
                 val self2 =
                     match (proposal.justification) {
-                    | Commit(qc) => self1.process_commit_qc(Some(qc))
-                    | Timeout(qc) => {
+                    | Commit(qc_id) =>
+                        self1.process_commit_qc(Some(qc_id))
+
+                    | Timeout(qc_id) =>
+                        val qc = ghost_timeout_qc[qc_id]
+                        {
                             ...self1.process_commit_qc(qc.high_commit_qc),
-                            high_timeout_qc: max_timeout_qc(Some(qc), self1.high_timeout_qc)
+                            high_timeout_qc: max_timeout_qc(Some(qc_id), self1.high_timeout_qc)
                         }
                     }
 
@@ -723,11 +730,12 @@ module replica {
 
                     | Some(qc) => all {
                         ghost_timeout_qc' = ghost_timeout_qc.append(qc),
+                        val qc_id = ghost_timeout_qc.length()
                         val self1 = {
                             ...self.process_commit_qc(qc.high_commit_qc),
-                            high_timeout_qc: max_timeout_qc(qc_opt, self.high_timeout_qc)
+                            high_timeout_qc: max_timeout_qc(Some(qc_id), self.high_timeout_qc)
                         }
-                        start_new_view(id, self1, signed_vote.vote.view + 1, Timeout(qc)),
+                        start_new_view(id, self1, signed_vote.vote.view + 1, Timeout(qc_id)),
                     }
                 },
                 // unchanged variables
@@ -752,12 +760,14 @@ module replica {
             // Update our state.
             val self1 =
                 match (new_view.justification) {
-                    | Commit(qc) => self.process_commit_qc(Some(qc))
+                    | Commit(qc_id) => self.process_commit_qc(Some(qc_id))
 
-                    | Timeout(qc) => {
-                        ...self.process_commit_qc(qc.high_commit_qc),
-                        high_timeout_qc: max_timeout_qc(Some(qc), self.high_timeout_qc)
-                    }
+                    | Timeout(qc_id) =>
+                        val qc = ghost_timeout_qc[qc_id]
+                        {
+                            ...self.process_commit_qc(qc.high_commit_qc),
+                            high_timeout_qc: max_timeout_qc(Some(qc_id), self.high_timeout_qc)
+                        }
                 }
 
             if (new_view_view > self.view) {
@@ -1003,13 +1013,15 @@ module replica {
 
     // given two QCs, return the one with the largest view,
     // or the left one, in case of the same view
-    def max_timeout_qc(qc1_opt: Option[TimeoutQC], qc2_opt: Option[TimeoutQC]): Option[TimeoutQC] = {
+    def max_timeout_qc(qc1_opt: Option[QCName], qc2_opt: Option[QCName]): Option[QCName] = {
         match (qc2_opt) {
             | None => qc1_opt
-            | Some(qc2) =>
+            | Some(qc2_id) =>
                 match (qc1_opt) {
                     | None => qc2_opt
-                    | Some(qc1) =>
+                    | Some(qc1_id) =>
+                        val qc1 = ghost_timeout_qc[qc1_id]
+                        val qc2 = ghost_timeout_qc[qc2_id]
                         if (qc1.ghost_view >= qc2.ghost_view) qc1_opt else qc2_opt
                 }
         }
@@ -1080,7 +1092,8 @@ module replica {
 
     def justification_verify(justification: Justification): bool = {
         match (justification) {
-            | Timeout(qc) =>
+            | Timeout(qc_id) =>
+                val qc = ghost_timeout_qc[qc_id]
                 qc.timeout_qc_verify()
 
             | Commit(qc_id) =>
@@ -1097,7 +1110,7 @@ module replica {
     def view(justification: Justification): ViewNumber = {
         match (justification) {
             | Commit(qc_id) => ghost_commit_qc[qc_id].vote.view + 1
-            | Timeout(qc) => qc.ghost_view + 1
+            | Timeout(qc_id) => ghost_timeout_qc[qc_id].ghost_view + 1
         }
     }
 
@@ -1235,14 +1248,15 @@ module replica {
                 (qc.vote.block_number + 1, None)
             }
 
-            | Timeout(qc) => {
+            | Timeout(qc_id) => {
+                val qc = ghost_timeout_qc[qc_id]
                 // Get the high vote of the timeout QC, if it exists. We check if there are
                 // timeout votes with at least an added weight of SUBQUORUM_WEIGHT,
                 // that have a high vote field for the same block. A QC can have
                 // 0, 1 or 2 such blocks.
                 // If there's only 1 such block, then we say the QC has a high vote.
                 // If there are 0 or 2 such blocks, we say the QC has no high vote.
-                pure val qc_high_vote: Option[CommitVote] = qc.high_vote()
+                val qc_high_vote: Option[CommitVote] = qc.high_vote()
                 // Get the high commit QC of the timeout QC. We compare the high QC field of
                 // all timeout votes in the QC, and get the highest one, if it exists.
                 match (qc_high_vote) {
@@ -1335,7 +1349,8 @@ module replica {
                 ghost_justifications.keys().exists(((id2, view)) => and {
                     id2 == id,
                     match (ghost_justifications.get((id2, view))) {
-                        | Timeout(qc) =>
+                        | Timeout(qc_id) =>
+                            val qc = ghost_timeout_qc[qc_id]
                             qc.high_commit_qc.option_has(hqc_id =>
                                 val hqc = ghost_commit_qc[hqc_id]
                                 and {
@@ -1464,10 +1479,11 @@ module replica {
     val justification_is_supported_inv: bool = {
         ghost_justifications.keys().forall(((pk1, replica_view)) => {
             match (ghost_justifications.get((pk1, replica_view))) {
-                | Timeout(qc) => and {
+                | Timeout(qc_id) => and {
                     replica_view > 0,
                     // Only check that quorums are supported by sent votes.
                     // The quorum invariants are checked in view_justification_inv.
+                    val qc = ghost_timeout_qc[qc_id]
                     qc.votes.keys().forall(pk2 => or {
                         FAULTY.exists(id => sig_of_id(id) == pk2),
                         val vote = qc.votes.get(pk2)
@@ -1491,11 +1507,12 @@ module replica {
 
     // there are no two high votes supported by subquorum weight (2 * F + 1) in a single TimeoutQC
     def one_high_vote_in_timeout_qc_inv: bool = {
-        def one_high_vote(qc: TimeoutQC): bool = {
-            pure val votes = qc.votes.keys().map(pk => qc.votes.get(pk))
-            pure val high_votes = votes.map(v => v.high_vote)
+        def one_high_vote(qc_id: int): bool = {
+            val qc = ghost_timeout_qc[qc_id]
+            val votes = qc.votes.keys().map(pk => qc.votes.get(pk))
+            val high_votes = votes.map(v => v.high_vote)
             // compute the pair (high_vote, nr_of_votes) for each high_vote in high_votes
-            pure val high_vote_count =
+            val high_vote_count =
                 high_votes.mapBy(hv => votes.filter(v => v.high_vote == hv).size())
             tuples(high_votes, high_votes).forall(((hv1, hv2)) => or {
                 hv1 == hv2,
@@ -1560,10 +1577,11 @@ module replica {
     }
 
     // integrity invariant for TimeoutQC
-    def aux_timeout_qc_inv(qc_opt: Option[TimeoutQC]): bool = {
+    def aux_timeout_qc_inv(qc_opt: Option[QCName]): bool = {
         match (qc_opt) {
             | None => true
-            | Some(qc) => 
+            | Some(qc_id) => 
+                val qc = ghost_timeout_qc[qc_id]
                 val votes = qc.votes.keys().map(pk => qc.votes.get(pk))
                 val public_keys = qc.votes.keys()
                 and {
@@ -1724,7 +1742,9 @@ module replica {
     val high_timeout_qc_example = CORRECT.forall(id => and {
         match (replica_state.get(id).high_timeout_qc) {
             | None => true
-            | Some(qc) =>  qc.votes.keys().size() == 0
+            | Some(qc_id) =>
+                val qc = ghost_timeout_qc[qc_id]
+                qc.votes.keys().size() == 0
         }
     })
 
