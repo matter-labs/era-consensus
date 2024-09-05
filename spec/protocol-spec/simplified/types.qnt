@@ -46,13 +46,13 @@ module types {
     type AggregateSignature = Set[Signature]
 
     // An identifier assigned to TimeoutQC or CommitQC.
-    type QCName = int
+    type QcId = int
 
     /// A block with a matching valid certificate.
     /// invariants: hash(block) == commit_qc.vote.block_hash
     type CommittedBlock = {
         block: Block,
-        commit_qc: QCName,
+        commit_qc: QcId,
     }
 
     type ReplicaState = {
@@ -65,10 +65,10 @@ module types {
         high_vote: Option[CommitVote],
         // The commit quorum certificate with the highest view that this replica
         // has observed, if any.
-        high_commit_qc: Option[QCName],
+        high_commit_qc: Option[QcId],
         // The timeout quorum certificate with the highest view that this replica
         // has observed, if any.
-        high_timeout_qc: Option[QCName],
+        high_timeout_qc: Option[QcId],
         // A cache of not-yet-committed proposals.
         // Collects all received proposals sent by the proposers.
         // In real implementation this cache would be actively pruned.
@@ -100,12 +100,12 @@ module types {
             // A commit QC is just a collection of commit votes (with at least
             // QUORUM_WEIGHT) for the previous view. Note that the commit votes MUST
             // be identical.
-            Commit(QCName)
+            Commit(QcId)
             // This proposal is being proposed after a view where we timed out.
             // A timeout QC is just a collection of timeout votes (with at least
             // QUORUM_WEIGHT) for the previous view. Unlike with the Commit QC,
             // timeout votes don't need to be identical.
-        |   Timeout(QCName)
+        |   Timeout(QcId)
 
 
     type CommitVote = {
@@ -136,7 +136,7 @@ module types {
         agg_sig: AggregateSignature,
     }
 
-    pure val HIGH_COMMIT_QC_NONE: Option[QCName] = None
+    pure val HIGH_COMMIT_QC_NONE: Option[QcId] = None
 
     // Timeout votes are sent from replicas to replicas.
     type TimeoutVote = {
@@ -158,7 +158,7 @@ module types {
         sig: Signature,
         // The commit quorum certificate with the highest view that this replica
         // has observed, if any. It MUST match `high_commit_qc_view` in `vote`.
-        high_commit_qc: Option[QCName],
+        high_commit_qc: Option[QcId],
     }
 
     // If we have timeout votes with at least QUORUM_WEIGHT for the same
@@ -174,13 +174,13 @@ module types {
         agg_sig: AggregateSignature,
         // The commit quorum certificate with the highest view that all replicas in this
         // QC have observed, if any. It MUST match the highest `high_commit_qc_view` in `votes`.
-        high_commit_qc: Option[QCName],
+        high_commit_qc: Option[QcId],
 
         // current view computed from the votes (not present in the original specification).
         ghost_view: ViewNumber,
     }
 
-    pure val HIGH_TIMEOUT_QC_NONE: Option[QCName] = None
+    pure val HIGH_TIMEOUT_QC_NONE: Option[QcId] = None
 
     // New view messages are sent from replicas to replicas.
     // These are used to synchronize replicas.

@@ -986,7 +986,7 @@ module replica {
     // Processed an (already verified) commit_qc received from the network
     // as part of some message. It bumps the local high_commit_qc and if
     // we have the proposal corresponding to this qc, we append it to the committed_blocks.
-    def process_commit_qc(self: ReplicaState, qc_opt: Option[QCName]): ReplicaState = {
+    def process_commit_qc(self: ReplicaState, qc_opt: Option[QcId]): ReplicaState = {
         match (qc_opt) {
             | None => self
 
@@ -1013,7 +1013,7 @@ module replica {
 
     // given two QCs, return the one with the largest view,
     // or the left one, in case of the same view
-    def max_timeout_qc(qc1_opt: Option[QCName], qc2_opt: Option[QCName]): Option[QCName] = {
+    def max_timeout_qc(qc1_opt: Option[QcId], qc2_opt: Option[QcId]): Option[QcId] = {
         match (qc2_opt) {
             | None => qc1_opt
             | Some(qc2_id) =>
@@ -1029,7 +1029,7 @@ module replica {
 
     // given two QCs, return the one with the largest view,
     // or the left one, in case of the same view
-    def max_commit_qc(qc1_opt: Option[QCName], qc2_opt: Option[QCName]): Option[QCName] = {
+    def max_commit_qc(qc1_opt: Option[QcId], qc2_opt: Option[QcId]): Option[QcId] = {
         match (qc2_opt) {
             | None => qc1_opt
             | Some(qc2_id) =>
@@ -1050,7 +1050,7 @@ module replica {
         if (view_signed_votes.size() < QUORUM_WEIGHT) {
             None
         } else {
-            val high_commit_qc: Option[QCName] = view_signed_votes.fold(HIGH_COMMIT_QC_NONE,
+            val high_commit_qc: Option[QcId] = view_signed_votes.fold(HIGH_COMMIT_QC_NONE,
                 (prev_max_qc, sv) => max_commit_qc(prev_max_qc, sv.high_commit_qc))
             // Importantly, view_signed_votes does not have two votes with the same signature.
             // We check that in store_signed_timeout_all_inv.
@@ -1555,7 +1555,7 @@ module replica {
     }
 
     // basic integrity invariant for commit_qc
-    def aux_commit_qc_inv(qc_opt: Option[QCName]): bool = {
+    def aux_commit_qc_inv(qc_opt: Option[QcId]): bool = {
         match (qc_opt) {
             | None => true
             | Some(qc_id) =>
@@ -1577,7 +1577,7 @@ module replica {
     }
 
     // integrity invariant for TimeoutQC
-    def aux_timeout_qc_inv(qc_opt: Option[QCName]): bool = {
+    def aux_timeout_qc_inv(qc_opt: Option[QcId]): bool = {
         match (qc_opt) {
             | None => true
             | Some(qc_id) => 
