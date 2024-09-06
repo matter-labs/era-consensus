@@ -43,7 +43,7 @@ impl EncodedNetAddress {
         let x = zksync_protobuf::decode(&bytes)?;
         Ok(Self(x, bytes))
     }
-    /// Reference to encoded represetation.
+    /// Reference to encoded representation.
     pub fn encoded(&self) -> &[u8] {
         &self.1
     }
