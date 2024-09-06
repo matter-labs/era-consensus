@@ -130,7 +130,7 @@ message Msg {
   oneof t {// required
     ConsensusMsg consensus = 1;
     bytes session_id = 2;
-    NetAddress net_address = 3;
+    bytes net_address = 3; // encoded NetAddress.
   }
 }
 

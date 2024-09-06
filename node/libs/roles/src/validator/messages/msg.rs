@@ -1,5 +1,5 @@
 //! Generic message types.
-use super::{ConsensusMsg, NetAddress};
+use super::{ConsensusMsg, EncodedNetAddress};
 use crate::{node::SessionId, validator};
 use std::fmt;
 use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
@@ -13,7 +13,7 @@ pub enum Msg {
     /// authentication
     SessionId(SessionId),
     /// validator discovery
-    NetAddress(NetAddress),
+    NetAddress(EncodedNetAddress),
 }
 
 impl Msg {
@@ -47,7 +47,7 @@ impl Variant<Msg> for SessionId {
     }
 }
 
-impl Variant<Msg> for NetAddress {
+impl Variant<Msg> for EncodedNetAddress {
     fn insert(self) -> Msg {
         Msg::NetAddress(self)
     }

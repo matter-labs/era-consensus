@@ -4,24 +4,21 @@ use std::{collections::HashSet, sync::Arc};
 use zksync_concurrency::{sync, time};
 use zksync_consensus_roles::validator;
 
-/// Mapping from validator::PublicKey to a signed validator::NetAddress.
+type SignedAddr = Arc<validator::Signed<validator::EncodedNetAddress>>;
+
+/// Mapping from validator::PublicKey to a signed validator::EncodedNetAddress.
 /// Represents the currents state of node's knowledge about the validator endpoints.
 #[derive(Clone, Default, PartialEq, Eq)]
-pub(crate) struct ValidatorAddrs(
-    pub(super) im::HashMap<validator::PublicKey, Arc<validator::Signed<validator::NetAddress>>>,
-);
+pub(crate) struct ValidatorAddrs(pub(super) im::HashMap<validator::PublicKey, SignedAddr>);
 
 impl ValidatorAddrs {
-    /// Gets a NetAddress for a given key.
-    pub(crate) fn get(
-        &self,
-        key: &validator::PublicKey,
-    ) -> Option<&Arc<validator::Signed<validator::NetAddress>>> {
+    /// Gets a EncodedNetAddress for a given key.
+    pub(crate) fn get(&self, key: &validator::PublicKey) -> Option<&SignedAddr> {
         self.0.get(key)
     }
 
     /// Returns a set of entries of `self` which are newer than the entries in `b`.
-    pub(super) fn get_newer(&self, b: &Self) -> Vec<Arc<validator::Signed<validator::NetAddress>>> {
+    pub(super) fn get_newer(&self, b: &Self) -> Vec<SignedAddr> {
         let mut newer = vec![];
         for (k, v) in &self.0 {
             if let Some(bv) = b.0.get(k) {
@@ -42,7 +39,7 @@ impl ValidatorAddrs {
     pub(super) fn update(
         &mut self,
         validators: &validator::Committee,
-        data: &[Arc<validator::Signed<validator::NetAddress>>],
+        data: &[SignedAddr],
     ) -> anyhow::Result<bool> {
         let mut changed = false;
 
@@ -103,11 +100,16 @@ impl ValidatorAddrsWatch {
             .get(&key.public())
             .map(|x| x.msg.version + 1)
             .unwrap_or(0);
-        let d = Arc::new(key.sign_msg(validator::NetAddress {
-            addr,
-            version,
-            timestamp,
-        }));
+        let d = Arc::new(
+            key.sign_msg(
+                validator::NetAddress {
+                    addr,
+                    version,
+                    timestamp,
+                }
+                .into(),
+            ),
+        );
         validator_addrs.0.insert(d.key.clone(), d);
         this.send_replace(validator_addrs);
     }
@@ -120,7 +122,7 @@ impl ValidatorAddrsWatch {
     pub(crate) async fn update(
         &self,
         validators: &validator::Committee,
-        data: &[Arc<validator::Signed<validator::NetAddress>>],
+        data: &[SignedAddr],
     ) -> anyhow::Result<()> {
         let this = self.0.lock().await;
         let mut validator_addrs = this.borrow().clone();
