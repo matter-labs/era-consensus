@@ -58,7 +58,7 @@ jobs:
 
       - name: Bump version
         run: |
-          NEW_VERSION=$(cat .github/release-please/manifest.json | jq -r '."."')
+          NEW_VERSION=$(cat .github/release-please/manifest.json | jq -r '.node')
           cargo-set-version set-version $NEW_VERSION --workspace --manifest-path node/Cargo.toml
 
       - name: Push changes
