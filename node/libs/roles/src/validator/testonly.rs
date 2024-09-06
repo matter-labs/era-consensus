@@ -1,10 +1,10 @@
 //! Test-only utilities.
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
-    FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
-    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProofOfPossession,
-    ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed,
-    Signers, View, ViewNumber, WeightedValidator,
+    EncodedNetAddress, FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit,
+    LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC,
+    ProofOfPossession, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey,
+    Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
 use crate::{attester, validator::LeaderSelectionMode};
 use bit_vec::BitVec;
@@ -469,6 +469,12 @@ impl Distribution<Phase> for Standard {
             1 => Phase::Commit,
             _ => unreachable!(),
         }
+    }
+}
+
+impl Distribution<EncodedNetAddress> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EncodedNetAddress {
+        rng.gen::<NetAddress>().into()
     }
 }
 

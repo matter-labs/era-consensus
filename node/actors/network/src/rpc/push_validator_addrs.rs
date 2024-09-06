@@ -20,7 +20,7 @@ impl super::Rpc for Rpc {
 
 /// Contains a batch of new ValidatorAddrs that the sender has learned about.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Req(pub(crate) Vec<Arc<validator::Signed<validator::NetAddress>>>);
+pub(crate) struct Req(pub(crate) Vec<Arc<validator::Signed<validator::EncodedNetAddress>>>);
 
 impl ProtoFmt for Req {
     type Proto = proto::PushValidatorAddrs;

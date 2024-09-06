@@ -168,13 +168,16 @@ async fn test_genesis_mismatch() {
             .validator_addrs
             .update(
                 &setup.genesis.validators,
-                &[Arc::new(setup.validator_keys[1].sign_msg(
-                    validator::NetAddress {
-                        addr: *cfgs[1].server_addr,
-                        version: 0,
-                        timestamp: ctx.now_utc(),
-                    },
-                ))],
+                &[Arc::new(
+                    setup.validator_keys[1].sign_msg(
+                        validator::NetAddress {
+                            addr: *cfgs[1].server_addr,
+                            version: 0,
+                            timestamp: ctx.now_utc(),
+                        }
+                        .into(),
+                    ),
+                )],
             )
             .await
             .unwrap();

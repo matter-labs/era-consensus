@@ -1,8 +1,9 @@
 use super::{
     AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
-    FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
-    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
-    ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
+    EncodedNetAddress, FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit,
+    LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC,
+    ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View,
+    ViewNumber, WeightedValidator,
 };
 use crate::{
     attester::{self, WeightedAttester},
@@ -373,7 +374,9 @@ impl ProtoFmt for Msg {
         Ok(match r.t.as_ref().context("missing")? {
             T::Consensus(r) => Self::Consensus(ProtoFmt::read(r).context("Consensus")?),
             T::SessionId(r) => Self::SessionId(SessionId(r.clone())),
-            T::NetAddress(r) => Self::NetAddress(ProtoFmt::read(r).context("NetAddress")?),
+            T::NetAddress(r) => {
+                Self::NetAddress(EncodedNetAddress::new(r.to_vec()).context("NetAddress")?)
+            }
         })
     }
 
@@ -383,7 +386,7 @@ impl ProtoFmt for Msg {
         let t = match self {
             Self::Consensus(x) => T::Consensus(x.build()),
             Self::SessionId(x) => T::SessionId(x.0.clone()),
-            Self::NetAddress(x) => T::NetAddress(x.build()),
+            Self::NetAddress(x) => T::NetAddress(x.encoded().to_vec()),
         };
 
         Self::Proto { t: Some(t) }

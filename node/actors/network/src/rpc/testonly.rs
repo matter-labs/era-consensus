@@ -30,7 +30,7 @@ impl Distribution<rpc::push_validator_addrs::Req> for Standard {
             (0..n)
                 .map(|_| {
                     let key: validator::SecretKey = rng.gen();
-                    let addr: validator::NetAddress = rng.gen();
+                    let addr: validator::EncodedNetAddress = rng.gen();
                     Arc::new(key.sign_msg(addr))
                 })
                 .collect(),

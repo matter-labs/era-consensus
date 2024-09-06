@@ -90,25 +90,30 @@ fn mk_version<R: Rng>(rng: &mut R) -> u64 {
 }
 
 #[derive(Default)]
-struct View(im::HashMap<validator::PublicKey, Arc<validator::Signed<validator::NetAddress>>>);
+struct View(
+    im::HashMap<validator::PublicKey, Arc<validator::Signed<validator::EncodedNetAddress>>>,
+);
 
 fn mk_netaddr(
     key: &validator::SecretKey,
     addr: std::net::SocketAddr,
     version: u64,
     timestamp: time::Utc,
-) -> validator::Signed<validator::NetAddress> {
-    key.sign_msg(validator::NetAddress {
-        addr,
-        version,
-        timestamp,
-    })
+) -> validator::Signed<validator::EncodedNetAddress> {
+    key.sign_msg(
+        validator::NetAddress {
+            addr,
+            version,
+            timestamp,
+        }
+        .into(),
+    )
 }
 
 fn random_netaddr<R: Rng>(
     rng: &mut R,
     key: &validator::SecretKey,
-) -> Arc<validator::Signed<validator::NetAddress>> {
+) -> Arc<validator::Signed<validator::EncodedNetAddress>> {
     Arc::new(mk_netaddr(
         key,
         mk_addr(rng),
@@ -123,7 +128,7 @@ fn update_netaddr<R: Rng>(
     key: &validator::SecretKey,
     version_diff: i64,
     timestamp_diff: time::Duration,
-) -> Arc<validator::Signed<validator::NetAddress>> {
+) -> Arc<validator::Signed<validator::EncodedNetAddress>> {
     Arc::new(mk_netaddr(
         key,
         mk_addr(rng),
@@ -133,15 +138,18 @@ fn update_netaddr<R: Rng>(
 }
 
 impl View {
-    fn insert(&mut self, entry: Arc<validator::Signed<validator::NetAddress>>) {
+    fn insert(&mut self, entry: Arc<validator::Signed<validator::EncodedNetAddress>>) {
         self.0.insert(entry.key.clone(), entry);
     }
 
-    fn get(&mut self, key: &validator::SecretKey) -> Arc<validator::Signed<validator::NetAddress>> {
+    fn get(
+        &mut self,
+        key: &validator::SecretKey,
+    ) -> Arc<validator::Signed<validator::EncodedNetAddress>> {
         self.0.get(&key.public()).unwrap().clone()
     }
 
-    fn as_vec(&self) -> Vec<Arc<validator::Signed<validator::NetAddress>>> {
+    fn as_vec(&self) -> Vec<Arc<validator::Signed<validator::EncodedNetAddress>>> {
         self.0.values().cloned().collect()
     }
 }
