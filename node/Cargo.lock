@@ -1033,25 +1033,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5b538e4231443a5b9c507caee3356f016d832cf7393d2d90f03ea3180d4e3fbc"
 dependencies = [
  "byteorder",
- "ff_derive_ce",
  "hex",
  "rand 0.4.6",
  "serde",
-]
-
-[[package]]
-name = "ff_derive_ce"
-version = "0.11.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b96fbccd88dbb1fac4ee4a07c2fcc4ca719a74ffbd9d2b9d41d8c8eb073d8b20"
-dependencies = [
- "num-bigint",
- "num-integer",
- "num-traits",
- "proc-macro2",
- "quote",
- "serde",
- "syn 1.0.109",
 ]
 
 [[package]]
@@ -2188,19 +2172,6 @@ name = "overload"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
-
-[[package]]
-name = "pairing_ce"
-version = "0.28.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "843b5b6fb63f00460f611dbc87a50bbbb745f0dfe5cbf67ca89299c79098640e"
-dependencies = [
- "byteorder",
- "cfg-if",
- "ff_ce",
- "rand 0.4.6",
- "serde",
-]
 
 [[package]]
 name = "parking"
@@ -4061,7 +4032,6 @@ dependencies = [
  "k256",
  "num-bigint",
  "num-traits",
- "pairing_ce",
  "rand 0.4.6",
  "rand 0.8.5",
  "sha3",
