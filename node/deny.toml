@@ -46,8 +46,7 @@ skip = [
     { name = "regex-automata", version = "0.1.10" },
     { name = "regex-syntax", version = "0.6.29" },
 
-    # Old versions required by pairing_ce & ff_ce.
-    { name = "rand", version = "0.4" },
+    # Old version required by kube-runtime.
     { name = "syn", version = "1.0" },
 
     # Old version required by protox 0.5.1.
