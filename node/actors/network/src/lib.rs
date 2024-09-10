@@ -180,7 +180,11 @@ impl Runner {
                         tracing::info!("new connection");
                         let (stream, endpoint) = preface::accept(ctx, stream)
                             .await
-                            .context("preface::accept()")?;
+                            .context("preface::accept()")
+                            .context(
+                                "establishing new incoming TCP connection failed. \
+                                The possible cause is that someone was trying to establish a non-consensus connection to the consensus port. \
+                                If you believe this connection should have succeeded, please check your port configuration")?;
                         match endpoint {
                             preface::Endpoint::ConsensusNet => {
                                 if let Some(c) = &self.net.consensus {
