@@ -250,13 +250,14 @@ module inductive {
 
     // the inductive invariant
     val ind_inv = and {
-        lemma_committed_blocks_have_correct_qc,
+        lemma0_committed_blocks_have_justified_qc,
+        lemma1_justified_qc_is_valid,
     }
 
     // auxiliary invariants that we call lemmas
 
     // a committed block is supported by a CommitQC, hence, the QC should be valid
-    val lemma_committed_blocks_have_correct_qc = {
+    val lemma0_committed_blocks_have_justified_qc = {
         IREPLICAS.forall(id => {
             val replica = r::replica_state.get(id)
             replica.committed_blocks.indices().forall(i => {
@@ -265,10 +266,32 @@ module inductive {
                 and {
                     qc.vote.block_hash == hash(cblock.block),
                     qc.vote.block_number == i,
+                    r::ghost_justifications.keys().contains((id, qc.vote.view)),
+                    r::ghost_justifications.get((id, qc.vote.view)) == Commit(cblock.commit_qc),
+                }
+            })
+        })
+    }
+
+    // a committed block is supported by a CommitQC, hence, the QC should be valid
+    val lemma1_justified_qc_is_valid = {
+        r::ghost_justifications.keys().forall(((id, view)) => {
+            match (r::ghost_justifications.get((id, view))) {
+            | Commit(qc_id) =>
+                val qc = r::ghost_commit_qc[qc_id]
+                and {
+                    qc.vote.view == view,
+                    qc.agg_sig.subseteq(IREPLICAS),
+                    // no invalid blocks are committed
+                    IVALID_BLOCKS.exists(b => hash(b) == qc.vote.block_hash),
                     // there is a quorum of signatures!
                     r::commit_qc_verify(qc),
                 }
-            })
+
+            | Timeout(qc_id) =>
+                // TODO
+                true
+            }
         })
     }
 
