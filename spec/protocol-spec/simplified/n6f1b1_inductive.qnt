@@ -9,6 +9,8 @@ module n6f1b1_inductive {
     IVIEWS = 0.to(3),
     IBLOCK_NUMBERS = Set(0),
     IVALID_BLOCKS = Set("val_b0", "val_b1"),
-    IINVALID_BLOCKS = Set("inv_b3")
+    IINVALID_BLOCKS = Set("inv_b3"),
+    MAX_COMMIT_QC = 10,
+    MAX_TIMEOUT_QC = 10
   ).* from "./inductive"
 }

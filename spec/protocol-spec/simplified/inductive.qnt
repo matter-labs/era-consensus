@@ -2,6 +2,7 @@ module inductive {
     import types.* from "./types"
     import option.* from "../option"
     
+    // parameters
     const IWEIGHTS: ReplicaId -> Weight
     const IREPLICA_KEYS: ReplicaId -> ReplicaKey
     const IN: int
@@ -13,33 +14,26 @@ module inductive {
     const IVALID_BLOCKS: Set[Block]
     const IINVALID_BLOCKS: Set[Block]
 
+    // we restrict the number of CommitQC and TimeoutQC. Otherwise, the search space is too large.
+    const MAX_COMMIT_QC: int
+    const MAX_TIMEOUT_QC: int
+
     pure val IALL_BLOCKS = IVALID_BLOCKS.union(IINVALID_BLOCKS)
     pure val IREPLICAS = ICORRECT.union(IFAULTY)
 
-    var ghost_commit_qc: List[CommitQC]
-    var ghost_timeout_qc: List[TimeoutQC]
+    import replica(
+        WEIGHTS = IWEIGHTS,
+        REPLICA_KEYS = IREPLICA_KEYS,
+        N = IN,
+        F = IF,
+        CORRECT = ICORRECT,
+        FAULTY = IFAULTY,
+        VIEWS = IVIEWS,
+        VALID_BLOCKS = IVALID_BLOCKS,
+        INVALID_BLOCKS = IINVALID_BLOCKS
+    ) as r from "./replica"
 
-    pure val COMMIT_VOTE_SAMPLE: CommitVote = {
-        view: 0, block_number: 0, block_hash: "val_b0",
-    }    
-
-    pure val COMMIT_QC_SAMPLE: CommitQC = {
-        vote: COMMIT_VOTE_SAMPLE,
-        agg_sig: Set("n0"),
-    }
-
-    pure val TIMEOUT_VOTE_SAMPLE: TimeoutVote = {
-        view: 0,
-        high_vote: Some(COMMIT_VOTE_SAMPLE),
-        high_commit_qc_view: Some(0),
-    }
-
-    pure val TIMEOUT_QC_SAMPLE: TimeoutQC = {
-        votes: Set("n0").mapBy(id => TIMEOUT_VOTE_SAMPLE),
-        agg_sig: Set("n0"),
-        high_commit_qc: Some(0),
-        ghost_view: 0,
-    }
+    // definitions
 
     pure def commit_vote_shape_inv(v: CommitVote): bool = and {
         IVIEWS.contains(v.view),
@@ -54,8 +48,14 @@ module inductive {
 
     pure def timeout_vote_shape_inv(v: TimeoutVote): bool = and {
         IVIEWS.contains(v.view),
-        v.high_vote.option_has(commit_vote_shape_inv),
-        v.high_commit_qc_view.option_has(v_view => IVIEWS.contains(v_view)),
+        match (v.high_vote) {
+        | Some(hv) => commit_vote_shape_inv(hv)
+        | None => true
+        },
+        match (v.high_commit_qc_view) {
+        | Some(i) => IVIEWS.contains(i)
+        | None => true
+        },
     }    
 
     pure def timeout_qc_shape_inv(qc: TimeoutQC, commit_qc_size: int): bool = and {
@@ -64,186 +64,191 @@ module inductive {
             timeout_vote_shape_inv(qc.votes.get(id)),
         }),
         qc.agg_sig.subseteq(IREPLICAS),
-        qc.high_commit_qc.option_has(i => (0 <= i) and (i < commit_qc_size)),
+        match (qc.high_commit_qc) {
+        | Some(i) => (0 <= i) and (i < commit_qc_size)
+        | None => true
+        },
         IVIEWS.contains(qc.ghost_view),
     }
 
-    action init =
-        nondet commit_qc = generate(20, [COMMIT_QC_SAMPLE])
-        nondet timeout_qc = generate(20, [TIMEOUT_QC_SAMPLE])
-        val commit_qc_size = commit_qc.length()
-        all {
-            // initialize ghost_commit_qc
-            ghost_commit_qc' = commit_qc,
-            // initialize ghost_timeout_qc
-            ghost_timeout_qc' = timeout_qc,
-            // restrict the shape of the generated data structures
-            ghost_commit_qc.indices().forall(i => commit_qc_shape_inv(ghost_commit_qc[i])),
-            ghost_timeout_qc.indices().forall(i => timeout_qc_shape_inv(ghost_timeout_qc[i], commit_qc_size)),
-        }
-
-    action step = all {
-        // keep ghost_commit_qc unchanged
-        ghost_commit_qc' = ghost_commit_qc,
-        ghost_timeout_qc' = ghost_timeout_qc,
+    pure def signed_commit_vote_shape_inv(sv: SignedCommitVote): bool = and {
+        IREPLICAS.contains(sv.sig),
+        commit_vote_shape_inv(sv.vote)
     }
 
-    /*
-    import replica(
-        WEIGHTS = IWEIGHTS,
-        REPLICA_KEYS = IREPLICA_KEYS,
-        N = IN,
-        F = IF,
-        CORRECT = ICORRECT,
-        FAULTY = IFAULTY,
-        VIEWS = IVIEWS,
-        VALID_BLOCKS = IVALID_BLOCKS,
-        INVALID_BLOCKS = IINVALID_BLOCKS
-    ) as r from "./replica"
-
-    // to make the state visible to the instances
-    val state = {
-        replica_state: r::replica_state,
-        leader: r::leader,
-        replica_view: r::replica_view,
-        proposer_view: r::replica_view,
-        msgs_signed_commit: r::msgs_signed_commit,
-        msgs_signed_timeout: r::msgs_signed_timeout,
+    pure def signed_timeout_vote_shape_inv(sv: SignedTimeoutVote): bool = and {
+        IREPLICAS.contains(sv.sig),
+        timeout_vote_shape_inv(sv.vote),
+        match (sv.high_commit_qc) {
+        | Some(qc_id) => 0 <= qc_id and qc_id <= MAX_COMMIT_QC
+        | None => true
+        },
     }
 
-    // choose arbitrary values for the initial states
-    action init: bool = {
-        // assign indices to all replicas in some order
-        pure val idx_and_size = r::CORRECT.fold((Map(), 0), (p, r) => (p._1.put(r, p._2), p._2 + 1))
-        pure val replica_idx = idx_and_size._1
-        pure val correct_size = idx_and_size._2
-        pure val all_indices = replica_idx.keys().map(id => replica_idx.get(id))
+    pure val COMMIT_VOTES: Set[CommitVote] =
+        tuples(IVIEWS, IBLOCK_NUMBERS, IALL_BLOCKS).map(((v, bn, bh)) => {
+            { view: v, block_number: bn, block_hash: bh }
+        })
+
+    pure val SIGNED_COMMIT_VOTES: Set[SignedCommitVote] =
+        tuples(IVIEWS, IBLOCK_NUMBERS, IALL_BLOCKS, IREPLICAS).map(((v, bn, bh, sig)) => {
+            { vote: { view: v, block_number: bn, block_hash: bh }, sig: sig }
+        })
+
+    pure val COMMIT_QCS: Set[CommitQC] = tuples(COMMIT_VOTES, powerset(IREPLICAS)).map(((cv, sigs)) => {
+        { vote: cv, agg_sig: sigs }
+    })
+
+    pure val COMMIT_VOTES_OR_NONE: Set[Option[CommitVote]] = COMMIT_VOTES.map(v => Some(v)).union(Set(COMMIT_VOTE_NONE))
+
+    pure val VIEW_NUMBERS_OR_NONE: Set[Option[ViewNumber]] = IVIEWS.map(v => Some(v)).union(Set(VIEW_NUMBER_NONE))
+
+    pure val TIMEOUT_VOTES: Set[TimeoutVote] =
+        tuples(IVIEWS, COMMIT_VOTES_OR_NONE, VIEW_NUMBERS_OR_NONE).map(((v, hv, hcv)) =>
+            { view: v, high_vote: hv, high_commit_qc_view: hcv }
+        )
+
+    pure val SIGNED_TIMEOUT_VOTES: Set[SignedTimeoutVote] =
+        tuples(IVIEWS, COMMIT_VOTES_OR_NONE, VIEW_NUMBERS_OR_NONE, IREPLICAS, 0.to(MAX_COMMIT_QC), Bool)
+            .map(((v, hv, hcv, id, qc_id, qc_is_some)) =>
+                {
+                    vote: { view: v, high_vote: hv, high_commit_qc_view: hcv },
+                    sig: id,
+                    high_commit_qc: if (qc_is_some) Some(qc_id) else None
+                }
+        )
+
+    pure val NEW_VIEWS: Set[NewView] =
+        tuples(IREPLICAS, 0.to(MAX_COMMIT_QC).union(0.to(MAX_TIMEOUT_QC)), Bool)
+            .map(((id, qc_id, is_commit_id)) =>
+                { sig: id, justification: if (is_commit_id) Commit(qc_id) else Timeout(qc_id) }
+        )
+
+    pure val PROPOSALS: Set[Proposal] =
+        tuples(IALL_BLOCKS, Bool, 0.to(MAX_COMMIT_QC).union(0.to(MAX_TIMEOUT_QC)), Bool, IREPLICAS, IBLOCK_NUMBERS)
+            .map(((bh, is_block_some, qc_id, is_commit_id, id, bn)) => {
+                block: if (is_block_some) Some(bh) else None,
+                justification: if (is_commit_id) Commit(qc_id) else Timeout(qc_id),
+                sig: id,
+                ghost_block_number: bn
+            })
+
+    pure val JUSTIFICATIONS: Set[Justification] =
+        tuples(0.to(MAX_COMMIT_QC).union(0.to(MAX_TIMEOUT_QC)), Bool)
+            .map(((qc_id, is_commit_id)) => if (is_commit_id) Commit(qc_id) else Timeout(qc_id))
+    
+    pure val COMMIT_QC_ID_OR_NONE: Set[Option[QcId]] =
+        0.to(MAX_COMMIT_QC).map(i => Some(i)).union(Set(HIGH_COMMIT_QC_NONE))
+
+    pure val TIMEOUT_QC_ID_OR_NONE: Set[Option[QcId]] =
+        0.to(MAX_TIMEOUT_QC).map(i => Some(i)).union(Set(HIGH_TIMEOUT_QC_NONE))
+
+    pure val CACHED_PROPOSALS: Set[Set[(BlockNumber, BlockHash)]] =
+        tuples(IBLOCK_NUMBERS, IALL_BLOCKS).powerset()
+
+    pure val COMMITTED_BLOCKS: Set[CommittedBlock] =
+        tuples(IALL_BLOCKS, 0.to(MAX_COMMIT_QC))
+            .map(((b, qc_id)) => { block: b, commit_qc: qc_id })
+
+    // the set of all singleton committed blocks + the empty list
+    pure val COMMITTED_BLOCKS_0_OR_1: Set[List[CommittedBlock]] =
+        COMMITTED_BLOCKS.map(b => [b]).union(Set([]))
+
+    pure val PHASES = Set(PhasePrepare, PhaseCommit, PhaseTimeout)
+
+    action init = {
+        // non-deterministically initialize ghost_commit_qc
+        nondet commit_qcs = 0.to(MAX_COMMIT_QC).setOfMaps(COMMIT_QCS).oneOf()
+        val commit_qc = commit_qcs.keys().fold([], (lst, i) => lst.append(commit_qcs.get(i)))
+        // non-deterministically initialize ghost_timeout_qc
+        nondet timeout_qc_agg_sig = 0.to(MAX_TIMEOUT_QC).setOfMaps(powerset(IREPLICAS)).oneOf()
+        nondet timeout_qc_votes = tuples(0.to(MAX_TIMEOUT_QC), IREPLICAS).setOfMaps(TIMEOUT_VOTES).oneOf()
+        nondet timeout_qc_hcq =
+            0.to(MAX_TIMEOUT_QC)
+              .setOfMaps(0.to(MAX_COMMIT_QC).map(id => Some(id)).union(Set(HIGH_COMMIT_QC_NONE)))
+              .oneOf()
+        nondet timeout_qc_view = 0.to(MAX_TIMEOUT_QC).setOfMaps(IVIEWS).oneOf()
+        val timeout_qc =
+            0.to(MAX_TIMEOUT_QC)
+                .fold([], (lst, i) => lst.append({
+                    votes: timeout_qc_agg_sig.get(i).mapBy(id => timeout_qc_votes.get((i, id))),
+                    agg_sig: timeout_qc_agg_sig.get(i),
+                    high_commit_qc: timeout_qc_hcq.get(i),
+                    ghost_view: timeout_qc_view.get(i),
+                }))
+        // non-deterministically initialize msgs_signed_commit
+        nondet signed_commits = SIGNED_COMMIT_VOTES.powerset().oneOf()
+        // non-deterministically initialize msgs_timeout_commit
+        nondet signed_timeouts = SIGNED_TIMEOUT_VOTES.powerset().oneOf()
+        // non-deterministically initialize msgs_new_view
+        nondet new_views = NEW_VIEWS.powerset().oneOf()
+        // non-deterministically initialize msgs_proposal
+        nondet proposals = PROPOSALS.powerset().oneOf()
+        // non-deterministically initialize ghost_justifications
+        nondet justifications = tuples(IREPLICAS, IVIEWS).setOfMaps(JUSTIFICATIONS).oneOf()
+        // Non-deterministically initialize replica_state.
+        // We pick maps for the individual fields, to avoid combinatorial explosion of tuples.
+        nondet state_views = ICORRECT.setOfMaps(IVIEWS).oneOf()
+        nondet state_phases = ICORRECT.setOfMaps(PHASES).oneOf()
+        nondet high_votes = ICORRECT.setOfMaps(COMMIT_VOTES_OR_NONE).oneOf()
+        nondet high_commit_qcs = ICORRECT.setOfMaps(COMMIT_QC_ID_OR_NONE).oneOf()
+        nondet high_timeout_qcs = ICORRECT.setOfMaps(TIMEOUT_QC_ID_OR_NONE).oneOf()
+        nondet cached_proposals = ICORRECT.setOfMaps(CACHED_PROPOSALS).oneOf()
+        nondet committed_blocks = ICORRECT.setOfMaps(COMMITTED_BLOCKS_0_OR_1).oneOf()
+        val replica_s: ReplicaId -> ReplicaState =
+            ICORRECT.mapBy(id =>
+                {
+                    view: state_views.get(id),
+                    phase: state_phases.get(id),
+                    high_vote: high_votes.get(id),
+                    high_commit_qc: high_commit_qcs.get(id),
+                    high_timeout_qc: high_timeout_qcs.get(id),
+                    cached_proposals: cached_proposals.get(id),
+                    committed_blocks: committed_blocks.get(id),
+                })
+        // non-deterministically choose the leader function
+        nondet ldr = IVIEWS.setOfMaps(IREPLICAS).oneOf()
+        // non-deterministically choose replica_view and proposer_view
+        nondet rv = ICORRECT.setOfMaps(IVIEWS).oneOf()
+        nondet pv = ICORRECT.setOfMaps(IVIEWS).oneOf()
         all {
-            { // non-deterministically choose the leader function
-                nondet ldr = r::VIEWS.setOfMaps(r::REPLICAS).oneOf()
-                r::leader' = ldr
-            },
-            { // non-deterministically choose replica_view and proposer_view
-                nondet rv = r::CORRECT.setOfMaps(r::VIEWS).oneOf()
-                r::replica_view' = rv
-            },
-            {
-                nondet pv = r::CORRECT.setOfMaps(r::VIEWS).oneOf()
-                r::proposer_view' = pv
-            },
-            // non-deterministically choose replica_state
-            nondet replica_views = r::CORRECT.setOfMaps(IVIEWS).oneOf()
-            nondet replica_phases =
-                r::CORRECT.setOfMaps(Set(PhasePrepare, PhaseTimeout, PhaseCommit)).oneOf()
-            nondet high_votes = generate(6, [COMMIT_VOTE_SAMPLE])
-            nondet high_votes_is_some = r::REPLICAS.powerset().oneOf()
-            nondet high_commit_qcs = generate(6, [COMMIT_QC_SAMPLE])
-            nondet high_commit_qcs_is_some = r::REPLICAS.powerset().oneOf()
-            nondet high_timeout_qcs = generate(6, [TIMEOUT_QC_SAMPLE])
-            nondet high_timeout_qcs_is_some = r::REPLICAS.powerset().oneOf()
-            nondet cached_proposals = generate(6, [Set((0, "val_b0"))])
-            nondet committed_blocks = generate(6, [[COMMITTED_BLOCK_SAMPLE]])
-            all {
-                high_votes.length() == correct_size,
-                all_indices.forall(i => commit_vote_shape_inv(high_votes[i])),
-                high_commit_qcs.length() == correct_size,
-                all_indices.forall(i => commit_qc_shape_inv(high_commit_qcs[i])),
-                high_timeout_qcs.length() == correct_size,
-                all_indices.forall(i => timeout_qc_shape_inv(high_timeout_qcs[i])),
-                cached_proposals.length() == correct_size,
-                all_indices.forall(i => cached_proposals[i].forall(((bn, bh)) => all {
-                    r::VIEWS.contains(bn),
-                    r::ALL_BLOCKS.contains(bh),
-                })),
-                committed_blocks.length() == correct_size,
-                all_indices.forall(i => {
-                    val committed = committed_blocks[i]
-                    and {
-                        committed.indices().forall(j => committed_block_shape_inv(committed[j])),
-                        committed.indices().subseteq(IBLOCK_NUMBERS),
-                    }
-                }),
-                r::replica_state' = r::CORRECT.mapBy(id =>
-                    val i = replica_idx.get(id)
-                    {
-                        view: replica_views.get(id),
-                        phase: replica_phases.get(id),
-                        high_vote:
-                            if (high_votes_is_some.contains(id)) {
-                                Some(high_votes[i])
-                            } else {
-                                COMMIT_VOTE_NONE
-                            },
-                        high_commit_qc:
-                            if (high_commit_qcs_is_some.contains(id)) {
-                                Some(high_commit_qcs[i])
-                            } else {
-                                HIGH_COMMIT_QC_NONE
-                            },
-                        high_timeout_qc:
-                            if (high_timeout_qcs_is_some.contains(id)) {
-                                Some(high_timeout_qcs[i])
-                            } else {
-                                HIGH_TIMEOUT_QC_NONE
-                            },
-                        cached_proposals: cached_proposals[i],
-                        committed_blocks: committed_blocks[i],
-                    }
-                ),
-            },
-            // non-deterministical choose msgs_proposal
-            {
-                nondet msgs_proposal = generate(6, Set(PROPOSAL_SAMPLE))
-                all {
-                    msgs_proposal.forall(proposal_shape_inv),
-                    r::msgs_proposal' = msgs_proposal,
-                }
-            },
-            // non-deterministically choose msgs_signed_commit
-            {
-                nondet msgs_signed_commit = generate(6, Set(SIGNED_COMMIT_VOTE_SAMPLE))
-                all {
-                    msgs_signed_commit.forall(signed_commit_vote_shape_inv),
-                    r::msgs_signed_commit' = msgs_signed_commit
-                }
-            },
-            // non-deterministically choose msgs_signed_timeout
-            {
-                nondet msgs_signed_timeout = generate(6, Set(SIGNED_TIMEOUT_VOTE_SAMPLE))
-                all {
-                    msgs_signed_timeout.forall(signed_timeout_vote_shape_inv),
-                    r::msgs_signed_timeout' = msgs_signed_timeout,
-                }
-            },
-            // non-deterministically choose msgs_new_view
-            {
-                nondet msgs_new_view = generate(6, Set(VIEW_SAMPLE))
-                all {
-                    msgs_new_view.forall(new_view_shape_inv),
-                    r::msgs_new_view' = msgs_new_view,
-                }
-            },
-            {
-                nondet ghost_justifications = generate(6, [[JUSTIFICATION_SAMPLE]])
-                all {
-                    ghost_justifications.indices() == all_indices,
-                    ghost_justifications.indices().forall(i => {
-                        val just = ghost_justifications[i]
-                        just.indices().forall(j => {
-                            justification_shape_inv(just[j])
-                        })
-                    }),
-                    val pairs = tuples(r::CORRECT, r::VIEWS).filter(((id, v)) => {
-                        ghost_justifications[replica_idx.get(id)].indices().contains(v)
-                    })
-                    r::ghost_justifications' = pairs.mapBy(((id, v)) => {
-                        val i = replica_idx.get(id)
-                        ghost_justifications[i][v]
-                    })
-                }
-            },
+            r::leader' = ldr,
+            r::replica_view' = rv,
+            r::proposer_view' = pv,
+            r::replica_state' = replica_s,
+            r::ghost_commit_qc' = commit_qc,
+            r::ghost_timeout_qc' = timeout_qc,
+            r::msgs_signed_commit' = signed_commits,
+            r::msgs_signed_timeout' = signed_timeouts,
+            r::msgs_new_view' = new_views,
+            r::msgs_proposal' = proposals,
+            r::ghost_justifications' = justifications,
             r::ghost_step' = AnyStep,
         }
     }
-    */
+
+    action step = r::step
+
+    action unchanged_all = all {
+        // keep everything unchanged
+        r::leader' = r::leader,
+        r::replica_view' = r::replica_view,
+        r::proposer_view' = r::proposer_view,
+        r::replica_state' = r::replica_state,
+        r::ghost_commit_qc' = r::ghost_commit_qc,
+        r::ghost_timeout_qc' = r::ghost_timeout_qc,
+        r::msgs_signed_commit' = r::msgs_signed_commit,
+        r::msgs_signed_timeout' = r::msgs_signed_timeout,
+        r::msgs_new_view' = r::msgs_new_view,
+        r::msgs_proposal' = r::msgs_proposal,
+        r::ghost_justifications' = r::ghost_justifications,
+        r::ghost_step' = r::ghost_step,
+    }
+
+    action shape_inv = and {
+        r::ghost_commit_qc.indices().forall(i => commit_qc_shape_inv(r::ghost_commit_qc[i])),
+        r::ghost_timeout_qc.indices().forall(i => timeout_qc_shape_inv(r::ghost_timeout_qc[i], r::ghost_commit_qc.length())),
+        r::msgs_signed_commit.forall(signed_commit_vote_shape_inv),
+        r::msgs_signed_timeout.forall(signed_timeout_vote_shape_inv),
+    }
 }
