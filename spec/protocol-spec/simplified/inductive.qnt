@@ -1,7 +1,18 @@
 // An inductive invariant for the agreement property.
 //
-// JVM_ARGS=-Xmx20G quint verify --apalache-config=apalache-inductive.json \
-//   --max-steps=1 --invariant=agreement_inv n6f1b1_inductive.qnt
+// To make sure that ind_inv is inductive w.r.t. agreement_inv, we need to run three queries:
+//
+// JVM_ARGS=-Xmx20G quint verify --server-endpoint=localhost:8080 \
+//   --apalache-config=apalache-inductive.json \
+//   --max-steps=0 --init=init --invariant=ind_inv n6f1b1_inductive.qnt
+//
+// JVM_ARGS=-Xmx20G quint verify --server-endpoint=localhost:8081 \
+//   --apalache-config=apalache-inductive.json \
+//   --max-steps=1 --init=ind_init --step=post_ind_inv --invariant=agreement_inv n6f1b1_inductive.qnt
+//
+// JVM_ARGS=-Xmx20G quint verify --server-endpoint=localhost:8082 \
+//   --apalache-config=apalache-inductive.json --max-steps=1 --init=ind_init \
+//   --step=step --invariant=ind_inv n6f1b1_inductive.qnt
 module inductive {
     import types.* from "./types"
     import option.* from "../option"
@@ -160,8 +171,11 @@ module inductive {
 
     pure val PHASES = Set(PhasePrepare, PhaseCommit, PhaseTimeout)
 
+    // the initialization from the replica module
+    action init = r::init
+
     // non-deterministically initialize the states
-    action init = {
+    action ind_init = {
         // non-deterministically initialize ghost_commit_qc
         nondet commit_qcs = 0.to(MAX_COMMIT_QC).setOfMaps(COMMIT_QCS).oneOf()
         val commit_qc = commit_qcs.keys().fold([], (lst, i) => lst.append(commit_qcs.get(i)))
@@ -253,6 +267,7 @@ module inductive {
         lemma0_committed_blocks_have_justified_qc,
         lemma1_justified_qc_is_valid,
         lemma2_justified_commit_qc_supported_by_messages,
+        lemma3_signed_commit_needs_proposal,
     }
 
     // auxiliary invariants that we call lemmas
@@ -307,6 +322,30 @@ module inductive {
                 // TODO
                 true
             }
+        })
+    }
+
+    val lemma3_signed_commit_needs_proposal = {
+        r::msgs_signed_commit.forall(m => or {
+            IFAULTY.contains(m.sig),
+            r::msgs_proposal.exists(p => and {
+                or {
+                    p.justification == Commit(m.vote.view - 1),
+                    p.justification == Timeout(m.vote.view - 1),
+                },
+                val number_and_hash = r::get_implied_block(p.justification)
+                and {
+                    number_and_hash._1 == m.vote.block_number,
+                    or {
+                        match (number_and_hash._2) {
+                        | Some(bh) => bh == m.vote.block_hash
+                        | None => p.block.option_has(b => hash(b) == m.vote.block_hash)
+                        }
+                    },
+                },
+                p.sig == r::leader.get(m.vote.view),
+                p.ghost_block_number == m.vote.block_number,
+            })
         })
     }
 
