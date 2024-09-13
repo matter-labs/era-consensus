@@ -252,6 +252,7 @@ module inductive {
     val ind_inv = and {
         lemma0_committed_blocks_have_justified_qc,
         lemma1_justified_qc_is_valid,
+        lemma2_justified_commit_qc_supported_by_messages,
     }
 
     // auxiliary invariants that we call lemmas
@@ -287,6 +288,20 @@ module inductive {
                     // there is a quorum of signatures!
                     r::commit_qc_verify(qc),
                 }
+
+            | Timeout(qc_id) =>
+                // TODO
+                true
+            }
+        })
+    }
+
+    val lemma2_justified_commit_qc_supported_by_messages = {
+        r::ghost_justifications.keys().forall(((id, view)) => {
+            match (r::ghost_justifications.get((id, view))) {
+            | Commit(qc_id) =>
+                val qc = r::ghost_commit_qc[qc_id]
+                qc.agg_sig.forall(id => r::msgs_signed_commit.contains({ vote: qc.vote, sig: id }))
 
             | Timeout(qc_id) =>
                 // TODO
