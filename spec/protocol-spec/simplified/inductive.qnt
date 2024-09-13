@@ -1,3 +1,7 @@
+// An inductive invariant for the agreement property.
+//
+// JVM_ARGS=-Xmx20G quint verify --apalache-config=apalache-inductive.json \
+//   --max-steps=1 --invariant=agreement_inv n6f1b1_inductive.qnt
 module inductive {
     import types.* from "./types"
     import option.* from "../option"
@@ -156,6 +160,7 @@ module inductive {
 
     pure val PHASES = Set(PhasePrepare, PhaseCommit, PhaseTimeout)
 
+    // non-deterministically initialize the states
     action init = {
         // non-deterministically initialize ghost_commit_qc
         nondet commit_qcs = 0.to(MAX_COMMIT_QC).setOfMaps(COMMIT_QCS).oneOf()
@@ -227,7 +232,47 @@ module inductive {
         }
     }
 
-    action step = r::step
+    // since Quint does not support postcondition directly,
+    // we have to introduce a stuttering step that assumes the postcondition
+    action post_ind_inv = all {
+        ind_inv,
+        unchanged_all,
+    }
+
+    // we only look at the step that has ind_inv as the pre-condition
+    action step = all {
+        ind_inv,
+        r::step,
+    }
+
+    // this is the main safety property that we are interested in
+    val agreement_inv = r::agreement_inv
+
+    // the inductive invariant
+    val ind_inv = and {
+        lemma_committed_blocks_have_correct_qc,
+    }
+
+    // auxiliary invariants that we call lemmas
+
+    // a committed block is supported by a CommitQC, hence, the QC should be valid
+    val lemma_committed_blocks_have_correct_qc = {
+        IREPLICAS.forall(id => {
+            val replica = r::replica_state.get(id)
+            replica.committed_blocks.indices().forall(i => {
+                val cblock = replica.committed_blocks[i]
+                val qc = r::ghost_commit_qc[cblock.commit_qc]
+                and {
+                    qc.vote.block_hash == hash(cblock.block),
+                    qc.vote.block_number == i,
+                    // there is a quorum of signatures!
+                    r::commit_qc_verify(qc),
+                }
+            })
+        })
+    }
+
+    // auxiliary definitions
 
     action unchanged_all = all {
         // keep everything unchanged
@@ -245,7 +290,7 @@ module inductive {
         r::ghost_step' = r::ghost_step,
     }
 
-    action shape_inv = and {
+    val shape_inv = and {
         r::ghost_commit_qc.indices().forall(i => commit_qc_shape_inv(r::ghost_commit_qc[i])),
         r::ghost_timeout_qc.indices().forall(i => timeout_qc_shape_inv(r::ghost_timeout_qc[i], r::ghost_commit_qc.length())),
         r::msgs_signed_commit.forall(signed_commit_vote_shape_inv),
