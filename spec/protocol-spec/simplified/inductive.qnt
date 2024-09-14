@@ -324,24 +324,29 @@ module inductive {
     val lemma3_signed_commit_needs_proposal = {
         r::msgs_signed_commit.forall(m => or {
             IFAULTY.contains(m.sig),
-            r::msgs_proposal.exists(p => and {
-                or {
-                    p.justification == Commit(m.vote.view - 1),
-                    p.justification == Timeout(m.vote.view - 1),
-                },
-                val number_and_hash = r::get_implied_block(p.justification)
-                and {
-                    number_and_hash._1 == m.vote.block_number,
-                    or {
-                        match (number_and_hash._2) {
-                        | Some(bh) => bh == m.vote.block_hash
-                        | None => p.block.option_has(b => hash(b) == m.vote.block_hash)
-                        }
-                    },
-                },
-                p.sig == r::leader.get(m.vote.view),
-                p.ghost_block_number == m.vote.block_number,
-            })
+            // either there is a proposal with CommitQC with the previous block number,
+            // or there is a proposal with TimeoutQC with the current block number
+            or {
+                0.to(MAX_COMMIT_QC).exists(qc_id => {
+                    val proposal = {
+                        // in our modeling, the block hash is identical to the block
+                        block: Some(m.vote.block_hash),
+                        justification: Commit(qc_id),
+                        sig: r::leader.get(m.vote.view),
+                        ghost_block_number: m.vote.block_number - 1,
+                    }
+                    r::msgs_proposal.contains(proposal)
+                }),
+                0.to(MAX_TIMEOUT_QC).exists(qc_id => {
+                    val proposal = {
+                        block: BLOCK_NONE,
+                        justification: Timeout(qc_id),
+                        sig: r::leader.get(m.vote.view),
+                        ghost_block_number: m.vote.block_number,
+                    }
+                    r::msgs_proposal.contains(proposal)
+                }),
+            }
         })
     }
 

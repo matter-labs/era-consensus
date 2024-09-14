@@ -11,6 +11,8 @@ module types {
     // is that these names are unique.
     type Block = str
 
+    pure val BLOCK_NONE: Option[Block] = None
+
     // For specification purposes, we represent a hash of a string `s` as
     // the string `s`. This representation is collision-free,
     // and we interpret it as opaque.
