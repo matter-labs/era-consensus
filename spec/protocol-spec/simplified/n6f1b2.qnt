@@ -4,8 +4,6 @@ module n6f1b2 {
   import replica(
     CORRECT = Set("n0", "n1", "n2", "n3"),
     FAULTY = Set("n4", "n5"),
-    WEIGHTS = Map("n0"->1, "n1"->1, "n2"->1, "n3"->1, "n4"->1, "n5"->1),
-    REPLICA_KEYS = Map("n0"->"n0", "n1"->"n1", "n2"->"n2", "n3"->"n3", "n4"->"n4", "n5"->"n5"),
     N = 6,
     F = 2,
     VIEWS = 0.to(3),

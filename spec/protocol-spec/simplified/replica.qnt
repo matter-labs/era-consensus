@@ -8,11 +8,6 @@ module replica {
     import defs.* from "../defs"
     import option.* from "../option"
 
-    // Weights of all replicas.
-    const WEIGHTS: ReplicaId -> Weight
-    // The keys of the replicas, normally, one unique key per replica.
-    // For modeling byzantine behaviour via twin replicas use the same keys.
-    const REPLICA_KEYS: ReplicaId -> ReplicaKey
     // The number of all replicas.
     const N: int
     // Byzantine replica number threshold
@@ -28,17 +23,14 @@ module replica {
     assume REPLICA_SIZE = (N == REPLICAS.size() and F == FAULTY.size())
 
     // The sum of all validator weights.
-    pure val TOTAL_WEIGHT: Weight = WEIGHTS.keys().fold(0, (s, id) => s + WEIGHTS.get(id));
+    pure val TOTAL_WEIGHT: Weight = N
     // The maximum weight of faulty replicas.
     // We want 5*FAULTY_WEIGHT + 1 = TOTAL_WEIGHT
-    pure val FAULTY_WEIGHT: Weight = (TOTAL_WEIGHT - 1) / 5;
+    pure val FAULTY_WEIGHT: Weight = F
     // The weight threshold needed to form a quorum certificate.
-    pure val QUORUM_WEIGHT: Weight = TOTAL_WEIGHT - FAULTY_WEIGHT;
+    pure val QUORUM_WEIGHT: Weight = N - F
     // The weight threshold needed to trigger a reproposal.
-    pure val SUBQUORUM_WEIGHT: Weight = TOTAL_WEIGHT - 3 * FAULTY_WEIGHT;
-
-    // produce replica's signature, just its key for specification purposes
-    pure def sig_of_id(id: ReplicaId): ReplicaKey = REPLICA_KEYS.get(id)
+    pure val SUBQUORUM_WEIGHT: Weight = N - 3 * F
 
     // The set of all views.
     const VIEWS: Set[ViewNumber]
@@ -82,7 +74,7 @@ module replica {
                     vote:{
                         view: v, block_number: n, block_hash: b
                     },
-                    sig: sig_of_id(r)
+                    sig: r
                 })
 
     // This is a simple deterministic version that initializes
@@ -93,7 +85,7 @@ module replica {
     // https://github.com/dnkolegov/chonkybft-spec/issues/23
     action init = {
         // non-deterministically choose the leader function
-        nondet ldr = VIEWS.setOfMaps(REPLICAS.map(id => sig_of_id(id))).oneOf()
+        nondet ldr = VIEWS.setOfMaps(REPLICAS).oneOf()
         init_view_1_with_leader(ldr)
     }
 
@@ -113,7 +105,7 @@ module replica {
         msgs_signed_timeout' = CORRECT.map(id => {
             vote: { view: 0, high_vote: COMMIT_VOTE_NONE, high_commit_qc_view: None },
             high_commit_qc: HIGH_COMMIT_QC_NONE,
-            sig: sig_of_id(id)
+            sig: id
         }),
         msgs_signed_commit' = Set(),
         msgs_new_view' = Set(),
@@ -133,17 +125,17 @@ module replica {
         // we cannot reach this state.
         pure val init_timeout_qc_id = 0
         pure val init_timeout_qc: TimeoutQC = {
-            votes: REPLICAS.map(id => sig_of_id(id)).mapBy(_ => {
+            votes: REPLICAS.map(id => id).mapBy(_ => {
                 view: 0,
                 high_vote: COMMIT_VOTE_NONE,
                 high_commit_qc_view: VIEW_NUMBER_NONE
             }),
-            agg_sig: REPLICAS.map(id => sig_of_id(id)),
+            agg_sig: REPLICAS.map(id => id),
             high_commit_qc: HIGH_COMMIT_QC_NONE,
             ghost_view: 0,
         }
-        pure val timeout_votes0 = REPLICAS.map(id => sig_of_id(id)).map(sig => {
-            sig: sig,
+        pure val timeout_votes0 = REPLICAS.map(id => {
+            sig: id,
             vote: { view: 0, high_vote: COMMIT_VOTE_NONE, high_commit_qc_view: VIEW_NUMBER_NONE },
             high_commit_qc: HIGH_COMMIT_QC_NONE,
         })
@@ -162,7 +154,7 @@ module replica {
             // all replicas have sent TimeoutVote in view 0
             msgs_signed_timeout' = timeout_votes0,
             msgs_new_view' = CORRECT.map(id => {
-                    { sig: sig_of_id(id), justification: Timeout(init_timeout_qc_id) }
+                    { sig: id, justification: Timeout(init_timeout_qc_id) }
                 }),
             msgs_signed_commit' = Set(),
             msgs_proposal' = Set(),
@@ -592,7 +584,7 @@ module replica {
 
                 replica_state' = replica_state.set(id, self2),
                 // Send the commit vote to all replicas (including ourselves).
-                msgs_signed_commit' = msgs_signed_commit.union(Set({ vote: vote, sig: sig_of_id(id) })),
+                msgs_signed_commit' = msgs_signed_commit.union(Set({ vote: vote, sig: id })),
                 // Record the justification.
                 ghost_justifications' =
                     ghost_justifications.put((id, proposal.justification.view()), proposal.justification),
@@ -672,7 +664,7 @@ module replica {
                         Some(qc.vote.view)
                     }
             },
-            sig: sig_of_id(id),
+            sig: id,
             high_commit_qc: self.high_commit_qc,
         }
         all {
@@ -786,7 +778,7 @@ module replica {
             // This code only works for a non-faulty proposer.
             CORRECT.contains(replica_id),
             proposer_state_view < replica_state_view,
-            sig_of_id(replica_id) == leader.get(replica_state_view),
+            replica_id == leader.get(replica_state_view),
             proposer_view' = proposer_view.set(replica_id, replica_state_view),
             // Get the justification for this view. If we have both a commit QC
             // and a timeout QC for this view (highly unlikely), we should prefer
@@ -816,7 +808,7 @@ module replica {
             val proposal: Proposal = {
                 block: block,
                 justification: justification,
-                sig: sig_of_id(replica_id),
+                sig: replica_id,
                 ghost_block_number: block_number,
             }
             all {
@@ -851,10 +843,7 @@ module replica {
             // switch to the Prepare phase
             replica_state' = replica_state.set(id, { ...self, view: view, phase: PhasePrepare }),
             // Send a new view message to the other replicas for synchronization
-            msgs_new_view' = msgs_new_view.union(Set({
-                justification: justification,
-                sig: sig_of_id(id)
-            })),
+            msgs_new_view' = msgs_new_view.union(Set({ justification: justification, sig: id })),
             // store the justification
             ghost_justifications' = ghost_justifications.put((id, view), justification)
         }
@@ -1105,7 +1094,7 @@ module replica {
     // it has enough weight beyond it.
     pure def aggregate_verify(agg_sig: AggregateSignature): bool = and {
         agg_sig.size() >= QUORUM_WEIGHT,
-        agg_sig.subseteq(REPLICAS.map(id => sig_of_id(id))),
+        agg_sig.subseteq(REPLICAS),
     }
 
     def signed_timeout_vote_verify(signed_vote: SignedTimeoutVote): bool = all {
@@ -1126,7 +1115,7 @@ module replica {
     pure def signed_commit_vote_verify(signed_vote: SignedCommitVote): bool = all {
         commit_vote_verify(signed_vote.vote),
         // we can do this check as a correct replica knows the public keys of the other replicas
-        REPLICAS.exists(id => sig_of_id(id) == signed_vote.sig),
+        REPLICAS.contains(signed_vote.sig),
     }
 
     // Commit vote verification that a replica can do locally
@@ -1342,21 +1331,21 @@ module replica {
     // a correct proposer should not equivocate for the same view
     val no_proposal_equivocation_inv = tuples(msgs_proposal, msgs_proposal).forall(((m1, m2)) => or {
         not(m1.justification.view() == m2.justification.view() and m1.sig == m2.sig),
-        FAULTY.exists(id => sig_of_id(id) == m1.sig),
+        FAULTY.contains(m1.sig),
         m1.block == m2.block,
     })
 
     // a correct proposer should not send two commits in the same view
     val no_commit_equivocation_inv = tuples(msgs_signed_commit, msgs_signed_commit).forall(((m1, m2)) => or {
         not(m1.vote.view == m2.vote.view and m1.sig == m2.sig),
-        FAULTY.exists(id => sig_of_id(id) == m1.sig),
+        FAULTY.contains(m1.sig),
         m1.vote.block_hash == m2.vote.block_hash and m1.vote.block_number == m2.vote.block_number,
     })
 
     // a correct proposer should not send two timeouts in the same view
     val no_timeout_equivocation_inv = tuples(msgs_signed_timeout, msgs_signed_timeout).forall(((m1, m2)) => or {
         not(m1.vote.view == m2.vote.view and m1.sig == m2.sig),
-        FAULTY.exists(id => sig_of_id(id) == m1.sig),
+        FAULTY.contains(m1.sig),
         and {
             m1.vote.high_vote == m2.vote.high_vote,
             m1.high_commit_qc == m2.high_commit_qc,
@@ -1367,7 +1356,7 @@ module replica {
     // a correct proposer should not send two new views in the same view
     val no_new_view_equivocation_inv = {
             tuples(msgs_new_view, msgs_new_view).forall(((m1, m2)) => or {
-            FAULTY.exists(id => sig_of_id(id) == m1.sig or sig_of_id(id) == m2.sig),
+            FAULTY.contains(m1.sig) or FAULTY.contains(m2.sig),
             m1.sig != m2.sig,
             m1.justification.view() != m2.justification.view(),
             m1.justification == m2.justification,
@@ -1406,7 +1395,7 @@ module replica {
                     // The quorum invariants are checked in view_justification_inv.
                     val qc = ghost_timeout_qc[qc_id]
                     qc.votes.keys().forall(pk2 => or {
-                        FAULTY.exists(id => sig_of_id(id) == pk2),
+                        FAULTY.contains(pk2),
                         val vote = qc.votes.get(pk2)
                         msgs_signed_timeout.exists(signed_vote => signed_vote.vote == vote)
                     })
@@ -1418,7 +1407,7 @@ module replica {
                     // The quorum invariants are checked in view_justification_inv.
                     val qc = ghost_commit_qc[qc_id]
                     qc.agg_sig.forall(pk2 => or {
-                        FAULTY.map(id => sig_of_id(id)).contains(pk2),
+                        FAULTY.contains(pk2),
                         msgs_signed_commit.exists(signed_vote => signed_vote.vote == qc.vote)
                     })                    
                 }
@@ -1532,14 +1521,14 @@ module replica {
     // a state invariant to guarantee that correct replicas do not send malformed timeout votes
     def msgs_signed_timeout_inv: bool = {
         msgs_signed_timeout.forall(v => {
-            CORRECT.exists(id => sig_of_id(id) == v.sig) implies signed_timeout_vote_verify(v)
+            CORRECT.contains(v.sig) implies signed_timeout_vote_verify(v)
         })
     }
 
     // a state invariant to guarantee that correct replicas do not send malformed signed commit votes
     def msgs_signed_commit_inv: bool = {
         msgs_signed_commit.forall(v => or {
-            FAULTY.exists(id => sig_of_id(id) == v.sig),
+            FAULTY.contains(v.sig),
             aux_commit_vote_inv(v),
         })
     }
@@ -1548,7 +1537,7 @@ module replica {
     def aux_commit_vote_inv(signed_vote: SignedCommitVote): bool = and {
         signed_vote.vote.view >= 0,
         signed_vote.vote.block_number >= 0,
-        REPLICAS.exists(id => sig_of_id(id) == signed_vote.sig),
+        REPLICAS.contains(signed_vote.sig),
         VALID_BLOCKS.contains(signed_vote.vote.block_hash),
     }
 
@@ -1560,16 +1549,16 @@ module replica {
             match replica_high_vote {
                 | None =>
                     // no commit votes sent so far
-                    msgs_signed_commit.forall(sv => sv.sig != sig_of_id(id))
+                    msgs_signed_commit.forall(sv => sv.sig != id)
 
                 | Some(high_vote) => all {
                     // this vote is valid
-                    aux_commit_vote_inv({vote: high_vote, sig: sig_of_id(id) }),
+                    aux_commit_vote_inv({vote: high_vote, sig: id }),
                     // this vote was signed and sent
-                    { vote: high_vote, sig: sig_of_id(id) }.in(msgs_signed_commit),
+                    { vote: high_vote, sig: id }.in(msgs_signed_commit),
                     // there is no higher signed commit
                     msgs_signed_commit.forall(sv => or {
-                        sv.sig != sig_of_id(id),
+                        sv.sig != id,
                         sv.vote.view <= high_vote.view
                     }),
                     // views of the replica can't be lower than its `high_vote`'s view
@@ -1588,7 +1577,7 @@ module replica {
     // a high vote is the highest among the votes sent by a replica
     val timeout_high_vote_is_highest_inv: bool = {
         msgs_signed_timeout.forall(tv => or {
-            FAULTY.exists(id => sig_of_id(id) == tv.sig),
+            FAULTY.contains(tv.sig),
             // get the commit messages below the view of the timeout vote
             val commit_votes: Set[SignedCommitVote] =
                 msgs_signed_commit.filter(sv => and {

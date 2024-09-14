@@ -18,8 +18,6 @@ module inductive {
     import option.* from "../option"
     
     // parameters
-    const IWEIGHTS: ReplicaId -> Weight
-    const IREPLICA_KEYS: ReplicaId -> ReplicaKey
     const IN: int
     const IF: int
     const ICORRECT: Set[ReplicaId]
@@ -37,8 +35,6 @@ module inductive {
     pure val IREPLICAS = ICORRECT.union(IFAULTY)
 
     import replica(
-        WEIGHTS = IWEIGHTS,
-        REPLICA_KEYS = IREPLICA_KEYS,
         N = IN,
         F = IF,
         CORRECT = ICORRECT,
@@ -204,7 +200,7 @@ module inductive {
         // non-deterministically initialize msgs_proposal
         nondet proposals = PROPOSALS.powerset().oneOf()
         // non-deterministically initialize ghost_justifications
-        nondet justifications = tuples(IREPLICAS, IVIEWS).setOfMaps(JUSTIFICATIONS).oneOf()
+        nondet justifications = tuples(ICORRECT, IVIEWS).setOfMaps(JUSTIFICATIONS).oneOf()
         // Non-deterministically initialize replica_state.
         // We pick maps for the individual fields, to avoid combinatorial explosion of tuples.
         nondet state_views = ICORRECT.setOfMaps(IVIEWS).oneOf()
