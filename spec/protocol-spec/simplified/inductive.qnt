@@ -272,7 +272,7 @@ module inductive {
         lemma3_signed_commit_needs_proposal,
         lemma4_signed_commit_needs_justification,
         lemma5_signed_commit_no_equivocation,
-        //lemma6_signed_timeout_no_equivocation,
+        lemma6_signed_timeout_no_equivocation,
         //lemma7_proposal_no_equivocation,
     }
 
@@ -383,23 +383,26 @@ module inductive {
     }
 
     val lemma5_signed_commit_no_equivocation = {
-        r::msgs_signed_commit.forall(m1 => or {
-            IFAULTY.contains(m1.sig),
-            r::msgs_signed_commit.forall(m2 => {
-                (m1.sig == m2.sig and m1.vote.view == m2.vote.view)
-                    implies (m1.vote == m2.vote)
-            })
-        })
+        ICORRECT.forall(id => IVIEWS.forall(v => {
+            // use filter/map to decrease the potential set size
+            val num_and_hash =
+                r::msgs_signed_commit
+                    .filter(m => m.sig == id and m.vote.view == v)
+                    .map(m => (m.vote.block_number, m.vote.block_hash))
+            val pairs = tuples(IBLOCK_NUMBERS, IALL_BLOCKS).intersect(num_and_hash)
+            pairs.forall(t1 => pairs.forall(t2 => t1 == t2))
+        }))
     }
 
     val lemma6_signed_timeout_no_equivocation = {
-        r::msgs_signed_timeout.forall(m1 => or {
-            IFAULTY.contains(m1.sig),
-            r::msgs_signed_timeout.forall(m2 => {
-                (m1.sig == m2.sig and m1.vote.view == m2.vote.view)
-                    implies (m1 == m2)
-            })
-        })
+        ICORRECT.forall(id => IVIEWS.forall(v => {
+            // use filter/map to decrease the potential set size
+            val triples =
+                r::msgs_signed_timeout
+                    .filter(m => m.sig == id and m.vote.view == v)
+                    .map(m => (m.high_commit_qc, m.vote.high_vote, m.vote.high_commit_qc_view))
+            triples.forall(t1 => triples.forall(t2 => t1 == t2))
+        }))
     }
 
     val lemma7_proposal_no_equivocation = {
