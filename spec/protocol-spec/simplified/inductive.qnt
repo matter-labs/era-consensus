@@ -44,6 +44,8 @@ module inductive {
         INVALID_BLOCKS = IINVALID_BLOCKS
     ) as r from "./replica"
 
+    var step_no: int
+
     // definitions
 
     pure def commit_vote_shape_inv(v: CommitVote): bool = and {
@@ -168,7 +170,10 @@ module inductive {
     pure val PHASES = Set(PhasePrepare, PhaseCommit, PhaseTimeout)
 
     // the initialization from the replica module
-    action init = r::init
+    action init = all{
+        step_no' = 0,
+        r::init,
+    }
 
     // non-deterministically initialize the states
     action ind_init = {
@@ -239,6 +244,7 @@ module inductive {
             r::msgs_proposal' = proposals,
             r::ghost_justifications' = justifications,
             r::ghost_step' = AnyStep,
+            step_no' = 0,
         }
     }
 
@@ -264,6 +270,20 @@ module inductive {
         lemma1_justified_qc_is_valid,
         lemma2_justified_commit_qc_supported_by_messages,
         lemma3_signed_commit_needs_proposal,
+        lemma4_signed_commit_needs_justification,
+        lemma5_signed_commit_no_equivocation,
+        //lemma6_signed_timeout_no_equivocation,
+        //lemma7_proposal_no_equivocation,
+    }
+
+    action l_step = any {
+        all { step_no == 0, lemma0_committed_blocks_have_justified_qc, unchanged_all },
+        all { step_no == 1, lemma1_justified_qc_is_valid, unchanged_all },
+        all { step_no == 2, lemma2_justified_commit_qc_supported_by_messages, unchanged_all },
+        all { step_no == 3, lemma3_signed_commit_needs_proposal, unchanged_all },
+        all { step_no == 4, lemma4_signed_commit_needs_justification, unchanged_all },
+        all { step_no == 5, not(agreement_inv), unchanged_all },
+        all { step_no > 5, unchanged_all },
     }
 
     // auxiliary invariants that we call lemmas
@@ -324,29 +344,71 @@ module inductive {
     val lemma3_signed_commit_needs_proposal = {
         r::msgs_signed_commit.forall(m => or {
             IFAULTY.contains(m.sig),
-            // either there is a proposal with CommitQC with the previous block number,
-            // or there is a proposal with TimeoutQC with the current block number
-            or {
-                0.to(MAX_COMMIT_QC).exists(qc_id => {
-                    val proposal = {
-                        // in our modeling, the block hash is identical to the block
-                        block: Some(m.vote.block_hash),
-                        justification: Commit(qc_id),
-                        sig: r::leader.get(m.vote.view),
-                        ghost_block_number: m.vote.block_number - 1,
-                    }
-                    r::msgs_proposal.contains(proposal)
-                }),
-                0.to(MAX_TIMEOUT_QC).exists(qc_id => {
-                    val proposal = {
-                        block: BLOCK_NONE,
-                        justification: Timeout(qc_id),
-                        sig: r::leader.get(m.vote.view),
-                        ghost_block_number: m.vote.block_number,
-                    }
-                    r::msgs_proposal.contains(proposal)
-                }),
-            }
+            0.to(MAX_COMMIT_QC).exists(qc_id => {
+                val proposal = {
+                    // in our modeling, the block hash is identical to the block
+                    block: Some(m.vote.block_hash),
+                    justification: Commit(qc_id),
+                    sig: r::leader.get(m.vote.view),
+                    ghost_block_number: m.vote.block_number - 1,
+                }
+                r::msgs_proposal.contains(proposal)
+            }),
+            0.to(MAX_TIMEOUT_QC).exists(qc_id => and {
+                val proposal = {
+                    block: BLOCK_NONE,
+                    justification: Timeout(qc_id),
+                    sig: r::leader.get(m.vote.view),
+                    ghost_block_number: m.vote.block_number,
+                }
+                r::msgs_proposal.contains(proposal),
+            }),
+        })
+    }
+
+    val lemma4_signed_commit_needs_justification = {
+        r::ghost_justifications.keys().forall(((id, view)) => {
+            val justification = r::ghost_justifications.get((id, view))
+            val num_and_hash = r::get_implied_block(justification)
+            r::msgs_signed_commit.forall(m => or {
+                IFAULTY.contains(m.sig),
+                m.sig != id,
+                m.vote.view != view,
+                and {
+                    num_and_hash._1 == m.vote.block_number,
+                    num_and_hash._2 == Some(m.vote.block_hash),
+                }
+            })
+        })
+    }
+
+    val lemma5_signed_commit_no_equivocation = {
+        r::msgs_signed_commit.forall(m1 => or {
+            IFAULTY.contains(m1.sig),
+            r::msgs_signed_commit.forall(m2 => {
+                (m1.sig == m2.sig and m1.vote.view == m2.vote.view)
+                    implies (m1.vote == m2.vote)
+            })
+        })
+    }
+
+    val lemma6_signed_timeout_no_equivocation = {
+        r::msgs_signed_timeout.forall(m1 => or {
+            IFAULTY.contains(m1.sig),
+            r::msgs_signed_timeout.forall(m2 => {
+                (m1.sig == m2.sig and m1.vote.view == m2.vote.view)
+                    implies (m1 == m2)
+            })
+        })
+    }
+
+    val lemma7_proposal_no_equivocation = {
+        r::msgs_proposal.forall(m1 => or {
+            IFAULTY.contains(m1.sig),
+            r::msgs_proposal.forall(m2 => {
+                (m1.sig == m2.sig and m1.ghost_block_number == m2.ghost_block_number)
+                    implies (m1 == m2)
+            })
         })
     }
 
@@ -366,6 +428,7 @@ module inductive {
         r::msgs_proposal' = r::msgs_proposal,
         r::ghost_justifications' = r::ghost_justifications,
         r::ghost_step' = r::ghost_step,
+        step_no' = step_no + 1,
     }
 
     val shape_inv = and {
@@ -374,4 +437,8 @@ module inductive {
         r::msgs_signed_commit.forall(signed_commit_vote_shape_inv),
         r::msgs_signed_timeout.forall(signed_timeout_vote_shape_inv),
     }
+
+    val one_block_example = r::one_block_example
+
+    val phase_commit_example = r::phase_commit_example
 }

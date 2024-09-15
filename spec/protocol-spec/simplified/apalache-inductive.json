@@ -1,11 +1,11 @@
 {
     "common": {
-      "write-intermediate": true,
+      "writeIntermediate": true,
       "debug": false
     },
     "checker": {
-        "discard-disabled": true,
-        "no-deadlocks": true,
+        "discardDisabled": true,
+        "noDeadlocks": true,
 	    "algo": "incremental",
         "tuning": {
             "search.invariant.mode": "before",

@@ -4,11 +4,11 @@ module n6f1b1_inductive {
     IFAULTY = Set("n5"),
     IN = 6,
     IF = 1,
-    IVIEWS = 0.to(3),
-    IBLOCK_NUMBERS = Set(0),
+    IVIEWS = 0.to(2),
+    IBLOCK_NUMBERS = Set(0, 1),
     IVALID_BLOCKS = Set("val_b0", "val_b1"),
     IINVALID_BLOCKS = Set("inv_b3"),
-    MAX_COMMIT_QC = 4,
-    MAX_TIMEOUT_QC = 4
+    MAX_COMMIT_QC = 2,
+    MAX_TIMEOUT_QC = 2
   ).* from "./inductive"
 }
