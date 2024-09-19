@@ -31,6 +31,8 @@ module inductive {
     const MAX_COMMIT_QC: int
     const MAX_TIMEOUT_QC: int
 
+    pure val MAX_SIGNED_TIMEOUT_VOTES = 10
+
     pure val IALL_BLOCKS = IVALID_BLOCKS.union(IINVALID_BLOCKS)
     pure val IREPLICAS = ICORRECT.union(IFAULTY)
 
@@ -131,6 +133,22 @@ module inductive {
                 }
         )
 
+    pure val COMMIT_VOTE_SAMPLE: CommitVote = {
+        view: 0, block_number: 0, block_hash: "val_b0",
+    }        
+
+    pure val TIMEOUT_VOTE_SAMPLE: TimeoutVote = {
+        view: 0,
+        high_vote: Some(COMMIT_VOTE_SAMPLE),
+        high_commit_qc_view: Some(0),
+    }        
+
+    pure val SIGNED_TIMEOUT_VOTE_SAMPLE: SignedTimeoutVote = {
+        sig: "n0",
+        vote: TIMEOUT_VOTE_SAMPLE,
+        high_commit_qc: Some(0),
+    }
+
     pure val NEW_VIEWS: Set[NewView] =
         tuples(IREPLICAS, 0.to(MAX_COMMIT_QC).union(0.to(MAX_TIMEOUT_QC)), Bool)
             .map(((id, qc_id, is_commit_id)) =>
@@ -199,7 +217,7 @@ module inductive {
         // non-deterministically initialize msgs_signed_commit
         nondet signed_commits = SIGNED_COMMIT_VOTES.powerset().oneOf()
         // non-deterministically initialize msgs_timeout_commit
-        nondet signed_timeouts = SIGNED_TIMEOUT_VOTES.powerset().oneOf()
+        //nondet signed_timeouts = SIGNED_TIMEOUT_VOTES.powerset().oneOf()
         // non-deterministically initialize msgs_new_view
         nondet new_views = NEW_VIEWS.powerset().oneOf()
         // non-deterministically initialize msgs_proposal
@@ -239,7 +257,15 @@ module inductive {
             r::ghost_commit_qc' = commit_qc,
             r::ghost_timeout_qc' = timeout_qc,
             r::msgs_signed_commit' = signed_commits,
-            r::msgs_signed_timeout' = signed_timeouts,
+            {
+                nondet msgs_signed_timeout =
+                    generate(MAX_SIGNED_TIMEOUT_VOTES, Set(SIGNED_TIMEOUT_VOTE_SAMPLE))
+                all {
+                    msgs_signed_timeout.forall(signed_timeout_vote_shape_inv),
+                    r::msgs_signed_timeout' = msgs_signed_timeout,
+                }
+            },        
+            // r::msgs_signed_timeout' = signed_timeouts,
             r::msgs_new_view' = new_views,
             r::msgs_proposal' = proposals,
             r::ghost_justifications' = justifications,
@@ -272,7 +298,7 @@ module inductive {
         lemma3_signed_commit_needs_proposal,
         lemma4_signed_commit_needs_justification,
         lemma5_signed_commit_no_equivocation,
-        //lemma6_signed_timeout_no_equivocation,
+        lemma6_signed_timeout_no_equivocation,
         lemma7_proposal_no_equivocation,
     }
 
