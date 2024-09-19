@@ -31,8 +31,6 @@ module inductive {
     const MAX_COMMIT_QC: int
     const MAX_TIMEOUT_QC: int
 
-    pure val MAX_SIGNED_TIMEOUT_VOTES = 10
-
     pure val IALL_BLOCKS = IVALID_BLOCKS.union(IINVALID_BLOCKS)
     pure val IREPLICAS = ICORRECT.union(IFAULTY)
 
@@ -258,8 +256,8 @@ module inductive {
             r::ghost_timeout_qc' = timeout_qc,
             r::msgs_signed_commit' = signed_commits,
             {
-                nondet msgs_signed_timeout =
-                    generate(MAX_SIGNED_TIMEOUT_VOTES, Set(SIGNED_TIMEOUT_VOTE_SAMPLE))
+                // note we have to pass 20 to generate directly
+                nondet msgs_signed_timeout = generate(20, Set(SIGNED_TIMEOUT_VOTE_SAMPLE))
                 all {
                     msgs_signed_timeout.forall(signed_timeout_vote_shape_inv),
                     r::msgs_signed_timeout' = msgs_signed_timeout,
@@ -300,6 +298,9 @@ module inductive {
         lemma5_signed_commit_no_equivocation,
         lemma6_signed_timeout_no_equivocation,
         lemma7_proposal_no_equivocation,
+        lemma8_no_commits_in_future,
+        lemma9_no_timeouts_in_future,
+        lemma10_justified_commit_qc_no_vote_change,
     }
 
     action l_step = any {
@@ -438,6 +439,40 @@ module inductive {
                 (m1.sig == m2.sig and m1.ghost_block_number == m2.ghost_block_number)
                     implies (m1 == m2)
             })
+        })
+    }
+
+    val lemma8_no_commits_in_future = {
+        r::msgs_signed_commit.forall(m => {
+            val self = r::replica_state.get(m.sig)
+            self.view >= m.vote.view
+        })
+    }
+
+    val lemma9_no_timeouts_in_future = {
+        r::msgs_signed_timeout.forall(m => {
+            val self = r::replica_state.get(m.sig)
+            self.view >= m.vote.view
+        })
+    }
+
+    // once a correct replica commits to a block, it will never change its mind
+    val lemma10_justified_commit_qc_no_vote_change = {
+        r::ghost_justifications.keys().forall(((id, view)) => {
+            match (r::ghost_justifications.get((id, view))) {
+            | Commit(qc_id) =>
+                val qc = r::ghost_commit_qc[qc_id]
+                r::msgs_signed_commit.forall(m => {
+                    and {
+                        qc.agg_sig.contains(m.sig),
+                        m.vote.view >= qc.vote.view,
+                        m.vote.block_number == qc.vote.block_number
+                    } implies (m.vote.block_hash == qc.vote.block_hash)
+                })
+
+            | Timeout(qc_id) =>
+                true
+            }
         })
     }
 
