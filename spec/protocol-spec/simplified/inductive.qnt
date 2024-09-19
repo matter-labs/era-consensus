@@ -272,8 +272,8 @@ module inductive {
         lemma3_signed_commit_needs_proposal,
         lemma4_signed_commit_needs_justification,
         lemma5_signed_commit_no_equivocation,
-        lemma6_signed_timeout_no_equivocation,
-        //lemma7_proposal_no_equivocation,
+        //lemma6_signed_timeout_no_equivocation,
+        lemma7_proposal_no_equivocation,
     }
 
     action l_step = any {
