@@ -293,6 +293,9 @@ module inductive {
 
     // the inductive invariant
     val ind_inv = and {
+        lemma10_justified_commit_qc_no_vote_change,
+        lemma8_no_commits_in_future,
+        lemma9_no_timeouts_in_future,
         lemma0_committed_blocks_have_justified_qc,
         lemma1_justified_qc_is_valid,
         lemma2_justified_commit_qc_supported_by_messages,
@@ -301,9 +304,6 @@ module inductive {
         lemma5_signed_commit_no_equivocation,
         lemma6_signed_timeout_no_equivocation,
         lemma7_proposal_no_equivocation,
-        lemma8_no_commits_in_future,
-        lemma9_no_timeouts_in_future,
-        lemma10_justified_commit_qc_no_vote_change,
     }
 
     action l_step = any {
