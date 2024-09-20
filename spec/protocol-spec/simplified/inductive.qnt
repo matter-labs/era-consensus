@@ -464,6 +464,7 @@ module inductive {
                 val qc = r::ghost_commit_qc[qc_id]
                 r::msgs_signed_commit.forall(m => {
                     and {
+                        ICORRECT.contains(m.sig),
                         qc.agg_sig.contains(m.sig),
                         m.vote.view >= qc.vote.view,
                         m.vote.block_number == qc.vote.block_number
