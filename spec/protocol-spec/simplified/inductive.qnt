@@ -256,7 +256,7 @@ module inductive {
             r::ghost_timeout_qc' = timeout_qc,
             r::msgs_signed_commit' = signed_commits,
             {
-                // note we have to pass 20 to generate directly
+                // we have to pass the upper bound of 20 directly (this is a limitation of Quint)
                 nondet msgs_signed_timeout = generate(20, Set(SIGNED_TIMEOUT_VOTE_SAMPLE))
                 all {
                     msgs_signed_timeout.forall(signed_timeout_vote_shape_inv),
@@ -288,6 +288,8 @@ module inductive {
 
     // this is the main safety property that we are interested in
     val agreement_inv = r::agreement_inv
+    // this is a candidate for liveness
+    val block_progress_inv = r::block_progress_inv
 
     // the inductive invariant
     val ind_inv = and {
