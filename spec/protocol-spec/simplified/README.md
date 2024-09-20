@@ -1,4 +1,4 @@
-# Methodology of proving safety and liveness
+# Methodology for proving safety and liveness
 
 This is a draft document that captures our approach to demonstrating safety and
 liveness of the simplified version of ChonkyBFT under bounded inputs.
