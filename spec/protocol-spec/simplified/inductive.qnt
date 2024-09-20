@@ -283,6 +283,7 @@ module inductive {
     action step = all {
         ind_inv,
         r::step,
+        step_no' = step_no + 1,
     }
 
     // this is the main safety property that we are interested in
