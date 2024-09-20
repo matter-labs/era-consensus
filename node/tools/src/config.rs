@@ -14,11 +14,12 @@ use zksync_concurrency::{ctx, net, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor::{self as executor, attestation};
-use zksync_consensus_network::http;
+use zksync_consensus_network as network;
 use zksync_consensus_roles::{attester, node, validator};
 use zksync_consensus_storage::testonly::{TestMemoryStorage, TestMemoryStorageRunner};
-use zksync_consensus_utils::debug_page;
-use zksync_protobuf::{kB, read_required, required, ProtoFmt};
+use zksync_protobuf::{
+    kB, read_optional, read_optional_repr, read_required, required, ProtoFmt, ProtoRepr,
+};
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -91,7 +92,7 @@ impl ProtoFmt for NodeAddr {
 /// Node configuration including executor configuration, optional validator configuration,
 /// and application-specific settings (e.g. metrics scraping).
 #[derive(Debug, PartialEq, Clone)]
-pub struct AppConfig {
+pub struct App {
     pub server_addr: SocketAddr,
     pub public_addr: net::Host,
     pub rpc_addr: Option<SocketAddr>,
@@ -108,10 +109,66 @@ pub struct AppConfig {
     pub gossip_static_inbound: HashSet<node::PublicKey>,
     pub gossip_static_outbound: HashMap<node::PublicKey, net::Host>,
 
-    pub debug_page: Option<BasicDebugPageConfig>,
+    pub debug_page: Option<DebugPage>,
 }
 
-impl ProtoFmt for AppConfig {
+impl ProtoRepr for proto::Credentials {
+    type Type = network::debug_page::Credentials;
+
+    fn read(&self) -> anyhow::Result<Self::Type> {
+        Ok(Self::Type {
+            user: required(&self.user).context("user")?.clone(),
+            password: required(&self.password).context("password")?.clone(),
+        })
+    }
+
+    fn build(this: &Self::Type) -> Self {
+        Self {
+            user: Some(this.user.clone()),
+            password: Some(this.password.clone()),
+        }
+    }
+}
+
+impl ProtoFmt for Tls {
+    type Proto = proto::TlsConfig;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            cert_path: read_required_text(&r.cert_path).context("cert_path")?,
+            key_path: read_required_text(&r.key_path).context("key_path")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            cert_path: Some(self.cert_path.to_string_lossy().into()),
+            key_path: Some(self.key_path.to_string_lossy().into()),
+        }
+    }
+}
+
+impl ProtoFmt for DebugPage {
+    type Proto = proto::DebugPageConfig;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            addr: read_required_text(&r.addr).context("addr")?,
+            credentials: read_optional_repr(&r.credentials).context("credentials")?,
+            tls: read_optional(&r.tls).context("tls")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            addr: Some(self.addr.encode()),
+            credentials: self.credentials.as_ref().map(ProtoRepr::build),
+            tls: self.tls.as_ref().map(|x| x.build()),
+        }
+    }
+}
+
+impl ProtoFmt for App {
     type Proto = proto::AppConfig;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
@@ -165,25 +222,7 @@ impl ProtoFmt for AppConfig {
                 .context("gossip_dynamic_inbound_limit")?,
             gossip_static_inbound,
             gossip_static_outbound,
-            debug_page: match read_optional_text(&r.debug_addr).context("debug_addr")? {
-                Some(addr) => Some(BasicDebugPageConfig {
-                    addr,
-                    credentials: r
-                        .debug_credentials
-                        .clone()
-                        .map(debug_page::Credentials::try_from)
-                        .transpose()?,
-                    cert_path: read_optional_text(&r.debug_cert_path)
-                        .context("debug_cert_path")?
-                        // default to 'cert.pem' if cert_path is missing
-                        .unwrap_or(PathBuf::from("cert.pem")),
-                    key_path: read_optional_text(&r.debug_key_path)
-                        .context("debug_key_path")?
-                        // default to 'key.pem' if key_path is missing
-                        .unwrap_or(PathBuf::from("key.pem")),
-                }),
-                _ => None,
-            },
+            debug_page: read_optional(&r.debug_page).context("debug_page")?,
         })
     }
 
@@ -217,44 +256,33 @@ impl ProtoFmt for AppConfig {
                     addr: Some(addr.0.clone()),
                 })
                 .collect(),
-            debug_addr: self.debug_page.as_ref().map(|config| config.addr.encode()),
-            debug_credentials: self.debug_page.as_ref().map(|config| {
-                config
-                    .credentials
-                    .clone()
-                    .map(debug_page::Credentials::into)
-                    .unwrap()
-            }),
-            debug_cert_path: self
-                .debug_page
-                .as_ref()
-                .map(|config| config.cert_path.encode()),
-            debug_key_path: self
-                .debug_page
-                .as_ref()
-                .map(|config| config.key_path.encode()),
+            debug_page: self.debug_page.as_ref().map(|x| x.build()),
         }
     }
 }
 
-/// Basic http debug page configuration.
-/// Paths will be converted to actual cert and private key
-/// on zksync_consensus_network::http::DebugPageConfig struct
 #[derive(Debug, PartialEq, Clone)]
-pub struct BasicDebugPageConfig {
-    /// Public Http address to listen incoming http requests.
-    pub addr: SocketAddr,
-    /// Debug page credentials.
-    pub credentials: Option<debug_page::Credentials>,
+pub struct Tls {
     /// Cert file path
     pub cert_path: PathBuf,
     /// Key file path
     pub key_path: PathBuf,
 }
 
+/// Debug page configuration.
+#[derive(Debug, PartialEq, Clone)]
+pub struct DebugPage {
+    /// Public Http address to listen incoming http requests.
+    pub addr: SocketAddr,
+    /// Debug page credentials.
+    pub credentials: Option<network::debug_page::Credentials>,
+    /// TLS config.
+    pub tls: Option<Tls>,
+}
+
 #[derive(Debug)]
 pub struct Configs {
-    pub app: AppConfig,
+    pub app: App,
     pub database: PathBuf,
 }
 
@@ -281,16 +309,31 @@ impl Configs {
                 max_payload_size: self.app.max_payload_size,
                 max_batch_size: self.app.max_batch_size,
                 rpc: executor::RpcConfig::default(),
-                debug_page: self.app.debug_page.as_ref().map(|debug_page_config| {
-                    http::DebugPageConfig {
-                        addr: debug_page_config.addr,
-                        credentials: debug_page_config.credentials.clone(),
-                        certs: load_certs(&debug_page_config.cert_path)
-                            .expect("Could not obtain certs for debug page"),
-                        private_key: load_private_key(&debug_page_config.key_path)
-                            .expect("Could not obtain private key for debug page"),
-                    }
-                }),
+                debug_page: self
+                    .app
+                    .debug_page
+                    .as_ref()
+                    .map(|debug_page_config| {
+                        anyhow::Ok(network::debug_page::Config {
+                            addr: debug_page_config.addr,
+                            credentials: debug_page_config.credentials.clone(),
+                            tls: debug_page_config
+                                .tls
+                                .as_ref()
+                                .map(|tls| {
+                                    anyhow::Ok(network::debug_page::TlsConfig {
+                                        cert_chain: load_cert_chain(&tls.cert_path)
+                                            .context("load_cert_chain()")?,
+                                        private_key: load_private_key(&tls.key_path)
+                                            .context("load_private_key()")?,
+                                    })
+                                })
+                                .transpose()
+                                .context("tls")?,
+                        })
+                    })
+                    .transpose()
+                    .context("debug_page")?,
                 batch_poll_interval: time::Duration::seconds(1),
             },
             block_store: store.blocks,
@@ -313,23 +356,19 @@ impl Configs {
 }
 
 /// Load public certificate from file.
-fn load_certs(path: &PathBuf) -> anyhow::Result<Vec<CertificateDer<'static>>> {
-    // Open certificate file.
-    let certfile = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
-    let mut reader = io::BufReader::new(certfile);
-
-    // Load and return certificate.
-    Ok(rustls_pemfile::certs(&mut reader)
-        .map(|r| r.expect("Invalid certificate"))
-        .collect())
+fn load_cert_chain(path: &PathBuf) -> anyhow::Result<Vec<CertificateDer<'static>>> {
+    let file = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
+    let mut reader = io::BufReader::new(file);
+    rustls_pemfile::certs(&mut reader)
+        .collect::<Result<_, _>>()
+        .context("invalid certificate chain")
 }
 
 /// Load private key from file.
 fn load_private_key(path: &PathBuf) -> anyhow::Result<PrivateKeyDer<'static>> {
-    // Open keyfile.
     let keyfile = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
     let mut reader = io::BufReader::new(keyfile);
-
-    // Load and return a single private key.
-    Ok(rustls_pemfile::private_key(&mut reader).map(|key| key.expect("Private key not found"))?)
+    rustls_pemfile::private_key(&mut reader)
+        .context("invalid key")?
+        .context("no key in file")
 }

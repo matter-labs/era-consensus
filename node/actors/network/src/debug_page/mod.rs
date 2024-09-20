@@ -24,56 +24,131 @@ use tokio_rustls::{
         pki_types::{CertificateDer, PrivateKeyDer},
         ServerConfig,
     },
+    server::TlsStream,
     TlsAcceptor,
 };
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_crypto::TextFmt as _;
-use zksync_consensus_utils::debug_page;
 
 const STYLE: &str = include_str!("style.css");
 
-/// Http debug page configuration.
+/// TLS certificate chain with a private key.
 #[derive(Debug, PartialEq)]
-pub struct DebugPageConfig {
-    /// Public Http address to listen incoming http requests.
-    pub addr: SocketAddr,
-    /// Debug page credentials.
-    pub credentials: Option<debug_page::Credentials>,
-    /// Cert file path
-    pub certs: Vec<CertificateDer<'static>>,
-    /// Key file path
+pub struct TlsConfig {
+    /// TLS certificate chain.
+    pub cert_chain: Vec<CertificateDer<'static>>,
+    /// Private key for the leaf cert.
     pub private_key: PrivateKeyDer<'static>,
 }
 
+/// Credentials.
+#[derive(PartialEq, Clone)]
+pub struct Credentials {
+    /// User for debug page
+    pub user: String,
+    /// Password for debug page
+    /// TODO: it should be treated as a secret: zeroize, etc.
+    pub password: String,
+}
+
+impl Credentials {
+    fn parse(value: String) -> anyhow::Result<Self> {
+        let [user, password] = value
+            .split(':')
+            .collect::<Vec<_>>()
+            .try_into()
+            .ok()
+            .context("bad format")?;
+        Ok(Self {
+            user: user.to_string(),
+            password: password.to_string(),
+        })
+    }
+}
+
+impl std::fmt::Debug for Credentials {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Credentials").finish_non_exhaustive()
+    }
+}
+
+/// Http debug page configuration.
+#[derive(Debug, PartialEq)]
+pub struct Config {
+    /// Public Http address to listen incoming http requests.
+    pub addr: SocketAddr,
+    /// Debug page credentials.
+    pub credentials: Option<Credentials>,
+    /// TLS certificate to terminate the connections with.
+    pub tls: Option<TlsConfig>,
+}
+
 /// Http Server for debug page.
-pub struct DebugPageServer {
-    config: DebugPageConfig,
+pub struct Server {
+    config: Config,
     network: Arc<Network>,
 }
 
-impl DebugPageServer {
+#[async_trait::async_trait]
+trait Listener: 'static + Send {
+    type Stream: tokio::io::AsyncRead + tokio::io::AsyncWrite + Send + Unpin;
+    async fn accept(&mut self) -> anyhow::Result<Self::Stream>;
+}
+
+#[async_trait::async_trait]
+impl Listener for TcpListener {
+    type Stream = tokio::net::TcpStream;
+    async fn accept(&mut self) -> anyhow::Result<Self::Stream> {
+        Ok(TcpListener::accept(self).await?.0)
+    }
+}
+
+#[async_trait::async_trait]
+impl Listener for TlsListener<TcpListener, TlsAcceptor> {
+    type Stream = TlsStream<tokio::net::TcpStream>;
+    async fn accept(&mut self) -> anyhow::Result<Self::Stream> {
+        Ok(TlsListener::accept(self).await?.0)
+    }
+}
+
+impl Server {
     /// Creates a new Server
-    pub fn new(config: DebugPageConfig, network: Arc<Network>) -> DebugPageServer {
-        DebugPageServer { config, network }
+    pub fn new(config: Config, network: Arc<Network>) -> Self {
+        Self { config, network }
     }
 
     /// Runs the Server.
     pub async fn run(&self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        let listener = TcpListener::bind(self.config.addr)
+            .await
+            .context("TcpListener::bind()")?;
+        if let Some(tls) = &self.config.tls {
+            let cfg = ServerConfig::builder()
+                .with_no_client_auth()
+                .with_single_cert(tls.cert_chain.clone(), tls.private_key.clone_key())
+                .context("with_signle_cert()")?;
+            self.run_with_listener(ctx, TlsListener::new(Arc::new(cfg).into(), listener))
+                .await
+        } else {
+            self.run_with_listener(ctx, listener).await
+        }
+    }
+
+    async fn run_with_listener<L: Listener>(
+        &self,
+        ctx: &ctx::Ctx,
+        mut listener: L,
+    ) -> anyhow::Result<()> {
         // Start a watcher to shut down the server whenever ctx gets cancelled
         let graceful = hyper_util::server::graceful::GracefulShutdown::new();
 
         scope::run!(ctx, |ctx, s| async {
-            let mut listener = TlsListener::new(
-                self.tls_acceptor(),
-                TcpListener::bind(self.config.addr).await?,
-            );
-
             let http = http1::Builder::new();
 
             // Start a loop to accept incoming connections
             while let Ok(res) = ctx.wait(listener.accept()).await {
                 match res {
-                    Ok((stream, _)) => {
+                    Ok(stream) => {
                         let io = TokioIo::new(stream);
                         let conn = http.serve_connection(io, service_fn(|req| self.handle(req)));
                         // watch this connection
@@ -86,10 +161,6 @@ impl DebugPageServer {
                         });
                     }
                     Err(err) => {
-                        if let Some(remote_addr) = err.peer_addr() {
-                            tracing::error!("[client {remote_addr}] ");
-                        }
-
                         tracing::error!("Error accepting connection: {}", err);
                         continue;
                     }
@@ -106,46 +177,41 @@ impl DebugPageServer {
         request: Request<hyper::body::Incoming>,
     ) -> anyhow::Result<Response<Full<Bytes>>> {
         let mut response = Response::new(Full::default());
-        match self.basic_authentication(request.headers()) {
-            Ok(_) => *response.body_mut() = self.serve(request),
-            Err(e) => {
-                *response.status_mut() = StatusCode::UNAUTHORIZED;
-                *response.body_mut() = Full::new(Bytes::from(e.to_string()));
-                let header_value = HeaderValue::from_str(r#"Basic realm="debug""#).unwrap();
-                response
-                    .headers_mut()
-                    .insert(header::WWW_AUTHENTICATE, header_value);
-            }
+        if let Err(err) = self.authenticate(request.headers()) {
+            *response.status_mut() = StatusCode::UNAUTHORIZED;
+            *response.body_mut() = Full::new(Bytes::from(err.to_string()));
+            let header_value = HeaderValue::from_str(r#"Basic realm="debug""#).unwrap();
+            response
+                .headers_mut()
+                .insert(header::WWW_AUTHENTICATE, header_value);
         }
+        *response.body_mut() = self.serve(request);
         Ok(response)
     }
 
-    fn basic_authentication(&self, headers: &HeaderMap) -> anyhow::Result<()> {
-        self.config
-            .credentials
-            .clone()
-            .map_or(Ok(()), |credentials| {
-                // The header value, if present, must be a valid UTF8 string
-                let header_value = headers
-                    .get("Authorization")
-                    .context("The 'Authorization' header was missing")?
-                    .to_str()
-                    .context("The 'Authorization' header was not a valid UTF8 string.")?;
-                let base64encoded_segment = header_value
-                    .strip_prefix("Basic ")
-                    .context("The authorization scheme was not 'Basic'.")?;
-                let decoded_bytes = base64::engine::general_purpose::STANDARD
-                    .decode(base64encoded_segment)
-                    .context("Failed to base64-decode 'Basic' credentials.")?;
-                let incoming_credentials = debug_page::Credentials::try_from(
-                    String::from_utf8(decoded_bytes)
-                        .context("The decoded credential string is not valid UTF8.")?,
-                )?;
-                if credentials != incoming_credentials {
-                    anyhow::bail!("Invalid password.")
-                }
-                Ok(())
-            })
+    fn authenticate(&self, headers: &HeaderMap) -> anyhow::Result<()> {
+        let Some(want) = self.config.credentials.as_ref() else {
+            return Ok(());
+        };
+
+        // The header value, if present, must be a valid UTF8 string
+        let header_value = headers
+            .get("Authorization")
+            .context("The 'Authorization' header was missing")?
+            .to_str()
+            .context("The 'Authorization' header was not a valid UTF8 string.")?;
+        let base64encoded_segment = header_value
+            .strip_prefix("Basic ")
+            .context("Unsupported authorization scheme.")?;
+        let decoded_bytes = base64::engine::general_purpose::STANDARD
+            .decode(base64encoded_segment)
+            .context("Failed to base64-decode 'Basic' credentials.")?;
+        let got = Credentials::parse(
+            String::from_utf8(decoded_bytes)
+                .context("The decoded credential string is not valid UTF8.")?,
+        )?;
+        anyhow::ensure!(want == &got, "Invalid credentials.");
+        Ok(())
     }
 
     fn serve(&self, _request: Request<hyper::body::Incoming>) -> Full<Bytes> {
@@ -261,17 +327,5 @@ impl DebugPageServer {
                 let len = key.len();
                 format!("{}...{}", &key[..10], &key[len - 11..len])
             })
-    }
-
-    fn tls_acceptor(&self) -> TlsAcceptor {
-        let cert_der = self.config.certs.clone();
-        let key_der = self.config.private_key.clone_key();
-        Arc::new(
-            ServerConfig::builder()
-                .with_no_client_auth()
-                .with_single_cert(cert_der, key_der)
-                .unwrap(),
-        )
-        .into()
     }
 }
