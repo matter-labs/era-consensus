@@ -318,7 +318,7 @@ module inductive {
 
     // a committed block is supported by a CommitQC, hence, the QC should be valid
     val lemma0_committed_blocks_have_justified_qc = {
-        IREPLICAS.forall(id => {
+        ICORRECT.forall(id => {
             val replica = r::replica_state.get(id)
             replica.committed_blocks.indices().forall(i => {
                 val cblock = replica.committed_blocks[i]

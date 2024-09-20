@@ -1641,6 +1641,17 @@ module replica {
     }
 
     // -------------------------------------------------------------------------
+    // Invariants related to liveness
+
+    // a correct replica should be able to commit at least one block once in every 5F + 1 views
+    val block_progress_inv = {
+        CORRECT.forall(id => {
+            val state = replica_state.get(id)
+            state.view < (5 * F + 1) * (state.committed_blocks.length() + 1)
+        })
+    }
+
+    // -------------------------------------------------------------------------
     // Falsy invariants to check reachability of certain states
 
     // check this invariant to see an example of reaching PhaseCommit
