@@ -95,8 +95,71 @@ Hence, we run the following model checking queries with `quint verify`:
  
 ## 3. Demonstrating liveness
 
+In contrast to safety, there is no established methodology for proving liveness
+of distributed consensus. This is especially challenging in the case of partial
+synchrony. (Proving liveness of distributed consensus in purely synchronous
+computations is typically quite easy and in general impossible in purely asynchronous computations due to [FLP85][].)
+
+There are two promising approaches to demonstrating liveness of ChonkyBFT.
+
+## 3.1. At least one block is committed within 5F + 1 views
+
+This is the property offered by Bruno. The good thing is that we can formulate
+this properties as a state invariant:
+
+```quint
+val block_progress_inv = {
+  CORRECT.forall(id => {
+    val state = replica_state.get(id)
+    state.view < (5 * F + 1) * (state.committed_blocks.length() + 1)
+  })
+}
+```
+
+To find a shortest counterexample to `block_progress_inv`, we would need an
+execution, in which at least one replica switches six views. We estimate such an
+execution to have at least 60 steps. This is beyond the reach of bounded model
+checking and randomized simulation of ChonkyBFT, which we have performed
+earlier.
+
+Hence, similar to demonstrating `agreement_inv`, we should be able to use the
+inductive invariant to show that `block_progress_inv` is not violated.  However,
+this additional invariant may require us to improve the inductive invariant.
+
+## 3.2. Prophecy variable with a magic round
+
+Some proofs of distributed consensus include the notion of a "magic round".  It
+is the round, where a correct replica makes a decision. It is often the case
+that all correct replicas have to make the same decision in the magic round or
+in the next round.
+
+Similar to that idea, Giuliano Losa has recently used a prophecy variable in
+his [liveness proof of TetraBFT][tetrabft-liveness] with Apalache.
+
+The idea is as follows:
+
+ - Non-deterministically choose a "good ballot" in the initial state.  A good
+ ballot would correspond to a "good view" in ChonkyBFT.
+ 
+ - Once a replica reaches the good ballot, it is not allowed to progress to the
+ next rounds/views. Thus, the execution space is restricted to the scope bounded
+ by the good ballot.
+ 
+ - Check the following state invariant. If all correct replicas have reached the
+ good ballot/view, and they cannot execute further actions in this view, one of
+ them *must* commit a block. See the [invariant][tetratla-liveness] in the
+ TLA<sup>+</sup> specification.
+
+It looks like there is a relation between the both approaches. Intuitively, the
+magic ballot corresponds to the view that works under GST. Hence, if replicas
+may receive the sent messages, they must receive this messages. This corresponds
+to the expectations of partial synchrony.
+
 
 [n6f1b1_inductive.qnt]: ./n6f1b1_inductive.qnt
 [blogpost]: https://protocols-made-fun.com/consensus/matterlabs/quint/specification/modelchecking/2024/07/29/chonkybft.html
 [Apalache]: https://github.com/apalache-mc/apalache
 [tendermint-inductive]: https://github.com/cometbft/cometbft/blob/main/spec/light-client/accountability/TendermintAccInv_004_draft.tla
+[FLP85]: https://dl.acm.org/doi/10.1145/3149.214121
+[tetrabft-liveness]: https://github.com/nano-o/tetrabft-tla/tree/main
+[tetratla-liveness]: https://github.com/nano-o/tetrabft-tla/blob/91916dfca49a5d59809212c1687b5680e0c98270/TetraBFT.tla#L227
