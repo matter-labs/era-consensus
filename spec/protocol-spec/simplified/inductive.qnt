@@ -294,6 +294,7 @@ module inductive {
     // the inductive invariant
     val ind_inv = and {
         lemma10_justified_commit_qc_no_vote_change,
+        block_progress_inv,
         lemma8_no_commits_in_future,
         lemma9_no_timeouts_in_future,
         lemma0_committed_blocks_have_justified_qc,
