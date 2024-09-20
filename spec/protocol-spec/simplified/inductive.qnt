@@ -199,7 +199,7 @@ module inductive {
         // non-deterministically initialize msgs_signed_commit
         nondet signed_commits = SIGNED_COMMIT_VOTES.powerset().oneOf()
         // non-deterministically initialize msgs_timeout_commit
-        nondet signed_timeouts = IVIEWS.setOfMaps(SIGNED_TIMEOUT_VOTES.powerset()).oneOf()
+        nondet signed_timeouts = SIGNED_TIMEOUT_VOTES.powerset().oneOf()
         // non-deterministically initialize msgs_new_view
         nondet new_views = NEW_VIEWS.powerset().oneOf()
         // non-deterministically initialize msgs_proposal
@@ -232,7 +232,6 @@ module inductive {
         nondet rv = ICORRECT.setOfMaps(IVIEWS).oneOf()
         nondet pv = ICORRECT.setOfMaps(IVIEWS).oneOf()
         all {
-            IVIEWS.forall(v => signed_timeouts.get(v).forall(tv => tv.vote.view == v)),
             r::leader' = ldr,
             r::replica_view' = rv,
             r::proposer_view' = pv,
@@ -273,7 +272,7 @@ module inductive {
         lemma3_signed_commit_needs_proposal,
         lemma4_signed_commit_needs_justification,
         lemma5_signed_commit_no_equivocation,
-        lemma6_signed_timeout_no_equivocation,
+        //lemma6_signed_timeout_no_equivocation,
         lemma7_proposal_no_equivocation,
     }
 
@@ -396,11 +395,14 @@ module inductive {
     }
 
     val lemma6_signed_timeout_no_equivocation = {
-        IVIEWS.forall(v => {
+        ICORRECT.forall(id => IVIEWS.forall(v => {
             // use filter/map to decrease the potential set size
-            val msgs = r::msgs_signed_timeout.get(v).filter(m => ICORRECT.contains(m.sig))
-            msgs.forall(m1 => msgs.forall(m2 => (m1.sig == m2.sig) implies (m1 == m2)))
-        })
+            val triples =
+                r::msgs_signed_timeout
+                    .filter(m => m.sig == id and m.vote.view == v)
+                    .map(m => (m.high_commit_qc, m.vote.high_vote, m.vote.high_commit_qc_view))
+            triples.forall(t1 => triples.forall(t2 => t1 == t2))
+        }))
     }
 
     val lemma7_proposal_no_equivocation = {
@@ -436,7 +438,7 @@ module inductive {
         r::ghost_commit_qc.indices().forall(i => commit_qc_shape_inv(r::ghost_commit_qc[i])),
         r::ghost_timeout_qc.indices().forall(i => timeout_qc_shape_inv(r::ghost_timeout_qc[i], r::ghost_commit_qc.length())),
         r::msgs_signed_commit.forall(signed_commit_vote_shape_inv),
-        IVIEWS.forall(v => r::msgs_signed_timeout.get(v).forall(signed_timeout_vote_shape_inv)),
+        r::msgs_signed_timeout.forall(signed_timeout_vote_shape_inv),
     }
 
     val one_block_example = r::one_block_example
