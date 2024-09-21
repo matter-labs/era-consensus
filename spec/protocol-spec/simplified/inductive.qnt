@@ -447,14 +447,16 @@ module inductive {
     }
 
     val lemma8_no_commits_in_future = {
-        r::msgs_signed_commit.forall(m => {
+        r::msgs_signed_commit.forall(m => or {
+            IFAULTY.contains(m.sig),
             val self = r::replica_state.get(m.sig)
             self.view >= m.vote.view
         })
     }
 
     val lemma9_no_timeouts_in_future = {
-        r::msgs_signed_timeout.forall(m => {
+        r::msgs_signed_timeout.forall(m => or {
+            IFAULTY.contains(m.sig),
             val self = r::replica_state.get(m.sig)
             self.view >= m.vote.view
         })
