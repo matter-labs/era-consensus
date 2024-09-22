@@ -8,7 +8,7 @@
         "noDeadlocks": true,
 	    "algo": "incremental",
         "tuning": {
-            "search.invariant.mode": "before",
+            "search.invariant.mode": "after",
             "search.invariantFilter": "(1->.*)"
         }
     }
