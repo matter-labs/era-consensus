@@ -293,6 +293,7 @@ module inductive {
 
     // the inductive invariant
     val ind_inv = and {
+        lemma11_one_proposal_per_view,
         lemma10_justified_commit_qc_no_vote_change,
         //block_progress_inv,
         lemma8_no_commits_in_future,
@@ -304,7 +305,6 @@ module inductive {
         lemma4_signed_commit_needs_justification,
         lemma5_signed_commit_no_equivocation,
         lemma6_signed_timeout_no_equivocation,
-        lemma7_proposal_no_equivocation,
     }
 
     action l_step = any {
@@ -439,16 +439,6 @@ module inductive {
         }))
     }
 
-    val lemma7_proposal_no_equivocation = {
-        r::msgs_proposal.forall(m1 => or {
-            IFAULTY.contains(m1.sig),
-            r::msgs_proposal.forall(m2 => {
-                (m1.sig == m2.sig and m1.ghost_block_number == m2.ghost_block_number)
-                    implies (m1 == m2)
-            })
-        })
-    }
-
     val lemma8_no_commits_in_future = {
         r::msgs_signed_commit.forall(m => or {
             IFAULTY.contains(m.sig),
@@ -483,6 +473,39 @@ module inductive {
             | Timeout(qc_id) =>
                 true
             }
+        })
+    }
+
+    val lemma11_one_proposal_per_view = {
+        IVIEWS.setOfMaps(IVALID_BLOCKS).exists(view_blocks => {
+            r::msgs_proposal.forall(m => or {
+                IFAULTY.contains(m.sig),
+                val num_and_hash = r::get_implied_block(m.justification)
+                and {
+                    m.ghost_block_number == num_and_hash._1,
+                    val qc_view = match (m.justification) {
+                    | Commit(qid) => r::ghost_commit_qc[qid].vote.view
+                    | Timeout(qid) => r::ghost_timeout_qc[qid].ghost_view
+                    }
+                    match (num_and_hash._2) {
+                    | Some(b) => m.block == BLOCK_NONE
+                    | None => m.block == Some(view_blocks.get(qc_view))
+                    },
+                }
+            })
+        })
+    }
+
+    // invalid lemmas
+
+    // this lemma actually does not hold true, we have a counterexample
+    val lemma7_proposal_no_equivocation = {
+        r::msgs_proposal.forall(m1 => or {
+            IFAULTY.contains(m1.sig),
+            r::msgs_proposal.forall(m2 => {
+                (m1.sig == m2.sig and m1.ghost_block_number == m2.ghost_block_number)
+                    implies (m1 == m2)
+            })
         })
     }
 
