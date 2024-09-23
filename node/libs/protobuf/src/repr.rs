@@ -19,6 +19,11 @@ pub fn read_required_repr<P: ProtoRepr>(field: &Option<P>) -> anyhow::Result<P::
     field.as_ref().context("missing field")?.read()
 }
 
+/// Parses an optional proto field.
+pub fn read_optional_repr<P: ProtoRepr>(field: &Option<P>) -> anyhow::Result<Option<P::Type>> {
+    field.as_ref().map(ProtoRepr::read).transpose()
+}
+
 /// Encodes a proto message.
 /// Currently it outputs a canonical encoding, but `decode` accepts
 /// non-canonical encoding as well.

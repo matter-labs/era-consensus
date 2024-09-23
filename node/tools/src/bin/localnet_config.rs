@@ -10,7 +10,7 @@ use std::{
     path::PathBuf,
 };
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_tools::{encode_json, AppConfig};
+use zksync_consensus_tools::config;
 use zksync_protobuf::serde::Serde;
 
 /// Command line arguments.
@@ -67,7 +67,7 @@ fn main() -> anyhow::Result<()> {
 
     let node_keys: Vec<node::SecretKey> = (0..nodes).map(|_| rng.gen()).collect();
     let mut cfgs: Vec<_> = (0..nodes)
-        .map(|i| AppConfig {
+        .map(|i| config::App {
             server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), addrs[i].port()),
             public_addr: addrs[i].into(),
             rpc_addr: None,
@@ -111,7 +111,7 @@ fn main() -> anyhow::Result<()> {
             .context("fs::set_permissions()")?;
 
         let config_path = root.join("config.json");
-        fs::write(&config_path, encode_json(&Serde(cfg))).context("fs::write()")?;
+        fs::write(&config_path, config::encode_json(&Serde(cfg))).context("fs::write()")?;
         fs::set_permissions(&config_path, Permissions::from_mode(0o600))
             .context("fs::set_permissions()")?;
     }

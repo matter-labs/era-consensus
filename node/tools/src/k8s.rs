@@ -1,4 +1,4 @@
-use crate::{config, AppConfig, NodeAddr};
+use crate::config;
 use anyhow::{ensure, Context};
 use k8s_openapi::{
     api::{
@@ -32,9 +32,9 @@ pub struct ConsensusNode {
     /// Node identifier
     pub id: String,
     /// Node configuration
-    pub config: AppConfig,
+    pub config: config::App,
     /// Full NodeAddr
-    pub node_addr: Option<NodeAddr>,
+    pub node_addr: Option<config::NodeAddr>,
     /// Is seed node (meaning it has no gossipStaticOutbound configuration)
     pub is_seed: bool,
 }
@@ -67,7 +67,7 @@ impl ConsensusNode {
             .context("Status not present")?
             .pod_ip
             .context("Pod IP address not present")?;
-        self.node_addr = Some(NodeAddr {
+        self.node_addr = Some(config::NodeAddr {
             key: self.config.node_key.public(),
             addr: SocketAddr::new(ip.parse()?, config::NODES_PORT).into(),
         });
