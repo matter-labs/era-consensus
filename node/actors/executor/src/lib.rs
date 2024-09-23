@@ -1,7 +1,6 @@
 //! Library files for the executor. We have it separate from the binary so that we can use these files in the tools crate.
 use crate::io::Dispatcher;
 use anyhow::Context as _;
-use network::http;
 pub use network::{gossip::attestation, RpcConfig};
 use std::{
     collections::{HashMap, HashSet},
@@ -63,7 +62,7 @@ pub struct Config {
 
     /// Http debug page configuration.
     /// If None, debug page is disabled
-    pub debug_page: Option<http::DebugPageConfig>,
+    pub debug_page: Option<network::debug_page::Config>,
 
     /// How often to poll the database looking for the batch commitment.
     pub batch_poll_interval: time::Duration,
@@ -144,12 +143,12 @@ impl Executor {
             net.register_metrics();
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
 
-            if let Some(debug_config) = self.config.debug_page {
+            if let Some(cfg) = self.config.debug_page {
                 s.spawn(async {
-                    http::DebugPageServer::new(debug_config, net)
+                    network::debug_page::Server::new(cfg, net)
                         .run(ctx)
                         .await
-                        .context("Http Server stopped")
+                        .context("Debug page server stopped")
                 });
             }
 

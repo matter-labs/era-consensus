@@ -6,7 +6,7 @@ pub mod build;
 pub mod proto;
 mod proto_fmt;
 pub mod repr;
-pub use repr::{read_required_repr, ProtoRepr};
+pub use repr::{read_optional_repr, read_required_repr, ProtoRepr};
 pub mod serde;
 mod std_conv;
 pub mod testonly;

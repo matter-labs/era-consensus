@@ -5,7 +5,7 @@ use std::{
     net::{Ipv4Addr, SocketAddr},
 };
 use zksync_consensus_roles::{node::SecretKey, validator};
-use zksync_consensus_tools::{k8s, k8s::ConsensusNode, AppConfig, NODES_PORT};
+use zksync_consensus_tools::{config, k8s, k8s::ConsensusNode};
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
@@ -40,9 +40,10 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
     let mut cfgs: Vec<ConsensusNode> = (0..nodes)
         .map(|i| ConsensusNode {
             id: format!("consensus-node-{i:0>2}"),
-            config: AppConfig {
-                server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT),
-                public_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), NODES_PORT).into(),
+            config: config::App {
+                server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), config::NODES_PORT),
+                public_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), config::NODES_PORT)
+                    .into(),
                 rpc_addr: None,
                 metrics_server_addr: None,
                 genesis: setup.genesis.clone(),

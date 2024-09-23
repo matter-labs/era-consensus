@@ -7,7 +7,7 @@ use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_tools::{decode_json, AppConfig, Configs, RPCServer, NODES_PORT};
+use zksync_consensus_tools::{config, RPCServer};
 use zksync_protobuf::serde::Serde;
 
 /// Command-line application launching a node executor.
@@ -26,22 +26,23 @@ struct Cli {
 
 impl Cli {
     /// Extracts configuration from the cli args.
-    fn load(&self) -> anyhow::Result<Configs> {
+    fn load(&self) -> anyhow::Result<config::Configs> {
         let raw = match &self.config {
             Some(raw) => raw.clone(),
             None => fs::read_to_string(&self.config_path)?,
         };
-        Ok(Configs {
-            app: decode_json::<Serde<AppConfig>>(&raw)?.0,
+        Ok(config::Configs {
+            app: config::decode_json::<Serde<config::App>>(&raw)?.0,
             database: self.database.clone(),
         })
     }
 }
 
 /// Overrides `cfg.public_addr`, based on the `PUBLIC_ADDR` env variable.
-fn check_public_addr(cfg: &mut AppConfig) -> anyhow::Result<()> {
+fn check_public_addr(cfg: &mut config::App) -> anyhow::Result<()> {
     if let Ok(public_addr) = std::env::var("PUBLIC_ADDR") {
-        cfg.public_addr = std::net::SocketAddr::new(public_addr.parse()?, NODES_PORT).into();
+        cfg.public_addr =
+            std::net::SocketAddr::new(public_addr.parse()?, config::NODES_PORT).into();
     }
     Ok(())
 }

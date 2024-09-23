@@ -13,9 +13,9 @@ use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;
 pub mod consensus;
+pub mod debug_page;
 mod frame;
 pub mod gossip;
-pub mod http;
 pub mod io;
 mod metrics;
 mod mux;
