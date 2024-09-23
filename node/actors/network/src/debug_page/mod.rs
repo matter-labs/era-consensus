@@ -126,7 +126,7 @@ impl Server {
             let cfg = ServerConfig::builder()
                 .with_no_client_auth()
                 .with_single_cert(tls.cert_chain.clone(), tls.private_key.clone_key())
-                .context("with_signle_cert()")?;
+                .context("with_single_cert()")?;
             self.run_with_listener(ctx, TlsListener::new(Arc::new(cfg).into(), listener))
                 .await
         } else {
