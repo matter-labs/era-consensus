@@ -4,7 +4,7 @@
       "debug": true
     },
     "checker": {
-        "discardDisabled": true,
+        "discardDisabled": false,
         "noDeadlocks": true,
 	    "algo": "incremental",
         "tuning": {
