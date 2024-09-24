@@ -184,7 +184,8 @@ module replica {
                 faulty_step,
                 unchanged_replica,
                 leader' = leader,
-            }
+                prophecy_correct_proposals' = prophecy_correct_proposals,
+            },
         }
     }
 
@@ -196,6 +197,7 @@ module replica {
                 nondet id = oneOf(CORRECT)
                 fetcher_step(id),
                 leader' = leader,
+                prophecy_correct_proposals' = prophecy_correct_proposals,
             },
         }
     }
@@ -209,6 +211,7 @@ module replica {
                     replica_view' = replica_view.set(id, replica_state.get(id).view),
                     replica_step_no_timeout(id),
                     leader' = leader,
+                    prophecy_correct_proposals' = prophecy_correct_proposals,
                 },
                 all {
                     // Non-deterministically choose the next block, use it only for the case of None below.
@@ -216,12 +219,14 @@ module replica {
                     proposer_step(id, new_block),
                     replica_view' = replica_view,
                     leader' = leader,
+                    prophecy_correct_proposals' = prophecy_correct_proposals,
                 },
             },
             all {
                 faulty_step,
                 unchanged_replica,
                 leader' = leader,
+                prophecy_correct_proposals' = prophecy_correct_proposals,
             }
         }
     }
@@ -234,6 +239,7 @@ module replica {
                 replica_view' = replica_view.set(id, replica_state.get(id).view),
                 replica_step(id),
                 leader' = leader,
+                prophecy_correct_proposals' = prophecy_correct_proposals,
             },
             all {
                 // Use the guessed block, use it only for the case of None below.
@@ -241,6 +247,7 @@ module replica {
                 proposer_step(id, new_block),
                 replica_view' = replica_view,
                 leader' = leader,
+                prophecy_correct_proposals' = prophecy_correct_proposals,
             },
         }
     }
