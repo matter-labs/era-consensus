@@ -7,29 +7,109 @@ use zksync_consensus_roles::validator;
 
 mod metrics;
 
+/// TODO: docs
+#[derive(Debug,Clone,PartialEq)]
+pub struct Justification(pub Vec<u8>);
+
+/// Block before `genesis.first_block`
+/// with an external (non-consensus) justification.
+#[derive(Debug,Clone,PartialEq)]
+pub struct PreGenesisBlock {
+    /// Block number.
+    pub number: validator::BlockNumber,
+    /// Payload.
+    pub payload: validator::Payload,
+    /// Justification.
+    pub justification: Justification,
+}
+
+/// TODO: docs
+#[derive(Debug,Clone,PartialEq)]
+pub enum Block {
+    /// Block with number `<genesis.first_block`.
+    PreGenesis(PreGenesisBlock),
+    /// Block with number `>=genesis.first_block`.
+    Final(validator::FinalBlock),
+}
+
+/// TODO: docs
+#[derive(Debug,Clone,PartialEq)]
+pub enum Last {
+    /// `<genesis.first_block`.
+    PreGenesis(validator::BlockNumber),
+    /// `>=genesis.first_block`.
+    Final(validator::CommitQC),
+}
+
+impl From<PreGenesisBlock> for Block {
+    fn from(b: PreGenesisBlock) -> Self { Self::PreGenesis(b) }
+}
+
+impl From<validator::FinalBlock> for Block {
+    fn from(b: validator::FinalBlock) -> Self { Self::Final(b) }
+}
+
+impl Block {
+    /// Block number.
+    pub fn number(&self) -> validator::BlockNumber {
+        match self {
+            Self::PreGenesis(b) => b.number,
+            Self::Final(b) => b.number(),
+        }
+    }
+
+    /// Convert to `Last`.
+    pub fn as_last(&self) -> Last {
+        match self {
+            Self::PreGenesis(b) => Last::PreGenesis(b.number),
+            Self::Final(b) => Last::Final(b.justification.clone()),
+        }
+    }
+}
+
+impl Last {
+    pub fn number(&self) -> validator::BlockNumber {
+        match self {
+            Last::PreGenesis(n) => *n,
+            Last::Final(qc) => qc.header().number,
+        }
+    }
+
+    pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
+        match self {
+            Last::PreGenesis(n) => anyhow::ensure!(n<&genesis.first_block,"missing qc"),
+            Last::Final(qc) => qc.verify(genesis)?,
+        }
+        Ok(())
+    }
+}
+
 /// State of the `BlockStore`: continuous range of blocks.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlockStoreState {
     /// Stored block with the lowest number.
-    /// If last is `None`, this is the first block that should be fetched.
+    /// If `last` is `None`, this is the first block that should be fetched.
     pub first: validator::BlockNumber,
     /// Stored block with the highest number.
+    /// If it is lower than genesis.first, then it will be set to `Last::Number` and
+    /// the first blocks to be fetched will need to include the non-consensus justification
+    /// (see `PreGenesisBlock`).
     /// None iff store is empty.
-    pub last: Option<validator::CommitQC>,
+    pub last: Option<Last>,
 }
 
 impl BlockStoreState {
     /// Checks whether block with the given number is stored in the `BlockStore`.
     pub fn contains(&self, number: validator::BlockNumber) -> bool {
         let Some(last) = &self.last else { return false };
-        self.first <= number && number <= last.header().number
+        self.first <= number && number <= last.number()
     }
 
     /// Number of the next block that can be stored in the `BlockStore`.
     /// (i.e. `last` + 1).
     pub fn next(&self) -> validator::BlockNumber {
         match &self.last {
-            Some(qc) => qc.header().number.next(),
+            Some(last) => last.number().next(),
             None => self.first,
         }
     }
@@ -44,12 +124,12 @@ impl BlockStoreState {
         );
         if let Some(last) = &self.last {
             anyhow::ensure!(
-                self.first <= last.header().number,
+                self.first <= last.number(),
                 "first block {} has bigger number than the last block {}",
                 self.first,
-                last.header().number
+                last.number(),
             );
-            last.verify(genesis).context("last.verify()")?;
+            last.verify(genesis).context("last")?;
         }
         Ok(())
     }
@@ -67,6 +147,9 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
     /// Range of blocks persisted in storage.
     fn persisted(&self) -> sync::watch::Receiver<BlockStoreState>;
 
+    /// Verifies the external justification of the pre-genesis block.
+    async fn verify_pre_genesis_block(&self, ctx: &ctx::Ctx, block: &PreGenesisBlock) -> ctx::Result<()>;
+
     /// Gets a block by its number.
     /// All the blocks from `state()` range are expected to be available.
     /// Blocks that have been queued but haven't been persisted yet don't have to be available.
@@ -75,7 +158,7 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<validator::FinalBlock>;
+    ) -> ctx::Result<Block>;
 
     /// Queue the block to be persisted in storage.
     /// `queue_next_block()` may return BEFORE the block is actually persisted,
@@ -85,7 +168,7 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
     async fn queue_next_block(
         &self,
         ctx: &ctx::Ctx,
-        block: validator::FinalBlock,
+        block: Block,
     ) -> ctx::Result<()>;
 }
 
@@ -93,7 +176,7 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
 struct Inner {
     queued: BlockStoreState,
     persisted: BlockStoreState,
-    cache: VecDeque<validator::FinalBlock>,
+    cache: VecDeque<Block>,
 }
 
 impl Inner {
@@ -107,24 +190,18 @@ impl Inner {
     /// Tries to push the next block to cache.
     /// Noop if provided block is not the expected one.
     /// Returns true iff cache has been modified.
-    fn try_push(&mut self, block: validator::FinalBlock) -> bool {
+    fn try_push(&mut self, block: Block) -> bool {
         if self.queued.next() != block.number() {
             return false;
         }
-        self.queued.last = Some(block.justification.clone());
+        self.queued.last = Some(block.as_last());
         self.cache.push_back(block);
         self.truncate_cache();
         true
     }
 
     /// Updates `persisted` field.
-    #[tracing::instrument(
-        skip_all,
-        fields(
-            first_l2_block = %persisted.first,
-            last_l2_block = ?persisted.last.as_ref().map(|l| l.message.proposal.number)
-        )
-    )]
+    #[tracing::instrument(skip_all)]
     fn update_persisted(&mut self, persisted: BlockStoreState) -> anyhow::Result<()> {
         if persisted.next() < self.persisted.next() {
             anyhow::bail!("head block has been removed from storage, this is not supported");
@@ -152,7 +229,7 @@ impl Inner {
         }
     }
 
-    fn block(&self, n: validator::BlockNumber) -> Option<validator::FinalBlock> {
+    fn block(&self, n: validator::BlockNumber) -> Option<Block> {
         // Subtraction is safe, because blocks in cache are
         // stored in increasing order of block number.
         let first = self.cache.front()?;
@@ -276,7 +353,7 @@ impl BlockStore {
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<Option<validator::FinalBlock>> {
+    ) -> ctx::Result<Option<Block>> {
         {
             let inner = self.inner.borrow();
             if !inner.queued.contains(number) {
@@ -296,6 +373,21 @@ impl BlockStore {
         Ok(Some(block))
     }
 
+    /// Verifies the block.
+    pub async fn verify_block(&self, ctx: &ctx::Ctx, block: &Block) -> ctx::Result<()> {
+        match &block {
+            Block::Final(b) => b.verify(&self.genesis).context("block.verify()")?,
+            Block::PreGenesis(b) => {
+                if b.number >= self.genesis.first_block {
+                    return Err(anyhow::format_err!("external justification is allowed only for pre-genesis blocks").into());
+                }
+                // TODO: metrics
+                self.persistent.verify_pre_genesis_block(ctx,&b).await.context("verify_pre_genesis_block()")?;
+            }
+        }
+        Ok(())
+    }
+
     /// Append block to a queue to be persisted eventually.
     /// Since persisting a block may take a significant amount of time,
     /// BlockStore contains a queue of blocks waiting to be persisted.
@@ -305,9 +397,9 @@ impl BlockStore {
     pub async fn queue_block(
         &self,
         ctx: &ctx::Ctx,
-        block: validator::FinalBlock,
+        block: Block,
     ) -> ctx::Result<()> {
-        block.verify(&self.genesis).context("block.verify()")?;
+        self.verify_block(ctx,&block).await.wrap("verify_block")?;
         sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
             inner.queued.next() >= block.number()
         })

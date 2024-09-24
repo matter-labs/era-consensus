@@ -1,7 +1,7 @@
 use super::*;
 use crate::{testonly::TestMemoryStorage, ReplicaState};
 use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
-use zksync_consensus_roles::{attester::BatchNumber, validator::testonly::Setup};
+use zksync_consensus_roles::{validator::testonly::Setup};
 
 #[tokio::test]
 async fn test_inmemory_block_store() {
@@ -13,34 +13,14 @@ async fn test_inmemory_block_store() {
 
     let store =
         &testonly::in_memory::BlockStore::new(setup.genesis.clone(), setup.genesis.first_block);
-    let mut want = vec![];
+    let mut want : Vec<Block> = vec![];
     for block in &setup.blocks {
-        store.queue_next_block(ctx, block.clone()).await.unwrap();
+        store.queue_next_block(ctx, block.clone().into()).await.unwrap();
         sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(block.number()))
             .await
             .unwrap();
-        want.push(block.clone());
+        want.push(block.clone().into());
         assert_eq!(want, testonly::dump(ctx, store).await);
-    }
-}
-
-#[tokio::test]
-async fn test_inmemory_batch_store() {
-    abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    let rng = &mut ctx.rng();
-    let mut setup = Setup::new(rng, 3);
-    setup.push_batches(rng, 5);
-
-    let store = &testonly::in_memory::BatchStore::new(BatchNumber(0));
-    let mut want = vec![];
-    for batch in &setup.batches {
-        store.queue_next_batch(ctx, batch.clone()).await.unwrap();
-        sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(batch.number))
-            .await
-            .unwrap();
-        want.push(batch.clone());
-        assert_eq!(want, testonly::dump_batch(ctx, store).await);
     }
 }
 
@@ -82,6 +62,7 @@ async fn test_state_updates() {
         }
 
         for block in &setup.blocks {
+            let block = Block::from(block.clone());
             store.blocks.queue_block(ctx, block.clone()).await.unwrap();
             if block.number() < first_block.number() {
                 // Queueing block before first block should be a noop.
@@ -101,7 +82,7 @@ async fn test_state_updates() {
                 assert_eq!(
                     BlockStoreState {
                         first: first_block.number(),
-                        last: Some(block.justification.clone()),
+                        last: Some(block.as_last()),
                     },
                     store.blocks.queued()
                 );
