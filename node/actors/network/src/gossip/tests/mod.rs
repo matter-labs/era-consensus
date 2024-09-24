@@ -22,7 +22,6 @@ use zksync_concurrency::{
 use zksync_consensus_roles::{attester, validator};
 use zksync_consensus_storage::testonly::TestMemoryStorage;
 
-mod fetch_batches;
 mod fetch_blocks;
 mod syncing;
 
@@ -39,7 +38,7 @@ async fn test_one_connection_per_node() {
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
         s.spawn_bg(store.runner.run(ctx));
         let mut nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
-            let (node,runner) = testonly::Instance::new(cfg.clone(), store.blocks.clone(), store.batches.clone());
+            let (node,runner) = testonly::Instance::new(cfg.clone(), store.blocks.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             node
         }).collect();
@@ -251,7 +250,6 @@ async fn test_validator_addrs_propagation() {
                 let (node, runner) = testonly::Instance::new(
                     cfg.clone(),
                     store.blocks.clone(),
-                    store.batches.clone(),
                 );
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                 node
@@ -292,7 +290,7 @@ async fn test_genesis_mismatch() {
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
         s.spawn_bg(store.runner.run(ctx));
         let (_node, runner) =
-            testonly::Instance::new(cfgs[0].clone(), store.blocks, store.batches.clone());
+            testonly::Instance::new(cfgs[0].clone(), store.blocks);
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         tracing::info!("Accept a connection with mismatching genesis.");
@@ -351,7 +349,7 @@ async fn validator_node_restart() {
     }
     let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
     let (node1, node1_runner) =
-        testonly::Instance::new(cfgs[1].clone(), store.blocks.clone(), store.batches.clone());
+        testonly::Instance::new(cfgs[1].clone(), store.blocks.clone());
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(store.runner.run(ctx));
         s.spawn_bg(
@@ -383,7 +381,6 @@ async fn validator_node_restart() {
             let (_node0, runner) = testonly::Instance::new(
                 cfgs[0].clone(),
                 store.blocks.clone(),
-                store.batches.clone(),
             );
             scope::run!(ctx, |ctx, s| async {
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
@@ -406,7 +403,7 @@ async fn validator_node_restart() {
     .unwrap();
 }
 
-/// Test that SyncValidatorAddrs RPC batches updates
+/// Test that PushValidatorAddrs RPC batches updates
 /// and is rate limited. Test is constructing a gossip
 /// network with star topology. All nodes are expected
 /// to receive all updates in 2 rounds of communication.

@@ -40,7 +40,7 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
             cfg.validator_key = None;
             let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
             s.spawn_bg(store.runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -51,7 +51,7 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
                 .net
                 .gossip
                 .block_store
-                .queue_block(ctx, block.clone())
+                .queue_block(ctx, block.clone().into())
                 .await
                 .context("queue_block()")?;
             for node in &nodes {
@@ -96,7 +96,7 @@ async fn uncoordinated_block_syncing(
             cfg.validator_key = None;
             let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
             s.spawn_bg(store.runner.clone().run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -151,7 +151,7 @@ async fn test_switching_on_nodes() {
             cfg.validator_key = None;
             let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
             s.spawn_bg(store.runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
 
@@ -206,7 +206,7 @@ async fn test_switching_off_nodes() {
             cfg.validator_key = None;
             let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
             s.spawn_bg(store.runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -270,7 +270,7 @@ async fn test_different_first_block() {
             let store =
                 TestMemoryStorage::new_store_with_first_block(ctx, &setup.genesis, first).await;
             s.spawn_bg(store.runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
+            let (node, runner) = testonly::Instance::new(cfg, store.blocks);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -300,115 +300,6 @@ async fn test_different_first_block() {
                     .await
                     .unwrap();
             }
-        }
-        Ok(())
-    })
-    .await
-    .unwrap();
-}
-
-/// Tests batch syncing with global network synchronization (a next batch becoming available
-/// on some node only after nodes have received the previous batch.
-#[test_casing(5, NETWORK_CONNECTIVITY_CASES)]
-#[tokio::test(flavor = "multi_thread")]
-async fn coordinated_batch_syncing(node_count: usize, gossip_peers: usize) {
-    abort_on_panic();
-    let _guard = set_timeout(time::Duration::seconds(20));
-
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::Setup::new(rng, node_count);
-    setup.push_batches(rng, EXCHANGED_STATE_COUNT);
-    let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
-    scope::run!(ctx, |ctx, s| async {
-        let mut nodes = vec![];
-        for (i, mut cfg) in cfgs.into_iter().enumerate() {
-            cfg.rpc.push_batch_store_state_rate = limiter::Rate::INF;
-            cfg.rpc.get_batch_rate = limiter::Rate::INF;
-            cfg.rpc.get_batch_timeout = None;
-            cfg.validator_key = None;
-            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-            s.spawn_bg(store.runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
-            nodes.push(node);
-        }
-        for batch in &setup.batches {
-            nodes
-                .choose(rng)
-                .unwrap()
-                .net
-                .gossip
-                .batch_store
-                .queue_batch(ctx, batch.clone(), setup.genesis.clone())
-                .await
-                .context("queue_batch()")?;
-            for node in &nodes {
-                node.net
-                    .gossip
-                    .batch_store
-                    .wait_until_persisted(ctx, batch.number)
-                    .await
-                    .unwrap();
-            }
-        }
-        Ok(())
-    })
-    .await
-    .unwrap();
-}
-
-/// Tests batch syncing in an uncoordinated network, in which new batches arrive at a schedule.
-#[test_casing(10, Product((
-    NETWORK_CONNECTIVITY_CASES,
-    [time::Duration::milliseconds(50), time::Duration::milliseconds(500)],
-)))]
-#[tokio::test(flavor = "multi_thread")]
-async fn uncoordinated_batch_syncing(
-    (node_count, gossip_peers): (usize, usize),
-    state_generation_interval: time::Duration,
-) {
-    abort_on_panic();
-    let _guard = set_timeout(time::Duration::seconds(20));
-
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::Setup::new(rng, node_count);
-    setup.push_batches(rng, EXCHANGED_STATE_COUNT);
-    let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
-    scope::run!(ctx, |ctx, s| async {
-        let mut nodes = vec![];
-        for (i, mut cfg) in cfgs.into_iter().enumerate() {
-            cfg.rpc.push_batch_store_state_rate = limiter::Rate::INF;
-            cfg.rpc.get_batch_rate = limiter::Rate::INF;
-            cfg.rpc.get_batch_timeout = None;
-            cfg.validator_key = None;
-            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-            s.spawn_bg(store.runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks, store.batches);
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
-            nodes.push(node);
-        }
-        for batch in &setup.batches {
-            nodes
-                .choose(rng)
-                .unwrap()
-                .net
-                .gossip
-                .batch_store
-                .queue_batch(ctx, batch.clone(), setup.genesis.clone())
-                .await
-                .context("queue_batch()")?;
-            ctx.sleep(state_generation_interval).await?;
-        }
-        let last = setup.batches.last().unwrap().number;
-        for node in &nodes {
-            node.net
-                .gossip
-                .batch_store
-                .wait_until_persisted(ctx, last)
-                .await
-                .unwrap();
         }
         Ok(())
     })

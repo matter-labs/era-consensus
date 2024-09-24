@@ -56,15 +56,11 @@ pub(super) async fn connect(
         accept: [
             mux_entry::<rpc::get_block::Rpc>(ctx),
             mux_entry::<rpc::push_block_store_state::Rpc>(ctx),
-            mux_entry::<rpc::get_batch::Rpc>(ctx),
-            mux_entry::<rpc::push_batch_store_state::Rpc>(ctx),
         ]
         .into(),
         connect: [
             mux_entry::<rpc::get_block::Rpc>(ctx),
             mux_entry::<rpc::push_block_store_state::Rpc>(ctx),
-            mux_entry::<rpc::get_batch::Rpc>(ctx),
-            mux_entry::<rpc::push_batch_store_state::Rpc>(ctx),
         ]
         .into(),
     };

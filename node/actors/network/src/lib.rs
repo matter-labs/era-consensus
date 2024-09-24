@@ -8,7 +8,7 @@ use zksync_concurrency::{
     error::Wrap as _,
     limiter, scope,
 };
-use zksync_consensus_storage::{BatchStore, BlockStore};
+use zksync_consensus_storage::{BlockStore};
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;
@@ -55,11 +55,10 @@ impl Network {
     pub fn new(
         cfg: Config,
         block_store: Arc<BlockStore>,
-        batch_store: Arc<BatchStore>,
         pipe: ActorPipe<io::InputMessage, io::OutputMessage>,
         attestation: Arc<attestation::Controller>,
     ) -> (Arc<Self>, Runner) {
-        let gossip = gossip::Network::new(cfg, block_store, batch_store, pipe.send, attestation);
+        let gossip = gossip::Network::new(cfg, block_store, pipe.send, attestation);
         let consensus = consensus::Network::new(gossip.clone());
         let net = Arc::new(Self { gossip, consensus });
         (
@@ -125,12 +124,6 @@ impl Runner {
             // Fetch missing blocks in the background.
             s.spawn(async {
                 self.net.gossip.run_block_fetcher(ctx).await;
-                Ok(())
-            });
-
-            // Fetch missing batches in the background.
-            s.spawn(async {
-                self.net.gossip.run_batch_fetcher(ctx).await;
                 Ok(())
             });
 

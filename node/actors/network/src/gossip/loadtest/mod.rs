@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use rand::Rng;
 use zksync_concurrency::{ctx, error::Wrap as _, limiter, net, scope, sync, time};
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::BlockStoreState;
+use zksync_consensus_storage::{self as storage, BlockStoreState};
 use zksync_protobuf::kB;
 
 #[cfg(test)]
@@ -29,7 +29,7 @@ impl<'a> PushBlockStoreStateServer {
         let state =
             sync::wait_for(ctx, sub, |s| (|| s.as_ref()?.last.as_ref())().is_some()).await?;
         let state = state.as_ref().unwrap();
-        Ok(state.first..state.last.as_ref().unwrap().header().number + 1)
+        Ok(state.first..state.last.as_ref().unwrap().number() + 1)
     }
 }
 
@@ -76,7 +76,7 @@ pub struct Loadtest {
     /// Traffic pattern to generate.
     pub traffic_pattern: TrafficPattern,
     /// Channel to send the received responses to.
-    pub output: Option<ctx::channel::Sender<Option<validator::FinalBlock>>>,
+    pub output: Option<ctx::channel::Sender<Option<storage::Block>>>,
 }
 
 impl Loadtest {

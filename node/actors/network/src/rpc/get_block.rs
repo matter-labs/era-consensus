@@ -2,7 +2,8 @@
 use super::Capability;
 use crate::proto::gossip as proto;
 use anyhow::Context;
-use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
+use zksync_consensus_storage as storage;
+use zksync_consensus_roles::validator::{BlockNumber};
 use zksync_protobuf::{read_optional, ProtoFmt};
 
 /// `get_block` RPC.
@@ -41,7 +42,7 @@ impl ProtoFmt for Req {
 
 /// Response to a [`GetBlockRequest`] containing a block or a reason it cannot be retrieved.
 #[derive(Debug, PartialEq)]
-pub(crate) struct Resp(pub(crate) Option<FinalBlock>);
+pub(crate) struct Resp(pub(crate) Option<storage::Block>);
 
 impl ProtoFmt for Resp {
     type Proto = proto::GetBlockResponse;
