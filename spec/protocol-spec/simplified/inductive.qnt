@@ -247,6 +247,8 @@ module inductive {
         // non-deterministically choose replica_view and proposer_view
         nondet rv = ICORRECT.setOfMaps(IVIEWS).oneOf()
         nondet pv = ICORRECT.setOfMaps(IVIEWS).oneOf()
+        // guess prophecy_correct_proposals
+        nondet i_prophecy_correct_proposals = IVIEWS.setOfMaps(IVALID_BLOCKS).oneOf()
         all {
             r::leader' = ldr,
             r::replica_view' = rv,
@@ -268,6 +270,7 @@ module inductive {
             r::msgs_proposal' = proposals,
             r::ghost_justifications' = justifications,
             r::ghost_step' = AnyStep,
+            r::prophecy_correct_proposals' = i_prophecy_correct_proposals,
             step_no' = 0,
         }
     }
@@ -477,22 +480,20 @@ module inductive {
     }
 
     val lemma11_one_proposal_per_view = {
-        IVIEWS.setOfMaps(IVALID_BLOCKS).exists(view_blocks => {
-            r::msgs_proposal.forall(m => or {
-                IFAULTY.contains(m.sig),
-                val num_and_hash = r::get_implied_block(m.justification)
-                and {
-                    m.ghost_block_number == num_and_hash._1,
-                    val qc_view = match (m.justification) {
-                    | Commit(qid) => r::ghost_commit_qc[qid].vote.view
-                    | Timeout(qid) => r::ghost_timeout_qc[qid].ghost_view
-                    }
-                    match (num_and_hash._2) {
-                    | Some(b) => m.block == BLOCK_NONE
-                    | None => m.block == Some(view_blocks.get(qc_view))
-                    },
+        r::msgs_proposal.forall(m => or {
+            IFAULTY.contains(m.sig),
+            val num_and_hash = r::get_implied_block(m.justification)
+            and {
+                m.ghost_block_number == num_and_hash._1,
+                val qc_view = match (m.justification) {
+                | Commit(qid) => r::ghost_commit_qc[qid].vote.view
+                | Timeout(qid) => r::ghost_timeout_qc[qid].ghost_view
                 }
-            })
+                match (num_and_hash._2) {
+                | Some(b) => m.block == BLOCK_NONE
+                | None => m.block == Some(r::prophecy_correct_proposals.get(qc_view))
+                },
+            }
         })
     }
 
@@ -525,6 +526,7 @@ module inductive {
         r::msgs_proposal' = r::msgs_proposal,
         r::ghost_justifications' = r::ghost_justifications,
         r::ghost_step' = r::ghost_step,
+        r::prophecy_correct_proposals' = r::prophecy_correct_proposals,
         step_no' = step_no + 1,
     }
 

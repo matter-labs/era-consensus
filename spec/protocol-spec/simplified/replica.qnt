@@ -66,6 +66,10 @@ module replica {
     var ghost_justifications: (ReplicaId, ViewNumber) -> Justification
     // save the last executed action
     var ghost_step: StepKind
+    // We guess the sequence of blocks proposed by the correct leaders.
+    // Since no correct leader would propose two different blocks at the same view,
+    // it is sufficient to have this function.
+    var prophecy_correct_proposals: ViewNumber -> Block
 
     val ALL_FAULTY_SIGNED_COMMIT_VOTES = 
         tuples(VIEWS, FAULTY, ALL_BLOCKS, VIEWS)
@@ -115,6 +119,8 @@ module replica {
         ghost_commit_qc' = [],
         ghost_timeout_qc' = [],
         ghost_step' = InitStep,
+        nondet i_prophecy_correct_proposals = VIEWS.setOfMaps(VALID_BLOCKS).oneOf()
+        prophecy_correct_proposals' = i_prophecy_correct_proposals,
     }
 
     // start from a bootstrapped state in view 1
@@ -165,6 +171,8 @@ module replica {
             ghost_commit_qc' = [],
             ghost_timeout_qc' = [init_timeout_qc],
             ghost_step' = InitStep,
+            nondet i_prophecy_correct_proposals = VIEWS.setOfMaps(VALID_BLOCKS).oneOf()
+            prophecy_correct_proposals' = i_prophecy_correct_proposals,
         }
     }
 
@@ -228,8 +236,8 @@ module replica {
                 leader' = leader,
             },
             all {
-                // Non-deterministically choose the next block, use it only for the case of None below.
-                nondet new_block = oneOf(VALID_BLOCKS)
+                // Use the guessed block, use it only for the case of None below.
+                val new_block = prophecy_correct_proposals.get(replica_state.get(id).view)
                 proposer_step(id, new_block),
                 replica_view' = replica_view,
                 leader' = leader,
