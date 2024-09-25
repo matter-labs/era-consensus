@@ -55,8 +55,8 @@ for j in `seq 0 $((max_lemmas-1))`; do
       }
     }
 EOF
-    n=$((n+1))
     echo "$n,$((18000+n))" >>$CSV
+    n=$((n+1))
   done
 done
 
