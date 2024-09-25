@@ -63,6 +63,6 @@ done
 parallel -j ${max_jobs} -v --delay 1 --halt now,fail=${max_failing_jobs} \
    --results out --colsep=, -a ${CSV} \
   JVM_ARGS=-Xmx40G quint verify --max-steps=1 --init=${init} --step=${step} \
-    --server-endpoint=localhost:${2} \
+    --server-endpoint=localhost:{2} \
     --apalache-config=$TMPDIR/apalache-inductive{1}.json \
     --invariant=${inv} ${spec}
