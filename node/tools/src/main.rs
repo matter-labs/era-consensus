@@ -8,7 +8,7 @@ use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_tools::{config, RPCServer};
-use zksync_protobuf::serde::Serde;
+use zksync_protobuf::serde::Deserialize;
 
 /// Command-line application launching a node executor.
 #[derive(Debug, Parser)]
@@ -27,12 +27,12 @@ struct Cli {
 impl Cli {
     /// Extracts configuration from the cli args.
     fn load(&self) -> anyhow::Result<config::Configs> {
-        let raw = match &self.config {
-            Some(raw) => raw.clone(),
+        let json = match &self.config {
+            Some(json) => json.clone(),
             None => fs::read_to_string(&self.config_path)?,
         };
         Ok(config::Configs {
-            app: config::decode_json::<Serde<config::App>>(&raw)?.0,
+            app: Deserialize{deny_unknown_fields:true}.proto_fmt_from_json(&json)?,
             database: self.database.clone(),
         })
     }

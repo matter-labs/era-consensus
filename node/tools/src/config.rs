@@ -42,7 +42,7 @@ fn read_optional_secret_text<T: TextFmt>(text: &Option<String>) -> anyhow::Resul
 /// Ports for the nodes to listen on kubernetes pod.
 pub const NODES_PORT: u16 = 3054;
 
-/// Decodes a proto message from json for arbitrary ProtoFmt.
+/// Decodes serde type from json.
 pub fn decode_json<T: serde::de::DeserializeOwned>(json: &str) -> anyhow::Result<T> {
     let mut d = serde_json::Deserializer::from_str(json);
     let p = T::deserialize(&mut d)?;
