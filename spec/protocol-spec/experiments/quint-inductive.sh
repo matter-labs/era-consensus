@@ -30,9 +30,12 @@ step=${8:-"step"}
 # https://lists.defectivebydesign.org/archive/html/bug-parallel/2017-04/msg00000.html
 export LANG= LC_ALL= LC_CTYPE= 
 
+njobs=$((max_trans * max_lemmas))
+
+n=0
 for j in `seq 0 $((max_lemmas-1))`; do
   for i in `seq 0 $((max_trans-1))`; do
-    cat >$TMPDIR/apalache-inductive${i}.json <<EOF
+    cat >$TMPDIR/apalache-inductive${n}.json <<EOF
     {
       "checker": {
         "discard-disabled": false,
@@ -49,11 +52,12 @@ for j in `seq 0 $((max_lemmas-1))`; do
       }
     }
 EOF
+    n=$((n+1))
   done
 done
 
 # set -j <cpus> to the number of CPUs - 1
-seq 0 $((max_trans-1)) \
+seq 0 $((njobs-1)) \
   | parallel -j ${max_jobs} -v --delay 1 --halt now,fail=${max_failing_jobs} --results out \
   JVM_ARGS=-Xmx120G quint verify --max-steps=1 --init=${init} --step=${step} \
     --apalache-config=$TMPDIR/apalache-inductive{}.json \
