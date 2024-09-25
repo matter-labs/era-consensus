@@ -31,6 +31,9 @@ step=${8:-"step"}
 export LANG= LC_ALL= LC_CTYPE= 
 
 njobs=$((max_trans * max_lemmas))
+# this is the jobs description file
+CSV=$TMPDIR/`mktemp XXXXXXXX.csv`
+echo -n >$CSV
 
 n=0
 for j in `seq 0 $((max_lemmas-1))`; do
@@ -53,13 +56,13 @@ for j in `seq 0 $((max_lemmas-1))`; do
     }
 EOF
     n=$((n+1))
+    echo "$n,$((18000+n))" >>$CSV
   done
 done
 
-# set -j <cpus> to the number of CPUs - 1
-seq 0 $((njobs-1)) \
-  | parallel -j ${max_jobs} -v --delay 1 --halt now,fail=${max_failing_jobs} --results out \
-  JVM_ARGS=-Xmx120G quint verify --max-steps=1 --init=${init} --step=${step} \
-    --server-endpoint=localhost:900{}
-    --apalache-config=$TMPDIR/apalache-inductive{}.json \
+parallel -j ${max_jobs} -v --delay 1 --halt now,fail=${max_failing_jobs} \
+   --results out --colsep=, -a ${CSV} \
+  JVM_ARGS=-Xmx40G quint verify --max-steps=1 --init=${init} --step=${step} \
+    --server-endpoint=localhost:${2} \
+    --apalache-config=$TMPDIR/apalache-inductive{1}.json \
     --invariant=${inv} ${spec}
