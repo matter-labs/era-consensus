@@ -1,7 +1,6 @@
 //! Node configuration.
 use crate::{proto, store};
 use anyhow::{anyhow, Context as _};
-use serde_json::ser::Formatter;
 use std::{
     collections::{HashMap, HashSet},
     fs, io,
@@ -41,29 +40,6 @@ fn read_optional_secret_text<T: TextFmt>(text: &Option<String>) -> anyhow::Resul
 
 /// Ports for the nodes to listen on kubernetes pod.
 pub const NODES_PORT: u16 = 3054;
-
-/// Decodes a proto message from json for arbitrary ProtoFmt.
-pub fn decode_json<T: serde::de::DeserializeOwned>(json: &str) -> anyhow::Result<T> {
-    let mut d = serde_json::Deserializer::from_str(json);
-    let p = T::deserialize(&mut d)?;
-    d.end()?;
-    Ok(p)
-}
-
-/// Encodes a generated proto message to json for arbitrary ProtoFmt.
-pub fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
-    let s = serde_json::Serializer::pretty(vec![]);
-    encode_with_serializer(x, s)
-}
-
-/// Encodes a generated proto message for arbitrary ProtoFmt with provided serializer.
-pub(crate) fn encode_with_serializer<T: serde::ser::Serialize, F: Formatter>(
-    x: &T,
-    mut serializer: serde_json::Serializer<Vec<u8>, F>,
-) -> String {
-    T::serialize(x, &mut serializer).unwrap();
-    String::from_utf8(serializer.into_inner()).unwrap()
-}
 
 /// Pair of (public key, host addr) for a gossip network node.
 #[derive(Debug, Clone)]
