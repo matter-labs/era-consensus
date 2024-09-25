@@ -60,5 +60,6 @@ done
 seq 0 $((njobs-1)) \
   | parallel -j ${max_jobs} -v --delay 1 --halt now,fail=${max_failing_jobs} --results out \
   JVM_ARGS=-Xmx120G quint verify --max-steps=1 --init=${init} --step=${step} \
+    --server-endpoint=localhost:900{}
     --apalache-config=$TMPDIR/apalache-inductive{}.json \
     --invariant=${inv} ${spec}
