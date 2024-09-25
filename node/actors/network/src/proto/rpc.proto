@@ -11,4 +11,5 @@ enum Capability {
   PUSH_BLOCK_STORE_STATE = 3;
   GET_BLOCK = 4;
   PUSH_BATCH_VOTES = 8;
+  PUSH_BLOCK_STORE_STATE_V2 = 9;
 }

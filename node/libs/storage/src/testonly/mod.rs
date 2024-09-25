@@ -1,6 +1,5 @@
 //! Test-only utilities.
 use crate::{
-    Block,
     BlockStore, BlockStoreRunner,
     PersistentBlockStore, Proposal, ReplicaState,
 };
@@ -77,7 +76,7 @@ impl TestMemoryStorage {
 }
 
 /// Dumps all the blocks stored in `store`.
-pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<Block> {
+pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<validator::Block> {
     let genesis = store.genesis(ctx).await.unwrap();
     let state = store.persisted().borrow().clone();
     assert!(genesis.first_block <= state.first);

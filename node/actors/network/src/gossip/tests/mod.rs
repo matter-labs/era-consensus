@@ -440,7 +440,7 @@ async fn rate_limiting() {
         // their own address.
         for (i, cfg) in cfgs[1..].iter().enumerate() {
             let (node, runner) =
-                testonly::Instance::new(cfg.clone(), store.blocks.clone(), store.batches.clone());
+                testonly::Instance::new(cfg.clone(), store.blocks.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             let sub = &mut node.net.gossip.validator_addrs.subscribe();
             sync::wait_for(ctx, sub, |got| {
@@ -454,7 +454,7 @@ async fn rate_limiting() {
 
         // Spawn the center node.
         let (center, runner) =
-            testonly::Instance::new(cfgs[0].clone(), store.blocks.clone(), store.batches.clone());
+            testonly::Instance::new(cfgs[0].clone(), store.blocks.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node[0]")));
         // Await for the center to receive all validator addrs.
         let sub = &mut center.net.gossip.validator_addrs.subscribe();
@@ -531,7 +531,6 @@ async fn test_batch_votes_propagation() {
             let (node, runner) = testonly::Instance::new_from_config(testonly::InstanceConfig {
                 cfg: cfg.clone(),
                 block_store: store.blocks.clone(),
-                batch_store: store.batches.clone(),
                 attestation: attestation::Controller::new(Some(setup.attester_keys[i].clone()))
                     .into(),
             });

@@ -204,7 +204,7 @@ impl Network {
             s.spawn::<()>(async {
                 let mut state = self.block_store.queued();
                 loop {
-                    let req = rpc::push_block_store_state::Req(state.clone());
+                    let req = rpc::push_block_store_state::Req::new(state.clone(),self.genesis());
                     push_block_store_state_client.call(ctx, &req, kB).await?;
                     state = self.block_store.wait_for_queued_change(ctx, &state).await?;
                 }

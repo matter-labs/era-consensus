@@ -6,32 +6,6 @@ use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::validator;
 
 mod metrics;
-
-/// TODO: docs
-#[derive(Debug,Clone,PartialEq)]
-pub struct Justification(pub Vec<u8>);
-
-/// Block before `genesis.first_block`
-/// with an external (non-consensus) justification.
-#[derive(Debug,Clone,PartialEq)]
-pub struct PreGenesisBlock {
-    /// Block number.
-    pub number: validator::BlockNumber,
-    /// Payload.
-    pub payload: validator::Payload,
-    /// Justification.
-    pub justification: Justification,
-}
-
-/// TODO: docs
-#[derive(Debug,Clone,PartialEq)]
-pub enum Block {
-    /// Block with number `<genesis.first_block`.
-    PreGenesis(PreGenesisBlock),
-    /// Block with number `>=genesis.first_block`.
-    Final(validator::FinalBlock),
-}
-
 /// TODO: docs
 #[derive(Debug,Clone,PartialEq)]
 pub enum Last {
@@ -41,33 +15,18 @@ pub enum Last {
     Final(validator::CommitQC),
 }
 
-impl From<PreGenesisBlock> for Block {
-    fn from(b: PreGenesisBlock) -> Self { Self::PreGenesis(b) }
-}
-
-impl From<validator::FinalBlock> for Block {
-    fn from(b: validator::FinalBlock) -> Self { Self::Final(b) }
-}
-
-impl Block {
-    /// Block number.
-    pub fn number(&self) -> validator::BlockNumber {
-        match self {
-            Self::PreGenesis(b) => b.number,
-            Self::Final(b) => b.number(),
-        }
-    }
-
-    /// Convert to `Last`.
-    pub fn as_last(&self) -> Last {
-        match self {
-            Self::PreGenesis(b) => Last::PreGenesis(b.number),
-            Self::Final(b) => Last::Final(b.justification.clone()),
+impl From<&validator::Block> for Last {
+    fn from(b:&validator::Block) -> Last {
+        use validator::Block as B;
+        match b {
+            B::PreGenesis(b) => Last::PreGenesis(b.number),
+            B::Final(b) => Last::Final(b.justification.clone()),
         }
     }
 }
 
 impl Last {
+    /// Converts Last to block number.
     pub fn number(&self) -> validator::BlockNumber {
         match self {
             Last::PreGenesis(n) => *n,
@@ -75,6 +34,7 @@ impl Last {
         }
     }
 
+    /// Verifies Last.
     pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
         match self {
             Last::PreGenesis(n) => anyhow::ensure!(n<&genesis.first_block,"missing qc"),
@@ -148,7 +108,7 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
     fn persisted(&self) -> sync::watch::Receiver<BlockStoreState>;
 
     /// Verifies the external justification of the pre-genesis block.
-    async fn verify_pre_genesis_block(&self, ctx: &ctx::Ctx, block: &PreGenesisBlock) -> ctx::Result<()>;
+    async fn verify_pre_genesis_block(&self, ctx: &ctx::Ctx, block: &validator::PreGenesisBlock) -> ctx::Result<()>;
 
     /// Gets a block by its number.
     /// All the blocks from `state()` range are expected to be available.
@@ -158,7 +118,7 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<Block>;
+    ) -> ctx::Result<validator::Block>;
 
     /// Queue the block to be persisted in storage.
     /// `queue_next_block()` may return BEFORE the block is actually persisted,
@@ -168,7 +128,7 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
     async fn queue_next_block(
         &self,
         ctx: &ctx::Ctx,
-        block: Block,
+        block: validator::Block,
     ) -> ctx::Result<()>;
 }
 
@@ -176,7 +136,7 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
 struct Inner {
     queued: BlockStoreState,
     persisted: BlockStoreState,
-    cache: VecDeque<Block>,
+    cache: VecDeque<validator::Block>,
 }
 
 impl Inner {
@@ -190,11 +150,11 @@ impl Inner {
     /// Tries to push the next block to cache.
     /// Noop if provided block is not the expected one.
     /// Returns true iff cache has been modified.
-    fn try_push(&mut self, block: Block) -> bool {
+    fn try_push(&mut self, block: validator::Block) -> bool {
         if self.queued.next() != block.number() {
             return false;
         }
-        self.queued.last = Some(block.as_last());
+        self.queued.last = Some(Last::from(&block));
         self.cache.push_back(block);
         self.truncate_cache();
         true
@@ -229,7 +189,7 @@ impl Inner {
         }
     }
 
-    fn block(&self, n: validator::BlockNumber) -> Option<Block> {
+    fn block(&self, n: validator::BlockNumber) -> Option<validator::Block> {
         // Subtraction is safe, because blocks in cache are
         // stored in increasing order of block number.
         let first = self.cache.front()?;
@@ -353,7 +313,7 @@ impl BlockStore {
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<Option<Block>> {
+    ) -> ctx::Result<Option<validator::Block>> {
         {
             let inner = self.inner.borrow();
             if !inner.queued.contains(number) {
@@ -374,10 +334,11 @@ impl BlockStore {
     }
 
     /// Verifies the block.
-    pub async fn verify_block(&self, ctx: &ctx::Ctx, block: &Block) -> ctx::Result<()> {
+    pub async fn verify_block(&self, ctx: &ctx::Ctx, block: &validator::Block) -> ctx::Result<()> {
+        use validator::Block as B;
         match &block {
-            Block::Final(b) => b.verify(&self.genesis).context("block.verify()")?,
-            Block::PreGenesis(b) => {
+            B::Final(b) => b.verify(&self.genesis).context("block.verify()")?,
+            B::PreGenesis(b) => {
                 if b.number >= self.genesis.first_block {
                     return Err(anyhow::format_err!("external justification is allowed only for pre-genesis blocks").into());
                 }
@@ -397,7 +358,7 @@ impl BlockStore {
     pub async fn queue_block(
         &self,
         ctx: &ctx::Ctx,
-        block: Block,
+        block: validator::Block,
     ) -> ctx::Result<()> {
         self.verify_block(ctx,&block).await.wrap("verify_block")?;
         sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {

@@ -1,4 +1,5 @@
 use super::{
+    Justification, PreGenesisBlock,
     AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
     FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
@@ -133,6 +134,26 @@ impl ProtoFmt for FinalBlock {
             justification: Some(self.justification.build()),
         }
     }
+}
+
+impl ProtoFmt for PreGenesisBlock {
+    type Proto = proto::PreGenesisBlock;
+
+     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            number: BlockNumber(*required(&r.number).context("number")?),
+            payload: Payload(required(&r.payload).context("payload")?.clone()),
+            justification: Justification(required(&r.justification).context("justification")?.clone()),
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            number: Some(self.number.0),
+            payload: Some(self.payload.0.clone()),
+            justification: Some(self.justification.0.clone()),
+        }
+    }   
 }
 
 impl ProtoFmt for ConsensusMsg {

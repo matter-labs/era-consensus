@@ -2,9 +2,8 @@
 use super::Capability;
 use crate::proto::gossip as proto;
 use anyhow::Context;
-use zksync_consensus_storage as storage;
-use zksync_consensus_roles::validator::{BlockNumber};
-use zksync_protobuf::{read_optional, ProtoFmt};
+use zksync_consensus_roles::validator;
+use zksync_protobuf::{ProtoFmt};
 
 /// `get_block` RPC.
 #[derive(Debug)]
@@ -22,38 +21,49 @@ impl super::Rpc for Rpc {
 
 /// Asks the server to send a block (including its transactions).
 #[derive(Debug, PartialEq)]
-pub(crate) struct Req(pub(crate) BlockNumber);
+pub(crate) struct Req(pub(crate) validator::BlockNumber);
 
 impl ProtoFmt for Req {
     type Proto = proto::GetBlockRequest;
 
     fn read(message: &Self::Proto) -> anyhow::Result<Self> {
         let number = message.number.context("number")?;
-        Ok(Self(BlockNumber(number)))
+        Ok(Self(validator::BlockNumber(number)))
     }
 
     fn build(&self) -> Self::Proto {
-        let BlockNumber(number) = self.0;
         Self::Proto {
-            number: Some(number),
+            number: Some(self.0.0),
         }
     }
 }
 
 /// Response to a [`GetBlockRequest`] containing a block or a reason it cannot be retrieved.
 #[derive(Debug, PartialEq)]
-pub(crate) struct Resp(pub(crate) Option<storage::Block>);
+pub(crate) struct Resp(pub(crate) Option<validator::Block>);
 
 impl ProtoFmt for Resp {
     type Proto = proto::GetBlockResponse;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(read_optional(&r.block).context("block")?))
+        use proto::get_block_response::T;
+        use validator::Block as B;
+        Ok(Self(match &r.t {
+            None => None,
+            Some(T::Block(b)) => Some(B::Final(ProtoFmt::read(b).context("block")?)),
+            Some(T::PreGenesis(b)) => Some(B::PreGenesis(ProtoFmt::read(b).context("pre_genesis_block")?)),
+        }))
     }
 
     fn build(&self) -> Self::Proto {
+        use validator::Block as B;
+        use proto::get_block_response::T;
         Self::Proto {
-            block: self.0.as_ref().map(ProtoFmt::build),
+            t: match self.0.as_ref() {
+                None => None,
+                Some(B::Final(b)) => Some(T::Block(b.build())),
+                Some(B::PreGenesis(b)) => Some(T::PreGenesis(b.build())),
+            },
         }
     }
 }

@@ -1,7 +1,8 @@
 //! In-memory storage implementation.
 use crate::{
+    block_store::Last,
     BlockStoreState, PersistentBlockStore,
-    ReplicaState, PreGenesisBlock, Justification, Block,
+    ReplicaState,
 };
 use anyhow::Context as _;
 use std::{
@@ -15,7 +16,7 @@ use zksync_consensus_roles::{validator};
 struct BlockStoreInner {
     genesis: validator::Genesis,
     persisted: sync::watch::Sender<BlockStoreState>,
-    blocks: Mutex<VecDeque<Block>>,
+    blocks: Mutex<VecDeque<validator::Block>>,
 }
 
 /// In-memory block store.
@@ -66,9 +67,9 @@ impl PersistentBlockStore for BlockStore {
         self.0.persisted.subscribe()
     }
 
-    async fn verify_pre_genesis_block(&self, _ctx: &ctx::Ctx, block: &PreGenesisBlock) -> ctx::Result<()> {
+    async fn verify_pre_genesis_block(&self, _ctx: &ctx::Ctx, block: &validator::PreGenesisBlock) -> ctx::Result<()> {
         // TODO:
-        if block.justification != Justification(vec![]) {
+        if block.justification != validator::Justification(vec![]) {
             return Err(anyhow::format_err!("invalid justification").into());
         }
         Ok(())
@@ -78,7 +79,7 @@ impl PersistentBlockStore for BlockStore {
         &self,
         _ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<Block> {
+    ) -> ctx::Result<validator::Block> {
         let blocks = self.0.blocks.lock().unwrap();
         let front = blocks.front().context("not found")?;
         let idx = number
@@ -91,7 +92,7 @@ impl PersistentBlockStore for BlockStore {
     async fn queue_next_block(
         &self,
         _ctx: &ctx::Ctx,
-        block: Block,
+        block: validator::Block,
     ) -> ctx::Result<()> {
         let mut blocks = self.0.blocks.lock().unwrap();
         let want = self.0.persisted.borrow().next();
@@ -105,7 +106,7 @@ impl PersistentBlockStore for BlockStore {
         }
         self.0
             .persisted
-            .send_modify(|p| p.last = Some(block.as_last()));
+            .send_modify(|p| p.last = Some(Last::from(&block)));
         blocks.push_back(block);
         Ok(())
     }

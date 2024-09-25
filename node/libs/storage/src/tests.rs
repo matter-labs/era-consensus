@@ -13,13 +13,13 @@ async fn test_inmemory_block_store() {
 
     let store =
         &testonly::in_memory::BlockStore::new(setup.genesis.clone(), setup.genesis.first_block);
-    let mut want : Vec<Block> = vec![];
+    let mut want = vec![];
     for block in &setup.blocks {
-        store.queue_next_block(ctx, block.clone().into()).await.unwrap();
+        store.queue_next_block(ctx, block.clone()).await.unwrap();
         sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(block.number()))
             .await
             .unwrap();
-        want.push(block.clone().into());
+        want.push(block.clone());
         assert_eq!(want, testonly::dump(ctx, store).await);
     }
 }
@@ -62,7 +62,6 @@ async fn test_state_updates() {
         }
 
         for block in &setup.blocks {
-            let block = Block::from(block.clone());
             store.blocks.queue_block(ctx, block.clone()).await.unwrap();
             if block.number() < first_block.number() {
                 // Queueing block before first block should be a noop.
@@ -82,7 +81,7 @@ async fn test_state_updates() {
                 assert_eq!(
                     BlockStoreState {
                         first: first_block.number(),
-                        last: Some(block.as_last()),
+                        last: Some(block.into()),
                     },
                     store.blocks.queued()
                 );

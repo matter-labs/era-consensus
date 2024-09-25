@@ -22,6 +22,12 @@ message FinalBlock {
   optional CommitQC justification = 2; // required
 }
 
+message PreGenesisBlock {
+  optional uint64 number = 1; // required
+  optional bytes payload = 2; // required
+  optional bytes justification = 3; // required
+}
+
 message View {
   reserved 1,2;
   reserved "protocol_version","fork";

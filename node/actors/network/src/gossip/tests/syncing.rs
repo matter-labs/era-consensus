@@ -336,7 +336,7 @@ async fn test_sidechannel_sync() {
             s.spawn_bg(runner.run(ctx));
             // Use the standard batch store since it doesn't matter.
             let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-            let (node, runner) = testonly::Instance::new(cfg, block_store, store.batches);
+            let (node, runner) = testonly::Instance::new(cfg, block_store);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }

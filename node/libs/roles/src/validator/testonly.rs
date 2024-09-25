@@ -1,5 +1,6 @@
 //! Test-only utilities.
 use super::{
+    Block,
     AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
     FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
     MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProofOfPossession,
@@ -77,7 +78,7 @@ impl Setup {
     /// Next block to finalize.
     pub fn next(&self) -> BlockNumber {
         match self.0.blocks.last() {
-            Some(b) => b.header().number.next(),
+            Some(b) => b.number().next(),
             None => self.0.genesis.first_block,
         }
     }
@@ -90,7 +91,10 @@ impl Setup {
                 .0
                 .blocks
                 .last()
-                .map(|b| b.justification.view().number.next())
+                .map(|b| match b {
+                    Block::Final(b) => b.justification.view().number.next(),
+                    Block::PreGenesis(_) => ViewNumber(0),
+                })
                 .unwrap_or(ViewNumber(0)),
         };
         let proposal = match self.0.blocks.last() {
@@ -116,7 +120,7 @@ impl Setup {
         self.0.blocks.push(FinalBlock {
             payload,
             justification,
-        });
+        }.into());
     }
 
     /// Pushes `count` blocks with a random payload.
@@ -127,7 +131,7 @@ impl Setup {
     }
 
     /// Finds the block by the number.
-    pub fn block(&self, n: BlockNumber) -> Option<&FinalBlock> {
+    pub fn block(&self, n: BlockNumber) -> Option<&Block> {
         let first = self.0.blocks.first()?.number();
         self.0.blocks.get(n.0.checked_sub(first.0)? as usize)
     }
@@ -200,7 +204,7 @@ pub struct SetupInner {
     /// Attesters' secret keys.
     pub attester_keys: Vec<attester::SecretKey>,
     /// Past blocks.
-    pub blocks: Vec<FinalBlock>,
+    pub blocks: Vec<Block>,
     /// L1 batches
     pub batches: Vec<attester::SyncBatch>,
     /// Genesis config.

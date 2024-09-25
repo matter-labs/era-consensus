@@ -34,26 +34,30 @@ message PushBatchVotesResp {
   repeated roles.attester.Signed votes = 1;
 }
 
+message Last {
+  oneof t {
+    roles.validator.CommitQC final = 1;
+    uint64 pre_genesis = 2;
+  }
+}
+
+message BlockStoreState {
+  // First L2 block that the node has locally.
+  optional uint64 first = 1; // required 
+  // Last L2 block that the node has locally.
+  optional Last last = 2; // optional
+}
+
 // State of the local block store.
 // A node is expected to store a continuous range of blocks at all times
 // and actively fetch newest blocks.
 message PushBlockStoreState {
-  // First L2 block that the node has locally.
-  optional uint64 first = 1; // required; BlockNumber
-  // Last L2 block that the node has locally.
+  // [DEPRECATED] First L2 block that the node has locally.
+  optional uint64 first = 1; // required; has to be >= genesis.first_block.
+  // [DEPRECATED] Last L2 block that the node has locally.
   optional roles.validator.CommitQC last = 2; // optional
-}
-
-// State of the local batch store.
-// A node is expected to store a continuous range of batches at all times
-// and actively fetch newest batch.
-message PushBatchStoreState {
-  reserved 2;
-  reserved "last";
-  // First batch that the node has locally.
-  optional uint64 first = 1; // required; BatchNumber
-  // Last batch that the node has locally.
-  optional uint64 last_v2 = 3; // optional
+  // Overrides first and last.
+  optional BlockStoreState state = 3; // optional
 }
 
 // Asks the server to send an L2 block (including its transactions).
@@ -64,7 +68,11 @@ message GetBlockRequest {
 
 // Response to a `GetBlockRequest`.
 message GetBlockResponse {
-  optional roles.validator.FinalBlock block = 1; // optional; missing if block is not available
+  // optional; missing if block is not available
+  oneof t { 
+    roles.validator.FinalBlock block = 1;
+    roles.validator.PreGenesisBlock pre_genesis = 2;
+  }
 }
 
 // Asks the server to send a batch.

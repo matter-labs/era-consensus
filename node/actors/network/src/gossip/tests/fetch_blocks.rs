@@ -30,7 +30,6 @@ async fn test_simple() {
         let (_node, runner) = crate::testonly::Instance::new(
             cfg.clone(),
             store.blocks.clone(),
-            store.batches.clone(),
         );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
@@ -86,10 +85,10 @@ async fn test_simple() {
         stream
             .send(
                 ctx,
-                &rpc::push_block_store_state::Req(BlockStoreState {
+                &rpc::push_block_store_state::Req::new(BlockStoreState {
                     first: setup.blocks[1].number(),
-                    last: Some(setup.blocks[1].justification.clone()),
-                }),
+                    last: Some((&setup.blocks[1]).into()),
+                }, &setup.genesis),
             )
             .await
             .unwrap();
@@ -139,7 +138,6 @@ async fn test_concurrent_requests() {
         let (_node, runner) = crate::testonly::Instance::new(
             cfg.clone(),
             store.blocks.clone(),
-            store.batches.clone(),
         );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
@@ -159,10 +157,10 @@ async fn test_concurrent_requests() {
             stream
                 .send(
                     ctx,
-                    &rpc::push_block_store_state::Req(BlockStoreState {
+                    &rpc::push_block_store_state::Req::new(BlockStoreState {
                         first: setup.blocks[0].number(),
-                        last: Some(setup.blocks.last().unwrap().justification.clone()),
-                    }),
+                        last: Some(setup.blocks.last().unwrap().into()),
+                    },&setup.genesis),
                 )
                 .await
                 .unwrap();
@@ -214,14 +212,13 @@ async fn test_bad_responses() {
         let (_node, runner) = crate::testonly::Instance::new(
             cfg.clone(),
             store.blocks.clone(),
-            store.batches.clone(),
         );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
-        let state = rpc::push_block_store_state::Req(BlockStoreState {
+        let state = rpc::push_block_store_state::Req::new(BlockStoreState {
             first: setup.blocks[0].number(),
-            last: Some(setup.blocks[0].justification.clone()),
-        });
+            last: Some((&setup.blocks[0]).into()),
+        },&setup.genesis);
 
         for resp in [
             // Empty response even though we declared to have the block.
@@ -230,9 +227,9 @@ async fn test_bad_responses() {
             Some(setup.blocks[1].clone()),
             // Malformed block.
             {
-                let mut b = setup.blocks[0].clone();
+                let validator::Block::Final(mut b) = setup.blocks[0].clone();
                 b.justification = rng.gen();
-                Some(b)
+                Some(b.into())
             },
         ] {
             tracing::info!("bad response = {resp:?}");
@@ -290,14 +287,13 @@ async fn test_retry() {
         let (_node, runner) = crate::testonly::Instance::new(
             cfg.clone(),
             store.blocks.clone(),
-            store.batches.clone(),
         );
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
-        let state = rpc::push_block_store_state::Req(BlockStoreState {
+        let state = rpc::push_block_store_state::Req::new(BlockStoreState {
             first: setup.blocks[0].number(),
-            last: Some(setup.blocks[0].justification.clone()),
-        });
+            last: Some((&setup.blocks[0]).into()),
+        },&setup.genesis);
 
         tracing::info!("establish a bunch of connections");
         let mut conns = vec![];
@@ -355,10 +351,9 @@ async fn test_announce_truncated_block_range() {
             in_memory::BlockStore::new(setup.genesis.clone(), setup.genesis.first_block);
         let (block_store, runner) = BlockStore::new(ctx, Box::new(persistent.clone())).await?;
         s.spawn_bg(runner.run(ctx));
-        // Use the standard batch store since it doesn't matter.
         let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
         let (_node, runner) =
-            crate::testonly::Instance::new(cfg.clone(), block_store, store.batches);
+            crate::testonly::Instance::new(cfg.clone(), block_store);
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
         // Fill in all the blocks.
         for b in &setup.blocks {
