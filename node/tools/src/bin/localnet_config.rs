@@ -11,7 +11,7 @@ use std::{
 };
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_tools::config;
-use zksync_protobuf::serde::Serde;
+use zksync_protobuf::serde::Serialize;
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
@@ -111,7 +111,7 @@ fn main() -> anyhow::Result<()> {
             .context("fs::set_permissions()")?;
 
         let config_path = root.join("config.json");
-        fs::write(&config_path, config::encode_json(&Serde(cfg))).context("fs::write()")?;
+        fs::write(&config_path, Serialize.proto_fmt_to_json(&cfg)).context("fs::write()")?;
         fs::set_permissions(&config_path, Permissions::from_mode(0o600))
             .context("fs::set_permissions()")?;
     }

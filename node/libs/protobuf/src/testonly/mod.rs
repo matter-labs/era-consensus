@@ -1,5 +1,9 @@
 //! Testonly utilities.
-use super::{canonical, canonical_raw, decode, encode, read_fields, ProtoFmt, ProtoRepr, Wire};
+use super::{
+    canonical, canonical_raw, decode, encode, read_fields,
+    serde::{Deserialize, Serialize},
+    ProtoFmt, ProtoRepr, Wire,
+};
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
 use rand::{
@@ -114,24 +118,34 @@ fn decode_proto<X: ProtoConv>(bytes: &[u8]) -> anyhow::Result<X::Type> {
 
 fn encode_json<X: ProtoConv>(msg: &X::Type) -> String {
     let mut s = serde_json::Serializer::pretty(vec![]);
-    crate::serde::serialize_proto(&X::build(msg), &mut s).unwrap();
+    Serialize.proto(&X::build(msg), &mut s).unwrap();
     String::from_utf8(s.into_inner()).unwrap()
 }
 
 fn decode_json<X: ProtoConv>(json: &str) -> anyhow::Result<X::Type> {
     let mut d = serde_json::Deserializer::from_str(json);
-    X::read(&crate::serde::deserialize_proto(&mut d)?)
+    X::read(
+        &Deserialize {
+            deny_unknown_fields: true,
+        }
+        .proto(&mut d)?,
+    )
 }
 
 fn encode_yaml<X: ProtoConv>(msg: &X::Type) -> String {
     let mut s = serde_yaml::Serializer::new(vec![]);
-    crate::serde::serialize_proto(&X::build(msg), &mut s).unwrap();
+    Serialize.proto(&X::build(msg), &mut s).unwrap();
     String::from_utf8(s.into_inner().unwrap()).unwrap()
 }
 
 fn decode_yaml<X: ProtoConv>(yaml: &str) -> anyhow::Result<X::Type> {
     let d = serde_yaml::Deserializer::from_str(yaml);
-    X::read(&crate::serde::deserialize_proto(d)?)
+    X::read(
+        &Deserialize {
+            deny_unknown_fields: true,
+        }
+        .proto(d)?,
+    )
 }
 
 /// Wrapper for `ProtoRepr`, implementing ProtoConv;
