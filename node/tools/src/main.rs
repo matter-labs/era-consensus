@@ -32,7 +32,10 @@ impl Cli {
             None => fs::read_to_string(&self.config_path)?,
         };
         Ok(config::Configs {
-            app: Deserialize{deny_unknown_fields:true}.proto_fmt_from_json(&json)?,
+            app: Deserialize {
+                deny_unknown_fields: true,
+            }
+            .proto_fmt_from_json(&json)?,
             database: self.database.clone(),
         })
     }

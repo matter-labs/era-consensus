@@ -3,30 +3,12 @@
 //! therefore it is suitable for version control.
 //! WARNING: Currently this serde implementation uses reflection,
 //! so it is not very efficient.
-use crate::{ProtoFmt,ProtoRepr};
+use crate::{ProtoFmt, ProtoRepr};
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
 
-/*
-/// ProtoFmt wrapper which implements serde Serialize/Deserialize.
-#[derive(Debug, Clone)]
-pub struct Serde<T>(pub T);
-
-impl<T: ProtoFmt, const X :Deserialize> serde::Serialize for Serde<T,X> {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        serialize(&self.0, s)
-    }
-}
-
-impl<'de, T: ProtoFmt, const X :Deserialize> serde::Deserialize<'de> for Serde<T,X> {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        Ok(Self(X.deserialize(d)?))
-    }
-}
-*/
-
 /// Serialization options.
-pub struct Serialize {}
+pub struct Serialize;
 
 impl Serialize {
     /// Serializes ReflectMessage.
@@ -40,7 +22,11 @@ impl Serialize {
     }
 
     /// Serializes ProtoFmt.
-    pub fn proto_fmt<T: ProtoFmt, S: serde::Serializer>(&self, x: &T, s: S) -> Result<S::Ok, S::Error> {
+    pub fn proto_fmt<T: ProtoFmt, S: serde::Serializer>(
+        &self,
+        x: &T,
+        s: S,
+    ) -> Result<S::Ok, S::Error> {
         self.proto(&x.build(), s)
     }
 
@@ -59,21 +45,25 @@ impl Serialize {
     }
 
     /// Serializes ProtoRepr.
-    pub fn proto_repr<T: ProtoRepr, S: serde::Serializer>(&self, x: &T::Type, s: S) -> Result<S::Ok, S::Error> {
+    pub fn proto_repr<T: ProtoRepr, S: serde::Serializer>(
+        &self,
+        x: &T::Type,
+        s: S,
+    ) -> Result<S::Ok, S::Error> {
         self.proto(&T::build(x), s)
     }
 
     /// Serializes ProtoRepr to json.
     pub fn proto_repr_to_json<T: ProtoRepr>(&self, x: &T::Type) -> String {
         let mut s = serde_json::Serializer::pretty(vec![]);
-        self.proto_repr::<T,_>(x, &mut s).unwrap();
+        self.proto_repr::<T, _>(x, &mut s).unwrap();
         String::from_utf8(s.into_inner()).unwrap()
     }
 
     /// Serializes ProtoRepr to yaml
     pub fn proto_repr_to_yaml<T: ProtoRepr>(&self, x: &T::Type) -> String {
         let mut s = serde_yaml::Serializer::new(vec![]);
-        self.proto_repr::<T,_>(x, &mut s).unwrap();
+        self.proto_repr::<T, _>(x, &mut s).unwrap();
         String::from_utf8(s.into_inner().unwrap()).unwrap()
     }
 }
@@ -83,21 +73,29 @@ impl Serialize {
 pub struct Deserialize {
     /// true => returns an error when an unknown field is found.
     /// false => silently ignores unknown fields.
-    pub deny_unknown_fields: bool
+    pub deny_unknown_fields: bool,
 }
 
 impl Deserialize {
     /// Implementation of serde::Deserialize for arbitrary ReflectMessage with deny_unknown_fields option
-    pub fn proto<'de, T: ReflectMessage + Default, D: serde::Deserializer<'de>>(&self, d: D) -> Result<T, D::Error> {
+    pub fn proto<'de, T: ReflectMessage + Default, D: serde::Deserializer<'de>>(
+        &self,
+        d: D,
+    ) -> Result<T, D::Error> {
         let mut p = T::default();
-        let options = prost_reflect::DeserializeOptions::new().deny_unknown_fields(self.deny_unknown_fields);
-        let msg = prost_reflect::DynamicMessage::deserialize_with_options(p.descriptor(), d, &options)?;
+        let options =
+            prost_reflect::DeserializeOptions::new().deny_unknown_fields(self.deny_unknown_fields);
+        let msg =
+            prost_reflect::DynamicMessage::deserialize_with_options(p.descriptor(), d, &options)?;
         p.merge(msg.encode_to_vec().as_slice()).unwrap();
         Ok(p)
     }
 
     /// Implementation of serde::Deserialize for arbitrary ProtoFmt.
-    pub fn proto_fmt<'de, T: ProtoFmt, D: serde::Deserializer<'de>>(&self, d: D) -> Result<T, D::Error> {
+    pub fn proto_fmt<'de, T: ProtoFmt, D: serde::Deserializer<'de>>(
+        &self,
+        d: D,
+    ) -> Result<T, D::Error> {
         T::read(&self.proto(d)?).map_err(serde::de::Error::custom)
     }
 
@@ -115,20 +113,25 @@ impl Deserialize {
     }
 
     /// Implementation of serde::Deserialize for arbitrary ProtoFmt.
-    pub fn proto_repr<'de, T: ProtoRepr, D: serde::Deserializer<'de>>(&self, d: D) -> Result<T::Type, D::Error> {
-        self.proto::<T,D>(d)?.read().map_err(serde::de::Error::custom)
+    pub fn proto_repr<'de, T: ProtoRepr, D: serde::Deserializer<'de>>(
+        &self,
+        d: D,
+    ) -> Result<T::Type, D::Error> {
+        self.proto::<T, D>(d)?
+            .read()
+            .map_err(serde::de::Error::custom)
     }
 
     /// Deserializes ProtoRepr from json.
     pub fn proto_repr_from_json<T: ProtoRepr>(&self, json: &str) -> anyhow::Result<T::Type> {
         let mut d = serde_json::Deserializer::from_str(json);
-        let p = self.proto_repr::<T,_>(&mut d)?;
+        let p = self.proto_repr::<T, _>(&mut d)?;
         d.end()?;
         Ok(p)
     }
 
     /// Deserializes ProtoRepr from yaml.
     pub fn proto_repr_from_yaml<T: ProtoRepr>(&self, yaml: &str) -> anyhow::Result<T::Type> {
-        Ok(self.proto_repr::<T,_>(serde_yaml::Deserializer::from_str(yaml))?)
+        Ok(self.proto_repr::<T, _>(serde_yaml::Deserializer::from_str(yaml))?)
     }
 }
