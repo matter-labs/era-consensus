@@ -487,7 +487,7 @@ module inductive {
                 m.ghost_block_number == num_and_hash._1,
                 val qc_view = match (m.justification) {
                 | Commit(qid) => r::ghost_commit_qc[qid].vote.view
-                | Timeout(qid) => r::ghost_timeout_qc[qid].ghost_view
+                | Timeout(qid) => r::ghost_timeout_qc[qid].ghost_view + 1
                 }
                 match (num_and_hash._2) {
                 | Some(b) => m.block == BLOCK_NONE
