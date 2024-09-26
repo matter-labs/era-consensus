@@ -45,6 +45,9 @@ module inductive {
     ) as r from "./replica"
 
     var step_no: int
+    // if prophecy_magic_view > 0,
+    // a number of good conditions have been met in prophecy_magic_view (see below)
+    var prophecy_magic_view: int
 
     // definitions
 
@@ -188,6 +191,8 @@ module inductive {
     // the initialization from the replica module
     action init = all{
         step_no' = 0,
+        nondet mv = IVIEWS.oneOf()
+        prophecy_magic_view' = mv,
         r::init,
     }
 
@@ -271,6 +276,8 @@ module inductive {
             r::ghost_justifications' = justifications,
             r::ghost_step' = AnyStep,
             r::prophecy_correct_proposals' = i_prophecy_correct_proposals,
+            nondet mv = IVIEWS.oneOf()
+            prophecy_magic_view' = mv,
             step_no' = 0,
         }
     }
@@ -531,6 +538,45 @@ module inductive {
             })
         })
     }
+
+    // liveness-related reasoning
+
+    // a magic view is the view where a lot of good things have happened
+    val is_magic_view = and {
+        // view 0 is simply bootstrapping
+        prophecy_magic_view > 0,
+        // the leader in the magic view is correct
+        ICORRECT.contains(r::leader.get(prophecy_magic_view)),
+        // all correct replicas have progressed beyond the magic view
+        ICORRECT.forall(id => r::replica_view.get(id) > prophecy_magic_view),
+        // no correct replica has sent a timeout in the magic view
+        ICORRECT.forall(id => r::msgs_signed_timeout.forall(m => m.sig != id or m.vote.view != prophecy_magic_view)),
+    }
+
+    // make a step assuming that we had a magic view
+    action magic_step = all {
+        is_magic_view,
+        ind_inv,
+        r::correct_step,
+        step_no' = step_no + 1,
+    }
+
+    action post_magic = all {
+        is_magic_view,
+        ind_inv,
+        unchanged_all,
+    }
+
+    // at least one correct replica has committed a block
+    val exists_decision_inv = {
+        ICORRECT.exists(id => {
+            val replica = r::replica_state.get(id)
+            length(replica.committed_blocks) != 0
+        })
+    }
+
+    // check:
+    // quin verify --length=0 --init=ind_init --step=post_magic --invariant=exists_decision_inv n6f1b1_inductive.qnt
 
     // auxiliary definitions
 
