@@ -293,6 +293,7 @@ module inductive {
     action step = all {
         ind_inv,
         r::step,
+        prophecy_magic_view' = prophecy_magic_view,
         step_no' = step_no + 1,
     }
 
@@ -553,32 +554,23 @@ module inductive {
         ICORRECT.forall(id => r::msgs_signed_timeout.forall(m => m.sig != id or m.vote.view != prophecy_magic_view)),
     }
 
-    // make a step assuming that we had a magic view
-    action magic_step = all {
-        is_magic_view,
-        ind_inv,
-        r::correct_step,
-        step_no' = step_no + 1,
-    }
+    // check this property to get an example
+    val no_magic_view_example = not(is_magic_view)
 
-    action post_magic = all {
-        is_magic_view,
-        ind_inv,
-        unchanged_all,
-    }
-
-    // at least one correct replica has committed a block
-    val exists_decision_inv = {
-        ICORRECT.exists(id => {
-            val replica = r::replica_state.get(id)
-            length(replica.committed_blocks) != 0
-        })
+    // if there was a magic round, then at least one correct replica committed a block
+    val magic_implies_decision = {
+        is_magic_view implies
+            ICORRECT.exists(id => {
+                val replica = r::replica_state.get(id)
+                length(replica.committed_blocks) != 0
+            })
     }
 
     // check:
-    // JVM_ARGS=-Xmx20G quint verify --max-steps=0 --server-endpoint=localhost:20001 \
-    // --init=ind_init --step=post_magic \
-    // --invariant=exists_decision_inv n6f1b1_inductive.qnt
+    // JVM_ARGS=-Xmx20G quint verify --max-steps=1 --server-endpoint=localhost:20001 \
+    // --apalache-config=apalache-inductive.json \
+    // --init=ind_init --step=post_ind_inv \
+    // --invariant=magic_implies_decision n6f1b1_inductive.qnt
 
     // auxiliary definitions
 
