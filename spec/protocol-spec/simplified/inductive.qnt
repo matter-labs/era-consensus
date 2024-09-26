@@ -339,9 +339,10 @@ module inductive {
         })
     }
 
-    // a committed block is supported by a CommitQC, hence, the QC should be valid
-    val lemma1_justified_qc_is_valid = {
+    // if a correct block uses a justification, this justification should be valid
+    val lemma1_justified_qc_is_valid = and {
         r::ghost_justifications.keys().forall(((id, view)) => {
+            // (1) check the basic constraints
             match (r::ghost_justifications.get((id, view))) {
             | Commit(qc_id) =>
                 val qc = r::ghost_commit_qc[qc_id]
@@ -350,15 +351,32 @@ module inductive {
                     qc.agg_sig.subseteq(IREPLICAS),
                     // no invalid blocks are committed
                     IVALID_BLOCKS.exists(b => hash(b) == qc.vote.block_hash),
-                    // there is a quorum of signatures!
-                    r::commit_qc_verify(qc),
+                    // check the quorums in (2), as it is an expensive test
                 }
 
             | Timeout(qc_id) =>
-                // TODO
+                // check the structure in (3)
                 true
             }
-        })
+        }),
+        // (2) check the quorums in CommitQC's separately
+        val commit_qc_from_justifications =
+            r::ghost_justifications.keys()
+                .map(p => match (r::ghost_justifications.get(p)) {
+                | Commit(qc_id) => qc_id
+                | _ => false
+            })
+        commit_qc_from_justifications.forall(qc_id => {
+            r::commit_qc_verify(r::ghost_commit_qc[qc_id])
+        }),
+        // (3) check TimeoutQC's separately
+        val timeout_qc_from_justifications =
+            r::ghost_justifications.keys()
+                .map(p => match (r::ghost_justifications.get(p)) {
+                | Timeout(qc_id) => qc_id
+                | _ => false
+            })
+        timeout_qc_from_justifications.forall(r::aux_timeout_qc_inv)
     }
 
     val lemma2_justified_commit_qc_supported_by_messages = {
