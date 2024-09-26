@@ -6,10 +6,11 @@
     "checker": {
         "discard-disabled": false,
         "no-deadlocks": true,
-	    "algo": "incremental",
+        "algo": "incremental",
         "tuning": {
             "search.invariant.mode": "before",
-            "search.invariantFilter": "(1->.*)"
+            "search.invariantFilter": "(1->.*)",
+	    "search.simulation.maxRun": 10
         }
     }
 }
