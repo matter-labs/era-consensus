@@ -576,7 +576,9 @@ module inductive {
     }
 
     // check:
-    // quin verify --length=0 --init=ind_init --step=post_magic --invariant=exists_decision_inv n6f1b1_inductive.qnt
+    // JVM_ARGS=-Xmx20G quint verify --max-steps=0 --server-endpoint=localhost:20001 \
+    // --init=ind_init --step=post_magic \
+    // --invariant=exists_decision_inv n6f1b1_inductive.qnt
 
     // auxiliary definitions
 
@@ -595,6 +597,7 @@ module inductive {
         r::ghost_justifications' = r::ghost_justifications,
         r::ghost_step' = r::ghost_step,
         r::prophecy_correct_proposals' = r::prophecy_correct_proposals,
+        prophecy_magic_view' = prophecy_magic_view,
         step_no' = step_no + 1,
     }
 
