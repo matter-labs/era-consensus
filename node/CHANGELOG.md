@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/matter-labs/era-consensus/compare/v0.2.0...v0.3.0) (2024-09-26)
+
+
+### Features
+
+* dummy pr to trigger release-please ([#201](https://github.com/matter-labs/era-consensus/issues/201)) ([fd78177](https://github.com/matter-labs/era-consensus/commit/fd781776efb8d68b6a4c16380f7ce154ad321141))
+
 ## [0.2.0](https://github.com/matter-labs/era-consensus/compare/v0.1.1...v0.2.0) (2024-09-24)
 
 
