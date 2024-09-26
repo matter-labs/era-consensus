@@ -360,23 +360,27 @@ module inductive {
             }
         }),
         // (2) check the quorums in CommitQC's separately
-        val commit_qc_from_justifications =
+        val commit_qc_id_in_justifications =
             r::ghost_justifications.keys()
-                .map(p => match (r::ghost_justifications.get(p)) {
+                .map(((id, view)) => match (r::ghost_justifications.get((id, view))) {
                 | Commit(qc_id) => qc_id
-                | _ => false
+                | _ => -1
             })
-        commit_qc_from_justifications.forall(qc_id => {
-            r::commit_qc_verify(r::ghost_commit_qc[qc_id])
+        0.to(MAX_COMMIT_QC).forall(qc_id => {
+            (commit_qc_id_in_justifications.contains(qc_id))
+                implies r::commit_qc_verify(r::ghost_commit_qc[qc_id])
         }),
         // (3) check TimeoutQC's separately
-        val timeout_qc_from_justifications =
+        val timeout_qc_id_in_justifications =
             r::ghost_justifications.keys()
-                .map(p => match (r::ghost_justifications.get(p)) {
+                .map(((id, view)) => match (r::ghost_justifications.get(((id, view)))) {
                 | Timeout(qc_id) => qc_id
-                | _ => false
+                | _ => -1
             })
-        timeout_qc_from_justifications.forall(r::aux_timeout_qc_inv)
+        0.to(MAX_TIMEOUT_QC).forall(qc_id => {
+            (timeout_qc_id_in_justifications.contains(qc_id))
+                implies r::aux_timeout_qc_inv(Some(qc_id))
+        }),
     }
 
     val lemma2_justified_commit_qc_supported_by_messages = {
