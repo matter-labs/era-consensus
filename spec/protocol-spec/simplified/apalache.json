@@ -1,16 +1,17 @@
 {
     "common": {
       "write-intermediate": true,
-      "debug": true
+      "debug": false
     },
     "checker": {
-        "discard-disabled": false,
+        "discard-disabled": true,
         "no-deadlocks": true,
         "algo": "incremental",
         "tuning": {
             "search.invariant.mode": "before",
-            "search.invariantFilter": "(1->.*)",
-	    "search.simulation.maxRun": 10
+            "search.invariantFilter": "(.*->.*)",
+            "search.simulation": true,
+	        "search.simulation.maxRun": 10
         }
     }
 }

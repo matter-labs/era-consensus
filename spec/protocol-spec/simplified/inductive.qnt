@@ -478,7 +478,8 @@ module inductive {
         })
     }
 
-    // once a correct replica commits to a block, it will never change its mind
+    // once a correct replica commits to a block (as a part of QC),
+    // it will never change its mind
     val lemma10_justified_commit_qc_no_vote_change = {
         r::ghost_justifications.keys().forall(((id, view)) => {
             match (r::ghost_justifications.get((id, view))) {
@@ -551,12 +552,14 @@ module inductive {
     val magic_view_example = not(is_magic_view)
 
     // if there was a magic round, then at least one correct replica committed a block
-    val magic_implies_decision = {
+    val magic_view_implies_decision = {
         is_magic_view implies
+            // TODO: say that the block was committed in the magic_view
             ICORRECT.exists(id => {
                 val replica = r::replica_state.get(id)
                 length(replica.committed_blocks) != 0
             })
+            // TODO: all replicas have the QC?
     }
 
     // check:
