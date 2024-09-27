@@ -318,16 +318,6 @@ module inductive {
         lemma6_signed_timeout_no_equivocation,
     }
 
-    action l_step = any {
-        all { step_no == 0, lemma0_committed_blocks_have_justified_qc, unchanged_all },
-        all { step_no == 1, lemma1_justified_qc_is_valid, unchanged_all },
-        all { step_no == 2, lemma2_justified_commit_qc_supported_by_messages, unchanged_all },
-        all { step_no == 3, lemma3_signed_commit_needs_proposal, unchanged_all },
-        all { step_no == 4, lemma4_signed_commit_needs_justification, unchanged_all },
-        all { step_no == 5, not(agreement_inv), unchanged_all },
-        all { step_no > 5, unchanged_all },
-    }
-
     // auxiliary invariants that we call lemmas
 
     // a committed block is supported by a CommitQC, hence, the QC should be valid
@@ -551,11 +541,14 @@ module inductive {
         // all correct replicas have progressed beyond the magic view
         ICORRECT.forall(id => r::replica_view.get(id) > prophecy_magic_view),
         // no correct replica has sent a timeout in the magic view
-        ICORRECT.forall(id => r::msgs_signed_timeout.forall(m => m.sig != id or m.vote.view != prophecy_magic_view)),
+        ICORRECT.forall(id => r::msgs_signed_timeout.forall(m => or {
+            m.sig != id,
+            m.vote.view != prophecy_magic_view
+        })),
     }
 
     // check this property to get an example
-    val no_magic_view_example = not(is_magic_view)
+    val magic_view_example = not(is_magic_view)
 
     // if there was a magic round, then at least one correct replica committed a block
     val magic_implies_decision = {
