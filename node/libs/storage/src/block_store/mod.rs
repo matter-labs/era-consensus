@@ -7,7 +7,7 @@ use zksync_consensus_roles::validator;
 
 mod metrics;
 /// TODO: docs
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Last {
     /// `<genesis.first_block`.
     PreGenesis(validator::BlockNumber),
@@ -16,7 +16,7 @@ pub enum Last {
 }
 
 impl From<&validator::Block> for Last {
-    fn from(b:&validator::Block) -> Last {
+    fn from(b: &validator::Block) -> Last {
         use validator::Block as B;
         match b {
             B::PreGenesis(b) => Last::PreGenesis(b.number),
@@ -37,7 +37,7 @@ impl Last {
     /// Verifies Last.
     pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
         match self {
-            Last::PreGenesis(n) => anyhow::ensure!(n<&genesis.first_block,"missing qc"),
+            Last::PreGenesis(n) => anyhow::ensure!(n < &genesis.first_block, "missing qc"),
             Last::Final(qc) => qc.verify(genesis)?,
         }
         Ok(())
@@ -108,7 +108,11 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
     fn persisted(&self) -> sync::watch::Receiver<BlockStoreState>;
 
     /// Verifies the external justification of the pre-genesis block.
-    async fn verify_pre_genesis_block(&self, ctx: &ctx::Ctx, block: &validator::PreGenesisBlock) -> ctx::Result<()>;
+    async fn verify_pre_genesis_block(
+        &self,
+        ctx: &ctx::Ctx,
+        block: &validator::PreGenesisBlock,
+    ) -> ctx::Result<()>;
 
     /// Gets a block by its number.
     /// All the blocks from `state()` range are expected to be available.
@@ -125,11 +129,7 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
     /// but if the call succeeded the block is expected to be persisted eventually.
     /// Implementations are only required to accept a block directly after the previous queued
     /// block, starting with `persisted().borrow().next()`.
-    async fn queue_next_block(
-        &self,
-        ctx: &ctx::Ctx,
-        block: validator::Block,
-    ) -> ctx::Result<()>;
+    async fn queue_next_block(&self, ctx: &ctx::Ctx, block: validator::Block) -> ctx::Result<()>;
 }
 
 #[derive(Debug)]
@@ -340,10 +340,16 @@ impl BlockStore {
             B::Final(b) => b.verify(&self.genesis).context("block.verify()")?,
             B::PreGenesis(b) => {
                 if b.number >= self.genesis.first_block {
-                    return Err(anyhow::format_err!("external justification is allowed only for pre-genesis blocks").into());
+                    return Err(anyhow::format_err!(
+                        "external justification is allowed only for pre-genesis blocks"
+                    )
+                    .into());
                 }
                 // TODO: metrics
-                self.persistent.verify_pre_genesis_block(ctx,&b).await.context("verify_pre_genesis_block()")?;
+                self.persistent
+                    .verify_pre_genesis_block(ctx, b)
+                    .await
+                    .context("verify_pre_genesis_block()")?;
             }
         }
         Ok(())
@@ -355,12 +361,8 @@ impl BlockStore {
     /// `queue_block()` adds a block to the queue as soon as all intermediate
     /// blocks are queued_state as well. Queue is unbounded, so it is caller's
     /// responsibility to manage the queue size.
-    pub async fn queue_block(
-        &self,
-        ctx: &ctx::Ctx,
-        block: validator::Block,
-    ) -> ctx::Result<()> {
-        self.verify_block(ctx,&block).await.wrap("verify_block")?;
+    pub async fn queue_block(&self, ctx: &ctx::Ctx, block: validator::Block) -> ctx::Result<()> {
+        self.verify_block(ctx, &block).await.wrap("verify_block")?;
         sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
             inner.queued.next() >= block.number()
         })

@@ -1,16 +1,12 @@
 //! In-memory storage implementation.
-use crate::{
-    block_store::Last,
-    BlockStoreState, PersistentBlockStore,
-    ReplicaState,
-};
+use crate::{block_store::Last, BlockStoreState, PersistentBlockStore, ReplicaState};
 use anyhow::Context as _;
 use std::{
     collections::VecDeque,
     sync::{Arc, Mutex},
 };
 use zksync_concurrency::{ctx, sync};
-use zksync_consensus_roles::{validator};
+use zksync_consensus_roles::validator;
 
 #[derive(Debug)]
 struct BlockStoreInner {
@@ -67,7 +63,11 @@ impl PersistentBlockStore for BlockStore {
         self.0.persisted.subscribe()
     }
 
-    async fn verify_pre_genesis_block(&self, _ctx: &ctx::Ctx, block: &validator::PreGenesisBlock) -> ctx::Result<()> {
+    async fn verify_pre_genesis_block(
+        &self,
+        _ctx: &ctx::Ctx,
+        block: &validator::PreGenesisBlock,
+    ) -> ctx::Result<()> {
         // TODO:
         if block.justification != validator::Justification(vec![]) {
             return Err(anyhow::format_err!("invalid justification").into());
@@ -89,11 +89,7 @@ impl PersistentBlockStore for BlockStore {
         Ok(blocks.get(idx as usize).context("not found")?.clone())
     }
 
-    async fn queue_next_block(
-        &self,
-        _ctx: &ctx::Ctx,
-        block: validator::Block,
-    ) -> ctx::Result<()> {
+    async fn queue_next_block(&self, _ctx: &ctx::Ctx, block: validator::Block) -> ctx::Result<()> {
         let mut blocks = self.0.blocks.lock().unwrap();
         let want = self.0.persisted.borrow().next();
         if block.number() < want {

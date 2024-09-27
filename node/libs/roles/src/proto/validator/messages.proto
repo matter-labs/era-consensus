@@ -28,6 +28,14 @@ message PreGenesisBlock {
   optional bytes justification = 3; // required
 }
 
+message Block {
+  // required
+  oneof t {
+    FinalBlock final = 1;
+    PreGenesisBlock pre_genesis = 2;
+  }
+}
+
 message View {
   reserved 1,2;
   reserved "protocol_version","fork";

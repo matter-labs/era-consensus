@@ -8,6 +8,6 @@ pub mod testonly;
 mod tests;
 
 pub use crate::{
-    block_store::{Last, BlockStore, BlockStoreRunner, BlockStoreState, PersistentBlockStore},
+    block_store::{BlockStore, BlockStoreRunner, BlockStoreState, Last, PersistentBlockStore},
     replica_store::{Proposal, ReplicaState, ReplicaStore},
 };

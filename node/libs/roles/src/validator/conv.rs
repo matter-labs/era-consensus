@@ -1,9 +1,9 @@
 use super::{
-    Justification, PreGenesisBlock,
-    AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
-    FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
-    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProtocolVersion, PublicKey,
-    ReplicaCommit, ReplicaPrepare, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
+    AggregateSignature, Block, BlockHeader, BlockNumber, ChainId, CommitQC, Committee,
+    ConsensusMsg, FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, Justification,
+    LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
+    PreGenesisBlock, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare,
+    Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
 use crate::{
     attester::{self, WeightedAttester},
@@ -139,11 +139,13 @@ impl ProtoFmt for FinalBlock {
 impl ProtoFmt for PreGenesisBlock {
     type Proto = proto::PreGenesisBlock;
 
-     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             number: BlockNumber(*required(&r.number).context("number")?),
             payload: Payload(required(&r.payload).context("payload")?.clone()),
-            justification: Justification(required(&r.justification).context("justification")?.clone()),
+            justification: Justification(
+                required(&r.justification).context("justification")?.clone(),
+            ),
         })
     }
 
@@ -153,7 +155,29 @@ impl ProtoFmt for PreGenesisBlock {
             payload: Some(self.payload.0.clone()),
             justification: Some(self.justification.0.clone()),
         }
-    }   
+    }
+}
+
+impl ProtoFmt for Block {
+    type Proto = proto::Block;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        use proto::block::T;
+        Ok(match required(&r.t)? {
+            T::Final(b) => Block::Final(ProtoFmt::read(b).context("block")?),
+            T::PreGenesis(b) => Block::PreGenesis(ProtoFmt::read(b).context("pre_genesis_block")?),
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        use proto::block::T;
+        Self::Proto {
+            t: Some(match self {
+                Block::Final(b) => T::Final(b.build()),
+                Block::PreGenesis(b) => T::PreGenesis(b.build()),
+            }),
+        }
+    }
 }
 
 impl ProtoFmt for ConsensusMsg {

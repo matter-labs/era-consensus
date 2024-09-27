@@ -8,7 +8,7 @@ use zksync_concurrency::{
     error::Wrap as _,
     limiter, scope,
 };
-use zksync_consensus_storage::{BlockStore};
+use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;

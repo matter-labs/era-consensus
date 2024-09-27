@@ -87,6 +87,8 @@ fn test_schema_encoding() {
     test_encode_random::<PayloadHash>(rng);
     test_encode_random::<BlockHeader>(rng);
     test_encode_random::<FinalBlock>(rng);
+    test_encode_random::<PreGenesisBlock>(rng);
+    test_encode_random::<Block>(rng);
     test_encode_random::<Signed<ConsensusMsg>>(rng);
     test_encode_random::<PrepareQC>(rng);
     test_encode_random::<CommitQC>(rng);

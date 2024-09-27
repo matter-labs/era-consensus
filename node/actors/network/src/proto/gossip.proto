@@ -74,14 +74,3 @@ message GetBlockResponse {
     roles.validator.PreGenesisBlock pre_genesis = 2;
   }
 }
-
-// Asks the server to send a batch.
-message GetBatchRequest {
-  // Number of the batch to send.
-  optional uint64 number = 1;
-}
-
-// Response to a `GetBatchRequest`.
-message GetBatchResponse {
-  optional roles.attester.SyncBatch batch = 1; // optional; missing if batch is not available
-}

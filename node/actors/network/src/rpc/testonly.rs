@@ -9,7 +9,6 @@ use rand::{
 };
 use std::sync::Arc;
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{BlockStoreState};
 
 impl Distribution<rpc::consensus::Req> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> rpc::consensus::Req {
@@ -40,10 +39,7 @@ impl Distribution<rpc::push_validator_addrs::Req> for Standard {
 
 impl Distribution<rpc::push_block_store_state::Req> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> rpc::push_block_store_state::Req {
-        rpc::push_block_store_state::Req::new(BlockStoreState {
-            first: rng.gen(),
-            last: rng.gen(),
-        },&rng.gen())
+        rpc::push_block_store_state::Req::new(rng.gen(), &rng.gen())
     }
 }
 

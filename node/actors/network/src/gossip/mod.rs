@@ -20,7 +20,7 @@ use tracing::Instrument;
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync};
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BlockStore};
+use zksync_consensus_storage::BlockStore;
 
 pub mod attestation;
 mod fetch;

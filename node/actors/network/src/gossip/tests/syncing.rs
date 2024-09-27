@@ -51,7 +51,7 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
                 .net
                 .gossip
                 .block_store
-                .queue_block(ctx, block.clone().into())
+                .queue_block(ctx, block.clone())
                 .await
                 .context("queue_block()")?;
             for node in &nodes {
@@ -334,8 +334,6 @@ async fn test_sidechannel_sync() {
             stores.push(persistent.clone());
             let (block_store, runner) = BlockStore::new(ctx, Box::new(persistent)).await?;
             s.spawn_bg(runner.run(ctx));
-            // Use the standard batch store since it doesn't matter.
-            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
             let (node, runner) = testonly::Instance::new(cfg, block_store);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);

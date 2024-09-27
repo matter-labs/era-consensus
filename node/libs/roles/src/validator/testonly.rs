@@ -1,11 +1,10 @@
 //! Test-only utilities.
 use super::{
-    Block,
-    AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
-    FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
-    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProofOfPossession,
-    ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed,
-    Signers, View, ViewNumber, WeightedValidator,
+    AggregateSignature, Block, BlockHeader, BlockNumber, ChainId, CommitQC, Committee,
+    ConsensusMsg, FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, Justification,
+    LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
+    PreGenesisBlock, PrepareQC, ProofOfPossession, ProtocolVersion, PublicKey, ReplicaCommit,
+    ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
 use crate::{attester, validator::LeaderSelectionMode};
 use bit_vec::BitVec;
@@ -117,10 +116,13 @@ impl Setup {
                 )
                 .unwrap();
         }
-        self.0.blocks.push(FinalBlock {
-            payload,
-            justification,
-        }.into());
+        self.0.blocks.push(
+            FinalBlock {
+                payload,
+                justification,
+            }
+            .into(),
+        );
     }
 
     /// Pushes `count` blocks with a random payload.
@@ -134,30 +136,6 @@ impl Setup {
     pub fn block(&self, n: BlockNumber) -> Option<&Block> {
         let first = self.0.blocks.first()?.number();
         self.0.blocks.get(n.0.checked_sub(first.0)? as usize)
-    }
-
-    /// Pushes `count` batches with a random payload.
-    pub fn push_batches(&mut self, rng: &mut impl Rng, count: usize) {
-        for _ in 0..count {
-            self.push_batch(rng);
-        }
-    }
-
-    /// Pushes a new L1 batch.
-    pub fn push_batch(&mut self, rng: &mut impl Rng) {
-        let batch_number = match self.0.batches.last() {
-            Some(b) => b.number.next(),
-            None => attester::BatchNumber(0),
-        };
-        let size: usize = rng.gen_range(500..1000);
-        let payloads = vec![Payload((0..size).map(|_| rng.gen()).collect())];
-        let proof = rng.gen::<[u8; 32]>().to_vec();
-        let batch = attester::SyncBatch {
-            number: batch_number,
-            payloads,
-            proof,
-        };
-        self.0.batches.push(batch);
     }
 }
 
@@ -190,7 +168,6 @@ impl From<SetupSpec> for Setup {
             .with_hash(),
             validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
             attester_keys: spec.attester_weights.into_iter().map(|(k, _)| k).collect(),
-            batches: vec![],
             blocks: vec![],
         })
     }
@@ -205,8 +182,6 @@ pub struct SetupInner {
     pub attester_keys: Vec<attester::SecretKey>,
     /// Past blocks.
     pub blocks: Vec<Block>,
-    /// L1 batches
-    pub batches: Vec<attester::SyncBatch>,
     /// Genesis config.
     pub genesis: Genesis,
 }
@@ -368,6 +343,32 @@ impl Distribution<FinalBlock> for Standard {
         FinalBlock {
             payload: rng.gen(),
             justification: rng.gen(),
+        }
+    }
+}
+
+impl Distribution<Justification> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Justification {
+        let size: usize = rng.gen_range(500..1000);
+        Justification((0..size).map(|_| rng.gen()).collect())
+    }
+}
+
+impl Distribution<PreGenesisBlock> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PreGenesisBlock {
+        PreGenesisBlock {
+            number: rng.gen(),
+            payload: rng.gen(),
+            justification: rng.gen(),
+        }
+    }
+}
+
+impl Distribution<Block> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Block {
+        match rng.gen_range(0..2) {
+            0 => Block::PreGenesis(rng.gen()),
+            _ => Block::Final(rng.gen()),
         }
     }
 }

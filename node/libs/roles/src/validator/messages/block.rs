@@ -163,14 +163,13 @@ pub enum BlockValidationError {
     Justification(#[source] CommitQCVerifyError),
 }
 
-
 /// TODO: docs
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Justification(pub Vec<u8>);
 
 /// Block before `genesis.first_block`
 /// with an external (non-consensus) justification.
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct PreGenesisBlock {
     /// Block number.
     pub number: BlockNumber,
@@ -181,7 +180,7 @@ pub struct PreGenesisBlock {
 }
 
 /// TODO: docs
-#[derive(Debug,Clone,PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Block {
     /// Block with number `<genesis.first_block`.
     PreGenesis(PreGenesisBlock),
@@ -190,11 +189,15 @@ pub enum Block {
 }
 
 impl From<PreGenesisBlock> for Block {
-    fn from(b: PreGenesisBlock) -> Self { Self::PreGenesis(b) }
+    fn from(b: PreGenesisBlock) -> Self {
+        Self::PreGenesis(b)
+    }
 }
 
 impl From<FinalBlock> for Block {
-    fn from(b: FinalBlock) -> Self { Self::Final(b) }
+    fn from(b: FinalBlock) -> Self {
+        Self::Final(b)
+    }
 }
 
 impl Block {
@@ -204,7 +207,13 @@ impl Block {
             Self::PreGenesis(b) => b.number,
             Self::Final(b) => b.number(),
         }
-    } 
+    }
+
+    /// Payload.
+    pub fn payload(&self) -> &Payload {
+        match self {
+            Self::PreGenesis(b) => &b.payload,
+            Self::Final(b) => &b.payload,
+        }
+    }
 }
-
-

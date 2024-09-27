@@ -3,7 +3,7 @@ use super::Capability;
 use crate::proto::gossip as proto;
 use anyhow::Context;
 use zksync_consensus_roles::validator;
-use zksync_protobuf::{ProtoFmt};
+use zksync_protobuf::ProtoFmt;
 
 /// `get_block` RPC.
 #[derive(Debug)]
@@ -33,7 +33,7 @@ impl ProtoFmt for Req {
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            number: Some(self.0.0),
+            number: Some(self.0 .0),
         }
     }
 }
@@ -51,13 +51,15 @@ impl ProtoFmt for Resp {
         Ok(Self(match &r.t {
             None => None,
             Some(T::Block(b)) => Some(B::Final(ProtoFmt::read(b).context("block")?)),
-            Some(T::PreGenesis(b)) => Some(B::PreGenesis(ProtoFmt::read(b).context("pre_genesis_block")?)),
+            Some(T::PreGenesis(b)) => Some(B::PreGenesis(
+                ProtoFmt::read(b).context("pre_genesis_block")?,
+            )),
         }))
     }
 
     fn build(&self) -> Self::Proto {
-        use validator::Block as B;
         use proto::get_block_response::T;
+        use validator::Block as B;
         Self::Proto {
             t: match self.0.as_ref() {
                 None => None,

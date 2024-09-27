@@ -14,8 +14,7 @@ pub fn callback(node_storage: Arc<BlockStore>) -> RpcResult<serde_json::Value> {
         .last
         .context("Failed to get last state")
         .map_err(|_| ErrorObjectOwned::from(ErrorCode::InternalError))?
-        .header()
-        .number
+        .number()
         .0;
     Ok(serde_json::json!({
         "last_committed_block": last_committed_block_header

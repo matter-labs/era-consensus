@@ -1,13 +1,13 @@
 //! Test-only utilities.
 use crate::{
-    BlockStore, BlockStoreRunner,
-    PersistentBlockStore, Proposal, ReplicaState,
+    BlockStore, BlockStoreRunner, BlockStoreState, Last, PersistentBlockStore, Proposal,
+    ReplicaState,
 };
 use anyhow::Context as _;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use std::sync::Arc;
-use zksync_concurrency::{ctx};
-use zksync_consensus_roles::{validator};
+use zksync_concurrency::ctx;
+use zksync_consensus_roles::validator;
 
 pub mod in_memory;
 
@@ -28,6 +28,24 @@ impl Distribution<ReplicaState> for Standard {
             high_vote: rng.gen(),
             high_qc: rng.gen(),
             proposals: (0..rng.gen_range(1..11)).map(|_| rng.gen()).collect(),
+        }
+    }
+}
+
+impl Distribution<Last> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Last {
+        match rng.gen_range(0..2) {
+            0 => Last::PreGenesis(rng.gen()),
+            _ => Last::Final(rng.gen()),
+        }
+    }
+}
+
+impl Distribution<BlockStoreState> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockStoreState {
+        BlockStoreState {
+            first: rng.gen(),
+            last: rng.gen(),
         }
     }
 }
@@ -60,10 +78,7 @@ impl TestMemoryStorage {
     }
 
     /// Constructs a new in-memory store for both blocks and batches with their respective runners.
-    async fn new_with_im(
-        ctx: &ctx::Ctx,
-        im_blocks: in_memory::BlockStore,
-    ) -> Self {
+    async fn new_with_im(ctx: &ctx::Ctx, im_blocks: in_memory::BlockStore) -> Self {
         let (blocks, runner) = BlockStore::new(ctx, Box::new(im_blocks.clone()))
             .await
             .unwrap();
@@ -103,10 +118,7 @@ pub async fn verify(ctx: &ctx::Ctx, store: &BlockStore) -> anyhow::Result<()> {
     let range = store.queued();
     for n in (range.first.0..range.next().0).map(validator::BlockNumber) {
         async {
-            let b = store
-                .block(ctx, n)
-                .await?
-                .context("missing")?;
+            let b = store.block(ctx, n).await?.context("missing")?;
             store.verify_block(ctx, &b).await.context("verify_block()")
         }
         .await

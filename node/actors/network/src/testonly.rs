@@ -18,7 +18,7 @@ use zksync_concurrency::{
     io, limiter, net, scope, sync,
 };
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BlockStore};
+use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe;
 
 impl Distribution<Target> for Standard {
@@ -200,10 +200,7 @@ pub struct InstanceConfig {
 
 impl Instance {
     /// Constructs a new instance.
-    pub fn new(
-        cfg: Config,
-        block_store: Arc<BlockStore>,
-    ) -> (Self, InstanceRunner) {
+    pub fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self, InstanceRunner) {
         Self::new_from_config(InstanceConfig {
             cfg,
             block_store,

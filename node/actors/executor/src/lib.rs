@@ -10,7 +10,7 @@ use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BatchStore, BlockStore, ReplicaStore};
+use zksync_consensus_storage::{BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
@@ -42,9 +42,6 @@ pub struct Config {
     pub public_addr: net::Host,
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
-    /// Maximal size of a batch, which includes `max_payload_size` per block in the batch,
-    /// plus the size of the Merkle proof of the commitment being included on L1.
-    pub max_batch_size: usize,
     /// Key of this node. It uniquely identifies the node.
     /// It should match the secret key provided in the `node_key` file.
     pub node_key: node::SecretKey,
@@ -63,9 +60,6 @@ pub struct Config {
     /// Http debug page configuration.
     /// If None, debug page is disabled
     pub debug_page: Option<network::debug_page::Config>,
-
-    /// How often to poll the database looking for the batch commitment.
-    pub batch_poll_interval: time::Duration,
 }
 
 impl Config {
@@ -87,8 +81,6 @@ pub struct Executor {
     pub config: Config,
     /// Block storage used by the node.
     pub block_store: Arc<BlockStore>,
-    /// Batch storage used by the node.
-    pub batch_store: Arc<BatchStore>,
     /// Validator-specific node data.
     pub validator: Option<Validator>,
     /// Attestation controller. Caller should actively configure the batch
@@ -107,7 +99,6 @@ impl Executor {
             validator_key: self.validator.as_ref().map(|v| v.key.clone()),
             ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
-            max_batch_size: self.config.max_batch_size.saturating_add(kB),
             max_block_queue_size: 20,
             tcp_accept_rate: limiter::Rate {
                 burst: 10,
@@ -136,7 +127,6 @@ impl Executor {
             let (net, runner) = network::Network::new(
                 network_config,
                 self.block_store.clone(),
-                self.batch_store.clone(),
                 network_actor_pipe,
                 self.attestation,
             );

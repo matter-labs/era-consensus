@@ -18,7 +18,6 @@ impl Distribution<config::App> for EncodeDist {
 
             genesis: rng.gen(),
             max_payload_size: rng.gen(),
-            max_batch_size: rng.gen(),
             validator_key: self.sample_opt(|| rng.gen()),
             attester_key: self.sample_opt(|| rng.gen()),
 

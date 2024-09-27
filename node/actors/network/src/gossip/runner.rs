@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use rand::seq::SliceRandom;
 use std::sync::atomic::Ordering;
 use zksync_concurrency::{ctx, net, scope, sync};
-use zksync_consensus_roles::{node};
+use zksync_consensus_roles::node;
 use zksync_consensus_storage::{BlockStore, BlockStoreState};
 use zksync_protobuf::kB;
 
@@ -92,8 +92,9 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushServer<'_> {
         _ctx: &ctx::Ctx,
         req: rpc::push_block_store_state::Req,
     ) -> anyhow::Result<()> {
-        req.0.verify(self.net.genesis())?;
-        self.blocks.send_replace(req.0);
+        let state = req.state();
+        state.verify(self.net.genesis())?;
+        self.blocks.send_replace(state);
         Ok(())
     }
 }
@@ -204,7 +205,7 @@ impl Network {
             s.spawn::<()>(async {
                 let mut state = self.block_store.queued();
                 loop {
-                    let req = rpc::push_block_store_state::Req::new(state.clone(),self.genesis());
+                    let req = rpc::push_block_store_state::Req::new(state.clone(), self.genesis());
                     push_block_store_state_client.call(ctx, &req, kB).await?;
                     state = self.block_store.wait_for_queued_change(ctx, &state).await?;
                 }

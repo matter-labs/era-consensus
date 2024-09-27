@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use rand::Rng;
 use zksync_concurrency::{ctx, error::Wrap as _, limiter, net, scope, sync, time};
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BlockStoreState};
+use zksync_consensus_storage::BlockStoreState;
 use zksync_protobuf::kB;
 
 #[cfg(test)]
@@ -43,7 +43,7 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushBlockStoreStateServ
         _ctx: &ctx::Ctx,
         req: rpc::push_block_store_state::Req,
     ) -> anyhow::Result<()> {
-        self.0.send_replace(Some(req.0));
+        self.0.send_replace(Some(req.state()));
         Ok(())
     }
 }

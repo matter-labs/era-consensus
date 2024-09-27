@@ -14,9 +14,6 @@ fn test_schema_encode_decode() {
     test_encode_random::<push_block_store_state::Req>(rng);
     test_encode_random::<get_block::Req>(rng);
     test_encode_random::<get_block::Resp>(rng);
-    test_encode_random::<get_batch::Req>(rng);
-    test_encode_random::<get_batch::Resp>(rng);
-    test_encode_random::<push_batch_store_state::Req>(rng);
 }
 
 fn expected(res: Result<(), mux::RunError>) -> Result<(), mux::RunError> {
