@@ -263,8 +263,8 @@ module inductive {
             r::ghost_timeout_qc' = timeout_qc,
             r::msgs_signed_commit' = signed_commits,
             {
-                // we have to pass the upper bound of 20 directly (this is a limitation of Quint)
-                nondet msgs_signed_timeout = generate(20, Set(SIGNED_TIMEOUT_VOTE_SAMPLE))
+                // we have to pass the upper bound of 10 directly (this is a limitation of Quint)
+                nondet msgs_signed_timeout = generate(10, Set(SIGNED_TIMEOUT_VOTE_SAMPLE))
                 all {
                     msgs_signed_timeout.forall(signed_timeout_vote_shape_inv),
                     r::msgs_signed_timeout' = msgs_signed_timeout,
@@ -304,6 +304,7 @@ module inductive {
 
     // the inductive invariant
     val ind_inv = and {
+        lemma12_view0_is_correct,
         lemma11_one_proposal_per_view,
         lemma10_justified_commit_qc_no_vote_change,
         //block_progress_inv,
@@ -516,6 +517,40 @@ module inductive {
                 },
             }
         })
+    }
+
+    // synchronize the inductive invariant with init_view_1_with_leader
+    val lemma12_view0_is_correct = {
+        pure val init_timeout_qc: TimeoutQC = {
+            votes: IREPLICAS.map(id => id).mapBy(_ => {
+                view: 0,
+                high_vote: COMMIT_VOTE_NONE,
+                high_commit_qc_view: VIEW_NUMBER_NONE
+            }),
+            agg_sig: IREPLICAS.map(id => id),
+            high_commit_qc: HIGH_COMMIT_QC_NONE,
+            ghost_view: 0,
+        }
+        and {
+            // the first QC is the timeout initialization
+            r::ghost_timeout_qc[0] == init_timeout_qc,
+            // all replicas have sent a timeout in view 0
+            IREPLICAS.forall(id => r::msgs_signed_timeout.contains({
+                sig: id,
+                high_commit_qc: HIGH_COMMIT_QC_NONE,
+                vote: { view: 0, high_vote: COMMIT_VOTE_NONE, high_commit_qc_view: VIEW_NUMBER_NONE },
+            })),
+            // all replicas have stored the initial timeout QC
+            ICORRECT.forall(id => {
+                r::ghost_justifications.get((id, 1)) == Timeout(0)
+            }),
+            // all replicas have sent the new_view message in view 0
+            ICORRECT.forall(id => {
+                r::msgs_new_view.contains({
+                    sig: id,
+                    justification: Timeout(0) })
+            }),
+        }
     }
 
     // invalid lemmas
