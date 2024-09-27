@@ -18,7 +18,7 @@ use kube::{
 use std::{collections::BTreeMap, net::SocketAddr, time::Duration};
 use tokio::time;
 use tracing::log::info;
-use zksync_protobuf::serde::Serde;
+use zksync_protobuf::serde::Serialize;
 
 /// Docker image name for consensus nodes.
 const DOCKER_IMAGE_NAME: &str = "consensus-node";
@@ -335,10 +335,7 @@ fn is_pod_running(pod: &Pod) -> bool {
 fn get_cli_args(consensus_node: &ConsensusNode) -> Vec<String> {
     vec![
         "--config".to_string(),
-        config::encode_with_serializer(
-            &Serde(consensus_node.config.clone()),
-            serde_json::Serializer::new(vec![]),
-        ),
+        Serialize.proto_fmt_to_json(&consensus_node.config),
     ]
 }
 

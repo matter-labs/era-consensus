@@ -18,7 +18,10 @@ mod proto;
 /// Decodes a generated proto message from json for arbitrary ReflectMessage.
 fn decode_json_proto<T: ReflectMessage + Default>(json: &str) -> anyhow::Result<T> {
     let mut deserializer = serde_json::Deserializer::from_str(json);
-    let proto: T = zksync_protobuf::serde::deserialize_proto(&mut deserializer)?;
+    let proto: T = zksync_protobuf::serde::Deserialize {
+        deny_unknown_fields: true,
+    }
+    .proto(&mut deserializer)?;
     deserializer.end()?;
     Ok(proto)
 }
@@ -26,7 +29,9 @@ fn decode_json_proto<T: ReflectMessage + Default>(json: &str) -> anyhow::Result<
 /// Encodes a generated proto message to json for arbitrary ReflectMessage.
 fn encode_json_proto<T: ReflectMessage>(proto: &T) -> String {
     let mut serializer = serde_json::Serializer::pretty(vec![]);
-    zksync_protobuf::serde::serialize_proto(proto, &mut serializer).unwrap();
+    zksync_protobuf::serde::Serialize
+        .proto(proto, &mut serializer)
+        .unwrap();
     String::from_utf8(serializer.into_inner()).unwrap()
 }
 
