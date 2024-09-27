@@ -83,8 +83,7 @@ impl RocksDB {
                 // `RocksDB` is assumed to store all blocks starting from genesis.
                 first: genesis.first_block,
                 last: scope::wait_blocking(|| Self::last_blocking(&db))
-                    .await?
-                    .map(Last::Final),
+                    .await?,
             })
             .0,
             genesis,
@@ -92,7 +91,7 @@ impl RocksDB {
         })))
     }
 
-    fn last_blocking(db: &rocksdb::DB) -> anyhow::Result<Option<validator::CommitQC>> {
+    fn last_blocking(db: &rocksdb::DB) -> anyhow::Result<Option<Last>> {
         let mut options = ReadOptions::default();
         options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
         let Some(res) = db
@@ -101,10 +100,10 @@ impl RocksDB {
         else {
             return Ok(None);
         };
-        let (_, last) = res.context("RocksDB error reading head block")?;
-        let last: validator::FinalBlock =
-            zksync_protobuf::decode(&last).context("Failed decoding head block bytes")?;
-        Ok(Some(last.justification))
+        let (_, raw) = res.context("RocksDB error reading head block")?;
+        let b: validator::Block =
+            zksync_protobuf::decode(&raw).context("Failed decoding head block bytes")?;
+        Ok(Some((&b).into()))
     }
 }
 
