@@ -351,8 +351,9 @@ module inductive {
                 }
 
             | Timeout(qc_id) =>
+                val qc = r::ghost_timeout_qc[qc_id]
+                view == qc.ghost_view + 1
                 // check the structure in (3)
-                true
             }
         }),
         // (2) check the quorums in CommitQC's separately
