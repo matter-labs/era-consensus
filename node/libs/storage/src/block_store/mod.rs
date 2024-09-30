@@ -339,11 +339,12 @@ impl BlockStore {
                     )
                     .into());
                 }
-                // TODO: metrics
+                let t = metrics::PERSISTENT_BLOCK_STORE.verify_pre_genesis_block_latency.start();
                 self.persistent
                     .verify_pre_genesis_block(ctx, b)
                     .await
                     .context("verify_pre_genesis_block()")?;
+                t.observe();
             }
         }
         Ok(())
