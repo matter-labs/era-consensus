@@ -1503,6 +1503,12 @@ module replica {
 
     // integrity invariant for TimeoutQC
     def aux_timeout_qc_inv(qc_opt: Option[QcId]): bool = {
+        def get_high_commit_qc_view(v: TimeoutVote): ViewNumber = {
+            match (v.high_commit_qc_view) {
+                | None => -1
+                | Some(view) => view
+            }
+        }
         match (qc_opt) {
             | None => true
             | Some(qc_id) => 
@@ -1525,8 +1531,8 @@ module replica {
                     | Some(commit_qc_id) =>
                         val commit_qc = ghost_commit_qc[commit_qc_id]
                         and {
-                            votes.forall(v => v.view <= commit_qc.vote.view),
-                            votes.exists(v => v.view == commit_qc.vote.view)
+                            votes.forall(v => v.get_high_commit_qc_view() <= commit_qc.vote.view),
+                            votes.exists(v => v.get_high_commit_qc_view() == commit_qc.vote.view)
                         }
                     }
                 }

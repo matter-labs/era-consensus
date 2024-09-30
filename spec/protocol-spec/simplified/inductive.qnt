@@ -299,15 +299,12 @@ module inductive {
 
     // this is the main safety property that we are interested in
     val agreement_inv = r::agreement_inv
-    // this is a candidate for liveness
-    val block_progress_inv = r::block_progress_inv
 
     // the inductive invariant
     val ind_inv = and {
         lemma12_view0_is_correct,
         lemma11_one_proposal_per_view,
         lemma10_justified_commit_qc_no_vote_change,
-        //block_progress_inv,
         lemma8_no_commits_in_future,
         lemma9_no_timeouts_in_future,
         lemma0_committed_blocks_have_justified_qc,
@@ -382,6 +379,7 @@ module inductive {
         }),
     }
 
+    // TODO: this lemma is violated (ex 82)
     val lemma2_justified_commit_qc_supported_by_messages = {
         r::ghost_justifications.keys().forall(((id, view)) => {
             match (r::ghost_justifications.get((id, view))) {
@@ -501,6 +499,7 @@ module inductive {
         })
     }
 
+    // this lemma is violated (ex 15)
     val lemma11_one_proposal_per_view = {
         r::msgs_proposal.forall(m => or {
             IFAULTY.contains(m.sig),
