@@ -314,6 +314,7 @@ module inductive {
         lemma4_signed_commit_needs_justification,
         lemma5_signed_commit_no_equivocation,
         lemma6_signed_timeout_no_equivocation,
+        lemma13_replica_and_proposer_views,
     }
 
     // auxiliary invariants that we call lemmas
@@ -506,17 +507,13 @@ module inductive {
         })
     }
 
-    // this lemma is violated (ex 15)
     val lemma11_one_proposal_per_view = {
         r::msgs_proposal.forall(m => or {
             IFAULTY.contains(m.sig),
             val num_and_hash = r::get_implied_block(m.justification)
             and {
                 m.ghost_block_number == num_and_hash._1,
-                val qc_view = match (m.justification) {
-                | Commit(qid) => r::ghost_commit_qc[qid].vote.view
-                | Timeout(qid) => r::ghost_timeout_qc[qid].ghost_view + 1
-                }
+                val qc_view = r::view(m.justification)
                 match (num_and_hash._2) {
                 | Some(b) => m.block == BLOCK_NONE
                 | None => m.block == Some(r::prophecy_correct_proposals.get(qc_view))
@@ -557,6 +554,20 @@ module inductive {
                     justification: Timeout(0) })
             }),
         }
+    }
+
+    val lemma13_replica_and_proposer_views = {
+        ICORRECT.forall(id =>
+            val self_view = r::replica_state.get(id).view
+            val replica_view = r::replica_view.get(id)
+            and {
+                r::proposer_view.get(id) <= self_view,
+                or {
+                    replica_view == self_view,
+                    replica_view + 1 == self_view,
+                }
+            }
+        )
     }
 
     // invalid lemmas
