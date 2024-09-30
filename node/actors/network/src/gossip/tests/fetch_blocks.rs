@@ -24,7 +24,7 @@ async fn test_simple() {
     cfg.validator_key = None;
 
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
 
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.blocks.clone());
@@ -133,7 +133,7 @@ async fn test_concurrent_requests() {
     cfg.max_block_queue_size = setup.blocks.len();
 
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.blocks.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
@@ -207,7 +207,7 @@ async fn test_bad_responses() {
     cfg.validator_key = None;
 
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.blocks.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
@@ -284,7 +284,7 @@ async fn test_retry() {
     cfg.validator_key = None;
 
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.blocks.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
@@ -349,8 +349,7 @@ async fn test_announce_truncated_block_range() {
 
     scope::run!(ctx, |ctx, s| async {
         // Build a custom persistent store, so that we can tweak it later.
-        let mut persistent =
-            in_memory::BlockStore::new(setup.genesis.clone(), setup.genesis.first_block);
+        let mut persistent = in_memory::BlockStore::new(&setup, setup.genesis.first_block);
         let (block_store, runner) = BlockStore::new(ctx, Box::new(persistent.clone())).await?;
         s.spawn_bg(runner.run(ctx));
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), block_store);

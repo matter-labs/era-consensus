@@ -35,7 +35,7 @@ async fn test_one_connection_per_node() {
     let cfgs = testonly::new_configs(rng, &setup, 2);
 
     scope::run!(ctx, |ctx,s| async {
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         let mut nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
             let (node,runner) = testonly::Instance::new(cfg.clone(), store.blocks.clone());
@@ -241,7 +241,7 @@ async fn test_validator_addrs_propagation() {
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         let nodes: Vec<_> = cfgs
             .iter()
@@ -284,7 +284,7 @@ async fn test_genesis_mismatch() {
         let mut listener = cfgs[1].server_addr.bind().context("server_addr.bind()")?;
 
         tracing::info!("Start one node, we will simulate the other one.");
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         let (_node, runner) = testonly::Instance::new(cfgs[0].clone(), store.blocks);
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
@@ -343,7 +343,7 @@ async fn validator_node_restart() {
     for cfg in &mut cfgs {
         cfg.rpc.push_validator_addrs_rate.refresh = time::Duration::ZERO;
     }
-    let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+    let store = TestMemoryStorage::new(ctx, &setup).await;
     let (node1, node1_runner) = testonly::Instance::new(cfgs[1].clone(), store.blocks.clone());
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(store.runner.run(ctx));
@@ -426,7 +426,7 @@ async fn rate_limiting() {
     }
     let mut nodes = vec![];
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         // Spawn the satellite nodes and wait until they register
         // their own address.
@@ -511,7 +511,7 @@ async fn test_batch_votes_propagation() {
 
     scope::run!(ctx, |ctx, s| async {
         // All nodes share the same store - store is not used in this test anyway.
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
 
         // Start all nodes.

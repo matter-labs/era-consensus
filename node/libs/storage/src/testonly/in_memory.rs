@@ -2,17 +2,18 @@
 use crate::{block_store::Last, BlockStoreState, PersistentBlockStore, ReplicaState};
 use anyhow::Context as _;
 use std::{
-    collections::VecDeque,
+    collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
 };
 use zksync_concurrency::{ctx, sync};
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::{validator, validator::testonly::Setup};
 
 #[derive(Debug)]
 struct BlockStoreInner {
     genesis: validator::Genesis,
     persisted: sync::watch::Sender<BlockStoreState>,
     blocks: Mutex<VecDeque<validator::Block>>,
+    pre_genesis_blocks: HashMap<validator::BlockNumber, validator::PreGenesisBlock>,
 }
 
 /// In-memory block store.
@@ -25,12 +26,27 @@ pub struct ReplicaStore(Arc<Mutex<ReplicaState>>);
 
 impl BlockStore {
     /// New In-memory `BlockStore`.
-    pub fn new(genesis: validator::Genesis, first: validator::BlockNumber) -> Self {
-        assert!(genesis.first_block <= first);
+    pub fn new(setup: &Setup, first: validator::BlockNumber) -> Self {
+        assert!(
+            setup
+                .blocks
+                .first()
+                .map(|b| b.number())
+                .unwrap_or(setup.genesis.first_block)
+                <= first
+        );
         Self(Arc::new(BlockStoreInner {
-            genesis,
+            genesis: setup.genesis.clone(),
             persisted: sync::watch::channel(BlockStoreState { first, last: None }).0,
             blocks: Mutex::default(),
+            pre_genesis_blocks: setup
+                .blocks
+                .iter()
+                .flat_map(|b| match b {
+                    validator::Block::PreGenesis(b) => Some((b.number, b.clone())),
+                    validator::Block::Final(_) => None,
+                })
+                .collect(),
         }))
     }
 
@@ -68,9 +84,8 @@ impl PersistentBlockStore for BlockStore {
         _ctx: &ctx::Ctx,
         block: &validator::PreGenesisBlock,
     ) -> ctx::Result<()> {
-        // TODO:
-        if block.justification != validator::Justification(vec![]) {
-            return Err(anyhow::format_err!("invalid justification").into());
+        if self.0.pre_genesis_blocks.get(&block.number) != Some(block) {
+            return Err(anyhow::format_err!("invalid pre-genesis block").into());
         }
         Ok(())
     }

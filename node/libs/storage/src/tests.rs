@@ -11,10 +11,13 @@ async fn test_inmemory_block_store() {
     let mut setup = Setup::new(rng, 3);
     setup.push_blocks(rng, 5);
 
-    let store =
-        &testonly::in_memory::BlockStore::new(setup.genesis.clone(), setup.genesis.first_block);
+    let store = &testonly::in_memory::BlockStore::new(
+        &setup,
+        setup.blocks.first().as_ref().unwrap().number(),
+    );
     let mut want = vec![];
     for block in &setup.blocks {
+        tracing::info!("block = {:?}", block.number());
         store.queue_next_block(ctx, block.clone()).await.unwrap();
         sync::wait_for(ctx, &mut store.persisted(), |p| p.contains(block.number()))
             .await
@@ -41,8 +44,7 @@ async fn test_state_updates() {
     // Create store with non-trivial first block.
     let first_block = &setup.blocks[2];
     let store =
-        TestMemoryStorage::new_store_with_first_block(ctx, &setup.genesis, first_block.number())
-            .await;
+        TestMemoryStorage::new_store_with_first_block(ctx, &setup, first_block.number()).await;
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(store.runner.run(ctx));
         let want = BlockStoreState {

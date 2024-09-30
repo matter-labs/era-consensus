@@ -82,8 +82,7 @@ impl RocksDB {
             persisted: sync::watch::channel(BlockStoreState {
                 // `RocksDB` is assumed to store all blocks starting from genesis.
                 first: genesis.first_block,
-                last: scope::wait_blocking(|| Self::last_blocking(&db))
-                    .await?,
+                last: scope::wait_blocking(|| Self::last_blocking(&db)).await?,
             })
             .0,
             genesis,

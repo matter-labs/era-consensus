@@ -70,6 +70,13 @@ impl Config {
         anyhow::ensure!(genesis.protocol_version == validator::ProtocolVersion::CURRENT);
         genesis.verify().context("genesis().verify()")?;
 
+        if let Some(prev) = genesis.first_block.prev() {
+            tracing::info!("Waiting for the pre-genesis blocks to be persisted");
+            if let Err(ctx::Canceled) = self.block_store.wait_until_persisted(ctx, prev).await {
+                return Ok(());
+            }
+        }
+
         let cfg = Arc::new(self);
         let (leader, leader_send) = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
         let (replica, replica_send) =

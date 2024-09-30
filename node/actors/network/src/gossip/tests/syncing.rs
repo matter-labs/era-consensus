@@ -28,7 +28,9 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
 
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::Setup::new(rng, node_count);
+    let mut spec = validator::testonly::SetupSpec::new(rng, node_count);
+    spec.first_block = spec.first_pregenesis_block + 2;
+    let mut setup = validator::testonly::Setup::from_spec(rng, spec);
     setup.push_blocks(rng, EXCHANGED_STATE_COUNT);
     let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
     scope::run!(ctx, |ctx, s| async {
@@ -38,7 +40,7 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+            let store = TestMemoryStorage::new(ctx, &setup).await;
             s.spawn_bg(store.runner.run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, store.blocks);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
@@ -84,7 +86,9 @@ async fn uncoordinated_block_syncing(
 
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::Setup::new(rng, node_count);
+    let mut spec = validator::testonly::SetupSpec::new(rng, node_count);
+    spec.first_block = spec.first_pregenesis_block + 2;
+    let mut setup = validator::testonly::Setup::from_spec(rng, spec);
     setup.push_blocks(rng, EXCHANGED_STATE_COUNT);
     let cfgs = testonly::new_configs(rng, &setup, gossip_peers);
     scope::run!(ctx, |ctx, s| async {
@@ -94,7 +98,7 @@ async fn uncoordinated_block_syncing(
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+            let store = TestMemoryStorage::new(ctx, &setup).await;
             s.spawn_bg(store.runner.clone().run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, store.blocks);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
@@ -149,7 +153,7 @@ async fn test_switching_on_nodes() {
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+            let store = TestMemoryStorage::new(ctx, &setup).await;
             s.spawn_bg(store.runner.run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, store.blocks);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
@@ -204,7 +208,7 @@ async fn test_switching_off_nodes() {
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+            let store = TestMemoryStorage::new(ctx, &setup).await;
             s.spawn_bg(store.runner.run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, store.blocks);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
@@ -267,8 +271,7 @@ async fn test_different_first_block() {
             cfg.validator_key = None;
             // Choose the first block for the node at random.
             let first = setup.blocks.choose(rng).unwrap().number();
-            let store =
-                TestMemoryStorage::new_store_with_first_block(ctx, &setup.genesis, first).await;
+            let store = TestMemoryStorage::new_store_with_first_block(ctx, &setup, first).await;
             s.spawn_bg(store.runner.run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, store.blocks);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
@@ -316,7 +319,9 @@ async fn test_sidechannel_sync() {
 
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let mut setup = validator::testonly::Setup::new(rng, 2);
+    let mut spec = validator::testonly::SetupSpec::new(rng, 2);
+    spec.first_block = spec.first_pregenesis_block + 2;
+    let mut setup = validator::testonly::Setup::from_spec(rng, spec);
     setup.push_blocks(rng, 10);
     let cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
@@ -329,8 +334,7 @@ async fn test_sidechannel_sync() {
             cfg.validator_key = None;
 
             // Build a custom persistent store, so that we can tweak it later.
-            let persistent =
-                in_memory::BlockStore::new(setup.genesis.clone(), setup.genesis.first_block);
+            let persistent = in_memory::BlockStore::new(&setup, setup.genesis.first_block);
             stores.push(persistent.clone());
             let (block_store, runner) = BlockStore::new(ctx, Box::new(persistent)).await?;
             s.spawn_bg(runner.run(ctx));
@@ -369,7 +373,7 @@ async fn test_sidechannel_sync() {
             stores[1].truncate(setup.blocks[8].number());
 
             // Sync a block suffix.
-            let suffix = &setup.blocks[5..10];
+            let suffix = &setup.blocks[5..];
             for b in suffix {
                 nodes[0]
                     .net
@@ -386,7 +390,7 @@ async fn test_sidechannel_sync() {
                 .await?;
 
             // Check that the expected block range is actually stored.
-            assert_eq!(setup.blocks[8..10], dump(ctx, &stores[1]).await);
+            assert_eq!(setup.blocks[8..], dump(ctx, &stores[1]).await);
         }
         Ok(())
     })

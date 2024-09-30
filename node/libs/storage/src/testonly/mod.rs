@@ -7,7 +7,7 @@ use anyhow::Context as _;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use std::sync::Arc;
 use zksync_concurrency::ctx;
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::{validator, validator::testonly::Setup};
 
 pub mod in_memory;
 
@@ -62,18 +62,18 @@ pub struct TestMemoryStorage {
 
 impl TestMemoryStorage {
     /// Constructs a new in-memory store for both blocks and batches with their respective runners.
-    pub async fn new(ctx: &ctx::Ctx, genesis: &validator::Genesis) -> Self {
-        Self::new_store_with_first_block(ctx, genesis, genesis.first_block).await
+    pub async fn new(ctx: &ctx::Ctx, setup: &Setup) -> Self {
+        Self::new_store_with_first_block(ctx, setup, setup.genesis.first_block).await
     }
 
     /// Constructs a new in-memory store with a custom expected first block
     /// (i.e. possibly different than `genesis.fork.first_block`).
     pub async fn new_store_with_first_block(
         ctx: &ctx::Ctx,
-        genesis: &validator::Genesis,
+        setup: &Setup,
         first: validator::BlockNumber,
     ) -> Self {
-        let im_blocks = in_memory::BlockStore::new(genesis.clone(), first);
+        let im_blocks = in_memory::BlockStore::new(setup, first);
         Self::new_with_im(ctx, im_blocks).await
     }
 
@@ -92,9 +92,7 @@ impl TestMemoryStorage {
 
 /// Dumps all the blocks stored in `store`.
 pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<validator::Block> {
-    let genesis = store.genesis(ctx).await.unwrap();
     let state = store.persisted().borrow().clone();
-    assert!(genesis.first_block <= state.first);
     let mut blocks = vec![];
     let after = state
         .last

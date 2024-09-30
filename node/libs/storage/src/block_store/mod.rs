@@ -76,12 +76,6 @@ impl BlockStoreState {
 
     /// Verifies `BlockStoreState'.
     pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            genesis.first_block <= self.first,
-            "first block ({}) doesn't belong to the fork (which starts at block {})",
-            self.first,
-            genesis.first_block
-        );
         if let Some(last) = &self.last {
             anyhow::ensure!(
                 self.first <= last.number(),

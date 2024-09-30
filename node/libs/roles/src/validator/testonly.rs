@@ -25,6 +25,8 @@ pub struct SetupSpec {
     pub fork_number: ForkNumber,
     /// First block.
     pub first_block: BlockNumber,
+    /// First block that exists.
+    pub first_pregenesis_block: BlockNumber,
     /// Protocol version.
     pub protocol_version: ProtocolVersion,
     /// Validator secret keys and weights.
@@ -47,6 +49,7 @@ impl SetupSpec {
 
     /// New `SetupSpec`.
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
+        let first_block = BlockNumber(rng.gen_range(0..100));
         Self {
             validator_weights: weights
                 .clone()
@@ -56,7 +59,8 @@ impl SetupSpec {
             attester_weights: weights.into_iter().map(|w| (rng.gen(), w)).collect(),
             chain_id: ChainId(1337),
             fork_number: ForkNumber(rng.gen_range(0..100)),
-            first_block: BlockNumber(rng.gen_range(0..100)),
+            first_block,
+            first_pregenesis_block: BlockNumber(rng.gen_range(0..=first_block.0)),
             protocol_version: ProtocolVersion::CURRENT,
             leader_selection: LeaderSelectionMode::RoundRobin,
         }
@@ -66,12 +70,14 @@ impl SetupSpec {
 impl Setup {
     /// New `Setup`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
-        SetupSpec::new(rng, validators).into()
+        let spec = SetupSpec::new(rng, validators);
+        Self::from_spec(rng, spec)
     }
 
     /// New `Setup`.
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
-        SetupSpec::new_with_weights(rng, weights).into()
+        let spec = SetupSpec::new_with_weights(rng, weights);
+        Self::from_spec(rng, spec)
     }
 
     /// Next block to finalize.
@@ -139,9 +145,10 @@ impl Setup {
     }
 }
 
-impl From<SetupSpec> for Setup {
-    fn from(spec: SetupSpec) -> Self {
-        Self(SetupInner {
+impl Setup {
+    /// Generates a new `Setup` from the given `SetupSpec`.
+    pub fn from_spec(rng: &mut impl Rng, spec: SetupSpec) -> Self {
+        let mut this = Self(SetupInner {
             genesis: GenesisRaw {
                 chain_id: spec.chain_id,
                 fork_number: spec.fork_number,
@@ -169,7 +176,19 @@ impl From<SetupSpec> for Setup {
             validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
             attester_keys: spec.attester_weights.into_iter().map(|(k, _)| k).collect(),
             blocks: vec![],
-        })
+        });
+        // Populate pregenesis blocks.
+        for block in spec.first_pregenesis_block.0..spec.first_block.0 {
+            this.0.blocks.push(
+                PreGenesisBlock {
+                    number: BlockNumber(block),
+                    payload: rng.gen(),
+                    justification: rng.gen(),
+                }
+                .into(),
+            );
+        }
+        this
     }
 }
 

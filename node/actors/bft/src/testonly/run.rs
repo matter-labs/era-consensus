@@ -15,7 +15,7 @@ use zksync_concurrency::{
     oneshot, scope,
 };
 use zksync_consensus_network::{self as network};
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::{validator, validator::testonly::Setup};
 use zksync_consensus_storage::{testonly::TestMemoryStorage, BlockStore};
 use zksync_consensus_utils::pipe;
 
@@ -114,12 +114,9 @@ impl Test {
     /// Run a test with the given parameters and a random network setup.
     pub(crate) async fn run(&self, ctx: &ctx::Ctx) -> Result<(), TestError> {
         let rng = &mut ctx.rng();
-        let setup = validator::testonly::Setup::new_with_weights(
-            rng,
-            self.nodes.iter().map(|(_, w)| *w).collect(),
-        );
+        let setup = Setup::new_with_weights(rng, self.nodes.iter().map(|(_, w)| *w).collect());
         let nets: Vec<_> = network::testonly::new_configs(rng, &setup, 1);
-        self.run_with_config(ctx, nets, &setup.genesis).await
+        self.run_with_config(ctx, nets, &setup).await
     }
 
     /// Run a test with the given parameters and network configuration.
@@ -127,13 +124,13 @@ impl Test {
         &self,
         ctx: &ctx::Ctx,
         nets: Vec<Config>,
-        genesis: &validator::Genesis,
+        setup: &Setup,
     ) -> Result<(), TestError> {
         let mut nodes = vec![];
         let mut honest = vec![];
         scope::run!(ctx, |ctx, s| async {
             for (i, net) in nets.into_iter().enumerate() {
-                let store = TestMemoryStorage::new(ctx, genesis).await;
+                let store = TestMemoryStorage::new(ctx, setup).await;
                 s.spawn_bg(async { Ok(store.runner.run(ctx).await?) });
 
                 if self.nodes[i].0 == Behavior::Honest {
@@ -151,7 +148,7 @@ impl Test {
 
             // Run the nodes until all honest nodes store enough finalized blocks.
             assert!(self.blocks_to_finalize > 0);
-            let first = genesis.first_block;
+            let first = setup.genesis.first_block;
             let last = first + (self.blocks_to_finalize as u64 - 1);
             for store in &honest {
                 store.wait_until_queued(ctx, last).await?;

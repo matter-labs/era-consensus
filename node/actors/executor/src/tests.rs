@@ -69,7 +69,7 @@ async fn test_single_validator() {
     let cfgs = new_configs(rng, &setup, 0);
     scope::run!(ctx, |ctx, s| async {
         let replica_store = in_memory::ReplicaStore::default();
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         s.spawn_bg(validator(&cfgs[0], store.blocks.clone(), replica_store).run(ctx));
         store
@@ -93,7 +93,7 @@ async fn test_many_validators() {
     scope::run!(ctx, |ctx, s| async {
         for cfg in cfgs {
             let replica_store = in_memory::ReplicaStore::default();
-            let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+            let store = TestMemoryStorage::new(ctx, &setup).await;
             s.spawn_bg(store.runner.run(ctx));
             s.spawn_bg(validator(&cfg, store.blocks.clone(), replica_store).run(ctx));
 
@@ -121,13 +121,13 @@ async fn test_inactive_validator() {
     scope::run!(ctx, |ctx, s| async {
         // Spawn validator.
         let replica_store = in_memory::ReplicaStore::default();
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         s.spawn_bg(validator(&cfgs[0], store.blocks.clone(), replica_store).run(ctx));
 
         // Spawn a validator node, which doesn't belong to the consensus.
         // Therefore it should behave just like a fullnode.
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         let mut cfg = new_fullnode(rng, &cfgs[0]);
         cfg.validator_key = Some(rng.gen());
@@ -156,12 +156,12 @@ async fn test_fullnode_syncing_from_validator() {
     scope::run!(ctx, |ctx, s| async {
         // Spawn validator.
         let replica_store = in_memory::ReplicaStore::default();
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         s.spawn_bg(validator(&cfgs[0], store.blocks.clone(), replica_store).run(ctx));
 
         // Spawn full node.
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         s.spawn_bg(fullnode(&new_fullnode(rng, &cfgs[0]), store.blocks.clone()).run(ctx));
 
@@ -188,7 +188,7 @@ async fn test_validator_syncing_from_fullnode() {
     scope::run!(ctx, |ctx, s| async {
         // Run validator and produce some blocks.
         let replica_store = in_memory::ReplicaStore::default();
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         scope::run!(ctx, |ctx, s| async {
             s.spawn_bg(
@@ -221,7 +221,7 @@ async fn test_validator_syncing_from_fullnode() {
         let last_block = store.blocks.queued().last.as_ref().unwrap().number();
         let store2 = TestMemoryStorage::new_store_with_first_block(
             ctx,
-            &setup.genesis,
+            &setup,
             setup.genesis.first_block + 2,
         )
         .await;
