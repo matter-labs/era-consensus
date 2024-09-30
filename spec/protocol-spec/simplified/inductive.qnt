@@ -465,7 +465,10 @@ module inductive {
         r::msgs_signed_commit.forall(m => or {
             IFAULTY.contains(m.sig),
             val self = r::replica_state.get(m.sig)
-            self.view >= m.vote.view
+            or {
+                m.vote.view < self.view,
+                m.vote.view == self.view and self.phase != PhasePrepare,
+            }
         })
     }
 
@@ -473,7 +476,10 @@ module inductive {
         r::msgs_signed_timeout.forall(m => or {
             IFAULTY.contains(m.sig),
             val self = r::replica_state.get(m.sig)
-            self.view >= m.vote.view
+            or {
+                m.vote.view < self.view,
+                m.vote.view == self.view and self.phase == PhaseTimeout,
+            }
         })
     }
 
