@@ -339,7 +339,9 @@ impl BlockStore {
                     )
                     .into());
                 }
-                let t = metrics::PERSISTENT_BLOCK_STORE.verify_pre_genesis_block_latency.start();
+                let t = metrics::PERSISTENT_BLOCK_STORE
+                    .verify_pre_genesis_block_latency
+                    .start();
                 self.persistent
                     .verify_pre_genesis_block(ctx, b)
                     .await
