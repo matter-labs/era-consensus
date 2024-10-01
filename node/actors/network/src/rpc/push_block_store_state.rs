@@ -57,7 +57,7 @@ impl Req {
 
     /// Clears pre-genesis info from the request.
     /// Use to simulate node behavior before pre-genesis support.
-    pub(crate) fn clear_pre_genesis_info(&mut self) {
+    pub(crate) fn clear_pregenesis_data(&mut self) {
         self.state = None;
     }
 }

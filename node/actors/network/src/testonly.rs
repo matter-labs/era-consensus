@@ -62,6 +62,7 @@ pub(crate) fn make_config(key: node::SecretKey) -> Config {
         tcp_accept_rate: limiter::Rate::INF,
         rpc: RpcConfig::default(),
         max_block_queue_size: 10,
+        enable_pregenesis: true,
     }
 }
 
@@ -162,6 +163,7 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
         tcp_accept_rate: limiter::Rate::INF,
         rpc: RpcConfig::default(),
         max_block_queue_size: 10,
+        enable_pregenesis: true,
     }
 }
 

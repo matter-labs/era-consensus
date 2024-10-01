@@ -6,7 +6,7 @@ use rand::seq::SliceRandom;
 use std::sync::atomic::Ordering;
 use zksync_concurrency::{ctx, net, scope, sync};
 use zksync_consensus_roles::node;
-use zksync_consensus_storage::{BlockStore, BlockStoreState};
+use zksync_consensus_storage::BlockStoreState;
 use zksync_protobuf::kB;
 
 /// Receiver of push messages from the peers.
@@ -92,8 +92,8 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushServer<'_> {
         _ctx: &ctx::Ctx,
         mut req: rpc::push_block_store_state::Req,
     ) -> anyhow::Result<()> {
-        if !self.net.cfg.enable_pre_genesis_support {
-            req.clear_pre_genesis_info();
+        if !self.net.cfg.enable_pregenesis {
+            req.clear_pregenesis_data();
         }
         let state = req.state();
         state.verify(self.net.genesis())?;
@@ -103,7 +103,7 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushServer<'_> {
 }
 
 #[async_trait]
-impl rpc::Handler<rpc::get_block::Rpc> for &BlockStore {
+impl rpc::Handler<rpc::get_block::Rpc> for &Network {
     fn max_req_size(&self) -> usize {
         kB
     }
@@ -112,9 +112,9 @@ impl rpc::Handler<rpc::get_block::Rpc> for &BlockStore {
         ctx: &ctx::Ctx,
         req: rpc::get_block::Req,
     ) -> anyhow::Result<rpc::get_block::Resp> {
-        let mut resp = rpc::get_block::Resp(self.block(ctx, req.0).await?;
-        if !self.cfg.enable_pre_genesis_support { 
-            resp.clear_pre_genesis_info();
+        let mut resp = rpc::get_block::Resp(self.block_store.block(ctx, req.0).await?);
+        if !self.cfg.enable_pregenesis {
+            resp.clear_pregenesis_data();
         }
         Ok(resp)
     }
@@ -152,7 +152,7 @@ impl Network {
                     self.cfg.rpc.push_block_store_state_rate,
                 )
                 .add_client(&get_block_client)
-                .add_server(ctx, &*self.block_store, self.cfg.rpc.get_block_rate)
+                .add_server::<rpc::get_block::Rpc>(ctx, self, self.cfg.rpc.get_block_rate)
                 .add_server(ctx, rpc::ping::Server, rpc::ping::RATE)
                 .add_client(&push_batch_votes_client)
                 .add_server::<rpc::push_batch_votes::Rpc>(
@@ -212,9 +212,10 @@ impl Network {
             s.spawn::<()>(async {
                 let mut state = self.block_store.queued();
                 loop {
-                    let mut req = rpc::push_block_store_state::Req::new(state.clone(), self.genesis());
-                    if !self.cfg.enable_pre_genesis_support {
-                        req.clear_pre_genesis_info();
+                    let mut req =
+                        rpc::push_block_store_state::Req::new(state.clone(), self.genesis());
+                    if !self.cfg.enable_pregenesis {
+                        req.clear_pregenesis_data();
                     }
                     push_block_store_state_client.call(ctx, &req, kB).await?;
                     state = self.block_store.wait_for_queued_change(ctx, &state).await?;
@@ -264,8 +265,8 @@ impl Network {
                             let mut resp = call
                                 .call(ctx, &req, self.cfg.max_block_size.saturating_add(kB))
                                 .await?;
-                            if self.cfg.enable_pre_genesis_support {
-                                resp.0.clear_pre_genesis_info();
+                            if !self.cfg.enable_pregenesis {
+                                resp.clear_pregenesis_data();
                             }
                             let block = resp.0.context("empty response")?;
                             anyhow::ensure!(block.number() == req.0, "received wrong block");

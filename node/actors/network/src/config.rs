@@ -112,7 +112,9 @@ pub struct Config {
     /// Rate limiting config for RPCs.
     pub rpc: RpcConfig,
     /// Enables syncing blocks before genesis.
-    pub enable_pre_genesis_support: bool,
+    /// In production, it should be set to `true`.
+    /// Set it to `false` in tests to simulate node behavior before pre-genesis support.
+    pub enable_pregenesis: bool,
     /// Maximum number of not-yet-persisted blocks fetched from the network.
     /// If reached, network actor will wait for more blocks to get persisted
     /// before fetching the next ones. It is useful for limiting memory consumption

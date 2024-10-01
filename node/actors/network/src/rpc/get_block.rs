@@ -42,6 +42,16 @@ impl ProtoFmt for Req {
 #[derive(Debug, PartialEq)]
 pub(crate) struct Resp(pub(crate) Option<validator::Block>);
 
+impl Resp {
+    /// Clears pregenesis data from the response.
+    /// Use to simulate node behavior before pre-genesis support.
+    pub(crate) fn clear_pregenesis_data(&mut self) {
+        if let Some(validator::Block::PreGenesis(_)) = &self.0 {
+            self.0 = None;
+        }
+    }
+}
+
 impl ProtoFmt for Resp {
     type Proto = proto::GetBlockResponse;
 
@@ -52,7 +62,7 @@ impl ProtoFmt for Resp {
             None => None,
             Some(T::Block(b)) => Some(B::Final(ProtoFmt::read(b).context("block")?)),
             Some(T::PreGenesis(b)) => Some(B::PreGenesis(
-                ProtoFmt::read(b).context("pre_genesis_block")?,
+                ProtoFmt::read(b).context("pregenesis_block")?,
             )),
         }))
     }
