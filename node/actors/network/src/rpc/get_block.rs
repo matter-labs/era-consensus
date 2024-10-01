@@ -56,26 +56,32 @@ impl ProtoFmt for Resp {
     type Proto = proto::GetBlockResponse;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        use proto::get_block_response::T;
         use validator::Block as B;
-        Ok(Self(match &r.t {
-            None => None,
-            Some(T::Block(b)) => Some(B::Final(ProtoFmt::read(b).context("block")?)),
-            Some(T::PreGenesis(b)) => Some(B::PreGenesis(
-                ProtoFmt::read(b).context("pregenesis_block")?,
-            )),
-        }))
+        let block = r
+            .block
+            .as_ref()
+            .map(ProtoFmt::read)
+            .transpose()
+            .context("block")?
+            .map(B::Final);
+        let pregenesis = r
+            .pre_genesis
+            .as_ref()
+            .map(ProtoFmt::read)
+            .transpose()
+            .context("pre_genesis")?
+            .map(B::PreGenesis);
+        Ok(Self(block.or(pregenesis)))
     }
 
     fn build(&self) -> Self::Proto {
-        use proto::get_block_response::T;
         use validator::Block as B;
-        Self::Proto {
-            t: match self.0.as_ref() {
-                None => None,
-                Some(B::Final(b)) => Some(T::Block(b.build())),
-                Some(B::PreGenesis(b)) => Some(T::PreGenesis(b.build())),
-            },
+        let mut p = Self::Proto::default();
+        match self.0.as_ref() {
+            Some(B::Final(b)) => p.block = Some(b.build()),
+            Some(B::PreGenesis(b)) => p.pre_genesis = Some(b.build()),
+            None => {}
         }
+        p
     }
 }

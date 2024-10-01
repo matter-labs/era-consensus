@@ -418,9 +418,11 @@ async fn test_syncing_without_pregenesis_support() {
     }
 
     scope::run!(ctx, |ctx, s| async {
-        let stores = [in_memory::BlockStore::new(&setup, setup.blocks[0].number()),
+        let stores = [
+            in_memory::BlockStore::new(&setup, setup.blocks[0].number()),
             // Node 1 doesn't have pregenesis support.
-            in_memory::BlockStore::new(&setup, setup.genesis.first_block)];
+            in_memory::BlockStore::new(&setup, setup.genesis.first_block),
+        ];
         let mut nodes = vec![];
         for i in 0..cfgs.len() {
             let (block_store, runner) = BlockStore::new(ctx, Box::new(stores[i].clone())).await?;

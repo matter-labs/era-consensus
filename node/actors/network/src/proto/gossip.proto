@@ -68,9 +68,11 @@ message GetBlockRequest {
 
 // Response to a `GetBlockRequest`.
 message GetBlockResponse {
-  // optional; missing if block is not available
-  oneof t { 
+  // NOTE: this should be a oneof, but 'buf breaking' is not smart enough
+  // to consider putting a preexisting field into a oneof as a compatible change.
+  //  optional; missing if block is not available
+  //  oneof t {
     roles.validator.FinalBlock block = 1;
     roles.validator.PreGenesisBlock pre_genesis = 2;
-  }
+  //  }
 }
