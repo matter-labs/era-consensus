@@ -6,7 +6,7 @@
 # Igor Konnov, 2024 (for Matter Labs)
 
 if [ "$#" -lt 5 ]; then
-    echo "Use: $0 spec.qnt max-transitions max-lemmas max-jobs max-failing-jobs [invariant] [init] [step]"
+    echo "Use: $0 spec.qnt max-transitions max-lemmas max-jobs max-failing-jobs [invariant] [init] [step] [memsize]"
     echo "  - spec.qnt is the specification to check"
     echo "  - max-transitions is the maximal number of protocol transitions (from step)"
     echo "  - max-lemmas is the maximal number of conjuncts in the invariant"
@@ -15,6 +15,7 @@ if [ "$#" -lt 5 ]; then
     echo "  - invariant is the invariant to check, by default: inv"
     echo "  - init is the initial action, by default: init"
     echo "  - step is the step action, by default: step"
+    echo "  - memsize is the job memory size, man parallel --memsuspend, by default: 5G"
     exit 1
 fi
 
@@ -26,6 +27,7 @@ max_failing_jobs=$5
 inv=${6:-"inv"}
 init=${7:-"init"}
 step=${8:-"step"}
+memsuspend=${9:-"5G"}
 
 # https://lists.defectivebydesign.org/archive/html/bug-parallel/2017-04/msg00000.html
 export LANG= LC_ALL= LC_CTYPE= 
@@ -60,12 +62,10 @@ EOF
   done
 done
 
-# shuffle the benchmarks, so we do not keep checking the same set first all the time
-shuf $CSV >$CSV.shuf
-mv $CSV.shuf $CSV
-
-parallel -j ${max_jobs} -v --delay 1 --halt now,fail=${max_failing_jobs} \
-   --results out --colsep=, -a ${CSV} \
+parallel -j ${max_jobs} -v --shuf --bar --eta --delay 1 \
+  --memsuspend ${memsuspend} --joblog $TMPDIR/parallel.log \
+  --halt now,fail=${max_failing_jobs} \
+  --results out --colsep=, -a ${CSV} \
   JVM_ARGS=-Xmx40G quint verify --max-steps=1 --init=${init} --step=${step} \
     --server-endpoint=localhost:{2} \
     --apalache-config=$TMPDIR/apalache-inductive{1}.json \
