@@ -104,7 +104,10 @@ impl PersistentBlockStore for BlockStore {
         Ok(blocks.get(idx as usize).context("not found")?.clone())
     }
 
-    async fn queue_next_block(&self, _ctx: &ctx::Ctx, block: validator::Block) -> ctx::Result<()> {
+    async fn queue_next_block(&self, ctx: &ctx::Ctx, block: validator::Block) -> ctx::Result<()> {
+        if let validator::Block::PreGenesis(b) = &block {
+            self.verify_pre_genesis_block(ctx, b).await?;
+        }
         let mut blocks = self.0.blocks.lock().unwrap();
         let want = self.0.persisted.borrow().next();
         if block.number() < want {
