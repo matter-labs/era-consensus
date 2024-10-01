@@ -53,7 +53,7 @@ for j in `seq 0 $((max_lemmas-1))`; do
         }
       },
       "common": {
-        "debug": true
+        "debug": false
       }
     }
 EOF
