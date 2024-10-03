@@ -102,14 +102,16 @@ module inductive {
     }
 
     pure val COMMIT_VOTES: Set[CommitVote] =
-        tuples(IVIEWS, IBLOCK_NUMBERS, IALL_BLOCKS).map(((v, bn, bh)) => {
-            { view: v, block_number: bn, block_hash: bh }
-        })
+        tuples(IVIEWS.exclude(Set(0)), IBLOCK_NUMBERS, IALL_BLOCKS)
+            .map(((v, bn, bh)) => {
+                { view: v, block_number: bn, block_hash: bh }
+            })
 
     pure val SIGNED_COMMIT_VOTES: Set[SignedCommitVote] =
-        tuples(IVIEWS, IBLOCK_NUMBERS, IALL_BLOCKS, IREPLICAS).map(((v, bn, bh, sig)) => {
-            { vote: { view: v, block_number: bn, block_hash: bh }, sig: sig }
-        })
+        tuples(IVIEWS.exclude(Set(0)), IBLOCK_NUMBERS, IALL_BLOCKS, IREPLICAS)
+            .map(((v, bn, bh, sig)) => {
+                { vote: { view: v, block_number: bn, block_hash: bh }, sig: sig }
+            })
 
     pure val COMMIT_QCS: Set[CommitQC] = tuples(COMMIT_VOTES, powerset(IREPLICAS)).map(((cv, sigs)) => {
         { vote: cv, agg_sig: sigs }
@@ -338,11 +340,6 @@ module inductive {
 
     // the inductive invariant
     val ind_inv = and {
-        lemma12_view0_is_correct,
-        lemma11_one_proposal_per_view,
-        lemma10_justified_commit_qc_no_vote_change,
-        lemma8_no_commits_in_future,
-        lemma9_no_timeouts_in_future,
         lemma0_committed_blocks_have_justified_qc,
         lemma1_justified_qc_is_valid,
         lemma2_justified_commit_qc_supported_by_messages,
@@ -350,7 +347,14 @@ module inductive {
         lemma4_signed_commit_needs_justification,
         lemma5_signed_commit_no_equivocation,
         lemma6_signed_timeout_no_equivocation,
+        // lemma7 is incorrect
+        lemma8_no_commits_in_future,
+        lemma9_no_timeouts_in_future,
+        lemma10_justified_commit_qc_no_vote_change,
+        lemma11_one_proposal_per_view,
+        lemma12_view0_is_correct,
         lemma13_replica_and_proposer_views,
+        lemma14_replica_state_high_vote_matches_sent_commit,
     }
 
     // auxiliary invariants that we call lemmas
@@ -414,8 +418,17 @@ module inductive {
                 | _ => -1
             })
         0.to(MAX_TIMEOUT_QC).forall(qc_id => {
-            (timeout_qc_id_in_justifications.contains(qc_id))
-                implies r::aux_timeout_qc_inv(Some(qc_id))
+            timeout_qc_id_in_justifications.contains(qc_id) implies and {
+                r::aux_timeout_qc_inv(Some(qc_id)),
+                // TODO: this condition is not included in aux_timeout_qc_inv
+                val qc = r::ghost_timeout_qc[qc_id]
+                qc.votes.keys().forall(id =>
+                    match (qc.votes.get(id).high_vote) {
+                    | Some(v) => IVALID_BLOCKS.contains(v.block_hash)
+                    | None => true
+                    }
+                )
+            }
         }),
     }
 
@@ -604,6 +617,26 @@ module inductive {
                 or {
                     replica_view == self_view,
                     replica_view + 1 == self_view,
+                }
+            }
+        )
+    }
+
+    val lemma14_replica_state_high_vote_matches_sent_commit = {
+        ICORRECT.forall(id => 
+            val self = r::replica_state.get(id)
+            // all votes that were sent by the replica in on_proposal
+            val all_commit_votes =
+                r::msgs_signed_commit.filter(m => m.sig == id).map(m => m.vote)
+            and {
+                match (self.high_vote) {
+                | None => all_commit_votes == Set()
+                | Some(hv) =>
+                    // the high vote has the highest view among the commit votes
+                    all_commit_votes.forall(v => and {
+                        v.view <= hv.view,
+                        v.view == hv.view implies hv == v,
+                    })
                 }
             }
         )
