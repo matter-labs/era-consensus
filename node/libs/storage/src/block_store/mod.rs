@@ -102,7 +102,7 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
     fn persisted(&self) -> sync::watch::Receiver<BlockStoreState>;
 
     /// Verifies the external justification of the pre-genesis block.
-    async fn verify_pre_genesis_block(
+    async fn verify_pregenesis_block(
         &self,
         ctx: &ctx::Ctx,
         block: &validator::PreGenesisBlock,
@@ -340,12 +340,12 @@ impl BlockStore {
                     .into());
                 }
                 let t = metrics::PERSISTENT_BLOCK_STORE
-                    .verify_pre_genesis_block_latency
+                    .verify_pregenesis_block_latency
                     .start();
                 self.persistent
-                    .verify_pre_genesis_block(ctx, b)
+                    .verify_pregenesis_block(ctx, b)
                     .await
-                    .context("verify_pre_genesis_block()")?;
+                    .context("verify_pregenesis_block()")?;
                 t.observe();
             }
         }

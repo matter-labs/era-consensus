@@ -13,7 +13,7 @@ struct BlockStoreInner {
     genesis: validator::Genesis,
     persisted: sync::watch::Sender<BlockStoreState>,
     blocks: Mutex<VecDeque<validator::Block>>,
-    pre_genesis_blocks: HashMap<validator::BlockNumber, validator::PreGenesisBlock>,
+    pregenesis_blocks: HashMap<validator::BlockNumber, validator::PreGenesisBlock>,
 }
 
 /// In-memory block store.
@@ -39,7 +39,7 @@ impl BlockStore {
             genesis: setup.genesis.clone(),
             persisted: sync::watch::channel(BlockStoreState { first, last: None }).0,
             blocks: Mutex::default(),
-            pre_genesis_blocks: setup
+            pregenesis_blocks: setup
                 .blocks
                 .iter()
                 .flat_map(|b| match b {
@@ -79,12 +79,12 @@ impl PersistentBlockStore for BlockStore {
         self.0.persisted.subscribe()
     }
 
-    async fn verify_pre_genesis_block(
+    async fn verify_pregenesis_block(
         &self,
         _ctx: &ctx::Ctx,
         block: &validator::PreGenesisBlock,
     ) -> ctx::Result<()> {
-        if self.0.pre_genesis_blocks.get(&block.number) != Some(block) {
+        if self.0.pregenesis_blocks.get(&block.number) != Some(block) {
             return Err(anyhow::format_err!("invalid pre-genesis block").into());
         }
         Ok(())
@@ -106,7 +106,7 @@ impl PersistentBlockStore for BlockStore {
 
     async fn queue_next_block(&self, ctx: &ctx::Ctx, block: validator::Block) -> ctx::Result<()> {
         if let validator::Block::PreGenesis(b) = &block {
-            self.verify_pre_genesis_block(ctx, b).await?;
+            self.verify_pregenesis_block(ctx, b).await?;
         }
         let mut blocks = self.0.blocks.lock().unwrap();
         let want = self.0.persisted.borrow().next();

@@ -139,12 +139,12 @@ impl PersistentBlockStore for RocksDB {
         .wrap(number)
     }
 
-    async fn verify_pre_genesis_block(
+    async fn verify_pregenesis_block(
         &self,
         _ctx: &ctx::Ctx,
         _block: &validator::PreGenesisBlock,
     ) -> ctx::Result<()> {
-        Err(anyhow::format_err!("pre genesis blocks not supported").into())
+        Err(anyhow::format_err!("pre-genesis blocks not supported").into())
     }
 
     #[tracing::instrument(skip_all, fields(l2_block = %block.number()))]
