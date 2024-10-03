@@ -164,6 +164,26 @@ module inductive {
                 sig: id,
                 ghost_block_number: bn
             })
+    
+    pure val PROPOSAL_SAMPLE: Proposal = {
+        block: Some("val_b0"),
+        justification: Commit(0),
+        sig: "n0",
+        ghost_block_number: 0,
+    }
+
+    pure def proposal_shape_inv(sv: Proposal): bool = and {
+        IREPLICAS.contains(sv.sig),
+        IBLOCK_NUMBERS.contains(sv.ghost_block_number),
+        match (sv.block) {
+        | Some(b) => IALL_BLOCKS.contains(b)
+        | None => true
+        },
+        match (sv.justification) {
+        | Commit(qc_id) => 0 <= qc_id and qc_id <= MAX_COMMIT_QC
+        | Timeout(qc_id) => 0 <= qc_id and qc_id <= MAX_TIMEOUT_QC
+        },
+    }
 
     pure val JUSTIFICATIONS: Set[Justification] =
         tuples(0.to(MAX_COMMIT_QC).union(0.to(MAX_TIMEOUT_QC)), Bool)
@@ -224,9 +244,10 @@ module inductive {
         // non-deterministically initialize msgs_new_view
         nondet new_views = NEW_VIEWS.powerset().oneOf()
         // non-deterministically initialize msgs_proposal
-        nondet proposals = PROPOSALS.powerset().oneOf()
+        //nondet proposals = PROPOSALS.powerset().oneOf()
         // non-deterministically initialize ghost_justifications
-        nondet justifications = tuples(ICORRECT, IVIEWS).setOfMaps(JUSTIFICATIONS).oneOf()
+        nondet justifications =
+            tuples(ICORRECT, IVIEWS.exclude(Set(0))).setOfMaps(JUSTIFICATIONS).oneOf()
         // Non-deterministically initialize replica_state.
         // We pick maps for the individual fields, to avoid combinatorial explosion of tuples.
         nondet state_views = ICORRECT.setOfMaps(IVIEWS).oneOf()
@@ -272,7 +293,15 @@ module inductive {
                 }
             },
             r::msgs_new_view' = new_views,
-            r::msgs_proposal' = proposals,
+            //r::msgs_proposal' = proposals,
+            {
+                // we have to pass the upper bound of 10 directly (this is a limitation of Quint)
+                nondet msgs_proposal = generate(10, Set(PROPOSAL_SAMPLE))
+                all {
+                    msgs_proposal.forall(proposal_shape_inv),
+                    r::msgs_proposal' = msgs_proposal,
+                }
+            },
             r::ghost_justifications' = justifications,
             r::ghost_step' = AnyStep,
             r::prophecy_correct_proposals' = i_prophecy_correct_proposals,
@@ -661,4 +690,14 @@ module inductive {
     val one_block_example = r::one_block_example
 
     val phase_commit_example = r::phase_commit_example
+
+    val msgs_signed_commit_example = r::msgs_signed_commit == Set()
+
+    val high_timeout_qc_example = r::high_timeout_qc_example
+    
+    val commit_qc_example = r::commit_qc_example
+
+    val ghost_commit_qc_example = r::ghost_commit_qc.length() == 0
+
+    val ghost_step_commit_example = r::ghost_step != OnCommitStep("n0")
 }

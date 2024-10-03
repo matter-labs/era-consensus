@@ -1708,7 +1708,7 @@ module replica {
 
     // check this invariant to see an example of having a finalized block:
     val one_block_example = CORRECT.forall(id => {
-        not(replica_state.get(id).committed_blocks.length() > 0)
+        replica_state.get(id).committed_blocks.length() == 0
     })
 
     // Check this invariant to see an example of two blocked being finalized by a single replica.
