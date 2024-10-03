@@ -355,6 +355,7 @@ module inductive {
         lemma12_view0_is_correct,
         lemma13_replica_and_proposer_views,
         lemma14_replica_state_high_vote_matches_sent_commit,
+        lemma15_timeout_high_vote_is_supported_by_commits,
     }
 
     // auxiliary invariants that we call lemmas
@@ -640,6 +641,27 @@ module inductive {
                 }
             }
         )
+    }
+
+    val lemma15_timeout_high_vote_is_supported_by_commits = {
+        r::msgs_signed_timeout.forall(tv => or {
+            IFAULTY.contains(tv.sig),
+            val all_past_commit_votes =
+                r::msgs_signed_commit
+                    .filter(v => v.sig == tv.sig and v.vote.view <= tv.vote.view)
+            match (tv.vote.high_vote) {
+            | None =>
+                all_past_commit_votes == Set()
+            | Some(hv) =>
+                // the high vote has the highest view among the commit votes
+                val max_view =
+                    all_past_commit_votes.map(v => v.vote.view)
+                        .fold(0, (i, j) => if (i > j) i else j)
+                all_past_commit_votes.forall(v => {
+                    (v.vote.view == max_view) implies (hv == v.vote)
+                })
+            },
+        })
     }
 
     // invalid lemmas
