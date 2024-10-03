@@ -262,6 +262,7 @@ module inductive {
             r::ghost_commit_qc' = commit_qc,
             r::ghost_timeout_qc' = timeout_qc,
             r::msgs_signed_commit' = signed_commits,
+            //r::msgs_signed_timeout' = signed_timeouts,
             {
                 // we have to pass the upper bound of 10 directly (this is a limitation of Quint)
                 nondet msgs_signed_timeout = generate(10, Set(SIGNED_TIMEOUT_VOTE_SAMPLE))
@@ -269,8 +270,7 @@ module inductive {
                     msgs_signed_timeout.forall(signed_timeout_vote_shape_inv),
                     r::msgs_signed_timeout' = msgs_signed_timeout,
                 }
-            },        
-            // r::msgs_signed_timeout' = signed_timeouts,
+            },
             r::msgs_new_view' = new_views,
             r::msgs_proposal' = proposals,
             r::ghost_justifications' = justifications,
@@ -293,6 +293,13 @@ module inductive {
     action step = all {
         ind_inv,
         r::step,
+        prophecy_magic_view' = prophecy_magic_view,
+        step_no' = step_no + 1,
+    }
+
+    action correct_step = all{
+        ind_inv,
+        r::correct_step,
         prophecy_magic_view' = prophecy_magic_view,
         step_no' = step_no + 1,
     }
@@ -329,8 +336,10 @@ module inductive {
                 and {
                     qc.vote.block_hash == hash(cblock.block),
                     qc.vote.block_number == i,
-                    r::ghost_justifications.keys().contains((id, qc.vote.view)),
-                    r::ghost_justifications.get((id, qc.vote.view)) == Commit(cblock.commit_qc),
+                    // when the replica commits the block,
+                    // it uses the CommitQC as a justification to start the new view
+                    r::ghost_justifications.keys().contains((id, qc.vote.view + 1)),
+                    r::ghost_justifications.get((id, qc.vote.view + 1)) == Commit(cblock.commit_qc),
                 }
             })
         })
@@ -344,7 +353,7 @@ module inductive {
             | Commit(qc_id) =>
                 val qc = r::ghost_commit_qc[qc_id]
                 and {
-                    qc.vote.view == view,
+                    qc.vote.view + 1 == view,
                     qc.agg_sig.subseteq(IREPLICAS),
                     // no invalid blocks are committed
                     IVALID_BLOCKS.exists(b => hash(b) == qc.vote.block_hash),
@@ -353,7 +362,7 @@ module inductive {
 
             | Timeout(qc_id) =>
                 val qc = r::ghost_timeout_qc[qc_id]
-                view == qc.ghost_view + 1
+                qc.ghost_view + 1 == view
                 // check the structure in (3)
             }
         }),
@@ -381,13 +390,14 @@ module inductive {
         }),
     }
 
-    // TODO: this lemma is violated (ex 82)
     val lemma2_justified_commit_qc_supported_by_messages = {
         r::ghost_justifications.keys().forall(((id, view)) => {
             match (r::ghost_justifications.get((id, view))) {
             | Commit(qc_id) =>
                 val qc = r::ghost_commit_qc[qc_id]
-                qc.agg_sig.forall(id => r::msgs_signed_commit.contains({ vote: qc.vote, sig: id }))
+                qc.agg_sig.forall(id =>
+                    r::msgs_signed_commit.contains({ vote: qc.vote, sig: id })
+                )
 
             | Timeout(qc_id) =>
                 // TODO
