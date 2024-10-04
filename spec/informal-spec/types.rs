@@ -8,6 +8,13 @@ const QUORUM_WEIGHT = TOTAL_WEIGHT - FAULTY_WEIGHT;
 // The weight threshold needed to trigger a reproposal.
 const SUBQUORUM_WEIGHT = TOTAL_WEIGHT - 3 * FAULTY_WEIGHT;
 
+/// A block with a matching valid certificate.
+/// invariants: hash(block) == commit_qc.vote.block_hash
+struct CommittedBlock {
+    block: Block,
+    commit_qc: CommitQC,
+}
+
 // Messages
 
 struct Proposal {
@@ -39,6 +46,7 @@ enum Justification {
     // A timeout QC is just a collection of timeout votes (with at least
     // QUORUM_WEIGHT) for the previous view. Unlike with the Commit QC,
     // timeout votes don't need to be identical.
+    // The first proposal, for view 0, will always be a timeout.
     Timeout(TimeoutQC),
 }
 
