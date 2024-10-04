@@ -357,6 +357,7 @@ module inductive {
         lemma14_replica_state_high_vote_matches_sent_commit,
         lemma15_timeout_high_vote_is_supported_by_commits,
         lemma16_proposals_are_valid,
+        lemma17_timeout_high_commit_qc_is_valid,
     }
 
     // auxiliary invariants that we call lemmas
@@ -382,7 +383,9 @@ module inductive {
 
     // if a correct block uses a justification, this justification should be valid
     val lemma1_justified_qc_is_valid = and {
-        r::ghost_justifications.keys().forall(((id, view)) => {
+        r::ghost_justifications.keys().forall(((id, view)) => and {
+            // no justifications from the future
+            view <= r::replica_state.get(id).view,
             // (1) check the basic constraints
             match (r::ghost_justifications.get((id, view))) {
             | Commit(qc_id) =>
@@ -391,7 +394,7 @@ module inductive {
                     qc.vote.view + 1 == view,
                     qc.agg_sig.subseteq(IREPLICAS),
                     // no invalid blocks are committed
-                    IVALID_BLOCKS.exists(b => hash(b) == qc.vote.block_hash),
+                    IVALID_BLOCKS.contains(qc.vote.block_hash),
                     // check the quorums in (2), as it is an expensive test
                 }
 
@@ -428,17 +431,7 @@ module inductive {
 
     val lemma2_justified_commit_qc_supported_by_messages = {
         r::ghost_justifications.keys().forall(((id, view)) => {
-            match (r::ghost_justifications.get((id, view))) {
-            | Commit(qc_id) =>
-                val qc = r::ghost_commit_qc[qc_id]
-                qc.agg_sig.forall(id =>
-                    r::msgs_signed_commit.contains({ vote: qc.vote, sig: id })
-                )
-
-            | Timeout(qc_id) =>
-                // TODO
-                true
-            }
+            justification_is_supported_with_messages(r::ghost_justifications.get((id, view)))
         })
     }
 
@@ -662,9 +655,17 @@ module inductive {
 
     // all proposals sent by correct replicas are valid
     val lemma16_proposals_are_valid = {
-        r::msgs_proposal.forall(m => or {
-            IFAULTY.contains(m.sig),
-            r::proposal_verify(m),
+        r::msgs_proposal.forall(m => and {
+            ICORRECT.contains(m.sig) implies r::proposal_verify(m),
+            // even if a proposal is signed by a faulty replica,
+            // the signatures in CommitQC must be supported
+            justification_is_supported_with_messages(m.justification),
+        })
+    }
+
+    val lemma17_timeout_high_commit_qc_is_valid = {
+        r::msgs_signed_timeout.forall(tv => {
+            r::aux_commit_qc_inv(tv.high_commit_qc)
         })
     }
 
@@ -679,6 +680,25 @@ module inductive {
                     implies (m1 == m2)
             })
         })
+    }
+
+    // additional definitions
+
+    def justification_is_supported_with_messages(j: Justification): bool = {
+        match (j) {
+        | Commit(qc_id) =>
+            val qc = r::ghost_commit_qc[qc_id]
+            qc.agg_sig.forall(id =>
+                r::msgs_signed_commit.contains({ vote: qc.vote, sig: id })
+            )
+
+        | Timeout(qc_id) =>
+            val qc = r::ghost_timeout_qc[qc_id]
+            qc.votes.keys().forall(id =>
+                val vote = qc.votes.get(id)
+                r::msgs_signed_timeout.exists(v => v.vote == vote and v.sig == id)
+            )
+        }
     }
 
     // liveness-related reasoning
