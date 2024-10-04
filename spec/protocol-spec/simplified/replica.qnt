@@ -1527,6 +1527,15 @@ module replica {
                     votes.forall(v => v.timeout_vote_verify()),
                     // make sure that all votes are cast for the same view
                     votes.forall(v => qc.ghost_view == v.view),
+                    // high_vote in the votes should contain only valid blocks
+                    qc.votes.keys().forall(id =>
+                        match (qc.votes.get(id).high_vote) {
+                        | Some(v) => VALID_BLOCKS.contains(v.block_hash)
+                        | None => true
+                        }
+                    ),
+                    // the high_commit_qc must be valid
+                    aux_commit_qc_inv(qc.high_commit_qc),
                     // The commit quorum certificate with the highest view that all replicas in this
                     // QC have observed, if any. It MUST match the highest `high_commit_qc_view` in `votes`.
                     match (qc.high_commit_qc) {

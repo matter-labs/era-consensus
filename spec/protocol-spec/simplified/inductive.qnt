@@ -356,6 +356,7 @@ module inductive {
         lemma13_replica_and_proposer_views,
         lemma14_replica_state_high_vote_matches_sent_commit,
         lemma15_timeout_high_vote_is_supported_by_commits,
+        lemma16_proposals_are_valid,
     }
 
     // auxiliary invariants that we call lemmas
@@ -421,14 +422,6 @@ module inductive {
         0.to(MAX_TIMEOUT_QC).forall(qc_id => {
             timeout_qc_id_in_justifications.contains(qc_id) implies and {
                 r::aux_timeout_qc_inv(Some(qc_id)),
-                // TODO: this condition is not included in aux_timeout_qc_inv
-                val qc = r::ghost_timeout_qc[qc_id]
-                qc.votes.keys().forall(id =>
-                    match (qc.votes.get(id).high_vote) {
-                    | Some(v) => IVALID_BLOCKS.contains(v.block_hash)
-                    | None => true
-                    }
-                )
             }
         }),
     }
@@ -633,11 +626,14 @@ module inductive {
                 match (self.high_vote) {
                 | None => all_commit_votes == Set()
                 | Some(hv) =>
-                    // the high vote has the highest view among the commit votes
-                    all_commit_votes.forall(v => and {
-                        v.view <= hv.view,
-                        v.view == hv.view implies hv == v,
-                    })
+                    and {
+                        all_commit_votes != Set(),
+                        // the high vote has the highest view among the commit votes
+                        all_commit_votes.forall(v => and {
+                            v.view <= hv.view,
+                            v.view == hv.view implies hv == v,
+                        })
+                    }
                 }
             }
         )
@@ -661,6 +657,14 @@ module inductive {
                     (v.vote.view == max_view) implies (hv == v.vote)
                 })
             },
+        })
+    }
+
+    // all proposals sent by correct replicas are valid
+    val lemma16_proposals_are_valid = {
+        r::msgs_proposal.forall(m => or {
+            IFAULTY.contains(m.sig),
+            r::proposal_verify(m),
         })
     }
 
