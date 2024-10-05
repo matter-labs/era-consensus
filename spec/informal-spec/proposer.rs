@@ -15,13 +15,21 @@ fn on_start(replica_state: &ReplicaState) {
             // Get the justification for this view. If we have both a commit QC
             // and a timeout QC for this view (highly unlikely), we should prefer
             // to use the commit QC.
-            let justification = replica_state.get_justification(cur_view);
+            let justification = replica_state.create_justification();
+
+            assert!(justification.view() == cur_view);
 
             // Get the block number and check if this must be a reproposal.
             let (block_number, opt_block_hash) = justification.get_implied_block();
 
             // Propose only if you have collected all committed blocks so far.
-            assert!(block_number == self.committed_blocks.last().map_or(0,|b|b.commit_qc.vote.block_number+1)); 
+            assert!(
+                block_number
+                    == self
+                        .committed_blocks
+                        .last()
+                        .map_or(0, |b| b.commit_qc.vote.block_number + 1)
+            );
 
             // Now we create the block.
             let block = if opt_block_hash.is_some() {

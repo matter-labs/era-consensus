@@ -19,14 +19,15 @@ pub struct Info {
     pub committee: Arc<attester::Committee>,
 }
 
-// Internal attestation state: info and the set of votes collected so far.
+/// Internal attestation state: info and the set of votes collected so far.
 #[derive(Clone)]
-struct State {
-    info: Arc<Info>,
+pub struct State {
+    /// Info about the batch to attest and the committee.
+    pub info: Arc<Info>,
     /// Votes collected so far.
-    votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>,
-    // Total weight of the votes collected.
-    total_weight: attester::Weight,
+    pub votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>,
+    /// Total weight of the votes collected.
+    pub total_weight: attester::Weight,
 }
 
 /// Diff between 2 states.
@@ -223,9 +224,9 @@ impl DiffReceiver {
 pub struct Controller {
     /// Key to automatically vote for batches.
     /// None, if the current node is not an attester.
-    key: Option<attester::SecretKey>,
+    pub(crate) key: Option<attester::SecretKey>,
     /// Internal state of the controller.
-    state: Watch<Option<State>>,
+    pub(crate) state: Watch<Option<State>>,
 }
 
 impl fmt::Debug for Controller {

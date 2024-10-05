@@ -23,7 +23,7 @@ pub(crate) enum RequestItem {
 
 /// Queue of block fetch request.
 pub(crate) struct Queue {
-    blocks: sync::watch::Sender<BlockInner>,
+    pub(crate) blocks: sync::watch::Sender<BlockInner>,
     batches: sync::watch::Sender<BatchInner>,
 }
 
