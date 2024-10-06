@@ -576,14 +576,22 @@ impl Server {
                     .build_version
                     .as_ref()
                     .map_or("N/A".to_string(), |v| v.to_string()),
-                bytesize::to_string(received, false),
+                connection
+                    .stats
+                    .received_throughput()
+                    .human_throughput_bytes()
+                    .to_string(),
                 connection
                     .stats
                     .received
                     .load(Ordering::Relaxed)
                     .human_count_bytes()
                     .to_string(),
-                bytesize::to_string(sent, false),
+                connection
+                    .stats
+                    .sent_throughput()
+                    .human_throughput_bytes()
+                    .to_string(),
                 connection
                     .stats
                     .sent
@@ -618,13 +626,16 @@ impl Server {
             table.add_body_row(vec![
                 key.encode(),
                 stats.peer_addr.to_string(),
-                bytesize::to_string(received, false),
+                stats
+                    .received_throughput()
+                    .human_throughput_bytes()
+                    .to_string(),
                 stats
                     .received
                     .load(Ordering::Relaxed)
                     .human_count_bytes()
                     .to_string(),
-                bytesize::to_string(sent, false),
+                stats.sent_throughput().human_throughput_bytes().to_string(),
                 stats
                     .sent
                     .load(Ordering::Relaxed)

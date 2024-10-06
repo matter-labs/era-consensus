@@ -2,6 +2,7 @@
 use crate::Network;
 use anyhow::Context as _;
 use std::{
+    collections::VecDeque,
     fmt,
     net::SocketAddr,
     pin::Pin,
@@ -10,7 +11,7 @@ use std::{
         Arc, Weak,
     },
     task::{ready, Context, Poll},
-    time::SystemTime,
+    time::{Duration, Instant, SystemTime},
 };
 use vise::{
     Collector, Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, GaugeGuard, Metrics, Unit,
@@ -229,8 +230,12 @@ pub struct MeteredStreamStats {
     pub received: AtomicU64,
     /// System time since the connection started.
     pub established: SystemTime,
-    /// Ip Address and port of current connection.
+    /// IP Address and port of current connection.
     pub peer_addr: SocketAddr,
+    /// Circular buffer for sent bytes in the last minute.
+    sent_buffer: VecDeque<(Instant, u64)>,
+    /// Circular buffer for received bytes in the last minute.
+    received_buffer: VecDeque<(Instant, u64)>,
 }
 
 impl MeteredStreamStats {
@@ -240,14 +245,58 @@ impl MeteredStreamStats {
             received: 0.into(),
             established: SystemTime::now(),
             peer_addr,
+            sent_buffer: VecDeque::new(),
+            received_buffer: VecDeque::new(),
         }
     }
 
-    fn read(&self, amount: u64) {
+    fn read(&mut self, amount: u64) {
         self.received.fetch_add(amount, Ordering::Relaxed);
+        self.received_buffer.push_back((Instant::now(), amount));
+        self.cleanup_buffers();
     }
 
-    fn wrote(&self, amount: u64) {
+    fn wrote(&mut self, amount: u64) {
         self.sent.fetch_add(amount, Ordering::Relaxed);
+        self.sent_buffer.push_back((Instant::now(), amount));
+        self.cleanup_buffers();
+    }
+
+    fn cleanup_buffers(&mut self) {
+        let one_minute_ago = Instant::now() - Duration::from_secs(60);
+
+        while let Some(&(timestamp, _)) = self.sent_buffer.front() {
+            if timestamp < one_minute_ago {
+                self.sent_buffer.pop_front();
+            } else {
+                break;
+            }
+        }
+
+        while let Some(&(timestamp, _)) = self.received_buffer.front() {
+            if timestamp < one_minute_ago {
+                self.received_buffer.pop_front();
+            } else {
+                break;
+            }
+        }
+    }
+
+    /// Returns the upload throughput of the connection in bytes per second.
+    pub fn sent_throughput(&self) -> f64 {
+        self.sent_buffer
+            .iter()
+            .map(|&(_, amount)| amount)
+            .sum::<u64>() as f64
+            / 60.0
+    }
+
+    /// Returns the download throughput of the connection in bytes per second.
+    pub fn received_throughput(&self) -> f64 {
+        self.received_buffer
+            .iter()
+            .map(|&(_, amount)| amount)
+            .sum::<u64>() as f64
+            / 60.0
     }
 }
