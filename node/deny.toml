@@ -1,8 +1,8 @@
 [graph]
 # We only check dependencies against these platforms.
 targets = [
-    { triple = "x86_64-unknown-linux-musl" },
     { triple = "x86_64-apple-darwin" },
+    { triple = "x86_64-unknown-linux-musl" },
 ]
 
 [licenses]
@@ -14,9 +14,9 @@ allow = [
     "Apache-2.0",
     "BSD-2-Clause",
     "BSD-3-Clause",
-    "OpenSSL",
     "ISC",
     "MIT",
+    "OpenSSL",
     "Unicode-DFS-2016",
     # Weak copyleft licenses
     "MPL-2.0",
@@ -31,7 +31,7 @@ name = "ring"
 # license, for third_party/fiat, which, unlike other third_party directories, is
 # compiled into non-test libraries, is included below."
 # OpenSSL - Obviously
-expression = "MIT"
+expression    = "MIT"
 license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
 
 [bans]
@@ -53,14 +53,14 @@ skip = [
     { name = "base64", version = "0.21.7" },
 
     # Old versions required by vise-exporter.
-    { name = "http", version = "0.2.12"},
-    { name = "http-body", version = "0.4.6"},
-    { name = "hyper", version = "0.14.28"},
+    { name = "http", version = "0.2.12" },
+    { name = "http-body", version = "0.4.6" },
+    { name = "hyper", version = "0.14.28" },
 
     # Old version required by rand.
     { name = "zerocopy", version = "0.6.6" },
 ]
 
 [sources]
+unknown-git      = "deny"
 unknown-registry = "deny"
-unknown-git = "deny"

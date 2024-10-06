@@ -42,5 +42,5 @@ final-status-level = "all"
 
 [[profile.ci.overrides]]
 # Force end-to-end tests to run sequentially and exclusively with all other tests
-filter = "test(/::end_to_end::/)"
+filter           = "test(/::end_to_end::/)"
 threads-required = "num-test-threads"

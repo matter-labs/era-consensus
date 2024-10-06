@@ -1,33 +1,33 @@
 [package]
-name = "zksync_consensus_storage"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-homepage.workspace = true
-license.workspace = true
+authors.workspace    = true
+description          = "ZKsync consensus storage"
+edition.workspace    = true
+homepage.workspace   = true
+keywords.workspace   = true
+license.workspace    = true
+name                 = "zksync_consensus_storage"
 repository.workspace = true
-keywords.workspace = true
-description = "ZKsync consensus storage"
+version.workspace    = true
 
 [dependencies]
-zksync_concurrency.workspace = true
-zksync_consensus_roles.workspace = true
+zksync_concurrency.workspace      = true
 zksync_consensus_crypto.workspace = true
-zksync_protobuf.workspace = true
+zksync_consensus_roles.workspace  = true
+zksync_protobuf.workspace         = true
 
-anyhow.workspace = true
+anyhow.workspace      = true
 async-trait.workspace = true
-prost.workspace = true
-rand.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
-vise.workspace = true
+prost.workspace       = true
+rand.workspace        = true
+thiserror.workspace   = true
+tracing.workspace     = true
+vise.workspace        = true
 
 [dev-dependencies]
 assert_matches.workspace = true
-tempfile.workspace = true
-test-casing.workspace = true
-tokio.workspace = true
+tempfile.workspace       = true
+test-casing.workspace    = true
+tokio.workspace          = true
 
 [build-dependencies]
 zksync_protobuf_build.workspace = true
