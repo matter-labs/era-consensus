@@ -598,11 +598,12 @@ impl Server {
                     .load(Ordering::Relaxed)
                     .human_count_bytes()
                     .to_string(),
-                SystemTime::now()
-                    .duration_since(connection.stats.established)
-                    .unwrap_or_default()
-                    .human_duration()
-                    .to_string(),
+                Self::human_readable_duration(
+                    SystemTime::now()
+                        .duration_since(connection.stats.established)
+                        .unwrap_or_default()
+                        .as_secs(),
+                ),
             ])
         }
 
@@ -641,14 +642,26 @@ impl Server {
                     .load(Ordering::Relaxed)
                     .human_count_bytes()
                     .to_string(),
-                SystemTime::now()
-                    .duration_since(stats.established)
-                    .unwrap_or_default()
-                    .human_duration()
-                    .to_string(),
+                Self::human_readable_duration(
+                    SystemTime::now()
+                        .duration_since(stats.established)
+                        .unwrap_or_default()
+                        .as_secs(),
+                ),
             ])
         }
 
         table.to_html_string()
+    }
+
+    /// Returns human readable duration. We use this function instead of `Duration::human_duration` because
+    /// we want to show days as well.
+    fn human_readable_duration(seconds: u64) -> String {
+        let days = seconds / 86400;
+        let hours = (seconds % 86400) / 3600;
+        let minutes = (seconds % 3600) / 60;
+        let seconds = seconds % 60;
+
+        format!("{}d {}h {}m {}s", days, hours, minutes, seconds)
     }
 }
