@@ -389,16 +389,7 @@ impl Server {
             .with_header(2, "Fetch queue")
             .with_paragraph(format!(
                 "Blocks: {:?}",
-                self.network
-                    .gossip
-                    .fetch_queue
-                    .blocks
-                    .subscribe()
-                    .borrow()
-                    .keys()
-                    .map(|x| x.0)
-                    .collect::<Vec<_>>()
-                    .sort()
+                self.network.gossip.fetch_queue.current_blocks()
             ));
 
         // Attester network
@@ -409,7 +400,7 @@ impl Server {
                 self.network
                     .gossip
                     .attestation
-                    .key
+                    .key()
                     .clone()
                     .map_or("None".to_string(), |k| k.public().encode())
             ));
@@ -418,7 +409,7 @@ impl Server {
             .network
             .gossip
             .attestation
-            .state
+            .state()
             .subscribe()
             .borrow()
             .clone()
@@ -426,19 +417,21 @@ impl Server {
             html = html
                 .with_paragraph(format!(
                     "Batch to attest:\nNumber: {}, Hash: {}, Genesis hash: {}",
-                    state.info.batch_to_attest.number,
-                    state.info.batch_to_attest.hash.encode(),
-                    state.info.batch_to_attest.genesis.encode(),
+                    state.info().batch_to_attest.number,
+                    state.info().batch_to_attest.hash.encode(),
+                    state.info().batch_to_attest.genesis.encode(),
                 ))
                 .with_header(2, "Committee")
-                .with_paragraph(Self::attester_committee_table(state.info.committee.iter()))
+                .with_paragraph(Self::attester_committee_table(
+                    state.info().committee.iter(),
+                ))
                 .with_paragraph(format!(
                     "Total weight: {}",
-                    state.info.committee.total_weight()
+                    state.info().committee.total_weight()
                 ))
                 .with_header(2, "Votes")
-                .with_paragraph(Self::attester_votes_table(state.votes.iter()))
-                .with_paragraph(format!("Total weight: {}", state.total_weight));
+                .with_paragraph(Self::attester_votes_table(state.votes().iter()))
+                .with_paragraph(format!("Total weight: {}", state.total_weight()));
         }
 
         // Validator network
@@ -662,6 +655,19 @@ impl Server {
         let minutes = (seconds % 3600) / 60;
         let seconds = seconds % 60;
 
-        format!("{}d {}h {}m {}s", days, hours, minutes, seconds)
+        let mut components = Vec::new();
+
+        if days > 0 {
+            components.push(format!("{}d", days));
+        }
+        if hours > 0 {
+            components.push(format!("{}h", hours));
+        }
+        if minutes > 0 {
+            components.push(format!("{}m", minutes));
+        }
+
+        components.push(format!("{}s", seconds));
+        components.join(" ")
     }
 }

@@ -23,7 +23,7 @@ pub(crate) enum RequestItem {
 
 /// Queue of block fetch request.
 pub(crate) struct Queue {
-    pub(crate) blocks: sync::watch::Sender<BlockInner>,
+    blocks: sync::watch::Sender<BlockInner>,
     batches: sync::watch::Sender<BatchInner>,
 }
 
@@ -37,6 +37,19 @@ impl Default for Queue {
 }
 
 impl Queue {
+    /// Returns the sorted list of currently requested blocks.
+    pub(crate) fn current_blocks(&self) -> Vec<u64> {
+        let mut blocks = self
+            .blocks
+            .subscribe()
+            .borrow()
+            .keys()
+            .map(|x| x.0)
+            .collect::<Vec<_>>();
+        blocks.sort();
+        blocks
+    }
+
     /// Requests a resource from peers and waits until it is stored.
     /// Note: in the current implementation concurrent calls for the same resource number are
     /// unsupported - second call will override the first call.

@@ -23,28 +23,31 @@ pub struct Info {
 #[derive(Clone)]
 pub struct State {
     /// Info about the batch to attest and the committee.
-    pub info: Arc<Info>,
+    info: Arc<Info>,
     /// Votes collected so far.
-    pub votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>,
+    votes: im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>,
     /// Total weight of the votes collected.
-    pub total_weight: attester::Weight,
-}
-
-/// Diff between 2 states.
-pub(crate) struct Diff {
-    /// New votes.
-    pub(crate) votes: Vec<Arc<attester::Signed<attester::Batch>>>,
-    /// New info, if changed.
-    pub(crate) info: Option<Arc<Info>>,
-}
-
-impl Diff {
-    fn is_empty(&self) -> bool {
-        self.votes.is_empty() && self.info.is_none()
-    }
+    total_weight: attester::Weight,
 }
 
 impl State {
+    /// Returns a reference to the `info` field.
+    pub fn info(&self) -> &Arc<Info> {
+        &self.info
+    }
+
+    /// Returns a reference to the `votes` field.
+    pub fn votes(
+        &self,
+    ) -> &im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>> {
+        &self.votes
+    }
+
+    /// Returns a reference to the `total_weight` field.
+    pub fn total_weight(&self) -> &attester::Weight {
+        &self.total_weight
+    }
+
     /// Returns a diff between `self` state and `old` state.
     /// Diff contains votes which are present is `self`, but not in `old`.
     fn diff(&self, old: &Option<Self>) -> Diff {
@@ -141,6 +144,20 @@ impl State {
     }
 }
 
+/// Diff between 2 states.
+pub(crate) struct Diff {
+    /// New votes.
+    pub(crate) votes: Vec<Arc<attester::Signed<attester::Batch>>>,
+    /// New info, if changed.
+    pub(crate) info: Option<Arc<Info>>,
+}
+
+impl Diff {
+    fn is_empty(&self) -> bool {
+        self.votes.is_empty() && self.info.is_none()
+    }
+}
+
 /// Receiver of state diffs.
 pub(crate) struct DiffReceiver {
     prev: Option<State>,
@@ -224,9 +241,9 @@ impl DiffReceiver {
 pub struct Controller {
     /// Key to automatically vote for batches.
     /// None, if the current node is not an attester.
-    pub(crate) key: Option<attester::SecretKey>,
+    key: Option<attester::SecretKey>,
     /// Internal state of the controller.
-    pub(crate) state: Watch<Option<State>>,
+    state: Watch<Option<State>>,
 }
 
 impl fmt::Debug for Controller {
@@ -245,6 +262,16 @@ impl Controller {
             key,
             state: Watch::new(None),
         }
+    }
+
+    /// Returns a reference to the key, if it exists.
+    pub fn key(&self) -> Option<&attester::SecretKey> {
+        self.key.as_ref()
+    }
+
+    /// Returns a reference to the state.
+    pub fn state(&self) -> &Watch<Option<State>> {
+        &self.state
     }
 
     /// Registers metrics for this controller.

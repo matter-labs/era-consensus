@@ -232,10 +232,16 @@ pub struct MeteredStreamStats {
     pub established: SystemTime,
     /// IP Address and port of current connection.
     pub peer_addr: SocketAddr,
-    /// Circular buffer for sent bytes in the last minute.
-    sent_buffer: VecDeque<(Instant, u64)>,
-    /// Circular buffer for received bytes in the last minute.
-    received_buffer: VecDeque<(Instant, u64)>,
+    /// Total bytes sent in the current minute.
+    current_minute_sent: AtomicU64,
+    /// Total bytes sent in the previous minute.
+    previous_minute_sent: AtomicU64,
+    /// Total bytes received in the current minute.
+    current_minute_received: AtomicU64,
+    /// Total bytes received in the previous minute.
+    previous_minute_received: AtomicU64,
+    /// The start of the current minute.
+    current_minute_start: Instant,
 }
 
 impl MeteredStreamStats {
@@ -245,58 +251,54 @@ impl MeteredStreamStats {
             received: 0.into(),
             established: SystemTime::now(),
             peer_addr,
-            sent_buffer: VecDeque::new(),
-            received_buffer: VecDeque::new(),
+            current_minute_sent: 0.into(),
+            previous_minute_sent: 0.into(),
+            current_minute_received: 0.into(),
+            previous_minute_received: 0.into(),
+            current_minute_start: Instant::now(),
         }
     }
 
     fn read(&mut self, amount: u64) {
+        self.update_minute();
         self.received.fetch_add(amount, Ordering::Relaxed);
-        self.received_buffer.push_back((Instant::now(), amount));
-        self.cleanup_buffers();
+        self.current_minute_received
+            .fetch_add(amount, Ordering::Relaxed);
     }
 
     fn wrote(&mut self, amount: u64) {
+        self.update_minute();
         self.sent.fetch_add(amount, Ordering::Relaxed);
-        self.sent_buffer.push_back((Instant::now(), amount));
-        self.cleanup_buffers();
+        self.current_minute_sent
+            .fetch_add(amount, Ordering::Relaxed);
     }
 
-    fn cleanup_buffers(&mut self) {
-        let one_minute_ago = Instant::now() - Duration::from_secs(60);
+    fn update_minute(&mut self) {
+        let now = Instant::now();
+        let elapsed = now.duration_since(self.current_minute_start);
 
-        while let Some(&(timestamp, _)) = self.sent_buffer.front() {
-            if timestamp < one_minute_ago {
-                self.sent_buffer.pop_front();
-            } else {
-                break;
-            }
-        }
-
-        while let Some(&(timestamp, _)) = self.received_buffer.front() {
-            if timestamp < one_minute_ago {
-                self.received_buffer.pop_front();
-            } else {
-                break;
-            }
+        if elapsed >= Duration::from_secs(60) {
+            self.previous_minute_sent.store(
+                self.current_minute_sent.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
+            self.previous_minute_received.store(
+                self.current_minute_received.load(Ordering::Relaxed),
+                Ordering::Relaxed,
+            );
+            self.current_minute_sent.store(0, Ordering::Relaxed);
+            self.current_minute_received.store(0, Ordering::Relaxed);
+            self.current_minute_start = now;
         }
     }
 
     /// Returns the upload throughput of the connection in bytes per second.
     pub fn sent_throughput(&self) -> f64 {
-        self.sent_buffer
-            .iter()
-            .map(|&(_, amount)| amount)
-            .sum::<u64>() as f64
-            / 60.0
+        self.previous_minute_sent.load(Ordering::Relaxed) as f64 / 60.0
     }
 
     /// Returns the download throughput of the connection in bytes per second.
     pub fn received_throughput(&self) -> f64 {
-        self.received_buffer
-            .iter()
-            .map(|&(_, amount)| amount)
-            .sum::<u64>() as f64
-            / 60.0
+        self.previous_minute_received.load(Ordering::Relaxed) as f64 / 60.0
     }
 }
