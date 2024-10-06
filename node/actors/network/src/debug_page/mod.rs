@@ -4,6 +4,7 @@ use anyhow::Context as _;
 use base64::Engine;
 use build_html::{Html, HtmlContainer, HtmlPage, Table, TableCell, TableCellType, TableRow};
 use http_body_util::Full;
+use human_repr::{HumanCount, HumanDuration, HumanThroughput};
 use hyper::{
     body::Bytes,
     header::{self, HeaderValue},
@@ -243,7 +244,7 @@ impl Server {
             ))
             .with_paragraph(format!(
                 "Maximum block size: {}",
-                self.network.gossip.cfg.max_block_size
+                self.network.gossip.cfg.max_block_size.human_count_bytes()
             ))
             .with_paragraph(format!(
                 "Maximum block queue size: {}",
@@ -256,12 +257,21 @@ impl Server {
                     .cfg
                     .ping_timeout
                     .as_ref()
-                    .map_or("None".to_string(), |x| x.to_string())
+                    .map_or("None".to_string(), |x| x
+                        .as_seconds_f32()
+                        .human_duration()
+                        .to_string())
             ))
             .with_paragraph(format!(
                 "TCP accept rate - burst: {}, refresh: {}",
                 self.network.gossip.cfg.tcp_accept_rate.burst,
-                self.network.gossip.cfg.tcp_accept_rate.refresh
+                self.network
+                    .gossip
+                    .cfg
+                    .tcp_accept_rate
+                    .refresh
+                    .as_seconds_f32()
+                    .human_duration()
             ))
             .with_header(3, "RPC limits")
             .with_paragraph(format!(
@@ -273,6 +283,8 @@ impl Server {
                     .rpc
                     .push_validator_addrs_rate
                     .refresh
+                    .as_seconds_f32()
+                    .human_duration()
             ))
             .with_paragraph(format!(
                 "push_block_store_state rate - burst: {}, refresh: {}",
@@ -288,16 +300,32 @@ impl Server {
                     .rpc
                     .push_block_store_state_rate
                     .refresh
+                    .as_seconds_f32()
+                    .human_duration()
             ))
             .with_paragraph(format!(
                 "push_batch_votes rate - burst: {}, refresh: {}",
                 self.network.gossip.cfg.rpc.push_batch_votes_rate.burst,
-                self.network.gossip.cfg.rpc.push_batch_votes_rate.refresh
+                self.network
+                    .gossip
+                    .cfg
+                    .rpc
+                    .push_batch_votes_rate
+                    .refresh
+                    .as_seconds_f32()
+                    .human_duration()
             ))
             .with_paragraph(format!(
                 "get_block rate - burst: {}, refresh: {}",
                 self.network.gossip.cfg.rpc.get_block_rate.burst,
-                self.network.gossip.cfg.rpc.get_block_rate.refresh
+                self.network
+                    .gossip
+                    .cfg
+                    .rpc
+                    .get_block_rate
+                    .refresh
+                    .as_seconds_f32()
+                    .human_duration()
             ))
             .with_paragraph(format!(
                 "get_block timeout: {}",
@@ -307,12 +335,22 @@ impl Server {
                     .rpc
                     .get_block_timeout
                     .as_ref()
-                    .map_or("None".to_string(), |x| x.to_string())
+                    .map_or("None".to_string(), |x| x
+                        .as_seconds_f32()
+                        .human_duration()
+                        .to_string())
             ))
             .with_paragraph(format!(
                 "Consensus rate - burst: {}, refresh: {}",
                 self.network.gossip.cfg.rpc.consensus_rate.burst,
-                self.network.gossip.cfg.rpc.consensus_rate.refresh
+                self.network
+                    .gossip
+                    .cfg
+                    .rpc
+                    .consensus_rate
+                    .refresh
+                    .as_seconds_f32()
+                    .human_duration()
             ));
 
         // Gossip network
@@ -531,15 +569,6 @@ impl Server {
         ]);
 
         for connection in connections {
-            let age = SystemTime::now()
-                .duration_since(connection.stats.established)
-                .ok()
-                .unwrap_or_else(|| Duration::new(1, 0))
-                .max(Duration::new(1, 0)); // Ensure Duration is not 0 to prevent division by zero
-
-            let received = connection.stats.received.load(Ordering::Relaxed);
-            let sent = connection.stats.sent.load(Ordering::Relaxed);
-
             table.add_body_row(vec![
                 connection.key.encode(),
                 connection.stats.peer_addr.to_string(),
@@ -548,13 +577,24 @@ impl Server {
                     .as_ref()
                     .map_or("N/A".to_string(), |v| v.to_string()),
                 bytesize::to_string(received, false),
-                // TODO: this is not useful - we should display avg from the last ~1min instead.
-                bytesize::to_string(received / age.as_secs(), false) + "/s",
+                connection
+                    .stats
+                    .received
+                    .load(Ordering::Relaxed)
+                    .human_count_bytes()
+                    .to_string(),
                 bytesize::to_string(sent, false),
-                bytesize::to_string(sent / age.as_secs(), false) + "/s",
-                // TODO: this is not a human-friendly format, use days + hours + minutes + seconds,
-                // or similar.
-                format!("{}s", age.as_secs()),
+                connection
+                    .stats
+                    .sent
+                    .load(Ordering::Relaxed)
+                    .human_count_bytes()
+                    .to_string(),
+                SystemTime::now()
+                    .duration_since(connection.stats.established)
+                    .unwrap_or_default()
+                    .human_duration()
+                    .to_string(),
             ])
         }
 
@@ -575,26 +615,26 @@ impl Server {
         ]);
 
         for (key, stats) in connections {
-            let age = SystemTime::now()
-                .duration_since(stats.established)
-                .ok()
-                .unwrap_or_else(|| Duration::new(1, 0))
-                .max(Duration::new(1, 0)); // Ensure Duration is not 0 to prevent division by zero
-
-            let received = stats.received.load(Ordering::Relaxed);
-            let sent = stats.sent.load(Ordering::Relaxed);
-
             table.add_body_row(vec![
                 key.encode(),
                 stats.peer_addr.to_string(),
                 bytesize::to_string(received, false),
-                // TODO: this is not useful - we should display avg from the last ~1min instead.
-                bytesize::to_string(received / age.as_secs(), false) + "/s",
+                stats
+                    .received
+                    .load(Ordering::Relaxed)
+                    .human_count_bytes()
+                    .to_string(),
                 bytesize::to_string(sent, false),
-                bytesize::to_string(sent / age.as_secs(), false) + "/s",
-                // TODO: this is not a human-friendly format, use days + hours + minutes + seconds,
-                // or similar.
-                format!("{}s", age.as_secs()),
+                stats
+                    .sent
+                    .load(Ordering::Relaxed)
+                    .human_count_bytes()
+                    .to_string(),
+                SystemTime::now()
+                    .duration_since(stats.established)
+                    .unwrap_or_default()
+                    .human_duration()
+                    .to_string(),
             ])
         }
 
