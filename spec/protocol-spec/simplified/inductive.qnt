@@ -620,12 +620,9 @@ module inductive {
                 | None => all_commit_votes == Set()
                 | Some(hv) =>
                     and {
-                        all_commit_votes != Set(),
                         // the high vote has the highest view among the commit votes
-                        all_commit_votes.forall(v => and {
-                            v.view <= hv.view,
-                            v.view == hv.view implies hv == v,
-                        })
+                        all_commit_votes.contains(hv),
+                        all_commit_votes.forall(v => v.view <= hv.view)
                     }
                 }
             }
