@@ -1,19 +1,19 @@
 [package]
-name = "zksync_consensus_utils"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-homepage.workspace = true
-license.workspace = true
+authors.workspace    = true
+description          = "ZKsync consensus utilities"
+edition.workspace    = true
+homepage.workspace   = true
+keywords.workspace   = true
+license.workspace    = true
+name                 = "zksync_consensus_utils"
 repository.workspace = true
-keywords.workspace = true
-description = "ZKsync consensus utilities"
+version.workspace    = true
 
 [dependencies]
+anyhow.workspace             = true
+rand.workspace               = true
+thiserror.workspace          = true
 zksync_concurrency.workspace = true
-rand.workspace = true
-thiserror.workspace = true
-anyhow.workspace = true
 
 [lints]
 workspace = true

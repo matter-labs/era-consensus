@@ -1,24 +1,24 @@
 [package]
-name = "zksync_protobuf_build"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-homepage.workspace = true
-license.workspace = true
+authors.workspace    = true
+description          = "ZKsync consensus protobuf codegen"
+edition.workspace    = true
+homepage.workspace   = true
+keywords.workspace   = true
+license.workspace    = true
+name                 = "zksync_protobuf_build"
 repository.workspace = true
-keywords.workspace = true
-description = "ZKsync consensus protobuf codegen"
+version.workspace    = true
 
 [dependencies]
-anyhow.workspace = true
-heck.workspace = true
-prettyplease.workspace = true
-proc-macro2.workspace = true
-prost-build.workspace = true
+anyhow.workspace        = true
+heck.workspace          = true
+prettyplease.workspace  = true
+proc-macro2.workspace   = true
+prost-build.workspace   = true
 prost-reflect.workspace = true
-protox.workspace = true
-quote.workspace = true
-syn.workspace = true
+protox.workspace        = true
+quote.workspace         = true
+syn.workspace           = true
 
 [lints]
 workspace = true
