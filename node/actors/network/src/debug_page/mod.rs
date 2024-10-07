@@ -17,7 +17,6 @@ use std::{
     collections::{HashMap, HashSet},
     net::SocketAddr,
     sync::{atomic::Ordering, Arc},
-    time::SystemTime,
 };
 use tls_listener::TlsListener;
 use tokio::net::TcpListener;
@@ -570,10 +569,7 @@ impl Server {
                     .human_count_bytes()
                     .to_string(),
                 Self::human_readable_duration(
-                    SystemTime::now()
-                        .duration_since(connection.stats.established)
-                        .unwrap_or_default()
-                        .as_secs(),
+                    connection.stats.established.elapsed().whole_seconds() as u64,
                 ),
             ])
         }
@@ -613,12 +609,7 @@ impl Server {
                     .load(Ordering::Relaxed)
                     .human_count_bytes()
                     .to_string(),
-                Self::human_readable_duration(
-                    SystemTime::now()
-                        .duration_since(stats.established)
-                        .unwrap_or_default()
-                        .as_secs(),
-                ),
+                Self::human_readable_duration(stats.established.elapsed().whole_seconds() as u64),
             ])
         }
 
