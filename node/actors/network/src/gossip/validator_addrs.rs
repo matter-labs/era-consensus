@@ -90,6 +90,13 @@ impl ValidatorAddrsWatch {
         self.0.subscribe()
     }
 
+    /// Copy of the current ValidatorAddrs state.
+    pub(crate) fn current(
+        &self,
+    ) -> im::HashMap<validator::PublicKey, Arc<validator::Signed<validator::NetAddress>>> {
+        self.0.subscribe().borrow().0.clone()
+    }
+
     /// Inserts a new version of the announcement signed with the given key.
     pub(crate) async fn announce(
         &self,

@@ -1,4 +1,7 @@
 //! General-purpose network metrics.
+
+#![allow(clippy::float_arithmetic)]
+
 use crate::Network;
 use anyhow::Context as _;
 use std::{
@@ -10,12 +13,11 @@ use std::{
         Arc, Weak,
     },
     task::{ready, Context, Poll},
-    time::SystemTime,
 };
 use vise::{
     Collector, Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, GaugeGuard, Metrics, Unit,
 };
-use zksync_concurrency::{ctx, io, net};
+use zksync_concurrency::{ctx, io, net, time::Instant};
 
 /// Metered TCP stream.
 #[pin_project::pin_project]
@@ -227,10 +229,20 @@ pub struct MeteredStreamStats {
     pub sent: AtomicU64,
     /// Total bytes received over the Stream.
     pub received: AtomicU64,
-    /// System time since the connection started.
-    pub established: SystemTime,
-    /// Ip Address and port of current connection.
+    /// Time when the connection started.
+    pub established: Instant,
+    /// IP Address and port of current connection.
     pub peer_addr: SocketAddr,
+    /// Total bytes sent in the current minute.
+    pub current_minute_sent: AtomicU64,
+    /// Total bytes sent in the previous minute.
+    pub previous_minute_sent: AtomicU64,
+    /// Total bytes received in the current minute.
+    pub current_minute_received: AtomicU64,
+    /// Total bytes received in the previous minute.
+    pub previous_minute_received: AtomicU64,
+    /// Minutes elapsed since the connection started, when this metrics were last updated.
+    pub minutes_elapsed_last: AtomicU64,
 }
 
 impl MeteredStreamStats {
@@ -238,16 +250,81 @@ impl MeteredStreamStats {
         Self {
             sent: 0.into(),
             received: 0.into(),
-            established: SystemTime::now(),
+            established: Instant::now(),
             peer_addr,
+            current_minute_sent: 0.into(),
+            previous_minute_sent: 0.into(),
+            current_minute_received: 0.into(),
+            previous_minute_received: 0.into(),
+            minutes_elapsed_last: 0.into(),
         }
     }
 
     fn read(&self, amount: u64) {
+        self.update_minute();
         self.received.fetch_add(amount, Ordering::Relaxed);
+        self.current_minute_received
+            .fetch_add(amount, Ordering::Relaxed);
     }
 
     fn wrote(&self, amount: u64) {
+        self.update_minute();
         self.sent.fetch_add(amount, Ordering::Relaxed);
+        self.current_minute_sent
+            .fetch_add(amount, Ordering::Relaxed);
+    }
+
+    fn update_minute(&self) {
+        let elapsed_minutes_now = self.established.elapsed().whole_seconds() as u64 / 60;
+        let elapsed_minutes_last = self.minutes_elapsed_last.load(Ordering::Relaxed);
+
+        if elapsed_minutes_now > elapsed_minutes_last {
+            if elapsed_minutes_now - elapsed_minutes_last > 1 {
+                self.previous_minute_sent.store(0, Ordering::Relaxed);
+                self.previous_minute_received.store(0, Ordering::Relaxed);
+            } else {
+                self.previous_minute_sent.store(
+                    self.current_minute_sent.load(Ordering::Relaxed),
+                    Ordering::Relaxed,
+                );
+                self.previous_minute_received.store(
+                    self.current_minute_received.load(Ordering::Relaxed),
+                    Ordering::Relaxed,
+                );
+            }
+
+            self.current_minute_sent.store(0, Ordering::Relaxed);
+            self.current_minute_received.store(0, Ordering::Relaxed);
+            self.minutes_elapsed_last
+                .store(elapsed_minutes_now, Ordering::Relaxed);
+        }
+    }
+
+    /// Returns the upload throughput of the connection in bytes per second.
+    pub fn sent_throughput(&self) -> f64 {
+        let elapsed_minutes_now = self.established.elapsed().whole_seconds() as u64 / 60;
+        let elapsed_minutes_last = self.minutes_elapsed_last.load(Ordering::Relaxed);
+
+        if elapsed_minutes_now - elapsed_minutes_last == 0 {
+            self.previous_minute_sent.load(Ordering::Relaxed) as f64 / 60.0
+        } else if elapsed_minutes_now - elapsed_minutes_last == 1 {
+            self.current_minute_sent.load(Ordering::Relaxed) as f64 / 60.0
+        } else {
+            0.0
+        }
+    }
+
+    /// Returns the download throughput of the connection in bytes per second.
+    pub fn received_throughput(&self) -> f64 {
+        let elapsed_minutes_now = self.established.elapsed().whole_seconds() as u64 / 60;
+        let elapsed_minutes_last = self.minutes_elapsed_last.load(Ordering::Relaxed);
+
+        if elapsed_minutes_now - elapsed_minutes_last == 0 {
+            self.previous_minute_received.load(Ordering::Relaxed) as f64 / 60.0
+        } else if elapsed_minutes_now - elapsed_minutes_last == 1 {
+            self.current_minute_received.load(Ordering::Relaxed) as f64 / 60.0
+        } else {
+            0.0
+        }
     }
 }
