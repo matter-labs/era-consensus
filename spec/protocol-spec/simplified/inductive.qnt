@@ -358,6 +358,7 @@ module inductive {
         lemma15_timeout_high_vote_is_supported_by_commits,
         lemma16_proposals_are_valid,
         lemma17_timeout_high_commit_qc_is_valid,
+        lemma18_replica_state_high_commit_qc_is_justified,
     }
 
     // auxiliary invariants that we call lemmas
@@ -664,6 +665,35 @@ module inductive {
         r::msgs_signed_timeout.forall(tv => {
             r::aux_commit_qc_inv(tv.high_commit_qc)
         })
+    }
+
+    val lemma18_replica_state_high_commit_qc_is_justified = {
+        ICORRECT.forall(id => 
+            val self = r::replica_state.get(id)
+            and {
+                match (self.high_commit_qc) {
+                | None =>
+                    true
+                | Some(qc_id) =>
+                    r::ghost_justifications.keys()
+                        .exists(((id, v)) => and {
+                            v <= self.view,
+                            r::ghost_justifications.get((id, v)) == Commit(qc_id)
+                        })
+                },
+                match (self.high_timeout_qc) {
+                | None =>
+                    false // this should not be possible
+
+                | Some(qc_id) =>
+                    r::ghost_justifications.keys()
+                        .exists(((id, v)) => and {
+                            v <= self.view,
+                            r::ghost_justifications.get((id, v)) == Timeout(qc_id)
+                        })
+                }
+            }
+        )
     }
 
     // invalid lemmas
