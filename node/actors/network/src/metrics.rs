@@ -1,8 +1,10 @@
 //! General-purpose network metrics.
+
+#![allow(clippy::float_arithmetic)]
+
 use crate::Network;
 use anyhow::Context as _;
 use std::{
-    collections::VecDeque,
     fmt,
     net::SocketAddr,
     pin::Pin,
@@ -11,7 +13,7 @@ use std::{
         Arc, Weak,
     },
     task::{ready, Context, Poll},
-    time::{Duration, Instant, SystemTime},
+    time::{SystemTime, UNIX_EPOCH},
 };
 use vise::{
     Collector, Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, GaugeGuard, Metrics, Unit,
@@ -233,15 +235,15 @@ pub struct MeteredStreamStats {
     /// IP Address and port of current connection.
     pub peer_addr: SocketAddr,
     /// Total bytes sent in the current minute.
-    current_minute_sent: AtomicU64,
+    pub current_minute_sent: AtomicU64,
     /// Total bytes sent in the previous minute.
-    previous_minute_sent: AtomicU64,
+    pub previous_minute_sent: AtomicU64,
     /// Total bytes received in the current minute.
-    current_minute_received: AtomicU64,
+    pub current_minute_received: AtomicU64,
     /// Total bytes received in the previous minute.
-    previous_minute_received: AtomicU64,
-    /// The start of the current minute.
-    current_minute_start: Instant,
+    pub previous_minute_received: AtomicU64,
+    /// The start of the current minute (in seconds since Unix epoch).
+    pub current_minute_start: AtomicU64,
 }
 
 impl MeteredStreamStats {
@@ -255,29 +257,33 @@ impl MeteredStreamStats {
             previous_minute_sent: 0.into(),
             current_minute_received: 0.into(),
             previous_minute_received: 0.into(),
-            current_minute_start: Instant::now(),
+            current_minute_start: 0.into(),
         }
     }
 
-    fn read(&mut self, amount: u64) {
+    fn read(&self, amount: u64) {
         self.update_minute();
         self.received.fetch_add(amount, Ordering::Relaxed);
         self.current_minute_received
             .fetch_add(amount, Ordering::Relaxed);
     }
 
-    fn wrote(&mut self, amount: u64) {
+    fn wrote(&self, amount: u64) {
         self.update_minute();
         self.sent.fetch_add(amount, Ordering::Relaxed);
         self.current_minute_sent
             .fetch_add(amount, Ordering::Relaxed);
     }
 
-    fn update_minute(&mut self) {
-        let now = Instant::now();
-        let elapsed = now.duration_since(self.current_minute_start);
+    fn update_minute(&self) {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("Time went backwards")
+            .as_secs();
 
-        if elapsed >= Duration::from_secs(60) {
+        let elapsed_secs = now.saturating_sub(self.current_minute_start.load(Ordering::Relaxed));
+
+        if elapsed_secs >= 60 {
             self.previous_minute_sent.store(
                 self.current_minute_sent.load(Ordering::Relaxed),
                 Ordering::Relaxed,
@@ -288,7 +294,7 @@ impl MeteredStreamStats {
             );
             self.current_minute_sent.store(0, Ordering::Relaxed);
             self.current_minute_received.store(0, Ordering::Relaxed);
-            self.current_minute_start = now;
+            self.current_minute_start.store(now, Ordering::Relaxed);
         }
     }
 

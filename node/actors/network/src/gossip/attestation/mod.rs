@@ -270,7 +270,7 @@ impl Controller {
     }
 
     /// Returns a reference to the state.
-    pub fn state(&self) -> &Watch<Option<State>> {
+    pub(crate) fn state(&self) -> &Watch<Option<State>> {
         &self.state
     }
 

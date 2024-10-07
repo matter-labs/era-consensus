@@ -17,7 +17,7 @@ use std::{
     collections::{HashMap, HashSet},
     net::SocketAddr,
     sync::{atomic::Ordering, Arc},
-    time::{Duration, SystemTime},
+    time::SystemTime,
 };
 use tls_listener::TlsListener;
 use tokio::net::TcpListener;
@@ -236,7 +236,7 @@ impl Server {
             ))
             .with_paragraph(format!(
                 "Server address: {}",
-                self.network.gossip.cfg.server_addr.to_string()
+                self.network.gossip.cfg.server_addr
             ))
             .with_paragraph(format!(
                 "Public address: {}",
@@ -401,7 +401,6 @@ impl Server {
                     .gossip
                     .attestation
                     .key()
-                    .clone()
                     .map_or("None".to_string(), |k| k.public().encode())
             ));
 
@@ -414,24 +413,23 @@ impl Server {
             .borrow()
             .clone()
         {
+            html = html.with_paragraph(format!(
+                "Batch to attest - Number: {}, Hash: {}, Genesis hash: {}",
+                state.info().batch_to_attest.number,
+                state.info().batch_to_attest.hash.encode(),
+                state.info().batch_to_attest.genesis.encode(),
+            ));
+
             html = html
-                .with_paragraph(format!(
-                    "Batch to attest:\nNumber: {}, Hash: {}, Genesis hash: {}",
-                    state.info().batch_to_attest.number,
-                    state.info().batch_to_attest.hash.encode(),
-                    state.info().batch_to_attest.genesis.encode(),
-                ))
-                .with_header(2, "Committee")
-                .with_paragraph(Self::attester_committee_table(
+                .with_header(2, "Attester committee")
+                .with_paragraph(Self::attester_table(
                     state.info().committee.iter(),
+                    state.votes(),
                 ))
                 .with_paragraph(format!(
                     "Total weight: {}",
                     state.info().committee.total_weight()
-                ))
-                .with_header(2, "Votes")
-                .with_paragraph(Self::attester_votes_table(state.votes().iter()))
-                .with_paragraph(format!("Total weight: {}", state.total_weight()));
+                ));
         }
 
         // Validator network
@@ -505,45 +503,25 @@ impl Server {
         table.to_html_string()
     }
 
-    fn attester_committee_table<'a>(
+    fn attester_table<'a>(
         attesters: impl Iterator<Item = &'a attester::WeightedAttester>,
+        votes: &im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>,
     ) -> String {
-        let mut table = Table::new().with_header_row(vec!["Public key", "Weight"]);
+        let mut table = Table::new().with_header_row(vec!["Public key", "Weight", "Voted"]);
 
         for attester in attesters {
-            table.add_body_row(vec![attester.key.encode(), attester.weight.to_string()]);
-        }
+            let voted = if votes.contains_key(&attester.key) {
+                "Yes"
+            } else {
+                "No"
+            }
+            .to_string();
 
-        table.to_html_string()
-    }
-
-    fn attester_votes_table<'a>(
-        votes: impl Iterator<
-            Item = (
-                &'a attester::PublicKey,
-                &'a Arc<attester::Signed<attester::Batch>>,
-            ),
-        >,
-    ) -> String {
-        let mut table = Table::new()
-            .with_custom_header_row(
-                TableRow::new()
-                    .with_cell(TableCell::new(TableCellType::Header).with_raw("Public key"))
-                    .with_cell(
-                        TableCell::new(TableCellType::Header)
-                            .with_attributes([("colspan", "3")])
-                            .with_raw("Batch"),
-                    ),
-            )
-            .with_header_row(vec!["", "Number", "Hash", "Genesis hash"]);
-
-        for (key, batch) in votes {
             table.add_body_row(vec![
-                key.encode(),
-                batch.msg.number.to_string(),
-                batch.msg.hash.encode(),
-                batch.msg.genesis.encode(),
-            ])
+                attester.key.encode(),
+                attester.weight.to_string(),
+                voted,
+            ]);
         }
 
         table.to_html_string()
