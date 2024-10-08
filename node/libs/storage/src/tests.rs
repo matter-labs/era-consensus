@@ -82,11 +82,25 @@ async fn test_get_not_cached_block() {
         for block in &setup.blocks {
             store.blocks.queue_block(ctx, block.clone()).await.unwrap();
         }
-        store.blocks.wait_until_persisted(ctx, setup.blocks.last().as_ref().unwrap().number()).await.unwrap();
+        store
+            .blocks
+            .wait_until_persisted(ctx, setup.blocks.last().as_ref().unwrap().number())
+            .await
+            .unwrap();
         // Request the first block (not in cache).
-        assert_eq!(setup.blocks[0], store.blocks.block(ctx, setup.blocks[0].number()).await.unwrap().unwrap());
+        assert_eq!(
+            setup.blocks[0],
+            store
+                .blocks
+                .block(ctx, setup.blocks[0].number())
+                .await
+                .unwrap()
+                .unwrap()
+        );
         Ok(())
-    }).await.unwrap();
+    })
+    .await
+    .unwrap();
 }
 
 #[tokio::test]

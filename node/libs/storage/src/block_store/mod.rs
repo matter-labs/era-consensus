@@ -176,16 +176,16 @@ impl Inner {
 
     /// If cache size has been exceeded, remove entries which were already persisted.
     fn truncate_cache(&mut self) {
-        while self.cache.len() > CACHE_CAPACITY
-            && self.persisted.next() > self.cache[0].number()
-        {
+        while self.cache.len() > CACHE_CAPACITY && self.persisted.next() > self.cache[0].number() {
             self.cache.pop_front();
         }
     }
 
     fn block(&self, n: validator::BlockNumber) -> Option<validator::Block> {
         let first = self.cache.front()?;
-        self.cache.get(n.0.checked_sub(first.number().0)? as usize).cloned()
+        self.cache
+            .get(n.0.checked_sub(first.number().0)? as usize)
+            .cloned()
     }
 }
 
@@ -357,7 +357,9 @@ impl BlockStore {
     /// blocks are queued_state as well. Queue is unbounded, so it is caller's
     /// responsibility to manage the queue size.
     pub async fn queue_block(&self, ctx: &ctx::Ctx, block: validator::Block) -> ctx::Result<()> {
-        self.verify_block(ctx, &block).await.wrap("verify_block")?;
+        self.verify_block(ctx, &block)
+            .await
+            .with_wrap(|| format!("verify_block({})", block.number()))?;
         sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
             inner.queued.next() >= block.number()
         })
