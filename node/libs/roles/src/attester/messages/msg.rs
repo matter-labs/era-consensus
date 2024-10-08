@@ -123,6 +123,11 @@ impl Committee {
         })
     }
 
+    /// Iterates over the attesters.
+    pub fn iter(&self) -> impl Iterator<Item = &WeightedAttester> {
+        self.vec.iter()
+    }
+
     /// Iterates over attester keys.
     pub fn keys(&self) -> impl Iterator<Item = &attester::PublicKey> {
         self.vec.iter().map(|v| &v.key)
