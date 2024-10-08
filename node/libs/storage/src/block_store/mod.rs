@@ -133,14 +133,14 @@ struct Inner {
     cache: VecDeque<validator::Block>,
 }
 
-impl Inner {
-    /// Minimal number of most recent blocks to keep in memory.
-    /// It allows to serve the recent blocks to peers fast, even
-    /// if persistent storage reads are slow (like in RocksDB).
-    /// `BlockStore` may keep in memory more blocks in case
-    /// blocks are queued faster than they are persisted.
-    const CACHE_CAPACITY: usize = 100;
+/// Minimal number of most recent blocks to keep in memory.
+/// It allows to serve the recent blocks to peers fast, even
+/// if persistent storage reads are slow (like in RocksDB).
+/// `BlockStore` may keep in memory more blocks in case
+/// blocks are queued faster than they are persisted.
+pub(crate) const CACHE_CAPACITY: usize = 100;
 
+impl Inner {
     /// Tries to push the next block to cache.
     /// Noop if provided block is not the expected one.
     /// Returns true iff cache has been modified.
@@ -176,7 +176,7 @@ impl Inner {
 
     /// If cache size has been exceeded, remove entries which were already persisted.
     fn truncate_cache(&mut self) {
-        while self.cache.len() > Self::CACHE_CAPACITY
+        while self.cache.len() > CACHE_CAPACITY
             && self.persisted.next() > self.cache[0].number()
         {
             self.cache.pop_front();
@@ -184,10 +184,8 @@ impl Inner {
     }
 
     fn block(&self, n: validator::BlockNumber) -> Option<validator::Block> {
-        // Subtraction is safe, because blocks in cache are
-        // stored in increasing order of block number.
         let first = self.cache.front()?;
-        self.cache.get((n.0 - first.number().0) as usize).cloned()
+        self.cache.get(n.0.checked_sub(first.number().0)? as usize).cloned()
     }
 }
 

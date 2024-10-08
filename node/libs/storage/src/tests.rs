@@ -69,6 +69,27 @@ fn test_schema_encode_decode() {
 }
 
 #[tokio::test]
+async fn test_get_not_cached_block() {
+    abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let mut setup = Setup::new(rng, 1);
+    setup.push_blocks(rng, block_store::CACHE_CAPACITY + 5);
+    scope::run!(ctx, |ctx, s| async {
+        let store = TestMemoryStorage::new(ctx, &setup).await;
+        s.spawn_bg(store.runner.run(ctx));
+        // Persist more blocks than the cache size.
+        for block in &setup.blocks {
+            store.blocks.queue_block(ctx, block.clone()).await.unwrap();
+        }
+        store.blocks.wait_until_persisted(ctx, setup.blocks.last().as_ref().unwrap().number()).await.unwrap();
+        // Request the first block (not in cache).
+        assert_eq!(setup.blocks[0], store.blocks.block(ctx, setup.blocks[0].number()).await.unwrap().unwrap());
+        Ok(())
+    }).await.unwrap();
+}
+
+#[tokio::test]
 async fn test_state_updates() {
     abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
