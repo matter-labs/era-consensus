@@ -662,7 +662,8 @@ module inductive {
     }
 
     val lemma17_timeout_high_commit_qc_is_valid = {
-        r::msgs_signed_timeout.forall(tv => {
+        r::msgs_signed_timeout.forall(tv => or {
+            IFAULTY.contains(tv.sig),
             r::aux_commit_qc_inv(tv.high_commit_qc)
         })
     }
