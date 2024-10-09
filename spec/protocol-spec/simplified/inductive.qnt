@@ -447,7 +447,12 @@ module inductive {
                     sig: r::leader.get(m.vote.view),
                     ghost_block_number: m.vote.block_number - 1,
                 }
-                r::msgs_proposal.contains(proposal)
+                and {
+                    // this block must have been verified in on_proposal
+                    IVALID_BLOCKS.contains(m.vote.block_hash),
+                    // there must be a proposal for the commit message `m`
+                    r::msgs_proposal.contains(proposal)
+                }
             }),
             0.to(MAX_TIMEOUT_QC).exists(qc_id => and {
                 val proposal = {
@@ -621,7 +626,7 @@ module inductive {
                 | None => all_commit_votes == Set()
                 | Some(hv) =>
                     and {
-                        // the high vote has the highest view among the commit votes
+                        // The high vote has the highest view among the commit votes.
                         all_commit_votes.contains(hv),
                         all_commit_votes.forall(v => v.view <= hv.view)
                     }
