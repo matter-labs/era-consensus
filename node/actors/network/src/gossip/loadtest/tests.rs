@@ -17,10 +17,9 @@ async fn test_loadtest() {
 
     scope::run!(ctx, |ctx, s| async {
         // Spawn the node.
-        let stores = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let stores = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(stores.runner.run(ctx));
-        let (node, runner) =
-            testonly::Instance::new(cfg.clone(), stores.blocks.clone(), stores.batches.clone());
+        let (node, runner) = testonly::Instance::new(cfg.clone(), stores.blocks.clone());
         s.spawn_bg(runner.run(ctx));
 
         // Fill the storage with some blocks.

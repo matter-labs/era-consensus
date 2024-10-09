@@ -18,7 +18,6 @@ impl Distribution<config::App> for EncodeDist {
 
             genesis: rng.gen(),
             max_payload_size: rng.gen(),
-            max_batch_size: rng.gen(),
             validator_key: self.sample_opt(|| rng.gen()),
             attester_key: self.sample_opt(|| rng.gen()),
 
@@ -74,6 +73,9 @@ async fn test_reopen_rocksdb() {
     setup.push_blocks(rng, 5);
     let mut want = vec![];
     for b in &setup.blocks {
+        if b.number() < setup.genesis.first_block {
+            continue;
+        }
         let store = store::RocksDB::open(setup.genesis.clone(), dir.path())
             .await
             .unwrap();

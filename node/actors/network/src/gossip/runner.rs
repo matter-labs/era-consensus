@@ -5,14 +5,13 @@ use async_trait::async_trait;
 use rand::seq::SliceRandom;
 use std::sync::atomic::Ordering;
 use zksync_concurrency::{ctx, net, scope, sync};
-use zksync_consensus_roles::{attester::BatchNumber, node};
-use zksync_consensus_storage::{BatchStore, BatchStoreState, BlockStore, BlockStoreState};
+use zksync_consensus_roles::node;
+use zksync_consensus_storage::BlockStoreState;
 use zksync_protobuf::kB;
 
 /// Receiver of push messages from the peers.
 struct PushServer<'a> {
     blocks: sync::watch::Sender<BlockStoreState>,
-    batches: sync::watch::Sender<BatchStoreState>,
     net: &'a Network,
 }
 
@@ -21,11 +20,6 @@ impl<'a> PushServer<'a> {
         Self {
             blocks: sync::watch::channel(BlockStoreState {
                 first: net.genesis().first_block,
-                last: None,
-            })
-            .0,
-            batches: sync::watch::channel(BatchStoreState {
-                first: BatchNumber(0),
                 last: None,
             })
             .0,
@@ -96,32 +90,20 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushServer<'_> {
     async fn handle(
         &self,
         _ctx: &ctx::Ctx,
-        req: rpc::push_block_store_state::Req,
+        mut req: rpc::push_block_store_state::Req,
     ) -> anyhow::Result<()> {
-        req.0.verify(self.net.genesis())?;
-        self.blocks.send_replace(req.0);
+        if !self.net.cfg.enable_pregenesis {
+            req.clear_pregenesis_data();
+        }
+        let state = req.state();
+        state.verify(self.net.genesis())?;
+        self.blocks.send_replace(state);
         Ok(())
     }
 }
 
 #[async_trait]
-impl rpc::Handler<rpc::push_batch_store_state::Rpc> for &PushServer<'_> {
-    fn max_req_size(&self) -> usize {
-        10 * kB
-    }
-    async fn handle(
-        &self,
-        _ctx: &ctx::Ctx,
-        req: rpc::push_batch_store_state::Req,
-    ) -> anyhow::Result<()> {
-        req.0.verify()?;
-        self.batches.send_replace(req.0);
-        Ok(())
-    }
-}
-
-#[async_trait]
-impl rpc::Handler<rpc::get_block::Rpc> for &BlockStore {
+impl rpc::Handler<rpc::get_block::Rpc> for &Network {
     fn max_req_size(&self) -> usize {
         kB
     }
@@ -130,21 +112,11 @@ impl rpc::Handler<rpc::get_block::Rpc> for &BlockStore {
         ctx: &ctx::Ctx,
         req: rpc::get_block::Req,
     ) -> anyhow::Result<rpc::get_block::Resp> {
-        Ok(rpc::get_block::Resp(self.block(ctx, req.0).await?))
-    }
-}
-
-#[async_trait]
-impl rpc::Handler<rpc::get_batch::Rpc> for &BatchStore {
-    fn max_req_size(&self) -> usize {
-        kB
-    }
-    async fn handle(
-        &self,
-        ctx: &ctx::Ctx,
-        req: rpc::get_batch::Req,
-    ) -> anyhow::Result<rpc::get_batch::Resp> {
-        Ok(rpc::get_batch::Resp(self.batch(ctx, req.0).await?))
+        let mut resp = rpc::get_block::Resp(self.block_store.block(ctx, req.0).await?);
+        if !self.cfg.enable_pregenesis {
+            resp.clear_pregenesis_data();
+        }
+        Ok(resp)
     }
 }
 
@@ -160,14 +132,8 @@ impl Network {
             ctx,
             self.cfg.rpc.push_block_store_state_rate,
         );
-        let push_batch_store_state_client = rpc::Client::<rpc::push_batch_store_state::Rpc>::new(
-            ctx,
-            self.cfg.rpc.push_batch_store_state_rate,
-        );
         let get_block_client =
             rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate);
-        let get_batch_client =
-            rpc::Client::<rpc::get_batch::Rpc>::new(ctx, self.cfg.rpc.get_batch_rate);
         let push_batch_votes_client =
             rpc::Client::<rpc::push_batch_votes::Rpc>::new(ctx, self.cfg.rpc.push_batch_votes_rate);
 
@@ -180,21 +146,13 @@ impl Network {
                     self.cfg.rpc.push_validator_addrs_rate,
                 )
                 .add_client(&push_block_store_state_client)
-                .add_client(&push_batch_store_state_client)
                 .add_server::<rpc::push_block_store_state::Rpc>(
                     ctx,
                     &push_server,
                     self.cfg.rpc.push_block_store_state_rate,
                 )
-                .add_server::<rpc::push_batch_store_state::Rpc>(
-                    ctx,
-                    &push_server,
-                    self.cfg.rpc.push_batch_store_state_rate,
-                )
                 .add_client(&get_block_client)
-                .add_server(ctx, &*self.block_store, self.cfg.rpc.get_block_rate)
-                .add_client(&get_batch_client)
-                .add_server(ctx, &*self.batch_store, self.cfg.rpc.get_batch_rate)
+                .add_server::<rpc::get_block::Rpc>(ctx, self, self.cfg.rpc.get_block_rate)
                 .add_server(ctx, rpc::ping::Server, rpc::ping::RATE)
                 .add_client(&push_batch_votes_client)
                 .add_server::<rpc::push_batch_votes::Rpc>(
@@ -254,22 +212,13 @@ impl Network {
             s.spawn::<()>(async {
                 let mut state = self.block_store.queued();
                 loop {
-                    let req = rpc::push_block_store_state::Req(state.clone());
+                    let mut req =
+                        rpc::push_block_store_state::Req::new(state.clone(), self.genesis());
+                    if !self.cfg.enable_pregenesis {
+                        req.clear_pregenesis_data();
+                    }
                     push_block_store_state_client.call(ctx, &req, kB).await?;
                     state = self.block_store.wait_for_queued_change(ctx, &state).await?;
-                }
-            });
-
-            // Push batch store state updates to peer.
-            s.spawn::<()>(async {
-                let mut state = self.batch_store.queued();
-                loop {
-                    let req = rpc::push_batch_store_state::Req(state.clone());
-                    push_batch_store_state_client.call(ctx, &req, kB).await?;
-                    state = self
-                        .batch_store
-                        .wait_until_queued(ctx, state.next())
-                        .await?;
                 }
             });
 
@@ -313,11 +262,13 @@ impl Network {
                             let ctx_with_timeout =
                                 self.cfg.rpc.get_block_timeout.map(|t| ctx.with_timeout(t));
                             let ctx = ctx_with_timeout.as_ref().unwrap_or(ctx);
-                            let block = call
+                            let mut resp = call
                                 .call(ctx, &req, self.cfg.max_block_size.saturating_add(kB))
-                                .await?
-                                .0
-                                .context("empty response")?;
+                                .await?;
+                            if !self.cfg.enable_pregenesis {
+                                resp.clear_pregenesis_data();
+                            }
+                            let block = resp.0.context("empty response")?;
                             anyhow::ensure!(block.number() == req.0, "received wrong block");
                             // Storing the block will fail in case block is invalid.
                             self.block_store
@@ -332,51 +283,6 @@ impl Network {
                         }
                         .await
                         .with_context(|| format!("get_block({})", req.0))
-                    });
-                }
-            });
-
-            // Perform get_batch calls to peer.
-            s.spawn::<()>(async {
-                let state = &mut push_server.batches.subscribe();
-                loop {
-                    let call = get_batch_client.reserve(ctx).await?;
-                    let (req, send_resp) = self.fetch_queue.accept_batch(ctx, state).await?;
-                    let req = rpc::get_batch::Req(req);
-                    s.spawn(async {
-                        let req = req;
-                        // Failing to fetch a batch causes a disconnect:
-                        // - peer predeclares which batches are available and race condition
-                        //   with batch pruning should be very rare, so we can consider
-                        //   an empty response to be offending
-                        // - a stream for the call has been already reserved,
-                        //   so the peer is expected to answer immediately. The timeout
-                        //   should be high enough to accommodate network hiccups
-                        // - a disconnect is not a ban, so the peer is free to try to
-                        //   reconnect.
-                        async {
-                            let ctx_with_timeout =
-                                self.cfg.rpc.get_batch_timeout.map(|t| ctx.with_timeout(t));
-                            let ctx = ctx_with_timeout.as_ref().unwrap_or(ctx);
-                            let batch = call
-                                .call(ctx, &req, self.cfg.max_batch_size.saturating_add(kB))
-                                .await?
-                                .0
-                                .context("empty response")?;
-                            anyhow::ensure!(batch.number == req.0, "received wrong batch");
-                            // Storing the batch will fail in case batch is invalid.
-                            self.batch_store
-                                .queue_batch(ctx, batch, self.genesis().clone())
-                                .await
-                                .context("queue_batch()")?;
-                            tracing::info!("fetched batch {}", req.0);
-                            // Send a response that fetching was successful.
-                            // Ignore disconnection error.
-                            let _ = send_resp.send(());
-                            anyhow::Ok(())
-                        }
-                        .await
-                        .with_context(|| format!("get_batch({})", req.0))
                     });
                 }
             });

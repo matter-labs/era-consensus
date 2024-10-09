@@ -44,7 +44,7 @@ impl StateMachine {
         );
         self.config
             .block_store
-            .queue_block(ctx, block.clone())
+            .queue_block(ctx, block.clone().into())
             .await?;
         // For availability, replica should not proceed until it stores the block persistently.
         self.config

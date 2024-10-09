@@ -9,15 +9,15 @@ use std::{
     sync::Arc,
 };
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use zksync_concurrency::{ctx, net, time};
+use zksync_concurrency::{ctx, net};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor::{self as executor, attestation};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{attester, node, validator};
-use zksync_consensus_storage::testonly::{TestMemoryStorage, TestMemoryStorageRunner};
+use zksync_consensus_storage::{BlockStore, BlockStoreRunner};
 use zksync_protobuf::{
-    kB, read_optional, read_optional_repr, read_required, required, ProtoFmt, ProtoRepr,
+    read_optional, read_optional_repr, read_required, required, ProtoFmt, ProtoRepr,
 };
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -76,7 +76,6 @@ pub struct App {
 
     pub genesis: validator::Genesis,
     pub max_payload_size: usize,
-    pub max_batch_size: usize,
     pub validator_key: Option<validator::SecretKey>,
     pub attester_key: Option<attester::SecretKey>,
 
@@ -168,14 +167,6 @@ impl ProtoFmt for App {
             .and_then(|x| Ok((*x).try_into()?))
             .context("max_payload_size")?;
 
-        let max_batch_size = match &r.max_batch_size {
-            Some(x) => (*x).try_into().context("max_payload_size")?,
-            // Arbitrary estimate of 100 blocks  + 1kB for the merkle proof.
-            // NOTE: this test node currently doesn't implement batches at all.
-            // Once it does, do the estimates again.
-            None => max_payload_size * 100 + kB,
-        };
-
         Ok(Self {
             server_addr: read_required_text(&r.server_addr).context("server_addr")?,
             public_addr: net::Host(required(&r.public_addr).context("public_addr")?.clone()),
@@ -185,7 +176,6 @@ impl ProtoFmt for App {
 
             genesis: read_required(&r.genesis).context("genesis")?,
             max_payload_size,
-            max_batch_size,
             // TODO: read secret.
             validator_key: read_optional_secret_text(&r.validator_secret_key)
                 .context("validator_secret_key")?,
@@ -211,7 +201,6 @@ impl ProtoFmt for App {
 
             genesis: Some(self.genesis.build()),
             max_payload_size: Some(self.max_payload_size.try_into().unwrap()),
-            max_batch_size: Some(self.max_batch_size.try_into().unwrap()),
             validator_secret_key: self.validator_key.as_ref().map(TextFmt::encode),
             attester_secret_key: self.attester_key.as_ref().map(TextFmt::encode),
 
@@ -266,12 +255,10 @@ impl Configs {
     pub async fn make_executor(
         &self,
         ctx: &ctx::Ctx,
-    ) -> ctx::Result<(executor::Executor, TestMemoryStorageRunner)> {
-        let replica_store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
-        let store = TestMemoryStorage::new(ctx, &self.app.genesis).await;
-
+    ) -> ctx::Result<(executor::Executor, BlockStoreRunner)> {
+        let store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
+        let (block_store, runner) = BlockStore::new(ctx, Box::new(store.clone())).await?;
         let attestation = Arc::new(attestation::Controller::new(self.app.attester_key.clone()));
-        let runner = store.runner;
 
         let e = executor::Executor {
             config: executor::Config {
@@ -283,7 +270,6 @@ impl Configs {
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
                 max_payload_size: self.app.max_payload_size,
-                max_batch_size: self.app.max_batch_size,
                 rpc: executor::RpcConfig::default(),
                 debug_page: self
                     .app
@@ -310,17 +296,15 @@ impl Configs {
                     })
                     .transpose()
                     .context("debug_page")?,
-                batch_poll_interval: time::Duration::seconds(1),
             },
-            block_store: store.blocks,
-            batch_store: store.batches,
+            block_store,
             validator: self
                 .app
                 .validator_key
                 .as_ref()
                 .map(|key| executor::Validator {
                     key: key.clone(),
-                    replica_store: Box::new(replica_store),
+                    replica_store: Box::new(store.clone()),
                     payload_manager: Box::new(bft::testonly::RandomPayload(
                         self.app.max_payload_size,
                     )),

@@ -1,10 +1,10 @@
 //! Test-only utilities.
 use super::{
-    AggregateSignature, BlockHeader, BlockNumber, ChainId, CommitQC, Committee, ConsensusMsg,
-    FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderCommit, LeaderPrepare, Msg,
-    MsgHash, NetAddress, Payload, PayloadHash, Phase, PrepareQC, ProofOfPossession,
-    ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare, SecretKey, Signature, Signed,
-    Signers, View, ViewNumber, WeightedValidator,
+    AggregateSignature, Block, BlockHeader, BlockNumber, ChainId, CommitQC, Committee,
+    ConsensusMsg, FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, Justification,
+    LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
+    PreGenesisBlock, PrepareQC, ProofOfPossession, ProtocolVersion, PublicKey, ReplicaCommit,
+    ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
 use crate::{attester, validator::LeaderSelectionMode};
 use bit_vec::BitVec;
@@ -25,6 +25,8 @@ pub struct SetupSpec {
     pub fork_number: ForkNumber,
     /// First block.
     pub first_block: BlockNumber,
+    /// First block that exists.
+    pub first_pregenesis_block: BlockNumber,
     /// Protocol version.
     pub protocol_version: ProtocolVersion,
     /// Validator secret keys and weights.
@@ -47,6 +49,7 @@ impl SetupSpec {
 
     /// New `SetupSpec`.
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
+        let first_block = BlockNumber(rng.gen_range(0..100));
         Self {
             validator_weights: weights
                 .clone()
@@ -56,7 +59,8 @@ impl SetupSpec {
             attester_weights: weights.into_iter().map(|w| (rng.gen(), w)).collect(),
             chain_id: ChainId(1337),
             fork_number: ForkNumber(rng.gen_range(0..100)),
-            first_block: BlockNumber(rng.gen_range(0..100)),
+            first_block,
+            first_pregenesis_block: BlockNumber(rng.gen_range(0..=first_block.0)),
             protocol_version: ProtocolVersion::CURRENT,
             leader_selection: LeaderSelectionMode::RoundRobin,
         }
@@ -66,18 +70,20 @@ impl SetupSpec {
 impl Setup {
     /// New `Setup`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
-        SetupSpec::new(rng, validators).into()
+        let spec = SetupSpec::new(rng, validators);
+        Self::from_spec(rng, spec)
     }
 
     /// New `Setup`.
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
-        SetupSpec::new_with_weights(rng, weights).into()
+        let spec = SetupSpec::new_with_weights(rng, weights);
+        Self::from_spec(rng, spec)
     }
 
     /// Next block to finalize.
     pub fn next(&self) -> BlockNumber {
         match self.0.blocks.last() {
-            Some(b) => b.header().number.next(),
+            Some(b) => b.number().next(),
             None => self.0.genesis.first_block,
         }
     }
@@ -90,7 +96,10 @@ impl Setup {
                 .0
                 .blocks
                 .last()
-                .map(|b| b.justification.view().number.next())
+                .map(|b| match b {
+                    Block::Final(b) => b.justification.view().number.next(),
+                    Block::PreGenesis(_) => ViewNumber(0),
+                })
                 .unwrap_or(ViewNumber(0)),
         };
         let proposal = match self.0.blocks.last() {
@@ -113,10 +122,13 @@ impl Setup {
                 )
                 .unwrap();
         }
-        self.0.blocks.push(FinalBlock {
-            payload,
-            justification,
-        });
+        self.0.blocks.push(
+            FinalBlock {
+                payload,
+                justification,
+            }
+            .into(),
+        );
     }
 
     /// Pushes `count` blocks with a random payload.
@@ -127,39 +139,16 @@ impl Setup {
     }
 
     /// Finds the block by the number.
-    pub fn block(&self, n: BlockNumber) -> Option<&FinalBlock> {
+    pub fn block(&self, n: BlockNumber) -> Option<&Block> {
         let first = self.0.blocks.first()?.number();
         self.0.blocks.get(n.0.checked_sub(first.0)? as usize)
     }
-
-    /// Pushes `count` batches with a random payload.
-    pub fn push_batches(&mut self, rng: &mut impl Rng, count: usize) {
-        for _ in 0..count {
-            self.push_batch(rng);
-        }
-    }
-
-    /// Pushes a new L1 batch.
-    pub fn push_batch(&mut self, rng: &mut impl Rng) {
-        let batch_number = match self.0.batches.last() {
-            Some(b) => b.number.next(),
-            None => attester::BatchNumber(0),
-        };
-        let size: usize = rng.gen_range(500..1000);
-        let payloads = vec![Payload((0..size).map(|_| rng.gen()).collect())];
-        let proof = rng.gen::<[u8; 32]>().to_vec();
-        let batch = attester::SyncBatch {
-            number: batch_number,
-            payloads,
-            proof,
-        };
-        self.0.batches.push(batch);
-    }
 }
 
-impl From<SetupSpec> for Setup {
-    fn from(spec: SetupSpec) -> Self {
-        Self(SetupInner {
+impl Setup {
+    /// Generates a new `Setup` from the given `SetupSpec`.
+    pub fn from_spec(rng: &mut impl Rng, spec: SetupSpec) -> Self {
+        let mut this = Self(SetupInner {
             genesis: GenesisRaw {
                 chain_id: spec.chain_id,
                 fork_number: spec.fork_number,
@@ -186,9 +175,20 @@ impl From<SetupSpec> for Setup {
             .with_hash(),
             validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
             attester_keys: spec.attester_weights.into_iter().map(|(k, _)| k).collect(),
-            batches: vec![],
             blocks: vec![],
-        })
+        });
+        // Populate pregenesis blocks.
+        for block in spec.first_pregenesis_block.0..spec.first_block.0 {
+            this.0.blocks.push(
+                PreGenesisBlock {
+                    number: BlockNumber(block),
+                    payload: rng.gen(),
+                    justification: rng.gen(),
+                }
+                .into(),
+            );
+        }
+        this
     }
 }
 
@@ -200,9 +200,7 @@ pub struct SetupInner {
     /// Attesters' secret keys.
     pub attester_keys: Vec<attester::SecretKey>,
     /// Past blocks.
-    pub blocks: Vec<FinalBlock>,
-    /// L1 batches
-    pub batches: Vec<attester::SyncBatch>,
+    pub blocks: Vec<Block>,
     /// Genesis config.
     pub genesis: Genesis,
 }
@@ -364,6 +362,32 @@ impl Distribution<FinalBlock> for Standard {
         FinalBlock {
             payload: rng.gen(),
             justification: rng.gen(),
+        }
+    }
+}
+
+impl Distribution<Justification> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Justification {
+        let size: usize = rng.gen_range(500..1000);
+        Justification((0..size).map(|_| rng.gen()).collect())
+    }
+}
+
+impl Distribution<PreGenesisBlock> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PreGenesisBlock {
+        PreGenesisBlock {
+            number: rng.gen(),
+            payload: rng.gen(),
+            justification: rng.gen(),
+        }
+    }
+}
+
+impl Distribution<Block> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Block {
+        match rng.gen_range(0..2) {
+            0 => Block::PreGenesis(rng.gen()),
+            _ => Block::Final(rng.gen()),
         }
     }
 }

@@ -1,11 +1,8 @@
 use super::{
     AggregateSignature, Batch, BatchHash, BatchNumber, BatchQC, Msg, MsgHash, MultiSig, PublicKey,
-    Signature, Signed, Signers, SyncBatch, WeightedAttester,
+    Signature, Signed, Signers, WeightedAttester,
 };
-use crate::{
-    proto::attester::{self as proto, Attestation},
-    validator::Payload,
-};
+use crate::proto::attester as proto;
 use anyhow::Context as _;
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
@@ -37,29 +34,6 @@ impl ProtoFmt for Batch {
             number: Some(self.number.0),
             hash: Some(self.hash.build()),
             genesis: Some(self.genesis.build()),
-        }
-    }
-}
-
-impl ProtoFmt for SyncBatch {
-    type Proto = proto::SyncBatch;
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let payloads = &r
-            .payloads
-            .iter()
-            .map(|p| Payload(p.clone()))
-            .collect::<Vec<Payload>>();
-        Ok(Self {
-            number: BatchNumber(*required(&r.number).context("number")?),
-            payloads: payloads.clone(),
-            proof: required(&r.proof).context("proof")?.to_vec(),
-        })
-    }
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            number: Some(self.number.0),
-            payloads: self.payloads.iter().map(|p| p.0.clone()).collect(),
-            proof: Some(self.proof.clone()),
         }
     }
 }
@@ -202,7 +176,7 @@ impl ProtoFmt for BatchQC {
             signatures: self
                 .signatures
                 .iter()
-                .map(|(pk, sig)| Attestation {
+                .map(|(pk, sig)| proto::Attestation {
                     key: Some(pk.build()),
                     sig: Some(sig.build()),
                 })

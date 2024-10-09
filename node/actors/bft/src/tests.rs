@@ -374,7 +374,7 @@ async fn run_twins(
             LeaderSelectionMode::Rota(scenario.rounds.iter().map(|rc| rc.leader.clone()).collect());
 
         // Generate a new setup with this leadership schedule.
-        let setup = Setup::from(spec.clone());
+        let setup = Setup::from_spec(rng, spec.clone());
 
         // Create a network with the partition schedule of the scenario.
         let splits: PortSplitSchedule = scenario
@@ -424,7 +424,7 @@ async fn run_twins(
             nodes: nodes.clone(),
             blocks_to_finalize,
         }
-        .run_with_config(ctx, nets.clone(), &setup.genesis)
+        .run_with_config(ctx, nets.clone(), &setup)
         .await?
     }
 
@@ -581,7 +581,7 @@ async fn run_with_custom_router(
             .collect(),
     );
 
-    let setup: Setup = spec.into();
+    let setup = Setup::from_spec(rng, spec);
 
     let port_to_id = nets
         .iter()
@@ -605,6 +605,6 @@ async fn run_with_custom_router(
         nodes,
         blocks_to_finalize,
     }
-    .run_with_config(ctx, nets, &setup.genesis)
+    .run_with_config(ctx, nets, &setup)
     .await
 }

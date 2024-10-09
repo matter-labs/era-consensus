@@ -69,8 +69,8 @@ message DebugPageConfig {
 
 // Application configuration. 
 message AppConfig {
-  reserved 9,13,14,15;
-  reserved "debug_addr", "debug_credentials", "debug_cert_path", "debug_key_path";
+  reserved 9,13,14,15,17;
+  reserved "debug_addr", "debug_credentials", "debug_cert_path", "debug_key_path", "max_batch_size";
 
   // Ports
 
@@ -97,9 +97,6 @@ message AppConfig {
 
   // Maximal size of the block payload.
   optional uint64 max_payload_size = 5; // required; bytes
-
-  // Maximal size of the sync batch payload.
-  optional uint64 max_batch_size = 17; // optional; bytes
 
   // Validator secret key.
   optional string validator_secret_key = 10; // optional; ValidatorSecretKey

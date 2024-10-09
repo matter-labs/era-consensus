@@ -20,7 +20,7 @@ use tracing::Instrument;
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync};
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BatchStore, BlockStore};
+use zksync_consensus_storage::BlockStore;
 
 pub mod attestation;
 mod fetch;
@@ -56,8 +56,6 @@ pub(crate) struct Network {
     pub(crate) validator_addrs: ValidatorAddrsWatch,
     /// Block store to serve `get_block` requests from.
     pub(crate) block_store: Arc<BlockStore>,
-    /// Batch store to serve `get_batch` requests from.
-    pub(crate) batch_store: Arc<BatchStore>,
     /// Output pipe of the network actor.
     pub(crate) sender: channel::UnboundedSender<io::OutputMessage>,
     /// Queue of block fetching requests.
@@ -77,7 +75,6 @@ impl Network {
     pub(crate) fn new(
         cfg: Config,
         block_store: Arc<BlockStore>,
-        batch_store: Arc<BatchStore>,
         sender: channel::UnboundedSender<io::OutputMessage>,
         attestation: Arc<attestation::Controller>,
     ) -> Arc<Self> {
@@ -92,7 +89,6 @@ impl Network {
             cfg,
             fetch_queue: fetch::Queue::default(),
             block_store,
-            batch_store,
             push_validator_addrs_calls: 0.into(),
             attestation,
         })
@@ -134,43 +130,6 @@ impl Network {
                         self.block_store.wait_until_persisted(ctx, number).await
                     }
                     .instrument(tracing::info_span!("fetch_block_from_peer", l2_block = %next)),
-                );
-            }
-        })
-        .await;
-    }
-
-    /// Task fetching batches from peers which are not present in storage.
-    pub(crate) async fn run_batch_fetcher(&self, ctx: &ctx::Ctx) {
-        let sem = sync::Semaphore::new(self.cfg.max_block_queue_size);
-        let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
-            let mut next = self.batch_store.queued().next();
-            loop {
-                let permit = sync::acquire(ctx, &sem).await?;
-                let number = ctx::NoCopy(next);
-                next = next + 1;
-                // Fetch a batch asynchronously.
-                s.spawn(
-                    async {
-                        let _permit = permit;
-                        let number = number.into();
-                        let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
-                            s.spawn_bg(
-                                self.fetch_queue
-                                    .request(ctx, RequestItem::Batch(number))
-                                    .instrument(tracing::info_span!("fetch_block_request")),
-                            );
-                            // Cancel fetching as soon as batch is queued for storage.
-                            self.batch_store.wait_until_queued(ctx, number).await?;
-                            Err(ctx::Canceled)
-                        })
-                        .instrument(tracing::info_span!("wait_for_batch_to_queue"))
-                        .await;
-                        // Wait until the batch is actually persisted, so that the amount of batches
-                        // stored in memory is bounded.
-                        self.batch_store.wait_until_persisted(ctx, number).await
-                    }
-                    .instrument(tracing::info_span!("fetch_batch_from_peer", l1_batch = %next)),
                 );
             }
         })

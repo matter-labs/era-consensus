@@ -7,49 +7,86 @@ use zksync_consensus_roles::validator;
 
 mod metrics;
 
+/// Last block in the block store (see `BlockStoreState`).
+/// Note that the commit qc is required in the case the block
+/// has been finalized by the consensus.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Last {
+    /// `<genesis.first_block`.
+    PreGenesis(validator::BlockNumber),
+    /// `>=genesis.first_block`.
+    Final(validator::CommitQC),
+}
+
+impl From<&validator::Block> for Last {
+    fn from(b: &validator::Block) -> Last {
+        use validator::Block as B;
+        match b {
+            B::PreGenesis(b) => Last::PreGenesis(b.number),
+            B::Final(b) => Last::Final(b.justification.clone()),
+        }
+    }
+}
+
+impl Last {
+    /// Converts Last to block number.
+    pub fn number(&self) -> validator::BlockNumber {
+        match self {
+            Last::PreGenesis(n) => *n,
+            Last::Final(qc) => qc.header().number,
+        }
+    }
+
+    /// Verifies Last.
+    pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
+        match self {
+            Last::PreGenesis(n) => anyhow::ensure!(n < &genesis.first_block, "missing qc"),
+            Last::Final(qc) => qc.verify(genesis)?,
+        }
+        Ok(())
+    }
+}
+
 /// State of the `BlockStore`: continuous range of blocks.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BlockStoreState {
     /// Stored block with the lowest number.
-    /// If last is `None`, this is the first block that should be fetched.
+    /// If `last` is `None`, this is the first block that should be fetched.
     pub first: validator::BlockNumber,
     /// Stored block with the highest number.
+    /// If it is lower than genesis.first, then it will be set to `Last::Number` and
+    /// the first blocks to be fetched will need to include the non-consensus justification
+    /// (see `PreGenesisBlock`).
     /// None iff store is empty.
-    pub last: Option<validator::CommitQC>,
+    pub last: Option<Last>,
 }
 
 impl BlockStoreState {
     /// Checks whether block with the given number is stored in the `BlockStore`.
     pub fn contains(&self, number: validator::BlockNumber) -> bool {
         let Some(last) = &self.last else { return false };
-        self.first <= number && number <= last.header().number
+        self.first <= number && number <= last.number()
     }
 
     /// Number of the next block that can be stored in the `BlockStore`.
     /// (i.e. `last` + 1).
     pub fn next(&self) -> validator::BlockNumber {
         match &self.last {
-            Some(qc) => qc.header().number.next(),
+            Some(last) => last.number().next(),
             None => self.first,
         }
     }
 
     /// Verifies `BlockStoreState'.
     pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
-        anyhow::ensure!(
-            genesis.first_block <= self.first,
-            "first block ({}) doesn't belong to the fork (which starts at block {})",
-            self.first,
-            genesis.first_block
-        );
         if let Some(last) = &self.last {
             anyhow::ensure!(
-                self.first <= last.header().number,
+                self.first <= last.number(),
                 "first block {} has bigger number than the last block {}",
                 self.first,
-                last.header().number
+                last.number(),
             );
-            last.verify(genesis).context("last.verify()")?;
+            last.verify(genesis).context("last")?;
         }
         Ok(())
     }
@@ -67,6 +104,15 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
     /// Range of blocks persisted in storage.
     fn persisted(&self) -> sync::watch::Receiver<BlockStoreState>;
 
+    /// Verifies a pre-genesis block.
+    /// It may interpret `block.justification`
+    /// and/or consult external source of truth.
+    async fn verify_pregenesis_block(
+        &self,
+        ctx: &ctx::Ctx,
+        block: &validator::PreGenesisBlock,
+    ) -> ctx::Result<()>;
+
     /// Gets a block by its number.
     /// All the blocks from `state()` range are expected to be available.
     /// Blocks that have been queued but haven't been persisted yet don't have to be available.
@@ -75,56 +121,46 @@ pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<validator::FinalBlock>;
+    ) -> ctx::Result<validator::Block>;
 
     /// Queue the block to be persisted in storage.
     /// `queue_next_block()` may return BEFORE the block is actually persisted,
     /// but if the call succeeded the block is expected to be persisted eventually.
     /// Implementations are only required to accept a block directly after the previous queued
     /// block, starting with `persisted().borrow().next()`.
-    async fn queue_next_block(
-        &self,
-        ctx: &ctx::Ctx,
-        block: validator::FinalBlock,
-    ) -> ctx::Result<()>;
+    async fn queue_next_block(&self, ctx: &ctx::Ctx, block: validator::Block) -> ctx::Result<()>;
 }
 
 #[derive(Debug)]
 struct Inner {
     queued: BlockStoreState,
     persisted: BlockStoreState,
-    cache: VecDeque<validator::FinalBlock>,
+    cache: VecDeque<validator::Block>,
 }
 
-impl Inner {
-    /// Minimal number of most recent blocks to keep in memory.
-    /// It allows to serve the recent blocks to peers fast, even
-    /// if persistent storage reads are slow (like in RocksDB).
-    /// `BlockStore` may keep in memory more blocks in case
-    /// blocks are queued faster than they are persisted.
-    const CACHE_CAPACITY: usize = 100;
+/// Minimal number of most recent blocks to keep in memory.
+/// It allows to serve the recent blocks to peers fast, even
+/// if persistent storage reads are slow (like in RocksDB).
+/// `BlockStore` may keep in memory more blocks in case
+/// blocks are queued faster than they are persisted.
+pub(crate) const CACHE_CAPACITY: usize = 100;
 
+impl Inner {
     /// Tries to push the next block to cache.
     /// Noop if provided block is not the expected one.
     /// Returns true iff cache has been modified.
-    fn try_push(&mut self, block: validator::FinalBlock) -> bool {
+    fn try_push(&mut self, block: validator::Block) -> bool {
         if self.queued.next() != block.number() {
             return false;
         }
-        self.queued.last = Some(block.justification.clone());
+        self.queued.last = Some(Last::from(&block));
         self.cache.push_back(block);
         self.truncate_cache();
         true
     }
 
     /// Updates `persisted` field.
-    #[tracing::instrument(
-        skip_all,
-        fields(
-            first_l2_block = %persisted.first,
-            last_l2_block = ?persisted.last.as_ref().map(|l| l.message.proposal.number)
-        )
-    )]
+    #[tracing::instrument(skip_all)]
     fn update_persisted(&mut self, persisted: BlockStoreState) -> anyhow::Result<()> {
         if persisted.next() < self.persisted.next() {
             anyhow::bail!("head block has been removed from storage, this is not supported");
@@ -145,18 +181,16 @@ impl Inner {
 
     /// If cache size has been exceeded, remove entries which were already persisted.
     fn truncate_cache(&mut self) {
-        while self.cache.len() > Self::CACHE_CAPACITY
-            && self.persisted.next() > self.cache[0].number()
-        {
+        while self.cache.len() > CACHE_CAPACITY && self.persisted.next() > self.cache[0].number() {
             self.cache.pop_front();
         }
     }
 
-    fn block(&self, n: validator::BlockNumber) -> Option<validator::FinalBlock> {
-        // Subtraction is safe, because blocks in cache are
-        // stored in increasing order of block number.
+    fn block(&self, n: validator::BlockNumber) -> Option<validator::Block> {
         let first = self.cache.front()?;
-        self.cache.get((n.0 - first.number().0) as usize).cloned()
+        self.cache
+            .get(n.0.checked_sub(first.number().0)? as usize)
+            .cloned()
     }
 }
 
@@ -276,7 +310,7 @@ impl BlockStore {
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<Option<validator::FinalBlock>> {
+    ) -> ctx::Result<Option<validator::Block>> {
         {
             let inner = self.inner.borrow();
             if !inner.queued.contains(number) {
@@ -296,18 +330,41 @@ impl BlockStore {
         Ok(Some(block))
     }
 
+    /// Verifies the block.
+    pub async fn verify_block(&self, ctx: &ctx::Ctx, block: &validator::Block) -> ctx::Result<()> {
+        use validator::Block as B;
+        match &block {
+            B::Final(b) => b.verify(&self.genesis).context("block.verify()")?,
+            B::PreGenesis(b) => {
+                if b.number >= self.genesis.first_block {
+                    return Err(anyhow::format_err!(
+                        "external justification is allowed only for pre-genesis blocks"
+                    )
+                    .into());
+                }
+                let t = metrics::PERSISTENT_BLOCK_STORE
+                    .verify_pregenesis_block_latency
+                    .start();
+                self.persistent
+                    .verify_pregenesis_block(ctx, b)
+                    .await
+                    .context("verify_pregenesis_block()")?;
+                t.observe();
+            }
+        }
+        Ok(())
+    }
+
     /// Append block to a queue to be persisted eventually.
     /// Since persisting a block may take a significant amount of time,
     /// BlockStore contains a queue of blocks waiting to be persisted.
     /// `queue_block()` adds a block to the queue as soon as all intermediate
     /// blocks are queued_state as well. Queue is unbounded, so it is caller's
     /// responsibility to manage the queue size.
-    pub async fn queue_block(
-        &self,
-        ctx: &ctx::Ctx,
-        block: validator::FinalBlock,
-    ) -> ctx::Result<()> {
-        block.verify(&self.genesis).context("block.verify()")?;
+    pub async fn queue_block(&self, ctx: &ctx::Ctx, block: validator::Block) -> ctx::Result<()> {
+        self.verify_block(ctx, &block)
+            .await
+            .with_wrap(|| format!("verify_block({})", block.number()))?;
         sync::wait_for(ctx, &mut self.inner.subscribe(), |inner| {
             inner.queued.next() >= block.number()
         })

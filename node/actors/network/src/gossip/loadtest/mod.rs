@@ -29,7 +29,7 @@ impl<'a> PushBlockStoreStateServer {
         let state =
             sync::wait_for(ctx, sub, |s| (|| s.as_ref()?.last.as_ref())().is_some()).await?;
         let state = state.as_ref().unwrap();
-        Ok(state.first..state.last.as_ref().unwrap().header().number + 1)
+        Ok(state.first..state.last.as_ref().unwrap().number() + 1)
     }
 }
 
@@ -43,7 +43,7 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushBlockStoreStateServ
         _ctx: &ctx::Ctx,
         req: rpc::push_block_store_state::Req,
     ) -> anyhow::Result<()> {
-        self.0.send_replace(Some(req.0));
+        self.0.send_replace(Some(req.state()));
         Ok(())
     }
 }
@@ -76,7 +76,7 @@ pub struct Loadtest {
     /// Traffic pattern to generate.
     pub traffic_pattern: TrafficPattern,
     /// Channel to send the received responses to.
-    pub output: Option<ctx::channel::Sender<Option<validator::FinalBlock>>>,
+    pub output: Option<ctx::channel::Sender<Option<validator::Block>>>,
 }
 
 impl Loadtest {

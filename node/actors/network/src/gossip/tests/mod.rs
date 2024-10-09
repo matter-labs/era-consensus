@@ -22,7 +22,6 @@ use zksync_concurrency::{
 use zksync_consensus_roles::{attester, validator};
 use zksync_consensus_storage::testonly::TestMemoryStorage;
 
-mod fetch_batches;
 mod fetch_blocks;
 mod syncing;
 
@@ -36,10 +35,10 @@ async fn test_one_connection_per_node() {
     let cfgs = testonly::new_configs(rng, &setup, 2);
 
     scope::run!(ctx, |ctx,s| async {
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         let mut nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
-            let (node,runner) = testonly::Instance::new(cfg.clone(), store.blocks.clone(), store.batches.clone());
+            let (node,runner) = testonly::Instance::new(cfg.clone(), store.blocks.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             node
         }).collect();
@@ -242,17 +241,13 @@ async fn test_validator_addrs_propagation() {
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         let nodes: Vec<_> = cfgs
             .iter()
             .enumerate()
             .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(
-                    cfg.clone(),
-                    store.blocks.clone(),
-                    store.batches.clone(),
-                );
+                let (node, runner) = testonly::Instance::new(cfg.clone(), store.blocks.clone());
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                 node
             })
@@ -289,10 +284,9 @@ async fn test_genesis_mismatch() {
         let mut listener = cfgs[1].server_addr.bind().context("server_addr.bind()")?;
 
         tracing::info!("Start one node, we will simulate the other one.");
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
-        let (_node, runner) =
-            testonly::Instance::new(cfgs[0].clone(), store.blocks, store.batches.clone());
+        let (_node, runner) = testonly::Instance::new(cfgs[0].clone(), store.blocks);
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         tracing::info!("Accept a connection with mismatching genesis.");
@@ -349,9 +343,8 @@ async fn validator_node_restart() {
     for cfg in &mut cfgs {
         cfg.rpc.push_validator_addrs_rate.refresh = time::Duration::ZERO;
     }
-    let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
-    let (node1, node1_runner) =
-        testonly::Instance::new(cfgs[1].clone(), store.blocks.clone(), store.batches.clone());
+    let store = TestMemoryStorage::new(ctx, &setup).await;
+    let (node1, node1_runner) = testonly::Instance::new(cfgs[1].clone(), store.blocks.clone());
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(store.runner.run(ctx));
         s.spawn_bg(
@@ -380,11 +373,7 @@ async fn validator_node_restart() {
 
             // _node0 contains pipe, which has to exist to prevent the connection from dying
             // early.
-            let (_node0, runner) = testonly::Instance::new(
-                cfgs[0].clone(),
-                store.blocks.clone(),
-                store.batches.clone(),
-            );
+            let (_node0, runner) = testonly::Instance::new(cfgs[0].clone(), store.blocks.clone());
             scope::run!(ctx, |ctx, s| async {
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
                 tracing::info!("wait for the update to arrive to node1");
@@ -406,7 +395,7 @@ async fn validator_node_restart() {
     .unwrap();
 }
 
-/// Test that SyncValidatorAddrs RPC batches updates
+/// Test that PushValidatorAddrs RPC batches updates
 /// and is rate limited. Test is constructing a gossip
 /// network with star topology. All nodes are expected
 /// to receive all updates in 2 rounds of communication.
@@ -437,13 +426,12 @@ async fn rate_limiting() {
     }
     let mut nodes = vec![];
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         // Spawn the satellite nodes and wait until they register
         // their own address.
         for (i, cfg) in cfgs[1..].iter().enumerate() {
-            let (node, runner) =
-                testonly::Instance::new(cfg.clone(), store.blocks.clone(), store.batches.clone());
+            let (node, runner) = testonly::Instance::new(cfg.clone(), store.blocks.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             let sub = &mut node.net.gossip.validator_addrs.subscribe();
             sync::wait_for(ctx, sub, |got| {
@@ -456,8 +444,7 @@ async fn rate_limiting() {
         }
 
         // Spawn the center node.
-        let (center, runner) =
-            testonly::Instance::new(cfgs[0].clone(), store.blocks.clone(), store.batches.clone());
+        let (center, runner) = testonly::Instance::new(cfgs[0].clone(), store.blocks.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node[0]")));
         // Await for the center to receive all validator addrs.
         let sub = &mut center.net.gossip.validator_addrs.subscribe();
@@ -524,7 +511,7 @@ async fn test_batch_votes_propagation() {
 
     scope::run!(ctx, |ctx, s| async {
         // All nodes share the same store - store is not used in this test anyway.
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
 
         // Start all nodes.
@@ -534,7 +521,6 @@ async fn test_batch_votes_propagation() {
             let (node, runner) = testonly::Instance::new_from_config(testonly::InstanceConfig {
                 cfg: cfg.clone(),
                 block_store: store.blocks.clone(),
-                batch_store: store.batches.clone(),
                 attestation: attestation::Controller::new(Some(setup.attester_keys[i].clone()))
                     .into(),
             });

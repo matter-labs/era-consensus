@@ -14,14 +14,13 @@ async fn test_metrics() {
     let setup = validator::testonly::Setup::new(rng, 3);
     let cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup.genesis).await;
+        let store = TestMemoryStorage::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         let nodes: Vec<_> = cfgs
             .into_iter()
             .enumerate()
             .map(|(i, cfg)| {
-                let (node, runner) =
-                    testonly::Instance::new(cfg, store.blocks.clone(), store.batches.clone());
+                let (node, runner) = testonly::Instance::new(cfg, store.blocks.clone());
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                 node
             })

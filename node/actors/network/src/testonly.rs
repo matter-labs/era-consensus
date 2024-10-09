@@ -18,7 +18,7 @@ use zksync_concurrency::{
     io, limiter, net, scope, sync,
 };
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BatchStore, BlockStore};
+use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe;
 
 impl Distribution<Target> for Standard {
@@ -59,10 +59,10 @@ pub(crate) fn make_config(key: node::SecretKey) -> Config {
             static_outbound: HashMap::default(),
         },
         max_block_size: usize::MAX,
-        max_batch_size: usize::MAX,
         tcp_accept_rate: limiter::Rate::INF,
         rpc: RpcConfig::default(),
         max_block_queue_size: 10,
+        enable_pregenesis: true,
     }
 }
 
@@ -160,17 +160,16 @@ pub fn new_fullnode(rng: &mut impl Rng, peer: &Config) -> Config {
             static_outbound: [(peer.gossip.key.public(), peer.public_addr.clone())].into(),
         },
         max_block_size: usize::MAX,
-        max_batch_size: usize::MAX,
         tcp_accept_rate: limiter::Rate::INF,
         rpc: RpcConfig::default(),
         max_block_queue_size: 10,
+        enable_pregenesis: true,
     }
 }
 
 /// Runner for Instance.
 pub struct InstanceRunner {
     net_runner: Runner,
-    batch_store: Arc<BatchStore>,
     terminate: channel::Receiver<()>,
 }
 
@@ -194,8 +193,6 @@ pub struct InstanceConfig {
     pub cfg: Config,
     /// block_store
     pub block_store: Arc<BlockStore>,
-    /// batch_store
-    pub batch_store: Arc<BatchStore>,
     /// Attestation controller.
     /// It is not configured by default.
     /// Attestation tests should configure it and consume
@@ -205,15 +202,10 @@ pub struct InstanceConfig {
 
 impl Instance {
     /// Constructs a new instance.
-    pub fn new(
-        cfg: Config,
-        block_store: Arc<BlockStore>,
-        batch_store: Arc<BatchStore>,
-    ) -> (Self, InstanceRunner) {
+    pub fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self, InstanceRunner) {
         Self::new_from_config(InstanceConfig {
             cfg,
             block_store,
-            batch_store,
             attestation: attestation::Controller::new(None).into(),
         })
     }
@@ -224,7 +216,6 @@ impl Instance {
         let (net, net_runner) = Network::new(
             cfg.cfg,
             cfg.block_store.clone(),
-            cfg.batch_store.clone(),
             actor_pipe,
             cfg.attestation,
         );
@@ -237,7 +228,6 @@ impl Instance {
             },
             InstanceRunner {
                 net_runner,
-                batch_store: cfg.batch_store.clone(),
                 terminate: terminate_recv,
             },
         )

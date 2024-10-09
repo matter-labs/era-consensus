@@ -34,7 +34,6 @@ pub(super) struct Node {
     pub(crate) net: network::Config,
     pub(crate) behavior: Behavior,
     pub(crate) block_store: Arc<storage::BlockStore>,
-    pub(crate) batch_store: Arc<storage::BatchStore>,
 }
 
 impl Node {

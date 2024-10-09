@@ -2,8 +2,8 @@
 use super::Capability;
 use crate::proto::gossip as proto;
 use anyhow::Context;
-use zksync_consensus_roles::validator::{BlockNumber, FinalBlock};
-use zksync_protobuf::{read_optional, ProtoFmt};
+use zksync_consensus_roles::validator;
+use zksync_protobuf::ProtoFmt;
 
 /// `get_block` RPC.
 #[derive(Debug)]
@@ -21,38 +21,67 @@ impl super::Rpc for Rpc {
 
 /// Asks the server to send a block (including its transactions).
 #[derive(Debug, PartialEq)]
-pub(crate) struct Req(pub(crate) BlockNumber);
+pub(crate) struct Req(pub(crate) validator::BlockNumber);
 
 impl ProtoFmt for Req {
     type Proto = proto::GetBlockRequest;
 
     fn read(message: &Self::Proto) -> anyhow::Result<Self> {
         let number = message.number.context("number")?;
-        Ok(Self(BlockNumber(number)))
+        Ok(Self(validator::BlockNumber(number)))
     }
 
     fn build(&self) -> Self::Proto {
-        let BlockNumber(number) = self.0;
         Self::Proto {
-            number: Some(number),
+            number: Some(self.0 .0),
         }
     }
 }
 
 /// Response to a [`GetBlockRequest`] containing a block or a reason it cannot be retrieved.
 #[derive(Debug, PartialEq)]
-pub(crate) struct Resp(pub(crate) Option<FinalBlock>);
+pub(crate) struct Resp(pub(crate) Option<validator::Block>);
+
+impl Resp {
+    /// Clears pregenesis data from the response.
+    /// Use to simulate node behavior before pre-genesis support.
+    pub(crate) fn clear_pregenesis_data(&mut self) {
+        if let Some(validator::Block::PreGenesis(_)) = &self.0 {
+            self.0 = None;
+        }
+    }
+}
 
 impl ProtoFmt for Resp {
     type Proto = proto::GetBlockResponse;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(read_optional(&r.block).context("block")?))
+        use validator::Block as B;
+        let block = r
+            .block
+            .as_ref()
+            .map(ProtoFmt::read)
+            .transpose()
+            .context("block")?
+            .map(B::Final);
+        let pregenesis = r
+            .pre_genesis
+            .as_ref()
+            .map(ProtoFmt::read)
+            .transpose()
+            .context("pre_genesis")?
+            .map(B::PreGenesis);
+        Ok(Self(block.or(pregenesis)))
     }
 
     fn build(&self) -> Self::Proto {
-        Self::Proto {
-            block: self.0.as_ref().map(ProtoFmt::build),
+        use validator::Block as B;
+        let mut p = Self::Proto::default();
+        match self.0.as_ref() {
+            Some(B::Final(b)) => p.block = Some(b.build()),
+            Some(B::PreGenesis(b)) => p.pre_genesis = Some(b.build()),
+            None => {}
         }
+        p
     }
 }

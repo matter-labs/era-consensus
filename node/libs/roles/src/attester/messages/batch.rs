@@ -1,35 +1,7 @@
 use super::{GenesisHash, Signed};
-use crate::{attester, validator::Payload};
+use crate::attester;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
-
-/// A batch of L2 blocks used for the peers to fetch and keep in sync.
-///
-/// The use case for this is for peers to be able to catch up with L1
-/// batches they missed during periods of being offline. These will
-/// come with a proof of having been included on L1, rather than an
-/// attester quorum certificate.
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct SyncBatch {
-    /// The number of the batch.
-    pub number: BatchNumber,
-    /// The payloads of the blocks the batch contains.
-    pub payloads: Vec<Payload>,
-    /// The proof of the batch.
-    ///
-    /// It is going to be a Merkle proof the the batch has been included
-    /// in the state of the L1 system contract (not the L1 state root hash).
-    /// It can be produced as soon as we have the commitment available
-    /// locally, but validation requires a trusted L1 client to look up
-    /// the system contract state.
-    pub proof: Vec<u8>,
-}
-
-impl PartialOrd for SyncBatch {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.number.partial_cmp(&other.number)
-    }
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 /// A batch number.
