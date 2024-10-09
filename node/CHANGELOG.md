@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/matter-labs/era-consensus/compare/v0.4.0...v0.5.0) (2024-10-09)
+
+
+### Features
+
+* support for syncing pre-genesis blocks ([#203](https://github.com/matter-labs/era-consensus/issues/203)) ([6a4a695](https://github.com/matter-labs/era-consensus/commit/6a4a69511b5c0611603eb881e9e3f443e69949bc))
+
 ## [0.4.0](https://github.com/matter-labs/era-consensus/compare/v0.3.0...v0.4.0) (2024-10-07)
 
 
