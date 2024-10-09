@@ -6,7 +6,10 @@ use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::validator;
 
 mod metrics;
-/// TODO: docs
+
+/// Last block in the block store (see `BlockStoreState`).
+/// Note that the commit qc is required in the case the block
+/// has been finalized by the consensus.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Last {
     /// `<genesis.first_block`.
