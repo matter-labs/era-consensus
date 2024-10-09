@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/matter-labs/era-consensus/compare/v0.3.0...v0.4.0) (2024-10-07)
+
+
+### Features
+
+* Expand metrics in HTTP debug page ([#205](https://github.com/matter-labs/era-consensus/issues/205)) ([2ef11bc](https://github.com/matter-labs/era-consensus/commit/2ef11bc0bc0ef9b332c4a4c2715c523143e844bd))
+
 ## [0.3.0](https://github.com/matter-labs/era-consensus/compare/v0.2.0...v0.3.0) (2024-09-26)
 
 
