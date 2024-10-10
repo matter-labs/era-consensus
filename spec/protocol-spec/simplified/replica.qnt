@@ -832,6 +832,8 @@ module replica {
                 ghost_block_number: block_number,
             }
             all {
+                // assert!(justification.view() == cur_view)
+                justification.view() == replica_state_view,
                 // Propose only if you have collected all committed blocks so far.
                 val committed_blocks = replica_state.get(replica_id).committed_blocks
                 block_number == length(committed_blocks),
