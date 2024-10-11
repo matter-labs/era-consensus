@@ -623,12 +623,16 @@ module inductive {
                 r::msgs_signed_commit.filter(m => m.sig == id).map(m => m.vote)
             and {
                 match (self.high_vote) {
-                | None => all_commit_votes == Set()
+                | None =>
+                    all_commit_votes == Set()
+
                 | Some(hv) =>
                     and {
                         // The high vote has the highest view among the commit votes.
                         all_commit_votes.contains(hv),
-                        all_commit_votes.forall(v => v.view <= hv.view)
+                        all_commit_votes.forall(v => (v.view <= hv.view)),
+                        // The high vote is synchronized with the replica view
+                        hv.view <= self.view,
                     }
                 }
             }
