@@ -2,7 +2,7 @@
 use super::{
     AggregateSignature, Block, BlockHeader, BlockNumber, ChainId, CommitQC, Committee,
     ConsensusMsg, FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, Justification,
-    LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
+    LeaderCommit, LeaderProposal, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
     PreGenesisBlock, PrepareQC, ProofOfPossession, ProtocolVersion, PublicKey, ReplicaCommit,
     ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
@@ -411,9 +411,9 @@ impl Distribution<ReplicaCommit> for Standard {
     }
 }
 
-impl Distribution<LeaderPrepare> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderPrepare {
-        LeaderPrepare {
+impl Distribution<LeaderProposal> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderProposal {
+        LeaderProposal {
             proposal: rng.gen(),
             proposal_payload: rng.gen(),
             justification: rng.gen(),

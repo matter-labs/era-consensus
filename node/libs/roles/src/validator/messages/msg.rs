@@ -116,9 +116,9 @@ impl<V: Variant<Msg> + Clone> Signed<V> {
 impl<V: Variant<Msg>> Signed<V> {
     /// Casts a signed message variant to sub/super variant.
     /// It is an equivalent of constructing/deconstructing enum values.
-    pub fn cast<V2: Variant<Msg>>(self) -> Result<Signed<V2>, BadVariantError> {
+    pub fn cast<V: Variant<Msg>>(self) -> Result<Signed<V>, BadVariantError> {
         Ok(Signed {
-            msg: V2::extract(self.msg.insert())?,
+            msg: V::extract(self.msg.insert())?,
             key: self.key,
             sig: self.sig,
         })

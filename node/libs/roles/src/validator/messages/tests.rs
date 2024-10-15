@@ -313,8 +313,8 @@ mod version1 {
     }
 
     /// Hardcoded `LeaderPrepare`.
-    fn leader_prepare() -> LeaderPrepare {
-        LeaderPrepare {
+    fn leader_prepare() -> LeaderProposal {
+        LeaderProposal {
             proposal: block_header(),
             proposal_payload: Some(payload()),
             justification: prepare_qc(),

@@ -1,7 +1,7 @@
 use super::{
     AggregateSignature, Block, BlockHeader, BlockNumber, ChainId, CommitQC, Committee,
     ConsensusMsg, FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, Justification,
-    LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
+    LeaderCommit, LeaderProposal, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
     PreGenesisBlock, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare,
     Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
 };
@@ -265,7 +265,7 @@ impl ProtoFmt for ReplicaCommit {
     }
 }
 
-impl ProtoFmt for LeaderPrepare {
+impl ProtoFmt for LeaderProposal {
     type Proto = proto::LeaderPrepare;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {

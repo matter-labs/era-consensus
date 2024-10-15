@@ -1,5 +1,5 @@
 //! Messages related to the consensus protocol.
-use super::{BlockNumber, LeaderCommit, LeaderPrepare, Msg, ReplicaCommit, ReplicaPrepare};
+use super::{BlockNumber, LeaderCommit, LeaderProposal, Msg, ReplicaCommit, ReplicaPrepare};
 use crate::{attester, validator};
 use anyhow::Context;
 use bit_vec::BitVec;
@@ -351,7 +351,7 @@ impl Genesis {
 pub enum ConsensusMsg {
     ReplicaPrepare(ReplicaPrepare),
     ReplicaCommit(ReplicaCommit),
-    LeaderPrepare(LeaderPrepare),
+    LeaderPrepare(LeaderProposal),
     LeaderCommit(LeaderCommit),
 }
 
@@ -406,7 +406,7 @@ impl Variant<Msg> for ReplicaCommit {
     }
 }
 
-impl Variant<Msg> for LeaderPrepare {
+impl Variant<Msg> for LeaderProposal {
     fn insert(self) -> Msg {
         ConsensusMsg::LeaderPrepare(self).insert()
     }
@@ -431,7 +431,7 @@ impl Variant<Msg> for LeaderCommit {
 }
 
 /// View specification.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct View {
     /// Genesis of the chain this view belongs to.
     pub genesis: GenesisHash,
@@ -444,6 +444,14 @@ impl View {
     pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
         anyhow::ensure!(self.genesis == genesis.hash(), "genesis mismatch");
         Ok(())
+    }
+
+    /// Increments the view number.
+    pub fn next(self) -> Self {
+        Self {
+            genesis: self.genesis,
+            number: ViewNumber(self.number.0 + 1),
+        }
     }
 }
 
