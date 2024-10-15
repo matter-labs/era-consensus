@@ -239,7 +239,7 @@ fn test_commit_qc() {
             .take(i)
             .map(|w| w.weight)
             .sum();
-        if expected_weight >= setup1.genesis.validators.threshold() {
+        if expected_weight >= setup1.genesis.validators.quorum_threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {
             assert_matches!(
@@ -340,7 +340,7 @@ fn test_prepare_qc() {
             .take(n)
             .map(|w| w.weight)
             .sum();
-        if expected_weight >= setup1.genesis.validators.threshold() {
+        if expected_weight >= setup1.genesis.validators.quorum_threshold() {
             qc.verify(&setup1.genesis).unwrap();
         } else {
             assert_matches!(

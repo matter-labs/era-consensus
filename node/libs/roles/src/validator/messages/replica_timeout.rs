@@ -183,7 +183,7 @@ impl TimeoutQC {
 
         // Verify the signers' weight is enough.
         let weight = genesis.validators.weight(&sum);
-        let threshold = genesis.validators.threshold();
+        let threshold = genesis.validators.quorum_threshold();
         if weight < threshold {
             return Err(TimeoutQCVerifyError::NotEnoughSigners {
                 got: weight,

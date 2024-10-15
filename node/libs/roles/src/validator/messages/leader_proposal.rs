@@ -12,7 +12,7 @@ pub struct LeaderProposal {
     /// `None` iff this is a reproposal.
     pub proposal_payload: Option<Payload>,
     // What attests to the validity of this proposal.
-    pub justification: Justification,
+    pub justification: ProposalJustification,
 }
 
 impl LeaderProposal {
@@ -75,7 +75,7 @@ impl LeaderProposal {
 pub enum LeaderProposalVerifyError {
     /// Invalid Justification.
     #[error("justification: {0:#}")]
-    Justification(JustificationVerifyError),
+    Justification(ProposalJustificationVerifyError),
     /// Bad block number.
     #[error("bad block number: got {got:?}, want {want:?}")]
     BadBlockNumber {
@@ -109,7 +109,7 @@ pub enum LeaderProposalVerifyError {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Justification {
+pub enum ProposalJustification {
     // This proposal is being proposed after a view where we finalized a block.
     // A commit QC is just a collection of commit votes (with at least
     // QUORUM_WEIGHT) for the previous view. Note that the commit votes MUST
@@ -123,35 +123,35 @@ pub enum Justification {
     Timeout(TimeoutQC),
 }
 
-impl Justification {
-    fn view(&self) -> View {
+impl ProposalJustification {
+    pub fn view(&self) -> View {
         match self {
-            Justification::Commit(qc) => qc.view().next(),
-            Justification::Timeout(qc) => qc.view.next(),
+            ProposalJustification::Commit(qc) => qc.view().next(),
+            ProposalJustification::Timeout(qc) => qc.view.next(),
         }
     }
 
-    fn verify(&self, genesis: &Genesis) -> Result<(), JustificationVerifyError> {
+    pub fn verify(&self, genesis: &Genesis) -> Result<(), ProposalJustificationVerifyError> {
         match self {
-            Justification::Commit(qc) => {
-                qc.verify(genesis).map_err(JustificationVerifyError::Commit)
-            }
-            Justification::Timeout(qc) => qc
+            ProposalJustification::Commit(qc) => qc
                 .verify(genesis)
-                .map_err(JustificationVerifyError::Timeout),
+                .map_err(ProposalJustificationVerifyError::Commit),
+            ProposalJustification::Timeout(qc) => qc
+                .verify(genesis)
+                .map_err(ProposalJustificationVerifyError::Timeout),
         }
     }
 
     // This returns the BlockNumber that is implied by this justification.
     // If the justification requires a block reproposal, it also returns
     // the PayloadHash that must be reproposed.
-    fn get_implied_block(&self, genesis: &Genesis) -> (BlockNumber, Option<PayloadHash>) {
+    pub fn get_implied_block(&self, genesis: &Genesis) -> (BlockNumber, Option<PayloadHash>) {
         match self {
-            Justification::Commit(qc) => {
+            ProposalJustification::Commit(qc) => {
                 // The previous proposal was finalized, so we can propose a new block.
                 (qc.header().number.next(), None)
             }
-            Justification::Timeout(qc) => {
+            ProposalJustification::Timeout(qc) => {
                 // Get the high vote of the timeout QC, if it exists. We check if there are
                 // timeout votes with at least an added weight of SUBQUORUM_WEIGHT,
                 // that have a high vote field for the same block. A QC can have
@@ -187,9 +187,9 @@ impl Justification {
     }
 }
 
-/// Error returned by `Justification::verify()`.
+/// Error returned by `ProposalJustification::verify()`.
 #[derive(thiserror::Error, Debug)]
-pub enum JustificationVerifyError {
+pub enum ProposalJustificationVerifyError {
     /// Invalid Timeout QC.
     #[error("timeout qc: {0:#}")]
     Timeout(TimeoutQCVerifyError),
