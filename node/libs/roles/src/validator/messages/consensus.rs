@@ -188,4 +188,5 @@ impl std::ops::BitAnd for &Signers {
 pub enum Phase {
     Prepare,
     Commit,
+    Timeout,
 }

@@ -1,5 +1,5 @@
 //! Messages related to the consensus protocol.
-use super::{max_faulty_weight, quorum_threshold, subquorum_threshold, Signers, ViewNumber};
+use super::{Signers, ViewNumber};
 use crate::validator;
 use anyhow::Context;
 use num_bigint::BigUint;
@@ -187,4 +187,26 @@ impl LeaderSelectionMode {
         // Assumes that `ret_big` does not exceed 64 bits due to the modulo operation with a 64 bits-capped value.
         ret_big.to_u64_digits()[0]
     }
+}
+
+/// Calculate the maximum allowed weight for faulty replicas, for a given total weight.
+pub fn max_faulty_weight(total_weight: u64) -> u64 {
+    // Calculate the allowed maximum weight of faulty replicas. We want the following relationship to hold:
+    //      n = 5*f + 1
+    // for n total weight and f faulty weight. This results in the following formula for the maximum
+    // weight of faulty replicas:
+    //      f = floor((n - 1) / 5)
+    (total_weight - 1) / 5
+}
+
+/// Calculate the consensus quorum threshold, the minimum votes' weight necessary to finalize a block,
+/// for a given committee total weight.
+pub fn quorum_threshold(total_weight: u64) -> u64 {
+    total_weight - max_faulty_weight(total_weight)
+}
+
+/// Calculate the consensus subquorum threshold, the minimum votes' weight necessary to trigger a reproposal,
+/// for a given committee total weight.
+pub fn subquorum_threshold(total_weight: u64) -> u64 {
+    total_weight - 3 * max_faulty_weight(total_weight)
 }
