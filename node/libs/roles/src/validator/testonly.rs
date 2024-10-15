@@ -2,9 +2,10 @@
 use super::{
     AggregateSignature, Block, BlockHeader, BlockNumber, ChainId, CommitQC, Committee,
     ConsensusMsg, FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, Justification,
-    LeaderCommit, LeaderProposal, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
-    PreGenesisBlock, PrepareQC, ProofOfPossession, ProtocolVersion, PublicKey, ReplicaCommit,
-    ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
+    LeaderProposal, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PreGenesisBlock,
+    ProofOfPossession, ProposalJustification, ProtocolVersion, PublicKey, ReplicaCommit,
+    ReplicaNewView, ReplicaTimeout, SecretKey, Signature, Signed, Signers, TimeoutQC, View,
+    ViewNumber, WeightedValidator,
 };
 use crate::{attester, validator::LeaderSelectionMode};
 use bit_vec::BitVec;
@@ -392,9 +393,9 @@ impl Distribution<Block> for Standard {
     }
 }
 
-impl Distribution<ReplicaPrepare> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaPrepare {
-        ReplicaPrepare {
+impl Distribution<ReplicaTimeout> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaTimeout {
+        ReplicaTimeout {
             view: rng.gen(),
             high_vote: rng.gen(),
             high_qc: rng.gen(),
@@ -411,6 +412,14 @@ impl Distribution<ReplicaCommit> for Standard {
     }
 }
 
+impl Distribution<ReplicaNewView> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaNewView {
+        ReplicaNewView {
+            justification: rng.gen(),
+        }
+    }
+}
+
 impl Distribution<LeaderProposal> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderProposal {
         LeaderProposal {
@@ -421,20 +430,12 @@ impl Distribution<LeaderProposal> for Standard {
     }
 }
 
-impl Distribution<LeaderCommit> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderCommit {
-        LeaderCommit {
-            justification: rng.gen(),
-        }
-    }
-}
-
-impl Distribution<PrepareQC> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PrepareQC {
+impl Distribution<TimeoutQC> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TimeoutQC {
         let n = rng.gen_range(1..11);
         let map = (0..n).map(|_| (rng.gen(), rng.gen())).collect();
 
-        PrepareQC {
+        TimeoutQC {
             view: rng.gen(),
             map,
             signature: rng.gen(),
@@ -448,6 +449,16 @@ impl Distribution<CommitQC> for Standard {
             message: rng.gen(),
             signers: rng.gen(),
             signature: rng.gen(),
+        }
+    }
+}
+
+impl Distribution<ProposalJustification> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ProposalJustification {
+        match rng.gen_range(0..2) {
+            0 => ProposalJustification::Commit(rng.gen()),
+            1 => ProposalJustification::Timeout(rng.gen()),
+            _ => unreachable!(),
         }
     }
 }
@@ -523,10 +534,10 @@ impl Distribution<Msg> for Standard {
 impl Distribution<ConsensusMsg> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ConsensusMsg {
         match rng.gen_range(0..4) {
-            0 => ConsensusMsg::ReplicaPrepare(rng.gen()),
+            0 => ConsensusMsg::LeaderProposal(rng.gen()),
             1 => ConsensusMsg::ReplicaCommit(rng.gen()),
-            2 => ConsensusMsg::LeaderPrepare(rng.gen()),
-            3 => ConsensusMsg::LeaderCommit(rng.gen()),
+            2 => ConsensusMsg::ReplicaNewView(rng.gen()),
+            3 => ConsensusMsg::ReplicaTimeout(rng.gen()),
             _ => unreachable!(),
         }
     }
