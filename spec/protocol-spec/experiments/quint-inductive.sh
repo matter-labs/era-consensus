@@ -63,7 +63,7 @@ EOF
 done
 
 parallel -j ${max_jobs} -v --shuf --bar --eta --delay 1 \
-  --memsuspend ${memsuspend} --joblog $TMPDIR/parallel.log \
+  --memfree ${memsuspend} --joblog $TMPDIR/parallel.log \
   --halt now,fail=${max_failing_jobs} \
   --results out --colsep=, -a ${CSV} \
   JVM_ARGS=-Xmx40G quint verify --max-steps=1 --init=${init} --step=${step} \
