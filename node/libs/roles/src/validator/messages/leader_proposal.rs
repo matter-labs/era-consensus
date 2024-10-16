@@ -3,7 +3,7 @@ use super::{
     TimeoutQC, TimeoutQCVerifyError, View,
 };
 
-/// A Proposal message from the leader.
+/// A proposal message from the leader.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeaderProposal {
     /// The header of the block that the leader is proposing.
@@ -56,7 +56,7 @@ impl LeaderProposal {
             return Err(LeaderProposalVerifyError::NewProposalWhenPreviousNotFinalized);
         }
 
-        // Check that the payload matches the header.
+        // Check that the payload matches the header, if it exists.
         if let Some(payload) = &self.proposal_payload {
             if payload.hash() != self.proposal.payload {
                 return Err(LeaderProposalVerifyError::MismatchedPayload {
@@ -74,10 +74,10 @@ impl LeaderProposal {
 #[derive(thiserror::Error, Debug)]
 pub enum LeaderProposalVerifyError {
     /// Invalid Justification.
-    #[error("justification: {0:#}")]
+    #[error("Invalid justification: {0:#}")]
     Justification(ProposalJustificationVerifyError),
     /// Bad block number.
-    #[error("bad block number: got {got:?}, want {want:?}")]
+    #[error("Bad block number: got {got:?}, want {want:?}")]
     BadBlockNumber {
         /// Received proposal number.
         got: BlockNumber,
@@ -85,7 +85,7 @@ pub enum LeaderProposalVerifyError {
         want: BlockNumber,
     },
     /// Bad payload hash on reproposal.
-    #[error("bad payload hash on reproposal: got {got:?}, want {want:?}")]
+    #[error("Bad payload hash on reproposal: got {got:?}, want {want:?}")]
     BadPayloadHash {
         /// Received payload hash.
         got: PayloadHash,
@@ -93,13 +93,13 @@ pub enum LeaderProposalVerifyError {
         want: PayloadHash,
     },
     /// New block proposal when the previous proposal was not finalized.
-    #[error("new block proposal when the previous proposal was not finalized")]
+    #[error("New block proposal when the previous proposal was not finalized")]
     NewProposalWhenPreviousNotFinalized,
     /// Re-proposal when the previous proposal was finalized.
-    #[error("block re-proposal when the previous proposal was finalized")]
+    #[error("Block re-proposal when the previous proposal was finalized")]
     ReproposalWhenPreviousFinalized,
     /// Mismatched payload.
-    #[error("block proposal with mismatched payload: header {header:?}, payload {payload:?}")]
+    #[error("Block proposal with mismatched payload: header {header:?}, payload {payload:?}")]
     MismatchedPayload {
         /// Payload hash on block header.
         header: PayloadHash,
@@ -166,8 +166,13 @@ impl ProposalJustification {
 
                 // Get the high commit QC of the timeout QC. We compare the high QC field of
                 // all timeout votes in the QC, and get the highest one, if it exists.
+                // The high QC always exists, unless no block has been finalized yet in the chain.
                 let high_qc = qc.high_qc();
 
+                // If there was a high vote in the timeout QC, and either there was no high QC
+                // in the timeout QC, or the high vote is for a higher block than the high QC,
+                // then we need to repropose the high vote.
+                #[allow(clippy::unnecessary_unwrap)] // using a match would be more verbose
                 if high_vote.is_some()
                     && (high_qc.is_none()
                         || high_vote.unwrap().number > high_qc.unwrap().header().number)
@@ -177,8 +182,8 @@ impl ProposalJustification {
                     (high_vote.unwrap().number, Some(high_vote.unwrap().payload))
                 } else {
                     // Either the previous proposal was finalized or we know for certain
-                    // that it couldn't have been finalized. Either way, we can propose
-                    // a new block.
+                    // that it couldn't have been finalized (because there is no high vote).
+                    // Either way, we can propose a new block.
                     let block_number = match high_qc {
                         Some(qc) => qc.header().number.next(),
                         None => BlockNumber(0),
@@ -194,10 +199,10 @@ impl ProposalJustification {
 /// Error returned by `ProposalJustification::verify()`.
 #[derive(thiserror::Error, Debug)]
 pub enum ProposalJustificationVerifyError {
-    /// Invalid Timeout QC.
-    #[error("timeout qc: {0:#}")]
+    /// Invalid timeout QC.
+    #[error("Invalid timeout QC: {0:#}")]
     Timeout(TimeoutQCVerifyError),
-    /// Invalid Commit QC.
-    #[error("commit qc: {0:#}")]
+    /// Invalid commit QC.
+    #[error("Invalid commit QC: {0:#}")]
     Commit(CommitQCVerifyError),
 }

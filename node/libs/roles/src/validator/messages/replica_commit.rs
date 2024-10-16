@@ -1,7 +1,7 @@
 use super::{BlockHeader, Genesis, Signed, Signers, View};
 use crate::validator;
 
-/// A Commit message from a replica.
+/// A commit message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReplicaCommit {
     /// View of this message.
@@ -36,11 +36,11 @@ pub enum ReplicaCommitVerifyError {
     BadBlockNumber,
 }
 
-/// A Commit Quorum Certificate. It is an aggregate of signed replica Commit messages.
-/// The Quorum Certificate is supposed to be over identical messages, so we only need one message.
+/// A Commit Quorum Certificate. It is an aggregate of signed ReplicaCommit messages.
+/// The Commit Quorum Certificate is over identical messages, so we only need one message.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CommitQC {
-    /// The replica Commit message that the QC is for.
+    /// The ReplicaCommit message that the QC is for.
     pub message: ReplicaCommit,
     /// The validators that signed this message.
     pub signers: Signers,
@@ -68,39 +68,54 @@ impl CommitQC {
         }
     }
 
-    /// Add a validator's signature.
-    /// Signature is assumed to be already verified.
+    /// Add a validator's signature. This also verifies the message and the signature before adding.
     pub fn add(
         &mut self,
         msg: &Signed<ReplicaCommit>,
         genesis: &Genesis,
     ) -> Result<(), CommitQCAddError> {
-        if self.message != msg.msg {
-            return Err(CommitQCAddError::InconsistentMessages);
-        };
-
+        // Check if the signer is in the committee.
         let Some(i) = genesis.validators.index(&msg.key) else {
             return Err(CommitQCAddError::SignerNotInCommittee {
                 signer: Box::new(msg.key.clone()),
             });
         };
 
+        // Check if already have a message from the same signer.
         if self.signers.0[i] {
-            return Err(CommitQCAddError::Exists);
+            return Err(CommitQCAddError::DuplicateSigner {
+                signer: Box::new(msg.key.clone()),
+            });
         };
 
+        // Verify the signature.
+        msg.verify().map_err(CommitQCAddError::BadSignature)?;
+
+        // Check that the message is consistent with the CommitQC.
+        if self.message != msg.msg {
+            return Err(CommitQCAddError::InconsistentMessages);
+        };
+
+        // Check that the message itself is valid.
+        msg.msg
+            .verify(genesis)
+            .map_err(CommitQCAddError::InvalidMessage)?;
+
+        // Add the signer to the signers map, and the signature to the aggregate signature.
         self.signers.0.set(i, true);
         self.signature.add(&msg.sig);
 
         Ok(())
     }
 
-    /// Verifies the signature of the CommitQC.
+    /// Verifies the integrity of the CommitQC.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), CommitQCVerifyError> {
+        // Check that the message is valid.
         self.message
             .verify(genesis)
             .map_err(CommitQCVerifyError::InvalidMessage)?;
 
+        // Check that the signers set has the same size as the validator set.
         if self.signers.len() != genesis.validators.len() {
             return Err(CommitQCVerifyError::BadSignersSet);
         }
@@ -129,14 +144,40 @@ impl CommitQC {
     }
 }
 
-/// Error returned by `CommitQc::verify()`.
+/// Error returned by `CommitQC::add()`.
+#[derive(thiserror::Error, Debug)]
+pub enum CommitQCAddError {
+    /// Signer not present in the committee.
+    #[error("Signer not in committee: {signer:?}")]
+    SignerNotInCommittee {
+        /// Signer of the message.
+        signer: Box<validator::PublicKey>,
+    },
+    /// Message from the same signer already present in QC.
+    #[error("Message from the same signer already in QC: {signer:?}")]
+    DuplicateSigner {
+        /// Signer of the message.
+        signer: Box<validator::PublicKey>,
+    },
+    /// Bad signature.
+    #[error("Bad signature: {0:#}")]
+    BadSignature(#[source] anyhow::Error),
+    /// Inconsistent messages.
+    #[error("Trying to add signature for a different message")]
+    InconsistentMessages,
+    /// Invalid message.
+    #[error("Invalid message: {0:#}")]
+    InvalidMessage(ReplicaCommitVerifyError),
+}
+
+/// Error returned by `CommitQC::verify()`.
 #[derive(thiserror::Error, Debug)]
 pub enum CommitQCVerifyError {
     /// Invalid message.
     #[error(transparent)]
     InvalidMessage(#[from] ReplicaCommitVerifyError),
     /// Bad signer set.
-    #[error("signers set doesn't match genesis")]
+    #[error("Signers set doesn't match validator set")]
     BadSignersSet,
     /// Weight not reached.
     #[error("Signers have not reached threshold weight: got {got}, want {want}")]
@@ -147,23 +188,6 @@ pub enum CommitQCVerifyError {
         want: u64,
     },
     /// Bad signature.
-    #[error("bad signature: {0:#}")]
+    #[error("Bad signature: {0:#}")]
     BadSignature(#[source] anyhow::Error),
-}
-
-/// Error returned by `CommitQC::add()`.
-#[derive(thiserror::Error, Debug)]
-pub enum CommitQCAddError {
-    /// Inconsistent messages.
-    #[error("Trying to add signature for a different message")]
-    InconsistentMessages,
-    /// Signer not present in the committee.
-    #[error("Signer not in committee: {signer:?}")]
-    SignerNotInCommittee {
-        /// Signer of the message.
-        signer: Box<validator::PublicKey>,
-    },
-    /// Message already present in CommitQC.
-    #[error("Message already signed for CommitQC")]
-    Exists,
 }

@@ -5,7 +5,7 @@ use super::{
 use crate::validator;
 use std::collections::{BTreeMap, HashMap};
 
-/// A Timeout message from a replica.
+/// A timeout message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ReplicaTimeout {
     /// View of this message.
@@ -63,21 +63,21 @@ pub enum ReplicaTimeoutVerifyError {
     HighQC(CommitQCVerifyError),
 }
 
-/// A quorum certificate of replica Timeout messages. Since not all Timeout messages are
-/// identical (they have different high blocks and high QCs), we need to keep the high blocks
-/// and high QCs in a map. We can still aggregate the signatures though.
+/// A quorum certificate of ReplicaTimeout messages. Since not all ReplicaTimeout messages are
+/// identical (they have different high blocks and high QCs), we need to keep the ReplicaTimeout
+///  messages in a map. We can still aggregate the signatures though.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TimeoutQC {
     /// View of this QC.
     pub view: View,
     /// Map from replica Timeout messages to the validators that signed them.
     pub map: BTreeMap<ReplicaTimeout, Signers>,
-    /// Aggregate signature of the replica Timeout messages.
+    /// Aggregate signature of the ReplicaTimeout messages.
     pub signature: validator::AggregateSignature,
 }
 
 impl TimeoutQC {
-    /// Create a new empty instance for a given `ReplicaCommit` message and a validator set size.
+    /// Create a new empty TimeoutQC for a given view.
     pub fn new(view: View) -> Self {
         Self {
             view,
@@ -86,11 +86,10 @@ impl TimeoutQC {
         }
     }
 
-    /// Get the highest block voted and check if there's a quorum of votes for it. To have a quorum
-    /// in this situation, we require 2*f+1 votes, where f is the maximum number of faulty replicas.
-    /// Note that it is possible to have 2 quorums: vote A and vote B, each with >2f weight, in a single
-    /// TimeoutQC (even in the unweighted case, because QC contains n-f signatures, not 4f+1). In such a
-    /// situation we say that there is no high vote.
+    /// Get the highest block voted and check if there's a subquorum of votes for it. To have a subquorum
+    /// in this situation, we require n-3*f votes, where f is the maximum number of faulty replicas.
+    /// Note that it is possible to have 2 subquorums: vote A and vote B, each with >n-3*f weight, in a single
+    /// TimeoutQC. In such a situation we say that there is no high vote.
     pub fn high_vote(&self, genesis: &Genesis) -> Option<BlockHeader> {
         let mut count: HashMap<_, u64> = HashMap::new();
         for (msg, signers) in &self.map {
@@ -99,7 +98,7 @@ impl TimeoutQC {
             }
         }
 
-        let min = 2 * genesis.validators.max_faulty_weight() + 1;
+        let min = genesis.validators.subquorum_threshold();
         let mut high_votes: Vec<_> = count.into_iter().filter(|x| x.1 >= min).collect();
 
         if high_votes.len() == 1 {
@@ -117,28 +116,40 @@ impl TimeoutQC {
             .max_by_key(|qc| qc.view().number)
     }
 
-    /// Add a validator's signed message.
-    /// Message is assumed to be already verified.
-    // TODO: verify the message inside instead.
+    /// Add a validator's signed message. This also verifies the message and the signature before adding.
     pub fn add(
         &mut self,
         msg: &Signed<ReplicaTimeout>,
         genesis: &Genesis,
     ) -> Result<(), TimeoutQCAddError> {
-        if msg.msg.view != self.view {
-            return Err(TimeoutQCAddError::InconsistentViews);
-        }
-
+        // Check if the signer is in the committee.
         let Some(i) = genesis.validators.index(&msg.key) else {
             return Err(TimeoutQCAddError::SignerNotInCommittee {
                 signer: Box::new(msg.key.clone()),
             });
         };
 
+        // Check if already have a message from the same signer.
         if self.map.values().any(|s| s.0[i]) {
-            return Err(TimeoutQCAddError::Exists);
+            return Err(TimeoutQCAddError::DuplicateSigner {
+                signer: Box::new(msg.key.clone()),
+            });
         };
 
+        // Verify the signature.
+        msg.verify().map_err(TimeoutQCAddError::BadSignature)?;
+
+        // Check that the view is consistent with the TimeoutQC.
+        if msg.msg.view != self.view {
+            return Err(TimeoutQCAddError::InconsistentViews);
+        };
+
+        // Check that the message itself is valid.
+        msg.msg
+            .verify(genesis)
+            .map_err(TimeoutQCAddError::InvalidMessage)?;
+
+        // Add the message plus signer to the map, and the signature to the aggregate signature.
         let e = self
             .map
             .entry(msg.msg.clone())
@@ -154,6 +165,7 @@ impl TimeoutQC {
         self.view
             .verify(genesis)
             .map_err(TimeoutQCVerifyError::View)?;
+
         let mut sum = Signers::new(genesis.validators.len());
 
         // Check the ReplicaTimeout messages.
@@ -178,10 +190,11 @@ impl TimeoutQC {
             }
             msg.verify(genesis)
                 .map_err(|err| TimeoutQCVerifyError::InvalidMessage(i, err))?;
+
             sum |= signers;
         }
 
-        // Verify the signers' weight is enough.
+        // Check if the signers' weight is enough.
         let weight = genesis.validators.weight(&sum);
         let threshold = genesis.validators.quorum_threshold();
         if weight < threshold {
@@ -190,6 +203,7 @@ impl TimeoutQC {
                 want: threshold,
             });
         }
+
         // Now we can verify the signature.
         let messages_and_keys = self.map.clone().into_iter().flat_map(|(msg, signers)| {
             genesis
@@ -200,6 +214,7 @@ impl TimeoutQC {
                 .map(|(_, pk)| (msg.clone(), pk))
                 .collect::<Vec<_>>()
         });
+
         // TODO(gprusak): This reaggregating is suboptimal.
         self.signature
             .verify_messages(messages_and_keys)
@@ -215,17 +230,43 @@ impl TimeoutQC {
     }
 }
 
+/// Error returned by `TimeoutQC::add()`.
+#[derive(thiserror::Error, Debug)]
+pub enum TimeoutQCAddError {
+    /// Signer not present in the committee.
+    #[error("Signer not in committee: {signer:?}")]
+    SignerNotInCommittee {
+        /// Signer of the message.
+        signer: Box<validator::PublicKey>,
+    },
+    /// Message from the same signer already present in QC.
+    #[error("Message from the same signer already in QC: {signer:?}")]
+    DuplicateSigner {
+        /// Signer of the message.
+        signer: Box<validator::PublicKey>,
+    },
+    /// Bad signature.
+    #[error("Bad signature: {0:#}")]
+    BadSignature(#[source] anyhow::Error),
+    /// Inconsistent views.
+    #[error("Trying to add a message from a different view")]
+    InconsistentViews,
+    /// Invalid message.
+    #[error("Invalid message: {0:#}")]
+    InvalidMessage(ReplicaTimeoutVerifyError),
+}
+
 /// Error returned by `TimeoutQC::verify()`.
 #[derive(thiserror::Error, Debug)]
 pub enum TimeoutQCVerifyError {
     /// Bad view.
-    #[error("view: {0:#}")]
+    #[error("Bad view: {0:#}")]
     View(anyhow::Error),
     /// Inconsistent views.
-    #[error("inconsistent views of signed messages")]
+    #[error("Inconsistent views of signed messages")]
     InconsistentViews,
     /// Invalid message.
-    #[error("msg[{0}]: {1:#}")]
+    #[error("Invalid message: number [{0}], {1:#}")]
     InvalidMessage(usize, ReplicaTimeoutVerifyError),
     /// Bad message format.
     #[error(transparent)]
@@ -239,23 +280,6 @@ pub enum TimeoutQCVerifyError {
         want: u64,
     },
     /// Bad signature.
-    #[error("bad signature: {0:#}")]
+    #[error("Bad signature: {0:#}")]
     BadSignature(#[source] anyhow::Error),
-}
-
-/// Error returned by `TimeoutQC::add()`.
-#[derive(thiserror::Error, Debug)]
-pub enum TimeoutQCAddError {
-    /// Inconsistent views.
-    #[error("Trying to add a message from a different view")]
-    InconsistentViews,
-    /// Signer not present in the committee.
-    #[error("Signer not in committee: {signer:?}")]
-    SignerNotInCommittee {
-        /// Signer of the message.
-        signer: Box<validator::PublicKey>,
-    },
-    /// Message already present in TimeoutQC.
-    #[error("Message already signed for TimeoutQC")]
-    Exists,
 }

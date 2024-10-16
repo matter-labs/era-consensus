@@ -295,7 +295,7 @@ fn test_commit_qc_add_errors() {
             &setup.validator_keys[0].sign_msg(msg.clone()),
             &setup.genesis
         ),
-        Err(Error::Exists { .. })
+        Err(Error::DuplicateSigner { .. })
     );
 
     // Add same message signed by another validator.
@@ -457,14 +457,14 @@ fn test_prepare_qc_add_errors() {
             &setup.validator_keys[0].sign_msg(msg.clone()),
             &setup.genesis
         ),
-        Err(Error::Exists { .. })
+        Err(Error::DuplicateSigner { .. })
     );
 
     // Try to add a message for a validator that already added another message
     let msg2 = make_replica_timeout(rng, view, &setup);
     assert_matches!(
         qc.add(&setup.validator_keys[0].sign_msg(msg2), &setup.genesis),
-        Err(Error::Exists { .. })
+        Err(Error::DuplicateSigner { .. })
     );
 
     // Add same message signed by another validator.

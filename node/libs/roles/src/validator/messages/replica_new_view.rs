@@ -1,6 +1,6 @@
 use super::{Genesis, ProposalJustification, ProposalJustificationVerifyError, View};
 
-/// A NewView message from a replica.
+/// A new view message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReplicaNewView {
     /// What attests to the validity of this view change.
