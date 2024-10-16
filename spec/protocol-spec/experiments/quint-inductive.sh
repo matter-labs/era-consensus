@@ -42,16 +42,17 @@ for j in `seq 0 $((max_lemmas-1))`; do
   for i in `seq 0 $((max_trans-1))`; do
     if [ "$max_trans" -gt 1 ]; then
       # restrict to transition i
-      tf="\"search.transitionFilter\": \"(0->.*|1->$i)\","
+      tf="\"search.transitionFilter\": \"(0->.*|1->$i)\""
     else
-      tf=""
+      # no restrictions
+      tf="\"search.transitionFilter\": \"(0->.*|1->.*)\""
     fi
     if [ "$max_lemmas" -gt 1 ]; then
       # restrict to state 1 and invariant j
-      invf="\"search.invariantFilter\": \"(1->state$j)\","
+      invf="\"search.invariantFilter\": \"(1->state$j)\""
     else
       # we still want to check the invariant against state 1 only
-      invf="\"search.invariantFilter\": \"(1->.*)\","
+      invf="\"search.invariantFilter\": \"(1->.*)\""
     fi
     f="$TMPDIR/apalache-inductive${n}.json"
     cat >"$f" <<EOF
@@ -62,8 +63,8 @@ for j in `seq 0 $((max_lemmas-1))`; do
         "write-intermediate": true,
         "tuning": {
           "search.invariant.mode": "after",
-          ${tf}
-          ${invf}
+          ${tf},
+          ${invf},
         }
       },
       "common": {
