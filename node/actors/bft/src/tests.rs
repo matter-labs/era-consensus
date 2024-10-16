@@ -24,7 +24,7 @@ async fn run_test(behavior: Behavior, network: Network) {
     let mut nodes = vec![(behavior, 1u64); NODES];
     // validator::threshold(NODES) will calculate required nodes to validate a message
     // given each node weight is 1
-    let honest_nodes_amount = validator::threshold(NODES as u64) as usize;
+    let honest_nodes_amount = validator::quorum_threshold(NODES as u64) as usize;
     for n in &mut nodes[0..honest_nodes_amount] {
         n.0 = Behavior::Honest;
     }

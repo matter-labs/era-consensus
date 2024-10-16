@@ -116,7 +116,7 @@ impl StateMachine {
             .retain(|view_number, _| active_views.contains(view_number));
 
         // Now we check if we have enough weight to continue.
-        if weight < self.config.genesis().validators.threshold() {
+        if weight < self.config.genesis().validators.quorum_threshold() {
             return Ok(());
         };
 
