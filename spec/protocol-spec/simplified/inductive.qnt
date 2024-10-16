@@ -375,8 +375,10 @@ module inductive {
                     qc.vote.block_number == i,
                     // when the replica commits the block,
                     // it uses the CommitQC as a justification to start the new view
-                    r::ghost_justifications.keys().contains((id, qc.vote.view + 1)),
-                    r::ghost_justifications.get((id, qc.vote.view + 1)) == Commit(cblock.commit_qc),
+                    r::msgs_new_view.contains({
+                        sig: id,
+                        justification: Commit(cblock.commit_qc),
+                    }),
                 }
             })
         })
@@ -384,56 +386,55 @@ module inductive {
 
     // if a correct block uses a justification, this justification should be valid
     val lemma1_justified_qc_is_valid = and {
-        r::ghost_justifications.keys().forall(((id, view)) => and {
-            // no justifications from the future
-            view <= r::replica_state.get(id).view,
-            // (1) check the basic constraints
-            match (r::ghost_justifications.get((id, view))) {
-            | Commit(qc_id) =>
-                val qc = r::ghost_commit_qc[qc_id]
-                and {
-                    qc.vote.view + 1 == view,
-                    qc.agg_sig.subseteq(IREPLICAS),
-                    // no invalid blocks are committed
-                    IVALID_BLOCKS.contains(qc.vote.block_hash),
-                    // check the quorums in (2), as it is an expensive test
-                }
+        r::msgs_new_view.forall(m =>
+            val view = r::view(m.justification)
+            val id = m.sig
+            and {
+                // no justifications from the future
+                view <= r::replica_state.get(id).view,
+                // (1) check the basic constraints
+                match (m.justification) {
+                | Commit(qc_id) =>
+                    val qc = r::ghost_commit_qc[qc_id]
+                    and {
+                        qc.vote.view + 1 == view,
+                        qc.agg_sig.subseteq(IREPLICAS),
+                        // no invalid blocks are committed
+                        IVALID_BLOCKS.contains(qc.vote.block_hash),
+                        // check the quorums in (2), as it is an expensive test
+                    }
 
-            | Timeout(qc_id) =>
-                val qc = r::ghost_timeout_qc[qc_id]
-                qc.ghost_view + 1 == view
-                // check the structure in (3)
-            }
-        }),
+                | Timeout(qc_id) =>
+                    val qc = r::ghost_timeout_qc[qc_id]
+                    qc.ghost_view + 1 == view
+                    // check the structure in (3)
+                }
+            }),
         // (2) check the quorums in CommitQC's separately
-        val commit_qc_id_in_justifications =
-            r::ghost_justifications.keys()
-                .map(((id, view)) => match (r::ghost_justifications.get((id, view))) {
+        val commit_qc_id_in_new_view =
+            r::msgs_new_view.map(m => match (m.justification) {
                 | Commit(qc_id) => qc_id
                 | _ => -1
             })
         0.to(MAX_COMMIT_QC).forall(qc_id => {
-            (commit_qc_id_in_justifications.contains(qc_id))
+            (commit_qc_id_in_new_view.contains(qc_id))
                 implies r::commit_qc_verify(r::ghost_commit_qc[qc_id])
         }),
         // (3) check TimeoutQC's separately
-        val timeout_qc_id_in_justifications =
-            r::ghost_justifications.keys()
-                .map(((id, view)) => match (r::ghost_justifications.get(((id, view)))) {
+        val timeout_qc_id_in_new_view =
+            r::msgs_new_view.map(m => match (m.justification) {
                 | Timeout(qc_id) => qc_id
                 | _ => -1
             })
         0.to(MAX_TIMEOUT_QC).forall(qc_id => {
-            timeout_qc_id_in_justifications.contains(qc_id) implies and {
+            timeout_qc_id_in_new_view.contains(qc_id) implies and {
                 r::aux_timeout_qc_inv(Some(qc_id)),
             }
         }),
     }
 
     val lemma2_justified_commit_qc_supported_by_messages = {
-        r::ghost_justifications.keys().forall(((id, view)) => {
-            justification_is_supported_with_messages(r::ghost_justifications.get((id, view)))
-        })
+        r::msgs_new_view.forall(m => justification_is_supported_with_messages(m.justification))
     }
 
     val lemma3_signed_commit_needs_proposal = {
@@ -467,12 +468,12 @@ module inductive {
     }
 
     val lemma4_signed_commit_needs_justification = {
-        r::ghost_justifications.keys().forall(((id, view)) => {
-            val justification = r::ghost_justifications.get((id, view))
-            val num_and_hash = r::get_implied_block(justification)
+        r::msgs_new_view.forall(nv => {
+            val num_and_hash = r::get_implied_block(nv.justification)
+            val view = r::view(nv.justification)
             r::msgs_signed_commit.forall(m => or {
                 IFAULTY.contains(m.sig),
-                m.sig != id,
+                m.sig != nv.sig,
                 m.vote.view != view,
                 and {
                     num_and_hash._1 == m.vote.block_number,
@@ -533,8 +534,8 @@ module inductive {
     // once a correct replica commits to a block (as a part of QC),
     // it will never change its mind
     val lemma10_justified_commit_qc_no_vote_change = {
-        r::ghost_justifications.keys().forall(((id, view)) => {
-            match (r::ghost_justifications.get((id, view))) {
+        r::msgs_new_view.forall(nv => {
+            match (nv.justification) {
             | Commit(qc_id) =>
                 val qc = r::ghost_commit_qc[qc_id]
                 r::msgs_signed_commit.forall(m => {
@@ -590,7 +591,10 @@ module inductive {
             })),
             // all replicas have stored the initial timeout QC
             ICORRECT.forall(id => {
-                r::ghost_justifications.get((id, 1)) == Timeout(0)
+                r::msgs_new_view.contains({
+                    sig: id,
+                    justification: Timeout(0)
+                })
             }),
             // all replicas have sent the new_view message in view 0
             ICORRECT.forall(id => {
@@ -685,22 +689,14 @@ module inductive {
                 | None =>
                     true
                 | Some(qc_id) =>
-                    r::ghost_justifications.keys()
-                        .exists(((id, v)) => and {
-                            v <= self.view,
-                            r::ghost_justifications.get((id, v)) == Commit(qc_id)
-                        })
+                    r::msgs_new_view.exists(m => m.justification == Commit(qc_id))
                 },
                 match (self.high_timeout_qc) {
                 | None =>
                     false // this should not be possible
 
                 | Some(qc_id) =>
-                    r::ghost_justifications.keys()
-                        .exists(((id, v)) => and {
-                            v <= self.view,
-                            r::ghost_justifications.get((id, v)) == Timeout(qc_id)
-                        })
+                    r::msgs_new_view.exists(m => m.justification == Timeout(qc_id))
                 }
             }
         )
