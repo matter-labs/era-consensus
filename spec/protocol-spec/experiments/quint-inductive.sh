@@ -64,7 +64,7 @@ for j in `seq 0 $((max_lemmas-1))`; do
         "tuning": {
           "search.invariant.mode": "after",
           ${tf},
-          ${invf},
+          ${invf}
         }
       },
       "common": {
