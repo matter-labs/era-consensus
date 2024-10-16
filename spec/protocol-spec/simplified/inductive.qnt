@@ -248,8 +248,8 @@ module inductive {
         // non-deterministically initialize msgs_proposal
         //nondet proposals = PROPOSALS.powerset().oneOf()
         // non-deterministically initialize ghost_justifications
-        nondet justifications = Map()
-            //tuples(ICORRECT, IVIEWS.exclude(Set(0))).setOfMaps(JUSTIFICATIONS).oneOf()
+        //nondet justifications =
+        //  tuples(ICORRECT, IVIEWS.exclude(Set(0))).setOfMaps(JUSTIFICATIONS).oneOf()
         // Non-deterministically initialize replica_state.
         // We pick maps for the individual fields, to avoid combinatorial explosion of tuples.
         nondet state_views = ICORRECT.setOfMaps(IVIEWS).oneOf()
@@ -304,7 +304,7 @@ module inductive {
                     r::msgs_proposal' = msgs_proposal,
                 }
             },
-            r::ghost_justifications' = justifications,
+            r::ghost_justifications' = Map(),
             r::ghost_step' = AnyStep,
             r::prophecy_correct_proposals' = i_prophecy_correct_proposals,
             nondet mv = IVIEWS.oneOf()
