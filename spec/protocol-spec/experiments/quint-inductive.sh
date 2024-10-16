@@ -8,8 +8,8 @@
 if [ "$#" -lt 5 ]; then
     echo "Use: $0 spec.qnt max-transitions max-lemmas max-jobs max-failing-jobs [invariant] [init] [step] [memsize]"
     echo "  - spec.qnt is the specification to check"
-    echo "  - max-transitions is the maximal number of protocol transitions (from step)"
-    echo "  - max-lemmas is the maximal number of conjuncts in the invariant"
+    echo "  - max-transitions is the maximal number of protocol transitions (from step), use 1 to disable"
+    echo "  - max-lemmas is the maximal number of conjuncts in the invariant, use 1 to disable"
     echo "  - max-jobs is the maximal number of jobs to run in parallel, e.g., 16"
     echo "  - max-failing-jobs is the maximal number of jobs to fail"
     echo "  - invariant is the invariant to check, by default: inv"
@@ -40,7 +40,21 @@ echo -n >$CSV
 n=0
 for j in `seq 0 $((max_lemmas-1))`; do
   for i in `seq 0 $((max_trans-1))`; do
-    cat >$TMPDIR/apalache-inductive${n}.json <<EOF
+    if [ "$max_trans" -gt 1 ]; then
+      # restrict to transition i
+      tf="\"search.transitionFilter\": \"(0->.*|1->$i)\","
+    else
+      tf=""
+    fi
+    if [ "$max_lemmas" -gt 1 ]; then
+      # restrict to state 1 and invariant j
+      invf="\"search.invariantFilter\": \"(1->state$j)\","
+    else
+      # we still want to check the invariant against state 1 only
+      invf="\"search.invariantFilter\": \"(1->.*)\","
+    fi
+    f="$TMPDIR/apalache-inductive${n}.json"
+    cat >"$f" <<EOF
     {
       "checker": {
         "discard-disabled": false,
@@ -48,8 +62,8 @@ for j in `seq 0 $((max_lemmas-1))`; do
         "write-intermediate": true,
         "tuning": {
           "search.invariant.mode": "after",
-          "search.invariantFilter": "(1->state$j)",
-          "search.transitionFilter": "(0->.*|1->$i)"
+          ${tf}
+          ${invf}
         }
       },
       "common": {
