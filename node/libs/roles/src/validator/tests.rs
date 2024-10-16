@@ -90,7 +90,7 @@ fn test_schema_encoding() {
     test_encode_random::<PreGenesisBlock>(rng);
     test_encode_random::<Block>(rng);
     test_encode_random::<Signed<ConsensusMsg>>(rng);
-    test_encode_random::<PrepareQC>(rng);
+    test_encode_random::<TimeoutQC>(rng);
     test_encode_random::<CommitQC>(rng);
     test_encode_random::<Msg>(rng);
     test_encode_random::<MsgHash>(rng);
@@ -197,8 +197,8 @@ fn make_commit_qc(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> Commit
     qc
 }
 
-fn make_replica_prepare(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> ReplicaPrepare {
-    ReplicaPrepare {
+fn make_replica_timeout(rng: &mut impl Rng, view: ViewNumber, setup: &Setup) -> ReplicaTimeout {
+    ReplicaTimeout {
         view: make_view(view, setup),
         high_vote: {
             let view = ViewNumber(rng.gen_range(0..view.0));
@@ -306,8 +306,8 @@ fn test_commit_qc_add_errors() {
 }
 
 #[test]
-fn test_prepare_qc() {
-    use PrepareQCVerifyError as Error;
+fn test_timeout_qc() {
+    use TimeoutQCVerifyError as Error;
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
 
@@ -321,11 +321,11 @@ fn test_prepare_qc() {
 
     let view: ViewNumber = rng.gen();
     let msgs: Vec<_> = (0..3)
-        .map(|_| make_replica_prepare(rng, view, &setup1))
+        .map(|_| make_replica_timeout(rng, view, &setup1))
         .collect();
 
     for n in 0..setup1.validator_keys.len() + 1 {
-        let mut qc = PrepareQC::new(msgs[0].view.clone());
+        let mut qc = TimeoutQC::new(msgs[0].view.clone());
         for key in &setup1.validator_keys[0..n] {
             qc.add(
                 &key.sign_msg(msgs.choose(rng).unwrap().clone()),
@@ -364,12 +364,12 @@ fn test_prepare_qc_high_vote() {
     let setup = Setup::new(rng, 6);
 
     let view_num: ViewNumber = rng.gen();
-    let msg_a = make_replica_prepare(rng, view_num, &setup);
-    let msg_b = make_replica_prepare(rng, view_num, &setup);
-    let msg_c = make_replica_prepare(rng, view_num, &setup);
+    let msg_a = make_replica_timeout(rng, view_num, &setup);
+    let msg_b = make_replica_timeout(rng, view_num, &setup);
+    let msg_c = make_replica_timeout(rng, view_num, &setup);
 
     // Case with 1 subquorum.
-    let mut qc = PrepareQC::new(msg_a.view.clone());
+    let mut qc = TimeoutQC::new(msg_a.view.clone());
 
     for key in &setup.validator_keys {
         qc.add(&key.sign_msg(msg_a.clone()), &setup.genesis)
@@ -379,7 +379,7 @@ fn test_prepare_qc_high_vote() {
     assert!(qc.high_vote(&setup.genesis).is_some());
 
     // Case with 2 subquorums.
-    let mut qc = PrepareQC::new(msg_a.view.clone());
+    let mut qc = TimeoutQC::new(msg_a.view.clone());
 
     for key in &setup.validator_keys[0..3] {
         qc.add(&key.sign_msg(msg_a.clone()), &setup.genesis)
@@ -394,7 +394,7 @@ fn test_prepare_qc_high_vote() {
     assert!(qc.high_vote(&setup.genesis).is_none());
 
     // Case with no subquorums.
-    let mut qc = PrepareQC::new(msg_a.view.clone());
+    let mut qc = TimeoutQC::new(msg_a.view.clone());
 
     for key in &setup.validator_keys[0..2] {
         qc.add(&key.sign_msg(msg_a.clone()), &setup.genesis)
@@ -416,14 +416,14 @@ fn test_prepare_qc_high_vote() {
 
 #[test]
 fn test_prepare_qc_add_errors() {
-    use PrepareQCAddError as Error;
+    use TimeoutQCAddError as Error;
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let setup = Setup::new(rng, 2);
     let view = rng.gen();
-    let msg = make_replica_prepare(rng, view, &setup);
-    let mut qc = PrepareQC::new(msg.view.clone());
-    let msg = make_replica_prepare(rng, view, &setup);
+    let msg = make_replica_timeout(rng, view, &setup);
+    let mut qc = TimeoutQC::new(msg.view.clone());
+    let msg = make_replica_timeout(rng, view, &setup);
 
     // Add the message
     assert_matches!(
@@ -461,7 +461,7 @@ fn test_prepare_qc_add_errors() {
     );
 
     // Try to add a message for a validator that already added another message
-    let msg2 = make_replica_prepare(rng, view, &setup);
+    let msg2 = make_replica_timeout(rng, view, &setup);
     assert_matches!(
         qc.add(&setup.validator_keys[0].sign_msg(msg2), &setup.genesis),
         Err(Error::Exists { .. })
@@ -488,8 +488,8 @@ fn test_validator_committee_weights() {
     let sums = [1000, 1600, 2400, 8400, 9300, 10000];
 
     let view: ViewNumber = rng.gen();
-    let msg = make_replica_prepare(rng, view, &setup);
-    let mut qc = PrepareQC::new(msg.view.clone());
+    let msg = make_replica_timeout(rng, view, &setup);
+    let mut qc = TimeoutQC::new(msg.view.clone());
     for (n, weight) in sums.iter().enumerate() {
         let key = &setup.validator_keys[n];
         qc.add(&key.sign_msg(msg.clone()), &setup.genesis).unwrap();

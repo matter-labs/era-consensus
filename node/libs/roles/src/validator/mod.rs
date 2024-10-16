@@ -1,7 +1,7 @@
 //! Validator role implementation.
 
-//#[cfg(test)]
-//mod tests;
+#[cfg(test)]
+mod tests;
 
 mod conv;
 mod keys;
