@@ -11,7 +11,7 @@ pub struct LeaderProposal {
     /// Payload of the block that the leader is proposing.
     /// `None` iff this is a reproposal.
     pub proposal_payload: Option<Payload>,
-    // What attests to the validity of this proposal.
+    /// What attests to the validity of this proposal.
     pub justification: ProposalJustification,
 }
 
@@ -108,22 +108,25 @@ pub enum LeaderProposalVerifyError {
     },
 }
 
+/// Justification for a proposal. This is either a Commit QC or a Timeout QC.
+/// The first proposal, for view 0, will always be a timeout.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ProposalJustification {
-    // This proposal is being proposed after a view where we finalized a block.
-    // A commit QC is just a collection of commit votes (with at least
-    // QUORUM_WEIGHT) for the previous view. Note that the commit votes MUST
-    // be identical.
+    /// This proposal is being proposed after a view where we finalized a block.
+    /// A commit QC is just a collection of commit votes (with at least
+    /// QUORUM_WEIGHT) for the previous view. Note that the commit votes MUST
+    /// be identical.
     Commit(CommitQC),
-    // This proposal is being proposed after a view where we timed out.
-    // A timeout QC is just a collection of timeout votes (with at least
-    // QUORUM_WEIGHT) for the previous view. Unlike with the Commit QC,
-    // timeout votes don't need to be identical.
-    // The first proposal, for view 0, will always be a timeout.
+    /// This proposal is being proposed after a view where we timed out.
+    /// A timeout QC is just a collection of timeout votes (with at least
+    /// QUORUM_WEIGHT) for the previous view. Unlike with the Commit QC,
+    /// timeout votes don't need to be identical.
+    /// The first proposal, for view 0, will always be a timeout.
     Timeout(TimeoutQC),
 }
 
 impl ProposalJustification {
+    /// View of the justification.
     pub fn view(&self) -> View {
         match self {
             ProposalJustification::Commit(qc) => qc.view().next(),
@@ -131,6 +134,7 @@ impl ProposalJustification {
         }
     }
 
+    /// Verifies the justification.
     pub fn verify(&self, genesis: &Genesis) -> Result<(), ProposalJustificationVerifyError> {
         match self {
             ProposalJustification::Commit(qc) => qc
@@ -142,9 +146,9 @@ impl ProposalJustification {
         }
     }
 
-    // This returns the BlockNumber that is implied by this justification.
-    // If the justification requires a block reproposal, it also returns
-    // the PayloadHash that must be reproposed.
+    /// This returns the BlockNumber that is implied by this justification.
+    /// If the justification requires a block reproposal, it also returns
+    /// the PayloadHash that must be reproposed.
     pub fn get_implied_block(&self, genesis: &Genesis) -> (BlockNumber, Option<PayloadHash>) {
         match self {
             ProposalJustification::Commit(qc) => {

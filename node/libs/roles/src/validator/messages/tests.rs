@@ -8,7 +8,14 @@ use zksync_concurrency::ctx;
 use zksync_consensus_crypto::Text;
 use zksync_consensus_utils::enum_util::Variant as _;
 
-/// Hardcoded secret keys.
+/// Hardcoded view numbers.
+fn views() -> impl Iterator<Item = ViewNumber> {
+    [8394532, 2297897, 9089304, 7203483, 9982111]
+        .into_iter()
+        .map(ViewNumber)
+}
+
+/// Hardcoded validator secret keys.
 fn validator_keys() -> Vec<SecretKey> {
     [
         "validator:secret:bls12_381:27cb45b1670a1ae8d376a85821d51c7f91ebc6e32788027a84758441aaf0a987",
@@ -22,6 +29,7 @@ fn validator_keys() -> Vec<SecretKey> {
     .collect()
 }
 
+/// Hardcoded attester secret keys.
 fn attester_keys() -> Vec<attester::SecretKey> {
     [
         "attester:secret:secp256k1:27cb45b1670a1ae8d376a85821d51c7f91ebc6e32788027a84758441aaf0a987",
@@ -33,7 +41,7 @@ fn attester_keys() -> Vec<attester::SecretKey> {
     .collect()
 }
 
-/// Hardcoded committee.
+/// Hardcoded validator committee.
 fn validator_committee() -> Committee {
     Committee::new(
         validator_keys()
@@ -47,6 +55,7 @@ fn validator_committee() -> Committee {
     .unwrap()
 }
 
+/// Hardcoded attester committee.
 fn attester_committee() -> attester::Committee {
     attester::Committee::new(
         attester_keys()
@@ -70,7 +79,7 @@ fn payload() -> Payload {
 
 /// Checks that the order of validators in a committee is stable.
 #[test]
-fn committee_change_detector() {
+fn validator_committee_change_detector() {
     let committee = validator_committee();
     let got: Vec<usize> = validator_keys()
         .iter()
@@ -128,13 +137,6 @@ fn test_rota() {
     }
 }
 
-/// Hardcoded view numbers.
-fn views() -> impl Iterator<Item = ViewNumber> {
-    [8394532, 2297897, 9089304, 7203483, 9982111]
-        .into_iter()
-        .map(ViewNumber)
-}
-
 /// Checks that leader schedule is stable.
 #[test]
 fn roundrobin_change_detector() {
@@ -166,7 +168,7 @@ fn weighted_change_detector() {
 mod version1 {
     use super::*;
 
-    /// Hardcoded genesis.
+    /// Hardcoded genesis with no attesters.
     fn genesis_empty_attesters() -> Genesis {
         GenesisRaw {
             chain_id: ChainId(1337),
@@ -181,7 +183,7 @@ mod version1 {
         .with_hash()
     }
 
-    /// Hardcoded genesis.
+    /// Hardcoded genesis with attesters.
     fn genesis_with_attesters() -> Genesis {
         GenesisRaw {
             chain_id: ChainId(1337),
@@ -199,7 +201,6 @@ mod version1 {
     /// Note that genesis is NOT versioned by ProtocolVersion.
     /// Even if it was, ALL versions of genesis need to be supported FOREVER,
     /// unless we introduce dynamic regenesis.
-    /// FIXME: This fails with the new attester committee.
     #[test]
     fn genesis_hash_change_detector_empty_attesters() {
         let want: GenesisHash = Text::new(
@@ -213,7 +214,6 @@ mod version1 {
     /// Note that genesis is NOT versioned by ProtocolVersion.
     /// Even if it was, ALL versions of genesis need to be supported FOREVER,
     /// unless we introduce dynamic regenesis.
-    /// FIXME: This fails with the new attester committee.
     #[test]
     fn genesis_hash_change_detector_nonempty_attesters() {
         let want: GenesisHash = Text::new(
@@ -231,21 +231,6 @@ mod version1 {
         genesis.leader_selection = LeaderSelectionMode::Sticky(rng.gen());
         let genesis = genesis.with_hash();
         assert!(genesis.verify().is_err())
-    }
-
-    /// asserts that msg.hash()==hash and that sig is a
-    /// valid signature of msg (signed by `keys()[0]`).
-    #[track_caller]
-    fn change_detector(msg: Msg, hash: &str, sig: &str) {
-        let key = validator_keys()[0].clone();
-        (|| {
-            let hash: MsgHash = Text::new(hash).decode()?;
-            let sig: Signature = Text::new(sig).decode()?;
-            sig.verify_hash(&hash, &key.public())?;
-            anyhow::Ok(())
-        })()
-        .with_context(|| format!("\n{:?},\n{:?}", msg.hash(), key.sign_hash(&msg.hash()),))
-        .unwrap();
     }
 
     /// Hardcoded view.
@@ -284,41 +269,72 @@ mod version1 {
         x
     }
 
-    /// Hardcoded `LeaderCommit`.
-    fn leader_commit() -> LeaderCommit {
-        LeaderCommit {
-            justification: commit_qc(),
+    /// Hardcoded `ReplicaNewView`.
+    fn replica_new_view() -> ReplicaNewView {
+        ReplicaNewView {
+            justification: ProposalJustification::Commit(commit_qc()),
         }
     }
 
-    /// Hardcoded `ReplicaPrepare`
-    fn replica_prepare() -> ReplicaPrepare {
-        ReplicaPrepare {
+    /// Hardcoded `ReplicaTimeout`
+    fn replica_timeout() -> ReplicaTimeout {
+        ReplicaTimeout {
             view: view(),
             high_vote: Some(replica_commit()),
             high_qc: Some(commit_qc()),
         }
     }
 
-    /// Hardcoded `PrepareQC`.
-    fn prepare_qc() -> PrepareQC {
-        let mut x = PrepareQC::new(view());
+    /// Hardcoded `TimeoutQC`.
+    fn timeout_qc() -> TimeoutQC {
+        let mut x = TimeoutQC::new(view());
         let genesis = genesis_empty_attesters();
-        let replica_prepare = replica_prepare();
+        let replica_timeout = replica_timeout();
         for k in validator_keys() {
-            x.add(&k.sign_msg(replica_prepare.clone()), &genesis)
+            x.add(&k.sign_msg(replica_timeout.clone()), &genesis)
                 .unwrap();
         }
         x
     }
 
-    /// Hardcoded `LeaderPrepare`.
-    fn leader_prepare() -> LeaderProposal {
+    /// Hardcoded `LeaderProposal`.
+    fn leader_proposal() -> LeaderProposal {
         LeaderProposal {
             proposal: block_header(),
             proposal_payload: Some(payload()),
-            justification: prepare_qc(),
+            justification: ProposalJustification::Timeout(timeout_qc()),
         }
+    }
+
+    /// Asserts that msg.hash()==hash and that sig is a
+    /// valid signature of msg (signed by `keys()[0]`).
+    #[track_caller]
+    fn change_detector(msg: Msg, hash: &str, sig: &str) {
+        let key = validator_keys()[0].clone();
+
+        (|| {
+            // Decode hash and signature.
+            let hash: MsgHash = Text::new(hash).decode()?;
+            let sig: Signature = Text::new(sig).decode()?;
+
+            // Check if msg.hash() is equal to hash.
+            if msg.hash() != hash {
+                return Err(anyhow::anyhow!("Hash mismatch"));
+            }
+
+            // Check if sig is a valid signature of hash.
+            sig.verify_hash(&hash, &key.public())?;
+
+            anyhow::Ok(())
+        })()
+        .with_context(|| {
+            format!(
+                "\nIntended hash: {:?}\nIntended signature: {:?}",
+                msg.hash(),
+                key.sign_hash(&msg.hash()),
+            )
+        })
+        .unwrap();
     }
 
     #[test]
@@ -331,29 +347,29 @@ mod version1 {
     }
 
     #[test]
-    fn leader_commit_change_detector() {
+    fn replica_new_view_change_detector() {
         change_detector(
-            leader_commit().insert(),
-            "validator_msg:keccak256:53b8d7dc77a5ba8b81cd7b46ddc19c224ef46245c26cb7ae12239acc1bf86eda",
-            "validator:signature:bls12_381:81a154a93a8b607031319915728be97c03c3014a4746050f7a32cde98cabe4fbd2b6d6b79400601a71f50350842d1d64",
+            replica_new_view().insert(),
+            "validator_msg:keccak256:be1d87c8fcabeb1dd6aebef8564994830f206997d3cf240ad19281a8ef84fbd1",
+            "validator:signature:bls12_381:92640683902cd5c092fe8732f556d2bb3e0e209665ba4fe8e6f9ce2572a43700a63e82c3fbfd803fd217b3027ca843ca",
         );
     }
 
     #[test]
-    fn replica_prepare_change_detector() {
+    fn replica_timeout_change_detector() {
         change_detector(
-            replica_prepare().insert(),
-            "validator_msg:keccak256:700cf26d50f463cfa908f914d1febb1cbd00ee9d3a691b644f49146ed3e6ac40",
-            "validator:signature:bls12_381:a7cbdf9b8d13ebc39f4a13d654ec30acccd247d46fc6121eb1220256cfc212b418aac85400176e8797d8eb91aa70ae78",
+            replica_timeout().insert(),
+            "validator_msg:keccak256:c3a2dbbb01fa4884effdbad3cdfea7c03f3fa0d1b8ae15b221ac83e1d7abb9df",
+            "validator:signature:bls12_381:acb18d66816a0e7e2c1fbaa2d5045ead1a41eba8692ef0cdbf3f3d3f5a5616fa77903cc45326090cca1468912419d824",
         );
     }
 
     #[test]
-    fn leader_prepare_change_detector() {
+    fn leader_proposal_change_detector() {
         change_detector(
-            leader_prepare().insert(),
-            "validator_msg:keccak256:aaaaa6b7b232ef5b7c797953ce2a042c024137d7b8f449a1ad8a535730bc269b",
-            "validator:signature:bls12_381:a1926f460fa63470544cc9213e6378f45d75dff3055924766a81ff696a6a6e85ee583707911bb7fef4d1f74b7b28132f",
+            leader_proposal().insert(),
+            "validator_msg:keccak256:ecf7cd55c9b44ae5c361d23067af4f3bf5aa0f4d170f4d33b8ce4214c9963c6b",
+            "validator:signature:bls12_381:b650efd18dd800363aafd8ca67e3b6f14963f99b094fb497a3edad56816108a4e835ffcec714320e6fe1b42c30057005",
         );
     }
 }
