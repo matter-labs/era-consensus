@@ -1,5 +1,5 @@
 //! Messages related to the consensus protocol.
-use super::{BlockNumber, Committee, LeaderSelectionMode, ViewNumber};
+use super::{BlockNumber, LeaderSelectionMode, ViewNumber};
 use crate::{attester, validator};
 use std::{fmt, hash::Hash};
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
@@ -17,7 +17,7 @@ pub struct GenesisRaw {
     /// First block of a fork.
     pub first_block: BlockNumber,
     /// Set of validators of the chain.
-    pub validators: Committee,
+    pub validators: validator::Committee,
     /// Set of attesters of the chain.
     pub attesters: Option<attester::Committee>,
     /// The mode used for selecting leader for a given view.
@@ -33,7 +33,7 @@ impl GenesisRaw {
 }
 
 /// Hash of the genesis specification.
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GenesisHash(pub(crate) Keccak256);
 
 impl TextFmt for GenesisHash {

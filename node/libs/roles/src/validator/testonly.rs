@@ -38,10 +38,6 @@ pub struct SetupSpec {
     pub leader_selection: LeaderSelectionMode,
 }
 
-/// Test setup.
-#[derive(Debug, Clone)]
-pub struct Setup(SetupInner);
-
 impl SetupSpec {
     /// New `SetupSpec`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
@@ -68,6 +64,10 @@ impl SetupSpec {
     }
 }
 
+/// Test setup.
+#[derive(Debug, Clone)]
+pub struct Setup(SetupInner);
+
 impl Setup {
     /// New `Setup`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
@@ -79,6 +79,51 @@ impl Setup {
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
         let spec = SetupSpec::new_with_weights(rng, weights);
         Self::from_spec(rng, spec)
+    }
+
+    /// Generates a new `Setup` from the given `SetupSpec`.
+    pub fn from_spec(rng: &mut impl Rng, spec: SetupSpec) -> Self {
+        let mut this = Self(SetupInner {
+            genesis: GenesisRaw {
+                chain_id: spec.chain_id,
+                fork_number: spec.fork_number,
+                first_block: spec.first_block,
+
+                protocol_version: spec.protocol_version,
+                validators: Committee::new(spec.validator_weights.iter().map(|(k, w)| {
+                    WeightedValidator {
+                        key: k.public(),
+                        weight: *w,
+                    }
+                }))
+                .unwrap(),
+                attesters: attester::Committee::new(spec.attester_weights.iter().map(|(k, w)| {
+                    attester::WeightedAttester {
+                        key: k.public(),
+                        weight: *w,
+                    }
+                }))
+                .unwrap()
+                .into(),
+                leader_selection: spec.leader_selection,
+            }
+            .with_hash(),
+            validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
+            attester_keys: spec.attester_weights.into_iter().map(|(k, _)| k).collect(),
+            blocks: vec![],
+        });
+        // Populate pregenesis blocks.
+        for block in spec.first_pregenesis_block.0..spec.first_block.0 {
+            this.0.blocks.push(
+                PreGenesisBlock {
+                    number: BlockNumber(block),
+                    payload: rng.gen(),
+                    justification: rng.gen(),
+                }
+                .into(),
+            );
+        }
+        this
     }
 
     /// Next block to finalize.
@@ -144,52 +189,107 @@ impl Setup {
         let first = self.0.blocks.first()?.number();
         self.0.blocks.get(n.0.checked_sub(first.0)? as usize)
     }
-}
 
-impl Setup {
-    /// Generates a new `Setup` from the given `SetupSpec`.
-    pub fn from_spec(rng: &mut impl Rng, spec: SetupSpec) -> Self {
-        let mut this = Self(SetupInner {
-            genesis: GenesisRaw {
-                chain_id: spec.chain_id,
-                fork_number: spec.fork_number,
-                first_block: spec.first_block,
-
-                protocol_version: spec.protocol_version,
-                validators: Committee::new(spec.validator_weights.iter().map(|(k, w)| {
-                    WeightedValidator {
-                        key: k.public(),
-                        weight: *w,
-                    }
-                }))
-                .unwrap(),
-                attesters: attester::Committee::new(spec.attester_weights.iter().map(|(k, w)| {
-                    attester::WeightedAttester {
-                        key: k.public(),
-                        weight: *w,
-                    }
-                }))
-                .unwrap()
-                .into(),
-                leader_selection: spec.leader_selection,
-            }
-            .with_hash(),
-            validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
-            attester_keys: spec.attester_weights.into_iter().map(|(k, _)| k).collect(),
-            blocks: vec![],
-        });
-        // Populate pregenesis blocks.
-        for block in spec.first_pregenesis_block.0..spec.first_block.0 {
-            this.0.blocks.push(
-                PreGenesisBlock {
-                    number: BlockNumber(block),
-                    payload: rng.gen(),
-                    justification: rng.gen(),
-                }
-                .into(),
-            );
+    /// Creates a View with the given view number.
+    pub fn make_view(&self, number: ViewNumber) -> View {
+        View {
+            genesis: self.genesis.hash(),
+            number,
         }
-        this
+    }
+
+    /// Creates a ReplicaCommt with a random payload.
+    pub fn make_replica_commit(&self, rng: &mut impl Rng, view: ViewNumber) -> ReplicaCommit {
+        ReplicaCommit {
+            view: self.make_view(view),
+            proposal: BlockHeader {
+                number: self.next(),
+                payload: rng.gen(),
+            },
+        }
+    }
+
+    /// Creates a ReplicaCommt with the given payload.
+    pub fn make_replica_commit_with_payload(
+        &self,
+        payload: &Payload,
+        view: ViewNumber,
+    ) -> ReplicaCommit {
+        ReplicaCommit {
+            view: self.make_view(view),
+            proposal: BlockHeader {
+                number: self.next(),
+                payload: payload.hash(),
+            },
+        }
+    }
+
+    /// Creates a CommitQC with a random payload.
+    pub fn make_commit_qc(&self, rng: &mut impl Rng, view: ViewNumber) -> CommitQC {
+        let mut qc = CommitQC::new(self.make_replica_commit(rng, view), &self.genesis);
+        for key in &self.validator_keys {
+            qc.add(&key.sign_msg(qc.message.clone()), &self.genesis)
+                .unwrap();
+        }
+        qc
+    }
+
+    /// Creates a CommitQC with the given payload.
+    pub fn make_commit_qc_with_payload(&self, payload: &Payload, view: ViewNumber) -> CommitQC {
+        let mut qc = CommitQC::new(
+            self.make_replica_commit_with_payload(payload, view),
+            &self.genesis,
+        );
+        for key in &self.validator_keys {
+            qc.add(&key.sign_msg(qc.message.clone()), &self.genesis)
+                .unwrap();
+        }
+        qc
+    }
+
+    /// Creates a ReplicaTimeout with a random payload.
+    pub fn make_replica_timeout(&self, rng: &mut impl Rng, view: ViewNumber) -> ReplicaTimeout {
+        let high_vote_view = ViewNumber(rng.gen_range(0..view.0));
+        let high_qc_view = ViewNumber(rng.gen_range(0..high_vote_view.0));
+        ReplicaTimeout {
+            view: self.make_view(view),
+            high_vote: Some(self.make_replica_commit(rng, high_vote_view)),
+            high_qc: Some(self.make_commit_qc(rng, high_qc_view)),
+        }
+    }
+
+    /// Creates a TimeoutQC. If a payload is given, the QC will contain a
+    /// re-proposal for that payload
+    pub fn make_timeout_qc(
+        &self,
+        rng: &mut impl Rng,
+        view: ViewNumber,
+        payload_opt: Option<&Payload>,
+    ) -> TimeoutQC {
+        let mut vote = if let Some(payload) = payload_opt {
+            self.make_replica_commit_with_payload(payload, view.prev().unwrap())
+        } else {
+            self.make_replica_commit(rng, view.prev().unwrap())
+        };
+        let commit_qc = match self.0.blocks.last().unwrap() {
+            Block::Final(block) => block.justification.clone(),
+            _ => unreachable!(),
+        };
+
+        let mut qc = TimeoutQC::new(self.make_view(view));
+        for key in &self.validator_keys {
+            if payload_opt.is_none() {
+                vote.proposal.payload = rng.gen();
+            }
+            let msg = ReplicaTimeout {
+                view: self.make_view(view),
+                high_vote: Some(vote.clone()),
+                high_qc: Some(commit_qc.clone()),
+            };
+            qc.add(&key.sign_msg(msg), &self.genesis).unwrap();
+        }
+
+        qc
     }
 }
 

@@ -564,7 +564,7 @@ async fn replica_commit_bad_chain() {
         assert_matches!(
             res,
             Err(replica_commit::Error::InvalidMessage(
-                validator::ReplicaCommitVerifyError::View(_)
+                validator::ReplicaCommitVerifyError::BadView(_)
             ))
         );
         Ok(())

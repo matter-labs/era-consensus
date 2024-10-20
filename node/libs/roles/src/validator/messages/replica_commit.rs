@@ -15,7 +15,7 @@ impl ReplicaCommit {
     pub fn verify(&self, genesis: &Genesis) -> Result<(), ReplicaCommitVerifyError> {
         self.view
             .verify(genesis)
-            .map_err(ReplicaCommitVerifyError::View)?;
+            .map_err(ReplicaCommitVerifyError::BadView)?;
 
         if self.proposal.number < genesis.first_block {
             return Err(ReplicaCommitVerifyError::BadBlockNumber);
@@ -30,7 +30,7 @@ impl ReplicaCommit {
 pub enum ReplicaCommitVerifyError {
     /// Invalid view.
     #[error("view: {0:#}")]
-    View(anyhow::Error),
+    BadView(anyhow::Error),
     /// Bad block number.
     #[error("block number < first block")]
     BadBlockNumber,

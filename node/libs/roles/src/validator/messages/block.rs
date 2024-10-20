@@ -102,6 +102,7 @@ impl FinalBlock {
     /// Creates a new finalized block.
     pub fn new(payload: Payload, justification: CommitQC) -> Self {
         assert_eq!(justification.header().payload, payload.hash());
+
         Self {
             payload,
             justification,

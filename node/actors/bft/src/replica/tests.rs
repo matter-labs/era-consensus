@@ -550,7 +550,7 @@ async fn leader_commit_bad_chain() {
             res,
             Err(leader_commit::Error::InvalidMessage(
                 validator::CommitQCVerifyError::InvalidMessage(
-                    validator::ReplicaCommitVerifyError::View(_)
+                    validator::ReplicaCommitVerifyError::BadView(_)
                 )
             ))
         );

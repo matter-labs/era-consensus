@@ -24,7 +24,8 @@ impl std::ops::Deref for Committee {
 }
 
 impl Committee {
-    /// Creates a new Committee from a list of validator public keys.
+    /// Creates a new Committee from a list of validator public keys. Note that the order of the given validators
+    /// is NOT preserved in the committee.
     pub fn new(validators: impl IntoIterator<Item = WeightedValidator>) -> anyhow::Result<Self> {
         let mut map = BTreeMap::new();
         let mut total_weight: u64 = 0;

@@ -114,6 +114,14 @@ impl View {
             number: ViewNumber(self.number.0 + 1),
         }
     }
+
+    /// Decrements the view number.
+    pub fn prev(self) -> Option<Self> {
+        self.number.prev().map(|number| Self {
+            genesis: self.genesis,
+            number,
+        })
+    }
 }
 
 /// A struct that represents a view number.
@@ -124,6 +132,11 @@ impl ViewNumber {
     /// Get the next view number.
     pub fn next(self) -> Self {
         Self(self.0 + 1)
+    }
+
+    /// Get the previous view number.
+    pub fn prev(self) -> Option<Self> {
+        self.0.checked_sub(1).map(Self)
     }
 }
 
