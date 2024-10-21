@@ -158,6 +158,11 @@ module inductive {
                 { sig: id, justification: if (is_commit_id) Commit(qc_id) else Timeout(qc_id) }
         )
 
+    pure val NEW_VIEW_SAMPLE: NewView = {
+        sig: "n0",
+        justification: Commit(0),
+    }
+
     pure val PROPOSALS: Set[Proposal] =
         tuples(IALL_BLOCKS, Bool, 0.to(MAX_COMMIT_QC).union(0.to(MAX_TIMEOUT_QC)), Bool, IREPLICAS, IBLOCK_NUMBERS)
             .map(((bh, is_block_some, qc_id, is_commit_id, id, bn)) => {
@@ -244,7 +249,7 @@ module inductive {
         // non-deterministically initialize msgs_timeout_commit
         //nondet signed_timeouts = SIGNED_TIMEOUT_VOTES.powerset().oneOf()
         // non-deterministically initialize msgs_new_view
-        nondet new_views = NEW_VIEWS.powerset().oneOf()
+        //nondet new_views = NEW_VIEWS.powerset().oneOf()
         // non-deterministically initialize msgs_proposal
         //nondet proposals = PROPOSALS.powerset().oneOf()
         // non-deterministically initialize ghost_justifications
@@ -294,7 +299,10 @@ module inductive {
                     r::msgs_signed_timeout' = msgs_signed_timeout,
                 }
             },
-            r::msgs_new_view' = new_views,
+            {
+                nondet msgs_new_view = generate(30, Set(NEW_VIEW_SAMPLE))
+                r::msgs_new_view' = msgs_new_view
+            },
             //r::msgs_proposal' = proposals,
             {
                 // we have to pass the upper bound of 10 directly (this is a limitation of Quint)
