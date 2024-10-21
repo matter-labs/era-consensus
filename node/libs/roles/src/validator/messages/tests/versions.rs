@@ -46,7 +46,7 @@ mod version1 {
 
             // Check if msg.hash() is equal to hash.
             if msg.hash() != hash {
-                return Err(anyhow::anyhow!("Hash mismatch"));
+                anyhow::bail!("Hash mismatch");
             }
 
             // Check if sig is a valid signature of hash.
