@@ -221,7 +221,7 @@ impl UTHarness {
             let res = self.process_replica_prepare(ctx, msg).await;
             match (
                 (i + 1) as u64 * self.genesis().validators.iter().next().unwrap().weight
-                    < self.genesis().validators.threshold(),
+                    < self.genesis().validators.quorum_threshold(),
                 first_match,
             ) {
                 (true, _) => assert!(res.unwrap().is_none()),
@@ -256,7 +256,7 @@ impl UTHarness {
                 .process_replica_commit(ctx, key.sign_msg(msg.clone()));
             match (
                 (i + 1) as u64 * self.genesis().validators.iter().next().unwrap().weight
-                    < self.genesis().validators.threshold(),
+                    < self.genesis().validators.quorum_threshold(),
                 first_match,
             ) {
                 (true, _) => res.unwrap(),

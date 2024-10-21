@@ -183,8 +183,10 @@ impl SignedTimeoutVote {
     }
 
     fn verify(self) -> bool {
-        // If we wish, there are two invariants that are easy to check but aren't required for correctness:
-        // self.view() >= self.high_vote.view() && self.high_vote.view() >= self.high_commit_qc_view
+        // If we wish, there are three invariants that are easy to check but don't need to be stricly enforced for correctness:
+        // 1. self.view() >= self.high_vote.view()
+        // 2. self.high_vote.view() >= self.high_commit_qc_view
+        // 3. self.view() > self.high_commit_qc_view
         self.vote.high_commit_qc_view == self.high_commit_qc.map(|x| x.view()) && self.verify_sig()
           && self.high_commit_qc.map(|qc| qc.verify())
     }

@@ -21,6 +21,13 @@ impl fmt::Debug for Payload {
     }
 }
 
+impl Payload {
+    /// Hash of the payload.
+    pub fn hash(&self) -> PayloadHash {
+        PayloadHash(Keccak256::new(&self.0))
+    }
+}
+
 /// Hash of the Payload.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PayloadHash(pub(crate) Keccak256);
@@ -41,13 +48,6 @@ impl TextFmt for PayloadHash {
 impl fmt::Debug for PayloadHash {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str(&TextFmt::encode(self))
-    }
-}
-
-impl Payload {
-    /// Hash of the payload.
-    pub fn hash(&self) -> PayloadHash {
-        PayloadHash(Keccak256::new(&self.0))
     }
 }
 
@@ -102,6 +102,7 @@ impl FinalBlock {
     /// Creates a new finalized block.
     pub fn new(payload: Payload, justification: CommitQC) -> Self {
         assert_eq!(justification.header().payload, payload.hash());
+
         Self {
             payload,
             justification,

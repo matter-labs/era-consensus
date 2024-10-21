@@ -374,7 +374,7 @@ async fn replica_prepare_different_messages() {
 
         let mut replica_commit_result = None;
         // The rest of the validators until threshold sign other_replica_prepare
-        for i in validators / 2..util.genesis().validators.threshold() as usize {
+        for i in validators / 2..util.genesis().validators.quorum_threshold() as usize {
             replica_commit_result = util
                 .process_replica_prepare(ctx, util.keys[i].sign_msg(other_replica_prepare.clone()))
                 .await
@@ -564,7 +564,7 @@ async fn replica_commit_bad_chain() {
         assert_matches!(
             res,
             Err(replica_commit::Error::InvalidMessage(
-                validator::ReplicaCommitVerifyError::View(_)
+                validator::ReplicaCommitVerifyError::BadView(_)
             ))
         );
         Ok(())
