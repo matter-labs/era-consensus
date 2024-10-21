@@ -59,7 +59,7 @@ impl fmt::Debug for GenesisHash {
 
 /// Genesis with cached hash.
 #[derive(Clone)]
-pub struct Genesis(GenesisRaw, GenesisHash);
+pub struct Genesis(pub(crate) GenesisRaw, pub(crate) GenesisHash);
 
 impl std::ops::Deref for Genesis {
     type Target = GenesisRaw;

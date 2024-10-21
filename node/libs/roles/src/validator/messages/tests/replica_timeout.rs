@@ -1,55 +1,35 @@
 use super::*;
 use assert_matches::assert_matches;
-use rand::seq::SliceRandom as _;
 use zksync_concurrency::ctx;
 
 #[test]
-fn test_timeout_qc() {
-    let ctx = ctx::test_root(&ctx::RealClock);
-    let rng = &mut ctx.rng();
+fn test_replica_timeout_verify() {
+    let genesis = genesis_empty_attesters();
+    let timeout = replica_timeout();
+    assert!(timeout.verify(&genesis).is_ok());
 
-    // This will create equally weighted validators
-    let setup1 = Setup::new(rng, 6);
-    let setup2 = Setup::new(rng, 6);
-    let mut genesis3 = (*setup1.genesis).clone();
-    genesis3.validators =
-        Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap();
-    let genesis3 = genesis3.with_hash();
+    // Wrong view
+    let wrong_genesis = genesis_with_attesters().clone();
+    assert_matches!(
+        timeout.verify(&wrong_genesis),
+        Err(ReplicaTimeoutVerifyError::BadView(_))
+    );
 
-    let view: ViewNumber = rng.gen();
-    let msgs: Vec<_> = (0..3)
-        .map(|_| setup1.make_replica_timeout(rng, view))
-        .collect();
+    // Invalid high vote
+    let mut timeout = replica_timeout();
+    timeout.high_vote.as_mut().unwrap().view.genesis = genesis_with_attesters().hash();
+    assert_matches!(
+        timeout.verify(&genesis),
+        Err(ReplicaTimeoutVerifyError::InvalidHighVote(_))
+    );
 
-    for n in 0..setup1.validator_keys.len() + 1 {
-        let mut qc = TimeoutQC::new(msgs[0].view.clone());
-        for key in &setup1.validator_keys[0..n] {
-            qc.add(
-                &key.sign_msg(msgs.choose(rng).unwrap().clone()),
-                &setup1.genesis,
-            )
-            .unwrap();
-        }
-        let expected_weight: u64 = setup1
-            .genesis
-            .validators
-            .iter()
-            .take(n)
-            .map(|w| w.weight)
-            .sum();
-        if expected_weight >= setup1.genesis.validators.quorum_threshold() {
-            qc.verify(&setup1.genesis).unwrap();
-        } else {
-            assert_matches!(
-                qc.verify(&setup1.genesis),
-                Err(TimeoutQCVerifyError::NotEnoughSigners { .. })
-            );
-        }
-
-        // Mismatching validator sets.
-        assert!(qc.verify(&setup2.genesis).is_err());
-        assert!(qc.verify(&genesis3).is_err());
-    }
+    // Invalid high QC
+    let mut timeout = replica_timeout();
+    timeout.high_qc.as_mut().unwrap().message.view.genesis = genesis_with_attesters().hash();
+    assert_matches!(
+        timeout.verify(&genesis),
+        Err(ReplicaTimeoutVerifyError::InvalidHighQC(_))
+    );
 }
 
 #[test]
@@ -112,31 +92,57 @@ fn test_timeout_qc_high_vote() {
 }
 
 #[test]
-fn test_timeout_qc_add_errors() {
+fn test_timeout_qc_high_qc() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let setup = Setup::new(rng, 2);
+    let setup = Setup::new(rng, 3);
+    let view = View {
+        genesis: setup.genesis.hash(),
+        number: ViewNumber(100),
+    };
+    let mut qc = TimeoutQC::new(view);
+
+    // No high QC
+    assert!(qc.high_qc().is_none());
+
+    // Add signatures with different high QC views
+    for i in 0..3 {
+        let high_vote_view = view.number;
+        let high_qc_view = ViewNumber(view.number.0 - i as u64);
+        let msg = ReplicaTimeout {
+            view: setup.make_view(view.number),
+            high_vote: Some(setup.make_replica_commit(rng, high_vote_view)),
+            high_qc: Some(setup.make_commit_qc(rng, high_qc_view)),
+        };
+        qc.add(
+            &setup.validator_keys[i].sign_msg(msg.clone()),
+            &setup.genesis,
+        )
+        .unwrap();
+    }
+
+    assert_eq!(qc.high_qc().unwrap().message.view.number, view.number);
+}
+
+#[test]
+fn test_timeout_qc_add() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let setup = Setup::new(rng, 3);
     let view = rng.gen();
     let msg = setup.make_replica_timeout(rng, view);
     let mut qc = TimeoutQC::new(msg.view.clone());
-    let msg = setup.make_replica_timeout(rng, view);
 
-    // Add the message
-    assert_matches!(
-        qc.add(
+    // Add the first signature
+    assert!(qc.map.is_empty());
+    assert!(qc
+        .add(
             &setup.validator_keys[0].sign_msg(msg.clone()),
             &setup.genesis
-        ),
-        Ok(())
-    );
-
-    // Try to add a message for a different view
-    let mut msg1 = msg.clone();
-    msg1.view.number = view.next();
-    assert_matches!(
-        qc.add(&setup.validator_keys[0].sign_msg(msg1), &setup.genesis),
-        Err(TimeoutQCAddError::InconsistentViews { .. })
-    );
+        )
+        .is_ok());
+    assert_eq!(qc.map.len(), 1);
+    assert_eq!(qc.map.values().next().unwrap().count(), 1);
 
     // Try to add a message from a signer not in committee
     assert_matches!(
@@ -156,19 +162,171 @@ fn test_timeout_qc_add_errors() {
         Err(TimeoutQCAddError::DuplicateSigner { .. })
     );
 
-    // Try to add a message for a validator that already added another message
-    let msg2 = setup.make_replica_timeout(rng, view);
+    // Try to add an invalid signature
     assert_matches!(
-        qc.add(&setup.validator_keys[0].sign_msg(msg2), &setup.genesis),
-        Err(TimeoutQCAddError::DuplicateSigner { .. })
+        qc.add(
+            &Signed {
+                msg: msg.clone(),
+                key: setup.validator_keys[1].public(),
+                sig: rng.gen()
+            },
+            &setup.genesis
+        ),
+        Err(TimeoutQCAddError::BadSignature(_))
     );
 
-    // Add same message signed by another validator.
+    // Try to add a message with a different view
+    let mut msg1 = msg.clone();
+    msg1.view.number = view.next();
+    assert_matches!(
+        qc.add(&setup.validator_keys[1].sign_msg(msg1), &setup.genesis),
+        Err(TimeoutQCAddError::InconsistentViews)
+    );
+
+    // Try to add an invalid message
+    let mut wrong_genesis = setup.genesis.clone().0;
+    wrong_genesis.chain_id = rng.gen();
     assert_matches!(
         qc.add(
             &setup.validator_keys[1].sign_msg(msg.clone()),
-            &setup.genesis
+            &wrong_genesis.with_hash()
         ),
-        Ok(())
+        Err(TimeoutQCAddError::InvalidMessage(_))
+    );
+
+    // Add same message signed by another validator.
+    assert!(qc
+        .add(
+            &setup.validator_keys[1].sign_msg(msg.clone()),
+            &setup.genesis
+        )
+        .is_ok());
+    assert_eq!(qc.map.len(), 1);
+    assert_eq!(qc.map.values().next().unwrap().count(), 2);
+
+    // Add a different message signed by another validator.
+    let msg2 = setup.make_replica_timeout(rng, view);
+    assert!(qc
+        .add(
+            &setup.validator_keys[2].sign_msg(msg2.clone()),
+            &setup.genesis
+        )
+        .is_ok());
+    assert_eq!(qc.map.len(), 2);
+    assert_eq!(qc.map.values().next().unwrap().count(), 2);
+    assert_eq!(qc.map.values().last().unwrap().count(), 1);
+}
+
+#[test]
+fn test_timeout_qc_verify() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let mut setup = Setup::new(rng, 6);
+    setup.push_blocks(rng, 2);
+    let view = rng.gen();
+    let qc = setup.make_timeout_qc(rng, view, None);
+
+    // Verify the QC
+    assert!(qc.verify(&setup.genesis).is_ok());
+
+    // QC with bad view
+    let mut qc1 = qc.clone();
+    qc1.view = rng.gen();
+    assert_matches!(
+        qc1.verify(&setup.genesis),
+        Err(TimeoutQCVerifyError::BadView(_))
+    );
+
+    // QC with message with inconsistent view
+    let mut qc2 = qc.clone();
+    qc2.map.insert(
+        ReplicaTimeout {
+            view: qc2.view.clone().next(),
+            high_vote: None,
+            high_qc: None,
+        },
+        Signers::new(setup.genesis.validators.len()),
+    );
+    assert_matches!(
+        qc2.verify(&setup.genesis),
+        Err(TimeoutQCVerifyError::InconsistentView(_))
+    );
+
+    // QC with message with wrong signer length
+    let mut qc3 = qc.clone();
+    qc3.map.insert(
+        ReplicaTimeout {
+            view: qc3.view.clone(),
+            high_vote: None,
+            high_qc: None,
+        },
+        Signers::new(setup.genesis.validators.len() + 1),
+    );
+    assert_matches!(
+        qc3.verify(&setup.genesis),
+        Err(TimeoutQCVerifyError::WrongSignersLength(_))
+    );
+
+    // QC with message with no signers
+    let mut qc4 = qc.clone();
+    qc4.map.insert(
+        ReplicaTimeout {
+            view: qc4.view.clone(),
+            high_vote: None,
+            high_qc: None,
+        },
+        Signers::new(setup.genesis.validators.len()),
+    );
+    assert_matches!(
+        qc4.verify(&setup.genesis),
+        Err(TimeoutQCVerifyError::NoSignersAssigned(_))
+    );
+
+    // QC with overlapping signers
+    let mut qc5 = qc.clone();
+    let mut signers = Signers::new(setup.genesis.validators.len());
+    signers
+        .0
+        .set(rng.gen_range(0..setup.genesis.validators.len()), true);
+    qc5.map.insert(
+        ReplicaTimeout {
+            view: qc5.view.clone(),
+            high_vote: None,
+            high_qc: None,
+        },
+        signers,
+    );
+    assert_matches!(
+        qc5.verify(&setup.genesis),
+        Err(TimeoutQCVerifyError::OverlappingSignatureSet(_))
+    );
+
+    // QC with invalid message
+    let mut qc6 = qc.clone();
+    let (mut timeout, signers) = qc6.map.pop_first().unwrap();
+    timeout.high_qc = Some(rng.gen());
+    qc6.map.insert(timeout, signers);
+    assert_matches!(
+        qc6.verify(&setup.genesis),
+        Err(TimeoutQCVerifyError::InvalidMessage(_, _))
+    );
+
+    // QC with not enough weight
+    let mut qc7 = qc.clone();
+    let (timeout, mut signers) = qc7.map.pop_first().unwrap();
+    signers.0.set(0, false);
+    signers.0.set(4, false);
+    qc7.map.insert(timeout, signers);
+    assert_matches!(
+        qc7.verify(&setup.genesis),
+        Err(TimeoutQCVerifyError::NotEnoughWeight { .. })
+    );
+
+    // QC with bad signature
+    let mut qc8 = qc.clone();
+    qc8.signature = rng.gen();
+    assert_matches!(
+        qc8.verify(&setup.genesis),
+        Err(TimeoutQCVerifyError::BadSignature(_))
     );
 }

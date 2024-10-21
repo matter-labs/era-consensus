@@ -95,3 +95,50 @@ fn test_leader_proposal_verify() {
         Err(LeaderProposalVerifyError::NewProposalWhenPreviousNotFinalized)
     );
 }
+
+#[test]
+fn test_justification_get_implied_block() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let mut setup = Setup::new(rng, 6);
+    setup.push_blocks(rng, 3);
+
+    let payload: Payload = rng.gen();
+    let block_header = BlockHeader {
+        number: setup.next(),
+        payload: payload.hash(),
+    };
+
+    // Justification with a commit QC
+    let commit_qc = match setup.blocks.last().unwrap() {
+        Block::Final(block) => block.justification.clone(),
+        _ => unreachable!(),
+    };
+    let justification = ProposalJustification::Commit(commit_qc);
+    let proposal = LeaderProposal {
+        proposal: block_header,
+        proposal_payload: Some(payload.clone()),
+        justification,
+    };
+
+    let (implied_block_number, implied_payload) =
+        proposal.justification.get_implied_block(&setup.genesis);
+
+    assert_eq!(implied_block_number, setup.next());
+    assert!(implied_payload.is_none());
+
+    // Justification with a timeout QC
+    let timeout_qc = setup.make_timeout_qc(rng, ViewNumber(7), Some(&payload));
+    let justification = ProposalJustification::Timeout(timeout_qc);
+    let proposal = LeaderProposal {
+        proposal: block_header,
+        proposal_payload: None,
+        justification,
+    };
+
+    let (implied_block_number, implied_payload) =
+        proposal.justification.get_implied_block(&setup.genesis);
+
+    assert_eq!(implied_block_number, setup.next());
+    assert_eq!(implied_payload, Some(payload.hash()));
+}

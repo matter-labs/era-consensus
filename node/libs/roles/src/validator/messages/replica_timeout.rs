@@ -21,22 +21,16 @@ impl ReplicaTimeout {
     pub fn verify(&self, genesis: &Genesis) -> Result<(), ReplicaTimeoutVerifyError> {
         self.view
             .verify(genesis)
-            .map_err(ReplicaTimeoutVerifyError::View)?;
+            .map_err(ReplicaTimeoutVerifyError::BadView)?;
 
         if let Some(v) = &self.high_vote {
-            if self.view.number <= v.view.number {
-                return Err(ReplicaTimeoutVerifyError::HighVoteFutureView);
-            }
             v.verify(genesis)
-                .map_err(ReplicaTimeoutVerifyError::HighVote)?;
+                .map_err(ReplicaTimeoutVerifyError::InvalidHighVote)?;
         }
 
         if let Some(qc) = &self.high_qc {
-            if self.view.number <= qc.view().number {
-                return Err(ReplicaTimeoutVerifyError::HighQCFutureView);
-            }
             qc.verify(genesis)
-                .map_err(ReplicaTimeoutVerifyError::HighQC)?;
+                .map_err(ReplicaTimeoutVerifyError::InvalidHighQC)?;
         }
 
         Ok(())
@@ -48,19 +42,13 @@ impl ReplicaTimeout {
 pub enum ReplicaTimeoutVerifyError {
     /// View.
     #[error("view: {0:#}")]
-    View(anyhow::Error),
-    /// FutureHighVoteView.
-    #[error("high vote from the future")]
-    HighVoteFutureView,
-    /// FutureHighQCView.
-    #[error("high qc from the future")]
-    HighQCFutureView,
-    /// HighVote.
-    #[error("high_vote: {0:#}")]
-    HighVote(ReplicaCommitVerifyError),
-    /// HighQC.
-    #[error("high_qc: {0:#}")]
-    HighQC(CommitQCVerifyError),
+    BadView(anyhow::Error),
+    /// Invalid High Vote.
+    #[error("invalid high_vote: {0:#}")]
+    InvalidHighVote(ReplicaCommitVerifyError),
+    /// Invalid High QC.
+    #[error("invalid high_qc: {0:#}")]
+    InvalidHighQC(CommitQCVerifyError),
 }
 
 /// A quorum certificate of ReplicaTimeout messages. Since not all ReplicaTimeout messages are
@@ -129,7 +117,7 @@ impl TimeoutQC {
             });
         };
 
-        // Check if already have a message from the same signer.
+        // Check if we already have a message from the same signer.
         if self.map.values().any(|s| s.0[i]) {
             return Err(TimeoutQCAddError::DuplicateSigner {
                 signer: Box::new(msg.key.clone()),
@@ -164,29 +152,23 @@ impl TimeoutQC {
     pub fn verify(&self, genesis: &Genesis) -> Result<(), TimeoutQCVerifyError> {
         self.view
             .verify(genesis)
-            .map_err(TimeoutQCVerifyError::View)?;
+            .map_err(TimeoutQCVerifyError::BadView)?;
 
         let mut sum = Signers::new(genesis.validators.len());
 
         // Check the ReplicaTimeout messages.
         for (i, (msg, signers)) in self.map.iter().enumerate() {
             if msg.view != self.view {
-                return Err(TimeoutQCVerifyError::InconsistentViews);
+                return Err(TimeoutQCVerifyError::InconsistentView(i));
             }
             if signers.len() != sum.len() {
-                return Err(TimeoutQCVerifyError::BadFormat(anyhow::format_err!(
-                    "msg[{i}].signers has wrong length"
-                )));
+                return Err(TimeoutQCVerifyError::WrongSignersLength(i));
             }
             if signers.is_empty() {
-                return Err(TimeoutQCVerifyError::BadFormat(anyhow::format_err!(
-                    "msg[{i}] has no signers assigned"
-                )));
+                return Err(TimeoutQCVerifyError::NoSignersAssigned(i));
             }
             if !(&sum & signers).is_empty() {
-                return Err(TimeoutQCVerifyError::BadFormat(anyhow::format_err!(
-                    "overlapping signature sets for different messages"
-                )));
+                return Err(TimeoutQCVerifyError::OverlappingSignatureSet(i));
             }
             msg.verify(genesis)
                 .map_err(|err| TimeoutQCVerifyError::InvalidMessage(i, err))?;
@@ -198,7 +180,7 @@ impl TimeoutQC {
         let weight = genesis.validators.weight(&sum);
         let threshold = genesis.validators.quorum_threshold();
         if weight < threshold {
-            return Err(TimeoutQCVerifyError::NotEnoughSigners {
+            return Err(TimeoutQCVerifyError::NotEnoughWeight {
                 got: weight,
                 want: threshold,
             });
@@ -261,19 +243,25 @@ pub enum TimeoutQCAddError {
 pub enum TimeoutQCVerifyError {
     /// Bad view.
     #[error("Bad view: {0:#}")]
-    View(anyhow::Error),
+    BadView(anyhow::Error),
     /// Inconsistent views.
-    #[error("Inconsistent views of signed messages")]
-    InconsistentViews,
+    #[error("Message with inconsistent view: number [{0}]")]
+    InconsistentView(usize),
     /// Invalid message.
     #[error("Invalid message: number [{0}], {1:#}")]
     InvalidMessage(usize, ReplicaTimeoutVerifyError),
-    /// Bad message format.
-    #[error(transparent)]
-    BadFormat(anyhow::Error),
+    /// Wrong signers length.
+    #[error("Message with wrong signers length: number [{0}]")]
+    WrongSignersLength(usize),
+    /// No signers assigned.
+    #[error("Message with no signers assigned: number [{0}]")]
+    NoSignersAssigned(usize),
+    /// Overlapping signature sets.
+    #[error("Message with overlapping signature set: number [{0}]")]
+    OverlappingSignatureSet(usize),
     /// Weight not reached.
     #[error("Signers have not reached threshold weight: got {got}, want {want}")]
-    NotEnoughSigners {
+    NotEnoughWeight {
         /// Got weight.
         got: u64,
         /// Want weight.

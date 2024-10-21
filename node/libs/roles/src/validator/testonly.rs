@@ -249,7 +249,7 @@ impl Setup {
 
     /// Creates a ReplicaTimeout with a random payload.
     pub fn make_replica_timeout(&self, rng: &mut impl Rng, view: ViewNumber) -> ReplicaTimeout {
-        let high_vote_view = ViewNumber(rng.gen_range(0..view.0));
+        let high_vote_view = ViewNumber(rng.gen_range(0..=view.0));
         let high_qc_view = ViewNumber(rng.gen_range(0..high_vote_view.0));
         ReplicaTimeout {
             view: self.make_view(view),
@@ -277,16 +277,16 @@ impl Setup {
         };
 
         let mut qc = TimeoutQC::new(self.make_view(view));
+        if payload_opt.is_none() {
+            vote.proposal.payload = rng.gen();
+        }
+        let msg = ReplicaTimeout {
+            view: self.make_view(view),
+            high_vote: Some(vote.clone()),
+            high_qc: Some(commit_qc.clone()),
+        };
         for key in &self.validator_keys {
-            if payload_opt.is_none() {
-                vote.proposal.payload = rng.gen();
-            }
-            let msg = ReplicaTimeout {
-                view: self.make_view(view),
-                high_vote: Some(vote.clone()),
-                high_qc: Some(commit_qc.clone()),
-            };
-            qc.add(&key.sign_msg(msg), &self.genesis).unwrap();
+            qc.add(&key.sign_msg(msg.clone()), &self.genesis).unwrap();
         }
 
         qc

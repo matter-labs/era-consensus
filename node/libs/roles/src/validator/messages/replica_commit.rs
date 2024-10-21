@@ -17,10 +17,6 @@ impl ReplicaCommit {
             .verify(genesis)
             .map_err(ReplicaCommitVerifyError::BadView)?;
 
-        if self.proposal.number < genesis.first_block {
-            return Err(ReplicaCommitVerifyError::BadBlockNumber);
-        }
-
         Ok(())
     }
 }
@@ -31,9 +27,6 @@ pub enum ReplicaCommitVerifyError {
     /// Invalid view.
     #[error("view: {0:#}")]
     BadView(anyhow::Error),
-    /// Bad block number.
-    #[error("block number < first block")]
-    BadBlockNumber,
 }
 
 /// A Commit Quorum Certificate. It is an aggregate of signed ReplicaCommit messages.
@@ -124,7 +117,7 @@ impl CommitQC {
         let weight = genesis.validators.weight(&self.signers);
         let threshold = genesis.validators.quorum_threshold();
         if weight < threshold {
-            return Err(CommitQCVerifyError::NotEnoughSigners {
+            return Err(CommitQCVerifyError::NotEnoughWeight {
                 got: weight,
                 want: threshold,
             });
@@ -181,7 +174,7 @@ pub enum CommitQCVerifyError {
     BadSignersSet,
     /// Weight not reached.
     #[error("Signers have not reached threshold weight: got {got}, want {want}")]
-    NotEnoughSigners {
+    NotEnoughWeight {
         /// Got weight.
         got: u64,
         /// Want weight.

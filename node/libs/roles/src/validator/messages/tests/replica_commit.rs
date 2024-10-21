@@ -3,73 +3,39 @@ use assert_matches::assert_matches;
 use zksync_concurrency::ctx;
 
 #[test]
-fn test_commit_qc() {
-    let ctx = ctx::test_root(&ctx::RealClock);
-    let rng = &mut ctx.rng();
+fn test_replica_commit_verify() {
+    let genesis = genesis_empty_attesters();
+    let commit = replica_commit();
+    assert!(commit.verify(&genesis).is_ok());
 
-    // This will create equally weighted validators
-    let setup1 = Setup::new(rng, 6);
-    let setup2 = Setup::new(rng, 6);
-    let mut genesis3 = (*setup1.genesis).clone();
-    genesis3.validators =
-        Committee::new(setup1.genesis.validators.iter().take(3).cloned()).unwrap();
-    let genesis3 = genesis3.with_hash();
-
-    for i in 0..setup1.validator_keys.len() + 1 {
-        let view = rng.gen();
-        let mut qc = CommitQC::new(setup1.make_replica_commit(rng, view), &setup1.genesis);
-        for key in &setup1.validator_keys[0..i] {
-            qc.add(&key.sign_msg(qc.message.clone()), &setup1.genesis)
-                .unwrap();
-        }
-        let expected_weight: u64 = setup1
-            .genesis
-            .validators
-            .iter()
-            .take(i)
-            .map(|w| w.weight)
-            .sum();
-        if expected_weight >= setup1.genesis.validators.quorum_threshold() {
-            qc.verify(&setup1.genesis).unwrap();
-        } else {
-            assert_matches!(
-                qc.verify(&setup1.genesis),
-                Err(CommitQCVerifyError::NotEnoughSigners { .. })
-            );
-        }
-
-        // Mismatching validator sets.
-        assert!(qc.verify(&setup2.genesis).is_err());
-        assert!(qc.verify(&genesis3).is_err());
-    }
+    // Wrong view
+    let wrong_genesis = genesis_with_attesters().clone();
+    assert_matches!(
+        commit.verify(&wrong_genesis),
+        Err(ReplicaCommitVerifyError::BadView(_))
+    );
 }
 
 #[test]
-fn test_commit_qc_add_errors() {
+fn test_commit_qc_add() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let setup = Setup::new(rng, 2);
     let view = rng.gen();
     let mut qc = CommitQC::new(setup.make_replica_commit(rng, view), &setup.genesis);
     let msg = qc.message.clone();
-    // Add the message
-    assert_matches!(
-        qc.add(
+
+    // Add the first signature
+    assert_eq!(qc.signers.count(), 0);
+    assert!(qc
+        .add(
             &setup.validator_keys[0].sign_msg(msg.clone()),
             &setup.genesis
-        ),
-        Ok(())
-    );
+        )
+        .is_ok());
+    assert_eq!(qc.signers.count(), 1);
 
-    // Try to add a message for a different view
-    let mut msg1 = msg.clone();
-    msg1.view.number = view.next();
-    assert_matches!(
-        qc.add(&setup.validator_keys[0].sign_msg(msg1), &setup.genesis),
-        Err(CommitQCAddError::InconsistentMessages { .. })
-    );
-
-    // Try to add a message from a signer not in committee
+    // Try to add a signature from a signer not in committee
     assert_matches!(
         qc.add(
             &rng.gen::<validator::SecretKey>().sign_msg(msg.clone()),
@@ -78,7 +44,7 @@ fn test_commit_qc_add_errors() {
         Err(CommitQCAddError::SignerNotInCommittee { .. })
     );
 
-    // Try to add the same message already added by same validator
+    // Try to add a signature from the same validator
     assert_matches!(
         qc.add(
             &setup.validator_keys[0].sign_msg(msg.clone()),
@@ -87,9 +53,87 @@ fn test_commit_qc_add_errors() {
         Err(CommitQCAddError::DuplicateSigner { .. })
     );
 
+    // Try to add an invalid signature
+    assert_matches!(
+        qc.add(
+            &Signed {
+                msg: msg.clone(),
+                key: setup.validator_keys[1].public(),
+                sig: rng.gen()
+            },
+            &setup.genesis
+        ),
+        Err(CommitQCAddError::BadSignature(_))
+    );
+
+    // Try to add a signature for a different message
+    let mut msg1 = msg.clone();
+    msg1.view.number = view.next();
+    assert_matches!(
+        qc.add(&setup.validator_keys[1].sign_msg(msg1), &setup.genesis),
+        Err(CommitQCAddError::InconsistentMessages)
+    );
+
+    // Try to add an invalid message
+    let mut wrong_genesis = setup.genesis.clone().0;
+    wrong_genesis.chain_id = rng.gen();
+    assert_matches!(
+        qc.add(
+            &setup.validator_keys[1].sign_msg(msg.clone()),
+            &wrong_genesis.with_hash()
+        ),
+        Err(CommitQCAddError::InvalidMessage(_))
+    );
+
     // Add same message signed by another validator.
     assert_matches!(
         qc.add(&setup.validator_keys[1].sign_msg(msg), &setup.genesis),
         Ok(())
+    );
+    assert_eq!(qc.signers.count(), 2);
+}
+
+#[test]
+fn test_commit_qc_verify() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let setup = Setup::new(rng, 6);
+    let view = rng.gen();
+    let qc = setup.make_commit_qc(rng, view);
+
+    // Verify the QC
+    assert!(qc.verify(&setup.genesis).is_ok());
+
+    // QC with bad message
+    let mut qc1 = qc.clone();
+    qc1.message.view.genesis = rng.gen();
+    assert_matches!(
+        qc1.verify(&setup.genesis),
+        Err(CommitQCVerifyError::InvalidMessage(_))
+    );
+
+    // QC with too many signers
+    let mut qc2 = qc.clone();
+    qc2.signers = Signers::new(setup.genesis.validators.len() + 1);
+    assert_matches!(
+        qc2.verify(&setup.genesis),
+        Err(CommitQCVerifyError::BadSignersSet)
+    );
+
+    // QC with not enough weight
+    let mut qc3 = qc.clone();
+    qc3.signers.0.set(0, false);
+    qc3.signers.0.set(4, false);
+    assert_matches!(
+        qc3.verify(&setup.genesis),
+        Err(CommitQCVerifyError::NotEnoughWeight { .. })
+    );
+
+    // QC with bad signature
+    let mut qc4 = qc.clone();
+    qc4.signature = rng.gen();
+    assert_matches!(
+        qc4.verify(&setup.genesis),
+        Err(CommitQCVerifyError::BadSignature(_))
     );
 }
