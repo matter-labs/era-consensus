@@ -13,6 +13,8 @@ message ReplicaState {
   optional uint64 view = 1; // required; ViewNumber
   optional roles.validator.Phase phase = 2; // required
   optional roles.validator.ReplicaCommit high_vote = 3; // optional
+  // TODO: name should be high_commit_qc
   optional roles.validator.CommitQC high_qc = 4; // optional
   repeated Proposal proposals = 5;
+  optional roles.validator.TimeoutQC high_timeout_qc = 6; // optional
 }

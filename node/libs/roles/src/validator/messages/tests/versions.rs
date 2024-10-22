@@ -95,8 +95,8 @@ mod version1 {
     fn leader_proposal_change_detector() {
         msg_change_detector(
             leader_proposal().insert(),
-            "validator_msg:keccak256:7b079e4ca3021834fa35745cb042fea6dd5bb89a91ca5ba31ed6ba1765a1e113",
-            "validator:signature:bls12_381:98ca0f24d87f938b22ac9c2a2720466cd157a502b31ae5627ce5fdbda6de0ad6d2e9b159cf816cd1583644f2f69ecb84",
+            "validator_msg:keccak256:4c1b2cf1e8fbb00cde86caee200491df15c45d5c88402e227c1f3e1b416c4255",
+            "validator:signature:bls12_381:81f865807067c6f70f17f9716e6d41c0103c2366abb6721408fb7d27ead6332798bd7b34d5f4a63e324082586b2c69a3",
         );
     }
 }

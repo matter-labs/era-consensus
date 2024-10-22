@@ -169,7 +169,7 @@ impl ReplicaState {
         self.send(vote);
     }
     
-    // Processed an (already verified) commit_qc received from the network
+    // Processes a (already verified) commit_qc received from the network
     // as part of some message. It bumps the local high_commit_qc and if
     // we have the proposal corresponding to this qc, we append it to the committed_blocks.
     fn process_commit_qc(&mut self, qc_opt: Option<CommitQC>) {

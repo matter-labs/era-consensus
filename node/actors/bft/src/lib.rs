@@ -70,8 +70,9 @@ impl Config {
         anyhow::ensure!(genesis.protocol_version == validator::ProtocolVersion::CURRENT);
         genesis.verify().context("genesis().verify()")?;
 
+        // TODO: What about pruning???
         if let Some(prev) = genesis.first_block.prev() {
-            tracing::info!("Waiting for the pre-genesis blocks to be persisted");
+            tracing::info!("Waiting for the pre-fork blocks to be persisted");
             if let Err(ctx::Canceled) = self.block_store.wait_until_persisted(ctx, prev).await {
                 return Ok(());
             }
@@ -95,8 +96,8 @@ impl Config {
 
             tracing::info!("Starting consensus actor {:?}", cfg.secret_key.public());
 
-            // This is the infinite loop where the consensus actually runs. The validator waits for either
-            // a message from the network or for a timeout, and processes each accordingly.
+            // This is the infinite loop where the consensus actually runs. The validator waits for
+            // a message from the network and processes it accordingly.
             loop {
                 async {
                     let InputMessage::Network(req) = pipe

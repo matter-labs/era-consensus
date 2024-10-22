@@ -1,9 +1,8 @@
 //! Testonly utilities.
 #![allow(dead_code)]
 use crate::{
-    gossip::attestation,
-    io::{ConsensusInputMessage, Target},
-    Config, GossipConfig, Network, RpcConfig, Runner,
+    gossip::attestation, io::ConsensusInputMessage, Config, GossipConfig, Network, RpcConfig,
+    Runner,
 };
 use rand::{
     distributions::{Distribution, Standard},
@@ -21,21 +20,9 @@ use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 use zksync_consensus_utils::pipe;
 
-impl Distribution<Target> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Target {
-        match rng.gen_range(0..2) {
-            0 => Target::Broadcast,
-            _ => Target::Validator(rng.gen()),
-        }
-    }
-}
-
 impl Distribution<ConsensusInputMessage> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ConsensusInputMessage {
-        ConsensusInputMessage {
-            message: rng.gen(),
-            recipient: rng.gen(),
-        }
+        ConsensusInputMessage { message: rng.gen() }
     }
 }
 

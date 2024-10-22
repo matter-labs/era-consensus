@@ -26,10 +26,10 @@ async fn test_msg_pool() {
     // We keep them sorted by type and view, so that it is easy to
     // compute the expected state of the pool after insertions.
     let msgs = [
-        gen(&mut || M::ReplicaPrepare(rng.gen())),
+        gen(&mut || M::LeaderProposal(rng.gen())),
         gen(&mut || M::ReplicaCommit(rng.gen())),
-        gen(&mut || M::LeaderPrepare(rng.gen())),
-        gen(&mut || M::LeaderCommit(rng.gen())),
+        gen(&mut || M::ReplicaNewView(rng.gen())),
+        gen(&mut || M::ReplicaTimeout(rng.gen())),
     ];
 
     // Insert messages at random.
@@ -42,7 +42,6 @@ async fn test_msg_pool() {
         want[i] = Some(want[i].unwrap_or(0).max(j));
         pool.send(Arc::new(io::ConsensusInputMessage {
             message: msgs[i][j].clone(),
-            recipient: io::Target::Broadcast,
         }));
         // Here we compare the internal state of the pool to the expected state.
         // Note that we compare sets of crypto hashes of messages, because the messages themselves do not
@@ -310,9 +309,6 @@ async fn test_transmission() {
             let want: validator::Signed<validator::ConsensusMsg> = want.cast().unwrap();
             let in_message = io::ConsensusInputMessage {
                 message: want.clone(),
-                recipient: io::Target::Validator(
-                    nodes[1].cfg().validator_key.as_ref().unwrap().public(),
-                ),
             };
             nodes[0].pipe.send(in_message.into());
 
@@ -355,7 +351,6 @@ async fn test_retransmission() {
         node0.pipe.send(
             io::ConsensusInputMessage {
                 message: want.clone(),
-                recipient: io::Target::Broadcast,
             }
             .into(),
         );

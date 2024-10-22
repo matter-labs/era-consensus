@@ -26,6 +26,16 @@ impl Payload {
     pub fn hash(&self) -> PayloadHash {
         PayloadHash(Keccak256::new(&self.0))
     }
+
+    /// Returns the length of the payload.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if the payload is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 /// Hash of the Payload.

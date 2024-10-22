@@ -290,7 +290,6 @@ impl ProtoFmt for LeaderProposal {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            proposal: read_required(&r.proposal).context("proposal")?,
             proposal_payload: r.proposal_payload.as_ref().map(|p| Payload(p.clone())),
             justification: read_required(&r.justification).context("justification")?,
         })
@@ -298,7 +297,6 @@ impl ProtoFmt for LeaderProposal {
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            proposal: Some(self.proposal.build()),
             proposal_payload: self.proposal_payload.as_ref().map(|p| p.0.clone()),
             justification: Some(self.justification.build()),
         }

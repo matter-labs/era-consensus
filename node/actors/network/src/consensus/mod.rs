@@ -59,10 +59,10 @@ impl MsgPool {
                 // an implementation detail of the bft crate. Consider moving
                 // this logic there.
                 match (&v.message.msg, &msg.message.msg) {
-                    (M::ReplicaPrepare(_), M::ReplicaPrepare(_)) => {}
+                    (M::LeaderProposal(_), M::LeaderProposal(_)) => {}
                     (M::ReplicaCommit(_), M::ReplicaCommit(_)) => {}
-                    (M::LeaderPrepare(_), M::LeaderPrepare(_)) => {}
-                    (M::LeaderCommit(_), M::LeaderCommit(_)) => {}
+                    (M::ReplicaNewView(_), M::ReplicaNewView(_)) => {}
+                    (M::ReplicaTimeout(_), M::ReplicaTimeout(_)) => {}
                     _ => return true,
                 }
                 // If pool contains a message of the same type which is newer,
@@ -229,15 +229,8 @@ impl Network {
                 let mut sub = self.msg_pool.subscribe();
                 loop {
                     let call = consensus_cli.reserve(ctx).await?;
-                    let msg = loop {
-                        let msg = sub.recv(ctx).await?;
-                        match &msg.recipient {
-                            io::Target::Broadcast => {}
-                            io::Target::Validator(recipient) if recipient == peer => {}
-                            _ => continue,
-                        }
-                        break msg.message.clone();
-                    };
+                    let msg = sub.recv(ctx).await?.message.clone();
+
                     s.spawn(async {
                         let req = rpc::consensus::Req(msg);
                         let res = call.call(ctx, &req, RESP_MAX_SIZE).await;

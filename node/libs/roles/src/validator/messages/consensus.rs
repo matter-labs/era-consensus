@@ -152,7 +152,8 @@ impl fmt::Display for ViewNumber {
 pub struct Signers(pub BitVec);
 
 impl Signers {
-    /// Constructs an empty signers set.
+    /// Constructs a new Signers bitmap with the given number of validators. All
+    /// bits are set to false.
     pub fn new(n: usize) -> Self {
         Self(BitVec::from_elem(n, false))
     }

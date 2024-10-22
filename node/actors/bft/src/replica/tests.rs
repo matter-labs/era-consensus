@@ -1,4 +1,4 @@
-use super::{leader_commit, leader_prepare};
+use super::{leader_commit, proposal};
 use crate::{
     testonly,
     testonly::ut_harness::{UTHarness, MAX_PAYLOAD_SIZE},
@@ -58,7 +58,7 @@ async fn leader_prepare_bad_chain() {
             .await;
         assert_matches!(
             res,
-            Err(leader_prepare::Error::InvalidMessage(
+            Err(proposal::Error::InvalidMessage(
                 validator::LeaderPrepareVerifyError::Justification(
                     validator::PrepareQCVerifyError::View(_)
                 )
@@ -129,7 +129,7 @@ async fn leader_prepare_invalid_leader() {
             .await;
         assert_matches!(
             res,
-            Err(leader_prepare::Error::InvalidLeader { correct_leader, received_leader }) => {
+            Err(proposal::Error::InvalidLeader { correct_leader, received_leader }) => {
                 assert_eq!(correct_leader, util.keys[1].public());
                 assert_eq!(received_leader, util.keys[0].public());
             }
@@ -155,7 +155,7 @@ async fn leader_prepare_old_view() {
             .await;
         assert_matches!(
             res,
-            Err(leader_prepare::Error::Old { current_view, current_phase }) => {
+            Err(proposal::Error::Old { current_view, current_phase }) => {
                 assert_eq!(current_view, util.replica.view);
                 assert_eq!(current_phase, util.replica.phase);
             }
@@ -187,7 +187,7 @@ async fn leader_prepare_pruned_block() {
         let res = util
             .process_leader_prepare(ctx, util.sign(leader_prepare))
             .await;
-        assert_matches!(res, Err(leader_prepare::Error::ProposalAlreadyPruned));
+        assert_matches!(res, Err(proposal::Error::ProposalAlreadyPruned));
         Ok(())
     })
     .await
@@ -231,7 +231,7 @@ async fn leader_prepare_invalid_payload() {
         let res = util
             .process_leader_prepare(ctx, util.sign(leader_prepare))
             .await;
-        assert_matches!(res, Err(leader_prepare::Error::ProposalInvalidPayload(..)));
+        assert_matches!(res, Err(proposal::Error::InvalidPayload(..)));
         Ok(())
     })
     .await
@@ -249,7 +249,7 @@ async fn leader_prepare_invalid_sig() {
         let mut leader_prepare = util.sign(leader_prepare);
         leader_prepare.sig = ctx.rng().gen();
         let res = util.process_leader_prepare(ctx, leader_prepare).await;
-        assert_matches!(res, Err(leader_prepare::Error::InvalidSignature(..)));
+        assert_matches!(res, Err(proposal::Error::InvalidSignature(..)));
         Ok(())
     })
     .await
@@ -271,7 +271,7 @@ async fn leader_prepare_invalid_prepare_qc() {
             .await;
         assert_matches!(
             res,
-            Err(leader_prepare::Error::InvalidMessage(
+            Err(proposal::Error::InvalidMessage(
                 validator::LeaderPrepareVerifyError::Justification(_)
             ))
         );
@@ -299,7 +299,7 @@ async fn leader_prepare_proposal_oversized_payload() {
             .await;
         assert_matches!(
             res,
-            Err(leader_prepare::Error::ProposalOversizedPayload{ payload_size }) => {
+            Err(proposal::Error::ProposalOversizedPayload{ payload_size }) => {
                 assert_eq!(payload_size, payload_oversize);
             }
         );
@@ -324,7 +324,7 @@ async fn leader_prepare_proposal_mismatched_payload() {
             .await;
         assert_matches!(
             res,
-            Err(leader_prepare::Error::InvalidMessage(
+            Err(proposal::Error::InvalidMessage(
                 validator::LeaderPrepareVerifyError::ProposalMismatchedPayload
             ))
         );
@@ -357,7 +357,7 @@ async fn leader_prepare_proposal_when_previous_not_finalized() {
             .await;
         assert_matches!(
             res,
-            Err(leader_prepare::Error::InvalidMessage(
+            Err(proposal::Error::InvalidMessage(
                 validator::LeaderPrepareVerifyError::ProposalWhenPreviousNotFinalized
             ))
         );
@@ -383,7 +383,7 @@ async fn leader_prepare_bad_block_number() {
         tracing::info!("Modify the proposal.number so that it doesn't match the previous block");
         leader_prepare.proposal.number = rng.gen();
         let res = util.process_leader_prepare(ctx, util.sign(leader_prepare.clone())).await;
-        assert_matches!(res, Err(leader_prepare::Error::InvalidMessage(
+        assert_matches!(res, Err(proposal::Error::InvalidMessage(
             validator::LeaderPrepareVerifyError::BadBlockNumber { got, want }
         )) => {
             assert_eq!(want, leader_prepare.justification.high_qc().unwrap().message.proposal.number.next());
@@ -426,7 +426,7 @@ async fn leader_prepare_reproposal_without_quorum() {
             .await;
         assert_matches!(
             res,
-            Err(leader_prepare::Error::InvalidMessage(
+            Err(proposal::Error::InvalidMessage(
                 validator::LeaderPrepareVerifyError::ReproposalWithoutQuorum
             ))
         );
@@ -462,7 +462,7 @@ async fn leader_prepare_reproposal_when_finalized() {
             .await;
         assert_matches!(
             res,
-            Err(leader_prepare::Error::InvalidMessage(
+            Err(proposal::Error::InvalidMessage(
                 validator::LeaderPrepareVerifyError::ReproposalWhenFinalized
             ))
         );
@@ -492,7 +492,7 @@ async fn leader_prepare_reproposal_invalid_block() {
             .await;
         assert_matches!(
             res,
-            Err(leader_prepare::Error::InvalidMessage(
+            Err(proposal::Error::InvalidMessage(
                 validator::LeaderPrepareVerifyError::ReproposalBadBlock
             ))
         );

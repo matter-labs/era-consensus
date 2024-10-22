@@ -161,7 +161,7 @@ pub struct WeightedValidator {
     pub weight: Weight,
 }
 
-/// Voting weight;
+/// Voting weight.
 pub type Weight = u64;
 
 /// The mode used for selecting leader for a given view.
