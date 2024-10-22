@@ -28,17 +28,8 @@ pub(crate) struct StateMachine {
     pub(crate) phase: validator::Phase,
     /// Time when the current phase has started.
     pub(crate) phase_start: time::Instant,
-    /// Latest view each validator has signed a ReplicaPrepare message for.
-    pub(crate) replica_prepare_views: BTreeMap<validator::PublicKey, validator::ViewNumber>,
-    /// Prepare QCs indexed by view number.
-    pub(crate) prepare_qcs: BTreeMap<validator::ViewNumber, validator::PrepareQC>,
     /// Newest prepare QC composed from the `ReplicaPrepare` messages.
     pub(crate) prepare_qc: sync::watch::Sender<Option<validator::PrepareQC>>,
-    /// Commit QCs indexed by view number and then by message.
-    pub(crate) commit_qcs:
-        BTreeMap<validator::ViewNumber, BTreeMap<validator::ReplicaCommit, validator::CommitQC>>,
-    /// Latest view each validator has signed a ReplicaCommit message for.
-    pub(crate) replica_commit_views: BTreeMap<validator::PublicKey, validator::ViewNumber>,
 }
 
 impl StateMachine {

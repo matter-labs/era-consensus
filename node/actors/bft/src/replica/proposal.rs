@@ -1,7 +1,7 @@
-//! Handler of a LeaderPrepare message.
 use super::StateMachine;
+use std::cmp::max;
 use zksync_concurrency::{ctx, error::Wrap};
-use zksync_consensus_network::io::{ConsensusInputMessage, Target};
+use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator::{self, BlockHeader, BlockNumber};
 
 /// Errors that can occur when processing a LeaderProposal message.
@@ -27,31 +27,33 @@ pub(crate) enum Error {
         /// Received leader.
         received_leader: validator::PublicKey,
     },
-    /// Leader proposed a block that was already pruned from replica's storage.
-    #[error("leader proposed a block that was already pruned from replica's storage")]
-    ProposalAlreadyPruned,
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] anyhow::Error),
     /// Invalid message.
     #[error("invalid message: {0:#}")]
-    InvalidMessage(#[source] validator::LeaderPrepareVerifyError),
-
+    InvalidMessage(#[source] validator::LeaderProposalVerifyError),
+    /// Leader proposed a block that was already pruned from replica's storage.
+    #[error("leader proposed a block that was already pruned from replica's storage")]
+    ProposalAlreadyPruned,
+    /// Block proposal payload missing.
+    #[error("block proposal payload missing")]
+    MissingPayload,
     /// Oversized payload.
     #[error("block proposal with an oversized payload (payload size: {payload_size})")]
     ProposalOversizedPayload {
         /// Size of the payload.
         payload_size: usize,
     },
-    /// Invalid payload.
-    #[error("invalid payload: {0:#}")]
-    InvalidPayload(#[source] anyhow::Error),
     /// Previous payload missing.
     #[error("previous block proposal payload missing from store (block number: {prev_number})")]
     MissingPreviousPayload {
         /// The number of the missing block
         prev_number: BlockNumber,
     },
+    /// Invalid payload.
+    #[error("invalid payload: {0:#}")]
+    InvalidPayload(#[source] anyhow::Error),
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error(transparent)]
     Internal(#[from] ctx::Error),
@@ -109,8 +111,9 @@ impl StateMachine {
             .verify(self.config.genesis())
             .map_err(Error::InvalidMessage)?;
 
-        let (implied_block_number, implied_block_hash) =
-            message.justification.get_implied_block(self.genesis());
+        let (implied_block_number, implied_block_hash) = message
+            .justification
+            .get_implied_block(self.config.genesis());
 
         // Replica MUSTN'T vote for blocks which have been already pruned for storage.
         // (because it won't be able to persist and broadcast them once finalized).
@@ -136,7 +139,7 @@ impl StateMachine {
             // This is a new proposal, so we need to verify it (i.e. execute it).
             None => {
                 // Check that the payload is present.
-                let Some(payload) = message.proposal_payload else {
+                let Some(ref payload) = message.proposal_payload else {
                     return Err(Error::MissingPayload);
                 };
 
@@ -162,7 +165,7 @@ impl StateMachine {
                 if let Err(err) = self
                     .config
                     .payload_manager
-                    .verify(ctx, message.proposal.number, &payload)
+                    .verify(ctx, implied_block_number, &payload)
                     .await
                 {
                     return Err(match err {
@@ -176,6 +179,8 @@ impl StateMachine {
                     .entry(implied_block_number)
                     .or_default()
                     .insert(payload.hash(), payload.clone());
+
+                payload.hash()
             }
         };
 
@@ -194,13 +199,18 @@ impl StateMachine {
         self.view = message.view().number;
         self.phase = validator::Phase::Commit;
         self.high_vote = Some(commit_vote.clone());
-        match message.justification {
-            validator::ProposalJustification::Commit(qc) => self.process_commit_qc(qc),
+        match &message.justification {
+            validator::ProposalJustification::Commit(qc) => self
+                .process_commit_qc(ctx, qc)
+                .await
+                .wrap("process_commit_qc()")?,
             validator::ProposalJustification::Timeout(qc) => {
                 if let Some(high_qc) = qc.high_qc() {
-                    self.process_commit_qc(high_qc);
+                    self.process_commit_qc(ctx, high_qc)
+                        .await
+                        .wrap("process_commit_qc()")?;
                 }
-                self.high_timeout_qc = Some(qc);
+                self.high_timeout_qc = max(Some(qc.clone()), self.high_timeout_qc.clone());
             }
         };
 

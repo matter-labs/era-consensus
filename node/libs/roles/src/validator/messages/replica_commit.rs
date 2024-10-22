@@ -31,7 +31,7 @@ pub enum ReplicaCommitVerifyError {
 
 /// A Commit Quorum Certificate. It is an aggregate of signed ReplicaCommit messages.
 /// The Commit Quorum Certificate is over identical messages, so we only need one message.
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommitQC {
     /// The ReplicaCommit message that the QC is for.
     pub message: ReplicaCommit,
@@ -134,6 +134,18 @@ impl CommitQC {
         self.signature
             .verify_messages(messages_and_keys)
             .map_err(CommitQCVerifyError::BadSignature)
+    }
+}
+
+impl Ord for CommitQC {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.message.view.number.cmp(&other.message.view.number)
+    }
+}
+
+impl PartialOrd for CommitQC {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 

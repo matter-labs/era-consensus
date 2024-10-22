@@ -212,6 +212,18 @@ impl TimeoutQC {
     }
 }
 
+impl Ord for TimeoutQC {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.view.number.cmp(&other.view.number)
+    }
+}
+
+impl PartialOrd for TimeoutQC {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
 /// Error returned by `TimeoutQC::add()`.
 #[derive(thiserror::Error, Debug)]
 pub enum TimeoutQCAddError {
