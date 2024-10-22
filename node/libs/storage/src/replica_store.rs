@@ -41,7 +41,9 @@ pub struct ReplicaState {
     /// The highest block proposal that the replica has committed to.
     pub high_vote: Option<validator::ReplicaCommit>,
     /// The highest commit quorum certificate known to the replica.
-    pub high_qc: Option<validator::CommitQC>,
+    pub high_commit_qc: Option<validator::CommitQC>,
+    /// The highest timeout quorum certificate known to the replica.
+    pub high_timeout_qc: Option<validator::TimeoutQC>,
     /// A cache of the received block proposals.
     pub proposals: Vec<Proposal>,
 }
@@ -52,7 +54,8 @@ impl Default for ReplicaState {
             view: validator::ViewNumber(0),
             phase: validator::Phase::Prepare,
             high_vote: None,
-            high_qc: None,
+            high_commit_qc: None,
+            high_timeout_qc: None,
             proposals: vec![],
         }
     }
@@ -84,7 +87,8 @@ impl ProtoFmt for ReplicaState {
             view: validator::ViewNumber(r.view.context("view_number")?),
             phase: read_required(&r.phase).context("phase")?,
             high_vote: read_optional(&r.high_vote).context("high_vote")?,
-            high_qc: read_optional(&r.high_qc).context("high_qc")?,
+            high_commit_qc: read_optional(&r.high_qc).context("high_commit_qc")?,
+            high_timeout_qc: read_optional(&r.high_timeout_qc).context("high_timeout_qc")?,
             proposals: r
                 .proposals
                 .iter()
@@ -99,7 +103,8 @@ impl ProtoFmt for ReplicaState {
             view: Some(self.view.0),
             phase: Some(self.phase.build()),
             high_vote: self.high_vote.as_ref().map(|x| x.build()),
-            high_qc: self.high_qc.as_ref().map(|x| x.build()),
+            high_qc: self.high_commit_qc.as_ref().map(|x| x.build()),
+            high_timeout_qc: self.high_timeout_qc.as_ref().map(|x| x.build()),
             proposals: self.proposals.iter().map(|p| p.build()).collect(),
         }
     }

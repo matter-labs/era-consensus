@@ -26,7 +26,8 @@ impl Distribution<ReplicaState> for Standard {
             view: rng.gen(),
             phase: rng.gen(),
             high_vote: rng.gen(),
-            high_qc: rng.gen(),
+            high_commit_qc: rng.gen(),
+            high_timeout_qc: rng.gen(),
             proposals: (0..rng.gen_range(1..11)).map(|_| rng.gen()).collect(),
         }
     }
