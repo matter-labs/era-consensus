@@ -15,7 +15,9 @@ if [ "$#" -lt 5 ]; then
     echo "  - invariant is the invariant to check, by default: inv"
     echo "  - init is the initial action, by default: init"
     echo "  - step is the step action, by default: step"
-    echo "  - memsize is the job memory size, man parallel --memsuspend, by default: 5G"
+    echo "  - memfree is the minimum memory to start a job, man parallel --memfree, by default: 1G"
+    echo ""
+    echo "Additionally, you can pass an environment variable PARGS to parallel"
     exit 1
 fi
 
@@ -27,7 +29,7 @@ max_failing_jobs=$5
 inv=${6:-"inv"}
 init=${7:-"init"}
 step=${8:-"step"}
-memsuspend=${9:-"5G"}
+memfree=${9:-"1G"}
 
 # https://lists.defectivebydesign.org/archive/html/bug-parallel/2017-04/msg00000.html
 export LANG= LC_ALL= LC_CTYPE= 
@@ -78,7 +80,9 @@ EOF
 done
 
 parallel -j ${max_jobs} -v --shuf --bar --eta --delay 1 \
-  --memsuspend ${memsuspend} --joblog $TMPDIR/parallel.log \
+  --joblog parallel.log \
+  --memfree ${memsuspend} --retries 2 \
+  ${PARGS} \
   --halt now,fail=${max_failing_jobs} \
   --results out --colsep=, -a ${CSV} \
   JVM_ARGS=-Xmx40G quint verify --max-steps=1 --init=${init} --step=${step} \
