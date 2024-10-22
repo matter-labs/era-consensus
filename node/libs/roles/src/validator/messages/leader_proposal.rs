@@ -1,13 +1,11 @@
 use super::{
-    BlockHeader, BlockNumber, CommitQC, CommitQCVerifyError, Genesis, Payload, PayloadHash,
-    TimeoutQC, TimeoutQCVerifyError, View,
+    BlockNumber, CommitQC, CommitQCVerifyError, Genesis, Payload, PayloadHash, TimeoutQC,
+    TimeoutQCVerifyError, View,
 };
 
 /// A proposal message from the leader.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LeaderProposal {
-    /// The header of the block that the leader is proposing.
-    pub proposal: BlockHeader,
     /// Payload of the block that the leader is proposing.
     /// `None` iff this is a reproposal.
     pub proposal_payload: Option<Payload>,
@@ -26,47 +24,7 @@ impl LeaderProposal {
         // Check that the justification is valid.
         self.justification
             .verify(genesis)
-            .map_err(LeaderProposalVerifyError::Justification)?;
-
-        // Get the implied block number and payload hash and check it against the proposal.
-        let (implied_block_number, implied_payload) = self.justification.get_implied_block(genesis);
-
-        if self.proposal.number != implied_block_number {
-            return Err(LeaderProposalVerifyError::BadBlockNumber {
-                got: self.proposal.number,
-                want: implied_block_number,
-            });
-        }
-
-        if let Some(payload_hash) = implied_payload {
-            if self.proposal.payload != payload_hash {
-                return Err(LeaderProposalVerifyError::BadPayloadHash {
-                    got: self.proposal.payload,
-                    want: payload_hash,
-                });
-            }
-        }
-
-        // Check if we are correctly proposing a new block or re-proposing an old one.
-        if implied_payload.is_none() && self.proposal_payload.is_none() {
-            return Err(LeaderProposalVerifyError::ReproposalWhenPreviousFinalized);
-        }
-
-        if implied_payload.is_some() && self.proposal_payload.is_some() {
-            return Err(LeaderProposalVerifyError::NewProposalWhenPreviousNotFinalized);
-        }
-
-        // Check that the payload matches the header, if it exists.
-        if let Some(payload) = &self.proposal_payload {
-            if payload.hash() != self.proposal.payload {
-                return Err(LeaderProposalVerifyError::MismatchedPayload {
-                    header: self.proposal.payload,
-                    payload: payload.hash(),
-                });
-            }
-        }
-
-        Ok(())
+            .map_err(LeaderProposalVerifyError::Justification)
     }
 }
 
@@ -76,36 +34,6 @@ pub enum LeaderProposalVerifyError {
     /// Invalid Justification.
     #[error("Invalid justification: {0:#}")]
     Justification(ProposalJustificationVerifyError),
-    /// Bad block number.
-    #[error("Bad block number: got {got:?}, want {want:?}")]
-    BadBlockNumber {
-        /// Received proposal number.
-        got: BlockNumber,
-        /// Correct proposal number.
-        want: BlockNumber,
-    },
-    /// Bad payload hash on reproposal.
-    #[error("Bad payload hash on reproposal: got {got:?}, want {want:?}")]
-    BadPayloadHash {
-        /// Received payload hash.
-        got: PayloadHash,
-        /// Correct payload hash.
-        want: PayloadHash,
-    },
-    /// New block proposal when the previous proposal was not finalized.
-    #[error("New block proposal when the previous proposal was not finalized")]
-    NewProposalWhenPreviousNotFinalized,
-    /// Re-proposal when the previous proposal was finalized.
-    #[error("Block re-proposal when the previous proposal was finalized")]
-    ReproposalWhenPreviousFinalized,
-    /// Mismatched payload.
-    #[error("Block proposal with mismatched payload: header {header:?}, payload {payload:?}")]
-    MismatchedPayload {
-        /// Payload hash on block header.
-        header: PayloadHash,
-        /// Correct payload hash.
-        payload: PayloadHash,
-    },
 }
 
 /// Justification for a proposal. This is either a Commit QC or a Timeout QC.

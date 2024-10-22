@@ -523,7 +523,6 @@ impl Distribution<ReplicaNewView> for Standard {
 impl Distribution<LeaderProposal> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderProposal {
         LeaderProposal {
-            proposal: rng.gen(),
             proposal_payload: rng.gen(),
             justification: rng.gen(),
         }
