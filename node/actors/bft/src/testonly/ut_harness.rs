@@ -3,7 +3,7 @@ use crate::{
     leader,
     leader::{replica_commit, replica_prepare},
     replica,
-    replica::{leader_commit, leader_prepare},
+    replica::{leader_commit, proposal},
     testonly, Config, PayloadManager,
 };
 use assert_matches::assert_matches;
@@ -96,7 +96,7 @@ impl UTHarness {
                 genesis: self.genesis().hash(),
                 number: self.replica.view.next(),
             },
-            high_qc: self.replica.high_qc.clone(),
+            high_qc: self.replica.high_commit_qc.clone(),
             high_vote: self.replica.high_vote.clone(),
         };
         let replica_prepare = self.process_replica_timeout(ctx).await;
@@ -140,14 +140,20 @@ impl UTHarness {
         validator::ReplicaPrepare {
             view: self.replica_view(),
             high_vote: self.replica.high_vote.clone(),
-            high_qc: self.replica.high_qc.clone(),
+            high_qc: self.replica.high_commit_qc.clone(),
         }
     }
 
     pub(crate) fn new_current_replica_commit(&self) -> validator::ReplicaCommit {
         validator::ReplicaCommit {
             view: self.replica_view(),
-            proposal: self.replica.high_qc.as_ref().unwrap().message.proposal,
+            proposal: self
+                .replica
+                .high_commit_qc
+                .as_ref()
+                .unwrap()
+                .message
+                .proposal,
         }
     }
 
@@ -173,8 +179,8 @@ impl UTHarness {
         &mut self,
         ctx: &ctx::Ctx,
         msg: validator::Signed<validator::LeaderPrepare>,
-    ) -> Result<validator::Signed<validator::ReplicaCommit>, leader_prepare::Error> {
-        self.replica.process_leader_prepare(ctx, msg).await?;
+    ) -> Result<validator::Signed<validator::ReplicaCommit>, proposal::Error> {
+        self.replica.on_proposal(ctx, msg).await?;
         Ok(self.try_recv().unwrap())
     }
 

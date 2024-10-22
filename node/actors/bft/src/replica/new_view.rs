@@ -13,7 +13,7 @@ impl StateMachine {
         metrics::METRICS.replica_view_number.set(self.view.0);
 
         self.phase = validator::Phase::Prepare;
-        if let Some(qc) = self.high_qc.as_ref() {
+        if let Some(qc) = self.high_commit_qc.as_ref() {
             // Clear the block cache.
             self.block_proposal_cache
                 .retain(|k, _| k > &qc.header().number);
@@ -34,7 +34,7 @@ impl StateMachine {
                             number: self.view,
                         },
                         high_vote: self.high_vote.clone(),
-                        high_qc: self.high_qc.clone(),
+                        high_qc: self.high_commit_qc.clone(),
                     },
                 )),
             recipient: Target::Broadcast,

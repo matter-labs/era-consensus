@@ -31,7 +31,9 @@ pub(crate) struct StateMachine {
     /// The highest block proposal that the replica has committed to.
     pub(crate) high_vote: Option<validator::ReplicaCommit>,
     /// The highest commit quorum certificate known to the replica.
-    pub(crate) high_qc: Option<validator::CommitQC>,
+    pub(crate) high_commit_qc: Option<validator::CommitQC>,
+    /// The highest timeout quorum certificate known to the replica.
+    pub(crate) high_timeout_qc: Option<validator::TimeoutQC>,
     /// A cache of the received block proposals.
     pub(crate) block_proposal_cache:
         BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
@@ -40,6 +42,9 @@ pub(crate) struct StateMachine {
 }
 
 impl StateMachine {
+    /// The duration of the timeout.
+    pub(crate) const TIMEOUT_DURATION: time::Duration = time::Duration::milliseconds(2000);
+
     /// Creates a new [`StateMachine`] instance, attempting to recover a past state from the storage module,
     /// otherwise initializes the state machine with the current head block.
     ///
@@ -52,6 +57,7 @@ impl StateMachine {
         outbound_pipe: OutputSender,
     ) -> ctx::Result<(Self, sync::prunable_mpsc::Sender<ConsensusReq>)> {
         let backup = config.replica_store.state(ctx).await?;
+
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
         for proposal in backup.proposals {
             block_proposal_cache
@@ -72,7 +78,8 @@ impl StateMachine {
             view: backup.view,
             phase: backup.phase,
             high_vote: backup.high_vote,
-            high_qc: backup.high_qc,
+            high_commit_qc: backup.high_commit_qc,
+            high_timeout_qc: backup.high_timeout_qc,
             block_proposal_cache,
             timeout_deadline: time::Deadline::Infinite,
         };
@@ -135,20 +142,20 @@ impl StateMachine {
                 }
                 ConsensusMsg::LeaderPrepare(_) => {
                     let res = match self
-                        .process_leader_prepare(ctx, req.msg.cast().unwrap())
+                        .on_proposal(ctx, req.msg.cast().unwrap())
                         .await
                         .wrap("process_leader_prepare()")
                     {
                         Ok(()) => Ok(()),
                         Err(err) => {
                             match err {
-                                super::leader_prepare::Error::Internal(e) => {
+                                super::proposal::Error::Internal(e) => {
                                     tracing::error!(
                                         "process_leader_prepare: internal error: {e:#}"
                                     );
                                     return Err(e);
                                 }
-                                super::leader_prepare::Error::Old { .. } => {
+                                super::proposal::Error::Old { .. } => {
                                     tracing::info!("process_leader_prepare: {err:#}");
                                 }
                                 _ => {
@@ -208,7 +215,7 @@ impl StateMachine {
             view: self.view,
             phase: self.phase,
             high_vote: self.high_vote.clone(),
-            high_qc: self.high_qc.clone(),
+            high_qc: self.high_commit_qc.clone(),
             proposals,
         };
         self.config
