@@ -31,6 +31,9 @@ init=${7:-"init"}
 step=${8:-"step"}
 memfree=${9:-"1G"}
 
+# protect the root!
+TMPDIR=${TMPDIR:-"./tmp"}
+
 # https://lists.defectivebydesign.org/archive/html/bug-parallel/2017-04/msg00000.html
 export LANG= LC_ALL= LC_CTYPE= 
 
