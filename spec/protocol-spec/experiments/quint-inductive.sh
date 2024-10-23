@@ -81,7 +81,7 @@ done
 
 parallel -j ${max_jobs} -v --shuf --bar --eta --delay 1 \
   --joblog parallel.log \
-  --memfree ${memsuspend} --retries 2 \
+  --memfree ${memfree} --retries 2 \
   ${PARGS} \
   --halt now,fail=${max_failing_jobs} \
   --results out --colsep=, -a ${CSV} \
