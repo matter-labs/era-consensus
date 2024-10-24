@@ -29,7 +29,7 @@ max_failing_jobs=$5
 inv=${6:-"inv"}
 init=${7:-"init"}
 step=${8:-"step"}
-memfree=${9:-"1G"}
+memfree=${9:-"2G"}
 
 # protect the root!
 TMPDIR=${TMPDIR:-"./tmp"}
