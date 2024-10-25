@@ -36,7 +36,6 @@ impl StateMachine {
     /// Tries to build a finalized block from the given CommitQC. We simply search our
     /// block proposal cache for the matching block, and if we find it we build the block.
     /// If this method succeeds, it sends the finalized block to the executor.
-    #[tracing::instrument(level = "debug", skip_all)]
     pub(crate) async fn save_block(
         &mut self,
         ctx: &ctx::Ctx,

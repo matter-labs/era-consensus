@@ -17,12 +17,14 @@ mod commit;
 mod misc;
 mod new_view;
 mod proposal;
-#[cfg(test)]
-mod tests;
+pub(crate) mod proposer;
 mod timeout;
 
-/// The StateMachine struct contains the state of the replica. It is responsible
-/// for validating and voting on blocks. When participating in consensus we are always a replica.
+#[cfg(test)]
+mod tests;
+
+/// The StateMachine struct contains the state of the replica and implements all the
+/// logic of ChonkyBFT.
 #[derive(Debug)]
 pub(crate) struct StateMachine {
     /// Consensus configuration.
@@ -31,6 +33,9 @@ pub(crate) struct StateMachine {
     pub(super) outbound_pipe: OutputSender,
     /// Pipe through which replica receives network requests.
     inbound_pipe: sync::prunable_mpsc::Receiver<ConsensusReq>,
+    /// The sender part of the justification watch. This is used to set the justification
+    /// and notify the proposer loop.
+    pub(crate) justification_watch: sync::watch::Sender<Option<validator::ProposalJustification>>,
 
     /// The current view number.
     pub(crate) view_number: validator::ViewNumber,
@@ -92,6 +97,8 @@ impl StateMachine {
             StateMachine::inbound_selection_function,
         );
 
+        let (justification_sender, _) = sync::watch::channel(None);
+
         let this = Self {
             config,
             outbound_pipe,
@@ -106,6 +113,7 @@ impl StateMachine {
             commit_qcs_cache: BTreeMap::new(),
             timeout_views_cache: BTreeMap::new(),
             timeout_qcs_cache: BTreeMap::new(),
+            justification_watch: justification_sender,
             timeout_deadline: time::Deadline::Finite(ctx.now() + Self::TIMEOUT_DURATION),
             phase_start: ctx.now(),
         };

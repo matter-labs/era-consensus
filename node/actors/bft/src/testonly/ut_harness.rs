@@ -1,9 +1,9 @@
 use crate::{
+    chonky_bft,
+    chonky_bft::{leader_commit, proposal},
     io::OutputMessage,
     leader,
     leader::{replica_commit, replica_prepare},
-    replica,
-    replica::{leader_commit, proposal},
     testonly, Config, PayloadManager,
 };
 use assert_matches::assert_matches;
@@ -27,7 +27,7 @@ pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
 #[cfg(test)]
 pub(crate) struct UTHarness {
     pub(crate) leader: leader::StateMachine,
-    pub(crate) replica: replica::StateMachine,
+    pub(crate) replica: chonky_bft::StateMachine,
     pub(crate) keys: Vec<validator::SecretKey>,
     pub(crate) leader_send: prunable_mpsc::Sender<network::io::ConsensusReq>,
     pipe: ctx::channel::UnboundedReceiver<OutputMessage>,
@@ -65,7 +65,7 @@ impl UTHarness {
             max_payload_size: MAX_PAYLOAD_SIZE,
         });
         let (leader, leader_send) = leader::StateMachine::new(ctx, cfg.clone(), send.clone());
-        let (replica, _) = replica::StateMachine::start(ctx, cfg.clone(), send.clone())
+        let (replica, _) = chonky_bft::StateMachine::start(ctx, cfg.clone(), send.clone())
             .await
             .unwrap();
         let mut this = UTHarness {

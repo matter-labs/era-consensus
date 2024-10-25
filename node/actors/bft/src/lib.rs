@@ -20,16 +20,14 @@ use anyhow::Context;
 pub use config::Config;
 use std::sync::Arc;
 use tracing::Instrument;
-use zksync_concurrency::{ctx, error::Wrap as _, oneshot, scope};
-use zksync_consensus_network::io::ConsensusReq;
+use zksync_concurrency::{ctx, error::Wrap as _, scope};
 use zksync_consensus_roles::validator;
 use zksync_consensus_utils::pipe::ActorPipe;
 
+mod chonky_bft;
 mod config;
 pub mod io;
-mod leader;
 mod metrics;
-mod replica;
 pub mod testonly;
 #[cfg(test)]
 mod tests;
@@ -70,7 +68,6 @@ impl Config {
         anyhow::ensure!(genesis.protocol_version == validator::ProtocolVersion::CURRENT);
         genesis.verify().context("genesis().verify()")?;
 
-        // TODO: What about pruning???
         if let Some(prev) = genesis.first_block.prev() {
             tracing::info!("Waiting for the pre-fork blocks to be persisted");
             if let Err(ctx::Canceled) = self.block_store.wait_until_persisted(ctx, prev).await {
@@ -79,17 +76,15 @@ impl Config {
         }
 
         let cfg = Arc::new(self);
-        let (leader, leader_send) = leader::StateMachine::new(ctx, cfg.clone(), pipe.send.clone());
         let (replica, replica_send) =
-            replica::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
+            chonky_bft::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
 
         let res = scope::run!(ctx, |ctx, s| async {
-            let prepare_qc_recv = leader.prepare_qc.subscribe();
+            let justification_recv = replica.justification_watch.subscribe();
 
             s.spawn_bg(async { replica.run(ctx).await.wrap("replica.run()") });
-            s.spawn_bg(async { leader.run(ctx).await.wrap("leader.run()") });
             s.spawn_bg(async {
-                leader::StateMachine::run_proposer(ctx, &cfg, prepare_qc_recv, &pipe.send)
+                chonky_bft::proposer::run_proposer(ctx, cfg.clone(), pipe.send, justification_recv)
                     .await
                     .wrap("run_proposer()")
             });
@@ -100,28 +95,13 @@ impl Config {
             // a message from the network and processes it accordingly.
             loop {
                 async {
-                    let InputMessage::Network(req) = pipe
+                    let InputMessage::Network(msg) = pipe
                         .recv
                         .recv(ctx)
                         .instrument(tracing::info_span!("wait_for_message"))
                         .await?;
-                    use validator::ConsensusMsg as M;
-                    match &req.msg.msg {
-                        M::ReplicaPrepare(_) => {
-                            // This is a hacky way to do a clone. This is necessary since we don't want to derive
-                            // Clone for ConsensusReq. When we change to ChonkyBFT this will be removed anyway.
-                            let (ack, _) = oneshot::channel();
-                            let new_req = ConsensusReq {
-                                msg: req.msg.clone(),
-                                ack,
-                            };
 
-                            replica_send.send(new_req);
-                            leader_send.send(req);
-                        }
-                        M::ReplicaCommit(_) => leader_send.send(req),
-                        M::LeaderPrepare(_) | M::LeaderCommit(_) => replica_send.send(req),
-                    }
+                    replica_send.send(msg);
 
                     ctx::Ok(())
                 }
