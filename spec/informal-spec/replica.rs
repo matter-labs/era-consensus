@@ -65,15 +65,15 @@ impl ReplicaState {
                     self.high_vote,
                     self.high_commit_qc);
                     
-                    // Update our state so that we can no longer vote commit in this view.
-                    self.phase = Phase::Timeout;
+                // Update our state so that we can no longer vote commit in this view.
+                self.phase = Phase::Timeout;
                     
-                    // Send the vote to all replicas (including ourselves).
-                    self.send(vote);
+                // Send the vote to all replicas (including ourselves).
+                self.send(vote);
             }
                 
-                // Try to get a message from the message queue and process it. We don't
-                // detail the message queue structure since it's boilerplate.
+            // Try to get a message from the message queue and process it. We don't
+            // detail the message queue structure since it's boilerplate.
             if let Some(message) = message_queue.pop() {
                 match message {
                     Proposal(msg) => {
@@ -223,7 +223,7 @@ impl ReplicaState {
         // If the message isn't current, just ignore it.
         assert!(new_view.view() >= self.view)
         
-        // Check that the new view is valid.
+        // Check that the new view message is valid.
         assert!(new_view.verify());
         
         // Update our state.

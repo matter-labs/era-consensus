@@ -149,14 +149,14 @@ async fn leader_prepare_old_view() {
         s.spawn_bg(runner.run(ctx));
 
         let mut leader_prepare = util.new_leader_prepare(ctx).await;
-        leader_prepare.justification.view.number.0 = util.replica.view.0 - 1;
+        leader_prepare.justification.view.number.0 = util.replica.view_number.0 - 1;
         let res = util
             .process_leader_prepare(ctx, util.sign(leader_prepare))
             .await;
         assert_matches!(
             res,
             Err(proposal::Error::Old { current_view, current_phase }) => {
-                assert_eq!(current_view, util.replica.view);
+                assert_eq!(current_view, util.replica.view_number);
                 assert_eq!(current_phase, util.replica.phase);
             }
         );

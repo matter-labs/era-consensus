@@ -1,10 +1,11 @@
 use super::StateMachine;
 use crate::metrics;
-use std::collections::HashSet;
-use zksync_concurrency::{ctx, error::Wrap, metrics::LatencyHistogramExt as _};
+use std::{cmp::max, collections::HashSet};
+use zksync_concurrency::{ctx, error::Wrap, metrics::LatencyHistogramExt as _, time};
+use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
 
-/// Errors that can occur when processing a ReplicaCommit message.
+/// Errors that can occur when processing a ReplicaTimeout message.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum Error {
     /// Message signer isn't part of the validator set.
@@ -32,7 +33,7 @@ pub(crate) enum Error {
     InvalidSignature(#[source] anyhow::Error),
     /// Invalid message.
     #[error("invalid message: {0:#}")]
-    InvalidMessage(#[source] validator::ReplicaCommitVerifyError),
+    InvalidMessage(#[source] validator::ReplicaTimeoutVerifyError),
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error(transparent)]
     Internal(#[from] ctx::Error),
@@ -51,11 +52,11 @@ impl Wrap for Error {
 }
 
 impl StateMachine {
-    /// Processes a ReplicaCommit message.
-    pub(crate) async fn on_commit(
+    /// Processes a ReplicaTimeout message.
+    pub(crate) async fn on_timeout(
         &mut self,
         ctx: &ctx::Ctx,
-        signed_message: validator::Signed<validator::ReplicaCommit>,
+        signed_message: validator::Signed<validator::ReplicaTimeout>,
     ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
 
@@ -99,31 +100,29 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // We add the message to the incrementally-constructed QC.
-        let commit_qc = self
-            .commit_qcs_cache
+        let timeout_qc = self
+            .timeout_qcs_cache
             .entry(message.view.number)
-            .or_default()
-            .entry(message.clone())
-            .or_insert_with(|| validator::CommitQC::new(message.clone(), self.config.genesis()));
+            .or_insert_with(|| validator::TimeoutQC::new(message.view));
 
         // Should always succeed as all checks have been already performed
-        commit_qc
+        timeout_qc
             .add(&signed_message, self.config.genesis())
-            .expect("could not add message to CommitQC");
+            .expect("could not add message to TimeoutQC");
 
-        // Calculate the CommitQC signers weight.
-        let weight = self.config.genesis().validators.weight(&commit_qc.signers);
+        // Calculate the TimeoutQC signers weight.
+        let weight = timeout_qc.weight(&self.config.genesis().validators);
 
-        // Update view number of last commit message for author
-        self.commit_views_cache
+        // Update view number of last timeout message for author
+        self.timeout_views_cache
             .insert(author.clone(), message.view.number);
 
-        // Clean up commit_qcs for the case that no replica is at the view
-        // of a given CommitQC.
-        // This prevents commit_qcs map from growing indefinitely in case some
-        // malicious replica starts spamming messages for future views.
-        let active_views: HashSet<_> = self.commit_views_cache.values().collect();
-        self.commit_qcs_cache
+        // Clean up timeout_qcs for the case that no replica is at the view
+        // of a given TimeoutQC
+        // This prevents timeout_qcs map from growing indefinitely in case some
+        // malicious replica starts spamming messages for future views
+        let active_views: HashSet<_> = self.timeout_views_cache.values().collect();
+        self.timeout_qcs_cache
             .retain(|view_number, _| active_views.contains(view_number));
 
         // Now we check if we have enough weight to continue. If not, we wait for more messages.
@@ -133,18 +132,16 @@ impl StateMachine {
 
         // ----------- We have a QC. Now we process it. --------------
 
-        // Consume the created commit QC for this view.
-        let commit_qc = self
-            .commit_qcs_cache
-            .remove(&message.view.number)
-            .unwrap()
-            .remove(message)
-            .unwrap();
+        // Consume the created timeout QC for this view.
+        let timeout_qc = self.timeout_qcs_cache.remove(&message.view.number).unwrap();
 
-        // We update our state with the new commit QC.
-        self.process_commit_qc(ctx, &commit_qc)
-            .await
-            .wrap("process_commit_qc()")?;
+        // We update our state with the new timeout QC.
+        if let Some(commit_qc) = timeout_qc.high_qc() {
+            self.process_commit_qc(ctx, commit_qc)
+                .await
+                .wrap("process_commit_qc()")?;
+        }
+        self.high_timeout_qc = max(Some(timeout_qc.clone()), self.high_timeout_qc.clone());
 
         // Metrics.
         let now = ctx.now();
@@ -155,6 +152,45 @@ impl StateMachine {
 
         // Start a new view.
         self.start_new_view(ctx, message.view.number.next()).await?;
+
+        Ok(())
+    }
+
+    /// This blocking method is used whenever we timeout in a view.
+    pub(crate) async fn start_timeout(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
+        // Update the state machine.
+        self.phase = validator::Phase::Timeout;
+
+        // Backup our state.
+        self.backup_state(ctx).await.wrap("backup_state()")?;
+
+        // Broadcast our timeout message.
+        let output_message = ConsensusInputMessage {
+            message: self
+                .config
+                .secret_key
+                .sign_msg(validator::ConsensusMsg::ReplicaTimeout(
+                    validator::ReplicaTimeout {
+                        view: validator::View {
+                            genesis: self.config.genesis().hash(),
+                            number: self.view_number,
+                        },
+                        high_vote: self.high_vote.clone(),
+                        high_qc: self.high_commit_qc.clone(),
+                    },
+                )),
+        };
+
+        self.outbound_pipe.send(output_message.into());
+
+        // Log the event.
+        tracing::info!("Timed out at view {}", self.view_number);
+        metrics::METRICS.replica_view_number.set(self.view_number.0);
+
+        // Reset the timeout. This allows us send more timeout messages until the consensus progresses.
+        // However, this isn't strictly necessary since the network retries messages until they are delivered.
+        // This is just an extra safety measure.
+        self.timeout_deadline = time::Deadline::Finite(ctx.now() + Self::TIMEOUT_DURATION);
 
         Ok(())
     }

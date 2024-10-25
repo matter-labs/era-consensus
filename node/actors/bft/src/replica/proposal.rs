@@ -87,9 +87,11 @@ impl StateMachine {
 
         // Check that the message is for the current view or a future view. We only allow proposals for
         // the current view if we have not voted or timed out yet.
-        if view < self.view || (view == self.view && self.phase != validator::Phase::Prepare) {
+        if view < self.view_number
+            || (view == self.view_number && self.phase != validator::Phase::Prepare)
+        {
             return Err(Error::Old {
-                current_view: self.view,
+                current_view: self.view_number,
                 current_phase: self.phase,
             });
         }
@@ -196,7 +198,7 @@ impl StateMachine {
         };
 
         // Update the state machine.
-        self.view = message.view().number;
+        self.view_number = message.view().number;
         self.phase = validator::Phase::Commit;
         self.high_vote = Some(commit_vote.clone());
         match &message.justification {
@@ -217,7 +219,7 @@ impl StateMachine {
         // Backup our state.
         self.backup_state(ctx).await.wrap("backup_state()")?;
 
-        // Broadcast our message.
+        // Broadcast our commit message.
         let output_message = ConsensusInputMessage {
             message: self
                 .config

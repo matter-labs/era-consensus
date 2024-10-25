@@ -137,7 +137,7 @@ async fn replica_prepare_old_view() {
         s.spawn_bg(runner.run(ctx));
 
         let replica_prepare = util.new_replica_prepare();
-        util.leader.view = util.replica.view.next();
+        util.leader.view = util.replica.view_number.next();
         util.leader.phase = Phase::Prepare;
         let res = util
             .process_replica_prepare(ctx, util.sign(replica_prepare))
@@ -164,7 +164,7 @@ async fn replica_prepare_during_commit() {
         s.spawn_bg(runner.run(ctx));
 
         let replica_prepare = util.new_replica_prepare();
-        util.leader.view = util.replica.view;
+        util.leader.view = util.replica.view_number;
         util.leader.phase = Phase::Commit;
         let res = util
             .process_replica_prepare(ctx, util.sign(replica_prepare))
@@ -175,7 +175,7 @@ async fn replica_prepare_during_commit() {
                 current_view,
                 current_phase: Phase::Commit,
             }) => {
-                assert_eq!(current_view, util.replica.view);
+                assert_eq!(current_view, util.replica.view_number);
             }
         );
         Ok(())
@@ -607,13 +607,13 @@ async fn replica_commit_old() {
         s.spawn_bg(runner.run(ctx));
 
         let mut replica_commit = util.new_replica_commit(ctx).await;
-        replica_commit.view.number = ViewNumber(util.replica.view.0 - 1);
+        replica_commit.view.number = ViewNumber(util.replica.view_number.0 - 1);
         let replica_commit = util.sign(replica_commit);
         let res = util.process_replica_commit(ctx, replica_commit).await;
         assert_matches!(
             res,
             Err(replica_commit::Error::Old { current_view, current_phase }) => {
-                assert_eq!(current_view, util.replica.view);
+                assert_eq!(current_view, util.replica.view_number);
                 assert_eq!(current_phase, util.replica.phase);
             }
         );
@@ -632,7 +632,7 @@ async fn replica_commit_not_leader_in_view() {
         s.spawn_bg(runner.run(ctx));
 
         util.produce_block(ctx).await;
-        let current_view_leader = util.view_leader(util.replica.view);
+        let current_view_leader = util.view_leader(util.replica.view_number);
         assert_ne!(current_view_leader, util.owner_key().public());
         let replica_commit = util.new_current_replica_commit();
         let res = util

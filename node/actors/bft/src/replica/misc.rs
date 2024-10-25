@@ -5,6 +5,23 @@ use zksync_consensus_roles::validator;
 use zksync_consensus_storage as storage;
 
 impl StateMachine {
+    /// Makes a justification (for a ReplicaNewView or a LeaderProposal) based on the current state.
+    pub(crate) fn get_justification(&self) -> validator::ProposalJustification {
+        // We need some QC in order to be able to create a justification.
+        // In fact, it should be impossible to get here without a QC. Because
+        // we only get here after starting a new view, which requires a QC.
+        assert!(self.high_commit_qc.is_some() || self.high_timeout_qc.is_some());
+
+        // We use the highest QC as the justification. If both have the same view, we use the CommitQC.
+        if self.high_commit_qc.as_ref().map(|x| x.view())
+            >= self.high_timeout_qc.as_ref().map(|x| &x.view)
+        {
+            validator::ProposalJustification::Commit(self.high_commit_qc.clone().unwrap())
+        } else {
+            validator::ProposalJustification::Timeout(self.high_timeout_qc.clone().unwrap())
+        }
+    }
+
     /// Processes a (already verified) CommitQC. It bumps the local high_commit_qc and if
     /// we have the proposal corresponding to this qc, we save the corresponding block to DB.
     pub(crate) async fn process_commit_qc(
@@ -72,7 +89,7 @@ impl StateMachine {
             }));
         }
         let backup = storage::ReplicaState {
-            view: self.view,
+            view: self.view_number,
             phase: self.phase,
             high_vote: self.high_vote.clone(),
             high_commit_qc: self.high_commit_qc.clone(),

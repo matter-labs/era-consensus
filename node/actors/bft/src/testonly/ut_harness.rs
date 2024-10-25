@@ -94,7 +94,7 @@ impl UTHarness {
         let want = validator::ReplicaPrepare {
             view: validator::View {
                 genesis: self.genesis().hash(),
-                number: self.replica.view.next(),
+                number: self.replica.view_number.next(),
             },
             high_qc: self.replica.high_commit_qc.clone(),
             high_vote: self.replica.high_vote.clone(),
@@ -121,17 +121,17 @@ impl UTHarness {
     }
 
     pub(crate) fn set_owner_as_view_leader(&mut self) {
-        let mut view = self.replica.view;
+        let mut view = self.replica.view_number;
         while self.view_leader(view) != self.owner_key().public() {
             view = view.next();
         }
-        self.replica.view = view;
+        self.replica.view_number = view;
     }
 
     pub(crate) fn replica_view(&self) -> validator::View {
         validator::View {
             genesis: self.genesis().hash(),
-            number: self.replica.view,
+            number: self.replica.view_number,
         }
     }
 

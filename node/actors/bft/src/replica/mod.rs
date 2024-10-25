@@ -11,22 +11,21 @@ use zksync_concurrency::{
     time,
 };
 use zksync_consensus_network::io::ConsensusReq;
-use zksync_consensus_roles::{validator, validator::ConsensusMsg};
+use zksync_consensus_roles::validator::{self, ConsensusMsg};
 
 mod commit;
-mod leader_commit;
 mod misc;
 mod new_view;
 mod proposal;
-mod replica_prepare;
 #[cfg(test)]
 mod tests;
+mod timeout;
 
 /// The StateMachine struct contains the state of the replica. It is responsible
 /// for validating and voting on blocks. When participating in consensus we are always a replica.
 #[derive(Debug)]
 pub(crate) struct StateMachine {
-    /// Consensus configuration and output channel.
+    /// Consensus configuration.
     pub(crate) config: Arc<Config>,
     /// Pipe through which replica sends network messages.
     pub(super) outbound_pipe: OutputSender,
@@ -34,7 +33,7 @@ pub(crate) struct StateMachine {
     inbound_pipe: sync::prunable_mpsc::Receiver<ConsensusReq>,
 
     /// The current view number.
-    pub(crate) view: validator::ViewNumber,
+    pub(crate) view_number: validator::ViewNumber,
     /// The current phase.
     pub(crate) phase: validator::Phase,
     /// The highest block proposal that the replica has committed to.
@@ -93,11 +92,11 @@ impl StateMachine {
             StateMachine::inbound_selection_function,
         );
 
-        let mut this = Self {
+        let this = Self {
             config,
             outbound_pipe,
             inbound_pipe: recv,
-            view: backup.view,
+            view_number: backup.view,
             phase: backup.phase,
             high_vote: backup.high_vote,
             high_commit_qc: backup.high_commit_qc,
@@ -107,12 +106,9 @@ impl StateMachine {
             commit_qcs_cache: BTreeMap::new(),
             timeout_views_cache: BTreeMap::new(),
             timeout_qcs_cache: BTreeMap::new(),
-            timeout_deadline: time::Deadline::Infinite,
+            timeout_deadline: time::Deadline::Finite(ctx.now() + Self::TIMEOUT_DURATION),
             phase_start: ctx.now(),
         };
-
-        // We need to start the replica before processing inputs.
-        this.start_new_view(ctx).await.wrap("start_new_view()")?;
 
         Ok((this, send))
     }
@@ -121,6 +117,15 @@ impl StateMachine {
     /// This is the main entry point for the state machine,
     /// potentially triggering state modifications and message sending to the executor.
     pub(crate) async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
+        // If this is the first view, we immediately timeout. This will force the replicas
+        // to synchronize right at the beginning and will provide a justification for the
+        // next view. This is necessary because the first view is not justified by any
+        // previous view.
+        if self.view_number == validator::ViewNumber(0) {
+            self.start_timeout(ctx).await?;
+        }
+
+        // Main loop.
         loop {
             let recv = self
                 .inbound_pipe
@@ -134,32 +139,32 @@ impl StateMachine {
 
             // Check for timeout.
             let Some(req) = recv.ok() else {
-                self.start_new_view(ctx).await?;
+                self.start_timeout(ctx).await?;
                 continue;
             };
 
             let now = ctx.now();
             let label = match &req.msg.msg {
-                ConsensusMsg::ReplicaPrepare(_) => {
+                ConsensusMsg::LeaderProposal(_) => {
                     let res = match self
-                        .process_replica_prepare(ctx, req.msg.cast().unwrap())
+                        .on_proposal(ctx, req.msg.cast().unwrap())
                         .await
-                        .wrap("process_replica_prepare()")
+                        .wrap("on_proposal()")
                     {
                         Ok(()) => Ok(()),
                         Err(err) => {
                             match err {
-                                super::replica_prepare::Error::Internal(e) => {
-                                    tracing::error!(
-                                        "process_replica_prepare: internal error: {e:#}"
-                                    );
+                                // If the error is internal, we stop here.
+                                proposal::Error::Internal(e) => {
+                                    tracing::error!("on_proposal: internal error: {e:#}");
                                     return Err(e);
                                 }
-                                super::replica_prepare::Error::Old { .. } => {
-                                    tracing::debug!("process_replica_prepare: {err:#}");
+                                // If the error is due to an old message, we log it at a lower level.
+                                proposal::Error::Old { .. } => {
+                                    tracing::debug!("on_proposal: {err:#}");
                                 }
                                 _ => {
-                                    tracing::warn!("process_replica_prepare: {err:#}");
+                                    tracing::warn!("on_proposal: {err:#}");
                                 }
                             }
                             Err(())
@@ -167,59 +172,87 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
                 }
-                ConsensusMsg::LeaderPrepare(_) => {
+                ConsensusMsg::ReplicaCommit(_) => {
                     let res = match self
-                        .on_proposal(ctx, req.msg.cast().unwrap())
+                        .on_commit(ctx, req.msg.cast().unwrap())
                         .await
-                        .wrap("process_leader_prepare()")
+                        .wrap("on_commit()")
                     {
                         Ok(()) => Ok(()),
                         Err(err) => {
                             match err {
-                                super::proposal::Error::Internal(e) => {
-                                    tracing::error!(
-                                        "process_leader_prepare: internal error: {e:#}"
-                                    );
+                                // If the error is internal, we stop here.
+                                commit::Error::Internal(e) => {
+                                    tracing::error!("on_commit: internal error: {e:#}");
                                     return Err(e);
                                 }
-                                super::proposal::Error::Old { .. } => {
-                                    tracing::info!("process_leader_prepare: {err:#}");
+                                // If the error is due to an old message, we log it at a lower level.
+                                commit::Error::Old { .. } => {
+                                    tracing::debug!("on_commit: {err:#}");
                                 }
                                 _ => {
-                                    tracing::warn!("process_leader_prepare: {err:#}");
+                                    tracing::warn!("on_commit: {err:#}");
                                 }
                             }
                             Err(())
                         }
                     };
-                    metrics::ConsensusMsgLabel::LeaderPrepare.with_result(&res)
+                    metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
                 }
-                ConsensusMsg::LeaderCommit(_) => {
+                ConsensusMsg::ReplicaTimeout(_) => {
                     let res = match self
-                        .process_leader_commit(ctx, req.msg.cast().unwrap())
+                        .on_timeout(ctx, req.msg.cast().unwrap())
                         .await
-                        .wrap("process_leader_commit()")
+                        .wrap("on_timeout()")
                     {
                         Ok(()) => Ok(()),
                         Err(err) => {
                             match err {
-                                super::leader_commit::Error::Internal(e) => {
-                                    tracing::error!("process_leader_commit: internal error: {e:#}");
+                                // If the error is internal, we stop here.
+                                timeout::Error::Internal(e) => {
+                                    tracing::error!("on_timeout: internal error: {e:#}");
                                     return Err(e);
                                 }
-                                super::leader_commit::Error::Old { .. } => {
-                                    tracing::info!("process_leader_commit: {err:#}");
+                                // If the error is due to an old message, we log it at a lower level.
+                                timeout::Error::Old { .. } => {
+                                    tracing::debug!("on_timeout: {err:#}");
                                 }
                                 _ => {
-                                    tracing::warn!("process_leader_commit: {err:#}");
+                                    tracing::warn!("on_timeout: {err:#}");
                                 }
                             }
                             Err(())
                         }
                     };
-                    metrics::ConsensusMsgLabel::LeaderCommit.with_result(&res)
+                    metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
                 }
-                _ => unreachable!(),
+                ConsensusMsg::ReplicaNewView(_) => {
+                    let res = match self
+                        .on_new_view(ctx, req.msg.cast().unwrap())
+                        .await
+                        .wrap("on_new_view()")
+                    {
+                        Ok(()) => Ok(()),
+                        Err(err) => {
+                            match err {
+                                // If the error is internal, we stop here.
+                                new_view::Error::Internal(e) => {
+                                    tracing::error!("on_new_view: internal error: {e:#}");
+                                    return Err(e);
+                                }
+                                // If the error is due to an old message, we log it at a lower level.
+                                new_view::Error::Old { .. } => {
+                                    tracing::debug!("on_new_view: {err:#}");
+                                }
+                                _ => {
+                                    tracing::warn!("on_new_view: {err:#}");
+                                }
+                            }
+                            Err(())
+                        }
+                    };
+                    metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
+                }
             };
             metrics::METRICS.replica_processing_latency[&label].observe_latency(ctx.now() - now);
 
@@ -238,28 +271,16 @@ impl StateMachine {
         old_req: &ConsensusReq,
         new_req: &ConsensusReq,
     ) -> SelectionFunctionResult {
-        if old_req.msg.key != new_req.msg.key {
+        if old_req.msg.key != new_req.msg.key || old_req.msg.msg.label() != new_req.msg.msg.label()
+        {
             return SelectionFunctionResult::Keep;
-        }
-
-        match (&old_req.msg.msg, &new_req.msg.msg) {
-            (ConsensusMsg::LeaderPrepare(old), ConsensusMsg::LeaderPrepare(new)) => {
-                // Discard older message
-                if old.view().number < new.view().number {
-                    SelectionFunctionResult::DiscardOld
-                } else {
-                    SelectionFunctionResult::DiscardNew
-                }
+        } else {
+            // Discard older message
+            if old_req.msg.msg.view().number < new_req.msg.msg.view().number {
+                SelectionFunctionResult::DiscardOld
+            } else {
+                SelectionFunctionResult::DiscardNew
             }
-            (ConsensusMsg::LeaderCommit(old), ConsensusMsg::LeaderCommit(new)) => {
-                // Discard older message
-                if old.view().number < new.view().number {
-                    SelectionFunctionResult::DiscardOld
-                } else {
-                    SelectionFunctionResult::DiscardNew
-                }
-            }
-            _ => SelectionFunctionResult::Keep,
         }
     }
 }
