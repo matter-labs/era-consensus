@@ -394,7 +394,8 @@ module inductive {
 
     // if a correct block uses a justification, this justification should be valid
     val lemma1_justified_qc_is_valid = and {
-        r::msgs_new_view.forall(m =>
+        r::msgs_new_view.forall(m => or {
+            IFAULTY.contains(m.sig),
             val view = r::view(m.justification)
             val id = m.sig
             and {
@@ -417,11 +418,13 @@ module inductive {
                     qc.ghost_view + 1 == view
                     // check the structure in (3)
                 }
-            }),
+            }
+        }),
         // (2) check the quorums in CommitQC's separately
         val commit_qc_id_in_new_view =
             r::msgs_new_view.map(m => match (m.justification) {
-                | Commit(qc_id) => qc_id
+                | Commit(qc_id) =>
+                    if (ICORRECT.contains(m.sig)) qc_id else -1
                 | _ => -1
             })
         0.to(MAX_COMMIT_QC).forall(qc_id => {
@@ -431,7 +434,8 @@ module inductive {
         // (3) check TimeoutQC's separately
         val timeout_qc_id_in_new_view =
             r::msgs_new_view.map(m => match (m.justification) {
-                | Timeout(qc_id) => qc_id
+                | Timeout(qc_id) =>
+                    if (ICORRECT.contains(m.sig)) qc_id else -1
                 | _ => -1
             })
         0.to(MAX_TIMEOUT_QC).forall(qc_id => {
