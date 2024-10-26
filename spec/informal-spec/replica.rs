@@ -1,5 +1,6 @@
-// Replica
+//! Replica
 
+// This is the state machine that moves the consensus forward.
 struct ReplicaState {
     // The view this replica is currently in.
     view: ViewNumber,

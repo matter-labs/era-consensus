@@ -1,4 +1,4 @@
-# ChonkyBFT
+# ChonkyBFT Formal Specification
 
 This page summarizes the scope of the Quint specification and the experiments we
 have done with it. This Quint specification was prepared by Igor Konnov and
