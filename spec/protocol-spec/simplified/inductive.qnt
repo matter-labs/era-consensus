@@ -366,7 +366,8 @@ module inductive {
         lemma15_timeout_high_vote_is_supported_by_commits,
         lemma16_proposals_are_valid,
         lemma17_timeout_high_commit_qc_is_valid,
-        lemma18_replica_state_high_commit_qc_is_justified,
+        // lemma18 is incorrect due to faults
+        //lemma18_replica_state_high_commit_qc_is_justified,
     }
 
     // auxiliary invariants that we call lemmas
@@ -426,7 +427,10 @@ module inductive {
                 | Commit(qc_id) =>
                     if (ICORRECT.contains(m.sig)) qc_id else -1
                 | _ => -1
-            })
+            }).union(ICORRECT.map(id => match (r::replica_state.get(id).high_commit_qc) {
+                | Some(qc_id) => qc_id
+                | None => -1
+            }))
         0.to(MAX_COMMIT_QC).forall(qc_id => {
             (commit_qc_id_in_new_view.contains(qc_id))
                 implies r::commit_qc_verify(r::ghost_commit_qc[qc_id])
@@ -437,7 +441,10 @@ module inductive {
                 | Timeout(qc_id) =>
                     if (ICORRECT.contains(m.sig)) qc_id else -1
                 | _ => -1
-            })
+            }).union(ICORRECT.map(id => match (r::replica_state.get(id).high_timeout_qc) {
+                | Some(qc_id) => qc_id
+                | None => -1
+            }))
         0.to(MAX_TIMEOUT_QC).forall(qc_id => {
             timeout_qc_id_in_new_view.contains(qc_id) implies and {
                 r::aux_timeout_qc_inv(Some(qc_id)),
@@ -694,6 +701,7 @@ module inductive {
         })
     }
 
+    // invalid lemmas
     val lemma18_replica_state_high_commit_qc_is_justified = {
         ICORRECT.forall(id => 
             val self = r::replica_state.get(id)
@@ -702,6 +710,7 @@ module inductive {
                 | None =>
                     true
                 | Some(qc_id) =>
+                    // NOTE: this is not true when the replica is faulty
                     r::msgs_new_view.exists(m => m.justification == Commit(qc_id))
                 },
                 match (self.high_timeout_qc) {
@@ -709,13 +718,12 @@ module inductive {
                     false // this should not be possible
 
                 | Some(qc_id) =>
+                    // NOTE: this is not true when the replica is faulty
                     r::msgs_new_view.exists(m => m.justification == Timeout(qc_id))
                 }
             }
         )
     }
-
-    // invalid lemmas
 
     // this lemma actually does not hold true, we have a counterexample
     val lemma7_proposal_no_equivocation = {
