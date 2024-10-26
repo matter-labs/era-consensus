@@ -729,16 +729,18 @@ module inductive {
         match (j) {
         | Commit(qc_id) =>
             val qc = r::ghost_commit_qc[qc_id]
-            qc.agg_sig.forall(id =>
+            qc.agg_sig.forall(id => or {
+                IFAULTY.contains(id),
                 r::msgs_signed_commit.contains({ vote: qc.vote, sig: id })
-            )
+            })
 
         | Timeout(qc_id) =>
             val qc = r::ghost_timeout_qc[qc_id]
-            qc.votes.keys().forall(id =>
+            qc.votes.keys().forall(id => or {
+                IFAULTY.contains(id),
                 val vote = qc.votes.get(id)
                 r::msgs_signed_timeout.exists(v => v.vote == vote and v.sig == id)
-            )
+            })
         }
     }
 

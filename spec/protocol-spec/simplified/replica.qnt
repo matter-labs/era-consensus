@@ -371,7 +371,7 @@ module replica {
                         FAULTY.contains(id),
                         msgs_signed_commit.exists(sv => sv.sig == id and sv.vote == commit_qc_vote),
                     }),
-                    justification_case != "commit" implies timeout_qc_agg_sig.forall(id => or {
+                    justification_case != "commit" implies timeout_qc_agg_sig.union(timeout_qc_voters).forall(id => or {
                         FAULTY.contains(id),
                         msgs_signed_timeout.exists(sv => sv.sig == id and sv.vote == timeout_qc_votes.get(id)),
                     }),
@@ -439,7 +439,7 @@ module replica {
                         FAULTY.contains(id),
                         msgs_signed_commit.exists(sv => sv.sig == id and sv.vote == commit_qc_vote),
                     }),
-                    justification_case != "commit" implies timeout_qc_agg_sig.forall(id => or {
+                    justification_case != "commit" implies timeout_qc_agg_sig.union(timeout_qc_voters).forall(id => or {
                         FAULTY.contains(id),
                         msgs_signed_timeout.exists(sv => sv.sig == id and sv.vote == timeout_qc_votes.get(id)),
                     }),
