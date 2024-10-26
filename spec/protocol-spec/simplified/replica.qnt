@@ -565,7 +565,9 @@ module replica {
                         is_some(proposal.block),
                         // To verify the block, replica just tries to apply it to the current
                         // state. Current state is the result of applying all the committed blocks until now.
-                        proposal.block.block_verify(block_number)
+                        proposal.block.block_verify(block_number),
+                        // not really part of the protocol but since we are tracking the block number, we have to check it
+                        proposal.ghost_block_number == block_number,
                         // We cache the new proposals, waiting for them to be committed.
                         // See the update to cached_proposals below.
                     }

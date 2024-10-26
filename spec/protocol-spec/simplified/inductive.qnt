@@ -452,30 +452,31 @@ module inductive {
     val lemma3_signed_commit_needs_proposal = {
         r::msgs_signed_commit.forall(m => or {
             IFAULTY.contains(m.sig),
-            0.to(MAX_COMMIT_QC).exists(qc_id => {
-                val proposal = {
-                    // in our modeling, the block hash is identical to the block
-                    block: Some(m.vote.block_hash),
-                    justification: Commit(qc_id),
-                    sig: r::leader.get(m.vote.view),
-                    ghost_block_number: m.vote.block_number - 1,
+            r::msgs_new_view.exists(nv => {
+                match (nv.justification) {
+                | Commit(qc_id) =>
+                    val proposal = {
+                        // in our modeling, the block hash is identical to the block
+                        block: Some(m.vote.block_hash),
+                        justification: Commit(qc_id),
+                        sig: r::leader.get(m.vote.view),
+                        ghost_block_number: m.vote.block_number - 1,
+                    }
+                    and {
+                        // this block must have been verified in on_proposal
+                        IVALID_BLOCKS.contains(m.vote.block_hash),
+                        // there must be a proposal for the commit message `m`
+                        r::msgs_proposal.contains(proposal)
+                    }
+
+                | Timeout(qc_id) =>
+                    r::msgs_proposal.exists(p => and {
+                        p.block == Some(m.vote.block_hash),
+                        p.sig == r::leader.get(m.vote.view),
+                        p.ghost_block_number == m.vote.block_number,
+                    })
                 }
-                and {
-                    // this block must have been verified in on_proposal
-                    IVALID_BLOCKS.contains(m.vote.block_hash),
-                    // there must be a proposal for the commit message `m`
-                    r::msgs_proposal.contains(proposal)
-                }
-            }),
-            0.to(MAX_TIMEOUT_QC).exists(qc_id => and {
-                val proposal = {
-                    block: Some(m.vote.block_hash),
-                    justification: Timeout(qc_id),
-                    sig: r::leader.get(m.vote.view),
-                    ghost_block_number: m.vote.block_number,
-                }
-                r::msgs_proposal.contains(proposal),
-            }),
+            })
         })
     }
 
