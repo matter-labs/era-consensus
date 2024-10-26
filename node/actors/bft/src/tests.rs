@@ -56,7 +56,7 @@ async fn timeout_leader_no_prepares() {
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
-        util.new_replica_prepare();
+        util.new_replica_timeout();
         util.produce_block_after_timeout(ctx).await;
         Ok(())
     })
@@ -72,7 +72,7 @@ async fn timeout_leader_some_prepares() {
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
-        let replica_prepare = util.new_replica_prepare();
+        let replica_prepare = util.new_replica_timeout();
         assert!(util
             .process_replica_prepare(ctx, util.sign(replica_prepare))
             .await
@@ -94,7 +94,7 @@ async fn timeout_leader_in_commit() {
         let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
-        util.new_leader_prepare(ctx).await;
+        util.new_leader_proposal(ctx).await;
         // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
         assert_eq!(util.leader.phase, validator::Phase::Commit);
         util.produce_block_after_timeout(ctx).await;
@@ -113,7 +113,7 @@ async fn timeout_replica_in_commit() {
         let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
-        util.new_replica_commit(ctx).await;
+        util.new_replica_commit_from_proposal(ctx).await;
         // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
         assert_eq!(util.leader.phase, validator::Phase::Commit);
         util.produce_block_after_timeout(ctx).await;
@@ -132,7 +132,7 @@ async fn timeout_leader_some_commits() {
         let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
-        let replica_commit = util.new_replica_commit(ctx).await;
+        let replica_commit = util.new_replica_commit_from_proposal(ctx).await;
         assert!(util
             .process_replica_commit(ctx, util.sign(replica_commit))
             .await

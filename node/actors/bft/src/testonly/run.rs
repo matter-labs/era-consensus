@@ -264,7 +264,6 @@ async fn run_nodes_twins(
         // Taking these references is necessary for the `scope::run!` environment lifetime rules to compile
         // with `async move`, which in turn is necessary otherwise it the spawned process could not borrow `port`.
         // Potentially `ctx::NoCopy` could be used with `port`.
-        let validator_ports = &validator_ports;
         let sends = &sends;
         let stores = &stores;
         let gossip_targets = &gossip_targets;
@@ -283,7 +282,6 @@ async fn run_nodes_twins(
                     twins_receive_loop(
                         ctx,
                         router,
-                        validator_ports,
                         sends,
                         TwinsGossipConfig {
                             targets: &gossip_targets[&port],
@@ -313,7 +311,6 @@ async fn run_nodes_twins(
 async fn twins_receive_loop(
     ctx: &ctx::Ctx,
     router: &PortRouter,
-    validator_ports: &HashMap<validator::PublicKey, Vec<Port>>,
     sends: &HashMap<Port, UnboundedSender<io::OutputMessage>>,
     gossip: TwinsGossipConfig<'_>,
     port: Port,
@@ -413,24 +410,12 @@ async fn twins_receive_loop(
             }
         };
 
-        match message.recipient {
-            io::Target::Broadcast => {
-                tracing::info!("broadcasting view={view} from={port} kind={kind}");
-                for target_port in sends.keys() {
-                    send_or_stash(can_send(*target_port)?, *target_port, msg());
-                }
-            }
-            io::Target::Validator(ref v) => {
-                let target_ports = &validator_ports[v];
-                tracing::info!(
-                    "unicasting view={view} from={port} target={target_ports:?} kind={kind}"
-                );
-                for target_port in target_ports {
-                    send_or_stash(can_send(*target_port)?, *target_port, msg());
-                }
-            }
+        tracing::info!("broadcasting view={view} from={port} kind={kind}");
+        for target_port in sends.keys() {
+            send_or_stash(can_send(*target_port)?, *target_port, msg());
         }
     }
+
     Ok(())
 }
 
@@ -510,13 +495,19 @@ fn output_msg_label(msg: &io::OutputMessage) -> &str {
 
 fn output_msg_commit_qc(msg: &io::OutputMessage) -> Option<&validator::CommitQC> {
     use validator::ConsensusMsg;
-    match msg {
+
+    let justification = match msg {
         io::OutputMessage::Consensus(cr) => match &cr.msg.msg {
-            ConsensusMsg::ReplicaPrepare(rp) => rp.high_qc.as_ref(),
-            ConsensusMsg::LeaderPrepare(lp) => lp.justification.high_qc(),
-            ConsensusMsg::ReplicaCommit(_) => None,
-            ConsensusMsg::LeaderCommit(lc) => Some(&lc.justification),
+            ConsensusMsg::ReplicaTimeout(msg) => return msg.high_qc.as_ref(),
+            ConsensusMsg::ReplicaCommit(_) => return None,
+            ConsensusMsg::ReplicaNewView(msg) => &msg.justification,
+            ConsensusMsg::LeaderProposal(msg) => &msg.justification,
         },
+    };
+
+    match justification {
+        validator::ProposalJustification::Commit(commit_qc) => Some(commit_qc),
+        validator::ProposalJustification::Timeout(timeout_qc) => timeout_qc.high_qc(),
     }
 }
 
@@ -524,10 +515,10 @@ fn output_msg_commit_qc(msg: &io::OutputMessage) -> Option<&validator::CommitQC>
 fn msg_phase_number(msg: &validator::ConsensusMsg) -> usize {
     use validator::ConsensusMsg;
     let phase = match msg {
-        ConsensusMsg::ReplicaPrepare(_) => 0,
-        ConsensusMsg::LeaderPrepare(_) => 0,
+        ConsensusMsg::LeaderProposal(_) => 0,
         ConsensusMsg::ReplicaCommit(_) => 0,
-        ConsensusMsg::LeaderCommit(_) => 1,
+        ConsensusMsg::ReplicaTimeout(_) => 0,
+        ConsensusMsg::ReplicaNewView(_) => 1,
     };
     assert!(phase < NUM_PHASES);
     phase

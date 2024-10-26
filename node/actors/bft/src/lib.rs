@@ -1,19 +1,4 @@
-//! # Consensus
-//! This crate implements the Fastest-HotStuff algorithm that is described in an upcoming paper
-//! It is a two-phase unchained consensus with quadratic view change (in number of authenticators, in number of
-//! messages it is linear) and optimistic responsiveness.
-//!
-//! ## Node set
-//! Right now, we assume that we have a static node set. In other words, we are running in proof-of-authority. When this repo is updated
-//! to proof-of-stake, we will have a dynamic node set.
-//!
-//! ## Resources
-//! - [Fast-HotStuff paper](https://arxiv.org/pdf/2010.11454.pdf)
-//! - [HotStuff paper](https://arxiv.org/pdf/1803.05069.pdf)
-//! - [HotStuff-2 paper](https://eprint.iacr.org/2023/397.pdf)
-//! - [Notes on modern consensus algorithms](https://timroughgarden.github.io/fob21/andy.pdf)
-//! - [Blog post comparing several consensus algorithms](https://decentralizedthoughts.github.io/2023-04-01-hotstuff-2/)
-//! - Blog posts explaining [safety](https://seafooler.com/2022/01/24/understanding-safety-hotstuff/) and [responsiveness](https://seafooler.com/2022/04/02/understanding-responsiveness-hotstuff/)
+//! This crate implements the ChonkyBFT algorithm. You can find the specification of the algorithm [here](../../../../spec).
 
 use crate::io::{InputMessage, OutputMessage};
 use anyhow::Context;
@@ -24,7 +9,7 @@ use zksync_concurrency::{ctx, error::Wrap as _, scope};
 use zksync_consensus_roles::validator;
 use zksync_consensus_utils::pipe::ActorPipe;
 
-mod chonky_bft;
+pub(crate) mod chonky_bft;
 mod config;
 pub mod io;
 mod metrics;

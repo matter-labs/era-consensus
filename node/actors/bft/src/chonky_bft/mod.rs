@@ -13,12 +13,12 @@ use zksync_concurrency::{
 use zksync_consensus_network::io::ConsensusReq;
 use zksync_consensus_roles::validator::{self, ConsensusMsg};
 
-mod commit;
+pub(crate) mod commit;
 mod misc;
-mod new_view;
-mod proposal;
+pub(crate) mod new_view;
+pub(crate) mod proposal;
 pub(crate) mod proposer;
-mod timeout;
+pub(crate) mod timeout;
 
 #[cfg(test)]
 mod tests;
