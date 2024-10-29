@@ -14,7 +14,7 @@ pub(crate) enum Error {
         /// Signer of the message.
         signer: Box<validator::PublicKey>,
     },
-    /// Past view or phase.
+    /// Past view.
     #[error("past view (current view: {current_view:?})")]
     Old {
         /// Current view.
@@ -79,7 +79,7 @@ impl StateMachine {
         }
 
         // If we already have a message from the same validator for the same or past view, ignore it.
-        if let Some(&view) = self.commit_views_cache.get(author) {
+        if let Some(&view) = self.timeout_views_cache.get(author) {
             if view >= message.view.number {
                 return Err(Error::DuplicateSigner {
                     message_view: message.view.number,

@@ -21,6 +21,8 @@ pub(crate) mod proposer;
 pub(crate) mod timeout;
 
 #[cfg(test)]
+mod testonly;
+#[cfg(test)]
 mod tests;
 
 /// The StateMachine struct contains the state of the replica and implements all the
@@ -32,7 +34,7 @@ pub(crate) struct StateMachine {
     /// Pipe through which replica sends network messages.
     pub(super) outbound_pipe: OutputSender,
     /// Pipe through which replica receives network requests.
-    inbound_pipe: sync::prunable_mpsc::Receiver<ConsensusReq>,
+    pub(crate) inbound_pipe: sync::prunable_mpsc::Receiver<ConsensusReq>,
     /// The sender part of the justification watch. This is used to set the justification
     /// and notify the proposer loop.
     pub(crate) justification_watch: sync::watch::Sender<Option<validator::ProposalJustification>>,

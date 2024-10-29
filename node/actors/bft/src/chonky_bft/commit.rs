@@ -13,7 +13,7 @@ pub(crate) enum Error {
         /// Signer of the message.
         signer: Box<validator::PublicKey>,
     },
-    /// Past view or phase.
+    /// Past view.
     #[error("past view (current view: {current_view:?})")]
     Old {
         /// Current view.

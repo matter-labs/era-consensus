@@ -112,9 +112,11 @@ impl ProposalJustification {
                     // Either the previous proposal was finalized or we know for certain
                     // that it couldn't have been finalized (because there is no high vote).
                     // Either way, we can propose a new block.
+
+                    // If there is no high QC, then we must be at the start of the chain.
                     let block_number = match high_qc {
                         Some(qc) => qc.header().number.next(),
-                        None => BlockNumber(0),
+                        None => genesis.first_block,
                     };
 
                     (block_number, None)

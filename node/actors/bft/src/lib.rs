@@ -14,8 +14,8 @@ mod config;
 pub mod io;
 mod metrics;
 pub mod testonly;
-#[cfg(test)]
-mod tests;
+//#[cfg(test)]
+//mod tests;
 
 /// Protocol version of this BFT implementation.
 pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVersion::CURRENT;

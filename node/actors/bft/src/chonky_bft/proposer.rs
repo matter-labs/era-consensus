@@ -1,8 +1,13 @@
 use crate::{metrics, Config, OutputSender};
 use std::sync::Arc;
-use zksync_concurrency::{ctx, error::Wrap as _, sync};
+use zksync_concurrency::{ctx, error::Wrap as _, sync, time};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
+
+/// Timeout for creating a proposal. If the proposal is not created in this time, the proposer
+/// will quit trying to create a proposal for this view. This can be different from the replica
+/// timeout for the whole view.
+pub(crate) const PROPOSAL_CREATION_TIMEOUT: time::Duration = time::Duration::milliseconds(2000);
 
 /// The proposer loop is responsible for proposing new blocks to the network. It watches for new
 /// justifications from the replica and if it is the leader for the view, it proposes a new block.
@@ -13,6 +18,7 @@ pub(crate) async fn run_proposer(
     mut justification_watch: sync::watch::Receiver<Option<validator::ProposalJustification>>,
 ) -> ctx::Result<()> {
     loop {
+        // Wait for a new justification to be available.
         let Some(justification) = sync::changed(ctx, &mut justification_watch).await?.clone()
         else {
             continue;
@@ -23,7 +29,20 @@ pub(crate) async fn run_proposer(
             continue;
         }
 
-        let proposal = create_proposal(ctx, cfg.clone(), justification).await?;
+        // Create a proposal for the given justification, within the timeout.
+        let proposal = match create_proposal(
+            &ctx.with_timeout(PROPOSAL_CREATION_TIMEOUT),
+            cfg.clone(),
+            justification,
+        )
+        .await
+        {
+            Ok(proposal) => proposal,
+            Err(err) => {
+                tracing::error!("failed to create proposal: {}", err);
+                continue;
+            }
+        };
 
         // Broadcast our proposal to all replicas (ourselves included).
         let msg = cfg
@@ -50,9 +69,6 @@ pub(crate) async fn create_proposal(
         // The previous proposal was finalized, so we can propose a new block.
         None => {
             // Defensively assume that PayloadManager cannot propose until the previous block is stored.
-            // if we don't have the previous block, this call will halt until the other replicas timeout.
-            // This is fine as we can just not propose anything and let our turn end. Eventually, some other
-            // replica will produce some block with this block number and this function will unblock.
             if let Some(prev) = block_number.prev() {
                 cfg.block_store.wait_until_persisted(ctx, prev).await?;
             }
