@@ -36,7 +36,7 @@ pub(crate) struct StateMachine {
     /// Pipe through which replica receives network requests.
     pub(crate) inbound_pipe: sync::prunable_mpsc::Receiver<ConsensusReq>,
     /// The sender part of the proposer watch channel. This is used to notify the proposer loop
-    /// and send the neeeded justification.
+    /// and send the needed justification.
     pub(crate) proposer_pipe: sync::watch::Sender<Option<validator::ProposalJustification>>,
 
     /// The current view number.

@@ -147,7 +147,7 @@ impl StateMachine {
             .await
             .wrap("process_commit_qc()")?;
 
-        // Metrics. We observe the latency of commiting to a block measured
+        // Metrics. We observe the latency of committing to a block measured
         // from the start of this view.
         metrics::METRICS
             .commit_latency

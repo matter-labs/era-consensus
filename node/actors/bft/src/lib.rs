@@ -1,4 +1,4 @@
-//! This crate contains the consensus actor, which is responsible for handling the logic that allows us to reach aggrement on blocks.
+//! This crate contains the consensus actor, which is responsible for handling the logic that allows us to reach agreement on blocks.
 //! It uses a new cosnensus algorithm developed at Matter Labs, called ChonkyBFT. You can find the specification of the algorithm [here](../../../../spec).
 
 use crate::io::{InputMessage, OutputMessage};

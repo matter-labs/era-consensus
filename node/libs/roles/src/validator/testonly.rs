@@ -198,7 +198,7 @@ impl Setup {
         }
     }
 
-    /// Creates a ReplicaCommt with a random payload.
+    /// Creates a ReplicaCommit with a random payload.
     pub fn make_replica_commit(&self, rng: &mut impl Rng, view: ViewNumber) -> ReplicaCommit {
         ReplicaCommit {
             view: self.make_view(view),
@@ -209,7 +209,7 @@ impl Setup {
         }
     }
 
-    /// Creates a ReplicaCommt with the given payload.
+    /// Creates a ReplicaCommit with the given payload.
     pub fn make_replica_commit_with_payload(
         &self,
         payload: &Payload,
