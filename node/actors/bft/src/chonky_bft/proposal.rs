@@ -167,7 +167,7 @@ impl StateMachine {
                 if let Err(err) = self
                     .config
                     .payload_manager
-                    .verify(ctx, implied_block_number, &payload)
+                    .verify(ctx, implied_block_number, payload)
                     .await
                 {
                     return Err(match err {
@@ -190,7 +190,7 @@ impl StateMachine {
 
         // Create our commit vote.
         let commit_vote = validator::ReplicaCommit {
-            view: message.view().clone(),
+            view: message.view(),
             proposal: BlockHeader {
                 number: implied_block_number,
                 payload: block_hash,

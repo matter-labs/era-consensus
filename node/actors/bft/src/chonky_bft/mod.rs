@@ -13,17 +13,17 @@ use zksync_concurrency::{
 use zksync_consensus_network::io::ConsensusReq;
 use zksync_consensus_roles::validator::{self, ConsensusMsg};
 
-pub(crate) mod commit;
+mod commit;
 mod misc;
-pub(crate) mod new_view;
-pub(crate) mod proposal;
+mod new_view;
+mod proposal;
+/// The proposer module contains the logic for the proposer role in ChonkyBFT.
 pub(crate) mod proposer;
-pub(crate) mod timeout;
-
 #[cfg(test)]
 pub(crate) mod testonly;
 #[cfg(test)]
 mod tests;
+mod timeout;
 
 /// The StateMachine struct contains the state of the replica and implements all the
 /// logic of ChonkyBFT.
@@ -282,7 +282,7 @@ impl StateMachine {
     ) -> SelectionFunctionResult {
         if old_req.msg.key != new_req.msg.key || old_req.msg.msg.label() != new_req.msg.msg.label()
         {
-            return SelectionFunctionResult::Keep;
+            SelectionFunctionResult::Keep
         } else {
             // Discard older message
             if old_req.msg.msg.view().number < new_req.msg.msg.view().number {

@@ -1,4 +1,5 @@
-//! This crate implements the ChonkyBFT algorithm. You can find the specification of the algorithm [here](../../../../spec).
+//! This crate contains the consensus actor, which is responsible for handling the logic that allows us to reach aggrement on blocks.
+//! It uses a new cosnensus algorithm developed at Matter Labs, called ChonkyBFT. You can find the specification of the algorithm [here](../../../../spec).
 
 use crate::io::{InputMessage, OutputMessage};
 use anyhow::Context;
@@ -9,7 +10,8 @@ use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::validator;
 use zksync_consensus_utils::pipe::ActorPipe;
 
-pub(crate) mod chonky_bft;
+/// This module contains the implementation of the ChonkyBFT algorithm.
+mod chonky_bft;
 mod config;
 pub mod io;
 mod metrics;
