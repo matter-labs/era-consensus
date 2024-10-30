@@ -30,7 +30,7 @@ pub(crate) struct UTHarness {
     pub(crate) keys: Vec<validator::SecretKey>,
     pub(crate) outbound_pipe: ctx::channel::UnboundedReceiver<OutputMessage>,
     pub(crate) inbound_pipe: prunable_mpsc::Sender<ConsensusReq>,
-    pub(crate) proposer_pipe: sync::watch::Receiver<Option<validator::ProposalJustification>>,
+    pub(crate) _proposer_pipe: sync::watch::Receiver<Option<validator::ProposalJustification>>,
 }
 
 impl UTHarness {
@@ -82,10 +82,12 @@ impl UTHarness {
             keys: setup.validator_keys.clone(),
             outbound_pipe: recv,
             inbound_pipe: input_pipe,
-            proposer_pipe: proposer_receiver,
+            _proposer_pipe: proposer_receiver,
         };
-        this.process_replica_timeout_all(ctx, this.new_replica_timeout())
-            .await;
+
+        let timeout = this.new_replica_timeout(ctx).await;
+        this.process_replica_timeout_all(ctx, timeout).await;
+
         (this, store.runner)
     }
 
@@ -126,19 +128,18 @@ impl UTHarness {
 
     pub(crate) async fn new_replica_commit(&mut self, ctx: &ctx::Ctx) -> validator::ReplicaCommit {
         let proposal = self.new_leader_proposal(ctx).await;
-
         self.process_leader_proposal(ctx, self.leader_key().sign_msg(proposal))
             .await
             .unwrap()
             .msg
     }
 
-    pub(crate) fn new_replica_timeout(&self) -> validator::ReplicaTimeout {
-        validator::ReplicaTimeout {
-            view: self.view(),
-            high_vote: self.replica.high_vote.clone(),
-            high_qc: self.replica.high_commit_qc.clone(),
-        }
+    pub(crate) async fn new_replica_timeout(
+        &mut self,
+        ctx: &ctx::Ctx,
+    ) -> validator::ReplicaTimeout {
+        self.replica.start_timeout(ctx).await.unwrap();
+        self.try_recv().unwrap().msg
     }
 
     pub(crate) async fn new_replica_new_view(&self) -> validator::ReplicaNewView {
@@ -160,19 +161,19 @@ impl UTHarness {
         qc
     }
 
-    #[allow(dead_code)]
-    pub(crate) fn new_timeout_qc(
-        &mut self,
-        mutate_fn: impl FnOnce(&mut validator::ReplicaTimeout),
-    ) -> validator::TimeoutQC {
-        let mut msg = self.new_replica_timeout();
-        mutate_fn(&mut msg);
-        let mut qc = validator::TimeoutQC::new(msg.view.clone());
-        for key in &self.keys {
-            qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
-        }
-        qc
-    }
+    // #[allow(dead_code)]
+    // pub(crate) fn new_timeout_qc(
+    //     &mut self,
+    //     mutate_fn: impl FnOnce(&mut validator::ReplicaTimeout),
+    // ) -> validator::TimeoutQC {
+    //     let mut msg = self.new_replica_timeout();
+    //     mutate_fn(&mut msg);
+    //     let mut qc = validator::TimeoutQC::new(msg.view.clone());
+    //     for key in &self.keys {
+    //         qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
+    //     }
+    //     qc
+    // }
 
     pub(crate) async fn process_leader_proposal(
         &mut self,

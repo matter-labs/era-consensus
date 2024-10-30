@@ -13,12 +13,15 @@ async fn timeout_yield_new_view_sanity() {
         s.spawn_bg(runner.run(ctx));
 
         let cur_view = util.replica.view_number;
-        let replica_timeout = util.new_replica_timeout();
+        let replica_timeout = util.new_replica_timeout(ctx).await;
+        assert_eq!(util.replica.phase, validator::Phase::Timeout);
+
         let new_view = util
             .process_replica_timeout_all(ctx, replica_timeout.clone())
             .await
             .msg;
-
+        assert_eq!(util.replica.view_number, cur_view.next());
+        assert_eq!(util.replica.phase, validator::Phase::Prepare);
         assert_eq!(new_view.view().number, cur_view.next());
 
         Ok(())
@@ -35,7 +38,7 @@ async fn timeout_non_validator_signer() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let replica_timeout = util.new_replica_timeout();
+        let replica_timeout = util.new_replica_timeout(ctx).await;
         let non_validator_key: validator::SecretKey = ctx.rng().gen();
         let res = util
             .process_replica_timeout(ctx, non_validator_key.sign_msg(replica_timeout))
@@ -62,9 +65,11 @@ async fn replica_timeout_old() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let mut replica_timeout = util.new_replica_timeout();
+        let mut replica_timeout = util.new_replica_timeout(ctx).await;
         replica_timeout.view.number = validator::ViewNumber(util.replica.view_number.0 - 1);
-        let res = util.process_replica_timeout(ctx, util.owner_key().sign_msg(replica_timeout)).await;
+        let res = util
+            .process_replica_timeout(ctx, util.owner_key().sign_msg(replica_timeout))
+            .await;
 
         assert_matches!(
             res,
@@ -89,7 +94,7 @@ async fn timeout_duplicate_signer() {
 
         util.produce_block(ctx).await;
 
-        let replica_timeout = util.new_replica_timeout();
+        let replica_timeout = util.new_replica_timeout(ctx).await;
         assert!(util
             .process_replica_timeout(ctx, util.owner_key().sign_msg(replica_timeout.clone()))
             .await
@@ -141,7 +146,7 @@ async fn timeout_invalid_sig() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let msg = util.new_replica_timeout();
+        let msg = util.new_replica_timeout(ctx).await;
         let mut replica_timeout = util.owner_key().sign_msg(msg);
         replica_timeout.sig = ctx.rng().gen();
 
@@ -162,7 +167,7 @@ async fn timeout_invalid_message() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let replica_timeout = util.new_replica_timeout();
+        let replica_timeout = util.new_replica_timeout(ctx).await;
 
         let mut bad_replica_timeout = replica_timeout.clone();
         bad_replica_timeout.view.genesis = ctx.rng().gen();
@@ -214,7 +219,7 @@ async fn timeout_num_received_below_threshold() {
         let (mut util, runner) = UTHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
-        let replica_timeout = util.new_replica_timeout();
+        let replica_timeout = util.new_replica_timeout(ctx).await;
         for i in 0..util.genesis().validators.quorum_threshold() as usize - 1 {
             assert!(util
                 .process_replica_timeout(ctx, util.keys[i].sign_msg(replica_timeout.clone()))
@@ -260,8 +265,9 @@ async fn timeout_weight_different_messages() {
 
         let view = util.view();
         util.produce_block(ctx).await;
-        
-        let replica_timeout = util.new_replica_timeout();
+
+        let replica_timeout = util.new_replica_timeout(ctx).await;
+        util.replica.phase = validator::Phase::Prepare; // To allow processing of proposal later.
         let proposal = replica_timeout.clone().high_vote.unwrap().proposal;
 
         // Create a different proposal for the same view
@@ -320,7 +326,7 @@ async fn replica_timeout_limit_messages_in_memory() {
         let (mut util, runner) = UTHarness::new(ctx, 2).await;
         s.spawn_bg(runner.run(ctx));
 
-        let mut replica_timeout = util.new_replica_timeout();
+        let mut replica_timeout = util.new_replica_timeout(ctx).await;
         let mut view = util.view();
         // Spam it with 200 messages for different views
         for _ in 0..200 {
@@ -350,7 +356,7 @@ async fn replica_timeout_filter_functions_test() {
         let (mut util, runner) = UTHarness::new(ctx, 2).await;
         s.spawn_bg(runner.run(ctx));
 
-        let replica_timeout = util.new_replica_timeout();
+        let replica_timeout = util.new_replica_timeout(ctx).await;
         let msg = util
             .owner_key()
             .sign_msg(validator::ConsensusMsg::ReplicaTimeout(

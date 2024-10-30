@@ -1,5 +1,6 @@
 use crate::chonky_bft::{commit, testonly::UTHarness};
 use assert_matches::assert_matches;
+use pretty_assertions::assert_eq;
 use rand::Rng;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
@@ -14,11 +15,14 @@ async fn commit_yield_new_view_sanity() {
 
         let cur_view = util.replica.view_number;
         let replica_commit = util.new_replica_commit(ctx).await;
+        assert_eq!(util.replica.phase, validator::Phase::Commit);
+
         let new_view = util
             .process_replica_commit_all(ctx, replica_commit.clone())
             .await
             .msg;
-
+        assert_eq!(util.replica.view_number, cur_view.next());
+        assert_eq!(util.replica.phase, validator::Phase::Prepare);
         assert_eq!(new_view.view().number, cur_view.next());
         assert_matches!(new_view.justification, validator::ProposalJustification::Commit(qc) => {
             assert_eq!(qc.message.proposal, replica_commit.proposal);

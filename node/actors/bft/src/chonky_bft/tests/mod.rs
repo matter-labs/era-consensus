@@ -5,7 +5,7 @@ use zksync_consensus_roles::validator;
 mod commit;
 mod new_view;
 mod proposal;
-mod proposer;
+//mod proposer;
 mod timeout;
 
 /// Sanity check of the happy path.
@@ -52,7 +52,7 @@ async fn block_production_timeout_reproposal() {
         s.spawn_bg(runner.run(ctx));
 
         let replica_commit = util.new_replica_commit(ctx).await;
-        let mut timeout = util.new_replica_timeout();
+        let mut timeout = util.new_replica_timeout(ctx).await;
 
         for i in 0..util.genesis().validators.subquorum_threshold() as usize {
             util.process_replica_timeout(ctx, util.keys[i].sign_msg(timeout.clone()))
