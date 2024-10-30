@@ -225,13 +225,13 @@ impl UTHarness {
 
             cur_weight += self.genesis().validators.get(val_index).unwrap().weight;
 
-            if !threshold_reached {
+            if threshold_reached {
+                assert_matches!(res, Err(commit::Error::Old { .. }));
+            } else {
                 res.unwrap();
                 if cur_weight >= self.genesis().validators.quorum_threshold() {
                     threshold_reached = true;
                 }
-            } else {
-                assert_matches!(res, Err(commit::Error::Old { .. }));
             }
         }
 
@@ -255,13 +255,13 @@ impl UTHarness {
 
             cur_weight += self.genesis().validators.get(val_index).unwrap().weight;
 
-            if !threshold_reached {
+            if threshold_reached {
+                assert_matches!(res, Err(timeout::Error::Old { .. }));
+            } else {
                 res.unwrap();
                 if cur_weight >= self.genesis().validators.quorum_threshold() {
                     threshold_reached = true;
                 }
-            } else {
-                assert_matches!(res, Err(timeout::Error::Old { .. }));
             }
         }
 

@@ -330,7 +330,7 @@ async fn replica_timeout_limit_messages_in_memory() {
         let mut view = util.view();
         // Spam it with 200 messages for different views
         for _ in 0..200 {
-            replica_timeout.view = view.clone();
+            replica_timeout.view = view;
             let res = util
                 .process_replica_timeout(ctx, util.owner_key().sign_msg(replica_timeout.clone()))
                 .await;

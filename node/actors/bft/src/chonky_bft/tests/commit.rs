@@ -317,7 +317,7 @@ async fn replica_commit_limit_messages_in_memory() {
         let mut view = util.view();
         // Spam it with 200 messages for different views
         for _ in 0..200 {
-            replica_commit.view = view.clone();
+            replica_commit.view = view;
             let res = util
                 .process_replica_commit(ctx, util.owner_key().sign_msg(replica_commit.clone()))
                 .await;

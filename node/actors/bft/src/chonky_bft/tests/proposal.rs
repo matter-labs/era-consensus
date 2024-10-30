@@ -27,7 +27,7 @@ async fn proposal_yield_replica_commit_sanity() {
         assert_eq!(
             replica_commit.msg,
             validator::ReplicaCommit {
-                view: proposal.view().clone(),
+                view: proposal.view(),
                 proposal: validator::BlockHeader {
                     number: proposal.justification.get_implied_block(util.genesis()).0,
                     payload: proposal.proposal_payload.unwrap().hash()
