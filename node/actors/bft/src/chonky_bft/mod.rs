@@ -1,4 +1,4 @@
-use crate::{metrics, Config, OutputSender};
+use crate::{io::OutputMessage, metrics, Config};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
@@ -32,7 +32,7 @@ pub(crate) struct StateMachine {
     /// Consensus configuration.
     pub(crate) config: Arc<Config>,
     /// Pipe through which replica sends network messages.
-    pub(super) outbound_pipe: OutputSender,
+    pub(super) outbound_pipe: ctx::channel::UnboundedSender<OutputMessage>,
     /// Pipe through which replica receives network requests.
     pub(crate) inbound_pipe: sync::prunable_mpsc::Receiver<ConsensusReq>,
     /// The sender part of the proposer watch channel. This is used to notify the proposer loop
@@ -82,7 +82,7 @@ impl StateMachine {
     pub(crate) async fn start(
         ctx: &ctx::Ctx,
         config: Arc<Config>,
-        outbound_pipe: OutputSender,
+        outbound_pipe: ctx::channel::UnboundedSender<OutputMessage>,
         proposer_pipe: sync::watch::Sender<Option<validator::ProposalJustification>>,
     ) -> ctx::Result<(Self, sync::prunable_mpsc::Sender<ConsensusReq>)> {
         let backup = config.replica_store.state(ctx).await?;

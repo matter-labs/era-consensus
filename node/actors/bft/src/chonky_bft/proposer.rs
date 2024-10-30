@@ -1,4 +1,4 @@
-use crate::{metrics, Config, OutputSender};
+use crate::{io::OutputMessage, metrics, Config};
 use std::sync::Arc;
 use zksync_concurrency::{ctx, error::Wrap as _, sync, time};
 use zksync_consensus_network::io::ConsensusInputMessage;
@@ -14,7 +14,7 @@ pub(crate) const PROPOSAL_CREATION_TIMEOUT: time::Duration = time::Duration::mil
 pub(crate) async fn run_proposer(
     ctx: &ctx::Ctx,
     cfg: Arc<Config>,
-    outbound_pipe: OutputSender,
+    outbound_pipe: ctx::channel::UnboundedSender<OutputMessage>,
     mut justification_watch: sync::watch::Receiver<Option<validator::ProposalJustification>>,
 ) -> ctx::Result<()> {
     loop {
