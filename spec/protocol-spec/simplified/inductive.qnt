@@ -407,6 +407,7 @@ module inductive {
                 | Commit(qc_id) =>
                     val qc = r::ghost_commit_qc[qc_id]
                     and {
+                        0 <= qc_id and qc_id <= MAX_COMMIT_QC,
                         qc.vote.view + 1 == view,
                         qc.agg_sig.subseteq(IREPLICAS),
                         // no invalid blocks are committed
@@ -414,10 +415,12 @@ module inductive {
                         // check the quorums in (2), as it is an expensive test
                     }
 
-                | Timeout(qc_id) =>
-                    val qc = r::ghost_timeout_qc[qc_id]
-                    qc.ghost_view + 1 == view
-                    // check the structure in (3)
+                | Timeout(qc_id) => and {
+                        0 <= qc_id and qc_id <= MAX_TIMEOUT_QC,
+                        val qc = r::ghost_timeout_qc[qc_id]
+                        qc.ghost_view + 1 == view
+                        // check the structure in (3)
+                    }
                 }
             }
         }),
