@@ -146,9 +146,9 @@ impl StateMachine {
         // Metrics.
         let now = ctx.now();
         metrics::METRICS
-            .leader_commit_phase_latency
-            .observe_latency(now - self.phase_start);
-        self.phase_start = now;
+            .commit_phase_latency
+            .observe_latency(now - self.view_start);
+        self.view_start = now;
 
         // Start a new view.
         self.start_new_view(ctx, message.view.number.next()).await?;

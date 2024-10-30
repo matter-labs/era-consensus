@@ -1,6 +1,8 @@
+use crate::metrics;
+
 use super::StateMachine;
 use std::cmp::max;
-use zksync_concurrency::{ctx, error::Wrap};
+use zksync_concurrency::{ctx, error::Wrap, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator::{self, BlockHeader, BlockNumber};
 
@@ -187,6 +189,12 @@ impl StateMachine {
         };
 
         // ----------- All checks finished. Now we process the message. --------------
+
+        // Metrics. We observe the latency of receiving a proposal measured
+        // from the start of this view.
+        metrics::METRICS
+            .proposal_latency
+            .observe_latency(ctx.now() - self.view_start);
 
         // Create our commit vote.
         let commit_vote = validator::ReplicaCommit {

@@ -146,12 +146,11 @@ impl StateMachine {
             .await
             .wrap("process_commit_qc()")?;
 
-        // Metrics.
-        let now = ctx.now();
+        // Metrics. We observe the latency of commiting to a block measured
+        // from the start of this view.
         metrics::METRICS
-            .leader_commit_phase_latency
-            .observe_latency(now - self.phase_start);
-        self.phase_start = now;
+            .commit_latency
+            .observe_latency(ctx.now() - self.view_start);
 
         // Start a new view.
         self.start_new_view(ctx, message.view.number.next()).await?;

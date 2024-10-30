@@ -89,7 +89,7 @@ pub(crate) async fn create_proposal(
             }
 
             metrics::METRICS
-                .leader_proposal_payload_size
+                .proposal_payload_size
                 .observe(payload.0.len());
 
             Some(payload)

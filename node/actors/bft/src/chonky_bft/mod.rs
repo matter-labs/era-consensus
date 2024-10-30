@@ -65,8 +65,8 @@ pub(crate) struct StateMachine {
 
     /// The deadline to receive an input message before timing out.
     pub(crate) timeout_deadline: time::Deadline,
-    /// Time when the current phase has started. Used for metrics.
-    pub(crate) phase_start: time::Instant,
+    /// Time when the current view phase has started. Used for metrics.
+    pub(crate) view_start: time::Instant,
 }
 
 impl StateMachine {
@@ -116,7 +116,7 @@ impl StateMachine {
             timeout_views_cache: BTreeMap::new(),
             timeout_qcs_cache: BTreeMap::new(),
             timeout_deadline: time::Deadline::Finite(ctx.now() + Self::TIMEOUT_DURATION),
-            phase_start: ctx.now(),
+            view_start: ctx.now(),
         };
 
         Ok((this, send))
@@ -126,6 +126,8 @@ impl StateMachine {
     /// This is the main entry point for the state machine,
     /// potentially triggering state modifications and message sending to the executor.
     pub(crate) async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
+        self.view_start = ctx.now();
+
         // If this is the first view, we immediately timeout. This will force the replicas
         // to synchronize right at the beginning and will provide a justification for the
         // next view. This is necessary because the first view is not justified by any
@@ -179,7 +181,7 @@ impl StateMachine {
                             Err(())
                         }
                     };
-                    metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
+                    metrics::ConsensusMsgLabel::LeaderProposal.with_result(&res)
                 }
                 ConsensusMsg::ReplicaCommit(_) => {
                     let res = match self
@@ -206,7 +208,7 @@ impl StateMachine {
                             Err(())
                         }
                     };
-                    metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
+                    metrics::ConsensusMsgLabel::ReplicaCommit.with_result(&res)
                 }
                 ConsensusMsg::ReplicaTimeout(_) => {
                     let res = match self
@@ -233,7 +235,7 @@ impl StateMachine {
                             Err(())
                         }
                     };
-                    metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
+                    metrics::ConsensusMsgLabel::ReplicaTimeout.with_result(&res)
                 }
                 ConsensusMsg::ReplicaNewView(_) => {
                     let res = match self
@@ -260,10 +262,10 @@ impl StateMachine {
                             Err(())
                         }
                     };
-                    metrics::ConsensusMsgLabel::ReplicaPrepare.with_result(&res)
+                    metrics::ConsensusMsgLabel::ReplicaNewView.with_result(&res)
                 }
             };
-            metrics::METRICS.replica_processing_latency[&label].observe_latency(ctx.now() - now);
+            metrics::METRICS.message_processing_latency[&label].observe_latency(ctx.now() - now);
 
             // Notify network actor that the message has been processed.
             // Ignore sending error.

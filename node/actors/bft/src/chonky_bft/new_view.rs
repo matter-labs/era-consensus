@@ -2,7 +2,7 @@ use std::cmp::max;
 
 use super::StateMachine;
 use crate::metrics;
-use zksync_concurrency::{ctx, error::Wrap, time};
+use zksync_concurrency::{ctx, error::Wrap, metrics::LatencyHistogramExt as _, time};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
 
@@ -141,9 +141,14 @@ impl StateMachine {
         };
         self.outbound_pipe.send(output_message.into());
 
-        // Log the event.
+        // Log the event and update the metrics.
         tracing::info!("Starting view {}", self.view_number);
         metrics::METRICS.replica_view_number.set(self.view_number.0);
+        let now = ctx.now();
+        metrics::METRICS
+            .view_latency
+            .observe_latency(now - self.view_start);
+        self.view_start = now;
 
         // Reset the timeout.
         self.timeout_deadline = time::Deadline::Finite(ctx.now() + Self::TIMEOUT_DURATION);
