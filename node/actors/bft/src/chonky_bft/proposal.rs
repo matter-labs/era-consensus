@@ -128,11 +128,12 @@ impl StateMachine {
         }
 
         let block_hash = match implied_block_hash {
-            // This is a reproposal. We let the leader repropose blocks without sending
-            // them in the proposal (it sends only the number + hash). That allows a
-            // leader to repropose a block without having it stored.
-            // It is an optimization that allows us to not wait for a leader that has
-            // the previous proposal stored (which can take 4f views), and to somewhat
+            // This is a reproposal.
+            // We let the leader repropose blocks without sending them in the proposal
+            // (it sends only the block number + block hash). That allows a leader to
+            // repropose a block without having it stored. Sending reproposals without
+            // a payload is an optimization that allows us to not wait for a leader that
+            // has the previous proposal stored (which can take 4f views), and to somewhat
             // speed up reproposals by skipping block broadcast.
             // This only saves time because we have a gossip network running in parallel,
             // and any time a replica is able to create a finalized block (by possessing
@@ -160,7 +161,7 @@ impl StateMachine {
                 if let Some(prev) = implied_block_number.prev() {
                     self.config
                         .block_store
-                        .wait_until_persisted(&ctx.with_deadline(self.timeout_deadline), prev)
+                        .wait_until_persisted(&ctx.with_deadline(self.view_timeout), prev)
                         .await
                         .map_err(|_| Error::MissingPreviousPayload { prev_number: prev })?;
                 }

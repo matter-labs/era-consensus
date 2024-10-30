@@ -63,15 +63,15 @@ pub(crate) struct StateMachine {
     /// Timeout QCs indexed by view number.
     pub(crate) timeout_qcs_cache: BTreeMap<validator::ViewNumber, validator::TimeoutQC>,
 
-    /// The deadline to receive an input message before timing out.
-    pub(crate) timeout_deadline: time::Deadline,
+    /// The deadline to receive a proposal for this view before timing out.
+    pub(crate) view_timeout: time::Deadline,
     /// Time when the current view phase has started. Used for metrics.
     pub(crate) view_start: time::Instant,
 }
 
 impl StateMachine {
-    /// The duration of the timeout.
-    pub(crate) const TIMEOUT_DURATION: time::Duration = time::Duration::milliseconds(2000);
+    /// The duration of the view timeout.
+    pub(crate) const VIEW_TIMEOUT_DURATION: time::Duration = time::Duration::milliseconds(2000);
 
     /// Creates a new [`StateMachine`] instance, attempting to recover a past state from the storage module,
     /// otherwise initializes the state machine with the current head block.
@@ -115,7 +115,7 @@ impl StateMachine {
             commit_qcs_cache: BTreeMap::new(),
             timeout_views_cache: BTreeMap::new(),
             timeout_qcs_cache: BTreeMap::new(),
-            timeout_deadline: time::Deadline::Finite(ctx.now() + Self::TIMEOUT_DURATION),
+            view_timeout: time::Deadline::Finite(ctx.now() + Self::VIEW_TIMEOUT_DURATION),
             view_start: ctx.now(),
         };
 
@@ -140,7 +140,7 @@ impl StateMachine {
         loop {
             let recv = self
                 .inbound_pipe
-                .recv(&ctx.with_deadline(self.timeout_deadline))
+                .recv(&ctx.with_deadline(self.view_timeout))
                 .await;
 
             // Check for non-timeout cancellation.
@@ -166,9 +166,9 @@ impl StateMachine {
                         Err(err) => {
                             match err {
                                 // If the error is internal, we stop here.
-                                proposal::Error::Internal(e) => {
-                                    tracing::error!("on_proposal: internal error: {e:#}");
-                                    return Err(e);
+                                proposal::Error::Internal(err) => {
+                                    tracing::error!("on_proposal: internal error: {err:#}");
+                                    return Err(err);
                                 }
                                 // If the error is due to an old message, we log it at a lower level.
                                 proposal::Error::Old { .. } => {
@@ -193,9 +193,9 @@ impl StateMachine {
                         Err(err) => {
                             match err {
                                 // If the error is internal, we stop here.
-                                commit::Error::Internal(e) => {
-                                    tracing::error!("on_commit: internal error: {e:#}");
-                                    return Err(e);
+                                commit::Error::Internal(err) => {
+                                    tracing::error!("on_commit: internal error: {err:#}");
+                                    return Err(err);
                                 }
                                 // If the error is due to an old message, we log it at a lower level.
                                 commit::Error::Old { .. } => {
@@ -220,9 +220,9 @@ impl StateMachine {
                         Err(err) => {
                             match err {
                                 // If the error is internal, we stop here.
-                                timeout::Error::Internal(e) => {
-                                    tracing::error!("on_timeout: internal error: {e:#}");
-                                    return Err(e);
+                                timeout::Error::Internal(err) => {
+                                    tracing::error!("on_timeout: internal error: {err:#}");
+                                    return Err(err);
                                 }
                                 // If the error is due to an old message, we log it at a lower level.
                                 timeout::Error::Old { .. } => {
@@ -247,9 +247,9 @@ impl StateMachine {
                         Err(err) => {
                             match err {
                                 // If the error is internal, we stop here.
-                                new_view::Error::Internal(e) => {
-                                    tracing::error!("on_new_view: internal error: {e:#}");
-                                    return Err(e);
+                                new_view::Error::Internal(err) => {
+                                    tracing::error!("on_new_view: internal error: {err:#}");
+                                    return Err(err);
                                 }
                                 // If the error is due to an old message, we log it at a lower level.
                                 new_view::Error::Old { .. } => {

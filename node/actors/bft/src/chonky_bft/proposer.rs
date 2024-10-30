@@ -38,9 +38,13 @@ pub(crate) async fn run_proposer(
         .await
         {
             Ok(proposal) => proposal,
-            Err(err) => {
-                tracing::error!("failed to create proposal: {}", err);
+            Err(ctx::Error::Canceled(_)) => {
+                tracing::error!("run_proposer(): timed out while creating a proposal");
                 continue;
+            }
+            Err(ctx::Error::Internal(err)) => {
+                tracing::error!("run_proposer(): internal error: {err:#}");
+                return Err(ctx::Error::Internal(err));
             }
         };
 

@@ -1,7 +1,7 @@
 use super::StateMachine;
 use crate::metrics;
 use std::{cmp::max, collections::HashSet};
-use zksync_concurrency::{ctx, error::Wrap, metrics::LatencyHistogramExt as _, time};
+use zksync_concurrency::{ctx, error::Wrap, time};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
 
@@ -20,7 +20,8 @@ pub(crate) enum Error {
         /// Current view.
         current_view: validator::ViewNumber,
     },
-    /// Duplicate signer.
+    /// Duplicate signer. We already have a timeout message from the same validator
+    /// for the same or past view.
     #[error("duplicate signer (message view: {message_view:?}, signer: {signer:?})")]
     DuplicateSigner {
         /// View number of the message.
@@ -143,13 +144,6 @@ impl StateMachine {
         }
         self.high_timeout_qc = max(Some(timeout_qc.clone()), self.high_timeout_qc.clone());
 
-        // Metrics.
-        let now = ctx.now();
-        metrics::METRICS
-            .commit_phase_latency
-            .observe_latency(now - self.view_start);
-        self.view_start = now;
-
         // Start a new view.
         self.start_new_view(ctx, message.view.number.next()).await?;
 
@@ -190,7 +184,7 @@ impl StateMachine {
         // Reset the timeout. This makes us keep sending timeout messages until the consensus progresses.
         // However, this isn't strictly necessary since the network retries messages until they are delivered.
         // This is just an extra safety measure.
-        self.timeout_deadline = time::Deadline::Finite(ctx.now() + Self::TIMEOUT_DURATION);
+        self.view_timeout = time::Deadline::Finite(ctx.now() + Self::VIEW_TIMEOUT_DURATION);
 
         Ok(())
     }

@@ -115,23 +115,18 @@ impl ReplicaState {
         // As a side result, get the correct block hash.
         let block_hash = match opt_block_hash {
             Some(hash) => {
-                // This is a reproposal. We let the leader repropose blocks without sending
-                // them in the proposal (it sends only the number + hash). That allows a
-                // leader to repropose a block without having it stored.
-                // It is an optimization that allows us to not wait for a leader that has
-                // the previous proposal stored (which can take 4f views), and to somewhat
+                // This is a reproposal.
+                // We let the leader repropose blocks without sending them in the proposal
+                // (it sends only the block number + block hash). That allows a leader to
+                // repropose a block without having it stored. Sending reproposals without
+                // a payload is an optimization that allows us to not wait for a leader that
+                // has the previous proposal stored (which can take 4f views), and to somewhat
                 // speed up reproposals by skipping block broadcast.
                 // This only saves time because we have a gossip network running in parallel,
                 // and any time a replica is able to create a finalized block (by possessing
                 // both the block and the commit QC) it broadcasts the finalized block (this
                 // was meant to propagate the block to full nodes, but of course validators
                 // will end up receiving it as well).
-                // However, this can be difficult to model and we might want to just
-                // ignore the gossip network in the formal model. We will still have liveness
-                // but in the model we'll end up waiting 4f views to get a leader that has the
-                // previous block before proposing a new one. This is not that bad, since
-                // then we can be sure that the consensus will continue even if the gossip
-                // network is failing for some reason.
                 
                 // For sanity reasons, we'll check that there's no block in the proposal.
                 // But this check is completely unnecessary (in theory at least).

@@ -35,7 +35,7 @@ impl StateMachine {
 
     /// Tries to build a finalized block from the given CommitQC. We simply search our
     /// block proposal cache for the matching block, and if we find it we build the block.
-    /// If this method succeeds, it sends the finalized block to the executor.
+    /// If this method succeeds, it saves the finalized block to storage.
     pub(crate) async fn save_block(
         &mut self,
         ctx: &ctx::Ctx,
@@ -99,7 +99,7 @@ impl StateMachine {
             .replica_store
             .set_state(ctx, &backup)
             .await
-            .wrap("put_replica_state")?;
+            .wrap("set_state()")?;
         Ok(())
     }
 }
