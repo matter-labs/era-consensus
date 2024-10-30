@@ -38,9 +38,8 @@ async fn offline_real_network() {
     run_test(Behavior::Offline, Network::Real).await
 }
 
-/// Not being able to propose a block shouldn't cause a deadlock.
 #[tokio::test]
-async fn non_proposing_leader() {
+async fn honest_not_proposing_real_network() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::AffineClock::new(5.));
     Test {
