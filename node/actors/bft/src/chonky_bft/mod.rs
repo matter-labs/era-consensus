@@ -21,7 +21,7 @@ pub(crate) mod proposer;
 pub(crate) mod timeout;
 
 #[cfg(test)]
-mod testonly;
+pub(crate) mod testonly;
 #[cfg(test)]
 mod tests;
 
@@ -35,9 +35,9 @@ pub(crate) struct StateMachine {
     pub(super) outbound_pipe: OutputSender,
     /// Pipe through which replica receives network requests.
     pub(crate) inbound_pipe: sync::prunable_mpsc::Receiver<ConsensusReq>,
-    /// The sender part of the justification watch. This is used to set the justification
-    /// and notify the proposer loop.
-    pub(crate) justification_watch: sync::watch::Sender<Option<validator::ProposalJustification>>,
+    /// The sender part of the proposer watch channel. This is used to notify the proposer loop
+    /// and send the neeeded justification.
+    pub(crate) proposer_pipe: sync::watch::Sender<Option<validator::ProposalJustification>>,
 
     /// The current view number.
     pub(crate) view_number: validator::ViewNumber,
@@ -83,6 +83,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         config: Arc<Config>,
         outbound_pipe: OutputSender,
+        proposer_pipe: sync::watch::Sender<Option<validator::ProposalJustification>>,
     ) -> ctx::Result<(Self, sync::prunable_mpsc::Sender<ConsensusReq>)> {
         let backup = config.replica_store.state(ctx).await?;
 
@@ -99,12 +100,11 @@ impl StateMachine {
             StateMachine::inbound_selection_function,
         );
 
-        let (justification_sender, _) = sync::watch::channel(None);
-
         let this = Self {
             config,
             outbound_pipe,
             inbound_pipe: recv,
+            proposer_pipe,
             view_number: backup.view,
             phase: backup.phase,
             high_vote: backup.high_vote,
@@ -115,7 +115,6 @@ impl StateMachine {
             commit_qcs_cache: BTreeMap::new(),
             timeout_views_cache: BTreeMap::new(),
             timeout_qcs_cache: BTreeMap::new(),
-            justification_watch: justification_sender,
             timeout_deadline: time::Deadline::Finite(ctx.now() + Self::TIMEOUT_DURATION),
             phase_start: ctx.now(),
         };

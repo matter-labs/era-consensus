@@ -6,8 +6,8 @@ use crate::{
 };
 use assert_matches::assert_matches;
 use std::sync::Arc;
-use zksync_concurrency::ctx;
 use zksync_concurrency::sync::prunable_mpsc;
+use zksync_concurrency::{ctx, sync};
 use zksync_consensus_network as network;
 use zksync_consensus_network::io::ConsensusReq;
 use zksync_consensus_roles::validator;
@@ -28,8 +28,9 @@ pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
 pub(crate) struct UTHarness {
     pub(crate) replica: StateMachine,
     pub(crate) keys: Vec<validator::SecretKey>,
-    output_pipe: ctx::channel::UnboundedReceiver<OutputMessage>,
-    input_pipe: prunable_mpsc::Sender<ConsensusReq>,
+    pub(crate) outbound_pipe: ctx::channel::UnboundedReceiver<OutputMessage>,
+    pub(crate) inbound_pipe: prunable_mpsc::Sender<ConsensusReq>,
+    pub(crate) proposer_pipe: sync::watch::Receiver<Option<validator::ProposalJustification>>,
 }
 
 impl UTHarness {
@@ -63,6 +64,7 @@ impl UTHarness {
         let setup = validator::testonly::Setup::new(rng, num_validators);
         let store = TestMemoryStorage::new(ctx, &setup).await;
         let (send, recv) = ctx::channel::unbounded();
+        let (proposer_sender, proposer_receiver) = sync::watch::channel(None);
 
         let cfg = Arc::new(Config {
             secret_key: setup.validator_keys[0].clone(),
@@ -71,14 +73,16 @@ impl UTHarness {
             payload_manager,
             max_payload_size: MAX_PAYLOAD_SIZE,
         });
-        let (replica, input_pipe) = StateMachine::start(ctx, cfg.clone(), send.clone())
-            .await
-            .unwrap();
+        let (replica, input_pipe) =
+            StateMachine::start(ctx, cfg.clone(), send.clone(), proposer_sender)
+                .await
+                .unwrap();
         let mut this = UTHarness {
             replica,
             keys: setup.validator_keys.clone(),
-            output_pipe: recv,
-            input_pipe,
+            outbound_pipe: recv,
+            inbound_pipe: input_pipe,
+            proposer_pipe: proposer_receiver,
         };
         this.process_replica_timeout_all(ctx, this.new_replica_timeout())
             .await;
@@ -107,14 +111,6 @@ impl UTHarness {
 
     pub(crate) fn view_leader(&self, view: validator::ViewNumber) -> validator::PublicKey {
         self.genesis().view_leader(view)
-    }
-
-    pub(crate) fn set_owner_as_view_leader(&mut self) {
-        let mut view = self.replica.view_number;
-        while self.view_leader(view) != self.owner_key().public() {
-            view = view.next();
-        }
-        self.replica.view_number = view;
     }
 
     pub(crate) fn genesis(&self) -> &validator::Genesis {
@@ -157,14 +153,14 @@ impl UTHarness {
     ) -> validator::CommitQC {
         let mut msg = self.new_replica_commit(ctx).await;
         mutate_fn(&mut msg);
-        let mut qc = validator::CommitQC::new(msg, self.genesis());
+        let mut qc = validator::CommitQC::new(msg.clone(), self.genesis());
         for key in &self.keys {
-            qc.add(&key.sign_msg(qc.message.clone()), self.genesis())
-                .unwrap();
+            qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
         }
         qc
     }
 
+    #[allow(dead_code)]
     pub(crate) fn new_timeout_qc(
         &mut self,
         mutate_fn: impl FnOnce(&mut validator::ReplicaTimeout),
@@ -293,14 +289,14 @@ impl UTHarness {
     }
 
     pub(crate) fn send(&self, msg: validator::Signed<validator::ConsensusMsg>) {
-        self.input_pipe.send(ConsensusReq {
+        self.inbound_pipe.send(ConsensusReq {
             msg,
             ack: zksync_concurrency::oneshot::channel().0,
         });
     }
 
     fn try_recv<V: Variant<validator::Msg>>(&mut self) -> Option<validator::Signed<V>> {
-        self.output_pipe.try_recv().map(|message| match message {
+        self.outbound_pipe.try_recv().map(|message| match message {
             OutputMessage::Network(network::io::ConsensusInputMessage { message, .. }) => {
                 message.cast().unwrap()
             }

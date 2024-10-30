@@ -5,7 +5,7 @@ use anyhow::Context;
 pub use config::Config;
 use std::sync::Arc;
 use tracing::Instrument;
-use zksync_concurrency::{ctx, error::Wrap as _, scope};
+use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::validator;
 use zksync_consensus_utils::pipe::ActorPipe;
 
@@ -14,8 +14,8 @@ mod config;
 pub mod io;
 mod metrics;
 pub mod testonly;
-//#[cfg(test)]
-//mod tests;
+#[cfg(test)]
+mod tests;
 
 /// Protocol version of this BFT implementation.
 pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVersion::CURRENT;
@@ -61,15 +61,15 @@ impl Config {
         }
 
         let cfg = Arc::new(self);
+        let (proposer_sender, proposer_receiver) = sync::watch::channel(None);
         let (replica, replica_send) =
-            chonky_bft::StateMachine::start(ctx, cfg.clone(), pipe.send.clone()).await?;
+            chonky_bft::StateMachine::start(ctx, cfg.clone(), pipe.send.clone(), proposer_sender)
+                .await?;
 
         let res = scope::run!(ctx, |ctx, s| async {
-            let justification_recv = replica.justification_watch.subscribe();
-
             s.spawn_bg(async { replica.run(ctx).await.wrap("replica.run()") });
             s.spawn_bg(async {
-                chonky_bft::proposer::run_proposer(ctx, cfg.clone(), pipe.send, justification_recv)
+                chonky_bft::proposer::run_proposer(ctx, cfg.clone(), pipe.send, proposer_receiver)
                     .await
                     .wrap("run_proposer()")
             });

@@ -115,7 +115,9 @@ impl StateMachine {
         // Update the state machine.
         self.view_number = view;
         self.phase = validator::Phase::Prepare;
-        // TODO: Update the proposer channel.
+        self.proposer_pipe
+            .send(Some(self.get_justification()))
+            .expect("justification_watch.send() failed");
 
         // Clear the block proposal cache.
         if let Some(qc) = self.high_commit_qc.as_ref() {

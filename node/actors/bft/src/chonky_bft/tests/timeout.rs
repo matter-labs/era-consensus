@@ -64,8 +64,7 @@ async fn replica_timeout_old() {
 
         let mut replica_timeout = util.new_replica_timeout();
         replica_timeout.view.number = validator::ViewNumber(util.replica.view_number.0 - 1);
-        let replica_timeout = util.owner_key().sign_msg(replica_timeout);
-        let res = util.process_replica_timeout(ctx, replica_timeout).await;
+        let res = util.process_replica_timeout(ctx, util.owner_key().sign_msg(replica_timeout)).await;
 
         assert_matches!(
             res,
@@ -159,7 +158,6 @@ async fn timeout_invalid_sig() {
 async fn timeout_invalid_message() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let rng = &mut ctx.rng();
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
@@ -167,7 +165,7 @@ async fn timeout_invalid_message() {
         let replica_timeout = util.new_replica_timeout();
 
         let mut bad_replica_timeout = replica_timeout.clone();
-        bad_replica_timeout.view.genesis = rng.gen();
+        bad_replica_timeout.view.genesis = ctx.rng().gen();
         let res = util
             .process_replica_timeout(ctx, util.owner_key().sign_msg(bad_replica_timeout))
             .await;
@@ -179,7 +177,7 @@ async fn timeout_invalid_message() {
         );
 
         let mut bad_replica_timeout = replica_timeout.clone();
-        bad_replica_timeout.high_vote = Some(rng.gen());
+        bad_replica_timeout.high_vote = Some(ctx.rng().gen());
         let res = util
             .process_replica_timeout(ctx, util.owner_key().sign_msg(bad_replica_timeout))
             .await;
@@ -191,7 +189,7 @@ async fn timeout_invalid_message() {
         );
 
         let mut bad_replica_timeout = replica_timeout.clone();
-        bad_replica_timeout.high_qc = Some(rng.gen());
+        bad_replica_timeout.high_qc = Some(ctx.rng().gen());
         let res = util
             .process_replica_timeout(ctx, util.owner_key().sign_msg(bad_replica_timeout))
             .await;

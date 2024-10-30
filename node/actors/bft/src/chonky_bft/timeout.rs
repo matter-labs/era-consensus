@@ -187,7 +187,7 @@ impl StateMachine {
         tracing::info!("Timed out at view {}", self.view_number);
         metrics::METRICS.replica_view_number.set(self.view_number.0);
 
-        // Reset the timeout. This allows us send more timeout messages until the consensus progresses.
+        // Reset the timeout. This makes us keep sending timeout messages until the consensus progresses.
         // However, this isn't strictly necessary since the network retries messages until they are delivered.
         // This is just an extra safety measure.
         self.timeout_deadline = time::Deadline::Finite(ctx.now() + Self::TIMEOUT_DURATION);

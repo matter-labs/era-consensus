@@ -67,8 +67,9 @@ async fn replica_commit_old() {
 
         let mut replica_commit = util.new_replica_commit(ctx).await;
         replica_commit.view.number = validator::ViewNumber(util.replica.view_number.0 - 1);
-        let replica_commit = util.owner_key().sign_msg(replica_commit);
-        let res = util.process_replica_commit(ctx, replica_commit).await;
+        let res = util
+            .process_replica_commit(ctx, util.owner_key().sign_msg(replica_commit))
+            .await;
 
         assert_matches!(
             res,
@@ -160,13 +161,12 @@ async fn commit_invalid_sig() {
 async fn commit_invalid_message() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
-    let rng = &mut ctx.rng();
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let mut replica_commit = util.new_replica_commit(ctx).await;
-        replica_commit.view.genesis = rng.gen();
+        replica_commit.view.genesis = ctx.rng().gen();
 
         let res = util
             .process_replica_commit(ctx, util.owner_key().sign_msg(replica_commit))

@@ -14,7 +14,7 @@ pub(crate) const PROPOSAL_CREATION_TIMEOUT: time::Duration = time::Duration::mil
 pub(crate) async fn run_proposer(
     ctx: &ctx::Ctx,
     cfg: Arc<Config>,
-    pipe: OutputSender,
+    outbound_pipe: OutputSender,
     mut justification_watch: sync::watch::Receiver<Option<validator::ProposalJustification>>,
 ) -> ctx::Result<()> {
     loop {
@@ -49,7 +49,7 @@ pub(crate) async fn run_proposer(
             .secret_key
             .sign_msg(validator::ConsensusMsg::LeaderProposal(proposal));
 
-        pipe.send(ConsensusInputMessage { message: msg }.into());
+        outbound_pipe.send(ConsensusInputMessage { message: msg }.into());
     }
 }
 

@@ -1,7 +1,9 @@
-use crate::testonly::{
-    twins::{Cluster, HasKey, ScenarioGenerator, Twin},
-    ut_harness::UTHarness,
-    Behavior, Network, Port, PortRouter, PortSplitSchedule, Test, TestError, NUM_PHASES,
+use crate::{
+    chonky_bft::testonly::UTHarness,
+    testonly::{
+        twins::{Cluster, HasKey, ScenarioGenerator, Twin},
+        Behavior, Network, Port, PortRouter, PortSplitSchedule, Test, TestError, NUM_PHASES,
+    },
 };
 use assert_matches::assert_matches;
 use std::collections::HashMap;
@@ -46,122 +48,6 @@ async fn honest_real_network() {
 #[tokio::test]
 async fn offline_real_network() {
     run_test(Behavior::Offline, Network::Real).await
-}
-
-/// Testing liveness after the network becomes idle with leader having no cached prepare messages for the current view.
-#[tokio::test]
-async fn timeout_leader_no_prepares() {
-    zksync_concurrency::testonly::abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
-        s.spawn_bg(runner.run(ctx));
-        util.new_replica_timeout();
-        util.produce_block_after_timeout(ctx).await;
-        Ok(())
-    })
-    .await
-    .unwrap();
-}
-
-/// Testing liveness after the network becomes idle with leader having some cached prepare messages for the current view.
-#[tokio::test]
-async fn timeout_leader_some_prepares() {
-    zksync_concurrency::testonly::abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
-        s.spawn_bg(runner.run(ctx));
-        let replica_prepare = util.new_replica_timeout();
-        assert!(util
-            .process_replica_prepare(ctx, util.sign(replica_prepare))
-            .await
-            .unwrap()
-            .is_none());
-        util.produce_block_after_timeout(ctx).await;
-        Ok(())
-    })
-    .await
-    .unwrap();
-}
-
-/// Testing liveness after the network becomes idle with leader in commit phase.
-#[tokio::test]
-async fn timeout_leader_in_commit() {
-    zksync_concurrency::testonly::abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
-        s.spawn_bg(runner.run(ctx));
-
-        util.new_leader_proposal(ctx).await;
-        // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
-        assert_eq!(util.leader.phase, validator::Phase::Commit);
-        util.produce_block_after_timeout(ctx).await;
-        Ok(())
-    })
-    .await
-    .unwrap();
-}
-
-/// Testing liveness after the network becomes idle with replica in commit phase.
-#[tokio::test]
-async fn timeout_replica_in_commit() {
-    zksync_concurrency::testonly::abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
-        s.spawn_bg(runner.run(ctx));
-
-        util.new_replica_commit_from_proposal(ctx).await;
-        // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
-        assert_eq!(util.leader.phase, validator::Phase::Commit);
-        util.produce_block_after_timeout(ctx).await;
-        Ok(())
-    })
-    .await
-    .unwrap();
-}
-
-/// Testing liveness after the network becomes idle with leader having some cached commit messages for the current view.
-#[tokio::test]
-async fn timeout_leader_some_commits() {
-    zksync_concurrency::testonly::abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
-        s.spawn_bg(runner.run(ctx));
-
-        let replica_commit = util.new_replica_commit_from_proposal(ctx).await;
-        assert!(util
-            .process_replica_commit(ctx, util.sign(replica_commit))
-            .await
-            .unwrap()
-            .is_none());
-        // Leader is in `Phase::Commit`, but should still accept prepares from newer views.
-        assert_eq!(util.leader_phase(), validator::Phase::Commit);
-        util.produce_block_after_timeout(ctx).await;
-        Ok(())
-    })
-    .await
-    .unwrap();
-}
-
-/// Testing liveness after the network becomes idle with leader in a consecutive prepare phase.
-#[tokio::test]
-async fn timeout_leader_in_consecutive_prepare() {
-    zksync_concurrency::testonly::abort_on_panic();
-    let ctx = &ctx::test_root(&ctx::RealClock);
-    scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
-        s.spawn_bg(runner.run(ctx));
-
-        util.new_leader_commit(ctx).await;
-        util.produce_block_after_timeout(ctx).await;
-        Ok(())
-    })
-    .await
-    .unwrap();
 }
 
 /// Not being able to propose a block shouldn't cause a deadlock.
@@ -435,110 +321,110 @@ async fn run_twins(
 /// while some other validators have the payload but don't have the HighQC and cannot finalize the block, and therefore
 /// don't gossip it, which causes a deadlock unless the one with the HighQC moves on and broadcasts what they have, which
 /// should cause the others to finalize the block and gossip the payload to them in turn.
-#[tokio::test]
-async fn test_wait_for_finalized_deadlock() {
-    // These are the conditions for the deadlock to occur:
-    // * The problem happens in the handling of LeaderPrepare where the replica waits for the previous block in the justification.
-    // * For that the replica needs to receive a proposal from a leader that knows the previous block is finalized.
-    // * For that the leader needs to receive a finalized proposal from an earlier leader, but this proposal did not make it to the replica.
-    // * Both leaders need to die and never communicate the HighQC they know about to anybody else.
-    // * The replica has the HighQC but not the payload, and all other replicas might have the payload, but not the HighQC.
-    // * With two leaders down, and the replica deadlocked, we must lose quorum, so the other nodes cannot repropose the missing block either.
-    // * In order for 2 leaders to be dow  and quorum still be possible, we need at least 11 nodes.
+// #[tokio::test]
+// async fn test_wait_for_finalized_deadlock() {
+//     // These are the conditions for the deadlock to occur:
+//     // * The problem happens in the handling of LeaderPrepare where the replica waits for the previous block in the justification.
+//     // * For that the replica needs to receive a proposal from a leader that knows the previous block is finalized.
+//     // * For that the leader needs to receive a finalized proposal from an earlier leader, but this proposal did not make it to the replica.
+//     // * Both leaders need to die and never communicate the HighQC they know about to anybody else.
+//     // * The replica has the HighQC but not the payload, and all other replicas might have the payload, but not the HighQC.
+//     // * With two leaders down, and the replica deadlocked, we must lose quorum, so the other nodes cannot repropose the missing block either.
+//     // * In order for 2 leaders to be dow  and quorum still be possible, we need at least 11 nodes.
 
-    // Here are a series of steps to reproduce the issue:
-    // 1. Say we have 11 nodes: [0,1,2,3,4,5,6,7,8,9,10], taking turns leading the views in that order; we need 9 nodes for quorum. The first view is view 1 lead by node 1.
-    // 2. Node 1 sends LeaderPropose with block 1 to nodes [1-9] and puts together a HighQC.
-    // 3. Node 1 sends the LeaderCommit to node 2, then dies.
-    // 4. Node 2 sends LeaderPropose with block 2 to nodes [0, 10], then dies.
-    // 5. Nodes [0, 10] get stuck processing LeaderPropose because they are waiting for block 1 to appear in their stores.
-    // 6. Node 3 cannot gather 9 ReplicaPrepare messages for a quorum because nodes [1,2] are down and [0,10] are blocking. Consensus stalls.
+//     // Here are a series of steps to reproduce the issue:
+//     // 1. Say we have 11 nodes: [0,1,2,3,4,5,6,7,8,9,10], taking turns leading the views in that order; we need 9 nodes for quorum. The first view is view 1 lead by node 1.
+//     // 2. Node 1 sends LeaderPropose with block 1 to nodes [1-9] and puts together a HighQC.
+//     // 3. Node 1 sends the LeaderCommit to node 2, then dies.
+//     // 4. Node 2 sends LeaderPropose with block 2 to nodes [0, 10], then dies.
+//     // 5. Nodes [0, 10] get stuck processing LeaderPropose because they are waiting for block 1 to appear in their stores.
+//     // 6. Node 3 cannot gather 9 ReplicaPrepare messages for a quorum because nodes [1,2] are down and [0,10] are blocking. Consensus stalls.
 
-    // To simulate this with the Twins network we need to use a custom routing function, because the 2nd leader mustn't broadcast the HighQC
-    // to its peers, but it must receive their ReplicaPrepare's to be able to construct the PrepareQC; because of this the simple split schedule
-    // would not be enough as it allows sending messages in both directions.
+//     // To simulate this with the Twins network we need to use a custom routing function, because the 2nd leader mustn't broadcast the HighQC
+//     // to its peers, but it must receive their ReplicaPrepare's to be able to construct the PrepareQC; because of this the simple split schedule
+//     // would not be enough as it allows sending messages in both directions.
 
-    // We need 11 nodes so we can turn 2 leaders off.
-    let num_replicas = 11;
-    // Let's wait for the first two blocks to be finalised.
-    // Although theoretically node 1 will be dead after view 1, it will still receive messages and gossip.
-    let blocks_to_finalize = 2;
-    // We need more than 1 gossip peer, otherwise the chain of gossip triggers in the Twins network won't kick in,
-    // and while node 0 will gossip to node 1, node 1 will not send it to node 2, and the test will fail.
-    let gossip_peers = 2;
+//     // We need 11 nodes so we can turn 2 leaders off.
+//     let num_replicas = 11;
+//     // Let's wait for the first two blocks to be finalised.
+//     // Although theoretically node 1 will be dead after view 1, it will still receive messages and gossip.
+//     let blocks_to_finalize = 2;
+//     // We need more than 1 gossip peer, otherwise the chain of gossip triggers in the Twins network won't kick in,
+//     // and while node 0 will gossip to node 1, node 1 will not send it to node 2, and the test will fail.
+//     let gossip_peers = 2;
 
-    run_with_custom_router(
-        num_replicas,
-        gossip_peers,
-        blocks_to_finalize,
-        |port_to_id| {
-            PortRouter::Custom(Box::new(move |msg, from, to| {
-                use validator::ConsensusMsg::*;
-                // Map ports back to logical node ID
-                let from = port_to_id[&from];
-                let to = port_to_id[&to];
-                let view_number = msg.view().number;
+//     run_with_custom_router(
+//         num_replicas,
+//         gossip_peers,
+//         blocks_to_finalize,
+//         |port_to_id| {
+//             PortRouter::Custom(Box::new(move |msg, from, to| {
+//                 use validator::ConsensusMsg::*;
+//                 // Map ports back to logical node ID
+//                 let from = port_to_id[&from];
+//                 let to = port_to_id[&to];
+//                 let view_number = msg.view().number;
 
-                // If we haven't finalised the blocks in the first few rounds, we failed.
-                if view_number.0 > 7 {
-                    return None;
-                }
+//                 // If we haven't finalised the blocks in the first few rounds, we failed.
+//                 if view_number.0 > 7 {
+//                     return None;
+//                 }
 
-                // Sending to self is ok.
-                // If this wasn't here the test would pass even without adding a timeout in process_leader_prepare.
-                // The reason is that node 2 would move to view 2 as soon as it finalises block 1, but then timeout
-                // and move to view 3 before they receive any of the ReplicaPrepare from the others, who are still
-                // waiting to timeout in view 1. By sending ReplicaPrepare to itself it seems to wait or propose.
-                // Maybe the HighQC doesn't make it from its replica::StateMachine into its leader::StateMachine otherwise.
-                if from == to {
-                    return Some(true);
-                }
+//                 // Sending to self is ok.
+//                 // If this wasn't here the test would pass even without adding a timeout in process_leader_prepare.
+//                 // The reason is that node 2 would move to view 2 as soon as it finalises block 1, but then timeout
+//                 // and move to view 3 before they receive any of the ReplicaPrepare from the others, who are still
+//                 // waiting to timeout in view 1. By sending ReplicaPrepare to itself it seems to wait or propose.
+//                 // Maybe the HighQC doesn't make it from its replica::StateMachine into its leader::StateMachine otherwise.
+//                 if from == to {
+//                     return Some(true);
+//                 }
 
-                let can_send = match view_number {
-                    ViewNumber(1) => {
-                        match from {
-                            // Current leader
-                            1 => match msg {
-                                // Send the proposal to a subset of nodes
-                                LeaderPrepare(_) => to != 0 && to != 10,
-                                // Send the commit to the next leader only
-                                LeaderCommit(_) => to == 2,
-                                _ => true,
-                            },
-                            // Replicas
-                            _ => true,
-                        }
-                    }
-                    ViewNumber(2) => match from {
-                        // Previous leader is dead
-                        1 => false,
-                        // Current leader
-                        2 => match msg {
-                            // Don't send out the HighQC to the others
-                            ReplicaPrepare(_) => false,
-                            // Send the proposal to the ones which didn't get the previous one
-                            LeaderPrepare(_) => to == 0 || to == 10,
-                            _ => true,
-                        },
-                        // Replicas
-                        _ => true,
-                    },
-                    // Previous leaders dead
-                    _ => from != 1 && from != 2,
-                };
+//                 let can_send = match view_number {
+//                     ViewNumber(1) => {
+//                         match from {
+//                             // Current leader
+//                             1 => match msg {
+//                                 // Send the proposal to a subset of nodes
+//                                 LeaderPrepare(_) => to != 0 && to != 10,
+//                                 // Send the commit to the next leader only
+//                                 LeaderCommit(_) => to == 2,
+//                                 _ => true,
+//                             },
+//                             // Replicas
+//                             _ => true,
+//                         }
+//                     }
+//                     ViewNumber(2) => match from {
+//                         // Previous leader is dead
+//                         1 => false,
+//                         // Current leader
+//                         2 => match msg {
+//                             // Don't send out the HighQC to the others
+//                             ReplicaPrepare(_) => false,
+//                             // Send the proposal to the ones which didn't get the previous one
+//                             LeaderPrepare(_) => to == 0 || to == 10,
+//                             _ => true,
+//                         },
+//                         // Replicas
+//                         _ => true,
+//                     },
+//                     // Previous leaders dead
+//                     _ => from != 1 && from != 2,
+//                 };
 
-                // eprintln!(
-                //     "view={view_number} from={from} to={to} kind={} can_send={can_send}",
-                //     msg.label()
-                // );
+//                 // eprintln!(
+//                 //     "view={view_number} from={from} to={to} kind={} can_send={can_send}",
+//                 //     msg.label()
+//                 // );
 
-                Some(can_send)
-            }))
-        },
-    )
-    .await
-    .unwrap();
-}
+//                 Some(can_send)
+//             }))
+//         },
+//     )
+//     .await
+//     .unwrap();
+// }
 
 /// Run a test with the Twins network controlling exactly who can send to whom in each round.
 ///
