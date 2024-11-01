@@ -38,6 +38,9 @@ pub(crate) enum Error {
     /// Leader proposed a block that was already pruned from replica's storage.
     #[error("leader proposed a block that was already pruned from replica's storage")]
     ProposalAlreadyPruned,
+    /// Reproposal with an unnecessary payload.
+    #[error("reproposal with an unnecessary payload")]
+    ReproposalWithPayload,
     /// Block proposal payload missing.
     #[error("block proposal payload missing")]
     MissingPayload,
@@ -140,7 +143,19 @@ impl StateMachine {
             // both the block and the commit QC) it broadcasts the finalized block (this
             // was meant to propagate the block to full nodes, but of course validators
             // will end up receiving it as well).
-            Some(hash) => hash,
+            Some(hash) => {
+                // We check that the leader didn't send a payload with the reproposal.
+                // This isn't technically needed for the consensus to work (it will remain
+                // safe and live), but it's a good practice to avoid unnecessary data in
+                // blockchain.
+                // This unnecessary payload would also effectively be a source of free
+                // data availability, which the leaders would be incentivized to abuse.
+                if message.proposal_payload.is_some() {
+                    return Err(Error::ReproposalWithPayload);
+                };
+
+                hash
+            }
             // This is a new proposal, so we need to verify it (i.e. execute it).
             None => {
                 // Check that the payload is present.

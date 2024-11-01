@@ -1,7 +1,7 @@
 use super::StateMachine;
 use crate::metrics;
 use std::{cmp::max, collections::HashSet};
-use zksync_concurrency::{ctx, error::Wrap, time};
+use zksync_concurrency::{ctx, error::Wrap};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
 
@@ -180,11 +180,6 @@ impl StateMachine {
         // Log the event.
         tracing::info!("Timed out at view {}", self.view_number);
         metrics::METRICS.replica_view_number.set(self.view_number.0);
-
-        // Reset the timeout. This makes us keep sending timeout messages until the consensus progresses.
-        // However, this isn't strictly necessary since the network retries messages until they are delivered.
-        // This is just an extra safety measure.
-        self.view_timeout = time::Deadline::Finite(ctx.now() + Self::VIEW_TIMEOUT_DURATION);
 
         Ok(())
     }

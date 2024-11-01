@@ -128,8 +128,12 @@ impl ReplicaState {
                 // was meant to propagate the block to full nodes, but of course validators
                 // will end up receiving it as well).
                 
-                // For sanity reasons, we'll check that there's no block in the proposal.
-                // But this check is completely unnecessary (in theory at least).
+                // We check that the leader didn't send a payload with the reproposal.
+                // This isn't technically needed for the consensus to work (it will remain
+                // safe and live), but it's a good practice to avoid unnecessary data in
+                // blockchain.
+                // This unnecessary payload would also effectively be a source of free
+                // data availability, which the leaders would be incentivized to abuse.
                 assert!(proposal.block.is_none());
                 
                 hash

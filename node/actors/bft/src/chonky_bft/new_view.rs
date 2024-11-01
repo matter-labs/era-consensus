@@ -1,7 +1,7 @@
 use std::cmp::max;
 
 use super::StateMachine;
-use crate::metrics;
+use crate::{chonky_bft::VIEW_TIMEOUT_DURATION, metrics};
 use zksync_concurrency::{ctx, error::Wrap, metrics::LatencyHistogramExt as _, time};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
@@ -151,8 +151,25 @@ impl StateMachine {
         self.view_start = now;
 
         // Reset the timeout.
-        self.view_timeout = time::Deadline::Finite(ctx.now() + Self::VIEW_TIMEOUT_DURATION);
+        self.view_timeout = time::Deadline::Finite(ctx.now() + VIEW_TIMEOUT_DURATION);
 
         Ok(())
+    }
+
+    /// Makes a justification (for a ReplicaNewView or a LeaderProposal) based on the current state.
+    pub(crate) fn get_justification(&self) -> validator::ProposalJustification {
+        // We need some QC in order to be able to create a justification.
+        // In fact, it should be impossible to get here without a QC. Because
+        // we only get here after starting a new view, which requires a QC.
+        assert!(self.high_commit_qc.is_some() || self.high_timeout_qc.is_some());
+
+        // We use the highest QC as the justification. If both have the same view, we use the CommitQC.
+        if self.high_commit_qc.as_ref().map(|x| x.view())
+            >= self.high_timeout_qc.as_ref().map(|x| &x.view)
+        {
+            validator::ProposalJustification::Commit(self.high_commit_qc.clone().unwrap())
+        } else {
+            validator::ProposalJustification::Timeout(self.high_timeout_qc.clone().unwrap())
+        }
     }
 }

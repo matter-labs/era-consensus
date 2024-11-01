@@ -220,6 +220,34 @@ async fn proposal_pruned_block() {
 }
 
 #[tokio::test]
+async fn proposal_reproposal_with_payload() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    scope::run!(ctx, |ctx, s| async {
+        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        s.spawn_bg(runner.run(ctx));
+
+        util.new_replica_commit(ctx).await;
+        let replica_timeout = util.new_replica_timeout(ctx).await;
+        util.process_replica_timeout_all(ctx, replica_timeout).await;
+
+        let mut proposal = util.new_leader_proposal(ctx).await;
+        assert!(proposal.proposal_payload.is_none());
+        proposal.proposal_payload = Some(ctx.rng().gen());
+
+        let res = util
+            .process_leader_proposal(ctx, util.leader_key().sign_msg(proposal))
+            .await;
+
+        assert_matches!(res, Err(proposal::Error::ReproposalWithPayload));
+
+        Ok(())
+    })
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
 async fn proposal_missing_payload() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);

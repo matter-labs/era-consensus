@@ -1,13 +1,10 @@
 use crate::{io::OutputMessage, metrics, Config};
 use std::sync::Arc;
-use zksync_concurrency::{ctx, error::Wrap as _, sync, time};
+use zksync_concurrency::{ctx, error::Wrap as _, sync};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
 
-/// Timeout for creating a proposal. If the proposal is not created in this time, the proposer
-/// will quit trying to create a proposal for this view. This can be different from the replica
-/// timeout for the whole view.
-pub(crate) const PROPOSAL_CREATION_TIMEOUT: time::Duration = time::Duration::milliseconds(2000);
+use super::VIEW_TIMEOUT_DURATION;
 
 /// The proposer loop is responsible for proposing new blocks to the network. It watches for new
 /// justifications from the replica and if it is the leader for the view, it proposes a new block.
@@ -31,7 +28,7 @@ pub(crate) async fn run_proposer(
 
         // Create a proposal for the given justification, within the timeout.
         let proposal = match create_proposal(
-            &ctx.with_timeout(PROPOSAL_CREATION_TIMEOUT),
+            &ctx.with_timeout(VIEW_TIMEOUT_DURATION),
             cfg.clone(),
             justification,
         )

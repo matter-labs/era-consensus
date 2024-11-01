@@ -1,5 +1,6 @@
 use crate::{io::OutputMessage, metrics, Config};
 use std::{
+    cmp::max,
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
@@ -13,8 +14,8 @@ use zksync_concurrency::{
 use zksync_consensus_network::io::ConsensusReq;
 use zksync_consensus_roles::validator::{self, ConsensusMsg};
 
+mod block;
 mod commit;
-mod misc;
 mod new_view;
 mod proposal;
 /// The proposer module contains the logic for the proposer role in ChonkyBFT.
@@ -24,6 +25,9 @@ pub(crate) mod testonly;
 #[cfg(test)]
 mod tests;
 mod timeout;
+
+/// The duration of the view timeout.
+pub(crate) const VIEW_TIMEOUT_DURATION: time::Duration = time::Duration::milliseconds(2000);
 
 /// The StateMachine struct contains the state of the replica and implements all the
 /// logic of ChonkyBFT.
@@ -70,9 +74,6 @@ pub(crate) struct StateMachine {
 }
 
 impl StateMachine {
-    /// The duration of the view timeout.
-    pub(crate) const VIEW_TIMEOUT_DURATION: time::Duration = time::Duration::milliseconds(2000);
-
     /// Creates a new [`StateMachine`] instance, attempting to recover a past state from the storage module,
     /// otherwise initializes the state machine with the current head block.
     ///
@@ -115,7 +116,7 @@ impl StateMachine {
             commit_qcs_cache: BTreeMap::new(),
             timeout_views_cache: BTreeMap::new(),
             timeout_qcs_cache: BTreeMap::new(),
-            view_timeout: time::Deadline::Finite(ctx.now() + Self::VIEW_TIMEOUT_DURATION),
+            view_timeout: time::Deadline::Finite(ctx.now() + VIEW_TIMEOUT_DURATION),
             view_start: ctx.now(),
         };
 
@@ -148,12 +149,17 @@ impl StateMachine {
                 return Ok(());
             }
 
-            // Check for timeout.
-            let Some(req) = recv.ok() else {
+            // Check for timeout. If we are already in a timeout phase, we don't
+            // timeout again. Note though that the underlying network implementation
+            // needs to keep retrying messages until they are delivered. Otherwise
+            // the consensus can halt!
+            if recv.is_err() && self.phase != validator::Phase::Timeout {
                 self.start_timeout(ctx).await?;
                 continue;
-            };
+            }
 
+            // Process the message.
+            let req = recv.unwrap();
             let now = ctx.now();
             let label = match &req.msg.msg {
                 ConsensusMsg::LeaderProposal(_) => {
@@ -293,5 +299,16 @@ impl StateMachine {
                 SelectionFunctionResult::DiscardNew
             }
         }
+    }
+
+    /// Processes a (already verified) CommitQC. It bumps the local high_commit_qc and if
+    /// we have the proposal corresponding to this qc, we save the corresponding block to DB.
+    pub(crate) async fn process_commit_qc(
+        &mut self,
+        ctx: &ctx::Ctx,
+        qc: &validator::CommitQC,
+    ) -> ctx::Result<()> {
+        self.high_commit_qc = max(Some(qc.clone()), self.high_commit_qc.clone());
+        self.save_block(ctx, qc).await.wrap("save_block()")
     }
 }
