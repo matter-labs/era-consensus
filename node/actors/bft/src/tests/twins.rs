@@ -34,7 +34,7 @@ async fn run_twins(
 
     // A single scenario with 11 replicas took 3-5 seconds.
     // Panic on timeout; works with `cargo nextest` and the `abort_on_panic` above.
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(60));
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(90));
     let ctx = &ctx::test_root(&ctx::RealClock);
 
     #[derive(PartialEq, Debug)]

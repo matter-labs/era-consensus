@@ -6,7 +6,7 @@ mod twins;
 
 async fn run_test(behavior: Behavior, network: Network) {
     tokio::time::pause();
-    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(30));
+    let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(60));
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
 

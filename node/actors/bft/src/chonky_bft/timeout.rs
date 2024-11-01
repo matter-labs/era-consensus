@@ -1,7 +1,7 @@
 use super::StateMachine;
 use crate::metrics;
 use std::{cmp::max, collections::HashSet};
-use zksync_concurrency::{ctx, error::Wrap};
+use zksync_concurrency::{ctx, error::Wrap, time};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
 
@@ -154,6 +154,7 @@ impl StateMachine {
     pub(crate) async fn start_timeout(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         // Update the state machine.
         self.phase = validator::Phase::Timeout;
+        self.view_timeout = time::Deadline::Infinite;
 
         // Backup our state.
         self.backup_state(ctx).await.wrap("backup_state()")?;
