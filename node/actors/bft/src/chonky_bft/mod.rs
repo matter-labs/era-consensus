@@ -153,13 +153,14 @@ impl StateMachine {
             // timeout again. Note though that the underlying network implementation
             // needs to keep retrying messages until they are delivered. Otherwise
             // the consensus can halt!
-            if recv.is_err() && self.phase != validator::Phase::Timeout {
-                self.start_timeout(ctx).await?;
+            let Some(req) = recv.ok() else {
+                if self.phase != validator::Phase::Timeout {
+                    self.start_timeout(ctx).await?;
+                }
                 continue;
-            }
+            };
 
             // Process the message.
-            let req = recv.unwrap();
             let now = ctx.now();
             let label = match &req.msg.msg {
                 ConsensusMsg::LeaderProposal(_) => {
