@@ -46,7 +46,7 @@ fn test_timeout_qc_high_vote() {
     let msg_c = setup.make_replica_timeout(rng, view_num);
 
     // Case with 1 subquorum.
-    let mut qc = TimeoutQC::new(msg_a.view.clone());
+    let mut qc = TimeoutQC::new(msg_a.view);
 
     for key in &setup.validator_keys {
         qc.add(&key.sign_msg(msg_a.clone()), &setup.genesis)
@@ -56,7 +56,7 @@ fn test_timeout_qc_high_vote() {
     assert!(qc.high_vote(&setup.genesis).is_some());
 
     // Case with 2 subquorums.
-    let mut qc = TimeoutQC::new(msg_a.view.clone());
+    let mut qc = TimeoutQC::new(msg_a.view);
 
     for key in &setup.validator_keys[0..3] {
         qc.add(&key.sign_msg(msg_a.clone()), &setup.genesis)
@@ -71,7 +71,7 @@ fn test_timeout_qc_high_vote() {
     assert!(qc.high_vote(&setup.genesis).is_none());
 
     // Case with no subquorums.
-    let mut qc = TimeoutQC::new(msg_a.view.clone());
+    let mut qc = TimeoutQC::new(msg_a.view);
 
     for key in &setup.validator_keys[0..2] {
         qc.add(&key.sign_msg(msg_a.clone()), &setup.genesis)
@@ -131,7 +131,7 @@ fn test_timeout_qc_add() {
     let setup = Setup::new(rng, 3);
     let view = rng.gen();
     let msg = setup.make_replica_timeout(rng, view);
-    let mut qc = TimeoutQC::new(msg.view.clone());
+    let mut qc = TimeoutQC::new(msg.view);
 
     // Add the first signature
     assert!(qc.map.is_empty());
@@ -241,7 +241,7 @@ fn test_timeout_qc_verify() {
     let mut qc2 = qc.clone();
     qc2.map.insert(
         ReplicaTimeout {
-            view: qc2.view.clone().next(),
+            view: qc2.view.next(),
             high_vote: None,
             high_qc: None,
         },
@@ -256,7 +256,7 @@ fn test_timeout_qc_verify() {
     let mut qc3 = qc.clone();
     qc3.map.insert(
         ReplicaTimeout {
-            view: qc3.view.clone(),
+            view: qc3.view,
             high_vote: None,
             high_qc: None,
         },
@@ -271,7 +271,7 @@ fn test_timeout_qc_verify() {
     let mut qc4 = qc.clone();
     qc4.map.insert(
         ReplicaTimeout {
-            view: qc4.view.clone(),
+            view: qc4.view,
             high_vote: None,
             high_qc: None,
         },
@@ -290,7 +290,7 @@ fn test_timeout_qc_verify() {
         .set(rng.gen_range(0..setup.genesis.validators.len()), true);
     qc5.map.insert(
         ReplicaTimeout {
-            view: qc5.view.clone(),
+            view: qc5.view,
             high_vote: None,
             high_qc: None,
         },

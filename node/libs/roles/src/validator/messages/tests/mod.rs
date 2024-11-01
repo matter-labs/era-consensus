@@ -131,7 +131,6 @@ fn genesis_with_attesters() -> Genesis {
 /// Hardcoded `LeaderProposal`.
 fn leader_proposal() -> LeaderProposal {
     LeaderProposal {
-        proposal: block_header(),
         proposal_payload: Some(payload()),
         justification: ProposalJustification::Timeout(timeout_qc()),
     }

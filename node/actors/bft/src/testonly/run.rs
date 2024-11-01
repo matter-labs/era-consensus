@@ -29,10 +29,23 @@ pub(crate) enum Network {
 /// Technically there are 4 phases but that results in tests timing out as
 /// the chance of a reaching consensus in any round goes down rapidly.
 ///
-/// Instead we can just use two phase-partitions: one for the LeaderCommit,
+/// Instead we can just use two phase-partitions: one for the LeaderProposal,
 /// and another for everything else. This models the typical adversarial
-/// scenario of not everyone getting the QC.
+/// scenario of not everyone getting the proposal.
 pub(crate) const NUM_PHASES: usize = 2;
+
+/// Index of the phase in which the message appears, to decide which partitioning to apply.
+fn msg_phase_number(msg: &validator::ConsensusMsg) -> usize {
+    use validator::ConsensusMsg;
+    let phase = match msg {
+        ConsensusMsg::LeaderProposal(_) => 0,
+        ConsensusMsg::ReplicaCommit(_) => 1,
+        ConsensusMsg::ReplicaTimeout(_) => 1,
+        ConsensusMsg::ReplicaNewView(_) => 1,
+    };
+    assert!(phase < NUM_PHASES);
+    phase
+}
 
 /// Identify different network identities of twins by their listener port.
 /// They are all expected to be on localhost, but `ListenerAddr` can't be
@@ -47,12 +60,13 @@ pub(crate) type PortSplitSchedule = Vec<[PortSplit; NUM_PHASES]>;
 /// Function to decide whether a message can go from a source to a target port.
 pub(crate) type PortRouterFn = dyn Fn(&validator::ConsensusMsg, Port, Port) -> Option<bool> + Sync;
 
-/// A predicate to gover who can communicate to whom a given message.
+/// A predicate to govern who can communicate to whom a given message.
 pub(crate) enum PortRouter {
     /// List of port splits for each view/phase, where ports in the same partition can send any message to each other.
     Splits(PortSplitSchedule),
     /// Custom routing function which can take closer control of which message can be sent in which direction,
     /// in order to reenact particular edge cases.
+    #[allow(dead_code)]
     Custom(Box<PortRouterFn>),
 }
 
@@ -264,7 +278,6 @@ async fn run_nodes_twins(
         // Taking these references is necessary for the `scope::run!` environment lifetime rules to compile
         // with `async move`, which in turn is necessary otherwise it the spawned process could not borrow `port`.
         // Potentially `ctx::NoCopy` could be used with `port`.
-        let validator_ports = &validator_ports;
         let sends = &sends;
         let stores = &stores;
         let gossip_targets = &gossip_targets;
@@ -283,7 +296,6 @@ async fn run_nodes_twins(
                     twins_receive_loop(
                         ctx,
                         router,
-                        validator_ports,
                         sends,
                         TwinsGossipConfig {
                             targets: &gossip_targets[&port],
@@ -308,12 +320,11 @@ async fn run_nodes_twins(
 /// according to the partition schedule of the port associated with this instance.
 ///
 /// We have to simulate the gossip layer which isn't instantiated by these tests.
-/// If we don't, then if a replica misses a LeaderPrepare message it won't ever get the payload
+/// If we don't, then if a replica misses a LeaderProposal message it won't ever get the payload
 /// and won't be able to finalize the block, and won't participate further in the consensus.
 async fn twins_receive_loop(
     ctx: &ctx::Ctx,
     router: &PortRouter,
-    validator_ports: &HashMap<validator::PublicKey, Vec<Port>>,
     sends: &HashMap<Port, UnboundedSender<io::OutputMessage>>,
     gossip: TwinsGossipConfig<'_>,
     port: Port,
@@ -331,7 +342,7 @@ async fn twins_receive_loop(
 
     // We need to buffer messages that cannot be delivered due to partitioning, and deliver them later.
     // The spec says that the network is expected to deliver messages eventually, potentially out of order,
-    // caveated by the fact that the actual implementation only keeps retrying the last message..
+    // caveated by the fact that the actual implementation only keeps retrying the last message.
     // A separate issue is the definition of "later", without actually adding timing assumptions:
     // * If we want to allow partitions which don't have enough replicas for a quorum, and the replicas
     //   don't move on from a view until they reach quorum, then "later" could be defined by so many
@@ -341,12 +352,7 @@ async fn twins_receive_loop(
     //   can move on to the next view, in which a new partition configuration will allow them to broadcast
     //   to previously isolated peers.
     // * One idea is to wait until replica A wants to send to replica B in a view when they are no longer
-    //   partitioned, and then unstash all previous A-to-B messages. This would _not_ work with HotStuff
-    //   out of the box, because replicas only communicate with their leader, so if for example B missed
-    //   a LeaderCommit from A in an earlier view, B will not respond to the LeaderPrepare from C because
-    //   they can't commit the earlier block until they get a new message from A. However since
-    //   https://github.com/matter-labs/era-consensus/pull/119 the ReplicaPrepare messages are broadcasted,
-    //   so we shouldn't have to wait long for A to unstash its messages to B.
+    //   partitioned, and then unstash all previous A-to-B messages.
     // * If that wouldn't be acceptable then we could have some kind of global view of stashed messages
     //   and unstash them as soon as someone moves on to a new view.
     let mut stashes: HashMap<Port, Vec<io::OutputMessage>> = HashMap::new();
@@ -413,24 +419,12 @@ async fn twins_receive_loop(
             }
         };
 
-        match message.recipient {
-            io::Target::Broadcast => {
-                tracing::info!("broadcasting view={view} from={port} kind={kind}");
-                for target_port in sends.keys() {
-                    send_or_stash(can_send(*target_port)?, *target_port, msg());
-                }
-            }
-            io::Target::Validator(ref v) => {
-                let target_ports = &validator_ports[v];
-                tracing::info!(
-                    "unicasting view={view} from={port} target={target_ports:?} kind={kind}"
-                );
-                for target_port in target_ports {
-                    send_or_stash(can_send(*target_port)?, *target_port, msg());
-                }
-            }
+        tracing::info!("broadcasting view={view} from={port} kind={kind}");
+        for target_port in sends.keys() {
+            send_or_stash(can_send(*target_port)?, *target_port, msg());
         }
     }
+
     Ok(())
 }
 
@@ -510,27 +504,20 @@ fn output_msg_label(msg: &io::OutputMessage) -> &str {
 
 fn output_msg_commit_qc(msg: &io::OutputMessage) -> Option<&validator::CommitQC> {
     use validator::ConsensusMsg;
-    match msg {
-        io::OutputMessage::Consensus(cr) => match &cr.msg.msg {
-            ConsensusMsg::ReplicaPrepare(rp) => rp.high_qc.as_ref(),
-            ConsensusMsg::LeaderPrepare(lp) => lp.justification.high_qc(),
-            ConsensusMsg::ReplicaCommit(_) => None,
-            ConsensusMsg::LeaderCommit(lc) => Some(&lc.justification),
-        },
-    }
-}
 
-/// Index of the phase in which the message appears, to decide which partitioning to apply.
-fn msg_phase_number(msg: &validator::ConsensusMsg) -> usize {
-    use validator::ConsensusMsg;
-    let phase = match msg {
-        ConsensusMsg::ReplicaPrepare(_) => 0,
-        ConsensusMsg::LeaderPrepare(_) => 0,
-        ConsensusMsg::ReplicaCommit(_) => 0,
-        ConsensusMsg::LeaderCommit(_) => 1,
+    let justification = match msg {
+        io::OutputMessage::Consensus(cr) => match &cr.msg.msg {
+            ConsensusMsg::ReplicaTimeout(msg) => return msg.high_qc.as_ref(),
+            ConsensusMsg::ReplicaCommit(_) => return None,
+            ConsensusMsg::ReplicaNewView(msg) => &msg.justification,
+            ConsensusMsg::LeaderProposal(msg) => &msg.justification,
+        },
     };
-    assert!(phase < NUM_PHASES);
-    phase
+
+    match justification {
+        validator::ProposalJustification::Commit(commit_qc) => Some(commit_qc),
+        validator::ProposalJustification::Timeout(timeout_qc) => timeout_qc.high_qc(),
+    }
 }
 
 struct TwinsGossipMessage {
