@@ -395,6 +395,8 @@ module inductive {
 
     // if a correct block uses a justification, this justification should be valid
     val lemma1_justified_qc_is_valid = and {
+        val commit_qc_size = r::ghost_commit_qc.length()
+        val timeout_qc_size = r::ghost_timeout_qc.length()
         r::msgs_new_view.forall(m => or {
             IFAULTY.contains(m.sig),
             val view = r::view(m.justification)
@@ -407,7 +409,7 @@ module inductive {
                 | Commit(qc_id) =>
                     val qc = r::ghost_commit_qc[qc_id]
                     and {
-                        0 <= qc_id and qc_id < MAX_COMMIT_QC,
+                        0 <= qc_id and qc_id < commit_qc_size,
                         qc.vote.view + 1 == view,
                         qc.agg_sig.subseteq(IREPLICAS),
                         // no invalid blocks are committed
@@ -416,7 +418,7 @@ module inductive {
                     }
 
                 | Timeout(qc_id) => and {
-                        0 <= qc_id and qc_id < MAX_TIMEOUT_QC,
+                        0 <= qc_id and qc_id < timeout_qc_size,
                         val qc = r::ghost_timeout_qc[qc_id]
                         qc.ghost_view + 1 == view
                         // check the structure in (3)
