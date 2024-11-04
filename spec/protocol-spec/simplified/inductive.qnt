@@ -706,7 +706,10 @@ module inductive {
     val lemma17_timeout_high_commit_qc_is_valid = {
         val commit_qc_size = r::ghost_commit_qc.length()
         r::msgs_signed_timeout.forall(tv => and {
-            0 <= tv.high_commit_qc and tv.high_commit_qc < commit_qc_size,
+            match (tv.high_commit_qc) {
+            | Some(qc_id) => (0 <= qc_id and qc_id < commit_qc_size)
+            | None => true
+            },
             or {
                 IFAULTY.contains(tv.sig),
                 r::aux_commit_qc_inv(tv.high_commit_qc)
