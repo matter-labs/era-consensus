@@ -397,31 +397,35 @@ module inductive {
     val lemma1_justified_qc_is_valid = and {
         val commit_qc_size = r::ghost_commit_qc.length()
         val timeout_qc_size = r::ghost_timeout_qc.length()
-        r::msgs_new_view.forall(m => or {
-            IFAULTY.contains(m.sig),
-            val view = r::view(m.justification)
-            val id = m.sig
-            and {
-                // no justifications from the future
-                view <= r::replica_state.get(id).view,
-                // (1) check the basic constraints
-                match (m.justification) {
-                | Commit(qc_id) =>
-                    val qc = r::ghost_commit_qc[qc_id]
-                    and {
-                        0 <= qc_id and qc_id < commit_qc_size,
-                        qc.vote.view + 1 == view,
-                        qc.agg_sig.subseteq(IREPLICAS),
-                        // no invalid blocks are committed
-                        IVALID_BLOCKS.contains(qc.vote.block_hash),
-                        // check the quorums in (2), as it is an expensive test
-                    }
+        r::msgs_new_view.forall(m => and {
+            match (m.justification) {
+            | Commit(qc_id) => 0 <= qc_id and qc_id < commit_qc_size
+            | Timeout(qc_id) => 0 <= qc_id and qc_id < timeout_qc_size
+            },
+            or {
+                IFAULTY.contains(m.sig),
+                val view = r::view(m.justification)
+                val id = m.sig
+                and {
+                    // no justifications from the future
+                    view <= r::replica_state.get(id).view,
+                    // (1) check the basic constraints
+                    match (m.justification) {
+                    | Commit(qc_id) =>
+                        val qc = r::ghost_commit_qc[qc_id]
+                        and {
+                            qc.vote.view + 1 == view,
+                            qc.agg_sig.subseteq(IREPLICAS),
+                            // no invalid blocks are committed
+                            IVALID_BLOCKS.contains(qc.vote.block_hash),
+                            // check the quorums in (2), as it is an expensive test
+                        }
 
-                | Timeout(qc_id) => and {
-                        0 <= qc_id and qc_id < timeout_qc_size,
-                        val qc = r::ghost_timeout_qc[qc_id]
-                        qc.ghost_view + 1 == view
-                        // check the structure in (3)
+                    | Timeout(qc_id) => and {
+                            val qc = r::ghost_timeout_qc[qc_id]
+                            qc.ghost_view + 1 == view
+                            // check the structure in (3)
+                        }
                     }
                 }
             }
@@ -700,9 +704,13 @@ module inductive {
     }
 
     val lemma17_timeout_high_commit_qc_is_valid = {
-        r::msgs_signed_timeout.forall(tv => or {
-            IFAULTY.contains(tv.sig),
-            r::aux_commit_qc_inv(tv.high_commit_qc)
+        val commit_qc_size = r::ghost_commit_qc.length()
+        r::msgs_signed_timeout.forall(tv => and {
+            0 <= tv.high_commit_qc and tv.high_commit_qc < commit_qc_size,
+            or {
+                IFAULTY.contains(tv.sig),
+                r::aux_commit_qc_inv(tv.high_commit_qc)
+            }
         })
     }
 
