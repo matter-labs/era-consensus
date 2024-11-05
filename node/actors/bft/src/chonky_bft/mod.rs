@@ -1,17 +1,10 @@
-use crate::{io::OutputMessage, metrics, Config};
+use crate::{metrics, Config, FromNetworkMessage, ToNetworkMessage};
 use std::{
     cmp::max,
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
-use zksync_concurrency::{
-    ctx,
-    error::Wrap as _,
-    metrics::LatencyHistogramExt as _,
-    sync::{self, prunable_mpsc::SelectionFunctionResult},
-    time,
-};
-use zksync_consensus_network::io::ConsensusReq;
+use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_roles::validator::{self, ConsensusMsg};
 
 mod block;
@@ -35,13 +28,13 @@ pub(crate) const VIEW_TIMEOUT_DURATION: time::Duration = time::Duration::millise
 pub(crate) struct StateMachine {
     /// Consensus configuration.
     pub(crate) config: Arc<Config>,
-    /// Pipe through which replica sends network messages.
-    pub(super) outbound_pipe: ctx::channel::UnboundedSender<OutputMessage>,
-    /// Pipe through which replica receives network requests.
-    pub(crate) inbound_pipe: sync::prunable_mpsc::Receiver<ConsensusReq>,
+    /// Channel through which replica sends network messages.
+    pub(super) outbound_channel: ctx::channel::UnboundedSender<ToNetworkMessage>,
+    /// Channel through which replica receives network requests.
+    pub(crate) inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
     /// The sender part of the proposer watch channel. This is used to notify the proposer loop
     /// and send the needed justification.
-    pub(crate) proposer_pipe: sync::watch::Sender<Option<validator::ProposalJustification>>,
+    pub(crate) proposer_sender: sync::watch::Sender<Option<validator::ProposalJustification>>,
 
     /// The current view number.
     pub(crate) view_number: validator::ViewNumber,
@@ -83,9 +76,10 @@ impl StateMachine {
     pub(crate) async fn start(
         ctx: &ctx::Ctx,
         config: Arc<Config>,
-        outbound_pipe: ctx::channel::UnboundedSender<OutputMessage>,
-        proposer_pipe: sync::watch::Sender<Option<validator::ProposalJustification>>,
-    ) -> ctx::Result<(Self, sync::prunable_mpsc::Sender<ConsensusReq>)> {
+        outbound_channel: ctx::channel::UnboundedSender<ToNetworkMessage>,
+        inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
+        proposer_sender: sync::watch::Sender<Option<validator::ProposalJustification>>,
+    ) -> ctx::Result<Self> {
         let backup = config.replica_store.state(ctx).await?;
 
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
@@ -96,16 +90,11 @@ impl StateMachine {
                 .insert(proposal.payload.hash(), proposal.payload);
         }
 
-        let (send, recv) = sync::prunable_mpsc::channel(
-            StateMachine::inbound_filter_predicate,
-            StateMachine::inbound_selection_function,
-        );
-
         let this = Self {
             config,
-            outbound_pipe,
-            inbound_pipe: recv,
-            proposer_pipe,
+            outbound_channel,
+            inbound_channel,
+            proposer_sender,
             view_number: backup.view,
             phase: backup.phase,
             high_vote: backup.high_vote,
@@ -120,7 +109,7 @@ impl StateMachine {
             view_start: ctx.now(),
         };
 
-        Ok((this, send))
+        Ok(this)
     }
 
     /// Runs a loop to process incoming messages (may be `None` if the channel times out while waiting for a message).
@@ -140,7 +129,7 @@ impl StateMachine {
         // Main loop.
         loop {
             let recv = self
-                .inbound_pipe
+                .inbound_channel
                 .recv(&ctx.with_deadline(self.view_timeout))
                 .await;
 
@@ -277,28 +266,6 @@ impl StateMachine {
             // Notify network actor that the message has been processed.
             // Ignore sending error.
             let _ = req.ack.send(());
-        }
-    }
-
-    fn inbound_filter_predicate(new_req: &ConsensusReq) -> bool {
-        // Verify message signature
-        new_req.msg.verify().is_ok()
-    }
-
-    fn inbound_selection_function(
-        old_req: &ConsensusReq,
-        new_req: &ConsensusReq,
-    ) -> SelectionFunctionResult {
-        if old_req.msg.key != new_req.msg.key || old_req.msg.msg.label() != new_req.msg.msg.label()
-        {
-            SelectionFunctionResult::Keep
-        } else {
-            // Discard older message
-            if old_req.msg.msg.view().number < new_req.msg.msg.view().number {
-                SelectionFunctionResult::DiscardOld
-            } else {
-                SelectionFunctionResult::DiscardNew
-            }
         }
     }
 

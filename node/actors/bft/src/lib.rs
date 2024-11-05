@@ -1,19 +1,20 @@
 //! This crate contains the consensus actor, which is responsible for handling the logic that allows us to reach agreement on blocks.
 //! It uses a new cosnensus algorithm developed at Matter Labs, called ChonkyBFT. You can find the specification of the algorithm [here](../../../../spec).
 
-use crate::io::{InputMessage, OutputMessage};
 use anyhow::Context;
 pub use config::Config;
 use std::sync::Arc;
-use tracing::Instrument;
-use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
+use zksync_concurrency::{
+    ctx,
+    error::Wrap as _,
+    scope,
+    sync::{self, prunable_mpsc::SelectionFunctionResult},
+};
 use zksync_consensus_roles::validator;
-use zksync_consensus_utils::pipe::ActorPipe;
 
 /// This module contains the implementation of the ChonkyBFT algorithm.
 mod chonky_bft;
 mod config;
-pub mod io;
 mod metrics;
 pub mod testonly;
 #[cfg(test)]
@@ -21,6 +22,12 @@ mod tests;
 
 /// Protocol version of this BFT implementation.
 pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVersion::CURRENT;
+
+// Renaming network messages for clarity.
+#[allow(missing_docs)]
+pub type ToNetworkMessage = zksync_consensus_network::io::ConsensusInputMessage;
+#[allow(missing_docs)]
+pub type FromNetworkMessage = zksync_consensus_network::io::ConsensusReq;
 
 /// Payload proposal and verification trait.
 #[async_trait::async_trait]
@@ -46,7 +53,8 @@ impl Config {
     pub async fn run(
         self,
         ctx: &ctx::Ctx,
-        mut pipe: ActorPipe<InputMessage, OutputMessage>,
+        outbound_channel: ctx::channel::UnboundedSender<ToNetworkMessage>,
+        inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
     ) -> anyhow::Result<()> {
         let genesis = self.block_store.genesis();
         anyhow::ensure!(genesis.protocol_version == validator::ProtocolVersion::CURRENT);
@@ -61,42 +69,69 @@ impl Config {
 
         let cfg = Arc::new(self);
         let (proposer_sender, proposer_receiver) = sync::watch::channel(None);
-        let (replica, replica_send) =
-            chonky_bft::StateMachine::start(ctx, cfg.clone(), pipe.send.clone(), proposer_sender)
-                .await?;
+        let replica = chonky_bft::StateMachine::start(
+            ctx,
+            cfg.clone(),
+            outbound_channel.clone(),
+            inbound_channel,
+            proposer_sender,
+        )
+        .await?;
 
         let res = scope::run!(ctx, |ctx, s| async {
-            s.spawn_bg(async { replica.run(ctx).await.wrap("replica.run()") });
-            s.spawn_bg(async {
-                chonky_bft::proposer::run_proposer(ctx, cfg.clone(), pipe.send, proposer_receiver)
-                    .await
-                    .wrap("run_proposer()")
-            });
-
             tracing::info!("Starting consensus actor {:?}", cfg.secret_key.public());
 
-            // This is the infinite loop where the consensus actually runs. The validator waits for
-            // a message from the network and processes it accordingly.
-            loop {
-                async {
-                    let InputMessage::Network(msg) = pipe
-                        .recv
-                        .recv(ctx)
-                        .instrument(tracing::info_span!("wait_for_message"))
-                        .await?;
+            s.spawn(async { replica.run(ctx).await.wrap("replica.run()") });
+            s.spawn_bg(async {
+                chonky_bft::proposer::run_proposer(
+                    ctx,
+                    cfg.clone(),
+                    outbound_channel,
+                    proposer_receiver,
+                )
+                .await
+                .wrap("run_proposer()")
+            });
 
-                    replica_send.send(msg);
-
-                    ctx::Ok(())
-                }
-                .instrument(tracing::info_span!("bft_iter"))
-                .await?;
-            }
+            Ok(())
         })
         .await;
         match res {
             Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
             Err(ctx::Error::Internal(err)) => Err(err),
+        }
+    }
+
+    /// Creates a new input channel for the network messages.
+    pub fn create_input_channel() -> (
+        sync::prunable_mpsc::Sender<FromNetworkMessage>,
+        sync::prunable_mpsc::Receiver<FromNetworkMessage>,
+    ) {
+        sync::prunable_mpsc::channel(
+            Self::inbound_filter_predicate,
+            Self::inbound_selection_function,
+        )
+    }
+
+    fn inbound_filter_predicate(new_req: &FromNetworkMessage) -> bool {
+        // Verify message signature
+        new_req.msg.verify().is_ok()
+    }
+
+    fn inbound_selection_function(
+        old_req: &FromNetworkMessage,
+        new_req: &FromNetworkMessage,
+    ) -> SelectionFunctionResult {
+        if old_req.msg.key != new_req.msg.key || old_req.msg.msg.label() != new_req.msg.msg.label()
+        {
+            SelectionFunctionResult::Keep
+        } else {
+            // Discard older message
+            if old_req.msg.msg.view().number < new_req.msg.msg.view().number {
+                SelectionFunctionResult::DiscardOld
+            } else {
+                SelectionFunctionResult::DiscardNew
+            }
         }
     }
 }

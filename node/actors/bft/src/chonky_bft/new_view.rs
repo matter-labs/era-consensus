@@ -115,7 +115,7 @@ impl StateMachine {
         // Update the state machine.
         self.view_number = view;
         self.phase = validator::Phase::Prepare;
-        self.proposer_pipe
+        self.proposer_sender
             .send(Some(self.get_justification()))
             .expect("justification_watch.send() failed");
 
@@ -139,7 +139,7 @@ impl StateMachine {
                     },
                 )),
         };
-        self.outbound_pipe.send(output_message.into());
+        self.outbound_channel.send(output_message.into());
 
         // Log the event and update the metrics.
         tracing::info!("Starting view {}", self.view_number);

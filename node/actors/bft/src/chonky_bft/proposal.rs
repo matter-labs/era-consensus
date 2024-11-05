@@ -250,7 +250,7 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaCommit(commit_vote)),
         };
-        self.outbound_pipe.send(output_message.into());
+        self.outbound_channel.send(output_message.into());
 
         Ok(())
     }

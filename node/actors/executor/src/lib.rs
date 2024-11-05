@@ -1,5 +1,4 @@
 //! Library files for the executor. We have it separate from the binary so that we can use these files in the tools crate.
-use crate::io::Dispatcher;
 use anyhow::Context as _;
 pub use network::{gossip::attestation, RpcConfig};
 use std::{
@@ -14,7 +13,6 @@ use zksync_consensus_storage::{BlockStore, ReplicaStore};
 use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
-mod io;
 #[cfg(test)]
 mod tests;
 
@@ -114,17 +112,11 @@ impl Executor {
         let network_config = self.network_config();
 
         // Generate the communication pipes. We have one for each actor.
-        let (consensus_actor_pipe, consensus_dispatcher_pipe) = pipe::new();
+        let (consensus_send, consensus_recv) = bft::Config::create_input_channel();
         let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
-        // Create the IO dispatcher.
-        let dispatcher = Dispatcher::new(consensus_dispatcher_pipe, network_dispatcher_pipe);
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
-            s.spawn(async {
-                dispatcher.run(ctx).await;
-                Ok(())
-            });
             let (net, runner) = network::Network::new(
                 network_config,
                 self.block_store.clone(),
@@ -166,7 +158,7 @@ impl Executor {
                 payload_manager: validator.payload_manager,
                 max_payload_size: self.config.max_payload_size,
             }
-            .run(ctx, consensus_actor_pipe)
+            .run(ctx, consensus_actor_pipe, consensus_recv)
             .await
             .context("Consensus stopped")
         })

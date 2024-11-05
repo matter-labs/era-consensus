@@ -6,10 +6,9 @@ use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx::{self, channel},
     error::Wrap as _,
-    limiter, scope,
+    limiter, scope, sync,
 };
 use zksync_consensus_storage::BlockStore;
-use zksync_consensus_utils::pipe::ActorPipe;
 
 mod config;
 pub mod consensus;
@@ -45,8 +44,8 @@ pub struct Network {
 pub struct Runner {
     /// Network state.
     net: Arc<Network>,
-    /// Receiver of the messages from the dispatcher.
-    receiver: channel::UnboundedReceiver<io::InputMessage>,
+    /// Receiver of consensus messages.
+    consensus_receiver: channel::UnboundedReceiver<io::ConsensusInputMessage>,
 }
 
 impl Network {
@@ -55,17 +54,18 @@ impl Network {
     pub fn new(
         cfg: Config,
         block_store: Arc<BlockStore>,
-        pipe: ActorPipe<io::InputMessage, io::OutputMessage>,
+        consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
+        consensus_receiver: channel::UnboundedReceiver<io::ConsensusInputMessage>,
         attestation: Arc<attestation::Controller>,
     ) -> (Arc<Self>, Runner) {
-        let gossip = gossip::Network::new(cfg, block_store, pipe.send, attestation);
+        let gossip = gossip::Network::new(cfg, block_store, consensus_sender, attestation);
         let consensus = consensus::Network::new(gossip.clone());
         let net = Arc::new(Self { gossip, consensus });
         (
             net.clone(),
             Runner {
                 net,
-                receiver: pipe.recv,
+                consensus_receiver,
             },
         )
     }
@@ -80,17 +80,14 @@ impl Network {
     async fn handle_message(
         &self,
         _ctx: &ctx::Ctx,
-        message: io::InputMessage,
+        message: io::ConsensusInputMessage,
     ) -> anyhow::Result<()> {
-        match message {
-            io::InputMessage::Consensus(message) => {
-                self.consensus
-                    .as_ref()
-                    .context("not a validator node")?
-                    .msg_pool
-                    .send(Arc::new(message));
-            }
-        }
+        self.consensus
+            .as_ref()
+            .context("not a validator node")?
+            .msg_pool
+            .send(Arc::new(message));
+
         Ok(())
     }
 }
@@ -110,7 +107,7 @@ impl Runner {
             // Handle incoming messages.
             s.spawn(async {
                 // We don't propagate cancellation errors
-                while let Ok(message) = self.receiver.recv(ctx).await {
+                while let Ok(message) = self.consensus_receiver.recv(ctx).await {
                     s.spawn(async {
                         if let Err(err) = self.net.handle_message(ctx, message).await {
                             tracing::info!("handle_message(): {err:#}");

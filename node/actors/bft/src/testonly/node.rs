@@ -1,4 +1,4 @@
-use crate::{io, testonly, PayloadManager};
+use crate::{testonly, PayloadManager};
 use anyhow::Context as _;
 use std::sync::Arc;
 use zksync_concurrency::{ctx, scope};
@@ -48,9 +48,7 @@ impl Node {
     ) -> anyhow::Result<()> {
         let net_recv = &mut network_pipe.recv;
         let net_send = &mut network_pipe.send;
-        let (consensus_actor_pipe, consensus_pipe) = pipe::new();
-        let mut con_recv = consensus_pipe.recv;
-        let con_send = consensus_pipe.send;
+        let (con_send, con_recv) = crate::Config::create_input_channel();
         scope::run!(ctx, |ctx, s| async {
             // Run the consensus actor
             s.spawn(async {
@@ -62,7 +60,7 @@ impl Node {
                     payload_manager: self.behavior.payload_manager(),
                     max_payload_size: MAX_PAYLOAD_SIZE,
                 }
-                .run(ctx, consensus_actor_pipe)
+                .run(ctx, net_send, con_recv)
                 .await
                 .context("consensus.run()")
             });

@@ -1,4 +1,4 @@
-use crate::{io::OutputMessage, metrics, Config};
+use crate::{metrics, Config, ToNetworkMessage};
 use std::sync::Arc;
 use zksync_concurrency::{ctx, error::Wrap as _, sync};
 use zksync_consensus_network::io::ConsensusInputMessage;
@@ -11,7 +11,7 @@ use super::VIEW_TIMEOUT_DURATION;
 pub(crate) async fn run_proposer(
     ctx: &ctx::Ctx,
     cfg: Arc<Config>,
-    outbound_pipe: ctx::channel::UnboundedSender<OutputMessage>,
+    network_sender: ctx::channel::UnboundedSender<ToNetworkMessage>,
     mut justification_watch: sync::watch::Receiver<Option<validator::ProposalJustification>>,
 ) -> ctx::Result<()> {
     loop {
@@ -50,7 +50,7 @@ pub(crate) async fn run_proposer(
             .secret_key
             .sign_msg(validator::ConsensusMsg::LeaderProposal(proposal));
 
-        outbound_pipe.send(ConsensusInputMessage { message: msg }.into());
+        network_sender.send(ConsensusInputMessage { message: msg }.into());
     }
 }
 

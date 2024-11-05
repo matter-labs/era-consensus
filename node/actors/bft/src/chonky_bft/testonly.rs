@@ -1,15 +1,13 @@
 use crate::testonly::RandomPayload;
 use crate::{
     chonky_bft::{self, commit, new_view, proposal, timeout, StateMachine},
-    io::OutputMessage,
     Config, PayloadManager,
 };
+use crate::{FromNetworkMessage, ToNetworkMessage};
 use assert_matches::assert_matches;
 use std::sync::Arc;
 use zksync_concurrency::sync::prunable_mpsc;
 use zksync_concurrency::{ctx, sync};
-use zksync_consensus_network as network;
-use zksync_consensus_network::io::ConsensusReq;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{
     testonly::{in_memory, TestMemoryStorage},
@@ -28,9 +26,9 @@ pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
 pub(crate) struct UTHarness {
     pub(crate) replica: StateMachine,
     pub(crate) keys: Vec<validator::SecretKey>,
-    pub(crate) outbound_pipe: ctx::channel::UnboundedReceiver<OutputMessage>,
-    pub(crate) inbound_pipe: prunable_mpsc::Sender<ConsensusReq>,
-    pub(crate) _proposer_pipe: sync::watch::Receiver<Option<validator::ProposalJustification>>,
+    pub(crate) outbound_channel: ctx::channel::UnboundedReceiver<ToNetworkMessage>,
+    pub(crate) inbound_channel: prunable_mpsc::Sender<FromNetworkMessage>,
+    pub(crate) _proposer_channel: sync::watch::Receiver<Option<validator::ProposalJustification>>,
 }
 
 impl UTHarness {
@@ -63,7 +61,8 @@ impl UTHarness {
         let rng = &mut ctx.rng();
         let setup = validator::testonly::Setup::new(rng, num_validators);
         let store = TestMemoryStorage::new(ctx, &setup).await;
-        let (send, recv) = ctx::channel::unbounded();
+        let (output_channel_send, output_channel_recv) = ctx::channel::unbounded();
+        let (input_channel_send, input_channel_recv) = Config::create_input_channel();
         let (proposer_sender, proposer_receiver) = sync::watch::channel(None);
 
         let cfg = Arc::new(Config {
@@ -73,16 +72,21 @@ impl UTHarness {
             payload_manager,
             max_payload_size: MAX_PAYLOAD_SIZE,
         });
-        let (replica, input_pipe) =
-            StateMachine::start(ctx, cfg.clone(), send.clone(), proposer_sender)
-                .await
-                .unwrap();
+        let replica = StateMachine::start(
+            ctx,
+            cfg.clone(),
+            output_channel_send.clone(),
+            input_channel_recv,
+            proposer_sender,
+        )
+        .await
+        .unwrap();
         let mut this = UTHarness {
             replica,
             keys: setup.validator_keys.clone(),
-            outbound_pipe: recv,
-            inbound_pipe: input_pipe,
-            _proposer_pipe: proposer_receiver,
+            outbound_channel: output_channel_recv,
+            inbound_channel: input_channel_send,
+            _proposer_channel: proposer_receiver,
         };
 
         let timeout = this.new_replica_timeout(ctx).await;
@@ -290,17 +294,15 @@ impl UTHarness {
     }
 
     pub(crate) fn send(&self, msg: validator::Signed<validator::ConsensusMsg>) {
-        self.inbound_pipe.send(ConsensusReq {
+        self.inbound_channel.send(FromNetworkMessage {
             msg,
             ack: zksync_concurrency::oneshot::channel().0,
         });
     }
 
     fn try_recv<V: Variant<validator::Msg>>(&mut self) -> Option<validator::Signed<V>> {
-        self.outbound_pipe.try_recv().map(|message| match message {
-            OutputMessage::Network(network::io::ConsensusInputMessage { message, .. }) => {
-                message.cast().unwrap()
-            }
-        })
+        self.outbound_channel
+            .try_recv()
+            .map(|message| message.message.cast().unwrap())
     }
 }

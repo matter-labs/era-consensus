@@ -134,12 +134,10 @@ impl rpc::Handler<rpc::consensus::Rpc> for &Network {
         req: rpc::consensus::Req,
     ) -> anyhow::Result<rpc::consensus::Resp> {
         let (send, recv) = oneshot::channel();
-        self.gossip
-            .sender
-            .send(io::OutputMessage::Consensus(io::ConsensusReq {
-                msg: req.0,
-                ack: send,
-            }));
+        self.gossip.sender.send(io::ConsensusReq {
+            msg: req.0,
+            ack: send,
+        });
         // TODO(gprusak): disconnection means that there message was rejected OR
         // that bft actor is missing (in tests), which leads to unnecessary disconnects.
         let _ = recv.recv_or_disconnected(ctx).await?;

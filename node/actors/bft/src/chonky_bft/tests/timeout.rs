@@ -372,7 +372,10 @@ async fn replica_timeout_filter_functions_test() {
         util.send(msg.clone());
 
         // Validate only correct message is received
-        assert_eq!(util.replica.inbound_pipe.recv(ctx).await.unwrap().msg, msg);
+        assert_eq!(
+            util.replica.inbound_channel.recv(ctx).await.unwrap().msg,
+            msg
+        );
 
         // Send a msg with view number = 2
         let mut replica_timeout_from_view_2 = replica_timeout.clone();
@@ -406,7 +409,7 @@ async fn replica_timeout_filter_functions_test() {
 
         // Validate only message from view 4 is received
         assert_eq!(
-            util.replica.inbound_pipe.recv(ctx).await.unwrap().msg,
+            util.replica.inbound_channel.recv(ctx).await.unwrap().msg,
             msg_from_view_4
         );
 
@@ -422,13 +425,13 @@ async fn replica_timeout_filter_functions_test() {
         ));
         util.send(msg_from_validator_1.clone());
 
-        // Validate both are present in the inbound_pipe
+        // Validate both are present in the inbound_channel
         assert_eq!(
-            util.replica.inbound_pipe.recv(ctx).await.unwrap().msg,
+            util.replica.inbound_channel.recv(ctx).await.unwrap().msg,
             msg_from_validator_0
         );
         assert_eq!(
-            util.replica.inbound_pipe.recv(ctx).await.unwrap().msg,
+            util.replica.inbound_channel.recv(ctx).await.unwrap().msg,
             msg_from_validator_1
         );
 
