@@ -2,9 +2,10 @@
 use super::{
     AggregateSignature, Block, BlockHeader, BlockNumber, ChainId, CommitQC, Committee,
     ConsensusMsg, FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, Justification,
-    LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
-    PreGenesisBlock, PrepareQC, ProofOfPossession, ProtocolVersion, PublicKey, ReplicaCommit,
-    ReplicaPrepare, SecretKey, Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
+    LeaderProposal, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PreGenesisBlock,
+    ProofOfPossession, ProposalJustification, ProtocolVersion, PublicKey, ReplicaCommit,
+    ReplicaNewView, ReplicaTimeout, SecretKey, Signature, Signed, Signers, TimeoutQC, View,
+    ViewNumber, WeightedValidator,
 };
 use crate::{attester, validator::LeaderSelectionMode};
 use bit_vec::BitVec;
@@ -37,10 +38,6 @@ pub struct SetupSpec {
     pub leader_selection: LeaderSelectionMode,
 }
 
-/// Test setup.
-#[derive(Debug, Clone)]
-pub struct Setup(SetupInner);
-
 impl SetupSpec {
     /// New `SetupSpec`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
@@ -67,6 +64,10 @@ impl SetupSpec {
     }
 }
 
+/// Test setup.
+#[derive(Debug, Clone)]
+pub struct Setup(SetupInner);
+
 impl Setup {
     /// New `Setup`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
@@ -78,6 +79,51 @@ impl Setup {
     pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
         let spec = SetupSpec::new_with_weights(rng, weights);
         Self::from_spec(rng, spec)
+    }
+
+    /// Generates a new `Setup` from the given `SetupSpec`.
+    pub fn from_spec(rng: &mut impl Rng, spec: SetupSpec) -> Self {
+        let mut this = Self(SetupInner {
+            genesis: GenesisRaw {
+                chain_id: spec.chain_id,
+                fork_number: spec.fork_number,
+                first_block: spec.first_block,
+
+                protocol_version: spec.protocol_version,
+                validators: Committee::new(spec.validator_weights.iter().map(|(k, w)| {
+                    WeightedValidator {
+                        key: k.public(),
+                        weight: *w,
+                    }
+                }))
+                .unwrap(),
+                attesters: attester::Committee::new(spec.attester_weights.iter().map(|(k, w)| {
+                    attester::WeightedAttester {
+                        key: k.public(),
+                        weight: *w,
+                    }
+                }))
+                .unwrap()
+                .into(),
+                leader_selection: spec.leader_selection,
+            }
+            .with_hash(),
+            validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
+            attester_keys: spec.attester_weights.into_iter().map(|(k, _)| k).collect(),
+            blocks: vec![],
+        });
+        // Populate pregenesis blocks.
+        for block in spec.first_pregenesis_block.0..spec.first_block.0 {
+            this.0.blocks.push(
+                PreGenesisBlock {
+                    number: BlockNumber(block),
+                    payload: rng.gen(),
+                    justification: rng.gen(),
+                }
+                .into(),
+            );
+        }
+        this
     }
 
     /// Next block to finalize.
@@ -143,52 +189,107 @@ impl Setup {
         let first = self.0.blocks.first()?.number();
         self.0.blocks.get(n.0.checked_sub(first.0)? as usize)
     }
-}
 
-impl Setup {
-    /// Generates a new `Setup` from the given `SetupSpec`.
-    pub fn from_spec(rng: &mut impl Rng, spec: SetupSpec) -> Self {
-        let mut this = Self(SetupInner {
-            genesis: GenesisRaw {
-                chain_id: spec.chain_id,
-                fork_number: spec.fork_number,
-                first_block: spec.first_block,
-
-                protocol_version: spec.protocol_version,
-                validators: Committee::new(spec.validator_weights.iter().map(|(k, w)| {
-                    WeightedValidator {
-                        key: k.public(),
-                        weight: *w,
-                    }
-                }))
-                .unwrap(),
-                attesters: attester::Committee::new(spec.attester_weights.iter().map(|(k, w)| {
-                    attester::WeightedAttester {
-                        key: k.public(),
-                        weight: *w,
-                    }
-                }))
-                .unwrap()
-                .into(),
-                leader_selection: spec.leader_selection,
-            }
-            .with_hash(),
-            validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
-            attester_keys: spec.attester_weights.into_iter().map(|(k, _)| k).collect(),
-            blocks: vec![],
-        });
-        // Populate pregenesis blocks.
-        for block in spec.first_pregenesis_block.0..spec.first_block.0 {
-            this.0.blocks.push(
-                PreGenesisBlock {
-                    number: BlockNumber(block),
-                    payload: rng.gen(),
-                    justification: rng.gen(),
-                }
-                .into(),
-            );
+    /// Creates a View with the given view number.
+    pub fn make_view(&self, number: ViewNumber) -> View {
+        View {
+            genesis: self.genesis.hash(),
+            number,
         }
-        this
+    }
+
+    /// Creates a ReplicaCommit with a random payload.
+    pub fn make_replica_commit(&self, rng: &mut impl Rng, view: ViewNumber) -> ReplicaCommit {
+        ReplicaCommit {
+            view: self.make_view(view),
+            proposal: BlockHeader {
+                number: self.next(),
+                payload: rng.gen(),
+            },
+        }
+    }
+
+    /// Creates a ReplicaCommit with the given payload.
+    pub fn make_replica_commit_with_payload(
+        &self,
+        payload: &Payload,
+        view: ViewNumber,
+    ) -> ReplicaCommit {
+        ReplicaCommit {
+            view: self.make_view(view),
+            proposal: BlockHeader {
+                number: self.next(),
+                payload: payload.hash(),
+            },
+        }
+    }
+
+    /// Creates a CommitQC with a random payload.
+    pub fn make_commit_qc(&self, rng: &mut impl Rng, view: ViewNumber) -> CommitQC {
+        let mut qc = CommitQC::new(self.make_replica_commit(rng, view), &self.genesis);
+        for key in &self.validator_keys {
+            qc.add(&key.sign_msg(qc.message.clone()), &self.genesis)
+                .unwrap();
+        }
+        qc
+    }
+
+    /// Creates a CommitQC with the given payload.
+    pub fn make_commit_qc_with_payload(&self, payload: &Payload, view: ViewNumber) -> CommitQC {
+        let mut qc = CommitQC::new(
+            self.make_replica_commit_with_payload(payload, view),
+            &self.genesis,
+        );
+        for key in &self.validator_keys {
+            qc.add(&key.sign_msg(qc.message.clone()), &self.genesis)
+                .unwrap();
+        }
+        qc
+    }
+
+    /// Creates a ReplicaTimeout with a random payload.
+    pub fn make_replica_timeout(&self, rng: &mut impl Rng, view: ViewNumber) -> ReplicaTimeout {
+        let high_vote_view = ViewNumber(rng.gen_range(0..=view.0));
+        let high_qc_view = ViewNumber(rng.gen_range(0..high_vote_view.0));
+        ReplicaTimeout {
+            view: self.make_view(view),
+            high_vote: Some(self.make_replica_commit(rng, high_vote_view)),
+            high_qc: Some(self.make_commit_qc(rng, high_qc_view)),
+        }
+    }
+
+    /// Creates a TimeoutQC. If a payload is given, the QC will contain a
+    /// re-proposal for that payload
+    pub fn make_timeout_qc(
+        &self,
+        rng: &mut impl Rng,
+        view: ViewNumber,
+        payload_opt: Option<&Payload>,
+    ) -> TimeoutQC {
+        let mut vote = if let Some(payload) = payload_opt {
+            self.make_replica_commit_with_payload(payload, view.prev().unwrap())
+        } else {
+            self.make_replica_commit(rng, view.prev().unwrap())
+        };
+        let commit_qc = match self.0.blocks.last().unwrap() {
+            Block::Final(block) => block.justification.clone(),
+            _ => unreachable!(),
+        };
+
+        let mut qc = TimeoutQC::new(self.make_view(view));
+        if payload_opt.is_none() {
+            vote.proposal.payload = rng.gen();
+        }
+        let msg = ReplicaTimeout {
+            view: self.make_view(view),
+            high_vote: Some(vote.clone()),
+            high_qc: Some(commit_qc.clone()),
+        };
+        for key in &self.validator_keys {
+            qc.add(&key.sign_msg(msg.clone()), &self.genesis).unwrap();
+        }
+
+        qc
     }
 }
 
@@ -392,9 +493,9 @@ impl Distribution<Block> for Standard {
     }
 }
 
-impl Distribution<ReplicaPrepare> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaPrepare {
-        ReplicaPrepare {
+impl Distribution<ReplicaTimeout> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaTimeout {
+        ReplicaTimeout {
             view: rng.gen(),
             high_vote: rng.gen(),
             high_qc: rng.gen(),
@@ -411,30 +512,29 @@ impl Distribution<ReplicaCommit> for Standard {
     }
 }
 
-impl Distribution<LeaderPrepare> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderPrepare {
-        LeaderPrepare {
-            proposal: rng.gen(),
+impl Distribution<ReplicaNewView> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaNewView {
+        ReplicaNewView {
+            justification: rng.gen(),
+        }
+    }
+}
+
+impl Distribution<LeaderProposal> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderProposal {
+        LeaderProposal {
             proposal_payload: rng.gen(),
             justification: rng.gen(),
         }
     }
 }
 
-impl Distribution<LeaderCommit> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderCommit {
-        LeaderCommit {
-            justification: rng.gen(),
-        }
-    }
-}
-
-impl Distribution<PrepareQC> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> PrepareQC {
+impl Distribution<TimeoutQC> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TimeoutQC {
         let n = rng.gen_range(1..11);
         let map = (0..n).map(|_| (rng.gen(), rng.gen())).collect();
 
-        PrepareQC {
+        TimeoutQC {
             view: rng.gen(),
             map,
             signature: rng.gen(),
@@ -448,6 +548,16 @@ impl Distribution<CommitQC> for Standard {
             message: rng.gen(),
             signers: rng.gen(),
             signature: rng.gen(),
+        }
+    }
+}
+
+impl Distribution<ProposalJustification> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ProposalJustification {
+        match rng.gen_range(0..2) {
+            0 => ProposalJustification::Commit(rng.gen()),
+            1 => ProposalJustification::Timeout(rng.gen()),
+            _ => unreachable!(),
         }
     }
 }
@@ -523,10 +633,10 @@ impl Distribution<Msg> for Standard {
 impl Distribution<ConsensusMsg> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ConsensusMsg {
         match rng.gen_range(0..4) {
-            0 => ConsensusMsg::ReplicaPrepare(rng.gen()),
+            0 => ConsensusMsg::LeaderProposal(rng.gen()),
             1 => ConsensusMsg::ReplicaCommit(rng.gen()),
-            2 => ConsensusMsg::LeaderPrepare(rng.gen()),
-            3 => ConsensusMsg::LeaderCommit(rng.gen()),
+            2 => ConsensusMsg::ReplicaNewView(rng.gen()),
+            3 => ConsensusMsg::ReplicaTimeout(rng.gen()),
             _ => unreachable!(),
         }
     }

@@ -13,7 +13,6 @@ pub enum InputMessage {
 #[derive(Debug, PartialEq)]
 pub struct ConsensusInputMessage {
     pub message: validator::Signed<validator::ConsensusMsg>,
-    pub recipient: Target,
 }
 
 impl From<ConsensusInputMessage> for InputMessage {
@@ -38,10 +37,4 @@ pub struct ConsensusReq {
 pub enum OutputMessage {
     /// Message to the Consensus actor.
     Consensus(ConsensusReq),
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Target {
-    Validator(validator::PublicKey),
-    Broadcast,
 }

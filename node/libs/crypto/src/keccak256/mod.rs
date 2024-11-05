@@ -7,7 +7,7 @@ mod test;
 pub mod testonly;
 
 /// Keccak256 hash.
-#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Keccak256(pub(crate) [u8; 32]);
 
 impl Keccak256 {

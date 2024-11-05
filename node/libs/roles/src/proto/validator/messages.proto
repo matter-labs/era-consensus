@@ -39,23 +39,21 @@ message Block {
 message View {
   reserved 1,2;
   reserved "protocol_version","fork";
+
   optional GenesisHash genesis = 4; // required
   optional uint64 number = 3; // required; ViewNumber
 }
 
 message ConsensusMsg {
-  oneof t {// required
-    ReplicaPrepare replica_prepare = 1;
-    ReplicaCommit replica_commit = 2;
-    LeaderPrepare leader_prepare = 3;
-    LeaderCommit leader_commit = 4;
-  }
-}
+  reserved 1, 3, 4;
+  reserved "replica_prepare", "leader_prepare", "leader_commit";
 
-message ReplicaPrepare {
-  optional View view = 1; // required
-  optional ReplicaCommit high_vote = 2; // optional 
-  optional CommitQC high_qc = 3; // optional
+  oneof t { // required
+    ReplicaCommit replica_commit = 2;
+    ReplicaTimeout replica_timeout = 5;
+    ReplicaNewView replica_new_view = 6;
+    LeaderProposal leader_proposal = 7;
+  }
 }
 
 message ReplicaCommit {
@@ -63,21 +61,19 @@ message ReplicaCommit {
   optional BlockHeader proposal = 2; // required
 }
 
-message LeaderPrepare {
-  optional BlockHeader proposal = 1; // required
-  optional bytes proposal_payload = 2; // optional (depending on justification)
-  optional PrepareQC justification = 3; // required
+message ReplicaTimeout {
+  optional View view = 1; // required
+  optional ReplicaCommit high_vote = 2; // optional 
+  optional CommitQC high_qc = 3; // optional
 }
 
-message LeaderCommit {
-  optional CommitQC justification = 1; // required
+message ReplicaNewView {
+  optional ProposalJustification justification = 1; // required
 }
 
-message PrepareQC {
-  optional View view = 4; // required
-  repeated ReplicaPrepare msgs = 1; // required
-  repeated std.BitVector signers = 2; // required
-  optional AggregateSignature sig = 3; // required
+message LeaderProposal {
+  optional bytes proposal_payload = 1; // optional (depending on justification)
+  optional ProposalJustification justification = 2; // required
 }
 
 message CommitQC {
@@ -86,10 +82,25 @@ message CommitQC {
   optional AggregateSignature sig = 3; // required
 }
 
+message TimeoutQC {
+  optional View view = 4; // required
+  repeated ReplicaTimeout msgs = 1; // required
+  repeated std.BitVector signers = 2; // required
+  optional AggregateSignature sig = 3; // required
+}
+
+message ProposalJustification {
+  oneof t { // required
+    CommitQC commit_qc = 1;
+    TimeoutQC timeout_qc = 2;
+  }
+}
+
 message Phase {
-  oneof t {
+  oneof t { // required
     std.Void prepare = 1;
     std.Void commit = 2;
+    std.Void timeout = 3;
   }
 }
 

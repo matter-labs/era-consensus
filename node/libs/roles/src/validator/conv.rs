@@ -1,9 +1,9 @@
 use super::{
     AggregateSignature, Block, BlockHeader, BlockNumber, ChainId, CommitQC, Committee,
     ConsensusMsg, FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, Justification,
-    LeaderCommit, LeaderPrepare, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase,
-    PreGenesisBlock, PrepareQC, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaPrepare,
-    Signature, Signed, Signers, View, ViewNumber, WeightedValidator,
+    LeaderProposal, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PreGenesisBlock,
+    ProposalJustification, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaNewView,
+    ReplicaTimeout, Signature, Signed, Signers, TimeoutQC, View, ViewNumber, WeightedValidator,
 };
 use crate::{
     attester::{self, WeightedAttester},
@@ -186,12 +186,16 @@ impl ProtoFmt for ConsensusMsg {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         use proto::consensus_msg::T;
         Ok(match r.t.as_ref().context("missing")? {
-            T::ReplicaPrepare(r) => {
-                Self::ReplicaPrepare(ProtoFmt::read(r).context("ReplicaPrepare")?)
-            }
             T::ReplicaCommit(r) => Self::ReplicaCommit(ProtoFmt::read(r).context("ReplicaCommit")?),
-            T::LeaderPrepare(r) => Self::LeaderPrepare(ProtoFmt::read(r).context("LeaderPrepare")?),
-            T::LeaderCommit(r) => Self::LeaderCommit(ProtoFmt::read(r).context("LeaderCommit")?),
+            T::ReplicaTimeout(r) => {
+                Self::ReplicaTimeout(ProtoFmt::read(r).context("ReplicaTimeout")?)
+            }
+            T::ReplicaNewView(r) => {
+                Self::ReplicaNewView(ProtoFmt::read(r).context("ReplicaNewView")?)
+            }
+            T::LeaderProposal(r) => {
+                Self::LeaderProposal(ProtoFmt::read(r).context("LeaderProposal")?)
+            }
         })
     }
 
@@ -199,10 +203,10 @@ impl ProtoFmt for ConsensusMsg {
         use proto::consensus_msg::T;
 
         let t = match self {
-            Self::ReplicaPrepare(x) => T::ReplicaPrepare(x.build()),
             Self::ReplicaCommit(x) => T::ReplicaCommit(x.build()),
-            Self::LeaderPrepare(x) => T::LeaderPrepare(x.build()),
-            Self::LeaderCommit(x) => T::LeaderCommit(x.build()),
+            Self::ReplicaTimeout(x) => T::ReplicaTimeout(x.build()),
+            Self::ReplicaNewView(x) => T::ReplicaNewView(x.build()),
+            Self::LeaderProposal(x) => T::LeaderProposal(x.build()),
         };
 
         Self::Proto { t: Some(t) }
@@ -227,26 +231,6 @@ impl ProtoFmt for View {
     }
 }
 
-impl ProtoFmt for ReplicaPrepare {
-    type Proto = proto::ReplicaPrepare;
-
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {
-            view: read_required(&r.view).context("view")?,
-            high_vote: read_optional(&r.high_vote).context("high_vote")?,
-            high_qc: read_optional(&r.high_qc).context("high_qc")?,
-        })
-    }
-
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            view: Some(self.view.build()),
-            high_vote: self.high_vote.as_ref().map(ProtoFmt::build),
-            high_qc: self.high_qc.as_ref().map(ProtoFmt::build),
-        }
-    }
-}
-
 impl ProtoFmt for ReplicaCommit {
     type Proto = proto::ReplicaCommit;
 
@@ -265,12 +249,47 @@ impl ProtoFmt for ReplicaCommit {
     }
 }
 
-impl ProtoFmt for LeaderPrepare {
-    type Proto = proto::LeaderPrepare;
+impl ProtoFmt for ReplicaTimeout {
+    type Proto = proto::ReplicaTimeout;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            proposal: read_required(&r.proposal).context("proposal")?,
+            view: read_required(&r.view).context("view")?,
+            high_vote: read_optional(&r.high_vote).context("high_vote")?,
+            high_qc: read_optional(&r.high_qc).context("high_qc")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            view: Some(self.view.build()),
+            high_vote: self.high_vote.as_ref().map(ProtoFmt::build),
+            high_qc: self.high_qc.as_ref().map(ProtoFmt::build),
+        }
+    }
+}
+
+impl ProtoFmt for ReplicaNewView {
+    type Proto = proto::ReplicaNewView;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            justification: read_required(&r.justification).context("justification")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            justification: Some(self.justification.build()),
+        }
+    }
+}
+
+impl ProtoFmt for LeaderProposal {
+    type Proto = proto::LeaderProposal;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
             proposal_payload: r.proposal_payload.as_ref().map(|p| Payload(p.clone())),
             justification: read_required(&r.justification).context("justification")?,
         })
@@ -278,50 +297,41 @@ impl ProtoFmt for LeaderPrepare {
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            proposal: Some(self.proposal.build()),
             proposal_payload: self.proposal_payload.as_ref().map(|p| p.0.clone()),
             justification: Some(self.justification.build()),
         }
     }
 }
 
-impl ProtoFmt for LeaderCommit {
-    type Proto = proto::LeaderCommit;
+impl ProtoFmt for CommitQC {
+    type Proto = proto::CommitQc;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            justification: read_required(&r.justification).context("justification")?,
+            message: read_required(&r.msg).context("msg")?,
+            signers: read_required(&r.signers).context("signers")?,
+            signature: read_required(&r.sig).context("sig")?,
         })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            justification: Some(self.justification.build()),
+            msg: Some(self.message.build()),
+            signers: Some(self.signers.build()),
+            sig: Some(self.signature.build()),
         }
     }
 }
 
-impl ProtoFmt for Signers {
-    type Proto = zksync_protobuf::proto::std::BitVector;
-
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ProtoFmt::read(r)?))
-    }
-
-    fn build(&self) -> Self::Proto {
-        self.0.build()
-    }
-}
-
-impl ProtoFmt for PrepareQC {
-    type Proto = proto::PrepareQc;
+impl ProtoFmt for TimeoutQC {
+    type Proto = proto::TimeoutQc;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         let mut map = BTreeMap::new();
 
         for (msg, signers) in r.msgs.iter().zip(r.signers.iter()) {
             map.insert(
-                ReplicaPrepare::read(msg).context("msg")?,
+                ReplicaTimeout::read(msg).context("msg")?,
                 Signers::read(signers).context("signers")?,
             );
         }
@@ -349,23 +359,38 @@ impl ProtoFmt for PrepareQC {
     }
 }
 
-impl ProtoFmt for CommitQC {
-    type Proto = proto::CommitQc;
+impl ProtoFmt for ProposalJustification {
+    type Proto = proto::ProposalJustification;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {
-            message: read_required(&r.msg).context("msg")?,
-            signers: read_required(&r.signers).context("signers")?,
-            signature: read_required(&r.sig).context("sig")?,
+        use proto::proposal_justification::T;
+        Ok(match r.t.as_ref().context("missing")? {
+            T::CommitQc(r) => Self::Commit(ProtoFmt::read(r).context("Commit")?),
+            T::TimeoutQc(r) => Self::Timeout(ProtoFmt::read(r).context("Timeout")?),
         })
     }
 
     fn build(&self) -> Self::Proto {
-        Self::Proto {
-            msg: Some(self.message.build()),
-            signers: Some(self.signers.build()),
-            sig: Some(self.signature.build()),
-        }
+        use proto::proposal_justification::T;
+
+        let t = match self {
+            Self::Commit(x) => T::CommitQc(x.build()),
+            Self::Timeout(x) => T::TimeoutQc(x.build()),
+        };
+
+        Self::Proto { t: Some(t) }
+    }
+}
+
+impl ProtoFmt for Signers {
+    type Proto = zksync_protobuf::proto::std::BitVector;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ProtoFmt::read(r)?))
+    }
+
+    fn build(&self) -> Self::Proto {
+        self.0.build()
     }
 }
 
@@ -377,6 +402,7 @@ impl ProtoFmt for Phase {
         Ok(match required(&r.t)? {
             T::Prepare(_) => Self::Prepare,
             T::Commit(_) => Self::Commit,
+            T::Timeout(_) => Self::Timeout,
         })
     }
 
@@ -385,6 +411,7 @@ impl ProtoFmt for Phase {
         let t = match self {
             Self::Prepare => T::Prepare(zksync_protobuf::proto::std::Void {}),
             Self::Commit => T::Commit(zksync_protobuf::proto::std::Void {}),
+            Self::Timeout => T::Timeout(zksync_protobuf::proto::std::Void {}),
         };
         Self::Proto { t: Some(t) }
     }
