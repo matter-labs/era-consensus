@@ -10,7 +10,6 @@ use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{BlockStore, ReplicaStore};
-use zksync_consensus_utils::pipe;
 use zksync_protobuf::kB;
 
 #[cfg(test)]
@@ -113,14 +112,15 @@ impl Executor {
 
         // Generate the communication pipes. We have one for each actor.
         let (consensus_send, consensus_recv) = bft::Config::create_input_channel();
-        let (network_actor_pipe, network_dispatcher_pipe) = pipe::new();
+        let (network_send, network_recv) = ctx::channel::unbounded();
 
         tracing::debug!("Starting actors in separate threads.");
         scope::run!(ctx, |ctx, s| async {
             let (net, runner) = network::Network::new(
                 network_config,
                 self.block_store.clone(),
-                network_actor_pipe,
+                consensus_send,
+                network_recv,
                 self.attestation,
             );
             net.register_metrics();
@@ -158,7 +158,7 @@ impl Executor {
                 payload_manager: validator.payload_manager,
                 max_payload_size: self.config.max_payload_size,
             }
-            .run(ctx, consensus_actor_pipe, consensus_recv)
+            .run(ctx, network_send, consensus_recv)
             .await
             .context("Consensus stopped")
         })
