@@ -113,11 +113,13 @@ impl Config {
         )
     }
 
+    /// Filter predicate for incoming messages.
     fn inbound_filter_predicate(new_req: &FromNetworkMessage) -> bool {
         // Verify message signature
         new_req.msg.verify().is_ok()
     }
 
+    /// Selection function for incoming messages.
     fn inbound_selection_function(
         old_req: &FromNetworkMessage,
         new_req: &FromNetworkMessage,

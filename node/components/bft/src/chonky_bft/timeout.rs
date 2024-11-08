@@ -176,7 +176,7 @@ impl StateMachine {
                 )),
         };
 
-        self.outbound_channel.send(output_message.into());
+        self.outbound_channel.send(output_message);
 
         // Log the event.
         tracing::info!("Timed out at view {}", self.view_number);

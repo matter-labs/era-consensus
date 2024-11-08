@@ -82,9 +82,9 @@ pub(crate) async fn forward(
 /// events channel.
 pub struct Instance {
     /// State of the instance.
-    pub(crate) net: Arc<Network>,
+    pub net: Arc<Network>,
     /// Termination signal that can be sent to the node.
-    pub(crate) terminate: channel::Sender<()>,
+    pub terminate: channel::Sender<()>,
     /// Receiver channel to receive messages from the network component that are
     /// intended for the consensus component.
     pub consensus_receiver: sync::prunable_mpsc::Receiver<ConsensusReq>,

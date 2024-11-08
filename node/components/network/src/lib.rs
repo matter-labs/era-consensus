@@ -23,7 +23,6 @@ mod pool;
 mod preface;
 pub mod proto;
 mod rpc;
-mod state;
 pub mod testonly;
 #[cfg(test)]
 mod tests;

@@ -310,14 +310,12 @@ async fn test_transmission() {
             let in_message = io::ConsensusInputMessage {
                 message: want.clone(),
             };
-            nodes[0].consensus_sender.send(in_message.into());
+            nodes[0].consensus_sender.send(in_message);
 
-            loop {
-                let message = nodes[1].consensus_receiver.recv(ctx).await.unwrap();
-                assert_eq!(want, message.msg);
-                tracing::info!("OK");
-                break;
-            }
+            let message = nodes[1].consensus_receiver.recv(ctx).await.unwrap();
+
+            assert_eq!(want, message.msg);
+            tracing::info!("OK");
         }
         Ok(())
     })
@@ -346,12 +344,9 @@ async fn test_retransmission() {
 
         // Make first node broadcast a message.
         let want: validator::Signed<validator::ConsensusMsg> = rng.gen();
-        node0.consensus_sender.send(
-            io::ConsensusInputMessage {
-                message: want.clone(),
-            }
-            .into(),
-        );
+        node0.consensus_sender.send(io::ConsensusInputMessage {
+            message: want.clone(),
+        });
 
         // Spawn the second node multiple times.
         // Each time the node should reconnect and re-receive the broadcasted consensus message.
@@ -361,12 +356,12 @@ async fn test_retransmission() {
                 let (mut node1, runner) =
                     testonly::Instance::new(cfgs[1].clone(), store.blocks.clone());
                 s.spawn_bg(runner.run(ctx));
-                loop {
-                    let message = node1.consensus_receiver.recv(ctx).await.unwrap();
-                    assert_eq!(want, message.msg);
-                    tracing::info!("OK");
-                    break;
-                }
+
+                let message = node1.consensus_receiver.recv(ctx).await.unwrap();
+
+                assert_eq!(want, message.msg);
+                tracing::info!("OK");
+
                 Ok(())
             })
             .await

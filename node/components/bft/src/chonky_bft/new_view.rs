@@ -139,7 +139,7 @@ impl StateMachine {
                     },
                 )),
         };
-        self.outbound_channel.send(output_message.into());
+        self.outbound_channel.send(output_message);
 
         // Log the event and update the metrics.
         tracing::info!("Starting view {}", self.view_number);

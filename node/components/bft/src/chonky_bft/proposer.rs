@@ -50,7 +50,7 @@ pub(crate) async fn run_proposer(
             .secret_key
             .sign_msg(validator::ConsensusMsg::LeaderProposal(proposal));
 
-        network_sender.send(ConsensusInputMessage { message: msg }.into());
+        network_sender.send(ConsensusInputMessage { message: msg });
     }
 }
 
