@@ -5,7 +5,6 @@ use zksync_concurrency::{ctx, scope};
 use zksync_consensus_network as network;
 use zksync_consensus_storage as storage;
 use zksync_consensus_storage::testonly::in_memory;
-use zksync_consensus_utils::pipe;
 
 pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
 

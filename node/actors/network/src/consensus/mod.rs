@@ -134,7 +134,7 @@ impl rpc::Handler<rpc::consensus::Rpc> for &Network {
         req: rpc::consensus::Req,
     ) -> anyhow::Result<rpc::consensus::Resp> {
         let (send, recv) = oneshot::channel();
-        self.gossip.sender.send(io::ConsensusReq {
+        self.gossip.consensus_sender.send(io::ConsensusReq {
             msg: req.0,
             ack: send,
         });

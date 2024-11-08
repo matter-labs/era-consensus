@@ -18,7 +18,7 @@ use fetch::RequestItem;
 use std::sync::{atomic::AtomicUsize, Arc};
 use tracing::Instrument;
 pub(crate) use validator_addrs::*;
-use zksync_concurrency::{ctx, ctx::channel, scope, sync};
+use zksync_concurrency::{ctx, scope, sync};
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 
@@ -56,8 +56,8 @@ pub(crate) struct Network {
     pub(crate) validator_addrs: ValidatorAddrsWatch,
     /// Block store to serve `get_block` requests from.
     pub(crate) block_store: Arc<BlockStore>,
-    /// Output pipe of the network actor.
-    pub(crate) sender: channel::UnboundedSender<io::OutputMessage>,
+    /// Sender of the channel to the consensus actor.
+    pub(crate) consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
     /// Queue of block fetching requests.
     ///
     /// These are blocks that this node wants to request from remote peers via RPC.
@@ -75,11 +75,11 @@ impl Network {
     pub(crate) fn new(
         cfg: Config,
         block_store: Arc<BlockStore>,
-        sender: channel::UnboundedSender<io::OutputMessage>,
+        consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
         attestation: Arc<attestation::Controller>,
     ) -> Arc<Self> {
         Arc::new(Self {
-            sender,
+            consensus_sender,
             inbound: PoolWatch::new(
                 cfg.gossip.static_inbound.clone(),
                 cfg.gossip.dynamic_inbound_limit,

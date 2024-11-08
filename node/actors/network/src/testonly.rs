@@ -1,8 +1,8 @@
 //! Testonly utilities.
 #![allow(dead_code)]
 use crate::{
-    gossip::attestation, io::ConsensusInputMessage, Config, GossipConfig, Network, RpcConfig,
-    Runner,
+    gossip::attestation, io::ConsensusInputMessage, io::ConsensusReq, Config, GossipConfig,
+    Network, RpcConfig, Runner,
 };
 use rand::{
     distributions::{Distribution, Standard},
@@ -14,11 +14,11 @@ use std::{
 };
 use zksync_concurrency::{
     ctx::{self, channel},
-    io, limiter, net, scope, sync,
+    io, limiter, net, scope,
+    sync::{self, prunable_mpsc::SelectionFunctionResult},
 };
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
-use zksync_consensus_utils::pipe;
 
 impl Distribution<ConsensusInputMessage> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ConsensusInputMessage {
@@ -85,8 +85,12 @@ pub struct Instance {
     pub(crate) net: Arc<Network>,
     /// Termination signal that can be sent to the node.
     pub(crate) terminate: channel::Sender<()>,
-    /// Dispatcher end of the network pipe.
-    pub(crate) pipe: pipe::DispatcherPipe<crate::io::InputMessage, crate::io::OutputMessage>,
+    /// Receiver channel to receive messages from the network component that are
+    /// intended for the consensus component.
+    pub(crate) consensus_receiver: sync::prunable_mpsc::Receiver<ConsensusReq>,
+    /// Sender channel to send messages to the network component that are from
+    /// the consensus component.
+    pub(crate) consensus_sender: channel::UnboundedSender<ConsensusInputMessage>,
 }
 
 /// Construct configs for `n` validators of the consensus.
@@ -199,18 +203,24 @@ impl Instance {
 
     /// Construct an instance for a given config.
     pub fn new_from_config(cfg: InstanceConfig) -> (Self, InstanceRunner) {
-        let (actor_pipe, dispatcher_pipe) = pipe::new();
+        let (net_to_con_send, net_to_con_recv) =
+            sync::prunable_mpsc::channel(|_| true, |_, _| SelectionFunctionResult::Keep);
+        let (con_to_net_send, con_to_net_recv) = channel::unbounded();
+        let (terminate_send, terminate_recv) = channel::bounded(1);
+
         let (net, net_runner) = Network::new(
             cfg.cfg,
             cfg.block_store.clone(),
-            actor_pipe,
+            net_to_con_send,
+            con_to_net_recv,
             cfg.attestation,
         );
-        let (terminate_send, terminate_recv) = channel::bounded(1);
+
         (
             Self {
                 net,
-                pipe: dispatcher_pipe,
+                consensus_receiver: net_to_con_recv,
+                consensus_sender: con_to_net_send,
                 terminate: terminate_send,
             },
             InstanceRunner {
@@ -225,13 +235,6 @@ impl Instance {
     pub async fn terminate(&self, ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
         let _ = self.terminate.try_send(());
         self.terminate.closed(ctx).await
-    }
-
-    /// Pipe getter.
-    pub fn pipe(
-        &mut self,
-    ) -> &mut pipe::DispatcherPipe<crate::io::InputMessage, crate::io::OutputMessage> {
-        &mut self.pipe
     }
 
     /// State getter.

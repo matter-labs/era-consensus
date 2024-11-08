@@ -310,15 +310,13 @@ async fn test_transmission() {
             let in_message = io::ConsensusInputMessage {
                 message: want.clone(),
             };
-            nodes[0].pipe.send(in_message.into());
+            nodes[0].consensus_sender.send(in_message.into());
 
             loop {
-                let output_message = nodes[1].pipe.recv(ctx).await.unwrap();
-                if let io::OutputMessage::Consensus(got) = output_message {
-                    assert_eq!(want, got.msg);
-                    tracing::info!("OK");
-                    break;
-                };
+                let message = nodes[1].consensus_receiver.recv(ctx).await.unwrap();
+                assert_eq!(want, message.msg);
+                tracing::info!("OK");
+                break;
             }
         }
         Ok(())
@@ -348,7 +346,7 @@ async fn test_retransmission() {
 
         // Make first node broadcast a message.
         let want: validator::Signed<validator::ConsensusMsg> = rng.gen();
-        node0.pipe.send(
+        node0.consensus_sender.send(
             io::ConsensusInputMessage {
                 message: want.clone(),
             }
@@ -364,11 +362,10 @@ async fn test_retransmission() {
                     testonly::Instance::new(cfgs[1].clone(), store.blocks.clone());
                 s.spawn_bg(runner.run(ctx));
                 loop {
-                    if let io::OutputMessage::Consensus(got) = node1.pipe.recv(ctx).await.unwrap() {
-                        assert_eq!(want, got.msg);
-                        tracing::info!("OK");
-                        break;
-                    }
+                    let message = node1.consensus_receiver.recv(ctx).await.unwrap();
+                    assert_eq!(want, message.msg);
+                    tracing::info!("OK");
+                    break;
                 }
                 Ok(())
             })
