@@ -2,7 +2,7 @@
 use zksync_concurrency::oneshot;
 use zksync_consensus_roles::validator;
 
-/// Message types from the Consensus actor.
+/// Message types from the Consensus component.
 #[derive(Debug, PartialEq)]
 pub struct ConsensusInputMessage {
     pub message: validator::Signed<validator::ConsensusMsg>,
@@ -13,7 +13,7 @@ pub struct ConsensusInputMessage {
 pub struct ConsensusReq {
     /// Payload.
     pub msg: validator::Signed<validator::ConsensusMsg>,
-    /// Channel that should be used to notify network actor that
+    /// Channel that should be used to notify the network component that
     /// processing of this message has been completed.
     /// Used for rate limiting.
     pub ack: oneshot::Sender<()>,

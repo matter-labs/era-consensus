@@ -139,7 +139,7 @@ impl rpc::Handler<rpc::consensus::Rpc> for &Network {
             ack: send,
         });
         // TODO(gprusak): disconnection means that there message was rejected OR
-        // that bft actor is missing (in tests), which leads to unnecessary disconnects.
+        // that bft component is missing (in tests), which leads to unnecessary disconnects.
         let _ = recv.recv_or_disconnected(ctx).await?;
         Ok(rpc::consensus::Resp)
     }

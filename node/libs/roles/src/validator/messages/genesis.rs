@@ -140,7 +140,7 @@ impl TryFrom<u32> for ProtocolVersion {
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         // Currently, consensus doesn't define restrictions on the possible version. Unsupported
-        // versions are filtered out on the BFT actor level instead.
+        // versions are filtered out on the BFT component level instead.
         Ok(Self(value))
     }
 }

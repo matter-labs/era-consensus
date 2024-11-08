@@ -78,7 +78,7 @@ pub(crate) async fn forward(
     let _ = io::shutdown(ctx, &mut write).await;
 }
 
-/// Node instance, wrapping the network actor state and the
+/// Node instance, wrapping the network component state and the
 /// events channel.
 pub struct Instance {
     /// State of the instance.

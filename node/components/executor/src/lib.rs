@@ -71,7 +71,7 @@ impl Config {
     }
 }
 
-/// Executor allowing to spin up all actors necessary for a consensus node.
+/// Executor allowing to spin up all components necessary for a consensus node.
 #[derive(Debug)]
 pub struct Executor {
     /// General-purpose executor configuration.
@@ -110,11 +110,11 @@ impl Executor {
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let network_config = self.network_config();
 
-        // Generate the communication pipes. We have one for each actor.
+        // Generate the communication channels. We have one for each component.
         let (consensus_send, consensus_recv) = bft::Config::create_input_channel();
         let (network_send, network_recv) = ctx::channel::unbounded();
 
-        tracing::debug!("Starting actors in separate threads.");
+        tracing::debug!("Starting components in separate threads.");
         scope::run!(ctx, |ctx, s| async {
             let (net, runner) = network::Network::new(
                 network_config,
@@ -135,7 +135,7 @@ impl Executor {
                 });
             }
 
-            // Run the bft actor iff this node is an active validator.
+            // Run the bft component iff this node is an active validator.
             let Some(validator) = self.validator else {
                 tracing::info!("Running the node in non-validator mode.");
                 return Ok(());

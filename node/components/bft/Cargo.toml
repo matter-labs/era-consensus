@@ -1,6 +1,6 @@
 [package]
 authors.workspace    = true
-description          = "ZKsync consensus bft actor"
+description          = "ZKsync consensus BFT component"
 edition.workspace    = true
 homepage.workspace   = true
 keywords.workspace   = true

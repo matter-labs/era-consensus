@@ -4,7 +4,7 @@ use std::sync::Arc;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage as storage;
 
-/// Configuration of the bft actor.
+/// Configuration of the bft component.
 #[derive(Debug)]
 pub struct Config {
     /// The validator's secret key.

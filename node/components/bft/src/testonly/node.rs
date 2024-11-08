@@ -45,12 +45,12 @@ impl Node {
         consensus_sender: channel::UnboundedSender<ToNetworkMessage>,
     ) -> anyhow::Result<()> {
         scope::run!(ctx, |ctx, s| async {
-            // Create a channel for consensus actor to send messages to the network.
+            // Create a channel for the consensus component to send messages to the network.
             // We will use this extra channel to filter messages depending on the nodes
             // behavior.
             let (net_send, mut net_recv) = channel::unbounded();
 
-            // Run the consensus actor
+            // Run the consensus component
             s.spawn(async {
                 let validator_key = self.net.validator_key.clone().unwrap();
                 crate::Config {
@@ -65,7 +65,7 @@ impl Node {
                 .context("consensus.run()")
             });
 
-            // Forward output messages from the actor to the network;
+            // Forward output messages from the consensus to the network;
             // turns output from this to inputs for others.
             // Get the next message from the channel. Our response depends on what type of replica we are.
             while let Ok(msg) = net_recv.recv(ctx).await {

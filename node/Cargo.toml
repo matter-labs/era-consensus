@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "actors/bft",
-    "actors/executor",
-    "actors/network",
+    "components/bft",
+    "components/executor",
+    "components/network",
     "libs/concurrency",
     "libs/crypto",
     "libs/protobuf",
@@ -26,10 +26,10 @@ version    = "0.5.0"
 
 [workspace.dependencies]
 # Crates from this repo.
-zksync_consensus_bft      = { version = "=0.5.0", path = "actors/bft" }
+zksync_consensus_bft      = { version = "=0.5.0", path = "components/bft" }
 zksync_consensus_crypto   = { version = "=0.5.0", path = "libs/crypto" }
-zksync_consensus_executor = { version = "=0.5.0", path = "actors/executor" }
-zksync_consensus_network  = { version = "=0.5.0", path = "actors/network" }
+zksync_consensus_executor = { version = "=0.5.0", path = "components/executor" }
+zksync_consensus_network  = { version = "=0.5.0", path = "components/network" }
 zksync_consensus_roles    = { version = "=0.5.0", path = "libs/roles" }
 zksync_consensus_storage  = { version = "=0.5.0", path = "libs/storage" }
 zksync_consensus_tools    = { version = "=0.5.0", path = "tools" }

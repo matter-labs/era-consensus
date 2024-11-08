@@ -1,4 +1,4 @@
-//! Network actor maintaining a pool of outbound and inbound connections to other nodes.
+//! Network component maintaining a pool of outbound and inbound connections to other nodes.
 use anyhow::Context as _;
 use gossip::attestation;
 use std::sync::Arc;
@@ -31,7 +31,7 @@ mod watch;
 pub use config::*;
 pub use metrics::MeteredStreamStats;
 
-/// State of the network actor observable outside of the actor.
+/// State of the network component observable outside of the component.
 pub struct Network {
     /// Consensus network state.
     pub(crate) consensus: Option<Arc<consensus::Network>>,
@@ -49,8 +49,8 @@ pub struct Runner {
 }
 
 impl Network {
-    /// Constructs a new network actor state.
-    /// Call `run_network` to run the actor.
+    /// Constructs a new network component state.
+    /// Call `run_network` to run the component.
     pub fn new(
         cfg: Config,
         block_store: Arc<BlockStore>,
@@ -93,7 +93,7 @@ impl Network {
 }
 
 impl Runner {
-    /// Runs the network actor.
+    /// Runs the network component.
     pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let res: ctx::Result<()> = scope::run!(ctx, |ctx, s| async {
             let mut listener = self

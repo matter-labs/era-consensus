@@ -1,6 +1,6 @@
 [package]
 authors.workspace    = true
-description          = "ZKsync consensus executor actor"
+description          = "ZKsync consensus executor component"
 edition.workspace    = true
 homepage.workspace   = true
 keywords.workspace   = true

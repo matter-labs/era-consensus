@@ -263,7 +263,7 @@ impl StateMachine {
             };
             metrics::METRICS.message_processing_latency[&label].observe_latency(ctx.now() - now);
 
-            // Notify network actor that the message has been processed.
+            // Notify network component that the message has been processed.
             // Ignore sending error.
             let _ = req.ack.send(());
         }

@@ -1,4 +1,4 @@
-//! This crate contains the consensus actor, which is responsible for handling the logic that allows us to reach agreement on blocks.
+//! This crate contains the consensus component, which is responsible for handling the logic that allows us to reach agreement on blocks.
 //! It uses a new cosnensus algorithm developed at Matter Labs, called ChonkyBFT. You can find the specification of the algorithm [here](../../../../spec).
 
 use anyhow::Context;
@@ -48,7 +48,7 @@ pub trait PayloadManager: std::fmt::Debug + Send + Sync {
 }
 
 impl Config {
-    /// Starts the bft actor. It will start running, processing incoming messages and
+    /// Starts the bft component. It will start running, processing incoming messages and
     /// sending output messages.
     pub async fn run(
         self,
@@ -79,7 +79,7 @@ impl Config {
         .await?;
 
         let res = scope::run!(ctx, |ctx, s| async {
-            tracing::info!("Starting consensus actor {:?}", cfg.secret_key.public());
+            tracing::info!("Starting consensus component {:?}", cfg.secret_key.public());
 
             s.spawn(async { replica.run(ctx).await.wrap("replica.run()") });
             s.spawn_bg(async {

@@ -1,4 +1,4 @@
-//! Network actor configs.
+//! Network component configs.
 use std::collections::{HashMap, HashSet};
 use zksync_concurrency::{limiter, net, time};
 use zksync_consensus_roles::{node, validator};
@@ -82,7 +82,7 @@ pub struct GossipConfig {
     pub static_outbound: HashMap<node::PublicKey, net::Host>,
 }
 
-/// Network actor config.
+/// Network component config.
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Label identifying the build version of the binary that this node is running.
@@ -116,7 +116,7 @@ pub struct Config {
     /// Set it to `false` in tests to simulate node behavior before pre-genesis support.
     pub enable_pregenesis: bool,
     /// Maximum number of not-yet-persisted blocks fetched from the network.
-    /// If reached, network actor will wait for more blocks to get persisted
+    /// If reached, network component will wait for more blocks to get persisted
     /// before fetching the next ones. It is useful for limiting memory consumption
     /// when the block persisting rate is low.
     pub max_block_queue_size: usize,

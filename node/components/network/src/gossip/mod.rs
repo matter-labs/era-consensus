@@ -56,7 +56,7 @@ pub(crate) struct Network {
     pub(crate) validator_addrs: ValidatorAddrsWatch,
     /// Block store to serve `get_block` requests from.
     pub(crate) block_store: Arc<BlockStore>,
-    /// Sender of the channel to the consensus actor.
+    /// Sender of the channel to the consensus component.
     pub(crate) consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
     /// Queue of block fetching requests.
     ///

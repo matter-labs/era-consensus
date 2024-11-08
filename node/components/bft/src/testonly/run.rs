@@ -318,7 +318,7 @@ async fn run_nodes_twins(
     .await
 }
 
-/// Receive input messages from the consensus actor and send them to the others
+/// Receive input messages from the consensus component and send them to the others
 /// according to the partition schedule of the port associated with this instance.
 ///
 /// We have to simulate the gossip layer which isn't instantiated by these tests.
