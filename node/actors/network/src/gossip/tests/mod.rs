@@ -15,7 +15,8 @@ use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx,
     error::Wrap as _,
-    limiter, net, scope, sync,
+    limiter, net, scope,
+    sync::{self, prunable_mpsc::SelectionFunctionResult},
     testonly::{abort_on_panic, set_timeout},
     time,
 };
@@ -518,12 +519,16 @@ async fn test_batch_votes_propagation() {
         for (i, mut cfg) in cfgs.into_iter().enumerate() {
             cfg.rpc.push_batch_votes_rate = limiter::Rate::INF;
             cfg.validator_key = None;
-            let (node, runner) = testonly::Instance::new_from_config(testonly::InstanceConfig {
-                cfg: cfg.clone(),
-                block_store: store.blocks.clone(),
-                attestation: attestation::Controller::new(Some(setup.attester_keys[i].clone()))
-                    .into(),
-            });
+            let (node, runner) = testonly::Instance::new_from_config(
+                testonly::InstanceConfig {
+                    cfg: cfg.clone(),
+                    block_store: store.blocks.clone(),
+                    attestation: attestation::Controller::new(Some(setup.attester_keys[i].clone()))
+                        .into(),
+                },
+                |_| true,
+                |_, _| SelectionFunctionResult::Keep,
+            );
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             // Task going through the schedule, waiting for ANY node to collect the certificate
             // to advance to the next round of the schedule.

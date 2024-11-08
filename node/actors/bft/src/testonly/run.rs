@@ -1,6 +1,7 @@
 use super::{Behavior, Node};
+use crate::{FromNetworkMessage, ToNetworkMessage};
 use anyhow::Context as _;
-use network::{io, Config};
+use network::Config;
 use rand::seq::SliceRandom;
 use std::{
     collections::{HashMap, HashSet},
@@ -12,12 +13,11 @@ use zksync_concurrency::{
         self,
         channel::{self, UnboundedReceiver, UnboundedSender},
     },
-    oneshot, scope,
+    oneshot, scope, sync,
 };
 use zksync_consensus_network::{self as network};
 use zksync_consensus_roles::{validator, validator::testonly::Setup};
 use zksync_consensus_storage::{testonly::TestMemoryStorage, BlockStore};
-use zksync_consensus_utils::pipe;
 
 pub(crate) enum Network {
     Real,
@@ -199,8 +199,12 @@ async fn run_nodes_real(ctx: &ctx::Ctx, specs: &[Node]) -> anyhow::Result<()> {
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
         for (i, spec) in specs.iter().enumerate() {
-            let (node, runner) =
-                network::testonly::Instance::new(spec.net.clone(), spec.block_store.clone());
+            let (node, runner) = network::testonly::Instance::new_with_filters(
+                spec.net.clone(),
+                spec.block_store.clone(),
+                crate::Config::inbound_filter_predicate,
+                crate::Config::inbound_selection_function,
+            );
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -209,8 +213,9 @@ async fn run_nodes_real(ctx: &ctx::Ctx, specs: &[Node]) -> anyhow::Result<()> {
             let spec = &specs[i];
             s.spawn(
                 async {
-                    let mut node = node;
-                    spec.run(ctx, node.pipe()).await
+                    let node = node;
+                    spec.run(ctx, node.consensus_receiver, node.consensus_sender)
+                        .await
                 }
                 .instrument(tracing::info_span!("node", i)),
             );
@@ -242,14 +247,16 @@ async fn run_nodes_twins(
         let mut gossip_targets = HashMap::new();
 
         for (i, spec) in specs.iter().enumerate() {
-            let (actor_pipe, dispatcher_pipe) = pipe::new();
+            let (output_channel_send, output_channel_recv) = channel::unbounded();
+            let (input_channel_send, input_channel_recv) = crate::Config::create_input_channel();
+
             let validator_key = spec.net.validator_key.as_ref().unwrap().public();
             let port = spec.net.server_addr.port();
 
             validator_ports.entry(validator_key).or_default().push(port);
 
-            sends.insert(port, actor_pipe.send);
-            recvs.push((port, actor_pipe.recv));
+            sends.insert(port, input_channel_send);
+            recvs.push((port, output_channel_recv));
             stores.insert(port, spec.block_store.clone());
             gossip_targets.insert(
                 port,
@@ -264,15 +271,10 @@ async fn run_nodes_twins(
                     .collect(),
             );
 
-            // Run consensus; the dispatcher pipe is its network connection, which means we can use the actor pipe to:
-            // * send Output messages from other actors to this consensus instance
-            // * receive Input messages sent by this consensus to the other actors
+            // Run consensus node.
             s.spawn(
-                async {
-                    let mut network_pipe = dispatcher_pipe;
-                    spec.run(ctx, &mut network_pipe).await
-                }
-                .instrument(tracing::info_span!("node", i, port)),
+                async { spec.run(ctx, input_channel_recv, output_channel_send).await }
+                    .instrument(tracing::info_span!("node", i, port)),
             );
         }
         // Taking these references is necessary for the `scope::run!` environment lifetime rules to compile
@@ -325,15 +327,15 @@ async fn run_nodes_twins(
 async fn twins_receive_loop(
     ctx: &ctx::Ctx,
     router: &PortRouter,
-    sends: &HashMap<Port, UnboundedSender<io::OutputMessage>>,
+    sends: &HashMap<Port, sync::prunable_mpsc::Sender<FromNetworkMessage>>,
     gossip: TwinsGossipConfig<'_>,
     port: Port,
-    mut recv: UnboundedReceiver<io::InputMessage>,
+    mut recv: UnboundedReceiver<ToNetworkMessage>,
 ) -> anyhow::Result<()> {
     let rng = &mut ctx.rng();
 
     // Finalized block number iff this node can gossip to the target and the message contains a QC.
-    let block_to_gossip = |target_port: Port, msg: &io::OutputMessage| {
+    let block_to_gossip = |target_port: Port, msg: &FromNetworkMessage| {
         if !gossip.targets.contains(&target_port) {
             return None;
         }
@@ -355,10 +357,10 @@ async fn twins_receive_loop(
     //   partitioned, and then unstash all previous A-to-B messages.
     // * If that wouldn't be acceptable then we could have some kind of global view of stashed messages
     //   and unstash them as soon as someone moves on to a new view.
-    let mut stashes: HashMap<Port, Vec<io::OutputMessage>> = HashMap::new();
+    let mut stashes: HashMap<Port, Vec<FromNetworkMessage>> = HashMap::new();
 
     // Either stash a message, or unstash all messages and send them to the target along with the new one.
-    let mut send_or_stash = |can_send: bool, target_port: Port, msg: io::OutputMessage| {
+    let mut send_or_stash = |can_send: bool, target_port: Port, msg: FromNetworkMessage| {
         let stash = stashes.entry(target_port).or_default();
         let view = output_msg_view_number(&msg);
         let kind = output_msg_label(&msg);
@@ -401,15 +403,13 @@ async fn twins_receive_loop(
         send(msg);
     };
 
-    while let Ok(io::InputMessage::Consensus(message)) = recv.recv(ctx).await {
+    while let Ok(message) = recv.recv(ctx).await {
         let view = message.message.msg.view().number.0 as usize;
         let kind = message.message.msg.label();
 
-        let msg = || {
-            io::OutputMessage::Consensus(io::ConsensusReq {
-                msg: message.message.clone(),
-                ack: oneshot::channel().0,
-            })
+        let msg = || FromNetworkMessage {
+            msg: message.message.clone(),
+            ack: oneshot::channel().0,
         };
 
         let can_send = |to| {
@@ -490,28 +490,22 @@ async fn twins_gossip_loop(
     .await
 }
 
-fn output_msg_view_number(msg: &io::OutputMessage) -> validator::ViewNumber {
-    match msg {
-        io::OutputMessage::Consensus(cr) => cr.msg.msg.view().number,
-    }
+fn output_msg_view_number(msg: &FromNetworkMessage) -> validator::ViewNumber {
+    msg.msg.msg.view().number
 }
 
-fn output_msg_label(msg: &io::OutputMessage) -> &str {
-    match msg {
-        io::OutputMessage::Consensus(cr) => cr.msg.msg.label(),
-    }
+fn output_msg_label(msg: &FromNetworkMessage) -> &str {
+    msg.msg.msg.label()
 }
 
-fn output_msg_commit_qc(msg: &io::OutputMessage) -> Option<&validator::CommitQC> {
+fn output_msg_commit_qc(msg: &FromNetworkMessage) -> Option<&validator::CommitQC> {
     use validator::ConsensusMsg;
 
-    let justification = match msg {
-        io::OutputMessage::Consensus(cr) => match &cr.msg.msg {
-            ConsensusMsg::ReplicaTimeout(msg) => return msg.high_qc.as_ref(),
-            ConsensusMsg::ReplicaCommit(_) => return None,
-            ConsensusMsg::ReplicaNewView(msg) => &msg.justification,
-            ConsensusMsg::LeaderProposal(msg) => &msg.justification,
-        },
+    let justification = match &msg.msg.msg {
+        ConsensusMsg::ReplicaTimeout(msg) => return msg.high_qc.as_ref(),
+        ConsensusMsg::ReplicaCommit(_) => return None,
+        ConsensusMsg::ReplicaNewView(msg) => &msg.justification,
+        ConsensusMsg::LeaderProposal(msg) => &msg.justification,
     };
 
     match justification {

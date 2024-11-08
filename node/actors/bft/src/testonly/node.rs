@@ -1,7 +1,8 @@
-use crate::{testonly, PayloadManager};
+use crate::{testonly, FromNetworkMessage, PayloadManager, ToNetworkMessage};
 use anyhow::Context as _;
 use std::sync::Arc;
-use zksync_concurrency::{ctx, scope};
+use zksync_concurrency::ctx::channel;
+use zksync_concurrency::{ctx, scope, sync};
 use zksync_consensus_network as network;
 use zksync_consensus_storage as storage;
 use zksync_consensus_storage::testonly::in_memory;
@@ -40,15 +41,15 @@ impl Node {
     pub(crate) async fn run(
         &self,
         ctx: &ctx::Ctx,
-        network_pipe: &mut pipe::DispatcherPipe<
-            network::io::InputMessage,
-            network::io::OutputMessage,
-        >,
+        consensus_receiver: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
+        consensus_sender: channel::UnboundedSender<ToNetworkMessage>,
     ) -> anyhow::Result<()> {
-        let net_recv = &mut network_pipe.recv;
-        let net_send = &mut network_pipe.send;
-        let (con_send, con_recv) = crate::Config::create_input_channel();
         scope::run!(ctx, |ctx, s| async {
+            // Create a channel for consensus actor to send messages to the network.
+            // We will use this extra channel to filter messages depending on the nodes
+            // behavior.
+            let (net_send, mut net_recv) = channel::unbounded();
+
             // Run the consensus actor
             s.spawn(async {
                 let validator_key = self.net.validator_key.clone().unwrap();
@@ -59,35 +60,19 @@ impl Node {
                     payload_manager: self.behavior.payload_manager(),
                     max_payload_size: MAX_PAYLOAD_SIZE,
                 }
-                .run(ctx, net_send, con_recv)
+                .run(ctx, net_send, consensus_receiver)
                 .await
                 .context("consensus.run()")
             });
-            // Forward input messages received from the network to the actor;
-            // turns output from others to input for this instance.
-            s.spawn(async {
-                while let Ok(network_message) = net_recv.recv(ctx).await {
-                    match network_message {
-                        network::io::OutputMessage::Consensus(req) => {
-                            con_send.send(io::InputMessage::Network(req));
-                        }
-                    }
-                }
-                Ok(())
-            });
+
             // Forward output messages from the actor to the network;
             // turns output from this to inputs for others.
             // Get the next message from the channel. Our response depends on what type of replica we are.
-            while let Ok(msg) = con_recv.recv(ctx).await {
-                match msg {
-                    io::OutputMessage::Network(message) => {
-                        let message_to_send = match self.behavior {
-                            Behavior::Offline => continue,
-                            Behavior::Honest | Behavior::HonestNotProposing => message,
-                        };
-                        net_send.send(message_to_send.into());
-                    }
-                }
+            while let Ok(msg) = net_recv.recv(ctx).await {
+                match self.behavior {
+                    Behavior::Offline => (),
+                    Behavior::Honest | Behavior::HonestNotProposing => consensus_sender.send(msg),
+                };
             }
             Ok(())
         })

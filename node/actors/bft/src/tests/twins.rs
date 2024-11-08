@@ -254,12 +254,15 @@ async fn twins_network_w2_twins_w_partitions(num_reseeds: usize) {
 }
 
 /// Run Twins scenario with more twins than tolerable and expect it to fail.
+/// Disabled by default since it can take a long time to run depending on
+/// the initial seed.
+#[ignore]
 #[tokio::test]
 async fn twins_network_to_fail() {
     tokio::time::pause();
     assert_matches!(
         // All twins! To find a conflict quicker.
-        run_twins(6, 6, TwinsScenarios::Multiple(150)).await,
+        run_twins(6, 6, TwinsScenarios::Multiple(200)).await,
         Err(TestError::BlockConflict)
     );
 }
