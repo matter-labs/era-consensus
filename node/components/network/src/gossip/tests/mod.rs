@@ -15,8 +15,7 @@ use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx,
     error::Wrap as _,
-    limiter, net, scope,
-    sync::{self, prunable_mpsc::SelectionFunctionResult},
+    limiter, net, scope, sync,
     testonly::{abort_on_panic, set_timeout},
     time,
 };

@@ -14,8 +14,7 @@ use std::{
 };
 use zksync_concurrency::{
     ctx::{self, channel},
-    io, limiter, net, scope,
-    sync::{self, prunable_mpsc::SelectionFunctionResult},
+    io, limiter, net, scope, sync,
 };
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
