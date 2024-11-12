@@ -111,7 +111,7 @@ impl Executor {
         let network_config = self.network_config();
 
         // Generate the communication channels. We have one for each component.
-        let (consensus_send, consensus_recv) = bft::Config::create_input_channel();
+        let (consensus_send, consensus_recv) = bft::create_input_channel();
         let (network_send, network_recv) = ctx::channel::unbounded();
 
         tracing::debug!("Starting components in separate threads.");

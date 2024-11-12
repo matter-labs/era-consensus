@@ -101,39 +101,35 @@ impl Config {
             Err(ctx::Error::Internal(err)) => Err(err),
         }
     }
+}
 
-    /// Creates a new input channel for the network messages.
-    pub fn create_input_channel() -> (
-        sync::prunable_mpsc::Sender<FromNetworkMessage>,
-        sync::prunable_mpsc::Receiver<FromNetworkMessage>,
-    ) {
-        sync::prunable_mpsc::channel(
-            Self::inbound_filter_predicate,
-            Self::inbound_selection_function,
-        )
-    }
+/// Creates a new input channel for the network messages.
+pub fn create_input_channel() -> (
+    sync::prunable_mpsc::Sender<FromNetworkMessage>,
+    sync::prunable_mpsc::Receiver<FromNetworkMessage>,
+) {
+    sync::prunable_mpsc::channel(inbound_filter_predicate, inbound_selection_function)
+}
 
-    /// Filter predicate for incoming messages.
-    fn inbound_filter_predicate(new_req: &FromNetworkMessage) -> bool {
-        // Verify message signature
-        new_req.msg.verify().is_ok()
-    }
+/// Filter predicate for incoming messages.
+fn inbound_filter_predicate(new_req: &FromNetworkMessage) -> bool {
+    // Verify message signature
+    new_req.msg.verify().is_ok()
+}
 
-    /// Selection function for incoming messages.
-    fn inbound_selection_function(
-        old_req: &FromNetworkMessage,
-        new_req: &FromNetworkMessage,
-    ) -> SelectionFunctionResult {
-        if old_req.msg.key != new_req.msg.key || old_req.msg.msg.label() != new_req.msg.msg.label()
-        {
-            SelectionFunctionResult::Keep
+/// Selection function for incoming messages.
+fn inbound_selection_function(
+    old_req: &FromNetworkMessage,
+    new_req: &FromNetworkMessage,
+) -> SelectionFunctionResult {
+    if old_req.msg.key != new_req.msg.key || old_req.msg.msg.label() != new_req.msg.msg.label() {
+        SelectionFunctionResult::Keep
+    } else {
+        // Discard older message
+        if old_req.msg.msg.view().number < new_req.msg.msg.view().number {
+            SelectionFunctionResult::DiscardOld
         } else {
-            // Discard older message
-            if old_req.msg.msg.view().number < new_req.msg.msg.view().number {
-                SelectionFunctionResult::DiscardOld
-            } else {
-                SelectionFunctionResult::DiscardNew
-            }
+            SelectionFunctionResult::DiscardNew
         }
     }
 }

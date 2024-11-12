@@ -3,7 +3,7 @@ use crate::{
     chonky_bft::{self, commit, new_view, proposal, timeout, StateMachine},
     Config, PayloadManager,
 };
-use crate::{FromNetworkMessage, ToNetworkMessage};
+use crate::{create_input_channel, FromNetworkMessage, ToNetworkMessage};
 use assert_matches::assert_matches;
 use std::sync::Arc;
 use zksync_concurrency::sync::prunable_mpsc;
@@ -62,7 +62,7 @@ impl UTHarness {
         let setup = validator::testonly::Setup::new(rng, num_validators);
         let store = TestMemoryStorage::new(ctx, &setup).await;
         let (output_channel_send, output_channel_recv) = ctx::channel::unbounded();
-        let (input_channel_send, input_channel_recv) = Config::create_input_channel();
+        let (input_channel_send, input_channel_recv) = create_input_channel();
         let (proposer_sender, proposer_receiver) = sync::watch::channel(None);
 
         let cfg = Arc::new(Config {

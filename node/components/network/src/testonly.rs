@@ -80,11 +80,12 @@ pub(crate) async fn forward(
 
 /// Node instance, wrapping the network component state and the
 /// events channel.
+#[allow(clippy::partial_pub_fields)]
 pub struct Instance {
     /// State of the instance.
     pub net: Arc<Network>,
     /// Termination signal that can be sent to the node.
-    pub terminate: channel::Sender<()>,
+    terminate: channel::Sender<()>,
     /// Receiver channel to receive messages from the network component that are
     /// intended for the consensus component.
     pub consensus_receiver: sync::prunable_mpsc::Receiver<ConsensusReq>,
@@ -200,8 +201,8 @@ impl Instance {
                 block_store,
                 attestation: attestation::Controller::new(None).into(),
             },
-            |_| true,
-            |_, _| SelectionFunctionResult::Keep,
+            /*filter_predicate*/ |_| true,
+            /*selection_function*/ |_, _| SelectionFunctionResult::Keep,
         )
     }
 

@@ -202,8 +202,8 @@ async fn run_nodes_real(ctx: &ctx::Ctx, specs: &[Node]) -> anyhow::Result<()> {
             let (node, runner) = network::testonly::Instance::new_with_filters(
                 spec.net.clone(),
                 spec.block_store.clone(),
-                crate::Config::inbound_filter_predicate,
-                crate::Config::inbound_selection_function,
+                crate::inbound_filter_predicate,
+                crate::inbound_selection_function,
             );
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
@@ -248,7 +248,7 @@ async fn run_nodes_twins(
 
         for (i, spec) in specs.iter().enumerate() {
             let (output_channel_send, output_channel_recv) = channel::unbounded();
-            let (input_channel_send, input_channel_recv) = crate::Config::create_input_channel();
+            let (input_channel_send, input_channel_recv) = crate::create_input_channel();
 
             let validator_key = spec.net.validator_key.as_ref().unwrap().public();
             let port = spec.net.server_addr.port();

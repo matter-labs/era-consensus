@@ -526,8 +526,8 @@ async fn test_batch_votes_propagation() {
                     attestation: attestation::Controller::new(Some(setup.attester_keys[i].clone()))
                         .into(),
                 },
-                |_| true,
-                |_, _| SelectionFunctionResult::Keep,
+                /*filter_predicate*/ |_| true,
+                /*selection_function*/ |_, _| SelectionFunctionResult::Keep,
             );
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             // Task going through the schedule, waiting for ANY node to collect the certificate
