@@ -519,6 +519,7 @@ async fn test_batch_votes_propagation() {
         for (i, mut cfg) in cfgs.into_iter().enumerate() {
             cfg.rpc.push_batch_votes_rate = limiter::Rate::INF;
             cfg.validator_key = None;
+            let (con_send, con_recv) = sync::prunable_mpsc::unpruned_channel();
             let (node, runner) = testonly::Instance::new_from_config(
                 testonly::InstanceConfig {
                     cfg: cfg.clone(),
@@ -526,8 +527,8 @@ async fn test_batch_votes_propagation() {
                     attestation: attestation::Controller::new(Some(setup.attester_keys[i].clone()))
                         .into(),
                 },
-                /*filter_predicate*/ |_| true,
-                /*selection_function*/ |_, _| SelectionFunctionResult::Keep,
+                con_send,
+                con_recv,
             );
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             // Task going through the schedule, waiting for ANY node to collect the certificate

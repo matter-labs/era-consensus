@@ -56,6 +56,11 @@ pub fn channel<T>(
     (send, recv)
 }
 
+/// Creates a channel without any pruning or filtering, and returns the [`Sender`] and [`Receiver`] handles.
+pub fn unpruned_channel<T>() -> (Sender<T>, Receiver<T>) {
+    channel(|_| true, |_, _| SelectionFunctionResult::Keep)
+}
+
 struct Shared<T> {
     send: watch::Sender<VecDeque<T>>,
 }

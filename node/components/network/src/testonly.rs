@@ -195,27 +195,25 @@ pub struct InstanceConfig {
 impl Instance {
     /// Constructs a new instance.
     pub fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self, InstanceRunner) {
+        let (con_send, con_recv) = sync::prunable_mpsc::unpruned_channel();
         Self::new_from_config(
             InstanceConfig {
                 cfg,
                 block_store,
                 attestation: attestation::Controller::new(None).into(),
             },
-            /*filter_predicate*/ |_| true,
-            /*selection_function*/ |_, _| SelectionFunctionResult::Keep,
+            con_send,
+            con_recv,
         )
     }
 
-    /// Constructs a new instance with custom filter and selection functions for consensus
+    /// Constructs a new instance with a custom channel for consensus
     /// component.
-    pub fn new_with_filters(
+    pub fn new_with_channel(
         cfg: Config,
         block_store: Arc<BlockStore>,
-        con_filter_predicate: impl 'static + Sync + Send + Fn(&ConsensusReq) -> bool,
-        con_selection_function: impl 'static
-            + Sync
-            + Send
-            + Fn(&ConsensusReq, &ConsensusReq) -> SelectionFunctionResult,
+        con_send: sync::prunable_mpsc::Sender<ConsensusReq>,
+        con_recv: sync::prunable_mpsc::Receiver<ConsensusReq>,
     ) -> (Self, InstanceRunner) {
         Self::new_from_config(
             InstanceConfig {
@@ -223,22 +221,17 @@ impl Instance {
                 block_store,
                 attestation: attestation::Controller::new(None).into(),
             },
-            con_filter_predicate,
-            con_selection_function,
+            con_send,
+            con_recv,
         )
     }
 
     /// Construct an instance for a given config.
     pub fn new_from_config(
         cfg: InstanceConfig,
-        con_filter_predicate: impl 'static + Sync + Send + Fn(&ConsensusReq) -> bool,
-        con_selection_function: impl 'static
-            + Sync
-            + Send
-            + Fn(&ConsensusReq, &ConsensusReq) -> SelectionFunctionResult,
+        net_to_con_send: sync::prunable_mpsc::Sender<ConsensusReq>,
+        net_to_con_recv: sync::prunable_mpsc::Receiver<ConsensusReq>,
     ) -> (Self, InstanceRunner) {
-        let (net_to_con_send, net_to_con_recv) =
-            sync::prunable_mpsc::channel(con_filter_predicate, con_selection_function);
         let (con_to_net_send, con_to_net_recv) = channel::unbounded();
         let (terminate_send, terminate_recv) = channel::bounded(1);
 

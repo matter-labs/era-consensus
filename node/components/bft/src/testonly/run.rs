@@ -199,11 +199,15 @@ async fn run_nodes_real(ctx: &ctx::Ctx, specs: &[Node]) -> anyhow::Result<()> {
     scope::run!(ctx, |ctx, s| async {
         let mut nodes = vec![];
         for (i, spec) in specs.iter().enumerate() {
-            let (node, runner) = network::testonly::Instance::new_with_filters(
-                spec.net.clone(),
-                spec.block_store.clone(),
+            let (send, recv) = sync::prunable_mpsc::channel(
                 crate::inbound_filter_predicate,
                 crate::inbound_selection_function,
+            );
+            let (node, runner) = network::testonly::Instance::new_with_channel(
+                spec.net.clone(),
+                spec.block_store.clone(),
+                send,
+                recv,
             );
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
