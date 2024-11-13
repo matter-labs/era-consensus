@@ -5,6 +5,11 @@ targets = [
     { triple = "x86_64-unknown-linux-musl" },
 ]
 
+[advisories]
+ignore = [
+    { id = "RUSTSEC-2024-0384", reason = "caused by kube, which hasn't updated their dependencies yet" },
+]
+
 [licenses]
 # We  want to set a high confidence threshold for license detection.
 confidence-threshold = 1.0
@@ -17,8 +22,8 @@ allow = [
     "ISC",
     "MIT",
     "OpenSSL",
-    "Unicode-DFS-2016",
     "Unicode-3.0",
+    "Unicode-DFS-2016",
     # Weak copyleft licenses
     "MPL-2.0",
 ]
@@ -34,33 +39,6 @@ name = "ring"
 # OpenSSL - Obviously
 expression    = "MIT"
 license-files = [{ path = "LICENSE", hash = 0xbd0eed23 }]
-
-[bans]
-# Lint level for when multiple versions of the same crate are detected
-multiple-versions = "deny"
-# Certain crates/versions that will be skipped when doing duplicate detection.
-skip = [
-    # Old versions required by tempfile and prost-build.
-    { name = "bitflags", version = "1.3.2" },
-
-    # Old version required by tracing-subscriber.
-    { name = "regex-automata", version = "0.1.10" },
-    { name = "regex-syntax", version = "0.6.29" },
-
-    # Old version required by kube-runtime.
-    { name = "syn", version = "1.0" },
-
-    # Old version required by protox 0.5.1.
-    { name = "base64", version = "0.21.7" },
-
-    # Old versions required by vise-exporter.
-    { name = "http", version = "0.2.12" },
-    { name = "http-body", version = "0.4.6" },
-    { name = "hyper", version = "0.14.28" },
-
-    { name = "rustls-native-certs", version = "0.7.3" },
-    { name = "hashbrown", version = "0.14.5" },
-]
 
 [sources]
 unknown-git      = "deny"

@@ -1,5 +1,5 @@
 //! Main binary for the consensus node. It reads the configuration, initializes all parts of the node and
-//! manages communication between the actors. It is the main executable in this workspace.
+//! manages communication between the components. It is the main executable in this workspace.
 use anyhow::Context as _;
 use clap::Parser;
 use std::{fs, fs::Permissions, io::IsTerminal as _, os::unix::fs::PermissionsExt, path::PathBuf};
