@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.0](https://github.com/matter-labs/era-consensus/compare/v0.5.0...v0.6.0) (2024-11-14)
+
+
+### Features
+
+* Implement ChonkyBFT ([#211](https://github.com/matter-labs/era-consensus/issues/211)) ([f4cc128](https://github.com/matter-labs/era-consensus/commit/f4cc128114027188e34a355e20f084777041480d))
+
+
+### Bug Fixes
+
+* Add wrap around to table cells on Debug page ([#214](https://github.com/matter-labs/era-consensus/issues/214)) ([6d52340](https://github.com/matter-labs/era-consensus/commit/6d523401b73a431a24f565dadf0471611c0c220b))
+
 ## [0.5.0](https://github.com/matter-labs/era-consensus/compare/v0.4.0...v0.5.0) (2024-10-09)
 
 
