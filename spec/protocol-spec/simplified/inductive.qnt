@@ -398,10 +398,13 @@ module inductive {
         val commit_qc_size = r::ghost_commit_qc.length()
         val timeout_qc_size = r::ghost_timeout_qc.length()
         r::msgs_new_view.forall(m => and {
+            // the view is not ill-formed
             match (m.justification) {
             | Commit(qc_id) => 0 <= qc_id and qc_id < commit_qc_size
             | Timeout(qc_id) => 0 <= qc_id and qc_id < timeout_qc_size
             },
+            r::REPLICAS.contains(m.sig),
+            // justifications are not ill-formed
             or {
                 IFAULTY.contains(m.sig),
                 val view = r::view(m.justification)
