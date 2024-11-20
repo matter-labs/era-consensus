@@ -805,7 +805,7 @@ module replica {
             // Get the justification for this view. If we have both a commit QC
             // and a timeout QC for this view (highly unlikely), we should prefer
             // to use the commit QC.
-            val justification = replica_state.get(replica_id).create_justification()
+            val justification = replica_state.get(replica_id).get_justification()
             // Get the block number and check if this must be a reproposal.
             val block_and_hash = justification.get_implied_block()
             val block_number = block_and_hash._1
@@ -1305,7 +1305,7 @@ module replica {
         }
     }
 
-    def create_justification(self: ReplicaState): Justification = {
+    def get_justification(self: ReplicaState): Justification = {
         val timeout_qc_id = self.high_timeout_qc.unwrap_or(0)
         val timeout_qc = ghost_timeout_qc[timeout_qc_id]
         match (self.high_commit_qc) {
