@@ -241,10 +241,12 @@ impl TimeoutQC {
         let map: Map<CommitVote, Weight> = Map::new();
 
         for (pk, vote) in votes {
-            if map.exists(vote) {
-                map.get_value(vote).add(get_weight(pk));
-            } else {
-                map.insert(vote, get_weight(pk));
+            if let Some(commit_vote) = vote.high_vote {
+                if map.exists(commit_vote) {
+                    map.get_value(commit_vote).add(get_weight(pk));
+                } else {
+                    map.insert(commit_vote, get_weight(pk));
+                }
             }
         }
 
@@ -256,6 +258,25 @@ impl TimeoutQC {
             }
         }
 
+        // We only consider there's a high vote if exactly one subquorum has been found.
+        // If there are 0 or 2+ subquorums, we consider there's no high vote.
+        //
+        // For the case of 0 subquorums, we consider there's no high vote because
+        // if the previous proposal received n-f votes (thus being finalized) then the
+        // intersection of those n-f nodes with the n-f nodes that voted in this timeout
+        // would have at least n-3f *honest* nodes that committed to the previous proposal
+        // (f honest nodes that didn't commit in the previous round, f honest nodes that didn't
+        // timeout this round, and f dishonest nodes that did timeout this round), and thus we
+        // would have a subquorum.
+        //
+        // For the case of 2 subquorums, we consider there's no high vote because if we have
+        // n-3f votes for one block and n-3f votes for another block, for a total of 2n-6f votes,
+        // then there not enough remaining votes for any of the blocks to be finalized. Note that
+        // we have a total of n+f votes (one vote for each node, plus an extra one from each of the
+        // dishonest nodes since they can vote twice). So we have n+f - (2n-6f) = 7f-n, since n>=5f+1
+        // we have 7f-5f-1 = 2f-1, so there's at most 2f-1 votes remaining, which is not enough to
+        // finalize any block.
+        // For >2 subquorums, the argument is similar.
         if subquorums.len() == 1 {
             Some(subquorums[0])
         } else {
