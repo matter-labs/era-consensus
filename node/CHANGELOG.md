@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.1](https://github.com/matter-labs/era-consensus/compare/v0.6.0...v0.6.1) (2024-11-21)
+
+
+### Bug Fixes
+
+* Fix high vote on informal spec ([#215](https://github.com/matter-labs/era-consensus/issues/215)) ([c586f85](https://github.com/matter-labs/era-consensus/commit/c586f850674517975e2c97b9e2a61f6eca25bdf9))
+
 ## [0.6.0](https://github.com/matter-labs/era-consensus/compare/v0.5.0...v0.6.0) (2024-11-14)
 
 
