@@ -196,7 +196,7 @@ impl ReplicaState {
         // Check if we now have a commit QC for this view.
         if let Some(qc) = self.get_commit_qc(sig_vote.view()) {
             self.process_commit_qc(Some(qc));
-            self.start_new_view(sig_vote.view() + 1);
+            self.start_new_view(sig_vote.view() + 1, Justification::Commit(qc));
         }
     }
     
@@ -215,7 +215,7 @@ impl ReplicaState {
         if let Some(qc) = self.get_timeout_qc(sig_vote.view()) {
             self.process_commit_qc(qc.high_commit_qc);
             self.high_timeout_qc = max(Some(qc), self.high_timeout_qc);
-            self.start_new_view(sig_vote.view() + 1);
+            self.start_new_view(sig_vote.view() + 1, Justification::Timeout(qc)));
         }
     }
     
@@ -236,16 +236,16 @@ impl ReplicaState {
         };
         
         if new_view.view() > self.view {
-            self.start_new_view(new_view.view());
+            self.start_new_view(new_view.view(), new_view.justification);
         }
     }
     
-    fn start_new_view(&mut self, view: ViewNumber) {
+    fn start_new_view(&mut self, view: ViewNumber, justification: Justification) {
         self.view = view;
         self.phase = Phase::Prepare;
         
         // Send a new view message to the other replicas, for synchronization.
-        let new_view = NewView::new(self.get_justification(view));
+        let new_view = NewView::new(justification);
         
         self.send(new_view);
     }
