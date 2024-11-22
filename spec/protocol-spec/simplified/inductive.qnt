@@ -445,7 +445,7 @@ module inductive {
             }))
         0.to(MAX_COMMIT_QC).forall(qc_id => {
             (commit_qc_id_in_new_view.contains(qc_id))
-                implies r::commit_qc_verify(r::ghost_commit_qc[qc_id])
+                implies r::aux_commit_qc_inv(Some(qc_id))
         }),
         // (3) check TimeoutQC's separately
         val timeout_qc_id_in_new_view =

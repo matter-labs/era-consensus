@@ -1,6 +1,6 @@
 // -*- mode: Bluespec; -*-
 //
-// A specification instance for n=6, f=1, and no Byzantine faults
+// A specification instance for n=7, f=1, and 1 Byzantine fault
 module n7f1b1 {
   import replica(
     CORRECT = Set("n0", "n1", "n2", "n3", "n4", "n5"),
