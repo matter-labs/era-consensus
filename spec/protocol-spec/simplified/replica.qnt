@@ -647,7 +647,7 @@ module replica {
                         val self1 = self.process_commit_qc(new_qcs, Some(qc_id))
                         all {
                             ghost_commit_qc' = new_qcs,
-                            start_new_view(id, self1, base_vote.vote.view + 1, Commit(qc_id))
+                            start_new_view(id, self1, base_vote.vote.view + 1)
                         }
                     }
                 },
@@ -732,7 +732,7 @@ module replica {
                                 ...self.process_commit_qc(ghost_commit_qc, qc.high_commit_qc),
                                 high_timeout_qc: max_timeout_qc(new_qcs, Some(qc_id), self.high_timeout_qc)
                             }
-                            start_new_view(id, self1, common_view + 1, Timeout(qc_id)),
+                            start_new_view(id, self1, common_view + 1),
                             ghost_timeout_qc' = new_qcs,
                         }
                 },
@@ -769,7 +769,7 @@ module replica {
                 }
 
             if (new_view_view > self.view) {
-                start_new_view(id, self1, new_view_view, new_view.justification)
+                start_new_view(id, self1, new_view_view)
             } else {
                 all {
                     replica_state' = replica_state,
@@ -805,7 +805,7 @@ module replica {
             // Get the justification for this view. If we have both a commit QC
             // and a timeout QC for this view (highly unlikely), we should prefer
             // to use the commit QC.
-            val justification = replica_state.get(replica_id).get_justification()
+            val justification = replica_state.get(replica_id).create_justification()
             // Get the block number and check if this must be a reproposal.
             val block_and_hash = justification.get_implied_block()
             val block_number = block_and_hash._1
@@ -860,8 +860,9 @@ module replica {
     }
 
     // a correct replica changes to a new view
-    action start_new_view(id: ReplicaId, self: ReplicaState, view: ViewNumber, justification: Justification): bool = {
+    action start_new_view(id: ReplicaId, self: ReplicaState, view: ViewNumber): bool = {
         // make sure that we do not go out of bounds with the new view
+        val justification = self.create_justification()
         all {
             VIEWS.contains(view),
             // switch to the Prepare phase
@@ -1305,7 +1306,7 @@ module replica {
         }
     }
 
-    def get_justification(self: ReplicaState): Justification = {
+    def create_justification(self: ReplicaState): Justification = {
         val timeout_qc_id = self.high_timeout_qc.unwrap_or(0)
         val timeout_qc = ghost_timeout_qc[timeout_qc_id]
         match (self.high_commit_qc) {
