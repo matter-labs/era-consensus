@@ -187,6 +187,15 @@ impl TimeoutQC {
         }
 
         // Now we can verify the signature.
+        self.verify_signature(genesis)
+    }
+
+    /// Verifies signature
+    pub fn verify_signature(&self, genesis: &Genesis) -> Result<(), TimeoutQCVerifyError> {
+        // empty signature is invalid for stupid reasons.
+        if self.map.is_empty() {
+            return Ok(());
+        }
         let messages_and_keys = self.map.clone().into_iter().flat_map(|(msg, signers)| {
             genesis
                 .validators

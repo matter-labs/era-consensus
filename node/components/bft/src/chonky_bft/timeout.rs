@@ -105,10 +105,16 @@ impl StateMachine {
             .entry(message.view.number)
             .or_insert_with(|| validator::TimeoutQC::new(message.view));
 
+        let before = timeout_qc.clone();
         // Should always succeed as all checks have been already performed
         timeout_qc
             .add(&signed_message, self.config.genesis())
             .expect("could not add message to TimeoutQC");
+        if let Err(err) = timeout_qc.verify_signature(self.config.genesis()) {
+            tracing::error!(
+                "TimeoutQC signature verification started failing: {err:#}\nbefore = {before:?}\nafter = {timeout_qc:?}",
+            );
+        }
 
         // Calculate the TimeoutQC signers weight.
         let weight = timeout_qc.weight(&self.config.genesis().validators);
