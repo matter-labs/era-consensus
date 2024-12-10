@@ -213,7 +213,7 @@ impl AggregateSignature {
 
         for (msg, pk) in msgs_and_pks {
             if let Some(existing_pk) = tree_map.get_mut(msg) {
-                if let Err(err) = existing_pk.add_public_key(&pk.0, false) {
+                if let Err(err) = existing_pk.add_public_key(&pk.0, true) {
                     return Err(anyhow::format_err!(
                         "Error aggregating public keys: {err:?}"
                     ));
