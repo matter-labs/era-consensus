@@ -70,7 +70,7 @@ impl ProposalJustification {
                 .map_err(ProposalJustificationVerifyError::Commit),
             ProposalJustification::Timeout(qc) => qc
                 .verify(genesis)
-                .map_err(ProposalJustificationVerifyError::Timeout),
+                .map_err(|err|ProposalJustificationVerifyError::Timeout(err,qc.clone())),
         }
     }
 
@@ -130,8 +130,8 @@ impl ProposalJustification {
 #[derive(thiserror::Error, Debug)]
 pub enum ProposalJustificationVerifyError {
     /// Invalid timeout QC.
-    #[error("Invalid timeout QC: {0:#}")]
-    Timeout(TimeoutQCVerifyError),
+    #[error("Invalid timeout QC: {0:#}: {1:?}")]
+    Timeout(TimeoutQCVerifyError,TimeoutQC),
     /// Invalid commit QC.
     #[error("Invalid commit QC: {0:#}")]
     Commit(CommitQCVerifyError),
