@@ -72,7 +72,7 @@ impl Justification {
         match self {
             Commit(qc) => {
                 // The previous proposal was finalized, so we can propose a new block.
-                (qc.block_number + 1, None)
+                (qc.vote.block_number + 1, None)
             }
             Timeout(qc) => {
                 // Get the high vote of the timeout QC, if it exists. We check if there are
@@ -88,7 +88,7 @@ impl Justification {
                 let high_qc: Option<CommitQC> = qc.high_commit_qc;
 
                 if high_vote.is_some()
-                    && (high_qc.is_none() || high_vote.block_number > high_qc.block_number)
+                    && (high_qc.is_none() || high_vote.block_number > high_qc.vote.block_number)
                 {
                     // There was some proposal last view that might have been finalized.
                     // We need to repropose it.
@@ -98,7 +98,7 @@ impl Justification {
                     // that it couldn't have been finalized. Either way, we can propose
                     // a new block.
                     let block_number = match high_qc {
-                        Some(qc) => qc.block_number + 1,
+                        Some(qc) => qc.vote.block_number + 1,
                         None => 0,
                     };
 

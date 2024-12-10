@@ -245,7 +245,7 @@ impl ReplicaState {
         self.phase = Phase::Prepare;
         
         // Send a new view message to the other replicas, for synchronization.
-        let new_view = NewView::new(self.get_justification(view));
+        let new_view = NewView::new(self.create_justification());
         
         self.send(new_view);
     }
