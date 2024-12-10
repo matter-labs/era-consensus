@@ -223,7 +223,6 @@ impl StateMachine {
 
         // Update the state machine.
         self.view_number = message.view().number;
-        metrics::METRICS.replica_view_number.set(self.view_number.0);
         self.phase = validator::Phase::Commit;
         self.high_vote = Some(commit_vote.clone());
         match &message.justification {
