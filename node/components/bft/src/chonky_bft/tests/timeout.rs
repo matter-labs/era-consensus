@@ -1,8 +1,47 @@
 use crate::chonky_bft::{testonly::UTHarness, timeout};
 use assert_matches::assert_matches;
-use rand::Rng;
+use rand::{seq::SliceRandom,Rng};
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
+
+#[test]
+fn timeout_qc_aggregation() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    for i in 0.. {
+        tracing::info!("Iteration {i}");
+        let setup = validator::testonly::Setup::new(rng, 100);
+        //let msgs : Vec<_> = (0..3).map(|_| rng.gen::<validator::ReplicaTimeout>()).collect();
+        let view = validator::View { number: rng.gen(), genesis: setup.genesis.hash() };
+        let commit = validator::ReplicaCommit {
+            view,
+            proposal: validator::BlockHeader {
+                number: rng.gen(),
+                payload: rng.gen(),
+            },
+        };
+        let mut commit_qc = validator::CommitQC::new(commit.clone(), &setup.genesis);
+        let mut keys = setup.validator_keys.clone();
+        keys.shuffle(rng);
+        for (i,k) in keys.iter().enumerate() {
+            if i%6 == 5 { continue; }
+            commit_qc.add(&k.sign_msg(commit.clone()),&setup.genesis).unwrap();
+        }
+        let timeouts = vec![
+            validator::ReplicaTimeout {
+                view: view,
+                high_vote: Some(commit.clone()),
+                high_qc: Some(commit_qc.clone()),
+            },
+        ];
+        let mut timeout_qc = validator::TimeoutQC::new(view); 
+        for k in &keys {
+            timeout_qc.add(&k.sign_msg(timeouts[0].clone()),&setup.genesis).unwrap();
+            timeout_qc.verify_signature(&setup.genesis).unwrap();
+        }
+    }
+}
 
 #[tokio::test]
 async fn timeout_yield_new_view_sanity() {

@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use zksync_concurrency::{ctx, error::Wrap, time};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
+use zksync_protobuf::serde::Serialize;
 
 /// Errors that can occur when processing a ReplicaTimeout message.
 #[derive(Debug, thiserror::Error)]
@@ -111,9 +112,16 @@ impl StateMachine {
             .add(&signed_message, self.config.genesis())
             .expect("could not add message to TimeoutQC");
         if let Err(err) = timeout_qc.verify_signature(self.config.genesis()) {
-            tracing::error!(
-                "TimeoutQC signature verification started failing: {err:#}\nbefore = {before:?}\nafter = {timeout_qc:?}",
-            );
+            if before.verify_signature(self.config.genesis()).is_ok() {
+                tracing::error!("signature verification started failing: {err:#}");
+                std::fs::write("/tmp/example", format!(
+                    "before: {},\nafter: {}\ncommit: {}\ngenesis: {}\n",
+                    Serialize.proto_fmt_to_json(&before),
+                    Serialize.proto_fmt_to_json(timeout_qc),
+                    Serialize.proto_fmt_to_json(&signed_message),
+                    Serialize.proto_fmt_to_json(self.config.genesis())
+                )).unwrap();
+            }
         }
 
         // Calculate the TimeoutQC signers weight.
