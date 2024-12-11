@@ -91,15 +91,19 @@ where
 
 /// The configuration for a single round of P phases.
 pub struct RoundConfig<'a, T: HasKey, const P: usize> {
+    /// Leader of the round.
     pub leader: &'a T::Key,
+    /// Partitioning of the nodes for each phase.
     pub phase_partitions: [Split<'a, T>; P],
 }
 
 /// Configuration for a number of rounds.
 pub struct Scenario<'a, T: HasKey, const P: usize> {
+    /// Rounds to simulate.
     pub rounds: Vec<RoundConfig<'a, T, P>>,
 }
 
+/// Generator of scenarios according to the spec.
 pub struct ScenarioGenerator<'a, T, const P: usize>
 where
     T: Twin,
