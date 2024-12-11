@@ -4,12 +4,13 @@ use zksync_concurrency::ctx;
 
 #[test]
 fn test_replica_commit_verify() {
-    let genesis = genesis_empty_attesters();
+    let mut genesis = genesis();
     let commit = replica_commit();
     assert!(commit.verify(&genesis).is_ok());
 
     // Wrong view
-    let wrong_genesis = genesis_with_attesters().clone();
+    genesis.0.chain_id = ChainId(1);
+    let wrong_genesis = genesis.0.with_hash();
     assert_matches!(
         commit.verify(&wrong_genesis),
         Err(ReplicaCommitVerifyError::BadView(_))

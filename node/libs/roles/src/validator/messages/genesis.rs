@@ -1,6 +1,6 @@
 //! Messages related to the consensus protocol.
 use super::{BlockNumber, LeaderSelectionMode, ViewNumber};
-use crate::{attester, validator};
+use crate::validator;
 use std::{fmt, hash::Hash};
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 
@@ -18,8 +18,6 @@ pub struct GenesisRaw {
     pub first_block: BlockNumber,
     /// Set of validators of the chain.
     pub validators: validator::Committee,
-    /// Set of attesters of the chain.
-    pub attesters: Option<attester::Committee>,
     /// The mode used for selecting leader for a given view.
     pub leader_selection: LeaderSelectionMode,
 }
