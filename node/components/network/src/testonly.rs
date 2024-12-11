@@ -1,8 +1,9 @@
 //! Testonly utilities.
 #![allow(dead_code)]
 use crate::{
-    gossip::attestation, io::ConsensusInputMessage, io::ConsensusReq, Config, GossipConfig,
-    Network, RpcConfig, Runner,
+    gossip::attestation,
+    io::{ConsensusInputMessage, ConsensusReq},
+    Config, GossipConfig, Network, RpcConfig, Runner,
 };
 use rand::{
     distributions::{Distribution, Standard},

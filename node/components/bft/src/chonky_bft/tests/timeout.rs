@@ -1,8 +1,51 @@
 use crate::chonky_bft::{testonly::UTHarness, timeout};
 use assert_matches::assert_matches;
-use rand::Rng;
+use rand::{seq::SliceRandom as _, Rng};
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
+
+#[test]
+fn timeout_qc_aggregation() {
+    zksync_concurrency::testonly::abort_on_panic();
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let setup = validator::testonly::Setup::new(rng, 10);
+    let view = validator::View {
+        number: rng.gen(),
+        genesis: setup.genesis.hash(),
+    };
+    let commit = validator::ReplicaCommit {
+        view,
+        proposal: validator::BlockHeader {
+            number: rng.gen(),
+            payload: rng.gen(),
+        },
+    };
+    let mut timeout_qc = validator::TimeoutQC::new(view);
+    for k in &setup.validator_keys {
+        // Generate ReplicaTimeout which differ just by the high_qc signer set.
+        let mut commit_qc = validator::CommitQC::new(commit.clone(), &setup.genesis);
+        // Add signatures in random order until the CommitQC is valid.
+        let mut keys = setup.validator_keys.clone();
+        keys.shuffle(rng);
+        for k in &keys {
+            if commit_qc.verify(&setup.genesis).is_ok() {
+                break;
+            }
+            commit_qc
+                .add(&k.sign_msg(commit.clone()), &setup.genesis)
+                .unwrap();
+        }
+        // Add vote to the TimeoutQC.
+        let vote = validator::ReplicaTimeout {
+            view,
+            high_vote: None,
+            high_qc: Some(commit_qc.clone()),
+        };
+        timeout_qc.add(&k.sign_msg(vote), &setup.genesis).unwrap();
+    }
+    timeout_qc.verify(&setup.genesis).unwrap();
+}
 
 #[tokio::test]
 async fn timeout_yield_new_view_sanity() {

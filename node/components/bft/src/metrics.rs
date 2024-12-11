@@ -54,7 +54,6 @@ pub(crate) struct ProcessingLatencyLabels {
 #[metrics(prefix = "consensus")]
 pub(crate) struct ConsensusMetrics {
     /// Number of the current view of the replica.
-    #[metrics(unit = Unit::Seconds)]
     pub(crate) replica_view_number: Gauge<u64>,
     /// Number of the last finalized block observed by the node.
     pub(crate) finalized_block_number: Gauge<u64>,

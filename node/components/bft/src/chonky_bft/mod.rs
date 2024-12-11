@@ -1,6 +1,5 @@
 use crate::{metrics, Config, FromNetworkMessage, ToNetworkMessage};
 use std::{
-    cmp::max,
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
@@ -276,7 +275,14 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         qc: &validator::CommitQC,
     ) -> ctx::Result<()> {
-        self.high_commit_qc = max(Some(qc.clone()), self.high_commit_qc.clone());
+        if self
+            .high_commit_qc
+            .as_ref()
+            .map_or(false, |old| old.view().number >= qc.view().number)
+        {
+            return Ok(());
+        }
+        self.high_commit_qc = Some(qc.clone());
         self.save_block(ctx, qc).await.wrap("save_block()")
     }
 }
