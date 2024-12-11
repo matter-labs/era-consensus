@@ -3,9 +3,8 @@ use anyhow::Context as _;
 use zksync_consensus_crypto::Text;
 
 mod version1 {
-    use zksync_consensus_utils::enum_util::Variant as _;
-
     use super::*;
+    use zksync_consensus_utils::enum_util::Variant as _;
 
     /// Note that genesis is NOT versioned by ProtocolVersion.
     /// Even if it was, ALL versions of genesis need to be supported FOREVER,

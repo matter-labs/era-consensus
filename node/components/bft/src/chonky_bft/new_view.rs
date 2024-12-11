@@ -1,5 +1,3 @@
-use std::cmp::max;
-
 use super::StateMachine;
 use crate::{chonky_bft::VIEW_TIMEOUT_DURATION, metrics};
 use zksync_concurrency::{ctx, error::Wrap, metrics::LatencyHistogramExt as _, time};
@@ -94,7 +92,13 @@ impl StateMachine {
                         .await
                         .wrap("process_commit_qc()")?;
                 }
-                self.high_timeout_qc = max(Some(qc.clone()), self.high_timeout_qc.clone());
+                if self
+                    .high_timeout_qc
+                    .as_ref()
+                    .map_or(true, |old| old.view.number < qc.view.number)
+                {
+                    self.high_timeout_qc = Some(qc.clone());
+                }
             }
         };
 

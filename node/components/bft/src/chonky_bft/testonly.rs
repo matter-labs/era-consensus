@@ -1,13 +1,12 @@
-use crate::testonly::RandomPayload;
 use crate::{
     chonky_bft::{self, commit, new_view, proposal, timeout, StateMachine},
-    Config, PayloadManager,
+    create_input_channel,
+    testonly::RandomPayload,
+    Config, FromNetworkMessage, PayloadManager, ToNetworkMessage,
 };
-use crate::{create_input_channel, FromNetworkMessage, ToNetworkMessage};
 use assert_matches::assert_matches;
 use std::sync::Arc;
-use zksync_concurrency::sync::prunable_mpsc;
-use zksync_concurrency::{ctx, sync};
+use zksync_concurrency::{ctx, sync, sync::prunable_mpsc};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{
     testonly::{in_memory, TestMemoryStorage},

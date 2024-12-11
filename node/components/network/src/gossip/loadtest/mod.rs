@@ -13,7 +13,7 @@ mod tests;
 
 struct PushBlockStoreStateServer(sync::watch::Sender<Option<BlockStoreState>>);
 
-impl<'a> PushBlockStoreStateServer {
+impl PushBlockStoreStateServer {
     fn new() -> Self {
         Self(sync::watch::channel(None).0)
     }

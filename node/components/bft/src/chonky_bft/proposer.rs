@@ -1,10 +1,9 @@
+use super::VIEW_TIMEOUT_DURATION;
 use crate::{metrics, Config, ToNetworkMessage};
 use std::sync::Arc;
 use zksync_concurrency::{ctx, error::Wrap as _, sync};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
-
-use super::VIEW_TIMEOUT_DURATION;
 
 /// The proposer loop is responsible for proposing new blocks to the network. It watches for new
 /// justifications from the replica and if it is the leader for the view, it proposes a new block.
