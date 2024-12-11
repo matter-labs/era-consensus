@@ -1,7 +1,5 @@
-use crate::metrics;
-
 use super::StateMachine;
-use std::cmp::max;
+use crate::metrics;
 use zksync_concurrency::{ctx, error::Wrap, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator::{self, BlockHeader, BlockNumber};
@@ -223,6 +221,7 @@ impl StateMachine {
 
         // Update the state machine.
         self.view_number = message.view().number;
+        metrics::METRICS.replica_view_number.set(self.view_number.0);
         self.phase = validator::Phase::Commit;
         self.high_vote = Some(commit_vote.clone());
         match &message.justification {
@@ -236,7 +235,13 @@ impl StateMachine {
                         .await
                         .wrap("process_commit_qc()")?;
                 }
-                self.high_timeout_qc = max(Some(qc.clone()), self.high_timeout_qc.clone());
+                if self
+                    .high_timeout_qc
+                    .as_ref()
+                    .map_or(true, |old| old.view.number < qc.view.number)
+                {
+                    self.high_timeout_qc = Some(qc.clone());
+                }
             }
         };
 

@@ -1,6 +1,5 @@
 use super::StateMachine;
-use crate::metrics;
-use std::{cmp::max, collections::HashSet};
+use std::collections::HashSet;
 use zksync_concurrency::{ctx, error::Wrap, time};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
@@ -142,7 +141,13 @@ impl StateMachine {
                 .await
                 .wrap("process_commit_qc()")?;
         }
-        self.high_timeout_qc = max(Some(timeout_qc.clone()), self.high_timeout_qc.clone());
+        if self
+            .high_timeout_qc
+            .as_ref()
+            .map_or(true, |old| old.view.number < timeout_qc.view.number)
+        {
+            self.high_timeout_qc = Some(timeout_qc.clone());
+        }
 
         // Start a new view.
         self.start_new_view(ctx, message.view.number.next()).await?;
@@ -180,7 +185,6 @@ impl StateMachine {
 
         // Log the event.
         tracing::info!("Timed out at view {}", self.view_number);
-        metrics::METRICS.replica_view_number.set(self.view_number.0);
 
         Ok(())
     }
