@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.6.1](https://github.com/matter-labs/era-consensus/compare/v0.6.0...v0.6.1) (2024-12-11)
+
+
+### Bug Fixes
+
+* Fix high vote on informal spec ([#215](https://github.com/matter-labs/era-consensus/issues/215)) ([c586f85](https://github.com/matter-labs/era-consensus/commit/c586f850674517975e2c97b9e2a61f6eca25bdf9))
+* TimeoutQC aggregation ([#220](https://github.com/matter-labs/era-consensus/issues/220)) ([8a49824](https://github.com/matter-labs/era-consensus/commit/8a498246b2c2d88d63e51049bb3acd20a8166479))
+
 ## [0.6.0](https://github.com/matter-labs/era-consensus/compare/v0.5.0...v0.6.0) (2024-11-14)
 
 
