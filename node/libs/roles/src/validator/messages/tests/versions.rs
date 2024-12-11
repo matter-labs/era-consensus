@@ -11,26 +11,13 @@ mod version1 {
     /// Even if it was, ALL versions of genesis need to be supported FOREVER,
     /// unless we introduce dynamic regenesis.
     #[test]
-    fn genesis_hash_change_detector_empty_attesters() {
+    fn genesis_hash_change_detector() {
         let want: GenesisHash = Text::new(
             "genesis_hash:keccak256:75cfa582fcda9b5da37af8fb63a279f777bb17a97a50519e1a61aad6c77a522f",
         )
         .decode()
         .unwrap();
-        assert_eq!(want, genesis_empty_attesters().hash());
-    }
-
-    /// Note that genesis is NOT versioned by ProtocolVersion.
-    /// Even if it was, ALL versions of genesis need to be supported FOREVER,
-    /// unless we introduce dynamic regenesis.
-    #[test]
-    fn genesis_hash_change_detector_nonempty_attesters() {
-        let want: GenesisHash = Text::new(
-            "genesis_hash:keccak256:586a4bc6167c084d7499cead9267b224ab04a4fdeff555630418bcd2df5d186d",
-        )
-        .decode()
-        .unwrap();
-        assert_eq!(want, genesis_with_attesters().hash());
+        assert_eq!(want, genesis().hash());
     }
 
     /// Asserts that msg.hash()==hash and that sig is a

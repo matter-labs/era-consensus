@@ -4,12 +4,14 @@ use zksync_concurrency::ctx;
 
 #[test]
 fn test_replica_timeout_verify() {
-    let genesis = genesis_empty_attesters();
+    let genesis = genesis();
     let timeout = replica_timeout();
     assert!(timeout.verify(&genesis).is_ok());
 
     // Wrong view
-    let wrong_genesis = genesis_with_attesters().clone();
+    let mut wrong_raw_genesis = genesis.0.clone();
+    wrong_raw_genesis.chain_id = ChainId(1);
+    let wrong_genesis = wrong_raw_genesis.with_hash();
     assert_matches!(
         timeout.verify(&wrong_genesis),
         Err(ReplicaTimeoutVerifyError::BadView(_))
@@ -17,7 +19,7 @@ fn test_replica_timeout_verify() {
 
     // Invalid high vote
     let mut timeout = replica_timeout();
-    timeout.high_vote.as_mut().unwrap().view.genesis = genesis_with_attesters().hash();
+    timeout.high_vote.as_mut().unwrap().view.genesis = wrong_genesis.hash();
     assert_matches!(
         timeout.verify(&genesis),
         Err(ReplicaTimeoutVerifyError::InvalidHighVote(_))
@@ -25,7 +27,7 @@ fn test_replica_timeout_verify() {
 
     // Invalid high QC
     let mut timeout = replica_timeout();
-    timeout.high_qc.as_mut().unwrap().message.view.genesis = genesis_with_attesters().hash();
+    timeout.high_qc.as_mut().unwrap().message.view.genesis = wrong_genesis.hash();
     assert_matches!(
         timeout.verify(&genesis),
         Err(ReplicaTimeoutVerifyError::InvalidHighQC(_))
