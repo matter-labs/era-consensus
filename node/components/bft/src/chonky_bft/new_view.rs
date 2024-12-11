@@ -53,19 +53,19 @@ impl StateMachine {
 
         // Unwrap message.
         let message = &signed_message.msg;
-        let author = &signed_message.key;
+        let author = &signed_message.key; 
+
+        // If the message is from a past view, ignore it.
+        if message.view().number <= self.view_number {
+            return Err(Error::Old {
+                current_view: self.view_number,
+            });
+        }
 
         // Check that the message signer is in the validator committee.
         if !self.config.genesis().validators.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone().into(),
-            });
-        }
-
-        // If the message is from a past view, ignore it.
-        if message.view().number < self.view_number {
-            return Err(Error::Old {
-                current_view: self.view_number,
             });
         }
 

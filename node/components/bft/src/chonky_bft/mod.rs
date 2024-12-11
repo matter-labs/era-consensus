@@ -19,7 +19,7 @@ mod tests;
 mod timeout;
 
 /// The duration of the view timeout.
-pub(crate) const VIEW_TIMEOUT_DURATION: time::Duration = time::Duration::milliseconds(2000);
+pub(crate) const VIEW_TIMEOUT_DURATION: time::Duration = time::Duration::seconds(20);
 
 /// The StateMachine struct contains the state of the replica and implements all the
 /// logic of ChonkyBFT.
