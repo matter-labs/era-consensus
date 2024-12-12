@@ -155,7 +155,7 @@ impl StateMachine {
         self.view_start = now;
 
         // Reset the timeout.
-        self.view_timeout = time::Deadline::Finite(ctx.now() + self.config.timeout_duration);
+        self.view_timeout = time::Deadline::Finite(ctx.now() + self.config.view_timeout);
 
         Ok(())
     }

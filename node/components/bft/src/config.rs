@@ -14,7 +14,7 @@ pub struct Config {
     /// reject blocks with payloads larger than this.
     pub max_payload_size: usize,
     /// The duration of the view timeout.
-    pub timeout_duration: time::Duration,
+    pub view_timeout: time::Duration,
     /// Block store.
     pub block_store: Arc<storage::BlockStore>,
     /// Replica store.

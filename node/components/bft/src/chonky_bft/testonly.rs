@@ -74,7 +74,7 @@ impl UTHarness {
             replica_store: Box::new(in_memory::ReplicaStore::default()),
             payload_manager,
             max_payload_size: MAX_PAYLOAD_SIZE,
-            timeout_duration: time::Duration::milliseconds(2000),
+            view_timeout: time::Duration::milliseconds(2000),
         });
         let replica = StateMachine::start(
             ctx,

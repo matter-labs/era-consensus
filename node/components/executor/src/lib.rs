@@ -39,6 +39,8 @@ pub struct Config {
     pub public_addr: net::Host,
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
+    /// The duration of the view timeout, in milliseconds
+    pub view_timeout: usize,
     /// Key of this node. It uniquely identifies the node.
     /// It should match the secret key provided in the `node_key` file.
     pub node_key: node::SecretKey,
@@ -157,6 +159,7 @@ impl Executor {
                 replica_store: validator.replica_store,
                 payload_manager: validator.payload_manager,
                 max_payload_size: self.config.max_payload_size,
+                view_timeout: time::Duration::milliseconds(self.config.view_timeout as i64),
             }
             .run(ctx, network_send, consensus_recv)
             .await

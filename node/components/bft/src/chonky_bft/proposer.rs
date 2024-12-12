@@ -26,7 +26,7 @@ pub(crate) async fn run_proposer(
 
         // Create a proposal for the given justification, within the timeout.
         let proposal = match create_proposal(
-            &ctx.with_timeout(cfg.timeout_duration),
+            &ctx.with_timeout(cfg.view_timeout),
             cfg.clone(),
             justification,
         )

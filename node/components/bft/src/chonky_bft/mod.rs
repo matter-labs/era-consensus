@@ -87,7 +87,7 @@ impl StateMachine {
         }
 
         let this = Self {
-            view_timeout: time::Deadline::Finite(ctx.now() + config.timeout_duration),
+            view_timeout: time::Deadline::Finite(ctx.now() + config.view_timeout),
             config,
             outbound_channel,
             inbound_channel,
