@@ -1,4 +1,5 @@
 //! Node configuration.
+#![allow(unused_imports)]
 use crate::{proto, store};
 use anyhow::{anyhow, Context as _};
 use std::{

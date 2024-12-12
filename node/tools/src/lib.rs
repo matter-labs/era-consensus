@@ -4,6 +4,7 @@ pub mod config;
 pub mod k8s;
 mod proto;
 pub mod rpc;
+#[allow(dead_code)]
 mod store;
 
 #[cfg(test)]
