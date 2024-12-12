@@ -98,6 +98,9 @@ message AppConfig {
   // Maximal size of the block payload.
   optional uint64 max_payload_size = 5; // required; bytes
 
+  // The duration of the view timeout.
+  optional uint64 view_timeout = 19; // required; milliseconds
+
   // Validator secret key.
   optional string validator_secret_key = 10; // optional; ValidatorSecretKey
 

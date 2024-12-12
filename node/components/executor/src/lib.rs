@@ -39,7 +39,7 @@ pub struct Config {
     pub public_addr: net::Host,
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
-    /// The duration of the view timeout, in milliseconds
+    /// The duration of the view timeout, in milliseconds.
     pub view_timeout: usize,
     /// Key of this node. It uniquely identifies the node.
     /// It should match the secret key provided in the `node_key` file.
