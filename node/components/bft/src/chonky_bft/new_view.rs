@@ -55,7 +55,7 @@ impl StateMachine {
         let message = &signed_message.msg;
         let author = &signed_message.key; 
 
-        // If the message is from a past view, ignore it.
+        // If the replica is already in this view, then ignore it.
         if message.view().number <= self.view_number {
             return Err(Error::Old {
                 current_view: self.view_number,
@@ -103,10 +103,8 @@ impl StateMachine {
         };
 
         // If the message is for a future view, we need to start a new view.
-        if message.view().number > self.view_number {
-            self.start_new_view(ctx, message.view().number).await?;
-        }
-
+        assert!(message.view().number > self.view_number);
+        self.start_new_view(ctx, message.view().number).await.wrap("start_new_view()")?;
         Ok(())
     }
 
