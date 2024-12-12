@@ -15,7 +15,7 @@ use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, Text
 use zksync_consensus_executor::{self as executor, attestation};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{attester, node, validator};
-use zksync_consensus_storage::{BlockStore, BlockStoreRunner};
+use zksync_consensus_storage::{testonly::in_memory, BlockStore, BlockStoreRunner};
 use zksync_protobuf::{
     read_optional, read_optional_repr, read_required, required, ProtoFmt, ProtoRepr,
 };
@@ -256,7 +256,12 @@ impl Configs {
         &self,
         ctx: &ctx::Ctx,
     ) -> ctx::Result<(executor::Executor, BlockStoreRunner)> {
-        let store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
+        //let store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
+        let store = in_memory::BlockStore::bounded(
+            self.app.genesis.clone(),
+            self.app.genesis.first_block,
+            200,
+        );
         let (block_store, runner) = BlockStore::new(ctx, Box::new(store.clone())).await?;
         let attestation = Arc::new(attestation::Controller::new(self.app.attester_key.clone()));
 
@@ -304,7 +309,7 @@ impl Configs {
                 .as_ref()
                 .map(|key| executor::Validator {
                     key: key.clone(),
-                    replica_store: Box::new(store.clone()),
+                    replica_store: Box::new(in_memory::ReplicaStore::default()),
                     payload_manager: Box::new(bft::testonly::RandomPayload(
                         self.app.max_payload_size,
                     )),
