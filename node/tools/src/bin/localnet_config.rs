@@ -57,7 +57,9 @@ fn main() -> anyhow::Result<()> {
     // Generate the keys for all the replicas.
     let rng = &mut rand::thread_rng();
 
-    let setup = validator::testonly::Setup::new(rng, validator_count);
+    let mut setup = validator::testonly::SetupSpec::new(rng, validator_count);
+    setup.leader_selection = validator::LeaderSelectionMode::Sticky(setup.weights[0].0.public());
+    let setup = validator::testonly::Setup::from(setup);
     let validator_keys = setup.keys.clone();
 
     // Each node will have `gossip_peers` outbound peers.

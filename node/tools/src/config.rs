@@ -44,7 +44,7 @@ pub fn decode_json<T: serde::de::DeserializeOwned>(json: &str) -> anyhow::Result
 
 /// Encodes a generated proto message to json for arbitrary ProtoFmt.
 pub fn encode_json<T: serde::ser::Serialize>(x: &T) -> String {
-    let s = serde_json::Serializer::pretty(vec![]);
+    let s = Serializer::pretty(vec![]);
     encode_with_serializer(x, s)
 }
 

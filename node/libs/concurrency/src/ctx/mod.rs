@@ -267,7 +267,7 @@ pub enum Error {
 pub type Result<T> = std::result::Result<T, Error>;
 
 impl crate::error::Wrap for Error {
-    fn with_wrap<C: std::fmt::Display + Send + Sync + 'static, F: FnOnce() -> C>(
+    fn with_wrap<C: fmt::Display + Send + Sync + 'static, F: FnOnce() -> C>(
         self,
         f: F,
     ) -> Self {
