@@ -1,6 +1,7 @@
 use crate::{testonly, FromNetworkMessage, PayloadManager, ToNetworkMessage};
 use anyhow::Context as _;
 use std::sync::Arc;
+use zksync_concurrency::time;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync};
 use zksync_consensus_network as network;
 use zksync_consensus_storage as storage;
@@ -58,6 +59,7 @@ impl Node {
                     replica_store: Box::new(in_memory::ReplicaStore::default()),
                     payload_manager: self.behavior.payload_manager(),
                     max_payload_size: MAX_PAYLOAD_SIZE,
+                    view_timeout: time::Duration::milliseconds(2000),
                 }
                 .run(ctx, net_send, consensus_receiver)
                 .await

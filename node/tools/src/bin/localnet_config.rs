@@ -76,6 +76,7 @@ fn main() -> anyhow::Result<()> {
                 .map(|port| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port)),
             genesis: setup.genesis.clone(),
             max_payload_size: 1000000,
+            view_timeout: 2000,
             node_key: node_keys[i].clone(),
             validator_key: validator_keys.get(i).cloned(),
             attester_key: attester_keys.get(i).cloned(),
