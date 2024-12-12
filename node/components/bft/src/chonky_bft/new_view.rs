@@ -116,9 +116,21 @@ impl StateMachine {
     ) -> ctx::Result<()> {
         // Update the state machine.
         self.view_number = view;
+        metrics::METRICS.replica_view_number.set(self.view_number.0);
         self.phase = validator::Phase::Prepare;
+        // It is important that the proposal and new_view messages from the leader
+        // will contain the same justification.
+        // Proposal cannot be produced before previous block is processed,
+        // therefore leader needs to make sure that the high_commit_qc is delivered
+        // to all replicas, so that the finalized block is distributed over the network.
+        // In particular it is not guaranteed that the leader has the finalized block when
+        // sending the NewView, so it might need to wait for the finalized block.
+        //
+        // Note that for this process to work e2e, the replicas should NOT ignore th NewView from
+        // the leader, even if they already advanced to the given view.
+        let justification = self.get_justification();
         self.proposer_sender
-            .send(Some(self.get_justification()))
+            .send(Some(justification.clone()))
             .expect("justification_watch.send() failed");
 
         // Clear the block proposal cache.
@@ -137,7 +149,7 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaNewView(
                     validator::ReplicaNewView {
-                        justification: self.get_justification(),
+                        justification: justification.clone(),
                     },
                 )),
         };
@@ -145,7 +157,6 @@ impl StateMachine {
 
         // Log the event and update the metrics.
         tracing::info!("Starting view {}", self.view_number);
-        metrics::METRICS.replica_view_number.set(self.view_number.0);
         let now = ctx.now();
         metrics::METRICS
             .view_latency
