@@ -1,4 +1,3 @@
-use super::VIEW_TIMEOUT_DURATION;
 use crate::{metrics, Config, ToNetworkMessage};
 use std::sync::Arc;
 use zksync_concurrency::{ctx, error::Wrap as _, sync};
@@ -27,7 +26,7 @@ pub(crate) async fn run_proposer(
 
         // Create a proposal for the given justification, within the timeout.
         let proposal = match create_proposal(
-            &ctx.with_timeout(VIEW_TIMEOUT_DURATION),
+            &ctx.with_timeout(cfg.timeout_duration),
             cfg.clone(),
             justification,
         )
@@ -35,7 +34,7 @@ pub(crate) async fn run_proposer(
         {
             Ok(proposal) => proposal,
             Err(ctx::Error::Canceled(_)) => {
-                tracing::error!("run_proposer(): timed out while creating a proposal");
+                tracing::warn!("run_proposer(): timed out while creating a proposal");
                 continue;
             }
             Err(ctx::Error::Internal(err)) => {
