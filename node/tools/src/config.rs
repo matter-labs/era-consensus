@@ -9,7 +9,7 @@ use std::{
     sync::Arc,
 };
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use zksync_concurrency::{ctx, net};
+use zksync_concurrency::{ctx, net, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor::{self as executor, attestation};
@@ -76,6 +76,7 @@ pub struct App {
 
     pub genesis: validator::Genesis,
     pub max_payload_size: usize,
+    pub view_timeout: time::Duration,
     pub validator_key: Option<validator::SecretKey>,
     pub attester_key: Option<attester::SecretKey>,
 
@@ -176,6 +177,7 @@ impl ProtoFmt for App {
 
             genesis: read_required(&r.genesis).context("genesis")?,
             max_payload_size,
+            view_timeout: read_required(&r.view_timeout).context("view_timeout")?,
             // TODO: read secret.
             validator_key: read_optional_secret_text(&r.validator_secret_key)
                 .context("validator_secret_key")?,
@@ -201,6 +203,7 @@ impl ProtoFmt for App {
 
             genesis: Some(self.genesis.build()),
             max_payload_size: Some(self.max_payload_size.try_into().unwrap()),
+            view_timeout: Some(self.view_timeout.build()),
             validator_secret_key: self.validator_key.as_ref().map(TextFmt::encode),
             attester_secret_key: self.attester_key.as_ref().map(TextFmt::encode),
 
@@ -270,6 +273,7 @@ impl Configs {
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
                 max_payload_size: self.app.max_payload_size,
+                view_timeout: self.app.view_timeout,
                 rpc: executor::RpcConfig::default(),
                 debug_page: self
                     .app

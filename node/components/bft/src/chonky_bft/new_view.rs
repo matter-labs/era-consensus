@@ -1,5 +1,5 @@
 use super::StateMachine;
-use crate::{chonky_bft::VIEW_TIMEOUT_DURATION, metrics};
+use crate::metrics;
 use zksync_concurrency::{ctx, error::Wrap, metrics::LatencyHistogramExt as _, time};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
@@ -155,7 +155,7 @@ impl StateMachine {
         self.view_start = now;
 
         // Reset the timeout.
-        self.view_timeout = time::Deadline::Finite(ctx.now() + VIEW_TIMEOUT_DURATION);
+        self.view_timeout = time::Deadline::Finite(ctx.now() + self.config.view_timeout);
 
         Ok(())
     }
