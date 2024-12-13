@@ -4,6 +4,7 @@ use std::{
     collections::HashMap,
     net::{Ipv4Addr, SocketAddr},
 };
+use zksync_concurrency::time;
 use zksync_consensus_roles::{node::SecretKey, validator};
 use zksync_consensus_tools::{config, k8s, k8s::ConsensusNode};
 
@@ -48,7 +49,7 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
                 metrics_server_addr: None,
                 genesis: setup.genesis.clone(),
                 max_payload_size: 1000000,
-                view_timeout: 2000,
+                view_timeout: time::Duration::milliseconds(2000),
                 validator_key: Some(validator_keys[i].clone()),
                 attester_key: Some(attester_keys[i].clone()),
                 node_key: node_keys[i].clone(),

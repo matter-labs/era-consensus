@@ -41,6 +41,7 @@ syntax = "proto3";
 package zksync.tools;
 
 import "zksync/roles/validator.proto";
+import "zksync/std.proto";
 
 // (public key, ip address) of a gossip network node. 
 message NodeAddr {
@@ -99,7 +100,7 @@ message AppConfig {
   optional uint64 max_payload_size = 5; // required; bytes
 
   // The duration of the view timeout.
-  optional uint64 view_timeout = 19; // required; milliseconds
+  optional std.Duration view_timeout = 19; // required; milliseconds
 
   // Validator secret key.
   optional string validator_secret_key = 10; // optional; ValidatorSecretKey
