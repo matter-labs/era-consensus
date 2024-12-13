@@ -57,7 +57,10 @@ fn main() -> anyhow::Result<()> {
     // Generate the keys for all the replicas.
     let rng = &mut rand::thread_rng();
 
-    let setup = validator::testonly::Setup::new(rng, validator_count);
+    let mut setup = validator::testonly::SetupSpec::new(rng, validator_count);
+    setup.leader_selection = validator::LeaderSelectionMode::Sticky(setup.validator_weights[0].0.public());
+    let setup = validator::testonly::Setup::from_spec(rng, setup);
+    // let setup = validator::testonly::Setup::new(rng, validator_count);
     let validator_keys = setup.validator_keys.clone();
     let attester_keys = setup.attester_keys.clone();
 
