@@ -1,11 +1,11 @@
-//! This tool generates a validator key pair and prints it to stdout.
+//! This tool generates a validator/attester/node key pair and prints it to stdout.
 #![allow(clippy::print_stdout)]
 
 use crypto::TextFmt as _;
 use zksync_consensus_crypto as crypto;
 use zksync_consensus_roles::{attester, node, validator};
 
-/// This tool generates a validator key pair and prints it to stdout.
+/// This tool generates a validator/attester/node key pair and prints it to stdout.
 fn main() {
     let validator_key = validator::SecretKey::generate();
     let attester_key = attester::SecretKey::generate();
