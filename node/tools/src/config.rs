@@ -15,7 +15,9 @@ use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, Text
 use zksync_consensus_executor::{self as executor, attestation};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{attester, node, validator};
-use zksync_consensus_storage::{BlockStore, BlockStoreRunner};
+use zksync_consensus_storage::{
+    testonly::in_memory, BlockStore, BlockStoreRunner, PersistentBlockStore, ReplicaStore,
+};
 use zksync_protobuf::{
     read_optional, read_optional_repr, read_required, required, ProtoFmt, ProtoRepr,
 };
@@ -248,7 +250,7 @@ pub struct DebugPage {
 #[derive(Debug)]
 pub struct Configs {
     pub app: App,
-    pub database: PathBuf,
+    pub database: Option<PathBuf>,
 }
 
 impl Configs {
@@ -256,8 +258,29 @@ impl Configs {
         &self,
         ctx: &ctx::Ctx,
     ) -> ctx::Result<(executor::Executor, BlockStoreRunner)> {
-        let store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
-        let (block_store, runner) = BlockStore::new(ctx, Box::new(store.clone())).await?;
+        struct Stores {
+            block: Box<dyn PersistentBlockStore>,
+            replica: Box<dyn ReplicaStore>,
+        }
+        let stores = if let Some(path) = &self.database {
+            let store = store::RocksDB::open(self.app.genesis.clone(), path).await?;
+            Stores {
+                block: Box::new(store.clone()),
+                replica: Box::new(store),
+            }
+        } else {
+            let block = in_memory::BlockStore::bounded(
+                self.app.genesis.clone(),
+                self.app.genesis.first_block,
+                200,
+            );
+            let replica = in_memory::ReplicaStore::default();
+            Stores {
+                block: Box::new(block),
+                replica: Box::new(replica),
+            }
+        };
+        let (block_store, runner) = BlockStore::new(ctx, stores.block).await?;
         let attestation = Arc::new(attestation::Controller::new(self.app.attester_key.clone()));
 
         let e = executor::Executor {
@@ -304,7 +327,7 @@ impl Configs {
                 .as_ref()
                 .map(|key| executor::Validator {
                     key: key.clone(),
-                    replica_store: Box::new(store.clone()),
+                    replica_store: stores.replica,
                     payload_manager: Box::new(bft::testonly::RandomPayload(
                         self.app.max_payload_size,
                     )),

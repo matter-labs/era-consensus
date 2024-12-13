@@ -13,6 +13,7 @@ struct BlockStoreInner {
     genesis: validator::Genesis,
     persisted: sync::watch::Sender<BlockStoreState>,
     blocks: Mutex<VecDeque<validator::Block>>,
+    capacity: Option<usize>,
     pregenesis_blocks: HashMap<validator::BlockNumber, validator::PreGenesisBlock>,
 }
 
@@ -39,6 +40,7 @@ impl BlockStore {
             genesis: setup.genesis.clone(),
             persisted: sync::watch::channel(BlockStoreState { first, last: None }).0,
             blocks: Mutex::default(),
+            capacity: None,
             pregenesis_blocks: setup
                 .blocks
                 .iter()
@@ -47,6 +49,22 @@ impl BlockStore {
                     validator::Block::Final(_) => None,
                 })
                 .collect(),
+        }))
+    }
+
+    /// New bounded storage. Old blocks get GC'ed onse the storage capacity is full.
+    pub fn bounded(
+        genesis: validator::Genesis,
+        first: validator::BlockNumber,
+        capacity: usize,
+    ) -> Self {
+        assert!(genesis.first_block <= first);
+        Self(Arc::new(BlockStoreInner {
+            genesis,
+            persisted: sync::watch::channel(BlockStoreState { first, last: None }).0,
+            blocks: Mutex::default(),
+            capacity: Some(capacity),
+            pregenesis_blocks: [].into(),
         }))
     }
 
@@ -114,9 +132,16 @@ impl PersistentBlockStore for BlockStore {
             // It may happen that a block gets fetched which is not needed any more.
             return Ok(());
         }
+        if let Some(c) = self.0.capacity {
+            if blocks.len() >= c {
+                blocks.pop_front();
+            }
+        }
         if block.number() > want {
             // Blocks should be stored in order though.
-            return Err(anyhow::anyhow!("got block {:?}, want {want:?}", block.number()).into());
+            return Err(
+                anyhow::format_err!("got block {:?}, want {want:?}", block.number()).into(),
+            );
         }
         self.0
             .persisted

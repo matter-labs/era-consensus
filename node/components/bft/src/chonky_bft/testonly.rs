@@ -145,9 +145,15 @@ impl UTHarness {
         self.try_recv().unwrap().msg
     }
 
-    pub(crate) async fn new_replica_new_view(&self) -> validator::ReplicaNewView {
-        let justification = self.replica.get_justification();
-        validator::ReplicaNewView { justification }
+    pub(crate) async fn new_replica_new_view(
+        &mut self,
+        ctx: &ctx::Ctx,
+    ) -> validator::ReplicaNewView {
+        validator::ReplicaNewView {
+            justification: validator::ProposalJustification::Timeout(
+                self.new_timeout_qc(ctx).await,
+            ),
+        }
     }
 
     pub(crate) async fn new_commit_qc(
@@ -164,19 +170,14 @@ impl UTHarness {
         qc
     }
 
-    // #[allow(dead_code)]
-    // pub(crate) fn new_timeout_qc(
-    //     &mut self,
-    //     mutate_fn: impl FnOnce(&mut validator::ReplicaTimeout),
-    // ) -> validator::TimeoutQC {
-    //     let mut msg = self.new_replica_timeout();
-    //     mutate_fn(&mut msg);
-    //     let mut qc = validator::TimeoutQC::new(msg.view.clone());
-    //     for key in &self.keys {
-    //         qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
-    //     }
-    //     qc
-    // }
+    pub(crate) async fn new_timeout_qc(&mut self, ctx: &ctx::Ctx) -> validator::TimeoutQC {
+        let msg = self.new_replica_timeout(ctx).await;
+        let mut qc = validator::TimeoutQC::new(msg.view);
+        for key in &self.keys {
+            qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
+        }
+        qc
+    }
 
     pub(crate) async fn process_leader_proposal(
         &mut self,

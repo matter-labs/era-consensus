@@ -117,7 +117,7 @@ async fn new_view_non_validator_signer() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let replica_new_view = util.new_replica_new_view().await;
+        let replica_new_view = util.new_replica_new_view(ctx).await;
         let non_validator_key: validator::SecretKey = ctx.rng().gen();
         let res = util
             .process_replica_new_view(ctx, non_validator_key.sign_msg(replica_new_view))
@@ -144,10 +144,15 @@ async fn replica_new_view_old() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let replica_new_view = util.new_replica_new_view().await;
-        util.produce_block(ctx).await;
+        let replica_new_view = util.new_replica_new_view(ctx).await;
+        let replica_new_view = util.owner_key().sign_msg(replica_new_view);
+
+        // Process new_view twice. The second time it shouldn't be accepted.
+        util.process_replica_new_view(ctx, replica_new_view.clone())
+            .await
+            .unwrap();
         let res = util
-            .process_replica_new_view(ctx, util.owner_key().sign_msg(replica_new_view))
+            .process_replica_new_view(ctx, replica_new_view.clone())
             .await;
 
         assert_matches!(
@@ -171,7 +176,7 @@ async fn new_view_invalid_sig() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let msg = util.new_replica_new_view().await;
+        let msg = util.new_replica_new_view(ctx).await;
         let mut replica_new_view = util.owner_key().sign_msg(msg);
         replica_new_view.sig = ctx.rng().gen();
 
