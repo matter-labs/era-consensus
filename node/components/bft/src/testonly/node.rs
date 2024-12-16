@@ -1,8 +1,7 @@
 use crate::{testonly, FromNetworkMessage, PayloadManager, ToNetworkMessage};
 use anyhow::Context as _;
 use std::sync::Arc;
-use zksync_concurrency::time;
-use zksync_concurrency::{ctx, ctx::channel, scope, sync};
+use zksync_concurrency::{ctx, ctx::channel, scope, sync, time};
 use zksync_consensus_network as network;
 use zksync_consensus_storage as storage;
 use zksync_consensus_storage::testonly::in_memory;
