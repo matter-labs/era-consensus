@@ -55,17 +55,22 @@ impl StateMachine {
         let message = &signed_message.msg;
         let author = &signed_message.key;
 
+        // If the replica is already in this view (and the message is NOT from the leader), then ignore it.
+        // See `start_new_view()` for explanation why we need to process the message from the
+        // leader.
+        if message.view().number < self.view_number
+            || (message.view().number == self.view_number
+                && author != &self.config.genesis().view_leader(self.view_number))
+        {
+            return Err(Error::Old {
+                current_view: self.view_number,
+            });
+        }
+
         // Check that the message signer is in the validator committee.
         if !self.config.genesis().validators.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone().into(),
-            });
-        }
-
-        // If the message is from a past view, ignore it.
-        if message.view().number < self.view_number {
-            return Err(Error::Old {
-                current_view: self.view_number,
             });
         }
 
@@ -118,9 +123,23 @@ impl StateMachine {
     ) -> ctx::Result<()> {
         // Update the state machine.
         self.view_number = view;
+        metrics::METRICS.replica_view_number.set(self.view_number.0);
         self.phase = validator::Phase::Prepare;
+        // It is important that the proposal and new_view messages from the leader
+        // will contain the same justification.
+        // Proposal cannot be produced before previous block is processed,
+        // therefore leader needs to make sure that the high_commit_qc is delivered
+        // to all replicas, so that the finalized block is distributed over the network.
+        // In particular it is not guaranteed that the leader has the finalized block when
+        // sending the NewView, so it might need to wait for the finalized block.
+        //
+        // Note that for this process to work e2e, the replicas should NOT ignore the NewView from
+        // the leader, even if they already advanced to the given view.
+        // Note that the order of NewView and proposal messages doesn't matter, because
+        // proposal is a superset of NewView message.
+        let justification = self.get_justification();
         self.proposer_sender
-            .send(Some(self.get_justification()))
+            .send(Some(justification.clone()))
             .expect("justification_watch.send() failed");
 
         // Clear the block proposal cache.
@@ -139,7 +158,7 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaNewView(
                     validator::ReplicaNewView {
-                        justification: self.get_justification(),
+                        justification: justification.clone(),
                     },
                 )),
         };
@@ -147,7 +166,6 @@ impl StateMachine {
 
         // Log the event and update the metrics.
         tracing::info!("Starting view {}", self.view_number);
-        metrics::METRICS.replica_view_number.set(self.view_number.0);
         let now = ctx.now();
         metrics::METRICS
             .view_latency

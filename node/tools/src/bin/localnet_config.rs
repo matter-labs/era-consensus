@@ -76,7 +76,7 @@ fn main() -> anyhow::Result<()> {
                 .metrics_server_port
                 .map(|port| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port)),
             genesis: setup.genesis.clone(),
-            max_payload_size: 1000000,
+            max_payload_size: args.payload_size,
             view_timeout: time::Duration::milliseconds(2000),
             node_key: node_keys[i].clone(),
             validator_key: validator_keys.get(i).cloned(),
