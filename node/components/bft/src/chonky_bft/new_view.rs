@@ -55,9 +55,13 @@ impl StateMachine {
         let message = &signed_message.msg;
         let author = &signed_message.key;
 
-        // If the replica is already in this view, then ignore it.
-        // TODO: allow for the same view number for the proposer.
-        if message.view().number <= self.view_number {
+        // If the replica is already in this view (and the message is NOT from the leader), then ignore it.
+        // See `start_new_view()` for explanation why we need to process the message from the
+        // leader.
+        if message.view().number < self.view_number
+            || (message.view().number == self.view_number
+                && author != &self.config.genesis().view_leader(self.view_number))
+        {
             return Err(Error::Old {
                 current_view: self.view_number,
             });
