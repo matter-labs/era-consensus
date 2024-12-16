@@ -6,7 +6,11 @@ use crate::{
 };
 use assert_matches::assert_matches;
 use std::sync::Arc;
-use zksync_concurrency::{ctx, sync, sync::prunable_mpsc};
+use zksync_concurrency::{
+    ctx,
+    sync::{self, prunable_mpsc},
+    time,
+};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{
     testonly::{in_memory, TestMemoryStorage},
@@ -70,6 +74,7 @@ impl UTHarness {
             replica_store: Box::new(in_memory::ReplicaStore::default()),
             payload_manager,
             max_payload_size: MAX_PAYLOAD_SIZE,
+            view_timeout: time::Duration::milliseconds(2000),
         });
         let replica = StateMachine::start(
             ctx,
