@@ -133,7 +133,7 @@ impl StateMachine {
         // In particular it is not guaranteed that the leader has the finalized block when
         // sending the NewView, so it might need to wait for the finalized block.
         //
-        // Note that for this process to work e2e, the replicas should NOT ignore th NewView from
+        // Note that for this process to work e2e, the replicas should NOT ignore the NewView from
         // the leader, even if they already advanced to the given view.
         // Note that the order of NewView and proposal messages doesn't matter, because
         // proposal is a superset of NewView message.
