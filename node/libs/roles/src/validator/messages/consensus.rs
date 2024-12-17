@@ -92,6 +92,7 @@ impl Variant<Msg> for ReplicaTimeout {
 }
 
 /// View specification.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct View {
     /// Genesis of the chain this view belongs to.
@@ -125,6 +126,7 @@ impl View {
 }
 
 /// A struct that represents a view number.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ViewNumber(pub u64);
 
@@ -148,6 +150,7 @@ impl fmt::Display for ViewNumber {
 
 /// Struct that represents a bit map of validators. We use it to compactly store
 /// which validators signed a given message.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Signers(pub BitVec);
 

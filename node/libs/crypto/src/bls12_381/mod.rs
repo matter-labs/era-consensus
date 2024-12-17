@@ -174,6 +174,7 @@ impl std::hash::Hash for Signature {
 }
 
 /// Type safety wrapper around a `blst` aggregate signature
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Debug)]
 pub struct AggregateSignature(bls::AggregateSignature);
 
