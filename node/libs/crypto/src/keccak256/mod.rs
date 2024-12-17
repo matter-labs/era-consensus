@@ -7,6 +7,7 @@ mod test;
 pub mod testonly;
 
 /// Keccak256 hash.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Keccak256(pub(crate) [u8; 32]);
 

@@ -6,6 +6,7 @@ use crate::validator;
 use std::collections::{BTreeMap, HashMap};
 
 /// A timeout message from a replica.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct ReplicaTimeout {
     /// View of this message.
@@ -53,7 +54,20 @@ pub enum ReplicaTimeoutVerifyError {
 
 /// A quorum certificate of ReplicaTimeout messages. Since not all ReplicaTimeout messages are
 /// identical (they have different high blocks and high QCs), we need to keep the ReplicaTimeout
-///  messages in a map. We can still aggregate the signatures though.
+/// messages in a map. We can still aggregate the signatures though.
+///
+/// WARNING: `TimeoutQC` message contains a map indexed by `ReplicaTimeout` messages.
+/// Therefore, `Ord` implementation of `ReplicaTimeout` affects the unique encoding of the `TimeoutQC` message.
+/// This `Ord` implementation is the derived lexicographic ordering of the fields of
+/// `ReplicaTimeout` (and transitively on types of the fields AS WELL).
+/// As a result ANY change to type of ANY transitive field of ReplicaTimeout struct may invalidate
+/// preexisting signatures of `TimeoutQC` messages (or messages containing `TimeoutQC`).
+///
+/// The proper fix would be to add support for unordered collections on the protobuf level
+/// (for example, by adding a custom option "unordered" for repeated fields, which would make the encoder
+/// sort the encoded elements before encoding the whole message). However the current protobuf
+/// encoding of TimeoutQC keeps the keys and values in separate repeated fields. Until this is
+/// fixed, ANY change to the above mentioned types may be backward incompatible.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TimeoutQC {
     /// View of this QC.

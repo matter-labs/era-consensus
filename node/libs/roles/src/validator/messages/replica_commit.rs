@@ -2,6 +2,7 @@ use super::{BlockHeader, Genesis, Signed, Signers, View};
 use crate::validator;
 
 /// A commit message from a replica.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReplicaCommit {
     /// View of this message.
@@ -31,6 +32,7 @@ pub enum ReplicaCommitVerifyError {
 
 /// A Commit Quorum Certificate. It is an aggregate of signed ReplicaCommit messages.
 /// The Commit Quorum Certificate is over identical messages, so we only need one message.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CommitQC {
     /// The ReplicaCommit message that the QC is for.
