@@ -862,11 +862,12 @@ module replica {
     // a correct replica changes to a new view
     action start_new_view(id: ReplicaId, self: ReplicaState, view: ViewNumber): bool = {
         // make sure that we do not go out of bounds with the new view
-        val justification = self.create_justification()
+        val new_self = { ...self, view: view, phase: PhasePrepare }
+        val justification = new_self.create_justification()
         all {
             VIEWS.contains(view),
             // switch to the Prepare phase
-            replica_state' = replica_state.set(id, { ...self, view: view, phase: PhasePrepare }),
+            replica_state' = replica_state.set(id, new_self),
             // Send a new view message to the other replicas for synchronization
             msgs_new_view' = msgs_new_view.union(Set({ justification: justification, sig: id })),
             // store the justification
