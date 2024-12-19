@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.8.0](https://github.com/matter-labs/era-consensus/compare/v0.7.0...v0.8.0) (2024-12-19)
+
+
+### Features
+
+* documented the dangers of ordering in message encoding ([#225](https://github.com/matter-labs/era-consensus/issues/225)) ([c1b8e6e](https://github.com/matter-labs/era-consensus/commit/c1b8e6e021c5b958b047ac1478a337a6efe9e8cd))
+
 ## [0.7.0](https://github.com/matter-labs/era-consensus/compare/v0.6.0...v0.7.0) (2024-12-16)
 
 
