@@ -386,10 +386,8 @@ module inductive {
                     qc.vote.block_number == i,
                     // when the replica commits the block,
                     // it uses the CommitQC as a justification to start the new view
-                    r::msgs_new_view.contains({
-                        sig: id,
-                        justification: Commit(cblock.commit_qc),
-                    }),
+                    commit_qc_supported_by_messages(cblock.commit_qc),
+                    r::commit_qc_verify(cblock.commit_qc),
                 }
             })
         })
