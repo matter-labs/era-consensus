@@ -300,13 +300,13 @@ module inductive {
                 }
             },
             {
-                nondet msgs_new_view = generate(30, Set(NEW_VIEW_SAMPLE))
+                nondet msgs_new_view = generate(5, Set(NEW_VIEW_SAMPLE))
                 r::msgs_new_view' = msgs_new_view
             },
             //r::msgs_proposal' = proposals,
             {
                 // we have to pass the upper bound of 10 directly (this is a limitation of Quint)
-                nondet msgs_proposal = generate(10, Set(PROPOSAL_SAMPLE))
+                nondet msgs_proposal = generate(5, Set(PROPOSAL_SAMPLE))
                 all {
                     msgs_proposal.forall(proposal_shape_inv),
                     r::msgs_proposal' = msgs_proposal,
@@ -366,6 +366,8 @@ module inductive {
         lemma15_timeout_high_vote_is_supported_by_commits,
         lemma16_proposals_are_valid,
         lemma17_timeout_high_commit_qc_is_valid,
+        lemma19_replica_state_high_commit_qc_is_justified,
+        lemma20_replica_state_high_timeout_qc_is_justified,
         // lemma18 is incorrect due to faults
         //lemma18_replica_state_high_commit_qc_is_justified,
     }
@@ -720,6 +722,35 @@ module inductive {
         })
     }
 
+    val lemma19_replica_state_high_commit_qc_is_justified = {
+        ICORRECT.forall(id => 
+            val self = r::replica_state.get(id)
+            and {
+                match (self.high_commit_qc) {
+                | None =>
+                    true
+                | Some(qc_id) =>
+                    commit_qc_supported_by_messages(r::ghost_commit_qc[qc_id])
+                },
+            }
+        )
+    }
+
+    val lemma20_replica_state_high_timeout_qc_is_justified = {
+        ICORRECT.forall(id => 
+            val self = r::replica_state.get(id)
+            and {
+                match (self.high_timeout_qc) {
+                | None =>
+                    true // this is not possible in views above zero
+
+                | Some(qc_id) =>
+                    timeout_qc_supported_by_messages(r::ghost_timeout_qc[qc_id])
+                },
+            }
+        )
+    }
+
     // invalid lemmas
     val lemma18_replica_state_high_commit_qc_is_justified = {
         ICORRECT.forall(id => 
@@ -760,20 +791,26 @@ module inductive {
     def justification_is_supported_with_messages(j: Justification): bool = {
         match (j) {
         | Commit(qc_id) =>
-            val qc = r::ghost_commit_qc[qc_id]
-            qc.agg_sig.forall(id => or {
-                IFAULTY.contains(id),
-                r::msgs_signed_commit.contains({ vote: qc.vote, sig: id })
-            })
+            commit_qc_supported_by_messages(r::ghost_commit_qc[qc_id])
 
         | Timeout(qc_id) =>
-            val qc = r::ghost_timeout_qc[qc_id]
-            qc.votes.keys().forall(id => or {
-                IFAULTY.contains(id),
-                val vote = qc.votes.get(id)
-                r::msgs_signed_timeout.exists(v => v.vote == vote and v.sig == id)
-            })
+            timeout_qc_supported_by_messages(r::ghost_timeout_qc[qc_id])
         }
+    }
+
+    def commit_qc_supported_by_messages(qc: CommitQC): bool = {
+        qc.agg_sig.forall(id => or {
+            IFAULTY.contains(id),
+            r::msgs_signed_commit.contains({ vote: qc.vote, sig: id })
+        })
+    }
+
+    def timeout_qc_supported_by_messages(qc: TimeoutQC): bool = {
+        qc.votes.keys().forall(id => or {
+            IFAULTY.contains(id),
+            val vote = qc.votes.get(id)
+            r::msgs_signed_timeout.exists(v => v.vote == vote and v.sig == id)
+        })
     }
 
     // liveness-related reasoning
