@@ -410,8 +410,10 @@ module inductive {
                 val view = r::view(m.justification)
                 val id = m.sig
                 and {
-                    // no justifications from the future
-                    view <= r::replica_state.get(id).view,
+                    // INCORRECT: no justifications from the future
+                    // (actually, a late replica may catch up with a CommitQC with later views)
+                    // view <= r::replica_state.get(id).view,
+
                     // (1) check the basic constraints
                     match (m.justification) {
                     | Commit(qc_id) =>
@@ -798,14 +800,12 @@ module inductive {
 
     def commit_qc_supported_by_messages(qc: CommitQC): bool = {
         qc.agg_sig.forall(id => or {
-            IFAULTY.contains(id),
             r::msgs_signed_commit.contains({ vote: qc.vote, sig: id })
         })
     }
 
     def timeout_qc_supported_by_messages(qc: TimeoutQC): bool = {
         qc.votes.keys().forall(id => or {
-            IFAULTY.contains(id),
             val vote = qc.votes.get(id)
             r::msgs_signed_timeout.exists(v => v.vote == vote and v.sig == id)
         })
