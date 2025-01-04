@@ -350,9 +350,10 @@ module inductive {
     val ind_inv = and {
         lemma0_committed_blocks_have_justified_qc,
         lemma1_justified_qc_is_valid,
-        lemma2_justified_commit_qc_supported_by_messages,
+        lemma2_qc_is_supported_by_messages,
         lemma3_signed_commit_needs_proposal,
-        lemma4_signed_commit_needs_justification,
+        // lemma 4 is incorrect
+        // lemma4_signed_commit_needs_justification,
         lemma5_signed_commit_no_equivocation,
         lemma6_signed_timeout_no_equivocation,
         // lemma7 is incorrect
@@ -466,59 +467,44 @@ module inductive {
         }),
     }
 
-    val lemma2_justified_commit_qc_supported_by_messages = {
-        r::msgs_new_view.forall(m => justification_is_supported_with_messages(m.justification))
+    // we require every CommitQC and TimeoutQC to be supported by the messages
+    // (except for the faulty replicas)
+    val lemma2_qc_is_supported_by_messages = and {
+        0.to(MAX_COMMIT_QC).forall(qc_id => or {
+            qc_id >= r::ghost_commit_qc.length(),
+            commit_qc_supported_by_messages(r::ghost_commit_qc[qc_id])
+        }),
+        0.to(MAX_TIMEOUT_QC).forall(qc_id => or {
+            qc_id >= r::ghost_timeout_qc.length(),
+            timeout_qc_supported_by_messages(r::ghost_timeout_qc[qc_id])
+        }),
     }
 
+    // all commits signed by correct replicas require valid proposals
     val lemma3_signed_commit_needs_proposal = {
         r::msgs_signed_commit.forall(m => or {
             IFAULTY.contains(m.sig),
-            r::msgs_new_view.exists(nv => {
-                match (nv.justification) {
-                | Commit(qc_id) =>
-                    val proposal = {
-                        // in our modeling, the block hash is identical to the block
-                        block: Some(m.vote.block_hash),
-                        justification: Commit(qc_id),
-                        sig: r::leader.get(m.vote.view),
-                        ghost_block_number: m.vote.block_number - 1,
-                    }
-                    and {
-                        // this block must have been verified in on_proposal
-                        IVALID_BLOCKS.contains(m.vote.block_hash),
-                        // there must be a proposal for the commit message `m`
-                        r::msgs_proposal.contains(proposal)
-                    }
-
-                | Timeout(qc_id) =>
-                    r::msgs_proposal.exists(p => and {
-                        p.block == Some(m.vote.block_hash),
-                        p.sig == r::leader.get(m.vote.view),
-                        p.ghost_block_number == m.vote.block_number,
-                    })
-                }
-            })
-        })
-    }
-
-    val lemma4_signed_commit_needs_justification = {
-        r::msgs_new_view.forall(nv => {
-            val num_and_hash = r::get_implied_block(nv.justification)
-            val view = r::view(nv.justification)
-            r::msgs_signed_commit.forall(m => or {
-                IFAULTY.contains(m.sig),
-                m.sig != nv.sig,
-                m.vote.view != view,
+            r::msgs_proposal.exists(p => and {
+                p.sig == r::leader.get(m.vote.view),
+                p.ghost_block_number == m.vote.block_number,
+                // the justification passes the verification
+                r::justification_verify(p.justification),
+                // a correct replica does not commit to an invalid block
+                r::VALID_BLOCKS.contains(m.vote.block_hash),
+                // the commit uses get_implied_block
+                val num_and_hash = r::get_implied_block(p.justification)
                 and {
                     num_and_hash._1 == m.vote.block_number,
                     match (num_and_hash._2) {
-                    | None => true
+                    | None => p.block == Some(m.vote.block_hash)
                     | Some(b) => b == m.vote.block_hash
                     },
                 }
             })
         })
     }
+
+    // lemma 4 is incorrect
 
     val lemma5_signed_commit_no_equivocation = {
         ICORRECT.forall(id => IVIEWS.forall(v => {
