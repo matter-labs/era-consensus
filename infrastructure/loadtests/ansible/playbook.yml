@@ -86,7 +86,7 @@
         mode: "0755"
 
     - name: Start executor binary in background
-      shell: "nohup ./executor > /var/log/zksync-bft.log 2>&1 &"
+      shell: "nohup ./executor --database=./database > /var/log/zksync-bft.log 2>&1 &"
       args:
         chdir: /etc/zksync-bft/
       environment:

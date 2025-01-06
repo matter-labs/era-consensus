@@ -5,6 +5,7 @@ use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 
 /// An aggregate signature from a validator.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct AggregateSignature(pub(crate) bls12_381::AggregateSignature);
 

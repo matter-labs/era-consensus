@@ -18,9 +18,6 @@ pub(crate) mod testonly;
 mod tests;
 mod timeout;
 
-/// The duration of the view timeout.
-pub(crate) const VIEW_TIMEOUT_DURATION: time::Duration = time::Duration::milliseconds(2000);
-
 /// The StateMachine struct contains the state of the replica and implements all the
 /// logic of ChonkyBFT.
 #[derive(Debug)]
@@ -90,6 +87,7 @@ impl StateMachine {
         }
 
         let this = Self {
+            view_timeout: time::Deadline::Finite(ctx.now() + config.view_timeout),
             config,
             outbound_channel,
             inbound_channel,
@@ -104,7 +102,6 @@ impl StateMachine {
             commit_qcs_cache: BTreeMap::new(),
             timeout_views_cache: BTreeMap::new(),
             timeout_qcs_cache: BTreeMap::new(),
-            view_timeout: time::Deadline::Finite(ctx.now() + VIEW_TIMEOUT_DURATION),
             view_start: ctx.now(),
         };
 

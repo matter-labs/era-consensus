@@ -45,7 +45,9 @@ pub struct RealClock;
 impl RealClock {
     /// Current time according to the monotone clock.
     pub fn now(&self) -> time::Instant {
-        time::Instant::now()
+        // We use `now()` from tokio, so that `tokio::time::pause()`
+        // works in tests.
+        tokio::time::Instant::now().into_std().into()
     }
     /// Current time according to the system/walltime clock.
     pub fn now_utc(&self) -> time::Utc {

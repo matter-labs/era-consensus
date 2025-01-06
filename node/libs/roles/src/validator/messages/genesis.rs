@@ -31,6 +31,7 @@ impl GenesisRaw {
 }
 
 /// Hash of the genesis specification.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct GenesisHash(pub(crate) Keccak256);
 
