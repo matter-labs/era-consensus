@@ -484,14 +484,14 @@ module inductive {
     val lemma3_signed_commit_needs_proposal = and {
         // project signed commits to triples, in order to decrease the constraint set
         val triples = tuples(IVIEWS, IBLOCK_NUMBERS, IVALID_BLOCKS)
-            .filter((v, bn, bh) => r::msgs_signed_commit.exists(m => and {
+            .filter(((v, bn, bh)) => r::msgs_signed_commit.exists(m => and {
                 not(IFAULTY.contains(m.sig)),
                 m.vote.view == v,
                 m.vote.block_number == bn,
                 m.vote.block_hash == bh
             }))
         // make sure that every triple is backed by a valid proposal
-        triples.forall((v, bn, bh) =>
+        triples.forall(((v, bn, bh)) =>
             r::msgs_proposal.exists(p => and {
                 p.sig == r::leader.get(v),
                 p.ghost_block_number == bn,
@@ -510,7 +510,7 @@ module inductive {
         ),
         r::msgs_signed_commit.forall(m => or {
             IFAULTY.contains(m.sig),
-            IVALID_BLOCKS.contains(m.vote.block)
+            IVALID_BLOCKS.contains(m.vote.block_hash)
         })
     }
 
