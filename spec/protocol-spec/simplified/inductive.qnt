@@ -481,26 +481,36 @@ module inductive {
     }
 
     // all commits signed by correct replicas require valid proposals
-    val lemma3_signed_commit_needs_proposal = {
-        r::msgs_signed_commit.forall(m => or {
-            IFAULTY.contains(m.sig),
+    val lemma3_signed_commit_needs_proposal = and {
+        // project signed commits to triples, in order to decrease the constraint set
+        val triples = tuples(IVIEWS, IBLOCK_NUMBERS, IVALID_BLOCKS)
+            .filter((v, bn, bh) => r::msgs_signed_commit.exists(m => and {
+                not(IFAULTY.contains(m.sig)),
+                m.vote.view == v,
+                m.vote.block_number == bn,
+                m.vote.block_hash == bh
+            }))
+        // make sure that every triple is backed by a valid proposal
+        triples.forall((v, bn, bh) =>
             r::msgs_proposal.exists(p => and {
-                p.sig == r::leader.get(m.vote.view),
-                p.ghost_block_number == m.vote.block_number,
+                p.sig == r::leader.get(v),
+                p.ghost_block_number == bn,
                 // the justification passes the verification
                 r::justification_verify(p.justification),
-                // a correct replica does not commit to an invalid block
-                r::VALID_BLOCKS.contains(m.vote.block_hash),
                 // the commit uses get_implied_block
                 val num_and_hash = r::get_implied_block(p.justification)
                 and {
-                    num_and_hash._1 == m.vote.block_number,
+                    num_and_hash._1 == bn,
                     match (num_and_hash._2) {
-                    | None => p.block == Some(m.vote.block_hash)
-                    | Some(b) => b == m.vote.block_hash
+                    | None => p.block == Some(bh)
+                    | Some(b) => b == bh
                     },
                 }
             })
+        ),
+        r::msgs_signed_commit.forall(m => or {
+            IFAULTY.contains(m.sig),
+            IVALID_BLOCKS.contains(m.vote.block)
         })
     }
 
