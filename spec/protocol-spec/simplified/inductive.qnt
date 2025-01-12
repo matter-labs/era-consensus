@@ -564,7 +564,8 @@ module inductive {
     // once a correct replica commits to a block (as a part of QC),
     // it will never change its mind
     val lemma10_justified_commit_qc_no_vote_change = {
-        r::msgs_new_view.forall(nv => {
+        r::msgs_new_view.forall(nv => or {
+            IFAULTY.contains(nv.sig),
             match (nv.justification) {
             | Commit(qc_id) =>
                 val qc = r::ghost_commit_qc[qc_id]
@@ -639,11 +640,12 @@ module inductive {
         ICORRECT.forall(id =>
             val self_view = r::replica_state.get(id).view
             val replica_view = r::replica_view.get(id)
+            val self_state = r::replica_state.get(id).phase
             and {
                 r::proposer_view.get(id) <= self_view,
                 or {
-                    replica_view == self_view,
-                    replica_view + 1 == self_view,
+                    (replica_view == self_view) and (self_state != PhasePrepare),
+                    (replica_view + 1 == self_view) and (self_state == PhasePrepare),
                 }
             }
         )
