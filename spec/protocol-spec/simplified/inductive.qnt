@@ -645,7 +645,7 @@ module inductive {
                 r::proposer_view.get(id) <= self_view,
                 or {
                     (replica_view == self_view) and (self_state != PhasePrepare),
-                    (replica_view + 1 == self_view) and (self_state == PhasePrepare),
+                    (replica_view == self_view + 1) and (self_state == PhasePrepare),
                 }
             }
         )
