@@ -642,11 +642,11 @@ module inductive {
             val replica_view = r::replica_view.get(id)
             val self_state = r::replica_state.get(id).phase
             and {
+                // replica may go ahead of the proposer component
                 r::proposer_view.get(id) <= self_view,
-                or {
-                    (replica_view == self_view) and (self_state != PhasePrepare),
-                    (replica_view == self_view + 1) and (self_state == PhasePrepare),
-                }
+                // replica_view is used for timeouts.
+                // It is not even read in the specification.
+                replica_view <= self_view,
             }
         )
     }
