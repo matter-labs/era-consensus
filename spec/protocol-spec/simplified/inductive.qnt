@@ -569,7 +569,7 @@ module inductive {
             not(r::aux_commit_qc_inv(Some(qc_id))),
             // LocalHighVote holds true
             val qc = r::ghost_commit_qc[qc_id]
-            ICORRECT.forall(id => {
+            qc.agg_sig.intersect(ICORRECT).forall(id => {
                 val self = r::replica_state.get(id)
                 or {
                     self.view < qc.vote.view,
