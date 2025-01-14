@@ -359,7 +359,7 @@ module inductive {
         // lemma7 is incorrect
         lemma8_no_commits_in_future,
         lemma9_no_timeouts_in_future,
-        lemma10_justified_commit_qc_no_vote_change,
+        lemma10_local_high_vote,
         lemma11_one_proposal_per_view,
         lemma12_view0_is_correct,
         lemma13_replica_and_proposer_views,
@@ -561,26 +561,35 @@ module inductive {
         })
     }
 
-    // once a correct replica commits to a block (as a part of QC),
-    // it will never change its mind
-    val lemma10_justified_commit_qc_no_vote_change = {
-        r::msgs_new_view.forall(nv => or {
-            IFAULTY.contains(nv.sig),
-            match (nv.justification) {
-            | Commit(qc_id) =>
-                val qc = r::ghost_commit_qc[qc_id]
-                r::msgs_signed_commit.forall(m => {
+    // the invariant LocalHighVote from the paper
+    val lemma10_local_high_vote = {
+        0.to(MAX_COMMIT_QC).forall(qc_id => or {
+            // the CommitQC is invalid
+            qc_id >= r::ghost_commit_qc.length(),
+            not(r::aux_commit_qc_inv(Some(qc_id))),
+            // LocalHighVote holds true
+            val qc = r::ghost_commit_qc[qc_id]
+            ICORRECT.forall(id => {
+                val self = r::replica_state.get(id)
+                or {
+                    self.view < qc.vote.view,
                     and {
-                        ICORRECT.contains(m.sig),
-                        qc.agg_sig.contains(m.sig),
-                        m.vote.view >= qc.vote.view,
-                        m.vote.block_number == qc.vote.block_number
-                    } implies (m.vote.block_hash == qc.vote.block_hash)
-                })
-
-            | Timeout(qc_id) =>
-                true
-            }
+                        self.view == qc.vote.view,
+                        self.phase == PhasePrepare,
+                    },
+                    match (self.high_vote) {
+                    | Some(hv) =>
+                        or {
+                            and {
+                                hv.block_number == qc.vote.block_number,
+                                hv.block_hash == qc.vote.block_hash,
+                            },
+                            hv.block_number > qc.vote.block_number,
+                        }
+                    | None => false
+                    },
+                }
+            })
         })
     }
 
