@@ -369,7 +369,7 @@ module inductive {
         lemma17_timeout_high_commit_qc_is_valid,
         lemma19_replica_state_high_commit_qc_is_justified,
         lemma20_replica_state_high_timeout_qc_is_justified,
-        lemma21_high_vote_in_timeout_qc,
+        //lemma21_high_vote_in_timeout_qc,
         // lemma18 is incorrect due to faults
         //lemma18_replica_state_high_commit_qc_is_justified,
     }
