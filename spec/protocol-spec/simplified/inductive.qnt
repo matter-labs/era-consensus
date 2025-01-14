@@ -369,6 +369,7 @@ module inductive {
         lemma17_timeout_high_commit_qc_is_valid,
         lemma19_replica_state_high_commit_qc_is_justified,
         lemma20_replica_state_high_timeout_qc_is_justified,
+        lemma21_high_vote_in_timeout_qc,
         // lemma18 is incorrect due to faults
         //lemma18_replica_state_high_commit_qc_is_justified,
     }
@@ -756,6 +757,37 @@ module inductive {
                 },
             }
         )
+    }
+
+    // HighVoteInTimeoutQC in the paper
+    val lemma21_high_vote_in_timeout_qc = {
+        0.to(MAX_COMMIT_QC).forall(cqc_id => or {
+            cqc_id >= r::ghost_commit_qc.length(),
+            not(r::aux_commit_qc_inv(Some(cqc_id))),
+            0.to(MAX_TIMEOUT_QC).forall(tqc_id => or {
+                tqc_id >= r::ghost_timeout_qc.length(),
+                not(r::aux_timeout_qc_inv(Some(tqc_id))),
+                val cqc = r::ghost_commit_qc[cqc_id]
+                val tqc = r::ghost_timeout_qc[tqc_id]
+                and {
+                    match (tqc.high_commit_qc) {
+                    | Some(hqc_id) =>
+                        val hqc = r::ghost_commit_qc[hqc_id]
+                        hqc.vote.block_number == cqc.vote.block_number - 1
+                    | None => false
+                    },
+                    tqc.ghost_view >= cqc.vote.view,
+                } implies {
+                    match (r::high_vote(tqc)) {
+                    | Some(hv) => and {
+                            hv.block_number == cqc.vote.block_number,
+                            hv.block_hash == cqc.vote.block_hash,
+                        }
+                    | None => false
+                    }
+                }
+            })
+        })
     }
 
     // invalid lemmas
