@@ -167,6 +167,19 @@ impl StateMachine {
         // Backup our state.
         self.backup_state(ctx).await.wrap("backup_state()")?;
 
+        // Broadcast our new view message. This synchronizes the replicas.
+        let output_message = ConsensusInputMessage {
+            message: self
+                .config
+                .secret_key
+                .sign_msg(validator::ConsensusMsg::ReplicaNewView(
+                    validator::ReplicaNewView {
+                        justification: self.get_justification(),
+                    },
+                )),
+        };
+        self.outbound_channel.send(output_message);
+
         // Broadcast our timeout message.
         let output_message = ConsensusInputMessage {
             message: self
@@ -183,7 +196,6 @@ impl StateMachine {
                     },
                 )),
         };
-
         self.outbound_channel.send(output_message);
 
         // Log the event.

@@ -125,6 +125,7 @@ impl StateMachine {
         self.view_number = view;
         metrics::METRICS.replica_view_number.set(self.view_number.0);
         self.phase = validator::Phase::Prepare;
+
         // It is important that the proposal and new_view messages from the leader
         // will contain the same justification.
         // Proposal cannot be produced before previous block is processed,
@@ -166,6 +167,7 @@ impl StateMachine {
 
         // Log the event and update the metrics.
         tracing::info!("Starting view {}", self.view_number);
+
         let now = ctx.now();
         metrics::METRICS
             .view_latency
