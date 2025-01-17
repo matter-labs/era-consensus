@@ -294,7 +294,7 @@ async fn run_nodes_twins(
         // * identify the partition they are in based on their network id
         // * either broadcast to all other instances in the partition, or find out the network
         //   identity of the target validator and send to it iff they are in the same partition
-        // * simulate the gossiping of finalized blockss
+        // * simulate the gossiping of finalized blocks.
         scope::run!(ctx, |ctx, s| async move {
             for (i, (port, recv)) in recvs.into_iter().enumerate() {
                 let gossip_send = gossip_send.clone();
