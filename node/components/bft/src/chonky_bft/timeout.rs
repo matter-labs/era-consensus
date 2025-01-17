@@ -157,9 +157,12 @@ impl StateMachine {
 
     /// This blocking method is used whenever we timeout in a view.
     pub(crate) async fn start_timeout(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
-        // Update the state machine.
+        // Update the state machine. We only reset the view timer so that replicas
+        // keep trying to resend timeout messages. This is crucial as we assume that messages
+        // are eventually delivered, if timeout messages are dropped and never retried the
+        // consensus can stall.
         self.phase = validator::Phase::Timeout;
-        self.view_timeout = time::Deadline::Infinite;
+        self.view_timeout = time::Deadline::Finite(ctx.now() + self.config.view_timeout);
 
         // Backup our state.
         self.backup_state(ctx).await.wrap("backup_state()")?;

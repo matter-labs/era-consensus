@@ -134,14 +134,9 @@ impl StateMachine {
                 return Ok(());
             }
 
-            // Check for timeout. If we are already in a timeout phase, we don't
-            // timeout again. Note though that the underlying network implementation
-            // needs to keep retrying messages until they are delivered. Otherwise
-            // the consensus can halt!
+            // Check for timeout.
             let Some(req) = recv.ok() else {
-                if self.phase != validator::Phase::Timeout {
-                    self.start_timeout(ctx).await?;
-                }
+                self.start_timeout(ctx).await?;
                 continue;
             };
 
