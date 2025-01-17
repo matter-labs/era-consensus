@@ -28,13 +28,12 @@ fn test_view_prev() {
 
 #[test]
 fn test_view_verify() {
-    let genesis = genesis_with_attesters();
+    let genesis = genesis();
     let view = View {
         genesis: genesis.hash(),
         number: ViewNumber(1),
     };
     assert!(view.verify(&genesis).is_ok());
-    assert!(view.verify(&genesis_empty_attesters()).is_err());
     let view = View {
         genesis: GenesisHash::default(),
         number: ViewNumber(1),

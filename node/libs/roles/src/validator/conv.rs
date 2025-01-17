@@ -5,12 +5,7 @@ use super::{
     ProposalJustification, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaNewView,
     ReplicaTimeout, Signature, Signed, Signers, TimeoutQC, View, ViewNumber, WeightedValidator,
 };
-use crate::{
-    attester::{self, WeightedAttester},
-    node::SessionId,
-    proto::validator as proto,
-    validator::LeaderSelectionMode,
-};
+use crate::{node::SessionId, proto::validator as proto, validator::LeaderSelectionMode};
 use anyhow::Context as _;
 use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
@@ -27,13 +22,6 @@ impl ProtoFmt for GenesisRaw {
             .map(|(i, v)| WeightedValidator::read(v).context(i))
             .collect::<Result<_, _>>()
             .context("validators_v1")?;
-        let attesters: Vec<_> = r
-            .attesters
-            .iter()
-            .enumerate()
-            .map(|(i, v)| WeightedAttester::read(v).context(i))
-            .collect::<Result<_, _>>()
-            .context("attesters")?;
         Ok(GenesisRaw {
             chain_id: ChainId(*required(&r.chain_id).context("chain_id")?),
             fork_number: ForkNumber(*required(&r.fork_number).context("fork_number")?),
@@ -41,11 +29,6 @@ impl ProtoFmt for GenesisRaw {
 
             protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
             validators: Committee::new(validators.into_iter()).context("validators_v1")?,
-            attesters: if attesters.is_empty() {
-                None
-            } else {
-                Some(attester::Committee::new(attesters.into_iter()).context("attesters")?)
-            },
             leader_selection: read_required(&r.leader_selection).context("leader_selection")?,
         })
     }
@@ -57,11 +40,6 @@ impl ProtoFmt for GenesisRaw {
 
             protocol_version: Some(self.protocol_version.0),
             validators_v1: self.validators.iter().map(|v| v.build()).collect(),
-            attesters: self
-                .attesters
-                .as_ref()
-                .map(|c| c.iter().map(|v| v.build()).collect())
-                .unwrap_or_default(),
             leader_selection: Some(self.leader_selection.build()),
         }
     }
