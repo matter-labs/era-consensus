@@ -147,7 +147,14 @@ impl UTHarness {
         ctx: &ctx::Ctx,
     ) -> validator::ReplicaTimeout {
         self.replica.start_timeout(ctx).await.unwrap();
-        self.try_recv().unwrap().msg
+
+        // We *may* have received a new view message before the timeout message.
+        match self.try_recv().unwrap().msg {
+            validator::ConsensusMsg::ReplicaTimeout(msg) => msg,
+            // If we did get a new view first, the second message is certainly a timeout.
+            validator::ConsensusMsg::ReplicaNewView(_) => self.try_recv().unwrap().msg,
+            _ => unreachable!(),
+        }
     }
 
     pub(crate) async fn new_replica_new_view(
@@ -290,7 +297,17 @@ impl UTHarness {
         let cur_view = self.replica.view_number;
 
         self.replica.start_timeout(ctx).await.unwrap();
-        let replica_timeout = self.try_recv().unwrap().msg;
+
+        // Now to get the timeout message.
+        let replica_timeout =
+            // We *may* have received a new view message before the timeout message.
+            match self.try_recv().unwrap().msg {
+                validator::ConsensusMsg::ReplicaTimeout(msg) => msg,
+                // If we did get a new view first, the second message is certainly a timeout.
+                validator::ConsensusMsg::ReplicaNewView(_) => self.try_recv().unwrap().msg,
+                _ => unreachable!(),
+            };
+
         self.process_replica_timeout_all(ctx, replica_timeout).await;
 
         assert_eq!(self.replica.view_number, cur_view.next());
