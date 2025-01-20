@@ -498,6 +498,8 @@ module inductive {
                 p.ghost_block_number == bn,
                 // the justification passes the verification
                 r::justification_verify(p.justification),
+                // the justification should match the commit view
+                v == r::view(p.justification),
                 // the commit uses get_implied_block
                 val num_and_hash = r::get_implied_block(p.justification)
                 and {
