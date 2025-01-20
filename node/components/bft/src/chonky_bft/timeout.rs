@@ -147,18 +147,9 @@ impl StateMachine {
         );
 
         // We update our state with the new timeout QC.
-        if let Some(commit_qc) = timeout_qc.high_qc() {
-            self.process_commit_qc(ctx, commit_qc)
-                .await
-                .wrap("process_commit_qc()")?;
-        }
-        if self
-            .high_timeout_qc
-            .as_ref()
-            .map_or(true, |old| old.view.number < timeout_qc.view.number)
-        {
-            self.high_timeout_qc = Some(timeout_qc.clone());
-        }
+        self.process_timeout_qc(ctx, &timeout_qc)
+            .await
+            .wrap("process_timeout_qc()")?;
 
         // Start a new view.
         self.start_new_view(ctx, message.view.number.next()).await?;

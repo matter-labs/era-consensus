@@ -280,18 +280,46 @@ impl StateMachine {
         if self
             .high_commit_qc
             .as_ref()
-            .map_or(false, |old| old.view().number >= qc.view().number)
+            .map_or(true, |cur| cur.view().number < qc.view().number)
         {
-            return Ok(());
+            tracing::debug!(
+                "ChonkyBFT replica - Processing newer CommitQC: current view {}, QC view {}",
+                self.view_number.0,
+                qc.view().number.0,
+            );
+
+            self.high_commit_qc = Some(qc.clone());
+            self.save_block(ctx, qc).await.wrap("save_block()")?;
         }
 
-        tracing::debug!(
-            "ChonkyBFT replica - Processing newer CommitQC: current view: {}, QC view: {}",
-            self.view_number.0,
-            qc.view().number.0,
-        );
+        Ok(())
+    }
 
-        self.high_commit_qc = Some(qc.clone());
-        self.save_block(ctx, qc).await.wrap("save_block()")
+    pub(crate) async fn process_timeout_qc(
+        &mut self,
+        ctx: &ctx::Ctx,
+        qc: &validator::TimeoutQC,
+    ) -> ctx::Result<()> {
+        if let Some(high_qc) = qc.high_qc() {
+            self.process_commit_qc(ctx, high_qc)
+                .await
+                .wrap("process_commit_qc()")?;
+        }
+
+        if self
+            .high_timeout_qc
+            .as_ref()
+            .map_or(true, |old| old.view.number < qc.view.number)
+        {
+            tracing::debug!(
+                "ChonkyBFT replica - Processing newer TimeoutQC: current view {}, QC view {}",
+                self.view_number.0,
+                qc.view.number.0,
+            );
+
+            self.high_timeout_qc = Some(qc.clone());
+        }
+
+        Ok(())
     }
 }

@@ -249,20 +249,10 @@ impl StateMachine {
                 .process_commit_qc(ctx, qc)
                 .await
                 .wrap("process_commit_qc()")?,
-            validator::ProposalJustification::Timeout(qc) => {
-                if let Some(high_qc) = qc.high_qc() {
-                    self.process_commit_qc(ctx, high_qc)
-                        .await
-                        .wrap("process_commit_qc()")?;
-                }
-                if self
-                    .high_timeout_qc
-                    .as_ref()
-                    .map_or(true, |old| old.view.number < qc.view.number)
-                {
-                    self.high_timeout_qc = Some(qc.clone());
-                }
-            }
+            validator::ProposalJustification::Timeout(qc) => self
+                .process_timeout_qc(ctx, qc)
+                .await
+                .wrap("process_timeout_qc()")?,
         };
 
         // Backup our state.
