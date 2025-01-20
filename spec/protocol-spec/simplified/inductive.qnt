@@ -839,12 +839,14 @@ module inductive {
 
     def commit_qc_supported_by_messages(qc: CommitQC): bool = {
         qc.agg_sig.forall(id => or {
+            IFAULTY.contains(id),
             r::msgs_signed_commit.contains({ vote: qc.vote, sig: id })
         })
     }
 
     def timeout_qc_supported_by_messages(qc: TimeoutQC): bool = {
         qc.votes.keys().forall(id => or {
+            IFAULTY.contains(id),
             val vote = qc.votes.get(id)
             r::msgs_signed_timeout.exists(v => v.vote == vote and v.sig == id)
         })
