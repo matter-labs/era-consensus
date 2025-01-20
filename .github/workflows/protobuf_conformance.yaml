@@ -17,7 +17,7 @@ env:
 
 jobs:
   conformance:
-    runs-on: [ubuntu-22.04-github-hosted-16core]
+    runs-on: [ubuntu-24.04-github-hosted-16core]
     steps:
       - uses: actions/checkout@v4
         with:
