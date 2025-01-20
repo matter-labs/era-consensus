@@ -25,6 +25,10 @@ pub(crate) async fn run_proposer(
         }
 
         // Create a proposal for the given justification, within the timeout.
+        tracing::info!(
+            "ChonkyBFT proposer - Creating a proposal for view {}.",
+            justification.view().number
+        );
         let proposal = match create_proposal(
             &ctx.with_timeout(cfg.view_timeout),
             cfg.clone(),
@@ -47,7 +51,10 @@ pub(crate) async fn run_proposer(
         let msg = cfg
             .secret_key
             .sign_msg(validator::ConsensusMsg::LeaderProposal(proposal));
-
+        tracing::debug!(
+            "ChonkyBFT proposer - Broadcasting proposal. Message:\n{:#?}",
+            msg.msg
+        );
         network_sender.send(ConsensusInputMessage { message: msg });
     }
 }

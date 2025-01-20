@@ -172,6 +172,10 @@ impl StateMachine {
                 // we might just have started from a snapshot state. It just means that we have the state of the chain
                 // up to the previous block.
                 if let Some(prev) = implied_block_number.prev() {
+                    tracing::debug!(
+                        "ChonkyBFT replica - Waiting for previous block (number {}) to be stored before verifying proposal.",
+                        prev.0
+                    );
                     self.config
                         .block_store
                         .wait_until_persisted(&ctx.with_deadline(self.view_timeout), prev)
@@ -180,6 +184,10 @@ impl StateMachine {
                 }
 
                 // Execute the payload.
+                tracing::debug!(
+                    "ChonkyBFT replica - Verifying proposal for block number {}.",
+                    implied_block_number.0
+                );
                 if let Err(err) = self
                     .config
                     .payload_manager
@@ -193,6 +201,10 @@ impl StateMachine {
                 }
 
                 // The proposal is valid. We cache it, waiting for it to be committed.
+                tracing::debug!(
+                    "ChonkyBFT replica - Caching proposal for block number {}.",
+                    implied_block_number.0
+                );
                 self.block_proposal_cache
                     .entry(implied_block_number)
                     .or_default()
@@ -201,6 +213,14 @@ impl StateMachine {
                 payload.hash()
             }
         };
+
+        tracing::info!(
+            "ChonkyBFT replica - Received a proposal from {:#?} at view {} for block number {} with payload hash {:#?}.",
+            author,
+            view.0,
+            implied_block_number.0,
+            block_hash
+        );
 
         // ----------- All checks finished. Now we process the message. --------------
 
@@ -229,26 +249,20 @@ impl StateMachine {
                 .process_commit_qc(ctx, qc)
                 .await
                 .wrap("process_commit_qc()")?,
-            validator::ProposalJustification::Timeout(qc) => {
-                if let Some(high_qc) = qc.high_qc() {
-                    self.process_commit_qc(ctx, high_qc)
-                        .await
-                        .wrap("process_commit_qc()")?;
-                }
-                if self
-                    .high_timeout_qc
-                    .as_ref()
-                    .map_or(true, |old| old.view.number < qc.view.number)
-                {
-                    self.high_timeout_qc = Some(qc.clone());
-                }
-            }
+            validator::ProposalJustification::Timeout(qc) => self
+                .process_timeout_qc(ctx, qc)
+                .await
+                .wrap("process_timeout_qc()")?,
         };
 
         // Backup our state.
         self.backup_state(ctx).await.wrap("backup_state()")?;
 
         // Broadcast our commit message.
+        tracing::debug!(
+            "ChonkyBFT replica - Broadcasting commit vote:\n{:#?}",
+            commit_vote
+        );
         let output_message = ConsensusInputMessage {
             message: self
                 .config

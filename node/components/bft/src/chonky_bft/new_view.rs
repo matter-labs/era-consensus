@@ -85,26 +85,22 @@ impl StateMachine {
 
         // ----------- All checks finished. Now we process the message. --------------
 
+        tracing::debug!(
+            "ChonkyBFT replica - Received a new view message from {:#?}. Message:\n{:#?}",
+            author,
+            message,
+        );
+
         // Update the state machine.
         match &message.justification {
             validator::ProposalJustification::Commit(qc) => self
                 .process_commit_qc(ctx, qc)
                 .await
                 .wrap("process_commit_qc()")?,
-            validator::ProposalJustification::Timeout(qc) => {
-                if let Some(high_qc) = qc.high_qc() {
-                    self.process_commit_qc(ctx, high_qc)
-                        .await
-                        .wrap("process_commit_qc()")?;
-                }
-                if self
-                    .high_timeout_qc
-                    .as_ref()
-                    .map_or(true, |old| old.view.number < qc.view.number)
-                {
-                    self.high_timeout_qc = Some(qc.clone());
-                }
-            }
+            validator::ProposalJustification::Timeout(qc) => self
+                .process_timeout_qc(ctx, qc)
+                .await
+                .wrap("process_timeout_qc()")?,
         };
 
         // If the message is for a future view, we need to start a new view.
@@ -121,10 +117,13 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         view: validator::ViewNumber,
     ) -> ctx::Result<()> {
+        tracing::info!("ChonkyBFT replica - Starting view number {}.", view);
+
         // Update the state machine.
         self.view_number = view;
         metrics::METRICS.replica_view_number.set(self.view_number.0);
         self.phase = validator::Phase::Prepare;
+
         // It is important that the proposal and new_view messages from the leader
         // will contain the same justification.
         // Proposal cannot be produced before previous block is processed,
@@ -162,10 +161,13 @@ impl StateMachine {
                     },
                 )),
         };
+        tracing::debug!(
+            "ChonkyBFT replica - Broadcasting new view message at start of view. Message:\n{:#?}",
+            output_message.message
+        );
         self.outbound_channel.send(output_message);
 
-        // Log the event and update the metrics.
-        tracing::info!("Starting view {}", self.view_number);
+        // Update the metrics.
         let now = ctx.now();
         metrics::METRICS
             .view_latency

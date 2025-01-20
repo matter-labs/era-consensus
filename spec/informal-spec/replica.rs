@@ -60,17 +60,22 @@ impl ReplicaState {
             // If this is the first view, we immediately timeout. This will force the replicas
             // to synchronize right at the beginning and will provide a justification for the
             // proposer at view 1.
-            // If we have already timed out, we don't need to send another timeout vote.
-            if (timer.is_finished() || cur_view == 0) && self.phase != Phase::Timeout {
-                let vote = TimeoutVote::new(self.view,
-                    self.high_vote,
-                    self.high_commit_qc);
-                    
+            if (timer.is_finished() || cur_view == 0) {
                 // Update our state so that we can no longer vote commit in this view.
                 self.phase = Phase::Timeout;
-                    
-                // Send the vote to all replicas (including ourselves).
-                self.send(vote);
+
+                // Send a new view message to all replicas (including ourselves), for synchronization.
+                let new_view = NewView::new(self.get_justification(self.view));
+                self.send(new_view);
+                
+                // Send a timeout message to all replicas (including ourselves).
+                let timeout = TimeoutVote::new(self.view,
+                    self.high_vote,
+                    self.high_commit_qc);
+                self.send(timeout);
+
+                // Reset the timer so that we keep resending the messages until we progress.
+                timer.reset();
             }
                 
             // Try to get a message from the message queue and process it. We don't
