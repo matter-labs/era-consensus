@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.8.0](https://github.com/matter-labs/era-consensus/compare/v0.7.0...v0.8.0) (2025-01-20)
+
+
+### Features
+
+* documented the dangers of ordering in message encoding ([#225](https://github.com/matter-labs/era-consensus/issues/225)) ([c1b8e6e](https://github.com/matter-labs/era-consensus/commit/c1b8e6e021c5b958b047ac1478a337a6efe9e8cd))
+
+
+### Bug Fixes
+
+* Replicas forget messages and halt on restart ([#228](https://github.com/matter-labs/era-consensus/issues/228)) ([c723fbe](https://github.com/matter-labs/era-consensus/commit/c723fbe2453a52bab8fba9c202a404e5fc4fb532))
+
 ## [0.7.0](https://github.com/matter-labs/era-consensus/compare/v0.6.0...v0.7.0) (2024-12-16)
 
 
