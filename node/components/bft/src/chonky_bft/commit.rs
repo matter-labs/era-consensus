@@ -100,6 +100,11 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // We add the message to the incrementally-constructed QC.
+        tracing::debug!(
+            "ChonkyBFT replica - Received a commit message from {:#?}. Message:\n{:#?}",
+            author,
+            message
+        );
         let commit_qc = self
             .commit_qcs_cache
             .entry(message.view.number)
@@ -141,6 +146,13 @@ impl StateMachine {
             .unwrap()
             .remove(message)
             .unwrap();
+
+        tracing::info!("ChonkyBFT replica - We have a commit QC with weight {} at view {} for block number {} with hash {:#?}.",
+            weight,
+            commit_qc.view().number.0,
+            commit_qc.message.proposal.number.0,
+            commit_qc.message.proposal.payload,
+        );
 
         // We update our state with the new commit QC.
         self.process_commit_qc(ctx, &commit_qc)

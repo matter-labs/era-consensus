@@ -100,6 +100,11 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // We add the message to the incrementally-constructed QC.
+        tracing::debug!(
+            "ChonkyBFT replica - Received a timeout message from {:#?}. Message:\n{:#?}",
+            author,
+            message
+        );
         let timeout_qc = self
             .timeout_qcs_cache
             .entry(message.view.number)
@@ -135,6 +140,12 @@ impl StateMachine {
         // Consume the created timeout QC for this view.
         let timeout_qc = self.timeout_qcs_cache.remove(&message.view.number).unwrap();
 
+        tracing::info!(
+            "ChonkyBFT replica - We have a timeout QC with weight {} for view number {}.",
+            weight,
+            timeout_qc.view.number.0
+        );
+
         // We update our state with the new timeout QC.
         if let Some(commit_qc) = timeout_qc.high_qc() {
             self.process_commit_qc(ctx, commit_qc)
@@ -157,6 +168,11 @@ impl StateMachine {
 
     /// This blocking method is used whenever we timeout in a view.
     pub(crate) async fn start_timeout(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
+        tracing::info!(
+            "ChonkyBFT replica - Timed out at view {}.",
+            self.view_number
+        );
+
         // Update the state machine. We only reset the view timer so that replicas
         // keep trying to resend timeout messages. This is crucial as we assume that messages
         // are eventually delivered, if timeout messages are dropped and never retried the
@@ -179,6 +195,10 @@ impl StateMachine {
                         }),
                     ),
                 };
+            tracing::debug!(
+                "ChonkyBFT replica - Broadcasting new view message as part of timeout. Message:\n{:#?}",
+                output_message.message
+            );
             self.outbound_channel.send(output_message);
         }
 
@@ -198,10 +218,11 @@ impl StateMachine {
                     },
                 )),
         };
+        tracing::debug!(
+            "ChonkyBFT replica - Broadcasting timeout message. Message:\n{:#?}",
+            output_message.message
+        );
         self.outbound_channel.send(output_message);
-
-        // Log the event.
-        tracing::info!("Timed out at view {}", self.view_number);
 
         Ok(())
     }

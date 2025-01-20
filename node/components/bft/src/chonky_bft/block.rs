@@ -24,7 +24,7 @@ impl StateMachine {
         };
 
         tracing::info!(
-            "Finalized block {}: {:#?}",
+            "Finalized block number {} with payload hash {:#?}.",
             block.header().number,
             block.header().payload,
         );

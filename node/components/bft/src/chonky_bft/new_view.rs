@@ -85,6 +85,12 @@ impl StateMachine {
 
         // ----------- All checks finished. Now we process the message. --------------
 
+        tracing::debug!(
+            "ChonkyBFT replica - Received a new view message from {:#?}. Message:\n{:#?}",
+            author,
+            message,
+        );
+
         // Update the state machine.
         match &message.justification {
             validator::ProposalJustification::Commit(qc) => self
@@ -121,6 +127,8 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         view: validator::ViewNumber,
     ) -> ctx::Result<()> {
+        tracing::info!("ChonkyBFT replica - Starting view number {}.", view);
+
         // Update the state machine.
         self.view_number = view;
         metrics::METRICS.replica_view_number.set(self.view_number.0);
@@ -163,11 +171,13 @@ impl StateMachine {
                     },
                 )),
         };
+        tracing::debug!(
+            "ChonkyBFT replica - Broadcasting new view message at start of view. Message:\n{:#?}",
+            output_message.message
+        );
         self.outbound_channel.send(output_message);
 
-        // Log the event and update the metrics.
-        tracing::info!("Starting view {}", self.view_number);
-
+        // Update the metrics.
         let now = ctx.now();
         metrics::METRICS
             .view_latency

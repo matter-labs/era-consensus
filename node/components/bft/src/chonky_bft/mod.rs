@@ -112,6 +112,7 @@ impl StateMachine {
     /// This is the main entry point for the state machine,
     /// potentially triggering state modifications and message sending to the executor.
     pub(crate) async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
+        tracing::info!("Starting ChonkyBFT replica.");
         self.view_start = ctx.now();
 
         // If this is the first view, we immediately timeout. This will force the replicas
@@ -119,6 +120,7 @@ impl StateMachine {
         // next view. This is necessary because the first view is not justified by any
         // previous view.
         if self.view_number == validator::ViewNumber(0) {
+            tracing::debug!("ChonkyBFT replica - Starting view 0, immediately timing out.");
             self.start_timeout(ctx).await?;
         }
 
@@ -154,15 +156,17 @@ impl StateMachine {
                             match err {
                                 // If the error is internal, we stop here.
                                 proposal::Error::Internal(err) => {
-                                    tracing::error!("on_proposal: internal error: {err:#}");
+                                    tracing::error!(
+                                        "ChonkyBFT replica - on_proposal: internal error - {err:#}"
+                                    );
                                     return Err(err);
                                 }
                                 // If the error is due to an old message, we log it at a lower level.
                                 proposal::Error::Old { .. } => {
-                                    tracing::debug!("on_proposal: {err:#}");
+                                    tracing::debug!("ChonkyBFT replica - on_proposal: {err:#}");
                                 }
                                 _ => {
-                                    tracing::warn!("on_proposal: {err:#}");
+                                    tracing::warn!("ChonkyBFT replica - on_proposal: {err:#}");
                                 }
                             }
                             Err(())
@@ -181,15 +185,17 @@ impl StateMachine {
                             match err {
                                 // If the error is internal, we stop here.
                                 commit::Error::Internal(err) => {
-                                    tracing::error!("on_commit: internal error: {err:#}");
+                                    tracing::error!(
+                                        "ChonkyBFT replica - on_commit: internal error: {err:#}"
+                                    );
                                     return Err(err);
                                 }
                                 // If the error is due to an old message, we log it at a lower level.
                                 commit::Error::Old { .. } => {
-                                    tracing::debug!("on_commit: {err:#}");
+                                    tracing::debug!("ChonkyBFT replica - on_commit: {err:#}");
                                 }
                                 _ => {
-                                    tracing::warn!("on_commit: {err:#}");
+                                    tracing::warn!("ChonkyBFT replica - on_commit: {err:#}");
                                 }
                             }
                             Err(())
@@ -208,15 +214,17 @@ impl StateMachine {
                             match err {
                                 // If the error is internal, we stop here.
                                 timeout::Error::Internal(err) => {
-                                    tracing::error!("on_timeout: internal error: {err:#}");
+                                    tracing::error!(
+                                        "ChonkyBFT replica - on_timeout: internal error: {err:#}"
+                                    );
                                     return Err(err);
                                 }
                                 // If the error is due to an old message, we log it at a lower level.
                                 timeout::Error::Old { .. } => {
-                                    tracing::debug!("on_timeout: {err:#}");
+                                    tracing::debug!("ChonkyBFT replica - on_timeout: {err:#}");
                                 }
                                 _ => {
-                                    tracing::warn!("on_timeout: {err:#}");
+                                    tracing::warn!("ChonkyBFT replica - on_timeout: {err:#}");
                                 }
                             }
                             Err(())
@@ -235,15 +243,17 @@ impl StateMachine {
                             match err {
                                 // If the error is internal, we stop here.
                                 new_view::Error::Internal(err) => {
-                                    tracing::error!("on_new_view: internal error: {err:#}");
+                                    tracing::error!(
+                                        "ChonkyBFT replica - on_new_view: internal error: {err:#}"
+                                    );
                                     return Err(err);
                                 }
                                 // If the error is due to an old message, we log it at a lower level.
                                 new_view::Error::Old { .. } => {
-                                    tracing::debug!("on_new_view: {err:#}");
+                                    tracing::debug!("ChonkyBFT replica - on_new_view: {err:#}");
                                 }
                                 _ => {
-                                    tracing::warn!("on_new_view: {err:#}");
+                                    tracing::warn!("ChonkyBFT replica - on_new_view: {err:#}");
                                 }
                             }
                             Err(())
@@ -274,6 +284,13 @@ impl StateMachine {
         {
             return Ok(());
         }
+
+        tracing::debug!(
+            "ChonkyBFT replica - Processing newer CommitQC: current view: {}, QC view: {}",
+            self.view_number.0,
+            qc.view().number.0,
+        );
+
         self.high_commit_qc = Some(qc.clone());
         self.save_block(ctx, qc).await.wrap("save_block()")
     }
