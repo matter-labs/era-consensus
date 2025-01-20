@@ -295,6 +295,7 @@ impl StateMachine {
         Ok(())
     }
 
+    /// Processes a (already verified) TimeoutQC. It bumps the local high_timeout_qc.
     pub(crate) async fn process_timeout_qc(
         &mut self,
         ctx: &ctx::Ctx,
