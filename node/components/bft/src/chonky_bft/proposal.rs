@@ -260,8 +260,8 @@ impl StateMachine {
 
         // Broadcast our commit message.
         tracing::debug!(
-            "ChonkyBFT replica - Broadcasting commit vote:\n{:#?}",
-            commit_vote
+            bft_message = format!("{:#?}", commit_vote),
+            "ChonkyBFT replica - Broadcasting commit vote.",
         );
         let output_message = ConsensusInputMessage {
             message: self

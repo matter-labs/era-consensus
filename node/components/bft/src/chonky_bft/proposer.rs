@@ -52,8 +52,8 @@ pub(crate) async fn run_proposer(
             .secret_key
             .sign_msg(validator::ConsensusMsg::LeaderProposal(proposal));
         tracing::debug!(
-            "ChonkyBFT proposer - Broadcasting proposal. Message:\n{:#?}",
-            msg.msg
+            bft_message = format!("{:#?}", msg.msg),
+            "ChonkyBFT proposer - Broadcasting proposal.",
         );
         network_sender.send(ConsensusInputMessage { message: msg });
     }

@@ -86,9 +86,8 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         tracing::debug!(
-            "ChonkyBFT replica - Received a new view message from {:#?}. Message:\n{:#?}",
-            author,
-            message,
+            bft_message = format!("{:#?}", message),
+            "ChonkyBFT replica - Received a new view message from {author:#?}.",
         );
 
         // Update the state machine.
@@ -162,8 +161,8 @@ impl StateMachine {
                 )),
         };
         tracing::debug!(
-            "ChonkyBFT replica - Broadcasting new view message at start of view. Message:\n{:#?}",
-            output_message.message
+            bft_message = format!("{:#?}", output_message.message),
+            "ChonkyBFT replica - Broadcasting new view message at start of view.",
         );
         self.outbound_channel.send(output_message);
 
