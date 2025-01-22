@@ -9,13 +9,15 @@ use std::{
     sync::Arc,
 };
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
-use zksync_concurrency::{ctx, net};
+use zksync_concurrency::{ctx, net, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_executor::{self as executor, attestation};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{attester, node, validator};
-use zksync_consensus_storage::{BlockStore, BlockStoreRunner};
+use zksync_consensus_storage::{
+    testonly::in_memory, BlockStore, BlockStoreRunner, PersistentBlockStore, ReplicaStore,
+};
 use zksync_protobuf::{
     read_optional, read_optional_repr, read_required, required, ProtoFmt, ProtoRepr,
 };
@@ -76,6 +78,7 @@ pub struct App {
 
     pub genesis: validator::Genesis,
     pub max_payload_size: usize,
+    pub view_timeout: time::Duration,
     pub validator_key: Option<validator::SecretKey>,
     pub attester_key: Option<attester::SecretKey>,
 
@@ -176,6 +179,7 @@ impl ProtoFmt for App {
 
             genesis: read_required(&r.genesis).context("genesis")?,
             max_payload_size,
+            view_timeout: read_required(&r.view_timeout).context("view_timeout")?,
             // TODO: read secret.
             validator_key: read_optional_secret_text(&r.validator_secret_key)
                 .context("validator_secret_key")?,
@@ -201,6 +205,7 @@ impl ProtoFmt for App {
 
             genesis: Some(self.genesis.build()),
             max_payload_size: Some(self.max_payload_size.try_into().unwrap()),
+            view_timeout: Some(self.view_timeout.build()),
             validator_secret_key: self.validator_key.as_ref().map(TextFmt::encode),
             attester_secret_key: self.attester_key.as_ref().map(TextFmt::encode),
 
@@ -248,7 +253,7 @@ pub struct DebugPage {
 #[derive(Debug)]
 pub struct Configs {
     pub app: App,
-    pub database: PathBuf,
+    pub database: Option<PathBuf>,
 }
 
 impl Configs {
@@ -256,8 +261,29 @@ impl Configs {
         &self,
         ctx: &ctx::Ctx,
     ) -> ctx::Result<(executor::Executor, BlockStoreRunner)> {
-        let store = store::RocksDB::open(self.app.genesis.clone(), &self.database).await?;
-        let (block_store, runner) = BlockStore::new(ctx, Box::new(store.clone())).await?;
+        struct Stores {
+            block: Box<dyn PersistentBlockStore>,
+            replica: Box<dyn ReplicaStore>,
+        }
+        let stores = if let Some(path) = &self.database {
+            let store = store::RocksDB::open(self.app.genesis.clone(), path).await?;
+            Stores {
+                block: Box::new(store.clone()),
+                replica: Box::new(store),
+            }
+        } else {
+            let block = in_memory::BlockStore::bounded(
+                self.app.genesis.clone(),
+                self.app.genesis.first_block,
+                200,
+            );
+            let replica = in_memory::ReplicaStore::default();
+            Stores {
+                block: Box::new(block),
+                replica: Box::new(replica),
+            }
+        };
+        let (block_store, runner) = BlockStore::new(ctx, stores.block).await?;
         let attestation = Arc::new(attestation::Controller::new(self.app.attester_key.clone()));
 
         let e = executor::Executor {
@@ -270,6 +296,7 @@ impl Configs {
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
                 max_payload_size: self.app.max_payload_size,
+                view_timeout: self.app.view_timeout,
                 rpc: executor::RpcConfig::default(),
                 debug_page: self
                     .app
@@ -304,7 +331,7 @@ impl Configs {
                 .as_ref()
                 .map(|key| executor::Validator {
                     key: key.clone(),
-                    replica_store: Box::new(store.clone()),
+                    replica_store: stores.replica,
                     payload_manager: Box::new(bft::testonly::RandomPayload(
                         self.app.max_payload_size,
                     )),

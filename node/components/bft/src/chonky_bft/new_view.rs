@@ -1,7 +1,5 @@
-use std::cmp::max;
-
 use super::StateMachine;
-use crate::{chonky_bft::VIEW_TIMEOUT_DURATION, metrics};
+use crate::metrics;
 use zksync_concurrency::{ctx, error::Wrap, metrics::LatencyHistogramExt as _, time};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
@@ -57,17 +55,22 @@ impl StateMachine {
         let message = &signed_message.msg;
         let author = &signed_message.key;
 
+        // If the replica is already in this view (and the message is NOT from the leader), then ignore it.
+        // See `start_new_view()` for explanation why we need to process the message from the
+        // leader.
+        if message.view().number < self.view_number
+            || (message.view().number == self.view_number
+                && author != &self.config.genesis().view_leader(self.view_number))
+        {
+            return Err(Error::Old {
+                current_view: self.view_number,
+            });
+        }
+
         // Check that the message signer is in the validator committee.
         if !self.config.genesis().validators.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone().into(),
-            });
-        }
-
-        // If the message is from a past view, ignore it.
-        if message.view().number < self.view_number {
-            return Err(Error::Old {
-                current_view: self.view_number,
             });
         }
 
@@ -82,20 +85,22 @@ impl StateMachine {
 
         // ----------- All checks finished. Now we process the message. --------------
 
+        tracing::debug!(
+            "ChonkyBFT replica - Received a new view message from {:#?}. Message:\n{:#?}",
+            author,
+            message,
+        );
+
         // Update the state machine.
         match &message.justification {
             validator::ProposalJustification::Commit(qc) => self
                 .process_commit_qc(ctx, qc)
                 .await
                 .wrap("process_commit_qc()")?,
-            validator::ProposalJustification::Timeout(qc) => {
-                if let Some(high_qc) = qc.high_qc() {
-                    self.process_commit_qc(ctx, high_qc)
-                        .await
-                        .wrap("process_commit_qc()")?;
-                }
-                self.high_timeout_qc = max(Some(qc.clone()), self.high_timeout_qc.clone());
-            }
+            validator::ProposalJustification::Timeout(qc) => self
+                .process_timeout_qc(ctx, qc)
+                .await
+                .wrap("process_timeout_qc()")?,
         };
 
         // If the message is for a future view, we need to start a new view.
@@ -112,11 +117,28 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         view: validator::ViewNumber,
     ) -> ctx::Result<()> {
+        tracing::info!("ChonkyBFT replica - Starting view number {}.", view);
+
         // Update the state machine.
         self.view_number = view;
+        metrics::METRICS.replica_view_number.set(self.view_number.0);
         self.phase = validator::Phase::Prepare;
+
+        // It is important that the proposal and new_view messages from the leader
+        // will contain the same justification.
+        // Proposal cannot be produced before previous block is processed,
+        // therefore leader needs to make sure that the high_commit_qc is delivered
+        // to all replicas, so that the finalized block is distributed over the network.
+        // In particular it is not guaranteed that the leader has the finalized block when
+        // sending the NewView, so it might need to wait for the finalized block.
+        //
+        // Note that for this process to work e2e, the replicas should NOT ignore the NewView from
+        // the leader, even if they already advanced to the given view.
+        // Note that the order of NewView and proposal messages doesn't matter, because
+        // proposal is a superset of NewView message.
+        let justification = self.get_justification();
         self.proposer_sender
-            .send(Some(self.get_justification()))
+            .send(Some(justification.clone()))
             .expect("justification_watch.send() failed");
 
         // Clear the block proposal cache.
@@ -135,15 +157,17 @@ impl StateMachine {
                 .secret_key
                 .sign_msg(validator::ConsensusMsg::ReplicaNewView(
                     validator::ReplicaNewView {
-                        justification: self.get_justification(),
+                        justification: justification.clone(),
                     },
                 )),
         };
+        tracing::debug!(
+            "ChonkyBFT replica - Broadcasting new view message at start of view. Message:\n{:#?}",
+            output_message.message
+        );
         self.outbound_channel.send(output_message);
 
-        // Log the event and update the metrics.
-        tracing::info!("Starting view {}", self.view_number);
-        metrics::METRICS.replica_view_number.set(self.view_number.0);
+        // Update the metrics.
         let now = ctx.now();
         metrics::METRICS
             .view_latency
@@ -151,7 +175,7 @@ impl StateMachine {
         self.view_start = now;
 
         // Reset the timeout.
-        self.view_timeout = time::Deadline::Finite(ctx.now() + VIEW_TIMEOUT_DURATION);
+        self.view_timeout = time::Deadline::Finite(ctx.now() + self.config.view_timeout);
 
         Ok(())
     }

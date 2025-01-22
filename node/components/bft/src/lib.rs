@@ -61,7 +61,7 @@ impl Config {
         genesis.verify().context("genesis().verify()")?;
 
         if let Some(prev) = genesis.first_block.prev() {
-            tracing::info!("Waiting for the pre-fork blocks to be persisted");
+            tracing::info!("Waiting for the pre-fork blocks to be persisted.");
             if let Err(ctx::Canceled) = self.block_store.wait_until_persisted(ctx, prev).await {
                 return Ok(());
             }
@@ -79,7 +79,10 @@ impl Config {
         .await?;
 
         let res = scope::run!(ctx, |ctx, s| async {
-            tracing::info!("Starting consensus component {:?}", cfg.secret_key.public());
+            tracing::info!(
+                "Starting consensus component. Validator public key: {:?}.",
+                cfg.secret_key.public()
+            );
 
             s.spawn(async { replica.run(ctx).await.wrap("replica.run()") });
             s.spawn_bg(async {

@@ -20,8 +20,9 @@ struct Cli {
     #[arg(long, conflicts_with = "config_path")]
     config: Option<String>,
     /// Path to the rocksdb database of the node.
-    #[arg(long, default_value = "./database")]
-    database: PathBuf,
+    /// If not provided, an in-memory database will be used instead.
+    #[arg(long)]
+    database: Option<PathBuf>,
 }
 
 impl Cli {

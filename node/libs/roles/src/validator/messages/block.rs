@@ -39,6 +39,7 @@ impl Payload {
 }
 
 /// Hash of the Payload.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PayloadHash(pub(crate) Keccak256);
 
@@ -62,6 +63,7 @@ impl fmt::Debug for PayloadHash {
 }
 
 /// Sequential number of the block.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockNumber(pub u64);
 
@@ -91,6 +93,7 @@ impl fmt::Display for BlockNumber {
 }
 
 /// A block header.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockHeader {
     /// Number of the block.

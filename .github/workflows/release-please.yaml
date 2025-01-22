@@ -39,7 +39,7 @@ jobs:
         run: echo "$OUTPUTS"
 
   process-release:
-    runs-on: [ubuntu-22.04-github-hosted-32core]
+    runs-on: [ubuntu-24.04-github-hosted-32core]
     needs: [release-please]
     if: ${{ needs.release-please.outputs.releases_created == 'true' }}
     steps:
@@ -65,7 +65,7 @@ jobs:
 
       - name: Login to crates.io
         run: cargo login ${{ secrets.CRATES_IO_TOKEN }}
-      
+
       - name: Publish
         working-directory: ./node
         run: cargo ws publish --publish-as-is --allow-dirty
@@ -85,7 +85,7 @@ jobs:
         with:
           release-please-output: ${{ needs.release-please.outputs.release_please_output_json }}
           slack-webhook-url: ${{ secrets.SLACK_WEBHOOK_RELEASES }}
-      
+
       - name: Notify about failure
         if: failure()
         uses: matter-labs/format-release-please-for-slack-action@69e6fe9e4ec531b7b5fb0d826f73c190db83cf42 # v2.1.0

@@ -1,13 +1,16 @@
-use crate::testonly::RandomPayload;
 use crate::{
     chonky_bft::{self, commit, new_view, proposal, timeout, StateMachine},
-    Config, PayloadManager,
+    create_input_channel,
+    testonly::RandomPayload,
+    Config, FromNetworkMessage, PayloadManager, ToNetworkMessage,
 };
-use crate::{create_input_channel, FromNetworkMessage, ToNetworkMessage};
 use assert_matches::assert_matches;
 use std::sync::Arc;
-use zksync_concurrency::sync::prunable_mpsc;
-use zksync_concurrency::{ctx, sync};
+use zksync_concurrency::{
+    ctx,
+    sync::{self, prunable_mpsc},
+    time,
+};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{
     testonly::{in_memory, TestMemoryStorage},
@@ -71,6 +74,7 @@ impl UTHarness {
             replica_store: Box::new(in_memory::ReplicaStore::default()),
             payload_manager,
             max_payload_size: MAX_PAYLOAD_SIZE,
+            view_timeout: time::Duration::milliseconds(2000),
         });
         let replica = StateMachine::start(
             ctx,
@@ -143,12 +147,25 @@ impl UTHarness {
         ctx: &ctx::Ctx,
     ) -> validator::ReplicaTimeout {
         self.replica.start_timeout(ctx).await.unwrap();
-        self.try_recv().unwrap().msg
+
+        // We *may* have received a new view message before the timeout message.
+        match self.try_recv().unwrap().msg {
+            validator::ConsensusMsg::ReplicaTimeout(msg) => msg,
+            // If we did get a new view first, the second message is certainly a timeout.
+            validator::ConsensusMsg::ReplicaNewView(_) => self.try_recv().unwrap().msg,
+            _ => unreachable!(),
+        }
     }
 
-    pub(crate) async fn new_replica_new_view(&self) -> validator::ReplicaNewView {
-        let justification = self.replica.get_justification();
-        validator::ReplicaNewView { justification }
+    pub(crate) async fn new_replica_new_view(
+        &mut self,
+        ctx: &ctx::Ctx,
+    ) -> validator::ReplicaNewView {
+        validator::ReplicaNewView {
+            justification: validator::ProposalJustification::Timeout(
+                self.new_timeout_qc(ctx).await,
+            ),
+        }
     }
 
     pub(crate) async fn new_commit_qc(
@@ -165,19 +182,14 @@ impl UTHarness {
         qc
     }
 
-    // #[allow(dead_code)]
-    // pub(crate) fn new_timeout_qc(
-    //     &mut self,
-    //     mutate_fn: impl FnOnce(&mut validator::ReplicaTimeout),
-    // ) -> validator::TimeoutQC {
-    //     let mut msg = self.new_replica_timeout();
-    //     mutate_fn(&mut msg);
-    //     let mut qc = validator::TimeoutQC::new(msg.view.clone());
-    //     for key in &self.keys {
-    //         qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
-    //     }
-    //     qc
-    // }
+    pub(crate) async fn new_timeout_qc(&mut self, ctx: &ctx::Ctx) -> validator::TimeoutQC {
+        let msg = self.new_replica_timeout(ctx).await;
+        let mut qc = validator::TimeoutQC::new(msg.view);
+        for key in &self.keys {
+            qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
+        }
+        qc
+    }
 
     pub(crate) async fn process_leader_proposal(
         &mut self,
@@ -285,7 +297,17 @@ impl UTHarness {
         let cur_view = self.replica.view_number;
 
         self.replica.start_timeout(ctx).await.unwrap();
-        let replica_timeout = self.try_recv().unwrap().msg;
+
+        // Now to get the timeout message.
+        let replica_timeout =
+            // We *may* have received a new view message before the timeout message.
+            match self.try_recv().unwrap().msg {
+                validator::ConsensusMsg::ReplicaTimeout(msg) => msg,
+                // If we did get a new view first, the second message is certainly a timeout.
+                validator::ConsensusMsg::ReplicaNewView(_) => self.try_recv().unwrap().msg,
+                _ => unreachable!(),
+            };
+
         self.process_replica_timeout_all(ctx, replica_timeout).await;
 
         assert_eq!(self.replica.view_number, cur_view.next());

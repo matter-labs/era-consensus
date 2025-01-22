@@ -1,6 +1,5 @@
 use super::StateMachine;
-use crate::metrics;
-use std::{cmp::max, collections::HashSet};
+use std::collections::HashSet;
 use zksync_concurrency::{ctx, error::Wrap, time};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
@@ -101,6 +100,11 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // We add the message to the incrementally-constructed QC.
+        tracing::debug!(
+            "ChonkyBFT replica - Received a timeout message from {:#?}. Message:\n{:#?}",
+            author,
+            message
+        );
         let timeout_qc = self
             .timeout_qcs_cache
             .entry(message.view.number)
@@ -136,13 +140,16 @@ impl StateMachine {
         // Consume the created timeout QC for this view.
         let timeout_qc = self.timeout_qcs_cache.remove(&message.view.number).unwrap();
 
+        tracing::info!(
+            "ChonkyBFT replica - We have a timeout QC with weight {} for view number {}.",
+            weight,
+            timeout_qc.view.number.0
+        );
+
         // We update our state with the new timeout QC.
-        if let Some(commit_qc) = timeout_qc.high_qc() {
-            self.process_commit_qc(ctx, commit_qc)
-                .await
-                .wrap("process_commit_qc()")?;
-        }
-        self.high_timeout_qc = max(Some(timeout_qc.clone()), self.high_timeout_qc.clone());
+        self.process_timeout_qc(ctx, &timeout_qc)
+            .await
+            .wrap("process_timeout_qc()")?;
 
         // Start a new view.
         self.start_new_view(ctx, message.view.number.next()).await?;
@@ -152,12 +159,39 @@ impl StateMachine {
 
     /// This blocking method is used whenever we timeout in a view.
     pub(crate) async fn start_timeout(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
-        // Update the state machine.
+        tracing::info!(
+            "ChonkyBFT replica - Timed out at view {}.",
+            self.view_number
+        );
+
+        // Update the state machine. We only reset the view timer so that replicas
+        // keep trying to resend timeout messages. This is crucial as we assume that messages
+        // are eventually delivered, if timeout messages are dropped and never retried the
+        // consensus can stall.
         self.phase = validator::Phase::Timeout;
-        self.view_timeout = time::Deadline::Infinite;
+        self.view_timeout = time::Deadline::Finite(ctx.now() + self.config.view_timeout);
 
         // Backup our state.
         self.backup_state(ctx).await.wrap("backup_state()")?;
+
+        // Broadcast our new view message. This synchronizes the replicas.
+        // We don't broadcast a new view message for view 0 since we don't have
+        // a justification for it.
+        if self.view_number != validator::ViewNumber(0) {
+            let output_message =
+                ConsensusInputMessage {
+                    message: self.config.secret_key.sign_msg(
+                        validator::ConsensusMsg::ReplicaNewView(validator::ReplicaNewView {
+                            justification: self.get_justification(),
+                        }),
+                    ),
+                };
+            tracing::debug!(
+                "ChonkyBFT replica - Broadcasting new view message as part of timeout. Message:\n{:#?}",
+                output_message.message
+            );
+            self.outbound_channel.send(output_message);
+        }
 
         // Broadcast our timeout message.
         let output_message = ConsensusInputMessage {
@@ -175,12 +209,11 @@ impl StateMachine {
                     },
                 )),
         };
-
+        tracing::debug!(
+            "ChonkyBFT replica - Broadcasting timeout message. Message:\n{:#?}",
+            output_message.message
+        );
         self.outbound_channel.send(output_message);
-
-        // Log the event.
-        tracing::info!("Timed out at view {}", self.view_number);
-        metrics::METRICS.replica_view_number.set(self.view_number.0);
 
         Ok(())
     }

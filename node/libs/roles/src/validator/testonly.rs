@@ -97,14 +97,6 @@ impl Setup {
                     }
                 }))
                 .unwrap(),
-                attesters: attester::Committee::new(spec.attester_weights.iter().map(|(k, w)| {
-                    attester::WeightedAttester {
-                        key: k.public(),
-                        weight: *w,
-                    }
-                }))
-                .unwrap()
-                .into(),
                 leader_selection: spec.leader_selection,
             }
             .with_hash(),
@@ -407,7 +399,6 @@ impl Distribution<GenesisRaw> for Standard {
 
             protocol_version: rng.gen(),
             validators: rng.gen(),
-            attesters: rng.gen(),
             leader_selection: rng.gen(),
         };
 

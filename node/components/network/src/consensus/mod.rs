@@ -125,7 +125,7 @@ pub(crate) struct Network {
 impl rpc::Handler<rpc::consensus::Rpc> for &Network {
     /// Here we bound the buffering of incoming consensus messages.
     fn max_req_size(&self) -> usize {
-        self.gossip.cfg.max_block_size.saturating_add(kB)
+        self.gossip.cfg.max_block_size.saturating_add(100 * kB)
     }
 
     async fn handle(

@@ -4,8 +4,6 @@ use zksync_concurrency::{ctx, error::Wrap as _, sync};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
 
-use super::VIEW_TIMEOUT_DURATION;
-
 /// The proposer loop is responsible for proposing new blocks to the network. It watches for new
 /// justifications from the replica and if it is the leader for the view, it proposes a new block.
 pub(crate) async fn run_proposer(
@@ -27,8 +25,12 @@ pub(crate) async fn run_proposer(
         }
 
         // Create a proposal for the given justification, within the timeout.
+        tracing::info!(
+            "ChonkyBFT proposer - Creating a proposal for view {}.",
+            justification.view().number
+        );
         let proposal = match create_proposal(
-            &ctx.with_timeout(VIEW_TIMEOUT_DURATION),
+            &ctx.with_timeout(cfg.view_timeout),
             cfg.clone(),
             justification,
         )
@@ -36,7 +38,7 @@ pub(crate) async fn run_proposer(
         {
             Ok(proposal) => proposal,
             Err(ctx::Error::Canceled(_)) => {
-                tracing::error!("run_proposer(): timed out while creating a proposal");
+                tracing::warn!("run_proposer(): timed out while creating a proposal");
                 continue;
             }
             Err(ctx::Error::Internal(err)) => {
@@ -49,7 +51,10 @@ pub(crate) async fn run_proposer(
         let msg = cfg
             .secret_key
             .sign_msg(validator::ConsensusMsg::LeaderProposal(proposal));
-
+        tracing::debug!(
+            "ChonkyBFT proposer - Broadcasting proposal. Message:\n{:#?}",
+            msg.msg
+        );
         network_sender.send(ConsensusInputMessage { message: msg });
     }
 }

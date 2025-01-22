@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.8.0](https://github.com/matter-labs/era-consensus/compare/v0.7.0...v0.8.0) (2025-01-20)
+
+
+### Features
+
+* documented the dangers of ordering in message encoding ([#225](https://github.com/matter-labs/era-consensus/issues/225)) ([c1b8e6e](https://github.com/matter-labs/era-consensus/commit/c1b8e6e021c5b958b047ac1478a337a6efe9e8cd))
+
+
+### Bug Fixes
+
+* Replicas forget messages and halt on restart ([#228](https://github.com/matter-labs/era-consensus/issues/228)) ([c723fbe](https://github.com/matter-labs/era-consensus/commit/c723fbe2453a52bab8fba9c202a404e5fc4fb532))
+
+## [0.7.0](https://github.com/matter-labs/era-consensus/compare/v0.6.0...v0.7.0) (2024-12-16)
+
+
+### Features
+
+* Added tool to recover public keys from secret keys ([#224](https://github.com/matter-labs/era-consensus/issues/224)) ([f1522f8](https://github.com/matter-labs/era-consensus/commit/f1522f8b23ef1a5450e626d187accac6bc637eb1))
+* Added view timeout duration as a config parameter ([#222](https://github.com/matter-labs/era-consensus/issues/222)) ([f07fcfa](https://github.com/matter-labs/era-consensus/commit/f07fcfa67e298d53ddeb801ce20c3ea2571e92da))
+* loadtest improvements ([#223](https://github.com/matter-labs/era-consensus/issues/223)) ([69f11c7](https://github.com/matter-labs/era-consensus/commit/69f11c7396e4980c3db7999fb8dbb6bc7cff1fe5))
+
+
+### Bug Fixes
+
+* Fix high vote on informal spec ([#215](https://github.com/matter-labs/era-consensus/issues/215)) ([c586f85](https://github.com/matter-labs/era-consensus/commit/c586f850674517975e2c97b9e2a61f6eca25bdf9))
+* TimeoutQC aggregation ([#220](https://github.com/matter-labs/era-consensus/issues/220)) ([8a49824](https://github.com/matter-labs/era-consensus/commit/8a498246b2c2d88d63e51049bb3acd20a8166479))
+
 ## [0.6.0](https://github.com/matter-labs/era-consensus/compare/v0.5.0...v0.6.0) (2024-11-14)
 
 
