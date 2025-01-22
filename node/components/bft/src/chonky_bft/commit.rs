@@ -101,9 +101,8 @@ impl StateMachine {
 
         // We add the message to the incrementally-constructed QC.
         tracing::debug!(
-            "ChonkyBFT replica - Received a commit message from {:#?}. Message:\n{:#?}",
-            author,
-            message
+            bft_message = format!("{:#?}", message),
+            "ChonkyBFT replica - Received a commit message from {author:#?}."
         );
         let commit_qc = self
             .commit_qcs_cache

@@ -101,9 +101,8 @@ impl StateMachine {
 
         // We add the message to the incrementally-constructed QC.
         tracing::debug!(
-            "ChonkyBFT replica - Received a timeout message from {:#?}. Message:\n{:#?}",
-            author,
-            message
+            bft_message = format!("{:#?}", message),
+            "ChonkyBFT replica - Received a timeout message from {author:#?}.",
         );
         let timeout_qc = self
             .timeout_qcs_cache
@@ -187,8 +186,8 @@ impl StateMachine {
                     ),
                 };
             tracing::debug!(
-                "ChonkyBFT replica - Broadcasting new view message as part of timeout. Message:\n{:#?}",
-                output_message.message
+                bft_message = format!("{:#?}", output_message.message),
+                "ChonkyBFT replica - Broadcasting new view message as part of timeout.",
             );
             self.outbound_channel.send(output_message);
         }
@@ -210,8 +209,8 @@ impl StateMachine {
                 )),
         };
         tracing::debug!(
-            "ChonkyBFT replica - Broadcasting timeout message. Message:\n{:#?}",
-            output_message.message
+            bft_message = format!("{:#?}", output_message.message),
+            "ChonkyBFT replica - Broadcasting timeout message.",
         );
         self.outbound_channel.send(output_message);
 
