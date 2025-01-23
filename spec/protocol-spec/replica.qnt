@@ -350,7 +350,7 @@ module replica {
                     FAULTY.contains(id),
                     msgs_signed_commit.exists(sv => sv.sig == id and sv.vote == commit_qc_vote),
                 }),
-                justification_case != "commit" implies timeout_qc_agg_sig.forall(id => or {
+                justification_case != "commit" implies timeout_qc_agg_sig.union(timeout_qc_voters).forall(id => or {
                     FAULTY.contains(id),
                     msgs_signed_timeout.exists(sv => sv.sig == id and sv.vote == timeout_qc_votes.get(id)),
                 }),
@@ -411,7 +411,7 @@ module replica {
                     FAULTY.contains(id),
                     msgs_signed_commit.exists(sv => sv.sig == id and sv.vote == commit_qc_vote),
                 }),
-                justification_case != "commit" implies timeout_qc_agg_sig.forall(id => or {
+                justification_case != "commit" implies timeout_qc_agg_sig.union(timeout_qc_voters).forall(id => or {
                     FAULTY.contains(id),
                     msgs_signed_timeout.exists(sv => sv.sig == id and sv.vote == timeout_qc_votes.get(id)),
                 }),
@@ -531,7 +531,9 @@ module replica {
                         is_some(proposal.block),
                         // To verify the block, replica just tries to apply it to the current
                         // state. Current state is the result of applying all the committed blocks until now.
-                        proposal.block.block_verify(block_number)
+                        proposal.block.block_verify(block_number),
+                        // not really part of the protocol but since we are tracking the block number, we have to check it
+                        proposal.ghost_block_number == block_number,
                         // We cache the new proposals, waiting for them to be committed.
                         // See the update to cached_proposals below.
                     }
@@ -601,7 +603,7 @@ module replica {
 
                     | Some(qc) => {
                         val self1 = self.process_commit_qc(Some(qc))
-                        start_new_view(id, self1, signed_vote.vote.view + 1, Commit(qc))
+                        start_new_view(id, self1, signed_vote.vote.view + 1)
                     }
                 },
 
@@ -678,7 +680,7 @@ module replica {
                             ...self.process_commit_qc(qc.high_commit_qc),
                             high_timeout_qc: max_timeout_qc(qc_opt, self.high_timeout_qc)
                         }
-                        start_new_view(id, self1, signed_vote.vote.view + 1, Timeout(qc)),
+                        start_new_view(id, self1, signed_vote.vote.view + 1),
                     }
                 },
                 // unchanged variables
@@ -711,7 +713,7 @@ module replica {
                 }
 
             if (new_view_view > self.view) {
-                start_new_view(id, self1, new_view_view, new_view.justification)
+                start_new_view(id, self1, new_view_view)
             } else {
                 all {
                     replica_state' = replica_state,
@@ -774,6 +776,8 @@ module replica {
                 ghost_block_number: block_number,
             }
             all {
+                // assert!(justification.view() == cur_view)
+                justification.view() == replica_state_view,
                 // Propose only if you have collected all committed blocks so far.
                 val committed_blocks = replica_state.get(replica_id).committed_blocks
                 block_number == length(committed_blocks),
@@ -798,12 +802,14 @@ module replica {
     }
 
     // a correct replica changes to a new view
-    action start_new_view(id: ReplicaId, self: ReplicaState, view: ViewNumber, justification: Justification): bool = {
+    action start_new_view(id: ReplicaId, self: ReplicaState, view: ViewNumber): bool = {
         // make sure that we do not go out of bounds with the new view
+        val new_self = { ...self, view: view, phase: PhasePrepare }
+        val justification = new_self.create_justification()
         all {
             VIEWS.contains(view),
             // switch to the Prepare phase
-            replica_state' = replica_state.set(id, { ...self, view: view, phase: PhasePrepare }),
+            replica_state' = replica_state.set(id, new_self),
             // Send a new view message to the other replicas for synchronization
             msgs_new_view' = msgs_new_view.union(Set({
                 justification: justification,
@@ -1236,6 +1242,36 @@ module replica {
             subquorums[0]
         } else {
             None
+        }
+    }
+
+    def create_justification(self: ReplicaState): Justification = {
+        pure val init_timeout_qc: TimeoutQC = {
+            votes: REPLICAS.map(id => sig_of_id(id)).mapBy(_ => {
+                view: 0,
+                high_vote: COMMIT_VOTE_NONE,
+                high_commit_qc_view: VIEW_NUMBER_NONE
+            }),
+            agg_sig: REPLICAS.map(id => sig_of_id(id)),
+            high_commit_qc: HIGH_COMMIT_QC_NONE,
+            ghost_view: 0,
+        }
+        val timeout_qc =
+            match (self.high_timeout_qc) {
+            | None => init_timeout_qc
+            | Some(qc) => qc
+            }
+        match (self.high_commit_qc) {
+        | None =>
+            // we always have a timeout QC, at least, for the view 0
+            Timeout(timeout_qc)
+
+        | Some(commit_qc) =>
+            if (commit_qc.vote.view >= timeout_qc.ghost_view) {
+                Commit(commit_qc)
+            } else {
+                Timeout(timeout_qc)
+            }
         }
     }
 
