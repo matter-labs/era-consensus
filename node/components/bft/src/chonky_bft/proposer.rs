@@ -94,10 +94,6 @@ pub(crate) async fn create_proposal(
                 .into());
             }
 
-            metrics::METRICS
-                .proposal_payload_size
-                .observe(payload.0.len());
-
             Some(payload)
         }
     };

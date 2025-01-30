@@ -62,15 +62,15 @@ pub(crate) struct ConsensusMetrics {
     pub(crate) proposal_payload_size: Histogram<usize>,
     /// Latency of receiving a proposal as observed by the replica. Measures from
     /// the start of the view until we have a verified proposal.
-    #[metrics(buckets = Buckets::exponential(0.01..=20.0, 1.5), unit = Unit::Seconds)]
+    #[metrics(buckets = Buckets::exponential(0.125..=64.0, 2.0), unit = Unit::Seconds)]
     pub(crate) proposal_latency: Histogram<Duration>,
     /// Latency of committing to a block as observed by the replica. Measures from
     /// the start of the view until we send a commit vote.
-    #[metrics(buckets = Buckets::exponential(0.01..=20.0, 1.5), unit = Unit::Seconds)]
+    #[metrics(buckets = Buckets::exponential(0.125..=64.0, 2.0), unit = Unit::Seconds)]
     pub(crate) commit_latency: Histogram<Duration>,
     /// Latency of a single view as observed by the replica. Measures from
     /// the start of the view until the start of the next.
-    #[metrics(buckets = Buckets::exponential(0.01..=20.0, 1.5), unit = Unit::Seconds)]
+    #[metrics(buckets = Buckets::exponential(0.125..=64.0, 2.0), unit = Unit::Seconds)]
     pub(crate) view_latency: Histogram<Duration>,
     /// Latency of processing messages by the replicas.
     #[metrics(buckets = Buckets::LATENCIES, unit = Unit::Seconds)]
