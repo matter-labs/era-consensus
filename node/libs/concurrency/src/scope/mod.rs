@@ -94,7 +94,7 @@ unsafe fn spawn<'env, T: Send + 'static>(
     )
 }
 
-impl<'env, T> JoinHandle<'env, T> {
+impl<T> JoinHandle<'_, T> {
     /// Awaits completion of the task.
     /// Returns the result of the task.
     /// Returns `Canceled` if the context has been canceled before the task.

@@ -201,10 +201,15 @@ impl StateMachine {
                 }
 
                 // The proposal is valid. We cache it, waiting for it to be committed.
+                metrics::METRICS
+                    .proposal_payload_size
+                    .observe(payload.0.len());
+
                 tracing::debug!(
                     "ChonkyBFT replica - Caching proposal for block number {}.",
                     implied_block_number.0
                 );
+
                 self.block_proposal_cache
                     .entry(implied_block_number)
                     .or_default()
@@ -224,8 +229,6 @@ impl StateMachine {
 
         // ----------- All checks finished. Now we process the message. --------------
 
-        // Metrics. We observe the latency of receiving a proposal measured
-        // from the start of this view.
         metrics::METRICS
             .proposal_latency
             .observe_latency(ctx.now() - self.view_start);
