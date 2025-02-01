@@ -3,11 +3,6 @@
 use std::time::Duration;
 use vise::{Buckets, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Histogram, Metrics, Unit};
 
-const PAYLOAD_SIZE_BUCKETS: Buckets = Buckets::exponential(
-    (4 * zksync_protobuf::kB) as f64..=(4 * zksync_protobuf::MB) as f64,
-    4.0,
-);
-
 /// Label for a consensus message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelValue)]
 #[metrics(rename_all = "snake_case")]
@@ -58,7 +53,10 @@ pub(crate) struct ConsensusMetrics {
     /// Number of the last finalized block observed by the node.
     pub(crate) finalized_block_number: Gauge<u64>,
     /// Size of the proposed payload in bytes.
-    #[metrics(buckets = PAYLOAD_SIZE_BUCKETS, unit = Unit::Bytes)]
+    #[metrics(buckets = Buckets::exponential(
+        (4 * zksync_protobuf::kB) as f64..=(4 * zksync_protobuf::MB) as f64,
+        2.0,
+    ), unit = Unit::Bytes)]
     pub(crate) proposal_payload_size: Histogram<usize>,
     /// Latency of receiving a proposal as observed by the replica. Measures from
     /// the start of the view until we have a verified proposal.
