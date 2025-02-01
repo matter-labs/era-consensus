@@ -66,7 +66,7 @@ impl Queue {
                 Err(ctx::Canceled) => {
                     match r {
                         RequestItem::Block(n) => self.blocks.send_if_modified(|x| {
-                            let modified = x.first_key_value().map_or(false, |(k, _)| k == &n);
+                            let modified = x.first_key_value().is_some_and(|(k, _)| k == &n);
                             x.remove(&n);
                             // Send iff the lowest requested block changed.
                             modified

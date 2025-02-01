@@ -71,7 +71,7 @@ impl BlockStore {
     /// Truncates the storage to blocks `>=first`.
     pub fn truncate(&mut self, first: validator::BlockNumber) {
         let mut blocks = self.0.blocks.lock().unwrap();
-        while blocks.front().map_or(false, |b| b.number() < first) {
+        while blocks.front().is_some_and(|b| b.number() < first) {
             blocks.pop_front();
         }
         self.0.persisted.send_if_modified(|s| {
