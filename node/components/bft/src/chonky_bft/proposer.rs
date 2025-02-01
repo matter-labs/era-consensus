@@ -1,4 +1,4 @@
-use crate::{metrics, Config, ToNetworkMessage};
+use crate::{Config, ToNetworkMessage};
 use std::sync::Arc;
 use zksync_concurrency::{ctx, error::Wrap as _, sync};
 use zksync_consensus_network::io::ConsensusInputMessage;
