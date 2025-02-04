@@ -1,7 +1,6 @@
 //! Messages related to the consensus protocol.
-use super::{
-    Genesis, GenesisHash, LeaderProposal, Msg, ReplicaCommit, ReplicaNewView, ReplicaTimeout,
-};
+use super::{LeaderProposal, ReplicaCommit, ReplicaNewView, ReplicaTimeout};
+use crate::validator::{Genesis, GenesisHash, Msg};
 use bit_vec::BitVec;
 use std::{fmt, hash::Hash};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};

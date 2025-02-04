@@ -1,8 +1,8 @@
 use super::{
-    BlockHeader, CommitQC, CommitQCVerifyError, Genesis, ReplicaCommit, ReplicaCommitVerifyError,
-    Signed, Signers, View,
+    BlockHeader, CommitQC, CommitQCVerifyError, Committee, ReplicaCommit, ReplicaCommitVerifyError,
+    Signers, View,
 };
-use crate::validator;
+use crate::validator::{self, Genesis, Signed};
 use std::collections::{BTreeMap, HashMap};
 
 /// A timeout message from a replica.
@@ -218,7 +218,7 @@ impl TimeoutQC {
     }
 
     /// Calculates the weight of current TimeoutQC signing validators
-    pub fn weight(&self, committee: &validator::Committee) -> u64 {
+    pub fn weight(&self, committee: &Committee) -> u64 {
         self.map
             .values()
             .map(|signers| committee.weight(signers))

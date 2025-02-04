@@ -1,13 +1,15 @@
 //! Test-only utilities.
-use super::{
-    AggregateSignature, Block, BlockHeader, BlockNumber, ChainId, CommitQC, Committee,
-    ConsensusMsg, FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, Justification,
-    LeaderProposal, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PreGenesisBlock,
-    ProofOfPossession, ProposalJustification, ProtocolVersion, PublicKey, ReplicaCommit,
-    ReplicaNewView, ReplicaTimeout, SecretKey, Signature, Signed, Signers, TimeoutQC, View,
-    ViewNumber, WeightedValidator,
+use super::messages::v1::{
+    BlockHeader, CommitQC, Committee, ConsensusMsg, FinalBlock, LeaderProposal,
+    LeaderSelectionMode, Phase, ProposalJustification, ReplicaCommit, ReplicaNewView,
+    ReplicaTimeout, Signers, TimeoutQC, View, ViewNumber, WeightedValidator,
 };
-use crate::{attester, validator::LeaderSelectionMode};
+use super::{
+    AggregateSignature, Block, BlockNumber, ChainId, ForkNumber, Genesis, GenesisHash, GenesisRaw,
+    Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock,
+    ProofOfPossession, ProtocolVersion, PublicKey, SecretKey, Signature, Signed,
+};
+use crate::attester;
 use bit_vec::BitVec;
 use rand::{
     distributions::{Distribution, Standard},

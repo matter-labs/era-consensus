@@ -1,5 +1,5 @@
-use super::{BlockHeader, Genesis, Signed, Signers, View};
-use crate::validator;
+use super::{BlockHeader, Signers, View};
+use crate::validator::{self, Genesis, Signed};
 
 /// A commit message from a replica.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.

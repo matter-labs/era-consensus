@@ -1,12 +1,14 @@
-use super::*;
+use crate::validator;
+use crate::validator::messages::testonly;
+use crate::validator::messages::{Committee, LeaderSelectionMode, WeightedValidator};
 use rand::Rng;
 use zksync_concurrency::ctx;
 
 /// Checks that the order of validators in a committee is stable.
 #[test]
 fn test_committee_order_change_detector() {
-    let committee = validator_committee();
-    let got: Vec<usize> = validator_keys()
+    let committee = testonly::validator_committee();
+    let got: Vec<usize> = testonly::validator_keys()
         .iter()
         .map(|k| committee.index(&k.public()).unwrap())
         .collect();
@@ -70,11 +72,11 @@ fn test_committee_contains() {
 
 #[test]
 fn test_committee_get() {
-    let validators = validator_keys()
+    let validators = testonly::validator_keys()
         .into_iter()
         .map(|x| x.public())
         .collect::<Vec<_>>();
-    let committee = validator_committee();
+    let committee = testonly::validator_committee();
     assert_eq!(committee.get(0).unwrap().key, validators[0]);
     assert_eq!(committee.get(1).unwrap().key, validators[1]);
     assert_eq!(committee.get(2).unwrap().key, validators[4]);
@@ -85,11 +87,11 @@ fn test_committee_get() {
 
 #[test]
 fn test_committee_index() {
-    let validators = validator_keys()
+    let validators = testonly::validator_keys()
         .into_iter()
         .map(|x| x.public())
         .collect::<Vec<_>>();
-    let committee = validator_committee();
+    let committee = testonly::validator_committee();
     assert_eq!(committee.index(&validators[0]), Some(0));
     assert_eq!(committee.index(&validators[1]), Some(1));
     assert_eq!(committee.index(&validators[4]), Some(2));
@@ -103,7 +105,7 @@ fn test_committee_index() {
 
 #[test]
 fn test_committee_view_leader_round_robin() {
-    let committee = validator_committee();
+    let committee = testonly::validator_committee();
     let mode = LeaderSelectionMode::RoundRobin;
     let got: Vec<_> = views()
         .map(|view| {
@@ -116,7 +118,7 @@ fn test_committee_view_leader_round_robin() {
 
 #[test]
 fn test_committee_view_leader_weighted() {
-    let committee = validator_committee();
+    let committee = testonly::validator_committee();
     let mode = LeaderSelectionMode::Weighted;
     let got: Vec<_> = views()
         .map(|view| {
@@ -131,7 +133,7 @@ fn test_committee_view_leader_weighted() {
 fn test_committee_view_leader_sticky() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let committee = validator_committee();
+    let committee = testonly::validator_committee();
     let want = committee
         .get(rng.gen_range(0..committee.len()))
         .unwrap()
@@ -147,7 +149,7 @@ fn test_committee_view_leader_sticky() {
 fn test_committee_view_leader_rota() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    let committee = validator_committee();
+    let committee = testonly::validator_committee();
     let mut want = Vec::new();
     for _ in 0..3 {
         want.push(
@@ -189,7 +191,7 @@ fn test_committee_max_faulty_weight() {
 
 #[test]
 fn test_committee_weight() {
-    let committee = validator_committee();
+    let committee = testonly::validator_committee();
     let mut signers = Signers::new(5);
     signers.0.set(1, true);
     signers.0.set(2, true);

@@ -1,5 +1,7 @@
 use super::*;
+use crate::validator::{testonly::Setup, ChainId, Signed};
 use assert_matches::assert_matches;
+use rand::Rng;
 use zksync_concurrency::ctx;
 
 #[test]

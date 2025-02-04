@@ -1,4 +1,3 @@
-use super::*;
 use anyhow::Context as _;
 use zksync_consensus_crypto::Text;
 

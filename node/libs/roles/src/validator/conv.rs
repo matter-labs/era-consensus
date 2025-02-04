@@ -1,11 +1,14 @@
-use super::{
-    AggregateSignature, Block, BlockHeader, BlockNumber, ChainId, CommitQC, Committee,
-    ConsensusMsg, FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, Justification,
-    LeaderProposal, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PreGenesisBlock,
-    ProposalJustification, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaNewView,
-    ReplicaTimeout, Signature, Signed, Signers, TimeoutQC, View, ViewNumber, WeightedValidator,
+use super::messages::v1::{
+    BlockHeader, CommitQC, Committee, ConsensusMsg, FinalBlock, LeaderProposal,
+    LeaderSelectionMode, Phase, ProposalJustification, ReplicaCommit, ReplicaNewView,
+    ReplicaTimeout, Signers, TimeoutQC, View, ViewNumber, WeightedValidator,
 };
-use crate::{node::SessionId, proto::validator as proto, validator::LeaderSelectionMode};
+use super::{
+    AggregateSignature, Block, BlockNumber, ChainId, ForkNumber, Genesis, GenesisHash, GenesisRaw,
+    Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock,
+    ProtocolVersion, PublicKey, Signature, Signed,
+};
+use crate::{node::SessionId, proto::validator as proto};
 use anyhow::Context as _;
 use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;

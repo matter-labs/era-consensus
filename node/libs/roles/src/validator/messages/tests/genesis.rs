@@ -1,6 +1,7 @@
-use super::*;
+use crate::validator::messages::v1::LeaderSelectionMode;
+use crate::validator::testonly::Setup;
+use crate::validator::{Genesis, GenesisRaw};
 use rand::{prelude::StdRng, Rng, SeedableRng};
-use validator::testonly::Setup;
 use zksync_concurrency::ctx;
 use zksync_protobuf::ProtoFmt as _;
 

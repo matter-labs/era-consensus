@@ -1,8 +1,5 @@
-use super::*;
-use assert_matches::assert_matches;
-use rand::Rng;
-use validator::testonly::Setup;
-use zksync_concurrency::ctx;
+use crate::validator::messages::testonly;
+use crate::validator::messages::{BlockNumber, Payload, PayloadHash};
 use zksync_consensus_crypto::{keccak256::Keccak256, Text};
 
 #[test]
@@ -12,7 +9,7 @@ fn payload_hash_change_detector() {
     )
     .decode()
     .unwrap();
-    assert_eq!(want, payload().hash());
+    assert_eq!(want, testonly::payload().hash());
 }
 
 #[test]
@@ -42,30 +39,4 @@ fn test_block_number_prev() {
 fn test_block_number_add() {
     let block_number = BlockNumber(5);
     assert_eq!(block_number + 3, BlockNumber(8));
-}
-
-#[test]
-fn test_final_block_verify() {
-    let ctx = ctx::test_root(&ctx::RealClock);
-    let rng = &mut ctx.rng();
-    let setup = Setup::new(rng, 2);
-
-    let payload: Payload = rng.gen();
-    let view_number = rng.gen();
-    let commit_qc = setup.make_commit_qc_with_payload(&payload, view_number);
-    let mut final_block = FinalBlock::new(payload.clone(), commit_qc.clone());
-
-    assert!(final_block.verify(&setup.genesis).is_ok());
-
-    final_block.payload = rng.gen();
-    assert_matches!(
-        final_block.verify(&setup.genesis),
-        Err(BlockValidationError::HashMismatch { .. })
-    );
-
-    final_block.justification.message.proposal.payload = final_block.payload.hash();
-    assert_matches!(
-        final_block.verify(&setup.genesis),
-        Err(BlockValidationError::Justification(_))
-    );
 }
