@@ -2,8 +2,11 @@ use super::testonly::*;
 use super::*;
 use crate::validator::{self, messages::testonly::*, GenesisHash, Msg, MsgHash};
 use anyhow::Context as _;
-use zksync_consensus_crypto::Text;
+use rand::Rng;
+use zksync_concurrency::ctx;
+use zksync_consensus_crypto::{ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant as _;
+use zksync_protobuf::testonly::test_encode_random;
 
 mod block;
 mod consensus;
@@ -89,4 +92,38 @@ fn leader_proposal_change_detector() {
             "validator_msg:keccak256:4c1b2cf1e8fbb00cde86caee200491df15c45d5c88402e227c1f3e1b416c4255",
             "validator:signature:bls12_381:81f865807067c6f70f17f9716e6d41c0103c2366abb6721408fb7d27ead6332798bd7b34d5f4a63e324082586b2c69a3",
         );
+}
+
+#[test]
+fn test_byte_encoding() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let final_block: FinalBlock = rng.gen();
+    assert_eq!(
+        final_block,
+        ByteFmt::decode(&ByteFmt::encode(&final_block)).unwrap()
+    );
+}
+
+#[test]
+fn test_text_encoding() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let genesis_hash: GenesisHash = rng.gen();
+    let t = TextFmt::encode(&genesis_hash);
+    assert_eq!(genesis_hash, Text::new(&t).decode::<GenesisHash>().unwrap());
+}
+
+#[test]
+fn test_schema_encoding() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    test_encode_random::<BlockHeader>(rng);
+    test_encode_random::<FinalBlock>(rng);
+    test_encode_random::<TimeoutQC>(rng);
+    test_encode_random::<CommitQC>(rng);
+    test_encode_random::<Signers>(rng);
+    test_encode_random::<LeaderSelectionMode>(rng);
 }

@@ -4,7 +4,7 @@ use crate::validator::messages::v1::{testonly::validator_committee, LeaderSelect
 use zksync_consensus_crypto::Text;
 
 /// Hardcoded payload.
-pub fn payload() -> Payload {
+pub(crate) fn payload() -> Payload {
     Payload(
         hex::decode("57b79660558f18d56b5196053f64007030a1cb7eeadb5c32d816b9439f77edf5f6bd9d")
             .unwrap(),
@@ -12,7 +12,7 @@ pub fn payload() -> Payload {
 }
 
 /// Hardcoded validator secret keys.
-pub fn validator_keys() -> Vec<validator::SecretKey> {
+pub(crate) fn validator_keys() -> Vec<validator::SecretKey> {
     [
         "validator:secret:bls12_381:27cb45b1670a1ae8d376a85821d51c7f91ebc6e32788027a84758441aaf0a987",
         "validator:secret:bls12_381:20132edc08a529e927f155e710ae7295a2a0d249f1b1f37726894d1d0d8f0d81",
@@ -26,7 +26,7 @@ pub fn validator_keys() -> Vec<validator::SecretKey> {
 }
 
 /// Hardcoded genesis with no attesters.
-pub fn genesis() -> Genesis {
+pub(crate) fn genesis() -> Genesis {
     GenesisRaw {
         chain_id: ChainId(1337),
         fork_number: ForkNumber(42),

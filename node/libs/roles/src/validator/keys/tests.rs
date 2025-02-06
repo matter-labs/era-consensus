@@ -3,6 +3,8 @@ use crate::validator::MsgHash;
 use rand::Rng as _;
 use std::vec;
 use zksync_concurrency::ctx;
+use zksync_consensus_crypto::{ByteFmt, Text, TextFmt};
+use zksync_protobuf::testonly::test_encode_random;
 
 #[test]
 fn test_signature_verify() {
@@ -57,4 +59,67 @@ fn test_agg_signature_verify() {
     assert!(agg_sig
         .verify_hash([(msg1, &key2.public()), (msg2, &key1.public())].into_iter())
         .is_err());
+}
+
+#[test]
+fn test_byte_encoding() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let sk: SecretKey = rng.gen();
+    assert_eq!(sk, ByteFmt::decode(&ByteFmt::encode(&sk)).unwrap());
+
+    let pk: PublicKey = rng.gen();
+    assert_eq!(pk, ByteFmt::decode(&ByteFmt::encode(&pk)).unwrap());
+
+    let sig: Signature = rng.gen();
+    assert_eq!(sig, ByteFmt::decode(&ByteFmt::encode(&sig)).unwrap());
+
+    let agg_sig: AggregateSignature = rng.gen();
+    assert_eq!(
+        agg_sig,
+        ByteFmt::decode(&ByteFmt::encode(&agg_sig)).unwrap()
+    );
+
+    let pop: ProofOfPossession = rng.gen();
+    assert_eq!(pop, ByteFmt::decode(&ByteFmt::encode(&pop)).unwrap());
+}
+
+#[test]
+fn test_text_encoding() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    let sk: SecretKey = rng.gen();
+    let t = TextFmt::encode(&sk);
+    assert_eq!(sk, Text::new(&t).decode::<SecretKey>().unwrap());
+
+    let pk: PublicKey = rng.gen();
+    let t = TextFmt::encode(&pk);
+    assert_eq!(pk, Text::new(&t).decode::<PublicKey>().unwrap());
+
+    let sig: Signature = rng.gen();
+    let t = TextFmt::encode(&sig);
+    assert_eq!(sig, Text::new(&t).decode::<Signature>().unwrap());
+
+    let pop: ProofOfPossession = rng.gen();
+    let t = TextFmt::encode(&pop);
+    assert_eq!(pop, Text::new(&t).decode::<ProofOfPossession>().unwrap());
+
+    let agg_sig: AggregateSignature = rng.gen();
+    let t = TextFmt::encode(&agg_sig);
+    assert_eq!(
+        agg_sig,
+        Text::new(&t).decode::<AggregateSignature>().unwrap()
+    );
+}
+
+#[test]
+fn test_schema_encoding() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
+    test_encode_random::<PublicKey>(rng);
+    test_encode_random::<Signature>(rng);
+    test_encode_random::<AggregateSignature>(rng);
 }

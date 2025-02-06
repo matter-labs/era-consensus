@@ -15,7 +15,7 @@ pub enum Last {
     /// `<genesis.first_block`.
     PreGenesis(validator::BlockNumber),
     /// `>=genesis.first_block`.
-    Final(validator::CommitQC),
+    Final(validator::v1::CommitQC),
 }
 
 impl From<&validator::Block> for Last {
