@@ -17,14 +17,14 @@ pub(crate) enum Error {
     #[error("past view (current view: {current_view:?})")]
     Old {
         /// Current view.
-        current_view: validator::ViewNumber,
+        current_view: validator::v1::ViewNumber,
     },
     /// Duplicate signer. We already have a commit message from the same validator
     /// for the same or past view.
     #[error("duplicate signer (message view: {message_view:?}, signer: {signer:?})")]
     DuplicateSigner {
         /// View number of the message.
-        message_view: validator::ViewNumber,
+        message_view: validator::v1::ViewNumber,
         /// Signer of the message.
         signer: Box<validator::PublicKey>,
     },
@@ -33,7 +33,7 @@ pub(crate) enum Error {
     InvalidSignature(#[source] anyhow::Error),
     /// Invalid message.
     #[error("invalid message: {0:#}")]
-    InvalidMessage(#[source] validator::ReplicaCommitVerifyError),
+    InvalidMessage(#[source] validator::v1::ReplicaCommitVerifyError),
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error(transparent)]
     Internal(#[from] ctx::Error),
@@ -56,7 +56,7 @@ impl StateMachine {
     pub(crate) async fn on_commit(
         &mut self,
         ctx: &ctx::Ctx,
-        signed_message: validator::Signed<validator::ReplicaCommit>,
+        signed_message: validator::Signed<validator::v1::ReplicaCommit>,
     ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
 
@@ -109,7 +109,9 @@ impl StateMachine {
             .entry(message.view.number)
             .or_default()
             .entry(message.clone())
-            .or_insert_with(|| validator::CommitQC::new(message.clone(), self.config.genesis()));
+            .or_insert_with(|| {
+                validator::v1::CommitQC::new(message.clone(), self.config.genesis())
+            });
 
         // Should always succeed as all checks have been already performed
         commit_qc

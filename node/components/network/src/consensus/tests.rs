@@ -11,7 +11,7 @@ use zksync_consensus_utils::enum_util::Variant as _;
 
 #[tokio::test]
 async fn test_msg_pool() {
-    use validator::ConsensusMsg as M;
+    use validator::v1::ConsensusMsg as M;
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let pool = MsgPool::new();
@@ -304,9 +304,9 @@ async fn test_transmission() {
             tracing::info!("message {i}");
             // Construct a message and ensure that view is increasing
             // (otherwise the message could get filtered out).
-            let mut want: validator::Signed<validator::ReplicaCommit> = rng.gen();
-            want.msg.view.number = validator::ViewNumber(i);
-            let want: validator::Signed<validator::ConsensusMsg> = want.cast().unwrap();
+            let mut want: validator::Signed<validator::v1::ReplicaCommit> = rng.gen();
+            want.msg.view.number = validator::v1::ViewNumber(i);
+            let want: validator::Signed<validator::v1::ConsensusMsg> = want.cast().unwrap();
             let in_message = io::ConsensusInputMessage {
                 message: want.clone(),
             };
@@ -343,7 +343,7 @@ async fn test_retransmission() {
         s.spawn_bg(runner.run(ctx));
 
         // Make first node broadcast a message.
-        let want: validator::Signed<validator::ConsensusMsg> = rng.gen();
+        let want: validator::Signed<validator::v1::ConsensusMsg> = rng.gen();
         node0.consensus_sender.send(io::ConsensusInputMessage {
             message: want.clone(),
         });

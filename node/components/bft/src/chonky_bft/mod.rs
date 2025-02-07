@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
-use zksync_consensus_roles::validator::{self, ConsensusMsg};
+use zksync_consensus_roles::validator;
 
 mod block;
 mod commit;
@@ -30,31 +30,33 @@ pub(crate) struct StateMachine {
     pub(crate) inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
     /// The sender part of the proposer watch channel. This is used to notify the proposer loop
     /// and send the needed justification.
-    pub(crate) proposer_sender: sync::watch::Sender<Option<validator::ProposalJustification>>,
+    pub(crate) proposer_sender: sync::watch::Sender<Option<validator::v1::ProposalJustification>>,
 
     /// The current view number.
-    pub(crate) view_number: validator::ViewNumber,
+    pub(crate) view_number: validator::v1::ViewNumber,
     /// The current phase.
-    pub(crate) phase: validator::Phase,
+    pub(crate) phase: validator::v1::Phase,
     /// The highest block proposal that the replica has committed to.
-    pub(crate) high_vote: Option<validator::ReplicaCommit>,
+    pub(crate) high_vote: Option<validator::v1::ReplicaCommit>,
     /// The highest commit quorum certificate known to the replica.
-    pub(crate) high_commit_qc: Option<validator::CommitQC>,
+    pub(crate) high_commit_qc: Option<validator::v1::CommitQC>,
     /// The highest timeout quorum certificate known to the replica.
-    pub(crate) high_timeout_qc: Option<validator::TimeoutQC>,
+    pub(crate) high_timeout_qc: Option<validator::v1::TimeoutQC>,
 
     /// A cache of the received block proposals.
     pub(crate) block_proposal_cache:
         BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
     /// Latest view each validator has signed a ReplicaCommit message for.
-    pub(crate) commit_views_cache: BTreeMap<validator::PublicKey, validator::ViewNumber>,
+    pub(crate) commit_views_cache: BTreeMap<validator::PublicKey, validator::v1::ViewNumber>,
     /// Commit QCs indexed by view number and then by message.
-    pub(crate) commit_qcs_cache:
-        BTreeMap<validator::ViewNumber, BTreeMap<validator::ReplicaCommit, validator::CommitQC>>,
+    pub(crate) commit_qcs_cache: BTreeMap<
+        validator::v1::ViewNumber,
+        BTreeMap<validator::v1::ReplicaCommit, validator::v1::CommitQC>,
+    >,
     /// Latest view each validator has signed a ReplicaTimeout message for.
-    pub(crate) timeout_views_cache: BTreeMap<validator::PublicKey, validator::ViewNumber>,
+    pub(crate) timeout_views_cache: BTreeMap<validator::PublicKey, validator::v1::ViewNumber>,
     /// Timeout QCs indexed by view number.
-    pub(crate) timeout_qcs_cache: BTreeMap<validator::ViewNumber, validator::TimeoutQC>,
+    pub(crate) timeout_qcs_cache: BTreeMap<validator::v1::ViewNumber, validator::v1::TimeoutQC>,
 
     /// The deadline to receive a proposal for this view before timing out.
     pub(crate) view_timeout: time::Deadline,
@@ -74,7 +76,7 @@ impl StateMachine {
         config: Arc<Config>,
         outbound_channel: ctx::channel::UnboundedSender<ToNetworkMessage>,
         inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
-        proposer_sender: sync::watch::Sender<Option<validator::ProposalJustification>>,
+        proposer_sender: sync::watch::Sender<Option<validator::v1::ProposalJustification>>,
     ) -> ctx::Result<Self> {
         let backup = config.replica_store.state(ctx).await?;
 
@@ -119,7 +121,7 @@ impl StateMachine {
         // to synchronize right at the beginning and will provide a justification for the
         // next view. This is necessary because the first view is not justified by any
         // previous view.
-        if self.view_number == validator::ViewNumber(0) {
+        if self.view_number == validator::v1::ViewNumber(0) {
             tracing::debug!("ChonkyBFT replica - Starting view 0, immediately timing out.");
             self.start_timeout(ctx).await?;
         }
@@ -145,7 +147,7 @@ impl StateMachine {
             // Process the message.
             let now = ctx.now();
             let label = match &req.msg.msg {
-                ConsensusMsg::LeaderProposal(_) => {
+                validator::v1::ConsensusMsg::LeaderProposal(_) => {
                     let res = match self
                         .on_proposal(ctx, req.msg.cast().unwrap())
                         .await
@@ -174,7 +176,7 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::LeaderProposal.with_result(&res)
                 }
-                ConsensusMsg::ReplicaCommit(_) => {
+                validator::v1::ConsensusMsg::ReplicaCommit(_) => {
                     let res = match self
                         .on_commit(ctx, req.msg.cast().unwrap())
                         .await
@@ -203,7 +205,7 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::ReplicaCommit.with_result(&res)
                 }
-                ConsensusMsg::ReplicaTimeout(_) => {
+                validator::v1::ConsensusMsg::ReplicaTimeout(_) => {
                     let res = match self
                         .on_timeout(ctx, req.msg.cast().unwrap())
                         .await
@@ -232,7 +234,7 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::ReplicaTimeout.with_result(&res)
                 }
-                ConsensusMsg::ReplicaNewView(_) => {
+                validator::v1::ConsensusMsg::ReplicaNewView(_) => {
                     let res = match self
                         .on_new_view(ctx, req.msg.cast().unwrap())
                         .await
@@ -275,7 +277,7 @@ impl StateMachine {
     pub(crate) async fn process_commit_qc(
         &mut self,
         ctx: &ctx::Ctx,
-        qc: &validator::CommitQC,
+        qc: &validator::v1::CommitQC,
     ) -> ctx::Result<()> {
         if self
             .high_commit_qc
@@ -299,7 +301,7 @@ impl StateMachine {
     pub(crate) async fn process_timeout_qc(
         &mut self,
         ctx: &ctx::Ctx,
-        qc: &validator::TimeoutQC,
+        qc: &validator::v1::TimeoutQC,
     ) -> ctx::Result<()> {
         if let Some(high_qc) = qc.high_qc() {
             self.process_commit_qc(ctx, high_qc)

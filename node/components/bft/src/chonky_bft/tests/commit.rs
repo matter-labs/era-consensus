@@ -15,16 +15,16 @@ async fn commit_yield_new_view_sanity() {
 
         let cur_view = util.replica.view_number;
         let replica_commit = util.new_replica_commit(ctx).await;
-        assert_eq!(util.replica.phase, validator::Phase::Commit);
+        assert_eq!(util.replica.phase, validator::v1::Phase::Commit);
 
         let new_view = util
             .process_replica_commit_all(ctx, replica_commit.clone())
             .await
             .msg;
         assert_eq!(util.replica.view_number, cur_view.next());
-        assert_eq!(util.replica.phase, validator::Phase::Prepare);
+        assert_eq!(util.replica.phase, validator::v1::Phase::Prepare);
         assert_eq!(new_view.view().number, cur_view.next());
-        assert_matches!(new_view.justification, validator::ProposalJustification::Commit(qc) => {
+        assert_matches!(new_view.justification, validator::v1::ProposalJustification::Commit(qc) => {
             assert_eq!(qc.message.proposal, replica_commit.proposal);
         });
 
@@ -70,7 +70,7 @@ async fn replica_commit_old() {
         s.spawn_bg(runner.run(ctx));
 
         let mut replica_commit = util.new_replica_commit(ctx).await;
-        replica_commit.view.number = validator::ViewNumber(util.replica.view_number.0 - 1);
+        replica_commit.view.number = validator::v1::ViewNumber(util.replica.view_number.0 - 1);
         let res = util
             .process_replica_commit(ctx, util.owner_key().sign_msg(replica_commit))
             .await;
@@ -209,7 +209,7 @@ async fn replica_commit_num_received_below_threshold() {
             .unwrap()
             .unwrap()
             .msg;
-        assert_matches!(res.justification, validator::ProposalJustification::Commit(qc) => {
+        assert_matches!(res.justification, validator::v1::ProposalJustification::Commit(qc) => {
             assert_eq!(qc.message.proposal, replica_commit.proposal);
         });
         for i in util.genesis().validators.quorum_threshold() as usize..util.keys.len() {
@@ -237,9 +237,9 @@ async fn replica_commit_unexpected_proposal() {
         s.spawn_bg(runner.run(ctx));
 
         util.produce_block(ctx).await;
-        let replica_commit = validator::ReplicaCommit {
+        let replica_commit = validator::v1::ReplicaCommit {
             view: util.view(),
-            proposal: validator::BlockHeader {
+            proposal: validator::v1::BlockHeader {
                 number: util
                     .replica
                     .high_commit_qc
@@ -293,7 +293,7 @@ async fn replica_commit_different_proposals() {
         }
 
         // Check correct proposal has been committed
-        assert_matches!(replica_commit_result.unwrap().msg.justification, validator::ProposalJustification::Commit(qc) => {
+        assert_matches!(replica_commit_result.unwrap().msg.justification, validator::v1::ProposalJustification::Commit(qc) => {
             assert_eq!(qc.message.proposal, replica_commit.proposal);
         });
 
@@ -346,7 +346,7 @@ async fn replica_commit_filter_functions_test() {
         let replica_commit = util.new_replica_commit(ctx).await;
         let msg = util
             .owner_key()
-            .sign_msg(validator::ConsensusMsg::ReplicaCommit(
+            .sign_msg(validator::v1::ConsensusMsg::ReplicaCommit(
                 replica_commit.clone(),
             ));
 
@@ -366,32 +366,32 @@ async fn replica_commit_filter_functions_test() {
 
         // Send a msg with view number = 2
         let mut replica_commit_from_view_2 = replica_commit.clone();
-        replica_commit_from_view_2.view.number = validator::ViewNumber(2);
-        let msg_from_view_2 = util
-            .owner_key()
-            .sign_msg(validator::ConsensusMsg::ReplicaCommit(
-                replica_commit_from_view_2,
-            ));
+        replica_commit_from_view_2.view.number = validator::v1::ViewNumber(2);
+        let msg_from_view_2 =
+            util.owner_key()
+                .sign_msg(validator::v1::ConsensusMsg::ReplicaCommit(
+                    replica_commit_from_view_2,
+                ));
         util.send(msg_from_view_2);
 
         // Send a msg with view number = 4, will prune message from view 2
         let mut replica_commit_from_view_4 = replica_commit.clone();
-        replica_commit_from_view_4.view.number = validator::ViewNumber(4);
-        let msg_from_view_4 = util
-            .owner_key()
-            .sign_msg(validator::ConsensusMsg::ReplicaCommit(
-                replica_commit_from_view_4,
-            ));
+        replica_commit_from_view_4.view.number = validator::v1::ViewNumber(4);
+        let msg_from_view_4 =
+            util.owner_key()
+                .sign_msg(validator::v1::ConsensusMsg::ReplicaCommit(
+                    replica_commit_from_view_4,
+                ));
         util.send(msg_from_view_4.clone());
 
         // Send a msg with view number = 3, will be discarded, as it is older than message from view 4
         let mut replica_commit_from_view_3 = replica_commit.clone();
-        replica_commit_from_view_3.view.number = validator::ViewNumber(3);
-        let msg_from_view_3 = util
-            .owner_key()
-            .sign_msg(validator::ConsensusMsg::ReplicaCommit(
-                replica_commit_from_view_3,
-            ));
+        replica_commit_from_view_3.view.number = validator::v1::ViewNumber(3);
+        let msg_from_view_3 =
+            util.owner_key()
+                .sign_msg(validator::v1::ConsensusMsg::ReplicaCommit(
+                    replica_commit_from_view_3,
+                ));
         util.send(msg_from_view_3);
 
         // Validate only message from view 4 is received
@@ -401,15 +401,15 @@ async fn replica_commit_filter_functions_test() {
         );
 
         // Send a msg from validator 0
-        let msg_from_validator_0 = util.keys[0].sign_msg(validator::ConsensusMsg::ReplicaCommit(
-            replica_commit.clone(),
-        ));
+        let msg_from_validator_0 = util.keys[0].sign_msg(
+            validator::v1::ConsensusMsg::ReplicaCommit(replica_commit.clone()),
+        );
         util.send(msg_from_validator_0.clone());
 
         // Send a msg from validator 1
-        let msg_from_validator_1 = util.keys[1].sign_msg(validator::ConsensusMsg::ReplicaCommit(
-            replica_commit.clone(),
-        ));
+        let msg_from_validator_1 = util.keys[1].sign_msg(
+            validator::v1::ConsensusMsg::ReplicaCommit(replica_commit.clone()),
+        );
         util.send(msg_from_validator_1.clone());
 
         //Validate both are present in the inbound_channel.

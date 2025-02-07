@@ -10,21 +10,21 @@ fn timeout_qc_aggregation() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let setup = validator::testonly::Setup::new(rng, 10);
-    let view = validator::View {
+    let view = validator::v1::View {
         number: rng.gen(),
         genesis: setup.genesis.hash(),
     };
-    let commit = validator::ReplicaCommit {
+    let commit = validator::v1::ReplicaCommit {
         view,
-        proposal: validator::BlockHeader {
+        proposal: validator::v1::BlockHeader {
             number: rng.gen(),
             payload: rng.gen(),
         },
     };
-    let mut timeout_qc = validator::TimeoutQC::new(view);
+    let mut timeout_qc = validator::v1::TimeoutQC::new(view);
     for k in &setup.validator_keys {
         // Generate ReplicaTimeout which differ just by the high_qc signer set.
-        let mut commit_qc = validator::CommitQC::new(commit.clone(), &setup.genesis);
+        let mut commit_qc = validator::v1::CommitQC::new(commit.clone(), &setup.genesis);
         // Add signatures in random order until the CommitQC is valid.
         let mut keys = setup.validator_keys.clone();
         keys.shuffle(rng);
@@ -37,7 +37,7 @@ fn timeout_qc_aggregation() {
                 .unwrap();
         }
         // Add vote to the TimeoutQC.
-        let vote = validator::ReplicaTimeout {
+        let vote = validator::v1::ReplicaTimeout {
             view,
             high_vote: None,
             high_qc: Some(commit_qc.clone()),
@@ -57,14 +57,14 @@ async fn timeout_yield_new_view_sanity() {
 
         let cur_view = util.replica.view_number;
         let replica_timeout = util.new_replica_timeout(ctx).await;
-        assert_eq!(util.replica.phase, validator::Phase::Timeout);
+        assert_eq!(util.replica.phase, validator::v1::Phase::Timeout);
 
         let new_view = util
             .process_replica_timeout_all(ctx, replica_timeout.clone())
             .await
             .msg;
         assert_eq!(util.replica.view_number, cur_view.next());
-        assert_eq!(util.replica.phase, validator::Phase::Prepare);
+        assert_eq!(util.replica.phase, validator::v1::Phase::Prepare);
         assert_eq!(new_view.view().number, cur_view.next());
 
         Ok(())
@@ -109,7 +109,7 @@ async fn replica_timeout_old() {
         s.spawn_bg(runner.run(ctx));
 
         let mut replica_timeout = util.new_replica_timeout(ctx).await;
-        replica_timeout.view.number = validator::ViewNumber(util.replica.view_number.0 - 1);
+        replica_timeout.view.number = validator::v1::ViewNumber(util.replica.view_number.0 - 1);
         let res = util
             .process_replica_timeout(ctx, util.owner_key().sign_msg(replica_timeout))
             .await;
@@ -220,7 +220,7 @@ async fn timeout_invalid_message() {
         assert_matches!(
             res,
             Err(timeout::Error::InvalidMessage(
-                validator::ReplicaTimeoutVerifyError::BadView(_)
+                validator::v1::ReplicaTimeoutVerifyError::BadView(_)
             ))
         );
 
@@ -232,7 +232,7 @@ async fn timeout_invalid_message() {
         assert_matches!(
             res,
             Err(timeout::Error::InvalidMessage(
-                validator::ReplicaTimeoutVerifyError::InvalidHighVote(_)
+                validator::v1::ReplicaTimeoutVerifyError::InvalidHighVote(_)
             ))
         );
 
@@ -244,7 +244,7 @@ async fn timeout_invalid_message() {
         assert_matches!(
             res,
             Err(timeout::Error::InvalidMessage(
-                validator::ReplicaTimeoutVerifyError::InvalidHighQC(_)
+                validator::v1::ReplicaTimeoutVerifyError::InvalidHighQC(_)
             ))
         );
 
@@ -280,7 +280,7 @@ async fn timeout_num_received_below_threshold() {
             .unwrap()
             .unwrap()
             .msg;
-        assert_matches!(res.justification, validator::ProposalJustification::Timeout(qc) => {
+        assert_matches!(res.justification, validator::v1::ProposalJustification::Timeout(qc) => {
             assert_eq!(qc.view, replica_timeout.view);
         });
         for i in util.genesis().validators.quorum_threshold() as usize..util.keys.len() {
@@ -310,7 +310,7 @@ async fn timeout_weight_different_messages() {
         util.produce_block(ctx).await;
 
         let replica_timeout = util.new_replica_timeout(ctx).await;
-        util.replica.phase = validator::Phase::Prepare; // To allow processing of proposal later.
+        util.replica.phase = validator::v1::Phase::Prepare; // To allow processing of proposal later.
         let proposal = replica_timeout.clone().high_vote.unwrap().proposal;
 
         // Create a different proposal for the same view
@@ -322,7 +322,7 @@ async fn timeout_weight_different_messages() {
         let mut high_vote = other_replica_timeout.high_vote.clone().unwrap();
         high_vote.proposal = different_proposal;
         let high_qc = util
-            .new_commit_qc(ctx, |msg: &mut validator::ReplicaCommit| {
+            .new_commit_qc(ctx, |msg: &mut validator::v1::ReplicaCommit| {
                 msg.proposal = different_proposal;
                 msg.view = view;
             })
@@ -348,7 +348,7 @@ async fn timeout_weight_different_messages() {
                 .unwrap();
         }
 
-        assert_matches!(res.unwrap().msg.justification, validator::ProposalJustification::Timeout(qc) => {
+        assert_matches!(res.unwrap().msg.justification, validator::v1::ProposalJustification::Timeout(qc) => {
             assert_eq!(qc.view, replica_timeout.view);
             assert_eq!(qc.high_vote(util.genesis()).unwrap(), proposal);
         });
@@ -402,7 +402,7 @@ async fn replica_timeout_filter_functions_test() {
         let replica_timeout = util.new_replica_timeout(ctx).await;
         let msg = util
             .owner_key()
-            .sign_msg(validator::ConsensusMsg::ReplicaTimeout(
+            .sign_msg(validator::v1::ConsensusMsg::ReplicaTimeout(
                 replica_timeout.clone(),
             ));
 
@@ -422,32 +422,32 @@ async fn replica_timeout_filter_functions_test() {
 
         // Send a msg with view number = 2
         let mut replica_timeout_from_view_2 = replica_timeout.clone();
-        replica_timeout_from_view_2.view.number = validator::ViewNumber(2);
-        let msg_from_view_2 = util
-            .owner_key()
-            .sign_msg(validator::ConsensusMsg::ReplicaTimeout(
-                replica_timeout_from_view_2,
-            ));
+        replica_timeout_from_view_2.view.number = validator::v1::ViewNumber(2);
+        let msg_from_view_2 =
+            util.owner_key()
+                .sign_msg(validator::v1::ConsensusMsg::ReplicaTimeout(
+                    replica_timeout_from_view_2,
+                ));
         util.send(msg_from_view_2);
 
         // Send a msg with view number = 4, will prune message from view 2
         let mut replica_timeout_from_view_4 = replica_timeout.clone();
-        replica_timeout_from_view_4.view.number = validator::ViewNumber(4);
-        let msg_from_view_4 = util
-            .owner_key()
-            .sign_msg(validator::ConsensusMsg::ReplicaTimeout(
-                replica_timeout_from_view_4,
-            ));
+        replica_timeout_from_view_4.view.number = validator::v1::ViewNumber(4);
+        let msg_from_view_4 =
+            util.owner_key()
+                .sign_msg(validator::v1::ConsensusMsg::ReplicaTimeout(
+                    replica_timeout_from_view_4,
+                ));
         util.send(msg_from_view_4.clone());
 
         // Send a msg with view number = 3, will be discarded, as it is older than message from view 4
         let mut replica_timeout_from_view_3 = replica_timeout.clone();
-        replica_timeout_from_view_3.view.number = validator::ViewNumber(3);
-        let msg_from_view_3 = util
-            .owner_key()
-            .sign_msg(validator::ConsensusMsg::ReplicaTimeout(
-                replica_timeout_from_view_3,
-            ));
+        replica_timeout_from_view_3.view.number = validator::v1::ViewNumber(3);
+        let msg_from_view_3 =
+            util.owner_key()
+                .sign_msg(validator::v1::ConsensusMsg::ReplicaTimeout(
+                    replica_timeout_from_view_3,
+                ));
         util.send(msg_from_view_3);
 
         // Validate only message from view 4 is received
@@ -457,15 +457,15 @@ async fn replica_timeout_filter_functions_test() {
         );
 
         // Send a msg from validator 0
-        let msg_from_validator_0 = util.keys[0].sign_msg(validator::ConsensusMsg::ReplicaTimeout(
-            replica_timeout.clone(),
-        ));
+        let msg_from_validator_0 = util.keys[0].sign_msg(
+            validator::v1::ConsensusMsg::ReplicaTimeout(replica_timeout.clone()),
+        );
         util.send(msg_from_validator_0.clone());
 
         // Send a msg from validator 1
-        let msg_from_validator_1 = util.keys[1].sign_msg(validator::ConsensusMsg::ReplicaTimeout(
-            replica_timeout.clone(),
-        ));
+        let msg_from_validator_1 = util.keys[1].sign_msg(
+            validator::v1::ConsensusMsg::ReplicaTimeout(replica_timeout.clone()),
+        );
         util.send(msg_from_validator_1.clone());
 
         // Validate both are present in the inbound_channel

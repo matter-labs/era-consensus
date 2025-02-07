@@ -5,14 +5,14 @@ use zksync_consensus_roles::validator;
 /// Message types from the Consensus component.
 #[derive(Debug, PartialEq)]
 pub struct ConsensusInputMessage {
-    pub message: validator::Signed<validator::ConsensusMsg>,
+    pub message: validator::Signed<validator::v1::ConsensusMsg>,
 }
 
 /// Consensus message received from the network.
 #[derive(Debug)]
 pub struct ConsensusReq {
     /// Payload.
-    pub msg: validator::Signed<validator::ConsensusMsg>,
+    pub msg: validator::Signed<validator::v1::ConsensusMsg>,
     /// Channel that should be used to notify the network component that
     /// processing of this message has been completed.
     /// Used for rate limiting.

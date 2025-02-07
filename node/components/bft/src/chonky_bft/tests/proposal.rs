@@ -26,9 +26,9 @@ async fn proposal_yield_replica_commit_sanity() {
 
         assert_eq!(
             replica_commit.msg,
-            validator::ReplicaCommit {
+            validator::v1::ReplicaCommit {
                 view: proposal.view(),
-                proposal: validator::BlockHeader {
+                proposal: validator::v1::BlockHeader {
                     number: proposal.justification.get_implied_block(util.genesis()).0,
                     payload: proposal.proposal_payload.unwrap().hash()
                 },
@@ -51,7 +51,7 @@ async fn proposal_old_view() {
 
         let proposal = util.new_leader_proposal(ctx).await;
 
-        util.replica.phase = validator::Phase::Commit;
+        util.replica.phase = validator::v1::Phase::Commit;
 
         let res = util
             .process_leader_proposal(ctx, util.leader_key().sign_msg(proposal.clone()))
@@ -65,7 +65,7 @@ async fn proposal_old_view() {
             }
         );
 
-        util.replica.phase = validator::Phase::Timeout;
+        util.replica.phase = validator::v1::Phase::Timeout;
 
         let res = util
             .process_leader_proposal(ctx, util.leader_key().sign_msg(proposal.clone()))
@@ -79,7 +79,7 @@ async fn proposal_old_view() {
             }
         );
 
-        util.replica.phase = validator::Phase::Prepare;
+        util.replica.phase = validator::v1::Phase::Prepare;
         util.replica.view_number = util.replica.view_number.next();
 
         let res = util
@@ -185,9 +185,9 @@ async fn proposal_pruned_block() {
         let (mut util, runner) = UTHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let fake_commit = validator::ReplicaCommit {
+        let fake_commit = validator::v1::ReplicaCommit {
             view: util.view(),
-            proposal: validator::BlockHeader {
+            proposal: validator::v1::BlockHeader {
                 number: util
                     .replica
                     .config
@@ -306,9 +306,9 @@ async fn proposal_missing_previous_payload() {
         s.spawn_bg(runner.run(ctx));
 
         let missing_payload_number = util.replica.config.block_store.queued().first.next();
-        let fake_commit = validator::ReplicaCommit {
+        let fake_commit = validator::v1::ReplicaCommit {
             view: util.view(),
-            proposal: validator::BlockHeader {
+            proposal: validator::v1::BlockHeader {
                 number: missing_payload_number,
                 payload: ctx.rng().gen(),
             },
@@ -316,9 +316,9 @@ async fn proposal_missing_previous_payload() {
 
         util.process_replica_commit_all(ctx, fake_commit).await;
 
-        let proposal = validator::LeaderProposal {
+        let proposal = validator::v1::LeaderProposal {
             proposal_payload: Some(ctx.rng().gen()),
-            justification: validator::ProposalJustification::Commit(
+            justification: validator::v1::ProposalJustification::Commit(
                 util.replica.high_commit_qc.clone().unwrap(),
             ),
         };

@@ -91,7 +91,7 @@ async fn block_production_timeout_in_commit() {
         util.new_replica_commit(ctx).await;
 
         // Replica is in `Phase::Commit`, but should still accept messages from newer views.
-        assert_eq!(util.replica.phase, validator::Phase::Commit);
+        assert_eq!(util.replica.phase, validator::v1::Phase::Commit);
         util.produce_block_after_timeout(ctx).await;
 
         Ok(())
@@ -117,7 +117,7 @@ async fn block_production_timeout_some_commits() {
             .is_none());
 
         // Replica is in `Phase::Commit`, but should still accept prepares from newer views.
-        assert_eq!(util.replica.phase, validator::Phase::Commit);
+        assert_eq!(util.replica.phase, validator::v1::Phase::Commit);
         util.produce_block_after_timeout(ctx).await;
 
         Ok(())

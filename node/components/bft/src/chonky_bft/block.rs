@@ -10,7 +10,7 @@ impl StateMachine {
     pub(crate) async fn save_block(
         &mut self,
         ctx: &ctx::Ctx,
-        commit_qc: &validator::CommitQC,
+        commit_qc: &validator::v1::CommitQC,
     ) -> ctx::Result<()> {
         let Some(cache) = self.block_proposal_cache.get(&commit_qc.header().number) else {
             return Ok(());
@@ -18,7 +18,7 @@ impl StateMachine {
         let Some(payload) = cache.get(&commit_qc.header().payload) else {
             return Ok(());
         };
-        let block = validator::FinalBlock {
+        let block = validator::v1::FinalBlock {
             payload: payload.clone(),
             justification: commit_qc.clone(),
         };

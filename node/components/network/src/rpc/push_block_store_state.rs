@@ -25,7 +25,7 @@ pub(crate) struct Req {
     // DEPRECATED: transmitted for backward compatibility.
     first: validator::BlockNumber,
     // DEPRECATED: transmitted for backward compatibility.
-    last: Option<validator::CommitQC>,
+    last: Option<validator::v1::CommitQC>,
     // Block store state. Will be required once we drop
     // compatibility for `first` and `last` fields.
     state: Option<BlockStoreState>,

@@ -17,14 +17,14 @@ pub(crate) enum Error {
     #[error("past view (current view: {current_view:?})")]
     Old {
         /// Current view.
-        current_view: validator::ViewNumber,
+        current_view: validator::v1::ViewNumber,
     },
     /// Duplicate signer. We already have a timeout message from the same validator
     /// for the same or past view.
     #[error("duplicate signer (message view: {message_view:?}, signer: {signer:?})")]
     DuplicateSigner {
         /// View number of the message.
-        message_view: validator::ViewNumber,
+        message_view: validator::v1::ViewNumber,
         /// Signer of the message.
         signer: Box<validator::PublicKey>,
     },
@@ -33,7 +33,7 @@ pub(crate) enum Error {
     InvalidSignature(#[source] anyhow::Error),
     /// Invalid message.
     #[error("invalid message: {0:#}")]
-    InvalidMessage(#[source] validator::ReplicaTimeoutVerifyError),
+    InvalidMessage(#[source] validator::v1::ReplicaTimeoutVerifyError),
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error(transparent)]
     Internal(#[from] ctx::Error),
@@ -56,7 +56,7 @@ impl StateMachine {
     pub(crate) async fn on_timeout(
         &mut self,
         ctx: &ctx::Ctx,
-        signed_message: validator::Signed<validator::ReplicaTimeout>,
+        signed_message: validator::Signed<validator::v1::ReplicaTimeout>,
     ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
 
@@ -107,7 +107,7 @@ impl StateMachine {
         let timeout_qc = self
             .timeout_qcs_cache
             .entry(message.view.number)
-            .or_insert_with(|| validator::TimeoutQC::new(message.view));
+            .or_insert_with(|| validator::v1::TimeoutQC::new(message.view));
 
         // Should always succeed as all checks have been already performed
         timeout_qc
@@ -167,7 +167,7 @@ impl StateMachine {
         // keep trying to resend timeout messages. This is crucial as we assume that messages
         // are eventually delivered, if timeout messages are dropped and never retried the
         // consensus can stall.
-        self.phase = validator::Phase::Timeout;
+        self.phase = validator::v1::Phase::Timeout;
         self.view_timeout = time::Deadline::Finite(ctx.now() + self.config.view_timeout);
 
         // Backup our state.
@@ -176,15 +176,14 @@ impl StateMachine {
         // Broadcast our new view message. This synchronizes the replicas.
         // We don't broadcast a new view message for view 0 since we don't have
         // a justification for it.
-        if self.view_number != validator::ViewNumber(0) {
-            let output_message =
-                ConsensusInputMessage {
-                    message: self.config.secret_key.sign_msg(
-                        validator::ConsensusMsg::ReplicaNewView(validator::ReplicaNewView {
-                            justification: self.get_justification(),
-                        }),
-                    ),
-                };
+        if self.view_number != validator::v1::ViewNumber(0) {
+            let output_message = ConsensusInputMessage {
+                message: self.config.secret_key.sign_msg(
+                    validator::v1::ConsensusMsg::ReplicaNewView(validator::v1::ReplicaNewView {
+                        justification: self.get_justification(),
+                    }),
+                ),
+            };
             tracing::debug!(
                 bft_message = format!("{:#?}", output_message.message),
                 "ChonkyBFT replica - Broadcasting new view message as part of timeout.",
@@ -193,21 +192,19 @@ impl StateMachine {
         }
 
         // Broadcast our timeout message.
-        let output_message = ConsensusInputMessage {
-            message: self
-                .config
-                .secret_key
-                .sign_msg(validator::ConsensusMsg::ReplicaTimeout(
-                    validator::ReplicaTimeout {
-                        view: validator::View {
+        let output_message =
+            ConsensusInputMessage {
+                message: self.config.secret_key.sign_msg(
+                    validator::v1::ConsensusMsg::ReplicaTimeout(validator::v1::ReplicaTimeout {
+                        view: validator::v1::View {
                             genesis: self.config.genesis().hash(),
                             number: self.view_number,
                         },
                         high_vote: self.high_vote.clone(),
                         high_qc: self.high_commit_qc.clone(),
-                    },
-                )),
-        };
+                    }),
+                ),
+            };
         tracing::debug!(
             bft_message = format!("{:#?}", output_message.message),
             "ChonkyBFT replica - Broadcasting timeout message.",

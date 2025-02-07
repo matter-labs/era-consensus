@@ -17,14 +17,14 @@ pub(crate) enum Error {
     #[error("past view (current view: {current_view:?})")]
     Old {
         /// Current view.
-        current_view: validator::ViewNumber,
+        current_view: validator::v1::ViewNumber,
     },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
     InvalidSignature(#[source] anyhow::Error),
     /// Invalid message.
     #[error("invalid message: {0:#}")]
-    InvalidMessage(#[source] validator::ReplicaNewViewVerifyError),
+    InvalidMessage(#[source] validator::v1::ReplicaNewViewVerifyError),
     /// Internal error. Unlike other error types, this one isn't supposed to be easily recoverable.
     #[error(transparent)]
     Internal(#[from] ctx::Error),
@@ -47,7 +47,7 @@ impl StateMachine {
     pub(crate) async fn on_new_view(
         &mut self,
         ctx: &ctx::Ctx,
-        signed_message: validator::Signed<validator::ReplicaNewView>,
+        signed_message: validator::Signed<validator::v1::ReplicaNewView>,
     ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
 
@@ -92,11 +92,11 @@ impl StateMachine {
 
         // Update the state machine.
         match &message.justification {
-            validator::ProposalJustification::Commit(qc) => self
+            validator::v1::ProposalJustification::Commit(qc) => self
                 .process_commit_qc(ctx, qc)
                 .await
                 .wrap("process_commit_qc()")?,
-            validator::ProposalJustification::Timeout(qc) => self
+            validator::v1::ProposalJustification::Timeout(qc) => self
                 .process_timeout_qc(ctx, qc)
                 .await
                 .wrap("process_timeout_qc()")?,
@@ -114,14 +114,14 @@ impl StateMachine {
     pub(crate) async fn start_new_view(
         &mut self,
         ctx: &ctx::Ctx,
-        view: validator::ViewNumber,
+        view: validator::v1::ViewNumber,
     ) -> ctx::Result<()> {
         tracing::info!("ChonkyBFT replica - Starting view number {}.", view);
 
         // Update the state machine.
         self.view_number = view;
         metrics::METRICS.replica_view_number.set(self.view_number.0);
-        self.phase = validator::Phase::Prepare;
+        self.phase = validator::v1::Phase::Prepare;
 
         // It is important that the proposal and new_view messages from the leader
         // will contain the same justification.
@@ -150,16 +150,14 @@ impl StateMachine {
         self.backup_state(ctx).await.wrap("backup_state()")?;
 
         // Broadcast our new view message.
-        let output_message = ConsensusInputMessage {
-            message: self
-                .config
-                .secret_key
-                .sign_msg(validator::ConsensusMsg::ReplicaNewView(
-                    validator::ReplicaNewView {
+        let output_message =
+            ConsensusInputMessage {
+                message: self.config.secret_key.sign_msg(
+                    validator::v1::ConsensusMsg::ReplicaNewView(validator::v1::ReplicaNewView {
                         justification: justification.clone(),
-                    },
-                )),
-        };
+                    }),
+                ),
+            };
         tracing::debug!(
             bft_message = format!("{:#?}", output_message.message),
             "ChonkyBFT replica - Broadcasting new view message at start of view.",
@@ -180,7 +178,7 @@ impl StateMachine {
     }
 
     /// Makes a justification (for a ReplicaNewView or a LeaderProposal) based on the current state.
-    pub(crate) fn get_justification(&self) -> validator::ProposalJustification {
+    pub(crate) fn get_justification(&self) -> validator::v1::ProposalJustification {
         // We need some QC in order to be able to create a justification.
         // In fact, it should be impossible to get here without a QC. Because
         // we only get here after starting a new view, which requires a QC.
@@ -190,9 +188,9 @@ impl StateMachine {
         if self.high_commit_qc.as_ref().map(|x| x.view())
             >= self.high_timeout_qc.as_ref().map(|x| &x.view)
         {
-            validator::ProposalJustification::Commit(self.high_commit_qc.clone().unwrap())
+            validator::v1::ProposalJustification::Commit(self.high_commit_qc.clone().unwrap())
         } else {
-            validator::ProposalJustification::Timeout(self.high_timeout_qc.clone().unwrap())
+            validator::v1::ProposalJustification::Timeout(self.high_timeout_qc.clone().unwrap())
         }
     }
 }

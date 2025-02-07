@@ -2,7 +2,7 @@ use super::StateMachine;
 use crate::metrics;
 use zksync_concurrency::{ctx, error::Wrap, metrics::LatencyHistogramExt as _};
 use zksync_consensus_network::io::ConsensusInputMessage;
-use zksync_consensus_roles::validator::{self, BlockHeader, BlockNumber};
+use zksync_consensus_roles::validator;
 
 /// Errors that can occur when processing a LeaderProposal message.
 #[derive(Debug, thiserror::Error)]
@@ -13,9 +13,9 @@ pub(crate) enum Error {
     )]
     Old {
         /// Current view.
-        current_view: validator::ViewNumber,
+        current_view: validator::v1::ViewNumber,
         /// Current phase.
-        current_phase: validator::Phase,
+        current_phase: validator::v1::Phase,
     },
     /// Invalid leader.
     #[error(
@@ -32,7 +32,7 @@ pub(crate) enum Error {
     InvalidSignature(#[source] anyhow::Error),
     /// Invalid message.
     #[error("invalid message: {0:#}")]
-    InvalidMessage(#[source] validator::LeaderProposalVerifyError),
+    InvalidMessage(#[source] validator::v1::LeaderProposalVerifyError),
     /// Leader proposed a block that was already pruned from replica's storage.
     #[error("leader proposed a block that was already pruned from replica's storage")]
     ProposalAlreadyPruned,
@@ -52,7 +52,7 @@ pub(crate) enum Error {
     #[error("previous block proposal payload missing from store (block number: {prev_number})")]
     MissingPreviousPayload {
         /// The number of the missing block
-        prev_number: BlockNumber,
+        prev_number: validator::BlockNumber,
     },
     /// Invalid payload.
     #[error("invalid payload: {0:#}")]
@@ -79,7 +79,7 @@ impl StateMachine {
     pub(crate) async fn on_proposal(
         &mut self,
         ctx: &ctx::Ctx,
-        signed_message: validator::Signed<validator::LeaderProposal>,
+        signed_message: validator::Signed<validator::v1::LeaderProposal>,
     ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
 
@@ -91,7 +91,7 @@ impl StateMachine {
         // Check that the message is for the current view or a future view. We only allow proposals for
         // the current view if we have not voted or timed out yet.
         if view < self.view_number
-            || (view == self.view_number && self.phase != validator::Phase::Prepare)
+            || (view == self.view_number && self.phase != validator::v1::Phase::Prepare)
         {
             return Err(Error::Old {
                 current_view: self.view_number,
@@ -234,9 +234,9 @@ impl StateMachine {
             .observe_latency(ctx.now() - self.view_start);
 
         // Create our commit vote.
-        let commit_vote = validator::ReplicaCommit {
+        let commit_vote = validator::v1::ReplicaCommit {
             view: message.view(),
-            proposal: BlockHeader {
+            proposal: validator::v1::BlockHeader {
                 number: implied_block_number,
                 payload: block_hash,
             },
@@ -245,14 +245,14 @@ impl StateMachine {
         // Update the state machine.
         self.view_number = message.view().number;
         metrics::METRICS.replica_view_number.set(self.view_number.0);
-        self.phase = validator::Phase::Commit;
+        self.phase = validator::v1::Phase::Commit;
         self.high_vote = Some(commit_vote.clone());
         match &message.justification {
-            validator::ProposalJustification::Commit(qc) => self
+            validator::v1::ProposalJustification::Commit(qc) => self
                 .process_commit_qc(ctx, qc)
                 .await
                 .wrap("process_commit_qc()")?,
-            validator::ProposalJustification::Timeout(qc) => self
+            validator::v1::ProposalJustification::Timeout(qc) => self
                 .process_timeout_qc(ctx, qc)
                 .await
                 .wrap("process_timeout_qc()")?,
@@ -270,7 +270,7 @@ impl StateMachine {
             message: self
                 .config
                 .secret_key
-                .sign_msg(validator::ConsensusMsg::ReplicaCommit(commit_vote)),
+                .sign_msg(validator::v1::ConsensusMsg::ReplicaCommit(commit_vote)),
         };
         self.outbound_channel.send(output_message);
 
