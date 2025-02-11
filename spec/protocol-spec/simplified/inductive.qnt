@@ -697,13 +697,19 @@ module inductive {
             | None =>
                 all_past_commit_votes == Set()
             | Some(hv) =>
-                // the high vote has the highest view among the commit votes
+                // the high vote has the highest view among the commit votes,
+                // if they do exist
                 val max_view =
                     all_past_commit_votes.map(v => v.vote.view)
-                        .fold(0, (i, j) => if (i > j) i else j)
-                all_past_commit_votes.forall(v => {
-                    (v.vote.view == max_view) implies (hv == v.vote)
-                })
+                        .fold(-1, (i, j) => if (i > j) i else j)
+                and {
+                    // if max_view == -1, then tv.vote.high_vote == None
+                    max_view >= 0,
+                    // the maximal commit vote is the high vote in the timeout vote
+                    all_past_commit_votes.forall(v => {
+                        (v.vote.view == max_view) implies (hv == v.vote)
+                    })
+                }
             },
         })
     }
