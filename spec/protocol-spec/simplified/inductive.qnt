@@ -603,10 +603,15 @@ module inductive {
             and {
                 m.ghost_block_number == num_and_hash._1,
                 val qc_view = r::view(m.justification)
-                match (num_and_hash._2) {
-                | Some(b) => m.block == BLOCK_NONE
-                | None => m.block == Some(r::prophecy_correct_proposals.get(qc_view))
-                },
+                and {
+                    // it's only possible to send a proposal within the views window
+                    IVIEWS.contains(qc_view),
+                    // the proposal is as predicted by prophecy_correct_proposals
+                    match (num_and_hash._2) {
+                    | Some(b) => m.block == BLOCK_NONE
+                    | None => m.block == Some(r::prophecy_correct_proposals.get(qc_view))
+                    },
+                }
             }
         })
     }
