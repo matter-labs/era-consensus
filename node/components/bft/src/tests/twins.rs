@@ -9,7 +9,7 @@ use zksync_concurrency::{ctx, time};
 use zksync_consensus_network::testonly::new_configs_for_validators;
 use zksync_consensus_roles::validator::{
     testonly::{Setup, SetupSpec},
-    LeaderSelectionMode, PublicKey, SecretKey,
+    PublicKey, SecretKey,
 };
 
 /// Govern how many scenarios to execute in the test.

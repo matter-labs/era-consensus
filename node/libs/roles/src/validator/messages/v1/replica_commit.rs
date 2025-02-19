@@ -116,7 +116,7 @@ impl CommitQC {
         }
 
         // Verify the signers' weight is enough.
-        let weight = genesis.validators.weight(&self.signers);
+        let weight = self.signers.weight(&genesis.validators);
         let threshold = genesis.validators.quorum_threshold();
         if weight < threshold {
             return Err(CommitQCVerifyError::NotEnoughWeight {

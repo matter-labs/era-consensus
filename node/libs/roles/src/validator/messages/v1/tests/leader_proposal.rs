@@ -16,7 +16,7 @@ fn test_leader_proposal_verify() {
     // Valid proposal
     let payload: Payload = rng.gen();
     let commit_qc = match setup.blocks.last().unwrap() {
-        Block::Final(block) => block.justification.clone(),
+        Block::FinalV1(block) => block.justification.clone(),
         _ => unreachable!(),
     };
     let justification = ProposalJustification::Commit(commit_qc);
@@ -47,7 +47,7 @@ fn test_justification_get_implied_block() {
 
     // Justification with a commit QC
     let commit_qc = match setup.blocks.last().unwrap() {
-        Block::Final(block) => block.justification.clone(),
+        Block::FinalV1(block) => block.justification.clone(),
         _ => unreachable!(),
     };
     let justification = ProposalJustification::Commit(commit_qc);

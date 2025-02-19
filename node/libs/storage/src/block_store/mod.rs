@@ -23,7 +23,7 @@ impl From<&validator::Block> for Last {
         use validator::Block as B;
         match b {
             B::PreGenesis(b) => Last::PreGenesis(b.number),
-            B::Final(b) => Last::Final(b.justification.clone()),
+            B::FinalV1(b) => Last::Final(b.justification.clone()),
         }
     }
 }
@@ -334,7 +334,7 @@ impl BlockStore {
     pub async fn verify_block(&self, ctx: &ctx::Ctx, block: &validator::Block) -> ctx::Result<()> {
         use validator::Block as B;
         match &block {
-            B::Final(b) => b.verify(&self.genesis).context("block.verify()")?,
+            B::FinalV1(b) => b.verify(&self.genesis).context("block.verify()")?,
             B::PreGenesis(b) => {
                 if b.number >= self.genesis.first_block {
                     return Err(anyhow::format_err!(

@@ -63,7 +63,7 @@ impl ProtoFmt for Resp {
             .map(ProtoFmt::read)
             .transpose()
             .context("block")?
-            .map(B::Final);
+            .map(B::FinalV1);
         let pregenesis = r
             .pre_genesis
             .as_ref()
@@ -78,7 +78,7 @@ impl ProtoFmt for Resp {
         use validator::Block as B;
         let mut p = Self::Proto::default();
         match self.0.as_ref() {
-            Some(B::Final(b)) => p.block = Some(b.build()),
+            Some(B::FinalV1(b)) => p.block = Some(b.build()),
             Some(B::PreGenesis(b)) => p.pre_genesis = Some(b.build()),
             None => {}
         }

@@ -1,12 +1,12 @@
 use super::messages::v1::{
-    BlockHeader, CommitQC, Committee, ConsensusMsg, FinalBlock, LeaderProposal,
-    LeaderSelectionMode, Phase, ProposalJustification, ReplicaCommit, ReplicaNewView,
-    ReplicaTimeout, Signers, TimeoutQC, View, ViewNumber, WeightedValidator,
+    BlockHeader, CommitQC, ConsensusMsg, FinalBlock, LeaderProposal, LeaderSelectionMode, Phase,
+    ProposalJustification, ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
+    ViewNumber,
 };
 use super::{
-    AggregateSignature, Block, BlockNumber, ChainId, ForkNumber, Genesis, GenesisHash, GenesisRaw,
-    Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock,
-    ProtocolVersion, PublicKey, Signature, Signed,
+    AggregateSignature, Block, BlockNumber, ChainId, Committee, ForkNumber, Genesis, GenesisHash,
+    GenesisRaw, Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock,
+    ProtocolVersion, PublicKey, Signature, Signed, WeightedValidator,
 };
 use crate::{node::SessionId, proto::validator as proto};
 use anyhow::Context as _;
@@ -145,7 +145,7 @@ impl ProtoFmt for Block {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         use proto::block::T;
         Ok(match required(&r.t)? {
-            T::Final(b) => Block::Final(ProtoFmt::read(b).context("block")?),
+            T::Final(b) => Block::FinalV1(ProtoFmt::read(b).context("block")?),
             T::PreGenesis(b) => Block::PreGenesis(ProtoFmt::read(b).context("pre_genesis_block")?),
         })
     }
@@ -154,7 +154,7 @@ impl ProtoFmt for Block {
         use proto::block::T;
         Self::Proto {
             t: Some(match self {
-                Block::Final(b) => T::Final(b.build()),
+                Block::FinalV1(b) => T::Final(b.build()),
                 Block::PreGenesis(b) => T::PreGenesis(b.build()),
             }),
         }
@@ -424,7 +424,7 @@ impl ProtoFmt for Msg {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         use proto::msg::T;
         Ok(match r.t.as_ref().context("missing")? {
-            T::Consensus(r) => Self::Consensus(ProtoFmt::read(r).context("Consensus")?),
+            T::Consensus(r) => Self::ConsensusV1(ProtoFmt::read(r).context("Consensus")?),
             T::SessionId(r) => Self::SessionId(SessionId(r.clone())),
             T::NetAddress(r) => Self::NetAddress(ProtoFmt::read(r).context("NetAddress")?),
         })
@@ -434,7 +434,7 @@ impl ProtoFmt for Msg {
         use proto::msg::T;
 
         let t = match self {
-            Self::Consensus(x) => T::Consensus(x.build()),
+            Self::ConsensusV1(x) => T::Consensus(x.build()),
             Self::SessionId(x) => T::SessionId(x.0.clone()),
             Self::NetAddress(x) => T::NetAddress(x.build()),
         };

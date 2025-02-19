@@ -227,7 +227,7 @@ async fn test_bad_responses() {
             Some(setup.blocks[1].clone()),
             // Malformed block.
             {
-                let validator::Block::Final(mut b) = setup.blocks[0].clone() else {
+                let validator::Block::FinalV1(mut b) = setup.blocks[0].clone() else {
                     panic!();
                 };
                 b.justification = rng.gen();

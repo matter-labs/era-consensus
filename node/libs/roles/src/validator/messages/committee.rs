@@ -1,10 +1,7 @@
 //! Messages related to the consensus protocol.
-use super::{Signers, ViewNumber};
 use crate::validator;
 use anyhow::Context;
-use num_bigint::BigUint;
 use std::collections::BTreeMap;
-use zksync_consensus_crypto::keccak256::Keccak256;
 
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.
@@ -56,6 +53,11 @@ impl Committee {
         })
     }
 
+    /// Iterates over validators.
+    pub fn iter(&self) -> impl Iterator<Item = &WeightedValidator> {
+        self.vec.iter()
+    }
+
     /// Iterates over validator keys.
     pub fn keys(&self) -> impl Iterator<Item = &validator::PublicKey> {
         self.vec.iter().map(|v| &v.key)
@@ -82,43 +84,6 @@ impl Committee {
         self.indexes.get(validator).copied()
     }
 
-    /// Computes the leader for the given view.
-    pub fn view_leader(
-        &self,
-        view_number: ViewNumber,
-        leader_selection: &LeaderSelectionMode,
-    ) -> validator::PublicKey {
-        match &leader_selection {
-            LeaderSelectionMode::RoundRobin => {
-                let index = view_number.0 as usize % self.len();
-                self.get(index).unwrap().key.clone()
-            }
-            LeaderSelectionMode::Weighted => {
-                let eligibility = LeaderSelectionMode::leader_weighted_eligibility(
-                    view_number.0,
-                    self.total_weight,
-                );
-                let mut offset = 0;
-                for val in &self.vec {
-                    offset += val.weight;
-                    if eligibility < offset {
-                        return val.key.clone();
-                    }
-                }
-                unreachable!()
-            }
-            LeaderSelectionMode::Sticky(pk) => {
-                let index = self.index(pk).unwrap();
-                self.get(index).unwrap().key.clone()
-            }
-            LeaderSelectionMode::Rota(pks) => {
-                let index = view_number.0 as usize % pks.len();
-                let index = self.index(&pks[index]).unwrap();
-                self.get(index).unwrap().key.clone()
-            }
-        }
-    }
-
     /// Signature weight threshold for this validator committee.
     pub fn quorum_threshold(&self) -> u64 {
         quorum_threshold(self.total_weight())
@@ -132,18 +97,6 @@ impl Committee {
     /// Maximal weight of faulty replicas allowed in this validator committee.
     pub fn max_faulty_weight(&self) -> u64 {
         max_faulty_weight(self.total_weight())
-    }
-
-    /// Compute the sum of signers weights.
-    /// Panics if signers length does not match the number of validators in committee
-    pub fn weight(&self, signers: &Signers) -> u64 {
-        assert_eq!(self.vec.len(), signers.len());
-        self.vec
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| signers.0[*i])
-            .map(|(_, v)| v.weight)
-            .sum()
     }
 
     /// Sum of all validators' weight in the committee
@@ -163,32 +116,6 @@ pub struct WeightedValidator {
 
 /// Voting weight.
 pub type Weight = u64;
-
-/// The mode used for selecting leader for a given view.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum LeaderSelectionMode {
-    /// Select in a round-robin fashion, based on validators' index within the set.
-    RoundRobin,
-    /// Select based on a sticky assignment to a specific validator.
-    Sticky(validator::PublicKey),
-    /// Select pseudo-randomly, based on validators' weights.
-    Weighted,
-    /// Select on a rotation of specific validator keys.
-    Rota(Vec<validator::PublicKey>),
-}
-
-impl LeaderSelectionMode {
-    /// Calculates the pseudo-random eligibility of a leader based on the input and total weight.
-    pub fn leader_weighted_eligibility(input: u64, total_weight: u64) -> u64 {
-        let input_bytes = input.to_be_bytes();
-        let hash = Keccak256::new(&input_bytes);
-        let hash_big = BigUint::from_bytes_be(hash.as_bytes());
-        let total_weight_big = BigUint::from(total_weight);
-        let ret_big = hash_big % total_weight_big;
-        // Assumes that `ret_big` does not exceed 64 bits due to the modulo operation with a 64 bits-capped value.
-        ret_big.to_u64_digits()[0]
-    }
-}
 
 /// Calculate the maximum allowed weight for faulty replicas, for a given total weight.
 pub fn max_faulty_weight(total_weight: u64) -> u64 {

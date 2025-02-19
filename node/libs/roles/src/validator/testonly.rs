@@ -1,13 +1,13 @@
 //! Test-only utilities.
 use super::messages::v1::{
-    BlockHeader, CommitQC, Committee, ConsensusMsg, FinalBlock, LeaderProposal,
-    LeaderSelectionMode, Phase, ProposalJustification, ReplicaCommit, ReplicaNewView,
-    ReplicaTimeout, Signers, TimeoutQC, View, ViewNumber, WeightedValidator,
+    BlockHeader, CommitQC, ConsensusMsg, FinalBlock, LeaderProposal, LeaderSelectionMode, Phase,
+    ProposalJustification, ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
+    ViewNumber,
 };
 use super::{
-    AggregateSignature, Block, BlockNumber, ChainId, ForkNumber, Genesis, GenesisHash, GenesisRaw,
-    Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock,
-    ProofOfPossession, ProtocolVersion, PublicKey, SecretKey, Signature, Signed,
+    AggregateSignature, Block, BlockNumber, ChainId, Committee, ForkNumber, Genesis, GenesisHash,
+    GenesisRaw, Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock,
+    ProofOfPossession, ProtocolVersion, PublicKey, SecretKey, Signature, Signed, WeightedValidator,
 };
 use crate::attester;
 use bit_vec::BitVec;
@@ -137,7 +137,7 @@ impl Setup {
                 .blocks
                 .last()
                 .map(|b| match b {
-                    Block::Final(b) => b.justification.view().number.next(),
+                    Block::FinalV1(b) => b.justification.view().number.next(),
                     Block::PreGenesis(_) => ViewNumber(0),
                 })
                 .unwrap_or(ViewNumber(0)),
@@ -266,7 +266,7 @@ impl Setup {
             self.make_replica_commit(rng, view.prev().unwrap())
         };
         let commit_qc = match self.0.blocks.last().unwrap() {
-            Block::Final(block) => block.justification.clone(),
+            Block::FinalV1(block) => block.justification.clone(),
             _ => unreachable!(),
         };
 
@@ -481,7 +481,7 @@ impl Distribution<Block> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Block {
         match rng.gen_range(0..2) {
             0 => Block::PreGenesis(rng.gen()),
-            _ => Block::Final(rng.gen()),
+            _ => Block::FinalV1(rng.gen()),
         }
     }
 }
@@ -615,7 +615,7 @@ impl Distribution<NetAddress> for Standard {
 impl Distribution<Msg> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Msg {
         match rng.gen_range(0..3) {
-            0 => Msg::Consensus(rng.gen()),
+            0 => Msg::ConsensusV1(rng.gen()),
             1 => Msg::SessionId(rng.gen()),
             2 => Msg::NetAddress(rng.gen()),
             _ => unreachable!(),

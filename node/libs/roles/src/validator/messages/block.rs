@@ -1,5 +1,5 @@
 //! Messages related to blocks.
-use super::v1::FinalBlock;
+use super::v1;
 use std::fmt;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 /// Represents a blockchain block across different consensus protocol versions (including pre-genesis blocks).
@@ -7,8 +7,8 @@ use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 pub enum Block {
     /// Block with number `<genesis.first_block`.
     PreGenesis(PreGenesisBlock),
-    /// Block with number `>=genesis.first_block`.
-    Final(FinalBlock),
+    /// Block with number `>=genesis.first_block`. For protocol version 1.
+    FinalV1(v1::FinalBlock),
 }
 
 impl From<PreGenesisBlock> for Block {
@@ -17,9 +17,9 @@ impl From<PreGenesisBlock> for Block {
     }
 }
 
-impl From<FinalBlock> for Block {
-    fn from(b: FinalBlock) -> Self {
-        Self::Final(b)
+impl From<v1::FinalBlock> for Block {
+    fn from(b: v1::FinalBlock) -> Self {
+        Self::FinalV1(b)
     }
 }
 
@@ -28,7 +28,7 @@ impl Block {
     pub fn number(&self) -> BlockNumber {
         match self {
             Self::PreGenesis(b) => b.number,
-            Self::Final(b) => b.number(),
+            Self::FinalV1(b) => b.number(),
         }
     }
 
@@ -36,7 +36,7 @@ impl Block {
     pub fn payload(&self) -> &Payload {
         match self {
             Self::PreGenesis(b) => &b.payload,
-            Self::Final(b) => &b.payload,
+            Self::FinalV1(b) => &b.payload,
         }
     }
 }

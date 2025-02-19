@@ -1,8 +1,5 @@
 //! Messages related to the consensus protocol.
-use super::{
-    v1::{Committee, LeaderSelectionMode, ViewNumber},
-    BlockNumber,
-};
+use super::{v1, BlockNumber, Committee};
 use crate::validator;
 use std::{fmt, hash::Hash};
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
@@ -22,7 +19,7 @@ pub struct GenesisRaw {
     /// Set of validators of the chain.
     pub validators: Committee,
     /// The mode used for selecting leader for a given view.
-    pub leader_selection: LeaderSelectionMode,
+    pub leader_selection: v1::LeaderSelectionMode,
 }
 
 impl GenesisRaw {
@@ -85,11 +82,11 @@ impl fmt::Debug for Genesis {
 impl Genesis {
     /// Verifies correctness.
     pub fn verify(&self) -> anyhow::Result<()> {
-        if let LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
+        if let v1::LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
             if self.validators.index(pk).is_none() {
                 anyhow::bail!("leader_selection sticky mode public key is not in committee");
             }
-        } else if let LeaderSelectionMode::Rota(pks) = &self.leader_selection {
+        } else if let v1::LeaderSelectionMode::Rota(pks) = &self.leader_selection {
             for pk in pks {
                 if self.validators.index(pk).is_none() {
                     anyhow::bail!(
@@ -103,8 +100,8 @@ impl Genesis {
     }
 
     /// Computes the leader for the given view.
-    pub fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
-        self.validators.view_leader(view, &self.leader_selection)
+    pub fn view_leader(&self, view: v1::ViewNumber) -> validator::PublicKey {
+        self.leader_selection.view_leader(view, &self.validators)
     }
 
     /// Hash of the genesis.

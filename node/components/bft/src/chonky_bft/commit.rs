@@ -119,7 +119,7 @@ impl StateMachine {
             .expect("could not add message to CommitQC");
 
         // Calculate the CommitQC signers weight.
-        let weight = self.config.genesis().validators.weight(&commit_qc.signers);
+        let weight = commit_qc.signers.weight(&self.config.genesis().validators);
 
         // Update view number of last commit message for author
         self.commit_views_cache

@@ -1,5 +1,5 @@
 use super::*;
-use crate::validator::{messages::testonly::*, BlockNumber};
+use crate::validator::{messages::testonly::*, BlockNumber, Committee, WeightedValidator};
 
 /// Hardcoded view
 pub fn view() -> View {

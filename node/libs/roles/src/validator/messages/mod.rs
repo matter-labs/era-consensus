@@ -1,6 +1,7 @@
 //! Messages exchanged between validators.
 
 mod block;
+mod committee;
 mod discovery;
 mod genesis;
 mod msg;
@@ -11,6 +12,7 @@ mod tests;
 pub mod v1;
 
 pub use block::*;
+pub use committee::*;
 pub use discovery::*;
 pub use genesis::*;
 pub use msg::*;

@@ -194,7 +194,7 @@ impl Committee {
 /// for a given committee total weight.
 /// Technically we need just n > f+1, but for now we use a threshold consistent with the validator committee.
 pub fn threshold(total_weight: u64) -> u64 {
-    total_weight - validator::v1::max_faulty_weight(total_weight)
+    total_weight - validator::max_faulty_weight(total_weight)
 }
 
 impl std::ops::BitOrAssign<&Self> for Signers {

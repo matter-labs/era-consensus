@@ -1,8 +1,8 @@
 use super::{
-    BlockHeader, CommitQC, CommitQCVerifyError, Committee, ReplicaCommit, ReplicaCommitVerifyError,
-    Signers, View,
+    BlockHeader, CommitQC, CommitQCVerifyError, ReplicaCommit, ReplicaCommitVerifyError, Signers,
+    View,
 };
-use crate::validator::{self, Genesis, Signed};
+use crate::validator::{self, Committee, Genesis, Signed};
 use std::collections::{BTreeMap, HashMap};
 
 /// A timeout message from a replica.
@@ -96,7 +96,7 @@ impl TimeoutQC {
         let mut count: HashMap<_, u64> = HashMap::new();
         for (msg, signers) in &self.map {
             if let Some(v) = &msg.high_vote {
-                *count.entry(v.proposal).or_default() += genesis.validators.weight(signers);
+                *count.entry(v.proposal).or_default() += signers.weight(&genesis.validators);
             }
         }
 
@@ -191,7 +191,7 @@ impl TimeoutQC {
         }
 
         // Check if the signers' weight is enough.
-        let weight = genesis.validators.weight(&sum);
+        let weight = sum.weight(&genesis.validators);
         let threshold = genesis.validators.quorum_threshold();
         if weight < threshold {
             return Err(TimeoutQCVerifyError::NotEnoughWeight {
@@ -221,7 +221,7 @@ impl TimeoutQC {
     pub fn weight(&self, committee: &Committee) -> u64 {
         self.map
             .values()
-            .map(|signers| committee.weight(signers))
+            .map(|signers| signers.weight(committee))
             .sum()
     }
 }
