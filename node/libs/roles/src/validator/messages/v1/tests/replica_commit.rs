@@ -25,7 +25,7 @@ fn test_commit_qc_add() {
     let rng = &mut ctx.rng();
     let setup = Setup::new(rng, 2);
     let view = rng.gen();
-    let mut qc = CommitQC::new(setup.make_replica_commit(rng, view), &setup.genesis);
+    let mut qc = CommitQC::new(setup.make_replica_commit_v1(rng, view), &setup.genesis);
     let msg = qc.message.clone();
 
     // Add the first signature
@@ -102,7 +102,7 @@ fn test_commit_qc_verify() {
     let rng = &mut ctx.rng();
     let setup = Setup::new(rng, 6);
     let view = rng.gen();
-    let qc = setup.make_commit_qc(rng, view);
+    let qc = setup.make_commit_qc_v1(rng, view);
 
     // Verify the QC
     assert!(qc.verify(&setup.genesis).is_ok());

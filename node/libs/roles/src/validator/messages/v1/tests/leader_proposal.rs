@@ -11,7 +11,7 @@ fn test_leader_proposal_verify() {
 
     // This will create equally weighted validators
     let mut setup = Setup::new(rng, 6);
-    setup.push_blocks(rng, 3);
+    setup.push_blocks_v1(rng, 3);
 
     // Valid proposal
     let payload: Payload = rng.gen();
@@ -42,7 +42,7 @@ fn test_justification_get_implied_block() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut setup = Setup::new(rng, 6);
-    setup.push_blocks(rng, 3);
+    setup.push_blocks_v1(rng, 3);
     let payload: Payload = rng.gen();
 
     // Justification with a commit QC
@@ -63,7 +63,7 @@ fn test_justification_get_implied_block() {
     assert!(implied_payload.is_none());
 
     // Justification with a timeout QC
-    let timeout_qc = setup.make_timeout_qc(rng, ViewNumber(7), Some(&payload));
+    let timeout_qc = setup.make_timeout_qc_v1(rng, ViewNumber(7), Some(&payload));
     let justification = ProposalJustification::Timeout(timeout_qc);
     let proposal = LeaderProposal {
         proposal_payload: None,

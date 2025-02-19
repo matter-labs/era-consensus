@@ -13,7 +13,7 @@ fn test_final_block_verify() {
 
     let payload: Payload = rng.gen();
     let view_number = rng.gen();
-    let commit_qc = setup.make_commit_qc_with_payload(&payload, view_number);
+    let commit_qc = setup.make_commit_qc_with_payload_v1(&payload, view_number);
     let mut final_block = FinalBlock::new(payload.clone(), commit_qc.clone());
 
     assert!(final_block.verify(&setup.genesis).is_ok());

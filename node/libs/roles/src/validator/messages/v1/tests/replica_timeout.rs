@@ -45,9 +45,9 @@ fn test_timeout_qc_high_vote() {
     let setup = Setup::new(rng, 6);
 
     let view_num: ViewNumber = rng.gen();
-    let msg_a = setup.make_replica_timeout(rng, view_num);
-    let msg_b = setup.make_replica_timeout(rng, view_num);
-    let msg_c = setup.make_replica_timeout(rng, view_num);
+    let msg_a = setup.make_replica_timeout_v1(rng, view_num);
+    let msg_b = setup.make_replica_timeout_v1(rng, view_num);
+    let msg_c = setup.make_replica_timeout_v1(rng, view_num);
 
     // Case with 1 subquorum.
     let mut qc = TimeoutQC::new(msg_a.view);
@@ -114,9 +114,9 @@ fn test_timeout_qc_high_qc() {
         let high_vote_view = view.number;
         let high_qc_view = ViewNumber(view.number.0 - i as u64);
         let msg = ReplicaTimeout {
-            view: setup.make_view(view.number),
-            high_vote: Some(setup.make_replica_commit(rng, high_vote_view)),
-            high_qc: Some(setup.make_commit_qc(rng, high_qc_view)),
+            view: setup.make_view_v1(view.number),
+            high_vote: Some(setup.make_replica_commit_v1(rng, high_vote_view)),
+            high_qc: Some(setup.make_commit_qc_v1(rng, high_qc_view)),
         };
         qc.add(
             &setup.validator_keys[i].sign_msg(msg.clone()),
@@ -134,7 +134,7 @@ fn test_timeout_qc_add() {
     let rng = &mut ctx.rng();
     let setup = Setup::new(rng, 3);
     let view = rng.gen();
-    let msg = setup.make_replica_timeout(rng, view);
+    let msg = setup.make_replica_timeout_v1(rng, view);
     let mut qc = TimeoutQC::new(msg.view);
 
     // Add the first signature
@@ -209,7 +209,7 @@ fn test_timeout_qc_add() {
     assert_eq!(qc.map.values().next().unwrap().count(), 2);
 
     // Add a different message signed by another validator.
-    let msg2 = setup.make_replica_timeout(rng, view);
+    let msg2 = setup.make_replica_timeout_v1(rng, view);
     assert!(qc
         .add(
             &setup.validator_keys[2].sign_msg(msg2.clone()),
@@ -226,9 +226,9 @@ fn test_timeout_qc_verify() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     let mut setup = Setup::new(rng, 6);
-    setup.push_blocks(rng, 2);
+    setup.push_blocks_v1(rng, 2);
     let view = rng.gen();
-    let qc = setup.make_timeout_qc(rng, view, None);
+    let qc = setup.make_timeout_qc_v1(rng, view, None);
 
     // Verify the QC
     assert!(qc.verify(&setup.genesis).is_ok());

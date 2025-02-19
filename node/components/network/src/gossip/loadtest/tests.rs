@@ -11,7 +11,7 @@ async fn test_loadtest() {
     let rng = &mut ctx.rng();
 
     let mut setup = validator::testonly::Setup::new(rng, 1);
-    setup.push_blocks(rng, 10);
+    setup.push_blocks_v1(rng, 10);
     let mut cfg = testonly::new_configs(rng, &setup, 0)[0].clone();
     cfg.gossip.dynamic_inbound_limit = 7;
 
