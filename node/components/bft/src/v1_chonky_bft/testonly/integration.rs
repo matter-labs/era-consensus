@@ -1,5 +1,7 @@
-use super::{Behavior, Node};
-use crate::{FromNetworkMessage, ToNetworkMessage};
+use crate::{
+    testonly::{Behavior, Node},
+    FromNetworkMessage, ToNetworkMessage,
+};
 use anyhow::Context as _;
 use network::Config;
 use rand::seq::SliceRandom;
@@ -19,7 +21,7 @@ use zksync_consensus_network::{self as network};
 use zksync_consensus_roles::{validator, validator::testonly::Setup};
 use zksync_consensus_storage::{testonly::TestMemoryStorage, BlockStore};
 
-pub(crate) enum Network {
+pub(crate) enum TestNetwork {
     Real,
     Twins(PortRouter),
 }
@@ -35,8 +37,8 @@ pub(crate) enum Network {
 pub(crate) const NUM_PHASES: usize = 2;
 
 /// Index of the phase in which the message appears, to decide which partitioning to apply.
-fn msg_phase_number(msg: &validator::ConsensusMsg) -> usize {
-    use validator::ConsensusMsg;
+fn msg_phase_number(msg: &validator::v1::ConsensusMsg) -> usize {
+    use validator::v1::ConsensusMsg;
     let phase = match msg {
         ConsensusMsg::LeaderProposal(_) => 0,
         ConsensusMsg::ReplicaCommit(_) => 1,
@@ -58,7 +60,8 @@ pub(crate) type PortSplit = Vec<PortPartition>;
 /// A schedule contains a list of splits (one for each phase) for every view.
 pub(crate) type PortSplitSchedule = Vec<[PortSplit; NUM_PHASES]>;
 /// Function to decide whether a message can go from a source to a target port.
-pub(crate) type PortRouterFn = dyn Fn(&validator::ConsensusMsg, Port, Port) -> Option<bool> + Sync;
+pub(crate) type PortRouterFn =
+    dyn Fn(&validator::v1::ConsensusMsg, Port, Port) -> Option<bool> + Sync;
 
 /// A predicate to govern who can communicate to whom a given message.
 pub(crate) enum PortRouter {
@@ -75,7 +78,7 @@ impl PortRouter {
     ///
     /// Returning `None` means the there was no more routing data and the test can decide to
     /// allow all communication or to abort a runaway test.
-    fn can_send(&self, msg: &validator::ConsensusMsg, from: Port, to: Port) -> Option<bool> {
+    fn can_send(&self, msg: &validator::v1::ConsensusMsg, from: Port, to: Port) -> Option<bool> {
         match self {
             PortRouter::Splits(splits) => {
                 // Here we assume that all instances start from view 0 in the tests.
@@ -98,8 +101,8 @@ impl PortRouter {
 }
 
 /// Config for the test. Determines the parameters to run the test with.
-pub(crate) struct Test {
-    pub(crate) network: Network,
+pub(crate) struct IntegrationTestConfig {
+    pub(crate) network: TestNetwork,
     pub(crate) nodes: Vec<(Behavior, u64)>,
     pub(crate) blocks_to_finalize: usize,
 }
@@ -124,7 +127,7 @@ impl From<ctx::Canceled> for TestError {
     }
 }
 
-impl Test {
+impl IntegrationTestConfig {
     /// Run a test with the given parameters and a random network setup.
     pub(crate) async fn run(&self, ctx: &ctx::Ctx) -> Result<(), TestError> {
         let rng = &mut ctx.rng();
@@ -187,10 +190,10 @@ impl Test {
 }
 
 /// Run a set of nodes.
-async fn run_nodes(ctx: &ctx::Ctx, network: &Network, specs: &[Node]) -> anyhow::Result<()> {
+async fn run_nodes(ctx: &ctx::Ctx, network: &TestNetwork, specs: &[Node]) -> anyhow::Result<()> {
     match network {
-        Network::Real => run_nodes_real(ctx, specs).await,
-        Network::Twins(router) => run_nodes_twins(ctx, specs, router).await,
+        TestNetwork::Real => run_nodes_real(ctx, specs).await,
+        TestNetwork::Twins(router) => run_nodes_twins(ctx, specs, router).await,
     }
 }
 
@@ -494,7 +497,7 @@ async fn twins_gossip_loop(
     .await
 }
 
-fn output_msg_view_number(msg: &FromNetworkMessage) -> validator::ViewNumber {
+fn output_msg_view_number(msg: &FromNetworkMessage) -> validator::v1::ViewNumber {
     msg.msg.msg.view().number
 }
 
@@ -502,8 +505,8 @@ fn output_msg_label(msg: &FromNetworkMessage) -> &str {
     msg.msg.msg.label()
 }
 
-fn output_msg_commit_qc(msg: &FromNetworkMessage) -> Option<&validator::CommitQC> {
-    use validator::ConsensusMsg;
+fn output_msg_commit_qc(msg: &FromNetworkMessage) -> Option<&validator::v1::CommitQC> {
+    use validator::v1::ConsensusMsg;
 
     let justification = match &msg.msg.msg {
         ConsensusMsg::ReplicaTimeout(msg) => return msg.high_qc.as_ref(),
@@ -513,8 +516,8 @@ fn output_msg_commit_qc(msg: &FromNetworkMessage) -> Option<&validator::CommitQC
     };
 
     match justification {
-        validator::ProposalJustification::Commit(commit_qc) => Some(commit_qc),
-        validator::ProposalJustification::Timeout(timeout_qc) => timeout_qc.high_qc(),
+        validator::v1::ProposalJustification::Commit(commit_qc) => Some(commit_qc),
+        validator::v1::ProposalJustification::Timeout(timeout_qc) => timeout_qc.high_qc(),
     }
 }
 

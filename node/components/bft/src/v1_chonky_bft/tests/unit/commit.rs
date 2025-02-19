@@ -1,4 +1,4 @@
-use crate::chonky_bft::{commit, testonly::UTHarness};
+use crate::v1_chonky_bft::{commit, testonly::UnitTestHarness};
 use assert_matches::assert_matches;
 use pretty_assertions::assert_eq;
 use rand::Rng;
@@ -10,7 +10,7 @@ async fn commit_yield_new_view_sanity() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
+        let (mut util, runner) = UnitTestHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         let cur_view = util.replica.view_number;
@@ -39,7 +39,7 @@ async fn commit_non_validator_signer() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let replica_commit = util.new_replica_commit(ctx).await;
@@ -66,7 +66,7 @@ async fn replica_commit_old() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let mut replica_commit = util.new_replica_commit(ctx).await;
@@ -93,7 +93,7 @@ async fn commit_duplicate_signer() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 2).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 2).await;
         s.spawn_bg(runner.run(ctx));
 
         let mut replica_commit = util.new_replica_commit(ctx).await;
@@ -145,7 +145,7 @@ async fn commit_invalid_sig() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let msg = util.new_replica_commit(ctx).await;
@@ -166,7 +166,7 @@ async fn commit_invalid_message() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let mut replica_commit = util.new_replica_commit(ctx).await;
@@ -188,7 +188,7 @@ async fn replica_commit_num_received_below_threshold() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
+        let (mut util, runner) = UnitTestHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         let replica_commit = util.new_replica_commit(ctx).await;
@@ -233,7 +233,7 @@ async fn replica_commit_unexpected_proposal() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         util.produce_block(ctx).await;
@@ -271,7 +271,7 @@ async fn replica_commit_different_proposals() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
+        let (mut util, runner) = UnitTestHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         let replica_commit = util.new_replica_commit(ctx).await;
@@ -310,7 +310,7 @@ async fn replica_commit_limit_messages_in_memory() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 2).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 2).await;
         s.spawn_bg(runner.run(ctx));
 
         let mut replica_commit = util.new_replica_commit(ctx).await;
@@ -340,7 +340,7 @@ async fn replica_commit_filter_functions_test() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 2).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 2).await;
         s.spawn_bg(runner.run(ctx));
 
         let replica_commit = util.new_replica_commit(ctx).await;

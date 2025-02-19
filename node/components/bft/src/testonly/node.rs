@@ -29,7 +29,7 @@ impl Behavior {
 }
 
 /// Struct representing a node.
-pub(super) struct Node {
+pub(crate) struct Node {
     pub(crate) net: network::Config,
     pub(crate) behavior: Behavior,
     pub(crate) block_store: Arc<storage::BlockStore>,

@@ -1,7 +1,7 @@
 use crate::{
-    chonky_bft::{
+    v1_chonky_bft::{
         proposal,
-        testonly::{UTHarness, MAX_PAYLOAD_SIZE},
+        testonly::{UnitTestHarness, MAX_PAYLOAD_SIZE},
     },
     testonly::RejectPayload,
 };
@@ -15,7 +15,7 @@ async fn proposal_yield_replica_commit_sanity() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let proposal = util.new_leader_proposal(ctx).await;
@@ -46,7 +46,7 @@ async fn proposal_old_view() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let proposal = util.new_leader_proposal(ctx).await;
@@ -105,7 +105,7 @@ async fn proposal_invalid_leader() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 2).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 2).await;
         s.spawn_bg(runner.run(ctx));
 
         let proposal = util.new_leader_proposal(ctx).await;
@@ -138,7 +138,7 @@ async fn proposal_invalid_signature() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 2).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 2).await;
         s.spawn_bg(runner.run(ctx));
 
         let proposal = util.new_leader_proposal(ctx).await;
@@ -160,7 +160,7 @@ async fn proposal_invalid_message() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let mut proposal = util.new_leader_proposal(ctx).await;
@@ -182,7 +182,7 @@ async fn proposal_pruned_block() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let fake_commit = validator::v1::ReplicaCommit {
@@ -224,7 +224,7 @@ async fn proposal_reproposal_with_payload() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         util.new_replica_commit(ctx).await;
@@ -252,7 +252,7 @@ async fn proposal_missing_payload() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let mut proposal = util.new_leader_proposal(ctx).await;
@@ -275,7 +275,7 @@ async fn proposal_proposal_oversized_payload() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let payload = validator::Payload(vec![0; MAX_PAYLOAD_SIZE + 1]);
@@ -302,7 +302,7 @@ async fn proposal_missing_previous_payload() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let missing_payload_number = util.replica.config.block_store.queued().first.next();
@@ -346,7 +346,7 @@ async fn proposal_invalid_payload() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) =
-            UTHarness::new_with_payload_manager(ctx, 1, Box::new(RejectPayload)).await;
+            UnitTestHarness::new_with_payload_manager(ctx, 1, Box::new(RejectPayload)).await;
         s.spawn_bg(runner.run(ctx));
 
         let proposal = util.new_leader_proposal(ctx).await;

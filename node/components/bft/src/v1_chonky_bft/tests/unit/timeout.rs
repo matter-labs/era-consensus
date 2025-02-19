@@ -1,4 +1,4 @@
-use crate::chonky_bft::{testonly::UTHarness, timeout};
+use crate::v1_chonky_bft::{testonly::UnitTestHarness, timeout};
 use assert_matches::assert_matches;
 use rand::{seq::SliceRandom as _, Rng};
 use zksync_concurrency::{ctx, scope};
@@ -52,7 +52,7 @@ async fn timeout_yield_new_view_sanity() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
+        let (mut util, runner) = UnitTestHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         let cur_view = util.replica.view_number;
@@ -78,7 +78,7 @@ async fn timeout_non_validator_signer() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let replica_timeout = util.new_replica_timeout(ctx).await;
@@ -105,7 +105,7 @@ async fn replica_timeout_old() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let mut replica_timeout = util.new_replica_timeout(ctx).await;
@@ -132,7 +132,7 @@ async fn timeout_duplicate_signer() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 2).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 2).await;
         s.spawn_bg(runner.run(ctx));
 
         util.produce_block(ctx).await;
@@ -186,7 +186,7 @@ async fn timeout_invalid_sig() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let msg = util.new_replica_timeout(ctx).await;
@@ -207,7 +207,7 @@ async fn timeout_invalid_message() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let replica_timeout = util.new_replica_timeout(ctx).await;
@@ -259,7 +259,7 @@ async fn timeout_num_received_below_threshold() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
+        let (mut util, runner) = UnitTestHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         let replica_timeout = util.new_replica_timeout(ctx).await;
@@ -303,7 +303,7 @@ async fn timeout_weight_different_messages() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
+        let (mut util, runner) = UnitTestHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         let view = util.view();
@@ -366,7 +366,7 @@ async fn replica_timeout_limit_messages_in_memory() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 2).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 2).await;
         s.spawn_bg(runner.run(ctx));
 
         let mut replica_timeout = util.new_replica_timeout(ctx).await;
@@ -396,7 +396,7 @@ async fn replica_timeout_filter_functions_test() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 2).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 2).await;
         s.spawn_bg(runner.run(ctx));
 
         let replica_timeout = util.new_replica_timeout(ctx).await;

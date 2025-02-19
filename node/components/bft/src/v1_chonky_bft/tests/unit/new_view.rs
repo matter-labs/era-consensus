@@ -1,4 +1,4 @@
-use crate::chonky_bft::{new_view, testonly::UTHarness};
+use crate::v1_chonky_bft::{new_view, testonly::UnitTestHarness};
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::{ctx, scope};
@@ -9,7 +9,7 @@ async fn new_view_sanity() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
+        let (mut util, runner) = UnitTestHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         let commit_1 = validator::v1::ReplicaCommit {
@@ -114,7 +114,7 @@ async fn new_view_non_validator_signer() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let replica_new_view = util.new_replica_new_view(ctx).await;
@@ -141,7 +141,7 @@ async fn replica_new_view_old() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 2).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 2).await;
         s.spawn_bg(runner.run(ctx));
 
         let replica_new_view = util.new_replica_new_view(ctx).await;
@@ -174,7 +174,7 @@ async fn new_view_invalid_sig() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let msg = util.new_replica_new_view(ctx).await;
@@ -195,7 +195,7 @@ async fn new_view_invalid_message() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new(ctx, 1).await;
+        let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
         let res = util

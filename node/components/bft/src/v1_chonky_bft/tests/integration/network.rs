@@ -1,10 +1,11 @@
-use crate::testonly::{Behavior, Network, Test};
+use crate::{
+    v1_chonky_bft::testonly::{IntegrationTestConfig, TestNetwork},
+    testonly::Behavior,
+};
 use zksync_concurrency::{ctx, time};
 use zksync_consensus_roles::validator;
 
-mod twins;
-
-async fn run_test(behavior: Behavior, network: Network) {
+async fn run_test(behavior: Behavior, network: TestNetwork) {
     tokio::time::pause();
     let _guard = zksync_concurrency::testonly::set_timeout(time::Duration::seconds(60));
     zksync_concurrency::testonly::abort_on_panic();
@@ -18,7 +19,7 @@ async fn run_test(behavior: Behavior, network: Network) {
     for n in &mut nodes[0..honest_nodes_amount] {
         n.0 = Behavior::Honest;
     }
-    Test {
+    IntegrationTestConfig {
         network,
         nodes,
         blocks_to_finalize: 10,
@@ -30,20 +31,20 @@ async fn run_test(behavior: Behavior, network: Network) {
 
 #[tokio::test]
 async fn honest_real_network() {
-    run_test(Behavior::Honest, Network::Real).await
+    run_test(Behavior::Honest, TestNetwork::Real).await
 }
 
 #[tokio::test]
 async fn offline_real_network() {
-    run_test(Behavior::Offline, Network::Real).await
+    run_test(Behavior::Offline, TestNetwork::Real).await
 }
 
 #[tokio::test]
 async fn honest_not_proposing_real_network() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::AffineClock::new(5.));
-    Test {
-        network: Network::Real,
+    IntegrationTestConfig {
+        network: TestNetwork::Real,
         nodes: vec![(Behavior::Honest, 1), (Behavior::HonestNotProposing, 1)],
         blocks_to_finalize: 10,
     }

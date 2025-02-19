@@ -1,6 +1,11 @@
-use crate::testonly::{
-    twins::{Cluster, HasKey, ScenarioGenerator, Twin},
-    Behavior, Network, PortRouter, PortSplitSchedule, Test, TestError, NUM_PHASES,
+use crate::{
+    v1_chonky_bft::testonly::{
+        IntegrationTestConfig, PortRouter, PortSplitSchedule, TestError, TestNetwork, NUM_PHASES,
+    },
+    testonly::{
+        twins::{Cluster, HasKey, ScenarioGenerator, Twin},
+        Behavior,
+    },
 };
 use assert_matches::assert_matches;
 use std::collections::HashMap;
@@ -9,6 +14,7 @@ use zksync_concurrency::{ctx, time};
 use zksync_consensus_network::testonly::new_configs_for_validators;
 use zksync_consensus_roles::validator::{
     testonly::{Setup, SetupSpec},
+    v1::LeaderSelectionMode,
     PublicKey, SecretKey,
 };
 
@@ -179,8 +185,8 @@ async fn run_twins(
             tracing::info!("round={r} partitions={partitions:?} leaders={leader_ports:?} leader_partition_sizes={leader_partition_sizes:?} leader_isolated={leader_isolated}");
         }
 
-        Test {
-            network: Network::Twins(PortRouter::Splits(splits)),
+        IntegrationTestConfig {
+            network: TestNetwork::Twins(PortRouter::Splits(splits)),
             nodes: nodes.clone(),
             blocks_to_finalize,
         }

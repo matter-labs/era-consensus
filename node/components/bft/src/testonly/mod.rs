@@ -1,15 +1,11 @@
 //! This module contains utilities that are only meant for testing purposes.
 
-mod make;
 #[cfg(test)]
 mod node;
-#[cfg(test)]
-mod run;
+mod payload_manager;
 #[cfg(test)]
 pub mod twins;
 
-pub use make::*;
 #[cfg(test)]
 pub(crate) use node::*;
-#[cfg(test)]
-pub(crate) use run::*;
+pub use payload_manager::*;

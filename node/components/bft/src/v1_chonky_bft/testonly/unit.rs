@@ -1,5 +1,5 @@
 use crate::{
-    chonky_bft::{self, commit, new_view, proposal, timeout, StateMachine},
+    v1_chonky_bft::{self, commit, new_view, proposal, timeout, StateMachine},
     create_input_channel,
     testonly::RandomPayload,
     Config, FromNetworkMessage, PayloadManager, ToNetworkMessage,
@@ -20,13 +20,13 @@ use zksync_consensus_utils::enum_util::Variant;
 
 pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
 
-/// `UTHarness` provides various utilities for unit tests.
+/// `UnitTestHarness` provides various utilities for unit tests.
 /// It is designed to simplify the setup and execution of test cases by encapsulating
 /// common testing functionality.
 ///
 /// It should be instantiated once for every test case.
 #[cfg(test)]
-pub(crate) struct UTHarness {
+pub(crate) struct UnitTestHarness {
     pub(crate) replica: StateMachine,
     pub(crate) keys: Vec<validator::SecretKey>,
     pub(crate) outbound_channel: ctx::channel::UnboundedReceiver<ToNetworkMessage>,
@@ -35,12 +35,12 @@ pub(crate) struct UTHarness {
         sync::watch::Receiver<Option<validator::v1::ProposalJustification>>,
 }
 
-impl UTHarness {
-    /// Creates a new `UTHarness` with the specified validator set size.
+impl UnitTestHarness {
+    /// Creates a new `UnitTestHarness` with the specified validator set size.
     pub(crate) async fn new(
         ctx: &ctx::Ctx,
         num_validators: usize,
-    ) -> (UTHarness, BlockStoreRunner) {
+    ) -> (UnitTestHarness, BlockStoreRunner) {
         Self::new_with_payload_manager(
             ctx,
             num_validators,
@@ -49,10 +49,10 @@ impl UTHarness {
         .await
     }
 
-    /// Creates a new `UTHarness` with minimally-significant validator set size.
-    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UTHarness, BlockStoreRunner) {
+    /// Creates a new `UnitTestHarness` with minimally-significant validator set size.
+    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UnitTestHarness, BlockStoreRunner) {
         let num_validators = 6;
-        let (util, runner) = UTHarness::new(ctx, num_validators).await;
+        let (util, runner) = UnitTestHarness::new(ctx, num_validators).await;
         assert!(util.genesis().validators.max_faulty_weight() > 0);
         (util, runner)
     }
@@ -61,7 +61,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
         num_validators: usize,
         payload_manager: Box<dyn PayloadManager>,
-    ) -> (UTHarness, BlockStoreRunner) {
+    ) -> (UnitTestHarness, BlockStoreRunner) {
         let rng = &mut ctx.rng();
         let setup = validator::testonly::Setup::new(rng, num_validators);
         let store = TestMemoryStorage::new(ctx, &setup).await;
@@ -86,7 +86,7 @@ impl UTHarness {
         )
         .await
         .unwrap();
-        let mut this = UTHarness {
+        let mut this = UnitTestHarness {
             replica,
             keys: setup.validator_keys.clone(),
             outbound_channel: output_channel_recv,
@@ -133,7 +133,7 @@ impl UTHarness {
         ctx: &ctx::Ctx,
     ) -> validator::v1::LeaderProposal {
         let justification = self.replica.get_justification();
-        chonky_bft::proposer::create_proposal(ctx, self.replica.config.clone(), justification)
+        v1_chonky_bft::proposer::create_proposal(ctx, self.replica.config.clone(), justification)
             .await
             .unwrap()
     }

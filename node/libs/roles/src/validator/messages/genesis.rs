@@ -118,7 +118,7 @@ pub struct ProtocolVersion(pub u32);
 
 impl ProtocolVersion {
     /// 0 - development version; deprecated.
-    /// 1 - development version
+    /// 1 - production version
     pub const CURRENT: Self = Self(1);
 
     /// Returns the integer corresponding to this version.
@@ -128,8 +128,6 @@ impl ProtocolVersion {
 
     /// Checks protocol version compatibility.
     pub fn compatible(&self, other: &ProtocolVersion) -> bool {
-        // Currently using comparison.
-        // This can be changed later to apply a minimum supported version.
         self.0 == other.0
     }
 }

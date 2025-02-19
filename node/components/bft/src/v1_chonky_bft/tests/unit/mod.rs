@@ -1,11 +1,10 @@
-use crate::chonky_bft::testonly::UTHarness;
+use crate::v1_chonky_bft::testonly::UnitTestHarness;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
 
 mod commit;
 mod new_view;
 mod proposal;
-//mod proposer;
 mod timeout;
 
 /// Sanity check of the happy path.
@@ -14,7 +13,7 @@ async fn block_production() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
+        let (mut util, runner) = UnitTestHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         util.produce_block(ctx).await;
@@ -31,7 +30,7 @@ async fn block_production_timeout() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
+        let (mut util, runner) = UnitTestHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         util.produce_block_after_timeout(ctx).await;
@@ -48,7 +47,7 @@ async fn block_production_timeout_reproposal() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
+        let (mut util, runner) = UnitTestHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         let replica_commit = util.new_replica_commit(ctx).await;
@@ -85,7 +84,7 @@ async fn block_production_timeout_in_commit() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
+        let (mut util, runner) = UnitTestHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         util.new_replica_commit(ctx).await;
@@ -106,7 +105,7 @@ async fn block_production_timeout_some_commits() {
     zksync_concurrency::testonly::abort_on_panic();
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
-        let (mut util, runner) = UTHarness::new_many(ctx).await;
+        let (mut util, runner) = UnitTestHarness::new_many(ctx).await;
         s.spawn_bg(runner.run(ctx));
 
         let replica_commit = util.new_replica_commit(ctx).await;
