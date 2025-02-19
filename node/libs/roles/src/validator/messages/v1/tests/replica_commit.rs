@@ -1,12 +1,12 @@
 use super::*;
-use crate::validator::{testonly::Setup, ChainId, Signed};
+use crate::validator::{messages::tests::genesis_v1, testonly::Setup, ChainId, Signed};
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::ctx;
 
 #[test]
 fn test_replica_commit_verify() {
-    let mut genesis = genesis();
+    let mut genesis = genesis_v1();
     let commit = replica_commit();
     assert!(commit.verify(&genesis).is_ok());
 

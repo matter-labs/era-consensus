@@ -1,5 +1,4 @@
-use crate::validator::messages::testonly;
-use crate::validator::messages::{BlockNumber, Payload, PayloadHash};
+use super::*;
 use zksync_consensus_crypto::{keccak256::Keccak256, Text};
 
 #[test]
@@ -9,7 +8,7 @@ fn payload_hash_change_detector() {
     )
     .decode()
     .unwrap();
-    assert_eq!(want, testonly::payload().hash());
+    assert_eq!(want, payload().hash());
 }
 
 #[test]

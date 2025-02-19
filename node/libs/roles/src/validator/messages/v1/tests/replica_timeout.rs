@@ -1,12 +1,12 @@
 use super::*;
-use crate::validator::{testonly::Setup, ChainId, Signed};
+use crate::validator::{messages::tests::genesis_v1, testonly::Setup, ChainId, Signed};
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::ctx;
 
 #[test]
 fn test_replica_timeout_verify() {
-    let genesis = genesis();
+    let genesis = genesis_v1();
     let timeout = replica_timeout();
     assert!(timeout.verify(&genesis).is_ok());
 

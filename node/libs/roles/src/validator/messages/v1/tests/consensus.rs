@@ -1,4 +1,5 @@
 use super::*;
+use crate::validator::messages::tests::{genesis_v1, validator_committee};
 
 #[test]
 fn test_view_next() {
@@ -28,7 +29,7 @@ fn test_view_prev() {
 
 #[test]
 fn test_view_verify() {
-    let genesis = genesis();
+    let genesis = genesis_v1();
     let view = View {
         genesis: genesis.hash(),
         number: ViewNumber(1),
@@ -88,4 +89,79 @@ fn test_signers_bitand_assign() {
     signers2.0.set(3, true);
     signers1 &= &signers2;
     assert_eq!(signers1.count(), 1);
+}
+
+#[test]
+fn test_signers_weight() {
+    let committee = validator_committee();
+    let mut signers = Signers::new(5);
+    signers.0.set(1, true);
+    signers.0.set(2, true);
+    signers.0.set(4, true);
+    assert_eq!(signers.weight(&committee), 37);
+}
+
+#[test]
+fn test_leader_selection_round_robin() {
+    let committee = validator_committee();
+    let mode = LeaderSelectionMode::RoundRobin;
+    let got: Vec<_> = views()
+        .map(|view| {
+            let got = mode.view_leader(view, &committee);
+            committee.index(&got).unwrap()
+        })
+        .collect();
+    assert_eq!(vec![2, 3, 4, 4, 1], got);
+}
+
+#[test]
+fn test_leader_selection_weighted() {
+    let committee = validator_committee();
+    let mode = LeaderSelectionMode::Weighted;
+    let got: Vec<_> = views()
+        .map(|view| {
+            let got = mode.view_leader(view, &committee);
+            committee.index(&got).unwrap()
+        })
+        .collect();
+    assert_eq!(vec![2, 3, 2, 1, 3], got);
+}
+
+#[test]
+fn test_leader_selection_sticky() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let committee = validator_committee();
+    let want = committee
+        .get(rng.gen_range(0..committee.len()))
+        .unwrap()
+        .key
+        .clone();
+    let mode = LeaderSelectionMode::Sticky(want.clone());
+    for _ in 0..100 {
+        assert_eq!(want, mode.view_leader(rng.gen(), &committee));
+    }
+}
+
+#[test]
+fn test_leader_selection_rota() {
+    let ctx = ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+    let committee = validator_committee();
+    let mut want = Vec::new();
+    for _ in 0..3 {
+        want.push(
+            committee
+                .get(rng.gen_range(0..committee.len()))
+                .unwrap()
+                .key
+                .clone(),
+        );
+    }
+    let mode = LeaderSelectionMode::Rota(want.clone());
+    for _ in 0..100 {
+        let vn: ViewNumber = rng.gen();
+        let pk = &want[vn.0 as usize % want.len()];
+        assert_eq!(*pk, mode.view_leader(vn, &committee));
+    }
 }

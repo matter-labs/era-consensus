@@ -5,7 +5,7 @@ mod replica_commit;
 mod replica_new_view;
 mod replica_timeout;
 /// Test-only utilities.
-pub mod testonly;
+mod testonly;
 #[cfg(test)]
 mod tests;
 

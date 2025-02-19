@@ -1,6 +1,9 @@
-use super::testonly::*;
 use super::*;
-use crate::validator::{self, messages::testonly::*, GenesisHash, Msg, MsgHash};
+use crate::validator::{
+    self,
+    messages::tests::{genesis_v1, payload, validator_keys},
+    BlockNumber, GenesisHash, Msg, MsgHash,
+};
 use anyhow::Context as _;
 use rand::Rng;
 use zksync_concurrency::ctx;
@@ -13,6 +16,90 @@ mod consensus;
 mod leader_proposal;
 mod replica_commit;
 mod replica_timeout;
+mod version;
+
+/// Hardcoded view
+fn view() -> View {
+    View {
+        genesis: genesis_v1().hash(),
+        number: ViewNumber(9136),
+    }
+}
+
+/// Hardcoded view numbers.
+fn views() -> impl Iterator<Item = ViewNumber> {
+    [2297, 7203, 8394, 9089, 99821].into_iter().map(ViewNumber)
+}
+
+/// Hardcoded `BlockHeader`.
+fn block_header() -> BlockHeader {
+    BlockHeader {
+        number: BlockNumber(7728),
+        payload: payload().hash(),
+    }
+}
+
+/// Hardcoded `LeaderProposal`.
+fn leader_proposal() -> LeaderProposal {
+    LeaderProposal {
+        proposal_payload: Some(payload()),
+        justification: ProposalJustification::Timeout(timeout_qc()),
+    }
+}
+
+/// Hardcoded `ReplicaCommit`.
+fn replica_commit() -> ReplicaCommit {
+    ReplicaCommit {
+        view: view(),
+        proposal: block_header(),
+    }
+}
+
+/// Hardcoded `CommitQC`.
+fn commit_qc() -> CommitQC {
+    let genesis = genesis_v1();
+    let replica_commit = replica_commit();
+    let mut x = CommitQC::new(replica_commit.clone(), &genesis);
+    for k in validator_keys() {
+        x.add(&k.sign_msg(replica_commit.clone()), &genesis)
+            .unwrap();
+    }
+    x
+}
+
+/// Hardcoded `ReplicaTimeout`
+fn replica_timeout() -> ReplicaTimeout {
+    ReplicaTimeout {
+        view: View {
+            genesis: genesis_v1().hash(),
+            number: ViewNumber(9169),
+        },
+        high_vote: Some(replica_commit()),
+        high_qc: Some(commit_qc()),
+    }
+}
+
+/// Hardcoded `TimeoutQC`.
+fn timeout_qc() -> TimeoutQC {
+    let mut x = TimeoutQC::new(View {
+        genesis: genesis_v1().hash(),
+        number: ViewNumber(9169),
+    });
+    let genesis = genesis_v1();
+    let replica_timeout = replica_timeout();
+    for k in validator_keys() {
+        x.add(&k.sign_msg(replica_timeout.clone()), &genesis)
+            .unwrap();
+    }
+    x
+}
+
+/// Hardcoded `ReplicaNewView`.
+fn replica_new_view() -> ReplicaNewView {
+    ReplicaNewView {
+        justification: ProposalJustification::Commit(commit_qc()),
+    }
+}
 
 /// Note that genesis is NOT versioned by ProtocolVersion.
 /// Even if it was, ALL versions of genesis need to be supported FOREVER,
@@ -24,7 +111,7 @@ fn genesis_hash_change_detector() {
     )
     .decode()
     .unwrap();
-    assert_eq!(want, genesis().hash());
+    assert_eq!(want, genesis_v1().hash());
 }
 
 /// Asserts that msg.hash()==hash and that sig is a
