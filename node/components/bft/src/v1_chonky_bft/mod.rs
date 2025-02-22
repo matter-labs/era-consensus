@@ -1,3 +1,7 @@
+//! The ChonkyBFT module contains the implementation of the ChonkyBFT consensus protocol.
+//! This corresponds to the version 1 of the protocol.
+//! The module is responsible for handling the logic that allows us to reach agreement on blocks.
+
 use crate::{metrics, Config, FromNetworkMessage, ToNetworkMessage};
 use std::{
     collections::{BTreeMap, HashMap},
