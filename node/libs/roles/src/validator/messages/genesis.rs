@@ -117,8 +117,9 @@ impl Genesis {
 pub struct ProtocolVersion(pub u32);
 
 impl ProtocolVersion {
-    /// 0 - development version; deprecated.
-    /// 1 - production version
+    /// The latest production version of the protocol. Note that this might not be the version
+    /// that the current chain is using. You also should not rely on this value to check compatibility,
+    /// instead use the `compatible` method.
     pub const CURRENT: Self = Self(1);
 
     /// Returns the integer corresponding to this version.
@@ -126,9 +127,12 @@ impl ProtocolVersion {
         self.0
     }
 
-    /// Checks protocol version compatibility.
-    pub fn compatible(&self, other: &ProtocolVersion) -> bool {
-        self.0 == other.0
+    /// Checks protocol version compatibility. Specifically, it checks which protocol
+    /// versions are compatible with the current codebase. Old protocol versions can be
+    /// deprecated, so a newer codebase might stop supporting an older protocol version even if
+    /// no new protocol version is introduced.
+    pub fn compatible(version: &ProtocolVersion) -> bool {
+        version.0 == 1
     }
 }
 

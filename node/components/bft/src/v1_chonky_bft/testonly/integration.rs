@@ -18,7 +18,7 @@ use zksync_concurrency::{
     oneshot, scope, sync,
 };
 use zksync_consensus_network::{self as network};
-use zksync_consensus_roles::{validator, validator::testonly::Setup};
+use zksync_consensus_roles::validator::{self, testonly::Setup, ProtocolVersion};
 use zksync_consensus_storage::{testonly::TestMemoryStorage, BlockStore};
 
 pub(crate) enum TestNetwork {
@@ -131,7 +131,11 @@ impl IntegrationTestConfig {
     /// Run a test with the given parameters and a random network setup.
     pub(crate) async fn run(&self, ctx: &ctx::Ctx) -> Result<(), TestError> {
         let rng = &mut ctx.rng();
-        let setup = Setup::new_with_weights(rng, self.nodes.iter().map(|(_, w)| *w).collect());
+        let setup = Setup::new_with_weights_and_version(
+            rng,
+            self.nodes.iter().map(|(_, w)| *w).collect(),
+            ProtocolVersion(1),
+        );
         let nets: Vec<_> = network::testonly::new_configs(rng, &setup, 1);
         self.run_with_config(ctx, nets, &setup).await
     }

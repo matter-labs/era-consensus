@@ -51,7 +51,12 @@ impl Config {
         inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
     ) -> anyhow::Result<()> {
         let genesis = self.block_store.genesis();
-        anyhow::ensure!(genesis.protocol_version == validator::ProtocolVersion::CURRENT);
+
+        anyhow::ensure!(
+            validator::ProtocolVersion::compatible(&genesis.protocol_version),
+            "Incompatible protocol version. Genesis protocol version: {:?}.",
+            genesis.protocol_version
+        );
         genesis.verify().context("genesis().verify()")?;
 
         if let Some(prev) = genesis.first_block.prev() {

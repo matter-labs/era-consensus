@@ -1,10 +1,10 @@
 use crate::{
-    v1_chonky_bft::testonly::{
-        IntegrationTestConfig, PortRouter, PortSplitSchedule, TestError, TestNetwork, NUM_PHASES,
-    },
     testonly::{
         twins::{Cluster, HasKey, ScenarioGenerator, Twin},
         Behavior,
+    },
+    v1_chonky_bft::testonly::{
+        IntegrationTestConfig, PortRouter, PortSplitSchedule, TestError, TestNetwork, NUM_PHASES,
     },
 };
 use assert_matches::assert_matches;
@@ -15,7 +15,7 @@ use zksync_consensus_network::testonly::new_configs_for_validators;
 use zksync_consensus_roles::validator::{
     testonly::{Setup, SetupSpec},
     v1::LeaderSelectionMode,
-    PublicKey, SecretKey,
+    ProtocolVersion, PublicKey, SecretKey,
 };
 
 /// Govern how many scenarios to execute in the test.
@@ -92,7 +92,11 @@ async fn run_twins(
 
     // Every validator has equal power of 1.
     const WEIGHT: u64 = 1;
-    let mut spec = SetupSpec::new_with_weights(rng, vec![WEIGHT; num_replicas]);
+    let mut spec = SetupSpec::new_with_weights_and_version(
+        rng,
+        vec![WEIGHT; num_replicas],
+        ProtocolVersion(1),
+    );
 
     let replicas = spec
         .validator_weights

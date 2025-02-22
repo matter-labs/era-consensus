@@ -30,11 +30,15 @@ pub struct SetupSpec {
 impl SetupSpec {
     /// New `SetupSpec`.
     pub fn new(rng: &mut impl Rng, validators: usize) -> Self {
-        Self::new_with_weights(rng, vec![1; validators])
+        Self::new_with_weights_and_version(rng, vec![1; validators], ProtocolVersion::CURRENT)
     }
 
-    /// New `SetupSpec`.
-    pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
+    /// New `SetupSpec` where validators have the given weights and the specified protocol version.
+    pub fn new_with_weights_and_version(
+        rng: &mut impl Rng,
+        weights: Vec<u64>,
+        protocol_version: ProtocolVersion,
+    ) -> Self {
         let first_block = BlockNumber(rng.gen_range(0..100));
         Self {
             validator_weights: weights
@@ -47,7 +51,7 @@ impl SetupSpec {
             fork_number: ForkNumber(rng.gen_range(0..100)),
             first_block,
             first_pregenesis_block: BlockNumber(rng.gen_range(0..=first_block.0)),
-            protocol_version: ProtocolVersion::CURRENT,
+            protocol_version,
             leader_selection: v1::LeaderSelectionMode::RoundRobin,
         }
     }
@@ -84,9 +88,13 @@ impl Setup {
         Self::from_spec(rng, spec)
     }
 
-    /// New `Setup`.
-    pub fn new_with_weights(rng: &mut impl Rng, weights: Vec<u64>) -> Self {
-        let spec = SetupSpec::new_with_weights(rng, weights);
+    /// New `Setup` where validators have the given weights and the specified protocol version.
+    pub fn new_with_weights_and_version(
+        rng: &mut impl Rng,
+        weights: Vec<u64>,
+        protocol_version: ProtocolVersion,
+    ) -> Self {
+        let spec = SetupSpec::new_with_weights_and_version(rng, weights, protocol_version);
         Self::from_spec(rng, spec)
     }
 
@@ -113,6 +121,7 @@ impl Setup {
             attester_keys: spec.attester_weights.into_iter().map(|(k, _)| k).collect(),
             blocks: vec![],
         });
+
         // Populate pregenesis blocks.
         for block in spec.first_pregenesis_block.0..spec.first_block.0 {
             this.0.blocks.push(
