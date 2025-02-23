@@ -1,6 +1,7 @@
-use crate::v1_chonky_bft::testonly::UnitTestHarness;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
+
+use crate::v1_chonky_bft::testonly::UnitTestHarness;
 
 mod commit;
 mod new_view;

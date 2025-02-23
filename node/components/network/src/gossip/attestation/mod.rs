@@ -1,9 +1,11 @@
 //! Attestation.
-use crate::watch::Watch;
-use anyhow::Context as _;
 use std::{collections::HashSet, fmt, sync::Arc};
+
+use anyhow::Context as _;
 use zksync_concurrency::{ctx, sync};
 use zksync_consensus_roles::attester;
+
+use crate::watch::Watch;
 
 mod metrics;
 #[cfg(test)]

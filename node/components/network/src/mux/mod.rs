@@ -79,10 +79,12 @@
 //! therefore stopping the peer from sending any DATA frames.
 //! This can be used to implement a rate limiting strategy that
 //! both sides of the connection can enforce.
-use crate::{frame, noise::bytes};
-use anyhow::Context as _;
 use std::{collections::BTreeMap, sync::Arc};
+
+use anyhow::Context as _;
 use zksync_concurrency::{ctx, ctx::channel, error::Wrap as _, io, scope, sync};
+
+use crate::{frame, noise::bytes};
 
 mod config;
 mod handshake;

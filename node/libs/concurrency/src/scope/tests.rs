@@ -1,8 +1,9 @@
-use crate::{ctx, scope, testonly};
 use std::sync::{
     atomic::{AtomicU64, Ordering},
     Arc,
 };
+
+use crate::{ctx, scope, testonly};
 
 // run a trivial future until completion => OK
 #[tokio::test]

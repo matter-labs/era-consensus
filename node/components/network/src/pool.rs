@@ -1,8 +1,10 @@
 //! An abstraction for a set of "connections" which constraints
 //! which peers are allowed to connect.
-use crate::watch::Watch;
 use std::collections::HashSet;
+
 use zksync_concurrency::sync;
+
+use crate::watch::Watch;
 
 /// Map with restrictions on the allowed keys.
 /// This set consists of an arbitrary subset of `allowed` + up to `extra_limit` elements outside of

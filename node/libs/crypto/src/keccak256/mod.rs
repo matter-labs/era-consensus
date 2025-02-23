@@ -1,6 +1,7 @@
 //! Wrappers for the Keccak256 cryptographic hash algorithm.
-use crate::ByteFmt;
 use sha3::{digest::Update as _, Digest as _};
+
+use crate::ByteFmt;
 
 #[cfg(test)]
 mod test;

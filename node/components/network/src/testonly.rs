@@ -1,17 +1,13 @@
 //! Testonly utilities.
 #![allow(dead_code)]
-use crate::{
-    gossip::attestation,
-    io::{ConsensusInputMessage, ConsensusReq},
-    Config, GossipConfig, Network, RpcConfig, Runner,
-};
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng,
-};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
+};
+
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
 };
 use zksync_concurrency::{
     ctx::{self, channel},
@@ -19,6 +15,12 @@ use zksync_concurrency::{
 };
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
+
+use crate::{
+    gossip::attestation,
+    io::{ConsensusInputMessage, ConsensusReq},
+    Config, GossipConfig, Network, RpcConfig, Runner,
+};
 
 impl Distribution<ConsensusInputMessage> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ConsensusInputMessage {

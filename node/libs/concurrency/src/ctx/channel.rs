@@ -14,9 +14,11 @@
 //!   cancelation and therefore closes the channel, the other one would observe
 //!   either Disconnected or Canceled error. Since we got rid of Disconnected error,
 //!   only Canceled error is expected.
-use crate::{ctx, sync::Disconnected};
 use std::{fmt, future::Future};
+
 use tokio::sync::mpsc;
+
+use crate::{ctx, sync::Disconnected};
 
 /// Sender end of the bounded channel.
 pub struct Sender<T>(mpsc::Sender<T>);

@@ -1,11 +1,13 @@
-use super::Connection;
-use crate::{frame, noise, proto::gossip as proto, Config};
-use anyhow::Context as _;
 use std::sync::Arc;
+
+use anyhow::Context as _;
 use zksync_concurrency::{ctx, error::Wrap as _, time};
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_roles::{node, validator};
 use zksync_protobuf::{kB, read_required, required, ProtoFmt};
+
+use super::Connection;
+use crate::{frame, noise, proto::gossip as proto, Config};
 
 #[cfg(test)]
 mod testonly;

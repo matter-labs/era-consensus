@@ -1,3 +1,15 @@
+use std::collections::HashMap;
+
+use assert_matches::assert_matches;
+use test_casing::{cases, test_casing, TestCases};
+use zksync_concurrency::{ctx, time};
+use zksync_consensus_network::testonly::new_configs_for_validators;
+use zksync_consensus_roles::validator::{
+    testonly::{Setup, SetupSpec},
+    v1::LeaderSelectionMode,
+    ProtocolVersion, PublicKey, SecretKey,
+};
+
 use crate::{
     testonly::{
         twins::{Cluster, HasKey, ScenarioGenerator, Twin},
@@ -6,16 +18,6 @@ use crate::{
     v1_chonky_bft::testonly::{
         IntegrationTestConfig, PortRouter, PortSplitSchedule, TestError, TestNetwork, NUM_PHASES,
     },
-};
-use assert_matches::assert_matches;
-use std::collections::HashMap;
-use test_casing::{cases, test_casing, TestCases};
-use zksync_concurrency::{ctx, time};
-use zksync_consensus_network::testonly::new_configs_for_validators;
-use zksync_consensus_roles::validator::{
-    testonly::{Setup, SetupSpec},
-    v1::LeaderSelectionMode,
-    ProtocolVersion, PublicKey, SecretKey,
 };
 
 /// Govern how many scenarios to execute in the test.

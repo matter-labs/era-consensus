@@ -1,8 +1,9 @@
-use crate::v1_chonky_bft::{new_view, testonly::UnitTestHarness};
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
+
+use crate::v1_chonky_bft::{new_view, testonly::UnitTestHarness};
 
 #[tokio::test]
 async fn new_view_sanity() {

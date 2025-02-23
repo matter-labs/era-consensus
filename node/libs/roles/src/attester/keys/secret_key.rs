@@ -1,8 +1,10 @@
-use super::{PublicKey, Signature};
-use crate::attester::{Msg, MsgHash, Signed};
 use std::{fmt, sync::Arc};
+
 use zksync_consensus_crypto::{secp256k1, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
+
+use super::{PublicKey, Signature};
+use crate::attester::{Msg, MsgHash, Signed};
 
 /// A secret key for the attester role to sign L1 batches.
 /// SecretKey is put into an Arc, so that we can clone it,

@@ -1,6 +1,7 @@
 //! Context-aware wrapper around tokio::sync::oneshot channel.
-use crate::{ctx, sync::Disconnected};
 use tokio::sync::oneshot;
+
+use crate::{ctx, sync::Disconnected};
 
 /// Sender end of the oneshot channel.
 pub type Sender<T> = oneshot::Sender<T>;

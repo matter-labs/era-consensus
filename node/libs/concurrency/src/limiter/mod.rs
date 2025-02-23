@@ -1,6 +1,7 @@
 //! Rate limiter which supports delayed permit consumption.
-use crate::{ctx, sync, time};
 use std::{fmt, sync::Mutex};
+
+use crate::{ctx, sync, time};
 
 #[cfg(test)]
 mod tests;

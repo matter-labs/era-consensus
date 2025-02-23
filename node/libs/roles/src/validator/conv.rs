@@ -1,19 +1,21 @@
-use super::messages::v1::{
-    BlockHeader, CommitQC, FinalBlock, LeaderProposal, LeaderSelectionMode, Phase,
-    ProposalJustification, ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
-    ViewNumber,
-};
+use std::collections::BTreeMap;
+
+use anyhow::Context as _;
+use zksync_consensus_crypto::ByteFmt;
+use zksync_consensus_utils::enum_util::Variant;
+use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
+
 use super::{
+    messages::v1::{
+        BlockHeader, CommitQC, FinalBlock, LeaderProposal, LeaderSelectionMode, Phase,
+        ProposalJustification, ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC,
+        View, ViewNumber,
+    },
     AggregateSignature, Block, BlockNumber, ChainId, Committee, ConsensusMsg, ForkNumber, Genesis,
     GenesisHash, GenesisRaw, Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash,
     PreGenesisBlock, ProtocolVersion, PublicKey, Signature, Signed, WeightedValidator,
 };
 use crate::{node::SessionId, proto::validator as proto};
-use anyhow::Context as _;
-use std::collections::BTreeMap;
-use zksync_consensus_crypto::ByteFmt;
-use zksync_consensus_utils::enum_util::Variant;
-use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
 
 impl ProtoFmt for GenesisRaw {
     type Proto = proto::Genesis;

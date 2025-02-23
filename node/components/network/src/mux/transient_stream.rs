@@ -7,9 +7,10 @@
 //! The API of the transient stream is not final.
 //! It might get adjusted later for better buffer management
 //! or convenience of use.
+use zksync_concurrency::{ctx, sync};
+
 use super::{FrameKind, ReadReusableStream, WriteReusableStream};
 use crate::noise::bytes;
-use zksync_concurrency::{ctx, sync};
 
 /// Read half of the transient stream.
 #[derive(Debug)]

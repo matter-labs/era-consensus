@@ -1,6 +1,7 @@
 //! Attestation metrics.
-use super::Controller;
 use std::sync::Weak;
+
+use super::Controller;
 
 /// Metrics related to the gossiping of L1 batch votes.
 #[derive(Debug, vise::Metrics)]

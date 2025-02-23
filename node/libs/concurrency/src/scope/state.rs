@@ -11,8 +11,9 @@
 //! `TerminateGuard` alive.
 //!
 //! Note that scope can get canceled even if `CancelGuard` is still alive.
-use crate::{ctx, signal};
 use std::sync::{Arc, Mutex};
+
+use crate::{ctx, signal};
 
 pub(super) enum OrPanic<E> {
     Err(E),

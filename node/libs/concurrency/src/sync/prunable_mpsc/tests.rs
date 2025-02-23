@@ -1,6 +1,7 @@
+use assert_matches::assert_matches;
+
 use super::*;
 use crate::ctx;
-use assert_matches::assert_matches;
 
 // Test scenario:
 // 1. Pre-send two sets of 1000 values, so that the first set is expected to be pruned.

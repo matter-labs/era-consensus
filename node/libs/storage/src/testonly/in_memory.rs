@@ -1,12 +1,14 @@
 //! In-memory storage implementation.
-use crate::{block_store::Last, BlockStoreState, PersistentBlockStore, ReplicaState};
-use anyhow::Context as _;
 use std::{
     collections::{HashMap, VecDeque},
     sync::{Arc, Mutex},
 };
+
+use anyhow::Context as _;
 use zksync_concurrency::{ctx, sync};
 use zksync_consensus_roles::{validator, validator::testonly::Setup};
+
+use crate::{block_store::Last, BlockStoreState, PersistentBlockStore, ReplicaState};
 
 #[derive(Debug)]
 struct BlockStoreInner {

@@ -1,16 +1,12 @@
-use super::ValidatorAddrs;
-use crate::{
-    gossip::{attestation, handshake, validator_addrs::ValidatorAddrsWatch},
-    metrics, preface, rpc, testonly,
-};
-use anyhow::Context as _;
-use assert_matches::assert_matches;
-use pretty_assertions::assert_eq;
-use rand::Rng;
 use std::{
     collections::{HashMap, HashSet},
     sync::{atomic::Ordering, Arc},
 };
+
+use anyhow::Context as _;
+use assert_matches::assert_matches;
+use pretty_assertions::assert_eq;
+use rand::Rng;
 use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx,
@@ -21,6 +17,12 @@ use zksync_concurrency::{
 };
 use zksync_consensus_roles::{attester, validator};
 use zksync_consensus_storage::testonly::TestMemoryStorage;
+
+use super::ValidatorAddrs;
+use crate::{
+    gossip::{attestation, handshake, validator_addrs::ValidatorAddrsWatch},
+    metrics, preface, rpc, testonly,
+};
 
 mod fetch_blocks;
 mod syncing;

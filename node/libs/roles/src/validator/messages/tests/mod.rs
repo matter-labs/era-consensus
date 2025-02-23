@@ -1,9 +1,10 @@
-use super::*;
-use crate::validator::SecretKey;
 use rand::Rng;
 use zksync_concurrency::ctx;
 use zksync_consensus_crypto::{ByteFmt, Text, TextFmt};
 use zksync_protobuf::testonly::test_encode_random;
+
+use super::*;
+use crate::validator::SecretKey;
 
 mod block;
 mod committee;

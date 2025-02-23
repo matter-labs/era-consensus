@@ -1,8 +1,9 @@
 //! This tool calculates a node/validator public key from its corresponding secret key and prints it to stdout.
 #![allow(clippy::print_stdout)]
 
-use crypto::TextFmt as _;
 use std::io;
+
+use crypto::TextFmt as _;
 use zksync_consensus_crypto as crypto;
 use zksync_consensus_roles::{node, validator};
 

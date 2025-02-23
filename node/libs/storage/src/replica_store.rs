@@ -1,10 +1,12 @@
 //! Defines storage layer for persistent replica state.
-use crate::proto;
-use anyhow::Context as _;
 use std::fmt;
+
+use anyhow::Context as _;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
 use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
+
+use crate::proto;
 
 /// Storage for [`ReplicaState`].
 ///

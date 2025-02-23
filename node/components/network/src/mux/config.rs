@@ -1,5 +1,6 @@
-use super::StreamId;
 use zksync_concurrency::sync;
+
+use super::StreamId;
 
 /// Maximal frame size.
 pub(crate) const MAX_FRAME_SIZE: u64 = u16::MAX as u64;

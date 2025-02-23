@@ -38,10 +38,11 @@
 //!   whatever we understand and reject messages with unknown fields.
 //! * drop the idea of canonical encoding altogether and pass around the received encoded message
 //!   for hashing/verifying (i.e. keep the raw bytes together with the parsed message).
+use std::collections::BTreeMap;
+
 use anyhow::Context as _;
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
-use std::collections::BTreeMap;
 
 /// Kilobyte.
 #[allow(non_upper_case_globals)]

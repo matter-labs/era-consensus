@@ -1,9 +1,9 @@
-use super::*;
 use assert_matches::assert_matches;
 use rand::Rng;
-use validator::messages::Payload;
-use validator::testonly::Setup;
+use validator::{messages::Payload, testonly::Setup};
 use zksync_concurrency::ctx;
+
+use super::*;
 
 #[test]
 fn test_final_block_verify() {

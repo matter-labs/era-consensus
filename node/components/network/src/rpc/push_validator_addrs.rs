@@ -1,10 +1,12 @@
 //! RPC for synchronizing ValidatorAddrs data.
-use super::Capability;
-use crate::proto::gossip as proto;
-use anyhow::Context as _;
 use std::sync::Arc;
+
+use anyhow::Context as _;
 use zksync_consensus_roles::validator;
 use zksync_protobuf::ProtoFmt;
+
+use super::Capability;
+use crate::proto::gossip as proto;
 
 /// PushValidatorAddrs RPC.
 pub(crate) struct Rpc;

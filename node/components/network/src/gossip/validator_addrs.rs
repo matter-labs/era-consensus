@@ -1,8 +1,10 @@
 //! Global state distributed by active validators, observed by all the nodes in the network.
-use crate::watch::Watch;
 use std::{collections::HashSet, sync::Arc};
+
 use zksync_concurrency::{sync, time};
 use zksync_consensus_roles::validator;
+
+use crate::watch::Watch;
 
 /// Mapping from validator::PublicKey to a signed validator::NetAddress.
 /// Represents the currents state of node's knowledge about the validator endpoints.

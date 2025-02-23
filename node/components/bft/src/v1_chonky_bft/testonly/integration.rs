@@ -1,14 +1,11 @@
-use crate::{
-    testonly::{Behavior, Node},
-    FromNetworkMessage, ToNetworkMessage,
-};
-use anyhow::Context as _;
-use network::Config;
-use rand::seq::SliceRandom;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
+
+use anyhow::Context as _;
+use network::Config;
+use rand::seq::SliceRandom;
 use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx::{
@@ -20,6 +17,11 @@ use zksync_concurrency::{
 use zksync_consensus_network::{self as network};
 use zksync_consensus_roles::validator::{self, testonly::Setup, ProtocolVersion};
 use zksync_consensus_storage::{testonly::TestMemoryStorage, BlockStore};
+
+use crate::{
+    testonly::{Behavior, Node},
+    FromNetworkMessage, ToNetworkMessage,
+};
 
 pub(crate) enum TestNetwork {
     Real,

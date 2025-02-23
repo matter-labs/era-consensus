@@ -1,9 +1,10 @@
-use crate::v1_chonky_bft::{commit, testonly::UnitTestHarness};
 use assert_matches::assert_matches;
 use pretty_assertions::assert_eq;
 use rand::Rng;
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
+
+use crate::v1_chonky_bft::{commit, testonly::UnitTestHarness};
 
 #[tokio::test]
 async fn commit_yield_new_view_sanity() {

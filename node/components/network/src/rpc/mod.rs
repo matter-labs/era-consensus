@@ -15,12 +15,14 @@
 //! You can construct an Rpc service with multiple servers and clients
 //! at the same time (max 1 client + server per CapabilityId).
 
+use std::{collections::BTreeMap, sync::Arc};
+
+use anyhow::Context as _;
+use zksync_concurrency::{ctx, io, limiter, metrics::LatencyHistogramExt as _, scope};
+
 use self::metrics::{CallLatencyType, CallType, RPC_METRICS};
 pub(crate) use crate::proto::rpc::Capability;
 use crate::{frame, mux};
-use anyhow::Context as _;
-use std::{collections::BTreeMap, sync::Arc};
-use zksync_concurrency::{ctx, io, limiter, metrics::LatencyHistogramExt as _, scope};
 
 pub(crate) mod consensus;
 pub(crate) mod get_block;

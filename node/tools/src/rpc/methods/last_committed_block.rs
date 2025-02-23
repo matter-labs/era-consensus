@@ -1,10 +1,11 @@
 //! Peers method for RPC server.
+use std::sync::Arc;
+
 use anyhow::Context;
 use jsonrpsee::{
     core::RpcResult,
     types::{error::ErrorCode, ErrorObjectOwned},
 };
-use std::sync::Arc;
 use zksync_consensus_storage::BlockStore;
 
 /// Last view response for /last_view endpoint.

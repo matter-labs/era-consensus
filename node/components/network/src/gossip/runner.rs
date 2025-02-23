@@ -1,13 +1,15 @@
-use super::{handshake, Network, ValidatorAddrs};
-use crate::{noise, preface, rpc};
+use std::sync::atomic::Ordering;
+
 use anyhow::Context as _;
 use async_trait::async_trait;
 use rand::seq::SliceRandom;
-use std::sync::atomic::Ordering;
 use zksync_concurrency::{ctx, net, scope, sync};
 use zksync_consensus_roles::node;
 use zksync_consensus_storage::BlockStoreState;
 use zksync_protobuf::kB;
+
+use super::{handshake, Network, ValidatorAddrs};
+use crate::{noise, preface, rpc};
 
 /// Receiver of push messages from the peers.
 struct PushServer<'a> {

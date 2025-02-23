@@ -1,8 +1,10 @@
+use std::collections::HashMap;
+
+use anyhow::Context as _;
+use zksync_protobuf::{kB, required};
+
 use super::CapabilityId;
 use crate::proto::mux as proto;
-use anyhow::Context as _;
-use std::collections::HashMap;
-use zksync_protobuf::{kB, required};
 
 /// Max size of a handshkake frame.
 pub(super) const MAX_FRAME: usize = 10 * kB;

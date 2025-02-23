@@ -1,7 +1,9 @@
 //! Messages related to blocks.
-use super::v1;
 use std::fmt;
+
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
+
+use super::v1;
 /// Represents a blockchain block across different consensus protocol versions (including pre-genesis blocks).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {

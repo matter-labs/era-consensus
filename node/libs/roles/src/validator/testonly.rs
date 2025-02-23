@@ -1,10 +1,11 @@
 //! Test-only utilities.
+use rand::Rng;
+
 use super::{
     v1, Block, BlockNumber, ChainId, Committee, ForkNumber, Genesis, GenesisRaw, PreGenesisBlock,
     ProtocolVersion, SecretKey, WeightedValidator,
 };
 use crate::attester;
-use rand::Rng;
 
 /// Test setup specification.
 #[derive(Debug, Clone)]

@@ -1,4 +1,5 @@
 use std::fmt;
+
 use zksync_consensus_crypto::{secp256k1, ByteFmt, Text, TextFmt};
 
 /// A public key for an attester used in L1 batch signing.

@@ -1,12 +1,13 @@
 //! Random key generation, intended for use in testing
 
-use super::{PublicKey, SecretKey, Signature};
-use crate::ByteFmt;
 use ed25519_dalek as ed;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
+
+use super::{PublicKey, SecretKey, Signature};
+use crate::ByteFmt;
 
 impl Distribution<SecretKey> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SecretKey {

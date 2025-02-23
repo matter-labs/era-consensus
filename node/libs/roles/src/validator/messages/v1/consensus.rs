@@ -1,9 +1,11 @@
 //! Messages related to the consensus protocol.
-use crate::validator::{Committee, Genesis, GenesisHash, PublicKey};
+use std::{fmt, hash::Hash};
+
 use bit_vec::BitVec;
 use num_bigint::BigUint;
-use std::{fmt, hash::Hash};
 use zksync_consensus_crypto::keccak256::Keccak256;
+
+use crate::validator::{Committee, Genesis, GenesisHash, PublicKey};
 
 /// View specification.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.

@@ -1,8 +1,10 @@
-use super::StateMachine;
-use crate::metrics;
 use std::collections::HashSet;
+
 use zksync_concurrency::{ctx, error::Wrap, metrics::LatencyHistogramExt as _};
 use zksync_consensus_roles::validator;
+
+use super::StateMachine;
+use crate::metrics;
 
 /// Errors that can occur when processing a ReplicaCommit message.
 #[derive(Debug, thiserror::Error)]

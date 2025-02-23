@@ -1,6 +1,5 @@
-use crate::validator::{BlockNumber, Genesis, Payload, PayloadHash};
-
 use super::{CommitQC, CommitQCVerifyError, TimeoutQC, TimeoutQCVerifyError, View};
+use crate::validator::{BlockNumber, Genesis, Payload, PayloadHash};
 
 /// A proposal message from the leader.
 #[derive(Clone, Debug, PartialEq, Eq)]

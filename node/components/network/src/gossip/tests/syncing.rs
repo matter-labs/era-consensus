@@ -1,5 +1,4 @@
 //! Integration tests of block synchronization.
-use crate::testonly;
 use anyhow::Context as _;
 use rand::seq::SliceRandom as _;
 use test_casing::{test_casing, Product};
@@ -14,6 +13,8 @@ use zksync_consensus_storage::{
     testonly::{dump, in_memory, TestMemoryStorage},
     BlockStore,
 };
+
+use crate::testonly;
 
 const EXCHANGED_STATE_COUNT: usize = 5;
 const NETWORK_CONNECTIVITY_CASES: [(usize, usize); 5] = [(2, 1), (3, 2), (5, 3), (10, 4), (10, 7)];

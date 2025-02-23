@@ -1,6 +1,7 @@
 //! Metrics for the consensus module.
 
 use std::time::Duration;
+
 use vise::{Buckets, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Histogram, Metrics, Unit};
 
 /// Label for a consensus message.

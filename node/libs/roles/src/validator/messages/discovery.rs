@@ -1,4 +1,5 @@
 use std::net;
+
 use zksync_concurrency::time;
 
 /// A message broadcasted by a validator

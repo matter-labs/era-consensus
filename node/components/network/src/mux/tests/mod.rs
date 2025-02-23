@@ -1,6 +1,3 @@
-use crate::{frame, mux, noise, noise::bytes};
-use anyhow::Context as _;
-use rand::Rng as _;
 use std::{
     collections::BTreeMap,
     sync::{
@@ -8,7 +5,12 @@ use std::{
         Arc,
     },
 };
+
+use anyhow::Context as _;
+use rand::Rng as _;
 use zksync_concurrency::{ctx, limiter, scope, testonly::abort_on_panic};
+
+use crate::{frame, mux, noise, noise::bytes};
 
 mod proto;
 

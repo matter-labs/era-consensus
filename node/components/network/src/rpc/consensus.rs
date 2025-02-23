@@ -1,8 +1,9 @@
 //! Defines RPC for passing consensus messages.
-use super::Capability;
-use crate::proto::consensus as proto;
 use zksync_consensus_roles::validator;
 use zksync_protobuf::{read_required, ProtoFmt};
+
+use super::Capability;
+use crate::proto::consensus as proto;
 
 /// Consensus RPC.
 pub(crate) struct Rpc;

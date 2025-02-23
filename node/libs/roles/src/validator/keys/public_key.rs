@@ -1,4 +1,5 @@
 use std::fmt;
+
 use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
 
 /// A public key for a validator.

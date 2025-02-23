@@ -1,9 +1,10 @@
-use crate::{frame, noise, proto::consensus as proto};
 use anyhow::Context as _;
 use zksync_concurrency::{ctx, error::Wrap as _, time};
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_roles::{node, validator};
 use zksync_protobuf::{kB, read_required, ProtoFmt};
+
+use crate::{frame, noise, proto::consensus as proto};
 
 #[cfg(test)]
 mod testonly;

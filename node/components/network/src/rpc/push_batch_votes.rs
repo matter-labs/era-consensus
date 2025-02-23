@@ -1,10 +1,12 @@
 //! Defines RPC for passing consensus messages.
-use super::Capability;
-use crate::proto::gossip as proto;
-use anyhow::Context as _;
 use std::sync::Arc;
+
+use anyhow::Context as _;
 use zksync_consensus_roles::attester;
 use zksync_protobuf::{read_optional, ProtoFmt};
+
+use super::Capability;
+use crate::proto::gossip as proto;
 
 /// RPC pushing fresh batch votes.
 pub(crate) struct Rpc;

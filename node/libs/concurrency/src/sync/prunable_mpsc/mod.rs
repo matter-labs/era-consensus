@@ -5,11 +5,12 @@
 //! a mutable reference to the signaling channel, unlike [`Sender`], hence making it undesirable to
 //! be used in conjunction.
 //!
+use std::{collections::VecDeque, fmt, sync::Arc};
+
 use crate::{
     ctx,
     sync::{self, watch},
 };
-use std::{collections::VecDeque, fmt, sync::Arc};
 
 #[cfg(test)]
 mod tests;

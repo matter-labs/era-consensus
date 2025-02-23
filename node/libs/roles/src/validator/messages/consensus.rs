@@ -1,7 +1,8 @@
 //! Messages related to the consensus protocol.
+use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
+
 use super::v1::{LeaderProposal, ReplicaCommit, ReplicaNewView, ReplicaTimeout, View};
 use crate::validator::{GenesisHash, Msg};
-use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 
 /// Consensus messages.
 #[allow(missing_docs)]

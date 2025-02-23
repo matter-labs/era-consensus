@@ -1,11 +1,6 @@
-use crate::{
-    create_input_channel,
-    testonly::RandomPayload,
-    v1_chonky_bft::{self, commit, new_view, proposal, timeout, StateMachine},
-    Config, FromNetworkMessage, PayloadManager, ToNetworkMessage,
-};
-use assert_matches::assert_matches;
 use std::sync::Arc;
+
+use assert_matches::assert_matches;
 use zksync_concurrency::{
     ctx,
     sync::{self, prunable_mpsc},
@@ -17,6 +12,13 @@ use zksync_consensus_storage::{
     BlockStoreRunner,
 };
 use zksync_consensus_utils::enum_util::Variant;
+
+use crate::{
+    create_input_channel,
+    testonly::RandomPayload,
+    v1_chonky_bft::{self, commit, new_view, proposal, timeout, StateMachine},
+    Config, FromNetworkMessage, PayloadManager, ToNetworkMessage,
+};
 
 pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
 

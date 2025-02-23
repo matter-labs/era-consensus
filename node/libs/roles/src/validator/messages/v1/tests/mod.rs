@@ -1,15 +1,16 @@
-use super::*;
-use crate::validator::{
-    self,
-    messages::tests::{genesis_v1, payload, validator_keys},
-    BlockNumber, GenesisHash, Msg, MsgHash,
-};
 use anyhow::Context as _;
 use rand::Rng;
 use zksync_concurrency::ctx;
 use zksync_consensus_crypto::{ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant as _;
 use zksync_protobuf::testonly::test_encode_random;
+
+use super::*;
+use crate::validator::{
+    self,
+    messages::tests::{genesis_v1, payload, validator_keys},
+    BlockNumber, GenesisHash, Msg, MsgHash,
+};
 
 mod block;
 mod consensus;

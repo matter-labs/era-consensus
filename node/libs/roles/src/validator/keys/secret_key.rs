@@ -1,8 +1,10 @@
-use super::{ProofOfPossession, PublicKey, Signature};
-use crate::validator::messages::{Msg, MsgHash, Signed};
 use std::{fmt, sync::Arc};
+
 use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
+
+use super::{ProofOfPossession, PublicKey, Signature};
+use crate::validator::messages::{Msg, MsgHash, Signed};
 
 /// A secret key for the validator role.
 /// SecretKey is put into an Arc, so that we can clone it,

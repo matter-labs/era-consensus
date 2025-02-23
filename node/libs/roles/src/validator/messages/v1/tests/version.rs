@@ -1,6 +1,7 @@
+use zksync_consensus_crypto::Text;
+
 use super::*;
 use crate::validator::messages::tests::validator_keys;
-use zksync_consensus_crypto::Text;
 
 /// Asserts that msg.hash()==hash and that sig is a
 /// valid signature of msg (signed by `keys()[0]`).

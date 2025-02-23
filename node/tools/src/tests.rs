@@ -1,4 +1,3 @@
-use crate::{config, store};
 use rand::{distributions::Distribution, Rng};
 use tempfile::TempDir;
 use zksync_concurrency::{ctx, sync};
@@ -7,6 +6,8 @@ use zksync_consensus_roles::validator::testonly::Setup;
 use zksync_consensus_storage::{testonly, PersistentBlockStore};
 use zksync_consensus_utils::EncodeDist;
 use zksync_protobuf::testonly::{test_encode_all_formats, FmtConv};
+
+use crate::{config, store};
 
 impl Distribution<config::App> for EncodeDist {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> config::App {

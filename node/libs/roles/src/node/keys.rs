@@ -2,11 +2,13 @@
 //! Public key identifies a single node in the gossip network.
 //! Each node must have a different key.
 
-use super::{Msg, MsgHash, Signed};
-pub use ed25519::InvalidSignatureError;
 use std::{fmt, sync::Arc};
+
+pub use ed25519::InvalidSignatureError;
 use zksync_consensus_crypto::{ed25519, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
+
+use super::{Msg, MsgHash, Signed};
 
 /// A node's secret key.
 #[derive(Clone, PartialEq)]

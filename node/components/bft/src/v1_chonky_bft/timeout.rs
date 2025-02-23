@@ -1,8 +1,10 @@
-use super::StateMachine;
 use std::collections::HashSet;
+
 use zksync_concurrency::{ctx, error::Wrap, time};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
+
+use super::StateMachine;
 
 /// Errors that can occur when processing a ReplicaTimeout message.
 #[derive(Debug, thiserror::Error)]

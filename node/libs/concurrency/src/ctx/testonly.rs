@@ -1,6 +1,7 @@
+use std::sync::Arc;
+
 use super::{rng, Clock, Ctx, Inner};
 use crate::{signal, time};
-use std::sync::Arc;
 
 /// Returns a root context with the given `clock`
 /// and a deterministic RNG provider.

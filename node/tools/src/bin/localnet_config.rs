@@ -1,7 +1,4 @@
 //! This tool constructs collection of node configs for running tests.
-use anyhow::Context as _;
-use clap::Parser;
-use rand::{seq::SliceRandom as _, Rng};
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, Permissions},
@@ -9,6 +6,10 @@ use std::{
     os::unix::fs::PermissionsExt,
     path::PathBuf,
 };
+
+use anyhow::Context as _;
+use clap::Parser;
+use rand::{seq::SliceRandom as _, Rng};
 use zksync_concurrency::time;
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_tools::config;

@@ -1,7 +1,8 @@
 //! Network component maintaining a pool of outbound and inbound connections to other nodes.
+use std::sync::Arc;
+
 use anyhow::Context as _;
 use gossip::attestation;
-use std::sync::Arc;
 use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx::{self, channel},

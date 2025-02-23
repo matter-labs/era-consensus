@@ -1,9 +1,10 @@
-use super::*;
-use crate::validator::{testonly::Setup, Genesis, GenesisHash, GenesisRaw};
 use rand::{prelude::StdRng, Rng, SeedableRng};
 use zksync_concurrency::ctx;
 use zksync_consensus_crypto::Text;
 use zksync_protobuf::ProtoFmt as _;
+
+use super::*;
+use crate::validator::{testonly::Setup, Genesis, GenesisHash, GenesisRaw};
 
 /// Note that genesis is NOT versioned by ProtocolVersion.
 /// Even if it was, ALL versions of genesis need to be supported FOREVER,

@@ -1,9 +1,11 @@
-use super::*;
-use crate::noise;
-use rand::Rng as _;
 use std::sync::atomic::{AtomicU64, Ordering};
+
+use rand::Rng as _;
 use zksync_concurrency::{ctx, testonly::abort_on_panic, time};
 use zksync_protobuf::{kB, testonly::test_encode_random};
+
+use super::*;
+use crate::noise;
 
 #[test]
 fn test_schema_encode_decode() {

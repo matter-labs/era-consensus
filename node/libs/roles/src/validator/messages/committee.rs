@@ -1,7 +1,9 @@
 //! Messages related to the consensus protocol.
-use crate::validator;
-use anyhow::Context;
 use std::collections::BTreeMap;
+
+use anyhow::Context;
+
+use crate::validator;
 
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.

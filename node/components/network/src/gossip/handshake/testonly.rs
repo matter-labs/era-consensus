@@ -2,12 +2,13 @@
 //! Implementations of Distribution are supposed to generate realistic data,
 //! but in fact they are "best-effort realistic" - they might need an upgrade,
 //! if tests require stricter properties of the generated data.
-use super::Handshake;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
 use zksync_consensus_roles::node;
+
+use super::Handshake;
 
 /// Semver has specific restrictions on how an identifier
 /// should look like, so we play it safe and generate

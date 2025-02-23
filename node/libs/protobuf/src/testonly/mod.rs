@@ -1,9 +1,4 @@
 //! Testonly utilities.
-use super::{
-    canonical, canonical_raw, decode, encode, read_fields,
-    serde::{Deserialize, Serialize},
-    ProtoFmt, ProtoRepr, Wire,
-};
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
 use rand::{
@@ -11,6 +6,12 @@ use rand::{
     Rng,
 };
 use zksync_consensus_utils::EncodeDist;
+
+use super::{
+    canonical, canonical_raw, decode, encode, read_fields,
+    serde::{Deserialize, Serialize},
+    ProtoFmt, ProtoRepr, Wire,
+};
 
 /// Test encoding and canonical encoding properties.
 #[track_caller]

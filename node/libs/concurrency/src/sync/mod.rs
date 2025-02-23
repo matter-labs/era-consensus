@@ -1,7 +1,7 @@
 //! Context-aware wrappers for tokio synchronization primitives.
 
-use crate::{ctx, oneshot};
 use std::{fmt, marker::PhantomData, ops, sync::Arc};
+
 pub use tokio::{
     sync::{
         watch, Mutex, MutexGuard, Notify, OwnedMutexGuard, OwnedSemaphorePermit, Semaphore,
@@ -9,6 +9,8 @@ pub use tokio::{
     },
     task::yield_now,
 };
+
+use crate::{ctx, oneshot};
 
 pub mod prunable_mpsc;
 #[cfg(test)]
