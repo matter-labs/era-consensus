@@ -1,10 +1,11 @@
 //! Defines an RPC for sending ping messages.
-use super::Capability;
-use crate::proto::ping as proto;
 use anyhow::Context as _;
 use rand::Rng;
 use zksync_concurrency::{ctx, limiter, time};
 use zksync_protobuf::{kB, required, ProtoFmt};
+
+use super::Capability;
+use crate::proto::ping as proto;
 
 /// Ping RPC.
 pub(crate) struct Rpc;

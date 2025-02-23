@@ -6,12 +6,14 @@
 //! subset of original fields. Also we run only proto3 binary -> binary tests.
 //! failure_list.txt contains tests which are expected to fail.
 
-use self::proto::conformance_response::Result as ConformanceResult;
+use std::sync::Mutex;
+
 use anyhow::Context as _;
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
-use std::sync::Mutex;
 use zksync_concurrency::{ctx, io};
+
+use self::proto::conformance_response::Result as ConformanceResult;
 
 mod proto;
 

@@ -1,6 +1,7 @@
 #![allow(unused)]
-use anyhow::Context as _;
 use std::collections::BTreeMap;
+
+use anyhow::Context as _;
 use zksync_concurrency::{ctx, oneshot, scope, sync};
 use zksync_consensus_roles::{attester, validator};
 use zksync_consensus_storage::BlockStoreState;

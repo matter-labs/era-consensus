@@ -1,10 +1,11 @@
 //! Context-aware async read/write operations.
-use crate::ctx;
 pub use io::{split, AsyncRead, AsyncWrite, Error, ErrorKind, ReadBuf, Result};
 use tokio::{
     io,
     io::{AsyncReadExt as _, AsyncWriteExt as _},
 };
+
+use crate::ctx;
 
 /// Reads at most buf.len() bytes into `buf`, or returns an (ctx::Canceled or io::Error) error.
 /// Returns the number of bytes read.

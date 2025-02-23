@@ -1,7 +1,8 @@
 //! Test-only TCP utilities.
+use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
+
 use super::{accept, connect, ListenerAddr, Stream, RESERVED_LISTENER_ADDRS};
 use crate::{ctx, scope};
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr};
 
 /// Reserves a random port on localhost for a TCP listener.
 pub fn reserve_listener() -> ListenerAddr {

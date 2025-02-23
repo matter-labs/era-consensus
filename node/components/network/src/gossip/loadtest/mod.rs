@@ -1,5 +1,4 @@
 //! Loadtest of the gossip endpoint of a node.
-use crate::{gossip, mux, noise, preface, rpc, testonly};
 use anyhow::Context as _;
 use async_trait::async_trait;
 use rand::Rng;
@@ -7,6 +6,8 @@ use zksync_concurrency::{ctx, error::Wrap as _, limiter, net, scope, sync, time}
 use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStoreState;
 use zksync_protobuf::kB;
+
+use crate::{gossip, mux, noise, preface, rpc, testonly};
 
 #[cfg(test)]
 mod tests;

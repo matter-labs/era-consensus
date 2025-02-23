@@ -1,9 +1,10 @@
 //! Deployer for the kubernetes cluster.
-use clap::Parser;
 use std::{
     collections::HashMap,
     net::{Ipv4Addr, SocketAddr},
 };
+
+use clap::Parser;
 use zksync_concurrency::time;
 use zksync_consensus_roles::{node::SecretKey, validator};
 use zksync_consensus_tools::{config, k8s, k8s::ConsensusNode};

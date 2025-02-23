@@ -1,7 +1,9 @@
+use std::{collections::BTreeMap, fmt};
+
+use zksync_consensus_crypto::{secp256k1, ByteFmt, Text, TextFmt};
+
 use super::PublicKey;
 use crate::attester::{Msg, MsgHash};
-use std::{collections::BTreeMap, fmt};
-use zksync_consensus_crypto::{secp256k1, ByteFmt, Text, TextFmt};
 
 /// A signature of an L1 batch from an attester.
 #[derive(Clone, PartialEq, Eq, Hash)]

@@ -1,10 +1,12 @@
 //! Internal state of a reusable stream.
+use std::sync::Arc;
+
+use zksync_concurrency::{ctx, ctx::channel, limiter, oneshot, scope, sync};
+
 use super::{
     Config, FrameKind, Header, ReadStream, RunError, Stream, StreamId, StreamKind, WriteStream,
 };
 use crate::noise::bytes;
-use std::sync::Arc;
-use zksync_concurrency::{ctx, ctx::channel, limiter, oneshot, scope, sync};
 
 /// Read frame allocation permit.
 #[derive(Debug)]

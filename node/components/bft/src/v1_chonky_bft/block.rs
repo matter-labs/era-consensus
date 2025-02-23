@@ -1,7 +1,8 @@
-use super::StateMachine;
 use zksync_concurrency::{ctx, error::Wrap as _};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage as storage;
+
+use super::StateMachine;
 
 impl StateMachine {
     /// Tries to build a finalized block from the given CommitQC. We simply search our

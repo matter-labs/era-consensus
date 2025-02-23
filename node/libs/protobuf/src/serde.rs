@@ -3,9 +3,10 @@
 //! therefore it is suitable for version control.
 //! WARNING: Currently this serde implementation uses reflection,
 //! so it is not very efficient.
-use crate::{ProtoFmt, ProtoRepr};
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
+
+use crate::{ProtoFmt, ProtoRepr};
 
 /// Serialization options.
 pub struct Serialize;

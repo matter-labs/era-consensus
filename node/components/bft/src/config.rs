@@ -1,9 +1,11 @@
 //! The inner data of the consensus state machine. This is shared between the different roles.
-use crate::PayloadManager;
 use std::sync::Arc;
+
 use zksync_concurrency::time;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage as storage;
+
+use crate::PayloadManager;
 
 /// Configuration of the bft component.
 #[derive(Debug)]

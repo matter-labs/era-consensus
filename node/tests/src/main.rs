@@ -1,8 +1,9 @@
 //! This is a simple test for the RPC server. It checks if the server is running and can respond to.
+use std::{fs, io::Write, net::SocketAddr, path::PathBuf, str::FromStr};
+
 use anyhow::{ensure, Context};
 use clap::{Parser, Subcommand};
 use jsonrpsee::{core::client::ClientT, http_client::HttpClientBuilder, rpc_params};
-use std::{fs, io::Write, net::SocketAddr, path::PathBuf, str::FromStr};
 use zksync_consensus_tools::{k8s, rpc::methods::health_check};
 
 /// Command line arguments.

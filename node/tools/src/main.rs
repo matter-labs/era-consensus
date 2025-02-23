@@ -1,8 +1,9 @@
 //! Main binary for the consensus node. It reads the configuration, initializes all parts of the node and
 //! manages communication between the components. It is the main executable in this workspace.
+use std::{fs, fs::Permissions, io::IsTerminal as _, os::unix::fs::PermissionsExt, path::PathBuf};
+
 use anyhow::Context as _;
 use clap::Parser;
-use std::{fs, fs::Permissions, io::IsTerminal as _, os::unix::fs::PermissionsExt, path::PathBuf};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;

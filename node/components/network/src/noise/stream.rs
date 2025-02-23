@@ -1,16 +1,18 @@
 //! `tokio::io` stream using Noise encryption.
-use super::bytes;
-use crate::metrics::MeteredStream;
-use anyhow::Context as _;
 use std::{
     pin::Pin,
     task::{ready, Context, Poll},
 };
+
+use anyhow::Context as _;
 use zksync_concurrency::{
     ctx, io,
     io::{AsyncRead as _, AsyncWrite as _},
 };
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt};
+
+use super::bytes;
+use crate::metrics::MeteredStream;
 
 /// Fixed noise configuration. Nodes need to use the same noise
 /// configuration to be able to connect to each other.

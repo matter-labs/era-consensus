@@ -1,5 +1,4 @@
 //! Unit tests of `get_block` RPC.
-use crate::{gossip, mux, rpc};
 use assert_matches::assert_matches;
 use rand::Rng as _;
 use tracing::Instrument as _;
@@ -9,6 +8,8 @@ use zksync_consensus_storage::{
     testonly::{in_memory, TestMemoryStorage},
     BlockStore, BlockStoreState, PersistentBlockStore as _,
 };
+
+use crate::{gossip, mux, rpc};
 
 #[tokio::test]
 async fn test_simple() {

@@ -1,7 +1,8 @@
-use super::{GenesisHash, Signed};
-use crate::attester;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
+
+use super::{GenesisHash, Signed};
+use crate::attester;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 /// A batch number.

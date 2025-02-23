@@ -7,14 +7,16 @@
 //! with validators, where each validator registers their public key on-chain together with a POP (a signature over their public key
 //! is sufficient).
 
-use crate::ByteFmt;
-use blst::{min_sig as bls, BLST_ERROR};
-use rand::Rng as _;
 use std::{
     collections::BTreeMap,
     fmt::{Debug, Formatter},
 };
+
+use blst::{min_sig as bls, BLST_ERROR};
+use rand::Rng as _;
 use zeroize::ZeroizeOnDrop;
+
+use crate::ByteFmt;
 
 #[cfg(test)]
 mod tests;

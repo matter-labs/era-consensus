@@ -1,6 +1,7 @@
 //! Prometheus metrics utilities.
 
 use std::time::Duration;
+
 use vise::Gauge;
 
 /// Extension trait for latency histograms.

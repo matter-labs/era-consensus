@@ -2,8 +2,6 @@
 
 #![allow(clippy::float_arithmetic)]
 
-use crate::Network;
-use anyhow::Context as _;
 use std::{
     fmt,
     net::SocketAddr,
@@ -14,10 +12,14 @@ use std::{
     },
     task::{ready, Context, Poll},
 };
+
+use anyhow::Context as _;
 use vise::{
     Collector, Counter, EncodeLabelSet, EncodeLabelValue, Family, Gauge, GaugeGuard, Metrics, Unit,
 };
 use zksync_concurrency::{ctx, io, net, time::Instant};
+
+use crate::Network;
 
 /// Metered TCP stream.
 #[pin_project::pin_project]

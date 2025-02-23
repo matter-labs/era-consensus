@@ -1,14 +1,15 @@
+use bit_vec::BitVec;
+use rand::{
+    distributions::{Distribution, Standard},
+    Rng,
+};
+
 use super::{
     BlockHeader, CommitQC, FinalBlock, LeaderProposal, LeaderSelectionMode, Phase,
     ProposalJustification, ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
     ViewNumber,
 };
 use crate::validator::{testonly::Setup, Block, Payload};
-use bit_vec::BitVec;
-use rand::{
-    distributions::{Distribution, Standard},
-    Rng,
-};
 
 // Adds v1-specific test utilities to the `Setup` struct.
 impl Setup {

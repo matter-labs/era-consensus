@@ -1,11 +1,12 @@
 //! RocksDB-based implementation of PersistentBlockStore and ReplicaStore.
-use anyhow::Context as _;
-use rocksdb::{Direction, IteratorMode, ReadOptions};
 use std::{
     fmt,
     path::Path,
     sync::{Arc, RwLock},
 };
+
+use anyhow::Context as _;
+use rocksdb::{Direction, IteratorMode, ReadOptions};
 use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{

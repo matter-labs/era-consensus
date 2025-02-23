@@ -1,8 +1,9 @@
 //! This module contains utilities that are only meant for testing purposes.
-use crate::PayloadManager;
 use rand::Rng;
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::validator;
+
+use crate::PayloadManager;
 
 /// Produces random payload of a given size.
 #[derive(Debug)]

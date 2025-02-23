@@ -1,12 +1,13 @@
+use anyhow::Context as _;
+use zksync_consensus_crypto::ByteFmt;
+use zksync_consensus_utils::enum_util::Variant;
+use zksync_protobuf::{read_map, read_required, required, ProtoFmt};
+
 use super::{
     AggregateSignature, Batch, BatchHash, BatchNumber, BatchQC, Msg, MsgHash, MultiSig, PublicKey,
     Signature, Signed, Signers, WeightedAttester,
 };
 use crate::proto::attester as proto;
-use anyhow::Context as _;
-use zksync_consensus_crypto::ByteFmt;
-use zksync_consensus_utils::enum_util::Variant;
-use zksync_protobuf::{read_map, read_required, required, ProtoFmt};
 
 impl ProtoFmt for BatchHash {
     type Proto = proto::BatchHash;

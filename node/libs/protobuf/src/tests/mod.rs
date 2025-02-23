@@ -1,8 +1,10 @@
+use std::net;
+
+use anyhow::Context as _;
+use zksync_concurrency::{ctx, limiter, time};
+
 use super::*;
 use crate::testonly::{test_encode_all_formats, FmtConv};
-use anyhow::Context as _;
-use std::net;
-use zksync_concurrency::{ctx, limiter, time};
 
 mod proto;
 

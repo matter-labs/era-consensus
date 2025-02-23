@@ -3,9 +3,10 @@
 //! algorithm (so that the transmission latency is more
 //! predictable), so the caller is expected to apply
 //! user space buffering.
-use crate::ctx;
 pub use listener_addr::*;
 use tokio::io;
+
+use crate::ctx;
 
 mod listener_addr;
 pub mod testonly;

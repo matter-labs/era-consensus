@@ -1,7 +1,8 @@
 //! Random key generation, intended for use in testing
 
-use super::{bls, AggregateSignature, ProofOfPossession, PublicKey, SecretKey, Signature};
 use rand::{distributions::Standard, prelude::Distribution, Rng};
+
+use super::{bls, AggregateSignature, ProofOfPossession, PublicKey, SecretKey, Signature};
 
 /// Generates a random SecretKey. This is meant for testing purposes.
 impl Distribution<SecretKey> for Standard {

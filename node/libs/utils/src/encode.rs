@@ -1,9 +1,10 @@
 //! Utilities for testing encodings.
+use std::{path::PathBuf, str::FromStr};
+
 use rand::{
     distributions::{Alphanumeric, DistString, Distribution},
     Rng,
 };
-use std::{path::PathBuf, str::FromStr};
 use zksync_concurrency::{limiter, net, time};
 
 /// Distribution for testing encodings.

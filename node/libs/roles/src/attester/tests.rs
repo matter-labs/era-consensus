@@ -1,9 +1,10 @@
-use super::*;
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::ctx;
 use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
 use zksync_protobuf::testonly::test_encode_random;
+
+use super::*;
 
 #[test]
 fn test_byte_encoding() {

@@ -1,9 +1,10 @@
 //! RPC for fetching a block from peer.
-use super::Capability;
-use crate::proto::gossip as proto;
 use anyhow::Context;
 use zksync_consensus_roles::validator;
 use zksync_protobuf::ProtoFmt;
+
+use super::Capability;
+use crate::proto::gossip as proto;
 
 /// `get_block` RPC.
 #[derive(Debug)]

@@ -1,5 +1,6 @@
-use super::*;
 use zksync_consensus_crypto::{keccak256::Keccak256, Text};
+
+use super::*;
 
 #[test]
 fn payload_hash_change_detector() {

@@ -1,8 +1,9 @@
-use super::*;
-use crate::testonly;
 use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::testonly::TestMemoryStorage;
+
+use super::*;
+use crate::testonly;
 
 #[tokio::test]
 async fn test_loadtest() {

@@ -1,3 +1,8 @@
+use assert_matches::assert_matches;
+use rand::Rng;
+use zksync_concurrency::{ctx, scope};
+use zksync_consensus_roles::validator;
+
 use crate::{
     testonly::RejectPayload,
     v1_chonky_bft::{
@@ -5,10 +10,6 @@ use crate::{
         testonly::{UnitTestHarness, MAX_PAYLOAD_SIZE},
     },
 };
-use assert_matches::assert_matches;
-use rand::Rng;
-use zksync_concurrency::{ctx, scope};
-use zksync_consensus_roles::validator;
 
 #[tokio::test]
 async fn proposal_yield_replica_commit_sanity() {

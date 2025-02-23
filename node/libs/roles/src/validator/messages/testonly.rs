@@ -1,15 +1,16 @@
-use super::{
-    v1, Block, BlockNumber, ChainId, Committee, ConsensusMsg, ForkNumber, Genesis, GenesisHash,
-    GenesisRaw, Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock,
-    ProtocolVersion, Signed, WeightedValidator,
-};
-use crate::validator::SecretKey;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
 use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
+
+use super::{
+    v1, Block, BlockNumber, ChainId, Committee, ConsensusMsg, ForkNumber, Genesis, GenesisHash,
+    GenesisRaw, Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock,
+    ProtocolVersion, Signed, WeightedValidator,
+};
+use crate::validator::SecretKey;
 
 impl Distribution<BlockNumber> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockNumber {

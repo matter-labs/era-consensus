@@ -1,13 +1,15 @@
 //! Test-only utilities.
+use std::sync::Arc;
+
+use anyhow::Context as _;
+use rand::{distributions::Standard, prelude::Distribution, Rng};
+use zksync_concurrency::ctx;
+use zksync_consensus_roles::{validator, validator::testonly::Setup};
+
 use crate::{
     BlockStore, BlockStoreRunner, BlockStoreState, Last, PersistentBlockStore, Proposal,
     ReplicaState,
 };
-use anyhow::Context as _;
-use rand::{distributions::Standard, prelude::Distribution, Rng};
-use std::sync::Arc;
-use zksync_concurrency::ctx;
-use zksync_consensus_roles::{validator, validator::testonly::Setup};
 
 pub mod in_memory;
 

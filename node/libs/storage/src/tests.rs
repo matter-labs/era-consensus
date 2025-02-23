@@ -1,11 +1,12 @@
-use super::*;
-use crate::{testonly::TestMemoryStorage, ReplicaState};
 use rand::Rng as _;
 use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
 use zksync_consensus_roles::{
     validator,
     validator::testonly::{Setup, SetupSpec},
 };
+
+use super::*;
+use crate::{testonly::TestMemoryStorage, ReplicaState};
 
 #[tokio::test]
 async fn test_inmemory_block_store() {

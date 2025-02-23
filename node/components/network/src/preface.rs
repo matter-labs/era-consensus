@@ -7,9 +7,10 @@
 //!
 //! Hence, the preface protocol is used to enable encryption
 //! and multiplex between multiple endpoints available on the same TCP port.
-use crate::{frame, metrics, noise, proto::preface as proto};
 use zksync_concurrency::{ctx, error::Wrap as _, time};
 use zksync_protobuf::{kB, required, ProtoFmt};
+
+use crate::{frame, metrics, noise, proto::preface as proto};
 
 /// Timeout on executing the preface protocol.
 const TIMEOUT: time::Duration = time::Duration::seconds(5);

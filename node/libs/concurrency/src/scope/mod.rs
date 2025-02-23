@@ -31,12 +31,13 @@
 // TODO(gprusak): add more tests
 // TODO(gprusak): add simple useful real-life examples
 // TODO(gprusak): add a style guide on how to use scopes.
-use crate::{ctx, time};
 use std::{
     future::Future,
     pin::Pin,
     sync::{Arc, Weak},
 };
+
+use crate::{ctx, time};
 
 mod macros;
 mod must_complete;

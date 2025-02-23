@@ -11,8 +11,9 @@
 //! Instead of "awaiting for new data on the channel", you "await for new data on the channel OR
 //! for context to get canceled". This way you can implement graceful shutdown
 //! in a very uniform way.
-use crate::{signal, time};
 use std::{fmt, future::Future, pin::Pin, sync::Arc, task};
+
+use crate::{signal, time};
 
 pub mod channel;
 mod clock;

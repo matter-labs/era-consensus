@@ -1,8 +1,10 @@
-use super::methods::{health_check, last_committed_block, last_view};
-use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
 use std::{net::SocketAddr, sync::Arc};
+
+use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_storage::BlockStore;
+
+use super::methods::{health_check, last_committed_block, last_view};
 
 /// RPC server.
 pub struct RPCServer {

@@ -1,8 +1,9 @@
-use crate::{node, proto::node as proto};
 use anyhow::Context as _;
 use zksync_consensus_crypto::ByteFmt;
 use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{read_required, required, ProtoFmt};
+
+use crate::{node, proto::node as proto};
 
 impl ProtoFmt for node::Msg {
     type Proto = proto::Msg;

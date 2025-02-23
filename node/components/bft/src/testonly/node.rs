@@ -1,10 +1,12 @@
-use crate::{testonly, FromNetworkMessage, PayloadManager, ToNetworkMessage};
-use anyhow::Context as _;
 use std::sync::Arc;
+
+use anyhow::Context as _;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync, time};
 use zksync_consensus_network as network;
 use zksync_consensus_storage as storage;
 use zksync_consensus_storage::testonly::in_memory;
+
+use crate::{testonly, FromNetworkMessage, PayloadManager, ToNetworkMessage};
 
 pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
 

@@ -1,8 +1,10 @@
 //! Messages related to the consensus protocol.
+use std::{fmt, hash::Hash};
+
+use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
+
 use super::{v1, BlockNumber, Committee};
 use crate::validator;
-use std::{fmt, hash::Hash};
-use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 
 /// Genesis of the blockchain, unique for each blockchain instance.
 #[derive(Debug, Clone, PartialEq)]

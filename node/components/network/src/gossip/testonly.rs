@@ -1,11 +1,13 @@
 #![allow(dead_code)]
-use super::*;
-use crate::{frame, mux, noise, preface, rpc, testonly::make_config, Config};
+use std::collections::BTreeMap;
+
 use anyhow::Context as _;
 use rand::Rng;
-use std::collections::BTreeMap;
 use zksync_concurrency::{ctx, limiter};
 use zksync_consensus_roles::validator;
+
+use super::*;
+use crate::{frame, mux, noise, preface, rpc, testonly::make_config, Config};
 
 /// Connection.
 pub(super) struct Conn {

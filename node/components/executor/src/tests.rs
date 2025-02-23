@@ -1,5 +1,4 @@
 //! High-level tests for `Executor`.
-use super::*;
 use rand::Rng as _;
 //use std::sync::{atomic::AtomicU64, Mutex};
 use tracing::Instrument as _;
@@ -11,6 +10,8 @@ use zksync_consensus_storage::{
     testonly::{in_memory, TestMemoryStorage},
     BlockStore,
 };
+
+use super::*;
 
 fn config(cfg: &network::Config) -> Config {
     Config {

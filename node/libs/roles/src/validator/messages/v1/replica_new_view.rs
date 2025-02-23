@@ -1,6 +1,5 @@
-use crate::validator::Genesis;
-
 use super::{ProposalJustification, ProposalJustificationVerifyError, View};
+use crate::validator::Genesis;
 
 /// A new view message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq)]

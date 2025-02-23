@@ -1,16 +1,18 @@
 //! Consensus network is a full graph of connections between all validators.
 //! BFT consensus messages are exchanged over this network.
-use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc, MeteredStreamStats};
-use anyhow::Context as _;
-use rand::seq::SliceRandom;
 use std::{
     collections::{BTreeMap, HashSet},
     sync::Arc,
 };
+
+use anyhow::Context as _;
+use rand::seq::SliceRandom;
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, oneshot, scope, sync, time};
 use zksync_consensus_roles::validator;
 use zksync_protobuf::kB;
+
+use crate::{config, gossip, io, noise, pool::PoolWatch, preface, rpc, MeteredStreamStats};
 
 mod handshake;
 #[cfg(test)]

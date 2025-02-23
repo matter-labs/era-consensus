@@ -2,13 +2,15 @@
 //! Implementations of Distribution are supposed to generate realistic data,
 //! but in fact they are "best-effort realistic" - they might need an upgrade,
 //! if tests require stricter properties of the generated data.
-use crate::rpc;
+use std::sync::Arc;
+
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use std::sync::Arc;
 use zksync_consensus_roles::validator;
+
+use crate::rpc;
 
 impl Distribution<rpc::consensus::Req> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> rpc::consensus::Req {

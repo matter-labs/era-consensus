@@ -2,13 +2,15 @@
 //! This corresponds to the version 1 of the protocol.
 //! The module is responsible for handling the logic that allows us to reach agreement on blocks.
 
-use crate::{metrics, Config, FromNetworkMessage, ToNetworkMessage};
 use std::{
     collections::{BTreeMap, HashMap},
     sync::Arc,
 };
+
 use zksync_concurrency::{ctx, error::Wrap as _, metrics::LatencyHistogramExt as _, sync, time};
 use zksync_consensus_roles::validator;
+
+use crate::{metrics, Config, FromNetworkMessage, ToNetworkMessage};
 
 mod block;
 mod commit;

@@ -1,11 +1,13 @@
 //! Metrics for RPCs.
 
-use super::Rpc;
 use std::{any::Any, time::Duration};
+
 use vise::{
     Buckets, EncodeLabelSet, EncodeLabelValue, Family, Gauge, Histogram, LabeledFamily, Metrics,
     Unit,
 };
+
+use super::Rpc;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, EncodeLabelValue)]
 #[metrics(rename_all = "snake_case")]

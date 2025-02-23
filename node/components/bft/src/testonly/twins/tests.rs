@@ -1,11 +1,13 @@
-use super::{splits, Cluster, HasKey, ScenarioGenerator, Split, Twin};
-use crate::testonly::twins::unique_key_count;
-use rand::Rng;
 use std::{
     collections::{BTreeSet, HashSet},
     fmt::Debug,
 };
+
+use rand::Rng;
 use zksync_concurrency::ctx;
+
+use super::{splits, Cluster, HasKey, ScenarioGenerator, Split, Twin};
+use crate::testonly::twins::unique_key_count;
 
 #[test]
 fn test_splits() {

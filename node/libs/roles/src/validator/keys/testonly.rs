@@ -1,10 +1,12 @@
 //! Test-only utilities.
-use super::{AggregateSignature, ProofOfPossession, PublicKey, SecretKey, Signature};
+use std::sync::Arc;
+
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use std::sync::Arc;
+
+use super::{AggregateSignature, ProofOfPossession, PublicKey, SecretKey, Signature};
 
 impl Distribution<AggregateSignature> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> AggregateSignature {

@@ -1,6 +1,4 @@
 //! Node configuration.
-use crate::{proto, store};
-use anyhow::{anyhow, Context as _};
 use std::{
     collections::{HashMap, HashSet},
     fs, io,
@@ -8,6 +6,8 @@ use std::{
     path::PathBuf,
     sync::Arc,
 };
+
+use anyhow::{anyhow, Context as _};
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use zksync_concurrency::{ctx, net, time};
 use zksync_consensus_bft as bft;
@@ -21,6 +21,8 @@ use zksync_consensus_storage::{
 use zksync_protobuf::{
     read_optional, read_optional_repr, read_required, required, ProtoFmt, ProtoRepr,
 };
+
+use crate::{proto, store};
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 

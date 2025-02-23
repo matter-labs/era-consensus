@@ -19,13 +19,15 @@
 //!    of different machines are not perfectly synchronized, and in extreme
 //!    cases can be totally skewed.
 #![allow(clippy::float_arithmetic)]
-use crate::time;
-use once_cell::sync::Lazy;
 use std::{
     fmt,
     sync::{Arc, Mutex},
 };
+
+use once_cell::sync::Lazy;
 use tokio::sync::watch;
+
+use crate::time;
 
 // Instant doesn't have a deterministic constructor.
 // However since Instant is not convertible to an unix timestamp,

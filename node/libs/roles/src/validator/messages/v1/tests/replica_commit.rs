@@ -1,8 +1,9 @@
-use super::*;
-use crate::validator::{messages::tests::genesis_v1, testonly::Setup, ChainId, Signed};
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::ctx;
+
+use super::*;
+use crate::validator::{messages::tests::genesis_v1, testonly::Setup, ChainId, Signed};
 
 #[test]
 fn test_replica_commit_verify() {

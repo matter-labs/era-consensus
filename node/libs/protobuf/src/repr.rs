@@ -1,7 +1,8 @@
 //! Trait for defining proto conversion for external types.
 
-use crate::build::prost_reflect::ReflectMessage;
 use anyhow::Context as _;
+
+use crate::build::prost_reflect::ReflectMessage;
 
 /// Trait reverse to `zksync_protobuf::ProtoFmt` for cases where
 /// you would like to specify a custom proto encoding for an externally defined type.

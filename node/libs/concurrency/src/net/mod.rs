@@ -1,7 +1,8 @@
 //! Context-aware network utilities.
 //! Built on top of `tokio::net`.
-use crate::ctx;
 use std::fmt;
+
+use crate::ctx;
 
 pub mod tcp;
 

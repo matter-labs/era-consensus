@@ -1,9 +1,10 @@
 //! This crate contains the consensus component, which is responsible for handling the logic that allows us to reach agreement on blocks.
 //! It uses a new cosnensus algorithm developed at Matter Labs, called ChonkyBFT. You can find the specification of the algorithm [here](../../../../spec).
 
+use std::sync::Arc;
+
 use anyhow::Context;
 pub use config::Config;
-use std::sync::Arc;
 use zksync_concurrency::{
     ctx,
     error::Wrap as _,

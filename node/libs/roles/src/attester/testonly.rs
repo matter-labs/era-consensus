@@ -1,15 +1,17 @@
-use super::{
-    AggregateMultiSig, AggregateSignature, Batch, BatchHash, BatchNumber, BatchQC, Committee, Msg,
-    MsgHash, MultiSig, PublicKey, SecretKey, Signature, Signed, Signers, WeightedAttester,
-};
+use std::sync::Arc;
+
 use bit_vec::BitVec;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use std::sync::Arc;
 use zksync_consensus_crypto::bls12_381;
 use zksync_consensus_utils::enum_util::Variant;
+
+use super::{
+    AggregateMultiSig, AggregateSignature, Batch, BatchHash, BatchNumber, BatchQC, Committee, Msg,
+    MsgHash, MultiSig, PublicKey, SecretKey, Signature, Signed, Signers, WeightedAttester,
+};
 
 impl AggregateSignature {
     /// Generate a new aggregate signature from a list of signatures.

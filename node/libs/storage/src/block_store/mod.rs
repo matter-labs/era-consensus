@@ -1,6 +1,7 @@
 //! Defines storage layer for finalized blocks.
-use anyhow::Context as _;
 use std::{collections::VecDeque, fmt, sync::Arc};
+
+use anyhow::Context as _;
 use tracing::Instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::validator;

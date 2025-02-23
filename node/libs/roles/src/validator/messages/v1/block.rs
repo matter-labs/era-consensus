@@ -1,8 +1,8 @@
 //! Messages related to blocks.
-use crate::validator::{BlockNumber, Genesis, Payload, PayloadHash};
+use zksync_consensus_crypto::ByteFmt;
 
 use super::{CommitQC, CommitQCVerifyError};
-use zksync_consensus_crypto::ByteFmt;
+use crate::validator::{BlockNumber, Genesis, Payload, PayloadHash};
 
 /// A block header.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.

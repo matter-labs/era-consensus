@@ -1,5 +1,10 @@
 //! Http Server to export debug information
-use crate::{gossip::Connection, MeteredStreamStats, Network};
+use std::{
+    collections::{HashMap, HashSet},
+    net::SocketAddr,
+    sync::{atomic::Ordering, Arc},
+};
+
 use anyhow::Context as _;
 use base64::Engine;
 use build_html::{Html, HtmlContainer, HtmlPage, Table, TableCell, TableCellType, TableRow};
@@ -13,11 +18,6 @@ use hyper::{
     HeaderMap, Request, Response, StatusCode,
 };
 use hyper_util::rt::tokio::TokioIo;
-use std::{
-    collections::{HashMap, HashSet},
-    net::SocketAddr,
-    sync::{atomic::Ordering, Arc},
-};
 use tls_listener::TlsListener;
 use tokio::net::TcpListener;
 use tokio_rustls::{
@@ -31,6 +31,8 @@ use tokio_rustls::{
 use zksync_concurrency::{ctx, net, scope};
 use zksync_consensus_crypto::TextFmt as _;
 use zksync_consensus_roles::{attester, node, validator};
+
+use crate::{gossip::Connection, MeteredStreamStats, Network};
 
 const STYLE: &str = include_str!("style.css");
 

@@ -1,5 +1,6 @@
-use super::*;
 use rand::{rngs::StdRng, Rng, SeedableRng};
+
+use super::*;
 
 // Represents the public key at infinity.
 const INFINITY_PUBLIC_KEY: [u8; 96] = [

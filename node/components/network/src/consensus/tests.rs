@@ -1,13 +1,15 @@
 #![allow(irrefutable_let_patterns)]
-use super::*;
-use crate::{io, metrics, preface, rpc, testonly};
+use std::collections::HashSet;
+
 use assert_matches::assert_matches;
 use rand::Rng;
-use std::collections::HashSet;
 use zksync_concurrency::{ctx, error::Wrap as _, net, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::testonly::TestMemoryStorage;
 use zksync_consensus_utils::enum_util::Variant as _;
+
+use super::*;
+use crate::{io, metrics, preface, rpc, testonly};
 
 #[tokio::test]
 async fn test_msg_pool() {

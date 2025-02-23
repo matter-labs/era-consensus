@@ -1,9 +1,10 @@
+use zksync_concurrency::{ctx, time};
+use zksync_consensus_roles::validator;
+
 use crate::{
     testonly::Behavior,
     v1_chonky_bft::testonly::{IntegrationTestConfig, TestNetwork},
 };
-use zksync_concurrency::{ctx, time};
-use zksync_consensus_roles::validator;
 
 async fn run_test(behavior: Behavior, network: TestNetwork) {
     tokio::time::pause();

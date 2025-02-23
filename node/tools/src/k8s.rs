@@ -1,4 +1,5 @@
-use crate::config;
+use std::{collections::BTreeMap, net::SocketAddr, time::Duration};
+
 use anyhow::{ensure, Context};
 use k8s_openapi::{
     api::{
@@ -15,10 +16,11 @@ use kube::{
     core::ObjectMeta,
     Api, Client,
 };
-use std::{collections::BTreeMap, net::SocketAddr, time::Duration};
 use tokio::time;
 use tracing::log::info;
 use zksync_protobuf::serde::Serialize;
+
+use crate::config;
 
 /// Docker image name for consensus nodes.
 const DOCKER_IMAGE_NAME: &str = "consensus-node";

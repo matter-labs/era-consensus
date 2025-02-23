@@ -1,8 +1,9 @@
-use crate::v1_chonky_bft::{testonly::UnitTestHarness, timeout};
 use assert_matches::assert_matches;
 use rand::{seq::SliceRandom as _, Rng};
 use zksync_concurrency::{ctx, scope};
 use zksync_consensus_roles::validator;
+
+use crate::v1_chonky_bft::{testonly::UnitTestHarness, timeout};
 
 #[test]
 fn timeout_qc_aggregation() {

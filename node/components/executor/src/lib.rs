@@ -1,10 +1,11 @@
 //! Library files for the executor. We have it separate from the binary so that we can use these files in the tools crate.
-use anyhow::Context as _;
-pub use network::{gossip::attestation, RpcConfig};
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
 };
+
+use anyhow::Context as _;
+pub use network::{gossip::attestation, RpcConfig};
 use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;

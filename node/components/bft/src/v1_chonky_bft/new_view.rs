@@ -1,8 +1,9 @@
-use super::StateMachine;
-use crate::metrics;
 use zksync_concurrency::{ctx, error::Wrap, metrics::LatencyHistogramExt as _, time};
 use zksync_consensus_network::io::ConsensusInputMessage;
 use zksync_consensus_roles::validator;
+
+use super::StateMachine;
+use crate::metrics;
 
 /// Errors that can occur when processing a ReplicaNewView message.
 #[derive(Debug, thiserror::Error)]

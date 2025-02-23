@@ -1,9 +1,10 @@
+use std::collections::{BTreeMap, HashMap};
+
 use super::{
     BlockHeader, CommitQC, CommitQCVerifyError, ReplicaCommit, ReplicaCommitVerifyError, Signers,
     View,
 };
 use crate::validator::{self, Committee, Genesis, Signed};
-use std::collections::{BTreeMap, HashMap};
 
 /// A timeout message from a replica.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.

@@ -1,11 +1,12 @@
 //! ed25519 signature scheme.
 //! This is just an adapter of ed25519_dalek, exposing zksync-bft-specific API.
 
-use crate::ByteFmt;
 use anyhow::Context as _;
 use ed::Signer as _;
 use ed25519_dalek as ed;
 use zeroize::ZeroizeOnDrop;
+
+use crate::ByteFmt;
 
 pub mod testonly;
 

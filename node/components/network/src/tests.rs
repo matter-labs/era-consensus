@@ -1,8 +1,9 @@
-use crate::testonly;
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, scope, testonly::abort_on_panic};
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::testonly::TestMemoryStorage;
+
+use crate::testonly;
 
 /// Test that metrics are correctly defined
 /// (won't panic during registration).

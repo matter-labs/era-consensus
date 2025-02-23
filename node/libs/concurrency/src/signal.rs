@@ -1,7 +1,8 @@
 //! Simple signal reporting primitive. A building block for `Scope` and `Ctx`.
 //! Can also be used outside of the crate, but only together with `Ctx`.
-use crate::ctx;
 use std::future::Future;
+
+use crate::ctx;
 
 /// Communication channel over which a signal can be sent only once.
 /// Useful for reporting very simple events.

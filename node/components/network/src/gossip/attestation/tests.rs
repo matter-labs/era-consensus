@@ -1,6 +1,7 @@
-use super::*;
 use rand::{seq::SliceRandom as _, Rng as _};
 use zksync_concurrency::testonly::abort_on_panic;
+
+use super::*;
 
 type Vote = Arc<attester::Signed<attester::Batch>>;
 
