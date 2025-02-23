@@ -6,7 +6,13 @@
     "packages": {
         "node": {
             "component": "era-consensus",
-            "release-type": "simple"
+            "release-type": "simple",
+            "extra-files": [
+                {
+                    "type": "generic",
+                    "path": "Cargo.toml"
+                }
+            ]
         }
     }
 }
