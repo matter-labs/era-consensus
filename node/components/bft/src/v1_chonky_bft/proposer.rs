@@ -50,7 +50,7 @@ pub(crate) async fn run_proposer(
         // Broadcast our proposal to all replicas (ourselves included).
         let msg = cfg
             .secret_key
-            .sign_msg(validator::v1::ConsensusMsg::LeaderProposal(proposal));
+            .sign_msg(validator::ConsensusMsg::LeaderProposal(proposal));
         tracing::debug!(
             bft_message = format!("{:#?}", msg.msg),
             "ChonkyBFT proposer - Broadcasting proposal.",

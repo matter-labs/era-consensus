@@ -53,7 +53,7 @@ impl MsgPool {
             let mut should_insert = true;
             // Remove (at most) 1 message of the same type which is older.
             msgs.retain(|_, v| {
-                use validator::v1::ConsensusMsg as M;
+                use validator::ConsensusMsg as M;
                 // Messages of other types stay in the pool.
                 // TODO(gprusak): internals of `ConsensusMsg` are essentially
                 // an implementation detail of the bft crate. Consider moving

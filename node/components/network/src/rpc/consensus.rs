@@ -21,7 +21,7 @@ impl super::Rpc for Rpc {
 
 /// Signed consensus message that the receiving peer should process.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Req(pub(crate) validator::Signed<validator::v1::ConsensusMsg>);
+pub(crate) struct Req(pub(crate) validator::Signed<validator::ConsensusMsg>);
 
 /// Confirmation that the consensus message has been processed.
 #[derive(Debug, Clone, PartialEq, Eq)]

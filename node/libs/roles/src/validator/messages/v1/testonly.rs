@@ -1,5 +1,5 @@
 use super::{
-    BlockHeader, CommitQC, ConsensusMsg, FinalBlock, LeaderProposal, LeaderSelectionMode, Phase,
+    BlockHeader, CommitQC, FinalBlock, LeaderProposal, LeaderSelectionMode, Phase,
     ProposalJustification, ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
     ViewNumber,
 };
@@ -294,18 +294,6 @@ impl Distribution<Phase> for Standard {
         match i {
             0 => Phase::Prepare,
             1 => Phase::Commit,
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl Distribution<ConsensusMsg> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ConsensusMsg {
-        match rng.gen_range(0..4) {
-            0 => ConsensusMsg::LeaderProposal(rng.gen()),
-            1 => ConsensusMsg::ReplicaCommit(rng.gen()),
-            2 => ConsensusMsg::ReplicaNewView(rng.gen()),
-            3 => ConsensusMsg::ReplicaTimeout(rng.gen()),
             _ => unreachable!(),
         }
     }

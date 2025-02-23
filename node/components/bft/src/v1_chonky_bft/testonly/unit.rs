@@ -157,9 +157,9 @@ impl UnitTestHarness {
 
         // We *may* have received a new view message before the timeout message.
         match self.try_recv().unwrap().msg {
-            validator::v1::ConsensusMsg::ReplicaTimeout(msg) => msg,
+            validator::ConsensusMsg::ReplicaTimeout(msg) => msg,
             // If we did get a new view first, the second message is certainly a timeout.
-            validator::v1::ConsensusMsg::ReplicaNewView(_) => self.try_recv().unwrap().msg,
+            validator::ConsensusMsg::ReplicaNewView(_) => self.try_recv().unwrap().msg,
             _ => unreachable!(),
         }
     }
@@ -309,9 +309,9 @@ impl UnitTestHarness {
         let replica_timeout =
             // We *may* have received a new view message before the timeout message.
             match self.try_recv().unwrap().msg {
-                validator::v1::ConsensusMsg::ReplicaTimeout(msg) => msg,
+                validator::ConsensusMsg::ReplicaTimeout(msg) => msg,
                 // If we did get a new view first, the second message is certainly a timeout.
-                validator::v1::ConsensusMsg::ReplicaNewView(_) => self.try_recv().unwrap().msg,
+                validator::ConsensusMsg::ReplicaNewView(_) => self.try_recv().unwrap().msg,
                 _ => unreachable!(),
             };
 
@@ -322,7 +322,7 @@ impl UnitTestHarness {
         self.produce_block(ctx).await;
     }
 
-    pub(crate) fn send(&self, msg: validator::Signed<validator::v1::ConsensusMsg>) {
+    pub(crate) fn send(&self, msg: validator::Signed<validator::ConsensusMsg>) {
         self.inbound_channel.send(FromNetworkMessage {
             msg,
             ack: zksync_concurrency::oneshot::channel().0,

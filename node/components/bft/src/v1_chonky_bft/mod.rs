@@ -151,7 +151,7 @@ impl StateMachine {
             // Process the message.
             let now = ctx.now();
             let label = match &req.msg.msg {
-                validator::v1::ConsensusMsg::LeaderProposal(_) => {
+                validator::ConsensusMsg::LeaderProposal(_) => {
                     let res = match self
                         .on_proposal(ctx, req.msg.cast().unwrap())
                         .await
@@ -180,7 +180,7 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::LeaderProposal.with_result(&res)
                 }
-                validator::v1::ConsensusMsg::ReplicaCommit(_) => {
+                validator::ConsensusMsg::ReplicaCommit(_) => {
                     let res = match self
                         .on_commit(ctx, req.msg.cast().unwrap())
                         .await
@@ -209,7 +209,7 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::ReplicaCommit.with_result(&res)
                 }
-                validator::v1::ConsensusMsg::ReplicaTimeout(_) => {
+                validator::ConsensusMsg::ReplicaTimeout(_) => {
                     let res = match self
                         .on_timeout(ctx, req.msg.cast().unwrap())
                         .await
@@ -238,7 +238,7 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::ReplicaTimeout.with_result(&res)
                 }
-                validator::v1::ConsensusMsg::ReplicaNewView(_) => {
+                validator::ConsensusMsg::ReplicaNewView(_) => {
                     let res = match self
                         .on_new_view(ctx, req.msg.cast().unwrap())
                         .await

@@ -177,13 +177,14 @@ impl StateMachine {
         // We don't broadcast a new view message for view 0 since we don't have
         // a justification for it.
         if self.view_number != validator::v1::ViewNumber(0) {
-            let output_message = ConsensusInputMessage {
-                message: self.config.secret_key.sign_msg(
-                    validator::v1::ConsensusMsg::ReplicaNewView(validator::v1::ReplicaNewView {
-                        justification: self.get_justification(),
-                    }),
-                ),
-            };
+            let output_message =
+                ConsensusInputMessage {
+                    message: self.config.secret_key.sign_msg(
+                        validator::ConsensusMsg::ReplicaNewView(validator::v1::ReplicaNewView {
+                            justification: self.get_justification(),
+                        }),
+                    ),
+                };
             tracing::debug!(
                 bft_message = format!("{:#?}", output_message.message),
                 "ChonkyBFT replica - Broadcasting new view message as part of timeout.",
@@ -192,19 +193,21 @@ impl StateMachine {
         }
 
         // Broadcast our timeout message.
-        let output_message =
-            ConsensusInputMessage {
-                message: self.config.secret_key.sign_msg(
-                    validator::v1::ConsensusMsg::ReplicaTimeout(validator::v1::ReplicaTimeout {
+        let output_message = ConsensusInputMessage {
+            message: self
+                .config
+                .secret_key
+                .sign_msg(validator::ConsensusMsg::ReplicaTimeout(
+                    validator::v1::ReplicaTimeout {
                         view: validator::v1::View {
                             genesis: self.config.genesis().hash(),
                             number: self.view_number,
                         },
                         high_vote: self.high_vote.clone(),
                         high_qc: self.high_commit_qc.clone(),
-                    }),
-                ),
-            };
+                    },
+                )),
+        };
         tracing::debug!(
             bft_message = format!("{:#?}", output_message.message),
             "ChonkyBFT replica - Broadcasting timeout message.",

@@ -37,8 +37,8 @@ pub(crate) enum TestNetwork {
 pub(crate) const NUM_PHASES: usize = 2;
 
 /// Index of the phase in which the message appears, to decide which partitioning to apply.
-fn msg_phase_number(msg: &validator::v1::ConsensusMsg) -> usize {
-    use validator::v1::ConsensusMsg;
+fn msg_phase_number(msg: &validator::ConsensusMsg) -> usize {
+    use validator::ConsensusMsg;
     let phase = match msg {
         ConsensusMsg::LeaderProposal(_) => 0,
         ConsensusMsg::ReplicaCommit(_) => 1,
@@ -61,7 +61,7 @@ pub(crate) type PortSplit = Vec<PortPartition>;
 pub(crate) type PortSplitSchedule = Vec<[PortSplit; NUM_PHASES]>;
 /// Function to decide whether a message can go from a source to a target port.
 pub(crate) type PortRouterFn =
-    dyn Fn(&validator::v1::ConsensusMsg, Port, Port) -> Option<bool> + Sync;
+    dyn Fn(&validator::ConsensusMsg, Port, Port) -> Option<bool> + Sync;
 
 /// A predicate to govern who can communicate to whom a given message.
 pub(crate) enum PortRouter {
@@ -78,7 +78,7 @@ impl PortRouter {
     ///
     /// Returning `None` means the there was no more routing data and the test can decide to
     /// allow all communication or to abort a runaway test.
-    fn can_send(&self, msg: &validator::v1::ConsensusMsg, from: Port, to: Port) -> Option<bool> {
+    fn can_send(&self, msg: &validator::ConsensusMsg, from: Port, to: Port) -> Option<bool> {
         match self {
             PortRouter::Splits(splits) => {
                 // Here we assume that all instances start from view 0 in the tests.
@@ -510,7 +510,7 @@ fn output_msg_label(msg: &FromNetworkMessage) -> &str {
 }
 
 fn output_msg_commit_qc(msg: &FromNetworkMessage) -> Option<&validator::v1::CommitQC> {
-    use validator::v1::ConsensusMsg;
+    use validator::ConsensusMsg;
 
     let justification = match &msg.msg.msg {
         ConsensusMsg::ReplicaTimeout(msg) => return msg.high_qc.as_ref(),

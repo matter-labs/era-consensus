@@ -402,7 +402,7 @@ async fn replica_timeout_filter_functions_test() {
         let replica_timeout = util.new_replica_timeout(ctx).await;
         let msg = util
             .owner_key()
-            .sign_msg(validator::v1::ConsensusMsg::ReplicaTimeout(
+            .sign_msg(validator::ConsensusMsg::ReplicaTimeout(
                 replica_timeout.clone(),
             ));
 
@@ -423,31 +423,31 @@ async fn replica_timeout_filter_functions_test() {
         // Send a msg with view number = 2
         let mut replica_timeout_from_view_2 = replica_timeout.clone();
         replica_timeout_from_view_2.view.number = validator::v1::ViewNumber(2);
-        let msg_from_view_2 =
-            util.owner_key()
-                .sign_msg(validator::v1::ConsensusMsg::ReplicaTimeout(
-                    replica_timeout_from_view_2,
-                ));
+        let msg_from_view_2 = util
+            .owner_key()
+            .sign_msg(validator::ConsensusMsg::ReplicaTimeout(
+                replica_timeout_from_view_2,
+            ));
         util.send(msg_from_view_2);
 
         // Send a msg with view number = 4, will prune message from view 2
         let mut replica_timeout_from_view_4 = replica_timeout.clone();
         replica_timeout_from_view_4.view.number = validator::v1::ViewNumber(4);
-        let msg_from_view_4 =
-            util.owner_key()
-                .sign_msg(validator::v1::ConsensusMsg::ReplicaTimeout(
-                    replica_timeout_from_view_4,
-                ));
+        let msg_from_view_4 = util
+            .owner_key()
+            .sign_msg(validator::ConsensusMsg::ReplicaTimeout(
+                replica_timeout_from_view_4,
+            ));
         util.send(msg_from_view_4.clone());
 
         // Send a msg with view number = 3, will be discarded, as it is older than message from view 4
         let mut replica_timeout_from_view_3 = replica_timeout.clone();
         replica_timeout_from_view_3.view.number = validator::v1::ViewNumber(3);
-        let msg_from_view_3 =
-            util.owner_key()
-                .sign_msg(validator::v1::ConsensusMsg::ReplicaTimeout(
-                    replica_timeout_from_view_3,
-                ));
+        let msg_from_view_3 = util
+            .owner_key()
+            .sign_msg(validator::ConsensusMsg::ReplicaTimeout(
+                replica_timeout_from_view_3,
+            ));
         util.send(msg_from_view_3);
 
         // Validate only message from view 4 is received
@@ -457,15 +457,15 @@ async fn replica_timeout_filter_functions_test() {
         );
 
         // Send a msg from validator 0
-        let msg_from_validator_0 = util.keys[0].sign_msg(
-            validator::v1::ConsensusMsg::ReplicaTimeout(replica_timeout.clone()),
-        );
+        let msg_from_validator_0 = util.keys[0].sign_msg(validator::ConsensusMsg::ReplicaTimeout(
+            replica_timeout.clone(),
+        ));
         util.send(msg_from_validator_0.clone());
 
         // Send a msg from validator 1
-        let msg_from_validator_1 = util.keys[1].sign_msg(
-            validator::v1::ConsensusMsg::ReplicaTimeout(replica_timeout.clone()),
-        );
+        let msg_from_validator_1 = util.keys[1].sign_msg(validator::ConsensusMsg::ReplicaTimeout(
+            replica_timeout.clone(),
+        ));
         util.send(msg_from_validator_1.clone());
 
         // Validate both are present in the inbound_channel

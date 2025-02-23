@@ -1,5 +1,5 @@
 //! Generic message types.
-use super::{v1, NetAddress};
+use super::{ConsensusMsg, NetAddress};
 use crate::{node::SessionId, validator};
 use std::fmt;
 use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
@@ -8,8 +8,8 @@ use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 /// Generic message type for a validator.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Msg {
-    /// consensus version 1
-    ConsensusV1(v1::ConsensusMsg),
+    /// consensus
+    Consensus(ConsensusMsg),
     /// authentication
     SessionId(SessionId),
     /// validator discovery
@@ -23,12 +23,12 @@ impl Msg {
     }
 }
 
-impl Variant<Msg> for v1::ConsensusMsg {
+impl Variant<Msg> for ConsensusMsg {
     fn insert(self) -> Msg {
-        Msg::ConsensusV1(self)
+        Msg::Consensus(self)
     }
     fn extract(msg: Msg) -> Result<Self, BadVariantError> {
-        let Msg::ConsensusV1(this) = msg else {
+        let Msg::Consensus(this) = msg else {
             return Err(BadVariantError);
         };
         Ok(this)

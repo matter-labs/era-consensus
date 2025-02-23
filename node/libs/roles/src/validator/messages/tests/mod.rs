@@ -92,7 +92,7 @@ fn test_schema_encoding() {
     test_encode_random::<PayloadHash>(rng);
     test_encode_random::<PreGenesisBlock>(rng);
     test_encode_random::<Block>(rng);
-    test_encode_random::<Signed<v1::ConsensusMsg>>(rng);
+    test_encode_random::<Signed<ConsensusMsg>>(rng);
     test_encode_random::<Msg>(rng);
     test_encode_random::<MsgHash>(rng);
     test_encode_random::<Genesis>(rng);

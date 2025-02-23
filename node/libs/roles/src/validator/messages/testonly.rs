@@ -1,6 +1,6 @@
 use super::{
-    v1, Block, BlockNumber, ChainId, Committee, ForkNumber, Genesis, GenesisHash, GenesisRaw,
-    Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock,
+    v1, Block, BlockNumber, ChainId, Committee, ConsensusMsg, ForkNumber, Genesis, GenesisHash,
+    GenesisRaw, Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock,
     ProtocolVersion, Signed, WeightedValidator,
 };
 use crate::validator::SecretKey;
@@ -144,7 +144,7 @@ impl Distribution<NetAddress> for Standard {
 impl Distribution<Msg> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Msg {
         match rng.gen_range(0..3) {
-            0 => Msg::ConsensusV1(rng.gen()),
+            0 => Msg::Consensus(rng.gen()),
             1 => Msg::SessionId(rng.gen()),
             2 => Msg::NetAddress(rng.gen()),
             _ => unreachable!(),
@@ -164,5 +164,17 @@ where
 {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Signed<V> {
         rng.gen::<SecretKey>().sign_msg(rng.gen())
+    }
+}
+
+impl Distribution<ConsensusMsg> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ConsensusMsg {
+        match rng.gen_range(0..4) {
+            0 => ConsensusMsg::LeaderProposal(rng.gen()),
+            1 => ConsensusMsg::ReplicaCommit(rng.gen()),
+            2 => ConsensusMsg::ReplicaNewView(rng.gen()),
+            3 => ConsensusMsg::ReplicaTimeout(rng.gen()),
+            _ => unreachable!(),
+        }
     }
 }

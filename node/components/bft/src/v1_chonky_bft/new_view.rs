@@ -150,14 +150,16 @@ impl StateMachine {
         self.backup_state(ctx).await.wrap("backup_state()")?;
 
         // Broadcast our new view message.
-        let output_message =
-            ConsensusInputMessage {
-                message: self.config.secret_key.sign_msg(
-                    validator::v1::ConsensusMsg::ReplicaNewView(validator::v1::ReplicaNewView {
+        let output_message = ConsensusInputMessage {
+            message: self
+                .config
+                .secret_key
+                .sign_msg(validator::ConsensusMsg::ReplicaNewView(
+                    validator::v1::ReplicaNewView {
                         justification: justification.clone(),
-                    }),
-                ),
-            };
+                    },
+                )),
+        };
         tracing::debug!(
             bft_message = format!("{:#?}", output_message.message),
             "ChonkyBFT replica - Broadcasting new view message at start of view.",
