@@ -1,9 +1,9 @@
 use crate::{
+    testonly::RejectPayload,
     v1_chonky_bft::{
         proposal,
         testonly::{UnitTestHarness, MAX_PAYLOAD_SIZE},
     },
-    testonly::RejectPayload,
 };
 use assert_matches::assert_matches;
 use rand::Rng;

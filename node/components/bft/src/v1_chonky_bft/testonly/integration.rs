@@ -60,8 +60,7 @@ pub(crate) type PortSplit = Vec<PortPartition>;
 /// A schedule contains a list of splits (one for each phase) for every view.
 pub(crate) type PortSplitSchedule = Vec<[PortSplit; NUM_PHASES]>;
 /// Function to decide whether a message can go from a source to a target port.
-pub(crate) type PortRouterFn =
-    dyn Fn(&validator::ConsensusMsg, Port, Port) -> Option<bool> + Sync;
+pub(crate) type PortRouterFn = dyn Fn(&validator::ConsensusMsg, Port, Port) -> Option<bool> + Sync;
 
 /// A predicate to govern who can communicate to whom a given message.
 pub(crate) enum PortRouter {

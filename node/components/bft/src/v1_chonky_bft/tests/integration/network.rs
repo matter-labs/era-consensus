@@ -1,6 +1,6 @@
 use crate::{
-    v1_chonky_bft::testonly::{IntegrationTestConfig, TestNetwork},
     testonly::Behavior,
+    v1_chonky_bft::testonly::{IntegrationTestConfig, TestNetwork},
 };
 use zksync_concurrency::{ctx, time};
 use zksync_consensus_roles::validator;

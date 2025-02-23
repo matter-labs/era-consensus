@@ -1,7 +1,7 @@
 use crate::{
-    v1_chonky_bft::{self, commit, new_view, proposal, timeout, StateMachine},
     create_input_channel,
     testonly::RandomPayload,
+    v1_chonky_bft::{self, commit, new_view, proposal, timeout, StateMachine},
     Config, FromNetworkMessage, PayloadManager, ToNetworkMessage,
 };
 use assert_matches::assert_matches;
