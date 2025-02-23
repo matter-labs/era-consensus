@@ -4,6 +4,7 @@ mod aggregate_signature;
 mod public_key;
 mod secret_key;
 mod signature;
+mod testonly;
 #[cfg(test)]
 mod tests;
 

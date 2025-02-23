@@ -12,16 +12,10 @@ use zksync_concurrency::{
 };
 use zksync_consensus_roles::validator;
 
-/// This module contains the implementation of the ChonkyBFT algorithm.
-mod chonky_bft;
 mod config;
 mod metrics;
 pub mod testonly;
-#[cfg(test)]
-mod tests;
-
-/// Protocol version of this BFT implementation.
-pub const PROTOCOL_VERSION: validator::ProtocolVersion = validator::ProtocolVersion::CURRENT;
+mod v1_chonky_bft;
 
 // Renaming network messages for clarity.
 #[allow(missing_docs)]
@@ -57,7 +51,12 @@ impl Config {
         inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
     ) -> anyhow::Result<()> {
         let genesis = self.block_store.genesis();
-        anyhow::ensure!(genesis.protocol_version == validator::ProtocolVersion::CURRENT);
+
+        anyhow::ensure!(
+            validator::ProtocolVersion::compatible(&genesis.protocol_version),
+            "Incompatible protocol version. Genesis protocol version: {:?}.",
+            genesis.protocol_version
+        );
         genesis.verify().context("genesis().verify()")?;
 
         if let Some(prev) = genesis.first_block.prev() {
@@ -69,7 +68,7 @@ impl Config {
 
         let cfg = Arc::new(self);
         let (proposer_sender, proposer_receiver) = sync::watch::channel(None);
-        let replica = chonky_bft::StateMachine::start(
+        let replica = v1_chonky_bft::StateMachine::start(
             ctx,
             cfg.clone(),
             outbound_channel.clone(),
@@ -86,7 +85,7 @@ impl Config {
 
             s.spawn(async { replica.run(ctx).await.wrap("replica.run()") });
             s.spawn_bg(async {
-                chonky_bft::proposer::run_proposer(
+                v1_chonky_bft::proposer::run_proposer(
                     ctx,
                     cfg.clone(),
                     outbound_channel,

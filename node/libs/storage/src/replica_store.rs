@@ -35,15 +35,15 @@ pub struct Proposal {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReplicaState {
     /// The current view number.
-    pub view: validator::ViewNumber,
+    pub view: validator::v1::ViewNumber,
     /// The current phase.
-    pub phase: validator::Phase,
+    pub phase: validator::v1::Phase,
     /// The highest block proposal that the replica has committed to.
-    pub high_vote: Option<validator::ReplicaCommit>,
+    pub high_vote: Option<validator::v1::ReplicaCommit>,
     /// The highest commit quorum certificate known to the replica.
-    pub high_commit_qc: Option<validator::CommitQC>,
+    pub high_commit_qc: Option<validator::v1::CommitQC>,
     /// The highest timeout quorum certificate known to the replica.
-    pub high_timeout_qc: Option<validator::TimeoutQC>,
+    pub high_timeout_qc: Option<validator::v1::TimeoutQC>,
     /// A cache of the received block proposals.
     pub proposals: Vec<Proposal>,
 }
@@ -51,8 +51,8 @@ pub struct ReplicaState {
 impl Default for ReplicaState {
     fn default() -> Self {
         Self {
-            view: validator::ViewNumber(0),
-            phase: validator::Phase::Prepare,
+            view: validator::v1::ViewNumber(0),
+            phase: validator::v1::Phase::Prepare,
             high_vote: None,
             high_commit_qc: None,
             high_timeout_qc: None,
@@ -84,7 +84,7 @@ impl ProtoFmt for ReplicaState {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            view: validator::ViewNumber(r.view.context("view_number")?),
+            view: validator::v1::ViewNumber(r.view.context("view_number")?),
             phase: read_required(&r.phase).context("phase")?,
             high_vote: read_optional(&r.high_vote).context("high_vote")?,
             high_commit_qc: read_optional(&r.high_qc).context("high_commit_qc")?,

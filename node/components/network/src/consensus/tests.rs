@@ -304,8 +304,8 @@ async fn test_transmission() {
             tracing::info!("message {i}");
             // Construct a message and ensure that view is increasing
             // (otherwise the message could get filtered out).
-            let mut want: validator::Signed<validator::ReplicaCommit> = rng.gen();
-            want.msg.view.number = validator::ViewNumber(i);
+            let mut want: validator::Signed<validator::v1::ReplicaCommit> = rng.gen();
+            want.msg.view.number = validator::v1::ViewNumber(i);
             let want: validator::Signed<validator::ConsensusMsg> = want.cast().unwrap();
             let in_message = io::ConsensusInputMessage {
                 message: want.clone(),

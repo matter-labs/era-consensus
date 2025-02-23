@@ -46,7 +46,7 @@ impl BlockStore {
                 .iter()
                 .flat_map(|b| match b {
                     validator::Block::PreGenesis(b) => Some((b.number, b.clone())),
-                    validator::Block::Final(_) => None,
+                    validator::Block::FinalV1(_) => None,
                 })
                 .collect(),
         }))

@@ -71,7 +71,7 @@ async fn test_reopen_rocksdb() {
     let rng = &mut ctx.rng();
     let dir = TempDir::new().unwrap();
     let mut setup = Setup::new(rng, 3);
-    setup.push_blocks(rng, 5);
+    setup.push_blocks_v1(rng, 5);
     let mut want = vec![];
     for b in &setup.blocks {
         if b.number() < setup.genesis.first_block {

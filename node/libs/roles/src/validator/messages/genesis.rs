@@ -1,5 +1,5 @@
 //! Messages related to the consensus protocol.
-use super::{BlockNumber, LeaderSelectionMode, ViewNumber};
+use super::{v1, BlockNumber, Committee};
 use crate::validator;
 use std::{fmt, hash::Hash};
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
@@ -17,9 +17,9 @@ pub struct GenesisRaw {
     /// First block of a fork.
     pub first_block: BlockNumber,
     /// Set of validators of the chain.
-    pub validators: validator::Committee,
+    pub validators: Committee,
     /// The mode used for selecting leader for a given view.
-    pub leader_selection: LeaderSelectionMode,
+    pub leader_selection: v1::LeaderSelectionMode,
 }
 
 impl GenesisRaw {
@@ -82,11 +82,11 @@ impl fmt::Debug for Genesis {
 impl Genesis {
     /// Verifies correctness.
     pub fn verify(&self) -> anyhow::Result<()> {
-        if let LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
+        if let v1::LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
             if self.validators.index(pk).is_none() {
                 anyhow::bail!("leader_selection sticky mode public key is not in committee");
             }
-        } else if let LeaderSelectionMode::Rota(pks) = &self.leader_selection {
+        } else if let v1::LeaderSelectionMode::Rota(pks) = &self.leader_selection {
             for pk in pks {
                 if self.validators.index(pk).is_none() {
                     anyhow::bail!(
@@ -100,8 +100,8 @@ impl Genesis {
     }
 
     /// Computes the leader for the given view.
-    pub fn view_leader(&self, view: ViewNumber) -> validator::PublicKey {
-        self.validators.view_leader(view, &self.leader_selection)
+    pub fn view_leader(&self, view: v1::ViewNumber) -> validator::PublicKey {
+        self.leader_selection.view_leader(view, &self.validators)
     }
 
     /// Hash of the genesis.
@@ -117,8 +117,9 @@ impl Genesis {
 pub struct ProtocolVersion(pub u32);
 
 impl ProtocolVersion {
-    /// 0 - development version; deprecated.
-    /// 1 - development version
+    /// The latest production version of the protocol. Note that this might not be the version
+    /// that the current chain is using. You also should not rely on this value to check compatibility,
+    /// instead use the `compatible` method.
     pub const CURRENT: Self = Self(1);
 
     /// Returns the integer corresponding to this version.
@@ -126,11 +127,12 @@ impl ProtocolVersion {
         self.0
     }
 
-    /// Checks protocol version compatibility.
-    pub fn compatible(&self, other: &ProtocolVersion) -> bool {
-        // Currently using comparison.
-        // This can be changed later to apply a minimum supported version.
-        self.0 == other.0
+    /// Checks protocol version compatibility. Specifically, it checks which protocol
+    /// versions are compatible with the current codebase. Old protocol versions can be
+    /// deprecated, so a newer codebase might stop supporting an older protocol version even if
+    /// no new protocol version is introduced.
+    pub fn compatible(version: &ProtocolVersion) -> bool {
+        version.0 == 1
     }
 }
 

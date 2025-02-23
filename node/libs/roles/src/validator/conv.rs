@@ -1,11 +1,14 @@
-use super::{
-    AggregateSignature, Block, BlockHeader, BlockNumber, ChainId, CommitQC, Committee,
-    ConsensusMsg, FinalBlock, ForkNumber, Genesis, GenesisHash, GenesisRaw, Justification,
-    LeaderProposal, Msg, MsgHash, NetAddress, Payload, PayloadHash, Phase, PreGenesisBlock,
-    ProposalJustification, ProtocolVersion, PublicKey, ReplicaCommit, ReplicaNewView,
-    ReplicaTimeout, Signature, Signed, Signers, TimeoutQC, View, ViewNumber, WeightedValidator,
+use super::messages::v1::{
+    BlockHeader, CommitQC, FinalBlock, LeaderProposal, LeaderSelectionMode, Phase,
+    ProposalJustification, ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
+    ViewNumber,
 };
-use crate::{node::SessionId, proto::validator as proto, validator::LeaderSelectionMode};
+use super::{
+    AggregateSignature, Block, BlockNumber, ChainId, Committee, ConsensusMsg, ForkNumber, Genesis,
+    GenesisHash, GenesisRaw, Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash,
+    PreGenesisBlock, ProtocolVersion, PublicKey, Signature, Signed, WeightedValidator,
+};
+use crate::{node::SessionId, proto::validator as proto};
 use anyhow::Context as _;
 use std::collections::BTreeMap;
 use zksync_consensus_crypto::ByteFmt;
@@ -142,7 +145,7 @@ impl ProtoFmt for Block {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         use proto::block::T;
         Ok(match required(&r.t)? {
-            T::Final(b) => Block::Final(ProtoFmt::read(b).context("block")?),
+            T::Final(b) => Block::FinalV1(ProtoFmt::read(b).context("block")?),
             T::PreGenesis(b) => Block::PreGenesis(ProtoFmt::read(b).context("pre_genesis_block")?),
         })
     }
@@ -151,7 +154,7 @@ impl ProtoFmt for Block {
         use proto::block::T;
         Self::Proto {
             t: Some(match self {
-                Block::Final(b) => T::Final(b.build()),
+                Block::FinalV1(b) => T::Final(b.build()),
                 Block::PreGenesis(b) => T::PreGenesis(b.build()),
             }),
         }

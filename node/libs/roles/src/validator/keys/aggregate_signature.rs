@@ -15,6 +15,15 @@ impl AggregateSignature {
         self.0.add(&sig.0)
     }
 
+    /// Generate a new aggregate signature from a list of signatures.
+    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
+        let mut agg = Self::default();
+        for sig in sigs {
+            agg.add(sig);
+        }
+        agg
+    }
+
     /// Verify a list of messages against a list of public keys.
     pub(crate) fn verify_messages<'a, V: Variant<Msg>>(
         &self,
