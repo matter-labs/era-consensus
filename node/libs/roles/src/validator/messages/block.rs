@@ -2,8 +2,12 @@
 use std::fmt;
 
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
+use zksync_protobuf::{required, ProtoFmt};
 
-use super::v1;
+use super::{v1, v2};
+use crate::proto::validator as proto;
+use anyhow::Context as _;
+
 /// Represents a blockchain block across different consensus protocol versions (including pre-genesis blocks).
 #[derive(Debug, Clone, PartialEq)]
 pub enum Block {
@@ -11,6 +15,8 @@ pub enum Block {
     PreGenesis(PreGenesisBlock),
     /// Block with number `>=genesis.first_block`. For protocol version 1.
     FinalV1(v1::FinalBlock),
+    /// Block with number `>=genesis.first_block`. For protocol version 1.
+    FinalV2(v2::FinalBlock),
 }
 
 impl From<PreGenesisBlock> for Block {
@@ -25,12 +31,19 @@ impl From<v1::FinalBlock> for Block {
     }
 }
 
+impl From<v2::FinalBlock> for Block {
+    fn from(b: v2::FinalBlock) -> Self {
+        Self::FinalV2(b)
+    }
+}
+
 impl Block {
     /// Block number.
     pub fn number(&self) -> BlockNumber {
         match self {
             Self::PreGenesis(b) => b.number,
             Self::FinalV1(b) => b.number(),
+            Self::FinalV2(b) => b.number(),
         }
     }
 
@@ -39,6 +52,30 @@ impl Block {
         match self {
             Self::PreGenesis(b) => &b.payload,
             Self::FinalV1(b) => &b.payload,
+            Self::FinalV2(b) => &b.payload,
+        }
+    }
+}
+
+impl ProtoFmt for Block {
+    type Proto = proto::Block;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        use proto::block::T;
+        Ok(match required(&r.t)? {
+            T::Final(b) => Block::FinalV1(ProtoFmt::read(b).context("block")?),
+            T::PreGenesis(b) => Block::PreGenesis(ProtoFmt::read(b).context("pre_genesis_block")?),
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        use proto::block::T;
+        Self::Proto {
+            t: Some(match self {
+                Block::FinalV2(b) => T::Final(b.build()),
+                Block::FinalV1(b) => T::Final(b.build()),
+                Block::PreGenesis(b) => T::PreGenesis(b.build()),
+            }),
         }
     }
 }
@@ -95,6 +132,18 @@ impl TextFmt for PayloadHash {
     }
 }
 
+impl ProtoFmt for PayloadHash {
+    type Proto = proto::PayloadHash;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            keccak256: Some(self.0.encode()),
+        }
+    }
+}
+
 impl fmt::Debug for PayloadHash {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str(&TextFmt::encode(self))
@@ -143,6 +192,29 @@ pub struct PreGenesisBlock {
     pub justification: Justification,
 }
 
-/// TODO: docs
+impl ProtoFmt for PreGenesisBlock {
+    type Proto = proto::PreGenesisBlock;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            number: BlockNumber(*required(&r.number).context("number")?),
+            payload: Payload(required(&r.payload).context("payload")?.clone()),
+            justification: Justification(
+                required(&r.justification).context("justification")?.clone(),
+            ),
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            number: Some(self.number.0),
+            payload: Some(self.payload.0.clone()),
+            justification: Some(self.justification.0.clone()),
+        }
+    }
+}
+
+/// Justification for pre-genesis blocks. Can be used in the future to prove inclusion of
+/// a block in the base layer, so that we can sync pre-genesis blocks trustlessly.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Justification(pub Vec<u8>);

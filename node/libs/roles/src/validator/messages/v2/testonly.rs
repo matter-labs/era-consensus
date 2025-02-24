@@ -14,7 +14,7 @@ use crate::validator::{testonly::Setup, Block, Payload};
 // Adds v1-specific test utilities to the `Setup` struct.
 impl Setup {
     /// Pushes the next block with the given payload.
-    pub fn push_block_v1(&mut self, payload: Payload) {
+    pub fn push_block_v2(&mut self, payload: Payload) {
         let view = View {
             genesis: self.genesis.hash(),
             number: self
@@ -22,8 +22,8 @@ impl Setup {
                 .blocks
                 .last()
                 .map(|b| match b {
-                    Block::FinalV2(b) => ViewNumber(b.justification.view().number.next().0),
-                    Block::FinalV1(b) => b.justification.view().number.next(),
+                    Block::FinalV2(b) => b.justification.view().number.next(),
+                    Block::FinalV1(b) => ViewNumber(b.justification.view().number.next().0),
                     Block::PreGenesis(_) => ViewNumber(0),
                 })
                 .unwrap_or(ViewNumber(0)),
@@ -58,14 +58,14 @@ impl Setup {
     }
 
     /// Pushes `count` blocks with a random payload.
-    pub fn push_blocks_v1(&mut self, rng: &mut impl Rng, count: usize) {
+    pub fn push_blocks_v2(&mut self, rng: &mut impl Rng, count: usize) {
         for _ in 0..count {
-            self.push_block_v1(rng.gen());
+            self.push_block_v2(rng.gen());
         }
     }
 
     /// Creates a View with the given view number.
-    pub fn make_view_v1(&self, number: ViewNumber) -> View {
+    pub fn make_view_v2(&self, number: ViewNumber) -> View {
         View {
             genesis: self.genesis.hash(),
             number,
@@ -73,9 +73,9 @@ impl Setup {
     }
 
     /// Creates a ReplicaCommit with a random payload.
-    pub fn make_replica_commit_v1(&self, rng: &mut impl Rng, view: ViewNumber) -> ReplicaCommit {
+    pub fn make_replica_commit_v2(&self, rng: &mut impl Rng, view: ViewNumber) -> ReplicaCommit {
         ReplicaCommit {
-            view: self.make_view_v1(view),
+            view: self.make_view_v2(view),
             proposal: BlockHeader {
                 number: self.next(),
                 payload: rng.gen(),
@@ -84,13 +84,13 @@ impl Setup {
     }
 
     /// Creates a ReplicaCommit with the given payload.
-    pub fn make_replica_commit_with_payload_v1(
+    pub fn make_replica_commit_with_payload_v2(
         &self,
         payload: &Payload,
         view: ViewNumber,
     ) -> ReplicaCommit {
         ReplicaCommit {
-            view: self.make_view_v1(view),
+            view: self.make_view_v2(view),
             proposal: BlockHeader {
                 number: self.next(),
                 payload: payload.hash(),
@@ -99,8 +99,8 @@ impl Setup {
     }
 
     /// Creates a CommitQC with a random payload.
-    pub fn make_commit_qc_v1(&self, rng: &mut impl Rng, view: ViewNumber) -> CommitQC {
-        let mut qc = CommitQC::new(self.make_replica_commit_v1(rng, view), &self.genesis);
+    pub fn make_commit_qc_v2(&self, rng: &mut impl Rng, view: ViewNumber) -> CommitQC {
+        let mut qc = CommitQC::new(self.make_replica_commit_v2(rng, view), &self.genesis);
         for key in &self.validator_keys {
             qc.add(&key.sign_msg(qc.message.clone()), &self.genesis)
                 .unwrap();
@@ -109,9 +109,9 @@ impl Setup {
     }
 
     /// Creates a CommitQC with the given payload.
-    pub fn make_commit_qc_with_payload_v1(&self, payload: &Payload, view: ViewNumber) -> CommitQC {
+    pub fn make_commit_qc_with_payload_v2(&self, payload: &Payload, view: ViewNumber) -> CommitQC {
         let mut qc = CommitQC::new(
-            self.make_replica_commit_with_payload_v1(payload, view),
+            self.make_replica_commit_with_payload_v2(payload, view),
             &self.genesis,
         );
         for key in &self.validator_keys {
@@ -122,40 +122,40 @@ impl Setup {
     }
 
     /// Creates a ReplicaTimeout with a random payload.
-    pub fn make_replica_timeout_v1(&self, rng: &mut impl Rng, view: ViewNumber) -> ReplicaTimeout {
+    pub fn make_replica_timeout_v2(&self, rng: &mut impl Rng, view: ViewNumber) -> ReplicaTimeout {
         let high_vote_view = ViewNumber(rng.gen_range(0..=view.0));
         let high_qc_view = ViewNumber(rng.gen_range(0..high_vote_view.0));
         ReplicaTimeout {
-            view: self.make_view_v1(view),
-            high_vote: Some(self.make_replica_commit_v1(rng, high_vote_view)),
-            high_qc: Some(self.make_commit_qc_v1(rng, high_qc_view)),
+            view: self.make_view_v2(view),
+            high_vote: Some(self.make_replica_commit_v2(rng, high_vote_view)),
+            high_qc: Some(self.make_commit_qc_v2(rng, high_qc_view)),
         }
     }
 
     /// Creates a TimeoutQC. If a payload is given, the QC will contain a
     /// re-proposal for that payload
-    pub fn make_timeout_qc_v1(
+    pub fn make_timeout_qc_v2(
         &self,
         rng: &mut impl Rng,
         view: ViewNumber,
         payload_opt: Option<&Payload>,
     ) -> TimeoutQC {
         let mut vote = if let Some(payload) = payload_opt {
-            self.make_replica_commit_with_payload_v1(payload, view.prev().unwrap())
+            self.make_replica_commit_with_payload_v2(payload, view.prev().unwrap())
         } else {
-            self.make_replica_commit_v1(rng, view.prev().unwrap())
+            self.make_replica_commit_v2(rng, view.prev().unwrap())
         };
         let commit_qc = match self.0.blocks.last().unwrap() {
-            Block::FinalV1(block) => block.justification.clone(),
+            Block::FinalV2(block) => block.justification.clone(),
             _ => unreachable!(),
         };
 
-        let mut qc = TimeoutQC::new(self.make_view_v1(view));
+        let mut qc = TimeoutQC::new(self.make_view_v2(view));
         if payload_opt.is_none() {
             vote.proposal.payload = rng.gen();
         }
         let msg = ReplicaTimeout {
-            view: self.make_view_v1(view),
+            view: self.make_view_v2(view),
             high_vote: Some(vote.clone()),
             high_qc: Some(commit_qc.clone()),
         };

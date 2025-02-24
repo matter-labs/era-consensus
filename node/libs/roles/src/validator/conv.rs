@@ -17,75 +17,6 @@ use super::{
 };
 use crate::{node::SessionId, proto::validator as proto};
 
-impl ProtoFmt for GenesisRaw {
-    type Proto = proto::Genesis;
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let validators: Vec<_> = r
-            .validators_v1
-            .iter()
-            .enumerate()
-            .map(|(i, v)| WeightedValidator::read(v).context(i))
-            .collect::<Result<_, _>>()
-            .context("validators_v1")?;
-        Ok(GenesisRaw {
-            chain_id: ChainId(*required(&r.chain_id).context("chain_id")?),
-            fork_number: ForkNumber(*required(&r.fork_number).context("fork_number")?),
-            first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
-
-            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
-            validators: Committee::new(validators.into_iter()).context("validators_v1")?,
-            leader_selection: read_required(&r.leader_selection).context("leader_selection")?,
-        })
-    }
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            chain_id: Some(self.chain_id.0),
-            fork_number: Some(self.fork_number.0),
-            first_block: Some(self.first_block.0),
-
-            protocol_version: Some(self.protocol_version.0),
-            validators_v1: self.validators.iter().map(|v| v.build()).collect(),
-            leader_selection: Some(self.leader_selection.build()),
-        }
-    }
-}
-
-impl ProtoFmt for Genesis {
-    type Proto = proto::Genesis;
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let genesis = GenesisRaw::read(r)?.with_hash();
-        genesis.verify()?;
-        Ok(genesis)
-    }
-    fn build(&self) -> Self::Proto {
-        GenesisRaw::build(self)
-    }
-}
-
-impl ProtoFmt for GenesisHash {
-    type Proto = proto::GenesisHash;
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
-    }
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            keccak256: Some(self.0.encode()),
-        }
-    }
-}
-
-impl ProtoFmt for PayloadHash {
-    type Proto = proto::PayloadHash;
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
-    }
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            keccak256: Some(self.0.encode()),
-        }
-    }
-}
-
 impl ProtoFmt for BlockHeader {
     type Proto = proto::BlockHeader;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
@@ -116,83 +47,6 @@ impl ProtoFmt for FinalBlock {
             payload: Some(self.payload.0.clone()),
             justification: Some(self.justification.build()),
         }
-    }
-}
-
-impl ProtoFmt for PreGenesisBlock {
-    type Proto = proto::PreGenesisBlock;
-
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {
-            number: BlockNumber(*required(&r.number).context("number")?),
-            payload: Payload(required(&r.payload).context("payload")?.clone()),
-            justification: Justification(
-                required(&r.justification).context("justification")?.clone(),
-            ),
-        })
-    }
-
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            number: Some(self.number.0),
-            payload: Some(self.payload.0.clone()),
-            justification: Some(self.justification.0.clone()),
-        }
-    }
-}
-
-impl ProtoFmt for Block {
-    type Proto = proto::Block;
-
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        use proto::block::T;
-        Ok(match required(&r.t)? {
-            T::Final(b) => Block::FinalV1(ProtoFmt::read(b).context("block")?),
-            T::PreGenesis(b) => Block::PreGenesis(ProtoFmt::read(b).context("pre_genesis_block")?),
-        })
-    }
-
-    fn build(&self) -> Self::Proto {
-        use proto::block::T;
-        Self::Proto {
-            t: Some(match self {
-                Block::FinalV1(b) => T::Final(b.build()),
-                Block::PreGenesis(b) => T::PreGenesis(b.build()),
-            }),
-        }
-    }
-}
-
-impl ProtoFmt for ConsensusMsg {
-    type Proto = proto::ConsensusMsg;
-
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        use proto::consensus_msg::T;
-        Ok(match r.t.as_ref().context("missing")? {
-            T::ReplicaCommit(r) => Self::ReplicaCommit(ProtoFmt::read(r).context("ReplicaCommit")?),
-            T::ReplicaTimeout(r) => {
-                Self::ReplicaTimeout(ProtoFmt::read(r).context("ReplicaTimeout")?)
-            }
-            T::ReplicaNewView(r) => {
-                Self::ReplicaNewView(ProtoFmt::read(r).context("ReplicaNewView")?)
-            }
-            T::LeaderProposal(r) => {
-                Self::LeaderProposal(ProtoFmt::read(r).context("LeaderProposal")?)
-            }
-        })
-    }
-
-    fn build(&self) -> Self::Proto {
-        use proto::consensus_msg::T;
-
-        let t = match self {
-            Self::ReplicaCommit(x) => T::ReplicaCommit(x.build()),
-            Self::ReplicaTimeout(x) => T::ReplicaTimeout(x.build()),
-            Self::ReplicaNewView(x) => T::ReplicaNewView(x.build()),
-            Self::LeaderProposal(x) => T::LeaderProposal(x.build()),
-        };
-
-        Self::Proto { t: Some(t) }
     }
 }
 
@@ -400,83 +254,6 @@ impl ProtoFmt for Phase {
     }
 }
 
-impl ProtoFmt for NetAddress {
-    type Proto = proto::NetAddress;
-
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {
-            addr: read_required(&r.addr).context("addr")?,
-            version: *required(&r.version).context("version")?,
-            timestamp: read_required(&r.timestamp).context("timestamp")?,
-        })
-    }
-
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            addr: Some(self.addr.build()),
-            version: Some(self.version),
-            timestamp: Some(self.timestamp.build()),
-        }
-    }
-}
-
-impl ProtoFmt for Msg {
-    type Proto = proto::Msg;
-
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        use proto::msg::T;
-        Ok(match r.t.as_ref().context("missing")? {
-            T::Consensus(r) => Self::Consensus(ProtoFmt::read(r).context("Consensus")?),
-            T::SessionId(r) => Self::SessionId(SessionId(r.clone())),
-            T::NetAddress(r) => Self::NetAddress(ProtoFmt::read(r).context("NetAddress")?),
-        })
-    }
-
-    fn build(&self) -> Self::Proto {
-        use proto::msg::T;
-
-        let t = match self {
-            Self::Consensus(x) => T::Consensus(x.build()),
-            Self::SessionId(x) => T::SessionId(x.0.clone()),
-            Self::NetAddress(x) => T::NetAddress(x.build()),
-        };
-
-        Self::Proto { t: Some(t) }
-    }
-}
-
-impl ProtoFmt for MsgHash {
-    type Proto = proto::MsgHash;
-
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
-    }
-
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            keccak256: Some(self.0.encode()),
-        }
-    }
-}
-
-impl<V: Variant<Msg> + Clone> ProtoFmt for Signed<V> {
-    type Proto = proto::Signed;
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {
-            msg: V::extract(read_required::<Msg>(&r.msg).context("msg")?)?,
-            key: read_required(&r.key).context("key")?,
-            sig: read_required(&r.sig).context("sig")?,
-        })
-    }
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            msg: Some(self.msg.clone().insert().build()),
-            key: Some(self.key.build()),
-            sig: Some(self.sig.build()),
-        }
-    }
-}
-
 impl ProtoFmt for PublicKey {
     type Proto = proto::PublicKey;
 
@@ -569,24 +346,6 @@ impl ProtoFmt for AggregateSignature {
     fn build(&self) -> Self::Proto {
         Self::Proto {
             bn254: Some(self.0.encode()),
-        }
-    }
-}
-
-impl ProtoFmt for WeightedValidator {
-    type Proto = proto::WeightedValidator;
-
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {
-            key: read_required(&r.key).context("key")?,
-            weight: *required(&r.weight).context("weight")?,
-        })
-    }
-
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            key: Some(self.key.build()),
-            weight: Some(self.weight),
         }
     }
 }

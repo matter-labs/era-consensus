@@ -11,6 +11,8 @@ mod testonly;
 mod tests;
 /// Version 1 of the consensus protocol.
 pub mod v1;
+/// Version 2 of the consensus protocol.
+pub mod v2;
 
 pub use block::*;
 pub use committee::*;
