@@ -1,9 +1,11 @@
-use super::{BlockHeader, Signers, View};
-use crate::validator::{self, Genesis, Signed};
-
-use crate::proto::validator as proto;
 use anyhow::Context as _;
 use zksync_protobuf::{read_required, ProtoFmt};
+
+use super::{BlockHeader, Signers, View};
+use crate::{
+    proto::validator as proto,
+    validator::{self, Genesis, Signed},
+};
 
 /// A commit message from a replica.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.

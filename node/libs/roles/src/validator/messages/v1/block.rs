@@ -1,12 +1,13 @@
 //! Messages related to blocks.
+use anyhow::Context as _;
 use zksync_consensus_crypto::ByteFmt;
+use zksync_protobuf::{read_required, required, ProtoFmt};
 
 use super::{CommitQC, CommitQCVerifyError};
-use crate::validator::{BlockNumber, Genesis, Payload, PayloadHash};
-
-use crate::proto::validator as proto;
-use anyhow::Context as _;
-use zksync_protobuf::{read_required, required, ProtoFmt};
+use crate::{
+    proto::validator as proto,
+    validator::{BlockNumber, Genesis, Payload, PayloadHash},
+};
 
 /// A block header.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.

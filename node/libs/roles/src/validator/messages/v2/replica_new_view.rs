@@ -1,9 +1,8 @@
-use super::{ProposalJustification, ProposalJustificationVerifyError, View};
-use crate::validator::Genesis;
-
-use crate::proto::validator as proto;
 use anyhow::Context as _;
 use zksync_protobuf::{read_required, ProtoFmt};
+
+use super::{ProposalJustification, ProposalJustificationVerifyError, View};
+use crate::{proto::validator as proto, validator::Genesis};
 
 /// A new view message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq)]

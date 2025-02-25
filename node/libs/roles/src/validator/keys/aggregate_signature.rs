@@ -2,12 +2,13 @@ use std::fmt;
 
 use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
+use zksync_protobuf::{required, ProtoFmt};
 
 use super::{PublicKey, Signature};
-use crate::validator::messages::{Msg, MsgHash};
-
-use crate::proto::validator as proto;
-use zksync_protobuf::{required, ProtoFmt};
+use crate::{
+    proto::validator as proto,
+    validator::messages::{Msg, MsgHash},
+};
 
 /// An aggregate signature from a validator.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.

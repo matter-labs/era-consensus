@@ -1,13 +1,13 @@
 //! Messages related to the consensus protocol.
 use anyhow::Context as _;
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
-
-use super::{v1, v2};
-use crate::validator::{GenesisHash, Msg};
-
 use zksync_protobuf::ProtoFmt;
 
-use crate::proto::validator as proto;
+use super::{v1, v2};
+use crate::{
+    proto::validator as proto,
+    validator::{GenesisHash, Msg},
+};
 
 /// Consensus messages.
 #[allow(missing_docs)]

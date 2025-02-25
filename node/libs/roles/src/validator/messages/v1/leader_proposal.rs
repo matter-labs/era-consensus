@@ -1,9 +1,11 @@
-use super::{CommitQC, CommitQCVerifyError, TimeoutQC, TimeoutQCVerifyError, View};
-use crate::validator::{BlockNumber, Genesis, Payload, PayloadHash};
-
-use crate::proto::validator as proto;
 use anyhow::Context as _;
 use zksync_protobuf::{read_required, ProtoFmt};
+
+use super::{CommitQC, CommitQCVerifyError, TimeoutQC, TimeoutQCVerifyError, View};
+use crate::{
+    proto::validator as proto,
+    validator::{BlockNumber, Genesis, Payload, PayloadHash},
+};
 
 /// A proposal message from the leader.
 #[derive(Clone, Debug, PartialEq, Eq)]

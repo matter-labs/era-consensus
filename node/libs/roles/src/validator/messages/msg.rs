@@ -1,15 +1,13 @@
 //! Generic message types.
 use std::fmt;
 
+use anyhow::Context as _;
 use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
+use zksync_protobuf::{read_required, required, ProtoFmt};
 
 use super::{ConsensusMsg, NetAddress};
-use crate::{node::SessionId, validator};
-
-use crate::proto::validator as proto;
-use anyhow::Context as _;
-use zksync_protobuf::{read_required, required, ProtoFmt};
+use crate::{node::SessionId, proto::validator as proto, validator};
 
 /// Generic message type for a validator.
 #[derive(Clone, Debug, PartialEq, Eq)]

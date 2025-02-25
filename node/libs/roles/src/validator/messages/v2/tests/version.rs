@@ -2,13 +2,12 @@ use anyhow::Context as _;
 use zksync_consensus_crypto::Text;
 use zksync_consensus_utils::enum_util::Variant as _;
 
+use super::{leader_proposal, replica_commit, replica_new_view, replica_timeout};
 use crate::validator::{
     self,
     messages::tests::{genesis_v2, validator_keys},
     GenesisHash, Msg, MsgHash,
 };
-
-use super::{leader_proposal, replica_commit, replica_new_view, replica_timeout};
 
 /// Asserts that msg.hash()==hash and that sig is a
 /// valid signature of msg (signed by `keys()[0]`).

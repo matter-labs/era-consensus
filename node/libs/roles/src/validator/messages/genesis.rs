@@ -1,11 +1,12 @@
 //! Messages related to the consensus protocol.
 use std::{fmt, hash::Hash};
 
-use super::{v1, BlockNumber, Committee, WeightedValidator};
-use crate::{proto::validator as proto, validator};
 use anyhow::Context as _;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_protobuf::{read_required, required, ProtoFmt};
+
+use super::{v1, BlockNumber, Committee, WeightedValidator};
+use crate::{proto::validator as proto, validator};
 
 /// Genesis of the blockchain, unique for each blockchain instance.
 #[derive(Debug, Clone, PartialEq)]

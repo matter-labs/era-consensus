@@ -1,15 +1,16 @@
 //! Messages related to the consensus protocol.
 use std::{fmt, hash::Hash};
 
+use anyhow::Context as _;
 use bit_vec::BitVec;
 use num_bigint::BigUint;
 use zksync_consensus_crypto::keccak256::Keccak256;
-
-use crate::validator::{Committee, Genesis, GenesisHash, PublicKey};
-
-use crate::proto::validator as proto;
-use anyhow::Context as _;
 use zksync_protobuf::{read_required, required, ProtoFmt};
+
+use crate::{
+    proto::validator as proto,
+    validator::{Committee, Genesis, GenesisHash, PublicKey},
+};
 
 /// View specification.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.

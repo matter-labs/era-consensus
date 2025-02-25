@@ -1,11 +1,13 @@
 use std::fmt;
 
 use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
+use zksync_protobuf::{required, ProtoFmt};
 
 use super::PublicKey;
-use crate::proto::validator as proto;
-use crate::validator::messages::{Msg, MsgHash};
-use zksync_protobuf::{required, ProtoFmt};
+use crate::{
+    proto::validator as proto,
+    validator::messages::{Msg, MsgHash},
+};
 
 /// A signature from a validator.
 #[derive(Clone, PartialEq, Eq, Hash)]

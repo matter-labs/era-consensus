@@ -1,12 +1,12 @@
 //! Messages related to blocks.
 use std::fmt;
 
+use anyhow::Context as _;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_protobuf::{required, ProtoFmt};
 
 use super::{v1, v2};
 use crate::proto::validator as proto;
-use anyhow::Context as _;
 
 /// Represents a blockchain block across different consensus protocol versions (including pre-genesis blocks).
 #[derive(Debug, Clone, PartialEq)]

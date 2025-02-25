@@ -1,10 +1,10 @@
 use std::net;
 
+use anyhow::Context as _;
 use zksync_concurrency::time;
+use zksync_protobuf::{read_required, required, ProtoFmt};
 
 use crate::proto::validator as proto;
-use anyhow::Context as _;
-use zksync_protobuf::{read_required, required, ProtoFmt};
 
 /// A message broadcasted by a validator
 /// over the gossip network announcing

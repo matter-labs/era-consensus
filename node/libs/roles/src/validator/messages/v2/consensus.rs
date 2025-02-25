@@ -1,17 +1,18 @@
 //! Messages related to the consensus protocol.
 use std::{fmt, hash::Hash};
 
+use anyhow::Context as _;
 use bit_vec::BitVec;
 use num_bigint::BigUint;
 use zksync_consensus_crypto::keccak256::Keccak256;
-
-use super::{LeaderProposal, ReplicaCommit, ReplicaNewView, ReplicaTimeout};
-use crate::{proto::validator as proto, validator::PublicKey};
-use anyhow::Context as _;
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
-use crate::validator::{Committee, Genesis, GenesisHash, Msg};
+use super::{LeaderProposal, ReplicaCommit, ReplicaNewView, ReplicaTimeout};
+use crate::{
+    proto::validator as proto,
+    validator::{Committee, Genesis, GenesisHash, Msg, PublicKey},
+};
 
 /// Consensus messages.
 #[allow(missing_docs)]
