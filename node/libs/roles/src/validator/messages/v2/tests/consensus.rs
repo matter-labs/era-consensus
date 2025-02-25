@@ -1,14 +1,19 @@
 use super::*;
-use crate::validator::messages::tests::{genesis_v1, validator_committee};
+use crate::validator::messages::tests::{genesis_v2, validator_committee};
 
 #[test]
 fn test_view_next() {
     let view = View {
         genesis: GenesisHash::default(),
         number: ViewNumber(1),
+        epoch: EpochNumber(0),
     };
-    let next_view = view.next();
+
+    let next_view = view.next_view();
     assert_eq!(next_view.number, ViewNumber(2));
+
+    let next_epoch = view.next_epoch();
+    assert_eq!(next_epoch.epoch, EpochNumber(1));
 }
 
 #[test]
@@ -16,28 +21,43 @@ fn test_view_prev() {
     let view = View {
         genesis: GenesisHash::default(),
         number: ViewNumber(1),
+        epoch: EpochNumber(2),
     };
-    let prev_view = view.prev();
+
+    let prev_view = view.prev_view();
     assert_eq!(prev_view.unwrap().number, ViewNumber(0));
+
+    let prev_epoch = view.prev_epoch();
+    assert_eq!(prev_epoch.unwrap().epoch, EpochNumber(1));
+
     let view = View {
         genesis: GenesisHash::default(),
         number: ViewNumber(0),
+        epoch: EpochNumber(0),
     };
-    let prev_view = view.prev();
+
+    let prev_view = view.prev_view();
     assert!(prev_view.is_none());
+
+    let prev_epoch = view.prev_epoch();
+    assert!(prev_epoch.is_none());
 }
 
 #[test]
 fn test_view_verify() {
-    let genesis = genesis_v1();
+    let genesis = genesis_v2();
+
     let view = View {
         genesis: genesis.hash(),
         number: ViewNumber(1),
+        epoch: EpochNumber(0),
     };
     assert!(view.verify(&genesis).is_ok());
+
     let view = View {
         genesis: GenesisHash::default(),
         number: ViewNumber(1),
+        epoch: EpochNumber(0),
     };
     assert!(view.verify(&genesis).is_err());
 }

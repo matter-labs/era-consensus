@@ -4,11 +4,14 @@ use std::{fmt, hash::Hash};
 use bit_vec::BitVec;
 use num_bigint::BigUint;
 use zksync_consensus_crypto::keccak256::Keccak256;
-use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
-
-use crate::validator::{Committee, Genesis, GenesisHash, Msg, PublicKey};
 
 use super::{LeaderProposal, ReplicaCommit, ReplicaNewView, ReplicaTimeout};
+use crate::{proto::validator as proto, validator::PublicKey};
+use anyhow::Context as _;
+use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
+use zksync_protobuf::{read_required, required, ProtoFmt};
+
+use crate::validator::{Committee, Genesis, GenesisHash, Msg};
 
 /// Consensus messages.
 #[allow(missing_docs)]
@@ -95,6 +98,39 @@ impl Variant<Msg> for ReplicaTimeout {
     }
 }
 
+impl ProtoFmt for ChonkyMsg {
+    type Proto = proto::ChonkyMsgV2;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        use proto::chonky_msg_v2::T;
+        Ok(match r.t.as_ref().context("missing")? {
+            T::ReplicaCommit(r) => Self::ReplicaCommit(ProtoFmt::read(r).context("ReplicaCommit")?),
+            T::ReplicaTimeout(r) => {
+                Self::ReplicaTimeout(ProtoFmt::read(r).context("ReplicaTimeout")?)
+            }
+            T::ReplicaNewView(r) => {
+                Self::ReplicaNewView(ProtoFmt::read(r).context("ReplicaNewView")?)
+            }
+            T::LeaderProposal(r) => {
+                Self::LeaderProposal(ProtoFmt::read(r).context("LeaderProposal")?)
+            }
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        use proto::chonky_msg_v2::T;
+
+        let t = match self {
+            Self::ReplicaCommit(x) => T::ReplicaCommit(x.build()),
+            Self::ReplicaTimeout(x) => T::ReplicaTimeout(x.build()),
+            Self::ReplicaNewView(x) => T::ReplicaNewView(x.build()),
+            Self::LeaderProposal(x) => T::LeaderProposal(x.build()),
+        };
+
+        Self::Proto { t: Some(t) }
+    }
+}
+
 /// View specification.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -103,6 +139,8 @@ pub struct View {
     pub genesis: GenesisHash,
     /// The number of the current view.
     pub number: ViewNumber,
+    /// The number of the current epoch.
+    pub epoch: EpochNumber,
 }
 
 impl View {
@@ -113,19 +151,59 @@ impl View {
     }
 
     /// Increments the view number.
-    pub fn next(self) -> Self {
+    pub fn next_view(self) -> Self {
         Self {
             genesis: self.genesis,
-            number: ViewNumber(self.number.0 + 1),
+            number: self.number.next(),
+            epoch: self.epoch,
         }
     }
 
     /// Decrements the view number.
-    pub fn prev(self) -> Option<Self> {
+    pub fn prev_view(self) -> Option<Self> {
         self.number.prev().map(|number| Self {
             genesis: self.genesis,
             number,
+            epoch: self.epoch,
         })
+    }
+
+    /// Increments the epoch number.
+    pub fn next_epoch(&self) -> Self {
+        Self {
+            genesis: self.genesis,
+            number: self.number,
+            epoch: self.epoch.next(),
+        }
+    }
+
+    /// Decrements the epoch number.
+    pub fn prev_epoch(&self) -> Option<Self> {
+        self.epoch.prev().map(|epoch| Self {
+            genesis: self.genesis,
+            number: self.number,
+            epoch,
+        })
+    }
+}
+
+impl ProtoFmt for View {
+    type Proto = proto::ViewV2;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            genesis: read_required(&r.genesis).context("genesis")?,
+            number: ViewNumber(*required(&r.number).context("number")?),
+            epoch: EpochNumber(*required(&r.epoch).context("epoch")?),
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            genesis: Some(self.genesis.build()),
+            number: Some(self.number.0),
+            epoch: Some(self.epoch.0),
+        }
     }
 }
 
@@ -147,6 +225,29 @@ impl ViewNumber {
 }
 
 impl fmt::Display for ViewNumber {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, formatter)
+    }
+}
+
+/// A struct that represents an epoch number.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EpochNumber(pub u64);
+
+impl EpochNumber {
+    /// Get the next epoch number.
+    pub fn next(self) -> Self {
+        Self(self.0 + 1)
+    }
+
+    /// Get the previous epoch number.
+    pub fn prev(self) -> Option<Self> {
+        self.0.checked_sub(1).map(Self)
+    }
+}
+
+impl fmt::Display for EpochNumber {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt::Display::fmt(&self.0, formatter)
     }
@@ -251,6 +352,18 @@ impl Signers {
     }
 }
 
+impl ProtoFmt for Signers {
+    type Proto = zksync_protobuf::proto::std::BitVector;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ProtoFmt::read(r)?))
+    }
+
+    fn build(&self) -> Self::Proto {
+        self.0.build()
+    }
+}
+
 impl std::ops::BitOrAssign<&Self> for Signers {
     fn bitor_assign(&mut self, other: &Self) {
         self.0.or(&other.0);
@@ -279,4 +392,27 @@ pub enum Phase {
     Prepare,
     Commit,
     Timeout,
+}
+
+impl ProtoFmt for Phase {
+    type Proto = proto::PhaseV2;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        use proto::phase_v2::T;
+        Ok(match required(&r.t)? {
+            T::Prepare(_) => Self::Prepare,
+            T::Commit(_) => Self::Commit,
+            T::Timeout(_) => Self::Timeout,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        use proto::phase_v2::T;
+        let t = match self {
+            Self::Prepare => T::Prepare(zksync_protobuf::proto::std::Void {}),
+            Self::Commit => T::Commit(zksync_protobuf::proto::std::Void {}),
+            Self::Timeout => T::Timeout(zksync_protobuf::proto::std::Void {}),
+        };
+        Self::Proto { t: Some(t) }
+    }
 }

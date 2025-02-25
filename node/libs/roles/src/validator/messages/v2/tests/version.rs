@@ -1,7 +1,14 @@
+use anyhow::Context as _;
 use zksync_consensus_crypto::Text;
+use zksync_consensus_utils::enum_util::Variant as _;
 
-use super::*;
-use crate::validator::messages::tests::validator_keys;
+use crate::validator::{
+    self,
+    messages::tests::{genesis_v2, validator_keys},
+    GenesisHash, Msg, MsgHash,
+};
+
+use super::{leader_proposal, replica_commit, replica_new_view, replica_timeout};
 
 /// Asserts that msg.hash()==hash and that sig is a
 /// valid signature of msg (signed by `keys()[0]`).
@@ -34,12 +41,25 @@ fn msg_change_detector(msg: Msg, hash: &str, sig: &str) {
     .unwrap();
 }
 
+/// Note that genesis is NOT versioned by ProtocolVersion.
+/// Even if it was, ALL versions of genesis need to be supported FOREVER,
+/// unless we introduce dynamic regenesis.
+#[test]
+fn genesis_hash_change_detector() {
+    let want: GenesisHash = Text::new(
+        "genesis_hash:keccak256:e898a78bbd1de62014bdd62c1a311d766304940b8895191c205234a9e8b2296c",
+    )
+    .decode()
+    .unwrap();
+    assert_eq!(want, genesis_v2().hash());
+}
+
 #[test]
 fn replica_commit_change_detector() {
     msg_change_detector(
             replica_commit().insert(),
-            "validator_msg:keccak256:ccbb11a6b3f4e06840a2a06abc2a245a2b3de30bb951e759a9ec6920f74f0632",
-            "validator:signature:bls12_381:8e41b89c89c0de8f83102966596ab95f6bdfdc18fceaceb224753b3ff495e02d5479c709829bd6d0802c5a1f24fa96b5",
+            "validator_msg:keccak256:9b39803ff46d80badb5908b9e71b530324ad1b81f8af70bd5bdd03009483fe15",
+            "validator:signature:bls12_381:ad574083b1f55d4aadfba7978ef22cf9aa172c537b9e2e35659a07380f81a953d3cb90a620c5a6d46bcc4032cba79d1b",
         );
 }
 
@@ -47,8 +67,8 @@ fn replica_commit_change_detector() {
 fn replica_new_view_change_detector() {
     msg_change_detector(
             replica_new_view().insert(),
-            "validator_msg:keccak256:2be143114cd3442b96d5f6083713c4c338a1c18ef562ede4721ebf037689a6ad",
-            "validator:signature:bls12_381:9809b66d44509cf7847baaa03a35ae87062f9827cf1f90c8353f057eee45b79fde0f4c4c500980b69c59263b51b6d072",
+            "validator_msg:keccak256:c44c802affaa6256f9be5cde0cb359d728da2431e656d7909be65718753c2c0f",
+            "validator:signature:bls12_381:990f10e2e783f3d6abfa11bb5d7123a4505034d8b46532740074b3f3aceeed345741df5ba109617fd1edec1f7dfed2cb",
         );
 }
 
@@ -56,8 +76,8 @@ fn replica_new_view_change_detector() {
 fn replica_timeout_change_detector() {
     msg_change_detector(
             replica_timeout().insert(),
-            "validator_msg:keccak256:615fa6d2960b48e30ab88fe195bbad161b8a6f9a59a45ca86b5e2f20593f76cd",
-            "validator:signature:bls12_381:ac9b6d340bf1b04421455676b8a28a8de079cd9b40f75f1009aa3da32981690bc520d4ec0284ae030fc8b036d86ca307",
+            "validator_msg:keccak256:402344f544f53c8ae0962a95cb0b60c06b0a02cbe8dc4b686cc4f8627f5266d4",
+            "validator:signature:bls12_381:86cbdcb018ec2f75b58f13e40dde3a22db3d642e5dc7263da4656816a63ca8d8d928bb5306bbec5aa4e6e40035d996d8",
         );
 }
 
@@ -65,7 +85,7 @@ fn replica_timeout_change_detector() {
 fn leader_proposal_change_detector() {
     msg_change_detector(
             leader_proposal().insert(),
-            "validator_msg:keccak256:4c1b2cf1e8fbb00cde86caee200491df15c45d5c88402e227c1f3e1b416c4255",
-            "validator:signature:bls12_381:81f865807067c6f70f17f9716e6d41c0103c2366abb6721408fb7d27ead6332798bd7b34d5f4a63e324082586b2c69a3",
+            "validator_msg:keccak256:e183b29247763a535bb50cc8a179f86e8a50acc890feea9a5558154b070f2951",
+            "validator:signature:bls12_381:919c6a5f894c41012986dc5164298e8e5e493429d99c52cb51f8853cd65cdc15b25b7d6bd92e055a1b8dcf97467ad41f",
         );
 }

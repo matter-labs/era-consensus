@@ -5,9 +5,8 @@ use rand::{
 };
 
 use super::{
-    BlockHeader, CommitQC, FinalBlock, LeaderProposal, LeaderSelectionMode, Phase,
-    ProposalJustification, ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
-    ViewNumber,
+    BlockHeader, CommitQC, EpochNumber, FinalBlock, LeaderProposal, Phase, ProposalJustification,
+    ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View, ViewNumber,
 };
 use crate::validator::{testonly::Setup, Block, Payload};
 
@@ -27,6 +26,7 @@ impl Setup {
                     Block::PreGenesis(_) => ViewNumber(0),
                 })
                 .unwrap_or(ViewNumber(0)),
+            epoch: EpochNumber(0),
         };
         let proposal = match self.0.blocks.last() {
             Some(b) => BlockHeader {
@@ -69,6 +69,7 @@ impl Setup {
         View {
             genesis: self.genesis.hash(),
             number,
+            epoch: EpochNumber(0),
         }
     }
 
@@ -164,20 +165,6 @@ impl Setup {
         }
 
         qc
-    }
-}
-
-impl Distribution<LeaderSelectionMode> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderSelectionMode {
-        match rng.gen_range(0..=3) {
-            0 => LeaderSelectionMode::RoundRobin,
-            1 => LeaderSelectionMode::Sticky(rng.gen()),
-            3 => LeaderSelectionMode::Rota({
-                let n = rng.gen_range(1..=3);
-                rng.sample_iter(Standard).take(n).collect()
-            }),
-            _ => LeaderSelectionMode::Weighted,
-        }
     }
 }
 
@@ -280,11 +267,18 @@ impl Distribution<ViewNumber> for Standard {
     }
 }
 
+impl Distribution<EpochNumber> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> EpochNumber {
+        EpochNumber(rng.gen())
+    }
+}
+
 impl Distribution<View> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> View {
         View {
             genesis: rng.gen(),
             number: rng.gen(),
+            epoch: rng.gen(),
         }
     }
 }

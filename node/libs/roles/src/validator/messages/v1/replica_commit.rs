@@ -1,6 +1,10 @@
 use super::{BlockHeader, Signers, View};
 use crate::validator::{self, Genesis, Signed};
 
+use crate::proto::validator as proto;
+use anyhow::Context as _;
+use zksync_protobuf::{read_required, ProtoFmt};
+
 /// A commit message from a replica.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -19,6 +23,24 @@ impl ReplicaCommit {
             .map_err(ReplicaCommitVerifyError::BadView)?;
 
         Ok(())
+    }
+}
+
+impl ProtoFmt for ReplicaCommit {
+    type Proto = proto::ReplicaCommit;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            view: read_required(&r.view).context("view")?,
+            proposal: read_required(&r.proposal).context("proposal")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            view: Some(self.view.build()),
+            proposal: Some(self.proposal.build()),
+        }
     }
 }
 
@@ -136,6 +158,26 @@ impl CommitQC {
         self.signature
             .verify_messages(messages_and_keys)
             .map_err(CommitQCVerifyError::BadSignature)
+    }
+}
+
+impl ProtoFmt for CommitQC {
+    type Proto = proto::CommitQc;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            message: read_required(&r.msg).context("msg")?,
+            signers: read_required(&r.signers).context("signers")?,
+            signature: read_required(&r.sig).context("sig")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            msg: Some(self.message.build()),
+            signers: Some(self.signers.build()),
+            sig: Some(self.signature.build()),
+        }
     }
 }
 

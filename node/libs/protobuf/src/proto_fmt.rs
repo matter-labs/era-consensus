@@ -222,11 +222,11 @@ pub fn canonical_raw(
         match wire {
             Wire::Varint | Wire::I64 | Wire::I32 => {
                 if values.len() > 1 {
-                    w.write_tag(num << 3 | LEN).unwrap();
+                    w.write_tag((num << 3) | LEN).unwrap();
                     w.write_bytes(&values.into_iter().flatten().collect::<Vec<_>>())
                         .unwrap();
                 } else {
-                    w.write_tag(num << 3 | wire.raw()).unwrap();
+                    w.write_tag((num << 3) | wire.raw()).unwrap();
                     // inefficient workaround of the fact that quick_protobuf::Writer
                     // doesn't support just appending a sequence of bytes.
                     for b in &values[0] {
@@ -236,7 +236,7 @@ pub fn canonical_raw(
             }
             Wire::Len => {
                 for v in &values {
-                    w.write_tag(num << 3 | LEN).unwrap();
+                    w.write_tag((num << 3) | LEN).unwrap();
                     w.write_bytes(v).unwrap();
                 }
             }

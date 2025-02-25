@@ -63,7 +63,8 @@ impl ProtoFmt for Block {
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         use proto::block::T;
         Ok(match required(&r.t)? {
-            T::Final(b) => Block::FinalV1(ProtoFmt::read(b).context("block")?),
+            T::FinalV2(b) => Block::FinalV2(ProtoFmt::read(b).context("block_v2")?),
+            T::Final(b) => Block::FinalV1(ProtoFmt::read(b).context("block_v1")?),
             T::PreGenesis(b) => Block::PreGenesis(ProtoFmt::read(b).context("pre_genesis_block")?),
         })
     }
@@ -72,7 +73,7 @@ impl ProtoFmt for Block {
         use proto::block::T;
         Self::Proto {
             t: Some(match self {
-                Block::FinalV2(b) => T::Final(b.build()),
+                Block::FinalV2(b) => T::FinalV2(b.build()),
                 Block::FinalV1(b) => T::Final(b.build()),
                 Block::PreGenesis(b) => T::PreGenesis(b.build()),
             }),

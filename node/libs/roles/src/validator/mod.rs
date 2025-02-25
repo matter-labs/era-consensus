@@ -1,5 +1,4 @@
 //! Validator role implementation.
-mod conv;
 mod keys;
 mod messages;
 pub mod testonly;

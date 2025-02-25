@@ -125,7 +125,7 @@ impl ProtoFmt for ConsensusMsg {
             T::LeaderProposal(r) => {
                 Self::LeaderProposal(ProtoFmt::read(r).context("LeaderProposal")?)
             }
-            T::V2(r) => Self::V2(ProtoFmt::read(r).context("V2")?),
+            T::V2(r) => Self::V2(ProtoFmt::read(r).context("v2")?),
         })
     }
 

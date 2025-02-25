@@ -86,12 +86,6 @@ impl TextFmt for GenesisHash {
     }
 }
 
-impl fmt::Debug for GenesisHash {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt.write_str(&TextFmt::encode(self))
-    }
-}
-
 impl ProtoFmt for GenesisHash {
     type Proto = proto::GenesisHash;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
@@ -101,6 +95,12 @@ impl ProtoFmt for GenesisHash {
         Self::Proto {
             keccak256: Some(self.0.encode()),
         }
+    }
+}
+
+impl fmt::Debug for GenesisHash {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt.write_str(&TextFmt::encode(self))
     }
 }
 

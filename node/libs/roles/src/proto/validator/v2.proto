@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package zksync.roles.validator;
+
+import "zksync/roles/validator/keys.proto";
+import "zksync/roles/validator/genesis.proto";
+import "zksync/std.proto";
+
+message BlockHeaderV2 {
+  // Sequential number of the block = parent.number + 1.
+  optional uint64 number = 1; // required
+  // Hash of the block payload.
+  optional PayloadHash payload = 2; // required
+}
+
+message FinalBlockV2 {
+  optional bytes payload = 1; // required
+  optional CommitQCV2 justification = 2; // required
+}
+
+message ChonkyMsgV2 {
+  oneof t { // required
+    ReplicaCommitV2 replica_commit = 1;
+    ReplicaTimeoutV2 replica_timeout = 2;
+    ReplicaNewViewV2 replica_new_view = 3;
+    LeaderProposalV2 leader_proposal = 4;
+  }
+}
+
+message ViewV2 {
+  optional GenesisHash genesis = 1; // required
+  optional uint64 number = 2; // required
+  optional uint64 epoch = 3; // required
+}
+
+message ReplicaCommitV2 {
+  optional ViewV2 view = 1; // required
+  optional BlockHeaderV2 proposal = 2; // required
+}
+
+message ReplicaTimeoutV2 {
+  optional ViewV2 view = 1; // required
+  optional ReplicaCommitV2 high_vote = 2; // optional 
+  optional CommitQCV2 high_qc = 3; // optional
+}
+
+message ReplicaNewViewV2 {
+  optional ProposalJustificationV2 justification = 1; // required
+}
+
+message LeaderProposalV2 {
+  optional bytes proposal_payload = 1; // optional (depending on justification)
+  optional ProposalJustificationV2 justification = 2; // required
+}
+
+message CommitQCV2 {
+  optional ReplicaCommitV2 msg = 1; // required
+  optional std.BitVector signers = 2; // required
+  optional AggregateSignature sig = 3; // required
+}
+
+message TimeoutQCV2 {
+  optional ViewV2 view = 1; // required
+  repeated ReplicaTimeoutV2 msgs = 2; // required
+  repeated std.BitVector signers = 3; // required
+  optional AggregateSignature sig = 4; // required
+}
+
+message ProposalJustificationV2 {
+  oneof t { // required
+    CommitQCV2 commit_qc = 1;
+    TimeoutQCV2 timeout_qc = 2;
+  }
+}
+
+message PhaseV2 {
+  oneof t { // required
+    std.Void prepare = 1;
+    std.Void commit = 2;
+    std.Void timeout = 3;
+  }
+}

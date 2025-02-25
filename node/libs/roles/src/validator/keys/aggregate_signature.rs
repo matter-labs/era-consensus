@@ -6,6 +6,9 @@ use zksync_consensus_utils::enum_util::Variant;
 use super::{PublicKey, Signature};
 use crate::validator::messages::{Msg, MsgHash};
 
+use crate::proto::validator as proto;
+use zksync_protobuf::{required, ProtoFmt};
+
 /// An aggregate signature from a validator.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
@@ -73,6 +76,20 @@ impl TextFmt for AggregateSignature {
             "validator:aggregate_signature:bls12_381:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
+    }
+}
+
+impl ProtoFmt for AggregateSignature {
+    type Proto = proto::AggregateSignature;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            bn254: Some(self.0.encode()),
+        }
     }
 }
 

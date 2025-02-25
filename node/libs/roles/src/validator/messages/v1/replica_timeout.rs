@@ -6,6 +6,10 @@ use super::{
 };
 use crate::validator::{self, Committee, Genesis, Signed};
 
+use crate::proto::validator as proto;
+use anyhow::Context as _;
+use zksync_protobuf::{read_optional, read_required, ProtoFmt};
+
 /// A timeout message from a replica.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -36,6 +40,26 @@ impl ReplicaTimeout {
         }
 
         Ok(())
+    }
+}
+
+impl ProtoFmt for ReplicaTimeout {
+    type Proto = proto::ReplicaTimeout;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            view: read_required(&r.view).context("view")?,
+            high_vote: read_optional(&r.high_vote).context("high_vote")?,
+            high_qc: read_optional(&r.high_qc).context("high_qc")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            view: Some(self.view.build()),
+            high_vote: self.high_vote.as_ref().map(ProtoFmt::build),
+            high_qc: self.high_qc.as_ref().map(ProtoFmt::build),
+        }
     }
 }
 
@@ -236,6 +260,42 @@ impl Ord for TimeoutQC {
 impl PartialOrd for TimeoutQC {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         Some(self.cmp(other))
+    }
+}
+
+impl ProtoFmt for TimeoutQC {
+    type Proto = proto::TimeoutQc;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        let mut map = BTreeMap::new();
+
+        for (msg, signers) in r.msgs.iter().zip(r.signers.iter()) {
+            map.insert(
+                ReplicaTimeout::read(msg).context("msg")?,
+                Signers::read(signers).context("signers")?,
+            );
+        }
+
+        Ok(Self {
+            view: read_required(&r.view).context("view")?,
+            map,
+            signature: read_required(&r.sig).context("sig")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        let (msgs, signers) = self
+            .map
+            .iter()
+            .map(|(msg, signers)| (msg.build(), signers.build()))
+            .unzip();
+
+        Self::Proto {
+            view: Some(self.view.build()),
+            msgs,
+            signers,
+            sig: Some(self.signature.build()),
+        }
     }
 }
 

@@ -60,6 +60,20 @@ pub(crate) fn genesis_v1() -> Genesis {
     .with_hash()
 }
 
+/// Hardcoded genesis with no attesters.
+pub(crate) fn genesis_v2() -> Genesis {
+    GenesisRaw {
+        chain_id: ChainId(1337),
+        fork_number: ForkNumber(42),
+        first_block: BlockNumber(2834),
+
+        protocol_version: ProtocolVersion(2),
+        validators: validator_committee(),
+        leader_selection: v1::LeaderSelectionMode::Weighted,
+    }
+    .with_hash()
+}
+
 #[test]
 fn test_byte_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);
