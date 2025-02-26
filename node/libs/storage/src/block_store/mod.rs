@@ -16,7 +16,9 @@ pub enum Last {
     /// `<genesis.first_block`.
     PreGenesis(validator::BlockNumber),
     /// `>=genesis.first_block`.
-    Final(validator::v1::CommitQC),
+    FinalV1(validator::v1::CommitQC),
+    /// `>=genesis.first_block`.
+    FinalV2(validator::v2::CommitQC),
 }
 
 impl From<&validator::Block> for Last {
@@ -24,7 +26,8 @@ impl From<&validator::Block> for Last {
         use validator::Block as B;
         match b {
             B::PreGenesis(b) => Last::PreGenesis(b.number),
-            B::FinalV1(b) => Last::Final(b.justification.clone()),
+            B::FinalV1(b) => Last::FinalV1(b.justification.clone()),
+            B::FinalV2(b) => Last::FinalV2(b.justification.clone()),
         }
     }
 }
@@ -34,7 +37,8 @@ impl Last {
     pub fn number(&self) -> validator::BlockNumber {
         match self {
             Last::PreGenesis(n) => *n,
-            Last::Final(qc) => qc.header().number,
+            Last::FinalV1(qc) => qc.header().number,
+            Last::FinalV2(qc) => qc.header().number,
         }
     }
 
@@ -42,7 +46,8 @@ impl Last {
     pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
         match self {
             Last::PreGenesis(n) => anyhow::ensure!(n < &genesis.first_block, "missing qc"),
-            Last::Final(qc) => qc.verify(genesis)?,
+            Last::FinalV1(qc) => qc.verify(genesis)?,
+            Last::FinalV2(qc) => qc.verify(genesis)?,
         }
         Ok(())
     }
@@ -204,71 +209,6 @@ pub struct BlockStore {
     genesis: validator::Genesis,
 }
 
-/// Runner of the BlockStore background tasks.
-#[must_use]
-#[derive(Debug, Clone)]
-pub struct BlockStoreRunner(Arc<BlockStore>);
-
-impl BlockStoreRunner {
-    /// Runs the background tasks of the BlockStore.
-    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        #[vise::register]
-        static COLLECTOR: vise::Collector<Option<metrics::BlockStoreState>> =
-            vise::Collector::new();
-        let store_ref = Arc::downgrade(&self.0);
-        let _ = COLLECTOR.before_scrape(move || Some(store_ref.upgrade()?.scrape_metrics()));
-
-        let res = scope::run!(ctx, |ctx, s| async {
-            s.spawn::<()>(async {
-                // Task watching the persisted state.
-                let mut persisted = self.0.persistent.persisted();
-                persisted.mark_changed();
-                loop {
-                    async {
-                        let new = sync::changed(ctx, &mut persisted)
-                            .instrument(tracing::info_span!("wait_for_block_store_change"))
-                            .await?
-                            .clone();
-                        sync::try_send_modify(&self.0.inner, |inner| inner.update_persisted(new))?;
-
-                        ctx::Ok(())
-                    }
-                    .instrument(tracing::info_span!("watch_persistent_state_iteration"))
-                    .await?;
-                }
-            });
-            // Task queueing blocks to be persisted.
-            let inner = &mut self.0.inner.subscribe();
-            let mut queue_next = validator::BlockNumber(0);
-            loop {
-                async {
-                    let block = sync::wait_for_some(ctx, inner, |inner| {
-                        inner.block(queue_next.max(inner.persisted.next()))
-                    })
-                    .instrument(tracing::info_span!("wait_for_next_block"))
-                    .await?;
-                    queue_next = block.number().next();
-                    // TODO: monitor errors as well.
-                    let t = metrics::PERSISTENT_BLOCK_STORE
-                        .queue_next_block_latency
-                        .start();
-                    self.0.persistent.queue_next_block(ctx, block).await?;
-                    t.observe();
-
-                    ctx::Ok(())
-                }
-                .instrument(tracing::info_span!("queue_persist_block_iteration"))
-                .await?;
-            }
-        })
-        .await;
-        match res {
-            Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
-            Err(ctx::Error::Internal(err)) => Err(err),
-        }
-    }
-}
-
 impl BlockStore {
     /// Constructs a BlockStore.
     /// BlockStore takes ownership of the passed PersistentBlockStore,
@@ -335,7 +275,6 @@ impl BlockStore {
     pub async fn verify_block(&self, ctx: &ctx::Ctx, block: &validator::Block) -> ctx::Result<()> {
         use validator::Block as B;
         match &block {
-            B::FinalV1(b) => b.verify(&self.genesis).context("block.verify()")?,
             B::PreGenesis(b) => {
                 if b.number >= self.genesis.first_block {
                     return Err(anyhow::format_err!(
@@ -352,6 +291,8 @@ impl BlockStore {
                     .context("verify_pregenesis_block()")?;
                 t.observe();
             }
+            B::FinalV1(b) => b.verify(&self.genesis).context("block.verify()")?,
+            B::FinalV2(b) => b.verify(&self.genesis).context("block.verify()")?,
         }
         Ok(())
     }
@@ -428,5 +369,70 @@ impl BlockStore {
         m.next_queued_block.set(inner.queued.next().0);
         m.next_persisted_block.set(inner.persisted.next().0);
         m
+    }
+}
+
+/// Runner of the BlockStore background tasks.
+#[must_use]
+#[derive(Debug, Clone)]
+pub struct BlockStoreRunner(Arc<BlockStore>);
+
+impl BlockStoreRunner {
+    /// Runs the background tasks of the BlockStore.
+    pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+        #[vise::register]
+        static COLLECTOR: vise::Collector<Option<metrics::BlockStoreState>> =
+            vise::Collector::new();
+        let store_ref = Arc::downgrade(&self.0);
+        let _ = COLLECTOR.before_scrape(move || Some(store_ref.upgrade()?.scrape_metrics()));
+
+        let res = scope::run!(ctx, |ctx, s| async {
+            s.spawn::<()>(async {
+                // Task watching the persisted state.
+                let mut persisted = self.0.persistent.persisted();
+                persisted.mark_changed();
+                loop {
+                    async {
+                        let new = sync::changed(ctx, &mut persisted)
+                            .instrument(tracing::info_span!("wait_for_block_store_change"))
+                            .await?
+                            .clone();
+                        sync::try_send_modify(&self.0.inner, |inner| inner.update_persisted(new))?;
+
+                        ctx::Ok(())
+                    }
+                    .instrument(tracing::info_span!("watch_persistent_state_iteration"))
+                    .await?;
+                }
+            });
+            // Task queueing blocks to be persisted.
+            let inner = &mut self.0.inner.subscribe();
+            let mut queue_next = validator::BlockNumber(0);
+            loop {
+                async {
+                    let block = sync::wait_for_some(ctx, inner, |inner| {
+                        inner.block(queue_next.max(inner.persisted.next()))
+                    })
+                    .instrument(tracing::info_span!("wait_for_next_block"))
+                    .await?;
+                    queue_next = block.number().next();
+                    // TODO: monitor errors as well.
+                    let t = metrics::PERSISTENT_BLOCK_STORE
+                        .queue_next_block_latency
+                        .start();
+                    self.0.persistent.queue_next_block(ctx, block).await?;
+                    t.observe();
+
+                    ctx::Ok(())
+                }
+                .instrument(tracing::info_span!("queue_persist_block_iteration"))
+                .await?;
+            }
+        })
+        .await;
+        match res {
+            Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
+            Err(ctx::Error::Internal(err)) => Err(err),
+        }
     }
 }

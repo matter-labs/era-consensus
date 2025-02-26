@@ -17,7 +17,7 @@ pub fn callback(node_storage: Arc<BlockStore>) -> RpcResult<serde_json::Value> {
         .map_err(|_| ErrorObjectOwned::from(ErrorCode::InternalError))?
     {
         Last::PreGenesis(_) => 0,
-        Last::Final(qc) => qc.header().number.0,
+        Last::FinalV1(qc) => qc.header().number.0,
     };
     // TODO(gprusak): this is the view of the last finalized block, not the current view of the
     // replica. Fix this.

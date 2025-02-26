@@ -38,7 +38,7 @@ impl Req {
         Req {
             first: state.first.max(genesis.first_block),
             last: match &state.last {
-                Some(Last::Final(qc)) => Some(qc.clone()),
+                Some(Last::FinalV1(qc)) => Some(qc.clone()),
                 _ => None,
             },
             state: Some(state),
@@ -51,7 +51,7 @@ impl Req {
             Some(state) => state.clone(),
             None => BlockStoreState {
                 first: self.first,
-                last: self.last.clone().map(Last::Final),
+                last: self.last.clone().map(Last::FinalV1),
             },
         }
     }
@@ -69,7 +69,7 @@ impl ProtoRepr for proto::Last {
         use proto::last::T;
         Ok(match self.t.as_ref().context("missing")? {
             T::PreGenesis(n) => Last::PreGenesis(validator::BlockNumber(*n)),
-            T::Final(qc) => Last::Final(ProtoFmt::read(qc).context("final")?),
+            T::Final(qc) => Last::FinalV1(ProtoFmt::read(qc).context("final")?),
         })
     }
     fn build(this: &Self::Type) -> Self {
@@ -77,7 +77,7 @@ impl ProtoRepr for proto::Last {
         Self {
             t: Some(match this {
                 Last::PreGenesis(n) => T::PreGenesis(n.0),
-                Last::Final(qc) => T::Final(qc.build()),
+                Last::FinalV1(qc) => T::Final(qc.build()),
             }),
         }
     }
