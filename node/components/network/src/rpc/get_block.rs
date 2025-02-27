@@ -43,27 +43,24 @@ impl ProtoFmt for Req {
 #[derive(Debug, PartialEq)]
 pub(crate) struct Resp(pub(crate) Option<validator::Block>);
 
-impl Resp {
-    /// Clears pregenesis data from the response.
-    /// Use to simulate node behavior before pre-genesis support.
-    pub(crate) fn clear_pregenesis_data(&mut self) {
-        if let Some(validator::Block::PreGenesis(_)) = &self.0 {
-            self.0 = None;
-        }
-    }
-}
-
 impl ProtoFmt for Resp {
     type Proto = proto::GetBlockResponse;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         use validator::Block as B;
-        let block = r
+        let block_v2 = r
+            .block_v2
+            .as_ref()
+            .map(ProtoFmt::read)
+            .transpose()
+            .context("block_v2")?
+            .map(B::FinalV2);
+        let block_v1 = r
             .block
             .as_ref()
             .map(ProtoFmt::read)
             .transpose()
-            .context("block")?
+            .context("block_v1")?
             .map(B::FinalV1);
         let pregenesis = r
             .pre_genesis
@@ -72,13 +69,15 @@ impl ProtoFmt for Resp {
             .transpose()
             .context("pre_genesis")?
             .map(B::PreGenesis);
-        Ok(Self(block.or(pregenesis)))
+
+        Ok(Self(block_v2.or(block_v1).or(pregenesis)))
     }
 
     fn build(&self) -> Self::Proto {
         use validator::Block as B;
         let mut p = Self::Proto::default();
         match self.0.as_ref() {
+            Some(B::FinalV2(b)) => p.block_v2 = Some(b.build()),
             Some(B::FinalV1(b)) => p.block = Some(b.build()),
             Some(B::PreGenesis(b)) => p.pre_genesis = Some(b.build()),
             None => {}

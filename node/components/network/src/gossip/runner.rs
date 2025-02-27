@@ -92,14 +92,10 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushServer<'_> {
     async fn handle(
         &self,
         _ctx: &ctx::Ctx,
-        mut req: rpc::push_block_store_state::Req,
+        req: rpc::push_block_store_state::Req,
     ) -> anyhow::Result<()> {
-        if !self.net.cfg.enable_pregenesis {
-            req.clear_pregenesis_data();
-        }
-        let state = req.state();
-        state.verify(self.net.genesis())?;
-        self.blocks.send_replace(state);
+        req.state.verify(self.net.genesis())?;
+        self.blocks.send_replace(req.state);
         Ok(())
     }
 }
@@ -114,11 +110,9 @@ impl rpc::Handler<rpc::get_block::Rpc> for &Network {
         ctx: &ctx::Ctx,
         req: rpc::get_block::Req,
     ) -> anyhow::Result<rpc::get_block::Resp> {
-        let mut resp = rpc::get_block::Resp(self.block_store.block(ctx, req.0).await?);
-        if !self.cfg.enable_pregenesis {
-            resp.clear_pregenesis_data();
-        }
-        Ok(resp)
+        Ok(rpc::get_block::Resp(
+            self.block_store.block(ctx, req.0).await?,
+        ))
     }
 }
 
@@ -214,11 +208,10 @@ impl Network {
             s.spawn::<()>(async {
                 let mut state = self.block_store.queued();
                 loop {
-                    let mut req =
-                        rpc::push_block_store_state::Req::new(state.clone(), self.genesis());
-                    if !self.cfg.enable_pregenesis {
-                        req.clear_pregenesis_data();
-                    }
+                    let req = rpc::push_block_store_state::Req {
+                        state: state.clone(),
+                    };
+
                     push_block_store_state_client.call(ctx, &req, kB).await?;
                     state = self.block_store.wait_for_queued_change(ctx, &state).await?;
                 }
@@ -264,12 +257,9 @@ impl Network {
                             let ctx_with_timeout =
                                 self.cfg.rpc.get_block_timeout.map(|t| ctx.with_timeout(t));
                             let ctx = ctx_with_timeout.as_ref().unwrap_or(ctx);
-                            let mut resp = call
+                            let resp = call
                                 .call(ctx, &req, self.cfg.max_block_size.saturating_add(kB))
                                 .await?;
-                            if !self.cfg.enable_pregenesis {
-                                resp.clear_pregenesis_data();
-                            }
                             let block = resp.0.context("empty response")?;
                             anyhow::ensure!(block.number() == req.0, "received wrong block");
                             // Storing the block will fail in case block is invalid.

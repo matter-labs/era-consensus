@@ -61,7 +61,7 @@ async fn test_simple() {
                 .unwrap();
             let resp = stream.recv(ctx).await.unwrap();
             stream.send(ctx, &()).await.unwrap();
-            if resp.state().contains(setup.blocks[0].number()) {
+            if resp.state.contains(setup.blocks[0].number()) {
                 tracing::info!("peer reported to have a block");
                 break;
             }
@@ -83,13 +83,12 @@ async fn test_simple() {
         stream
             .send(
                 ctx,
-                &rpc::push_block_store_state::Req::new(
-                    BlockStoreState {
+                &rpc::push_block_store_state::Req {
+                    state: BlockStoreState {
                         first: setup.blocks[1].number(),
                         last: Some((&setup.blocks[1]).into()),
                     },
-                    &setup.genesis,
-                ),
+                },
             )
             .await
             .unwrap();
@@ -155,13 +154,12 @@ async fn test_concurrent_requests() {
             stream
                 .send(
                     ctx,
-                    &rpc::push_block_store_state::Req::new(
-                        BlockStoreState {
+                    &rpc::push_block_store_state::Req {
+                        state: BlockStoreState {
                             first: setup.blocks[0].number(),
                             last: Some(setup.blocks.last().unwrap().into()),
                         },
-                        &setup.genesis,
-                    ),
+                    },
                 )
                 .await
                 .unwrap();
@@ -213,13 +211,12 @@ async fn test_bad_responses() {
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.blocks.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
-        let state = rpc::push_block_store_state::Req::new(
-            BlockStoreState {
+        let state = rpc::push_block_store_state::Req {
+            state: BlockStoreState {
                 first: setup.blocks[0].number(),
                 last: Some((&setup.blocks[0]).into()),
             },
-            &setup.genesis,
-        );
+        };
 
         for resp in [
             // Empty response even though we declared to have the block.
@@ -290,13 +287,12 @@ async fn test_retry() {
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.blocks.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
-        let state = rpc::push_block_store_state::Req::new(
-            BlockStoreState {
+        let state = rpc::push_block_store_state::Req {
+            state: BlockStoreState {
                 first: setup.blocks[0].number(),
                 last: Some((&setup.blocks[0]).into()),
             },
-            &setup.genesis,
-        );
+        };
 
         tracing::info!("establish a bunch of connections");
         let mut conns = vec![];
@@ -383,7 +379,7 @@ async fn test_announce_truncated_block_range() {
                     .await?;
                 let resp = stream.recv(ctx).await.unwrap();
                 stream.send(ctx, &()).await.unwrap();
-                if resp.state() == *persistent.persisted().borrow() {
+                if resp.state == *persistent.persisted().borrow() {
                     break;
                 }
             }

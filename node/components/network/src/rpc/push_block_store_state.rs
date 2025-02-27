@@ -2,7 +2,7 @@
 use anyhow::Context;
 use zksync_consensus_roles::validator;
 use zksync_consensus_storage::{BlockStoreState, Last};
-use zksync_protobuf::{read_optional, read_optional_repr, required, ProtoFmt, ProtoRepr};
+use zksync_protobuf::{read_optional_repr, read_required_repr, required, ProtoFmt, ProtoRepr};
 
 use super::Capability;
 use crate::proto::gossip as proto;
@@ -23,62 +23,23 @@ impl super::Rpc for Rpc {
 /// Contains the freshest state of the sender's block store.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Req {
-    // DEPRECATED: transmitted for backward compatibility.
-    first: validator::BlockNumber,
-    // DEPRECATED: transmitted for backward compatibility.
-    last: Option<validator::v1::CommitQC>,
     // Block store state. Will be required once we drop
     // compatibility for `first` and `last` fields.
-    state: Option<BlockStoreState>,
+    pub state: BlockStoreState,
 }
 
-impl Req {
-    /// Constructs a new request.
-    pub(crate) fn new(state: BlockStoreState, genesis: &validator::Genesis) -> Self {
-        Req {
-            first: state.first.max(genesis.first_block),
-            last: match &state.last {
-                Some(Last::FinalV1(qc)) => Some(qc.clone()),
-                _ => None,
-            },
-            state: Some(state),
-        }
-    }
+impl ProtoFmt for Req {
+    type Proto = proto::PushBlockStoreState;
 
-    /// Extracts block store state from the request.
-    pub(crate) fn state(&self) -> BlockStoreState {
-        match &self.state {
-            Some(state) => state.clone(),
-            None => BlockStoreState {
-                first: self.first,
-                last: self.last.clone().map(Last::FinalV1),
-            },
-        }
-    }
-
-    /// Clears pre-genesis info from the request.
-    /// Use to simulate node behavior before pre-genesis support.
-    pub(crate) fn clear_pregenesis_data(&mut self) {
-        self.state = None;
-    }
-}
-
-impl ProtoRepr for proto::Last {
-    type Type = Last;
-    fn read(&self) -> anyhow::Result<Self::Type> {
-        use proto::last::T;
-        Ok(match self.t.as_ref().context("missing")? {
-            T::PreGenesis(n) => Last::PreGenesis(validator::BlockNumber(*n)),
-            T::Final(qc) => Last::FinalV1(ProtoFmt::read(qc).context("final")?),
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            state: read_required_repr(&r.state).context("state")?,
         })
     }
-    fn build(this: &Self::Type) -> Self {
-        use proto::last::T;
-        Self {
-            t: Some(match this {
-                Last::PreGenesis(n) => T::PreGenesis(n.0),
-                Last::FinalV1(qc) => T::Final(qc.build()),
-            }),
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            state: Some(ProtoRepr::build(&self.state)),
         }
     }
 }
@@ -99,27 +60,24 @@ impl ProtoRepr for proto::BlockStoreState {
     }
 }
 
-impl ProtoFmt for Req {
-    type Proto = proto::PushBlockStoreState;
-
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let state: Option<BlockStoreState> = read_optional_repr(&r.state).context("state")?;
-        Ok(Self {
-            first: r
-                .first
-                .map(validator::BlockNumber)
-                .or(state.as_ref().map(|s| s.first))
-                .context("missing first and state")?,
-            last: read_optional(&r.last).context("last")?,
-            state,
+impl ProtoRepr for proto::Last {
+    type Type = Last;
+    fn read(&self) -> anyhow::Result<Self::Type> {
+        use proto::last::T;
+        Ok(match self.t.as_ref().context("missing")? {
+            T::PreGenesis(n) => Last::PreGenesis(validator::BlockNumber(*n)),
+            T::Final(qc) => Last::FinalV1(ProtoFmt::read(qc).context("final")?),
+            T::FinalV2(qc) => Last::FinalV2(ProtoFmt::read(qc).context("final_v2")?),
         })
     }
-
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            first: Some(self.first.0),
-            last: self.last.as_ref().map(|x| x.build()),
-            state: self.state.as_ref().map(ProtoRepr::build),
+    fn build(this: &Self::Type) -> Self {
+        use proto::last::T;
+        Self {
+            t: Some(match this {
+                Last::PreGenesis(n) => T::PreGenesis(n.0),
+                Last::FinalV1(qc) => T::Final(qc.build()),
+                Last::FinalV2(qc) => T::FinalV2(qc.build()),
+            }),
         }
     }
 }

@@ -36,8 +36,9 @@ message PushBatchVotesResp {
 
 message Last {
   oneof t {
-    roles.validator.CommitQC final = 1;
     uint64 pre_genesis = 2;
+    roles.validator.CommitQC final = 1;
+    roles.validator.CommitQCV2 final_v2 = 3;
   }
 }
 
@@ -52,12 +53,10 @@ message BlockStoreState {
 // A node is expected to store a continuous range of blocks at all times
 // and actively fetch newest blocks.
 message PushBlockStoreState {
-  // [DEPRECATED] First L2 block that the node has locally.
-  optional uint64 first = 1; // required; has to be >= genesis.first_block.
-  // [DEPRECATED] Last L2 block that the node has locally.
-  optional roles.validator.CommitQC last = 2; // optional
-  // Overrides first and last.
-  optional BlockStoreState state = 3; // optional
+  reserved 1, 2;
+  reserved "first", "last"; 
+  
+  optional BlockStoreState state = 3; // required
 }
 
 // Asks the server to send an L2 block (including its transactions).
@@ -72,7 +71,8 @@ message GetBlockResponse {
   // to consider putting a preexisting field into a oneof as a compatible change.
   //  optional; missing if block is not available
   //  oneof t {
-    roles.validator.FinalBlock block = 1;
     roles.validator.PreGenesisBlock pre_genesis = 2;
+    roles.validator.FinalBlock block = 1;
+    roles.validator.FinalBlockV2 block_v2 = 3;
   //  }
 }
