@@ -16,7 +16,7 @@ use zksync_consensus_utils::enum_util::Variant;
 use crate::{
     create_input_channel,
     testonly::RandomPayload,
-    v1_chonky_bft::{self, commit, new_view, proposal, timeout, StateMachine},
+    v2_chonky_bft::{self, commit, new_view, proposal, timeout, StateMachine},
     Config, FromNetworkMessage, PayloadManager, ToNetworkMessage,
 };
 
@@ -34,7 +34,7 @@ pub(crate) struct UnitTestHarness {
     pub(crate) outbound_channel: ctx::channel::UnboundedReceiver<ToNetworkMessage>,
     pub(crate) inbound_channel: prunable_mpsc::Sender<FromNetworkMessage>,
     pub(crate) _proposer_channel:
-        sync::watch::Receiver<Option<validator::v1::ProposalJustification>>,
+        sync::watch::Receiver<Option<validator::v2::ProposalJustification>>,
 }
 
 impl UnitTestHarness {
@@ -115,14 +115,15 @@ impl UnitTestHarness {
             .clone()
     }
 
-    pub(crate) fn view(&self) -> validator::v1::View {
-        validator::v1::View {
+    pub(crate) fn view(&self) -> validator::v2::View {
+        validator::v2::View {
             genesis: self.genesis().hash(),
             number: self.replica.view_number,
+            epoch: self.replica.epoch_number,
         }
     }
 
-    pub(crate) fn view_leader(&self, view: validator::v1::ViewNumber) -> validator::PublicKey {
+    pub(crate) fn view_leader(&self, view: validator::v2::ViewNumber) -> validator::PublicKey {
         self.genesis().view_leader(view.0)
     }
 
@@ -133,9 +134,9 @@ impl UnitTestHarness {
     pub(crate) async fn new_leader_proposal(
         &self,
         ctx: &ctx::Ctx,
-    ) -> validator::v1::LeaderProposal {
+    ) -> validator::v2::LeaderProposal {
         let justification = self.replica.get_justification();
-        v1_chonky_bft::proposer::create_proposal(ctx, self.replica.config.clone(), justification)
+        v2_chonky_bft::proposer::create_proposal(ctx, self.replica.config.clone(), justification)
             .await
             .unwrap()
     }
@@ -143,7 +144,7 @@ impl UnitTestHarness {
     pub(crate) async fn new_replica_commit(
         &mut self,
         ctx: &ctx::Ctx,
-    ) -> validator::v1::ReplicaCommit {
+    ) -> validator::v2::ReplicaCommit {
         let proposal = self.new_leader_proposal(ctx).await;
         self.process_leader_proposal(ctx, self.leader_key().sign_msg(proposal))
             .await
@@ -154,14 +155,17 @@ impl UnitTestHarness {
     pub(crate) async fn new_replica_timeout(
         &mut self,
         ctx: &ctx::Ctx,
-    ) -> validator::v1::ReplicaTimeout {
+    ) -> validator::v2::ReplicaTimeout {
         self.replica.start_timeout(ctx).await.unwrap();
 
         // We *may* have received a new view message before the timeout message.
         match self.try_recv().unwrap().msg {
-            validator::ConsensusMsg::ReplicaTimeout(msg) => msg,
-            // If we did get a new view first, the second message is certainly a timeout.
-            validator::ConsensusMsg::ReplicaNewView(_) => self.try_recv().unwrap().msg,
+            validator::ConsensusMsg::V2(m) => match m {
+                validator::v2::ChonkyMsg::ReplicaTimeout(msg) => msg,
+                // If we did get a new view first, the second message is certainly a timeout.
+                validator::v2::ChonkyMsg::ReplicaNewView(_) => self.try_recv().unwrap().msg,
+                _ => unreachable!(),
+            },
             _ => unreachable!(),
         }
     }
@@ -169,9 +173,9 @@ impl UnitTestHarness {
     pub(crate) async fn new_replica_new_view(
         &mut self,
         ctx: &ctx::Ctx,
-    ) -> validator::v1::ReplicaNewView {
-        validator::v1::ReplicaNewView {
-            justification: validator::v1::ProposalJustification::Timeout(
+    ) -> validator::v2::ReplicaNewView {
+        validator::v2::ReplicaNewView {
+            justification: validator::v2::ProposalJustification::Timeout(
                 self.new_timeout_qc(ctx).await,
             ),
         }
@@ -180,20 +184,20 @@ impl UnitTestHarness {
     pub(crate) async fn new_commit_qc(
         &mut self,
         ctx: &ctx::Ctx,
-        mutate_fn: impl FnOnce(&mut validator::v1::ReplicaCommit),
-    ) -> validator::v1::CommitQC {
+        mutate_fn: impl FnOnce(&mut validator::v2::ReplicaCommit),
+    ) -> validator::v2::CommitQC {
         let mut msg = self.new_replica_commit(ctx).await;
         mutate_fn(&mut msg);
-        let mut qc = validator::v1::CommitQC::new(msg.clone(), self.genesis());
+        let mut qc = validator::v2::CommitQC::new(msg.clone(), self.genesis());
         for key in &self.keys {
             qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
         }
         qc
     }
 
-    pub(crate) async fn new_timeout_qc(&mut self, ctx: &ctx::Ctx) -> validator::v1::TimeoutQC {
+    pub(crate) async fn new_timeout_qc(&mut self, ctx: &ctx::Ctx) -> validator::v2::TimeoutQC {
         let msg = self.new_replica_timeout(ctx).await;
-        let mut qc = validator::v1::TimeoutQC::new(msg.view);
+        let mut qc = validator::v2::TimeoutQC::new(msg.view);
         for key in &self.keys {
             qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
         }
@@ -203,8 +207,8 @@ impl UnitTestHarness {
     pub(crate) async fn process_leader_proposal(
         &mut self,
         ctx: &ctx::Ctx,
-        msg: validator::Signed<validator::v1::LeaderProposal>,
-    ) -> Result<validator::Signed<validator::v1::ReplicaCommit>, proposal::Error> {
+        msg: validator::Signed<validator::v2::LeaderProposal>,
+    ) -> Result<validator::Signed<validator::v2::ReplicaCommit>, proposal::Error> {
         self.replica.on_proposal(ctx, msg).await?;
         Ok(self.try_recv().unwrap())
     }
@@ -212,8 +216,8 @@ impl UnitTestHarness {
     pub(crate) async fn process_replica_commit(
         &mut self,
         ctx: &ctx::Ctx,
-        msg: validator::Signed<validator::v1::ReplicaCommit>,
-    ) -> Result<Option<validator::Signed<validator::v1::ReplicaNewView>>, commit::Error> {
+        msg: validator::Signed<validator::v2::ReplicaCommit>,
+    ) -> Result<Option<validator::Signed<validator::v2::ReplicaNewView>>, commit::Error> {
         self.replica.on_commit(ctx, msg).await?;
         Ok(self.try_recv())
     }
@@ -221,8 +225,8 @@ impl UnitTestHarness {
     pub(crate) async fn process_replica_timeout(
         &mut self,
         ctx: &ctx::Ctx,
-        msg: validator::Signed<validator::v1::ReplicaTimeout>,
-    ) -> Result<Option<validator::Signed<validator::v1::ReplicaNewView>>, timeout::Error> {
+        msg: validator::Signed<validator::v2::ReplicaTimeout>,
+    ) -> Result<Option<validator::Signed<validator::v2::ReplicaNewView>>, timeout::Error> {
         self.replica.on_timeout(ctx, msg).await?;
         Ok(self.try_recv())
     }
@@ -230,8 +234,8 @@ impl UnitTestHarness {
     pub(crate) async fn process_replica_new_view(
         &mut self,
         ctx: &ctx::Ctx,
-        msg: validator::Signed<validator::v1::ReplicaNewView>,
-    ) -> Result<Option<validator::Signed<validator::v1::ReplicaNewView>>, new_view::Error> {
+        msg: validator::Signed<validator::v2::ReplicaNewView>,
+    ) -> Result<Option<validator::Signed<validator::v2::ReplicaNewView>>, new_view::Error> {
         self.replica.on_new_view(ctx, msg).await?;
         Ok(self.try_recv())
     }
@@ -239,8 +243,8 @@ impl UnitTestHarness {
     pub(crate) async fn process_replica_commit_all(
         &mut self,
         ctx: &ctx::Ctx,
-        msg: validator::v1::ReplicaCommit,
-    ) -> validator::Signed<validator::v1::ReplicaNewView> {
+        msg: validator::v2::ReplicaCommit,
+    ) -> validator::Signed<validator::v2::ReplicaNewView> {
         let mut threshold_reached = false;
         let mut cur_weight = 0;
 
@@ -266,8 +270,8 @@ impl UnitTestHarness {
     pub(crate) async fn process_replica_timeout_all(
         &mut self,
         ctx: &ctx::Ctx,
-        msg: validator::v1::ReplicaTimeout,
-    ) -> validator::Signed<validator::v1::ReplicaNewView> {
+        msg: validator::v2::ReplicaTimeout,
+    ) -> validator::Signed<validator::v2::ReplicaNewView> {
         let mut threshold_reached = false;
         let mut cur_weight = 0;
 
@@ -308,14 +312,16 @@ impl UnitTestHarness {
         self.replica.start_timeout(ctx).await.unwrap();
 
         // Now to get the timeout message.
-        let replica_timeout =
+        let replica_timeout = match self.try_recv().unwrap().msg {
             // We *may* have received a new view message before the timeout message.
-            match self.try_recv().unwrap().msg {
-                validator::ConsensusMsg::ReplicaTimeout(msg) => msg,
+            validator::ConsensusMsg::V2(m) => match m {
+                validator::v2::ChonkyMsg::ReplicaTimeout(msg) => msg,
                 // If we did get a new view first, the second message is certainly a timeout.
-                validator::ConsensusMsg::ReplicaNewView(_) => self.try_recv().unwrap().msg,
+                validator::v2::ChonkyMsg::ReplicaNewView(_) => self.try_recv().unwrap().msg,
                 _ => unreachable!(),
-            };
+            },
+            _ => unreachable!(),
+        };
 
         self.process_replica_timeout_all(ctx, replica_timeout).await;
 

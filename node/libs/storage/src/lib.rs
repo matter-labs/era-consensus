@@ -9,5 +9,5 @@ mod tests;
 
 pub use crate::{
     block_store::{BlockStore, BlockStoreRunner, BlockStoreState, Last, PersistentBlockStore},
-    replica_store::{Proposal, ReplicaState, ReplicaStore},
+    replica_store::{ChonkyV2State, Proposal, ReplicaState, ReplicaStore},
 };

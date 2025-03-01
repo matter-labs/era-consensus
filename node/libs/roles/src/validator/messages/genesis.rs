@@ -149,8 +149,9 @@ impl Genesis {
     }
 
     /// Computes the leader for the given view.
-    pub fn view_leader(&self, view: v1::ViewNumber) -> validator::PublicKey {
-        self.leader_selection.view_leader(view, &self.validators)
+    pub fn view_leader(&self, view_number: u64) -> validator::PublicKey {
+        self.leader_selection
+            .view_leader(v1::ViewNumber(view_number), &self.validators)
     }
 
     /// Hash of the genesis.

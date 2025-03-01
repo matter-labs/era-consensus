@@ -14,9 +14,9 @@ pub(crate) enum Error {
     )]
     Old {
         /// Current view.
-        current_view: validator::v1::ViewNumber,
+        current_view: validator::v2::ViewNumber,
         /// Current phase.
-        current_phase: validator::v1::Phase,
+        current_phase: validator::v2::Phase,
     },
     /// Invalid leader.
     #[error(
@@ -33,7 +33,7 @@ pub(crate) enum Error {
     InvalidSignature(#[source] anyhow::Error),
     /// Invalid message.
     #[error("invalid message: {0:#}")]
-    InvalidMessage(#[source] validator::v1::LeaderProposalVerifyError),
+    InvalidMessage(#[source] validator::v2::LeaderProposalVerifyError),
     /// Leader proposed a block that was already pruned from replica's storage.
     #[error("leader proposed a block that was already pruned from replica's storage")]
     ProposalAlreadyPruned,
@@ -80,7 +80,7 @@ impl StateMachine {
     pub(crate) async fn on_proposal(
         &mut self,
         ctx: &ctx::Ctx,
-        signed_message: validator::Signed<validator::v1::LeaderProposal>,
+        signed_message: validator::Signed<validator::v2::LeaderProposal>,
     ) -> Result<(), Error> {
         // ----------- Checking origin of the message --------------
 
@@ -92,7 +92,7 @@ impl StateMachine {
         // Check that the message is for the current view or a future view. We only allow proposals for
         // the current view if we have not voted or timed out yet.
         if view < self.view_number
-            || (view == self.view_number && self.phase != validator::v1::Phase::Prepare)
+            || (view == self.view_number && self.phase != validator::v2::Phase::Prepare)
         {
             return Err(Error::Old {
                 current_view: self.view_number,
@@ -235,9 +235,9 @@ impl StateMachine {
             .observe_latency(ctx.now() - self.view_start);
 
         // Create our commit vote.
-        let commit_vote = validator::v1::ReplicaCommit {
+        let commit_vote = validator::v2::ReplicaCommit {
             view: message.view(),
-            proposal: validator::v1::BlockHeader {
+            proposal: validator::v2::BlockHeader {
                 number: implied_block_number,
                 payload: block_hash,
             },
@@ -246,14 +246,14 @@ impl StateMachine {
         // Update the state machine.
         self.view_number = message.view().number;
         metrics::METRICS.replica_view_number.set(self.view_number.0);
-        self.phase = validator::v1::Phase::Commit;
+        self.phase = validator::v2::Phase::Commit;
         self.high_vote = Some(commit_vote.clone());
         match &message.justification {
-            validator::v1::ProposalJustification::Commit(qc) => self
+            validator::v2::ProposalJustification::Commit(qc) => self
                 .process_commit_qc(ctx, qc)
                 .await
                 .wrap("process_commit_qc()")?,
-            validator::v1::ProposalJustification::Timeout(qc) => self
+            validator::v2::ProposalJustification::Timeout(qc) => self
                 .process_timeout_qc(ctx, qc)
                 .await
                 .wrap("process_timeout_qc()")?,
@@ -268,10 +268,9 @@ impl StateMachine {
             "ChonkyBFT replica - Broadcasting commit vote.",
         );
         let output_message = ConsensusInputMessage {
-            message: self
-                .config
-                .secret_key
-                .sign_msg(validator::ConsensusMsg::ReplicaCommit(commit_vote)),
+            message: self.config.secret_key.sign_msg(validator::ConsensusMsg::V2(
+                validator::v2::ChonkyMsg::ReplicaCommit(commit_vote),
+            )),
         };
         self.outbound_channel.send(output_message);
 

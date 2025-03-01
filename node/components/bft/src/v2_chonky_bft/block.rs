@@ -11,7 +11,7 @@ impl StateMachine {
     pub(crate) async fn save_block(
         &mut self,
         ctx: &ctx::Ctx,
-        commit_qc: &validator::v1::CommitQC,
+        commit_qc: &validator::v2::CommitQC,
     ) -> ctx::Result<()> {
         let Some(cache) = self.block_proposal_cache.get(&commit_qc.header().number) else {
             return Ok(());
@@ -19,7 +19,7 @@ impl StateMachine {
         let Some(payload) = cache.get(&commit_qc.header().payload) else {
             return Ok(());
         };
-        let block = validator::v1::FinalBlock {
+        let block = validator::v2::FinalBlock {
             payload: payload.clone(),
             justification: commit_qc.clone(),
         };
@@ -59,20 +59,25 @@ impl StateMachine {
                 payload: p.clone(),
             }));
         }
-        let backup = storage::ReplicaState {
-            view: self.view_number,
+
+        let mut backup = storage::ReplicaState::default();
+        let backup_v2 = storage::ChonkyV2State {
+            view_number: self.view_number,
+            epoch_number: self.epoch_number,
             phase: self.phase,
             high_vote: self.high_vote.clone(),
             high_commit_qc: self.high_commit_qc.clone(),
             high_timeout_qc: self.high_timeout_qc.clone(),
             proposals,
-            v2: None,
         };
+        backup.v2 = Some(backup_v2);
+
         self.config
             .replica_store
             .set_state(ctx, &backup)
             .await
             .wrap("set_state()")?;
+
         Ok(())
     }
 }

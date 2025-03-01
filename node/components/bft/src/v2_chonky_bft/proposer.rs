@@ -12,7 +12,7 @@ pub(crate) async fn run_proposer(
     ctx: &ctx::Ctx,
     cfg: Arc<Config>,
     network_sender: ctx::channel::UnboundedSender<ToNetworkMessage>,
-    mut justification_watch: sync::watch::Receiver<Option<validator::v1::ProposalJustification>>,
+    mut justification_watch: sync::watch::Receiver<Option<validator::v2::ProposalJustification>>,
 ) -> ctx::Result<()> {
     loop {
         // Wait for a new justification to be available.
@@ -50,9 +50,9 @@ pub(crate) async fn run_proposer(
         };
 
         // Broadcast our proposal to all replicas (ourselves included).
-        let msg = cfg
-            .secret_key
-            .sign_msg(validator::ConsensusMsg::LeaderProposal(proposal));
+        let msg = cfg.secret_key.sign_msg(validator::ConsensusMsg::V2(
+            validator::v2::ChonkyMsg::LeaderProposal(proposal),
+        ));
         tracing::debug!(
             bft_message = format!("{:#?}", msg.msg),
             "ChonkyBFT proposer - Broadcasting proposal.",
@@ -65,8 +65,8 @@ pub(crate) async fn run_proposer(
 pub(crate) async fn create_proposal(
     ctx: &ctx::Ctx,
     cfg: Arc<Config>,
-    justification: validator::v1::ProposalJustification,
-) -> ctx::Result<validator::v1::LeaderProposal> {
+    justification: validator::v2::ProposalJustification,
+) -> ctx::Result<validator::v2::LeaderProposal> {
     // Get the block number and check if this must be a reproposal.
     let (block_number, opt_block_hash) = justification.get_implied_block(cfg.genesis());
 
@@ -100,7 +100,7 @@ pub(crate) async fn create_proposal(
         }
     };
 
-    Ok(validator::v1::LeaderProposal {
+    Ok(validator::v2::LeaderProposal {
         proposal_payload,
         justification,
     })

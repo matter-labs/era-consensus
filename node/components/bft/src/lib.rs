@@ -17,6 +17,7 @@ mod config;
 mod metrics;
 pub mod testonly;
 mod v1_chonky_bft;
+mod v2_chonky_bft;
 
 // Renaming network messages for clarity.
 #[allow(missing_docs)]
@@ -67,7 +68,29 @@ impl Config {
             }
         }
 
+        // Get the protocol version from genesis and start the corresponding state machine.
+        match genesis.protocol_version {
+            validator::ProtocolVersion(1) => {
+                self.run_v1(ctx, outbound_channel, inbound_channel).await
+            }
+            validator::ProtocolVersion(2) => {
+                self.run_v2(ctx, outbound_channel, inbound_channel).await
+            }
+            _ => anyhow::bail!(
+                "Unsupported protocol version: {:?}",
+                genesis.protocol_version
+            ),
+        }
+    }
+
+    async fn run_v1(
+        self,
+        ctx: &ctx::Ctx,
+        outbound_channel: ctx::channel::UnboundedSender<ToNetworkMessage>,
+        inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
+    ) -> anyhow::Result<()> {
         let cfg = Arc::new(self);
+
         let (proposer_sender, proposer_receiver) = sync::watch::channel(None);
         let replica = v1_chonky_bft::StateMachine::start(
             ctx,
@@ -80,13 +103,58 @@ impl Config {
 
         let res = scope::run!(ctx, |ctx, s| async {
             tracing::info!(
-                "Starting consensus component. Validator public key: {:?}.",
+                "Starting consensus component (v1). Validator public key: {:?}.",
                 cfg.secret_key.public()
             );
 
             s.spawn(async { replica.run(ctx).await.wrap("replica.run()") });
             s.spawn_bg(async {
                 v1_chonky_bft::proposer::run_proposer(
+                    ctx,
+                    cfg.clone(),
+                    outbound_channel,
+                    proposer_receiver,
+                )
+                .await
+                .wrap("run_proposer()")
+            });
+
+            Ok(())
+        })
+        .await;
+        match res {
+            Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
+            Err(ctx::Error::Internal(err)) => Err(err),
+        }
+    }
+
+    async fn run_v2(
+        self,
+        ctx: &ctx::Ctx,
+        outbound_channel: ctx::channel::UnboundedSender<ToNetworkMessage>,
+        inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
+    ) -> anyhow::Result<()> {
+        let cfg = Arc::new(self);
+
+        let (proposer_sender, proposer_receiver) = sync::watch::channel(None);
+        let replica = v2_chonky_bft::StateMachine::start(
+            ctx,
+            cfg.clone(),
+            outbound_channel.clone(),
+            inbound_channel,
+            proposer_sender,
+        )
+        .await?;
+
+        let res = scope::run!(ctx, |ctx, s| async {
+            tracing::info!(
+                "Starting consensus component (v2). Validator public key: {:?}.",
+                cfg.secret_key.public()
+            );
+
+            s.spawn(async { replica.run(ctx).await.wrap("replica.run()") });
+            s.spawn_bg(async {
+                v2_chonky_bft::proposer::run_proposer(
                     ctx,
                     cfg.clone(),
                     outbound_channel,

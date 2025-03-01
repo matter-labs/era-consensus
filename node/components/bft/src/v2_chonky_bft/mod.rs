@@ -1,5 +1,5 @@
 //! The ChonkyBFT module contains the implementation of the ChonkyBFT consensus protocol.
-//! This corresponds to the version 1 of the protocol.
+//! This corresponds to the version 2 of the protocol.
 //! The module is responsible for handling the logic that allows us to reach agreement on blocks.
 
 use std::{
@@ -36,33 +36,35 @@ pub(crate) struct StateMachine {
     pub(crate) inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
     /// The sender part of the proposer watch channel. This is used to notify the proposer loop
     /// and send the needed justification.
-    pub(crate) proposer_sender: sync::watch::Sender<Option<validator::v1::ProposalJustification>>,
+    pub(crate) proposer_sender: sync::watch::Sender<Option<validator::v2::ProposalJustification>>,
 
     /// The current view number.
-    pub(crate) view_number: validator::v1::ViewNumber,
+    pub(crate) view_number: validator::v2::ViewNumber,
+    /// The current epoch number.
+    pub(crate) epoch_number: validator::v2::EpochNumber,
     /// The current phase.
-    pub(crate) phase: validator::v1::Phase,
+    pub(crate) phase: validator::v2::Phase,
     /// The highest block proposal that the replica has committed to.
-    pub(crate) high_vote: Option<validator::v1::ReplicaCommit>,
+    pub(crate) high_vote: Option<validator::v2::ReplicaCommit>,
     /// The highest commit quorum certificate known to the replica.
-    pub(crate) high_commit_qc: Option<validator::v1::CommitQC>,
+    pub(crate) high_commit_qc: Option<validator::v2::CommitQC>,
     /// The highest timeout quorum certificate known to the replica.
-    pub(crate) high_timeout_qc: Option<validator::v1::TimeoutQC>,
+    pub(crate) high_timeout_qc: Option<validator::v2::TimeoutQC>,
 
     /// A cache of the received block proposals.
     pub(crate) block_proposal_cache:
         BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
     /// Latest view each validator has signed a ReplicaCommit message for.
-    pub(crate) commit_views_cache: BTreeMap<validator::PublicKey, validator::v1::ViewNumber>,
+    pub(crate) commit_views_cache: BTreeMap<validator::PublicKey, validator::v2::ViewNumber>,
     /// Commit QCs indexed by view number and then by message.
     pub(crate) commit_qcs_cache: BTreeMap<
-        validator::v1::ViewNumber,
-        BTreeMap<validator::v1::ReplicaCommit, validator::v1::CommitQC>,
+        validator::v2::ViewNumber,
+        BTreeMap<validator::v2::ReplicaCommit, validator::v2::CommitQC>,
     >,
     /// Latest view each validator has signed a ReplicaTimeout message for.
-    pub(crate) timeout_views_cache: BTreeMap<validator::PublicKey, validator::v1::ViewNumber>,
+    pub(crate) timeout_views_cache: BTreeMap<validator::PublicKey, validator::v2::ViewNumber>,
     /// Timeout QCs indexed by view number.
-    pub(crate) timeout_qcs_cache: BTreeMap<validator::v1::ViewNumber, validator::v1::TimeoutQC>,
+    pub(crate) timeout_qcs_cache: BTreeMap<validator::v2::ViewNumber, validator::v2::TimeoutQC>,
 
     /// The deadline to receive a proposal for this view before timing out.
     pub(crate) view_timeout: time::Deadline,
@@ -82,9 +84,14 @@ impl StateMachine {
         config: Arc<Config>,
         outbound_channel: ctx::channel::UnboundedSender<ToNetworkMessage>,
         inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
-        proposer_sender: sync::watch::Sender<Option<validator::v1::ProposalJustification>>,
+        proposer_sender: sync::watch::Sender<Option<validator::v2::ProposalJustification>>,
     ) -> ctx::Result<Self> {
-        let backup = config.replica_store.state(ctx).await?;
+        let backup = config
+            .replica_store
+            .state(ctx)
+            .await?
+            .v2
+            .unwrap_or_default();
 
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
         for proposal in backup.proposals {
@@ -100,7 +107,8 @@ impl StateMachine {
             outbound_channel,
             inbound_channel,
             proposer_sender,
-            view_number: backup.view,
+            view_number: backup.view_number,
+            epoch_number: backup.epoch_number,
             phase: backup.phase,
             high_vote: backup.high_vote,
             high_commit_qc: backup.high_commit_qc,
@@ -127,7 +135,7 @@ impl StateMachine {
         // to synchronize right at the beginning and will provide a justification for the
         // next view. This is necessary because the first view is not justified by any
         // previous view.
-        if self.view_number == validator::v1::ViewNumber(0) {
+        if self.view_number == validator::v2::ViewNumber(0) {
             tracing::debug!("ChonkyBFT replica - Starting view 0, immediately timing out.");
             self.start_timeout(ctx).await?;
         }
@@ -152,8 +160,20 @@ impl StateMachine {
 
             // Process the message.
             let now = ctx.now();
-            let label = match &req.msg.msg {
-                validator::ConsensusMsg::LeaderProposal(_) => {
+
+            // Unwrap the v2 message from the others.
+            let msg = match &req.msg.msg {
+                validator::ConsensusMsg::V2(msg) => msg,
+                _ => {
+                    tracing::warn!(
+                        "ChonkyBFT replica - Received a message from a different protocol version.",
+                    );
+                    continue;
+                }
+            };
+
+            let label = match msg {
+                validator::v2::ChonkyMsg::LeaderProposal(_) => {
                     let res = match self
                         .on_proposal(ctx, req.msg.cast().unwrap())
                         .await
@@ -182,7 +202,7 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::LeaderProposal.with_result(&res)
                 }
-                validator::ConsensusMsg::ReplicaCommit(_) => {
+                validator::v2::ChonkyMsg::ReplicaCommit(_) => {
                     let res = match self
                         .on_commit(ctx, req.msg.cast().unwrap())
                         .await
@@ -211,7 +231,7 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::ReplicaCommit.with_result(&res)
                 }
-                validator::ConsensusMsg::ReplicaTimeout(_) => {
+                validator::v2::ChonkyMsg::ReplicaTimeout(_) => {
                     let res = match self
                         .on_timeout(ctx, req.msg.cast().unwrap())
                         .await
@@ -240,7 +260,7 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::ReplicaTimeout.with_result(&res)
                 }
-                validator::ConsensusMsg::ReplicaNewView(_) => {
+                validator::v2::ChonkyMsg::ReplicaNewView(_) => {
                     let res = match self
                         .on_new_view(ctx, req.msg.cast().unwrap())
                         .await
@@ -269,7 +289,6 @@ impl StateMachine {
                     };
                     metrics::ConsensusMsgLabel::ReplicaNewView.with_result(&res)
                 }
-                validator::ConsensusMsg::V2(_) => unreachable!(),
             };
             metrics::METRICS.message_processing_latency[&label].observe_latency(ctx.now() - now);
 
@@ -284,7 +303,7 @@ impl StateMachine {
     pub(crate) async fn process_commit_qc(
         &mut self,
         ctx: &ctx::Ctx,
-        qc: &validator::v1::CommitQC,
+        qc: &validator::v2::CommitQC,
     ) -> ctx::Result<()> {
         if self
             .high_commit_qc
@@ -308,7 +327,7 @@ impl StateMachine {
     pub(crate) async fn process_timeout_qc(
         &mut self,
         ctx: &ctx::Ctx,
-        qc: &validator::v1::TimeoutQC,
+        qc: &validator::v2::TimeoutQC,
     ) -> ctx::Result<()> {
         if let Some(high_qc) = qc.high_qc() {
             self.process_commit_qc(ctx, high_qc)

@@ -39,14 +39,13 @@ pub(crate) enum TestNetwork {
 pub(crate) const NUM_PHASES: usize = 2;
 
 /// Index of the phase in which the message appears, to decide which partitioning to apply.
-fn msg_phase_number(msg: &validator::ConsensusMsg) -> usize {
-    use validator::ConsensusMsg;
+fn msg_phase_number(msg: &validator::v2::ChonkyMsg) -> usize {
+    use validator::v2::ChonkyMsg;
     let phase = match msg {
-        ConsensusMsg::LeaderProposal(_) => 0,
-        ConsensusMsg::ReplicaCommit(_) => 1,
-        ConsensusMsg::ReplicaTimeout(_) => 1,
-        ConsensusMsg::ReplicaNewView(_) => 1,
-        ConsensusMsg::V2(_) => unreachable!(),
+        ChonkyMsg::LeaderProposal(_) => 0,
+        ChonkyMsg::ReplicaCommit(_) => 1,
+        ChonkyMsg::ReplicaTimeout(_) => 1,
+        ChonkyMsg::ReplicaNewView(_) => 1,
     };
     assert!(phase < NUM_PHASES);
     phase
@@ -63,7 +62,7 @@ pub(crate) type PortSplit = Vec<PortPartition>;
 /// A schedule contains a list of splits (one for each phase) for every view.
 pub(crate) type PortSplitSchedule = Vec<[PortSplit; NUM_PHASES]>;
 /// Function to decide whether a message can go from a source to a target port.
-pub(crate) type PortRouterFn = dyn Fn(&validator::ConsensusMsg, Port, Port) -> Option<bool> + Sync;
+pub(crate) type PortRouterFn = dyn Fn(&validator::v2::ChonkyMsg, Port, Port) -> Option<bool> + Sync;
 
 /// A predicate to govern who can communicate to whom a given message.
 pub(crate) enum PortRouter {
@@ -80,7 +79,7 @@ impl PortRouter {
     ///
     /// Returning `None` means the there was no more routing data and the test can decide to
     /// allow all communication or to abort a runaway test.
-    fn can_send(&self, msg: &validator::ConsensusMsg, from: Port, to: Port) -> Option<bool> {
+    fn can_send(&self, msg: &validator::v2::ChonkyMsg, from: Port, to: Port) -> Option<bool> {
         match self {
             PortRouter::Splits(splits) => {
                 // Here we assume that all instances start from view 0 in the tests.
@@ -425,8 +424,13 @@ async fn twins_receive_loop(
             ack: oneshot::channel().0,
         };
 
+        let chonky_msg = match &message.message.msg {
+            validator::ConsensusMsg::V2(msg) => msg,
+            _ => unreachable!(),
+        };
+
         let can_send = |to| {
-            match router.can_send(&message.message.msg, port, to) {
+            match router.can_send(chonky_msg, port, to) {
                 Some(can_send) => Ok(can_send),
                 None => anyhow::bail!("ran out of port schedule; we probably wouldn't finalize blocks even if we continued")
             }
@@ -503,28 +507,35 @@ async fn twins_gossip_loop(
     .await
 }
 
-fn output_msg_view_number(msg: &FromNetworkMessage) -> validator::v1::ViewNumber {
-    msg.msg.msg.view().number
+fn output_msg_view_number(msg: &FromNetworkMessage) -> validator::v2::ViewNumber {
+    match &msg.msg.msg {
+        validator::ConsensusMsg::V2(msg) => msg.view().number,
+        _ => unreachable!(),
+    }
 }
 
 fn output_msg_label(msg: &FromNetworkMessage) -> &str {
     msg.msg.msg.label()
 }
 
-fn output_msg_commit_qc(msg: &FromNetworkMessage) -> Option<&validator::v1::CommitQC> {
-    use validator::ConsensusMsg;
+fn output_msg_commit_qc(msg: &FromNetworkMessage) -> Option<&validator::v2::CommitQC> {
+    use validator::v2::{ChonkyMsg, ProposalJustification};
 
-    let justification = match &msg.msg.msg {
-        ConsensusMsg::ReplicaTimeout(msg) => return msg.high_qc.as_ref(),
-        ConsensusMsg::ReplicaCommit(_) => return None,
-        ConsensusMsg::ReplicaNewView(msg) => &msg.justification,
-        ConsensusMsg::LeaderProposal(msg) => &msg.justification,
-        ConsensusMsg::V2(_) => unreachable!(),
+    let chonky_msg = match &msg.msg.msg {
+        validator::ConsensusMsg::V2(msg) => msg,
+        _ => unreachable!(),
+    };
+
+    let justification = match chonky_msg {
+        ChonkyMsg::ReplicaTimeout(msg) => return msg.high_qc.as_ref(),
+        ChonkyMsg::ReplicaCommit(_) => return None,
+        ChonkyMsg::ReplicaNewView(msg) => &msg.justification,
+        ChonkyMsg::LeaderProposal(msg) => &msg.justification,
     };
 
     match justification {
-        validator::v1::ProposalJustification::Commit(commit_qc) => Some(commit_qc),
-        validator::v1::ProposalJustification::Timeout(timeout_qc) => timeout_qc.high_qc(),
+        ProposalJustification::Commit(commit_qc) => Some(commit_qc),
+        ProposalJustification::Timeout(timeout_qc) => timeout_qc.high_qc(),
     }
 }
 
