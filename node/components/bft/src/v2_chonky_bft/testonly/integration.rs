@@ -418,9 +418,8 @@ async fn twins_receive_loop(
     while let Ok(message) = recv.recv(ctx).await {
         let kind = message.message.msg.label();
 
-        let chonky_msg = match &message.message.msg {
-            validator::ConsensusMsg::V2(msg) => msg,
-            _ => unreachable!(),
+        let validator::ConsensusMsg::V2(chonky_msg) = &message.message.msg else {
+            unreachable!()
         };
 
         let can_send = |to| {
@@ -523,9 +522,8 @@ fn output_msg_label(msg: &FromNetworkMessage) -> &str {
 fn output_msg_commit_qc(msg: &FromNetworkMessage) -> Option<&validator::v2::CommitQC> {
     use validator::v2::{ChonkyMsg, ProposalJustification};
 
-    let chonky_msg = match &msg.msg.msg {
-        validator::ConsensusMsg::V2(msg) => msg,
-        _ => unreachable!(),
+    let validator::ConsensusMsg::V2(chonky_msg) = &msg.msg.msg else {
+        unreachable!()
     };
 
     let justification = match chonky_msg {

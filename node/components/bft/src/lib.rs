@@ -83,6 +83,7 @@ impl Config {
         }
     }
 
+    /// Starts the bft component with the v1 protocol version.
     async fn run_v1(
         self,
         ctx: &ctx::Ctx,
@@ -128,6 +129,7 @@ impl Config {
         }
     }
 
+    /// Starts the bft component with the v2 protocol version.
     async fn run_v2(
         self,
         ctx: &ctx::Ctx,

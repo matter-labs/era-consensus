@@ -162,14 +162,11 @@ impl StateMachine {
             let now = ctx.now();
 
             // Unwrap the v2 message from the others.
-            let msg = match &req.msg.msg {
-                validator::ConsensusMsg::V2(msg) => msg,
-                _ => {
-                    tracing::warn!(
-                        "ChonkyBFT replica - Received a message from a different protocol version.",
-                    );
-                    continue;
-                }
+            let validator::ConsensusMsg::V2(msg) = &req.msg.msg else {
+                tracing::warn!(
+                    "ChonkyBFT replica - Received a message from a different protocol version.",
+                );
+                continue;
             };
 
             let label = match msg {
@@ -308,7 +305,7 @@ impl StateMachine {
         if self
             .high_commit_qc
             .as_ref()
-            .map_or(true, |cur| cur.view().number < qc.view().number)
+            .is_none_or(|cur| cur.view().number < qc.view().number)
         {
             tracing::debug!(
                 "ChonkyBFT replica - Processing newer CommitQC: current view {}, QC view {}",
@@ -338,7 +335,7 @@ impl StateMachine {
         if self
             .high_timeout_qc
             .as_ref()
-            .map_or(true, |old| old.view.number < qc.view.number)
+            .is_none_or(|old| old.view.number < qc.view.number)
         {
             tracing::debug!(
                 "ChonkyBFT replica - Processing newer TimeoutQC: current view {}, QC view {}",
