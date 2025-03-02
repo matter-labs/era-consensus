@@ -19,14 +19,14 @@ pub(crate) enum Error {
     #[error("past view (current view: {current_view:?})")]
     Old {
         /// Current view.
-        current_view: validator::v2::ViewNumber,
+        current_view: validator::ViewNumber,
     },
     /// Duplicate signer. We already have a timeout message from the same validator
     /// for the same or past view.
     #[error("duplicate signer (message view: {message_view:?}, signer: {signer:?})")]
     DuplicateSigner {
         /// View number of the message.
-        message_view: validator::v2::ViewNumber,
+        message_view: validator::ViewNumber,
         /// Signer of the message.
         signer: Box<validator::PublicKey>,
     },
@@ -178,7 +178,7 @@ impl StateMachine {
         // Broadcast our new view message. This synchronizes the replicas.
         // We don't broadcast a new view message for view 0 since we don't have
         // a justification for it.
-        if self.view_number != validator::v2::ViewNumber(0) {
+        if self.view_number != validator::ViewNumber(0) {
             let output_message = ConsensusInputMessage {
                 message: self.config.secret_key.sign_msg(validator::ConsensusMsg::V2(
                     validator::v2::ChonkyMsg::ReplicaNewView(validator::v2::ReplicaNewView {

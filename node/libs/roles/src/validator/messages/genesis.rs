@@ -5,7 +5,7 @@ use anyhow::Context as _;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
-use super::{v1, BlockNumber, Committee, WeightedValidator};
+use super::{v1, BlockNumber, Committee, ViewNumber, WeightedValidator};
 use crate::{proto::validator as proto, validator};
 
 /// Genesis of the blockchain, unique for each blockchain instance.
@@ -151,7 +151,7 @@ impl Genesis {
     /// Computes the leader for the given view.
     pub fn view_leader(&self, view_number: u64) -> validator::PublicKey {
         self.leader_selection
-            .view_leader(v1::ViewNumber(view_number), &self.validators)
+            .view_leader(ViewNumber(view_number), &self.validators)
     }
 
     /// Hash of the genesis.
@@ -194,7 +194,7 @@ impl ProtocolVersion {
     /// deprecated, so a newer codebase might stop supporting an older protocol version even if
     /// no new protocol version is introduced.
     pub fn compatible(version: &ProtocolVersion) -> bool {
-        version.0 == 1
+        version.0 == 1 || version.0 == 2
     }
 }
 

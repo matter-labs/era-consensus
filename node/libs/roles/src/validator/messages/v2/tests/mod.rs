@@ -7,7 +7,7 @@ use super::*;
 use crate::validator::{
     self,
     messages::tests::{genesis_v2, payload, validator_keys},
-    BlockNumber, GenesisHash,
+    BlockNumber, GenesisHash, ViewNumber,
 };
 
 mod block;

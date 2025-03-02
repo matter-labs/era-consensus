@@ -1,4 +1,6 @@
 //! Messages related to the consensus protocol.
+use std::fmt;
+
 use anyhow::Context as _;
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 use zksync_protobuf::ProtoFmt;
@@ -8,6 +10,29 @@ use crate::{
     proto::validator as proto,
     validator::{GenesisHash, Msg},
 };
+
+/// A struct that represents a view number.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ViewNumber(pub u64);
+
+impl ViewNumber {
+    /// Get the next view number.
+    pub fn next(self) -> Self {
+        Self(self.0 + 1)
+    }
+
+    /// Get the previous view number.
+    pub fn prev(self) -> Option<Self> {
+        self.0.checked_sub(1).map(Self)
+    }
+}
+
+impl fmt::Display for ViewNumber {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, formatter)
+    }
+}
 
 /// Consensus messages.
 #[allow(missing_docs)]
@@ -28,24 +53,35 @@ impl ConsensusMsg {
             Self::ReplicaCommit(_) => "ReplicaCommit",
             Self::ReplicaNewView(_) => "ReplicaNewView",
             Self::ReplicaTimeout(_) => "ReplicaTimeout",
-            Self::V2(_) => unreachable!(),
+            Self::V2(v2_msg) => match v2_msg {
+                v2::ChonkyMsg::LeaderProposal(_) => "LeaderProposalV2",
+                v2::ChonkyMsg::ReplicaCommit(_) => "ReplicaCommitV2",
+                v2::ChonkyMsg::ReplicaTimeout(_) => "ReplicaTimeoutV2",
+                v2::ChonkyMsg::ReplicaNewView(_) => "ReplicaNewViewV2",
+            },
         }
     }
 
-    /// View of this message.
-    pub fn view(&self) -> v1::View {
+    /// View number of this message.
+    pub fn view_number(&self) -> ViewNumber {
         match self {
-            Self::LeaderProposal(msg) => msg.view(),
-            Self::ReplicaCommit(msg) => msg.view,
-            Self::ReplicaNewView(msg) => msg.view(),
-            Self::ReplicaTimeout(msg) => msg.view,
-            Self::V2(_) => unreachable!(),
+            Self::LeaderProposal(msg) => msg.view().number,
+            Self::ReplicaCommit(msg) => msg.view.number,
+            Self::ReplicaNewView(msg) => msg.view().number,
+            Self::ReplicaTimeout(msg) => msg.view.number,
+            Self::V2(msg) => msg.view_number(),
         }
     }
 
     /// Hash of the genesis that defines the chain.
     pub fn genesis(&self) -> GenesisHash {
-        self.view().genesis
+        match self {
+            Self::LeaderProposal(msg) => msg.view().genesis,
+            Self::ReplicaCommit(msg) => msg.view.genesis,
+            Self::ReplicaNewView(msg) => msg.view().genesis,
+            Self::ReplicaTimeout(msg) => msg.view.genesis,
+            Self::V2(msg) => msg.genesis(),
+        }
     }
 }
 

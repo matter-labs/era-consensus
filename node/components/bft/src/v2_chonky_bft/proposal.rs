@@ -14,7 +14,7 @@ pub(crate) enum Error {
     )]
     Old {
         /// Current view.
-        current_view: validator::v2::ViewNumber,
+        current_view: validator::ViewNumber,
         /// Current phase.
         current_phase: validator::v2::Phase,
     },

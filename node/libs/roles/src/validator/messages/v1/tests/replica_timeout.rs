@@ -3,7 +3,7 @@ use rand::Rng;
 use zksync_concurrency::ctx;
 
 use super::*;
-use crate::validator::{messages::tests::genesis_v1, testonly::Setup, ChainId, Signed};
+use crate::validator::{messages::tests::genesis_v1, testonly::Setup, ChainId, Signed, ViewNumber};
 
 #[test]
 fn test_replica_timeout_verify() {

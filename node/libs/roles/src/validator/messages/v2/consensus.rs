@@ -11,7 +11,7 @@ use zksync_protobuf::{read_required, required, ProtoFmt};
 use super::{LeaderProposal, ReplicaCommit, ReplicaNewView, ReplicaTimeout};
 use crate::{
     proto::validator as proto,
-    validator::{Committee, Genesis, GenesisHash, Msg, PublicKey},
+    validator::{Committee, Genesis, GenesisHash, Msg, PublicKey, ViewNumber},
 };
 
 /// Consensus messages.
@@ -25,29 +25,24 @@ pub enum ChonkyMsg {
 }
 
 impl ChonkyMsg {
-    /// Message variant name.
-    pub fn label(&self) -> &'static str {
+    /// View number of this message.
+    pub fn view_number(&self) -> ViewNumber {
         match self {
-            Self::LeaderProposal(_) => "LeaderProposal",
-            Self::ReplicaCommit(_) => "ReplicaCommit",
-            Self::ReplicaNewView(_) => "ReplicaNewView",
-            Self::ReplicaTimeout(_) => "ReplicaTimeout",
-        }
-    }
-
-    /// View of this message.
-    pub fn view(&self) -> View {
-        match self {
-            Self::LeaderProposal(msg) => msg.view(),
-            Self::ReplicaCommit(msg) => msg.view,
-            Self::ReplicaNewView(msg) => msg.view(),
-            Self::ReplicaTimeout(msg) => msg.view,
+            Self::LeaderProposal(msg) => msg.view().number,
+            Self::ReplicaCommit(msg) => msg.view.number,
+            Self::ReplicaNewView(msg) => msg.view().number,
+            Self::ReplicaTimeout(msg) => msg.view.number,
         }
     }
 
     /// Hash of the genesis that defines the chain.
     pub fn genesis(&self) -> GenesisHash {
-        self.view().genesis
+        match self {
+            Self::LeaderProposal(msg) => msg.view().genesis,
+            Self::ReplicaCommit(msg) => msg.view.genesis,
+            Self::ReplicaNewView(msg) => msg.view().genesis,
+            Self::ReplicaTimeout(msg) => msg.view.genesis,
+        }
     }
 }
 
@@ -205,29 +200,6 @@ impl ProtoFmt for View {
             number: Some(self.number.0),
             epoch: Some(self.epoch.0),
         }
-    }
-}
-
-/// A struct that represents a view number.
-/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ViewNumber(pub u64);
-
-impl ViewNumber {
-    /// Get the next view number.
-    pub fn next(self) -> Self {
-        Self(self.0 + 1)
-    }
-
-    /// Get the previous view number.
-    pub fn prev(self) -> Option<Self> {
-        self.0.checked_sub(1).map(Self)
-    }
-}
-
-impl fmt::Display for ViewNumber {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, formatter)
     }
 }
 

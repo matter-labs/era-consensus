@@ -69,7 +69,7 @@ impl MsgPool {
                 }
                 // If pool contains a message of the same type which is newer,
                 // then our message shouldn't be inserted.
-                if v.message.msg.view().number >= msg.message.msg.view().number {
+                if v.message.msg.view_number() >= msg.message.msg.view_number() {
                     should_insert = false;
                     return true;
                 }

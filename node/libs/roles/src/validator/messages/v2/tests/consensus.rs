@@ -1,5 +1,8 @@
 use super::*;
-use crate::validator::messages::tests::{genesis_v2, validator_committee};
+use crate::validator::{
+    messages::tests::{genesis_v2, validator_committee},
+    ViewNumber,
+};
 
 #[test]
 fn test_view_next() {

@@ -1,5 +1,5 @@
 //! Messages related to the consensus protocol.
-use std::{fmt, hash::Hash};
+use std::hash::Hash;
 
 use anyhow::Context as _;
 use bit_vec::BitVec;
@@ -9,7 +9,7 @@ use zksync_protobuf::{read_required, required, ProtoFmt};
 
 use crate::{
     proto::validator as proto,
-    validator::{Committee, Genesis, GenesisHash, PublicKey},
+    validator::{Committee, Genesis, GenesisHash, PublicKey, ViewNumber},
 };
 
 /// View specification.
@@ -61,29 +61,6 @@ impl ProtoFmt for View {
             genesis: Some(self.genesis.build()),
             number: Some(self.number.0),
         }
-    }
-}
-
-/// A struct that represents a view number.
-/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ViewNumber(pub u64);
-
-impl ViewNumber {
-    /// Get the next view number.
-    pub fn next(self) -> Self {
-        Self(self.0 + 1)
-    }
-
-    /// Get the previous view number.
-    pub fn prev(self) -> Option<Self> {
-        self.0.checked_sub(1).map(Self)
-    }
-}
-
-impl fmt::Display for ViewNumber {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, formatter)
     }
 }
 

@@ -19,14 +19,14 @@ pub(crate) enum Error {
     #[error("past view (current view: {current_view:?})")]
     Old {
         /// Current view.
-        current_view: validator::v2::ViewNumber,
+        current_view: validator::ViewNumber,
     },
     /// Duplicate signer. We already have a commit message from the same validator
     /// for the same or past view.
     #[error("duplicate signer (message view: {message_view:?}, signer: {signer:?})")]
     DuplicateSigner {
         /// View number of the message.
-        message_view: validator::v2::ViewNumber,
+        message_view: validator::ViewNumber,
         /// Signer of the message.
         signer: Box<validator::PublicKey>,
     },

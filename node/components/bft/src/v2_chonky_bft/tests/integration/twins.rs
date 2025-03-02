@@ -97,7 +97,7 @@ async fn run_twins(
     let mut spec = SetupSpec::new_with_weights_and_version(
         rng,
         vec![WEIGHT; num_replicas],
-        ProtocolVersion(1),
+        ProtocolVersion(2),
     );
 
     let replicas = spec

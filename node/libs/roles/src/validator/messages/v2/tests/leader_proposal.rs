@@ -3,7 +3,7 @@ use rand::Rng;
 use zksync_concurrency::ctx;
 
 use super::*;
-use crate::validator::{testonly::Setup, Block, Payload};
+use crate::validator::{testonly::Setup, Block, Payload, ViewNumber};
 
 #[test]
 fn test_leader_proposal_verify() {

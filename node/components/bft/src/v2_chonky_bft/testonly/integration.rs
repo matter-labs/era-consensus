@@ -85,7 +85,7 @@ impl PortRouter {
                 // Here we assume that all instances start from view 0 in the tests.
                 // If the view is higher than what we have planned for, assume no partitions.
                 // Every node is guaranteed to be present in only one partition.
-                let view_number = msg.view().number.0 as usize;
+                let view_number = msg.view_number().0 as usize;
                 let phase_number = msg_phase_number(msg);
                 splits
                     .get(view_number)
@@ -135,7 +135,7 @@ impl IntegrationTestConfig {
         let setup = Setup::new_with_weights_and_version(
             rng,
             self.nodes.iter().map(|(_, w)| *w).collect(),
-            ProtocolVersion(1),
+            ProtocolVersion(2),
         );
         let nets: Vec<_> = network::testonly::new_configs(rng, &setup, 1);
         self.run_with_config(ctx, nets, &setup).await
@@ -416,13 +416,7 @@ async fn twins_receive_loop(
     };
 
     while let Ok(message) = recv.recv(ctx).await {
-        let view = message.message.msg.view().number.0 as usize;
         let kind = message.message.msg.label();
-
-        let msg = || FromNetworkMessage {
-            msg: message.message.clone(),
-            ack: oneshot::channel().0,
-        };
 
         let chonky_msg = match &message.message.msg {
             validator::ConsensusMsg::V2(msg) => msg,
@@ -436,9 +430,17 @@ async fn twins_receive_loop(
             }
         };
 
-        tracing::info!("broadcasting view={view} from={port} kind={kind}");
+        let network_msg = || FromNetworkMessage {
+            msg: message.message.clone(),
+            ack: oneshot::channel().0,
+        };
+
+        tracing::info!(
+            "broadcasting view={} from={port} kind={kind}",
+            chonky_msg.view_number().0
+        );
         for target_port in sends.keys() {
-            send_or_stash(can_send(*target_port)?, *target_port, msg());
+            send_or_stash(can_send(*target_port)?, *target_port, network_msg());
         }
     }
 
@@ -507,9 +509,9 @@ async fn twins_gossip_loop(
     .await
 }
 
-fn output_msg_view_number(msg: &FromNetworkMessage) -> validator::v2::ViewNumber {
+fn output_msg_view_number(msg: &FromNetworkMessage) -> validator::ViewNumber {
     match &msg.msg.msg {
-        validator::ConsensusMsg::V2(msg) => msg.view().number,
+        validator::ConsensusMsg::V2(msg) => msg.view_number(),
         _ => unreachable!(),
     }
 }

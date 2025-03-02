@@ -39,7 +39,7 @@ pub(crate) struct StateMachine {
     pub(crate) proposer_sender: sync::watch::Sender<Option<validator::v2::ProposalJustification>>,
 
     /// The current view number.
-    pub(crate) view_number: validator::v2::ViewNumber,
+    pub(crate) view_number: validator::ViewNumber,
     /// The current epoch number.
     pub(crate) epoch_number: validator::v2::EpochNumber,
     /// The current phase.
@@ -55,16 +55,16 @@ pub(crate) struct StateMachine {
     pub(crate) block_proposal_cache:
         BTreeMap<validator::BlockNumber, HashMap<validator::PayloadHash, validator::Payload>>,
     /// Latest view each validator has signed a ReplicaCommit message for.
-    pub(crate) commit_views_cache: BTreeMap<validator::PublicKey, validator::v2::ViewNumber>,
+    pub(crate) commit_views_cache: BTreeMap<validator::PublicKey, validator::ViewNumber>,
     /// Commit QCs indexed by view number and then by message.
     pub(crate) commit_qcs_cache: BTreeMap<
-        validator::v2::ViewNumber,
+        validator::ViewNumber,
         BTreeMap<validator::v2::ReplicaCommit, validator::v2::CommitQC>,
     >,
     /// Latest view each validator has signed a ReplicaTimeout message for.
-    pub(crate) timeout_views_cache: BTreeMap<validator::PublicKey, validator::v2::ViewNumber>,
+    pub(crate) timeout_views_cache: BTreeMap<validator::PublicKey, validator::ViewNumber>,
     /// Timeout QCs indexed by view number.
-    pub(crate) timeout_qcs_cache: BTreeMap<validator::v2::ViewNumber, validator::v2::TimeoutQC>,
+    pub(crate) timeout_qcs_cache: BTreeMap<validator::ViewNumber, validator::v2::TimeoutQC>,
 
     /// The deadline to receive a proposal for this view before timing out.
     pub(crate) view_timeout: time::Deadline,
@@ -135,7 +135,7 @@ impl StateMachine {
         // to synchronize right at the beginning and will provide a justification for the
         // next view. This is necessary because the first view is not justified by any
         // previous view.
-        if self.view_number == validator::v2::ViewNumber(0) {
+        if self.view_number == validator::ViewNumber(0) {
             tracing::debug!("ChonkyBFT replica - Starting view 0, immediately timing out.");
             self.start_timeout(ctx).await?;
         }

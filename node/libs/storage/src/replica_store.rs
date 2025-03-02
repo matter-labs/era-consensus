@@ -26,7 +26,7 @@ pub trait ReplicaStore: 'static + fmt::Debug + Send + Sync {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ReplicaState {
     /// The current view number.
-    pub view: validator::v1::ViewNumber,
+    pub view: validator::ViewNumber,
     /// The current phase.
     pub phase: validator::v1::Phase,
     /// The highest block proposal that the replica has committed to.
@@ -44,7 +44,7 @@ pub struct ReplicaState {
 impl Default for ReplicaState {
     fn default() -> Self {
         Self {
-            view: validator::v1::ViewNumber(0),
+            view: validator::ViewNumber(0),
             phase: validator::v1::Phase::Prepare,
             high_vote: None,
             high_commit_qc: None,
@@ -68,7 +68,7 @@ impl ProtoFmt for ReplicaState {
                 .transpose()?;
 
         Ok(Self {
-            view: validator::v1::ViewNumber(r.view.context("view_number")?),
+            view: validator::ViewNumber(r.view.context("view_number")?),
             phase: read_required(&r.phase).context("phase")?,
             high_vote: read_optional(&r.high_vote).context("high_vote")?,
             high_commit_qc: read_optional(&r.high_qc).context("high_commit_qc")?,
@@ -101,7 +101,7 @@ impl ProtoFmt for ReplicaState {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChonkyV2State {
     /// The current view number.
-    pub view_number: validator::v2::ViewNumber,
+    pub view_number: validator::ViewNumber,
     /// The current epoch number.
     pub epoch_number: validator::v2::EpochNumber,
     /// The current phase.
@@ -119,7 +119,7 @@ pub struct ChonkyV2State {
 impl Default for ChonkyV2State {
     fn default() -> Self {
         Self {
-            view_number: validator::v2::ViewNumber(0),
+            view_number: validator::ViewNumber(0),
             epoch_number: validator::v2::EpochNumber(0),
             phase: validator::v2::Phase::Prepare,
             high_vote: None,
@@ -135,7 +135,7 @@ impl ProtoFmt for ChonkyV2State {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
-            view_number: validator::v2::ViewNumber(r.view_number.context("view_number")?),
+            view_number: validator::ViewNumber(r.view_number.context("view_number")?),
             epoch_number: validator::v2::EpochNumber(r.epoch_number.context("epoch_number")?),
             phase: read_required(&r.phase).context("phase")?,
             high_vote: read_optional(&r.high_vote).context("high_vote")?,

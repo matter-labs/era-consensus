@@ -196,8 +196,8 @@ fn inbound_selection_function(
     if old_req.msg.key != new_req.msg.key || old_req.msg.msg.label() != new_req.msg.msg.label() {
         SelectionFunctionResult::Keep
     } else {
-        // Discard older message
-        if old_req.msg.msg.view().number < new_req.msg.msg.view().number {
+        // Discard older message.
+        if old_req.msg.msg.view_number() < new_req.msg.msg.view_number() {
             SelectionFunctionResult::DiscardOld
         } else {
             SelectionFunctionResult::DiscardNew
