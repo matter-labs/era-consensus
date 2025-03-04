@@ -71,7 +71,7 @@ async fn replica_commit_old() {
         s.spawn_bg(runner.run(ctx));
 
         let mut replica_commit = util.new_replica_commit(ctx).await;
-        replica_commit.view.number = validator::v1::ViewNumber(util.replica.view_number.0 - 1);
+        replica_commit.view.number = validator::ViewNumber(util.replica.view_number.0 - 1);
         let res = util
             .process_replica_commit(ctx, util.owner_key().sign_msg(replica_commit))
             .await;
@@ -367,7 +367,7 @@ async fn replica_commit_filter_functions_test() {
 
         // Send a msg with view number = 2
         let mut replica_commit_from_view_2 = replica_commit.clone();
-        replica_commit_from_view_2.view.number = validator::v1::ViewNumber(2);
+        replica_commit_from_view_2.view.number = validator::ViewNumber(2);
         let msg_from_view_2 = util
             .owner_key()
             .sign_msg(validator::ConsensusMsg::ReplicaCommit(
@@ -377,7 +377,7 @@ async fn replica_commit_filter_functions_test() {
 
         // Send a msg with view number = 4, will prune message from view 2
         let mut replica_commit_from_view_4 = replica_commit.clone();
-        replica_commit_from_view_4.view.number = validator::v1::ViewNumber(4);
+        replica_commit_from_view_4.view.number = validator::ViewNumber(4);
         let msg_from_view_4 = util
             .owner_key()
             .sign_msg(validator::ConsensusMsg::ReplicaCommit(
@@ -387,7 +387,7 @@ async fn replica_commit_filter_functions_test() {
 
         // Send a msg with view number = 3, will be discarded, as it is older than message from view 4
         let mut replica_commit_from_view_3 = replica_commit.clone();
-        replica_commit_from_view_3.view.number = validator::v1::ViewNumber(3);
+        replica_commit_from_view_3.view.number = validator::ViewNumber(3);
         let msg_from_view_3 = util
             .owner_key()
             .sign_msg(validator::ConsensusMsg::ReplicaCommit(

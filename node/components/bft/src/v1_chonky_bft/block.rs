@@ -66,6 +66,7 @@ impl StateMachine {
             high_commit_qc: self.high_commit_qc.clone(),
             high_timeout_qc: self.high_timeout_qc.clone(),
             proposals,
+            v2: None,
         };
         self.config
             .replica_store

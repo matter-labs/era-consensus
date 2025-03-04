@@ -1,10 +1,12 @@
 //! Messages related to the consensus protocol.
 use std::{fmt, hash::Hash};
 
+use anyhow::Context as _;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
+use zksync_protobuf::{read_required, required, ProtoFmt};
 
-use super::{v1, BlockNumber, Committee};
-use crate::validator;
+use super::{v1, BlockNumber, Committee, ViewNumber, WeightedValidator};
+use crate::{proto::validator as proto, validator};
 
 /// Genesis of the blockchain, unique for each blockchain instance.
 #[derive(Debug, Clone, PartialEq)]
@@ -32,6 +34,39 @@ impl GenesisRaw {
     }
 }
 
+impl ProtoFmt for GenesisRaw {
+    type Proto = proto::Genesis;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        let validators: Vec<_> = r
+            .validators_v1
+            .iter()
+            .enumerate()
+            .map(|(i, v)| WeightedValidator::read(v).context(i))
+            .collect::<Result<_, _>>()
+            .context("validators_v1")?;
+        Ok(GenesisRaw {
+            chain_id: ChainId(*required(&r.chain_id).context("chain_id")?),
+            fork_number: ForkNumber(*required(&r.fork_number).context("fork_number")?),
+            first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
+
+            protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
+            validators: Committee::new(validators.into_iter()).context("validators_v1")?,
+            leader_selection: read_required(&r.leader_selection).context("leader_selection")?,
+        })
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            chain_id: Some(self.chain_id.0),
+            fork_number: Some(self.fork_number.0),
+            first_block: Some(self.first_block.0),
+
+            protocol_version: Some(self.protocol_version.0),
+            validators_v1: self.validators.iter().map(|v| v.build()).collect(),
+            leader_selection: Some(self.leader_selection.build()),
+        }
+    }
+}
+
 /// Hash of the genesis specification.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -49,6 +84,18 @@ impl TextFmt for GenesisHash {
             "genesis_hash:keccak256:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
+    }
+}
+
+impl ProtoFmt for GenesisHash {
+    type Proto = proto::GenesisHash;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            keccak256: Some(self.0.encode()),
+        }
     }
 }
 
@@ -102,13 +149,26 @@ impl Genesis {
     }
 
     /// Computes the leader for the given view.
-    pub fn view_leader(&self, view: v1::ViewNumber) -> validator::PublicKey {
-        self.leader_selection.view_leader(view, &self.validators)
+    pub fn view_leader(&self, view_number: u64) -> validator::PublicKey {
+        self.leader_selection
+            .view_leader(ViewNumber(view_number), &self.validators)
     }
 
     /// Hash of the genesis.
     pub fn hash(&self) -> GenesisHash {
         self.1
+    }
+}
+
+impl ProtoFmt for Genesis {
+    type Proto = proto::Genesis;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        let genesis = GenesisRaw::read(r)?.with_hash();
+        genesis.verify()?;
+        Ok(genesis)
+    }
+    fn build(&self) -> Self::Proto {
+        GenesisRaw::build(self)
     }
 }
 
@@ -134,7 +194,7 @@ impl ProtocolVersion {
     /// deprecated, so a newer codebase might stop supporting an older protocol version even if
     /// no new protocol version is introduced.
     pub fn compatible(version: &ProtocolVersion) -> bool {
-        version.0 == 1
+        version.0 == 1 || version.0 == 2
     }
 }
 

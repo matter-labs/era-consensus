@@ -2,25 +2,7 @@ syntax = "proto3";
 
 package zksync.roles.validator;
 
-import "zksync/roles/attester/keys.proto";
 import "zksync/roles/validator/keys.proto";
-
-message LeaderSelectionMode {
-  oneof mode {
-    RoundRobin round_robin = 1;
-    Sticky sticky = 2;
-    Weighted weighted = 3;
-    Rota rota = 4;
-  }
-  message RoundRobin{}
-  message Sticky{
-    optional PublicKey key = 1; // required
-  }
-  message Weighted{}
-  message Rota {
-    repeated PublicKey keys = 1; // required
-  }
-}
 
 message Genesis {
   reserved 1,2,9;
@@ -37,5 +19,32 @@ message Genesis {
 }
 
 message GenesisHash {
+  optional bytes keccak256 = 1; // required
+}
+
+message WeightedValidator {
+  optional PublicKey key = 1; // required
+  optional uint64 weight = 2; // required
+}
+
+message LeaderSelectionMode {
+  oneof mode {
+    RoundRobin round_robin = 1;
+    Sticky sticky = 2;
+    Weighted weighted = 3;
+    Rota rota = 4;
+  }
+  
+  message RoundRobin{}
+  message Sticky{
+    optional PublicKey key = 1; // required
+  }
+  message Weighted{}
+  message Rota {
+    repeated PublicKey keys = 1; // required
+  }
+}
+
+message PayloadHash {
   optional bytes keccak256 = 1; // required
 }

@@ -44,7 +44,7 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushBlockStoreStateServ
         _ctx: &ctx::Ctx,
         req: rpc::push_block_store_state::Req,
     ) -> anyhow::Result<()> {
-        self.0.send_replace(Some(req.state()));
+        self.0.send_replace(Some(req.state));
         Ok(())
     }
 }

@@ -34,6 +34,19 @@ fn msg_change_detector(msg: Msg, hash: &str, sig: &str) {
     .unwrap();
 }
 
+/// Note that genesis is NOT versioned by ProtocolVersion.
+/// Even if it was, ALL versions of genesis need to be supported FOREVER,
+/// unless we introduce dynamic regenesis.
+#[test]
+fn genesis_hash_change_detector() {
+    let want: GenesisHash = Text::new(
+        "genesis_hash:keccak256:75cfa582fcda9b5da37af8fb63a279f777bb17a97a50519e1a61aad6c77a522f",
+    )
+    .decode()
+    .unwrap();
+    assert_eq!(want, genesis_v1().hash());
+}
+
 #[test]
 fn replica_commit_change_detector() {
     msg_change_detector(

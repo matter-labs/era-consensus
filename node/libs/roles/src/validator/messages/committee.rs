@@ -1,9 +1,10 @@
 //! Messages related to the consensus protocol.
 use std::collections::BTreeMap;
 
-use anyhow::Context;
+use anyhow::Context as _;
+use zksync_protobuf::{read_required, required, ProtoFmt};
 
-use crate::validator;
+use crate::{proto::validator as proto, validator};
 
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.
@@ -114,6 +115,24 @@ pub struct WeightedValidator {
     pub key: validator::PublicKey,
     /// Validator weight inside the Committee.
     pub weight: Weight,
+}
+
+impl ProtoFmt for WeightedValidator {
+    type Proto = proto::WeightedValidator;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            key: read_required(&r.key).context("key")?,
+            weight: *required(&r.weight).context("weight")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            key: Some(self.key.build()),
+            weight: Some(self.weight),
+        }
+    }
 }
 
 /// Voting weight.

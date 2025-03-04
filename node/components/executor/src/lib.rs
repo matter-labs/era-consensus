@@ -105,7 +105,6 @@ impl Executor {
                 refresh: time::Duration::milliseconds(100),
             },
             rpc: self.config.rpc.clone(),
-            enable_pregenesis: true,
         }
     }
 

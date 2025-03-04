@@ -18,7 +18,7 @@ pub(crate) enum Error {
     #[error("past view (current view: {current_view:?})")]
     Old {
         /// Current view.
-        current_view: validator::v1::ViewNumber,
+        current_view: validator::ViewNumber,
     },
     /// Invalid message signature.
     #[error("invalid signature: {0:#}")]
@@ -61,7 +61,7 @@ impl StateMachine {
         // leader.
         if message.view().number < self.view_number
             || (message.view().number == self.view_number
-                && author != &self.config.genesis().view_leader(self.view_number))
+                && author != &self.config.genesis().view_leader(self.view_number.0))
         {
             return Err(Error::Old {
                 current_view: self.view_number,
@@ -115,7 +115,7 @@ impl StateMachine {
     pub(crate) async fn start_new_view(
         &mut self,
         ctx: &ctx::Ctx,
-        view: validator::v1::ViewNumber,
+        view: validator::ViewNumber,
     ) -> ctx::Result<()> {
         tracing::info!("ChonkyBFT replica - Starting view number {}.", view);
 

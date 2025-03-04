@@ -8,9 +8,15 @@ use zksync_consensus_utils::enum_util::Variant;
 use super::{
     v1, Block, BlockNumber, ChainId, Committee, ConsensusMsg, ForkNumber, Genesis, GenesisHash,
     GenesisRaw, Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock,
-    ProtocolVersion, Signed, WeightedValidator,
+    ProtocolVersion, Signed, ViewNumber, WeightedValidator,
 };
 use crate::validator::SecretKey;
+
+impl Distribution<ViewNumber> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ViewNumber {
+        ViewNumber(rng.gen())
+    }
+}
 
 impl Distribution<BlockNumber> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> BlockNumber {

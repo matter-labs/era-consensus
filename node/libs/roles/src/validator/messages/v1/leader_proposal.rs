@@ -1,5 +1,11 @@
+use anyhow::Context as _;
+use zksync_protobuf::{read_required, ProtoFmt};
+
 use super::{CommitQC, CommitQCVerifyError, TimeoutQC, TimeoutQCVerifyError, View};
-use crate::validator::{BlockNumber, Genesis, Payload, PayloadHash};
+use crate::{
+    proto::validator as proto,
+    validator::{BlockNumber, Genesis, Payload, PayloadHash},
+};
 
 /// A proposal message from the leader.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -23,6 +29,24 @@ impl LeaderProposal {
         self.justification
             .verify(genesis)
             .map_err(LeaderProposalVerifyError::Justification)
+    }
+}
+
+impl ProtoFmt for LeaderProposal {
+    type Proto = proto::LeaderProposal;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            proposal_payload: r.proposal_payload.as_ref().map(|p| Payload(p.clone())),
+            justification: read_required(&r.justification).context("justification")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            proposal_payload: self.proposal_payload.as_ref().map(|p| p.0.clone()),
+            justification: Some(self.justification.build()),
+        }
     }
 }
 
@@ -121,6 +145,29 @@ impl ProposalJustification {
                 }
             }
         }
+    }
+}
+
+impl ProtoFmt for ProposalJustification {
+    type Proto = proto::ProposalJustification;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        use proto::proposal_justification::T;
+        Ok(match r.t.as_ref().context("missing")? {
+            T::CommitQc(r) => Self::Commit(ProtoFmt::read(r).context("Commit")?),
+            T::TimeoutQc(r) => Self::Timeout(ProtoFmt::read(r).context("Timeout")?),
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        use proto::proposal_justification::T;
+
+        let t = match self {
+            Self::Commit(x) => T::CommitQc(x.build()),
+            Self::Timeout(x) => T::TimeoutQc(x.build()),
+        };
+
+        Self::Proto { t: Some(t) }
     }
 }
 

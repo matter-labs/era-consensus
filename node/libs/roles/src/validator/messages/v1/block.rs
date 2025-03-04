@@ -1,8 +1,13 @@
 //! Messages related to blocks.
+use anyhow::Context as _;
 use zksync_consensus_crypto::ByteFmt;
+use zksync_protobuf::{read_required, required, ProtoFmt};
 
 use super::{CommitQC, CommitQCVerifyError};
-use crate::validator::{BlockNumber, Genesis, Payload, PayloadHash};
+use crate::{
+    proto::validator as proto,
+    validator::{BlockNumber, Genesis, Payload, PayloadHash},
+};
 
 /// A block header.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
@@ -12,6 +17,22 @@ pub struct BlockHeader {
     pub number: BlockNumber,
     /// Payload of the block.
     pub payload: PayloadHash,
+}
+
+impl ProtoFmt for BlockHeader {
+    type Proto = proto::BlockHeader;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            number: BlockNumber(*required(&r.number).context("number")?),
+            payload: read_required(&r.payload).context("payload")?,
+        })
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            number: Some(self.number.0),
+            payload: Some(self.payload.build()),
+        }
+    }
 }
 
 /// A block that has been finalized by the consensus protocol.
@@ -66,6 +87,23 @@ impl ByteFmt for FinalBlock {
 
     fn encode(&self) -> Vec<u8> {
         zksync_protobuf::encode(self)
+    }
+}
+
+impl ProtoFmt for FinalBlock {
+    type Proto = proto::FinalBlock;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            payload: Payload(required(&r.payload).context("payload")?.clone()),
+            justification: read_required(&r.justification).context("justification")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            payload: Some(self.payload.0.clone()),
+            justification: Some(self.justification.build()),
+        }
     }
 }
 

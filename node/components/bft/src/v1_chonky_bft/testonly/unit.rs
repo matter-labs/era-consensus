@@ -122,8 +122,8 @@ impl UnitTestHarness {
         }
     }
 
-    pub(crate) fn view_leader(&self, view: validator::v1::ViewNumber) -> validator::PublicKey {
-        self.genesis().view_leader(view)
+    pub(crate) fn view_leader(&self, view: validator::ViewNumber) -> validator::PublicKey {
+        self.genesis().view_leader(view.0)
     }
 
     pub(crate) fn genesis(&self) -> &validator::Genesis {

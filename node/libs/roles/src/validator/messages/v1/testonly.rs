@@ -7,9 +7,8 @@ use rand::{
 use super::{
     BlockHeader, CommitQC, FinalBlock, LeaderProposal, LeaderSelectionMode, Phase,
     ProposalJustification, ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
-    ViewNumber,
 };
-use crate::validator::{testonly::Setup, Block, Payload};
+use crate::validator::{testonly::Setup, Block, Payload, ViewNumber};
 
 // Adds v1-specific test utilities to the `Setup` struct.
 impl Setup {
@@ -22,6 +21,7 @@ impl Setup {
                 .blocks
                 .last()
                 .map(|b| match b {
+                    Block::FinalV2(b) => ViewNumber(b.justification.view().number.next().0),
                     Block::FinalV1(b) => b.justification.view().number.next(),
                     Block::PreGenesis(_) => ViewNumber(0),
                 })
@@ -270,12 +270,6 @@ impl Distribution<ProposalJustification> for Standard {
 impl Distribution<Signers> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Signers {
         Signers(BitVec::from_bytes(&rng.gen::<[u8; 4]>()))
-    }
-}
-
-impl Distribution<ViewNumber> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ViewNumber {
-        ViewNumber(rng.gen())
     }
 }
 

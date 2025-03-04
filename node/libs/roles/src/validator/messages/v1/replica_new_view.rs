@@ -1,5 +1,8 @@
+use anyhow::Context as _;
+use zksync_protobuf::{read_required, ProtoFmt};
+
 use super::{ProposalJustification, ProposalJustificationVerifyError, View};
-use crate::validator::Genesis;
+use crate::{proto::validator as proto, validator::Genesis};
 
 /// A new view message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -22,6 +25,22 @@ impl ReplicaNewView {
             .map_err(ReplicaNewViewVerifyError::Justification)?;
 
         Ok(())
+    }
+}
+
+impl ProtoFmt for ReplicaNewView {
+    type Proto = proto::ReplicaNewView;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            justification: read_required(&r.justification).context("justification")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            justification: Some(self.justification.build()),
+        }
     }
 }
 

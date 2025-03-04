@@ -22,7 +22,7 @@ async fn test_msg_pool() {
     let key: validator::SecretKey = rng.gen();
     let gen = |f: &mut dyn FnMut() -> M| {
         let mut x: Vec<_> = (0..5).map(|_| key.sign_msg(f())).collect();
-        x.sort_by_key(|m| m.msg.view().number);
+        x.sort_by_key(|m| m.msg.view_number());
         x
     };
     // We keep them sorted by type and view, so that it is easy to
@@ -78,7 +78,7 @@ async fn test_msg_pool_recv() {
     let rng = &mut ctx.rng();
 
     let mut msgs: Vec<io::ConsensusInputMessage> = (0..20).map(|_| rng.gen()).collect();
-    msgs.sort_by_key(|m| m.message.msg.view().number);
+    msgs.sort_by_key(|m| m.message.msg.view_number());
 
     let pool = MsgPool::new();
     let mut recv = pool.subscribe();
@@ -307,7 +307,7 @@ async fn test_transmission() {
             // Construct a message and ensure that view is increasing
             // (otherwise the message could get filtered out).
             let mut want: validator::Signed<validator::v1::ReplicaCommit> = rng.gen();
-            want.msg.view.number = validator::v1::ViewNumber(i);
+            want.msg.view.number = validator::ViewNumber(i);
             let want: validator::Signed<validator::ConsensusMsg> = want.cast().unwrap();
             let in_message = io::ConsensusInputMessage {
                 message: want.clone(),

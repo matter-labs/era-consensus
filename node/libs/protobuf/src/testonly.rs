@@ -75,7 +75,7 @@ fn encode_shuffled_raw<R: Rng>(
             v = encode_shuffled_raw(rng, &v, desc)?;
         }
         let wire = Wire::from(fd.kind());
-        w.write_tag(num << 3 | wire.raw()).unwrap();
+        w.write_tag((num << 3) | wire.raw()).unwrap();
         match wire {
             Wire::Varint | Wire::I64 | Wire::I32 => {
                 // inefficient workaround of the fact that quick_protobuf::Writer

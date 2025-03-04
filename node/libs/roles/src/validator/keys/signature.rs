@@ -1,9 +1,13 @@
 use std::fmt;
 
 use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
+use zksync_protobuf::{required, ProtoFmt};
 
 use super::PublicKey;
-use crate::validator::messages::{Msg, MsgHash};
+use crate::{
+    proto::validator as proto,
+    validator::messages::{Msg, MsgHash},
+};
 
 /// A signature from a validator.
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -18,12 +22,6 @@ impl Signature {
     /// Verify a message hash against a public key.
     pub fn verify_hash(&self, msg_hash: &MsgHash, pk: &PublicKey) -> anyhow::Result<()> {
         self.0.verify(&ByteFmt::encode(msg_hash), &pk.0)
-    }
-}
-
-impl fmt::Debug for Signature {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.write_str(&TextFmt::encode(self))
     }
 }
 
@@ -47,6 +45,26 @@ impl TextFmt for Signature {
         text.strip("validator:signature:bls12_381:")?
             .decode_hex()
             .map(Self)
+    }
+}
+
+impl ProtoFmt for Signature {
+    type Proto = proto::Signature;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            bn254: Some(self.0.encode()),
+        }
+    }
+}
+
+impl fmt::Debug for Signature {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str(&TextFmt::encode(self))
     }
 }
 

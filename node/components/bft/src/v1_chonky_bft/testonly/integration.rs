@@ -46,6 +46,7 @@ fn msg_phase_number(msg: &validator::ConsensusMsg) -> usize {
         ConsensusMsg::ReplicaCommit(_) => 1,
         ConsensusMsg::ReplicaTimeout(_) => 1,
         ConsensusMsg::ReplicaNewView(_) => 1,
+        ConsensusMsg::V2(_) => unreachable!(),
     };
     assert!(phase < NUM_PHASES);
     phase
@@ -85,7 +86,7 @@ impl PortRouter {
                 // Here we assume that all instances start from view 0 in the tests.
                 // If the view is higher than what we have planned for, assume no partitions.
                 // Every node is guaranteed to be present in only one partition.
-                let view_number = msg.view().number.0 as usize;
+                let view_number = msg.view_number().0 as usize;
                 let phase_number = msg_phase_number(msg);
                 splits
                     .get(view_number)
@@ -416,7 +417,7 @@ async fn twins_receive_loop(
     };
 
     while let Ok(message) = recv.recv(ctx).await {
-        let view = message.message.msg.view().number.0 as usize;
+        let view = message.message.msg.view_number().0 as usize;
         let kind = message.message.msg.label();
 
         let msg = || FromNetworkMessage {
@@ -502,8 +503,8 @@ async fn twins_gossip_loop(
     .await
 }
 
-fn output_msg_view_number(msg: &FromNetworkMessage) -> validator::v1::ViewNumber {
-    msg.msg.msg.view().number
+fn output_msg_view_number(msg: &FromNetworkMessage) -> validator::ViewNumber {
+    msg.msg.msg.view_number()
 }
 
 fn output_msg_label(msg: &FromNetworkMessage) -> &str {
@@ -518,6 +519,7 @@ fn output_msg_commit_qc(msg: &FromNetworkMessage) -> Option<&validator::v1::Comm
         ConsensusMsg::ReplicaCommit(_) => return None,
         ConsensusMsg::ReplicaNewView(msg) => &msg.justification,
         ConsensusMsg::LeaderProposal(msg) => &msg.justification,
+        ConsensusMsg::V2(_) => unreachable!(),
     };
 
     match justification {

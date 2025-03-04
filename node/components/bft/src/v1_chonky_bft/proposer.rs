@@ -22,7 +22,7 @@ pub(crate) async fn run_proposer(
         };
 
         // If we are not the leader for this view, skip it.
-        if cfg.genesis().view_leader(justification.view().number) != cfg.secret_key.public() {
+        if cfg.genesis().view_leader(justification.view().number.0) != cfg.secret_key.public() {
             continue;
         }
 

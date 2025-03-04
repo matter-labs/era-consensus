@@ -14,7 +14,7 @@ pub(crate) enum Error {
     )]
     Old {
         /// Current view.
-        current_view: validator::v1::ViewNumber,
+        current_view: validator::ViewNumber,
         /// Current phase.
         current_phase: validator::v1::Phase,
     },
@@ -101,7 +101,7 @@ impl StateMachine {
         }
 
         // Check that it comes from the correct leader.
-        let leader = self.config.genesis().view_leader(view);
+        let leader = self.config.genesis().view_leader(view.0);
         if author != &leader {
             return Err(Error::InvalidLeader {
                 correct_leader: leader,

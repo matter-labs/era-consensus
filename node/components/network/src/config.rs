@@ -97,10 +97,6 @@ pub struct Config {
     pub tcp_accept_rate: limiter::Rate,
     /// Rate limiting config for RPCs.
     pub rpc: RpcConfig,
-    /// Enables syncing blocks before genesis.
-    /// In production, it should be set to `true`.
-    /// Set it to `false` in tests to simulate node behavior before pre-genesis support.
-    pub enable_pregenesis: bool,
     /// Maximum number of not-yet-persisted blocks fetched from the network.
     /// If reached, network component will wait for more blocks to get persisted
     /// before fetching the next ones. It is useful for limiting memory consumption
