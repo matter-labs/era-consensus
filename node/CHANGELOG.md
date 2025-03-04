@@ -1,12 +1,5 @@
 # Changelog
 
-## [0.9.0](https://github.com/matter-labs/era-consensus/compare/v0.8.0...v0.9.0) (2025-03-04)
-
-
-### Features
-
-* Add versioning and protocol version 2 (in development) ([#237](https://github.com/matter-labs/era-consensus/issues/237)) ([7354949](https://github.com/matter-labs/era-consensus/commit/7354949f0b92ff83722be88c976f19b16dd9c503))
-
 ## [0.8.0](https://github.com/matter-labs/era-consensus/compare/v0.7.0...v0.8.0) (2025-01-20)
 
 
