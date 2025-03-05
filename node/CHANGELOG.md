@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.9.1](https://github.com/matter-labs/era-consensus/compare/v0.9.0...v0.9.1) (2025-03-05)
+
+
+### Bug Fixes
+
+* manually upgrade to 0.9 ([#241](https://github.com/matter-labs/era-consensus/issues/241)) ([7c1e937](https://github.com/matter-labs/era-consensus/commit/7c1e937b1958726ba120c94973308d6ad0795ebe))
+
 ## [0.8.0](https://github.com/matter-labs/era-consensus/compare/v0.7.0...v0.8.0) (2025-01-20)
 
 
