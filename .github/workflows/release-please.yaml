@@ -30,3 +30,4 @@ jobs:
       manifest: '.github/release-please/manifest.json' # Specify the path to the manifest file
       update-cargo-lock: true                          # Update Cargo.lock file
       publish-to-crates-io: true                       # Enable publishing to crates.io
+      dependencies: 'clang libclang-dev'               # Additional Linux dependencies to install
