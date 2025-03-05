@@ -10,7 +10,7 @@ We fix the protocol parameters to small but reasonable values, e.g., as in
 
    - 5 correct replicas
    - 1 Byzantine replica
-   - up to 7 views in each correct replica
+   - up to 3 views in each correct replica
    - up to 2 blocks committed by each correct replica
    - up to 2 valid block hashes (that may appear in multiple messages)
    - up to 1 invalid block hash (that may appear in multiple messages)

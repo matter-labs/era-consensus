@@ -13,6 +13,13 @@
 // JVM_ARGS=-Xmx20G quint verify --server-endpoint=localhost:8082 \
 //   --apalache-config=apalache-inductive.json --max-steps=1 --init=ind_init \
 //   --step=step --invariant=ind_inv n6f1b1_inductive.qnt
+//
+// Since checking the inductive invariant requires significant computational resources,
+// we check the pieces of the inductive invariant in parallel on a beefy machine:
+//
+// ../experiments/quint-inductive.sh n6f1b1_inductive.qnt 13 23 40 300 ind_inv ind_init step
+//
+// Igor Konnov 2024-2025 (for Matter Labs)
 module inductive {
     import types.* from "./types"
     import option.* from "../option"
@@ -246,17 +253,9 @@ module inductive {
                 }))
         // non-deterministically initialize msgs_signed_commit
         nondet signed_commits = SIGNED_COMMIT_VOTES.powerset().oneOf()
-        // non-deterministically initialize msgs_timeout_commit
-        //nondet signed_timeouts = SIGNED_TIMEOUT_VOTES.powerset().oneOf()
-        // non-deterministically initialize msgs_new_view
-        //nondet new_views = NEW_VIEWS.powerset().oneOf()
-        // non-deterministically initialize msgs_proposal
-        //nondet proposals = PROPOSALS.powerset().oneOf()
-        // non-deterministically initialize ghost_justifications
-        //nondet justifications =
-        //  tuples(ICORRECT, IVIEWS.exclude(Set(0))).setOfMaps(JUSTIFICATIONS).oneOf()
-        // Non-deterministically initialize replica_state.
-        // We pick maps for the individual fields, to avoid combinatorial explosion of tuples.
+        // Non-deterministically initialize replica_state:
+        //
+        // Pick maps for the individual fields, to avoid combinatorial explosion of tuples.
         nondet state_views = ICORRECT.setOfMaps(IVIEWS).oneOf()
         nondet state_phases = ICORRECT.setOfMaps(PHASES).oneOf()
         nondet high_votes = ICORRECT.setOfMaps(COMMIT_VOTES_OR_NONE).oneOf()
@@ -290,9 +289,9 @@ module inductive {
             r::ghost_commit_qc' = commit_qc,
             r::ghost_timeout_qc' = timeout_qc,
             r::msgs_signed_commit' = signed_commits,
-            //r::msgs_signed_timeout' = signed_timeouts,
             {
-                // we have to pass the upper bound of 10 directly (this is a limitation of Quint)
+                // Pass the upper bound of 10 directly (this is a limitation of Quint)
+                // To understand why this makes sense, see discussion in the paper.
                 nondet msgs_signed_timeout = generate(10, Set(SIGNED_TIMEOUT_VOTE_SAMPLE))
                 all {
                     msgs_signed_timeout.forall(signed_timeout_vote_shape_inv),
@@ -303,9 +302,8 @@ module inductive {
                 nondet msgs_new_view = generate(5, Set(NEW_VIEW_SAMPLE))
                 r::msgs_new_view' = msgs_new_view
             },
-            //r::msgs_proposal' = proposals,
             {
-                // we have to pass the upper bound of 10 directly (this is a limitation of Quint)
+                // Pass the upper bound of 10 directly (this is a limitation of Quint)
                 nondet msgs_proposal = generate(5, Set(PROPOSAL_SAMPLE))
                 all {
                     msgs_proposal.forall(proposal_shape_inv),
@@ -352,11 +350,8 @@ module inductive {
         lemma1_justified_qc_is_valid,
         lemma2_qc_is_supported_by_messages,
         lemma3_signed_commit_needs_proposal,
-        // lemma 4 is incorrect
-        // lemma4_signed_commit_needs_justification,
         lemma5_signed_commit_no_equivocation,
         lemma6_signed_timeout_no_equivocation,
-        // lemma7 is incorrect
         lemma8_no_commits_in_future,
         lemma9_no_timeouts_in_future,
         lemma10_local_high_vote,
@@ -369,9 +364,6 @@ module inductive {
         lemma17_timeout_high_commit_qc_is_valid,
         lemma19_replica_state_high_commit_qc_is_justified,
         lemma20_replica_state_high_timeout_qc_is_justified,
-        //lemma21_high_vote_in_timeout_qc,
-        // lemma18 is incorrect due to faults
-        //lemma18_replica_state_high_commit_qc_is_justified,
     }
 
     // auxiliary invariants that we call lemmas
@@ -412,8 +404,8 @@ module inductive {
                 val view = r::view(m.justification)
                 val id = m.sig
                 and {
-                    // INCORRECT: no justifications from the future
-                    // (actually, a late replica may catch up with a CommitQC with later views)
+                    // A late replica may catch up with a CommitQC with later views)
+                    // Hence, we have found that the commented condition is incorrect.
                     // view <= r::replica_state.get(id).view,
 
                     // (1) check the basic constraints
@@ -516,8 +508,6 @@ module inductive {
             IVALID_BLOCKS.contains(m.vote.block_hash)
         })
     }
-
-    // lemma 4 is incorrect
 
     val lemma5_signed_commit_no_equivocation = {
         ICORRECT.forall(id => IVIEWS.forall(v => {
@@ -803,43 +793,7 @@ module inductive {
         })
     }
 
-    // invalid lemmas
-    val lemma18_replica_state_high_commit_qc_is_justified = {
-        ICORRECT.forall(id => 
-            val self = r::replica_state.get(id)
-            and {
-                match (self.high_commit_qc) {
-                | None =>
-                    true
-                | Some(qc_id) =>
-                    // NOTE: this is not true when the replica is faulty
-                    r::msgs_new_view.exists(m => m.justification == Commit(qc_id))
-                },
-                match (self.high_timeout_qc) {
-                | None =>
-                    false // this should not be possible
-
-                | Some(qc_id) =>
-                    // NOTE: this is not true when the replica is faulty
-                    r::msgs_new_view.exists(m => m.justification == Timeout(qc_id))
-                }
-            }
-        )
-    }
-
-    // this lemma actually does not hold true, we have a counterexample
-    val lemma7_proposal_no_equivocation = {
-        r::msgs_proposal.forall(m1 => or {
-            IFAULTY.contains(m1.sig),
-            r::msgs_proposal.forall(m2 => {
-                (m1.sig == m2.sig and m1.ghost_block_number == m2.ghost_block_number)
-                    implies (m1 == m2)
-            })
-        })
-    }
-
     // additional definitions
-
     def justification_is_supported_with_messages(j: Justification): bool = {
         match (j) {
         | Commit(qc_id) =>
