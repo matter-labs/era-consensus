@@ -40,8 +40,9 @@
 //! * Async calls can be turned into blocking calls via `ctx::block_on` function.
 //!   It has `pub(crate)` visibility, therefore if you want to add a new blocking primitive, it
 //!   should be placed in the `concurrency` crate.
-use crate::scope;
 use std::{future::Future, sync::Arc};
+
+use crate::scope;
 
 /// Error returned by `Task::run`/`Task::run_blocking` instead of
 /// the actual error returned by the task's routine.

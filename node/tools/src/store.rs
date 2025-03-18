@@ -1,14 +1,17 @@
 //! RocksDB-based implementation of PersistentBlockStore and ReplicaStore.
-use anyhow::Context as _;
-use rocksdb::{Direction, IteratorMode, ReadOptions};
 use std::{
     fmt,
     path::Path,
     sync::{Arc, RwLock},
 };
+
+use anyhow::Context as _;
+use rocksdb::{Direction, IteratorMode, ReadOptions};
 use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{BlockStoreState, PersistentBlockStore, ReplicaState, ReplicaStore};
+use zksync_consensus_storage::{
+    BlockStoreState, Last, PersistentBlockStore, ReplicaState, ReplicaStore,
+};
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -88,7 +91,7 @@ impl RocksDB {
         })))
     }
 
-    fn last_blocking(db: &rocksdb::DB) -> anyhow::Result<Option<validator::CommitQC>> {
+    fn last_blocking(db: &rocksdb::DB) -> anyhow::Result<Option<Last>> {
         let mut options = ReadOptions::default();
         options.set_iterate_range(DatabaseKey::BLOCKS_START_KEY..);
         let Some(res) = db
@@ -97,10 +100,10 @@ impl RocksDB {
         else {
             return Ok(None);
         };
-        let (_, last) = res.context("RocksDB error reading head block")?;
-        let last: validator::FinalBlock =
-            zksync_protobuf::decode(&last).context("Failed decoding head block bytes")?;
-        Ok(Some(last.justification))
+        let (_, raw) = res.context("RocksDB error reading head block")?;
+        let b: validator::Block =
+            zksync_protobuf::decode(&raw).context("Failed decoding head block bytes")?;
+        Ok(Some((&b).into()))
     }
 }
 
@@ -124,7 +127,7 @@ impl PersistentBlockStore for RocksDB {
         &self,
         _ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<validator::FinalBlock> {
+    ) -> ctx::Result<validator::Block> {
         scope::wait_blocking(|| {
             let db = self.0.db.read().unwrap();
             let block = db
@@ -137,12 +140,16 @@ impl PersistentBlockStore for RocksDB {
         .wrap(number)
     }
 
-    #[tracing::instrument(skip_all, fields(l2_block = %block.justification.message.proposal.number))]
-    async fn queue_next_block(
+    async fn verify_pregenesis_block(
         &self,
         _ctx: &ctx::Ctx,
-        block: validator::FinalBlock,
+        _block: &validator::PreGenesisBlock,
     ) -> ctx::Result<()> {
+        Err(anyhow::format_err!("pre-genesis blocks not supported").into())
+    }
+
+    #[tracing::instrument(skip_all, fields(l2_block = %block.number()))]
+    async fn queue_next_block(&self, _ctx: &ctx::Ctx, block: validator::Block) -> ctx::Result<()> {
         scope::wait_blocking(|| {
             // We use an exclusive lock so no other thread can change the expected block number
             // between the check and the insertion into the database. We could use a RocksDB
@@ -155,10 +162,9 @@ impl PersistentBlockStore for RocksDB {
                 "got {:?} want {want:?}",
                 block.number()
             );
-            let block_number = block.header().number;
             let mut write_batch = rocksdb::WriteBatch::default();
             write_batch.put(
-                DatabaseKey::Block(block_number).encode_key(),
+                DatabaseKey::Block(block.number()).encode_key(),
                 zksync_protobuf::encode(&block),
             );
             // Commit the transaction.
@@ -166,11 +172,11 @@ impl PersistentBlockStore for RocksDB {
                 .context("Failed writing block to database")?;
             self.0
                 .persisted
-                .send_modify(|p| p.last = Some(block.justification.clone()));
+                .send_modify(|p| p.last = Some((&block).into()));
             Ok(())
         })
         .await
-        .context(block.header().number)?;
+        .context(block.number())?;
         Ok(())
     }
 }

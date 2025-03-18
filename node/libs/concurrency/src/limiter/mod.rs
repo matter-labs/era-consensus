@@ -1,6 +1,7 @@
 //! Rate limiter which supports delayed permit consumption.
-use crate::{ctx, sync, time};
 use std::{fmt, sync::Mutex};
+
+use crate::{ctx, sync, time};
 
 #[cfg(test)]
 mod tests;
@@ -129,7 +130,7 @@ pub struct Permit<'a> {
     ctx: &'a ctx::Ctx,
 }
 
-impl<'a> Drop for Permit<'a> {
+impl Drop for Permit<'_> {
     /// Consumes the reserved permits.
     fn drop(&mut self) {
         if self.permits == 0 {

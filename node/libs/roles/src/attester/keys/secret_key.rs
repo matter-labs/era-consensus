@@ -1,8 +1,10 @@
-use super::{PublicKey, Signature};
-use crate::attester::{Msg, MsgHash, Signed};
 use std::{fmt, sync::Arc};
+
 use zksync_consensus_crypto::{secp256k1, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
+
+use super::{PublicKey, Signature};
+use crate::attester::{Msg, MsgHash, Signed};
 
 /// A secret key for the attester role to sign L1 batches.
 /// SecretKey is put into an Arc, so that we can clone it,
@@ -11,7 +13,7 @@ use zksync_consensus_utils::enum_util::Variant;
 pub struct SecretKey(pub(crate) Arc<secp256k1::SecretKey>);
 
 impl SecretKey {
-    /// Generates a batch secret key from a cryptographically-secure entropy source.
+    /// Generates a secret key from a cryptographically-secure entropy source.
     pub fn generate() -> Self {
         Self(Arc::new(secp256k1::SecretKey::generate()))
     }
@@ -21,7 +23,7 @@ impl SecretKey {
         PublicKey(self.0.public())
     }
 
-    /// Signs a batch message.
+    /// Signs a message.
     pub fn sign_msg<V>(&self, msg: V) -> Signed<V>
     where
         V: Variant<Msg>,

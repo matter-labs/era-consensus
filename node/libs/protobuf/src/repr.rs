@@ -1,7 +1,8 @@
 //! Trait for defining proto conversion for external types.
 
-use crate::build::prost_reflect::ReflectMessage;
 use anyhow::Context as _;
+
+use crate::build::prost_reflect::ReflectMessage;
 
 /// Trait reverse to `zksync_protobuf::ProtoFmt` for cases where
 /// you would like to specify a custom proto encoding for an externally defined type.
@@ -17,6 +18,11 @@ pub trait ProtoRepr: ReflectMessage + Default {
 /// Parses a required proto field.
 pub fn read_required_repr<P: ProtoRepr>(field: &Option<P>) -> anyhow::Result<P::Type> {
     field.as_ref().context("missing field")?.read()
+}
+
+/// Parses an optional proto field.
+pub fn read_optional_repr<P: ProtoRepr>(field: &Option<P>) -> anyhow::Result<Option<P::Type>> {
+    field.as_ref().map(ProtoRepr::read).transpose()
 }
 
 /// Encodes a proto message.

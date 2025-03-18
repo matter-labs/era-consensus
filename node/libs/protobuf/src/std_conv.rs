@@ -1,7 +1,8 @@
 //! Proto conversion for messages in std package.
-use crate::{proto, read_required, required, ProtoFmt};
 use anyhow::Context as _;
 use zksync_concurrency::{limiter, time};
+
+use crate::{proto, read_required, required, ProtoFmt};
 
 impl ProtoFmt for () {
     type Proto = proto::std::Void;

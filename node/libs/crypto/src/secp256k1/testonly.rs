@@ -1,10 +1,11 @@
-use crate::secp256k1::{PublicKey, SecretKey, Signature};
 use elliptic_curve::ScalarPrimitive;
 use k256::ecdsa::RecoveryId;
 use rand::{
     distributions::{Distribution, Standard},
     CryptoRng, Rng, RngCore,
 };
+
+use crate::secp256k1::{PublicKey, SecretKey, Signature};
 
 struct RngWrapper<R>(R);
 

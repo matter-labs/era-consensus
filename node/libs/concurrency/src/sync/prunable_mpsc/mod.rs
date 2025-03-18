@@ -5,11 +5,12 @@
 //! a mutable reference to the signaling channel, unlike [`Sender`], hence making it undesirable to
 //! be used in conjunction.
 //!
+use std::{collections::VecDeque, fmt, sync::Arc};
+
 use crate::{
     ctx,
     sync::{self, watch},
 };
-use std::{collections::VecDeque, fmt, sync::Arc};
 
 #[cfg(test)]
 mod tests;
@@ -54,6 +55,11 @@ pub fn channel<T>(
     };
 
     (send, recv)
+}
+
+/// Creates a channel without any pruning or filtering, and returns the [`Sender`] and [`Receiver`] handles.
+pub fn unpruned_channel<T>() -> (Sender<T>, Receiver<T>) {
+    channel(|_| true, |_, _| SelectionFunctionResult::Keep)
 }
 
 struct Shared<T> {

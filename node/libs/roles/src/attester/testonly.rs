@@ -1,17 +1,17 @@
-use super::{
-    AggregateMultiSig, AggregateSignature, Batch, BatchHash, BatchNumber, BatchQC, Committee, Msg,
-    MsgHash, MultiSig, PublicKey, SecretKey, Signature, Signed, Signers, SyncBatch,
-    WeightedAttester,
-};
-use crate::validator::Payload;
+use std::sync::Arc;
+
 use bit_vec::BitVec;
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use std::sync::Arc;
 use zksync_consensus_crypto::bls12_381;
 use zksync_consensus_utils::enum_util::Variant;
+
+use super::{
+    AggregateMultiSig, AggregateSignature, Batch, BatchHash, BatchNumber, BatchQC, Committee, Msg,
+    MsgHash, MultiSig, PublicKey, SecretKey, Signature, Signed, Signers, WeightedAttester,
+};
 
 impl AggregateSignature {
     /// Generate a new aggregate signature from a list of signatures.
@@ -53,17 +53,6 @@ impl Distribution<Batch> for Standard {
             number: rng.gen(),
             hash: rng.gen(),
             genesis: rng.gen(),
-        }
-    }
-}
-
-impl Distribution<SyncBatch> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SyncBatch {
-        let size: usize = rng.gen_range(500..1000);
-        SyncBatch {
-            number: rng.gen(),
-            payloads: vec![Payload((0..size).map(|_| rng.gen()).collect())],
-            proof: rng.gen::<[u8; 32]>().to_vec(),
         }
     }
 }

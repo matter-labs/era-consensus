@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package zksync.roles.validator;
+
+import "zksync/roles/validator/keys.proto";
+import "zksync/roles/validator/discovery.proto";
+import "zksync/roles/validator/v1.proto";
+import "zksync/roles/validator/v2.proto";
+import "zksync/std.proto";
+
+message PreGenesisBlock {
+  optional uint64 number = 1; // required
+  optional bytes payload = 2; // required
+  optional bytes justification = 3; // required
+}
+
+message Block {
+  // required
+  oneof t {
+    FinalBlockV2 final_v2 = 3;
+    FinalBlock final = 1;
+    PreGenesisBlock pre_genesis = 2;
+  }
+}
+
+message ConsensusMsg {
+  reserved 1, 3, 4;
+  reserved "replica_prepare", "leader_prepare", "leader_commit";
+
+  oneof t { // required
+    ReplicaCommit replica_commit = 2;
+    ReplicaTimeout replica_timeout = 5;
+    ReplicaNewView replica_new_view = 6;
+    LeaderProposal leader_proposal = 7;
+    ChonkyMsgV2 v2 = 8;
+  }
+}
+
+message Msg {
+  oneof t {// required
+    ConsensusMsg consensus = 1;
+    bytes session_id = 2;
+    NetAddress net_address = 3;
+  }
+}
+
+message MsgHash {
+  optional bytes keccak256 = 1; // required
+}
+
+message Signed {
+  optional Msg msg = 1; // required
+  optional PublicKey key = 2; // required
+  optional Signature sig = 3; // required
+}

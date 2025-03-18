@@ -1,10 +1,17 @@
-use super::{PublicKey, Signature};
-use crate::validator::messages::{Msg, MsgHash};
 use std::fmt;
+
 use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
+use zksync_protobuf::{required, ProtoFmt};
+
+use super::{PublicKey, Signature};
+use crate::{
+    proto::validator as proto,
+    validator::messages::{Msg, MsgHash},
+};
 
 /// An aggregate signature from a validator.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Default)]
 pub struct AggregateSignature(pub(crate) bls12_381::AggregateSignature);
 
@@ -12,6 +19,15 @@ impl AggregateSignature {
     /// Add a signature to the aggregation.
     pub fn add(&mut self, sig: &Signature) {
         self.0.add(&sig.0)
+    }
+
+    /// Generate a new aggregate signature from a list of signatures.
+    pub fn aggregate<'a>(sigs: impl IntoIterator<Item = &'a Signature>) -> Self {
+        let mut agg = Self::default();
+        for sig in sigs {
+            agg.add(sig);
+        }
+        agg
     }
 
     /// Verify a list of messages against a list of public keys.
@@ -61,6 +77,20 @@ impl TextFmt for AggregateSignature {
             "validator:aggregate_signature:bls12_381:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
+    }
+}
+
+impl ProtoFmt for AggregateSignature {
+    type Proto = proto::AggregateSignature;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            bn254: Some(self.0.encode()),
+        }
     }
 }
 

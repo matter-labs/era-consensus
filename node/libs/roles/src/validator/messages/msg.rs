@@ -1,9 +1,13 @@
 //! Generic message types.
-use super::{ConsensusMsg, NetAddress};
-use crate::{node::SessionId, validator};
 use std::fmt;
+
+use anyhow::Context as _;
 use zksync_consensus_crypto::{keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
+use zksync_protobuf::{read_required, required, ProtoFmt};
+
+use super::{ConsensusMsg, NetAddress};
+use crate::{node::SessionId, proto::validator as proto, validator};
 
 /// Generic message type for a validator.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -59,6 +63,31 @@ impl Variant<Msg> for NetAddress {
     }
 }
 
+impl ProtoFmt for Msg {
+    type Proto = proto::Msg;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        use proto::msg::T;
+        Ok(match r.t.as_ref().context("missing")? {
+            T::Consensus(r) => Self::Consensus(ProtoFmt::read(r).context("Consensus")?),
+            T::SessionId(r) => Self::SessionId(SessionId(r.clone())),
+            T::NetAddress(r) => Self::NetAddress(ProtoFmt::read(r).context("NetAddress")?),
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        use proto::msg::T;
+
+        let t = match self {
+            Self::Consensus(x) => T::Consensus(x.build()),
+            Self::SessionId(x) => T::SessionId(x.0.clone()),
+            Self::NetAddress(x) => T::NetAddress(x.build()),
+        };
+
+        Self::Proto { t: Some(t) }
+    }
+}
+
 /// Hash of a message.
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 pub struct MsgHash(pub(crate) keccak256::Keccak256);
@@ -85,6 +114,20 @@ impl TextFmt for MsgHash {
             "validator_msg:keccak256:{}",
             hex::encode(ByteFmt::encode(&self.0))
         )
+    }
+}
+
+impl ProtoFmt for MsgHash {
+    type Proto = proto::MsgHash;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            keccak256: Some(self.0.encode()),
+        }
     }
 }
 
@@ -116,11 +159,29 @@ impl<V: Variant<Msg> + Clone> Signed<V> {
 impl<V: Variant<Msg>> Signed<V> {
     /// Casts a signed message variant to sub/super variant.
     /// It is an equivalent of constructing/deconstructing enum values.
-    pub fn cast<V2: Variant<Msg>>(self) -> Result<Signed<V2>, BadVariantError> {
+    pub fn cast<U: Variant<Msg>>(self) -> Result<Signed<U>, BadVariantError> {
         Ok(Signed {
-            msg: V2::extract(self.msg.insert())?,
+            msg: U::extract(self.msg.insert())?,
             key: self.key,
             sig: self.sig,
         })
+    }
+}
+
+impl<V: Variant<Msg> + Clone> ProtoFmt for Signed<V> {
+    type Proto = proto::Signed;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            msg: V::extract(read_required::<Msg>(&r.msg).context("msg")?)?,
+            key: read_required(&r.key).context("key")?,
+            sig: read_required(&r.sig).context("sig")?,
+        })
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            msg: Some(self.msg.clone().insert().build()),
+            key: Some(self.key.build()),
+            sig: Some(self.sig.build()),
+        }
     }
 }

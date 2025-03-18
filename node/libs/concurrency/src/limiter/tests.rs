@@ -1,6 +1,7 @@
+use rand::Rng;
+
 use super::*;
 use crate::{ctx, scope, testonly, time};
-use rand::Rng;
 
 #[tokio::test]
 async fn immediate_permit_consumption() {

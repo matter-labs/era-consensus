@@ -1,14 +1,16 @@
 //! Utilities for handling strings belonging to various namespaces.
 
-use super::ident;
-use anyhow::Context as _;
-use prost_reflect::prost_types;
 use std::{
     collections::BTreeMap,
     fmt,
     path::{Path, PathBuf},
     str::FromStr,
 };
+
+use anyhow::Context as _;
+use prost_reflect::prost_types;
+
+use super::ident;
 
 /// Path relative to `$CARGO_MANIFEST_DIR`.
 #[derive(Debug, Clone, PartialEq, Eq)]

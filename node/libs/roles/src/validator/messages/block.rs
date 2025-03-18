@@ -1,8 +1,85 @@
 //! Messages related to blocks.
-
-use super::{CommitQC, CommitQCVerifyError};
 use std::fmt;
+
+use anyhow::Context as _;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
+use zksync_protobuf::{required, ProtoFmt};
+
+use super::{v1, v2};
+use crate::proto::validator as proto;
+
+/// Represents a blockchain block across different consensus protocol versions (including pre-genesis blocks).
+#[derive(Debug, Clone, PartialEq)]
+pub enum Block {
+    /// Block with number `<genesis.first_block`.
+    PreGenesis(PreGenesisBlock),
+    /// Block with number `>=genesis.first_block`. For protocol version 1.
+    FinalV1(v1::FinalBlock),
+    /// Block with number `>=genesis.first_block`. For protocol version 1.
+    FinalV2(v2::FinalBlock),
+}
+
+impl From<PreGenesisBlock> for Block {
+    fn from(b: PreGenesisBlock) -> Self {
+        Self::PreGenesis(b)
+    }
+}
+
+impl From<v1::FinalBlock> for Block {
+    fn from(b: v1::FinalBlock) -> Self {
+        Self::FinalV1(b)
+    }
+}
+
+impl From<v2::FinalBlock> for Block {
+    fn from(b: v2::FinalBlock) -> Self {
+        Self::FinalV2(b)
+    }
+}
+
+impl Block {
+    /// Block number.
+    pub fn number(&self) -> BlockNumber {
+        match self {
+            Self::PreGenesis(b) => b.number,
+            Self::FinalV1(b) => b.number(),
+            Self::FinalV2(b) => b.number(),
+        }
+    }
+
+    /// Payload.
+    pub fn payload(&self) -> &Payload {
+        match self {
+            Self::PreGenesis(b) => &b.payload,
+            Self::FinalV1(b) => &b.payload,
+            Self::FinalV2(b) => &b.payload,
+        }
+    }
+}
+
+impl ProtoFmt for Block {
+    type Proto = proto::Block;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        use proto::block::T;
+        Ok(match required(&r.t)? {
+            T::FinalV2(b) => Block::FinalV2(ProtoFmt::read(b).context("block_v2")?),
+            T::Final(b) => Block::FinalV1(ProtoFmt::read(b).context("block_v1")?),
+            T::PreGenesis(b) => Block::PreGenesis(ProtoFmt::read(b).context("pre_genesis_block")?),
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        use proto::block::T;
+        Self::Proto {
+            t: Some(match self {
+                Block::FinalV2(b) => T::FinalV2(b.build()),
+                Block::FinalV1(b) => T::Final(b.build()),
+                Block::PreGenesis(b) => T::PreGenesis(b.build()),
+            }),
+        }
+    }
+}
 
 /// Payload of the block. Consensus algorithm does not interpret the payload
 /// (except for imposing a size limit for the payload). Proposing a payload
@@ -21,7 +98,25 @@ impl fmt::Debug for Payload {
     }
 }
 
+impl Payload {
+    /// Hash of the payload.
+    pub fn hash(&self) -> PayloadHash {
+        PayloadHash(Keccak256::new(&self.0))
+    }
+
+    /// Returns the length of the payload.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns `true` if the payload is empty.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
 /// Hash of the Payload.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct PayloadHash(pub(crate) Keccak256);
 
@@ -38,20 +133,26 @@ impl TextFmt for PayloadHash {
     }
 }
 
+impl ProtoFmt for PayloadHash {
+    type Proto = proto::PayloadHash;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.keccak256)?)?))
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            keccak256: Some(self.0.encode()),
+        }
+    }
+}
+
 impl fmt::Debug for PayloadHash {
     fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
         fmt.write_str(&TextFmt::encode(self))
     }
 }
 
-impl Payload {
-    /// Hash of the payload.
-    pub fn hash(&self) -> PayloadHash {
-        PayloadHash(Keccak256::new(&self.0))
-    }
-}
-
 /// Sequential number of the block.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BlockNumber(pub u64);
 
@@ -80,85 +181,41 @@ impl fmt::Display for BlockNumber {
     }
 }
 
-/// A block header.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BlockHeader {
-    /// Number of the block.
+/// Block before `genesis.first_block`
+/// with an external (non-consensus) justification.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PreGenesisBlock {
+    /// Block number.
     pub number: BlockNumber,
-    /// Payload of the block.
-    pub payload: PayloadHash,
-}
-
-/// A block that has been finalized by the consensus protocol.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct FinalBlock {
-    /// Payload of the block. Should match `header.payload` hash.
+    /// Payload.
     pub payload: Payload,
-    /// Justification for the block. What guarantees that the block is final.
-    pub justification: CommitQC,
+    /// Justification.
+    pub justification: Justification,
 }
 
-impl FinalBlock {
-    /// Creates a new finalized block.
-    pub fn new(payload: Payload, justification: CommitQC) -> Self {
-        assert_eq!(justification.header().payload, payload.hash());
-        Self {
-            payload,
-            justification,
+impl ProtoFmt for PreGenesisBlock {
+    type Proto = proto::PreGenesisBlock;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            number: BlockNumber(*required(&r.number).context("number")?),
+            payload: Payload(required(&r.payload).context("payload")?.clone()),
+            justification: Justification(
+                required(&r.justification).context("justification")?.clone(),
+            ),
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            number: Some(self.number.0),
+            payload: Some(self.payload.0.clone()),
+            justification: Some(self.justification.0.clone()),
         }
     }
-
-    /// Header of the block.
-    pub fn header(&self) -> &BlockHeader {
-        &self.justification.message.proposal
-    }
-
-    /// Number of the block.
-    pub fn number(&self) -> BlockNumber {
-        self.header().number
-    }
-
-    /// Verifies internal consistency of this block.
-    pub fn verify(&self, genesis: &super::Genesis) -> Result<(), BlockValidationError> {
-        let payload_hash = self.payload.hash();
-        if payload_hash != self.header().payload {
-            return Err(BlockValidationError::HashMismatch {
-                header_hash: self.header().payload,
-                payload_hash,
-            });
-        }
-        self.justification
-            .verify(genesis)
-            .map_err(BlockValidationError::Justification)
-    }
 }
 
-impl ByteFmt for FinalBlock {
-    fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        zksync_protobuf::decode(bytes)
-    }
-
-    fn encode(&self) -> Vec<u8> {
-        zksync_protobuf::encode(self)
-    }
-}
-
-/// Errors that can occur validating a `FinalBlock` received from a node.
-#[derive(Debug, thiserror::Error)]
-#[non_exhaustive]
-pub enum BlockValidationError {
-    /// Block payload doesn't match the block header.
-    #[error(
-        "block payload doesn't match the block header (hash in header: {header_hash:?}, \
-             payload hash: {payload_hash:?})"
-    )]
-    HashMismatch {
-        /// Payload hash in block header.
-        header_hash: PayloadHash,
-        /// Hash of the payload.
-        payload_hash: PayloadHash,
-    },
-    /// Failed verifying quorum certificate.
-    #[error("failed verifying quorum certificate: {0:#?}")]
-    Justification(#[source] CommitQCVerifyError),
-}
+/// Justification for pre-genesis blocks. Can be used in the future to prove inclusion of
+/// a block in the base layer, so that we can sync pre-genesis blocks trustlessly.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Justification(pub Vec<u8>);

@@ -5,12 +5,6 @@ package zksync.roles.attester;
 import "zksync/roles/attester/keys.proto";
 import "zksync/roles/validator/genesis.proto";
 
-message SyncBatch {
-  optional uint64 number = 1; // required
-  repeated bytes payloads = 2; // required
-  optional bytes proof = 3; // required
-}
-
 message BatchHash {
   optional bytes keccak256 = 1; // required
 }

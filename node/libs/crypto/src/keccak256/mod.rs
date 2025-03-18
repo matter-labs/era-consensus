@@ -1,13 +1,15 @@
 //! Wrappers for the Keccak256 cryptographic hash algorithm.
-use crate::ByteFmt;
 use sha3::{digest::Update as _, Digest as _};
+
+use crate::ByteFmt;
 
 #[cfg(test)]
 mod test;
 pub mod testonly;
 
 /// Keccak256 hash.
-#[derive(Copy, Clone, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Keccak256(pub(crate) [u8; 32]);
 
 impl Keccak256 {

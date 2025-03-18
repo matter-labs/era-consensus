@@ -1,5 +1,9 @@
 use std::fmt;
+
 use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
+use zksync_protobuf::{required, ProtoFmt};
+
+use crate::proto::validator as proto;
 
 /// A public key for a validator.
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -25,6 +29,20 @@ impl TextFmt for PublicKey {
         text.strip("validator:public:bls12_381:")?
             .decode_hex()
             .map(Self)
+    }
+}
+
+impl ProtoFmt for PublicKey {
+    type Proto = proto::PublicKey;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            bn254: Some(self.0.encode()),
+        }
     }
 }
 

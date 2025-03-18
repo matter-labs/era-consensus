@@ -26,16 +26,18 @@
 
 #![allow(clippy::print_stdout)]
 
-pub use self::syntax::*;
-use anyhow::Context as _;
-use prost_reflect::{prost::Message as _, prost_types};
-use protox::file::File;
 use std::{
     collections::{HashMap, HashSet},
     env, fs,
     path::{Path, PathBuf},
     sync::atomic::{AtomicBool, Ordering},
 };
+
+use anyhow::Context as _;
+use prost_reflect::{prost::Message as _, prost_types};
+use protox::file::File;
+
+pub use self::syntax::*;
 
 mod canonical;
 mod ident;

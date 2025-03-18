@@ -1,31 +1,28 @@
 [package]
-name = "zksync_consensus_crypto"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-homepage.workspace = true
-license.workspace = true
+authors.workspace    = true
+description          = "ZKsync consensus cryptographic utilities"
+edition.workspace    = true
+homepage.workspace   = true
+keywords.workspace   = true
+license.workspace    = true
+name                 = "zksync_consensus_crypto"
 repository.workspace = true
-keywords.workspace = true
-description = "ZKsync consensus cryptographic utilities"
+version.workspace    = true
 
 [dependencies]
-anyhow.workspace = true
-blst.workspace = true
-ed25519-dalek.workspace = true
+anyhow.workspace         = true
+blst.workspace           = true
+ed25519-dalek.workspace  = true
 elliptic-curve.workspace = true
-ff_ce.workspace = true
-hex.workspace = true
-k256.workspace = true
-num-bigint.workspace = true
-num-traits.workspace = true
-pairing.workspace = true
-rand.workspace = true
-rand04.workspace = true
-sha3.workspace = true
-thiserror.workspace = true
-tracing.workspace = true
-zeroize.workspace = true
+hex.workspace            = true
+k256.workspace           = true
+num-bigint.workspace     = true
+num-traits.workspace     = true
+rand.workspace           = true
+sha3.workspace           = true
+thiserror.workspace      = true
+tracing.workspace        = true
+zeroize.workspace        = true
 
 [dev-dependencies]
 criterion.workspace = true
@@ -34,5 +31,5 @@ criterion.workspace = true
 workspace = true
 
 [[bench]]
-name = "bench"
 harness = false
+name    = "bench"

@@ -1,0 +1,18 @@
+{
+    "bootstrap-sha": "127e7bf7b9b487149c64e76a8f9f90c573e675a5",
+    "include-component-in-tag": false,
+    "bump-minor-pre-major": true,
+    "bump-patch-for-minor-pre-major": false,
+    "packages": {
+        "node": {
+            "component": "era-consensus",
+            "release-type": "simple",
+            "extra-files": [
+                {
+                    "type": "generic",
+                    "path": "Cargo.toml"
+                }
+            ]
+        }
+    }
+}

@@ -1,6 +1,7 @@
+use tokio::task::yield_now;
+
 use super::*;
 use crate::scope;
-use tokio::task::yield_now;
 
 #[tokio::test]
 async fn exclusive_lock_basic_workflow() {

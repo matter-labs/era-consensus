@@ -4,6 +4,9 @@ mod aggregate_signature;
 mod public_key;
 mod secret_key;
 mod signature;
+mod testonly;
+#[cfg(test)]
+mod tests;
 
 pub use aggregate_signature::AggregateSignature;
 pub use public_key::PublicKey;

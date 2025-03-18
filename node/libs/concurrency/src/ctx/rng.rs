@@ -1,9 +1,10 @@
+use std::sync::atomic::{AtomicU64, Ordering};
+
 use rand::{
     rngs::{OsRng, StdRng},
     Rng, SeedableRng,
 };
 use sha3::{digest::Update as _, Digest as _};
-use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Splittable Pseudorandom Number Generators using Cryptographic Hashing
 /// https://publications.lib.chalmers.se/records/fulltext/183348/local_183348.pdf

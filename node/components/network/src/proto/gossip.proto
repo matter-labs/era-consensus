@@ -1,0 +1,78 @@
+syntax = "proto3";
+
+package zksync.network.gossip;
+
+import "zksync/roles/node.proto";
+import "zksync/roles/validator.proto";
+import "zksync/roles/attester.proto";
+
+// First message exchanged in the encrypted session.
+message Handshake {
+  optional roles.node.Signed session_id = 1; // required
+  optional roles.validator.GenesisHash genesis = 3; // required
+  optional bool is_static = 2; // required
+
+  // Optional information about the node.
+  optional string build_version = 4; // SemVer; optional
+}
+
+message PushValidatorAddrs {
+  // Signed roles.validator.Msg.net_address.
+  repeated roles.validator.Signed net_addresses = 1;
+}
+
+message PushBatchVotes {
+  // Requesting the peer to respond with votes for the batch. 
+  optional roles.attester.Batch want_votes_for = 2; // optional
+  // Signed roles.validator.Msg.votes
+  repeated roles.attester.Signed votes = 1;
+}
+
+message PushBatchVotesResp {
+  // Signed roles.validator.Msg.votes
+  // Empty if want_votes_for in request was not set.
+  repeated roles.attester.Signed votes = 1;
+}
+
+message Last {
+  oneof t {
+    uint64 pre_genesis = 2;
+    roles.validator.CommitQC final = 1;
+    roles.validator.CommitQCV2 final_v2 = 3;
+  }
+}
+
+message BlockStoreState {
+  // First L2 block that the node has locally.
+  optional uint64 first = 1; // required 
+  // Last L2 block that the node has locally.
+  optional Last last = 2; // optional
+}
+
+// State of the local block store.
+// A node is expected to store a continuous range of blocks at all times
+// and actively fetch newest blocks.
+message PushBlockStoreState {
+  reserved 1, 2;
+  reserved "first", "last"; 
+  
+  optional BlockStoreState state = 3; // required
+}
+
+// Asks the server to send an L2 block (including its transactions).
+message GetBlockRequest {
+  // Number of the L2 block to send.
+  optional uint64 number = 1;
+}
+
+// Response to a `GetBlockRequest`.
+message GetBlockResponse {
+  // NOTE: this should be a oneof, but 'buf breaking' is not smart enough
+  // to consider putting a preexisting field into a oneof as a compatible change.
+  //  optional; missing if block is not available
+  //  oneof t {
+    roles.validator.PreGenesisBlock pre_genesis = 2;
+    roles.validator.FinalBlock block = 1;
+    roles.validator.FinalBlockV2 block_v2 = 3;
+  //  }
+}

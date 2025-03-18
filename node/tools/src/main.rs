@@ -1,14 +1,15 @@
 //! Main binary for the consensus node. It reads the configuration, initializes all parts of the node and
-//! manages communication between the actors. It is the main executable in this workspace.
+//! manages communication between the components. It is the main executable in this workspace.
+use std::{fs, fs::Permissions, io::IsTerminal as _, os::unix::fs::PermissionsExt, path::PathBuf};
+
 use anyhow::Context as _;
 use clap::Parser;
-use std::{fs, fs::Permissions, io::IsTerminal as _, os::unix::fs::PermissionsExt, path::PathBuf};
 use tracing::metadata::LevelFilter;
 use tracing_subscriber::{prelude::*, Registry};
 use vise_exporter::MetricsExporter;
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_tools::{decode_json, AppConfig, Configs, RPCServer, NODES_PORT};
-use zksync_protobuf::serde::Serde;
+use zksync_consensus_tools::{config, RPCServer};
+use zksync_protobuf::serde::Deserialize;
 
 /// Command-line application launching a node executor.
 #[derive(Debug, Parser)]
@@ -20,28 +21,33 @@ struct Cli {
     #[arg(long, conflicts_with = "config_path")]
     config: Option<String>,
     /// Path to the rocksdb database of the node.
-    #[arg(long, default_value = "./database")]
-    database: PathBuf,
+    /// If not provided, an in-memory database will be used instead.
+    #[arg(long)]
+    database: Option<PathBuf>,
 }
 
 impl Cli {
     /// Extracts configuration from the cli args.
-    fn load(&self) -> anyhow::Result<Configs> {
-        let raw = match &self.config {
-            Some(raw) => raw.clone(),
+    fn load(&self) -> anyhow::Result<config::Configs> {
+        let json = match &self.config {
+            Some(json) => json.clone(),
             None => fs::read_to_string(&self.config_path)?,
         };
-        Ok(Configs {
-            app: decode_json::<Serde<AppConfig>>(&raw)?.0,
+        Ok(config::Configs {
+            app: Deserialize {
+                deny_unknown_fields: true,
+            }
+            .proto_fmt_from_json(&json)?,
             database: self.database.clone(),
         })
     }
 }
 
 /// Overrides `cfg.public_addr`, based on the `PUBLIC_ADDR` env variable.
-fn check_public_addr(cfg: &mut AppConfig) -> anyhow::Result<()> {
+fn check_public_addr(cfg: &mut config::App) -> anyhow::Result<()> {
     if let Ok(public_addr) = std::env::var("PUBLIC_ADDR") {
-        cfg.public_addr = std::net::SocketAddr::new(public_addr.parse()?, NODES_PORT).into();
+        cfg.public_addr =
+            std::net::SocketAddr::new(public_addr.parse()?, config::NODES_PORT).into();
     }
     Ok(())
 }

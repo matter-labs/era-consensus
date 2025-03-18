@@ -1,9 +1,11 @@
 //! TCP listener socket address.
 //! Supports reserving a socket address without actually opening the socket,
 //! which is useful in tests.
-use super::Listener;
-use once_cell::sync::Lazy;
 use std::{collections::HashMap, fmt, sync::Mutex};
+
+use once_cell::sync::Lazy;
+
+use super::Listener;
 
 /// Queue size of the TCP listener socket.
 const LISTENER_BACKLOG: u32 = 32;

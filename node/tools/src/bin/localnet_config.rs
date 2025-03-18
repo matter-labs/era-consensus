@@ -1,7 +1,4 @@
 //! This tool constructs collection of node configs for running tests.
-use anyhow::Context as _;
-use clap::Parser;
-use rand::{seq::SliceRandom as _, Rng};
 use std::{
     collections::{HashMap, HashSet},
     fs::{self, Permissions},
@@ -9,9 +6,14 @@ use std::{
     os::unix::fs::PermissionsExt,
     path::PathBuf,
 };
+
+use anyhow::Context as _;
+use clap::Parser;
+use rand::{seq::SliceRandom as _, Rng};
+use zksync_concurrency::time;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_tools::{encode_json, AppConfig};
-use zksync_protobuf::serde::Serde;
+use zksync_consensus_tools::config;
+use zksync_protobuf::serde::Serialize;
 
 /// Command line arguments.
 #[derive(Debug, Parser)]
@@ -67,7 +69,7 @@ fn main() -> anyhow::Result<()> {
 
     let node_keys: Vec<node::SecretKey> = (0..nodes).map(|_| rng.gen()).collect();
     let mut cfgs: Vec<_> = (0..nodes)
-        .map(|i| AppConfig {
+        .map(|i| config::App {
             server_addr: SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), addrs[i].port()),
             public_addr: addrs[i].into(),
             rpc_addr: None,
@@ -75,8 +77,8 @@ fn main() -> anyhow::Result<()> {
                 .metrics_server_port
                 .map(|port| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port)),
             genesis: setup.genesis.clone(),
-            max_payload_size: 1000000,
-            max_batch_size: 100000000,
+            max_payload_size: args.payload_size,
+            view_timeout: time::Duration::milliseconds(2000),
             node_key: node_keys[i].clone(),
             validator_key: validator_keys.get(i).cloned(),
             attester_key: attester_keys.get(i).cloned(),
@@ -111,7 +113,7 @@ fn main() -> anyhow::Result<()> {
             .context("fs::set_permissions()")?;
 
         let config_path = root.join("config.json");
-        fs::write(&config_path, encode_json(&Serde(cfg))).context("fs::write()")?;
+        fs::write(&config_path, Serialize.proto_fmt_to_json(&cfg)).context("fs::write()")?;
         fs::set_permissions(&config_path, Permissions::from_mode(0o600))
             .context("fs::set_permissions()")?;
     }

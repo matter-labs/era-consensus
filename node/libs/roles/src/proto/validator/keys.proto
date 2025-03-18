@@ -3,21 +3,16 @@ syntax = "proto3";
 package zksync.roles.validator;
 
 message PublicKey {
-  // The name is wrong, it should be bls12_381.
+  // TODO: The name is wrong, it should be bls12_381.
   optional bytes bn254 = 1; // required
 }
 
 message Signature {
-  // The name is wrong, it should be bls12_381.
+  // TODO: The name is wrong, it should be bls12_381.
   optional bytes bn254 = 1; // required
 }
 
 message AggregateSignature {
-  // The name is wrong, it should be bls12_381.
+  // TODO: The name is wrong, it should be bls12_381.
   optional bytes bn254 = 1; // required
-}
-
-message WeightedValidator {
-  optional PublicKey key = 1; // required
-  optional uint64 weight = 2; // required
 }

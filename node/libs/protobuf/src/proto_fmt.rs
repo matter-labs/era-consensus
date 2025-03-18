@@ -38,10 +38,11 @@
 //!   whatever we understand and reject messages with unknown fields.
 //! * drop the idea of canonical encoding altogether and pass around the received encoded message
 //!   for hashing/verifying (i.e. keep the raw bytes together with the parsed message).
+use std::collections::BTreeMap;
+
 use anyhow::Context as _;
 use prost::Message as _;
 use prost_reflect::ReflectMessage;
-use std::collections::BTreeMap;
 
 /// Kilobyte.
 #[allow(non_upper_case_globals)]
@@ -221,11 +222,11 @@ pub fn canonical_raw(
         match wire {
             Wire::Varint | Wire::I64 | Wire::I32 => {
                 if values.len() > 1 {
-                    w.write_tag(num << 3 | LEN).unwrap();
+                    w.write_tag((num << 3) | LEN).unwrap();
                     w.write_bytes(&values.into_iter().flatten().collect::<Vec<_>>())
                         .unwrap();
                 } else {
-                    w.write_tag(num << 3 | wire.raw()).unwrap();
+                    w.write_tag((num << 3) | wire.raw()).unwrap();
                     // inefficient workaround of the fact that quick_protobuf::Writer
                     // doesn't support just appending a sequence of bytes.
                     for b in &values[0] {
@@ -235,7 +236,7 @@ pub fn canonical_raw(
             }
             Wire::Len => {
                 for v in &values {
-                    w.write_tag(num << 3 | LEN).unwrap();
+                    w.write_tag((num << 3) | LEN).unwrap();
                     w.write_bytes(v).unwrap();
                 }
             }

@@ -41,6 +41,7 @@ syntax = "proto3";
 package zksync.tools;
 
 import "zksync/roles/validator.proto";
+import "zksync/std.proto";
 
 // (public key, ip address) of a gossip network node. 
 message NodeAddr {
@@ -48,8 +49,30 @@ message NodeAddr {
   optional string addr = 2; // required; IpAddr
 }
 
+message TlsConfig {
+  optional string cert_path = 1; // required
+  optional string key_path = 2; // required
+}
+
+message Credentials {
+  optional string user = 1; // required
+  optional string password = 2; // required
+}
+
+message DebugPageConfig {
+  // IP:port to open a debug http endpoint on.
+  optional string addr = 1; // required; IpAddr
+  // Http debug page access credentials
+  optional Credentials credentials = 2; // optional
+  // TLS configuration.
+  optional TlsConfig tls = 3; // optional
+}
+
 // Application configuration. 
 message AppConfig {
+  reserved 9,13,14,15,17;
+  reserved "debug_addr", "debug_credentials", "debug_cert_path", "debug_key_path", "max_batch_size";
+
   // Ports
 
   // IP:port to listen on, for incoming TCP connections.
@@ -62,10 +85,6 @@ message AppConfig {
   // IP:port to open a testing rpc endpoint on.
   // If not set, testing rpc endpoint won't be opened.
   optional string rpc_addr = 12; // optional; IpAddr
-
-  // IP:port to open a debug http endpoint on.
-  // If not set, debug endpoint won't be opened.
-  optional string debug_addr = 9; // optional; IpAddr
 
   // IP:port to serve metrics data for scraping.
   // Use `0.0.0.0:<port>` to listen on all network interfaces.
@@ -80,8 +99,8 @@ message AppConfig {
   // Maximal size of the block payload.
   optional uint64 max_payload_size = 5; // required; bytes
 
-  // Maximal size of the sync batch payload.
-  optional uint64 max_batch_size = 17; // optional; bytes
+  // The duration of the view timeout.
+  optional std.Duration view_timeout = 19; // required; milliseconds
 
   // Validator secret key.
   optional string validator_secret_key = 10; // optional; ValidatorSecretKey
@@ -103,10 +122,6 @@ message AppConfig {
   // establish and maintain.
   repeated NodeAddr gossip_static_outbound = 8;
 
-  // Http debug page access credentials
-  optional string debug_credentials = 13; // optional
-  // Path to the http debug page tls certificate
-  optional string debug_cert_path = 14; // optional
-  // Path to the http debug page private key
-  optional string debug_key_path = 15; // optional
+  // Debug page configuration.
+  optional DebugPageConfig debug_page = 18; // optional
 }

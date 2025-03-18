@@ -1,10 +1,12 @@
-use super::{Msg, MsgHash, PublicKey, SecretKey, SessionId, Signature, Signed};
+use std::sync::Arc;
+
 use rand::{
     distributions::{Distribution, Standard},
     Rng,
 };
-use std::sync::Arc;
 use zksync_consensus_utils::enum_util::Variant;
+
+use super::{Msg, MsgHash, PublicKey, SecretKey, SessionId, Signature, Signed};
 
 impl Distribution<MsgHash> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MsgHash {

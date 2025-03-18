@@ -9,10 +9,26 @@ message Proposal {
   optional bytes payload = 2; // required
 }
 
+message ChonkyV2State {
+  optional uint64 view_number = 1; // required;
+  optional uint64 epoch_number = 2; // required;
+  optional roles.validator.PhaseV2 phase = 3; // required
+  optional roles.validator.ReplicaCommitV2 high_vote = 4; // optional
+  optional roles.validator.CommitQCV2 high_commit_qc = 5; // optional
+  optional roles.validator.TimeoutQCV2 high_timeout_qc = 6; // optional
+  repeated Proposal proposals = 7;
+}
+
 message ReplicaState {
   optional uint64 view = 1; // required; ViewNumber
   optional roles.validator.Phase phase = 2; // required
   optional roles.validator.ReplicaCommit high_vote = 3; // optional
+  // TODO: name should be high_commit_qc
   optional roles.validator.CommitQC high_qc = 4; // optional
   repeated Proposal proposals = 5;
+  optional roles.validator.TimeoutQC high_timeout_qc = 6; // optional
+  // optional; will be required after we deprecate v1
+  oneof t {
+    ChonkyV2State v2 = 7;
+  }
 }

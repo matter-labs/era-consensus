@@ -7,14 +7,16 @@
 //! with validators, where each validator registers their public key on-chain together with a POP (a signature over their public key
 //! is sufficient).
 
-use crate::ByteFmt;
-use blst::{min_sig as bls, BLST_ERROR};
-use rand::Rng as _;
 use std::{
     collections::BTreeMap,
     fmt::{Debug, Formatter},
 };
+
+use blst::{min_sig as bls, BLST_ERROR};
+use rand::Rng as _;
 use zeroize::ZeroizeOnDrop;
+
+use crate::ByteFmt;
 
 #[cfg(test)]
 mod tests;
@@ -174,6 +176,7 @@ impl std::hash::Hash for Signature {
 }
 
 /// Type safety wrapper around a `blst` aggregate signature
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
 #[derive(Clone, Debug)]
 pub struct AggregateSignature(bls::AggregateSignature);
 

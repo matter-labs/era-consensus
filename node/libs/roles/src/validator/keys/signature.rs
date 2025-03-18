@@ -1,7 +1,13 @@
-use super::PublicKey;
-use crate::validator::messages::{Msg, MsgHash};
 use std::fmt;
+
 use zksync_consensus_crypto::{bls12_381, ByteFmt, Text, TextFmt};
+use zksync_protobuf::{required, ProtoFmt};
+
+use super::PublicKey;
+use crate::{
+    proto::validator as proto,
+    validator::messages::{Msg, MsgHash},
+};
 
 /// A signature from a validator.
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -19,27 +25,7 @@ impl Signature {
     }
 }
 
-/// Proof of possession of a validator secret key.
-#[derive(Clone, PartialEq, Eq)]
-pub struct ProofOfPossession(pub(crate) bls12_381::ProofOfPossession);
-
-impl ProofOfPossession {
-    /// Verifies the proof against the public key.
-    pub fn verify(&self, pk: &PublicKey) -> anyhow::Result<()> {
-        self.0.verify(&pk.0)
-    }
-}
-
 impl ByteFmt for Signature {
-    fn encode(&self) -> Vec<u8> {
-        ByteFmt::encode(&self.0)
-    }
-    fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
-        ByteFmt::decode(bytes).map(Self)
-    }
-}
-
-impl ByteFmt for ProofOfPossession {
     fn encode(&self) -> Vec<u8> {
         ByteFmt::encode(&self.0)
     }
@@ -62,6 +48,52 @@ impl TextFmt for Signature {
     }
 }
 
+impl ProtoFmt for Signature {
+    type Proto = proto::Signature;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.bn254)?)?))
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            bn254: Some(self.0.encode()),
+        }
+    }
+}
+
+impl fmt::Debug for Signature {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str(&TextFmt::encode(self))
+    }
+}
+
+/// Proof of possession of a validator secret key.
+#[derive(Clone, PartialEq, Eq)]
+pub struct ProofOfPossession(pub(crate) bls12_381::ProofOfPossession);
+
+impl ProofOfPossession {
+    /// Verifies the proof against the public key.
+    pub fn verify(&self, pk: &PublicKey) -> anyhow::Result<()> {
+        self.0.verify(&pk.0)
+    }
+}
+
+impl fmt::Debug for ProofOfPossession {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        fmt.write_str(&TextFmt::encode(self))
+    }
+}
+
+impl ByteFmt for ProofOfPossession {
+    fn encode(&self) -> Vec<u8> {
+        ByteFmt::encode(&self.0)
+    }
+    fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
+        ByteFmt::decode(bytes).map(Self)
+    }
+}
+
 impl TextFmt for ProofOfPossession {
     fn encode(&self) -> String {
         format!(
@@ -73,17 +105,5 @@ impl TextFmt for ProofOfPossession {
         text.strip("validator:pop:bls12_381:")?
             .decode_hex()
             .map(Self)
-    }
-}
-
-impl fmt::Debug for ProofOfPossession {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.write_str(&TextFmt::encode(self))
-    }
-}
-
-impl fmt::Debug for Signature {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        fmt.write_str(&TextFmt::encode(self))
     }
 }

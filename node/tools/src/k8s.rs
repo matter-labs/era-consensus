@@ -1,4 +1,5 @@
-use crate::{config, AppConfig, NodeAddr};
+use std::{collections::BTreeMap, net::SocketAddr, time::Duration};
+
 use anyhow::{ensure, Context};
 use k8s_openapi::{
     api::{
@@ -15,10 +16,11 @@ use kube::{
     core::ObjectMeta,
     Api, Client,
 };
-use std::{collections::BTreeMap, net::SocketAddr, time::Duration};
 use tokio::time;
 use tracing::log::info;
-use zksync_protobuf::serde::Serde;
+use zksync_protobuf::serde::Serialize;
+
+use crate::config;
 
 /// Docker image name for consensus nodes.
 const DOCKER_IMAGE_NAME: &str = "consensus-node";
@@ -32,9 +34,9 @@ pub struct ConsensusNode {
     /// Node identifier
     pub id: String,
     /// Node configuration
-    pub config: AppConfig,
+    pub config: config::App,
     /// Full NodeAddr
-    pub node_addr: Option<NodeAddr>,
+    pub node_addr: Option<config::NodeAddr>,
     /// Is seed node (meaning it has no gossipStaticOutbound configuration)
     pub is_seed: bool,
 }
@@ -67,7 +69,7 @@ impl ConsensusNode {
             .context("Status not present")?
             .pod_ip
             .context("Pod IP address not present")?;
-        self.node_addr = Some(NodeAddr {
+        self.node_addr = Some(config::NodeAddr {
             key: self.config.node_key.public(),
             addr: SocketAddr::new(ip.parse()?, config::NODES_PORT).into(),
         });
@@ -335,10 +337,7 @@ fn is_pod_running(pod: &Pod) -> bool {
 fn get_cli_args(consensus_node: &ConsensusNode) -> Vec<String> {
     vec![
         "--config".to_string(),
-        config::encode_with_serializer(
-            &Serde(consensus_node.config.clone()),
-            serde_json::Serializer::new(vec![]),
-        ),
+        Serialize.proto_fmt_to_json(&consensus_node.config),
     ]
 }
 
