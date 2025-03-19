@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 #
 # Check a state invariant in parallel with randomized symbolic execution.
-# Igor Konnov, 2024
+# Igor Konnov, 2024 (for Matter Labs)
 
 if [ "$#" -lt 5 ]; then
-    echo "Use: $0 spec.qnt invariant max-steps max-runs max-parallel-jobs [init] [step]"
+    echo "Use: $0 spec.qnt invariant max-steps max-runs parallel-jobs [init] [step]"
     echo ""
     echo "  - spec.qnt is the specification to check"
     echo "  - invariant is the invariant to check"
     echo "  - max-steps is the maximal number of steps every run may have"
-    echo "  - max-runs is the maximal number of symbolic runs in total to try across all jobs"
-    echo "  - max-parallel-jobs is the maximum of jobs to run in parallel"
+    echo "  - max-runs is the maximal number of symbolic runs per job"
+    echo "  - parallel-jobs is the number of jobs to run in parallel"
     echo "  - init is the initialization action"
     echo "  - step is the step action"
     exit 1
@@ -29,8 +29,8 @@ max_jobs=$5
 init=${6:-"init"}
 step=${7:-"step"}
 
-csv=${invariant}_${max_steps}_${max_runs}.csv
-
-# since `quint verify --random-transitions=true` tries 100 symbolic runs, divide `max_runs` by 100 and compensate for rounding
-${BASEDIR}/gen-inputs.sh $((max_runs / 100 + 1)) ${invariant} ${csv}
-${BASEDIR}/test-invariants.sh ${spec} ${csv} ${max_steps} ${max_jobs} 1 ${init} ${step}
+seq 18001 $((18000+max_jobs)) | \
+  parallel -j ${max_jobs} --bar --progress --delay 1 --halt now,fail=1 --results out \
+    quint verify --random-transitions=true --max-steps=${max_steps} \
+      --init=${init} --step=${step} --invariant=${invariant} \
+      --server-endpoint=localhost:{1} ${spec}

@@ -1,0 +1,15 @@
+{
+    "common": {
+      "write-intermediate": true,
+      "debug": false
+    },
+    "checker": {
+        "discard-disabled": false,
+        "no-deadlocks": true,
+	    "algo": "incremental",
+        "tuning": {
+            "search.invariant.mode": "before",
+            "search.invariantFilter": "(1->.*)"
+        }
+    }
+}
