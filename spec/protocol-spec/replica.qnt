@@ -1024,26 +1024,6 @@ module replica {
         }
     }
 
-    def create_justification(self: ReplicaState): Justification = {
-        // We always have a timeout QC, at least, for the view 0.
-        // However, the type checker needs a well-typed value. Hence, use empty_tqc.
-        val empty_tqc: TimeoutQC = {
-            votes: Map(), agg_sig: Set(), high_commit_qc: None, ghost_view: 0
-        }
-        val high_tqc = self.high_timeout_qc.unwrap_or(empty_tqc)
-        match (self.high_commit_qc) {
-        | None =>
-            Timeout(high_tqc)
-
-        | Some(cqc) =>
-            if (cqc.vote.view >= high_tqc.ghost_view) {
-                Commit(cqc)
-            } else {
-                Timeout(high_tqc)
-            }
-        }
-    }    
-
     def justification_verify(justification: Justification): bool = {
         match (justification) {
             | Timeout(qc) =>
