@@ -93,12 +93,26 @@ Hence, we run the following model checking queries with `quint verify`:
       n6f1b1_inductive.qnt
     ```
  
+Since checking inductive invariant takes a lot of time, we check individual lemmas
+in parallel:
+
+```sh
+$ ../experiments/quint-inductive.sh n6f1b1_inductive.qnt 13 23 40 300 ind_inv ind_init step
+```
+
+To understand the above parameters, see
+[quint-inductive.sh](../experiments/quint-inductive.sh).
+
 ## 3. Demonstrating liveness
 
 In contrast to safety, there is no established methodology for proving liveness
 of distributed consensus. This is especially challenging in the case of partial
 synchrony. (Proving liveness of distributed consensus in purely synchronous
-computations is typically quite easy and in general impossible in purely asynchronous computations due to [FLP85][].)
+computations is typically quite easy and in general impossible in purely
+asynchronous computations due to [FLP85][].)
+
+Note that we prove liveness in pen & paper proofs. The considerations that are
+given below only help us to experiment with liveness via model checking.
 
 There are two promising approaches to demonstrating liveness of ChonkyBFT.
 
