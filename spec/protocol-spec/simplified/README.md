@@ -104,8 +104,7 @@ There are two promising approaches to demonstrating liveness of ChonkyBFT.
 
 ## 3.1. At least one block is committed within 5F + 1 views
 
-This is the property offered by Bruno. The good thing is that we can formulate
-this properties as a state invariant:
+The good thing is that we can formulate this property as a state invariant:
 
 ```quint
 val block_progress_inv = {
