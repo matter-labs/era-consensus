@@ -41,8 +41,8 @@ zksync_protobuf       = { version = "=0.9.0", path = "libs/protobuf" }
 zksync_protobuf_build = { version = "=0.9.0", path = "libs/protobuf_build" }
 
 # Crates from Matter Labs.
-vise          = "0.2.0"
-vise-exporter = "0.2.0"
+vise          = "0.3.0"
+vise-exporter = "0.3.0"
 
 # Crates from third-parties.
 anyhow         = "1"
