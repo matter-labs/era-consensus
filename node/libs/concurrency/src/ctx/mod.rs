@@ -234,18 +234,20 @@ impl Ctx {
     }
 
     /// Constructs a cryptographically-safe random number generator,
+    ///
     /// * in prod, seeded with system entropy
     ///   WARNING: do not store the result, but rather create new RNG
-    ///     whenever you do computation requiring entropy source.
-    ///     call to rng() is moderately expensive, so don't call it separately
-    ///     for every single bit of entropy though.
+    ///   whenever you do computation requiring entropy source.
+    ///   call to rng() is moderately expensive, so don't call it separately
+    ///   for every single bit of entropy though.
     ///   TODO(gprusak): for now we do not have use cases for reseeding
-    ///     but perhaps eventually we should returns an auto-reseeding RNG instead.
+    ///   but perhaps eventually we should returns an auto-reseeding RNG instead.
+    ///
     /// * in test, seeded deterministically
-    ///     TODO(gprusak): this is not a perfect determinism, because multiple
-    ///     tasks currently are allowed to access the same ctx, so the order in
-    ///     which they call rng() is not deterministic. To fix this we
-    ///     would need to move the Provider to task-local storage.
+    ///   TODO(gprusak): this is not a perfect determinism, because multiple
+    ///   tasks currently are allowed to access the same ctx, so the order in
+    ///   which they call rng() is not deterministic. To fix this we
+    ///   would need to move the Provider to task-local storage.
     pub fn rng(&self) -> rand::rngs::StdRng {
         self.0.rng_provider.rng()
     }

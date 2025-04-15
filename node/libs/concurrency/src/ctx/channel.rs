@@ -158,10 +158,7 @@ impl<T> Receiver<T> {
 
     /// Pops a message from a channel iff it is non-empty.
     pub fn try_recv(&mut self) -> Option<T> {
-        match self.0.try_recv() {
-            Ok(v) => Some(v),
-            Err(_) => None,
-        }
+        self.0.try_recv().ok()
     }
 }
 
