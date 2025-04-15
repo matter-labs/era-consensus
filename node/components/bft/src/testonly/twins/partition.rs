@@ -75,9 +75,9 @@ impl<'a, T> Partitioner<'a, T> {
     ///
     /// Take the table in [partitions] as an example with 4 items and 3 partitions.
     /// * `A` is the first item, so it can only go into `P1`; `P2` can't be used while `P1` is empty,
-    ///    otherwise we'd be generating redundant combinations.
+    ///   otherwise we'd be generating redundant combinations.
     /// * `B` can go minimally into `P1` because there are 2 more items after it, which is enough
-    ///    to fill all remaining partitions; or it can go into `P2`, because `P1` is filled.
+    ///   to fill all remaining partitions; or it can go into `P2`, because `P1` is filled.
     /// * `C` depends on what we did with `B`: if `B` is in `P1` then `C` has to minimally go into
     ///   `P2` to make sure no partition will be left empty at the end; if `B` is in `P2` then `C`
     ///   can go either in `P1`, `P2` or `P3`.
