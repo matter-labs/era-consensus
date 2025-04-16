@@ -1,4 +1,4 @@
-//! This tool generates a validator/attester/node key pair and prints it to stdout.
+//! This tool generates a validator/node key pair and prints it to stdout.
 #![allow(clippy::print_stdout)]
 
 use crypto::TextFmt as _;
