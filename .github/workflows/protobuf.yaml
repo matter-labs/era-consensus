@@ -33,7 +33,7 @@ jobs:
   compatibility:
     runs-on: [ubuntu-24.04-github-hosted-16core]
     steps:
-      - uses: mozilla-actions/sccache-action@v0.0.3
+      - uses: mozilla-actions/sccache-action@v0.0.9
 
       # before
       - uses: actions/checkout@v4

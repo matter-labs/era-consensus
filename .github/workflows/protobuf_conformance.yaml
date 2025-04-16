@@ -27,7 +27,7 @@ jobs:
           repository: "protocolbuffers/protobuf"
           ref: "a47a7bdc8d023467f4f0586c393597af727e1d9e"
           path: "protobuf"
-      - uses: mozilla-actions/sccache-action@v0.0.3
+      - uses: mozilla-actions/sccache-action@v0.0.9
       - name: build test
         run: cargo build -p zksync_protobuf --example conformance_test
         working-directory: "this/node"
