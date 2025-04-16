@@ -68,7 +68,7 @@ impl Distribution<BlockStoreState> for Standard {
     }
 }
 
-/// Test-only memory storage for blocks and batches.
+/// Test-only memory storage for blocks.
 pub struct TestMemoryStorage {
     /// In-memory block store with its runner.
     pub blocks: Arc<BlockStore>,
@@ -79,7 +79,7 @@ pub struct TestMemoryStorage {
 }
 
 impl TestMemoryStorage {
-    /// Constructs a new in-memory store for both blocks and batches with their respective runners.
+    /// Constructs a new in-memory store for both blocks with their respective runners.
     pub async fn new(ctx: &ctx::Ctx, setup: &Setup) -> Self {
         Self::new_store_with_first_block(ctx, setup, setup.genesis.first_block).await
     }
@@ -95,7 +95,7 @@ impl TestMemoryStorage {
         Self::new_with_im(ctx, im_blocks).await
     }
 
-    /// Constructs a new in-memory store for both blocks and batches with their respective runners.
+    /// Constructs a new in-memory store for both blocks with their respective runners.
     async fn new_with_im(ctx: &ctx::Ctx, im_blocks: in_memory::BlockStore) -> Self {
         let (blocks, runner) = BlockStore::new(ctx, Box::new(im_blocks.clone()))
             .await

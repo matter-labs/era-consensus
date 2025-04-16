@@ -305,18 +305,6 @@ impl Server {
                     .human_duration()
             ))
             .with_paragraph(format!(
-                "push_batch_votes rate - burst: {}, refresh: {}",
-                self.network.gossip.cfg.rpc.push_batch_votes_rate.burst,
-                self.network
-                    .gossip
-                    .cfg
-                    .rpc
-                    .push_batch_votes_rate
-                    .refresh
-                    .as_seconds_f32()
-                    .human_duration()
-            ))
-            .with_paragraph(format!(
                 "get_block rate - burst: {}, refresh: {}",
                 self.network.gossip.cfg.rpc.get_block_rate.burst,
                 self.network
