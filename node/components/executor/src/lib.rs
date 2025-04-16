@@ -5,7 +5,7 @@ use std::{
 };
 
 use anyhow::Context as _;
-pub use network::{gossip::attestation, RpcConfig};
+pub use network::RpcConfig;
 use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_network as network;
@@ -83,9 +83,6 @@ pub struct Executor {
     pub block_store: Arc<BlockStore>,
     /// Validator-specific node data.
     pub validator: Option<Validator>,
-    /// Attestation controller. Caller should actively configure the batch
-    /// for which the attestation votes should be collected.
-    pub attestation: Arc<attestation::Controller>,
 }
 
 impl Executor {
@@ -123,7 +120,6 @@ impl Executor {
                 self.block_store.clone(),
                 consensus_send,
                 network_recv,
-                self.attestation,
             );
             net.register_metrics();
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });

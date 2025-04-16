@@ -5,7 +5,6 @@ use super::{
     v1, Block, BlockNumber, ChainId, Committee, ForkNumber, Genesis, GenesisRaw, PreGenesisBlock,
     ProtocolVersion, SecretKey, WeightedValidator,
 };
-use crate::attester;
 
 /// Test setup specification.
 #[derive(Debug, Clone)]
@@ -14,7 +13,7 @@ pub struct SetupSpec {
     pub chain_id: ChainId,
     /// Fork number.
     pub fork_number: ForkNumber,
-    /// First block.
+    /// First block in this fork.
     pub first_block: BlockNumber,
     /// First block that exists.
     pub first_pregenesis_block: BlockNumber,
@@ -22,8 +21,6 @@ pub struct SetupSpec {
     pub protocol_version: ProtocolVersion,
     /// Validator secret keys and weights.
     pub validator_weights: Vec<(SecretKey, u64)>,
-    /// Attester secret keys and weights.
-    pub attester_weights: Vec<(attester::SecretKey, u64)>,
     /// Leader selection.
     pub leader_selection: v1::LeaderSelectionMode,
 }
@@ -47,7 +44,6 @@ impl SetupSpec {
                 .into_iter()
                 .map(|w| (rng.gen(), w))
                 .collect(),
-            attester_weights: weights.into_iter().map(|w| (rng.gen(), w)).collect(),
             chain_id: ChainId(1337),
             fork_number: ForkNumber(rng.gen_range(0..100)),
             first_block,
@@ -63,8 +59,6 @@ impl SetupSpec {
 pub struct SetupInner {
     /// Validators' secret keys.
     pub validator_keys: Vec<SecretKey>,
-    /// Attesters' secret keys.
-    pub attester_keys: Vec<attester::SecretKey>,
     /// Past blocks.
     pub blocks: Vec<Block>,
     /// Genesis config.
@@ -119,7 +113,6 @@ impl Setup {
             }
             .with_hash(),
             validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
-            attester_keys: spec.attester_weights.into_iter().map(|(k, _)| k).collect(),
             blocks: vec![],
         });
 

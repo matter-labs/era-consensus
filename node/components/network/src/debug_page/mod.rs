@@ -30,7 +30,7 @@ use tokio_rustls::{
 };
 use zksync_concurrency::{ctx, net, scope};
 use zksync_consensus_crypto::TextFmt as _;
-use zksync_consensus_roles::{attester, node, validator};
+use zksync_consensus_roles::{node, validator};
 
 use crate::{gossip::Connection, MeteredStreamStats, Network};
 
@@ -393,46 +393,6 @@ impl Server {
                 self.network.gossip.fetch_queue.current_blocks()
             ));
 
-        // Attester network
-        html = html
-            .with_header(1, "Attester network")
-            .with_paragraph(format!(
-                "Node public key: {}",
-                self.network
-                    .gossip
-                    .attestation
-                    .key()
-                    .map_or("None".to_string(), |k| k.public().encode())
-            ));
-
-        if let Some(state) = self
-            .network
-            .gossip
-            .attestation
-            .state()
-            .subscribe()
-            .borrow()
-            .clone()
-        {
-            html = html.with_paragraph(format!(
-                "Batch to attest - Number: {}, Hash: {}, Genesis hash: {}",
-                state.info().batch_to_attest.number,
-                state.info().batch_to_attest.hash.encode(),
-                state.info().batch_to_attest.genesis.encode(),
-            ));
-
-            html = html
-                .with_header(2, "Attester committee")
-                .with_paragraph(Self::attester_table(
-                    state.info().committee.iter(),
-                    state.votes(),
-                ))
-                .with_paragraph(format!(
-                    "Total weight: {}",
-                    state.info().committee.total_weight()
-                ));
-        }
-
         // Validator network
         if let Some(consensus) = self.network.consensus.as_ref() {
             html = html
@@ -499,30 +459,6 @@ impl Server {
                 addr.msg.version.to_string(),
                 addr.msg.timestamp.to_string(),
             ])
-        }
-
-        table.to_html_string()
-    }
-
-    fn attester_table<'a>(
-        attesters: impl Iterator<Item = &'a attester::WeightedAttester>,
-        votes: &im::HashMap<attester::PublicKey, Arc<attester::Signed<attester::Batch>>>,
-    ) -> String {
-        let mut table = Table::new().with_header_row(vec!["Public key", "Weight", "Voted"]);
-
-        for attester in attesters {
-            let voted = if votes.contains_key(&attester.key) {
-                "Yes"
-            } else {
-                "No"
-            }
-            .to_string();
-
-            table.add_body_row(vec![
-                attester.key.encode(),
-                attester.weight.to_string(),
-                voted,
-            ]);
         }
 
         table.to_html_string()
