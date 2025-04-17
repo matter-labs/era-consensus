@@ -51,39 +51,6 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for &PushServer<'_> {
     }
 }
 
-#[async_trait::async_trait]
-impl rpc::Handler<rpc::push_batch_votes::Rpc> for &PushServer<'_> {
-    fn max_req_size(&self) -> usize {
-        100 * kB
-    }
-
-    async fn handle(
-        &self,
-        _ctx: &ctx::Ctx,
-        req: rpc::push_batch_votes::Req,
-    ) -> anyhow::Result<rpc::push_batch_votes::Resp> {
-        if let Err(err) = self
-            .net
-            .attestation
-            .insert_votes(req.votes.into_iter())
-            .await
-            .context("insert_votes()")
-        {
-            // Attestation feature is still evolving, so for forward
-            // compatibility we just ignore any invalid data.
-            // Once stabilized we will drop the connection instead of
-            // logging the error.
-            tracing::warn!("{err:#}");
-        }
-        Ok(rpc::push_batch_votes::Resp {
-            votes: match req.want_votes_for.as_ref() {
-                Some(batch) => self.net.attestation.votes(batch),
-                None => vec![],
-            },
-        })
-    }
-}
-
 #[async_trait]
 impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushServer<'_> {
     fn max_req_size(&self) -> usize {
@@ -130,8 +97,6 @@ impl Network {
         );
         let get_block_client =
             rpc::Client::<rpc::get_block::Rpc>::new(ctx, self.cfg.rpc.get_block_rate);
-        let push_batch_votes_client =
-            rpc::Client::<rpc::push_batch_votes::Rpc>::new(ctx, self.cfg.rpc.push_batch_votes_rate);
 
         scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
@@ -149,51 +114,7 @@ impl Network {
                 )
                 .add_client(&get_block_client)
                 .add_server::<rpc::get_block::Rpc>(ctx, self, self.cfg.rpc.get_block_rate)
-                .add_server(ctx, rpc::ping::Server, rpc::ping::RATE)
-                .add_client(&push_batch_votes_client)
-                .add_server::<rpc::push_batch_votes::Rpc>(
-                    ctx,
-                    &push_server,
-                    self.cfg.rpc.push_batch_votes_rate,
-                );
-
-            // Push L1 batch votes updates to peer.
-            s.spawn::<()>(async {
-                let push_batch_votes_client = push_batch_votes_client;
-                // Subscribe to what we know about the state of the whole network.
-                let mut recv = self.attestation.subscribe();
-                loop {
-                    let diff = recv.wait_for_diff(ctx).await?;
-                    let req = rpc::push_batch_votes::Req {
-                        // If the info has changed, we need to re-request all the votes
-                        // from peer that we might have ignored earlier.
-                        want_votes_for: diff.info.as_ref().map(|c| c.batch_to_attest.clone()),
-                        votes: diff.votes,
-                    };
-                    // NOTE: The response should be non-empty only iff we requested a snapshot.
-                    // Therefore, if we needed we could restrict the response size to ~1kB in
-                    // such a case.
-                    let resp = push_batch_votes_client.call(ctx, &req, 100 * kB).await?;
-                    if !resp.votes.is_empty() {
-                        anyhow::ensure!(
-                            req.want_votes_for.is_some(),
-                            "expected empty response, but votes were returned"
-                        );
-                        if let Err(err) = self
-                            .attestation
-                            .insert_votes(resp.votes.into_iter())
-                            .await
-                            .context("insert_votes")
-                        {
-                            // Attestation feature is still evolving, so for forward
-                            // compatibility we just ignore any invalid data.
-                            // Once stabilized we will drop the connection instead of
-                            // logging the error.
-                            tracing::warn!("{err:#}");
-                        }
-                    }
-                }
-            });
+                .add_server(ctx, rpc::ping::Server, rpc::ping::RATE);
 
             if let Some(ping_timeout) = &self.cfg.ping_timeout {
                 let ping_client = rpc::Client::<rpc::ping::Rpc>::new(ctx, rpc::ping::RATE);

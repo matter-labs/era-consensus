@@ -61,7 +61,6 @@ fn main() -> anyhow::Result<()> {
 
     let setup = validator::testonly::Setup::new(rng, validator_count);
     let validator_keys = setup.validator_keys.clone();
-    let attester_keys = setup.attester_keys.clone();
 
     // Each node will have `gossip_peers` outbound peers.
     let nodes = addrs.len();
@@ -81,7 +80,6 @@ fn main() -> anyhow::Result<()> {
             view_timeout: time::Duration::milliseconds(2000),
             node_key: node_keys[i].clone(),
             validator_key: validator_keys.get(i).cloned(),
-            attester_key: attester_keys.get(i).cloned(),
             gossip_dynamic_inbound_limit: peers,
             gossip_static_inbound: HashSet::default(),
             gossip_static_outbound: HashMap::default(),

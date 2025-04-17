@@ -46,7 +46,7 @@ pub(crate) fn validator_committee() -> Committee {
     .unwrap()
 }
 
-/// Hardcoded genesis with no attesters.
+/// Hardcoded genesis.
 pub(crate) fn genesis_v1() -> Genesis {
     GenesisRaw {
         chain_id: ChainId(1337),
@@ -60,7 +60,7 @@ pub(crate) fn genesis_v1() -> Genesis {
     .with_hash()
 }
 
-/// Hardcoded genesis with no attesters.
+/// Hardcoded genesis.
 pub(crate) fn genesis_v2() -> Genesis {
     GenesisRaw {
         chain_id: ChainId(1337),

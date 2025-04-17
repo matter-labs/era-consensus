@@ -4,7 +4,6 @@ use std::{
     fs, io,
     net::SocketAddr,
     path::PathBuf,
-    sync::Arc,
 };
 
 use anyhow::{anyhow, Context as _};
@@ -12,9 +11,9 @@ use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use zksync_concurrency::{ctx, net, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
-use zksync_consensus_executor::{self as executor, attestation};
+use zksync_consensus_executor::{self as executor};
 use zksync_consensus_network as network;
-use zksync_consensus_roles::{attester, node, validator};
+use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::{
     testonly::in_memory, BlockStore, BlockStoreRunner, PersistentBlockStore, ReplicaStore,
 };
@@ -82,7 +81,6 @@ pub struct App {
     pub max_payload_size: usize,
     pub view_timeout: time::Duration,
     pub validator_key: Option<validator::SecretKey>,
-    pub attester_key: Option<attester::SecretKey>,
 
     pub node_key: node::SecretKey,
     pub gossip_dynamic_inbound_limit: usize,
@@ -185,8 +183,6 @@ impl ProtoFmt for App {
             // TODO: read secret.
             validator_key: read_optional_secret_text(&r.validator_secret_key)
                 .context("validator_secret_key")?,
-            attester_key: read_optional_secret_text(&r.attester_secret_key)
-                .context("attester_secret_key")?,
 
             node_key: read_required_secret_text(&r.node_secret_key).context("node_secret_key")?,
             gossip_dynamic_inbound_limit: required(&r.gossip_dynamic_inbound_limit)
@@ -209,7 +205,6 @@ impl ProtoFmt for App {
             max_payload_size: Some(self.max_payload_size.try_into().unwrap()),
             view_timeout: Some(self.view_timeout.build()),
             validator_secret_key: self.validator_key.as_ref().map(TextFmt::encode),
-            attester_secret_key: self.attester_key.as_ref().map(TextFmt::encode),
 
             node_secret_key: Some(self.node_key.encode()),
             gossip_dynamic_inbound_limit: Some(
@@ -286,7 +281,6 @@ impl Configs {
             }
         };
         let (block_store, runner) = BlockStore::new(ctx, stores.block).await?;
-        let attestation = Arc::new(attestation::Controller::new(self.app.attester_key.clone()));
 
         let e = executor::Executor {
             config: executor::Config {
@@ -338,7 +332,6 @@ impl Configs {
                         self.app.max_payload_size,
                     )),
                 }),
-            attestation,
         };
         Ok((e, runner))
     }

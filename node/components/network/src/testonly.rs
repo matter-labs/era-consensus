@@ -17,7 +17,6 @@ use zksync_consensus_roles::{node, validator};
 use zksync_consensus_storage::BlockStore;
 
 use crate::{
-    gossip::attestation,
     io::{ConsensusInputMessage, ConsensusReq},
     Config, GossipConfig, Network, RpcConfig, Runner,
 };
@@ -185,26 +184,13 @@ pub struct InstanceConfig {
     pub cfg: Config,
     /// block_store
     pub block_store: Arc<BlockStore>,
-    /// Attestation controller.
-    /// It is not configured by default.
-    /// Attestation tests should configure it and consume
-    /// the certificates on their own (see `attestation::Controller`).
-    pub attestation: Arc<attestation::Controller>,
 }
 
 impl Instance {
     /// Constructs a new instance.
     pub fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self, InstanceRunner) {
         let (con_send, con_recv) = sync::prunable_mpsc::unpruned_channel();
-        Self::new_from_config(
-            InstanceConfig {
-                cfg,
-                block_store,
-                attestation: attestation::Controller::new(None).into(),
-            },
-            con_send,
-            con_recv,
-        )
+        Self::new_from_config(InstanceConfig { cfg, block_store }, con_send, con_recv)
     }
 
     /// Constructs a new instance with a custom channel for consensus
@@ -215,15 +201,7 @@ impl Instance {
         con_send: sync::prunable_mpsc::Sender<ConsensusReq>,
         con_recv: sync::prunable_mpsc::Receiver<ConsensusReq>,
     ) -> (Self, InstanceRunner) {
-        Self::new_from_config(
-            InstanceConfig {
-                cfg,
-                block_store,
-                attestation: attestation::Controller::new(None).into(),
-            },
-            con_send,
-            con_recv,
-        )
+        Self::new_from_config(InstanceConfig { cfg, block_store }, con_send, con_recv)
     }
 
     /// Construct an instance for a given config.
@@ -240,7 +218,6 @@ impl Instance {
             cfg.block_store.clone(),
             net_to_con_send,
             con_to_net_recv,
-            cfg.attestation,
         );
 
         (

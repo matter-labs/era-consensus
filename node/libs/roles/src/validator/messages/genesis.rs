@@ -109,25 +109,6 @@ impl fmt::Debug for GenesisHash {
 #[derive(Clone)]
 pub struct Genesis(pub(crate) GenesisRaw, pub(crate) GenesisHash);
 
-impl std::ops::Deref for Genesis {
-    type Target = GenesisRaw;
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl PartialEq for Genesis {
-    fn eq(&self, other: &Self) -> bool {
-        self.1 == other.1
-    }
-}
-
-impl fmt::Debug for Genesis {
-    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(fmt)
-    }
-}
-
 impl Genesis {
     /// Verifies correctness.
     pub fn verify(&self) -> anyhow::Result<()> {
@@ -169,6 +150,25 @@ impl ProtoFmt for Genesis {
     }
     fn build(&self) -> Self::Proto {
         GenesisRaw::build(self)
+    }
+}
+
+impl std::ops::Deref for Genesis {
+    type Target = GenesisRaw;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl PartialEq for Genesis {
+    fn eq(&self, other: &Self) -> bool {
+        self.1 == other.1
+    }
+}
+
+impl fmt::Debug for Genesis {
+    fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(fmt)
     }
 }
 

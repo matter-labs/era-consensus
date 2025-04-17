@@ -32,7 +32,6 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
 
     let setup = validator::testonly::Setup::new(rng, nodes);
     let validator_keys = setup.validator_keys.clone();
-    let attester_keys = setup.attester_keys.clone();
 
     // Each node will have `gossip_peers` outbound peers.
     let peers = 2;
@@ -52,7 +51,6 @@ fn generate_consensus_nodes(nodes: usize, seed_nodes_amount: Option<usize>) -> V
                 max_payload_size: 1000000,
                 view_timeout: time::Duration::milliseconds(2000),
                 validator_key: Some(validator_keys[i].clone()),
-                attester_key: Some(attester_keys[i].clone()),
                 node_key: node_keys[i].clone(),
                 gossip_dynamic_inbound_limit: 2,
                 gossip_static_inbound: [].into(),
