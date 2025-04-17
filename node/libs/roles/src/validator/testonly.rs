@@ -31,6 +31,14 @@ impl SetupSpec {
         Self::new_with_weights_and_version(rng, vec![1; validators], ProtocolVersion::CURRENT)
     }
 
+    /// New `SetupSpec` without any pregenesis blocks.
+    pub fn new_without_pregenesis(rng: &mut impl Rng, validators: usize) -> Self {
+        let mut spec =
+            Self::new_with_weights_and_version(rng, vec![1; validators], ProtocolVersion::CURRENT);
+        spec.first_pregenesis_block = spec.first_block;
+        spec
+    }
+
     /// New `SetupSpec` where validators have the given weights and the specified protocol version.
     pub fn new_with_weights_and_version(
         rng: &mut impl Rng,
@@ -83,6 +91,12 @@ impl Setup {
         Self::from_spec(rng, spec)
     }
 
+    /// New `Setup` without any pregenesis blocks.
+    pub fn new_without_pregenesis(rng: &mut impl Rng, validators: usize) -> Self {
+        let spec = SetupSpec::new_without_pregenesis(rng, validators);
+        Self::from_spec(rng, spec)
+    }
+
     /// New `Setup` where validators have the given weights and the specified protocol version.
     pub fn new_with_weights_and_version(
         rng: &mut impl Rng,
@@ -100,7 +114,6 @@ impl Setup {
                 chain_id: spec.chain_id,
                 fork_number: spec.fork_number,
                 first_block: spec.first_block,
-
                 protocol_version: spec.protocol_version,
                 validators: Committee::new(spec.validator_weights.iter().map(|(k, w)| {
                     WeightedValidator {
