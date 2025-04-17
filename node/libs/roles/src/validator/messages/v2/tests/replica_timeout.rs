@@ -219,8 +219,9 @@ fn test_timeout_qc_add() {
         )
         .is_ok());
     assert_eq!(qc.map.len(), 2);
-    assert_eq!(qc.map.values().next().unwrap().count(), 2);
-    assert_eq!(qc.map.values().last().unwrap().count(), 1);
+    // The order of the messages is not guaranteed to be chronological.
+    assert_eq!(qc.map.values().next().unwrap().count(), 1);
+    assert_eq!(qc.map.values().last().unwrap().count(), 2);
 }
 
 #[test]
