@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 
 use anyhow::Context as _;
 use zksync_concurrency::{ctx, oneshot, scope, sync};
+use zksync_consensus_engine::BlockStoreState;
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::BlockStoreState;
 
 /// A block fetching request.
 type BlockCall = (validator::BlockNumber, oneshot::Sender<()>);

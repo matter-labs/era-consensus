@@ -13,8 +13,8 @@ use zksync_concurrency::{
     ctx::{self, channel},
     io, limiter, net, scope, sync,
 };
+use zksync_consensus_engine::EngineManager;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::BlockStore;
 
 use crate::{
     io::{ConsensusInputMessage, ConsensusReq},
@@ -182,26 +182,40 @@ impl InstanceRunner {
 pub struct InstanceConfig {
     /// cfg
     pub cfg: Config,
-    /// block_store
-    pub block_store: Arc<BlockStore>,
+    /// engine_manager
+    pub engine_manager: Arc<EngineManager>,
 }
 
 impl Instance {
     /// Constructs a new instance.
-    pub fn new(cfg: Config, block_store: Arc<BlockStore>) -> (Self, InstanceRunner) {
+    pub fn new(cfg: Config, engine_manager: Arc<EngineManager>) -> (Self, InstanceRunner) {
         let (con_send, con_recv) = sync::prunable_mpsc::unpruned_channel();
-        Self::new_from_config(InstanceConfig { cfg, block_store }, con_send, con_recv)
+        Self::new_from_config(
+            InstanceConfig {
+                cfg,
+                engine_manager,
+            },
+            con_send,
+            con_recv,
+        )
     }
 
     /// Constructs a new instance with a custom channel for consensus
     /// component.
     pub fn new_with_channel(
         cfg: Config,
-        block_store: Arc<BlockStore>,
+        engine_manager: Arc<EngineManager>,
         con_send: sync::prunable_mpsc::Sender<ConsensusReq>,
         con_recv: sync::prunable_mpsc::Receiver<ConsensusReq>,
     ) -> (Self, InstanceRunner) {
-        Self::new_from_config(InstanceConfig { cfg, block_store }, con_send, con_recv)
+        Self::new_from_config(
+            InstanceConfig {
+                cfg,
+                engine_manager,
+            },
+            con_send,
+            con_recv,
+        )
     }
 
     /// Construct an instance for a given config.
@@ -215,7 +229,7 @@ impl Instance {
 
         let (net, net_runner) = Network::new(
             cfg.cfg,
-            cfg.block_store.clone(),
+            cfg.engine_manager.clone(),
             net_to_con_send,
             con_to_net_recv,
         );

@@ -1,6 +1,6 @@
 use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
+use zksync_consensus_engine::testonly::TestEngineManager;
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::testonly::TestMemoryStorage;
 
 use super::*;
 use crate::testonly;
@@ -18,15 +18,15 @@ async fn test_loadtest() {
 
     scope::run!(ctx, |ctx, s| async {
         // Spawn the node.
-        let stores = TestMemoryStorage::new(ctx, &setup).await;
-        s.spawn_bg(stores.runner.run(ctx));
-        let (node, runner) = testonly::Instance::new(cfg.clone(), stores.blocks.clone());
+        let engine = TestEngineManager::new(ctx, &setup).await;
+        s.spawn_bg(engine.runner.run(ctx));
+        let (node, runner) = testonly::Instance::new(cfg.clone(), engine.engine.clone());
         s.spawn_bg(runner.run(ctx));
 
         // Fill the storage with some blocks.
         for b in &setup.blocks {
-            stores
-                .blocks
+            engine
+                .engine
                 .queue_block(ctx, b.clone())
                 .await
                 .context("queue_block()")?;
