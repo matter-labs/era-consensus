@@ -1,5 +1,4 @@
 use rand::Rng as _;
-use tracing::Instrument as _;
 use zksync_concurrency::testonly::abort_on_panic;
 use zksync_consensus_engine::{testonly::TestEngine, EngineManager};
 use zksync_consensus_network::testonly::{new_configs, new_fullnode};
@@ -61,13 +60,17 @@ async fn test_single_validator() {
     let cfgs = new_configs(rng, &setup, 0);
 
     scope::run!(ctx, |ctx, s| async {
+        // Spawn validator.
         let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
         s.spawn_bg(validator(&cfgs[0], engine.manager.clone()).run(ctx));
+
+        // Wait for blocks to get finalized by this validator.
         engine
             .manager
             .wait_until_persisted(ctx, BlockNumber(5))
             .await?;
+
         Ok(())
     })
     .await
@@ -85,6 +88,7 @@ async fn test_many_validators() {
 
     scope::run!(ctx, |ctx, s| async {
         for cfg in cfgs {
+            // Spawn validator.
             let engine = TestEngine::new(ctx, &setup).await;
             s.spawn_bg(engine.runner.run(ctx));
             s.spawn_bg(validator(&cfg, engine.manager.clone()).run(ctx));
@@ -96,6 +100,7 @@ async fn test_many_validators() {
                 Ok(())
             });
         }
+
         Ok(())
     })
     .await
@@ -110,6 +115,7 @@ async fn test_inactive_validator() {
 
     let setup = Setup::new(rng, 1);
     let cfgs = new_configs(rng, &setup, 0);
+
     scope::run!(ctx, |ctx, s| async {
         // Spawn validator.
         let engine = TestEngine::new(ctx, &setup).await;
@@ -129,6 +135,7 @@ async fn test_inactive_validator() {
             .manager
             .wait_until_persisted(ctx, setup.genesis.first_block + 5)
             .await?;
+
         Ok(())
     })
     .await
@@ -143,6 +150,7 @@ async fn test_fullnode_syncing_from_validator() {
 
     let setup = Setup::new(rng, 1);
     let cfgs = new_configs(rng, &setup, 0);
+
     scope::run!(ctx, |ctx, s| async {
         // Spawn validator.
         let engine = TestEngine::new(ctx, &setup).await;
@@ -159,6 +167,7 @@ async fn test_fullnode_syncing_from_validator() {
             .manager
             .wait_until_persisted(ctx, setup.genesis.first_block + 5)
             .await?;
+
         Ok(())
     })
     .await
@@ -174,58 +183,52 @@ async fn test_validator_syncing_from_fullnode() {
 
     let setup = Setup::new(rng, 1);
     let cfgs = new_configs(rng, &setup, 0);
+
     scope::run!(ctx, |ctx, s| async {
-        // Run validator and produce some blocks.
-        let replica_store = in_memory::ReplicaStore::default();
-        let store = TestMemoryStorage::new(ctx, &setup).await;
-        s.spawn_bg(store.runner.run(ctx));
+        // Spawn full node.
+        let engine = TestEngine::new(ctx, &setup).await;
+        s.spawn_bg(engine.runner.run(ctx));
+        s.spawn_bg(full_node(&new_fullnode(rng, &cfgs[0]), engine.manager.clone()).run(ctx));
+
+        // Spawn first validator.
+        let engine_2 = TestEngine::new(ctx, &setup).await;
+        s.spawn_bg(engine_2.runner.run(ctx));
+
+        // Run first validator and produce some blocks.
         scope::run!(ctx, |ctx, s| async {
-            s.spawn_bg(
-                validator(&cfgs[0], store.blocks.clone(), replica_store.clone())
-                    .run(ctx)
-                    .instrument(tracing::info_span!("validator")),
-            );
-            store
-                .blocks
+            // Run validator here so it stops after we produce the blocks.
+            s.spawn_bg(validator(&cfgs[0], engine_2.manager.clone()).run(ctx));
+
+            // Wait for validator to produce some blocks.
+            engine_2
+                .manager
                 .wait_until_persisted(ctx, setup.genesis.first_block + 4)
                 .await?;
+
+            // Wait for blocks in full node store.
+            engine
+                .manager
+                .wait_until_persisted(ctx, setup.genesis.first_block + 4)
+                .await?;
+
             Ok(())
         })
         .await
         .unwrap();
 
-        // Spawn full node with storage used previously by validator -this ensures that
-        // all finalized blocks are available: if we ran a fullnode in parallel to the
-        // validator, there would be a race condition between fullnode syncing and validator
-        // terminating.
-        s.spawn_bg(
-            fullnode(&new_fullnode(rng, &cfgs[0]), store.blocks.clone())
-                .run(ctx)
-                .instrument(tracing::info_span!("fullnode")),
-        );
-
-        // Restart the validator with empty store (but preserved replica state) and non-trivial
-        // `store.state.first`.
+        // Start a new validator with non-trivial first block.
         // Validator should fetch the past blocks from the full node before producing next blocks.
-        let last_block = store.blocks.queued().last.as_ref().unwrap().number();
-        let store2 = TestMemoryStorage::new_store_with_first_block(
-            ctx,
-            &setup,
-            setup.genesis.first_block + 2,
-        )
-        .await;
-        s.spawn_bg(store2.runner.run(ctx));
-        s.spawn_bg(
-            validator(&cfgs[0], store2.blocks.clone(), replica_store)
-                .run(ctx)
-                .instrument(tracing::info_span!("validator")),
-        );
+        let engine_3 =
+            TestEngine::new_with_first_block(ctx, &setup, setup.genesis.first_block + 2).await;
+        s.spawn_bg(engine_3.runner.run(ctx));
+        s.spawn_bg(validator(&cfgs[0], engine_3.manager.clone()).run(ctx));
 
-        // Wait for the fullnode to fetch the new blocks.
-        store
-            .blocks
-            .wait_until_persisted(ctx, last_block + 3)
+        // Wait for blocks in validator store.
+        engine_3
+            .manager
+            .wait_until_persisted(ctx, setup.genesis.first_block + 4)
             .await?;
+
         Ok(())
     })
     .await
