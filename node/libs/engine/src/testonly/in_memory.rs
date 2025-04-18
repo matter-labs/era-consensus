@@ -212,15 +212,18 @@ struct EngineInner {
 
 /// Payload manager for testing purposes.
 #[derive(Debug)]
-enum PayloadManager {
+pub enum PayloadManager {
+    /// Produces random payloads.
     Random(RandomPayload),
+    /// `propose()` blocks indefinitely.
     Pending(PendingPayload),
+    /// `verify()` rejects all payloads.
     Reject(RejectPayload),
 }
 
 /// Produces random payload of a given size.
 #[derive(Debug)]
-struct RandomPayload(pub usize);
+pub struct RandomPayload(pub usize);
 
 impl RandomPayload {
     fn propose(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::Payload> {
@@ -236,7 +239,7 @@ impl RandomPayload {
 
 /// propose() blocks indefinitely.
 #[derive(Debug)]
-struct PendingPayload;
+pub struct PendingPayload;
 
 impl PendingPayload {
     async fn propose(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::Payload> {
@@ -251,7 +254,7 @@ impl PendingPayload {
 
 /// verify() doesn't accept any payload.
 #[derive(Debug)]
-struct RejectPayload;
+pub struct RejectPayload;
 
 impl RejectPayload {
     fn propose(&self) -> ctx::Result<validator::Payload> {

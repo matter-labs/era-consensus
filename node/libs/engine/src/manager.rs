@@ -5,7 +5,11 @@ use tracing::Instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
 use zksync_consensus_roles::validator;
 
-use crate::{block_store::BlockStore, metrics, BlockStoreState, EngineInterface};
+use crate::{
+    block_store::BlockStore,
+    metrics::{self, BLOCK_STORE},
+    BlockStoreState, EngineInterface,
+};
 
 /// A wrapper around a EngineInterface which adds caching blocks in-memory
 /// and other useful utilities.
@@ -25,9 +29,7 @@ impl EngineManager {
         ctx: &ctx::Ctx,
         interface: Box<dyn EngineInterface>,
     ) -> ctx::Result<(Arc<Self>, EngineManagerRunner)> {
-        let t = metrics::ENGINE_INTERFACE.genesis_latency.start();
         let genesis = interface.genesis(ctx).await.wrap("persistent.genesis()")?;
-        t.observe();
 
         let persisted = interface.persisted().borrow().clone();
         persisted.verify(&genesis).context("state.verify()")?;
@@ -72,7 +74,7 @@ impl EngineManager {
             }
         }
 
-        let t = metrics::ENGINE_INTERFACE.block_latency.start();
+        let t = metrics::ENGINE_INTERFACE.get_block_latency.start();
         let block = self
             .interface
             .get_block(ctx, number)
@@ -183,11 +185,12 @@ impl EngineManager {
         .clone())
     }
 
-    fn scrape_metrics(&self) -> metrics::BlockStoreState {
-        let m = metrics::BlockStoreState::default();
+    fn scrape_metrics(&self) -> metrics::BlockStore {
+        let m = metrics::BlockStore::default();
         let block_store = self.block_store.borrow();
         m.next_queued_block.set(block_store.queued.next().0);
         m.next_persisted_block.set(block_store.persisted.next().0);
+        m.cache_size.set(block_store.cache.len() as u64);
         m
     }
 }
@@ -200,15 +203,12 @@ pub struct EngineManagerRunner(Arc<EngineManager>);
 impl EngineManagerRunner {
     /// Runs the background tasks of the EngineManager.
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        #[vise::register]
-        static COLLECTOR: vise::Collector<Option<metrics::BlockStoreState>> =
-            vise::Collector::new();
         let store_ref = Arc::downgrade(&self.0);
-        let _ = COLLECTOR.before_scrape(move || Some(store_ref.upgrade()?.scrape_metrics()));
+        let _ = BLOCK_STORE.before_scrape(move || Some(store_ref.upgrade()?.scrape_metrics()));
 
         let res = scope::run!(ctx, |ctx, s| async {
+            // Task watching the persisted state.
             s.spawn::<()>(async {
-                // Task watching the persisted state.
                 let mut persisted = self.0.interface.persisted();
                 persisted.mark_changed();
                 loop {
@@ -227,6 +227,7 @@ impl EngineManagerRunner {
                     .await?;
                 }
             });
+
             // Task queueing blocks to be persisted.
             let block_store = &mut self.0.block_store.subscribe();
             let mut queue_next = validator::BlockNumber(0);
@@ -238,7 +239,7 @@ impl EngineManagerRunner {
                     .instrument(tracing::info_span!("wait_for_next_block"))
                     .await?;
                     queue_next = block.number().next();
-                    // TODO: monitor errors as well.
+
                     let t = metrics::ENGINE_INTERFACE.queue_next_block_latency.start();
                     self.0.interface.queue_next_block(ctx, block).await?;
                     t.observe();
@@ -250,6 +251,7 @@ impl EngineManagerRunner {
             }
         })
         .await;
+
         match res {
             Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
             Err(ctx::Error::Internal(err)) => Err(err),
