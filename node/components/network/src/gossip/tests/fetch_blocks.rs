@@ -3,11 +3,11 @@ use assert_matches::assert_matches;
 use rand::Rng as _;
 use tracing::Instrument as _;
 use zksync_concurrency::{ctx, limiter, scope, testonly::abort_on_panic};
-use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{
-    testonly::{in_memory, TestMemoryStorage},
-    BlockStore, BlockStoreState, PersistentBlockStore as _,
+use zksync_consensus_engine::{
+    testonly::{in_memory, TestEngineManager},
+    BlockStoreState, EngineInterface as _, EngineManager,
 };
+use zksync_consensus_roles::validator;
 
 use crate::{gossip, mux, rpc};
 
@@ -25,10 +25,10 @@ async fn test_simple() {
     cfg.validator_key = None;
 
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup).await;
-        s.spawn_bg(store.runner.run(ctx));
+        let engine = TestEngineManager::new(ctx, &setup).await;
+        s.spawn_bg(engine.runner.run(ctx));
 
-        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.blocks.clone());
+        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), engine.engine.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis.hash())
@@ -49,8 +49,8 @@ async fn test_simple() {
         assert_eq!(resp.0, None);
 
         tracing::info!("Insert a block.");
-        store
-            .blocks
+        engine
+            .engine
             .queue_block(ctx, setup.blocks[0].clone())
             .await
             .unwrap();
@@ -106,8 +106,8 @@ async fn test_simple() {
             .unwrap();
 
         tracing::info!("Wait for the client to store that block");
-        store
-            .blocks
+        engine
+            .engine
             .wait_until_persisted(ctx, setup.blocks[1].number())
             .await
             .unwrap();
@@ -133,9 +133,9 @@ async fn test_concurrent_requests() {
     cfg.max_block_queue_size = setup.blocks.len();
 
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup).await;
-        s.spawn_bg(store.runner.run(ctx));
-        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.blocks.clone());
+        let engine = TestEngineManager::new(ctx, &setup).await;
+        s.spawn_bg(engine.runner.run(ctx));
+        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), engine.engine.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         let mut conns = vec![];
@@ -206,9 +206,9 @@ async fn test_bad_responses() {
     cfg.validator_key = None;
 
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup).await;
-        s.spawn_bg(store.runner.run(ctx));
-        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.blocks.clone());
+        let engine = TestEngineManager::new(ctx, &setup).await;
+        s.spawn_bg(engine.runner.run(ctx));
+        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), engine.engine.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         let state = rpc::push_block_store_state::Req {
@@ -282,9 +282,9 @@ async fn test_retry() {
     cfg.validator_key = None;
 
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup).await;
-        s.spawn_bg(store.runner.run(ctx));
-        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), store.blocks.clone());
+        let engine = TestEngineManager::new(ctx, &setup).await;
+        s.spawn_bg(engine.runner.run(ctx));
+        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), engine.engine.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         let state = rpc::push_block_store_state::Req {
@@ -346,14 +346,14 @@ async fn test_announce_truncated_block_range() {
 
     scope::run!(ctx, |ctx, s| async {
         // Build a custom persistent store, so that we can tweak it later.
-        let mut persistent = in_memory::BlockStore::new(&setup, setup.genesis.first_block);
-        let (block_store, runner) = BlockStore::new(ctx, Box::new(persistent.clone())).await?;
+        let mut engine = in_memory::Engine::new_random(&setup, setup.genesis.first_block);
+        let (manager, runner) = EngineManager::new(ctx, Box::new(engine.clone())).await?;
         s.spawn_bg(runner.run(ctx));
-        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), block_store);
+        let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), manager);
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
         // Fill in all the blocks.
         for b in &setup.blocks {
-            persistent.queue_next_block(ctx, b.clone()).await?;
+            engine.queue_next_block(ctx, b.clone()).await?;
         }
 
         // Connect to the node.
@@ -368,7 +368,7 @@ async fn test_announce_truncated_block_range() {
         let mut first = setup.genesis.first_block;
         loop {
             tracing::info!("Truncate up to {first}");
-            persistent.truncate(first);
+            engine.truncate(first);
             first = first + 3;
 
             // Listen to `PublicBlockStoreState` messages.
@@ -379,13 +379,13 @@ async fn test_announce_truncated_block_range() {
                     .await?;
                 let resp = stream.recv(ctx).await.unwrap();
                 stream.send(ctx, &()).await.unwrap();
-                if resp.state == *persistent.persisted().borrow() {
+                if resp.state == *engine.persisted().borrow() {
                     break;
                 }
             }
 
             // If there are no blocks left, we are done.
-            let left = persistent.persisted().borrow().clone();
+            let left = engine.persisted().borrow().clone();
             if left.next() <= left.first {
                 break;
             }
