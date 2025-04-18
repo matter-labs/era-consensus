@@ -2,10 +2,8 @@
 use std::sync::Arc;
 
 use zksync_concurrency::time;
-use zksync_consensus_engine as storage;
+use zksync_consensus_engine::EngineManager;
 use zksync_consensus_roles::validator;
-
-use crate::PayloadManager;
 
 /// Configuration of the bft component.
 #[derive(Debug)]
@@ -17,17 +15,13 @@ pub struct Config {
     pub max_payload_size: usize,
     /// The duration of the view timeout.
     pub view_timeout: time::Duration,
-    /// Block store.
-    pub block_store: Arc<storage::BlockStore>,
-    /// Replica store.
-    pub replica_store: Box<dyn storage::ReplicaStore>,
-    /// Payload manager.
-    pub payload_manager: Box<dyn PayloadManager>,
+    /// Engine manager.
+    pub engine_manager: Arc<EngineManager>,
 }
 
 impl Config {
     /// Genesis.
     pub fn genesis(&self) -> &validator::Genesis {
-        self.block_store.genesis()
+        self.engine_manager.genesis()
     }
 }

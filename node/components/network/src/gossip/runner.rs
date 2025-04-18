@@ -78,7 +78,7 @@ impl rpc::Handler<rpc::get_block::Rpc> for &Network {
         req: rpc::get_block::Req,
     ) -> anyhow::Result<rpc::get_block::Resp> {
         Ok(rpc::get_block::Resp(
-            self.engine_manager.block(ctx, req.0).await?,
+            self.engine_manager.get_block(ctx, req.0).await?,
         ))
     }
 }

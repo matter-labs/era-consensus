@@ -15,6 +15,18 @@ pub(super) struct EngineInterface {
     /// Latency of a successful `verify_pregenesis_block()` call.
     #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
     pub(super) verify_pregenesis_block_latency: vise::Histogram<time::Duration>,
+    /// Latency of a successful `verify_payload()` call.
+    #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
+    pub(super) verify_payload_latency: vise::Histogram<time::Duration>,
+    /// Latency of a successful `propose_payload()` call.
+    #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
+    pub(super) propose_payload_latency: vise::Histogram<time::Duration>,
+    /// Latency of a successful `get_state()` call.
+    #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
+    pub(super) get_state_latency: vise::Histogram<time::Duration>,
+    /// Latency of a successful `set_state()` call.
+    #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
+    pub(super) set_state_latency: vise::Histogram<time::Duration>,
 }
 
 #[vise::register]

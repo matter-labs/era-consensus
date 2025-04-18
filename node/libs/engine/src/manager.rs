@@ -59,7 +59,7 @@ impl EngineManager {
     }
 
     /// Fetches a block (from queue or persistent storage).
-    pub async fn block(
+    pub async fn get_block(
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
@@ -183,6 +183,62 @@ impl EngineManager {
         )
         .await?
         .clone())
+    }
+
+    /// Verifies a payload.
+    pub async fn verify_payload(
+        &self,
+        ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+        payload: &validator::Payload,
+    ) -> ctx::Result<()> {
+        let t = metrics::ENGINE_INTERFACE.verify_payload_latency.start();
+        let res = self
+            .interface
+            .verify_payload(ctx, number, payload)
+            .await
+            .context("verify_payload()")?;
+        t.observe();
+        Ok(res)
+    }
+
+    /// Proposes a payload.
+    pub async fn propose_payload(
+        &self,
+        ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+    ) -> ctx::Result<validator::Payload> {
+        let t = metrics::ENGINE_INTERFACE.propose_payload_latency.start();
+        let payload = self
+            .interface
+            .propose_payload(ctx, number)
+            .await
+            .context("propose_payload()")?;
+        t.observe();
+        Ok(payload)
+    }
+
+    /// Gets the replica state.
+    pub async fn get_state(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::ReplicaState> {
+        let t = metrics::ENGINE_INTERFACE.get_state_latency.start();
+        let state = self.interface.get_state(ctx).await.context("get_state()")?;
+        t.observe();
+        Ok(state)
+    }
+
+    /// Sets the replica state.
+    pub async fn set_state(
+        &self,
+        ctx: &ctx::Ctx,
+        state: &validator::ReplicaState,
+    ) -> ctx::Result<()> {
+        let t = metrics::ENGINE_INTERFACE.set_state_latency.start();
+        self.interface
+            .set_state(ctx, state)
+            .await
+            .context("set_state()")?;
+        t.observe();
+        Ok(())
     }
 
     fn scrape_metrics(&self) -> metrics::BlockStore {

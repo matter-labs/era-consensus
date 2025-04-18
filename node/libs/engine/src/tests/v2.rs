@@ -3,7 +3,7 @@ use zksync_consensus_roles::validator::testonly::Setup;
 
 use crate::{
     block_store::BlockStore,
-    testonly::{self, TestEngineManager},
+    testonly::{self, TestEngine},
     BlockStoreState, EngineInterface as _,
 };
 
@@ -42,15 +42,19 @@ async fn test_get_not_cached_block_v2() {
     setup.push_blocks_v2(rng, BlockStore::CACHE_CAPACITY + 5);
 
     scope::run!(ctx, |ctx, s| async {
-        let engine = TestEngineManager::new(ctx, &setup).await;
+        let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
 
         // Persist more blocks than the cache size.
         for block in &setup.blocks {
-            engine.engine.queue_block(ctx, block.clone()).await.unwrap();
+            engine
+                .manager
+                .queue_block(ctx, block.clone())
+                .await
+                .unwrap();
         }
         engine
-            .engine
+            .manager
             .wait_until_persisted(ctx, setup.blocks.last().as_ref().unwrap().number())
             .await
             .unwrap();
@@ -59,8 +63,8 @@ async fn test_get_not_cached_block_v2() {
         assert_eq!(
             setup.blocks[0],
             engine
-                .engine
-                .block(ctx, setup.blocks[0].number())
+                .manager
+                .get_block(ctx, setup.blocks[0].number())
                 .await
                 .unwrap()
                 .unwrap()
@@ -83,8 +87,7 @@ async fn test_state_updates_v2() {
 
     // Create store with non-trivial first block.
     let first_block = &setup.blocks[2];
-    let engine =
-        TestEngineManager::new_store_with_first_block(ctx, &setup, first_block.number()).await;
+    let engine = TestEngine::new_with_first_block(ctx, &setup, first_block.number()).await;
 
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(engine.runner.run(ctx));
@@ -94,20 +97,24 @@ async fn test_state_updates_v2() {
         };
 
         for block in &setup.blocks {
-            engine.engine.queue_block(ctx, block.clone()).await.unwrap();
+            engine
+                .manager
+                .queue_block(ctx, block.clone())
+                .await
+                .unwrap();
             if block.number() < first_block.number() {
                 // Queueing block before first block should be a noop.
                 engine
-                    .engine
+                    .manager
                     .wait_until_queued(ctx, block.number())
                     .await
                     .unwrap();
                 engine
-                    .engine
+                    .manager
                     .wait_until_persisted(ctx, block.number())
                     .await
                     .unwrap();
-                assert_eq!(want, engine.engine.queued());
+                assert_eq!(want, engine.manager.queued());
             } else {
                 // Otherwise the state should be updated as soon as block is queued.
                 assert_eq!(
@@ -115,7 +122,7 @@ async fn test_state_updates_v2() {
                         first: first_block.number(),
                         last: Some(block.into()),
                     },
-                    engine.engine.queued()
+                    engine.manager.queued()
                 );
             }
         }

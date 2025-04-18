@@ -1,14 +1,12 @@
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::{ctx, scope};
+use zksync_consensus_engine::testonly::in_memory;
 use zksync_consensus_roles::validator;
 
-use crate::{
-    testonly::RejectPayload,
-    v2_chonky_bft::{
-        proposal,
-        testonly::{UnitTestHarness, MAX_PAYLOAD_SIZE},
-    },
+use crate::v2_chonky_bft::{
+    proposal,
+    testonly::{UnitTestHarness, MAX_PAYLOAD_SIZE},
 };
 
 #[tokio::test]
@@ -192,7 +190,7 @@ async fn proposal_pruned_block() {
                 number: util
                     .replica
                     .config
-                    .block_store
+                    .engine_manager
                     .queued()
                     .first
                     .prev()
@@ -306,7 +304,7 @@ async fn proposal_missing_previous_payload() {
         let (mut util, runner) = UnitTestHarness::new(ctx, 1).await;
         s.spawn_bg(runner.run(ctx));
 
-        let missing_payload_number = util.replica.config.block_store.queued().first.next();
+        let missing_payload_number = util.replica.config.engine_manager.queued().first.next();
         let fake_commit = validator::v2::ReplicaCommit {
             view: util.view(),
             proposal: validator::v2::BlockHeader {
@@ -347,7 +345,8 @@ async fn proposal_invalid_payload() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     scope::run!(ctx, |ctx, s| async {
         let (mut util, runner) =
-            UnitTestHarness::new_with_payload_manager(ctx, 1, Box::new(RejectPayload)).await;
+            UnitTestHarness::new_with_payload_manager(ctx, 1, in_memory::PayloadManager::Reject)
+                .await;
         s.spawn_bg(runner.run(ctx));
 
         let proposal = util.new_leader_proposal(ctx).await;

@@ -18,17 +18,17 @@ pub struct Engine(Arc<EngineInner>);
 impl Engine {
     /// New in-memory `EngineManager` with a random payload manager.
     pub fn new_random(setup: &Setup, first: validator::BlockNumber) -> Self {
-        Self::new(setup, first, PayloadManager::Random(RandomPayload(100)))
+        Self::new(setup, first, PayloadManager::Random(100))
     }
 
     /// New in-memory `EngineManager` with a pending payload manager.
     pub fn new_pending(setup: &Setup, first: validator::BlockNumber) -> Self {
-        Self::new(setup, first, PayloadManager::Pending(PendingPayload))
+        Self::new(setup, first, PayloadManager::Pending)
     }
 
     /// New in-memory `EngineManager` with a rejecting payload manager.
     pub fn new_reject(setup: &Setup, first: validator::BlockNumber) -> Self {
-        Self::new(setup, first, PayloadManager::Reject(RejectPayload))
+        Self::new(setup, first, PayloadManager::Reject)
     }
 
     /// New in-memory `EngineManager`.
@@ -76,7 +76,7 @@ impl Engine {
             persisted: sync::watch::channel(BlockStoreState { first, last: None }).0,
             blocks: Mutex::default(),
             pregenesis_blocks: [].into(),
-            payload_manager: PayloadManager::Random(RandomPayload(100)),
+            payload_manager: PayloadManager::Random(100),
             state: Arc::new(Mutex::new(ReplicaState::default())),
             capacity: Some(capacity),
         }))
@@ -170,11 +170,7 @@ impl EngineInterface for Engine {
         _number: validator::BlockNumber,
         _payload: &validator::Payload,
     ) -> ctx::Result<()> {
-        match &self.0.payload_manager {
-            PayloadManager::Random(payload) => payload.verify(),
-            PayloadManager::Pending(payload) => payload.verify(),
-            PayloadManager::Reject(payload) => payload.verify(),
-        }
+        self.0.payload_manager.verify()
     }
 
     async fn propose_payload(
@@ -182,11 +178,7 @@ impl EngineInterface for Engine {
         ctx: &ctx::Ctx,
         _number: validator::BlockNumber,
     ) -> ctx::Result<validator::Payload> {
-        match &self.0.payload_manager {
-            PayloadManager::Random(payload) => payload.propose(ctx),
-            PayloadManager::Pending(payload) => payload.propose(ctx).await,
-            PayloadManager::Reject(payload) => payload.propose(),
-        }
+        self.0.payload_manager.propose(ctx).await
     }
 
     async fn get_state(&self, _ctx: &ctx::Ctx) -> ctx::Result<ReplicaState> {
@@ -213,55 +205,34 @@ struct EngineInner {
 /// Payload manager for testing purposes.
 #[derive(Debug)]
 pub enum PayloadManager {
-    /// Produces random payloads.
-    Random(RandomPayload),
-    /// `propose()` blocks indefinitely.
-    Pending(PendingPayload),
-    /// `verify()` rejects all payloads.
-    Reject(RejectPayload),
+    /// `propose()` creates random payloads of the given size and `verify()` accepts all payloads.
+    Random(usize),
+    /// `propose()` blocks indefinitely and `verify()` accepts all payloads.
+    Pending,
+    /// `propose()` creates empty payloads and `verify()` rejects all payloads.
+    Reject,
 }
 
-/// Produces random payload of a given size.
-#[derive(Debug)]
-pub struct RandomPayload(pub usize);
-
-impl RandomPayload {
-    fn propose(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::Payload> {
-        let mut payload = validator::Payload(vec![0; self.0]);
-        ctx.rng().fill(&mut payload.0[..]);
-        Ok(payload)
-    }
-
-    fn verify(&self) -> ctx::Result<()> {
-        Ok(())
-    }
-}
-
-/// propose() blocks indefinitely.
-#[derive(Debug)]
-pub struct PendingPayload;
-
-impl PendingPayload {
+impl PayloadManager {
     async fn propose(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::Payload> {
-        ctx.canceled().await;
-        Err(ctx::Canceled.into())
+        match self {
+            PayloadManager::Random(size) => {
+                let mut payload = validator::Payload(vec![0; *size]);
+                ctx.rng().fill(&mut payload.0[..]);
+                Ok(payload)
+            }
+            PayloadManager::Pending => {
+                ctx.canceled().await;
+                Err(ctx::Canceled.into())
+            }
+            PayloadManager::Reject => Ok(validator::Payload(vec![])),
+        }
     }
 
     fn verify(&self) -> ctx::Result<()> {
-        Ok(())
-    }
-}
-
-/// verify() doesn't accept any payload.
-#[derive(Debug)]
-pub struct RejectPayload;
-
-impl RejectPayload {
-    fn propose(&self) -> ctx::Result<validator::Payload> {
-        Ok(validator::Payload(vec![]))
-    }
-
-    fn verify(&self) -> ctx::Result<()> {
-        Err(anyhow::anyhow!("invalid payload").into())
+        match self {
+            PayloadManager::Random(_) | PayloadManager::Pending => Ok(()),
+            PayloadManager::Reject => Err(anyhow::anyhow!("invalid payload").into()),
+        }
     }
 }

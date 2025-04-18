@@ -1,5 +1,5 @@
 use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
-use zksync_consensus_engine::testonly::TestEngineManager;
+use zksync_consensus_engine::testonly::TestEngine;
 use zksync_consensus_roles::validator;
 
 use super::*;
@@ -18,15 +18,15 @@ async fn test_loadtest() {
 
     scope::run!(ctx, |ctx, s| async {
         // Spawn the node.
-        let engine = TestEngineManager::new(ctx, &setup).await;
+        let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
-        let (node, runner) = testonly::Instance::new(cfg.clone(), engine.engine.clone());
+        let (node, runner) = testonly::Instance::new(cfg.clone(), engine.manager.clone());
         s.spawn_bg(runner.run(ctx));
 
         // Fill the storage with some blocks.
         for b in &setup.blocks {
             engine
-                .engine
+                .manager
                 .queue_block(ctx, b.clone())
                 .await
                 .context("queue_block()")?;

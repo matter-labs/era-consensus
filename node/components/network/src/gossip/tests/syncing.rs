@@ -9,7 +9,7 @@ use zksync_concurrency::{
     time,
 };
 use zksync_consensus_engine::{
-    testonly::{dump, in_memory, TestEngineManager},
+    testonly::{dump, in_memory, TestEngine},
     EngineManager,
 };
 use zksync_consensus_roles::validator;
@@ -41,9 +41,9 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let engine = TestEngineManager::new(ctx, &setup).await;
+            let engine = TestEngine::new(ctx, &setup).await;
             s.spawn_bg(engine.runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, engine.engine);
+            let (node, runner) = testonly::Instance::new(cfg, engine.manager);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -99,9 +99,9 @@ async fn uncoordinated_block_syncing(
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let engine = TestEngineManager::new(ctx, &setup).await;
+            let engine = TestEngine::new(ctx, &setup).await;
             s.spawn_bg(engine.runner.clone().run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, engine.engine);
+            let (node, runner) = testonly::Instance::new(cfg, engine.manager);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -154,9 +154,9 @@ async fn test_switching_on_nodes() {
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let engine = TestEngineManager::new(ctx, &setup).await;
+            let engine = TestEngine::new(ctx, &setup).await;
             s.spawn_bg(engine.runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, engine.engine);
+            let (node, runner) = testonly::Instance::new(cfg, engine.manager);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
 
@@ -209,9 +209,9 @@ async fn test_switching_off_nodes() {
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let engine = TestEngineManager::new(ctx, &setup).await;
+            let engine = TestEngine::new(ctx, &setup).await;
             s.spawn_bg(engine.runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, engine.engine);
+            let (node, runner) = testonly::Instance::new(cfg, engine.manager);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -272,9 +272,9 @@ async fn test_different_first_block() {
             cfg.validator_key = None;
             // Choose the first block for the node at random.
             let first = setup.blocks.choose(rng).unwrap().number();
-            let engine = TestEngineManager::new_store_with_first_block(ctx, &setup, first).await;
+            let engine = TestEngine::new_with_first_block(ctx, &setup, first).await;
             s.spawn_bg(engine.runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, engine.engine);
+            let (node, runner) = testonly::Instance::new(cfg, engine.manager);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }

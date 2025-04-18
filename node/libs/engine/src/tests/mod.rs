@@ -5,7 +5,7 @@ use zksync_consensus_roles::{
     validator::testonly::{Setup, SetupSpec},
 };
 
-use crate::testonly::TestEngineManager;
+use crate::testonly::TestEngine;
 
 mod v1;
 mod v2;
@@ -22,12 +22,12 @@ async fn test_invalid_justification() {
     let setup = Setup::from_spec(rng, spec);
 
     scope::run!(ctx, |ctx, s| async {
-        let engine = TestEngineManager::new(ctx, &setup).await;
+        let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
 
         // Insert a correct block first.
         engine
-            .engine
+            .manager
             .queue_block(ctx, setup.blocks[0].clone())
             .await
             .unwrap();
@@ -37,7 +37,7 @@ async fn test_invalid_justification() {
             panic!()
         };
         b.justification = rng.gen();
-        engine.engine.queue_block(ctx, b.into()).await.unwrap_err();
+        engine.manager.queue_block(ctx, b.into()).await.unwrap_err();
 
         Ok(())
     })

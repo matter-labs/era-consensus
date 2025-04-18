@@ -1,6 +1,5 @@
 use zksync_concurrency::{ctx, error::Wrap as _};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage as storage;
 
 use super::StateMachine;
 
@@ -30,7 +29,7 @@ impl StateMachine {
             block.header().payload,
         );
         self.config
-            .block_store
+            .engine_manager
             .queue_block(ctx, block.clone().into())
             .await?;
 
@@ -39,7 +38,7 @@ impl StateMachine {
         // cache. Without persisting this block, if all replicas crash just after
         // start_new_view, the payload becomes unavailable.
         self.config
-            .block_store
+            .engine_manager
             .wait_until_persisted(ctx, block.header().number)
             .await?;
 
@@ -54,14 +53,14 @@ impl StateMachine {
     pub(crate) async fn backup_state(&self, ctx: &ctx::Ctx) -> ctx::Result<()> {
         let mut proposals = vec![];
         for (number, payloads) in &self.block_proposal_cache {
-            proposals.extend(payloads.values().map(|p| storage::Proposal {
+            proposals.extend(payloads.values().map(|p| validator::Proposal {
                 number: *number,
                 payload: p.clone(),
             }));
         }
 
-        let mut backup = storage::ReplicaState::default();
-        let backup_v2 = storage::ChonkyV2State {
+        let mut backup = validator::ReplicaState::default();
+        let backup_v2 = validator::v2::ChonkyV2State {
             view_number: self.view_number,
             epoch_number: self.epoch_number,
             phase: self.phase,
@@ -73,7 +72,7 @@ impl StateMachine {
         backup.v2 = Some(backup_v2);
 
         self.config
-            .replica_store
+            .engine_manager
             .set_state(ctx, &backup)
             .await
             .wrap("set_state()")?;

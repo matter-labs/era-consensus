@@ -2,11 +2,10 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync, time};
+use zksync_consensus_engine::{testonly::in_memory, EngineManager};
 use zksync_consensus_network as network;
-use zksync_consensus_storage as storage;
-use zksync_consensus_storage::testonly::in_memory;
 
-use crate::{testonly, FromNetworkMessage, PayloadManager, ToNetworkMessage};
+use crate::{FromNetworkMessage, ToNetworkMessage};
 
 pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
 
@@ -22,10 +21,10 @@ pub(crate) enum Behavior {
 }
 
 impl Behavior {
-    pub(crate) fn payload_manager(&self) -> Box<dyn PayloadManager> {
+    pub(crate) fn payload_manager(&self) -> in_memory::PayloadManager {
         match self {
-            Self::HonestNotProposing => Box::new(testonly::PendingPayload),
-            _ => Box::new(testonly::RandomPayload(MAX_PAYLOAD_SIZE)),
+            Self::HonestNotProposing => in_memory::PayloadManager::Pending,
+            _ => in_memory::PayloadManager::Random(MAX_PAYLOAD_SIZE),
         }
     }
 }
@@ -34,7 +33,7 @@ impl Behavior {
 pub(crate) struct Node {
     pub(crate) net: network::Config,
     pub(crate) behavior: Behavior,
-    pub(crate) block_store: Arc<storage::BlockStore>,
+    pub(crate) engine_manager: Arc<EngineManager>,
 }
 
 impl Node {
@@ -56,9 +55,7 @@ impl Node {
                 let validator_key = self.net.validator_key.clone().unwrap();
                 crate::Config {
                     secret_key: validator_key.clone(),
-                    block_store: self.block_store.clone(),
-                    replica_store: Box::new(in_memory::ReplicaStore::default()),
-                    payload_manager: self.behavior.payload_manager(),
+                    engine_manager: self.engine_manager.clone(),
                     max_payload_size: MAX_PAYLOAD_SIZE,
                     view_timeout: time::Duration::milliseconds(2000),
                 }

@@ -14,9 +14,9 @@ use zksync_concurrency::{
     },
     oneshot, scope, sync,
 };
+use zksync_consensus_engine::{testonly::TestEngine, EngineManager};
 use zksync_consensus_network::{self as network};
 use zksync_consensus_roles::validator::{self, testonly::Setup, ProtocolVersion};
-use zksync_consensus_storage::{testonly::TestMemoryStorage, BlockStore};
 
 use crate::{
     testonly::{Behavior, Node},
@@ -153,17 +153,17 @@ impl IntegrationTestConfig {
         let mut honest = vec![];
         scope::run!(ctx, |ctx, s| async {
             for (i, net) in nets.into_iter().enumerate() {
-                let store = TestMemoryStorage::new(ctx, setup).await;
-                s.spawn_bg(async { Ok(store.runner.run(ctx).await?) });
+                let engine = TestEngine::new(ctx, setup).await;
+                s.spawn_bg(async { Ok(engine.runner.run(ctx).await?) });
 
                 if self.nodes[i].0 == Behavior::Honest {
-                    honest.push(store.blocks.clone());
+                    honest.push(engine.manager.clone());
                 }
 
                 nodes.push(Node {
                     net,
                     behavior: self.nodes[i].0,
-                    block_store: store.blocks,
+                    engine_manager: engine.manager.clone(),
                 });
             }
             assert!(!honest.is_empty());
@@ -181,9 +181,9 @@ impl IntegrationTestConfig {
             for i in 0..self.blocks_to_finalize as u64 {
                 let i = first + i;
                 // Only comparing the payload; the justification might be different.
-                let want = honest[0].block(ctx, i).await?.context("missing block")?;
+                let want = honest[0].get_block(ctx, i).await?.context("missing block")?;
                 for store in &honest[1..] {
-                    let got = store.block(ctx, i).await?.context("missing block")?;
+                    let got = store.get_block(ctx, i).await?.context("missing block")?;
                     if want.payload() != got.payload() {
                         return Err(TestError::BlockConflict);
                     }
@@ -214,7 +214,7 @@ async fn run_nodes_real(ctx: &ctx::Ctx, specs: &[Node]) -> anyhow::Result<()> {
             );
             let (node, runner) = network::testonly::Instance::new_with_channel(
                 spec.net.clone(),
-                spec.block_store.clone(),
+                spec.engine_manager.clone(),
                 send,
                 recv,
             );
@@ -270,7 +270,7 @@ async fn run_nodes_twins(
 
             sends.insert(port, input_channel_send);
             recvs.push((port, output_channel_recv));
-            stores.insert(port, spec.block_store.clone());
+            stores.insert(port, spec.engine_manager.clone());
             gossip_targets.insert(
                 port,
                 spec.net
@@ -451,7 +451,7 @@ async fn twins_receive_loop(
 /// send loop, to deal with the spawning of store operations.
 async fn twins_gossip_loop(
     ctx: &ctx::Ctx,
-    stores: &HashMap<Port, Arc<BlockStore>>,
+    engines: &HashMap<Port, Arc<EngineManager>>,
     mut recv: UnboundedReceiver<TwinsGossipMessage>,
 ) -> anyhow::Result<()> {
     scope::run!(ctx, |ctx, s| async move {
@@ -461,8 +461,8 @@ async fn twins_gossip_loop(
             mut number,
         }) = recv.recv(ctx).await
         {
-            let local_store = &stores[&from];
-            let remote_store = &stores[&to];
+            let local_store = &engines[&from];
+            let remote_store = &engines[&to];
             let first_needed = remote_store.queued().next();
 
             loop {
@@ -477,7 +477,7 @@ async fn twins_gossip_loop(
                     if local_store.wait_until_queued(ctx, number).await.is_err() {
                         return Ok(());
                     }
-                    let Ok(Some(block)) = local_store.block(ctx, number).await else {
+                    let Ok(Some(block)) = local_store.get_block(ctx, number).await else {
                         tracing::info!(
                             "   ~~x gossip unavailable from={from} to={to} number={number}"
                         );

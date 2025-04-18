@@ -2,6 +2,7 @@
 use std::sync::Arc;
 
 use anyhow::Context as _;
+use in_memory::PayloadManager;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::{validator, validator::testonly::Setup};
@@ -28,25 +29,25 @@ impl Distribution<BlockStoreState> for Standard {
     }
 }
 
-/// Test-only engine manager for blocks.
-pub struct TestEngineManager {
+/// Test-only engine.
+pub struct TestEngine {
     /// In-memory engine manager.
-    pub engine: Arc<EngineManager>,
+    pub manager: Arc<EngineManager>,
     /// In-memory engine manager runner.
     pub runner: EngineManagerRunner,
     /// The in-memory engine representing the execution layer.
     pub im_engine: in_memory::Engine,
 }
 
-impl TestEngineManager {
+impl TestEngine {
     /// Constructs a new in-memory engine manager with the given setup.
     pub async fn new(ctx: &ctx::Ctx, setup: &Setup) -> Self {
-        Self::new_store_with_first_block(ctx, setup, setup.genesis.first_block).await
+        Self::new_with_first_block(ctx, setup, setup.genesis.first_block).await
     }
 
     /// Constructs a new in-memory engine manager with a custom expected first block
     /// (i.e. possibly different than `genesis.fork.first_block`).
-    pub async fn new_store_with_first_block(
+    pub async fn new_with_first_block(
         ctx: &ctx::Ctx,
         setup: &Setup,
         first: validator::BlockNumber,
@@ -56,7 +57,24 @@ impl TestEngineManager {
             .await
             .unwrap();
         Self {
-            engine,
+            manager: engine,
+            runner,
+            im_engine,
+        }
+    }
+
+    /// Constructs a new in-memory engine manager with a custom payload manager.
+    pub async fn new_with_payload_manager(
+        ctx: &ctx::Ctx,
+        setup: &Setup,
+        payload_manager: PayloadManager,
+    ) -> Self {
+        let im_engine = in_memory::Engine::new(setup, setup.genesis.first_block, payload_manager);
+        let (engine, runner) = EngineManager::new(ctx, Box::new(im_engine.clone()))
+            .await
+            .unwrap();
+        Self {
+            manager: engine,
             runner,
             im_engine,
         }
@@ -94,7 +112,7 @@ pub async fn verify(ctx: &ctx::Ctx, engine: &EngineManager) -> anyhow::Result<()
 
     for n in (range.first.0..range.next().0).map(validator::BlockNumber) {
         async {
-            let b = engine.block(ctx, n).await?.context("missing")?;
+            let b = engine.get_block(ctx, n).await?.context("missing")?;
             engine.verify_block(ctx, &b).await.context("verify_block()")
         }
         .await

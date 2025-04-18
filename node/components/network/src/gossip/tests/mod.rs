@@ -15,7 +15,7 @@ use zksync_concurrency::{
     testonly::{abort_on_panic, set_timeout},
     time,
 };
-use zksync_consensus_engine::testonly::TestEngineManager;
+use zksync_consensus_engine::testonly::TestEngine;
 use zksync_consensus_roles::validator;
 
 use super::ValidatorAddrs;
@@ -37,10 +37,10 @@ async fn test_one_connection_per_node() {
     let cfgs = testonly::new_configs(rng, &setup, 2);
 
     scope::run!(ctx, |ctx,s| async {
-        let engine = TestEngineManager::new(ctx, &setup).await;
+        let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
         let mut nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
-            let (node,runner) = testonly::Instance::new(cfg.clone(), engine.engine.clone());
+            let (node,runner) = testonly::Instance::new(cfg.clone(), engine.manager.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             node
         }).collect();
@@ -243,13 +243,13 @@ async fn test_validator_addrs_propagation() {
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
-        let engine = TestEngineManager::new(ctx, &setup).await;
+        let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
         let nodes: Vec<_> = cfgs
             .iter()
             .enumerate()
             .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(cfg.clone(), engine.engine.clone());
+                let (node, runner) = testonly::Instance::new(cfg.clone(), engine.manager.clone());
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                 node
             })
@@ -286,9 +286,9 @@ async fn test_genesis_mismatch() {
         let mut listener = cfgs[1].server_addr.bind().context("server_addr.bind()")?;
 
         tracing::info!("Start one node, we will simulate the other one.");
-        let engine = TestEngineManager::new(ctx, &setup).await;
+        let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
-        let (_node, runner) = testonly::Instance::new(cfgs[0].clone(), engine.engine);
+        let (_node, runner) = testonly::Instance::new(cfgs[0].clone(), engine.manager);
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         tracing::info!("Accept a connection with mismatching genesis.");
@@ -345,8 +345,8 @@ async fn validator_node_restart() {
     for cfg in &mut cfgs {
         cfg.rpc.push_validator_addrs_rate.refresh = time::Duration::ZERO;
     }
-    let engine = TestEngineManager::new(ctx, &setup).await;
-    let (node1, node1_runner) = testonly::Instance::new(cfgs[1].clone(), engine.engine.clone());
+    let engine = TestEngine::new(ctx, &setup).await;
+    let (node1, node1_runner) = testonly::Instance::new(cfgs[1].clone(), engine.manager.clone());
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(engine.runner.run(ctx));
         s.spawn_bg(
@@ -375,7 +375,7 @@ async fn validator_node_restart() {
 
             // _node0 contains pipe, which has to exist to prevent the connection from dying
             // early.
-            let (_node0, runner) = testonly::Instance::new(cfgs[0].clone(), engine.engine.clone());
+            let (_node0, runner) = testonly::Instance::new(cfgs[0].clone(), engine.manager.clone());
             scope::run!(ctx, |ctx, s| async {
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
                 tracing::info!("wait for the update to arrive to node1");
@@ -428,12 +428,12 @@ async fn rate_limiting() {
     }
     let mut nodes = vec![];
     scope::run!(ctx, |ctx, s| async {
-        let engine = TestEngineManager::new(ctx, &setup).await;
+        let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
         // Spawn the satellite nodes and wait until they register
         // their own address.
         for (i, cfg) in cfgs[1..].iter().enumerate() {
-            let (node, runner) = testonly::Instance::new(cfg.clone(), engine.engine.clone());
+            let (node, runner) = testonly::Instance::new(cfg.clone(), engine.manager.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             let sub = &mut node.net.gossip.validator_addrs.subscribe();
             sync::wait_for(ctx, sub, |got| {
@@ -446,7 +446,7 @@ async fn rate_limiting() {
         }
 
         // Spawn the center node.
-        let (center, runner) = testonly::Instance::new(cfgs[0].clone(), engine.engine.clone());
+        let (center, runner) = testonly::Instance::new(cfgs[0].clone(), engine.manager.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node[0]")));
         // Await for the center to receive all validator addrs.
         let sub = &mut center.net.gossip.validator_addrs.subscribe();
