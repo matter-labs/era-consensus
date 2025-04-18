@@ -23,6 +23,11 @@ message Block {
   }
 }
 
+message Proposal {
+  optional uint64 number = 1; // required; BlockNumber
+  optional bytes payload = 2; // required
+}
+
 message ConsensusMsg {
   reserved 1, 3, 4;
   reserved "replica_prepare", "leader_prepare", "leader_commit";
@@ -52,4 +57,18 @@ message Signed {
   optional Msg msg = 1; // required
   optional PublicKey key = 2; // required
   optional Signature sig = 3; // required
+}
+
+message ReplicaState {
+  optional uint64 view = 1; // required; ViewNumber
+  optional Phase phase = 2; // required
+  optional ReplicaCommit high_vote = 3; // optional
+  // Note: name should be high_commit_qc
+  optional CommitQC high_qc = 4; // optional
+  repeated Proposal proposals = 5;
+  optional TimeoutQC high_timeout_qc = 6; // optional
+  // optional; will be required after we deprecate v1
+  oneof t {
+    ChonkyV2State v2 = 7;
+  }
 }

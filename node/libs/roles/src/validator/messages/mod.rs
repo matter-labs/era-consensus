@@ -1,11 +1,10 @@
-//! Messages exchanged between validators.
-
 mod block;
 mod committee;
 mod consensus;
 mod discovery;
 mod genesis;
 mod msg;
+mod state;
 mod testonly;
 #[cfg(test)]
 mod tests;
@@ -20,3 +19,4 @@ pub use consensus::*;
 pub use discovery::*;
 pub use genesis::*;
 pub use msg::*;
+pub use state::*;

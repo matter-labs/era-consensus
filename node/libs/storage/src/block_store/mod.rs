@@ -98,45 +98,6 @@ impl BlockStoreState {
     }
 }
 
-/// Storage of a continuous range of L2 blocks.
-///
-/// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
-#[async_trait::async_trait]
-pub trait PersistentBlockStore: 'static + fmt::Debug + Send + Sync {
-    /// Genesis matching the block store content.
-    /// Consensus code calls this method only once.
-    async fn genesis(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::Genesis>;
-
-    /// Range of blocks persisted in storage.
-    fn persisted(&self) -> sync::watch::Receiver<BlockStoreState>;
-
-    /// Verifies a pre-genesis block.
-    /// It may interpret `block.justification`
-    /// and/or consult external source of truth.
-    async fn verify_pregenesis_block(
-        &self,
-        ctx: &ctx::Ctx,
-        block: &validator::PreGenesisBlock,
-    ) -> ctx::Result<()>;
-
-    /// Gets a block by its number.
-    /// All the blocks from `state()` range are expected to be available.
-    /// Blocks that have been queued but haven't been persisted yet don't have to be available.
-    /// Returns error if block is missing.
-    async fn block(
-        &self,
-        ctx: &ctx::Ctx,
-        number: validator::BlockNumber,
-    ) -> ctx::Result<validator::Block>;
-
-    /// Queue the block to be persisted in storage.
-    /// `queue_next_block()` may return BEFORE the block is actually persisted,
-    /// but if the call succeeded the block is expected to be persisted eventually.
-    /// Implementations are only required to accept a block directly after the previous queued
-    /// block, starting with `persisted().borrow().next()`.
-    async fn queue_next_block(&self, ctx: &ctx::Ctx, block: validator::Block) -> ctx::Result<()>;
-}
-
 #[derive(Debug)]
 struct Inner {
     queued: BlockStoreState,
@@ -241,7 +202,7 @@ impl BlockStore {
         &self.genesis
     }
 
-    /// Available blocks (in memory & persisted).
+    /// Available blocks (in-memory & persisted).
     pub fn queued(&self) -> BlockStoreState {
         self.inner.borrow().queued.clone()
     }

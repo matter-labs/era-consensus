@@ -7,7 +7,7 @@ use zksync_concurrency::ctx;
 use zksync_consensus_roles::{validator, validator::testonly::Setup};
 
 use crate::{
-    replica_store::ChonkyV2State, BlockStore, BlockStoreRunner, BlockStoreState, Last,
+    interface::ChonkyV2State, BlockStore, BlockStoreRunner, BlockStoreState, Last,
     PersistentBlockStore, Proposal, ReplicaState,
 };
 

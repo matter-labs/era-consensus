@@ -2,8 +2,8 @@
 use std::sync::Arc;
 
 use zksync_concurrency::time;
+use zksync_consensus_engine as storage;
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage as storage;
 
 use crate::PayloadManager;
 

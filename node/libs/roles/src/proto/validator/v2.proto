@@ -3,6 +3,7 @@ syntax = "proto3";
 package zksync.roles.validator;
 
 import "zksync/roles/validator/keys.proto";
+import "zksync/roles/validator/consensus.proto";
 import "zksync/roles/validator/genesis.proto";
 import "zksync/std.proto";
 
@@ -79,4 +80,14 @@ message PhaseV2 {
     std.Void commit = 2;
     std.Void timeout = 3;
   }
+}
+
+message ChonkyV2State {
+  optional uint64 view_number = 1; // required;
+  optional uint64 epoch_number = 2; // required;
+  optional PhaseV2 phase = 3; // required
+  optional ReplicaCommitV2 high_vote = 4; // optional
+  optional CommitQCV2 high_commit_qc = 5; // optional
+  optional TimeoutQCV2 high_timeout_qc = 6; // optional
+  repeated Proposal proposals = 7;
 }

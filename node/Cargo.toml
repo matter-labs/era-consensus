@@ -31,7 +31,7 @@ zksync_consensus_crypto   = { version = "=0.10.0", path = "libs/crypto" }
 zksync_consensus_executor = { version = "=0.10.0", path = "components/executor" }
 zksync_consensus_network  = { version = "=0.10.0", path = "components/network" }
 zksync_consensus_roles    = { version = "=0.10.0", path = "libs/roles" }
-zksync_consensus_storage  = { version = "=0.10.0", path = "libs/storage" }
+zksync_consensus_engine  = { version = "=0.10.0", path = "libs/storage" }
 zksync_consensus_tools    = { version = "=0.10.0", path = "tools" }
 zksync_consensus_utils    = { version = "=0.10.0", path = "libs/utils" }
 

@@ -27,7 +27,7 @@ pub type FromNetworkMessage = zksync_consensus_network::io::ConsensusReq;
 
 /// Payload proposal and verification trait.
 #[async_trait::async_trait]
-pub trait PayloadManager: std::fmt::Debug + Send + Sync {
+pub trait PayloadManager: 'static + std::fmt::Debug + Send + Sync {
     /// Used by leader to propose a payload for the next block.
     async fn propose(
         &self,
