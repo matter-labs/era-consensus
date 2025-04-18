@@ -2,8 +2,9 @@ syntax = "proto3";
 
 package zksync.roles.validator;
 
-import "zksync/roles/validator/keys.proto";
 import "zksync/roles/validator/discovery.proto";
+import "zksync/roles/validator/genesis.proto";
+import "zksync/roles/validator/keys.proto";
 import "zksync/roles/validator/v1.proto";
 import "zksync/roles/validator/v2.proto";
 import "zksync/std.proto";
@@ -21,11 +22,6 @@ message Block {
     FinalBlock final = 1;
     PreGenesisBlock pre_genesis = 2;
   }
-}
-
-message Proposal {
-  optional uint64 number = 1; // required; BlockNumber
-  optional bytes payload = 2; // required
 }
 
 message ConsensusMsg {

@@ -13,43 +13,6 @@ use crate::{
 
 pub mod in_memory;
 
-impl Distribution<Proposal> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Proposal {
-        Proposal {
-            number: rng.gen(),
-            payload: rng.gen(),
-        }
-    }
-}
-
-impl Distribution<ChonkyV2State> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChonkyV2State {
-        ChonkyV2State {
-            view_number: rng.gen(),
-            epoch_number: rng.gen(),
-            phase: rng.gen(),
-            high_vote: rng.gen(),
-            high_commit_qc: rng.gen(),
-            high_timeout_qc: rng.gen(),
-            proposals: (0..rng.gen_range(1..11)).map(|_| rng.gen()).collect(),
-        }
-    }
-}
-
-impl Distribution<ReplicaState> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaState {
-        ReplicaState {
-            view: rng.gen(),
-            phase: rng.gen(),
-            high_vote: rng.gen(),
-            high_commit_qc: rng.gen(),
-            high_timeout_qc: rng.gen(),
-            proposals: (0..rng.gen_range(1..11)).map(|_| rng.gen()).collect(),
-            v2: rng.gen(),
-        }
-    }
-}
-
 impl Distribution<Last> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Last {
         match rng.gen_range(0..2) {

@@ -5,7 +5,7 @@ use zksync_consensus_roles::{
     validator::testonly::{Setup, SetupSpec},
 };
 
-use crate::{testonly::TestMemoryStorage, ReplicaState};
+use crate::testonly::TestMemoryStorage;
 
 mod v1;
 mod v2;
@@ -38,11 +38,4 @@ async fn test_invalid_justification() {
     })
     .await
     .unwrap();
-}
-
-#[test]
-fn test_schema_encode_decode() {
-    let ctx = ctx::test_root(&ctx::RealClock);
-    let rng = &mut ctx.rng();
-    zksync_protobuf::testonly::test_encode_random::<ReplicaState>(rng);
 }

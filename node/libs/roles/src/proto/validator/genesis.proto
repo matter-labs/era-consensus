@@ -48,3 +48,8 @@ message LeaderSelectionMode {
 message PayloadHash {
   optional bytes keccak256 = 1; // required
 }
+
+message Proposal {
+  optional uint64 number = 1; // required; BlockNumber
+  optional bytes payload = 2; // required
+}

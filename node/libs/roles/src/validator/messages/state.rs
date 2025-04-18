@@ -1,5 +1,5 @@
 use anyhow::Context as _;
-use zksync_protobuf::{required, ProtoFmt};
+use zksync_protobuf::{read_optional, read_required, ProtoFmt};
 
 use crate::proto::validator as proto;
 

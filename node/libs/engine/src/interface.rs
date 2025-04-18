@@ -1,4 +1,3 @@
-//! Defines storage layer for persistent replica state.
 use std::fmt;
 
 use anyhow::Context as _;
@@ -8,32 +7,25 @@ use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
 
 use crate::proto;
 
-/// Storage of a continuous range of L2 blocks.
+/// Defines the interface between the consensus layer and the execution layer.
 ///
 /// Implementations **must** propagate context cancellation using [`StorageError::Canceled`].
 #[async_trait::async_trait]
 pub trait EngineInterface: 'static + fmt::Debug + Send + Sync {
-    /// Genesis matching the block store content.
+    /// Genesis matching the current chain.
     /// Consensus code calls this method only once.
     async fn genesis(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::Genesis>;
 
     /// Range of blocks persisted in storage.
     fn persisted(&self) -> sync::watch::Receiver<BlockStoreState>;
 
-    /// Verifies a pre-genesis block.
-    /// It may interpret `block.justification`
-    /// and/or consult external source of truth.
-    async fn verify_pregenesis_block(
-        &self,
-        ctx: &ctx::Ctx,
-        block: &validator::PreGenesisBlock,
-    ) -> ctx::Result<()>;
+    
 
     /// Gets a block by its number.
     /// All the blocks from `state()` range are expected to be available.
     /// Blocks that have been queued but haven't been persisted yet don't have to be available.
     /// Returns error if block is missing.
-    async fn block(
+    async fn get_block(
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
@@ -46,23 +38,36 @@ pub trait EngineInterface: 'static + fmt::Debug + Send + Sync {
     /// block, starting with `persisted().borrow().next()`.
     async fn queue_next_block(&self, ctx: &ctx::Ctx, block: validator::Block) -> ctx::Result<()>;
 
-    /// Used by leader to propose a payload for the next block.
-    async fn propose(
+    /// Verifies a pre-genesis block.
+    /// It may interpret `block.justification`
+    /// and/or consult external source of truth.
+    async fn verify_pregenesis_block(
         &self,
         ctx: &ctx::Ctx,
-        number: validator::BlockNumber,
-    ) -> ctx::Result<validator::Payload>;
+        block: &validator::PreGenesisBlock,
+    ) -> ctx::Result<()>;
+
     /// Used by replica to verify a payload for the next block proposed by the leader.
-    async fn verify(
+    async fn verify_payload(
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
         payload: &validator::Payload,
     ) -> ctx::Result<()>;
 
+    /// Used by leader to propose a payload for the next block.
+    async fn propose_payload(
+        &self,
+        ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+    ) -> ctx::Result<validator::Payload>;
+
+    
+    
+
     /// Gets the replica state, if it is contained in the database. Otherwise, returns the default
     /// state.
-    async fn state(&self, ctx: &ctx::Ctx) -> ctx::Result<ReplicaState>;
+    async fn get_state(&self, ctx: &ctx::Ctx) -> ctx::Result<ReplicaState>;
 
     /// Stores the given replica state into the database.
     async fn set_state(&self, ctx: &ctx::Ctx, state: &ReplicaState) -> ctx::Result<()>;

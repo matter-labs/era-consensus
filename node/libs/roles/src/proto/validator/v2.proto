@@ -3,7 +3,6 @@ syntax = "proto3";
 package zksync.roles.validator;
 
 import "zksync/roles/validator/keys.proto";
-import "zksync/roles/validator/consensus.proto";
 import "zksync/roles/validator/genesis.proto";
 import "zksync/std.proto";
 

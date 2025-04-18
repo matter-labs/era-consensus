@@ -8,7 +8,7 @@ use zksync_consensus_utils::enum_util::Variant;
 use super::{
     v1, Block, BlockNumber, ChainId, Committee, ConsensusMsg, ForkNumber, Genesis, GenesisHash,
     GenesisRaw, Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock,
-    ProtocolVersion, Signed, ViewNumber, WeightedValidator,
+    Proposal, ProtocolVersion, ReplicaState, Signed, ViewNumber, WeightedValidator,
 };
 use crate::validator::SecretKey;
 
@@ -98,6 +98,15 @@ impl Distribution<Payload> for Standard {
     }
 }
 
+impl Distribution<Proposal> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Proposal {
+        Proposal {
+            number: rng.gen(),
+            payload: rng.gen(),
+        }
+    }
+}
+
 impl Distribution<Justification> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Justification {
         let size: usize = rng.gen_range(500..1000);
@@ -182,6 +191,20 @@ impl Distribution<ConsensusMsg> for Standard {
             2 => ConsensusMsg::ReplicaNewView(rng.gen()),
             3 => ConsensusMsg::ReplicaTimeout(rng.gen()),
             _ => unreachable!(),
+        }
+    }
+}
+
+impl Distribution<ReplicaState> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ReplicaState {
+        ReplicaState {
+            view: rng.gen(),
+            phase: rng.gen(),
+            high_vote: rng.gen(),
+            high_commit_qc: rng.gen(),
+            high_timeout_qc: rng.gen(),
+            proposals: (0..rng.gen_range(1..11)).map(|_| rng.gen()).collect(),
+            v2: rng.gen(),
         }
     }
 }
