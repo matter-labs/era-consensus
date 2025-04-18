@@ -7,8 +7,8 @@ use zksync_concurrency::ctx;
 use zksync_consensus_roles::{validator, validator::testonly::Setup};
 
 use crate::{
-    interface::ChonkyV2State, BlockStore, BlockStoreRunner, BlockStoreState, Last,
-    PersistentBlockStore, Proposal, ReplicaState,
+    block_store::BlockStore, BlockStoreState, EngineInterface, EngineManager, EngineManagerRunner,
+    Last,
 };
 
 pub mod in_memory;
@@ -31,17 +31,17 @@ impl Distribution<BlockStoreState> for Standard {
     }
 }
 
-/// Test-only memory storage for blocks.
-pub struct TestMemoryStorage {
-    /// In-memory block store with its runner.
-    pub blocks: Arc<BlockStore>,
-    /// In-memory storage runner.
-    pub runner: BlockStoreRunner,
-    /// The in-memory block store representing the persistent store.
-    pub im_blocks: in_memory::BlockStore,
+/// Test-only engine manager for blocks.
+pub struct TestEngineManager {
+    /// In-memory engine manager.
+    pub engine: Arc<EngineManager>,
+    /// In-memory engine manager runner.
+    pub runner: EngineManagerRunner,
+    /// The in-memory engine representing the persistent store.
+    pub im_engine: in_memory::Engine,
 }
 
-impl TestMemoryStorage {
+impl TestEngineManager {
     /// Constructs a new in-memory store for both blocks with their respective runners.
     pub async fn new(ctx: &ctx::Ctx, setup: &Setup) -> Self {
         Self::new_store_with_first_block(ctx, setup, setup.genesis.first_block).await
@@ -54,12 +54,12 @@ impl TestMemoryStorage {
         setup: &Setup,
         first: validator::BlockNumber,
     ) -> Self {
-        let im_blocks = in_memory::BlockStore::new(setup, first);
+        let im_blocks = in_memory::Engine::new(setup, first);
         Self::new_with_im(ctx, im_blocks).await
     }
 
     /// Constructs a new in-memory store for both blocks with their respective runners.
-    async fn new_with_im(ctx: &ctx::Ctx, im_blocks: in_memory::BlockStore) -> Self {
+    async fn new_with_im(ctx: &ctx::Ctx, im_blocks: in_memory::Engine) -> Self {
         let (blocks, runner) = BlockStore::new(ctx, Box::new(im_blocks.clone()))
             .await
             .unwrap();
@@ -72,8 +72,8 @@ impl TestMemoryStorage {
 }
 
 /// Dumps all the blocks stored in `store`.
-pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<validator::Block> {
-    let state = store.persisted().borrow().clone();
+pub async fn dump(ctx: &ctx::Ctx, interface: &dyn EngineInterface) -> Vec<validator::Block> {
+    let state = interface.persisted().borrow().clone();
     let mut blocks = vec![];
     let after = state
         .last
@@ -81,14 +81,14 @@ pub async fn dump(ctx: &ctx::Ctx, store: &dyn PersistentBlockStore) -> Vec<valid
         .map(|last| last.number().next())
         .unwrap_or(state.first);
     for n in (state.first.0..after.0).map(validator::BlockNumber) {
-        let block = store.block(ctx, n).await.unwrap();
+        let block = interface.get_block(ctx, n).await.unwrap();
         assert_eq!(block.number(), n);
         blocks.push(block);
     }
     if let Some(before) = state.first.prev() {
-        assert!(store.block(ctx, before).await.is_err());
+        assert!(interface.get_block(ctx, before).await.is_err());
     }
-    assert!(store.block(ctx, after).await.is_err());
+    assert!(interface.get_block(ctx, after).await.is_err());
     blocks
 }
 

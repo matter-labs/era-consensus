@@ -5,7 +5,7 @@ use zksync_consensus_roles::{
     validator::testonly::{Setup, SetupSpec},
 };
 
-use crate::testonly::TestMemoryStorage;
+use crate::testonly::TestEngineManager;
 
 mod v1;
 mod v2;
@@ -20,7 +20,7 @@ async fn test_invalid_justification() {
     spec.first_block = spec.first_pregenesis_block + 2;
     let setup = Setup::from_spec(rng, spec);
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup).await;
+        let store = TestEngineManager::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         let store = store.blocks;
         // Insert a correct block first.

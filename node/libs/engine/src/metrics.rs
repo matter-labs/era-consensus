@@ -1,9 +1,8 @@
-//! Storage metrics.
 use std::time;
 
 #[derive(Debug, vise::Metrics)]
-#[metrics(prefix = "zksync_consensus_storage_persistent_block_store")]
-pub(super) struct PersistentBlockStore {
+#[metrics(prefix = "zksync_consensus_engine_interface")]
+pub(super) struct EngineInterface {
     /// Latency of a successful `genesis()` call.
     #[metrics(unit = vise::Unit::Seconds, buckets = vise::Buckets::LATENCIES)]
     pub(super) genesis_latency: vise::Histogram<time::Duration>,
@@ -22,7 +21,7 @@ pub(super) struct PersistentBlockStore {
 }
 
 #[vise::register]
-pub(super) static PERSISTENT_BLOCK_STORE: vise::Global<PersistentBlockStore> = vise::Global::new();
+pub(super) static ENGINE_INTERFACE: vise::Global<EngineInterface> = vise::Global::new();
 
 #[derive(Debug, vise::Metrics)]
 #[metrics(prefix = "zksync_consensus_storage_block_store")]

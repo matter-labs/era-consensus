@@ -1,11 +1,9 @@
 use std::fmt;
 
-use anyhow::Context as _;
-use zksync_concurrency::ctx;
+use zksync_concurrency::{ctx, sync};
 use zksync_consensus_roles::validator;
-use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
 
-use crate::proto;
+use crate::BlockStoreState;
 
 /// Defines the interface between the consensus layer and the execution layer.
 ///
@@ -18,8 +16,6 @@ pub trait EngineInterface: 'static + fmt::Debug + Send + Sync {
 
     /// Range of blocks persisted in storage.
     fn persisted(&self) -> sync::watch::Receiver<BlockStoreState>;
-
-    
 
     /// Gets a block by its number.
     /// All the blocks from `state()` range are expected to be available.
@@ -62,13 +58,10 @@ pub trait EngineInterface: 'static + fmt::Debug + Send + Sync {
         number: validator::BlockNumber,
     ) -> ctx::Result<validator::Payload>;
 
-    
-    
-
     /// Gets the replica state, if it is contained in the database. Otherwise, returns the default
     /// state.
-    async fn get_state(&self, ctx: &ctx::Ctx) -> ctx::Result<ReplicaState>;
+    async fn get_state(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::ReplicaState>;
 
     /// Stores the given replica state into the database.
-    async fn set_state(&self, ctx: &ctx::Ctx, state: &ReplicaState) -> ctx::Result<()>;
+    async fn set_state(&self, ctx: &ctx::Ctx, state: &validator::ReplicaState) -> ctx::Result<()>;
 }

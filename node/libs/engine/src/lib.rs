@@ -1,13 +1,14 @@
-//! Abstraction for persistent data storage.
-//! It provides schema-aware type-safe database access.
+//! Abstraction for interaction with the execution layer.
 mod block_store;
 mod interface;
-pub mod proto;
+mod manager;
+mod metrics;
 pub mod testonly;
 #[cfg(test)]
 mod tests;
 
 pub use crate::{
-    block_store::{BlockStore, BlockStoreRunner, BlockStoreState, Last, PersistentBlockStore},
-    interface::{ChonkyV2State, Proposal, ReplicaState, ReplicaStore},
+    block_store::{BlockStoreState, Last},
+    interface::EngineInterface,
+    manager::{EngineManager, EngineManagerRunner},
 };

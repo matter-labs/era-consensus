@@ -3,7 +3,7 @@ use zksync_consensus_roles::validator::testonly::Setup;
 
 use crate::{
     block_store,
-    testonly::{self, TestMemoryStorage},
+    testonly::{self, TestEngineManager},
     BlockStoreState, PersistentBlockStore as _,
 };
 
@@ -15,7 +15,7 @@ async fn test_inmemory_block_store_v1() {
     let mut setup = Setup::new(rng, 3);
     setup.push_blocks_v1(rng, 5);
 
-    let store = &testonly::in_memory::BlockStore::new(
+    let store = &testonly::in_memory::Engine::new(
         &setup,
         setup.blocks.first().as_ref().unwrap().number(),
     );
@@ -40,7 +40,7 @@ async fn test_get_not_cached_block_v1() {
     setup.push_blocks_v1(rng, block_store::CACHE_CAPACITY + 5);
 
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup).await;
+        let store = TestEngineManager::new(ctx, &setup).await;
         s.spawn_bg(store.runner.run(ctx));
         // Persist more blocks than the cache size.
         for block in &setup.blocks {
@@ -78,7 +78,7 @@ async fn test_state_updates_v1() {
     // Create store with non-trivial first block.
     let first_block = &setup.blocks[2];
     let store =
-        TestMemoryStorage::new_store_with_first_block(ctx, &setup, first_block.number()).await;
+        TestEngineManager::new_store_with_first_block(ctx, &setup, first_block.number()).await;
     scope::run!(ctx, |ctx, s| async {
         s.spawn_bg(store.runner.run(ctx));
         let want = BlockStoreState {

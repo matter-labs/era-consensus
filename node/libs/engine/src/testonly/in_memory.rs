@@ -5,31 +5,38 @@ use std::{
 };
 
 use anyhow::Context as _;
+use rand::Rng;
 use zksync_concurrency::{ctx, sync};
-use zksync_consensus_roles::{validator, validator::testonly::Setup};
+use zksync_consensus_roles::validator::{self, testonly::Setup, ReplicaState};
 
-use crate::{block_store::Last, BlockStoreState, PersistentBlockStore, ReplicaState};
+use crate::{block_store::Last, BlockStoreState, EngineInterface};
 
-#[derive(Debug)]
-struct BlockStoreInner {
-    genesis: validator::Genesis,
-    persisted: sync::watch::Sender<BlockStoreState>,
-    blocks: Mutex<VecDeque<validator::Block>>,
-    capacity: Option<usize>,
-    pregenesis_blocks: HashMap<validator::BlockNumber, validator::PreGenesisBlock>,
-}
-
-/// In-memory block store.
+/// In-memory engine manager.
 #[derive(Clone, Debug)]
-pub struct BlockStore(Arc<BlockStoreInner>);
+pub struct Engine(Arc<EngineInner>);
 
-/// In-memory replica store.
-#[derive(Clone, Debug, Default)]
-pub struct ReplicaStore(Arc<Mutex<ReplicaState>>);
+impl Engine {
+    /// New in-memory `EngineManager` with a random payload manager.
+    pub fn new_random(setup: &Setup, first: validator::BlockNumber) -> Self {
+        Self::new(setup, first, PayloadManager::Random(RandomPayload(100)))
+    }
 
-impl BlockStore {
-    /// New In-memory `BlockStore`.
-    pub fn new(setup: &Setup, first: validator::BlockNumber) -> Self {
+    /// New in-memory `EngineManager` with a pending payload manager.
+    pub fn new_pending(setup: &Setup, first: validator::BlockNumber) -> Self {
+        Self::new(setup, first, PayloadManager::Pending(PendingPayload))
+    }
+
+    /// New in-memory `EngineManager` with a rejecting payload manager.
+    pub fn new_reject(setup: &Setup, first: validator::BlockNumber) -> Self {
+        Self::new(setup, first, PayloadManager::Reject(RejectPayload))
+    }
+
+    /// New in-memory `EngineManager`.
+    pub fn new(
+        setup: &Setup,
+        first: validator::BlockNumber,
+        payload_manager: PayloadManager,
+    ) -> Self {
         assert!(
             setup
                 .blocks
@@ -38,11 +45,10 @@ impl BlockStore {
                 .unwrap_or(setup.genesis.first_block)
                 <= first
         );
-        Self(Arc::new(BlockStoreInner {
+        Self(Arc::new(EngineInner {
             genesis: setup.genesis.clone(),
             persisted: sync::watch::channel(BlockStoreState { first, last: None }).0,
             blocks: Mutex::default(),
-            capacity: None,
             pregenesis_blocks: setup
                 .blocks
                 .iter()
@@ -51,22 +57,28 @@ impl BlockStore {
                     _ => None,
                 })
                 .collect(),
+            payload_manager,
+            state: Arc::new(Mutex::new(ReplicaState::default())),
+            capacity: None,
         }))
     }
 
-    /// New bounded storage. Old blocks get GC'ed onse the storage capacity is full.
-    pub fn bounded(
+    /// New in-memory `EngineManager` with a bounded storage.
+    /// Old blocks get garbage collected once the storage capacity is full.
+    pub fn new_bounded(
         genesis: validator::Genesis,
         first: validator::BlockNumber,
         capacity: usize,
     ) -> Self {
         assert!(genesis.first_block <= first);
-        Self(Arc::new(BlockStoreInner {
+        Self(Arc::new(EngineInner {
             genesis,
             persisted: sync::watch::channel(BlockStoreState { first, last: None }).0,
             blocks: Mutex::default(),
-            capacity: Some(capacity),
             pregenesis_blocks: [].into(),
+            payload_manager: PayloadManager::Random(RandomPayload(100)),
+            state: Arc::new(Mutex::new(ReplicaState::default())),
+            capacity: Some(capacity),
         }))
     }
 
@@ -90,7 +102,7 @@ impl BlockStore {
 }
 
 #[async_trait::async_trait]
-impl PersistentBlockStore for BlockStore {
+impl EngineInterface for Engine {
     async fn genesis(&self, _ctx: &ctx::Ctx) -> ctx::Result<validator::Genesis> {
         Ok(self.0.genesis.clone())
     }
@@ -99,18 +111,7 @@ impl PersistentBlockStore for BlockStore {
         self.0.persisted.subscribe()
     }
 
-    async fn verify_pregenesis_block(
-        &self,
-        _ctx: &ctx::Ctx,
-        block: &validator::PreGenesisBlock,
-    ) -> ctx::Result<()> {
-        if self.0.pregenesis_blocks.get(&block.number) != Some(block) {
-            return Err(anyhow::format_err!("invalid pre-genesis block").into());
-        }
-        Ok(())
-    }
-
-    async fn block(
+    async fn get_block(
         &self,
         _ctx: &ctx::Ctx,
         number: validator::BlockNumber,
@@ -151,16 +152,113 @@ impl PersistentBlockStore for BlockStore {
         blocks.push_back(block);
         Ok(())
     }
-}
 
-#[async_trait::async_trait]
-impl crate::ReplicaStore for ReplicaStore {
-    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<ReplicaState> {
-        Ok(self.0.lock().unwrap().clone())
+    async fn verify_pregenesis_block(
+        &self,
+        _ctx: &ctx::Ctx,
+        block: &validator::PreGenesisBlock,
+    ) -> ctx::Result<()> {
+        if self.0.pregenesis_blocks.get(&block.number) != Some(block) {
+            return Err(anyhow::format_err!("invalid pre-genesis block").into());
+        }
+        Ok(())
+    }
+
+    async fn verify_payload(
+        &self,
+        _ctx: &ctx::Ctx,
+        _number: validator::BlockNumber,
+        _payload: &validator::Payload,
+    ) -> ctx::Result<()> {
+        match &self.0.payload_manager {
+            PayloadManager::Random(payload) => payload.verify(),
+            PayloadManager::Pending(payload) => payload.verify(),
+            PayloadManager::Reject(payload) => payload.verify(),
+        }
+    }
+
+    async fn propose_payload(
+        &self,
+        ctx: &ctx::Ctx,
+        _number: validator::BlockNumber,
+    ) -> ctx::Result<validator::Payload> {
+        match &self.0.payload_manager {
+            PayloadManager::Random(payload) => payload.propose(ctx),
+            PayloadManager::Pending(payload) => payload.propose(ctx).await,
+            PayloadManager::Reject(payload) => payload.propose(),
+        }
+    }
+
+    async fn get_state(&self, _ctx: &ctx::Ctx) -> ctx::Result<ReplicaState> {
+        Ok(self.0.state.lock().unwrap().clone())
     }
 
     async fn set_state(&self, _ctx: &ctx::Ctx, state: &ReplicaState) -> ctx::Result<()> {
-        *self.0.lock().unwrap() = state.clone();
+        *self.0.state.lock().unwrap() = state.clone();
         Ok(())
+    }
+}
+
+#[derive(Debug)]
+struct EngineInner {
+    genesis: validator::Genesis,
+    persisted: sync::watch::Sender<BlockStoreState>,
+    blocks: Mutex<VecDeque<validator::Block>>,
+    pregenesis_blocks: HashMap<validator::BlockNumber, validator::PreGenesisBlock>,
+    payload_manager: PayloadManager,
+    state: Arc<Mutex<ReplicaState>>,
+    capacity: Option<usize>,
+}
+
+/// Payload manager for testing purposes.
+#[derive(Debug)]
+enum PayloadManager {
+    Random(RandomPayload),
+    Pending(PendingPayload),
+    Reject(RejectPayload),
+}
+
+/// Produces random payload of a given size.
+#[derive(Debug)]
+struct RandomPayload(pub usize);
+
+impl RandomPayload {
+    fn propose(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::Payload> {
+        let mut payload = validator::Payload(vec![0; self.0]);
+        ctx.rng().fill(&mut payload.0[..]);
+        Ok(payload)
+    }
+
+    fn verify(&self) -> ctx::Result<()> {
+        Ok(())
+    }
+}
+
+/// propose() blocks indefinitely.
+#[derive(Debug)]
+struct PendingPayload;
+
+impl PendingPayload {
+    async fn propose(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::Payload> {
+        ctx.canceled().await;
+        Err(ctx::Canceled.into())
+    }
+
+    fn verify(&self) -> ctx::Result<()> {
+        Ok(())
+    }
+}
+
+/// verify() doesn't accept any payload.
+#[derive(Debug)]
+struct RejectPayload;
+
+impl RejectPayload {
+    fn propose(&self) -> ctx::Result<validator::Payload> {
+        Ok(validator::Payload(vec![]))
+    }
+
+    fn verify(&self) -> ctx::Result<()> {
+        Err(anyhow::anyhow!("invalid payload").into())
     }
 }
