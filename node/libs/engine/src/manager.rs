@@ -193,8 +193,7 @@ impl EngineManager {
         payload: &validator::Payload,
     ) -> ctx::Result<()> {
         let t = metrics::ENGINE_INTERFACE.verify_payload_latency.start();
-        self
-            .interface
+        self.interface
             .verify_payload(ctx, number, payload)
             .await
             .context("verify_payload()")?;

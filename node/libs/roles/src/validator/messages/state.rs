@@ -1,13 +1,12 @@
 use anyhow::Context as _;
 use zksync_protobuf::{read_optional, read_required, ProtoFmt};
 
-use crate::proto::validator as proto;
-
 use super::{
     v1::{CommitQC, Phase, ReplicaCommit, TimeoutQC},
     v2::ChonkyV2State,
     Proposal, ViewNumber,
 };
+use crate::proto::validator as proto;
 
 /// The struct that contains the replica state to be persisted.
 // TODO: To be turned into an enum after we deprecate v1.

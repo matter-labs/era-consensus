@@ -181,7 +181,10 @@ impl IntegrationTestConfig {
             for i in 0..self.blocks_to_finalize as u64 {
                 let i = first + i;
                 // Only comparing the payload; the justification might be different.
-                let want = honest[0].get_block(ctx, i).await?.context("missing block")?;
+                let want = honest[0]
+                    .get_block(ctx, i)
+                    .await?
+                    .context("missing block")?;
                 for store in &honest[1..] {
                     let got = store.get_block(ctx, i).await?.context("missing block")?;
                     if want.payload() != got.payload() {

@@ -2,8 +2,10 @@ use anyhow::Context as _;
 use zksync_protobuf::{read_optional, read_required, ProtoFmt};
 
 use super::{CommitQC, EpochNumber, Phase, ReplicaCommit, TimeoutQC};
-use crate::proto::validator as proto;
-use crate::validator::{Proposal, ViewNumber};
+use crate::{
+    proto::validator as proto,
+    validator::{Proposal, ViewNumber},
+};
 
 /// The struct that contains the state of a ChonkyBFT v2 replica to be persisted.
 #[derive(Clone, Debug, PartialEq, Eq)]
