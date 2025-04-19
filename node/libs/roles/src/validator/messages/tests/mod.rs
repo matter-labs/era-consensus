@@ -112,4 +112,5 @@ fn test_schema_encoding() {
     test_encode_random::<MsgHash>(rng);
     test_encode_random::<Genesis>(rng);
     test_encode_random::<GenesisHash>(rng);
+    test_encode_random::<ReplicaState>(rng);
 }

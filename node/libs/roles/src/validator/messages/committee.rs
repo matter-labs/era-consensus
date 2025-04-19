@@ -1,4 +1,3 @@
-//! Messages related to the consensus protocol.
 use std::collections::BTreeMap;
 
 use anyhow::Context as _;

@@ -2,7 +2,7 @@ use std::{net::SocketAddr, sync::Arc};
 
 use jsonrpsee::server::{middleware::http::ProxyGetRequestLayer, RpcModule, Server};
 use zksync_concurrency::{ctx, scope};
-use zksync_consensus_storage::BlockStore;
+use zksync_consensus_engine::EngineManager;
 
 use super::methods::{health_check, last_committed_block, last_view};
 
@@ -11,14 +11,14 @@ pub struct RPCServer {
     /// IP address to bind to.
     ip_address: SocketAddr,
     /// Node storage.
-    node_storage: Arc<BlockStore>,
+    node_engine: Arc<EngineManager>,
 }
 
 impl RPCServer {
-    pub fn new(ip_address: SocketAddr, node_storage: Arc<BlockStore>) -> Self {
+    pub fn new(ip_address: SocketAddr, node_engine: Arc<EngineManager>) -> Self {
         Self {
             ip_address,
-            node_storage,
+            node_engine,
         }
     }
 
@@ -45,14 +45,14 @@ impl RPCServer {
             health_check::callback()
         })?;
 
-        let node_storage = self.node_storage.clone();
+        let node_engine = self.node_engine.clone();
         module.register_method(last_view::method(), move |_params, _, _| {
-            last_view::callback(node_storage.clone())
+            last_view::callback(node_engine.clone())
         })?;
 
-        let node_storage = self.node_storage.clone();
+        let node_engine = self.node_engine.clone();
         module.register_method(last_committed_block::method(), move |_params, _, _| {
-            last_committed_block::callback(node_storage.clone())
+            last_committed_block::callback(node_engine.clone())
         })?;
 
         let server = Server::builder()

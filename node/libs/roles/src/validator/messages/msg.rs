@@ -1,4 +1,3 @@
-//! Generic message types.
 use std::fmt;
 
 use anyhow::Context as _;

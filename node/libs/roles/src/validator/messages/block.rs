@@ -1,4 +1,3 @@
-//! Messages related to blocks.
 use std::fmt;
 
 use anyhow::Context as _;
@@ -77,6 +76,37 @@ impl ProtoFmt for Block {
                 Block::FinalV1(b) => T::Final(b.build()),
                 Block::PreGenesis(b) => T::PreGenesis(b.build()),
             }),
+        }
+    }
+}
+
+/// A payload of a proposed block which is not known to be finalized yet.
+/// Replicas have to persist such proposed payloads for liveness:
+/// consensus may finalize a block without knowing a payload in case of reproposals.
+/// Currently we do not store the BlockHeader, because it is always
+/// available in the LeaderPrepare message.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Proposal {
+    /// Number of a block for which this payload has been proposed.
+    pub number: BlockNumber,
+    /// Proposed payload.
+    pub payload: Payload,
+}
+
+impl ProtoFmt for Proposal {
+    type Proto = proto::Proposal;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            number: BlockNumber(*required(&r.number).context("number")?),
+            payload: Payload(required(&r.payload).context("payload")?.clone()),
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            number: Some(self.number.0),
+            payload: Some(self.payload.0.clone()),
         }
     }
 }

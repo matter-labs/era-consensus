@@ -4,8 +4,8 @@ use anyhow::Context as _;
 use async_trait::async_trait;
 use rand::seq::SliceRandom;
 use zksync_concurrency::{ctx, net, scope, sync};
+use zksync_consensus_engine::BlockStoreState;
 use zksync_consensus_roles::node;
-use zksync_consensus_storage::BlockStoreState;
 use zksync_protobuf::kB;
 
 use super::{handshake, Network, ValidatorAddrs};
@@ -78,7 +78,7 @@ impl rpc::Handler<rpc::get_block::Rpc> for &Network {
         req: rpc::get_block::Req,
     ) -> anyhow::Result<rpc::get_block::Resp> {
         Ok(rpc::get_block::Resp(
-            self.block_store.block(ctx, req.0).await?,
+            self.engine_manager.get_block(ctx, req.0).await?,
         ))
     }
 }
@@ -127,14 +127,17 @@ impl Network {
 
             // Push block store state updates to peer.
             s.spawn::<()>(async {
-                let mut state = self.block_store.queued();
+                let mut state = self.engine_manager.queued();
                 loop {
                     let req = rpc::push_block_store_state::Req {
                         state: state.clone(),
                     };
 
                     push_block_store_state_client.call(ctx, &req, kB).await?;
-                    state = self.block_store.wait_for_queued_change(ctx, &state).await?;
+                    state = self
+                        .engine_manager
+                        .wait_for_queued_change(ctx, &state)
+                        .await?;
                 }
             });
 
@@ -184,7 +187,7 @@ impl Network {
                             let block = resp.0.context("empty response")?;
                             anyhow::ensure!(block.number() == req.0, "received wrong block");
                             // Storing the block will fail in case block is invalid.
-                            self.block_store
+                            self.engine_manager
                                 .queue_block(ctx, block)
                                 .await
                                 .context("queue_block()")?;

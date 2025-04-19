@@ -78,12 +78,12 @@ pub(crate) async fn create_proposal(
         None => {
             // Defensively assume that PayloadManager cannot propose until the previous block is stored.
             if let Some(prev) = block_number.prev() {
-                cfg.block_store.wait_until_persisted(ctx, prev).await?;
+                cfg.engine_manager.wait_until_persisted(ctx, prev).await?;
             }
 
             let payload = cfg
-                .payload_manager
-                .propose(ctx, block_number)
+                .engine_manager
+                .propose_payload(ctx, block_number)
                 .await
                 .wrap("payload_manager.propose()")?;
 

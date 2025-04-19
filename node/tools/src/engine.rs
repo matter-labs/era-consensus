@@ -1,4 +1,4 @@
-//! RocksDB-based implementation of PersistentBlockStore and ReplicaStore.
+//! RocksDB-based implementation of EngineInterface.
 use std::{
     fmt,
     path::Path,
@@ -8,10 +8,8 @@ use std::{
 use anyhow::Context as _;
 use rocksdb::{Direction, IteratorMode, ReadOptions};
 use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
+use zksync_consensus_engine::{BlockStoreState, EngineInterface, Last};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{
-    BlockStoreState, Last, PersistentBlockStore, ReplicaState, ReplicaStore,
-};
 
 /// Enum used to represent a key in the database. It also acts as a separator between different stores.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -112,9 +110,8 @@ impl fmt::Debug for RocksDB {
         formatter.write_str("RocksDB")
     }
 }
-
 #[async_trait::async_trait]
-impl PersistentBlockStore for RocksDB {
+impl EngineInterface for RocksDB {
     async fn genesis(&self, _ctx: &ctx::Ctx) -> ctx::Result<validator::Genesis> {
         Ok(self.0.genesis.clone())
     }
@@ -123,7 +120,7 @@ impl PersistentBlockStore for RocksDB {
         self.0.persisted.subscribe()
     }
 
-    async fn block(
+    async fn get_block(
         &self,
         _ctx: &ctx::Ctx,
         number: validator::BlockNumber,
@@ -179,11 +176,8 @@ impl PersistentBlockStore for RocksDB {
         .context(block.number())?;
         Ok(())
     }
-}
 
-#[async_trait::async_trait]
-impl ReplicaStore for RocksDB {
-    async fn state(&self, _ctx: &ctx::Ctx) -> ctx::Result<ReplicaState> {
+    async fn get_state(&self, _ctx: &ctx::Ctx) -> ctx::Result<validator::ReplicaState> {
         Ok(scope::wait_blocking(|| {
             let Some(raw_state) = self
                 .0
@@ -193,14 +187,14 @@ impl ReplicaStore for RocksDB {
                 .get(DatabaseKey::ReplicaState.encode_key())
                 .context("Failed to get ReplicaState from RocksDB")?
             else {
-                return Ok(ReplicaState::default());
+                return Ok(validator::ReplicaState::default());
             };
             zksync_protobuf::decode(&raw_state).context("Failed to decode replica state!")
         })
         .await?)
     }
 
-    async fn set_state(&self, _ctx: &ctx::Ctx, state: &ReplicaState) -> ctx::Result<()> {
+    async fn set_state(&self, _ctx: &ctx::Ctx, state: &validator::ReplicaState) -> ctx::Result<()> {
         Ok(scope::wait_blocking(|| {
             self.0
                 .db
@@ -213,5 +207,22 @@ impl ReplicaStore for RocksDB {
                 .context("Failed putting ReplicaState to RocksDB")
         })
         .await?)
+    }
+
+    async fn verify_payload(
+        &self,
+        _ctx: &ctx::Ctx,
+        _number: validator::BlockNumber,
+        _payload: &validator::Payload,
+    ) -> ctx::Result<()> {
+        Ok(())
+    }
+
+    async fn propose_payload(
+        &self,
+        _ctx: &ctx::Ctx,
+        _number: validator::BlockNumber,
+    ) -> ctx::Result<validator::Payload> {
+        Ok(validator::Payload(vec![]))
     }
 }

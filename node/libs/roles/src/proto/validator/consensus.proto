@@ -2,8 +2,9 @@ syntax = "proto3";
 
 package zksync.roles.validator;
 
-import "zksync/roles/validator/keys.proto";
 import "zksync/roles/validator/discovery.proto";
+import "zksync/roles/validator/genesis.proto";
+import "zksync/roles/validator/keys.proto";
 import "zksync/roles/validator/v1.proto";
 import "zksync/roles/validator/v2.proto";
 import "zksync/std.proto";
@@ -52,4 +53,18 @@ message Signed {
   optional Msg msg = 1; // required
   optional PublicKey key = 2; // required
   optional Signature sig = 3; // required
+}
+
+message ReplicaState {
+  optional uint64 view = 1; // required; ViewNumber
+  optional Phase phase = 2; // required
+  optional ReplicaCommit high_vote = 3; // optional
+  // Note: name should be high_commit_qc
+  optional CommitQC high_qc = 4; // optional
+  repeated Proposal proposals = 5;
+  optional TimeoutQC high_timeout_qc = 6; // optional
+  // optional; will be required after we deprecate v1
+  oneof t {
+    ChonkyV2State v2 = 7;
+  }
 }

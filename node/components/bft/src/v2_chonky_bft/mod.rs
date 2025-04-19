@@ -87,8 +87,8 @@ impl StateMachine {
         proposer_sender: sync::watch::Sender<Option<validator::v2::ProposalJustification>>,
     ) -> ctx::Result<Self> {
         let backup = config
-            .replica_store
-            .state(ctx)
+            .engine_manager
+            .get_state(ctx)
             .await?
             .v2
             .unwrap_or_default();

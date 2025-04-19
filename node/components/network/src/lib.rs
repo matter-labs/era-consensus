@@ -8,7 +8,7 @@ use zksync_concurrency::{
     error::Wrap as _,
     limiter, scope, sync,
 };
-use zksync_consensus_storage::BlockStore;
+use zksync_consensus_engine::EngineManager;
 
 mod config;
 pub mod consensus;
@@ -52,11 +52,11 @@ impl Network {
     /// Call `run_network` to run the component.
     pub fn new(
         cfg: Config,
-        block_store: Arc<BlockStore>,
+        engine_manager: Arc<EngineManager>,
         consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
         consensus_receiver: channel::UnboundedReceiver<io::ConsensusInputMessage>,
     ) -> (Arc<Self>, Runner) {
-        let gossip = gossip::Network::new(cfg, block_store, consensus_sender);
+        let gossip = gossip::Network::new(cfg, engine_manager, consensus_sender);
         let consensus = consensus::Network::new(gossip.clone());
         let net = Arc::new(Self { gossip, consensus });
         (

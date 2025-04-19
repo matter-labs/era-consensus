@@ -5,8 +5,8 @@ use rand::{
 };
 
 use super::{
-    BlockHeader, CommitQC, EpochNumber, FinalBlock, LeaderProposal, Phase, ProposalJustification,
-    ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
+    BlockHeader, ChonkyV2State, CommitQC, EpochNumber, FinalBlock, LeaderProposal, Phase,
+    ProposalJustification, ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
 };
 use crate::validator::{testonly::Setup, Block, Payload, ViewNumber};
 
@@ -285,6 +285,20 @@ impl Distribution<Phase> for Standard {
             0 => Phase::Prepare,
             1 => Phase::Commit,
             _ => unreachable!(),
+        }
+    }
+}
+
+impl Distribution<ChonkyV2State> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChonkyV2State {
+        ChonkyV2State {
+            view_number: rng.gen(),
+            epoch_number: rng.gen(),
+            phase: rng.gen(),
+            high_vote: rng.gen(),
+            high_commit_qc: rng.gen(),
+            high_timeout_qc: rng.gen(),
+            proposals: (0..rng.gen_range(1..11)).map(|_| rng.gen()).collect(),
         }
     }
 }

@@ -1,7 +1,7 @@
 //! RPC for notifying peer about our BlockStore state.
 use anyhow::Context;
+use zksync_consensus_engine::{BlockStoreState, Last};
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{BlockStoreState, Last};
 use zksync_protobuf::{read_optional_repr, read_required_repr, required, ProtoFmt, ProtoRepr};
 
 use super::Capability;

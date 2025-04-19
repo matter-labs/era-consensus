@@ -80,3 +80,13 @@ message PhaseV2 {
     std.Void timeout = 3;
   }
 }
+
+message ChonkyV2State {
+  optional uint64 view_number = 1; // required;
+  optional uint64 epoch_number = 2; // required;
+  optional PhaseV2 phase = 3; // required
+  optional ReplicaCommitV2 high_vote = 4; // optional
+  optional CommitQCV2 high_commit_qc = 5; // optional
+  optional TimeoutQCV2 high_timeout_qc = 6; // optional
+  repeated Proposal proposals = 7;
+}

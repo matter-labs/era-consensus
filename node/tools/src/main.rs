@@ -115,7 +115,7 @@ async fn main() -> anyhow::Result<()> {
             });
         }
         if let Some(rpc_addr) = &configs.app.rpc_addr {
-            s.spawn_bg(RPCServer::new(*rpc_addr, executor.block_store.clone()).run(ctx));
+            s.spawn_bg(RPCServer::new(*rpc_addr, executor.engine_manager.clone()).run(ctx));
         }
         executor.run(ctx).await
     })

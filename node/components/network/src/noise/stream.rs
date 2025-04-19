@@ -315,7 +315,7 @@ where
     ///
     /// from std::io::Write:
     /// * call to write represents at most one attempt to write to any wrapped object.
-    /// * 0 TYPICALLY means that that the underlying object is no longer able to accept bytes OR
+    /// * 0 TYPICALLY means that the underlying object is no longer able to accept bytes OR
     ///   that buf.len()==0.
     /// * if an error is returned then no bytes in the buffer were written to this writer.
     ///

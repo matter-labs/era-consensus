@@ -4454,9 +4454,9 @@ dependencies = [
  "vise",
  "zksync_concurrency",
  "zksync_consensus_crypto",
+ "zksync_consensus_engine",
  "zksync_consensus_network",
  "zksync_consensus_roles",
- "zksync_consensus_storage",
  "zksync_consensus_utils",
  "zksync_protobuf",
 ]
@@ -4482,6 +4482,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "zksync_consensus_engine"
+version = "0.10.0"
+dependencies = [
+ "anyhow",
+ "assert_matches",
+ "async-trait",
+ "prost",
+ "rand",
+ "tempfile",
+ "test-casing",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "vise",
+ "zksync_concurrency",
+ "zksync_consensus_crypto",
+ "zksync_consensus_roles",
+ "zksync_protobuf",
+ "zksync_protobuf_build",
+]
+
+[[package]]
 name = "zksync_consensus_executor"
 version = "0.10.0"
 dependencies = [
@@ -4496,9 +4518,9 @@ dependencies = [
  "zksync_concurrency",
  "zksync_consensus_bft",
  "zksync_consensus_crypto",
+ "zksync_consensus_engine",
  "zksync_consensus_network",
  "zksync_consensus_roles",
- "zksync_consensus_storage",
  "zksync_consensus_utils",
  "zksync_protobuf",
 ]
@@ -4534,8 +4556,8 @@ dependencies = [
  "vise",
  "zksync_concurrency",
  "zksync_consensus_crypto",
+ "zksync_consensus_engine",
  "zksync_consensus_roles",
- "zksync_consensus_storage",
  "zksync_consensus_utils",
  "zksync_protobuf",
  "zksync_protobuf_build",
@@ -4558,28 +4580,6 @@ dependencies = [
  "zksync_concurrency",
  "zksync_consensus_crypto",
  "zksync_consensus_utils",
- "zksync_protobuf",
- "zksync_protobuf_build",
-]
-
-[[package]]
-name = "zksync_consensus_storage"
-version = "0.10.0"
-dependencies = [
- "anyhow",
- "assert_matches",
- "async-trait",
- "prost",
- "rand",
- "tempfile",
- "test-casing",
- "thiserror 1.0.69",
- "tokio",
- "tracing",
- "vise",
- "zksync_concurrency",
- "zksync_consensus_crypto",
- "zksync_consensus_roles",
  "zksync_protobuf",
  "zksync_protobuf_build",
 ]
@@ -4610,10 +4610,10 @@ dependencies = [
  "zksync_concurrency",
  "zksync_consensus_bft",
  "zksync_consensus_crypto",
+ "zksync_consensus_engine",
  "zksync_consensus_executor",
  "zksync_consensus_network",
  "zksync_consensus_roles",
- "zksync_consensus_storage",
  "zksync_consensus_utils",
  "zksync_protobuf",
  "zksync_protobuf_build",

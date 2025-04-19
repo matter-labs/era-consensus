@@ -1,4 +1,3 @@
-//! Messages related to the consensus protocol.
 use std::hash::Hash;
 
 use anyhow::Context as _;

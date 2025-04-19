@@ -4,8 +4,8 @@ use std::collections::HashSet;
 use assert_matches::assert_matches;
 use rand::Rng;
 use zksync_concurrency::{ctx, error::Wrap as _, net, scope, testonly::abort_on_panic};
+use zksync_consensus_engine::testonly::TestEngine;
 use zksync_consensus_roles::validator;
-use zksync_consensus_storage::testonly::TestMemoryStorage;
 use zksync_consensus_utils::enum_util::Variant as _;
 
 use super::*;
@@ -98,10 +98,10 @@ async fn test_one_connection_per_validator() {
     let nodes = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx,s| async {
-        let store = TestMemoryStorage::new(ctx, &setup).await;
-        s.spawn_bg(store.runner.run(ctx));
+        let engine = TestEngine::new(ctx, &setup).await;
+        s.spawn_bg(engine.runner.run(ctx));
         let nodes : Vec<_> = nodes.into_iter().enumerate().map(|(i,node)| {
-            let (node,runner) = testonly::Instance::new(node, store.blocks.clone());
+            let (node,runner) = testonly::Instance::new(node, engine.manager.clone());
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             node
         }).collect();
@@ -157,9 +157,9 @@ async fn test_genesis_mismatch() {
         let mut listener = cfgs[1].server_addr.bind().context("server_addr.bind()")?;
 
         tracing::info!("Start one node, we will simulate the other one.");
-        let store = TestMemoryStorage::new(ctx, &setup).await;
-        s.spawn_bg(store.runner.run(ctx));
-        let (node, runner) = testonly::Instance::new(cfgs[0].clone(), store.blocks.clone());
+        let engine = TestEngine::new(ctx, &setup).await;
+        s.spawn_bg(engine.runner.run(ctx));
+        let (node, runner) = testonly::Instance::new(cfgs[0].clone(), engine.manager.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
         tracing::info!("Populate the validator_addrs of the running node.");
@@ -223,13 +223,13 @@ async fn test_address_change() {
     let setup = validator::testonly::Setup::new(rng, 5);
     let mut cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup).await;
-        s.spawn_bg(store.runner.run(ctx));
+        let engine = TestEngine::new(ctx, &setup).await;
+        s.spawn_bg(engine.runner.run(ctx));
         let mut nodes: Vec<_> = cfgs
             .iter()
             .enumerate()
             .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(cfg.clone(), store.blocks.clone());
+                let (node, runner) = testonly::Instance::new(cfg.clone(), engine.manager.clone());
                 s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
                 node
             })
@@ -253,7 +253,7 @@ async fn test_address_change() {
         cfgs[0].server_addr = net::tcp::testonly::reserve_listener();
         cfgs[0].public_addr = (*cfgs[0].server_addr).into();
 
-        let (node0, runner) = testonly::Instance::new(cfgs[0].clone(), store.blocks.clone());
+        let (node0, runner) = testonly::Instance::new(cfgs[0].clone(), engine.manager.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
 
         nodes[0] = node0;
@@ -278,13 +278,13 @@ async fn test_transmission() {
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup).await;
-        s.spawn_bg(store.runner.run(ctx));
+        let engine = TestEngine::new(ctx, &setup).await;
+        s.spawn_bg(engine.runner.run(ctx));
         let mut nodes: Vec<_> = cfgs
             .iter()
             .enumerate()
             .map(|(i, cfg)| {
-                let (node, runner) = testonly::Instance::new(cfg.clone(), store.blocks.clone());
+                let (node, runner) = testonly::Instance::new(cfg.clone(), engine.manager.clone());
                 let i = ctx::NoCopy(i);
                 s.spawn_bg(async {
                     let i = i;
@@ -337,11 +337,11 @@ async fn test_retransmission() {
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
-        let store = TestMemoryStorage::new(ctx, &setup).await;
-        s.spawn_bg(store.runner.run(ctx));
+        let engine = TestEngine::new(ctx, &setup).await;
+        s.spawn_bg(engine.runner.run(ctx));
 
         // Spawn the first node.
-        let (node0, runner) = testonly::Instance::new(cfgs[0].clone(), store.blocks.clone());
+        let (node0, runner) = testonly::Instance::new(cfgs[0].clone(), engine.manager.clone());
         s.spawn_bg(runner.run(ctx));
 
         // Make first node broadcast a message.
@@ -356,7 +356,7 @@ async fn test_retransmission() {
             tracing::info!("iteration {i}");
             scope::run!(ctx, |ctx, s| async {
                 let (mut node1, runner) =
-                    testonly::Instance::new(cfgs[1].clone(), store.blocks.clone());
+                    testonly::Instance::new(cfgs[1].clone(), engine.manager.clone());
                 s.spawn_bg(runner.run(ctx));
 
                 let message = node1.consensus_receiver.recv(ctx).await.unwrap();

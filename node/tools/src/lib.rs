@@ -1,10 +1,10 @@
 //! CLI tools for the consensus node.
 #![allow(missing_docs)]
 pub mod config;
+mod engine;
 pub mod k8s;
 mod proto;
 pub mod rpc;
-mod store;
 
 #[cfg(test)]
 mod tests;

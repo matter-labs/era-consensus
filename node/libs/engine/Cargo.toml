@@ -1,11 +1,11 @@
 [package]
 authors.workspace    = true
-description          = "ZKsync consensus storage"
+description          = "ZKsync consensus engine"
 edition.workspace    = true
 homepage.workspace   = true
 keywords.workspace   = true
 license.workspace    = true
-name                 = "zksync_consensus_storage"
+name                 = "zksync_consensus_engine"
 repository.workspace = true
 version.workspace    = true
 

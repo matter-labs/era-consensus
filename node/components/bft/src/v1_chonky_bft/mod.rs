@@ -84,7 +84,7 @@ impl StateMachine {
         inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
         proposer_sender: sync::watch::Sender<Option<validator::v1::ProposalJustification>>,
     ) -> ctx::Result<Self> {
-        let backup = config.replica_store.state(ctx).await?;
+        let backup = config.engine_manager.get_state(ctx).await?;
 
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
         for proposal in backup.proposals {

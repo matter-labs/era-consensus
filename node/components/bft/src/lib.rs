@@ -25,24 +25,6 @@ pub type ToNetworkMessage = zksync_consensus_network::io::ConsensusInputMessage;
 #[allow(missing_docs)]
 pub type FromNetworkMessage = zksync_consensus_network::io::ConsensusReq;
 
-/// Payload proposal and verification trait.
-#[async_trait::async_trait]
-pub trait PayloadManager: std::fmt::Debug + Send + Sync {
-    /// Used by leader to propose a payload for the next block.
-    async fn propose(
-        &self,
-        ctx: &ctx::Ctx,
-        number: validator::BlockNumber,
-    ) -> ctx::Result<validator::Payload>;
-    /// Used by replica to verify a payload for the next block proposed by the leader.
-    async fn verify(
-        &self,
-        ctx: &ctx::Ctx,
-        number: validator::BlockNumber,
-        payload: &validator::Payload,
-    ) -> ctx::Result<()>;
-}
-
 impl Config {
     /// Starts the bft component. It will start running, processing incoming messages and
     /// sending output messages.
@@ -52,7 +34,7 @@ impl Config {
         outbound_channel: ctx::channel::UnboundedSender<ToNetworkMessage>,
         inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
     ) -> anyhow::Result<()> {
-        let genesis = self.block_store.genesis();
+        let genesis = self.engine_manager.genesis();
 
         anyhow::ensure!(
             validator::ProtocolVersion::compatible(&genesis.protocol_version),
@@ -63,7 +45,7 @@ impl Config {
 
         if let Some(prev) = genesis.first_block.prev() {
             tracing::info!("Waiting for the pre-fork blocks to be persisted.");
-            if let Err(ctx::Canceled) = self.block_store.wait_until_persisted(ctx, prev).await {
+            if let Err(ctx::Canceled) = self.engine_manager.wait_until_persisted(ctx, prev).await {
                 return Ok(());
             }
         }

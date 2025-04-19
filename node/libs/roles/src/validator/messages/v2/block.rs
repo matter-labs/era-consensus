@@ -1,4 +1,3 @@
-//! Messages related to blocks.
 use anyhow::Context as _;
 use zksync_consensus_crypto::ByteFmt;
 use zksync_protobuf::{read_required, required, ProtoFmt};

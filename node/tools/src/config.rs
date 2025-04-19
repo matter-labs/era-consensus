@@ -9,19 +9,18 @@ use std::{
 use anyhow::{anyhow, Context as _};
 use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use zksync_concurrency::{ctx, net, time};
-use zksync_consensus_bft as bft;
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
+use zksync_consensus_engine::{
+    testonly::in_memory, EngineInterface, EngineManager, EngineManagerRunner,
+};
 use zksync_consensus_executor::{self as executor};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{
-    testonly::in_memory, BlockStore, BlockStoreRunner, PersistentBlockStore, ReplicaStore,
-};
 use zksync_protobuf::{
     read_optional, read_optional_repr, read_required, required, ProtoFmt, ProtoRepr,
 };
 
-use crate::{proto, store};
+use crate::{engine, proto};
 
 const CRATE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -257,30 +256,17 @@ impl Configs {
     pub async fn make_executor(
         &self,
         ctx: &ctx::Ctx,
-    ) -> ctx::Result<(executor::Executor, BlockStoreRunner)> {
-        struct Stores {
-            block: Box<dyn PersistentBlockStore>,
-            replica: Box<dyn ReplicaStore>,
-        }
-        let stores = if let Some(path) = &self.database {
-            let store = store::RocksDB::open(self.app.genesis.clone(), path).await?;
-            Stores {
-                block: Box::new(store.clone()),
-                replica: Box::new(store),
-            }
+    ) -> ctx::Result<(executor::Executor, EngineManagerRunner)> {
+        let engine: Box<dyn EngineInterface> = if let Some(path) = &self.database {
+            Box::new(engine::RocksDB::open(self.app.genesis.clone(), path).await?)
         } else {
-            let block = in_memory::BlockStore::bounded(
+            Box::new(in_memory::Engine::new_bounded(
                 self.app.genesis.clone(),
                 self.app.genesis.first_block,
                 200,
-            );
-            let replica = in_memory::ReplicaStore::default();
-            Stores {
-                block: Box::new(block),
-                replica: Box::new(replica),
-            }
+            ))
         };
-        let (block_store, runner) = BlockStore::new(ctx, stores.block).await?;
+        let (engine_manager, runner) = EngineManager::new(ctx, engine).await?;
 
         let e = executor::Executor {
             config: executor::Config {
@@ -288,6 +274,7 @@ impl Configs {
                 server_addr: self.app.server_addr,
                 public_addr: self.app.public_addr.clone(),
                 node_key: self.app.node_key.clone(),
+                validator_key: self.app.validator_key.clone(),
                 gossip_dynamic_inbound_limit: self.app.gossip_dynamic_inbound_limit,
                 gossip_static_inbound: self.app.gossip_static_inbound.clone(),
                 gossip_static_outbound: self.app.gossip_static_outbound.clone(),
@@ -320,18 +307,7 @@ impl Configs {
                     .transpose()
                     .context("debug_page")?,
             },
-            block_store,
-            validator: self
-                .app
-                .validator_key
-                .as_ref()
-                .map(|key| executor::Validator {
-                    key: key.clone(),
-                    replica_store: stores.replica,
-                    payload_manager: Box::new(bft::testonly::RandomPayload(
-                        self.app.max_payload_size,
-                    )),
-                }),
+            engine_manager,
         };
         Ok((e, runner))
     }
