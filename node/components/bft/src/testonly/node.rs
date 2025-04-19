@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Context as _;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync, time};
-use zksync_consensus_engine::{testonly::in_memory, EngineManager};
+use zksync_consensus_engine::EngineManager;
 use zksync_consensus_network as network;
 
 use crate::{FromNetworkMessage, ToNetworkMessage};
@@ -18,15 +18,6 @@ pub(crate) enum Behavior {
     HonestNotProposing,
     /// A replica that is always offline and does not produce any messages.
     Offline,
-}
-
-impl Behavior {
-    pub(crate) fn payload_manager(&self) -> in_memory::PayloadManager {
-        match self {
-            Self::HonestNotProposing => in_memory::PayloadManager::Pending,
-            _ => in_memory::PayloadManager::Random(MAX_PAYLOAD_SIZE),
-        }
-    }
 }
 
 /// Struct representing a node.
