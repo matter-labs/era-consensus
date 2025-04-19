@@ -1,13 +1,13 @@
 use rand::{distributions::Distribution, Rng};
 use tempfile::TempDir;
 use zksync_concurrency::{ctx, sync};
+use zksync_consensus_engine::{testonly, EngineInterface};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::validator::testonly::Setup;
-use zksync_consensus_storage::{testonly, PersistentBlockStore};
 use zksync_consensus_utils::EncodeDist;
 use zksync_protobuf::testonly::{test_encode_all_formats, FmtConv};
 
-use crate::{config, store};
+use crate::{config, engine};
 
 impl Distribution<config::App> for EncodeDist {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> config::App {
@@ -77,7 +77,7 @@ async fn test_reopen_rocksdb() {
         if b.number() < setup.genesis.first_block {
             continue;
         }
-        let store = store::RocksDB::open(setup.genesis.clone(), dir.path())
+        let store = engine::RocksDB::open(setup.genesis.clone(), dir.path())
             .await
             .unwrap();
         store.queue_next_block(ctx, b.clone()).await.unwrap();
