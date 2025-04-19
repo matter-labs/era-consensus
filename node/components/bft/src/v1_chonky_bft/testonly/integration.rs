@@ -252,7 +252,7 @@ async fn run_nodes_twins(
         // those addresses are in the same partition as the sender.
         let mut validator_ports: HashMap<_, Vec<Port>> = HashMap::new();
         // Outbox of consensus instances, paired with their network identity,
-        // so we can tell which partition they are in in the given view.
+        // so we can tell which partition they are in the given view.
         let mut recvs = vec![];
         // Inbox of the consensus instances, indexed by their network identity,
         // so that we can send to the one which is in the same partition as the sender.

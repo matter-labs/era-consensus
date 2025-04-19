@@ -1,16 +1,41 @@
 # zkSync Era Consensus Layer
 
-This repo implements the consensus algorithm for the era blockchain. We implement all the necessary components for a set of sequencers to reach consensus over blocks (which right now are represented just as binary blobs). In the future, this codebase will also be capable of running full nodes and, after we integrate with the rest of the server, of reaching consensus over real blocks.
+This repo implements the consensus layer for ZK Stack chains. We implement all the necessary components for a set of sequencers to reach consensus over blocks. The zkSync Era Consensus Layer is designed to be used as a library, providing consensus and networking services to an execution layer.
 
-## Knowledge Index
+## Prerequisites
 
-The following questions will be answered by the following resources:
+In order for the project to run performantly (both as an application and a library), we need to disable TCP slow start on the machine operating system. This can be done in Linux with the following command:
 
-| Question                                                | Resource                                |
-| ------------------------------------------------------- | --------------------------------------- |
-| What is the logical project structure and architecture? | [architecture.md](docs/architecture.md) |
-| How can I run the project?                              | [launch.md](docs/launch.md)             |
-| What is the style guide to contribute to this repo?     | [style.md](docs/style.md)               |
+```
+sysctl -w net.ipv4.tcp_slow_start_after_idle=0
+```
+
+## Architecture
+
+This section provides a physical map of folders & files in this repository.
+
+- `/infrastructure`: Infrastructure scripts that are needed to test the zkSync Era Consensus Layer.
+
+- `/node`
+
+  - `/components`: Crates that implement specific components. Each of them maintains its own separate state and communicate with each other through message passing.
+
+    - `/bft`: Implements the logic for the consensus algorithm.
+    - `/executor`: Responsible for parsing the configuration parameters given by the user, and initializing the components and the interface with the execution layer. It's basically the bootloader for the node.
+    - `/network`: Handles communication with other nodes and maintains a pool of outbound and inbound connections. It also implements a syncing mechanism (for blocks, etc).
+
+  - `/lib`: All the library crates used as dependencies of the component crates above.
+
+    - `/concurrency`: Crate with essential primitives for structured concurrency.
+    - `/crypto`: Cryptographic primitives used by the other crates.
+    - `/storage`: Provides an interface to the execution layer.
+    - `/protobuf`: Code generated from protobuf schema files and utilities for serialization used by the other crates.
+    - `/protobuf_build`: Generates rust code from the proto files.
+    - `/roles`: Implements the types necessary for each role in the network. We have just two roles: `Node` and `Validator`.
+    - `/utils`: Collection of small utilities and primitives.
+
+  - `/tools`: Utility binaries needed to work with and test the node.
+
 
 ## Policies
 
