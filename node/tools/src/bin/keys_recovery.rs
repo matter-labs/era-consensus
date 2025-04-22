@@ -40,5 +40,6 @@ fn main() {
         let secret_key =
             validator::SecretKey::decode(text).expect("Failed to decode the secret key");
         println!("{}", secret_key.public().encode());
+        println!("{}", secret_key.sign_pop().encode());
     }
 }

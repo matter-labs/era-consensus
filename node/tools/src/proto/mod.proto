@@ -70,8 +70,8 @@ message DebugPageConfig {
 
 // Application configuration. 
 message AppConfig {
-  reserved 9,13,14,15,17;
-  reserved "debug_addr", "debug_credentials", "debug_cert_path", "debug_key_path", "max_batch_size";
+  reserved 9,13,14,15,16,17;
+  reserved "debug_addr", "debug_credentials", "debug_cert_path", "debug_key_path", "max_batch_size", "attester_secret_key";
 
   // Ports
 
@@ -104,9 +104,6 @@ message AppConfig {
 
   // Validator secret key.
   optional string validator_secret_key = 10; // optional; ValidatorSecretKey
-
-   // Attester secret key.
-  optional string attester_secret_key = 16; // optional; AttesterSecretKey
 
   // Gossip network
   

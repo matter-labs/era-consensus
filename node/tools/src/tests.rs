@@ -21,7 +21,6 @@ impl Distribution<config::App> for EncodeDist {
             max_payload_size: rng.gen(),
             view_timeout: self.sample(rng),
             validator_key: self.sample_opt(|| rng.gen()),
-            attester_key: self.sample_opt(|| rng.gen()),
 
             node_key: rng.gen(),
             gossip_dynamic_inbound_limit: rng.gen(),

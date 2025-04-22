@@ -1,6 +1,0 @@
-syntax = "proto3";
-
-package zksync.roles.attester;
-
-import public "zksync/roles/attester/keys.proto";
-import public "zksync/roles/attester/messages.proto";

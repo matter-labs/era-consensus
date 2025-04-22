@@ -11,16 +11,16 @@ use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx,
     error::Wrap as _,
-    limiter, net, scope, sync,
+    net, scope, sync,
     testonly::{abort_on_panic, set_timeout},
     time,
 };
-use zksync_consensus_roles::{attester, validator};
+use zksync_consensus_roles::validator;
 use zksync_consensus_storage::testonly::TestMemoryStorage;
 
 use super::ValidatorAddrs;
 use crate::{
-    gossip::{attestation, handshake, validator_addrs::ValidatorAddrsWatch},
+    gossip::{handshake, validator_addrs::ValidatorAddrsWatch},
     metrics, preface, rpc, testonly,
 };
 
@@ -471,112 +471,4 @@ async fn rate_limiting() {
             .load(Ordering::SeqCst);
         assert!((1..=2).contains(&got), "got {got} want 1 or 2");
     }
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_batch_votes_propagation() {
-    abort_on_panic();
-    let _guard = set_timeout(time::Duration::seconds(10));
-    let ctx = &ctx::test_root(&ctx::AffineClock::new(10.));
-    let rng = &mut ctx.rng();
-
-    let setup = validator::testonly::Setup::new(rng, 10);
-    let cfgs = testonly::new_configs(rng, &setup, 2);
-
-    // Fixed attestation schedule.
-    let first: attester::BatchNumber = rng.gen();
-    let schedule: Vec<_> = (0..10)
-        .map(|r| {
-            Arc::new(attestation::Info {
-                batch_to_attest: attester::Batch {
-                    genesis: setup.genesis.hash(),
-                    number: first + r,
-                    hash: rng.gen(),
-                },
-                committee: {
-                    // We select a random subset here. It would be incorrect to choose an empty subset, but
-                    // the chances of that are negligible.
-                    let subset: Vec<_> = setup.attester_keys.iter().filter(|_| rng.gen()).collect();
-                    attester::Committee::new(subset.iter().map(|k| attester::WeightedAttester {
-                        key: k.public(),
-                        weight: rng.gen_range(5..10),
-                    }))
-                    .unwrap()
-                    .into()
-                },
-            })
-        })
-        .collect();
-
-    // Round of the schedule that nodes should collect the votes for.
-    let round = sync::watch::channel(0).0;
-
-    scope::run!(ctx, |ctx, s| async {
-        // All nodes share the same store - store is not used in this test anyway.
-        let store = TestMemoryStorage::new(ctx, &setup).await;
-        s.spawn_bg(store.runner.run(ctx));
-
-        // Start all nodes.
-        for (i, mut cfg) in cfgs.into_iter().enumerate() {
-            cfg.rpc.push_batch_votes_rate = limiter::Rate::INF;
-            cfg.validator_key = None;
-            let (con_send, con_recv) = sync::prunable_mpsc::unpruned_channel();
-            let (node, runner) = testonly::Instance::new_from_config(
-                testonly::InstanceConfig {
-                    cfg: cfg.clone(),
-                    block_store: store.blocks.clone(),
-                    attestation: attestation::Controller::new(Some(setup.attester_keys[i].clone()))
-                        .into(),
-                },
-                con_send,
-                con_recv,
-            );
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
-            // Task going through the schedule, waiting for ANY node to collect the certificate
-            // to advance to the next round of the schedule.
-            // Test succeeds if all tasks successfully iterate through the whole schedule.
-            s.spawn(
-                async {
-                    let node = node;
-                    let sub = &mut round.subscribe();
-                    sub.mark_changed();
-                    loop {
-                        let r = ctx::NoCopy(*sync::changed(ctx, sub).await?);
-                        tracing::info!("starting round {}", *r);
-                        let Some(cfg) = schedule.get(*r) else {
-                            return Ok(());
-                        };
-                        let attestation = node.net.gossip.attestation.clone();
-                        attestation.start_attestation(cfg.clone()).await.unwrap();
-                        // Wait for the certificate in the background.
-                        s.spawn_bg(async {
-                            let r = r;
-                            let attestation = attestation;
-                            let Ok(Some(qc)) = attestation
-                                .wait_for_cert(ctx, cfg.batch_to_attest.number)
-                                .await
-                            else {
-                                return Ok(());
-                            };
-                            assert_eq!(qc.message, cfg.batch_to_attest);
-                            qc.verify(setup.genesis.hash(), &cfg.committee).unwrap();
-                            tracing::info!("got cert for {}", *r);
-                            round.send_if_modified(|round| {
-                                if *round != *r {
-                                    return false;
-                                }
-                                *round = *r + 1;
-                                true
-                            });
-                            Ok(())
-                        });
-                    }
-                }
-                .instrument(tracing::info_span!("attester", i)),
-            );
-        }
-        Ok(())
-    })
-    .await
-    .unwrap();
 }

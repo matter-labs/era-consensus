@@ -24,7 +24,6 @@ use zksync_consensus_storage::BlockStore;
 
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
 
-pub mod attestation;
 mod fetch;
 mod handshake;
 pub mod loadtest;
@@ -66,10 +65,6 @@ pub(crate) struct Network {
     pub(crate) fetch_queue: fetch::Queue,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
-    /// Attestation controller, maintaining a set of batch votes.
-    /// Gossip network exchanges the votes with peers.
-    /// The batch for which the votes are collected is configured externally.
-    pub(crate) attestation: Arc<attestation::Controller>,
 }
 
 impl Network {
@@ -78,7 +73,6 @@ impl Network {
         cfg: Config,
         block_store: Arc<BlockStore>,
         consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
-        attestation: Arc<attestation::Controller>,
     ) -> Arc<Self> {
         Arc::new(Self {
             consensus_sender,
@@ -92,7 +86,6 @@ impl Network {
             fetch_queue: fetch::Queue::default(),
             block_store,
             push_validator_addrs_calls: 0.into(),
-            attestation,
         })
     }
 

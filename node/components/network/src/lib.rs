@@ -2,7 +2,6 @@
 use std::sync::Arc;
 
 use anyhow::Context as _;
-use gossip::attestation;
 use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx::{self, channel},
@@ -56,9 +55,8 @@ impl Network {
         block_store: Arc<BlockStore>,
         consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
         consensus_receiver: channel::UnboundedReceiver<io::ConsensusInputMessage>,
-        attestation: Arc<attestation::Controller>,
     ) -> (Arc<Self>, Runner) {
-        let gossip = gossip::Network::new(cfg, block_store, consensus_sender, attestation);
+        let gossip = gossip::Network::new(cfg, block_store, consensus_sender);
         let consensus = consensus::Network::new(gossip.clone());
         let net = Arc::new(Self { gossip, consensus });
         (
@@ -73,7 +71,6 @@ impl Network {
     /// Registers metrics for this state.
     pub fn register_metrics(self: &Arc<Self>) {
         metrics::NetworkGauges::register(Arc::downgrade(self));
-        self.gossip.attestation.register_metrics();
     }
 
     /// Handles a dispatcher message.

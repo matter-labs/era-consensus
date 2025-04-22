@@ -29,12 +29,6 @@ fn config(cfg: &network::Config) -> Config {
     }
 }
 
-/// The test executors below are not running with attesters, so we just create an [AttestationStatusWatch]
-/// that will never be updated.
-fn never_attest() -> Arc<attestation::Controller> {
-    attestation::Controller::new(None).into()
-}
-
 fn validator(
     cfg: &network::Config,
     block_store: Arc<BlockStore>,
@@ -48,7 +42,6 @@ fn validator(
             replica_store: Box::new(replica_store),
             payload_manager: Box::new(bft::testonly::RandomPayload(1000)),
         }),
-        attestation: never_attest(),
     }
 }
 
@@ -57,7 +50,6 @@ fn fullnode(cfg: &network::Config, block_store: Arc<BlockStore>) -> Executor {
         config: config(cfg),
         block_store,
         validator: None,
-        attestation: never_attest(),
     }
 }
 
