@@ -8,11 +8,11 @@ use zksync_concurrency::{
     testonly::{abort_on_panic, set_timeout},
     time,
 };
-use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{
-    testonly::{dump, in_memory, TestMemoryStorage},
-    BlockStore,
+use zksync_consensus_engine::{
+    testonly::{dump, in_memory, TestEngine},
+    EngineManager,
 };
+use zksync_consensus_roles::validator;
 
 use crate::testonly;
 
@@ -41,9 +41,9 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let store = TestMemoryStorage::new(ctx, &setup).await;
-            s.spawn_bg(store.runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks);
+            let engine = TestEngine::new(ctx, &setup).await;
+            s.spawn_bg(engine.runner.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, engine.manager);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -53,14 +53,14 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
                 .unwrap()
                 .net
                 .gossip
-                .block_store
+                .engine_manager
                 .queue_block(ctx, block.clone())
                 .await
                 .context("queue_block()")?;
             for node in &nodes {
                 node.net
                     .gossip
-                    .block_store
+                    .engine_manager
                     .wait_until_persisted(ctx, block.number())
                     .await
                     .unwrap();
@@ -99,9 +99,9 @@ async fn uncoordinated_block_syncing(
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let store = TestMemoryStorage::new(ctx, &setup).await;
-            s.spawn_bg(store.runner.clone().run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks);
+            let engine = TestEngine::new(ctx, &setup).await;
+            s.spawn_bg(engine.runner.clone().run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, engine.manager);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -111,7 +111,7 @@ async fn uncoordinated_block_syncing(
                 .unwrap()
                 .net
                 .gossip
-                .block_store
+                .engine_manager
                 .queue_block(ctx, block.clone())
                 .await
                 .context("queue_block()")?;
@@ -121,7 +121,7 @@ async fn uncoordinated_block_syncing(
         for node in &nodes {
             node.net
                 .gossip
-                .block_store
+                .engine_manager
                 .wait_until_persisted(ctx, last)
                 .await
                 .unwrap();
@@ -154,9 +154,9 @@ async fn test_switching_on_nodes() {
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let store = TestMemoryStorage::new(ctx, &setup).await;
-            s.spawn_bg(store.runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks);
+            let engine = TestEngine::new(ctx, &setup).await;
+            s.spawn_bg(engine.runner.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, engine.manager);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
 
@@ -166,7 +166,7 @@ async fn test_switching_on_nodes() {
                 .unwrap()
                 .net
                 .gossip
-                .block_store
+                .engine_manager
                 .queue_block(ctx, setup.blocks[i].clone())
                 .await
                 .context("queue_block()")?;
@@ -175,7 +175,7 @@ async fn test_switching_on_nodes() {
             for node in &nodes {
                 node.net
                     .gossip
-                    .block_store
+                    .engine_manager
                     .wait_until_persisted(ctx, setup.blocks[i].number())
                     .await
                     .unwrap();
@@ -209,9 +209,9 @@ async fn test_switching_off_nodes() {
             cfg.rpc.get_block_rate = limiter::Rate::INF;
             cfg.rpc.get_block_timeout = None;
             cfg.validator_key = None;
-            let store = TestMemoryStorage::new(ctx, &setup).await;
-            s.spawn_bg(store.runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks);
+            let engine = TestEngine::new(ctx, &setup).await;
+            s.spawn_bg(engine.runner.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, engine.manager);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -224,7 +224,7 @@ async fn test_switching_off_nodes() {
                 .unwrap()
                 .net
                 .gossip
-                .block_store
+                .engine_manager
                 .queue_block(ctx, setup.blocks[i].clone())
                 .await
                 .context("queue_block()")?;
@@ -233,7 +233,7 @@ async fn test_switching_off_nodes() {
             for node in &nodes[i..] {
                 node.net
                     .gossip
-                    .block_store
+                    .engine_manager
                     .wait_until_persisted(ctx, setup.blocks[i].number())
                     .await
                     .unwrap();
@@ -272,9 +272,9 @@ async fn test_different_first_block() {
             cfg.validator_key = None;
             // Choose the first block for the node at random.
             let first = setup.blocks.choose(rng).unwrap().number();
-            let store = TestMemoryStorage::new_store_with_first_block(ctx, &setup, first).await;
-            s.spawn_bg(store.runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, store.blocks);
+            let engine = TestEngine::new_with_first_block(ctx, &setup, first).await;
+            s.spawn_bg(engine.runner.run(ctx));
+            let (node, runner) = testonly::Instance::new(cfg, engine.manager);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
@@ -284,13 +284,13 @@ async fn test_different_first_block() {
             // Find nodes interested in the next block.
             let interested_nodes: Vec<_> = nodes
                 .iter()
-                .filter(|n| n.net.gossip.block_store.queued().first <= block.number())
+                .filter(|n| n.net.gossip.engine_manager.queued().first <= block.number())
                 .collect();
             // Store this block to one of them.
             if let Some(node) = interested_nodes.choose(rng) {
                 node.net
                     .gossip
-                    .block_store
+                    .engine_manager
                     .queue_block(ctx, block.clone())
                     .await
                     .unwrap();
@@ -299,7 +299,7 @@ async fn test_different_first_block() {
             for node in interested_nodes {
                 node.net
                     .gossip
-                    .block_store
+                    .engine_manager
                     .wait_until_persisted(ctx, block.number())
                     .await
                     .unwrap();
@@ -326,7 +326,7 @@ async fn test_sidechannel_sync() {
     setup.push_blocks_v1(rng, 10);
     let cfgs = testonly::new_configs(rng, &setup, 1);
     scope::run!(ctx, |ctx, s| async {
-        let mut stores = vec![];
+        let mut engines = vec![];
         let mut nodes = vec![];
         for (i, mut cfg) in cfgs.into_iter().enumerate() {
             cfg.rpc.push_block_store_state_rate = limiter::Rate::INF;
@@ -335,18 +335,18 @@ async fn test_sidechannel_sync() {
             cfg.validator_key = None;
 
             // Build a custom persistent store, so that we can tweak it later.
-            let persistent = in_memory::BlockStore::new(&setup, setup.genesis.first_block);
-            stores.push(persistent.clone());
-            let (block_store, runner) = BlockStore::new(ctx, Box::new(persistent)).await?;
+            let engine = in_memory::Engine::new_random(&setup, setup.genesis.first_block);
+            engines.push(engine.clone());
+            let (manager, runner) = EngineManager::new(ctx, Box::new(engine)).await?;
             s.spawn_bg(runner.run(ctx));
-            let (node, runner) = testonly::Instance::new(cfg, block_store);
+            let (node, runner) = testonly::Instance::new(cfg, manager);
             s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
             nodes.push(node);
         }
 
         {
             // Truncate at the start.
-            stores[1].truncate(setup.blocks[3].number());
+            engines[1].truncate(setup.blocks[3].number());
 
             // Sync a block prefix.
             let prefix = &setup.blocks[0..5];
@@ -354,24 +354,24 @@ async fn test_sidechannel_sync() {
                 nodes[0]
                     .net
                     .gossip
-                    .block_store
+                    .engine_manager
                     .queue_block(ctx, b.clone())
                     .await?;
             }
             nodes[1]
                 .net
                 .gossip
-                .block_store
+                .engine_manager
                 .wait_until_persisted(ctx, prefix.last().unwrap().number())
                 .await?;
 
             // Check that the expected block range is actually stored.
-            assert_eq!(setup.blocks[3..5], dump(ctx, &stores[1]).await);
+            assert_eq!(setup.blocks[3..5], dump(ctx, &engines[1]).await);
         }
 
         {
             // Truncate more than prefix.
-            stores[1].truncate(setup.blocks[8].number());
+            engines[1].truncate(setup.blocks[8].number());
 
             // Sync a block suffix.
             let suffix = &setup.blocks[5..];
@@ -379,19 +379,19 @@ async fn test_sidechannel_sync() {
                 nodes[0]
                     .net
                     .gossip
-                    .block_store
+                    .engine_manager
                     .queue_block(ctx, b.clone())
                     .await?;
             }
             nodes[1]
                 .net
                 .gossip
-                .block_store
+                .engine_manager
                 .wait_until_persisted(ctx, suffix.last().unwrap().number())
                 .await?;
 
             // Check that the expected block range is actually stored.
-            assert_eq!(setup.blocks[8..], dump(ctx, &stores[1]).await);
+            assert_eq!(setup.blocks[8..], dump(ctx, &engines[1]).await);
         }
         Ok(())
     })

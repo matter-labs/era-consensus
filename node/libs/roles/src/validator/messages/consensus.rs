@@ -1,4 +1,3 @@
-//! Messages related to the consensus protocol.
 use std::fmt;
 
 use anyhow::Context as _;

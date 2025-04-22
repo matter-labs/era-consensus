@@ -8,24 +8,13 @@ use anyhow::Context as _;
 pub use network::RpcConfig;
 use zksync_concurrency::{ctx, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
+use zksync_consensus_engine::EngineManager;
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::{BlockStore, ReplicaStore};
 use zksync_protobuf::kB;
 
 #[cfg(test)]
 mod tests;
-
-/// Validator-related part of [`Executor`].
-#[derive(Debug)]
-pub struct Validator {
-    /// Consensus network configuration.
-    pub key: validator::SecretKey,
-    /// Store for replica state.
-    pub replica_store: Box<dyn ReplicaStore>,
-    /// Payload manager.
-    pub payload_manager: Box<dyn bft::PayloadManager>,
-}
 
 /// Config of the node executor.
 #[derive(Debug)]
@@ -38,13 +27,11 @@ pub struct Config {
     /// Public TCP address that other nodes are expected to connect to.
     /// It is announced over gossip network.
     pub public_addr: net::Host,
+
     /// Maximal size of the block payload.
     pub max_payload_size: usize,
     /// The duration of the view timeout, in milliseconds.
     pub view_timeout: time::Duration,
-    /// Key of this node. It uniquely identifies the node.
-    /// It should match the secret key provided in the `node_key` file.
-    pub node_key: node::SecretKey,
     /// Limit on the number of inbound connections outside
     /// of the `static_inbound` set.
     pub gossip_dynamic_inbound_limit: usize,
@@ -56,6 +43,13 @@ pub struct Config {
     /// RPC rate limits config.
     /// Use `RpcConfig::default()` for defaults.
     pub rpc: RpcConfig,
+
+    /// Node's secret key. It uniquely identifies the node in the gossip network.
+    /// It should match the secret key provided in the `node_key` file.
+    pub node_key: node::SecretKey,
+    /// Validator's secret key. It uniquely identifies the validator in the validator network.
+    /// If it is not provided, the node will not participate in consensus.
+    pub validator_key: Option<validator::SecretKey>,
 
     /// Http debug page configuration.
     /// If None, debug page is disabled
@@ -79,10 +73,8 @@ impl Config {
 pub struct Executor {
     /// General-purpose executor configuration.
     pub config: Config,
-    /// Block storage used by the node.
-    pub block_store: Arc<BlockStore>,
-    /// Validator-specific node data.
-    pub validator: Option<Validator>,
+    /// Engine manager. It is responsible for block storage and execution.
+    pub engine_manager: Arc<EngineManager>,
 }
 
 impl Executor {
@@ -93,7 +85,7 @@ impl Executor {
             server_addr: net::tcp::ListenerAddr::new(self.config.server_addr),
             public_addr: self.config.public_addr.clone(),
             gossip: self.config.gossip(),
-            validator_key: self.validator.as_ref().map(|v| v.key.clone()),
+            validator_key: self.config.validator_key.clone(),
             ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
             max_block_queue_size: 20,
@@ -117,7 +109,7 @@ impl Executor {
         scope::run!(ctx, |ctx, s| async {
             let (net, runner) = network::Network::new(
                 network_config,
-                self.block_store.clone(),
+                self.engine_manager.clone(),
                 consensus_send,
                 network_recv,
             );
@@ -134,15 +126,15 @@ impl Executor {
             }
 
             // Run the bft component iff this node is an active validator.
-            let Some(validator) = self.validator else {
+            let Some(validator_key) = self.config.validator_key else {
                 tracing::info!("Running the node in non-validator mode.");
                 return Ok(());
             };
             if !self
-                .block_store
+                .engine_manager
                 .genesis()
                 .validators
-                .contains(&validator.key.public())
+                .contains(&validator_key.public())
             {
                 tracing::warn!(
                     "This node is an inactive validator. It will NOT vote in consensus."
@@ -150,10 +142,8 @@ impl Executor {
                 return Ok(());
             }
             bft::Config {
-                secret_key: validator.key.clone(),
-                block_store: self.block_store.clone(),
-                replica_store: validator.replica_store,
-                payload_manager: validator.payload_manager,
+                secret_key: validator_key.clone(),
+                engine_manager: self.engine_manager.clone(),
                 max_payload_size: self.config.max_payload_size,
                 view_timeout: self.config.view_timeout,
             }

@@ -6,18 +6,17 @@ use zksync_concurrency::{
     sync::{self, prunable_mpsc},
     time,
 };
-use zksync_consensus_roles::validator;
-use zksync_consensus_storage::{
-    testonly::{in_memory, TestMemoryStorage},
-    BlockStoreRunner,
+use zksync_consensus_engine::{
+    testonly::{in_memory, TestEngine},
+    EngineManagerRunner,
 };
+use zksync_consensus_roles::validator;
 use zksync_consensus_utils::enum_util::Variant;
 
 use crate::{
     create_input_channel,
-    testonly::RandomPayload,
     v2_chonky_bft::{self, commit, new_view, proposal, timeout, StateMachine},
-    Config, FromNetworkMessage, PayloadManager, ToNetworkMessage,
+    Config, FromNetworkMessage, ToNetworkMessage,
 };
 
 pub(crate) const MAX_PAYLOAD_SIZE: usize = 1000;
@@ -42,17 +41,17 @@ impl UnitTestHarness {
     pub(crate) async fn new(
         ctx: &ctx::Ctx,
         num_validators: usize,
-    ) -> (UnitTestHarness, BlockStoreRunner) {
+    ) -> (UnitTestHarness, EngineManagerRunner) {
         Self::new_with_payload_manager(
             ctx,
             num_validators,
-            Box::new(RandomPayload(MAX_PAYLOAD_SIZE)),
+            in_memory::PayloadManager::Random(MAX_PAYLOAD_SIZE),
         )
         .await
     }
 
     /// Creates a new `UnitTestHarness` with minimally-significant validator set size.
-    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UnitTestHarness, BlockStoreRunner) {
+    pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UnitTestHarness, EngineManagerRunner) {
         let num_validators = 6;
         let (util, runner) = UnitTestHarness::new(ctx, num_validators).await;
         assert!(util.genesis().validators.max_faulty_weight() > 0);
@@ -62,20 +61,18 @@ impl UnitTestHarness {
     pub(crate) async fn new_with_payload_manager(
         ctx: &ctx::Ctx,
         num_validators: usize,
-        payload_manager: Box<dyn PayloadManager>,
-    ) -> (UnitTestHarness, BlockStoreRunner) {
+        payload_manager: in_memory::PayloadManager,
+    ) -> (UnitTestHarness, EngineManagerRunner) {
         let rng = &mut ctx.rng();
         let setup = validator::testonly::Setup::new(rng, num_validators);
-        let store = TestMemoryStorage::new(ctx, &setup).await;
+        let engine = TestEngine::new_with_payload_manager(ctx, &setup, payload_manager).await;
         let (output_channel_send, output_channel_recv) = ctx::channel::unbounded();
         let (input_channel_send, input_channel_recv) = create_input_channel();
         let (proposer_sender, proposer_receiver) = sync::watch::channel(None);
 
         let cfg = Arc::new(Config {
             secret_key: setup.validator_keys[0].clone(),
-            block_store: store.blocks.clone(),
-            replica_store: Box::new(in_memory::ReplicaStore::default()),
-            payload_manager,
+            engine_manager: engine.manager,
             max_payload_size: MAX_PAYLOAD_SIZE,
             view_timeout: time::Duration::milliseconds(2000),
         });
@@ -99,7 +96,7 @@ impl UnitTestHarness {
         let timeout = this.new_replica_timeout(ctx).await;
         this.process_replica_timeout_all(ctx, timeout).await;
 
-        (this, store.runner)
+        (this, engine.runner)
     }
 
     pub(crate) fn owner_key(&self) -> &validator::SecretKey {

@@ -19,8 +19,8 @@ use fetch::RequestItem;
 use tracing::Instrument;
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, scope, sync};
+use zksync_consensus_engine::EngineManager;
 use zksync_consensus_roles::{node, validator};
-use zksync_consensus_storage::BlockStore;
 
 use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
 
@@ -55,8 +55,8 @@ pub(crate) struct Network {
     pub(crate) outbound: PoolWatch<node::PublicKey, Arc<Connection>>,
     /// Current state of knowledge about validators' endpoints.
     pub(crate) validator_addrs: ValidatorAddrsWatch,
-    /// Block store to serve `get_block` requests from.
-    pub(crate) block_store: Arc<BlockStore>,
+    /// Engine manager to serve `get_block` requests from.
+    pub(crate) engine_manager: Arc<EngineManager>,
     /// Sender of the channel to the consensus component.
     pub(crate) consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
     /// Queue of block fetching requests.
@@ -71,7 +71,7 @@ impl Network {
     /// Constructs a new State.
     pub(crate) fn new(
         cfg: Config,
-        block_store: Arc<BlockStore>,
+        engine_manager: Arc<EngineManager>,
         consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
     ) -> Arc<Self> {
         Arc::new(Self {
@@ -84,21 +84,21 @@ impl Network {
             validator_addrs: ValidatorAddrsWatch::default(),
             cfg,
             fetch_queue: fetch::Queue::default(),
-            block_store,
+            engine_manager,
             push_validator_addrs_calls: 0.into(),
         })
     }
 
     /// Genesis.
     pub(crate) fn genesis(&self) -> &validator::Genesis {
-        self.block_store.genesis()
+        self.engine_manager.genesis()
     }
 
     /// Task fetching blocks from peers which are not present in storage.
     pub(crate) async fn run_block_fetcher(&self, ctx: &ctx::Ctx) {
         let sem = sync::Semaphore::new(self.cfg.max_block_queue_size);
         let _: ctx::OrCanceled<()> = scope::run!(ctx, |ctx, s| async {
-            let mut next = self.block_store.queued().next();
+            let mut next = self.engine_manager.queued().next();
             loop {
                 let permit = sync::acquire(ctx, &sem).await?;
                 let number = ctx::NoCopy(next);
@@ -115,14 +115,14 @@ impl Network {
                                     .instrument(tracing::info_span!("fetch_block_request")),
                             );
                             // Cancel fetching as soon as block is queued for storage.
-                            self.block_store.wait_until_queued(ctx, number).await?;
+                            self.engine_manager.wait_until_queued(ctx, number).await?;
                             Err(ctx::Canceled)
                         })
                         .instrument(tracing::info_span!("wait_for_block_to_queue"))
                         .await;
                         // Wait until the block is actually persisted, so that the amount of blocks
                         // stored in memory is bounded.
-                        self.block_store.wait_until_persisted(ctx, number).await
+                        self.engine_manager.wait_until_persisted(ctx, number).await
                     }
                     .instrument(tracing::info_span!("fetch_block_from_peer", l2_block = %next)),
                 );

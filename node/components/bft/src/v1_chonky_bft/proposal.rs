@@ -125,7 +125,7 @@ impl StateMachine {
         // (because it won't be able to persist and broadcast them once finalized).
         // TODO(gprusak): it should never happen, we should add safety checks to prevent
         // pruning blocks not known to be finalized.
-        if implied_block_number < self.config.block_store.queued().first {
+        if implied_block_number < self.config.engine_manager.queued().first {
             return Err(Error::ProposalAlreadyPruned);
         }
 
@@ -178,7 +178,7 @@ impl StateMachine {
                         prev.0
                     );
                     self.config
-                        .block_store
+                        .engine_manager
                         .wait_until_persisted(&ctx.with_deadline(self.view_timeout), prev)
                         .await
                         .map_err(|_| Error::MissingPreviousPayload { prev_number: prev })?;
@@ -191,8 +191,8 @@ impl StateMachine {
                 );
                 if let Err(err) = self
                     .config
-                    .payload_manager
-                    .verify(ctx, implied_block_number, payload)
+                    .engine_manager
+                    .verify_payload(ctx, implied_block_number, payload)
                     .await
                 {
                     return Err(match err {

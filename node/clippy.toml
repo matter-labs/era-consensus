@@ -1,2 +1,1 @@
-enum-variant-size-threshold = 500
-missing-docs-in-crate-items = true
+enum-variant-size-threshold = 1000
