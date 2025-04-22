@@ -15,27 +15,23 @@ sysctl -w net.ipv4.tcp_slow_start_after_idle=0
 This section provides a physical map of folders & files in this repository.
 
 - `/infrastructure`: Infrastructure scripts that are needed to test the zkSync Era Consensus Layer.
-
 - `/node`
-
   - `/components`: Crates that implement specific components. Each of them maintains its own separate state and communicate with each other through message passing.
-
     - `/bft`: Implements the logic for the consensus algorithm.
     - `/executor`: Responsible for parsing the configuration parameters given by the user, and initializing the components and the interface with the execution layer. It's basically the bootloader for the node.
     - `/network`: Handles communication with other nodes and maintains a pool of outbound and inbound connections. It also implements a syncing mechanism (for blocks, etc).
-
   - `/lib`: All the library crates used as dependencies of the component crates above.
-
     - `/concurrency`: Crate with essential primitives for structured concurrency.
     - `/crypto`: Cryptographic primitives used by the other crates.
-    - `/storage`: Provides an interface to the execution layer.
+    - `/engine`: Provides an interface to the execution layer.
     - `/protobuf`: Code generated from protobuf schema files and utilities for serialization used by the other crates.
     - `/protobuf_build`: Generates rust code from the proto files.
     - `/roles`: Implements the types necessary for each role in the network. We have just two roles: `Node` and `Validator`.
     - `/utils`: Collection of small utilities and primitives.
-
   - `/tools`: Utility binaries needed to work with and test the node.
-
+- `/spec`: Contains the specifications for the consensus algorithm.
+  - `/informal-spec`: The pseudo-code specification that was used as the basis for the implementation.
+  - `/protocol-spec`: The Quint specification that was used to formally verify the protocol.
 
 ## Policies
 
