@@ -1,4 +1,5 @@
 mod block;
+mod committee;
 mod consensus;
 mod leader_proposal;
 mod replica_commit;
@@ -10,6 +11,7 @@ mod testonly;
 mod tests;
 
 pub use block::*;
+pub use committee::*;
 pub use consensus::*;
 pub use leader_proposal::*;
 pub use replica_commit::*;

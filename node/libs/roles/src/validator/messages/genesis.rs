@@ -4,8 +4,8 @@ use anyhow::Context as _;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
-use super::{v1, BlockNumber, Committee, ViewNumber, WeightedValidator};
-use crate::{proto::validator as proto, validator};
+use super::{v1, BlockNumber};
+use crate::proto::validator as proto;
 
 /// Genesis of the blockchain, unique for each blockchain instance.
 #[derive(Debug, Clone, PartialEq)]
@@ -19,9 +19,9 @@ pub struct GenesisRaw {
     pub protocol_version: ProtocolVersion,
     /// First block of a fork.
     pub first_block: BlockNumber,
-    /// Set of validators of the chain.
-    pub validators: Committee,
-    /// The mode used for selecting leader for a given view.
+    /// Set of validators of the chain. Only valid for protocol version 1.
+    pub validators: v1::Committee,
+    /// The mode used for selecting leader for a given view. Only valid for protocol version 1.
     pub leader_selection: v1::LeaderSelectionMode,
 }
 
@@ -40,7 +40,7 @@ impl ProtoFmt for GenesisRaw {
             .validators_v1
             .iter()
             .enumerate()
-            .map(|(i, v)| WeightedValidator::read(v).context(i))
+            .map(|(i, v)| v1::WeightedValidator::read(v).context(i))
             .collect::<Result<_, _>>()
             .context("validators_v1")?;
         Ok(GenesisRaw {
@@ -49,7 +49,7 @@ impl ProtoFmt for GenesisRaw {
             first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
 
             protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
-            validators: Committee::new(validators.into_iter()).context("validators_v1")?,
+            validators: v1::Committee::new(validators.into_iter()).context("validators_v1")?,
             leader_selection: read_required(&r.leader_selection).context("leader_selection")?,
         })
     }
@@ -126,12 +126,6 @@ impl Genesis {
         }
 
         Ok(())
-    }
-
-    /// Computes the leader for the given view.
-    pub fn view_leader(&self, view_number: u64) -> validator::PublicKey {
-        self.leader_selection
-            .view_leader(ViewNumber(view_number), &self.validators)
     }
 
     /// Hash of the genesis.

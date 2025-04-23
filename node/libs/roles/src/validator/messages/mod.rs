@@ -1,9 +1,9 @@
 mod block;
-mod committee;
 mod consensus;
 mod discovery;
 mod genesis;
 mod msg;
+mod schedule;
 mod state;
 mod testonly;
 #[cfg(test)]
@@ -14,9 +14,9 @@ pub mod v1;
 pub mod v2;
 
 pub use block::*;
-pub use committee::*;
 pub use consensus::*;
 pub use discovery::*;
 pub use genesis::*;
 pub use msg::*;
+pub use schedule::*;
 pub use state::*;

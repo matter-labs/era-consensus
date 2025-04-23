@@ -6,9 +6,10 @@ use num_bigint::BigUint;
 use zksync_consensus_crypto::keccak256::Keccak256;
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
+use super::Committee;
 use crate::{
     proto::validator as proto,
-    validator::{Committee, Genesis, GenesisHash, PublicKey, ViewNumber},
+    validator::{Genesis, GenesisHash, PublicKey, ViewNumber},
 };
 
 /// View specification.

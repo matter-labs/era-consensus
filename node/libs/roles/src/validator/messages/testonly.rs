@@ -6,9 +6,9 @@ use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
 
 use super::{
-    v1, Block, BlockNumber, ChainId, Committee, ConsensusMsg, ForkNumber, Genesis, GenesisHash,
-    GenesisRaw, Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock,
-    Proposal, ProtocolVersion, ReplicaState, Signed, ViewNumber, WeightedValidator,
+    v1, Block, BlockNumber, ChainId, ConsensusMsg, ForkNumber, Genesis, GenesisHash, GenesisRaw,
+    Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock, Proposal,
+    ProtocolVersion, ReplicaState, Signed, ViewNumber,
 };
 use crate::validator::SecretKey;
 
@@ -130,17 +130,6 @@ impl Distribution<Block> for Standard {
             0 => Block::PreGenesis(rng.gen()),
             _ => Block::FinalV1(rng.gen()),
         }
-    }
-}
-
-impl Distribution<Committee> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Committee {
-        let count = rng.gen_range(1..11);
-        let public_keys = (0..count).map(|_| WeightedValidator {
-            key: rng.gen(),
-            weight: 1,
-        });
-        Committee::new(public_keys).unwrap()
     }
 }
 

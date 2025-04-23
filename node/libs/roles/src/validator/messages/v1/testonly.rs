@@ -5,8 +5,9 @@ use rand::{
 };
 
 use super::{
-    BlockHeader, CommitQC, FinalBlock, LeaderProposal, LeaderSelectionMode, Phase,
+    BlockHeader, CommitQC, Committee, FinalBlock, LeaderProposal, LeaderSelectionMode, Phase,
     ProposalJustification, ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
+    WeightedValidator,
 };
 use crate::validator::{testonly::Setup, Block, Payload, ViewNumber};
 
@@ -291,5 +292,16 @@ impl Distribution<Phase> for Standard {
             1 => Phase::Commit,
             _ => unreachable!(),
         }
+    }
+}
+
+impl Distribution<Committee> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Committee {
+        let count = rng.gen_range(1..11);
+        let public_keys = (0..count).map(|_| WeightedValidator {
+            key: rng.gen(),
+            weight: 1,
+        });
+        Committee::new(public_keys).unwrap()
     }
 }

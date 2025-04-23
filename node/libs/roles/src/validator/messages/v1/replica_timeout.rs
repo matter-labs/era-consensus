@@ -4,12 +4,12 @@ use anyhow::Context as _;
 use zksync_protobuf::{read_optional, read_required, ProtoFmt};
 
 use super::{
-    BlockHeader, CommitQC, CommitQCVerifyError, ReplicaCommit, ReplicaCommitVerifyError, Signers,
-    View,
+    BlockHeader, CommitQC, CommitQCVerifyError, Committee, ReplicaCommit, ReplicaCommitVerifyError,
+    Signers, View,
 };
 use crate::{
     proto::validator as proto,
-    validator::{self, Committee, Genesis, Signed},
+    validator::{self, Genesis, Signed},
 };
 
 /// A timeout message from a replica.

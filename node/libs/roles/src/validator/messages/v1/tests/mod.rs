@@ -13,6 +13,7 @@ use crate::validator::{
 };
 
 mod block;
+mod committee;
 mod consensus;
 mod leader_proposal;
 mod replica_commit;
