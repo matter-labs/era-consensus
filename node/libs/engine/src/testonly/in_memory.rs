@@ -111,6 +111,23 @@ impl EngineInterface for Engine {
         self.0.persisted.subscribe()
     }
 
+    async fn get_validator_committee(
+        &self,
+        _ctx: &ctx::Ctx,
+        _number: validator::BlockNumber,
+    ) -> ctx::Result<validator::Committee> {
+        // For simplicity we just use the validator committee from the genesis
+        // and never change it.
+        Ok(self.0.genesis.validators.clone())
+    }
+
+    async fn get_pending_validator_committee(
+        &self,
+        _ctx: &ctx::Ctx,
+    ) -> ctx::Result<Option<(validator::Committee, validator::BlockNumber)>> {
+        Ok(None)
+    }
+
     async fn get_block(
         &self,
         _ctx: &ctx::Ctx,
