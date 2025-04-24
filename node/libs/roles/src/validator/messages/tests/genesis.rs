@@ -23,7 +23,7 @@ fn genesis_hash_change_detector_v1() {
 fn genesis_verify_leader_pubkey_not_in_committee() {
     let mut rng = StdRng::seed_from_u64(29483920);
     let mut genesis = rng.gen::<GenesisRaw>();
-    genesis.leader_selection = v1::LeaderSelectionMode::Sticky(rng.gen());
+    genesis.leader_selection = LeaderSelectionMode::Sticky(rng.gen());
     let genesis = genesis.with_hash();
     assert!(genesis.verify().is_err())
 }
@@ -38,7 +38,7 @@ fn test_genesis_verify() {
     assert!(Genesis::read(&genesis.build()).is_ok());
 
     let mut genesis = (*genesis).clone();
-    genesis.leader_selection = v1::LeaderSelectionMode::Sticky(rng.gen());
+    genesis.leader_selection = LeaderSelectionMode::Sticky(rng.gen());
     let genesis = genesis.with_hash();
     assert!(genesis.verify().is_err());
     assert!(Genesis::read(&genesis.build()).is_err())

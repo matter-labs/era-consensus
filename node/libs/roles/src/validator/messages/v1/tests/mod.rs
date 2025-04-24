@@ -134,5 +134,4 @@ fn test_schema_encoding() {
     test_encode_random::<TimeoutQC>(rng);
     test_encode_random::<CommitQC>(rng);
     test_encode_random::<Signers>(rng);
-    test_encode_random::<LeaderSelectionMode>(rng);
 }

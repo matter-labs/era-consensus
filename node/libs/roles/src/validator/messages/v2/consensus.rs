@@ -2,15 +2,13 @@ use std::{fmt, hash::Hash};
 
 use anyhow::Context as _;
 use bit_vec::BitVec;
-use num_bigint::BigUint;
-use zksync_consensus_crypto::keccak256::Keccak256;
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
 use super::{LeaderProposal, ReplicaCommit, ReplicaNewView, ReplicaTimeout};
 use crate::{
     proto::validator as proto,
-    validator::{Committee, Genesis, GenesisHash, Msg, PublicKey, ViewNumber},
+    validator::{Genesis, GenesisHash, Msg, Schedule, ViewNumber},
 };
 
 /// Consensus messages.
@@ -225,63 +223,6 @@ impl fmt::Display for EpochNumber {
     }
 }
 
-/// The mode used for selecting leader for a given view.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum LeaderSelectionMode {
-    /// Select in a round-robin fashion, based on validators' index within the set.
-    RoundRobin,
-    /// Select based on a sticky assignment to a specific validator.
-    Sticky(PublicKey),
-    /// Select pseudo-randomly, based on validators' weights.
-    Weighted,
-    /// Select on a rotation of specific validator keys.
-    Rota(Vec<PublicKey>),
-}
-
-impl LeaderSelectionMode {
-    /// Computes the leader for the given view.
-    pub fn view_leader(&self, view_number: ViewNumber, committee: &Committee) -> PublicKey {
-        match &self {
-            LeaderSelectionMode::RoundRobin => {
-                let index = view_number.0 as usize % committee.len();
-                committee.get(index).unwrap().key.clone()
-            }
-            LeaderSelectionMode::Weighted => {
-                let eligibility =
-                    Self::leader_weighted_eligibility(view_number.0, committee.total_weight());
-                let mut offset = 0;
-                for val in committee.iter() {
-                    offset += val.weight;
-                    if eligibility < offset {
-                        return val.key.clone();
-                    }
-                }
-                unreachable!()
-            }
-            LeaderSelectionMode::Sticky(pk) => {
-                let index = committee.index(pk).unwrap();
-                committee.get(index).unwrap().key.clone()
-            }
-            LeaderSelectionMode::Rota(pks) => {
-                let index = view_number.0 as usize % pks.len();
-                let index = committee.index(&pks[index]).unwrap();
-                committee.get(index).unwrap().key.clone()
-            }
-        }
-    }
-
-    /// Calculates the pseudo-random eligibility of a leader based on the input and total weight.
-    pub fn leader_weighted_eligibility(input: u64, total_weight: u64) -> u64 {
-        let input_bytes = input.to_be_bytes();
-        let hash = Keccak256::new(&input_bytes);
-        let hash_big = BigUint::from_bytes_be(hash.as_bytes());
-        let total_weight_big = BigUint::from(total_weight);
-        let ret_big = hash_big % total_weight_big;
-        // Assumes that `ret_big` does not exceed 64 bits due to the modulo operation with a 64 bits-capped value.
-        ret_big.to_u64_digits()[0]
-    }
-}
-
 /// Struct that represents a bit map of validators. We use it to compactly store
 /// which validators signed a given message.
 /// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
@@ -312,10 +253,10 @@ impl Signers {
     }
 
     /// Compute the sum of signers weights.
-    /// Panics if signers length does not match the number of validators in committee
-    pub fn weight(&self, committee: &Committee) -> u64 {
-        assert_eq!(self.len(), committee.len());
-        committee
+    /// Panics if signers length does not match the number of validators in schedule.
+    pub fn weight(&self, schedule: &Schedule) -> u64 {
+        assert_eq!(self.len(), schedule.len());
+        schedule
             .iter()
             .enumerate()
             .filter(|(i, _)| self.0[*i])

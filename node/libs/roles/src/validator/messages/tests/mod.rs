@@ -7,8 +7,8 @@ use super::*;
 use crate::validator::SecretKey;
 
 mod block;
-mod committee;
 mod genesis;
+mod schedule;
 
 /// Hardcoded payload.
 pub(crate) fn payload() -> Payload {
@@ -33,12 +33,12 @@ pub(crate) fn validator_keys() -> Vec<SecretKey> {
 }
 
 /// Hardcoded validator committee.
-pub(crate) fn validator_committee() -> Committee {
-    Committee::new(
+pub(crate) fn validator_committee() -> v1::Committee {
+    v1::Committee::new(
         validator_keys()
             .iter()
             .enumerate()
-            .map(|(i, key)| WeightedValidator {
+            .map(|(i, key)| v1::WeightedValidator {
                 key: key.public(),
                 weight: i as u64 + 10,
             }),
@@ -55,7 +55,7 @@ pub(crate) fn genesis_v1() -> Genesis {
 
         protocol_version: ProtocolVersion(1),
         validators: validator_committee(),
-        leader_selection: v1::LeaderSelectionMode::Weighted,
+        leader_selection: LeaderSelectionMode::Weighted,
     }
     .with_hash()
 }
@@ -69,7 +69,7 @@ pub(crate) fn genesis_v2() -> Genesis {
 
         protocol_version: ProtocolVersion(2),
         validators: validator_committee(),
-        leader_selection: v1::LeaderSelectionMode::Weighted,
+        leader_selection: LeaderSelectionMode::Weighted,
     }
     .with_hash()
 }
@@ -104,13 +104,24 @@ fn test_text_encoding() {
 fn test_schema_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    test_encode_random::<PayloadHash>(rng);
-    test_encode_random::<PreGenesisBlock>(rng);
-    test_encode_random::<Block>(rng);
-    test_encode_random::<Signed<ConsensusMsg>>(rng);
-    test_encode_random::<Msg>(rng);
-    test_encode_random::<MsgHash>(rng);
+
+    // In genesis.proto
     test_encode_random::<Genesis>(rng);
     test_encode_random::<GenesisHash>(rng);
+    test_encode_random::<Schedule>(rng);
+    test_encode_random::<ValidatorInfo>(rng);
+    test_encode_random::<v1::WeightedValidator>(rng);
+    test_encode_random::<v1::LeaderSelection>(rng);
+    test_encode_random::<LeaderSelectionMode>(rng);
+    test_encode_random::<PayloadHash>(rng);
+    test_encode_random::<Proposal>(rng);
+
+    // In consensus.proto
+    test_encode_random::<PreGenesisBlock>(rng);
+    test_encode_random::<Block>(rng);
+    test_encode_random::<ConsensusMsg>(rng);
+    test_encode_random::<Msg>(rng);
+    test_encode_random::<MsgHash>(rng);
+    test_encode_random::<Signed<ConsensusMsg>>(rng);
     test_encode_random::<ReplicaState>(rng);
 }

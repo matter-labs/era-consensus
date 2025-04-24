@@ -2,9 +2,9 @@ use std::{fmt, hash::Hash};
 
 use anyhow::Context as _;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
-use zksync_protobuf::{read_required, required, ProtoFmt};
+use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
 
-use super::{v1, BlockNumber};
+use super::{v1, BlockNumber, LeaderSelectionMode, Schedule};
 use crate::proto::validator as proto;
 
 /// Genesis of the blockchain, unique for each blockchain instance.
@@ -22,7 +22,11 @@ pub struct GenesisRaw {
     /// Set of validators of the chain. Only valid for protocol version 1.
     pub validators: v1::Committee,
     /// The mode used for selecting leader for a given view. Only valid for protocol version 1.
-    pub leader_selection: v1::LeaderSelectionMode,
+    pub leader_selection: LeaderSelectionMode,
+    /// The schedule of validators for the chain. If None, the chain is getting the validator schedule
+    /// from the on-chain ConsensusRegistry contract.
+    /// Only valid from protocol version 2 onwards.
+    pub validators_schedule: Option<Schedule>,
 }
 
 impl GenesisRaw {
@@ -47,10 +51,11 @@ impl ProtoFmt for GenesisRaw {
             chain_id: ChainId(*required(&r.chain_id).context("chain_id")?),
             fork_number: ForkNumber(*required(&r.fork_number).context("fork_number")?),
             first_block: BlockNumber(*required(&r.first_block).context("first_block")?),
-
             protocol_version: ProtocolVersion(r.protocol_version.context("protocol_version")?),
             validators: v1::Committee::new(validators.into_iter()).context("validators_v1")?,
             leader_selection: read_required(&r.leader_selection).context("leader_selection")?,
+            validators_schedule: read_optional(&r.validators_schedule)
+                .context("validators_schedule")?,
         })
     }
     fn build(&self) -> Self::Proto {
@@ -58,10 +63,10 @@ impl ProtoFmt for GenesisRaw {
             chain_id: Some(self.chain_id.0),
             fork_number: Some(self.fork_number.0),
             first_block: Some(self.first_block.0),
-
             protocol_version: Some(self.protocol_version.0),
             validators_v1: self.validators.iter().map(|v| v.build()).collect(),
             leader_selection: Some(self.leader_selection.build()),
+            validators_schedule: self.validators_schedule.as_ref().map(|x| x.build()),
         }
     }
 }
@@ -111,17 +116,9 @@ pub struct Genesis(pub(crate) GenesisRaw, pub(crate) GenesisHash);
 impl Genesis {
     /// Verifies correctness.
     pub fn verify(&self) -> anyhow::Result<()> {
-        if let v1::LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
-            if self.validators.index(pk).is_none() {
+        if let LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
+            if self.validators.index(&pk).is_none() {
                 anyhow::bail!("leader_selection sticky mode public key is not in committee");
-            }
-        } else if let v1::LeaderSelectionMode::Rota(pks) = &self.leader_selection {
-            for pk in pks {
-                if self.validators.index(pk).is_none() {
-                    anyhow::bail!(
-                        "leader_selection rota mode public key is not in committee: {pk:?}"
-                    );
-                }
             }
         }
 

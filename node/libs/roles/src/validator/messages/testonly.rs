@@ -7,8 +7,9 @@ use zksync_consensus_utils::enum_util::Variant;
 
 use super::{
     v1, Block, BlockNumber, ChainId, ConsensusMsg, ForkNumber, Genesis, GenesisHash, GenesisRaw,
-    Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock, Proposal,
-    ProtocolVersion, ReplicaState, Signed, ViewNumber,
+    Justification, LeaderSelection, LeaderSelectionMode, Msg, MsgHash, NetAddress, Payload,
+    PayloadHash, PreGenesisBlock, Proposal, ProtocolVersion, ReplicaState, Schedule, Signed,
+    ValidatorInfo, ViewNumber,
 };
 use crate::validator::SecretKey;
 
@@ -36,6 +37,16 @@ impl Distribution<ForkNumber> for Standard {
     }
 }
 
+impl Distribution<ValidatorInfo> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ValidatorInfo {
+        ValidatorInfo {
+            key: rng.gen::<SecretKey>().public(),
+            weight: rng.gen_range(1..100),
+            leader: rng.gen_bool(0.7), // 70% chance to be a leader
+        }
+    }
+}
+
 impl Distribution<ChainId> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChainId {
         ChainId(rng.gen())
@@ -54,28 +65,50 @@ impl Distribution<GenesisRaw> for Standard {
             chain_id: rng.gen(),
             fork_number: rng.gen(),
             first_block: rng.gen(),
-
             protocol_version: rng.gen(),
             validators: rng.gen(),
             leader_selection: rng.gen(),
+            validators_schedule: rng.gen(),
         };
 
-        // In order for the genesis to be valid, sticky/rota leaders need to be in the validator committee.
-        if let v1::LeaderSelectionMode::Sticky(_) = genesis.leader_selection {
+        // In order for the genesis to be valid, sticky leader need to be in the validator committee.
+        if let LeaderSelectionMode::Sticky(_) = genesis.leader_selection {
             let i = rng.gen_range(0..genesis.validators.len());
             genesis.leader_selection =
-                v1::LeaderSelectionMode::Sticky(genesis.validators.get(i).unwrap().key.clone());
-        } else if let v1::LeaderSelectionMode::Rota(pks) = genesis.leader_selection {
-            let n = pks.len();
-            let mut pks = Vec::new();
-            for _ in 0..n {
-                let i = rng.gen_range(0..genesis.validators.len());
-                pks.push(genesis.validators.get(i).unwrap().key.clone());
-            }
-            genesis.leader_selection = v1::LeaderSelectionMode::Rota(pks);
+                LeaderSelectionMode::Sticky(genesis.validators.get(i).unwrap().key.clone());
         }
 
         genesis
+    }
+}
+
+impl Distribution<Schedule> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Schedule {
+        // Create random validators (between 1 and 5)
+        let num_validators = rng.gen_range(1..6);
+
+        // Create validators with 70% chance to be leaders
+        let mut validators: Vec<ValidatorInfo> = (0..num_validators).map(|_| rng.gen()).collect();
+
+        // Ensure at least one validator is a leader
+        if !validators.iter().any(|v| v.leader) {
+            // Make a random validator a leader
+            let leader_idx = rng.gen_range(0..validators.len());
+            validators[leader_idx].leader = true;
+        }
+
+        // Create leader selection
+        let leader_selection = LeaderSelection {
+            frequency: rng.gen_range(1..10),
+            mode: if rng.gen_bool(0.5) {
+                LeaderSelectionMode::RoundRobin
+            } else {
+                LeaderSelectionMode::Weighted
+            },
+        };
+
+        // This should never fail since we ensure at least one leader
+        Schedule::new(validators, leader_selection).unwrap()
     }
 }
 

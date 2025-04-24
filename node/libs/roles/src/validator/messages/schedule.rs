@@ -21,12 +21,17 @@ pub struct Schedule {
 }
 
 impl Schedule {
-    /// Creates a new Schedule from a list of validator public keys. Note that the order of the given validators
-    /// is NOT preserved in the schedule.
+    /// Creates a new Schedule from a list of `ValidatorInfo` and a `LeaderSelection` mode.
+    /// Note that the order of the given validators is NOT preserved in the schedule.
     pub fn new(
         validators: impl IntoIterator<Item = ValidatorInfo>,
         leader_selection: LeaderSelection,
     ) -> anyhow::Result<Self> {
+        anyhow::ensure!(
+            !matches!(leader_selection.mode, LeaderSelectionMode::Sticky(_)),
+            "Sticky leader selection mode is not supported"
+        );
+
         let mut map = BTreeMap::new();
         let mut total_weight: u64 = 0;
         let mut leader_weight: u64 = 0;
@@ -34,7 +39,7 @@ impl Schedule {
         for v in validators {
             anyhow::ensure!(
                 !map.contains_key(&v.key),
-                "Duplicate validator in validator Schedule"
+                "Duplicate key in validator Schedule"
             );
             anyhow::ensure!(v.weight > 0, "Validator weight has to be a positive value");
 
@@ -42,6 +47,7 @@ impl Schedule {
                 .checked_add(v.weight)
                 .context("Sum of weights overflows in validator Schedule")?;
             if v.leader {
+                // It can't overflow because we already checked that the total weight doesn't overflow.
                 leader_weight += v.weight;
             }
 
@@ -68,8 +74,8 @@ impl Schedule {
             .collect();
 
         Ok(Self {
-            indexes,
             vec,
+            indexes,
             total_weight,
             leaders,
             leader_selection,
@@ -113,6 +119,11 @@ impl Schedule {
         self.indexes.get(validator).copied()
     }
 
+    /// Sum of all validators' weight in the schedule
+    pub fn total_weight(&self) -> u64 {
+        self.total_weight
+    }
+
     /// Signature weight threshold for this validator schedule.
     pub fn quorum_threshold(&self) -> u64 {
         quorum_threshold(self.total_weight())
@@ -126,11 +137,6 @@ impl Schedule {
     /// Maximal weight of faulty replicas allowed in this validator schedule.
     pub fn max_faulty_weight(&self) -> u64 {
         max_faulty_weight(self.total_weight())
-    }
-
-    /// Sum of all validators' weight in the schedule
-    pub fn total_weight(&self) -> u64 {
-        self.total_weight
     }
 
     /// Computes the leader for the given view.
@@ -155,6 +161,29 @@ impl Schedule {
                 }
                 unreachable!()
             }
+            LeaderSelectionMode::Sticky(_) => unreachable!(),
+        }
+    }
+}
+
+impl ProtoFmt for Schedule {
+    type Proto = proto::ValidatorSchedule;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        let validators: Vec<_> = r
+            .validators
+            .iter()
+            .enumerate()
+            .map(|(i, v)| ValidatorInfo::read(v).context(i))
+            .collect::<Result<_, _>>()
+            .context("validators")?;
+        let leader_selection = read_required(&r.leader_selection).context("leader_selection")?;
+
+        Self::new(validators, leader_selection)
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            validators: self.iter().map(|v| v.build()).collect(),
+            leader_selection: Some(self.leader_selection.build()),
         }
     }
 }
@@ -190,33 +219,11 @@ impl ProtoFmt for ValidatorInfo {
     }
 }
 
-/// Calculate the maximum allowed weight for faulty replicas, for a given total weight.
-pub fn max_faulty_weight(total_weight: u64) -> u64 {
-    // Calculate the allowed maximum weight of faulty replicas. We want the following relationship to hold:
-    //      n = 5*f + 1
-    // for n total weight and f faulty weight. This results in the following formula for the maximum
-    // weight of faulty replicas:
-    //      f = floor((n - 1) / 5)
-    (total_weight - 1) / 5
-}
-
-/// Calculate the consensus quorum threshold, the minimum votes' weight necessary to finalize a block,
-/// for a given committee total weight.
-pub fn quorum_threshold(total_weight: u64) -> u64 {
-    total_weight - max_faulty_weight(total_weight)
-}
-
-/// Calculate the consensus subquorum threshold, the minimum votes' weight necessary to trigger a reproposal,
-/// for a given committee total weight.
-pub fn subquorum_threshold(total_weight: u64) -> u64 {
-    total_weight - 3 * max_faulty_weight(total_weight)
-}
-
-/// The mode used for selecting leader for a given view.
+/// Leader selection parameters.
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct LeaderSelection {
-    frequency: u64,
-    mode: LeaderSelectionMode,
+pub struct LeaderSelection {
+    pub frequency: u64,
+    pub mode: LeaderSelectionMode,
 }
 
 impl LeaderSelection {
@@ -236,24 +243,47 @@ impl ProtoFmt for LeaderSelection {
     type Proto = proto::LeaderSelection;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self {
+            frequency: *required(&r.frequency).context("frequency")?,
+            mode: read_required(&r.mode).context("mode")?,
+        })
+    }
+
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            frequency: Some(self.frequency),
+            mode: Some(self.mode.build()),
+        }
+    }
+}
+
+/// The mode used for selecting leader for a given view.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LeaderSelectionMode {
+    /// Select in a round-robin fashion, based on validators' index within the set.
+    RoundRobin,
+    /// Select based on a sticky assignment to a specific validator.
+    /// To be deprecated together with v1.
+    Sticky(validator::PublicKey),
+    /// Select pseudo-randomly, based on validators' weights.
+    Weighted,
+}
+
+impl ProtoFmt for LeaderSelectionMode {
+    type Proto = proto::LeaderSelectionMode;
+
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         match required(&r.mode)? {
             proto::leader_selection_mode::Mode::RoundRobin(_) => {
                 Ok(LeaderSelectionMode::RoundRobin)
             }
             proto::leader_selection_mode::Mode::Sticky(inner) => {
                 let key = required(&inner.key).context("key")?;
-                Ok(LeaderSelectionMode::Sticky(PublicKey::read(key)?))
+                Ok(LeaderSelectionMode::Sticky(validator::PublicKey::read(
+                    key,
+                )?))
             }
             proto::leader_selection_mode::Mode::Weighted(_) => Ok(LeaderSelectionMode::Weighted),
-            proto::leader_selection_mode::Mode::Rota(inner) => {
-                let _ = required(&inner.keys.first()).context("keys")?;
-                let pks = inner
-                    .keys
-                    .iter()
-                    .map(PublicKey::read)
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(LeaderSelectionMode::Rota(pks))
-            }
         }
     }
     fn build(&self) -> Self::Proto {
@@ -275,50 +305,28 @@ impl ProtoFmt for LeaderSelection {
                     proto::leader_selection_mode::Weighted {},
                 )),
             },
-            LeaderSelectionMode::Rota(pks) => proto::LeaderSelectionMode {
-                mode: Some(proto::leader_selection_mode::Mode::Rota(
-                    proto::leader_selection_mode::Rota {
-                        keys: pks.iter().map(|pk| pk.build()).collect(),
-                    },
-                )),
-            },
         }
     }
 }
 
-/// The mode used for selecting leader for a given view.
-#[derive(Clone, Debug, Eq, PartialEq)]
-enum LeaderSelectionMode {
-    /// Select in a round-robin fashion, based on validators' index within the set.
-    RoundRobin,
-    /// Select pseudo-randomly, based on validators' weights.
-    Weighted,
+/// Calculate the maximum allowed weight for faulty replicas, for a given total weight.
+pub fn max_faulty_weight(total_weight: u64) -> u64 {
+    // Calculate the allowed maximum weight of faulty replicas. We want the following relationship to hold:
+    //      n = 5*f + 1
+    // for n total weight and f faulty weight. This results in the following formula for the maximum
+    // weight of faulty replicas:
+    //      f = floor((n - 1) / 5)
+    (total_weight - 1) / 5
 }
 
-impl ProtoFmt for LeaderSelectionMode {
-    type Proto = proto::LeaderSelectionMode;
+/// Calculate the consensus quorum threshold, the minimum votes' weight necessary to finalize a block,
+/// for a given committee total weight.
+pub fn quorum_threshold(total_weight: u64) -> u64 {
+    total_weight - max_faulty_weight(total_weight)
+}
 
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        match required(&r.mode)? {
-            proto::leader_selection_mode::Mode::RoundRobin(_) => {
-                Ok(LeaderSelectionMode::RoundRobin)
-            }
-            proto::leader_selection_mode::Mode::Weighted(_) => Ok(LeaderSelectionMode::Weighted),
-        }
-    }
-
-    fn build(&self) -> Self::Proto {
-        match self {
-            LeaderSelectionMode::RoundRobin => proto::LeaderSelectionMode {
-                mode: Some(proto::leader_selection_mode::Mode::RoundRobin(
-                    proto::leader_selection_mode::RoundRobin {},
-                )),
-            },
-            LeaderSelectionMode::Weighted => proto::LeaderSelectionMode {
-                mode: Some(proto::leader_selection_mode::Mode::Weighted(
-                    proto::leader_selection_mode::Weighted {},
-                )),
-            },
-        }
-    }
+/// Calculate the consensus subquorum threshold, the minimum votes' weight necessary to trigger a reproposal,
+/// for a given committee total weight.
+pub fn subquorum_threshold(total_weight: u64) -> u64 {
+    total_weight - 3 * max_faulty_weight(total_weight)
 }
