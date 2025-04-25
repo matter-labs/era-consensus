@@ -8,7 +8,7 @@ mod schedule;
 /// Test-only utilities.
 mod testonly;
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;
 
 pub use block::*;
 pub use consensus::*;

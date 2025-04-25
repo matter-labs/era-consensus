@@ -138,8 +138,8 @@ pub struct View {
 
 impl View {
     /// Verifies the view against the genesis.
-    pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
-        anyhow::ensure!(self.genesis == genesis.hash(), "genesis mismatch");
+    pub fn verify(&self, genesis: GenesisHash) -> anyhow::Result<()> {
+        anyhow::ensure!(self.genesis == genesis, "genesis mismatch");
         Ok(())
     }
 
@@ -242,7 +242,7 @@ impl Signers {
         self.0.iter().filter(|b| *b).count()
     }
 
-    /// Size of the corresponding validator Committee.
+    /// Size of the corresponding Signer set.
     pub fn len(&self) -> usize {
         self.0.len()
     }

@@ -4,11 +4,17 @@ use zksync_consensus_crypto::{ByteFmt, Text, TextFmt};
 use zksync_protobuf::testonly::test_encode_random;
 
 use super::*;
+use crate::validator::v1::tests::validator_committee;
 use crate::validator::SecretKey;
 
 mod block;
 mod genesis;
 mod schedule;
+
+/// Hardcoded view numbers.
+fn views() -> impl Iterator<Item = ViewNumber> {
+    [2297, 7203, 8394, 9089, 99821].into_iter().map(ViewNumber)
+}
 
 /// Hardcoded payload.
 pub(crate) fn payload() -> Payload {
@@ -32,18 +38,30 @@ pub(crate) fn validator_keys() -> Vec<SecretKey> {
     .collect()
 }
 
-/// Hardcoded validator committee.
-pub(crate) fn validator_committee() -> v1::Committee {
-    v1::Committee::new(
-        validator_keys()
-            .iter()
-            .enumerate()
-            .map(|(i, key)| v1::WeightedValidator {
-                key: key.public(),
-                weight: i as u64 + 10,
-            }),
-    )
-    .unwrap()
+/// Hardcoded validators.
+pub(crate) fn validators() -> Vec<ValidatorInfo> {
+    validator_keys()
+        .iter()
+        .enumerate()
+        .map(|(i, key)| ValidatorInfo {
+            key: key.public(),
+            weight: i as u64 + 10,
+            leader: true,
+        })
+        .collect()
+}
+
+// Hardcoded validators schedule.
+pub(crate) fn validators_schedule() -> Schedule {
+    Schedule::new(validators(), leader_selection()).unwrap()
+}
+
+// Hardcoded leader selection.
+pub(crate) fn leader_selection() -> LeaderSelection {
+    LeaderSelection {
+        frequency: 1,
+        mode: LeaderSelectionMode::RoundRobin,
+    }
 }
 
 /// Hardcoded genesis.
@@ -52,10 +70,10 @@ pub(crate) fn genesis_v1() -> Genesis {
         chain_id: ChainId(1337),
         fork_number: ForkNumber(42),
         first_block: BlockNumber(2834),
-
         protocol_version: ProtocolVersion(1),
         validators: validator_committee(),
         leader_selection: LeaderSelectionMode::Weighted,
+        validators_schedule: None,
     }
     .with_hash()
 }
@@ -66,10 +84,10 @@ pub(crate) fn genesis_v2() -> Genesis {
         chain_id: ChainId(1337),
         fork_number: ForkNumber(42),
         first_block: BlockNumber(2834),
-
         protocol_version: ProtocolVersion(2),
         validators: validator_committee(),
         leader_selection: LeaderSelectionMode::Weighted,
+        validators_schedule: Some(validators_schedule()),
     }
     .with_hash()
 }
@@ -111,7 +129,7 @@ fn test_schema_encoding() {
     test_encode_random::<Schedule>(rng);
     test_encode_random::<ValidatorInfo>(rng);
     test_encode_random::<v1::WeightedValidator>(rng);
-    test_encode_random::<v1::LeaderSelection>(rng);
+    test_encode_random::<LeaderSelection>(rng);
     test_encode_random::<LeaderSelectionMode>(rng);
     test_encode_random::<PayloadHash>(rng);
     test_encode_random::<Proposal>(rng);

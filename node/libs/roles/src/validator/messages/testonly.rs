@@ -6,7 +6,7 @@ use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
 
 use super::{
-    v1, Block, BlockNumber, ChainId, ConsensusMsg, ForkNumber, Genesis, GenesisHash, GenesisRaw,
+    Block, BlockNumber, ChainId, ConsensusMsg, ForkNumber, Genesis, GenesisHash, GenesisRaw,
     Justification, LeaderSelection, LeaderSelectionMode, Msg, MsgHash, NetAddress, Payload,
     PayloadHash, PreGenesisBlock, Proposal, ProtocolVersion, ReplicaState, Schedule, Signed,
     ValidatorInfo, ViewNumber,
@@ -50,6 +50,12 @@ impl Distribution<ValidatorInfo> for Standard {
 impl Distribution<ChainId> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChainId {
         ChainId(rng.gen())
+    }
+}
+
+impl Distribution<Genesis> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
+        rng.gen::<GenesisRaw>().with_hash()
     }
 }
 
@@ -97,24 +103,31 @@ impl Distribution<Schedule> for Standard {
             validators[leader_idx].leader = true;
         }
 
-        // Create leader selection
-        let leader_selection = LeaderSelection {
+        // This should never fail since we ensure at least one leader
+        Schedule::new(validators, rng.gen()).unwrap()
+    }
+}
+
+impl Distribution<LeaderSelection> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderSelection {
+        LeaderSelection {
             frequency: rng.gen_range(1..10),
             mode: if rng.gen_bool(0.5) {
                 LeaderSelectionMode::RoundRobin
             } else {
                 LeaderSelectionMode::Weighted
             },
-        };
-
-        // This should never fail since we ensure at least one leader
-        Schedule::new(validators, leader_selection).unwrap()
+        }
     }
 }
 
-impl Distribution<Genesis> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
-        rng.gen::<GenesisRaw>().with_hash()
+impl Distribution<LeaderSelectionMode> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderSelectionMode {
+        match rng.gen_range(0..=2) {
+            0 => LeaderSelectionMode::RoundRobin,
+            1 => LeaderSelectionMode::Sticky(rng.gen()),
+            _ => LeaderSelectionMode::Weighted,
+        }
     }
 }
 

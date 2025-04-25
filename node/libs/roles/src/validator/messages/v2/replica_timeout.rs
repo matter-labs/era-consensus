@@ -9,7 +9,7 @@ use super::{
 };
 use crate::{
     proto::validator as proto,
-    validator::{self, Committee, Genesis, Signed},
+    validator::{self, GenesisHash, Signed},
 };
 
 /// A timeout message from a replica.
@@ -26,7 +26,11 @@ pub struct ReplicaTimeout {
 
 impl ReplicaTimeout {
     /// Verifies the message.
-    pub fn verify(&self, genesis: &Genesis) -> Result<(), ReplicaTimeoutVerifyError> {
+    pub fn verify(
+        &self,
+        genesis: GenesisHash,
+        validators_schedule: &validator::Schedule,
+    ) -> Result<(), ReplicaTimeoutVerifyError> {
         self.view
             .verify(genesis)
             .map_err(ReplicaTimeoutVerifyError::BadView)?;
@@ -37,7 +41,7 @@ impl ReplicaTimeout {
         }
 
         if let Some(qc) = &self.high_qc {
-            qc.verify(genesis)
+            qc.verify(genesis, validators_schedule)
                 .map_err(ReplicaTimeoutVerifyError::InvalidHighQC)?;
         }
 
@@ -119,15 +123,15 @@ impl TimeoutQC {
     /// in this situation, we require n-3*f votes, where f is the maximum number of faulty replicas.
     /// Note that it is possible to have 2 subquorums: vote A and vote B, each with >n-3*f weight, in a single
     /// TimeoutQC. In such a situation we say that there is no high vote.
-    pub fn high_vote(&self, genesis: &Genesis) -> Option<BlockHeader> {
+    pub fn high_vote(&self, validators_schedule: &validator::Schedule) -> Option<BlockHeader> {
         let mut count: HashMap<_, u64> = HashMap::new();
         for (msg, signers) in &self.map {
             if let Some(v) = &msg.high_vote {
-                *count.entry(v.proposal).or_default() += signers.weight(&genesis.validators);
+                *count.entry(v.proposal).or_default() += signers.weight(&validators_schedule);
             }
         }
 
-        let min = genesis.validators.subquorum_threshold();
+        let min = validators_schedule.subquorum_threshold();
         let mut high_votes: Vec<_> = count.into_iter().filter(|x| x.1 >= min).collect();
 
         if high_votes.len() == 1 {
@@ -149,10 +153,11 @@ impl TimeoutQC {
     pub fn add(
         &mut self,
         msg: &Signed<ReplicaTimeout>,
-        genesis: &Genesis,
+        genesis: GenesisHash,
+        validators_schedule: &validator::Schedule,
     ) -> Result<(), TimeoutQCAddError> {
         // Check if the signer is in the committee.
-        let Some(i) = genesis.validators.index(&msg.key) else {
+        let Some(i) = validators_schedule.index(&msg.key) else {
             return Err(TimeoutQCAddError::SignerNotInCommittee {
                 signer: Box::new(msg.key.clone()),
             });
@@ -175,14 +180,14 @@ impl TimeoutQC {
 
         // Check that the message itself is valid.
         msg.msg
-            .verify(genesis)
+            .verify(genesis, validators_schedule)
             .map_err(TimeoutQCAddError::InvalidMessage)?;
 
         // Add the message plus signer to the map, and the signature to the aggregate signature.
         let e = self
             .map
             .entry(msg.msg.clone())
-            .or_insert_with(|| Signers::new(genesis.validators.len()));
+            .or_insert_with(|| Signers::new(validators_schedule.len()));
         e.0.set(i, true);
         self.signature.add(&msg.sig);
 
@@ -190,12 +195,16 @@ impl TimeoutQC {
     }
 
     /// Verifies the integrity of the TimeoutQC.
-    pub fn verify(&self, genesis: &Genesis) -> Result<(), TimeoutQCVerifyError> {
+    pub fn verify(
+        &self,
+        genesis: GenesisHash,
+        validators_schedule: &validator::Schedule,
+    ) -> Result<(), TimeoutQCVerifyError> {
         self.view
             .verify(genesis)
             .map_err(TimeoutQCVerifyError::BadView)?;
 
-        let mut sum = Signers::new(genesis.validators.len());
+        let mut sum = Signers::new(validators_schedule.len());
 
         // Check the ReplicaTimeout messages.
         for (i, (msg, signers)) in self.map.iter().enumerate() {
@@ -211,15 +220,15 @@ impl TimeoutQC {
             if !(&sum & signers).is_empty() {
                 return Err(TimeoutQCVerifyError::OverlappingSignatureSet(i));
             }
-            msg.verify(genesis)
+            msg.verify(genesis, validators_schedule)
                 .map_err(|err| TimeoutQCVerifyError::InvalidMessage(i, err))?;
 
             sum |= signers;
         }
 
         // Check if the signers' weight is enough.
-        let weight = sum.weight(&genesis.validators);
-        let threshold = genesis.validators.quorum_threshold();
+        let weight = sum.weight(&validators_schedule);
+        let threshold = validators_schedule.quorum_threshold();
         if weight < threshold {
             return Err(TimeoutQCVerifyError::NotEnoughWeight {
                 got: weight,
@@ -229,8 +238,7 @@ impl TimeoutQC {
 
         // Now we can verify the signature.
         let messages_and_keys = self.map.clone().into_iter().flat_map(|(msg, signers)| {
-            genesis
-                .validators
+            validators_schedule
                 .keys()
                 .enumerate()
                 .filter(|(i, _)| signers.0[*i])
@@ -238,17 +246,17 @@ impl TimeoutQC {
                 .collect::<Vec<_>>()
         });
 
-        // TODO(gprusak): This reaggregating is suboptimal.
+        // TODO: This reaggregating is suboptimal.
         self.signature
             .verify_messages(messages_and_keys)
             .map_err(TimeoutQCVerifyError::BadSignature)
     }
 
     /// Calculates the weight of current TimeoutQC signing validators
-    pub fn weight(&self, committee: &Committee) -> u64 {
+    pub fn weight(&self, validators_schedule: &validator::Schedule) -> u64 {
         self.map
             .values()
-            .map(|signers| signers.weight(committee))
+            .map(|signers| signers.weight(validators_schedule))
             .sum()
     }
 }

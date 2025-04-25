@@ -4,7 +4,7 @@ use zksync_protobuf::{read_required, ProtoFmt};
 use super::{BlockHeader, Signers, View};
 use crate::{
     proto::validator as proto,
-    validator::{self, Genesis, Signed},
+    validator::{self, GenesisHash, Signed},
 };
 
 /// A commit message from a replica.
@@ -19,7 +19,7 @@ pub struct ReplicaCommit {
 
 impl ReplicaCommit {
     /// Verifies the message.
-    pub fn verify(&self, genesis: &Genesis) -> Result<(), ReplicaCommitVerifyError> {
+    pub fn verify(&self, genesis: GenesisHash) -> Result<(), ReplicaCommitVerifyError> {
         self.view
             .verify(genesis)
             .map_err(ReplicaCommitVerifyError::BadView)?;
@@ -79,10 +79,10 @@ impl CommitQC {
     }
 
     /// Create a new empty instance for a given `ReplicaCommit` message and a validator set size.
-    pub fn new(message: ReplicaCommit, genesis: &Genesis) -> Self {
+    pub fn new(message: ReplicaCommit, validators_schedule: &validator::Schedule) -> Self {
         Self {
             message,
-            signers: Signers::new(genesis.validators.len()),
+            signers: Signers::new(validators_schedule.len()),
             signature: validator::AggregateSignature::default(),
         }
     }
@@ -91,10 +91,11 @@ impl CommitQC {
     pub fn add(
         &mut self,
         msg: &Signed<ReplicaCommit>,
-        genesis: &Genesis,
+        genesis: GenesisHash,
+        validators_schedule: &validator::Schedule,
     ) -> Result<(), CommitQCAddError> {
         // Check if the signer is in the committee.
-        let Some(i) = genesis.validators.index(&msg.key) else {
+        let Some(i) = validators_schedule.index(&msg.key) else {
             return Err(CommitQCAddError::SignerNotInCommittee {
                 signer: Box::new(msg.key.clone()),
             });
@@ -128,20 +129,24 @@ impl CommitQC {
     }
 
     /// Verifies the integrity of the CommitQC.
-    pub fn verify(&self, genesis: &Genesis) -> Result<(), CommitQCVerifyError> {
+    pub fn verify(
+        &self,
+        genesis: GenesisHash,
+        validators_schedule: &validator::Schedule,
+    ) -> Result<(), CommitQCVerifyError> {
         // Check that the message is valid.
         self.message
             .verify(genesis)
             .map_err(CommitQCVerifyError::InvalidMessage)?;
 
         // Check that the signers set has the same size as the validator set.
-        if self.signers.len() != genesis.validators.len() {
+        if self.signers.len() != validators_schedule.len() {
             return Err(CommitQCVerifyError::BadSignersSet);
         }
 
         // Verify the signers' weight is enough.
-        let weight = self.signers.weight(&genesis.validators);
-        let threshold = genesis.validators.quorum_threshold();
+        let weight = self.signers.weight(&validators_schedule);
+        let threshold = validators_schedule.quorum_threshold();
         if weight < threshold {
             return Err(CommitQCVerifyError::NotEnoughWeight {
                 got: weight,
@@ -150,8 +155,7 @@ impl CommitQC {
         }
 
         // Now we can verify the signature.
-        let messages_and_keys = genesis
-            .validators
+        let messages_and_keys = validators_schedule
             .keys()
             .enumerate()
             .filter(|(i, _)| self.signers.0[*i])

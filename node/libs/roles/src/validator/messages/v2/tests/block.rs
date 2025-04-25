@@ -16,17 +16,28 @@ fn test_final_block_verify() {
     let commit_qc = setup.make_commit_qc_with_payload_v2(&payload, view_number);
     let mut final_block = FinalBlock::new(payload.clone(), commit_qc.clone());
 
-    assert!(final_block.verify(&setup.genesis).is_ok());
+    assert!(final_block
+        .verify(
+            setup.genesis.hash(),
+            &setup.genesis.validators_schedule.as_ref().unwrap()
+        )
+        .is_ok());
 
     final_block.payload = rng.gen();
     assert_matches!(
-        final_block.verify(&setup.genesis),
+        final_block.verify(
+            setup.genesis.hash(),
+            &setup.genesis.validators_schedule.as_ref().unwrap()
+        ),
         Err(BlockValidationError::HashMismatch { .. })
     );
 
     final_block.justification.message.proposal.payload = final_block.payload.hash();
     assert_matches!(
-        final_block.verify(&setup.genesis),
+        final_block.verify(
+            setup.genesis.hash(),
+            &setup.genesis.validators_schedule.as_ref().unwrap()
+        ),
         Err(BlockValidationError::Justification(_))
     );
 }

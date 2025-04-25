@@ -4,7 +4,7 @@ use zksync_protobuf::{read_required, ProtoFmt};
 use super::{CommitQC, CommitQCVerifyError, TimeoutQC, TimeoutQCVerifyError, View};
 use crate::{
     proto::validator as proto,
-    validator::{BlockNumber, Genesis, Payload, PayloadHash},
+    validator::{self, BlockNumber, Genesis, GenesisHash, Payload, PayloadHash},
 };
 
 /// A proposal message from the leader.
@@ -24,10 +24,14 @@ impl LeaderProposal {
     }
 
     /// Verifies LeaderProposal.
-    pub fn verify(&self, genesis: &Genesis) -> Result<(), LeaderProposalVerifyError> {
+    pub fn verify(
+        &self,
+        genesis: GenesisHash,
+        validators_schedule: &validator::Schedule,
+    ) -> Result<(), LeaderProposalVerifyError> {
         // Check that the justification is valid.
         self.justification
-            .verify(genesis)
+            .verify(genesis, validators_schedule)
             .map_err(LeaderProposalVerifyError::Justification)
     }
 }
@@ -85,13 +89,17 @@ impl ProposalJustification {
     }
 
     /// Verifies the justification.
-    pub fn verify(&self, genesis: &Genesis) -> Result<(), ProposalJustificationVerifyError> {
+    pub fn verify(
+        &self,
+        genesis: GenesisHash,
+        validators_schedule: &validator::Schedule,
+    ) -> Result<(), ProposalJustificationVerifyError> {
         match self {
             ProposalJustification::Commit(qc) => qc
-                .verify(genesis)
+                .verify(genesis, validators_schedule)
                 .map_err(ProposalJustificationVerifyError::Commit),
             ProposalJustification::Timeout(qc) => qc
-                .verify(genesis)
+                .verify(genesis, validators_schedule)
                 .map_err(ProposalJustificationVerifyError::Timeout),
         }
     }
@@ -99,7 +107,11 @@ impl ProposalJustification {
     /// This returns the BlockNumber that is implied by this justification.
     /// If the justification requires a block reproposal, it also returns
     /// the PayloadHash that must be reproposed.
-    pub fn get_implied_block(&self, genesis: &Genesis) -> (BlockNumber, Option<PayloadHash>) {
+    pub fn get_implied_block(
+        &self,
+        genesis: &Genesis,
+        validators_schedule: &validator::Schedule,
+    ) -> (BlockNumber, Option<PayloadHash>) {
         match self {
             ProposalJustification::Commit(qc) => {
                 // The previous proposal was finalized, so we can propose a new block.
@@ -112,7 +124,7 @@ impl ProposalJustification {
                 // 0, 1 or 2 such blocks.
                 // If there's only 1 such block, then we say the QC has a high vote.
                 // If there are 0 or 2 such blocks, we say the QC has no high vote.
-                let high_vote = qc.high_vote(genesis);
+                let high_vote = qc.high_vote(validators_schedule);
 
                 // Get the high commit QC of the timeout QC. We compare the high QC field of
                 // all timeout votes in the QC, and get the highest one, if it exists.

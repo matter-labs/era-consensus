@@ -1,5 +1,5 @@
 use super::*;
-use crate::validator::{messages::tests::validator_committee, SecretKey};
+use crate::validator::SecretKey;
 
 /// Checks that the order of validators in a committee is stable.
 #[test]

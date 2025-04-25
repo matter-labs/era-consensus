@@ -8,7 +8,7 @@ use super::{
     BlockHeader, CommitQC, Committee, FinalBlock, LeaderProposal, Phase, ProposalJustification,
     ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View, WeightedValidator,
 };
-use crate::validator::{testonly::Setup, Block, LeaderSelectionMode, Payload, ViewNumber};
+use crate::validator::{testonly::Setup, Block, Payload, ViewNumber};
 
 // Adds v1-specific test utilities to the `Setup` struct.
 impl Setup {
@@ -166,12 +166,11 @@ impl Setup {
     }
 }
 
-impl Distribution<LeaderSelectionMode> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderSelectionMode {
-        match rng.gen_range(0..=2) {
-            0 => LeaderSelectionMode::RoundRobin,
-            1 => LeaderSelectionMode::Sticky(rng.gen()),
-            _ => LeaderSelectionMode::Weighted,
+impl Distribution<WeightedValidator> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> WeightedValidator {
+        WeightedValidator {
+            key: rng.gen(),
+            weight: rng.gen_range(1..100),
         }
     }
 }
