@@ -23,9 +23,7 @@ impl super::Rpc for Rpc {
 /// Contains the freshest state of the sender's block store.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct Req {
-    // Block store state. Will be required once we drop
-    // compatibility for `first` and `last` fields.
-    pub state: BlockStoreState,
+    pub(crate) state: BlockStoreState,
 }
 
 impl ProtoFmt for Req {

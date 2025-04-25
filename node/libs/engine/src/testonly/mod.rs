@@ -1,7 +1,6 @@
 //! Test-only utilities.
 use std::sync::Arc;
 
-use anyhow::Context as _;
 use in_memory::PayloadManager;
 use rand::{distributions::Standard, prelude::Distribution, Rng};
 use zksync_concurrency::ctx;
@@ -104,20 +103,4 @@ pub async fn dump(ctx: &ctx::Ctx, interface: &dyn EngineInterface) -> Vec<valida
 
     assert!(interface.get_block(ctx, after).await.is_err());
     blocks
-}
-
-/// Verifies storage content of an `EngineManager`.
-pub async fn verify(ctx: &ctx::Ctx, engine: &EngineManager) -> anyhow::Result<()> {
-    let range = engine.queued();
-
-    for n in (range.first.0..range.next().0).map(validator::BlockNumber) {
-        async {
-            let b = engine.get_block(ctx, n).await?.context("missing")?;
-            engine.verify_block(ctx, &b).await.context("verify_block()")
-        }
-        .await
-        .context(n)?;
-    }
-
-    Ok(())
 }
