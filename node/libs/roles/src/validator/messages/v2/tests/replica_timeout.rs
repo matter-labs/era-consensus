@@ -12,7 +12,7 @@ fn test_replica_timeout_verify() {
     assert!(timeout
         .verify(
             genesis.hash(),
-            &genesis.validators_schedule.as_ref().unwrap()
+            genesis.validators_schedule.as_ref().unwrap()
         )
         .is_ok());
 
@@ -23,7 +23,7 @@ fn test_replica_timeout_verify() {
     assert_matches!(
         timeout.verify(
             wrong_genesis.hash(),
-            &genesis.validators_schedule.as_ref().unwrap()
+            genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(ReplicaTimeoutVerifyError::BadView(_))
     );
@@ -34,7 +34,7 @@ fn test_replica_timeout_verify() {
     assert_matches!(
         timeout.verify(
             genesis.hash(),
-            &genesis.validators_schedule.as_ref().unwrap()
+            genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(ReplicaTimeoutVerifyError::InvalidHighVote(_))
     );
@@ -45,7 +45,7 @@ fn test_replica_timeout_verify() {
     assert_matches!(
         timeout.verify(
             genesis.hash(),
-            &genesis.validators_schedule.as_ref().unwrap()
+            genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(ReplicaTimeoutVerifyError::InvalidHighQC(_))
     );
@@ -71,13 +71,13 @@ fn test_timeout_qc_high_vote() {
         qc.add(
             &key.sign_msg(msg_a.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         )
         .unwrap();
     }
 
     assert!(qc
-        .high_vote(&setup.genesis.validators_schedule.as_ref().unwrap())
+        .high_vote(setup.genesis.validators_schedule.as_ref().unwrap())
         .is_some());
 
     // Case with 2 subquorums.
@@ -87,7 +87,7 @@ fn test_timeout_qc_high_vote() {
         qc.add(
             &key.sign_msg(msg_a.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         )
         .unwrap();
     }
@@ -96,13 +96,13 @@ fn test_timeout_qc_high_vote() {
         qc.add(
             &key.sign_msg(msg_b.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         )
         .unwrap();
     }
 
     assert!(qc
-        .high_vote(&setup.genesis.validators_schedule.as_ref().unwrap())
+        .high_vote(setup.genesis.validators_schedule.as_ref().unwrap())
         .is_none());
 
     // Case with no subquorums.
@@ -112,7 +112,7 @@ fn test_timeout_qc_high_vote() {
         qc.add(
             &key.sign_msg(msg_a.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         )
         .unwrap();
     }
@@ -121,7 +121,7 @@ fn test_timeout_qc_high_vote() {
         qc.add(
             &key.sign_msg(msg_b.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         )
         .unwrap();
     }
@@ -130,13 +130,13 @@ fn test_timeout_qc_high_vote() {
         qc.add(
             &key.sign_msg(msg_c.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         )
         .unwrap();
     }
 
     assert!(qc
-        .high_vote(&setup.genesis.validators_schedule.as_ref().unwrap())
+        .high_vote(setup.genesis.validators_schedule.as_ref().unwrap())
         .is_none());
 }
 
@@ -167,7 +167,7 @@ fn test_timeout_qc_high_qc() {
         qc.add(
             &setup.validator_keys[i].sign_msg(msg.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         )
         .unwrap();
     }
@@ -190,7 +190,7 @@ fn test_timeout_qc_add() {
         .add(
             &setup.validator_keys[0].sign_msg(msg.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         )
         .is_ok());
     assert_eq!(qc.map.len(), 1);
@@ -201,7 +201,7 @@ fn test_timeout_qc_add() {
         qc.add(
             &rng.gen::<validator::SecretKey>().sign_msg(msg.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         ),
         Err(TimeoutQCAddError::SignerNotInCommittee { .. })
     );
@@ -211,7 +211,7 @@ fn test_timeout_qc_add() {
         qc.add(
             &setup.validator_keys[0].sign_msg(msg.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         ),
         Err(TimeoutQCAddError::DuplicateSigner { .. })
     );
@@ -225,7 +225,7 @@ fn test_timeout_qc_add() {
                 sig: rng.gen()
             },
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         ),
         Err(TimeoutQCAddError::BadSignature(_))
     );
@@ -237,7 +237,7 @@ fn test_timeout_qc_add() {
         qc.add(
             &setup.validator_keys[1].sign_msg(msg1),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         ),
         Err(TimeoutQCAddError::InconsistentViews)
     );
@@ -249,7 +249,7 @@ fn test_timeout_qc_add() {
         qc.add(
             &setup.validator_keys[1].sign_msg(msg.clone()),
             wrong_genesis.with_hash().hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         ),
         Err(TimeoutQCAddError::InvalidMessage(_))
     );
@@ -259,7 +259,7 @@ fn test_timeout_qc_add() {
         .add(
             &setup.validator_keys[1].sign_msg(msg.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         )
         .is_ok());
     assert_eq!(qc.map.len(), 1);
@@ -271,7 +271,7 @@ fn test_timeout_qc_add() {
         .add(
             &setup.validator_keys[2].sign_msg(msg2.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         )
         .is_ok());
     assert_eq!(qc.map.len(), 2);
@@ -293,7 +293,7 @@ fn test_timeout_qc_verify() {
     assert!(qc
         .verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         )
         .is_ok());
 
@@ -303,7 +303,7 @@ fn test_timeout_qc_verify() {
     assert_matches!(
         qc1.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(TimeoutQCVerifyError::BadView(_))
     );
@@ -321,7 +321,7 @@ fn test_timeout_qc_verify() {
     assert_matches!(
         qc2.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(TimeoutQCVerifyError::InconsistentView(_))
     );
@@ -339,7 +339,7 @@ fn test_timeout_qc_verify() {
     assert_matches!(
         qc3.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(TimeoutQCVerifyError::WrongSignersLength(_))
     );
@@ -357,7 +357,7 @@ fn test_timeout_qc_verify() {
     assert_matches!(
         qc4.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(TimeoutQCVerifyError::NoSignersAssigned(_))
     );
@@ -379,7 +379,7 @@ fn test_timeout_qc_verify() {
     assert_matches!(
         qc5.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(TimeoutQCVerifyError::OverlappingSignatureSet(_))
     );
@@ -392,7 +392,7 @@ fn test_timeout_qc_verify() {
     assert_matches!(
         qc6.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(TimeoutQCVerifyError::InvalidMessage(_, _))
     );
@@ -406,7 +406,7 @@ fn test_timeout_qc_verify() {
     assert_matches!(
         qc7.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(TimeoutQCVerifyError::NotEnoughWeight { .. })
     );
@@ -417,7 +417,7 @@ fn test_timeout_qc_verify() {
     assert_matches!(
         qc8.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(TimeoutQCVerifyError::BadSignature(_))
     );

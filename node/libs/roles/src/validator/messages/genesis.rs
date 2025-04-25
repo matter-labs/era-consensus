@@ -117,7 +117,7 @@ impl Genesis {
     /// Verifies correctness.
     pub fn verify(&self) -> anyhow::Result<()> {
         if let LeaderSelectionMode::Sticky(pk) = &self.leader_selection {
-            if self.validators.index(&pk).is_none() {
+            if self.validators.index(pk).is_none() {
                 anyhow::bail!("leader_selection sticky mode public key is not in committee");
             }
         }

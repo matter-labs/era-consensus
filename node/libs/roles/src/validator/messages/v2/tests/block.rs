@@ -19,7 +19,7 @@ fn test_final_block_verify() {
     assert!(final_block
         .verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         )
         .is_ok());
 
@@ -27,7 +27,7 @@ fn test_final_block_verify() {
     assert_matches!(
         final_block.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(BlockValidationError::HashMismatch { .. })
     );
@@ -36,7 +36,7 @@ fn test_final_block_verify() {
     assert_matches!(
         final_block.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(BlockValidationError::Justification(_))
     );

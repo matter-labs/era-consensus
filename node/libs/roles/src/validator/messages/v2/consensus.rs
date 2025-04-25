@@ -8,7 +8,7 @@ use zksync_protobuf::{read_required, required, ProtoFmt};
 use super::{LeaderProposal, ReplicaCommit, ReplicaNewView, ReplicaTimeout};
 use crate::{
     proto::validator as proto,
-    validator::{Genesis, GenesisHash, Msg, Schedule, ViewNumber},
+    validator::{GenesisHash, Msg, Schedule, ViewNumber},
 };
 
 /// Consensus messages.

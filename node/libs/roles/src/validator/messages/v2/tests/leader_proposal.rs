@@ -29,7 +29,7 @@ fn test_leader_proposal_verify() {
     assert!(proposal
         .verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         )
         .is_ok());
 
@@ -40,7 +40,7 @@ fn test_leader_proposal_verify() {
     assert_matches!(
         wrong_proposal.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(LeaderProposalVerifyError::Justification(_))
     );
@@ -67,7 +67,7 @@ fn test_justification_get_implied_block() {
 
     let (implied_block_number, implied_payload) = proposal.justification.get_implied_block(
         &setup.genesis,
-        &setup.genesis.validators_schedule.as_ref().unwrap(),
+        setup.genesis.validators_schedule.as_ref().unwrap(),
     );
 
     assert_eq!(implied_block_number, setup.next());
@@ -83,7 +83,7 @@ fn test_justification_get_implied_block() {
 
     let (implied_block_number, implied_payload) = proposal.justification.get_implied_block(
         &setup.genesis,
-        &setup.genesis.validators_schedule.as_ref().unwrap(),
+        setup.genesis.validators_schedule.as_ref().unwrap(),
     );
 
     assert_eq!(implied_block_number, setup.next());

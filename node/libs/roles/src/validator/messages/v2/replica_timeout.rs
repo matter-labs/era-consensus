@@ -127,7 +127,7 @@ impl TimeoutQC {
         let mut count: HashMap<_, u64> = HashMap::new();
         for (msg, signers) in &self.map {
             if let Some(v) = &msg.high_vote {
-                *count.entry(v.proposal).or_default() += signers.weight(&validators_schedule);
+                *count.entry(v.proposal).or_default() += signers.weight(validators_schedule);
             }
         }
 
@@ -227,7 +227,7 @@ impl TimeoutQC {
         }
 
         // Check if the signers' weight is enough.
-        let weight = sum.weight(&validators_schedule);
+        let weight = sum.weight(validators_schedule);
         let threshold = validators_schedule.quorum_threshold();
         if weight < threshold {
             return Err(TimeoutQCVerifyError::NotEnoughWeight {

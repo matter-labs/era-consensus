@@ -1,12 +1,12 @@
 use std::collections::BTreeMap;
 
-use crate::{proto::validator as proto, validator};
 use anyhow::Context as _;
 use num_bigint::BigUint;
 use zksync_consensus_crypto::keccak256::Keccak256;
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
 use super::ViewNumber;
+use crate::{proto::validator as proto, validator};
 
 /// A struct that represents a set of validators. It is used to store the current validator set.
 /// We represent each validator by its validator public key.
@@ -222,7 +222,9 @@ impl ProtoFmt for ValidatorInfo {
 /// Leader selection parameters.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct LeaderSelection {
+    /// The number of views between leader changes. If it is 0 then the leader never rotates.
     pub frequency: u64,
+    /// The mode used for selecting a new leader when we need to rotate.
     pub mode: LeaderSelectionMode,
 }
 

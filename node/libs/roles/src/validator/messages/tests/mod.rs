@@ -4,8 +4,7 @@ use zksync_consensus_crypto::{ByteFmt, Text, TextFmt};
 use zksync_protobuf::testonly::test_encode_random;
 
 use super::*;
-use crate::validator::v1::tests::validator_committee;
-use crate::validator::SecretKey;
+use crate::validator::{v1::tests::validator_committee, SecretKey};
 
 mod block;
 mod genesis;

@@ -28,7 +28,7 @@ fn test_commit_qc_add() {
     let view = rng.gen();
     let mut qc = CommitQC::new(
         setup.make_replica_commit_v2(rng, view),
-        &setup.genesis.validators_schedule.as_ref().unwrap(),
+        setup.genesis.validators_schedule.as_ref().unwrap(),
     );
     let msg = qc.message.clone();
 
@@ -38,7 +38,7 @@ fn test_commit_qc_add() {
         .add(
             &setup.validator_keys[0].sign_msg(msg.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         )
         .is_ok());
     assert_eq!(qc.signers.count(), 1);
@@ -48,7 +48,7 @@ fn test_commit_qc_add() {
         qc.add(
             &rng.gen::<validator::SecretKey>().sign_msg(msg.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         ),
         Err(CommitQCAddError::SignerNotInCommittee { .. })
     );
@@ -58,7 +58,7 @@ fn test_commit_qc_add() {
         qc.add(
             &setup.validator_keys[0].sign_msg(msg.clone()),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         ),
         Err(CommitQCAddError::DuplicateSigner { .. })
     );
@@ -72,7 +72,7 @@ fn test_commit_qc_add() {
                 sig: rng.gen()
             },
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         ),
         Err(CommitQCAddError::BadSignature(_))
     );
@@ -84,7 +84,7 @@ fn test_commit_qc_add() {
         qc.add(
             &setup.validator_keys[1].sign_msg(msg1),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         ),
         Err(CommitQCAddError::InconsistentMessages)
     );
@@ -97,7 +97,7 @@ fn test_commit_qc_add() {
         qc.add(
             &setup.validator_keys[1].sign_msg(msg.clone()),
             wrong_genesis.1,
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         ),
         Err(CommitQCAddError::InvalidMessage(_))
     );
@@ -107,7 +107,7 @@ fn test_commit_qc_add() {
         qc.add(
             &setup.validator_keys[1].sign_msg(msg),
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
         ),
         Ok(())
     );
@@ -126,7 +126,7 @@ fn test_commit_qc_verify() {
     assert!(qc
         .verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         )
         .is_ok());
 
@@ -136,7 +136,7 @@ fn test_commit_qc_verify() {
     assert_matches!(
         qc1.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(CommitQCVerifyError::InvalidMessage(_))
     );
@@ -147,7 +147,7 @@ fn test_commit_qc_verify() {
     assert_matches!(
         qc2.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(CommitQCVerifyError::BadSignersSet)
     );
@@ -159,7 +159,7 @@ fn test_commit_qc_verify() {
     assert_matches!(
         qc3.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(CommitQCVerifyError::NotEnoughWeight { .. })
     );
@@ -170,7 +170,7 @@ fn test_commit_qc_verify() {
     assert_matches!(
         qc4.verify(
             setup.genesis.hash(),
-            &setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(CommitQCVerifyError::BadSignature(_))
     );

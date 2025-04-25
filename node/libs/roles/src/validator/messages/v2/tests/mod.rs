@@ -56,13 +56,13 @@ fn commit_qc() -> CommitQC {
     let replica_commit = replica_commit();
     let mut x = CommitQC::new(
         replica_commit.clone(),
-        &genesis.validators_schedule.as_ref().unwrap(),
+        genesis.validators_schedule.as_ref().unwrap(),
     );
     for k in validator_keys() {
         x.add(
             &k.sign_msg(replica_commit.clone()),
             genesis.hash(),
-            &genesis.validators_schedule.as_ref().unwrap(),
+            genesis.validators_schedule.as_ref().unwrap(),
         )
         .unwrap();
     }
@@ -95,7 +95,7 @@ fn timeout_qc() -> TimeoutQC {
         x.add(
             &k.sign_msg(replica_timeout.clone()),
             genesis.hash(),
-            &genesis.validators_schedule.as_ref().unwrap(),
+            genesis.validators_schedule.as_ref().unwrap(),
         )
         .unwrap();
     }

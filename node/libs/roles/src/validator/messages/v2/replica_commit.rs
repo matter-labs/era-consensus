@@ -145,7 +145,7 @@ impl CommitQC {
         }
 
         // Verify the signers' weight is enough.
-        let weight = self.signers.weight(&validators_schedule);
+        let weight = self.signers.weight(validators_schedule);
         let threshold = validators_schedule.quorum_threshold();
         if weight < threshold {
             return Err(CommitQCVerifyError::NotEnoughWeight {
