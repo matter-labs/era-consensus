@@ -215,15 +215,6 @@ impl fmt::Debug for GenesisHash {
 pub struct Genesis(pub(crate) GenesisRaw, pub(crate) GenesisHash);
 
 impl Genesis {
-    /// Verifies correctness.
-    pub fn verify(&self) -> anyhow::Result<()> {
-        if self.validators_schedule.as_ref().unwrap().leaders().len() != 1 {
-            anyhow::bail!("There must be exactly one leader in the genesis");
-        }
-
-        Ok(())
-    }
-
     /// Hash of the genesis.
     pub fn hash(&self) -> GenesisHash {
         self.1
@@ -233,9 +224,7 @@ impl Genesis {
 impl ProtoFmt for Genesis {
     type Proto = proto::Genesis;
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let genesis = GenesisRaw::read(r)?.with_hash();
-        genesis.verify()?;
-        Ok(genesis)
+        Ok(GenesisRaw::read(r)?.with_hash())
     }
     fn build(&self) -> Self::Proto {
         GenesisRaw::build(self)

@@ -133,7 +133,9 @@ impl Executor {
             if !self
                 .engine_manager
                 .genesis()
-                .validators
+                .validators_schedule
+                .as_ref()
+                .unwrap()
                 .contains(&validator_key.public())
             {
                 tracing::warn!(

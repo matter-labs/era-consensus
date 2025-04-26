@@ -141,7 +141,7 @@ impl Runner {
             }
 
             if let Some(c) = &self.net.consensus {
-                let validators = &c.gossip.genesis().validators;
+                let validators = &c.gossip.genesis().validators_schedule.as_ref().unwrap();
                 // If we are active validator ...
                 if validators.contains(&c.key.public()) {
                     // Maintain outbound connections.

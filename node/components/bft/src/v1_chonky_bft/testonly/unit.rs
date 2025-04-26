@@ -54,7 +54,14 @@ impl UnitTestHarness {
     pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UnitTestHarness, EngineManagerRunner) {
         let num_validators = 6;
         let (util, runner) = UnitTestHarness::new(ctx, num_validators).await;
-        assert!(util.genesis().validators.max_faulty_weight() > 0);
+        assert!(
+            util.genesis()
+                .validators_schedule
+                .as_ref()
+                .unwrap()
+                .max_faulty_weight()
+                > 0
+        );
         (util, runner)
     }
 
@@ -247,15 +254,35 @@ impl UnitTestHarness {
 
         for key in self.keys.iter() {
             let res = self.replica.on_commit(ctx, key.sign_msg(msg.clone())).await;
-            let val_index = self.genesis().validators.index(&key.public()).unwrap();
+            let val_index = self
+                .genesis()
+                .validators_schedule
+                .as_ref()
+                .unwrap()
+                .index(&key.public())
+                .unwrap();
 
-            cur_weight += self.genesis().validators.get(val_index).unwrap().weight;
+            cur_weight += self
+                .genesis()
+                .validators_schedule
+                .as_ref()
+                .unwrap()
+                .get(val_index)
+                .unwrap()
+                .weight;
 
             if threshold_reached {
                 assert_matches!(res, Err(commit::Error::Old { .. }));
             } else {
                 res.unwrap();
-                if cur_weight >= self.genesis().validators.quorum_threshold() {
+                if cur_weight
+                    >= self
+                        .genesis()
+                        .validators_schedule
+                        .as_ref()
+                        .unwrap()
+                        .quorum_threshold()
+                {
                     threshold_reached = true;
                 }
             }
@@ -277,15 +304,34 @@ impl UnitTestHarness {
                 .replica
                 .on_timeout(ctx, key.sign_msg(msg.clone()))
                 .await;
-            let val_index = self.genesis().validators.index(&key.public()).unwrap();
+            let val_index = self
+                .genesis()
+                .validators_schedule
+                .as_ref()
+                .unwrap()
+                .index(&key.public())
+                .unwrap();
 
-            cur_weight += self.genesis().validators.get(val_index).unwrap().weight;
-
+            cur_weight += self
+                .genesis()
+                .validators_schedule
+                .as_ref()
+                .unwrap()
+                .get(val_index)
+                .unwrap()
+                .weight;
             if threshold_reached {
                 assert_matches!(res, Err(timeout::Error::Old { .. }));
             } else {
                 res.unwrap();
-                if cur_weight >= self.genesis().validators.quorum_threshold() {
+                if cur_weight
+                    >= self
+                        .genesis()
+                        .validators_schedule
+                        .as_ref()
+                        .unwrap()
+                        .quorum_threshold()
+                {
                     threshold_reached = true;
                 }
             }

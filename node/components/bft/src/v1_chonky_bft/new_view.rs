@@ -76,7 +76,14 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator committee.
-        if !self.config.genesis().validators.contains(author) {
+        if !self
+            .config
+            .genesis()
+            .validators_schedule
+            .as_ref()
+            .unwrap()
+            .contains(author)
+        {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone().into(),
             });

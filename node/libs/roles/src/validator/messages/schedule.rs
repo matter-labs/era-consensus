@@ -73,6 +73,11 @@ impl Schedule {
             .filter_map(|(i, v)| if v.leader { Some(i) } else { None })
             .collect();
 
+        anyhow::ensure!(
+            !leaders.is_empty(),
+            "Validator Schedule must contain at least one leader"
+        );
+
         Ok(Self {
             vec,
             indexes,
