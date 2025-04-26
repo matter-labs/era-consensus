@@ -364,7 +364,7 @@ pub async fn instant_network(
         node.net
             .gossip
             .validator_addrs
-            .update(&node.genesis().validators, &addrs)
+            .update(node.genesis().validators_schedule.as_ref().unwrap(), &addrs)
             .await
             .unwrap();
     }

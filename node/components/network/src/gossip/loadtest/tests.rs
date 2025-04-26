@@ -27,7 +27,11 @@ async fn test_loadtest() {
         for b in &setup.blocks {
             engine
                 .manager
-                .queue_block(ctx, b.clone())
+                .queue_block(
+                    ctx,
+                    b.clone(),
+                    setup.genesis.validators_schedule.as_ref().unwrap(),
+                )
                 .await
                 .context("queue_block()")?;
         }
