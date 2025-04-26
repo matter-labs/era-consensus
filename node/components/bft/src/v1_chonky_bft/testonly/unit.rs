@@ -120,7 +120,11 @@ impl UnitTestHarness {
     }
 
     pub(crate) fn view_leader(&self, view: validator::ViewNumber) -> validator::PublicKey {
-        self.genesis().view_leader(view.0)
+        self.genesis()
+            .validators_schedule
+            .as_ref()
+            .unwrap()
+            .view_leader(view)
     }
 
     pub(crate) fn genesis(&self) -> &validator::Genesis {

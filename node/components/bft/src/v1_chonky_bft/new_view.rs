@@ -61,7 +61,14 @@ impl StateMachine {
         // leader.
         if message.view().number < self.view_number
             || (message.view().number == self.view_number
-                && author != &self.config.genesis().view_leader(self.view_number.0))
+                && author
+                    != &self
+                        .config
+                        .genesis()
+                        .validators_schedule
+                        .as_ref()
+                        .unwrap()
+                        .view_leader(self.view_number))
         {
             return Err(Error::Old {
                 current_view: self.view_number,

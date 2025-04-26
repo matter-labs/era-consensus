@@ -96,7 +96,7 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         message
-            .verify(self.config.genesis())
+            .verify(self.config.genesis().hash())
             .map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------
@@ -112,16 +112,25 @@ impl StateMachine {
             .or_default()
             .entry(message.clone())
             .or_insert_with(|| {
-                validator::v2::CommitQC::new(message.clone(), self.config.genesis())
+                validator::v2::CommitQC::new(
+                    message.clone(),
+                    self.config.genesis().validators_schedule.as_ref().unwrap(),
+                )
             });
 
         // Should always succeed as all checks have been already performed
         commit_qc
-            .add(&signed_message, self.config.genesis())
+            .add(
+                &signed_message,
+                self.config.genesis().hash(),
+                self.config.genesis().validators_schedule.as_ref().unwrap(),
+            )
             .expect("could not add message to CommitQC");
 
         // Calculate the CommitQC signers weight.
-        let weight = commit_qc.signers.weight(&self.config.genesis().validators);
+        let weight = commit_qc
+            .signers
+            .weight(&self.config.genesis().validators_schedule.as_ref().unwrap());
 
         // Update view number of last commit message for author
         self.commit_views_cache

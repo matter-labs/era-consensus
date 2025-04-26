@@ -121,7 +121,11 @@ impl UnitTestHarness {
     }
 
     pub(crate) fn view_leader(&self, view: validator::ViewNumber) -> validator::PublicKey {
-        self.genesis().view_leader(view.0)
+        self.genesis()
+            .validators_schedule
+            .as_ref()
+            .unwrap()
+            .view_leader(view)
     }
 
     pub(crate) fn genesis(&self) -> &validator::Genesis {
@@ -185,9 +189,17 @@ impl UnitTestHarness {
     ) -> validator::v2::CommitQC {
         let mut msg = self.new_replica_commit(ctx).await;
         mutate_fn(&mut msg);
-        let mut qc = validator::v2::CommitQC::new(msg.clone(), self.genesis());
+        let mut qc = validator::v2::CommitQC::new(
+            msg.clone(),
+            self.genesis().validators_schedule.as_ref().unwrap(),
+        );
         for key in &self.keys {
-            qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
+            qc.add(
+                &key.sign_msg(msg.clone()),
+                self.genesis().hash(),
+                self.genesis().validators_schedule.as_ref().unwrap(),
+            )
+            .unwrap();
         }
         qc
     }
@@ -196,7 +208,12 @@ impl UnitTestHarness {
         let msg = self.new_replica_timeout(ctx).await;
         let mut qc = validator::v2::TimeoutQC::new(msg.view);
         for key in &self.keys {
-            qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
+            qc.add(
+                &key.sign_msg(msg.clone()),
+                self.genesis().hash(),
+                self.genesis().validators_schedule.as_ref().unwrap(),
+            )
+            .unwrap();
         }
         qc
     }

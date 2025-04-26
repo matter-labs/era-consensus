@@ -96,7 +96,10 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         message
-            .verify(self.config.genesis())
+            .verify(
+                self.config.genesis().hash(),
+                self.config.genesis().validators_schedule.as_ref().unwrap(),
+            )
             .map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------
@@ -113,11 +116,16 @@ impl StateMachine {
 
         // Should always succeed as all checks have been already performed
         timeout_qc
-            .add(&signed_message, self.config.genesis())
+            .add(
+                &signed_message,
+                self.config.genesis().hash(),
+                self.config.genesis().validators_schedule.as_ref().unwrap(),
+            )
             .expect("could not add message to TimeoutQC");
 
         // Calculate the TimeoutQC signers weight.
-        let weight = timeout_qc.weight(&self.config.genesis().validators);
+        let weight =
+            timeout_qc.weight(&self.config.genesis().validators_schedule.as_ref().unwrap());
 
         // Update view number of last timeout message for author
         self.timeout_views_cache

@@ -107,10 +107,6 @@ fn test_scenario_generator() {
         assert_eq!(scenario.rounds.len(), num_rounds);
 
         for rc in &scenario.rounds {
-            assert!(
-                cluster.replicas().iter().any(|r| r.key == *rc.leader),
-                "leader exists"
-            );
             for pp in &rc.phase_partitions {
                 assert!(
                     pp.len() <= max_partitions,

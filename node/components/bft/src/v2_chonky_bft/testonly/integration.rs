@@ -492,7 +492,13 @@ async fn twins_gossip_loop(
                         return Ok(());
                     };
                     tracing::info!("   ~~> gossip queue from={from} to={to} number={number}");
-                    let _ = remote_store.queue_block(ctx, block).await;
+                    let _ = remote_store
+                        .queue_block(
+                            ctx,
+                            block,
+                            remote_store.genesis().validators_schedule.as_ref().unwrap(),
+                        )
+                        .await;
                     tracing::info!("   ~~V gossip stored from={from} to={to} number={number}");
                     Ok(())
                 });

@@ -93,8 +93,6 @@ where
 
 /// The configuration for a single round of P phases.
 pub struct RoundConfig<'a, T: HasKey, const P: usize> {
-    /// Leader of the round.
-    pub leader: &'a T::Key,
     /// Partitioning of the nodes for each phase.
     pub phase_partitions: [Split<'a, T>; P],
 }
@@ -154,11 +152,9 @@ where
         // We could implement this with or without replacement.
         // In practice there probably are so many combinations that it won't matter.
         // For example to tolerate 2 faulty nodes we need 11 replicas, with 2 twins that's 13,
-        // which results in hundreds of thousands of potential partitionings, multiplied
-        // by 11 different possible leaders in each round.
+        // which results in hundreds of thousands of potential partitionings.
         for _ in 0..self.num_rounds {
             rounds.push(RoundConfig {
-                leader: self.keys.choose(rng).cloned().unwrap(),
                 phase_partitions: std::array::from_fn(|_| {
                     self.splits.choose(rng).cloned().unwrap()
                 }),
