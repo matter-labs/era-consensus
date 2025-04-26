@@ -70,7 +70,21 @@ impl ProtoFmt for GenesisRaw {
                     },
                 )?);
             } else {
-                anyhow::bail!("leader_selection must be Sticky");
+                let validator_info: Vec<_> = validators
+                    .iter()
+                    .map(|v| ValidatorInfo {
+                        key: v.key.clone(),
+                        weight: v.weight,
+                        leader: true,
+                    })
+                    .collect();
+                validators_schedule = Some(Schedule::new(
+                    validator_info,
+                    LeaderSelection {
+                        frequency: 1,
+                        mode: leader,
+                    },
+                )?);
             }
         } else if protocol_version.0 == 2 {
             validators_schedule =
@@ -97,7 +111,33 @@ impl ProtoFmt for GenesisRaw {
         let validators_schedule;
 
         if self.protocol_version.0 == 1 {
-            let leader = self.validators_schedule.as_ref().unwrap().leaders()[0];
+            let leader = self.validators_schedule.as_ref().unwrap().leaders();
+            if leader.len() == 1 {
+                leader_selection = Some(
+                    LeaderSelectionMode::Sticky(
+                        self.validators_schedule
+                            .as_ref()
+                            .unwrap()
+                            .get(leader[0])
+                            .unwrap()
+                            .key
+                            .clone(),
+                    )
+                    .build(),
+                );
+            } else if leader.len() == self.validators_schedule.as_ref().unwrap().len() {
+                leader_selection = Some(
+                    self.validators_schedule
+                        .as_ref()
+                        .unwrap()
+                        .leader_selection()
+                        .mode
+                        .clone()
+                        .build(),
+                );
+            } else {
+                unreachable!();
+            }
             validators_v1 = self
                 .validators_schedule
                 .as_ref()
@@ -111,18 +151,6 @@ impl ProtoFmt for GenesisRaw {
                     .build()
                 })
                 .collect();
-            leader_selection = Some(
-                LeaderSelectionMode::Sticky(
-                    self.validators_schedule
-                        .as_ref()
-                        .unwrap()
-                        .get(leader)
-                        .unwrap()
-                        .key
-                        .clone(),
-                )
-                .build(),
-            );
             validators_schedule = None;
         } else if self.protocol_version.0 == 2 {
             validators_v1 = Vec::new();

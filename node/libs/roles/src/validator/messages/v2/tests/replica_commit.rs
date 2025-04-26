@@ -143,7 +143,7 @@ fn test_commit_qc_verify() {
 
     // QC with too many signers
     let mut qc2 = qc.clone();
-    qc2.signers = Signers::new(setup.genesis.validators.len() + 1);
+    qc2.signers = Signers::new(setup.genesis.validators_schedule.as_ref().unwrap().len() + 1);
     assert_matches!(
         qc2.verify(
             setup.genesis.hash(),

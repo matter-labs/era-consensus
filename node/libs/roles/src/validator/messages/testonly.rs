@@ -67,24 +67,13 @@ impl Distribution<GenesisHash> for Standard {
 
 impl Distribution<GenesisRaw> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisRaw {
-        let mut genesis = GenesisRaw {
+        GenesisRaw {
             chain_id: rng.gen(),
             fork_number: rng.gen(),
             first_block: rng.gen(),
             protocol_version: rng.gen(),
-            validators: rng.gen(),
-            leader_selection: rng.gen(),
             validators_schedule: rng.gen(),
-        };
-
-        // In order for the genesis to be valid, sticky leader need to be in the validator committee.
-        if let LeaderSelectionMode::Sticky(_) = genesis.leader_selection {
-            let i = rng.gen_range(0..genesis.validators.len());
-            genesis.leader_selection =
-                LeaderSelectionMode::Sticky(genesis.validators.get(i).unwrap().key.clone());
         }
-
-        genesis
     }
 }
 

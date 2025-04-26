@@ -158,3 +158,12 @@ pub fn quorum_threshold(total_weight: u64) -> u64 {
 pub fn subquorum_threshold(total_weight: u64) -> u64 {
     total_weight - 3 * max_faulty_weight(total_weight)
 }
+
+/// Creates a Committee from a Schedule for compatibility with v1 signatures API
+pub fn get_committee_from_schedule(schedule: &super::super::Schedule) -> Committee {
+    Committee::new(schedule.iter().map(|v| WeightedValidator {
+        key: v.key.clone(),
+        weight: v.weight,
+    }))
+    .unwrap()
+}

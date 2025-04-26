@@ -2,7 +2,7 @@
 use rand::Rng;
 
 use super::{
-    v1, Block, BlockNumber, ChainId, ForkNumber, Genesis, GenesisRaw, LeaderSelection,
+    Block, BlockNumber, ChainId, ForkNumber, Genesis, GenesisRaw, LeaderSelection,
     LeaderSelectionMode, PreGenesisBlock, ProtocolVersion, Schedule, SecretKey, ValidatorInfo,
 };
 
@@ -118,14 +118,6 @@ impl Setup {
                 fork_number: spec.fork_number,
                 first_block: spec.first_block,
                 protocol_version: spec.protocol_version,
-                validators: v1::Committee::new(spec.validator_weights.iter().map(|(k, w)| {
-                    v1::WeightedValidator {
-                        key: k.public(),
-                        weight: *w,
-                    }
-                }))
-                .unwrap(),
-                leader_selection: spec.leader_selection.mode.clone(),
                 validators_schedule: Some(
                     Schedule::new(
                         spec.validator_weights.iter().map(|(k, w)| ValidatorInfo {

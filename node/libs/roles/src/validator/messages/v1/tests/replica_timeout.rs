@@ -251,7 +251,7 @@ fn test_timeout_qc_verify() {
             high_vote: None,
             high_qc: None,
         },
-        Signers::new(setup.genesis.validators.len()),
+        Signers::new(setup.genesis.validators_schedule.as_ref().unwrap().len()),
     );
     assert_matches!(
         qc2.verify(&setup.genesis),
@@ -266,7 +266,7 @@ fn test_timeout_qc_verify() {
             high_vote: None,
             high_qc: None,
         },
-        Signers::new(setup.genesis.validators.len() + 1),
+        Signers::new(setup.genesis.validators_schedule.as_ref().unwrap().len() + 1),
     );
     assert_matches!(
         qc3.verify(&setup.genesis),
@@ -281,7 +281,7 @@ fn test_timeout_qc_verify() {
             high_vote: None,
             high_qc: None,
         },
-        Signers::new(setup.genesis.validators.len()),
+        Signers::new(setup.genesis.validators_schedule.as_ref().unwrap().len()),
     );
     assert_matches!(
         qc4.verify(&setup.genesis),
@@ -290,10 +290,11 @@ fn test_timeout_qc_verify() {
 
     // QC with overlapping signers
     let mut qc5 = qc.clone();
-    let mut signers = Signers::new(setup.genesis.validators.len());
-    signers
-        .0
-        .set(rng.gen_range(0..setup.genesis.validators.len()), true);
+    let mut signers = Signers::new(setup.genesis.validators_schedule.as_ref().unwrap().len());
+    signers.0.set(
+        rng.gen_range(0..setup.genesis.validators_schedule.as_ref().unwrap().len()),
+        true,
+    );
     qc5.map.insert(
         ReplicaTimeout {
             view: qc5.view,

@@ -128,7 +128,7 @@ fn test_leader_selection_round_robin() {
             schedule.index(&got).unwrap()
         })
         .collect();
-    assert_eq!(vec![2, 3, 4, 4, 1], got);
+    assert_eq!(vec![2, 3, 2, 1, 3], got);
 }
 
 #[test]

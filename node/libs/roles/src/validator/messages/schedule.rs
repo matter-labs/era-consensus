@@ -98,6 +98,11 @@ impl Schedule {
         &self.leaders
     }
 
+    /// Returns the leader selection parameters.
+    pub fn leader_selection(&self) -> &LeaderSelection {
+        &self.leader_selection
+    }
+
     /// Returns the number of validators.
     #[allow(clippy::len_without_is_empty)] // a valid `Schedule` is always non-empty by construction
     pub fn len(&self) -> usize {
