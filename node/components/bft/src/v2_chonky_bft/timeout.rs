@@ -124,8 +124,7 @@ impl StateMachine {
             .expect("could not add message to TimeoutQC");
 
         // Calculate the TimeoutQC signers weight.
-        let weight =
-            timeout_qc.weight(&self.config.genesis().validators_schedule.as_ref().unwrap());
+        let weight = timeout_qc.weight(self.config.genesis().validators_schedule.as_ref().unwrap());
 
         // Update view number of last timeout message for author
         self.timeout_views_cache

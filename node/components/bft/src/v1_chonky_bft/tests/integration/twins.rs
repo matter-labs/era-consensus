@@ -163,6 +163,7 @@ async fn run_twins(
         );
 
         // Debug output of round schedule.
+        #[allow(clippy::needless_range_loop)]
         for r in 0..scenario.rounds.len() {
             // Let's just consider the partition of the LeaderCommit phase, for brevity's sake.
             let partitions = &splits[r].last().unwrap();

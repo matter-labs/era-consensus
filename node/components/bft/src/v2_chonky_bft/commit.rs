@@ -130,7 +130,7 @@ impl StateMachine {
         // Calculate the CommitQC signers weight.
         let weight = commit_qc
             .signers
-            .weight(&self.config.genesis().validators_schedule.as_ref().unwrap());
+            .weight(self.config.genesis().validators_schedule.as_ref().unwrap());
 
         // Update view number of last commit message for author
         self.commit_views_cache

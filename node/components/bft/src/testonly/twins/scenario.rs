@@ -110,8 +110,6 @@ where
 {
     /// Number of rounds (views) to simulate in a scenario
     num_rounds: usize,
-    /// Unique leader keys.
-    keys: Vec<&'a T::Key>,
     /// All splits of various sizes we can choose in a round.
     splits: Vec<Split<'a, T>>,
 }
@@ -123,9 +121,6 @@ where
     /// Initialise a scenario generator from a cluster.
     pub fn new(cluster: &'a Cluster<T>, num_rounds: usize, max_partitions: usize) -> Self {
         assert!(!cluster.nodes().is_empty(), "empty cluster");
-
-        // Potential leaders
-        let keys = cluster.replicas().iter().map(|r| r.key()).collect();
 
         // Create all possible partitionings; the paper considers 2 or 3 partitions to be enough.
         let splits = (1..=max_partitions).flat_map(|np| splits(cluster.nodes(), np));
@@ -139,11 +134,7 @@ where
             })
             .collect();
 
-        Self {
-            num_rounds,
-            keys,
-            splits,
-        }
+        Self { num_rounds, splits }
     }
 
     /// Generate a single run for the agreed upon number of rounds.
