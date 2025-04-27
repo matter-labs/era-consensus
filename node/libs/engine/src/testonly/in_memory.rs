@@ -111,7 +111,7 @@ impl EngineInterface for Engine {
         self.0.persisted.subscribe()
     }
 
-    async fn get_validator_committee(
+    async fn get_validator_schedule(
         &self,
         _ctx: &ctx::Ctx,
         _number: validator::BlockNumber,
@@ -124,7 +124,7 @@ impl EngineInterface for Engine {
         ))
     }
 
-    async fn get_pending_validator_committee(
+    async fn get_pending_validator_schedule(
         &self,
         _ctx: &ctx::Ctx,
     ) -> ctx::Result<

@@ -1,4 +1,7 @@
-use std::{collections::VecDeque, sync::Arc};
+use std::{
+    collections::{BTreeMap, VecDeque},
+    sync::Arc,
+};
 
 use anyhow::Context as _;
 use tracing::Instrument;
@@ -18,6 +21,9 @@ pub struct EngineManager {
     interface: Box<dyn EngineInterface>,
     genesis: validator::Genesis,
     block_store: sync::watch::Sender<BlockStore>,
+    epoch_schedule: sync::Mutex<
+        BTreeMap<validator::v2::EpochNumber, (validator::Schedule, Option<validator::BlockNumber>)>,
+    >,
 }
 
 impl EngineManager {
@@ -29,10 +35,44 @@ impl EngineManager {
         ctx: &ctx::Ctx,
         interface: Box<dyn EngineInterface>,
     ) -> ctx::Result<(Arc<Self>, EngineManagerRunner)> {
-        let genesis = interface.genesis(ctx).await.wrap("persistent.genesis()")?;
+        // Get the genesis.
+        let genesis = interface.genesis(ctx).await.wrap("interface.genesis()")?;
 
+        // Get the persisted state.
         let persisted = interface.persisted().borrow().clone();
         persisted.verify().context("state.verify()")?;
+
+        // Get the validator schedule.
+        let mut epoch_schedule = BTreeMap::new();
+
+        if genesis.protocol_version.0 == 1 || genesis.validators_schedule.is_some() {
+            // Protocol version 1 does not support validator schedule rotation.
+            // Also, if there's a validator schedule in genesis, we use it instead of fetching it from the state.
+            epoch_schedule.insert(
+                validator::v2::EpochNumber(0),
+                (genesis.validators_schedule.as_ref().unwrap().clone(), None),
+            );
+        } else {
+            // Otherwise, we fetch the inital validator schedule from the state.
+            let head = persisted.head();
+
+            let current_schedule = interface
+                .get_validator_schedule(ctx, head)
+                .await
+                .wrap("interface.get_validator_schedule()")?;
+            let pending_schedule = interface
+                .get_pending_validator_schedule(ctx)
+                .await
+                .wrap("interface.get_pending_validator_schedule()")?;
+
+            let mut current_epoch_end = None;
+            if let Some(res) = pending_schedule {
+                current_epoch_end = Some(res.2);
+                epoch_schedule.insert(res.1, (res.0, None));
+            }
+
+            epoch_schedule.insert(current_schedule.1, (current_schedule.0, current_epoch_end));
+        }
 
         let this = Arc::new(Self {
             block_store: sync::watch::channel(BlockStore {
@@ -43,6 +83,7 @@ impl EngineManager {
             .0,
             genesis,
             interface,
+            epoch_schedule: sync::Mutex::new(epoch_schedule),
         });
 
         Ok((this.clone(), EngineManagerRunner(this)))
@@ -279,6 +320,11 @@ impl EngineManagerRunner {
                     .await?;
                 }
             });
+
+            // Task updating the validator schedule.
+            s.spawn::<()>(async {
+                let mut last_epoch = self.0.epoch_schedule.lock();
+            }
 
             // Task queueing blocks to be persisted.
             let block_store = &mut self.0.block_store.subscribe();

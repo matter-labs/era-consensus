@@ -17,16 +17,16 @@ pub trait EngineInterface: 'static + fmt::Debug + Send + Sync {
     /// Range of blocks persisted in storage.
     fn persisted(&self) -> sync::watch::Receiver<BlockStoreState>;
 
-    /// Gets the validator committee that is active at the given block number and the current epoch number.
-    async fn get_validator_committee(
+    /// Gets the validator schedule that is active at the given block number and the current epoch number.
+    async fn get_validator_schedule(
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
     ) -> ctx::Result<(validator::Schedule, validator::v2::EpochNumber)>;
 
-    /// Gets the pending validator committee (if one exists) together with the epoch number
+    /// Gets the pending validator schedule (if one exists) together with the epoch number
     /// and the block number at which it will become active.
-    async fn get_pending_validator_committee(
+    async fn get_pending_validator_schedule(
         &self,
         ctx: &ctx::Ctx,
     ) -> ctx::Result<

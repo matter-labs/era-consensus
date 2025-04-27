@@ -120,7 +120,7 @@ impl EngineInterface for RocksDB {
         self.0.persisted.subscribe()
     }
 
-    async fn get_validator_committee(
+    async fn get_validator_schedule(
         &self,
         _ctx: &ctx::Ctx,
         _number: validator::BlockNumber,
@@ -131,7 +131,7 @@ impl EngineInterface for RocksDB {
         ))
     }
 
-    async fn get_pending_validator_committee(
+    async fn get_pending_validator_schedule(
         &self,
         _ctx: &ctx::Ctx,
     ) -> ctx::Result<

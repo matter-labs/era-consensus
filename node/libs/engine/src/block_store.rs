@@ -88,6 +88,13 @@ impl BlockStoreState {
         self.first <= number && number <= last.number()
     }
 
+    /// Returns the number of the head of the chain. We might not have the block head in the store.
+    pub fn head(&self) -> validator::BlockNumber {
+        match &self.last {
+            Some(last) => last.number(),
+            None => self.first.prev().unwrap_or(validator::BlockNumber(0)),
+        }
+    }
     /// Number of the next block that can be stored in the `BlockStore`.
     /// (i.e. `last` + 1).
     pub fn next(&self) -> validator::BlockNumber {
