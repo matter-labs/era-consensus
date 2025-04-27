@@ -124,14 +124,23 @@ impl EngineInterface for RocksDB {
         &self,
         _ctx: &ctx::Ctx,
         _number: validator::BlockNumber,
-    ) -> ctx::Result<validator::Committee> {
-        Ok(self.0.genesis.validators.clone())
+    ) -> ctx::Result<(validator::Schedule, validator::v2::EpochNumber)> {
+        Ok((
+            self.0.genesis.validators_schedule.clone().unwrap(),
+            validator::v2::EpochNumber(0),
+        ))
     }
 
     async fn get_pending_validator_committee(
         &self,
         _ctx: &ctx::Ctx,
-    ) -> ctx::Result<Option<(validator::Committee, validator::BlockNumber)>> {
+    ) -> ctx::Result<
+        Option<(
+            validator::Schedule,
+            validator::v2::EpochNumber,
+            validator::BlockNumber,
+        )>,
+    > {
         Ok(None)
     }
 
