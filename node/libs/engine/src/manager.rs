@@ -5,13 +5,13 @@ use std::{
 
 use anyhow::Context as _;
 use tracing::Instrument;
-use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
+use zksync_concurrency::{ctx, error::Wrap as _, scope, sync, time};
 use zksync_consensus_roles::validator::{self, Block};
 
 use crate::{
     block_store::BlockStore,
     metrics::{self, BLOCK_STORE},
-    BlockStoreState, EngineInterface,
+    BlockStoreState, EngineInterface, Last,
 };
 
 /// A wrapper around a EngineInterface which adds caching blocks in-memory
@@ -21,8 +21,9 @@ pub struct EngineManager {
     interface: Box<dyn EngineInterface>,
     genesis: validator::Genesis,
     block_store: sync::watch::Sender<BlockStore>,
+    // A map of epoch number to (validator schedule, activation block number).
     epoch_schedule: sync::Mutex<
-        BTreeMap<validator::v2::EpochNumber, (validator::Schedule, Option<validator::BlockNumber>)>,
+        BTreeMap<validator::v2::EpochNumber, (validator::Schedule, validator::BlockNumber)>,
     >,
 }
 
@@ -42,38 +43,6 @@ impl EngineManager {
         let persisted = interface.persisted().borrow().clone();
         persisted.verify().context("state.verify()")?;
 
-        // Get the validator schedule.
-        let mut epoch_schedule = BTreeMap::new();
-
-        if genesis.protocol_version.0 == 1 || genesis.validators_schedule.is_some() {
-            // Protocol version 1 does not support validator schedule rotation.
-            // Also, if there's a validator schedule in genesis, we use it instead of fetching it from the state.
-            epoch_schedule.insert(
-                validator::v2::EpochNumber(0),
-                (genesis.validators_schedule.as_ref().unwrap().clone(), None),
-            );
-        } else {
-            // Otherwise, we fetch the inital validator schedule from the state.
-            let head = persisted.head();
-
-            let current_schedule = interface
-                .get_validator_schedule(ctx, head)
-                .await
-                .wrap("interface.get_validator_schedule()")?;
-            let pending_schedule = interface
-                .get_pending_validator_schedule(ctx)
-                .await
-                .wrap("interface.get_pending_validator_schedule()")?;
-
-            let mut current_epoch_end = None;
-            if let Some(res) = pending_schedule {
-                current_epoch_end = Some(res.2);
-                epoch_schedule.insert(res.1, (res.0, None));
-            }
-
-            epoch_schedule.insert(current_schedule.1, (current_schedule.0, current_epoch_end));
-        }
-
         let this = Arc::new(Self {
             block_store: sync::watch::channel(BlockStore {
                 queued: persisted.clone(),
@@ -83,7 +52,7 @@ impl EngineManager {
             .0,
             genesis,
             interface,
-            epoch_schedule: sync::Mutex::new(epoch_schedule),
+            epoch_schedule: sync::Mutex::new(BTreeMap::new()),
         });
 
         Ok((this.clone(), EngineManagerRunner(this)))
@@ -94,9 +63,19 @@ impl EngineManager {
         &self.genesis
     }
 
+    /// Returns true if there is a static validator schedule in the genesis.
+    pub fn has_static_schedule(&self) -> bool {
+        self.genesis.validators_schedule.is_some()
+    }
+
     /// Available blocks (in-memory & persisted).
     pub fn queued(&self) -> BlockStoreState {
         self.block_store.borrow().queued.clone()
+    }
+
+    /// Persisted blocks.
+    pub fn persisted(&self) -> BlockStoreState {
+        self.block_store.borrow().persisted.clone()
     }
 
     /// Fetches a block (from queue or persistent storage).
@@ -321,32 +300,100 @@ impl EngineManagerRunner {
                 }
             });
 
-            // Task updating the validator schedule.
-            s.spawn::<()>(async {
-                let mut last_epoch = self.0.epoch_schedule.lock();
-            }
-
             // Task queueing blocks to be persisted.
-            let block_store = &mut self.0.block_store.subscribe();
-            let mut queue_next = validator::BlockNumber(0);
-            loop {
-                async {
-                    let block = sync::wait_for_some(ctx, block_store, |block_store| {
-                        block_store.block(queue_next.max(block_store.persisted.next()))
-                    })
-                    .instrument(tracing::info_span!("wait_for_next_block"))
+            s.spawn::<()>(async {
+                let block_store = &mut self.0.block_store.subscribe();
+                let mut queue_next = validator::BlockNumber(0);
+                loop {
+                    async {
+                        let block = sync::wait_for_some(ctx, block_store, |block_store| {
+                            block_store.block(queue_next.max(block_store.persisted.next()))
+                        })
+                        .instrument(tracing::info_span!("wait_for_next_block"))
+                        .await?;
+                        queue_next = block.number().next();
+
+                        let t = metrics::ENGINE_INTERFACE.queue_next_block_latency.start();
+                        self.0.interface.queue_next_block(ctx, block).await?;
+                        t.observe();
+
+                        ctx::Ok(())
+                    }
+                    .instrument(tracing::info_span!("queue_persist_block_iteration"))
                     .await?;
-                    queue_next = block.number().next();
-
-                    let t = metrics::ENGINE_INTERFACE.queue_next_block_latency.start();
-                    self.0.interface.queue_next_block(ctx, block).await?;
-                    t.observe();
-
-                    ctx::Ok(())
                 }
-                .instrument(tracing::info_span!("queue_persist_block_iteration"))
-                .await?;
+            });
+
+            // Task updating the validator schedule.
+            // We only need to update the validator schedule if we are not using a static schedule
+            // and if we are in at least the consensus protocol version 2.
+            if self.0.genesis.protocol_version.0 > 1 && !self.0.has_static_schedule() {
+                s.spawn::<()>(async {
+                    // Wait until we persisted all pre-genesis blocks.
+                    // This is necessary because we only need the validator schedule after genesis.
+                    if let Some(last_pre_genesis) = self.0.genesis.first_block.prev() {
+                        self.0.wait_until_persisted(ctx, last_pre_genesis).await?;
+                    }
+
+                    // At this point we should not be able to sync any more blocks as we are missing
+                    // the validator schedule for the next blocks.
+
+                    // Get the current block and epoch number.
+                    let (mut head, mut epoch) = match self.0.persisted().last {
+                        Some(Last::FinalV2(qc)) => (qc.header().number, qc.message.view.epoch),
+                        Some(Last::PreGenesis(n)) => (n, validator::v2::EpochNumber(0)),
+                        None => (self.0.genesis.first_block, validator::v2::EpochNumber(0)),
+                        Some(Last::FinalV1(_)) => unreachable!(),
+                    };
+
+                    // Get the current validator schedule and insert it into the epoch schedule.
+                    let current_schedule = self
+                        .0
+                        .interface
+                        .get_validator_schedule(ctx, head)
+                        .await
+                        .wrap("interface.get_validator_schedule()")?;
+                    let mut epoch_lock = self.0.epoch_schedule.lock().await;
+                    epoch_lock.insert(epoch, current_schedule);
+                    drop(epoch_lock);
+
+                    // Start a loop trying to fetch the pending validator schedules for the next epochs.
+                    loop {
+                        async {
+                            head = self.0.persisted().head();
+
+                            if let Some(pending_schedule) = self
+                                .0
+                                .interface
+                                .get_pending_validator_schedule(ctx, head)
+                                .await
+                                .wrap("interface.get_pending_validator_schedule()")?
+                            {
+                                epoch = epoch.next();
+                                let mut epoch_lock = self.0.epoch_schedule.lock().await;
+                                epoch_lock.insert(epoch, pending_schedule);
+                                drop(epoch_lock);
+                            }
+
+                            // See if we can prune the oldest validator schedule.
+                            let mut epoch_lock = self.0.epoch_schedule.lock().await;
+                            if let Some(epoch) = epoch_lock.iter().skip(2).next() {
+                                if epoch.1 .1 < head {
+                                    epoch_lock.pop_first();
+                                }
+                            }
+
+                            ctx::Ok(())
+                        }
+                        .instrument(tracing::info_span!("update_validator_schedule_iteration"))
+                        .await?;
+
+                        ctx.sleep(time::Duration::milliseconds(1000)).await?;
+                    }
+                });
             }
+
+            ctx::Ok(())
         })
         .await;
 

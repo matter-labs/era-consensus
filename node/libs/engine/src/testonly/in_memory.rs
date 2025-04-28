@@ -115,26 +115,18 @@ impl EngineInterface for Engine {
         &self,
         _ctx: &ctx::Ctx,
         _number: validator::BlockNumber,
-    ) -> ctx::Result<(validator::Schedule, validator::v2::EpochNumber)> {
-        // For simplicity we just use the validator schedule from the genesis
-        // and never change it.
-        Ok((
-            self.0.genesis.validators_schedule.clone().unwrap(),
-            validator::v2::EpochNumber(0),
-        ))
+    ) -> ctx::Result<(validator::Schedule, validator::BlockNumber)> {
+        // For simplicity we just assume that we don't have dynamic validator schedules.
+        unimplemented!()
     }
 
     async fn get_pending_validator_schedule(
         &self,
         _ctx: &ctx::Ctx,
-    ) -> ctx::Result<
-        Option<(
-            validator::Schedule,
-            validator::v2::EpochNumber,
-            validator::BlockNumber,
-        )>,
-    > {
-        Ok(None)
+        _head: validator::BlockNumber,
+    ) -> ctx::Result<Option<(validator::Schedule, validator::BlockNumber)>> {
+        // For simplicity we just assume that we don't have dynamic validator schedules.
+        unimplemented!()
     }
 
     async fn get_block(
