@@ -6,7 +6,7 @@ use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx::{self, channel},
     error::Wrap as _,
-    limiter, scope, sync,
+    limiter, scope, sync, time,
 };
 use zksync_consensus_engine::EngineManager;
 
@@ -29,6 +29,7 @@ mod tests;
 mod watch;
 pub use config::*;
 pub use metrics::MeteredStreamStats;
+use zksync_consensus_roles::validator;
 
 /// State of the network component observable outside of the component.
 pub struct Network {
@@ -36,6 +37,9 @@ pub struct Network {
     pub(crate) consensus: Option<Arc<consensus::Network>>,
     /// Gossip network state.
     pub(crate) gossip: Arc<gossip::Network>,
+    /// The epoch number for this instance of the network component.
+    /// If None, the network component will only fetch pre-genesis blocks.
+    pub(crate) epoch_number: Option<validator::EpochNumber>,
 }
 
 /// Runner of the Network background tasks.
@@ -48,17 +52,30 @@ pub struct Runner {
 }
 
 impl Network {
-    /// Constructs a new network component state.
-    /// Call `run_network` to run the component.
+    /// Constructs a new network component state. Call `run_network` to run the component.
+    ///
+    /// # Arguments
+    ///
+    /// * `cfg` - The configuration for the network component.
+    /// * `engine_manager` - The engine manager which connects to the execution engine.
+    /// * `epoch_number` - The epoch number for this instance of the network component. If None, the
+    ///     network component will only fetch pre-genesis blocks.
+    /// * `consensus_sender` - The sender for the consensus messages to the consensus component.
+    /// * `consensus_receiver` - The receiver for the consensus messages from the consensus component.
     pub fn new(
         cfg: Config,
         engine_manager: Arc<EngineManager>,
+        epoch_number: Option<validator::EpochNumber>,
         consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
         consensus_receiver: channel::UnboundedReceiver<io::ConsensusInputMessage>,
     ) -> (Arc<Self>, Runner) {
         let gossip = gossip::Network::new(cfg, engine_manager, consensus_sender);
         let consensus = consensus::Network::new(gossip.clone());
-        let net = Arc::new(Self { gossip, consensus });
+        let net = Arc::new(Self {
+            gossip,
+            consensus,
+            epoch_number,
+        });
         (
             net.clone(),
             Runner {
@@ -100,6 +117,82 @@ impl Runner {
                 .server_addr
                 .bind()
                 .context("server_addr.bind()")?;
+
+            // Spawn task to check when this instance of the network component is shutting down.
+            s.spawn(async {
+                if let Some(epoch_number) = self.net.epoch_number {
+                    // This instance of the network is alive only until the end of the current epoch.
+
+                    // Get the expiration block number for the current epoch.
+                    let expiration = loop {
+                        if let Some(n) = self
+                            .net
+                            .gossip
+                            .engine_manager
+                            .validator_schedule(epoch_number)
+                            .await
+                            .context(format!(
+                                "Network instance was started for epoch {} but there's no \
+                                 corresponding validator schedule.",
+                                epoch_number
+                            ))?
+                            .expiration_block
+                        {
+                            break n;
+                        }
+                        ctx.sleep(time::Duration::seconds(5)).await?;
+                    };
+
+                    loop {
+                        // Get the last persisted block number.
+                        let last_block_number = self.net.gossip.engine_manager.persisted().head();
+
+                        if last_block_number > expiration {
+                            return Err(ctx::Error::Internal(anyhow::anyhow!(
+                                "Network instance was started for epoch {} but continued past the \
+                                 expiration block {}. Current block number: {}.",
+                                epoch_number,
+                                expiration,
+                                last_block_number
+                            )));
+                        }
+
+                        // If we already have the expiration block, we can stop the network component.
+                        if last_block_number == expiration {
+                            s.cancel();
+                            break;
+                        }
+                        ctx.sleep(time::Duration::seconds(1)).await?;
+                    }
+                } else {
+                    // This instance of the network is alive until we fetch all the pre-genesis blocks.
+                    let first_block = self.net.gossip.engine_manager.genesis().first_block;
+
+                    loop {
+                        // Get the last persisted block number.
+                        let last_block_number = self.net.gossip.engine_manager.persisted().head();
+
+                        if last_block_number >= first_block {
+                            return Err(ctx::Error::Internal(anyhow::anyhow!(
+                                "Network instance was started to fetch pre-genesis blocks but \
+                                 continued past the genesis first block {}. Current block number: \
+                                 {}.",
+                                first_block,
+                                last_block_number
+                            )));
+                        }
+
+                        // If we already have all the pre-genesis blocks, we can stop the network component.
+                        if last_block_number.next() == first_block {
+                            s.cancel();
+                            break;
+                        }
+                        ctx.sleep(time::Duration::seconds(5)).await?;
+                    }
+                }
+
+                Ok(())
+            });
 
             // Handle incoming messages.
             s.spawn(async {
@@ -169,9 +262,11 @@ impl Runner {
                             .await
                             .context("preface::accept()")
                             .context(
-                                "establishing new incoming TCP connection failed. \
-                                The possible cause is that someone was trying to establish a non-consensus connection to the consensus port. \
-                                If you believe this connection should have succeeded, please check your port configuration")?;
+                                "establishing new incoming TCP connection failed. The possible \
+                                 cause is that someone was trying to establish a non-consensus \
+                                 connection to the consensus port. If you believe this connection \
+                                 should have succeeded, please check your port configuration",
+                            )?;
                         match endpoint {
                             preface::Endpoint::ConsensusNet => {
                                 if let Some(c) = &self.net.consensus {
@@ -200,6 +295,7 @@ impl Runner {
             }
         })
         .await;
+
         match res {
             Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
             Err(ctx::Error::Internal(err)) => Err(err),
