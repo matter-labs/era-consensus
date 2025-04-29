@@ -21,10 +21,8 @@ pub struct EngineManager {
     interface: Box<dyn EngineInterface>,
     genesis: validator::Genesis,
     block_store: sync::watch::Sender<BlockStore>,
-    // A map of epoch number to (validator schedule, activation block number).
-    epoch_schedule: sync::Mutex<
-        BTreeMap<validator::v2::EpochNumber, (validator::Schedule, validator::BlockNumber)>,
-    >,
+    // A map of epoch number to validator schedule with lifetime information
+    epoch_schedule: sync::Mutex<BTreeMap<validator::EpochNumber, ScheduleWithLifetime>>,
 }
 
 impl EngineManager {
@@ -66,6 +64,15 @@ impl EngineManager {
     /// Returns true if there is a static validator schedule in the genesis.
     pub fn has_static_schedule(&self) -> bool {
         self.genesis.validators_schedule.is_some()
+    }
+
+    /// Returns the validator schedule, with its activation and expiration block numbers,
+    /// for the given epoch number.
+    pub async fn validator_schedule(
+        &self,
+        epoch: validator::EpochNumber,
+    ) -> Option<ScheduleWithLifetime> {
+        self.epoch_schedule.lock().await.get(&epoch).cloned()
     }
 
     /// Available blocks (in-memory & persisted).
@@ -339,10 +346,10 @@ impl EngineManagerRunner {
                     // the validator schedule for the next blocks.
 
                     // Get the current block and epoch number.
-                    let (mut head, mut epoch) = match self.0.persisted().last {
+                    let (mut head, mut cur_epoch) = match self.0.persisted().last {
                         Some(Last::FinalV2(qc)) => (qc.header().number, qc.message.view.epoch),
-                        Some(Last::PreGenesis(n)) => (n, validator::v2::EpochNumber(0)),
-                        None => (self.0.genesis.first_block, validator::v2::EpochNumber(0)),
+                        Some(Last::PreGenesis(n)) => (n, validator::EpochNumber(0)),
+                        None => (self.0.genesis.first_block, validator::EpochNumber(0)),
                         Some(Last::FinalV1(_)) => unreachable!(),
                     };
 
@@ -354,7 +361,14 @@ impl EngineManagerRunner {
                         .await
                         .wrap("interface.get_validator_schedule()")?;
                     let mut epoch_lock = self.0.epoch_schedule.lock().await;
-                    epoch_lock.insert(epoch, current_schedule);
+                    epoch_lock.insert(
+                        cur_epoch,
+                        ScheduleWithLifetime {
+                            schedule: current_schedule.0,
+                            activation_block: current_schedule.1,
+                            expiration_block: None,
+                        },
+                    );
                     drop(epoch_lock);
 
                     // Start a loop trying to fetch the pending validator schedules for the next epochs.
@@ -362,24 +376,52 @@ impl EngineManagerRunner {
                         async {
                             head = self.0.persisted().head();
 
-                            if let Some(pending_schedule) = self
-                                .0
-                                .interface
-                                .get_pending_validator_schedule(ctx, head)
-                                .await
-                                .wrap("interface.get_pending_validator_schedule()")?
-                            {
-                                epoch = epoch.next();
-                                let mut epoch_lock = self.0.epoch_schedule.lock().await;
-                                epoch_lock.insert(epoch, pending_schedule);
-                                drop(epoch_lock);
-                            }
+                            // Check if head is after the activation block of the LAST epoch in epoch_schedule
+                            let epoch_lock = self.0.epoch_schedule.lock().await;
+                            let last_epoch_activation =
+                                epoch_lock.iter().last().unwrap().1.activation_block; // unwrap is safe because we know that there is at least one epoch
+                            drop(epoch_lock);
 
-                            // See if we can prune the oldest validator schedule.
-                            let mut epoch_lock = self.0.epoch_schedule.lock().await;
-                            if let Some(epoch) = epoch_lock.iter().skip(2).next() {
-                                if epoch.1 .1 < head {
-                                    epoch_lock.pop_first();
+                            // Only try to get the pending schedule if we're past the activation block of the last epoch.
+                            // Otherwise, it's guaranteed that there's no new pending schedule.
+                            if head > last_epoch_activation {
+                                // Now we can check for a pending schedule.
+                                if let Some(pending_schedule) = self
+                                    .0
+                                    .interface
+                                    .get_pending_validator_schedule(ctx, head)
+                                    .await
+                                    .wrap("interface.get_pending_validator_schedule()")?
+                                {
+                                    let mut epoch_lock = self.0.epoch_schedule.lock().await;
+
+                                    // Insert the new epoch.
+                                    epoch_lock.insert(
+                                        cur_epoch.next(),
+                                        ScheduleWithLifetime {
+                                            schedule: pending_schedule.0,
+                                            activation_block: pending_schedule.1,
+                                            expiration_block: None,
+                                        },
+                                    );
+
+                                    // Update the previous epoch's expiration block.
+                                    if let Some(prev_epoch_entry) = epoch_lock.get_mut(&cur_epoch) {
+                                        prev_epoch_entry.expiration_block =
+                                            Some(pending_schedule.1.prev().unwrap());
+                                        // unwrap is safe because we know that there was a previous epoch
+                                    }
+
+                                    // See if we can prune the oldest validator schedule.
+                                    let mut epoch_lock = self.0.epoch_schedule.lock().await;
+                                    if let Some(schedule) = epoch_lock.iter().nth(2) {
+                                        if schedule.1.activation_block < head {
+                                            epoch_lock.pop_first();
+                                        }
+                                    }
+
+                                    cur_epoch = cur_epoch.next();
+                                    drop(epoch_lock);
                                 }
                             }
 
@@ -388,7 +430,9 @@ impl EngineManagerRunner {
                         .instrument(tracing::info_span!("update_validator_schedule_iteration"))
                         .await?;
 
-                        ctx.sleep(time::Duration::milliseconds(1000)).await?;
+                        // Epochs should be at least minutes apart so that validators have time to
+                        // establish network connections. So we don't need to check for new epochs too often.
+                        ctx.sleep(time::Duration::seconds(5)).await?;
                     }
                 });
             }
@@ -402,4 +446,16 @@ impl EngineManagerRunner {
             Err(ctx::Error::Internal(err)) => Err(err),
         }
     }
+}
+
+/// A validator schedule with its activation and expiration block numbers.
+#[derive(Clone, Debug)]
+pub struct ScheduleWithLifetime {
+    /// The validator schedule.
+    pub schedule: validator::Schedule,
+    /// The block number at which the schedule becomes active.
+    pub activation_block: validator::BlockNumber,
+    /// The block number at which the schedule expires. It might not be present
+    /// if the schedule is static or the the next schedule is not yet known.
+    pub expiration_block: Option<validator::BlockNumber>,
 }

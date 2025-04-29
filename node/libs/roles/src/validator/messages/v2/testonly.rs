@@ -5,10 +5,10 @@ use rand::{
 };
 
 use super::{
-    BlockHeader, ChonkyV2State, CommitQC, EpochNumber, FinalBlock, LeaderProposal, Phase,
-    ProposalJustification, ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
+    BlockHeader, ChonkyV2State, CommitQC, FinalBlock, LeaderProposal, Phase, ProposalJustification,
+    ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
 };
-use crate::validator::{testonly::Setup, Block, Payload, ViewNumber};
+use crate::validator::{testonly::Setup, Block, EpochNumber, Payload, ViewNumber};
 
 // Adds v2-specific test utilities to the `Setup` struct.
 impl Setup {

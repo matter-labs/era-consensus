@@ -73,30 +73,11 @@ impl Config {
 pub struct Executor {
     /// General-purpose executor configuration.
     pub config: Config,
-    /// Engine manager. It is responsible for block storage and execution.
+    /// Engine manager. It is responsible for the connection to the execution layer.
     pub engine_manager: Arc<EngineManager>,
 }
 
 impl Executor {
-    /// Extracts a network crate config.
-    fn network_config(&self) -> network::Config {
-        network::Config {
-            build_version: self.config.build_version.clone(),
-            server_addr: net::tcp::ListenerAddr::new(self.config.server_addr),
-            public_addr: self.config.public_addr.clone(),
-            gossip: self.config.gossip(),
-            validator_key: self.config.validator_key.clone(),
-            ping_timeout: Some(time::Duration::seconds(10)),
-            max_block_size: self.config.max_payload_size.saturating_add(kB),
-            max_block_queue_size: 20,
-            tcp_accept_rate: limiter::Rate {
-                burst: 10,
-                refresh: time::Duration::milliseconds(100),
-            },
-            rpc: self.config.rpc.clone(),
-        }
-    }
-
     /// Runs this executor to completion. This should be spawned on a separate task.
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let network_config = self.network_config();
@@ -154,5 +135,24 @@ impl Executor {
             .context("Consensus stopped")
         })
         .await
+    }
+
+    /// Extracts a network crate config.
+    fn network_config(&self) -> network::Config {
+        network::Config {
+            build_version: self.config.build_version.clone(),
+            server_addr: net::tcp::ListenerAddr::new(self.config.server_addr),
+            public_addr: self.config.public_addr.clone(),
+            gossip: self.config.gossip(),
+            validator_key: self.config.validator_key.clone(),
+            ping_timeout: Some(time::Duration::seconds(10)),
+            max_block_size: self.config.max_payload_size.saturating_add(kB),
+            max_block_queue_size: 20,
+            tcp_accept_rate: limiter::Rate {
+                burst: 10,
+                refresh: time::Duration::milliseconds(100),
+            },
+            rpc: self.config.rpc.clone(),
+        }
     }
 }

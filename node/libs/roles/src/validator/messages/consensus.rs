@@ -33,6 +33,29 @@ impl fmt::Display for ViewNumber {
     }
 }
 
+/// A struct that represents an epoch number.
+/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct EpochNumber(pub u64);
+
+impl EpochNumber {
+    /// Get the next epoch number.
+    pub fn next(self) -> Self {
+        Self(self.0 + 1)
+    }
+
+    /// Get the previous epoch number.
+    pub fn prev(self) -> Option<Self> {
+        self.0.checked_sub(1).map(Self)
+    }
+}
+
+impl fmt::Display for EpochNumber {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Display::fmt(&self.0, formatter)
+    }
+}
+
 /// Consensus messages.
 #[allow(missing_docs)]
 #[derive(Clone, Debug, PartialEq, Eq)]
