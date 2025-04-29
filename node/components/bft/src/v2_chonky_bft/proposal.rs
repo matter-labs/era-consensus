@@ -10,7 +10,8 @@ use crate::metrics;
 pub(crate) enum Error {
     /// Message for a past view or phase.
     #[error(
-        "message for a past view / phase (current view: {current_view:?}, current phase: {current_phase:?})"
+        "message for a past view / phase (current view: {current_view:?}, current phase: \
+         {current_phase:?})"
     )]
     Old {
         /// Current view.
@@ -184,7 +185,8 @@ impl StateMachine {
                 // up to the previous block.
                 if let Some(prev) = implied_block_number.prev() {
                     tracing::debug!(
-                        "ChonkyBFT replica - Waiting for previous block (number {}) to be stored before verifying proposal.",
+                        "ChonkyBFT replica - Waiting for previous block (number {}) to be stored \
+                         before verifying proposal.",
                         prev.0
                     );
                     self.config
@@ -231,7 +233,8 @@ impl StateMachine {
         };
 
         tracing::info!(
-            "ChonkyBFT replica - Received a proposal from {:#?} at view {} for block number {} with payload hash {:#?}.",
+            "ChonkyBFT replica - Received a proposal from {:#?} at view {} for block number {} \
+             with payload hash {:#?}.",
             author,
             view.0,
             implied_block_number.0,

@@ -168,7 +168,8 @@ impl Config {
         if self.is_public {
             anyhow::ensure!(
                 !HAS_PUBLIC_TARGET.fetch_or(true, Ordering::SeqCst),
-                "Only one compilation target with `is_public: true` may be specified per build script"
+                "Only one compilation target with `is_public: true` may be specified per build \
+                 script"
             );
 
             let crate_name = env::var("CARGO_PKG_NAME")
@@ -178,8 +179,8 @@ impl Config {
             let links = env::var("CARGO_MANIFEST_LINKS").ok();
             anyhow::ensure!(
                 links.as_ref() == Some(&expected_name),
-                "You must specify links = \"{expected_name}\" in the [package] section \
-                 of the built package manifest (currently set to {links:?})"
+                "You must specify links = \"{expected_name}\" in the [package] section of the \
+                 built package manifest (currently set to {links:?})"
             );
         }
         Ok(())

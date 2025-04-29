@@ -36,14 +36,18 @@ async fn test_one_connection_per_node() {
     let setup = validator::testonly::Setup::new(rng, 5);
     let cfgs = testonly::new_configs(rng, &setup, 2);
 
-    scope::run!(ctx, |ctx,s| async {
+    scope::run!(ctx, |ctx, s| async {
         let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
-        let mut nodes : Vec<_> = cfgs.iter().enumerate().map(|(i,cfg)| {
-            let (node,runner) = testonly::Instance::new(cfg.clone(), engine.manager.clone());
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
-            node
-        }).collect();
+        let mut nodes: Vec<_> = cfgs
+            .iter()
+            .enumerate()
+            .map(|(i, cfg)| {
+                let (node, runner) = testonly::Instance::new(cfg.clone(), engine.manager.clone());
+                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+                node
+            })
+            .collect();
 
         tracing::info!("waiting for all connections to be established");
         for node in &mut nodes {
@@ -51,7 +55,8 @@ async fn test_one_connection_per_node() {
         }
 
         tracing::info!(
-            "Impersonate a node, and try to establish additional connection to an already connected peer."
+            "Impersonate a node, and try to establish additional connection to an already \
+             connected peer."
         );
         let (peer, addr) = cfgs[0].gossip.static_outbound.iter().next().unwrap();
         let mut stream = preface::connect(
@@ -69,8 +74,8 @@ async fn test_one_connection_per_node() {
         // The multiplexer runner should exit gracefully.
         let _ = rpc::Service::new().run(ctx, stream).await;
         tracing::info!(
-            "Exiting the main task. Context will get canceled, all the nodes are expected \
-             to terminate gracefully."
+            "Exiting the main task. Context will get canceled, all the nodes are expected to \
+             terminate gracefully."
         );
         Ok(())
     })

@@ -192,7 +192,11 @@ async fn run_twins(
                 .iter()
                 .all(|s| *s < cluster.quorum_size());
 
-            tracing::info!("round={r} partitions={partitions:?} leaders={leader_ports:?} leader_partition_sizes={leader_partition_sizes:?} leader_isolated={leader_isolated}");
+            tracing::info!(
+                "round={r} partitions={partitions:?} leaders={leader_ports:?} \
+                 leader_partition_sizes={leader_partition_sizes:?} \
+                 leader_isolated={leader_isolated}"
+            );
         }
 
         IntegrationTestConfig {

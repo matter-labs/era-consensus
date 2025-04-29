@@ -428,11 +428,12 @@ async fn twins_receive_loop(
             ack: oneshot::channel().0,
         };
 
-        let can_send = |to| {
-            match router.can_send(&message.message.msg, port, to) {
-                Some(can_send) => Ok(can_send),
-                None => anyhow::bail!("ran out of port schedule; we probably wouldn't finalize blocks even if we continued")
-            }
+        let can_send = |to| match router.can_send(&message.message.msg, port, to) {
+            Some(can_send) => Ok(can_send),
+            None => anyhow::bail!(
+                "ran out of port schedule; we probably wouldn't finalize blocks even if we \
+                 continued"
+            ),
         };
 
         tracing::info!("broadcasting view={view} from={port} kind={kind}");

@@ -116,8 +116,8 @@ impl ProtoFmt for FinalBlock {
 pub enum BlockValidationError {
     /// Block payload doesn't match the block header.
     #[error(
-        "block payload doesn't match the block header (hash in header: {header_hash:?}, \
-             payload hash: {payload_hash:?})"
+        "block payload doesn't match the block header (hash in header: {header_hash:?}, payload \
+         hash: {payload_hash:?})"
     )]
     HashMismatch {
         /// Payload hash in block header.

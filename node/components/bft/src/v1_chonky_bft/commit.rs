@@ -169,7 +169,9 @@ impl StateMachine {
             .remove(message)
             .unwrap();
 
-        tracing::info!("ChonkyBFT replica - We have a commit QC with weight {} at view {} for block number {} with hash {:#?}.",
+        tracing::info!(
+            "ChonkyBFT replica - We have a commit QC with weight {} at view {} for block number \
+             {} with hash {:#?}.",
             weight,
             commit_qc.view().number.0,
             commit_qc.message.proposal.number.0,
