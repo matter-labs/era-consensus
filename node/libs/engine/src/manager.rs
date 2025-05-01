@@ -37,6 +37,28 @@ impl EngineManager {
         // Get the genesis.
         let genesis = interface.genesis(ctx).await.wrap("interface.genesis()")?;
 
+        // Check if the genesis is valid.
+        if genesis.protocol_version.0 == 1 && genesis.validators_schedule.is_none() {
+            return Err(anyhow::format_err!(
+                "genesis is invalid: protocol version is 1 but validators schedule is not set"
+            )
+            .into());
+        }
+
+        // Build the epoch schedule. If the genesis is using a static schedule, we only need to insert
+        // the genesis validator schedule in the epoch schedule.
+        let mut epoch_schedule = BTreeMap::new();
+        if let Some(schedule) = &genesis.validators_schedule {
+            epoch_schedule.insert(
+                validator::EpochNumber(0),
+                ScheduleWithLifetime {
+                    schedule: schedule.clone(),
+                    activation_block: genesis.first_block,
+                    expiration_block: None,
+                },
+            );
+        }
+
         // Get the persisted state.
         let persisted = interface.persisted().borrow().clone();
         persisted.verify().context("state.verify()")?;
@@ -50,7 +72,7 @@ impl EngineManager {
             .0,
             genesis,
             interface,
-            epoch_schedule: sync::Mutex::new(BTreeMap::new()),
+            epoch_schedule: sync::Mutex::new(epoch_schedule),
         });
 
         Ok((this.clone(), EngineManagerRunner(this)))
@@ -332,9 +354,8 @@ impl EngineManagerRunner {
             });
 
             // Task updating the validator schedule.
-            // We only need to update the validator schedule if we are not using a static schedule
-            // and if we are in at least the consensus protocol version 2.
-            if self.0.genesis.protocol_version.0 > 1 && !self.0.has_static_schedule() {
+            // If we are not using a static schedule, we need to update the validator schedule for each epoch.
+            if !self.0.has_static_schedule() {
                 s.spawn::<()>(async {
                     // Wait until we persisted all pre-genesis blocks.
                     // This is necessary because we only need the validator schedule after genesis.

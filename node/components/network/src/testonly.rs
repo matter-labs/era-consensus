@@ -230,6 +230,7 @@ impl Instance {
         let (net, net_runner) = Network::new(
             cfg.cfg,
             cfg.engine_manager.clone(),
+            Some(validator::EpochNumber(0)),
             net_to_con_send,
             con_to_net_recv,
         );
