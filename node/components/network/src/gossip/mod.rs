@@ -15,6 +15,7 @@
 //! network graph (minimize its diameter, increase connectedness).
 use std::sync::{atomic::AtomicUsize, Arc};
 
+use anyhow::Context as _;
 use fetch::RequestItem;
 use tracing::Instrument;
 pub(crate) use validator_addrs::*;
@@ -47,6 +48,9 @@ pub(crate) struct Connection {
 
 /// Gossip network state.
 pub(crate) struct Network {
+    /// The epoch number for this instance of the network component.
+    /// If None, the network component will only fetch pre-genesis blocks.
+    pub(crate) epoch_number: Option<validator::EpochNumber>,
     /// Gossip network configuration.
     pub(crate) cfg: Config,
     /// Currently open inbound connections.
@@ -72,9 +76,11 @@ impl Network {
     pub(crate) fn new(
         cfg: Config,
         engine_manager: Arc<EngineManager>,
+        epoch_number: Option<validator::EpochNumber>,
         consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
     ) -> Arc<Self> {
         Arc::new(Self {
+            epoch_number,
             consensus_sender,
             inbound: PoolWatch::new(
                 cfg.gossip.static_inbound.clone(),
@@ -89,9 +95,32 @@ impl Network {
         })
     }
 
-    /// Genesis.
-    pub(crate) fn genesis(&self) -> &validator::Genesis {
-        self.engine_manager.genesis()
+    /// Genesis hash.
+    pub(crate) fn genesis_hash(&self) -> validator::GenesisHash {
+        self.engine_manager.genesis_hash()
+    }
+
+    /// Genesis first block.
+    pub(crate) fn first_block(&self) -> validator::BlockNumber {
+        self.engine_manager.first_block()
+    }
+
+    /// Validator schedule for this epoch. If None, we are only fetching pre-genesis blocks.
+    pub(crate) fn validator_schedule(&self) -> anyhow::Result<Option<validator::Schedule>> {
+        if let Some(epoch_number) = self.epoch_number {
+            Ok(Some(
+                self.engine_manager
+                    .validator_schedule(epoch_number)
+                    .context(format!(
+                        "Network instance was started for epoch {} but there's no \
+                                 corresponding validator schedule.",
+                        epoch_number,
+                    ))?
+                    .schedule,
+            ))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Task fetching blocks from peers which are not present in storage.
