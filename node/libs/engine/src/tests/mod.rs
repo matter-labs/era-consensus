@@ -31,7 +31,7 @@ async fn test_invalid_justification() {
             .queue_block(
                 ctx,
                 setup.blocks[0].clone(),
-                setup.genesis.validators_schedule.as_ref().unwrap(),
+                setup.genesis.validators_schedule.as_ref(),
             )
             .await
             .unwrap();
@@ -43,11 +43,7 @@ async fn test_invalid_justification() {
         b.justification = rng.gen();
         engine
             .manager
-            .queue_block(
-                ctx,
-                b.into(),
-                setup.genesis.validators_schedule.as_ref().unwrap(),
-            )
+            .queue_block(ctx, b.into(), setup.genesis.validators_schedule.as_ref())
             .await
             .unwrap_err();
 

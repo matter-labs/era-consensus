@@ -57,7 +57,7 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
                 .queue_block(
                     ctx,
                     block.clone(),
-                    setup.genesis.validators_schedule.as_ref().unwrap(),
+                    setup.genesis.validators_schedule.as_ref(),
                 )
                 .await
                 .context("queue_block()")?;
@@ -119,7 +119,7 @@ async fn uncoordinated_block_syncing(
                 .queue_block(
                     ctx,
                     block.clone(),
-                    setup.genesis.validators_schedule.as_ref().unwrap(),
+                    setup.genesis.validators_schedule.as_ref(),
                 )
                 .await
                 .context("queue_block()")?;
@@ -178,7 +178,7 @@ async fn test_switching_on_nodes() {
                 .queue_block(
                     ctx,
                     setup.blocks[i].clone(),
-                    setup.genesis.validators_schedule.as_ref().unwrap(),
+                    setup.genesis.validators_schedule.as_ref(),
                 )
                 .await
                 .context("queue_block()")?;
@@ -240,7 +240,7 @@ async fn test_switching_off_nodes() {
                 .queue_block(
                     ctx,
                     setup.blocks[i].clone(),
-                    setup.genesis.validators_schedule.as_ref().unwrap(),
+                    setup.genesis.validators_schedule.as_ref(),
                 )
                 .await
                 .context("queue_block()")?;
@@ -310,7 +310,7 @@ async fn test_different_first_block() {
                     .queue_block(
                         ctx,
                         block.clone(),
-                        setup.genesis.validators_schedule.as_ref().unwrap(),
+                        setup.genesis.validators_schedule.as_ref(),
                     )
                     .await
                     .unwrap();
@@ -375,11 +375,7 @@ async fn test_sidechannel_sync() {
                     .net
                     .gossip
                     .engine_manager
-                    .queue_block(
-                        ctx,
-                        b.clone(),
-                        setup.genesis.validators_schedule.as_ref().unwrap(),
-                    )
+                    .queue_block(ctx, b.clone(), setup.genesis.validators_schedule.as_ref())
                     .await?;
             }
             nodes[1]
@@ -404,11 +400,7 @@ async fn test_sidechannel_sync() {
                     .net
                     .gossip
                     .engine_manager
-                    .queue_block(
-                        ctx,
-                        b.clone(),
-                        setup.genesis.validators_schedule.as_ref().unwrap(),
-                    )
+                    .queue_block(ctx, b.clone(), setup.genesis.validators_schedule.as_ref())
                     .await?;
             }
             nodes[1]

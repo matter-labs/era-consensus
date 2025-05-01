@@ -160,11 +160,15 @@ impl EngineManager {
     /// `queue_block()` adds a block to the queue as soon as all intermediate
     /// blocks are queued_state as well. Queue is unbounded, so it is caller's
     /// responsibility to manage the queue size.
+    ///
+    /// For pre-genesis blocks, we don't need a validators schedule, so we should
+    /// pass `None` to this function. For all other blocks, a validators schedule
+    /// is required.
     pub async fn queue_block(
         &self,
         ctx: &ctx::Ctx,
         block: Block,
-        validators_schedule: &validator::Schedule,
+        validators_schedule: Option<&validator::Schedule>,
     ) -> ctx::Result<()> {
         // Verify the block.
         match &block {
@@ -185,9 +189,17 @@ impl EngineManager {
                 t.observe();
             }
             Block::FinalV1(b) => b.verify(&self.genesis).context("block_v1.verify()")?,
-            Block::FinalV2(b) => b
-                .verify(self.genesis.hash(), validators_schedule)
-                .context("block_v2.verify()")?,
+            Block::FinalV2(b) => {
+                if let Some(validators_schedule) = validators_schedule {
+                    b.verify(self.genesis.hash(), validators_schedule)
+                        .context("block_v2.verify()")?;
+                } else {
+                    return Err(anyhow::format_err!(
+                        "validators schedule is required for final blocks"
+                    )
+                    .into());
+                }
+            }
         }
 
         sync::wait_for(ctx, &mut self.block_store.subscribe(), |block_store| {

@@ -105,6 +105,7 @@ impl Runner {
         // In order to satisfy the borrow checker, this validator schedule needs to live as long as the runner.
         // Unfortunately, we don't know if the validator schedule is available at this point, so we need to
         // create a dummy one if it isn't.
+        // It's somewhat ugly but it works.
         let validators = self.net.gossip.validator_schedule()?.unwrap_or(
             validator::Schedule::new(
                 vec![validator::ValidatorInfo {

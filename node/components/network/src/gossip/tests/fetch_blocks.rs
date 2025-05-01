@@ -54,7 +54,7 @@ async fn test_simple() {
             .queue_block(
                 ctx,
                 setup.blocks[0].clone(),
-                setup.genesis.validators_schedule.as_ref().unwrap(),
+                setup.genesis.validators_schedule.as_ref(),
             )
             .await
             .unwrap();

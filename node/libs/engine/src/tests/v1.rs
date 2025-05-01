@@ -52,7 +52,7 @@ async fn test_get_not_cached_block_v1() {
                 .queue_block(
                     ctx,
                     block.clone(),
-                    setup.genesis.validators_schedule.as_ref().unwrap(),
+                    setup.genesis.validators_schedule.as_ref(),
                 )
                 .await
                 .unwrap();
@@ -106,7 +106,7 @@ async fn test_state_updates_v1() {
                 .queue_block(
                     ctx,
                     block.clone(),
-                    setup.genesis.validators_schedule.as_ref().unwrap(),
+                    setup.genesis.validators_schedule.as_ref(),
                 )
                 .await
                 .unwrap();

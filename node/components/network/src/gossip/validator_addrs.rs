@@ -59,8 +59,6 @@ impl ValidatorAddrs {
             done.insert(d.key.clone());
             if !validators.contains(&d.key) {
                 // We just skip the entries we are not interested in.
-                // For now the set of validators is static, so we could treat this as an error,
-                // however we eventually want the validator set to be dynamic.
                 continue;
             }
             if let Some(x) = self.0.get(&d.key) {

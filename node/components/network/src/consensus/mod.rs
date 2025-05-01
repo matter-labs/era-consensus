@@ -152,10 +152,9 @@ impl Network {
     pub(crate) fn new(gossip: Arc<gossip::Network>) -> Option<Arc<Self>> {
         let key = gossip.cfg.validator_key.clone()?;
         let validators: HashSet<_> = gossip
-            .genesis()
-            .validators_schedule
-            .as_ref()
+            .validator_schedule()
             .unwrap()
+            .unwrap() // unwrap is safe because we don't have a consensus network unless there's a validator schedule.
             .keys()
             .cloned()
             .collect();
@@ -177,7 +176,7 @@ impl Network {
         mut stream: noise::Stream,
     ) -> anyhow::Result<()> {
         let peer =
-            handshake::inbound(ctx, &self.key, self.gossip.genesis().hash(), &mut stream).await?;
+            handshake::inbound(ctx, &self.key, self.gossip.genesis_hash(), &mut stream).await?;
         self.inbound.insert(peer.clone(), stream.stats()).await?;
         tracing::info!("peer = {peer:?}");
         let res = scope::run!(ctx, |ctx, s| async {
@@ -211,7 +210,7 @@ impl Network {
         handshake::outbound(
             ctx,
             &self.key,
-            self.gossip.genesis().hash(),
+            self.gossip.genesis_hash(),
             &mut stream,
             peer,
         )

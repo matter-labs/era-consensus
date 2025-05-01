@@ -261,11 +261,6 @@ impl Instance {
         &self.net
     }
 
-    /// Genesis.
-    pub fn genesis(&self) -> &validator::Genesis {
-        self.net.gossip.genesis()
-    }
-
     /// Returns the gossip config for this node.
     pub fn cfg(&self) -> &Config {
         &self.net.gossip.cfg
@@ -288,9 +283,10 @@ impl Instance {
         let consensus_state = self.net.consensus.as_ref().unwrap();
 
         let want: HashSet<_> = self
-            .genesis()
-            .validators_schedule
-            .as_ref()
+            .net
+            .gossip
+            .validator_schedule()
+            .unwrap()
             .unwrap()
             .keys()
             .cloned()
@@ -369,10 +365,11 @@ pub async fn instant_network(
     }
     // Broadcast validator addrs.
     for node in &nodes {
+        let schedule = node.net.gossip.validator_schedule().unwrap().unwrap();
         node.net
             .gossip
             .validator_addrs
-            .update(node.genesis().validators_schedule.as_ref().unwrap(), &addrs)
+            .update(&schedule, &addrs)
             .await
             .unwrap();
     }
