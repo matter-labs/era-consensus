@@ -38,12 +38,13 @@ impl Setup {
             },
         };
         let msg = ReplicaCommit { view, proposal };
-        let mut justification = CommitQC::new(msg, &self.0.genesis);
+        let mut justification = CommitQC::new(msg, &self.validators_schedule());
         for key in &self.0.validator_keys {
             justification
                 .add(
                     &key.sign_msg(justification.message.clone()),
-                    &self.0.genesis,
+                    self.genesis_hash(),
+                    &self.validators_schedule(),
                 )
                 .unwrap();
         }
@@ -99,10 +100,17 @@ impl Setup {
 
     /// Creates a CommitQC with a random payload.
     pub fn make_commit_qc_v1(&self, rng: &mut impl Rng, view: ViewNumber) -> CommitQC {
-        let mut qc = CommitQC::new(self.make_replica_commit_v1(rng, view), &self.genesis);
+        let mut qc = CommitQC::new(
+            self.make_replica_commit_v1(rng, view),
+            &self.validators_schedule(),
+        );
         for key in &self.validator_keys {
-            qc.add(&key.sign_msg(qc.message.clone()), &self.genesis)
-                .unwrap();
+            qc.add(
+                &key.sign_msg(qc.message.clone()),
+                self.genesis_hash(),
+                &self.validators_schedule(),
+            )
+            .unwrap();
         }
         qc
     }
@@ -111,11 +119,15 @@ impl Setup {
     pub fn make_commit_qc_with_payload_v1(&self, payload: &Payload, view: ViewNumber) -> CommitQC {
         let mut qc = CommitQC::new(
             self.make_replica_commit_with_payload_v1(payload, view),
-            &self.genesis,
+            &self.validators_schedule(),
         );
         for key in &self.validator_keys {
-            qc.add(&key.sign_msg(qc.message.clone()), &self.genesis)
-                .unwrap();
+            qc.add(
+                &key.sign_msg(qc.message.clone()),
+                self.genesis_hash(),
+                &self.validators_schedule(),
+            )
+            .unwrap();
         }
         qc
     }
@@ -159,7 +171,12 @@ impl Setup {
             high_qc: Some(commit_qc.clone()),
         };
         for key in &self.validator_keys {
-            qc.add(&key.sign_msg(msg.clone()), &self.genesis).unwrap();
+            qc.add(
+                &key.sign_msg(msg.clone()),
+                self.genesis_hash(),
+                &self.validators_schedule(),
+            )
+            .unwrap();
         }
 
         qc

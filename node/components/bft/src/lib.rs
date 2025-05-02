@@ -33,15 +33,13 @@ impl Config {
         outbound_channel: ctx::channel::UnboundedSender<ToNetworkMessage>,
         inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
     ) -> anyhow::Result<()> {
-        let genesis = self.engine_manager.genesis();
-
         anyhow::ensure!(
-            validator::ProtocolVersion::compatible(&genesis.protocol_version),
+            validator::ProtocolVersion::compatible(&self.protocol_version()),
             "Incompatible protocol version. Genesis protocol version: {:?}.",
-            genesis.protocol_version
+            self.protocol_version()
         );
 
-        if let Some(prev) = genesis.first_block.prev() {
+        if let Some(prev) = self.first_block().prev() {
             tracing::info!("Waiting for the pre-fork blocks to be persisted.");
             if let Err(ctx::Canceled) = self.engine_manager.wait_until_persisted(ctx, prev).await {
                 return Ok(());
@@ -49,7 +47,7 @@ impl Config {
         }
 
         // Get the protocol version from genesis and start the corresponding state machine.
-        match genesis.protocol_version {
+        match self.protocol_version() {
             validator::ProtocolVersion(1) => {
                 self.run_v1(ctx, outbound_channel, inbound_channel).await
             }
@@ -58,7 +56,7 @@ impl Config {
             }
             _ => anyhow::bail!(
                 "Unsupported protocol version: {:?}",
-                genesis.protocol_version
+                self.protocol_version()
             ),
         }
     }

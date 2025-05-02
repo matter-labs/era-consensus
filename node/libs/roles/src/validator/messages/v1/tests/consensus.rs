@@ -34,12 +34,12 @@ fn test_view_verify() {
         genesis: genesis.hash(),
         number: ViewNumber(1),
     };
-    assert!(view.verify(&genesis).is_ok());
+    assert!(view.verify(genesis.hash()).is_ok());
     let view = View {
         genesis: GenesisHash::default(),
         number: ViewNumber(1),
     };
-    assert!(view.verify(&genesis).is_err());
+    assert!(view.verify(genesis.hash()).is_err());
 }
 
 #[test]

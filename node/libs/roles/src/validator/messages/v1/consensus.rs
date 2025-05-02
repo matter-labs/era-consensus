@@ -7,7 +7,7 @@ use zksync_protobuf::{read_required, required, ProtoFmt};
 use super::Committee;
 use crate::{
     proto::validator as proto,
-    validator::{Genesis, GenesisHash, ViewNumber},
+    validator::{GenesisHash, ViewNumber},
 };
 
 /// View specification.
@@ -22,8 +22,8 @@ pub struct View {
 
 impl View {
     /// Verifies the view against the genesis.
-    pub fn verify(&self, genesis: &Genesis) -> anyhow::Result<()> {
-        anyhow::ensure!(self.genesis == genesis.hash(), "genesis mismatch");
+    pub fn verify(&self, genesis_hash: GenesisHash) -> anyhow::Result<()> {
+        anyhow::ensure!(self.genesis == genesis_hash, "genesis mismatch");
         Ok(())
     }
 

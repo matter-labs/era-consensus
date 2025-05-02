@@ -2,7 +2,7 @@
 use rand::Rng;
 
 use super::{
-    Block, BlockNumber, ChainId, ForkNumber, Genesis, GenesisRaw, LeaderSelection,
+    Block, BlockNumber, ChainId, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderSelection,
     LeaderSelectionMode, PreGenesisBlock, ProtocolVersion, Schedule, SecretKey, ValidatorInfo,
 };
 
@@ -161,5 +161,20 @@ impl Setup {
     pub fn block(&self, n: BlockNumber) -> Option<&Block> {
         let first = self.0.blocks.first()?.number();
         self.0.blocks.get(n.0.checked_sub(first.0)? as usize)
+    }
+
+    /// Returns the genesis hash.
+    pub fn genesis_hash(&self) -> GenesisHash {
+        self.0.genesis.hash()
+    }
+
+    /// Returns the first block.
+    pub fn first_block(&self) -> BlockNumber {
+        self.0.genesis.first_block
+    }
+
+    /// Returns the validators schedule.
+    pub fn validators_schedule(&self) -> &Schedule {
+        self.0.genesis.validators_schedule.as_ref().unwrap()
     }
 }

@@ -188,7 +188,17 @@ impl EngineManager {
                     .context("verify_pregenesis_block()")?;
                 t.observe();
             }
-            Block::FinalV1(b) => b.verify(&self.genesis).context("block_v1.verify()")?,
+            Block::FinalV1(b) => {
+                if let Some(validators_schedule) = validators_schedule {
+                    b.verify(self.genesis.hash(), validators_schedule)
+                        .context("block_v1.verify()")?;
+                } else {
+                    return Err(anyhow::format_err!(
+                        "validators schedule is required for final blocks"
+                    )
+                    .into());
+                }
+            }
             Block::FinalV2(b) => {
                 if let Some(validators_schedule) = validators_schedule {
                     b.verify(self.genesis.hash(), validators_schedule)

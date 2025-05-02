@@ -5,7 +5,7 @@ use zksync_protobuf::{read_required, required, ProtoFmt};
 use super::{CommitQC, CommitQCVerifyError};
 use crate::{
     proto::validator as proto,
-    validator::{BlockNumber, Genesis, Payload, PayloadHash},
+    validator::{BlockNumber, GenesisHash, Payload, PayloadHash, Schedule},
 };
 
 /// A block header.
@@ -65,7 +65,11 @@ impl FinalBlock {
     }
 
     /// Verifies internal consistency of this block.
-    pub fn verify(&self, genesis: &Genesis) -> Result<(), BlockValidationError> {
+    pub fn verify(
+        &self,
+        genesis_hash: GenesisHash,
+        validators: &Schedule,
+    ) -> Result<(), BlockValidationError> {
         let payload_hash = self.payload.hash();
         if payload_hash != self.header().payload {
             return Err(BlockValidationError::HashMismatch {
@@ -74,7 +78,7 @@ impl FinalBlock {
             });
         }
         self.justification
-            .verify(genesis)
+            .verify(genesis_hash, validators)
             .map_err(BlockValidationError::Justification)
     }
 }
