@@ -67,7 +67,7 @@ async fn test_one_connection_per_node() {
         .await
         .context("preface::connect")?;
 
-        handshake::outbound(ctx, &cfgs[0], setup.genesis.hash(), &mut stream, peer)
+        handshake::outbound(ctx, &cfgs[0], setup.genesis_hash(), &mut stream, peer)
             .await
             .context("handshake::outbound")?;
         tracing::info!("The connection is expected to be closed automatically by peer.");

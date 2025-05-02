@@ -174,10 +174,7 @@ async fn run_twins(
                 .filter(|n| {
                     n.public_key
                         == setup
-                            .genesis
-                            .validators_schedule
-                            .as_ref()
-                            .unwrap()
+                            .validators_schedule()
                             .view_leader(ViewNumber(r as u64))
                 })
                 .map(|n| node_to_port[&n.id])

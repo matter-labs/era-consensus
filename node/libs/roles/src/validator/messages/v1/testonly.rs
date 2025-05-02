@@ -15,7 +15,7 @@ impl Setup {
     /// Pushes the next block with the given payload.
     pub fn push_block_v1(&mut self, payload: Payload) {
         let view = View {
-            genesis: self.genesis.hash(),
+            genesis: self.genesis_hash(),
             number: self
                 .0
                 .blocks
@@ -33,7 +33,7 @@ impl Setup {
                 payload: payload.hash(),
             },
             None => BlockHeader {
-                number: self.genesis.first_block,
+                number: self.first_block(),
                 payload: payload.hash(),
             },
         };
@@ -67,7 +67,7 @@ impl Setup {
     /// Creates a View with the given view number.
     pub fn make_view_v1(&self, number: ViewNumber) -> View {
         View {
-            genesis: self.genesis.hash(),
+            genesis: self.genesis_hash(),
             number,
         }
     }

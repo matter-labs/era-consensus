@@ -18,14 +18,15 @@ pub struct Config {
     pub max_payload_size: usize,
     /// The duration of the view timeout.
     pub view_timeout: time::Duration,
-    /// The epoch number.
-    pub epoch_number: validator::EpochNumber,
+    /// The epoch number for this BFT instance.
+    pub epoch: validator::EpochNumber,
     /// The validator schedule for this epoch. We cache it here to avoid
     /// recomputing it on every call.
     validators: validator::Schedule,
 }
 
 impl Config {
+    /// Creates a new config.
     pub fn new(
         secret_key: validator::SecretKey,
         max_payload_size: usize,
@@ -46,7 +47,7 @@ impl Config {
             secret_key,
             max_payload_size,
             view_timeout,
-            epoch_number,
+            epoch: epoch_number,
             validators,
         })
     }

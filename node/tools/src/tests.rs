@@ -75,7 +75,7 @@ async fn test_reopen_rocksdb() {
     setup.push_blocks_v1(rng, 5);
     let mut want = vec![];
     for b in &setup.blocks {
-        if b.number() < setup.genesis.first_block {
+        if b.number() < setup.first_block() {
             continue;
         }
         let store = engine::RocksDB::open(setup.genesis.clone(), dir.path())

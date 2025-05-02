@@ -130,16 +130,31 @@ impl ProtoFmt for ChonkyMsg {
 pub struct View {
     /// Genesis of the chain this view belongs to.
     pub genesis: GenesisHash,
-    /// The number of the current view.
-    pub number: ViewNumber,
     /// The number of the current epoch.
     pub epoch: EpochNumber,
+    /// The number of the current view.
+    pub number: ViewNumber,
 }
 
 impl View {
     /// Verifies the view against the genesis.
-    pub fn verify(&self, genesis: GenesisHash) -> anyhow::Result<()> {
-        anyhow::ensure!(self.genesis == genesis, "genesis mismatch");
+    pub fn verify(
+        &self,
+        genesis_hash: GenesisHash,
+        epoch_number: EpochNumber,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.genesis == genesis_hash,
+            "Genesis mismatch. expected: {:?}, got: {:?}",
+            genesis_hash,
+            self.genesis
+        );
+        anyhow::ensure!(
+            self.epoch == epoch_number,
+            "Epoch number mismatch. expected: {}, got: {}",
+            epoch_number,
+            self.epoch
+        );
         Ok(())
     }
 

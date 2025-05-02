@@ -120,8 +120,12 @@ impl UnitTestHarness {
         validator::v2::View {
             genesis: self.genesis_hash(),
             number: self.replica.view_number,
-            epoch: self.replica.epoch_number,
+            epoch: self.epoch(),
         }
+    }
+
+    pub(crate) fn epoch(&self) -> validator::EpochNumber {
+        self.replica.config.epoch
     }
 
     pub(crate) fn genesis_hash(&self) -> validator::GenesisHash {
@@ -202,6 +206,7 @@ impl UnitTestHarness {
             qc.add(
                 &key.sign_msg(msg.clone()),
                 self.genesis_hash(),
+                self.epoch(),
                 self.validators(),
             )
             .unwrap();
@@ -216,6 +221,7 @@ impl UnitTestHarness {
             qc.add(
                 &key.sign_msg(msg.clone()),
                 self.genesis_hash(),
+                self.epoch(),
                 self.validators(),
             )
             .unwrap();

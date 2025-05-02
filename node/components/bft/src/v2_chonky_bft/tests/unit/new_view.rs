@@ -26,6 +26,7 @@ async fn new_view_sanity() {
                 .add(
                     &key.sign_msg(commit_1.clone()),
                     util.genesis_hash(),
+                    util.epoch(),
                     util.validators(),
                 )
                 .unwrap();
@@ -47,6 +48,7 @@ async fn new_view_sanity() {
                 .add(
                     &key.sign_msg(commit_2.clone()),
                     util.genesis_hash(),
+                    util.epoch(),
                     util.validators(),
                 )
                 .unwrap();
@@ -66,6 +68,7 @@ async fn new_view_sanity() {
                 .add(
                     &key.sign_msg(timeout.clone()),
                     util.genesis_hash(),
+                    util.epoch(),
                     util.validators(),
                 )
                 .unwrap();

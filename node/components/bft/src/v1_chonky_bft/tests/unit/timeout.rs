@@ -13,7 +13,7 @@ fn timeout_qc_aggregation() {
     let setup = validator::testonly::Setup::new(rng, 10);
     let view = validator::v1::View {
         number: rng.gen(),
-        genesis: setup.genesis.hash(),
+        genesis: setup.genesis_hash(),
     };
     let commit = validator::v1::ReplicaCommit {
         view,

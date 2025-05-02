@@ -187,8 +187,12 @@ impl Network {
                             anyhow::ensure!(block.number() == req.0, "received wrong block");
                             // Storing the block will fail in case block is invalid.
                             let schedule = self.validator_schedule()?;
+                            let post_genesis = match (self.epoch_number, schedule.as_ref()) {
+                                (Some(e), Some(s)) => Some((e, s)),
+                                _ => None,
+                            };
                             self.engine_manager
-                                .queue_block(ctx, block, schedule.as_ref())
+                                .queue_block(ctx, block, post_genesis)
                                 .await
                                 .context("queue_block()")?;
                             tracing::info!("fetched block {}", req.0);

@@ -133,7 +133,7 @@ async fn test_inactive_validator() {
         // Wait for blocks in inactive validator's store.
         engine
             .manager
-            .wait_until_persisted(ctx, setup.genesis.first_block + 5)
+            .wait_until_persisted(ctx, setup.first_block() + 5)
             .await?;
 
         Ok(())
@@ -165,7 +165,7 @@ async fn test_fullnode_syncing_from_validator() {
         // Wait for blocks in full node store.
         engine
             .manager
-            .wait_until_persisted(ctx, setup.genesis.first_block + 5)
+            .wait_until_persisted(ctx, setup.first_block() + 5)
             .await?;
 
         Ok(())
@@ -202,13 +202,13 @@ async fn test_validator_syncing_from_fullnode() {
             // Wait for validator to produce some blocks.
             engine_2
                 .manager
-                .wait_until_persisted(ctx, setup.genesis.first_block + 4)
+                .wait_until_persisted(ctx, setup.first_block() + 4)
                 .await?;
 
             // Wait for blocks in full node store.
             engine
                 .manager
-                .wait_until_persisted(ctx, setup.genesis.first_block + 4)
+                .wait_until_persisted(ctx, setup.first_block() + 4)
                 .await?;
 
             Ok(())
@@ -218,15 +218,14 @@ async fn test_validator_syncing_from_fullnode() {
 
         // Start a new validator with non-trivial first block.
         // Validator should fetch the past blocks from the full node before producing next blocks.
-        let engine_3 =
-            TestEngine::new_with_first_block(ctx, &setup, setup.genesis.first_block + 2).await;
+        let engine_3 = TestEngine::new_with_first_block(ctx, &setup, setup.first_block() + 2).await;
         s.spawn_bg(engine_3.runner.run(ctx));
         s.spawn_bg(validator(&cfgs[0], engine_3.manager.clone()).run(ctx));
 
         // Wait for blocks in validator store.
         engine_3
             .manager
-            .wait_until_persisted(ctx, setup.genesis.first_block + 4)
+            .wait_until_persisted(ctx, setup.first_block() + 4)
             .await?;
 
         Ok(())

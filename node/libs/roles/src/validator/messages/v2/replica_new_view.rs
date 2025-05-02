@@ -4,7 +4,7 @@ use zksync_protobuf::{read_required, ProtoFmt};
 use super::{ProposalJustification, ProposalJustificationVerifyError, View};
 use crate::{
     proto::validator as proto,
-    validator::{self, GenesisHash},
+    validator::{self, EpochNumber, GenesisHash},
 };
 
 /// A new view message from a replica.
@@ -24,11 +24,12 @@ impl ReplicaNewView {
     pub fn verify(
         &self,
         genesis: GenesisHash,
+        epoch: EpochNumber,
         validators_schedule: &validator::Schedule,
     ) -> Result<(), ReplicaNewViewVerifyError> {
         // Check that the justification is valid.
         self.justification
-            .verify(genesis, validators_schedule)
+            .verify(genesis, epoch, validators_schedule)
             .map_err(ReplicaNewViewVerifyError::Justification)?;
 
         Ok(())

@@ -96,7 +96,7 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         message
-            .verify(self.config.genesis_hash())
+            .verify(self.config.genesis_hash(), self.config.epoch)
             .map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------
@@ -120,6 +120,7 @@ impl StateMachine {
             .add(
                 &signed_message,
                 self.config.genesis_hash(),
+                self.config.epoch,
                 self.config.validators(),
             )
             .expect("could not add message to CommitQC");

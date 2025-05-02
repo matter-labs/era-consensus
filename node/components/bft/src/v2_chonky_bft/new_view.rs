@@ -81,7 +81,11 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         message
-            .verify(self.config.genesis_hash(), self.config.validators())
+            .verify(
+                self.config.genesis_hash(),
+                self.config.epoch,
+                self.config.validators(),
+            )
             .map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------

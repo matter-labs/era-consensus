@@ -41,7 +41,7 @@ pub struct TestEngine {
 impl TestEngine {
     /// Constructs a new in-memory engine manager with the given setup.
     pub async fn new(ctx: &ctx::Ctx, setup: &Setup) -> Self {
-        Self::new_with_first_block(ctx, setup, setup.genesis.first_block).await
+        Self::new_with_first_block(ctx, setup, setup.first_block()).await
     }
 
     /// Constructs a new in-memory engine manager with a custom expected first block
@@ -68,7 +68,7 @@ impl TestEngine {
         setup: &Setup,
         payload_manager: PayloadManager,
     ) -> Self {
-        let im_engine = in_memory::Engine::new(setup, setup.genesis.first_block, payload_manager);
+        let im_engine = in_memory::Engine::new(setup, setup.first_block(), payload_manager);
         let (engine, runner) = EngineManager::new(ctx, Box::new(im_engine.clone()))
             .await
             .unwrap();

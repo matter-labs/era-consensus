@@ -96,7 +96,11 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         message
-            .verify(self.config.genesis_hash(), self.config.validators())
+            .verify(
+                self.config.genesis_hash(),
+                self.config.epoch,
+                self.config.validators(),
+            )
             .map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------
@@ -116,6 +120,7 @@ impl StateMachine {
             .add(
                 &signed_message,
                 self.config.genesis_hash(),
+                self.config.epoch,
                 self.config.validators(),
             )
             .expect("could not add message to TimeoutQC");
@@ -203,7 +208,7 @@ impl StateMachine {
                     view: validator::v2::View {
                         genesis: self.config.genesis_hash(),
                         number: self.view_number,
-                        epoch: self.epoch_number,
+                        epoch: self.config.epoch,
                     },
                     high_vote: self.high_vote.clone(),
                     high_qc: self.high_commit_qc.clone(),

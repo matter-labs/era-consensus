@@ -161,14 +161,14 @@ impl EngineManager {
     /// blocks are queued_state as well. Queue is unbounded, so it is caller's
     /// responsibility to manage the queue size.
     ///
-    /// For pre-genesis blocks, we don't need a validators schedule, so we should
-    /// pass `None` to this function. For all other blocks, a validators schedule
-    /// is required.
+    /// For pre-genesis blocks, we don't need to provide an epoch number or
+    /// validators schedule, so we should pass `None` to this function. For all
+    /// other blocks, an epoch number and validators schedule are required.
     pub async fn queue_block(
         &self,
         ctx: &ctx::Ctx,
         block: Block,
-        validators_schedule: Option<&validator::Schedule>,
+        post_genesis: Option<(validator::EpochNumber, &validator::Schedule)>,
     ) -> ctx::Result<()> {
         // Verify the block.
         match &block {
@@ -189,7 +189,7 @@ impl EngineManager {
                 t.observe();
             }
             Block::FinalV1(b) => {
-                if let Some(validators_schedule) = validators_schedule {
+                if let Some((_, validators_schedule)) = post_genesis {
                     b.verify(self.genesis.hash(), validators_schedule)
                         .context("block_v1.verify()")?;
                 } else {
@@ -200,12 +200,12 @@ impl EngineManager {
                 }
             }
             Block::FinalV2(b) => {
-                if let Some(validators_schedule) = validators_schedule {
-                    b.verify(self.genesis.hash(), validators_schedule)
+                if let Some((epoch, validators_schedule)) = post_genesis {
+                    b.verify(self.genesis.hash(), epoch, validators_schedule)
                         .context("block_v2.verify()")?;
                 } else {
                     return Err(anyhow::format_err!(
-                        "validators schedule is required for final blocks"
+                        "epoch number and validators schedule are required for final blocks"
                     )
                     .into());
                 }

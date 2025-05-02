@@ -2,8 +2,9 @@
 use rand::Rng;
 
 use super::{
-    Block, BlockNumber, ChainId, ForkNumber, Genesis, GenesisHash, GenesisRaw, LeaderSelection,
-    LeaderSelectionMode, PreGenesisBlock, ProtocolVersion, Schedule, SecretKey, ValidatorInfo,
+    Block, BlockNumber, ChainId, EpochNumber, ForkNumber, Genesis, GenesisHash, GenesisRaw,
+    LeaderSelection, LeaderSelectionMode, PreGenesisBlock, ProtocolVersion, Schedule, SecretKey,
+    ValidatorInfo,
 };
 
 /// Test setup specification.
@@ -23,6 +24,8 @@ pub struct SetupSpec {
     pub validator_weights: Vec<(SecretKey, u64)>,
     /// Leader selection.
     pub leader_selection: LeaderSelection,
+    /// Epoch number.
+    pub epoch: EpochNumber,
 }
 
 impl SetupSpec {
@@ -61,6 +64,7 @@ impl SetupSpec {
                 frequency: 1,
                 mode: LeaderSelectionMode::RoundRobin,
             },
+            epoch: EpochNumber(0),
         }
     }
 }
@@ -74,6 +78,8 @@ pub struct SetupInner {
     pub blocks: Vec<Block>,
     /// Genesis config.
     pub genesis: Genesis,
+    /// Epoch number.
+    pub epoch: EpochNumber,
 }
 
 impl std::ops::Deref for Setup {
@@ -133,6 +139,7 @@ impl Setup {
             .with_hash(),
             validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
             blocks: vec![],
+            epoch: spec.epoch,
         });
 
         // Populate pregenesis blocks.

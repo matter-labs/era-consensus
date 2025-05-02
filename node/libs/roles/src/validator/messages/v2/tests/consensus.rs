@@ -49,20 +49,22 @@ fn test_view_prev() {
 #[test]
 fn test_view_verify() {
     let genesis = genesis_v2();
+    let epoch = EpochNumber(0);
 
     let view = View {
         genesis: genesis.hash(),
+        epoch,
         number: ViewNumber(1),
-        epoch: EpochNumber(0),
     };
-    assert!(view.verify(genesis.1).is_ok());
+    assert!(view.verify(genesis.1, epoch).is_ok());
 
-    let view = View {
-        genesis: GenesisHash::default(),
-        number: ViewNumber(1),
-        epoch: EpochNumber(0),
-    };
-    assert!(view.verify(genesis.1).is_err());
+    let mut wrong_view = view.clone();
+    wrong_view.genesis = GenesisHash::default();
+    assert!(wrong_view.verify(genesis.1, epoch).is_err());
+
+    let mut wrong_view = view.clone();
+    wrong_view.epoch = EpochNumber(1111);
+    assert!(wrong_view.verify(genesis.1, epoch).is_err());
 }
 
 #[test]

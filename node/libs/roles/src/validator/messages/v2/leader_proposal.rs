@@ -4,7 +4,7 @@ use zksync_protobuf::{read_required, ProtoFmt};
 use super::{CommitQC, CommitQCVerifyError, TimeoutQC, TimeoutQCVerifyError, View};
 use crate::{
     proto::validator as proto,
-    validator::{self, BlockNumber, GenesisHash, Payload, PayloadHash},
+    validator::{self, BlockNumber, EpochNumber, GenesisHash, Payload, PayloadHash},
 };
 
 /// A proposal message from the leader.
@@ -27,11 +27,12 @@ impl LeaderProposal {
     pub fn verify(
         &self,
         genesis: GenesisHash,
+        epoch: EpochNumber,
         validators_schedule: &validator::Schedule,
     ) -> Result<(), LeaderProposalVerifyError> {
         // Check that the justification is valid.
         self.justification
-            .verify(genesis, validators_schedule)
+            .verify(genesis, epoch, validators_schedule)
             .map_err(LeaderProposalVerifyError::Justification)
     }
 }
@@ -92,14 +93,15 @@ impl ProposalJustification {
     pub fn verify(
         &self,
         genesis: GenesisHash,
+        epoch: EpochNumber,
         validators_schedule: &validator::Schedule,
     ) -> Result<(), ProposalJustificationVerifyError> {
         match self {
             ProposalJustification::Commit(qc) => qc
-                .verify(genesis, validators_schedule)
+                .verify(genesis, epoch, validators_schedule)
                 .map_err(ProposalJustificationVerifyError::Commit),
             ProposalJustification::Timeout(qc) => qc
-                .verify(genesis, validators_schedule)
+                .verify(genesis, epoch, validators_schedule)
                 .map_err(ProposalJustificationVerifyError::Timeout),
         }
     }

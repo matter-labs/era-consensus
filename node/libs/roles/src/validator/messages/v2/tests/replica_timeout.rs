@@ -10,10 +10,12 @@ use crate::validator::{
 #[test]
 fn test_replica_timeout_verify() {
     let genesis = genesis_v2();
+    let epoch = view().epoch;
     let timeout = replica_timeout();
     assert!(timeout
         .verify(
             genesis.hash(),
+            epoch,
             genesis.validators_schedule.as_ref().unwrap()
         )
         .is_ok());
@@ -25,6 +27,7 @@ fn test_replica_timeout_verify() {
     assert_matches!(
         timeout.verify(
             wrong_genesis.hash(),
+            epoch,
             genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(ReplicaTimeoutVerifyError::BadView(_))
@@ -36,6 +39,7 @@ fn test_replica_timeout_verify() {
     assert_matches!(
         timeout.verify(
             genesis.hash(),
+            epoch,
             genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(ReplicaTimeoutVerifyError::InvalidHighVote(_))
@@ -47,6 +51,7 @@ fn test_replica_timeout_verify() {
     assert_matches!(
         timeout.verify(
             genesis.hash(),
+            epoch,
             genesis.validators_schedule.as_ref().unwrap()
         ),
         Err(ReplicaTimeoutVerifyError::InvalidHighQC(_))
@@ -72,15 +77,14 @@ fn test_timeout_qc_high_vote() {
     for key in &setup.validator_keys {
         qc.add(
             &key.sign_msg(msg_a.clone()),
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule(),
         )
         .unwrap();
     }
 
-    assert!(qc
-        .high_vote(setup.genesis.validators_schedule.as_ref().unwrap())
-        .is_some());
+    assert!(qc.high_vote(setup.validators_schedule()).is_some());
 
     // Case with 2 subquorums.
     let mut qc = TimeoutQC::new(msg_a.view);
@@ -88,8 +92,9 @@ fn test_timeout_qc_high_vote() {
     for key in &setup.validator_keys[0..3] {
         qc.add(
             &key.sign_msg(msg_a.clone()),
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule(),
         )
         .unwrap();
     }
@@ -97,15 +102,14 @@ fn test_timeout_qc_high_vote() {
     for key in &setup.validator_keys[3..6] {
         qc.add(
             &key.sign_msg(msg_b.clone()),
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule(),
         )
         .unwrap();
     }
 
-    assert!(qc
-        .high_vote(setup.genesis.validators_schedule.as_ref().unwrap())
-        .is_none());
+    assert!(qc.high_vote(setup.validators_schedule()).is_none());
 
     // Case with no subquorums.
     let mut qc = TimeoutQC::new(msg_a.view);
@@ -113,8 +117,9 @@ fn test_timeout_qc_high_vote() {
     for key in &setup.validator_keys[0..2] {
         qc.add(
             &key.sign_msg(msg_a.clone()),
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule(),
         )
         .unwrap();
     }
@@ -122,8 +127,9 @@ fn test_timeout_qc_high_vote() {
     for key in &setup.validator_keys[2..4] {
         qc.add(
             &key.sign_msg(msg_b.clone()),
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule(),
         )
         .unwrap();
     }
@@ -131,15 +137,14 @@ fn test_timeout_qc_high_vote() {
     for key in &setup.validator_keys[4..6] {
         qc.add(
             &key.sign_msg(msg_c.clone()),
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule(),
         )
         .unwrap();
     }
 
-    assert!(qc
-        .high_vote(setup.genesis.validators_schedule.as_ref().unwrap())
-        .is_none());
+    assert!(qc.high_vote(setup.validators_schedule()).is_none());
 }
 
 #[test]
@@ -148,7 +153,7 @@ fn test_timeout_qc_high_qc() {
     let rng = &mut ctx.rng();
     let setup = Setup::new(rng, 3);
     let view = View {
-        genesis: setup.genesis.hash(),
+        genesis: setup.genesis_hash(),
         number: ViewNumber(100),
         epoch: EpochNumber(0),
     };
@@ -168,8 +173,9 @@ fn test_timeout_qc_high_qc() {
         };
         qc.add(
             &setup.validator_keys[i].sign_msg(msg.clone()),
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule(),
         )
         .unwrap();
     }
@@ -191,8 +197,9 @@ fn test_timeout_qc_add() {
     assert!(qc
         .add(
             &setup.validator_keys[0].sign_msg(msg.clone()),
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule(),
         )
         .is_ok());
     assert_eq!(qc.map.len(), 1);
@@ -202,8 +209,9 @@ fn test_timeout_qc_add() {
     assert_matches!(
         qc.add(
             &rng.gen::<validator::SecretKey>().sign_msg(msg.clone()),
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule(),
         ),
         Err(TimeoutQCAddError::SignerNotInCommittee { .. })
     );
@@ -212,8 +220,9 @@ fn test_timeout_qc_add() {
     assert_matches!(
         qc.add(
             &setup.validator_keys[0].sign_msg(msg.clone()),
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule(),
         ),
         Err(TimeoutQCAddError::DuplicateSigner { .. })
     );
@@ -226,8 +235,9 @@ fn test_timeout_qc_add() {
                 key: setup.validator_keys[1].public(),
                 sig: rng.gen()
             },
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule(),
         ),
         Err(TimeoutQCAddError::BadSignature(_))
     );
@@ -238,8 +248,9 @@ fn test_timeout_qc_add() {
     assert_matches!(
         qc.add(
             &setup.validator_keys[1].sign_msg(msg1),
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule(),
         ),
         Err(TimeoutQCAddError::InconsistentViews)
     );
@@ -251,7 +262,8 @@ fn test_timeout_qc_add() {
         qc.add(
             &setup.validator_keys[1].sign_msg(msg.clone()),
             wrong_genesis.with_hash().hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.epoch,
+            setup.validators_schedule(),
         ),
         Err(TimeoutQCAddError::InvalidMessage(_))
     );
@@ -260,8 +272,9 @@ fn test_timeout_qc_add() {
     assert!(qc
         .add(
             &setup.validator_keys[1].sign_msg(msg.clone()),
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule(),
         )
         .is_ok());
     assert_eq!(qc.map.len(), 1);
@@ -272,8 +285,9 @@ fn test_timeout_qc_add() {
     assert!(qc
         .add(
             &setup.validator_keys[2].sign_msg(msg2.clone()),
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap(),
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule(),
         )
         .is_ok());
     assert_eq!(qc.map.len(), 2);
@@ -294,8 +308,9 @@ fn test_timeout_qc_verify() {
     // Verify the QC
     assert!(qc
         .verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         )
         .is_ok());
 
@@ -304,8 +319,9 @@ fn test_timeout_qc_verify() {
     qc1.view = rng.gen();
     assert_matches!(
         qc1.verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         ),
         Err(TimeoutQCVerifyError::BadView(_))
     );
@@ -318,12 +334,13 @@ fn test_timeout_qc_verify() {
             high_vote: None,
             high_qc: None,
         },
-        Signers::new(setup.genesis.validators_schedule.as_ref().unwrap().len()),
+        Signers::new(setup.validators_schedule().len()),
     );
     assert_matches!(
         qc2.verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         ),
         Err(TimeoutQCVerifyError::InconsistentView(_))
     );
@@ -336,12 +353,13 @@ fn test_timeout_qc_verify() {
             high_vote: None,
             high_qc: None,
         },
-        Signers::new(setup.genesis.validators_schedule.as_ref().unwrap().len() + 1),
+        Signers::new(setup.validators_schedule().len() + 1),
     );
     assert_matches!(
         qc3.verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         ),
         Err(TimeoutQCVerifyError::WrongSignersLength(_))
     );
@@ -354,23 +372,23 @@ fn test_timeout_qc_verify() {
             high_vote: None,
             high_qc: None,
         },
-        Signers::new(setup.genesis.validators_schedule.as_ref().unwrap().len()),
+        Signers::new(setup.validators_schedule().len()),
     );
     assert_matches!(
         qc4.verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         ),
         Err(TimeoutQCVerifyError::NoSignersAssigned(_))
     );
 
     // QC with overlapping signers
     let mut qc5 = qc.clone();
-    let mut signers = Signers::new(setup.genesis.validators_schedule.as_ref().unwrap().len());
-    signers.0.set(
-        rng.gen_range(0..setup.genesis.validators_schedule.as_ref().unwrap().len()),
-        true,
-    );
+    let mut signers = Signers::new(setup.validators_schedule().len());
+    signers
+        .0
+        .set(rng.gen_range(0..setup.validators_schedule().len()), true);
     qc5.map.insert(
         ReplicaTimeout {
             view: qc5.view,
@@ -381,8 +399,9 @@ fn test_timeout_qc_verify() {
     );
     assert_matches!(
         qc5.verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         ),
         Err(TimeoutQCVerifyError::OverlappingSignatureSet(_))
     );
@@ -394,8 +413,9 @@ fn test_timeout_qc_verify() {
     qc6.map.insert(timeout, signers);
     assert_matches!(
         qc6.verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         ),
         Err(TimeoutQCVerifyError::InvalidMessage(_, _))
     );
@@ -408,8 +428,9 @@ fn test_timeout_qc_verify() {
     qc7.map.insert(timeout, signers);
     assert_matches!(
         qc7.verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         ),
         Err(TimeoutQCVerifyError::NotEnoughWeight { .. })
     );
@@ -419,8 +440,9 @@ fn test_timeout_qc_verify() {
     qc8.signature = rng.gen();
     assert_matches!(
         qc8.verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         ),
         Err(TimeoutQCVerifyError::BadSignature(_))
     );

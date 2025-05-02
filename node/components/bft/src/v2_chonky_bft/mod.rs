@@ -40,8 +40,6 @@ pub(crate) struct StateMachine {
 
     /// The current view number.
     pub(crate) view_number: validator::ViewNumber,
-    /// The current epoch number.
-    pub(crate) epoch_number: validator::EpochNumber,
     /// The current phase.
     pub(crate) phase: validator::v2::Phase,
     /// The highest block proposal that the replica has committed to.
@@ -108,7 +106,6 @@ impl StateMachine {
             inbound_channel,
             proposer_sender,
             view_number: backup.view_number,
-            epoch_number: backup.epoch_number,
             phase: backup.phase,
             high_vote: backup.high_vote,
             high_commit_qc: backup.high_commit_qc,

@@ -42,7 +42,7 @@ impl Engine {
                 .blocks
                 .first()
                 .map(|b| b.number())
-                .unwrap_or(setup.genesis.first_block)
+                .unwrap_or(setup.first_block())
                 <= first
         );
         Self(Arc::new(EngineInner {

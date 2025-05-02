@@ -30,7 +30,11 @@ impl StateMachine {
         );
         self.config
             .engine_manager
-            .queue_block(ctx, block.clone().into(), Some(self.config.validators()))
+            .queue_block(
+                ctx,
+                block.clone().into(),
+                Some((self.config.epoch, self.config.validators())),
+            )
             .await?;
 
         // For availability, replica should not proceed until it stores the block persistently.
@@ -62,7 +66,6 @@ impl StateMachine {
         let mut backup = validator::ReplicaState::default();
         let backup_v2 = validator::v2::ChonkyV2State {
             view_number: self.view_number,
-            epoch_number: self.epoch_number,
             phase: self.phase,
             high_vote: self.high_vote.clone(),
             high_commit_qc: self.high_commit_qc.clone(),

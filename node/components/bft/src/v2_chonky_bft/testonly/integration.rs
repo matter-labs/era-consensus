@@ -170,7 +170,7 @@ impl IntegrationTestConfig {
 
             // Run the nodes until all honest nodes store enough finalized blocks.
             assert!(self.blocks_to_finalize > 0);
-            let first = setup.genesis.first_block;
+            let first = setup.first_block();
             let last = first + (self.blocks_to_finalize as u64 - 1);
             for store in &honest {
                 store.wait_until_queued(ctx, last).await?;
@@ -493,11 +493,11 @@ async fn twins_gossip_loop(
                         return Ok(());
                     };
                     tracing::info!("   ~~> gossip queue from={from} to={to} number={number}");
-                    let schedule = remote_store
-                        .validator_schedule(validator::EpochNumber(0))
-                        .unwrap()
-                        .schedule;
-                    let _ = remote_store.queue_block(ctx, block, Some(&schedule)).await;
+                    let epoch = validator::EpochNumber(0);
+                    let schedule = remote_store.validator_schedule(epoch).unwrap().schedule;
+                    let _ = remote_store
+                        .queue_block(ctx, block, Some((epoch, &schedule)))
+                        .await;
                     tracing::info!("   ~~V gossip stored from={from} to={to} number={number}");
                     Ok(())
                 });

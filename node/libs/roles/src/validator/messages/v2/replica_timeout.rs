@@ -9,7 +9,7 @@ use super::{
 };
 use crate::{
     proto::validator as proto,
-    validator::{self, GenesisHash, Signed},
+    validator::{self, EpochNumber, GenesisHash, Signed},
 };
 
 /// A timeout message from a replica.
@@ -29,19 +29,20 @@ impl ReplicaTimeout {
     pub fn verify(
         &self,
         genesis_hash: GenesisHash,
+        epoch: EpochNumber,
         validators_schedule: &validator::Schedule,
     ) -> Result<(), ReplicaTimeoutVerifyError> {
         self.view
-            .verify(genesis_hash)
+            .verify(genesis_hash, epoch)
             .map_err(ReplicaTimeoutVerifyError::BadView)?;
 
         if let Some(v) = &self.high_vote {
-            v.verify(genesis_hash)
+            v.verify(genesis_hash, epoch)
                 .map_err(ReplicaTimeoutVerifyError::InvalidHighVote)?;
         }
 
         if let Some(qc) = &self.high_qc {
-            qc.verify(genesis_hash, validators_schedule)
+            qc.verify(genesis_hash, epoch, validators_schedule)
                 .map_err(ReplicaTimeoutVerifyError::InvalidHighQC)?;
         }
 
@@ -154,6 +155,7 @@ impl TimeoutQC {
         &mut self,
         msg: &Signed<ReplicaTimeout>,
         genesis_hash: GenesisHash,
+        epoch: EpochNumber,
         validators_schedule: &validator::Schedule,
     ) -> Result<(), TimeoutQCAddError> {
         // Check if the signer is in the committee.
@@ -180,7 +182,7 @@ impl TimeoutQC {
 
         // Check that the message itself is valid.
         msg.msg
-            .verify(genesis_hash, validators_schedule)
+            .verify(genesis_hash, epoch, validators_schedule)
             .map_err(TimeoutQCAddError::InvalidMessage)?;
 
         // Add the message plus signer to the map, and the signature to the aggregate signature.
@@ -198,10 +200,11 @@ impl TimeoutQC {
     pub fn verify(
         &self,
         genesis_hash: GenesisHash,
+        epoch: EpochNumber,
         validators_schedule: &validator::Schedule,
     ) -> Result<(), TimeoutQCVerifyError> {
         self.view
-            .verify(genesis_hash)
+            .verify(genesis_hash, epoch)
             .map_err(TimeoutQCVerifyError::BadView)?;
 
         let mut sum = Signers::new(validators_schedule.len());
@@ -220,7 +223,7 @@ impl TimeoutQC {
             if !(&sum & signers).is_empty() {
                 return Err(TimeoutQCVerifyError::OverlappingSignatureSet(i));
             }
-            msg.verify(genesis_hash, validators_schedule)
+            msg.verify(genesis_hash, epoch, validators_schedule)
                 .map_err(|err| TimeoutQCVerifyError::InvalidMessage(i, err))?;
 
             sum |= signers;

@@ -1,5 +1,5 @@
 use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
-use zksync_consensus_roles::validator::testonly::Setup;
+use zksync_consensus_roles::validator::{self, testonly::Setup};
 
 use crate::{
     block_store::BlockStore,
@@ -52,7 +52,7 @@ async fn test_get_not_cached_block_v2() {
                 .queue_block(
                     ctx,
                     block.clone(),
-                    setup.genesis.validators_schedule.as_ref(),
+                    Some((validator::EpochNumber(0), setup.validators_schedule())),
                 )
                 .await
                 .unwrap();
@@ -106,7 +106,7 @@ async fn test_state_updates_v2() {
                 .queue_block(
                     ctx,
                     block.clone(),
-                    setup.genesis.validators_schedule.as_ref(),
+                    Some((validator::EpochNumber(0), setup.validators_schedule())),
                 )
                 .await
                 .unwrap();

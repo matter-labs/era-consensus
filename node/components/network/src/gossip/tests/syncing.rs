@@ -57,7 +57,7 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
                 .queue_block(
                     ctx,
                     block.clone(),
-                    setup.genesis.validators_schedule.as_ref(),
+                    Some((setup.epoch, setup.validators_schedule())),
                 )
                 .await
                 .context("queue_block()")?;
@@ -119,7 +119,7 @@ async fn uncoordinated_block_syncing(
                 .queue_block(
                     ctx,
                     block.clone(),
-                    setup.genesis.validators_schedule.as_ref(),
+                    Some((setup.epoch, setup.validators_schedule())),
                 )
                 .await
                 .context("queue_block()")?;
@@ -178,7 +178,7 @@ async fn test_switching_on_nodes() {
                 .queue_block(
                     ctx,
                     setup.blocks[i].clone(),
-                    setup.genesis.validators_schedule.as_ref(),
+                    Some((setup.epoch, setup.validators_schedule())),
                 )
                 .await
                 .context("queue_block()")?;
@@ -240,7 +240,7 @@ async fn test_switching_off_nodes() {
                 .queue_block(
                     ctx,
                     setup.blocks[i].clone(),
-                    setup.genesis.validators_schedule.as_ref(),
+                    Some((setup.epoch, setup.validators_schedule())),
                 )
                 .await
                 .context("queue_block()")?;
@@ -310,7 +310,7 @@ async fn test_different_first_block() {
                     .queue_block(
                         ctx,
                         block.clone(),
-                        setup.genesis.validators_schedule.as_ref(),
+                        Some((setup.epoch, setup.validators_schedule())),
                     )
                     .await
                     .unwrap();
@@ -355,7 +355,7 @@ async fn test_sidechannel_sync() {
             cfg.validator_key = None;
 
             // Build a custom persistent store, so that we can tweak it later.
-            let engine = in_memory::Engine::new_random(&setup, setup.genesis.first_block);
+            let engine = in_memory::Engine::new_random(&setup, setup.first_block());
             engines.push(engine.clone());
             let (manager, runner) = EngineManager::new(ctx, Box::new(engine)).await?;
             s.spawn_bg(runner.run(ctx));
@@ -375,7 +375,11 @@ async fn test_sidechannel_sync() {
                     .net
                     .gossip
                     .engine_manager
-                    .queue_block(ctx, b.clone(), setup.genesis.validators_schedule.as_ref())
+                    .queue_block(
+                        ctx,
+                        b.clone(),
+                        Some((setup.epoch, setup.validators_schedule())),
+                    )
                     .await?;
             }
             nodes[1]
@@ -400,7 +404,11 @@ async fn test_sidechannel_sync() {
                     .net
                     .gossip
                     .engine_manager
-                    .queue_block(ctx, b.clone(), setup.genesis.validators_schedule.as_ref())
+                    .queue_block(
+                        ctx,
+                        b.clone(),
+                        Some((setup.epoch, setup.validators_schedule())),
+                    )
                     .await?;
             }
             nodes[1]

@@ -62,6 +62,7 @@ fn commit_qc() -> CommitQC {
         x.add(
             &k.sign_msg(replica_commit.clone()),
             genesis.hash(),
+            view().epoch,
             genesis.validators_schedule.as_ref().unwrap(),
         )
         .unwrap();
@@ -72,11 +73,7 @@ fn commit_qc() -> CommitQC {
 /// Hardcoded `ReplicaTimeout`
 fn replica_timeout() -> ReplicaTimeout {
     ReplicaTimeout {
-        view: View {
-            genesis: genesis_v2().hash(),
-            number: ViewNumber(9169),
-            epoch: EpochNumber(8),
-        },
+        view: view(),
         high_vote: Some(replica_commit()),
         high_qc: Some(commit_qc()),
     }
@@ -84,17 +81,14 @@ fn replica_timeout() -> ReplicaTimeout {
 
 /// Hardcoded `TimeoutQC`.
 fn timeout_qc() -> TimeoutQC {
-    let mut x = TimeoutQC::new(View {
-        genesis: genesis_v2().hash(),
-        number: ViewNumber(9169),
-        epoch: EpochNumber(8),
-    });
+    let mut x = TimeoutQC::new(view());
     let genesis = genesis_v2();
     let replica_timeout = replica_timeout();
     for k in validator_keys() {
         x.add(
             &k.sign_msg(replica_timeout.clone()),
             genesis.hash(),
+            view().epoch,
             genesis.validators_schedule.as_ref().unwrap(),
         )
         .unwrap();

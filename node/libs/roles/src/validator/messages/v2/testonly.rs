@@ -15,7 +15,7 @@ impl Setup {
     /// Pushes the next block with the given payload.
     pub fn push_block_v2(&mut self, payload: Payload) {
         let view = View {
-            genesis: self.genesis.hash(),
+            genesis: self.genesis_hash(),
             number: self
                 .0
                 .blocks
@@ -34,19 +34,19 @@ impl Setup {
                 payload: payload.hash(),
             },
             None => BlockHeader {
-                number: self.genesis.first_block,
+                number: self.first_block(),
                 payload: payload.hash(),
             },
         };
         let msg = ReplicaCommit { view, proposal };
-        let mut justification =
-            CommitQC::new(msg, self.0.genesis.validators_schedule.as_ref().unwrap());
+        let mut justification = CommitQC::new(msg, self.validators_schedule());
         for key in &self.0.validator_keys {
             justification
                 .add(
                     &key.sign_msg(justification.message.clone()),
-                    self.0.genesis.hash(),
-                    self.0.genesis.validators_schedule.as_ref().unwrap(),
+                    self.genesis_hash(),
+                    self.epoch,
+                    self.validators_schedule(),
                 )
                 .unwrap();
         }
@@ -69,7 +69,7 @@ impl Setup {
     /// Creates a View with the given view number.
     pub fn make_view_v2(&self, number: ViewNumber) -> View {
         View {
-            genesis: self.genesis.hash(),
+            genesis: self.genesis_hash(),
             number,
             epoch: EpochNumber(0),
         }
@@ -105,13 +105,14 @@ impl Setup {
     pub fn make_commit_qc_v2(&self, rng: &mut impl Rng, view: ViewNumber) -> CommitQC {
         let mut qc = CommitQC::new(
             self.make_replica_commit_v2(rng, view),
-            self.genesis.validators_schedule.as_ref().unwrap(),
+            self.validators_schedule(),
         );
         for key in &self.validator_keys {
             qc.add(
                 &key.sign_msg(qc.message.clone()),
-                self.genesis.hash(),
-                self.genesis.validators_schedule.as_ref().unwrap(),
+                self.genesis_hash(),
+                self.epoch,
+                self.validators_schedule(),
             )
             .unwrap();
         }
@@ -122,13 +123,14 @@ impl Setup {
     pub fn make_commit_qc_with_payload_v2(&self, payload: &Payload, view: ViewNumber) -> CommitQC {
         let mut qc = CommitQC::new(
             self.make_replica_commit_with_payload_v2(payload, view),
-            self.genesis.validators_schedule.as_ref().unwrap(),
+            self.validators_schedule(),
         );
         for key in &self.validator_keys {
             qc.add(
                 &key.sign_msg(qc.message.clone()),
-                self.genesis.hash(),
-                self.genesis.validators_schedule.as_ref().unwrap(),
+                self.genesis_hash(),
+                self.epoch,
+                self.validators_schedule(),
             )
             .unwrap();
         }
@@ -176,8 +178,9 @@ impl Setup {
         for key in &self.validator_keys {
             qc.add(
                 &key.sign_msg(msg.clone()),
-                self.genesis.hash(),
-                self.genesis.validators_schedule.as_ref().unwrap(),
+                self.genesis_hash(),
+                self.epoch,
+                self.validators_schedule(),
             )
             .unwrap();
         }
@@ -311,7 +314,6 @@ impl Distribution<ChonkyV2State> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChonkyV2State {
         ChonkyV2State {
             view_number: rng.gen(),
-            epoch_number: rng.gen(),
             phase: rng.gen(),
             high_vote: rng.gen(),
             high_commit_qc: rng.gen(),

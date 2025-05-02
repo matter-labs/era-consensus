@@ -28,8 +28,9 @@ fn test_leader_proposal_verify() {
 
     assert!(proposal
         .verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         )
         .is_ok());
 
@@ -39,8 +40,9 @@ fn test_leader_proposal_verify() {
 
     assert_matches!(
         wrong_proposal.verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         ),
         Err(LeaderProposalVerifyError::Justification(_))
     );
