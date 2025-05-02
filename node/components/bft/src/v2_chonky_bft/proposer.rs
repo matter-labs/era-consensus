@@ -22,14 +22,7 @@ pub(crate) async fn run_proposer(
         };
 
         // If we are not the leader for this view, skip it.
-        if cfg
-            .genesis()
-            .validators_schedule
-            .as_ref()
-            .unwrap()
-            .view_leader(justification.view().number)
-            != cfg.secret_key.public()
-        {
+        if cfg.validators().view_leader(justification.view().number) != cfg.secret_key.public() {
             continue;
         }
 
@@ -75,10 +68,8 @@ pub(crate) async fn create_proposal(
     justification: validator::v2::ProposalJustification,
 ) -> ctx::Result<validator::v2::LeaderProposal> {
     // Get the block number and check if this must be a reproposal.
-    let (block_number, opt_block_hash) = justification.get_implied_block(
-        cfg.genesis(),
-        cfg.genesis().validators_schedule.as_ref().unwrap(),
-    );
+    let (block_number, opt_block_hash) =
+        justification.get_implied_block(cfg.validators(), cfg.first_block());
 
     let proposal_payload = match opt_block_hash {
         // There was some proposal last view that a subquorum of replicas

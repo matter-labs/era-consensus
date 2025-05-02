@@ -30,11 +30,7 @@ impl StateMachine {
         );
         self.config
             .engine_manager
-            .queue_block(
-                ctx,
-                block.clone().into(),
-                self.config.genesis().validators_schedule.as_ref().unwrap(),
-            )
+            .queue_block(ctx, block.clone().into(), Some(self.config.validators()))
             .await?;
 
         // For availability, replica should not proceed until it stores the block persistently.

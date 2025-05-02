@@ -289,14 +289,7 @@ async fn timeout_num_received_below_threshold() {
         s.spawn_bg(runner.run(ctx));
 
         let replica_timeout = util.new_replica_timeout(ctx).await;
-        for i in 0..util
-            .genesis()
-            .validators_schedule
-            .as_ref()
-            .unwrap()
-            .quorum_threshold() as usize
-            - 1
-        {
+        for i in 0..util.validators().quorum_threshold() as usize - 1 {
             assert!(util
                 .process_replica_timeout(ctx, util.keys[i].sign_msg(replica_timeout.clone()))
                 .await
@@ -306,14 +299,8 @@ async fn timeout_num_received_below_threshold() {
         let res = util
             .process_replica_timeout(
                 ctx,
-                util.keys[util
-                    .genesis()
-                    .validators_schedule
-                    .as_ref()
-                    .unwrap()
-                    .quorum_threshold() as usize
-                    - 1]
-                .sign_msg(replica_timeout.clone()),
+                util.keys[util.validators().quorum_threshold() as usize - 1]
+                    .sign_msg(replica_timeout.clone()),
             )
             .await
             .unwrap()
@@ -322,13 +309,7 @@ async fn timeout_num_received_below_threshold() {
         assert_matches!(res.justification, validator::v2::ProposalJustification::Timeout(qc) => {
             assert_eq!(qc.view, replica_timeout.view);
         });
-        for i in util
-            .genesis()
-            .validators_schedule
-            .as_ref()
-            .unwrap()
-            .quorum_threshold() as usize..util.keys.len()
-        {
+        for i in util.validators().quorum_threshold() as usize..util.keys.len() {
             let res = util
                 .process_replica_timeout(ctx, util.keys[i].sign_msg(replica_timeout.clone()))
                 .await;
@@ -387,10 +368,7 @@ async fn timeout_weight_different_messages() {
         let mut res = None;
         // The rest of the validators until threshold sign other_replica_timeout
         for i in validators / 2..util
-            .genesis()
-            .validators_schedule
-            .as_ref()
-            .unwrap()
+            .validators()
             .quorum_threshold() as usize
         {
             res = util
@@ -401,7 +379,7 @@ async fn timeout_weight_different_messages() {
 
         assert_matches!(res.unwrap().msg.justification, validator::v2::ProposalJustification::Timeout(qc) => {
             assert_eq!(qc.view, replica_timeout.view);
-            assert_eq!(qc.high_vote(util.genesis().validators_schedule.as_ref().unwrap()).unwrap(), proposal);
+            assert_eq!(qc.high_vote(util.validators()).unwrap(), proposal);
         });
 
         Ok(())

@@ -20,16 +20,13 @@ async fn new_view_sanity() {
                 payload: ctx.rng().gen(),
             },
         };
-        let mut commit_qc_1 = validator::v2::CommitQC::new(
-            commit_1.clone(),
-            util.genesis().validators_schedule.as_ref().unwrap(),
-        );
+        let mut commit_qc_1 = validator::v2::CommitQC::new(commit_1.clone(), util.validators());
         for key in &util.keys {
             commit_qc_1
                 .add(
                     &key.sign_msg(commit_1.clone()),
-                    util.genesis().hash(),
-                    util.genesis().validators_schedule.as_ref().unwrap(),
+                    util.genesis_hash(),
+                    util.validators(),
                 )
                 .unwrap();
         }
@@ -44,16 +41,13 @@ async fn new_view_sanity() {
                 payload: ctx.rng().gen(),
             },
         };
-        let mut commit_qc_2 = validator::v2::CommitQC::new(
-            commit_2.clone(),
-            util.genesis().validators_schedule.as_ref().unwrap(),
-        );
+        let mut commit_qc_2 = validator::v2::CommitQC::new(commit_2.clone(), util.validators());
         for key in &util.keys {
             commit_qc_2
                 .add(
                     &key.sign_msg(commit_2.clone()),
-                    util.genesis().hash(),
-                    util.genesis().validators_schedule.as_ref().unwrap(),
+                    util.genesis_hash(),
+                    util.validators(),
                 )
                 .unwrap();
         }
@@ -71,8 +65,8 @@ async fn new_view_sanity() {
             timeout_qc
                 .add(
                     &key.sign_msg(timeout.clone()),
-                    util.genesis().hash(),
-                    util.genesis().validators_schedule.as_ref().unwrap(),
+                    util.genesis_hash(),
+                    util.validators(),
                 )
                 .unwrap();
         }
