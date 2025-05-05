@@ -2,7 +2,6 @@ use rand::{distributions::Distribution, Rng};
 use tempfile::TempDir;
 use zksync_concurrency::{ctx, sync};
 use zksync_consensus_engine::{testonly, EngineInterface};
-use zksync_consensus_network as network;
 use zksync_consensus_roles::validator::testonly::Setup;
 use zksync_consensus_utils::EncodeDist;
 use zksync_protobuf::testonly::{test_encode_all_formats, FmtConv};
@@ -47,11 +46,6 @@ impl Distribution<config::DebugPage> for EncodeDist {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> config::DebugPage {
         config::DebugPage {
             addr: self.sample(rng),
-            credentials: self.sample_opt(|| network::debug_page::Credentials {
-                user: self.sample(rng),
-                password: self.sample(rng),
-            }),
-            tls: self.sample(rng),
         }
     }
 }
@@ -61,7 +55,6 @@ impl Distribution<config::DebugPage> for EncodeDist {
 fn test_schema_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
-    test_encode_all_formats::<FmtConv<config::Tls>>(rng);
     test_encode_all_formats::<FmtConv<config::DebugPage>>(rng);
     test_encode_all_formats::<FmtConv<config::App>>(rng);
 }

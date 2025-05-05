@@ -117,6 +117,12 @@ impl EngineManager {
         self.epoch_schedule.borrow().get(&epoch).cloned()
     }
 
+    /// Returns the block number of the head of the chain. We might not have this block in store
+    /// if it was pruned or we just started from a snapshot of the state without any blocks.
+    pub fn head(&self) -> validator::BlockNumber {
+        self.block_store.borrow().persisted.head()
+    }
+
     /// Available blocks (in-memory & persisted).
     pub fn queued(&self) -> BlockStoreState {
         self.block_store.borrow().queued.clone()

@@ -49,23 +49,9 @@ message NodeAddr {
   optional string addr = 2; // required; IpAddr
 }
 
-message TlsConfig {
-  optional string cert_path = 1; // required
-  optional string key_path = 2; // required
-}
-
-message Credentials {
-  optional string user = 1; // required
-  optional string password = 2; // required
-}
-
 message DebugPageConfig {
   // IP:port to open a debug http endpoint on.
   optional string addr = 1; // required; IpAddr
-  // Http debug page access credentials
-  optional Credentials credentials = 2; // optional
-  // TLS configuration.
-  optional TlsConfig tls = 3; // optional
 }
 
 // Application configuration. 
