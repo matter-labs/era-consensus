@@ -27,7 +27,7 @@ fn test_leader_proposal_verify() {
     };
 
     assert!(proposal
-        .verify(setup.genesis_hash(), &setup.validators_schedule())
+        .verify(setup.genesis_hash(), setup.validators_schedule())
         .is_ok());
 
     // Invalid justification
@@ -35,7 +35,7 @@ fn test_leader_proposal_verify() {
     wrong_proposal.justification = ProposalJustification::Timeout(rng.gen());
 
     assert_matches!(
-        wrong_proposal.verify(setup.genesis_hash(), &setup.validators_schedule()),
+        wrong_proposal.verify(setup.genesis_hash(), setup.validators_schedule()),
         Err(LeaderProposalVerifyError::Justification(_))
     );
 }
@@ -61,7 +61,7 @@ fn test_justification_get_implied_block() {
 
     let (implied_block_number, implied_payload) = proposal
         .justification
-        .get_implied_block(&setup.validators_schedule(), setup.first_block());
+        .get_implied_block(setup.validators_schedule(), setup.first_block());
 
     assert_eq!(implied_block_number, setup.next());
     assert!(implied_payload.is_none());
@@ -76,7 +76,7 @@ fn test_justification_get_implied_block() {
 
     let (implied_block_number, implied_payload) = proposal
         .justification
-        .get_implied_block(&setup.validators_schedule(), setup.first_block());
+        .get_implied_block(setup.validators_schedule(), setup.first_block());
 
     assert_eq!(implied_block_number, setup.next());
     assert_eq!(implied_payload, Some(payload.hash()));

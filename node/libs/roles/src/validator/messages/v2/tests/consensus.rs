@@ -58,11 +58,11 @@ fn test_view_verify() {
     };
     assert!(view.verify(genesis.1, epoch).is_ok());
 
-    let mut wrong_view = view.clone();
+    let mut wrong_view = view;
     wrong_view.genesis = GenesisHash::default();
     assert!(wrong_view.verify(genesis.1, epoch).is_err());
 
-    let mut wrong_view = view.clone();
+    let mut wrong_view = view;
     wrong_view.epoch = EpochNumber(1111);
     assert!(wrong_view.verify(genesis.1, epoch).is_err());
 }

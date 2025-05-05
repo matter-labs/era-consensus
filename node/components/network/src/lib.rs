@@ -56,7 +56,7 @@ impl Network {
     /// * `cfg` - The configuration for the network component.
     /// * `engine_manager` - The engine manager which connects to the execution engine.
     /// * `epoch_number` - The epoch number for this instance of the network component. If None, the
-    ///     network component will only fetch pre-genesis blocks.
+    ///   network component will only fetch pre-genesis blocks.
     /// * `consensus_sender` - The sender for the consensus messages to the consensus component.
     /// * `consensus_receiver` - The receiver for the consensus messages from the consensus component.
     pub fn new(

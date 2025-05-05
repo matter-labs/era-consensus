@@ -114,7 +114,7 @@ impl Executor {
                 // Spawn the components for the current epoch.
                 s.spawn(async {
                     let epoch = validator::EpochNumber(cur_epoch_counter.load(Ordering::Relaxed));
-                    self.spawn_components(ctx, self.network_config(), epoch.clone(), schedule)
+                    self.spawn_components(ctx, self.network_config(), epoch, schedule)
                         .await
                         .context(format!("Components for epoch {} stopped", epoch))
                 });

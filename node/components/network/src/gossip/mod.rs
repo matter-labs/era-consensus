@@ -112,8 +112,8 @@ impl Network {
                 self.engine_manager
                     .validator_schedule(epoch_number)
                     .context(format!(
-                        "Network instance was started for epoch {} but there's no \
-                                 corresponding validator schedule.",
+                        "Network instance was started for epoch {} but there's no corresponding \
+                         validator schedule.",
                         epoch_number,
                     ))?
                     .schedule,

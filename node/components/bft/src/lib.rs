@@ -61,8 +61,8 @@ impl Config {
                     if let Some(n) = engine_manager
                         .validator_schedule(epoch_number)
                         .context(format!(
-                            "BFT instance was started for epoch {} but there's no \
-                     corresponding validator schedule.",
+                            "BFT instance was started for epoch {} but there's no corresponding \
+                             validator schedule.",
                             epoch_number
                         ))?
                         .expiration_block
@@ -79,7 +79,7 @@ impl Config {
                     if last_block_number > expiration {
                         return Err(ctx::Error::Internal(anyhow::anyhow!(
                             "BFT instance was started for epoch {} but continued past the \
-                     expiration block {}. Current block number: {}.",
+                             expiration block {}. Current block number: {}.",
                             epoch_number,
                             expiration,
                             last_block_number
@@ -108,12 +108,10 @@ impl Config {
                     .await
                     .wrap("run_v2()"),
 
-                _ => {
-                    return Err(ctx::Error::Internal(anyhow::anyhow!(
-                        "Unsupported protocol version: {:?}",
-                        self.protocol_version()
-                    )))
-                }
+                _ => Err(ctx::Error::Internal(anyhow::anyhow!(
+                    "Unsupported protocol version: {:?}",
+                    self.protocol_version()
+                ))),
             }
         })
         .await;

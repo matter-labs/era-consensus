@@ -17,18 +17,18 @@ fn test_final_block_verify() {
     let mut final_block = FinalBlock::new(payload.clone(), commit_qc.clone());
 
     assert!(final_block
-        .verify(setup.genesis_hash(), &setup.validators_schedule())
+        .verify(setup.genesis_hash(), setup.validators_schedule())
         .is_ok());
 
     final_block.payload = rng.gen();
     assert_matches!(
-        final_block.verify(setup.genesis_hash(), &setup.validators_schedule()),
+        final_block.verify(setup.genesis_hash(), setup.validators_schedule()),
         Err(BlockValidationError::HashMismatch { .. })
     );
 
     final_block.justification.message.proposal.payload = final_block.payload.hash();
     assert_matches!(
-        final_block.verify(setup.genesis_hash(), &setup.validators_schedule()),
+        final_block.verify(setup.genesis_hash(), setup.validators_schedule()),
         Err(BlockValidationError::Justification(_))
     );
 }

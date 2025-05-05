@@ -80,8 +80,7 @@ async fn test_single_validator() {
         if e.to_string() == "canceled" {
             return;
         }
-        println!("err: {:?}", e);
-        assert!(false, "Test failed with error: {:?}", e);
+        panic!("Test failed with error: {:?}", e);
     }
 }
 
@@ -118,8 +117,7 @@ async fn test_many_validators() {
         if e.to_string() == "canceled" {
             return;
         }
-        println!("err: {:?}", e);
-        assert!(false, "Test failed with error: {:?}", e);
+        panic!("Test failed with error: {:?}", e);
     }
 }
 
@@ -161,6 +159,7 @@ async fn test_inactive_validator() {
         if e.to_string() == "canceled" {
             return;
         }
+        panic!("Test failed with error: {:?}", e);
     }
 }
 
@@ -199,6 +198,7 @@ async fn test_fullnode_syncing_from_validator() {
         if e.to_string() == "canceled" {
             return;
         }
+        panic!("Test failed with error: {:?}", e);
     }
 }
 
@@ -264,5 +264,6 @@ async fn test_validator_syncing_from_fullnode() {
         if e.to_string() == "canceled" {
             return;
         }
+        panic!("Test failed with error: {:?}", e);
     }
 }

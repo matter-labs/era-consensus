@@ -1,13 +1,11 @@
 //! Node configuration.
 use std::{
     collections::{HashMap, HashSet},
-    fs, io,
     net::SocketAddr,
     path::PathBuf,
 };
 
-use anyhow::{anyhow, Context as _};
-use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use anyhow::Context as _;
 use zksync_concurrency::{ctx, net, time};
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_engine::{
@@ -251,22 +249,4 @@ impl Configs {
         };
         Ok((e, runner))
     }
-}
-
-/// Load public certificate from file.
-fn load_cert_chain(path: &PathBuf) -> anyhow::Result<Vec<CertificateDer<'static>>> {
-    let file = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
-    let mut reader = io::BufReader::new(file);
-    rustls_pemfile::certs(&mut reader)
-        .collect::<Result<_, _>>()
-        .context("invalid certificate chain")
-}
-
-/// Load private key from file.
-fn load_private_key(path: &PathBuf) -> anyhow::Result<PrivateKeyDer<'static>> {
-    let keyfile = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
-    let mut reader = io::BufReader::new(keyfile);
-    rustls_pemfile::private_key(&mut reader)
-        .context("invalid key")?
-        .context("no key in file")
 }

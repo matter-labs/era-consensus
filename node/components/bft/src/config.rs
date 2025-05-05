@@ -10,16 +10,16 @@ use zksync_consensus_roles::validator;
 #[derive(Debug)]
 pub struct Config {
     /// Engine manager.
-    pub engine_manager: Arc<EngineManager>,
+    pub(crate) engine_manager: Arc<EngineManager>,
     /// The validator's secret key.
-    pub secret_key: validator::SecretKey,
+    pub(crate) secret_key: validator::SecretKey,
     /// The maximum size of the payload of a block, in bytes. We will
     /// reject blocks with payloads larger than this.
-    pub max_payload_size: usize,
+    pub(crate) max_payload_size: usize,
     /// The duration of the view timeout.
-    pub view_timeout: time::Duration,
+    pub(crate) view_timeout: time::Duration,
     /// The epoch number for this BFT instance.
-    pub epoch: validator::EpochNumber,
+    pub(crate) epoch: validator::EpochNumber,
     /// The validator schedule for this epoch. We cache it here to avoid
     /// recomputing it on every call.
     validators: validator::Schedule,
@@ -37,7 +37,8 @@ impl Config {
         let validators = engine_manager
             .validator_schedule(epoch_number)
             .context(format!(
-                "BFT config can't be created for epoch {} because there's no corresponding validator schedule.",
+                "BFT config can't be created for epoch {} because there's no corresponding \
+                 validator schedule.",
                 epoch_number,
             ))?
             .schedule;
