@@ -78,6 +78,22 @@ impl TestEngine {
             im_engine,
         }
     }
+
+    /// Constructs a new in-memory engine manager with a dynamic validator schedule.
+    pub async fn new_with_dynamic_schedule(ctx: &ctx::Ctx, setup: &Setup, n: u64) -> Self {
+        // We can only have dynamic validator schedules if we don't have a static one in genesis.
+        assert!(setup.genesis.validators_schedule.is_none());
+
+        let im_engine = in_memory::Engine::new_dynamic_schedule(setup, setup.first_block(), n);
+        let (engine, runner) = EngineManager::new(ctx, Box::new(im_engine.clone()))
+            .await
+            .unwrap();
+        Self {
+            manager: engine,
+            runner,
+            im_engine,
+        }
+    }
 }
 
 /// Dumps all the blocks stored in `block_store` of an `EngineManager`.

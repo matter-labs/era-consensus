@@ -267,3 +267,40 @@ async fn test_validator_syncing_from_fullnode() {
         panic!("Test failed with error: {:?}", e);
     }
 }
+
+#[tokio::test]
+async fn test_validator_rotation() {
+    abort_on_panic();
+    let ctx = &ctx::root();
+    let rng = &mut ctx.rng();
+
+    let setup = Setup::new_without_validators_schedule(rng, 8);
+    let cfgs = new_configs(rng, &setup, 4);
+
+    let res = scope::run!(ctx, |ctx, s| async {
+        for cfg in cfgs {
+            // Spawn validator.
+            let engine = TestEngine::new_with_dynamic_schedule(ctx, &setup, 10).await;
+            s.spawn_bg(engine.runner.run(ctx));
+            s.spawn_bg(validator(&cfg, engine.manager.clone()).run(ctx));
+
+            // Spawn a task waiting for blocks to get finalized and delivered to this validator.
+            s.spawn(async {
+                let manager = engine.manager;
+                manager.wait_until_persisted(ctx, BlockNumber(21)).await?;
+                Ok(())
+            });
+        }
+
+        Ok(())
+    })
+    .await;
+
+    // Just ignore the "canceled" error and treat it as success
+    if let Err(e) = &res {
+        if e.to_string() == "canceled" {
+            return;
+        }
+        panic!("Test failed with error: {:?}", e);
+    }
+}

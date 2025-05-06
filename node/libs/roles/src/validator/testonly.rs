@@ -106,6 +106,18 @@ impl Setup {
         Self::from_spec(rng, spec)
     }
 
+    /// New `Setup` without any validators schedule in genesis. Used to test validator rotation.
+    pub fn new_without_validators_schedule(rng: &mut impl Rng, validators: usize) -> Self {
+        let spec = SetupSpec::new(rng, validators);
+        let mut setup = Self::from_spec(rng, spec);
+        let mut genesis = setup.0.genesis.0;
+        // TODO: remove this after we deprecate protocol version 1
+        genesis.protocol_version = ProtocolVersion(2);
+        genesis.validators_schedule = None;
+        setup.0.genesis = genesis.with_hash();
+        setup
+    }
+
     /// New `Setup` where validators have the given weights and the specified protocol version.
     pub fn new_with_weights_and_version(
         rng: &mut impl Rng,
