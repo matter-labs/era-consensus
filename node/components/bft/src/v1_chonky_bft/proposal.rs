@@ -194,7 +194,7 @@ impl StateMachine {
                 if let Err(err) = self
                     .config
                     .engine_manager
-                    .verify_payload(ctx, implied_block_number, payload)
+                    .verify_payload(ctx, implied_block_number, self.config.epoch, payload)
                     .await
                 {
                     return Err(match err {

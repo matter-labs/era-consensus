@@ -284,8 +284,17 @@ impl EngineManager {
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
+        epoch: validator::EpochNumber,
         payload: &validator::Payload,
     ) -> ctx::Result<()> {
+        // Check that this block belongs to the given epoch, otherwise return an error.
+        // This is a sanity check to ensure that the payload is being verified for the correct epoch.
+        if self.epoch_for_block(number) != Some(epoch) {
+            return Err(
+                anyhow::format_err!("block {} does not belong to epoch {}", number, epoch).into(),
+            );
+        }
+
         let t = metrics::ENGINE_INTERFACE.verify_payload_latency.start();
         self.interface
             .verify_payload(ctx, number, payload)
@@ -300,7 +309,16 @@ impl EngineManager {
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
+        epoch: validator::EpochNumber,
     ) -> ctx::Result<validator::Payload> {
+        // Check that this block belongs to the given epoch, otherwise return an error.
+        // This is a sanity check to ensure that the payload is being proposed for the correct epoch.
+        if self.epoch_for_block(number) != Some(epoch) {
+            return Err(
+                anyhow::format_err!("block {} does not belong to epoch {}", number, epoch).into(),
+            );
+        }
+
         let t = metrics::ENGINE_INTERFACE.propose_payload_latency.start();
         let payload = self
             .interface
@@ -332,6 +350,19 @@ impl EngineManager {
             .context("set_state()")?;
         t.observe();
         Ok(())
+    }
+
+    /// Returns the epoch number for the given block number, if it exists.
+    fn epoch_for_block(&self, number: validator::BlockNumber) -> Option<validator::EpochNumber> {
+        self.epoch_schedule
+            .borrow()
+            .iter()
+            .find(|(_, schedule)| {
+                schedule.activation_block <= number
+                    && (schedule.expiration_block.is_none()
+                        || schedule.expiration_block.unwrap() >= number)
+            })
+            .map(|(epoch, _)| *epoch)
     }
 
     fn scrape_metrics(&self) -> metrics::BlockStore {
