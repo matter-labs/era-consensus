@@ -84,7 +84,7 @@ pub(crate) async fn create_proposal(
 
             let payload = cfg
                 .engine_manager
-                .propose_payload(ctx, block_number, cfg.epoch)
+                .propose_payload(ctx, block_number)
                 .await
                 .wrap("payload_manager.propose()")?;
 

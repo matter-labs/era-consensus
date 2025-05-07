@@ -309,16 +309,7 @@ impl EngineManager {
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-        epoch: validator::EpochNumber,
     ) -> ctx::Result<validator::Payload> {
-        // Check that this block belongs to the given epoch, otherwise return an error.
-        // This is a sanity check to ensure that the payload is being proposed for the correct epoch.
-        if self.epoch_for_block(number) != Some(epoch) {
-            return Err(
-                anyhow::format_err!("block {} does not belong to epoch {}", number, epoch).into(),
-            );
-        }
-
         let t = metrics::ENGINE_INTERFACE.propose_payload_latency.start();
         let payload = self
             .interface
