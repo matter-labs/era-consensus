@@ -168,18 +168,17 @@ async fn run_twins(
             // Let's just consider the partition of the LeaderCommit phase, for brevity's sake.
             let partitions = &splits[r].last().unwrap();
 
+            let leader_pk = setup
+                .genesis
+                .validators_schedule
+                .as_ref()
+                .unwrap()
+                .view_leader(ViewNumber(r as u64));
+
             let leader_ports = cluster
                 .nodes()
                 .iter()
-                .filter(|n| {
-                    n.public_key
-                        == setup
-                            .genesis
-                            .validators_schedule
-                            .as_ref()
-                            .unwrap()
-                            .view_leader(ViewNumber(r as u64))
-                })
+                .filter(|n| n.public_key == leader_pk)
                 .map(|n| node_to_port[&n.id])
                 .collect::<Vec<_>>();
 

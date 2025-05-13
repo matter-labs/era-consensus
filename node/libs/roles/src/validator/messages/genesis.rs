@@ -42,58 +42,62 @@ impl ProtoFmt for GenesisRaw {
         let protocol_version = ProtocolVersion(r.protocol_version.context("protocol_version")?);
         let validators_schedule;
 
-        if protocol_version.0 == 1 {
-            let validators: Vec<_> = r
-                .validators_v1
-                .iter()
-                .enumerate()
-                .map(|(i, v)| WeightedValidator::read(v).context(i))
-                .collect::<Result<_, _>>()
-                .context("validators_v1")?;
-            let leader: LeaderSelectionMode =
-                read_required(&r.leader_selection).context("leader_selection")?;
+        match protocol_version.0 {
+            1 => {
+                let validators: Vec<_> = r
+                    .validators_v1
+                    .iter()
+                    .enumerate()
+                    .map(|(i, v)| WeightedValidator::read(v).context(i))
+                    .collect::<Result<_, _>>()
+                    .context("validators_v1")?;
+                let leader: LeaderSelectionMode =
+                    read_required(&r.leader_selection).context("leader_selection")?;
 
-            if let LeaderSelectionMode::Sticky(leader_pk) = leader {
-                let validator_info: Vec<_> = validators
-                    .iter()
-                    .map(|v| ValidatorInfo {
-                        key: v.key.clone(),
-                        weight: v.weight,
-                        leader: v.key == leader_pk,
-                    })
-                    .collect();
-                validators_schedule = Some(Schedule::new(
-                    validator_info,
-                    LeaderSelection {
-                        frequency: 1,
-                        mode: LeaderSelectionMode::RoundRobin,
-                    },
-                )?);
-            } else {
-                let validator_info: Vec<_> = validators
-                    .iter()
-                    .map(|v| ValidatorInfo {
-                        key: v.key.clone(),
-                        weight: v.weight,
-                        leader: true,
-                    })
-                    .collect();
-                validators_schedule = Some(Schedule::new(
-                    validator_info,
-                    LeaderSelection {
-                        frequency: 1,
-                        mode: leader,
-                    },
-                )?);
+                if let LeaderSelectionMode::Sticky(leader_pk) = leader {
+                    let validator_info: Vec<_> = validators
+                        .iter()
+                        .map(|v| ValidatorInfo {
+                            key: v.key.clone(),
+                            weight: v.weight,
+                            leader: v.key == leader_pk,
+                        })
+                        .collect();
+                    validators_schedule = Some(Schedule::new(
+                        validator_info,
+                        LeaderSelection {
+                            frequency: 1,
+                            mode: LeaderSelectionMode::RoundRobin,
+                        },
+                    )?);
+                } else {
+                    let validator_info: Vec<_> = validators
+                        .iter()
+                        .map(|v| ValidatorInfo {
+                            key: v.key.clone(),
+                            weight: v.weight,
+                            leader: true,
+                        })
+                        .collect();
+                    validators_schedule = Some(Schedule::new(
+                        validator_info,
+                        LeaderSelection {
+                            frequency: 1,
+                            mode: leader,
+                        },
+                    )?);
+                }
             }
-        } else if protocol_version.0 == 2 {
-            validators_schedule =
-                read_optional(&r.validators_schedule).context("validators_schedule")?;
-            if validators_schedule.is_none() {
-                anyhow::bail!("validators_schedule on genesis is still required");
+            2 => {
+                validators_schedule =
+                    read_optional(&r.validators_schedule).context("validators_schedule")?;
+                if validators_schedule.is_none() {
+                    anyhow::bail!("validators_schedule on genesis is still required");
+                }
             }
-        } else {
-            unreachable!();
+            _ => {
+                unreachable!();
+            }
         }
 
         Ok(GenesisRaw {
@@ -110,54 +114,58 @@ impl ProtoFmt for GenesisRaw {
         let leader_selection;
         let validators_schedule;
 
-        if self.protocol_version.0 == 1 {
-            let leader = self.validators_schedule.as_ref().unwrap().leaders();
-            if leader.len() == 1 {
-                leader_selection = Some(
-                    LeaderSelectionMode::Sticky(
+        match self.protocol_version.0 {
+            1 => {
+                let leader = self.validators_schedule.as_ref().unwrap().leaders();
+                if leader.len() == 1 {
+                    leader_selection = Some(
+                        LeaderSelectionMode::Sticky(
+                            self.validators_schedule
+                                .as_ref()
+                                .unwrap()
+                                .get(leader[0])
+                                .unwrap()
+                                .key
+                                .clone(),
+                        )
+                        .build(),
+                    );
+                } else if leader.len() == self.validators_schedule.as_ref().unwrap().len() {
+                    leader_selection = Some(
                         self.validators_schedule
                             .as_ref()
                             .unwrap()
-                            .get(leader[0])
-                            .unwrap()
-                            .key
-                            .clone(),
-                    )
-                    .build(),
-                );
-            } else if leader.len() == self.validators_schedule.as_ref().unwrap().len() {
-                leader_selection = Some(
-                    self.validators_schedule
-                        .as_ref()
-                        .unwrap()
-                        .leader_selection()
-                        .mode
-                        .clone()
-                        .build(),
-                );
-            } else {
+                            .leader_selection()
+                            .mode
+                            .clone()
+                            .build(),
+                    );
+                } else {
+                    unreachable!();
+                }
+                validators_v1 = self
+                    .validators_schedule
+                    .as_ref()
+                    .unwrap()
+                    .iter()
+                    .map(|v| {
+                        WeightedValidator {
+                            key: v.key.clone(),
+                            weight: v.weight,
+                        }
+                        .build()
+                    })
+                    .collect();
+                validators_schedule = None;
+            }
+            2 => {
+                validators_v1 = Vec::new();
+                leader_selection = None;
+                validators_schedule = self.validators_schedule.as_ref().map(|x| x.build());
+            }
+            _ => {
                 unreachable!();
             }
-            validators_v1 = self
-                .validators_schedule
-                .as_ref()
-                .unwrap()
-                .iter()
-                .map(|v| {
-                    WeightedValidator {
-                        key: v.key.clone(),
-                        weight: v.weight,
-                    }
-                    .build()
-                })
-                .collect();
-            validators_schedule = None;
-        } else if self.protocol_version.0 == 2 {
-            validators_v1 = Vec::new();
-            leader_selection = None;
-            validators_schedule = self.validators_schedule.as_ref().map(|x| x.build());
-        } else {
-            unreachable!();
         }
 
         Self::Proto {
