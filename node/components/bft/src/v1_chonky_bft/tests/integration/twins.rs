@@ -168,7 +168,9 @@ async fn run_twins(
             // Let's just consider the partition of the LeaderCommit phase, for brevity's sake.
             let partitions = &splits[r].last().unwrap();
 
-            let leader_pk = setup.validators_schedule.view_leader(ViewNumber(r as u64));
+            let leader_pk = setup
+                .validators_schedule()
+                .view_leader(ViewNumber(r as u64));
 
             let leader_ports = cluster
                 .nodes()
