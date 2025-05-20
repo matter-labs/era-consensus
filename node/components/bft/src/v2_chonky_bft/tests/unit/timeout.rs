@@ -26,16 +26,29 @@ fn timeout_qc_aggregation() {
     let mut timeout_qc = validator::v2::TimeoutQC::new(view);
     for k in &setup.validator_keys {
         // Generate ReplicaTimeout which differ just by the high_qc signer set.
-        let mut commit_qc = validator::v2::CommitQC::new(commit.clone(), &setup.genesis);
+        let mut commit_qc = validator::v2::CommitQC::new(
+            commit.clone(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
+        );
         // Add signatures in random order until the CommitQC is valid.
         let mut keys = setup.validator_keys.clone();
         keys.shuffle(rng);
         for k in &keys {
-            if commit_qc.verify(&setup.genesis).is_ok() {
+            if commit_qc
+                .verify(
+                    setup.genesis.hash(),
+                    setup.genesis.validators_schedule.as_ref().unwrap(),
+                )
+                .is_ok()
+            {
                 break;
             }
             commit_qc
-                .add(&k.sign_msg(commit.clone()), &setup.genesis)
+                .add(
+                    &k.sign_msg(commit.clone()),
+                    setup.genesis.hash(),
+                    setup.genesis.validators_schedule.as_ref().unwrap(),
+                )
                 .unwrap();
         }
         // Add vote to the TimeoutQC.
@@ -44,9 +57,20 @@ fn timeout_qc_aggregation() {
             high_vote: None,
             high_qc: Some(commit_qc.clone()),
         };
-        timeout_qc.add(&k.sign_msg(vote), &setup.genesis).unwrap();
+        timeout_qc
+            .add(
+                &k.sign_msg(vote),
+                setup.genesis.hash(),
+                setup.genesis.validators_schedule.as_ref().unwrap(),
+            )
+            .unwrap();
     }
-    timeout_qc.verify(&setup.genesis).unwrap();
+    timeout_qc
+        .verify(
+            setup.genesis.hash(),
+            setup.genesis.validators_schedule.as_ref().unwrap(),
+        )
+        .unwrap();
 }
 
 #[tokio::test]
@@ -265,7 +289,14 @@ async fn timeout_num_received_below_threshold() {
         s.spawn_bg(runner.run(ctx));
 
         let replica_timeout = util.new_replica_timeout(ctx).await;
-        for i in 0..util.genesis().validators.quorum_threshold() as usize - 1 {
+        for i in 0..util
+            .genesis()
+            .validators_schedule
+            .as_ref()
+            .unwrap()
+            .quorum_threshold() as usize
+            - 1
+        {
             assert!(util
                 .process_replica_timeout(ctx, util.keys[i].sign_msg(replica_timeout.clone()))
                 .await
@@ -275,8 +306,14 @@ async fn timeout_num_received_below_threshold() {
         let res = util
             .process_replica_timeout(
                 ctx,
-                util.keys[util.genesis().validators.quorum_threshold() as usize - 1]
-                    .sign_msg(replica_timeout.clone()),
+                util.keys[util
+                    .genesis()
+                    .validators_schedule
+                    .as_ref()
+                    .unwrap()
+                    .quorum_threshold() as usize
+                    - 1]
+                .sign_msg(replica_timeout.clone()),
             )
             .await
             .unwrap()
@@ -285,7 +322,13 @@ async fn timeout_num_received_below_threshold() {
         assert_matches!(res.justification, validator::v2::ProposalJustification::Timeout(qc) => {
             assert_eq!(qc.view, replica_timeout.view);
         });
-        for i in util.genesis().validators.quorum_threshold() as usize..util.keys.len() {
+        for i in util
+            .genesis()
+            .validators_schedule
+            .as_ref()
+            .unwrap()
+            .quorum_threshold() as usize..util.keys.len()
+        {
             let res = util
                 .process_replica_timeout(ctx, util.keys[i].sign_msg(replica_timeout.clone()))
                 .await;
@@ -343,7 +386,13 @@ async fn timeout_weight_different_messages() {
 
         let mut res = None;
         // The rest of the validators until threshold sign other_replica_timeout
-        for i in validators / 2..util.genesis().validators.quorum_threshold() as usize {
+        for i in validators / 2..util
+            .genesis()
+            .validators_schedule
+            .as_ref()
+            .unwrap()
+            .quorum_threshold() as usize
+        {
             res = util
                 .process_replica_timeout(ctx, util.keys[i].sign_msg(other_replica_timeout.clone()))
                 .await
@@ -352,7 +401,7 @@ async fn timeout_weight_different_messages() {
 
         assert_matches!(res.unwrap().msg.justification, validator::v2::ProposalJustification::Timeout(qc) => {
             assert_eq!(qc.view, replica_timeout.view);
-            assert_eq!(qc.high_vote(util.genesis()).unwrap(), proposal);
+            assert_eq!(qc.high_vote(util.genesis().validators_schedule.as_ref().unwrap()).unwrap(), proposal);
         });
 
         Ok(())

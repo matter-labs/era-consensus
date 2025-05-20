@@ -193,7 +193,14 @@ async fn replica_commit_num_received_below_threshold() {
         s.spawn_bg(runner.run(ctx));
 
         let replica_commit = util.new_replica_commit(ctx).await;
-        for i in 0..util.genesis().validators.quorum_threshold() as usize - 1 {
+        for i in 0..util
+            .genesis()
+            .validators_schedule
+            .as_ref()
+            .unwrap()
+            .quorum_threshold() as usize
+            - 1
+        {
             assert!(util
                 .process_replica_commit(ctx, util.keys[i].sign_msg(replica_commit.clone()))
                 .await
@@ -203,8 +210,14 @@ async fn replica_commit_num_received_below_threshold() {
         let res = util
             .process_replica_commit(
                 ctx,
-                util.keys[util.genesis().validators.quorum_threshold() as usize - 1]
-                    .sign_msg(replica_commit.clone()),
+                util.keys[util
+                    .genesis()
+                    .validators_schedule
+                    .as_ref()
+                    .unwrap()
+                    .quorum_threshold() as usize
+                    - 1]
+                .sign_msg(replica_commit.clone()),
             )
             .await
             .unwrap()
@@ -213,7 +226,13 @@ async fn replica_commit_num_received_below_threshold() {
         assert_matches!(res.justification, validator::v1::ProposalJustification::Commit(qc) => {
             assert_eq!(qc.message.proposal, replica_commit.proposal);
         });
-        for i in util.genesis().validators.quorum_threshold() as usize..util.keys.len() {
+        for i in util
+            .genesis()
+            .validators_schedule
+            .as_ref()
+            .unwrap()
+            .quorum_threshold() as usize..util.keys.len()
+        {
             let res = util
                 .process_replica_commit(ctx, util.keys[i].sign_msg(replica_commit.clone()))
                 .await;

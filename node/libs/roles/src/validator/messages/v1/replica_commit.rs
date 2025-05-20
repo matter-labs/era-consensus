@@ -1,7 +1,7 @@
 use anyhow::Context as _;
 use zksync_protobuf::{read_required, ProtoFmt};
 
-use super::{BlockHeader, Signers, View};
+use super::{get_committee_from_schedule, BlockHeader, Signers, View};
 use crate::{
     proto::validator as proto,
     validator::{self, Genesis, Signed},
@@ -82,7 +82,7 @@ impl CommitQC {
     pub fn new(message: ReplicaCommit, genesis: &Genesis) -> Self {
         Self {
             message,
-            signers: Signers::new(genesis.validators.len()),
+            signers: Signers::new(genesis.validators_schedule.as_ref().unwrap().len()),
             signature: validator::AggregateSignature::default(),
         }
     }
@@ -94,7 +94,12 @@ impl CommitQC {
         genesis: &Genesis,
     ) -> Result<(), CommitQCAddError> {
         // Check if the signer is in the committee.
-        let Some(i) = genesis.validators.index(&msg.key) else {
+        let Some(i) = genesis
+            .validators_schedule
+            .as_ref()
+            .unwrap()
+            .index(&msg.key)
+        else {
             return Err(CommitQCAddError::SignerNotInCommittee {
                 signer: Box::new(msg.key.clone()),
             });
@@ -135,13 +140,19 @@ impl CommitQC {
             .map_err(CommitQCVerifyError::InvalidMessage)?;
 
         // Check that the signers set has the same size as the validator set.
-        if self.signers.len() != genesis.validators.len() {
+        if self.signers.len() != genesis.validators_schedule.as_ref().unwrap().len() {
             return Err(CommitQCVerifyError::BadSignersSet);
         }
 
         // Verify the signers' weight is enough.
-        let weight = self.signers.weight(&genesis.validators);
-        let threshold = genesis.validators.quorum_threshold();
+        let weight = self.signers.weight(&get_committee_from_schedule(
+            genesis.validators_schedule.as_ref().unwrap(),
+        ));
+        let threshold = genesis
+            .validators_schedule
+            .as_ref()
+            .unwrap()
+            .quorum_threshold();
         if weight < threshold {
             return Err(CommitQCVerifyError::NotEnoughWeight {
                 got: weight,
@@ -151,7 +162,9 @@ impl CommitQC {
 
         // Now we can verify the signature.
         let messages_and_keys = genesis
-            .validators
+            .validators_schedule
+            .as_ref()
+            .unwrap()
             .keys()
             .enumerate()
             .filter(|(i, _)| self.signers.0[*i])

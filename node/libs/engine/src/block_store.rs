@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 
-use anyhow::Context as _;
 use zksync_consensus_roles::validator;
 
 #[derive(Debug)]
@@ -99,7 +98,7 @@ impl BlockStoreState {
     }
 
     /// Verifies `BlockStoreState'.
-    pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
+    pub fn verify(&self) -> anyhow::Result<()> {
         if let Some(last) = &self.last {
             anyhow::ensure!(
                 self.first <= last.number(),
@@ -107,7 +106,6 @@ impl BlockStoreState {
                 self.first,
                 last.number(),
             );
-            last.verify(genesis).context("last")?;
         }
         Ok(())
     }
@@ -145,15 +143,5 @@ impl Last {
             Last::FinalV1(qc) => qc.header().number,
             Last::FinalV2(qc) => qc.header().number,
         }
-    }
-
-    /// Verifies Last.
-    pub fn verify(&self, genesis: &validator::Genesis) -> anyhow::Result<()> {
-        match self {
-            Last::PreGenesis(n) => anyhow::ensure!(n < &genesis.first_block, "missing qc"),
-            Last::FinalV1(qc) => qc.verify(genesis)?,
-            Last::FinalV2(qc) => qc.verify(genesis)?,
-        }
-        Ok(())
     }
 }

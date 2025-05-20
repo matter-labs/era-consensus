@@ -7,42 +7,58 @@ import "zksync/roles/validator/keys.proto";
 message Genesis {
   reserved 1,2,9;
   reserved "fork","validators", "attesters";
+
   optional uint64 chain_id = 5; // required
   optional uint64 fork_number = 6; // required; ForkNumber
   optional uint64 first_block = 7; // required; BlockNumber
- 
-  // These properties are expected to be overwritten each epoch.
-  // We will either remove them entirely, or keep them for the initial epoch.
   optional uint32 protocol_version = 8; // required; ProtocolVersion
   repeated WeightedValidator validators_v1 = 3;
   optional LeaderSelectionMode leader_selection = 4; // required
+  optional ValidatorSchedule validators_schedule = 10; // optional
 }
 
 message GenesisHash {
   optional bytes keccak256 = 1; // required
 }
 
+message ValidatorSchedule {
+  repeated ValidatorInfo validators = 1;
+  optional LeaderSelection leader_selection = 2; // required
+}
+
+message ValidatorInfo {
+  optional PublicKey key = 1; // required
+  optional uint64 weight = 2; // required
+  optional bool leader = 3; // required
+}
+
+// To be deprecated together with v1.
 message WeightedValidator {
   optional PublicKey key = 1; // required
   optional uint64 weight = 2; // required
 }
 
+message LeaderSelection {
+  optional uint64 frequency = 1; // required
+  optional LeaderSelectionMode mode = 2; // required
+}
+
 message LeaderSelectionMode {
+  reserved 4;
+  reserved "rota";
+
   oneof mode {
     RoundRobin round_robin = 1;
-    Sticky sticky = 2;
+    Sticky sticky = 2; // To be deprecated together with v1.
     Weighted weighted = 3;
-    Rota rota = 4;
   }
   
   message RoundRobin{}
+  // To be deprecated together with v1.
   message Sticky{
     optional PublicKey key = 1; // required
   }
   message Weighted{}
-  message Rota {
-    repeated PublicKey keys = 1; // required
-  }
 }
 
 message PayloadHash {

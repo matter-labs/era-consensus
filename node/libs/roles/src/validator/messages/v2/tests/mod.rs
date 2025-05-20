@@ -26,11 +26,6 @@ fn view() -> View {
     }
 }
 
-/// Hardcoded view numbers.
-fn views() -> impl Iterator<Item = ViewNumber> {
-    [2297, 7203, 8394, 9089, 99821].into_iter().map(ViewNumber)
-}
-
 /// Hardcoded `BlockHeader`.
 fn block_header() -> BlockHeader {
     BlockHeader {
@@ -59,10 +54,17 @@ fn replica_commit() -> ReplicaCommit {
 fn commit_qc() -> CommitQC {
     let genesis = genesis_v2();
     let replica_commit = replica_commit();
-    let mut x = CommitQC::new(replica_commit.clone(), &genesis);
+    let mut x = CommitQC::new(
+        replica_commit.clone(),
+        genesis.validators_schedule.as_ref().unwrap(),
+    );
     for k in validator_keys() {
-        x.add(&k.sign_msg(replica_commit.clone()), &genesis)
-            .unwrap();
+        x.add(
+            &k.sign_msg(replica_commit.clone()),
+            genesis.hash(),
+            genesis.validators_schedule.as_ref().unwrap(),
+        )
+        .unwrap();
     }
     x
 }
@@ -90,8 +92,12 @@ fn timeout_qc() -> TimeoutQC {
     let genesis = genesis_v2();
     let replica_timeout = replica_timeout();
     for k in validator_keys() {
-        x.add(&k.sign_msg(replica_timeout.clone()), &genesis)
-            .unwrap();
+        x.add(
+            &k.sign_msg(replica_timeout.clone()),
+            genesis.hash(),
+            genesis.validators_schedule.as_ref().unwrap(),
+        )
+        .unwrap();
     }
     x
 }

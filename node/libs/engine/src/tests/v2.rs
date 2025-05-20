@@ -49,7 +49,11 @@ async fn test_get_not_cached_block_v2() {
         for block in &setup.blocks {
             engine
                 .manager
-                .queue_block(ctx, block.clone())
+                .queue_block(
+                    ctx,
+                    block.clone(),
+                    setup.genesis.validators_schedule.as_ref().unwrap(),
+                )
                 .await
                 .unwrap();
         }
@@ -99,7 +103,11 @@ async fn test_state_updates_v2() {
         for block in &setup.blocks {
             engine
                 .manager
-                .queue_block(ctx, block.clone())
+                .queue_block(
+                    ctx,
+                    block.clone(),
+                    setup.genesis.validators_schedule.as_ref().unwrap(),
+                )
                 .await
                 .unwrap();
             if block.number() < first_block.number() {

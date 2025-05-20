@@ -46,7 +46,7 @@ fn msg_change_detector(msg: Msg, hash: &str, sig: &str) {
 #[test]
 fn genesis_hash_change_detector() {
     let want: GenesisHash = Text::new(
-        "genesis_hash:keccak256:e898a78bbd1de62014bdd62c1a311d766304940b8895191c205234a9e8b2296c",
+        "genesis_hash:keccak256:879ce5d5cf25cc60c605144b1145d7572bf36b309692d0737b712ca7c0e07e1f",
     )
     .decode()
     .unwrap();
@@ -57,8 +57,8 @@ fn genesis_hash_change_detector() {
 fn replica_commit_change_detector() {
     msg_change_detector(
             replica_commit().insert(),
-            "validator_msg:keccak256:9b39803ff46d80badb5908b9e71b530324ad1b81f8af70bd5bdd03009483fe15",
-            "validator:signature:bls12_381:ad574083b1f55d4aadfba7978ef22cf9aa172c537b9e2e35659a07380f81a953d3cb90a620c5a6d46bcc4032cba79d1b",
+            "validator_msg:keccak256:71c9220b9e0cbb73fc72aa78c863b556ebf6531b599cc96659dd3d41744c2714",
+            "validator:signature:bls12_381:a67c4aa8735d190632e018aa091ac00d8e1f75f71671d9685cbea166482a6d8d8a2be0f011fe7d9c0e1193772a235355",
         );
 }
 
@@ -66,8 +66,8 @@ fn replica_commit_change_detector() {
 fn replica_new_view_change_detector() {
     msg_change_detector(
             replica_new_view().insert(),
-            "validator_msg:keccak256:c44c802affaa6256f9be5cde0cb359d728da2431e656d7909be65718753c2c0f",
-            "validator:signature:bls12_381:990f10e2e783f3d6abfa11bb5d7123a4505034d8b46532740074b3f3aceeed345741df5ba109617fd1edec1f7dfed2cb",
+            "validator_msg:keccak256:bfdbc016852d4e047f2eaacd66fafc3b6f526a5d5081ffcbeebbd2b84d9d6746",
+            "validator:signature:bls12_381:8bf3253c55ed05ffd2c6dd970f7a0d91e5a3c742ce8b7cb58bacefad955369d612f1041391a376e72f6805f4cab08d91",
         );
 }
 
@@ -75,8 +75,8 @@ fn replica_new_view_change_detector() {
 fn replica_timeout_change_detector() {
     msg_change_detector(
             replica_timeout().insert(),
-            "validator_msg:keccak256:402344f544f53c8ae0962a95cb0b60c06b0a02cbe8dc4b686cc4f8627f5266d4",
-            "validator:signature:bls12_381:86cbdcb018ec2f75b58f13e40dde3a22db3d642e5dc7263da4656816a63ca8d8d928bb5306bbec5aa4e6e40035d996d8",
+            "validator_msg:keccak256:d8318494e9c440af17abedafc0670eda5e57c46da7e8f695a03d9f79b50f1203",
+            "validator:signature:bls12_381:8db156653c2bb67ee9d2c6189baab192057d6c3d562811ccb5580cc39407ee91a4a3c1d66dc8e3fda9fd8f6c40d9ac01",
         );
 }
 
@@ -84,7 +84,7 @@ fn replica_timeout_change_detector() {
 fn leader_proposal_change_detector() {
     msg_change_detector(
             leader_proposal().insert(),
-            "validator_msg:keccak256:e183b29247763a535bb50cc8a179f86e8a50acc890feea9a5558154b070f2951",
-            "validator:signature:bls12_381:919c6a5f894c41012986dc5164298e8e5e493429d99c52cb51f8853cd65cdc15b25b7d6bd92e055a1b8dcf97467ad41f",
+            "validator_msg:keccak256:9e870d0ba692b68336178f06fa0fe525b093953d7a30810943db25eadf7c05a9",
+            "validator:signature:bls12_381:aaab5a11de7bfc3bdc20d80be4f2bf53f1c5f952bf2621876c1574af2c3fb11fc164eeaef9da6eaf9a73e79046053a98",
         );
 }

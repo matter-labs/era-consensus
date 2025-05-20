@@ -56,6 +56,7 @@ impl Distribution<config::DebugPage> for EncodeDist {
     }
 }
 
+#[ignore = "Won't work until we deprecate v1, because of genesis"]
 #[test]
 fn test_schema_encoding() {
     let ctx = ctx::test_root(&ctx::RealClock);

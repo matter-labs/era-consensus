@@ -45,7 +45,10 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for &PushServer<'_> {
             .fetch_add(1, Ordering::SeqCst);
         self.net
             .validator_addrs
-            .update(&self.net.genesis().validators, &req.0)
+            .update(
+                self.net.genesis().validators_schedule.as_ref().unwrap(),
+                &req.0,
+            )
             .await?;
         Ok(())
     }
@@ -61,7 +64,7 @@ impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushServer<'_> {
         _ctx: &ctx::Ctx,
         req: rpc::push_block_store_state::Req,
     ) -> anyhow::Result<()> {
-        req.state.verify(self.net.genesis())?;
+        req.state.verify()?;
         self.blocks.send_replace(req.state);
         Ok(())
     }
@@ -188,7 +191,11 @@ impl Network {
                             anyhow::ensure!(block.number() == req.0, "received wrong block");
                             // Storing the block will fail in case block is invalid.
                             self.engine_manager
-                                .queue_block(ctx, block)
+                                .queue_block(
+                                    ctx,
+                                    block,
+                                    self.genesis().validators_schedule.as_ref().unwrap(),
+                                )
                                 .await
                                 .context("queue_block()")?;
                             tracing::info!("fetched block {}", req.0);

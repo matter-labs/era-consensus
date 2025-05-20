@@ -101,7 +101,13 @@ impl StateMachine {
         }
 
         // Check that it comes from the correct leader.
-        let leader = self.config.genesis().view_leader(view.0);
+        let leader = self
+            .config
+            .genesis()
+            .validators_schedule
+            .as_ref()
+            .unwrap()
+            .view_leader(view);
         if author != &leader {
             return Err(Error::InvalidLeader {
                 correct_leader: leader,
@@ -114,12 +120,16 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         message
-            .verify(self.config.genesis())
+            .verify(
+                self.config.genesis().hash(),
+                self.config.genesis().validators_schedule.as_ref().unwrap(),
+            )
             .map_err(Error::InvalidMessage)?;
 
-        let (implied_block_number, implied_block_hash) = message
-            .justification
-            .get_implied_block(self.config.genesis());
+        let (implied_block_number, implied_block_hash) = message.justification.get_implied_block(
+            self.config.genesis(),
+            self.config.genesis().validators_schedule.as_ref().unwrap(),
+        );
 
         // Replica MUSTN'T vote for blocks which have been already pruned for storage.
         // (because it won't be able to persist and broadcast them once finalized).

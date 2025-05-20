@@ -13,6 +13,7 @@ use crate::validator::{
 };
 
 mod block;
+mod committee;
 mod consensus;
 mod leader_proposal;
 mod replica_commit;
@@ -27,9 +28,18 @@ fn view() -> View {
     }
 }
 
-/// Hardcoded view numbers.
-fn views() -> impl Iterator<Item = ViewNumber> {
-    [2297, 7203, 8394, 9089, 99821].into_iter().map(ViewNumber)
+/// Hardcoded validator committee.
+pub(crate) fn validator_committee() -> Committee {
+    Committee::new(
+        validator_keys()
+            .iter()
+            .enumerate()
+            .map(|(i, key)| WeightedValidator {
+                key: key.public(),
+                weight: i as u64 + 10,
+            }),
+    )
+    .unwrap()
 }
 
 /// Hardcoded `BlockHeader`.
@@ -133,5 +143,4 @@ fn test_schema_encoding() {
     test_encode_random::<TimeoutQC>(rng);
     test_encode_random::<CommitQC>(rng);
     test_encode_random::<Signers>(rng);
-    test_encode_random::<LeaderSelectionMode>(rng);
 }

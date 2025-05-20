@@ -3,7 +3,7 @@ use std::{collections::VecDeque, sync::Arc};
 use anyhow::Context as _;
 use tracing::Instrument;
 use zksync_concurrency::{ctx, error::Wrap as _, scope, sync};
-use zksync_consensus_roles::validator;
+use zksync_consensus_roles::validator::{self, Block};
 
 use crate::{
     block_store::BlockStore,
@@ -32,7 +32,7 @@ impl EngineManager {
         let genesis = interface.genesis(ctx).await.wrap("persistent.genesis()")?;
 
         let persisted = interface.persisted().borrow().clone();
-        persisted.verify(&genesis).context("state.verify()")?;
+        persisted.verify().context("state.verify()")?;
 
         let this = Arc::new(Self {
             block_store: sync::watch::channel(BlockStore {
@@ -63,7 +63,7 @@ impl EngineManager {
         &self,
         ctx: &ctx::Ctx,
         number: validator::BlockNumber,
-    ) -> ctx::Result<Option<validator::Block>> {
+    ) -> ctx::Result<Option<Block>> {
         {
             let block_store = self.block_store.borrow();
             if !block_store.queued.contains(number) {
@@ -85,12 +85,21 @@ impl EngineManager {
         Ok(Some(block))
     }
 
-    /// Verifies a block.
-    pub async fn verify_block(&self, ctx: &ctx::Ctx, block: &validator::Block) -> ctx::Result<()> {
-        use validator::Block as B;
-
+    /// Append block to a queue to be persisted eventually.
+    /// Since persisting a block may take a significant amount of time,
+    /// BlockStore contains a queue of blocks waiting to be persisted.
+    /// `queue_block()` adds a block to the queue as soon as all intermediate
+    /// blocks are queued_state as well. Queue is unbounded, so it is caller's
+    /// responsibility to manage the queue size.
+    pub async fn queue_block(
+        &self,
+        ctx: &ctx::Ctx,
+        block: Block,
+        validators_schedule: &validator::Schedule,
+    ) -> ctx::Result<()> {
+        // Verify the block.
         match &block {
-            B::PreGenesis(b) => {
+            Block::PreGenesis(b) => {
                 if b.number >= self.genesis.first_block {
                     return Err(anyhow::format_err!(
                         "external justification is allowed only for pre-genesis blocks"
@@ -106,23 +115,11 @@ impl EngineManager {
                     .context("verify_pregenesis_block()")?;
                 t.observe();
             }
-            B::FinalV1(b) => b.verify(&self.genesis).context("block.verify()")?,
-            B::FinalV2(b) => b.verify(&self.genesis).context("block.verify()")?,
+            Block::FinalV1(b) => b.verify(&self.genesis).context("block_v1.verify()")?,
+            Block::FinalV2(b) => b
+                .verify(self.genesis.hash(), validators_schedule)
+                .context("block_v2.verify()")?,
         }
-
-        Ok(())
-    }
-
-    /// Append block to a queue to be persisted eventually.
-    /// Since persisting a block may take a significant amount of time,
-    /// BlockStore contains a queue of blocks waiting to be persisted.
-    /// `queue_block()` adds a block to the queue as soon as all intermediate
-    /// blocks are queued_state as well. Queue is unbounded, so it is caller's
-    /// responsibility to manage the queue size.
-    pub async fn queue_block(&self, ctx: &ctx::Ctx, block: validator::Block) -> ctx::Result<()> {
-        self.verify_block(ctx, &block)
-            .await
-            .with_wrap(|| format!("verify_block({})", block.number()))?;
 
         sync::wait_for(ctx, &mut self.block_store.subscribe(), |block_store| {
             block_store.queued.next() >= block.number()

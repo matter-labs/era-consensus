@@ -61,7 +61,14 @@ impl StateMachine {
         // leader.
         if message.view().number < self.view_number
             || (message.view().number == self.view_number
-                && author != &self.config.genesis().view_leader(self.view_number.0))
+                && author
+                    != &self
+                        .config
+                        .genesis()
+                        .validators_schedule
+                        .as_ref()
+                        .unwrap()
+                        .view_leader(self.view_number))
         {
             return Err(Error::Old {
                 current_view: self.view_number,
@@ -69,7 +76,14 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator committee.
-        if !self.config.genesis().validators.contains(author) {
+        if !self
+            .config
+            .genesis()
+            .validators_schedule
+            .as_ref()
+            .unwrap()
+            .contains(author)
+        {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone().into(),
             });
@@ -81,7 +95,10 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         message
-            .verify(self.config.genesis())
+            .verify(
+                self.config.genesis().hash(),
+                self.config.genesis().validators_schedule.as_ref().unwrap(),
+            )
             .map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------

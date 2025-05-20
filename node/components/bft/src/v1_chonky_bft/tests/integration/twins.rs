@@ -6,8 +6,7 @@ use zksync_concurrency::{ctx, time};
 use zksync_consensus_network::testonly::new_configs_for_validators;
 use zksync_consensus_roles::validator::{
     testonly::{Setup, SetupSpec},
-    v1::LeaderSelectionMode,
-    ProtocolVersion, PublicKey, SecretKey,
+    ProtocolVersion, PublicKey, SecretKey, ViewNumber,
 };
 
 use crate::{
@@ -94,7 +93,7 @@ async fn run_twins(
 
     // Every validator has equal power of 1.
     const WEIGHT: u64 = 1;
-    let mut spec = SetupSpec::new_with_weights_and_version(
+    let spec = SetupSpec::new_with_weights_and_version(
         rng,
         vec![WEIGHT; num_replicas],
         ProtocolVersion(1),
@@ -138,12 +137,8 @@ async fn run_twins(
 
     // Reuse the same cluster and network setup to run a few scenarios.
     for i in 0..num_scenarios {
-        // Generate a permutation of partitions and leaders for the given number of rounds.
+        // Generate a permutation of partitions for the given number of rounds.
         let scenario = scenarios.generate_one(rng);
-
-        // Assign the leadership schedule to the consensus.
-        spec.leader_selection =
-            LeaderSelectionMode::Rota(scenario.rounds.iter().map(|rc| rc.leader.clone()).collect());
 
         // Generate a new setup with this leadership schedule.
         let setup = Setup::from_spec(rng, spec.clone());
@@ -168,14 +163,22 @@ async fn run_twins(
         );
 
         // Debug output of round schedule.
-        for (r, rc) in scenario.rounds.iter().enumerate() {
+        #[allow(clippy::needless_range_loop)]
+        for r in 0..scenario.rounds.len() {
             // Let's just consider the partition of the LeaderCommit phase, for brevity's sake.
             let partitions = &splits[r].last().unwrap();
+
+            let leader_pk = setup
+                .genesis
+                .validators_schedule
+                .as_ref()
+                .unwrap()
+                .view_leader(ViewNumber(r as u64));
 
             let leader_ports = cluster
                 .nodes()
                 .iter()
-                .filter(|n| n.public_key == *rc.leader)
+                .filter(|n| n.public_key == leader_pk)
                 .map(|n| node_to_port[&n.id])
                 .collect::<Vec<_>>();
 

@@ -2,8 +2,8 @@
 use rand::Rng;
 
 use super::{
-    v1, Block, BlockNumber, ChainId, Committee, ForkNumber, Genesis, GenesisRaw, PreGenesisBlock,
-    ProtocolVersion, SecretKey, WeightedValidator,
+    Block, BlockNumber, ChainId, ForkNumber, Genesis, GenesisRaw, LeaderSelection,
+    LeaderSelectionMode, PreGenesisBlock, ProtocolVersion, Schedule, SecretKey, ValidatorInfo,
 };
 
 /// Test setup specification.
@@ -22,7 +22,7 @@ pub struct SetupSpec {
     /// Validator secret keys and weights.
     pub validator_weights: Vec<(SecretKey, u64)>,
     /// Leader selection.
-    pub leader_selection: v1::LeaderSelectionMode,
+    pub leader_selection: LeaderSelection,
 }
 
 impl SetupSpec {
@@ -57,7 +57,10 @@ impl SetupSpec {
             first_block,
             first_pregenesis_block: BlockNumber(rng.gen_range(0..=first_block.0)),
             protocol_version,
-            leader_selection: v1::LeaderSelectionMode::RoundRobin,
+            leader_selection: LeaderSelection {
+                frequency: 1,
+                mode: LeaderSelectionMode::RoundRobin,
+            },
         }
     }
 }
@@ -115,14 +118,17 @@ impl Setup {
                 fork_number: spec.fork_number,
                 first_block: spec.first_block,
                 protocol_version: spec.protocol_version,
-                validators: Committee::new(spec.validator_weights.iter().map(|(k, w)| {
-                    WeightedValidator {
-                        key: k.public(),
-                        weight: *w,
-                    }
-                }))
-                .unwrap(),
-                leader_selection: spec.leader_selection,
+                validators_schedule: Some(
+                    Schedule::new(
+                        spec.validator_weights.iter().map(|(k, w)| ValidatorInfo {
+                            key: k.public(),
+                            weight: *w,
+                            leader: true,
+                        }),
+                        spec.leader_selection,
+                    )
+                    .unwrap(),
+                ),
             }
             .with_hash(),
             validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),

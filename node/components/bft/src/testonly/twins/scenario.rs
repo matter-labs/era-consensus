@@ -93,8 +93,6 @@ where
 
 /// The configuration for a single round of P phases.
 pub struct RoundConfig<'a, T: HasKey, const P: usize> {
-    /// Leader of the round.
-    pub leader: &'a T::Key,
     /// Partitioning of the nodes for each phase.
     pub phase_partitions: [Split<'a, T>; P],
 }
@@ -112,8 +110,6 @@ where
 {
     /// Number of rounds (views) to simulate in a scenario
     num_rounds: usize,
-    /// Unique leader keys.
-    keys: Vec<&'a T::Key>,
     /// All splits of various sizes we can choose in a round.
     splits: Vec<Split<'a, T>>,
 }
@@ -125,9 +121,6 @@ where
     /// Initialise a scenario generator from a cluster.
     pub fn new(cluster: &'a Cluster<T>, num_rounds: usize, max_partitions: usize) -> Self {
         assert!(!cluster.nodes().is_empty(), "empty cluster");
-
-        // Potential leaders
-        let keys = cluster.replicas().iter().map(|r| r.key()).collect();
 
         // Create all possible partitionings; the paper considers 2 or 3 partitions to be enough.
         let splits = (1..=max_partitions).flat_map(|np| splits(cluster.nodes(), np));
@@ -141,11 +134,7 @@ where
             })
             .collect();
 
-        Self {
-            num_rounds,
-            keys,
-            splits,
-        }
+        Self { num_rounds, splits }
     }
 
     /// Generate a single run for the agreed upon number of rounds.
@@ -154,11 +143,9 @@ where
         // We could implement this with or without replacement.
         // In practice there probably are so many combinations that it won't matter.
         // For example to tolerate 2 faulty nodes we need 11 replicas, with 2 twins that's 13,
-        // which results in hundreds of thousands of potential partitionings, multiplied
-        // by 11 different possible leaders in each round.
+        // which results in hundreds of thousands of potential partitionings.
         for _ in 0..self.num_rounds {
             rounds.push(RoundConfig {
-                leader: self.keys.choose(rng).cloned().unwrap(),
                 phase_partitions: std::array::from_fn(|_| {
                     self.splits.choose(rng).cloned().unwrap()
                 }),

@@ -3,7 +3,6 @@
 
 use std::sync::Arc;
 
-use anyhow::Context;
 pub use config::Config;
 use zksync_concurrency::{
     ctx,
@@ -41,7 +40,6 @@ impl Config {
             "Incompatible protocol version. Genesis protocol version: {:?}.",
             genesis.protocol_version
         );
-        genesis.verify().context("genesis().verify()")?;
 
         if let Some(prev) = genesis.first_block.prev() {
             tracing::info!("Waiting for the pre-fork blocks to be persisted.");

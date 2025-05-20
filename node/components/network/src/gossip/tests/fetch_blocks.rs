@@ -51,7 +51,11 @@ async fn test_simple() {
         tracing::info!("Insert a block.");
         engine
             .manager
-            .queue_block(ctx, setup.blocks[0].clone())
+            .queue_block(
+                ctx,
+                setup.blocks[0].clone(),
+                setup.genesis.validators_schedule.as_ref().unwrap(),
+            )
             .await
             .unwrap();
         loop {

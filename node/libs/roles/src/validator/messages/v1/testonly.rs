@@ -5,8 +5,8 @@ use rand::{
 };
 
 use super::{
-    BlockHeader, CommitQC, FinalBlock, LeaderProposal, LeaderSelectionMode, Phase,
-    ProposalJustification, ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View,
+    BlockHeader, CommitQC, Committee, FinalBlock, LeaderProposal, Phase, ProposalJustification,
+    ReplicaCommit, ReplicaNewView, ReplicaTimeout, Signers, TimeoutQC, View, WeightedValidator,
 };
 use crate::validator::{testonly::Setup, Block, Payload, ViewNumber};
 
@@ -166,16 +166,11 @@ impl Setup {
     }
 }
 
-impl Distribution<LeaderSelectionMode> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderSelectionMode {
-        match rng.gen_range(0..=3) {
-            0 => LeaderSelectionMode::RoundRobin,
-            1 => LeaderSelectionMode::Sticky(rng.gen()),
-            3 => LeaderSelectionMode::Rota({
-                let n = rng.gen_range(1..=3);
-                rng.sample_iter(Standard).take(n).collect()
-            }),
-            _ => LeaderSelectionMode::Weighted,
+impl Distribution<WeightedValidator> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> WeightedValidator {
+        WeightedValidator {
+            key: rng.gen(),
+            weight: rng.gen_range(1..100),
         }
     }
 }
@@ -291,5 +286,16 @@ impl Distribution<Phase> for Standard {
             1 => Phase::Commit,
             _ => unreachable!(),
         }
+    }
+}
+
+impl Distribution<Committee> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Committee {
+        let count = rng.gen_range(1..11);
+        let public_keys = (0..count).map(|_| WeightedValidator {
+            key: rng.gen(),
+            weight: 1,
+        });
+        Committee::new(public_keys).unwrap()
     }
 }

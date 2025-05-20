@@ -6,9 +6,10 @@ use zksync_concurrency::time;
 use zksync_consensus_utils::enum_util::Variant;
 
 use super::{
-    v1, Block, BlockNumber, ChainId, Committee, ConsensusMsg, ForkNumber, Genesis, GenesisHash,
-    GenesisRaw, Justification, Msg, MsgHash, NetAddress, Payload, PayloadHash, PreGenesisBlock,
-    Proposal, ProtocolVersion, ReplicaState, Signed, ViewNumber, WeightedValidator,
+    Block, BlockNumber, ChainId, ConsensusMsg, ForkNumber, Genesis, GenesisHash, GenesisRaw,
+    Justification, LeaderSelection, LeaderSelectionMode, Msg, MsgHash, NetAddress, Payload,
+    PayloadHash, PreGenesisBlock, Proposal, ProtocolVersion, ReplicaState, Schedule, Signed,
+    ValidatorInfo, ViewNumber,
 };
 use crate::validator::SecretKey;
 
@@ -36,9 +37,25 @@ impl Distribution<ForkNumber> for Standard {
     }
 }
 
+impl Distribution<ValidatorInfo> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ValidatorInfo {
+        ValidatorInfo {
+            key: rng.gen::<SecretKey>().public(),
+            weight: rng.gen_range(1..100),
+            leader: rng.gen_bool(0.7), // 70% chance to be a leader
+        }
+    }
+}
+
 impl Distribution<ChainId> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChainId {
         ChainId(rng.gen())
+    }
+}
+
+impl Distribution<Genesis> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
+        rng.gen::<GenesisRaw>().with_hash()
     }
 }
 
@@ -50,38 +67,56 @@ impl Distribution<GenesisHash> for Standard {
 
 impl Distribution<GenesisRaw> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> GenesisRaw {
-        let mut genesis = GenesisRaw {
+        GenesisRaw {
             chain_id: rng.gen(),
             fork_number: rng.gen(),
             first_block: rng.gen(),
-
             protocol_version: rng.gen(),
-            validators: rng.gen(),
-            leader_selection: rng.gen(),
-        };
-
-        // In order for the genesis to be valid, sticky/rota leaders need to be in the validator committee.
-        if let v1::LeaderSelectionMode::Sticky(_) = genesis.leader_selection {
-            let i = rng.gen_range(0..genesis.validators.len());
-            genesis.leader_selection =
-                v1::LeaderSelectionMode::Sticky(genesis.validators.get(i).unwrap().key.clone());
-        } else if let v1::LeaderSelectionMode::Rota(pks) = genesis.leader_selection {
-            let n = pks.len();
-            let mut pks = Vec::new();
-            for _ in 0..n {
-                let i = rng.gen_range(0..genesis.validators.len());
-                pks.push(genesis.validators.get(i).unwrap().key.clone());
-            }
-            genesis.leader_selection = v1::LeaderSelectionMode::Rota(pks);
+            validators_schedule: rng.gen(),
         }
-
-        genesis
     }
 }
 
-impl Distribution<Genesis> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Genesis {
-        rng.gen::<GenesisRaw>().with_hash()
+impl Distribution<Schedule> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Schedule {
+        // Create random validators (between 1 and 5)
+        let num_validators = rng.gen_range(1..6);
+
+        // Create validators with 70% chance to be leaders
+        let mut validators: Vec<ValidatorInfo> = (0..num_validators).map(|_| rng.gen()).collect();
+
+        // Ensure at least one validator is a leader
+        if !validators.iter().any(|v| v.leader) {
+            // Make a random validator a leader
+            let leader_idx = rng.gen_range(0..validators.len());
+            validators[leader_idx].leader = true;
+        }
+
+        // This should never fail since we ensure at least one leader
+        Schedule::new(validators, rng.gen()).unwrap()
+    }
+}
+
+impl Distribution<LeaderSelection> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderSelection {
+        LeaderSelection {
+            frequency: rng.gen_range(1..10),
+            mode: if rng.gen_bool(0.5) {
+                LeaderSelectionMode::RoundRobin
+            } else {
+                LeaderSelectionMode::Weighted
+            },
+        }
+    }
+}
+
+impl Distribution<LeaderSelectionMode> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> LeaderSelectionMode {
+        match rng.gen_range(0..=2) {
+            0 => LeaderSelectionMode::RoundRobin,
+            1 => LeaderSelectionMode::Sticky(rng.gen()),
+            _ => LeaderSelectionMode::Weighted,
+        }
     }
 }
 
@@ -130,17 +165,6 @@ impl Distribution<Block> for Standard {
             0 => Block::PreGenesis(rng.gen()),
             _ => Block::FinalV1(rng.gen()),
         }
-    }
-}
-
-impl Distribution<Committee> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Committee {
-        let count = rng.gen_range(1..11);
-        let public_keys = (0..count).map(|_| WeightedValidator {
-            key: rng.gen(),
-            weight: 1,
-        });
-        Committee::new(public_keys).unwrap()
     }
 }
 

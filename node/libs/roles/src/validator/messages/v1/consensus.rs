@@ -2,13 +2,12 @@ use std::hash::Hash;
 
 use anyhow::Context as _;
 use bit_vec::BitVec;
-use num_bigint::BigUint;
-use zksync_consensus_crypto::keccak256::Keccak256;
 use zksync_protobuf::{read_required, required, ProtoFmt};
 
+use super::Committee;
 use crate::{
     proto::validator as proto,
-    validator::{Committee, Genesis, GenesisHash, PublicKey, ViewNumber},
+    validator::{Genesis, GenesisHash, ViewNumber},
 };
 
 /// View specification.
@@ -59,117 +58,6 @@ impl ProtoFmt for View {
         Self::Proto {
             genesis: Some(self.genesis.build()),
             number: Some(self.number.0),
-        }
-    }
-}
-
-/// The mode used for selecting leader for a given view.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum LeaderSelectionMode {
-    /// Select in a round-robin fashion, based on validators' index within the set.
-    RoundRobin,
-    /// Select based on a sticky assignment to a specific validator.
-    Sticky(PublicKey),
-    /// Select pseudo-randomly, based on validators' weights.
-    Weighted,
-    /// Select on a rotation of specific validator keys.
-    Rota(Vec<PublicKey>),
-}
-
-impl LeaderSelectionMode {
-    /// Computes the leader for the given view.
-    pub fn view_leader(&self, view_number: ViewNumber, committee: &Committee) -> PublicKey {
-        match &self {
-            LeaderSelectionMode::RoundRobin => {
-                let index = view_number.0 as usize % committee.len();
-                committee.get(index).unwrap().key.clone()
-            }
-            LeaderSelectionMode::Weighted => {
-                let eligibility =
-                    Self::leader_weighted_eligibility(view_number.0, committee.total_weight());
-                let mut offset = 0;
-                for val in committee.iter() {
-                    offset += val.weight;
-                    if eligibility < offset {
-                        return val.key.clone();
-                    }
-                }
-                unreachable!()
-            }
-            LeaderSelectionMode::Sticky(pk) => {
-                let index = committee.index(pk).unwrap();
-                committee.get(index).unwrap().key.clone()
-            }
-            LeaderSelectionMode::Rota(pks) => {
-                let index = view_number.0 as usize % pks.len();
-                let index = committee.index(&pks[index]).unwrap();
-                committee.get(index).unwrap().key.clone()
-            }
-        }
-    }
-
-    /// Calculates the pseudo-random eligibility of a leader based on the input and total weight.
-    pub fn leader_weighted_eligibility(input: u64, total_weight: u64) -> u64 {
-        let input_bytes = input.to_be_bytes();
-        let hash = Keccak256::new(&input_bytes);
-        let hash_big = BigUint::from_bytes_be(hash.as_bytes());
-        let total_weight_big = BigUint::from(total_weight);
-        let ret_big = hash_big % total_weight_big;
-        // Assumes that `ret_big` does not exceed 64 bits due to the modulo operation with a 64 bits-capped value.
-        ret_big.to_u64_digits()[0]
-    }
-}
-
-impl ProtoFmt for LeaderSelectionMode {
-    type Proto = proto::LeaderSelectionMode;
-
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        match required(&r.mode)? {
-            proto::leader_selection_mode::Mode::RoundRobin(_) => {
-                Ok(LeaderSelectionMode::RoundRobin)
-            }
-            proto::leader_selection_mode::Mode::Sticky(inner) => {
-                let key = required(&inner.key).context("key")?;
-                Ok(LeaderSelectionMode::Sticky(PublicKey::read(key)?))
-            }
-            proto::leader_selection_mode::Mode::Weighted(_) => Ok(LeaderSelectionMode::Weighted),
-            proto::leader_selection_mode::Mode::Rota(inner) => {
-                let _ = required(&inner.keys.first()).context("keys")?;
-                let pks = inner
-                    .keys
-                    .iter()
-                    .map(PublicKey::read)
-                    .collect::<Result<Vec<_>, _>>()?;
-                Ok(LeaderSelectionMode::Rota(pks))
-            }
-        }
-    }
-    fn build(&self) -> Self::Proto {
-        match self {
-            LeaderSelectionMode::RoundRobin => proto::LeaderSelectionMode {
-                mode: Some(proto::leader_selection_mode::Mode::RoundRobin(
-                    proto::leader_selection_mode::RoundRobin {},
-                )),
-            },
-            LeaderSelectionMode::Sticky(pk) => proto::LeaderSelectionMode {
-                mode: Some(proto::leader_selection_mode::Mode::Sticky(
-                    proto::leader_selection_mode::Sticky {
-                        key: Some(pk.build()),
-                    },
-                )),
-            },
-            LeaderSelectionMode::Weighted => proto::LeaderSelectionMode {
-                mode: Some(proto::leader_selection_mode::Mode::Weighted(
-                    proto::leader_selection_mode::Weighted {},
-                )),
-            },
-            LeaderSelectionMode::Rota(pks) => proto::LeaderSelectionMode {
-                mode: Some(proto::leader_selection_mode::Mode::Rota(
-                    proto::leader_selection_mode::Rota {
-                        keys: pks.iter().map(|pk| pk.build()).collect(),
-                    },
-                )),
-            },
         }
     }
 }
