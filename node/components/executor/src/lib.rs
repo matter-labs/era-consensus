@@ -83,7 +83,8 @@ pub struct Executor {
 impl Executor {
     /// Runs this executor to completion. This should be spawned on a separate task.
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        let cur_epoch_counter = Arc::new(AtomicU64::new(0));
+        let cur_epoch = self.wait_for_current_epoch(ctx).await?;
+        let cur_epoch_counter = Arc::new(AtomicU64::new(cur_epoch.0));
 
         scope::run!(ctx, |ctx, s| async {
             let network_config = self.network_config();
@@ -191,6 +192,20 @@ impl Executor {
             }
         })
         .await
+    }
+
+    /// Waits until we have the current epoch.
+    async fn wait_for_current_epoch(
+        &self,
+        ctx: &ctx::Ctx,
+    ) -> anyhow::Result<validator::EpochNumber> {
+        loop {
+            if let Some(epoch) = self.engine_manager.current_epoch() {
+                return Ok(epoch);
+            }
+
+            ctx.sleep(time::Duration::milliseconds(100)).await?;
+        }
     }
 
     /// Wait until we have the validator schedule for the given epoch.

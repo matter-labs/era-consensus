@@ -108,6 +108,11 @@ impl EngineManager {
         self.genesis.validators_schedule.is_some()
     }
 
+    /// Returns the current epoch number, assuming we already populated the epoch schedule.
+    pub fn current_epoch(&self) -> Option<validator::EpochNumber> {
+        self.epoch_schedule.borrow().keys().next().copied()
+    }
+
     /// Returns the validator schedule, with its activation and expiration block numbers,
     /// for the given epoch number.
     pub fn validator_schedule(
