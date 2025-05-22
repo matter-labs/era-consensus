@@ -214,6 +214,8 @@ impl Executor {
         ctx: &ctx::Ctx,
         epoch_number: validator::EpochNumber,
     ) -> anyhow::Result<validator::Schedule> {
+        let mut counter = 0;
+
         loop {
             if let Some(schedule) = self.engine_manager.validator_schedule(epoch_number) {
                 return Ok(schedule.schedule);
@@ -221,6 +223,16 @@ impl Executor {
             // Epochs should be at least minutes apart so that validators have time to
             // establish network connections. So we don't need to check for new epochs too often.
             ctx.sleep(time::Duration::seconds(5)).await?;
+            counter += 1;
+
+            // 10 minutes
+            if counter > 10 * 60 / 5 {
+                tracing::debug!(
+                    "Timed out waiting for validator schedule for current epoch. \
+                     Might be a bug, might not have been published yet."
+                );
+                counter = 0;
+            }
         }
     }
 
