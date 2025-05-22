@@ -21,7 +21,7 @@ impl<'a> PushServer<'a> {
     fn new(net: &'a Network) -> Self {
         Self {
             blocks: sync::watch::channel(BlockStoreState {
-                first: net.genesis().first_block,
+                first: net.first_block(),
                 last: None,
             })
             .0,
@@ -43,13 +43,9 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for &PushServer<'_> {
         self.net
             .push_validator_addrs_calls
             .fetch_add(1, Ordering::SeqCst);
-        self.net
-            .validator_addrs
-            .update(
-                self.net.genesis().validators_schedule.as_ref().unwrap(),
-                &req.0,
-            )
-            .await?;
+        if let Some(schedule) = self.net.validator_schedule()? {
+            self.net.validator_addrs.update(&schedule, &req.0).await?;
+        }
         Ok(())
     }
 }
@@ -189,16 +185,14 @@ impl Network {
                                 .await?;
                             let block = resp.0.context("empty response")?;
                             anyhow::ensure!(block.number() == req.0, "received wrong block");
+
                             // Storing the block will fail in case block is invalid.
                             self.engine_manager
-                                .queue_block(
-                                    ctx,
-                                    block,
-                                    self.genesis().validators_schedule.as_ref().unwrap(),
-                                )
+                                .queue_block(ctx, block)
                                 .await
                                 .context("queue_block()")?;
                             tracing::info!("fetched block {}", req.0);
+
                             // Send a response that fetching was successful.
                             // Ignore disconnection error.
                             let _ = send_resp.send(());
@@ -224,7 +218,7 @@ impl Network {
         ctx: &ctx::Ctx,
         mut stream: noise::Stream,
     ) -> anyhow::Result<()> {
-        let conn = handshake::inbound(ctx, &self.cfg, self.genesis().hash(), &mut stream).await?;
+        let conn = handshake::inbound(ctx, &self.cfg, self.genesis_hash(), &mut stream).await?;
         tracing::info!("peer = {:?}", conn.key);
         self.inbound.insert(conn.key.clone(), conn.clone()).await?;
         let res = self.run_stream(ctx, stream).await;
@@ -249,7 +243,7 @@ impl Network {
 
         let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet).await?;
         let conn =
-            handshake::outbound(ctx, &self.cfg, self.genesis().hash(), &mut stream, peer).await?;
+            handshake::outbound(ctx, &self.cfg, self.genesis_hash(), &mut stream, peer).await?;
         tracing::info!("peer = {peer:?}");
         self.outbound.insert(peer.clone(), conn.into()).await?;
         let res = self.run_stream(ctx, stream).await;

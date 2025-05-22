@@ -75,8 +75,8 @@ fn replica_new_view_change_detector() {
 fn replica_timeout_change_detector() {
     msg_change_detector(
             replica_timeout().insert(),
-            "validator_msg:keccak256:d8318494e9c440af17abedafc0670eda5e57c46da7e8f695a03d9f79b50f1203",
-            "validator:signature:bls12_381:8db156653c2bb67ee9d2c6189baab192057d6c3d562811ccb5580cc39407ee91a4a3c1d66dc8e3fda9fd8f6c40d9ac01",
+            "validator_msg:keccak256:b2c07fd3ca90233830af980deeaec1dbfa15eb12e43710b13902b29bb81f37da",
+            "validator:signature:bls12_381:89bf4a9ff6ab9edf3b16737a77b05b8bd5a04d681bc7ec637d60a45b8fb21e30dcd0a7b7346013ec5acceebebe07326d",
         );
 }
 
@@ -84,7 +84,7 @@ fn replica_timeout_change_detector() {
 fn leader_proposal_change_detector() {
     msg_change_detector(
             leader_proposal().insert(),
-            "validator_msg:keccak256:9e870d0ba692b68336178f06fa0fe525b093953d7a30810943db25eadf7c05a9",
-            "validator:signature:bls12_381:aaab5a11de7bfc3bdc20d80be4f2bf53f1c5f952bf2621876c1574af2c3fb11fc164eeaef9da6eaf9a73e79046053a98",
+            "validator_msg:keccak256:d84174e2a5ef6b23dc59c8dc0b101d5a69f8d32d4cdc20b6c18684edf89aa6ed",
+            "validator:signature:bls12_381:930444a944b3733ccbd5e345a017a321263b5d6e689611610e1c34642ea521e0f7c459f94ee4dbc9fec6f6635bb4ed16",
         );
 }

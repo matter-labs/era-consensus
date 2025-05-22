@@ -54,25 +54,13 @@ async fn block_production_timeout_reproposal() {
         let replica_commit = util.new_replica_commit(ctx).await;
         let mut timeout = util.new_replica_timeout(ctx).await;
 
-        for i in 0..util
-            .genesis()
-            .validators_schedule
-            .as_ref()
-            .unwrap()
-            .subquorum_threshold() as usize
-        {
+        for i in 0..util.validators().subquorum_threshold() as usize {
             util.process_replica_timeout(ctx, util.keys[i].sign_msg(timeout.clone()))
                 .await
                 .unwrap();
         }
         timeout.high_vote = None;
-        for i in util
-            .genesis()
-            .validators_schedule
-            .as_ref()
-            .unwrap()
-            .subquorum_threshold() as usize..util.keys.len()
-        {
+        for i in util.validators().subquorum_threshold() as usize..util.keys.len() {
             let _ = util
                 .process_replica_timeout(ctx, util.keys[i].sign_msg(timeout.clone()))
                 .await;

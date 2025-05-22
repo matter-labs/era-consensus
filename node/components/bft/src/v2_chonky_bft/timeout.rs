@@ -67,14 +67,7 @@ impl StateMachine {
         let author = &signed_message.key;
 
         // Check that the message signer is in the validator committee.
-        if !self
-            .config
-            .genesis()
-            .validators_schedule
-            .as_ref()
-            .unwrap()
-            .contains(author)
-        {
+        if !self.config.validators().contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone().into(),
             });
@@ -104,8 +97,9 @@ impl StateMachine {
 
         message
             .verify(
-                self.config.genesis().hash(),
-                self.config.genesis().validators_schedule.as_ref().unwrap(),
+                self.config.genesis_hash(),
+                self.config.epoch,
+                self.config.validators(),
             )
             .map_err(Error::InvalidMessage)?;
 
@@ -125,13 +119,14 @@ impl StateMachine {
         timeout_qc
             .add(
                 &signed_message,
-                self.config.genesis().hash(),
-                self.config.genesis().validators_schedule.as_ref().unwrap(),
+                self.config.genesis_hash(),
+                self.config.epoch,
+                self.config.validators(),
             )
             .expect("could not add message to TimeoutQC");
 
         // Calculate the TimeoutQC signers weight.
-        let weight = timeout_qc.weight(self.config.genesis().validators_schedule.as_ref().unwrap());
+        let weight = timeout_qc.weight(self.config.validators());
 
         // Update view number of last timeout message for author
         self.timeout_views_cache
@@ -146,15 +141,7 @@ impl StateMachine {
             .retain(|view_number, _| active_views.contains(view_number));
 
         // Now we check if we have enough weight to continue. If not, we wait for more messages.
-        if weight
-            < self
-                .config
-                .genesis()
-                .validators_schedule
-                .as_ref()
-                .unwrap()
-                .quorum_threshold()
-        {
+        if weight < self.config.validators().quorum_threshold() {
             return Ok(());
         };
         // ----------- We have a QC. Now we process it. --------------
@@ -219,9 +206,9 @@ impl StateMachine {
             message: self.config.secret_key.sign_msg(validator::ConsensusMsg::V2(
                 validator::v2::ChonkyMsg::ReplicaTimeout(validator::v2::ReplicaTimeout {
                     view: validator::v2::View {
-                        genesis: self.config.genesis().hash(),
+                        genesis: self.config.genesis_hash(),
                         number: self.view_number,
-                        epoch: self.epoch_number,
+                        epoch: self.config.epoch,
                     },
                     high_vote: self.high_vote.clone(),
                     high_qc: self.high_commit_qc.clone(),

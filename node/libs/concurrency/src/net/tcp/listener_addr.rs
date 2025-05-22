@@ -65,8 +65,8 @@ impl ListenerAddr {
     pub fn new(addr: std::net::SocketAddr) -> Self {
         assert!(
             addr.port() != 0,
-            "using an anyport (i.e. 0) for the tcp::ListenerAddr is allowed only \
-             in tests and only via reserve_for_test() method"
+            "using an anyport (i.e. 0) for the tcp::ListenerAddr is allowed only in tests and \
+             only via reserve_for_test() method"
         );
         Self(addr)
     }

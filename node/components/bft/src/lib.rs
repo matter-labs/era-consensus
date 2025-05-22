@@ -1,14 +1,16 @@
 //! This crate contains the consensus component, which is responsible for handling the logic that allows us to reach agreement on blocks.
-//! It uses a new cosnensus algorithm developed at Matter Labs, called ChonkyBFT. You can find the specification of the algorithm [here](../../../../spec).
+//! It uses a new consensus algorithm developed at Matter Labs, called ChonkyBFT. You can find the specification of the algorithm [here](../../../../spec).
 
 use std::sync::Arc;
 
+use anyhow::Context as _;
 pub use config::Config;
 use zksync_concurrency::{
     ctx,
     error::Wrap as _,
     scope,
     sync::{self, prunable_mpsc::SelectionFunctionResult},
+    time,
 };
 use zksync_consensus_roles::validator;
 
@@ -33,33 +35,90 @@ impl Config {
         outbound_channel: ctx::channel::UnboundedSender<ToNetworkMessage>,
         inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
     ) -> anyhow::Result<()> {
-        let genesis = self.engine_manager.genesis();
-
         anyhow::ensure!(
-            validator::ProtocolVersion::compatible(&genesis.protocol_version),
+            validator::ProtocolVersion::compatible(&self.protocol_version()),
             "Incompatible protocol version. Genesis protocol version: {:?}.",
-            genesis.protocol_version
+            self.protocol_version()
         );
 
-        if let Some(prev) = genesis.first_block.prev() {
+        if let Some(prev) = self.first_block().prev() {
             tracing::info!("Waiting for the pre-fork blocks to be persisted.");
             if let Err(ctx::Canceled) = self.engine_manager.wait_until_persisted(ctx, prev).await {
                 return Ok(());
             }
         }
 
-        // Get the protocol version from genesis and start the corresponding state machine.
-        match genesis.protocol_version {
-            validator::ProtocolVersion(1) => {
-                self.run_v1(ctx, outbound_channel, inbound_channel).await
+        // Clone the engine manager and epoch number to avoid moving them into the scope.
+        // We need them to outlive the scope of the spawned tasks.
+        let engine_manager = self.engine_manager.clone();
+        let epoch_number = self.epoch;
+
+        let res: ctx::Result<()> = scope::run!(ctx, |ctx, s| async {
+            // Spawn task to terminate this instance of the bft component at the end of the current epoch.
+            s.spawn(async {
+                // Get the expiration block number for the current epoch when it's available.
+                let expiration = loop {
+                    if let Some(n) = engine_manager
+                        .validator_schedule(epoch_number)
+                        .context(format!(
+                            "BFT instance was started for epoch {} but there's no corresponding \
+                             validator schedule.",
+                            epoch_number
+                        ))?
+                        .expiration_block
+                    {
+                        break n;
+                    }
+                    ctx.sleep(time::Duration::seconds(5)).await?;
+                };
+
+                loop {
+                    // Get the last persisted block number.
+                    let last_block_number = engine_manager.persisted().head();
+
+                    if last_block_number > expiration {
+                        return Err(ctx::Error::Internal(anyhow::anyhow!(
+                            "BFT instance was started for epoch {} but continued past the \
+                             expiration block {}. Current block number: {}.",
+                            epoch_number,
+                            expiration,
+                            last_block_number
+                        )));
+                    }
+
+                    // If we already have the expiration block, we can stop the BFT component.
+                    if last_block_number == expiration {
+                        s.cancel();
+                        break;
+                    }
+                    ctx.sleep(time::Duration::seconds(1)).await?;
+                }
+
+                Ok(())
+            });
+
+            // Get the protocol version from genesis and start the corresponding state machine.
+            match self.protocol_version() {
+                validator::ProtocolVersion(1) => self
+                    .run_v1(ctx, outbound_channel, inbound_channel)
+                    .await
+                    .wrap("run_v1()"),
+                validator::ProtocolVersion(2) => self
+                    .run_v2(ctx, outbound_channel, inbound_channel)
+                    .await
+                    .wrap("run_v2()"),
+
+                _ => Err(ctx::Error::Internal(anyhow::anyhow!(
+                    "Unsupported protocol version: {:?}",
+                    self.protocol_version()
+                ))),
             }
-            validator::ProtocolVersion(2) => {
-                self.run_v2(ctx, outbound_channel, inbound_channel).await
-            }
-            _ => anyhow::bail!(
-                "Unsupported protocol version: {:?}",
-                genesis.protocol_version
-            ),
+        })
+        .await;
+
+        match res {
+            Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
+            Err(ctx::Error::Internal(err)) => Err(err),
         }
     }
 
@@ -69,7 +128,7 @@ impl Config {
         ctx: &ctx::Ctx,
         outbound_channel: ctx::channel::UnboundedSender<ToNetworkMessage>,
         inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
-    ) -> anyhow::Result<()> {
+    ) -> ctx::Result<()> {
         let cfg = Arc::new(self);
 
         let (proposer_sender, proposer_receiver) = sync::watch::channel(None);
@@ -82,7 +141,7 @@ impl Config {
         )
         .await?;
 
-        let res = scope::run!(ctx, |ctx, s| async {
+        scope::run!(ctx, |ctx, s| async {
             tracing::info!(
                 "Starting consensus component (v1). Validator public key: {:?}.",
                 cfg.secret_key.public()
@@ -102,11 +161,7 @@ impl Config {
 
             Ok(())
         })
-        .await;
-        match res {
-            Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
-            Err(ctx::Error::Internal(err)) => Err(err),
-        }
+        .await
     }
 
     /// Starts the bft component with the v2 protocol version.
@@ -115,7 +170,7 @@ impl Config {
         ctx: &ctx::Ctx,
         outbound_channel: ctx::channel::UnboundedSender<ToNetworkMessage>,
         inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
-    ) -> anyhow::Result<()> {
+    ) -> ctx::Result<()> {
         let cfg = Arc::new(self);
 
         let (proposer_sender, proposer_receiver) = sync::watch::channel(None);
@@ -128,7 +183,7 @@ impl Config {
         )
         .await?;
 
-        let res = scope::run!(ctx, |ctx, s| async {
+        scope::run!(ctx, |ctx, s| async {
             tracing::info!(
                 "Starting consensus component (v2). Validator public key: {:?}.",
                 cfg.secret_key.public()
@@ -148,11 +203,7 @@ impl Config {
 
             Ok(())
         })
-        .await;
-        match res {
-            Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
-            Err(ctx::Error::Internal(err)) => Err(err),
-        }
+        .await
     }
 }
 

@@ -30,10 +30,7 @@ async fn proposal_yield_replica_commit_sanity() {
                 proposal: validator::v2::BlockHeader {
                     number: proposal
                         .justification
-                        .get_implied_block(
-                            util.genesis(),
-                            util.genesis().validators_schedule.as_ref().unwrap()
-                        )
+                        .get_implied_block(util.validators(), util.first_block())
                         .0,
                     payload: proposal.proposal_payload.unwrap().hash(),
                 },

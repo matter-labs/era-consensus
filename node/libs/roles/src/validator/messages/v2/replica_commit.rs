@@ -4,7 +4,7 @@ use zksync_protobuf::{read_required, ProtoFmt};
 use super::{BlockHeader, Signers, View};
 use crate::{
     proto::validator as proto,
-    validator::{self, GenesisHash, Signed},
+    validator::{self, EpochNumber, GenesisHash, Signed},
 };
 
 /// A commit message from a replica.
@@ -19,9 +19,13 @@ pub struct ReplicaCommit {
 
 impl ReplicaCommit {
     /// Verifies the message.
-    pub fn verify(&self, genesis: GenesisHash) -> Result<(), ReplicaCommitVerifyError> {
+    pub fn verify(
+        &self,
+        genesis_hash: GenesisHash,
+        epoch: EpochNumber,
+    ) -> Result<(), ReplicaCommitVerifyError> {
         self.view
-            .verify(genesis)
+            .verify(genesis_hash, epoch)
             .map_err(ReplicaCommitVerifyError::BadView)?;
 
         Ok(())
@@ -91,7 +95,8 @@ impl CommitQC {
     pub fn add(
         &mut self,
         msg: &Signed<ReplicaCommit>,
-        genesis: GenesisHash,
+        genesis_hash: GenesisHash,
+        epoch: EpochNumber,
         validators_schedule: &validator::Schedule,
     ) -> Result<(), CommitQCAddError> {
         // Check if the signer is in the committee.
@@ -118,7 +123,7 @@ impl CommitQC {
 
         // Check that the message itself is valid.
         msg.msg
-            .verify(genesis)
+            .verify(genesis_hash, epoch)
             .map_err(CommitQCAddError::InvalidMessage)?;
 
         // Add the signer to the signers map, and the signature to the aggregate signature.
@@ -131,12 +136,13 @@ impl CommitQC {
     /// Verifies the integrity of the CommitQC.
     pub fn verify(
         &self,
-        genesis: GenesisHash,
+        genesis_hash: GenesisHash,
+        epoch: EpochNumber,
         validators_schedule: &validator::Schedule,
     ) -> Result<(), CommitQCVerifyError> {
         // Check that the message is valid.
         self.message
-            .verify(genesis)
+            .verify(genesis_hash, epoch)
             .map_err(CommitQCVerifyError::InvalidMessage)?;
 
         // Check that the signers set has the same size as the validator set.

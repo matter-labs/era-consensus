@@ -70,10 +70,17 @@ fn replica_commit() -> ReplicaCommit {
 fn commit_qc() -> CommitQC {
     let genesis = genesis_v1();
     let replica_commit = replica_commit();
-    let mut x = CommitQC::new(replica_commit.clone(), &genesis);
+    let genesis_hash = genesis.hash();
+    let validators_schedule = genesis.0.validators_schedule.unwrap();
+
+    let mut x = CommitQC::new(replica_commit.clone(), &validators_schedule);
     for k in validator_keys() {
-        x.add(&k.sign_msg(replica_commit.clone()), &genesis)
-            .unwrap();
+        x.add(
+            &k.sign_msg(replica_commit.clone()),
+            genesis_hash,
+            &validators_schedule,
+        )
+        .unwrap();
     }
     x
 }
@@ -97,10 +104,17 @@ fn timeout_qc() -> TimeoutQC {
         number: ViewNumber(9169),
     });
     let genesis = genesis_v1();
+    let genesis_hash = genesis.hash();
+    let validators_schedule = genesis.0.validators_schedule.unwrap();
     let replica_timeout = replica_timeout();
+
     for k in validator_keys() {
-        x.add(&k.sign_msg(replica_timeout.clone()), &genesis)
-            .unwrap();
+        x.add(
+            &k.sign_msg(replica_timeout.clone()),
+            genesis_hash,
+            &validators_schedule,
+        )
+        .unwrap();
     }
     x
 }

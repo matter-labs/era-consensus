@@ -17,8 +17,24 @@ pub trait EngineInterface: 'static + fmt::Debug + Send + Sync {
     /// Range of blocks persisted in storage.
     fn persisted(&self) -> sync::watch::Receiver<BlockStoreState>;
 
+    /// Gets the validator schedule that is active at the given block number together with
+    /// the block number at which it became active.
+    async fn get_validator_schedule(
+        &self,
+        ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+    ) -> ctx::Result<(validator::Schedule, validator::BlockNumber)>;
+
+    /// Gets the pending validator schedule (if one exists) at the given block number together with
+    /// the block number at which it will become active.
+    async fn get_pending_validator_schedule(
+        &self,
+        ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+    ) -> ctx::Result<Option<(validator::Schedule, validator::BlockNumber)>>;
+
     /// Gets a block by its number.
-    /// All the blocks from `state()` range are expected to be available.
+    /// All the blocks from `persisted()` range are expected to be available.
     /// Blocks that have been queued but haven't been persisted yet don't have to be available.
     /// Returns error if block is missing.
     async fn get_block(

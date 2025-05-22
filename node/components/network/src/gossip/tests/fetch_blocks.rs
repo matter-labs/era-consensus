@@ -31,7 +31,7 @@ async fn test_simple() {
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), engine.manager.clone());
         s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
 
-        let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis.hash())
+        let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis_hash())
             .await
             .unwrap();
         s.spawn_bg(async {
@@ -51,11 +51,7 @@ async fn test_simple() {
         tracing::info!("Insert a block.");
         engine
             .manager
-            .queue_block(
-                ctx,
-                setup.blocks[0].clone(),
-                setup.genesis.validators_schedule.as_ref().unwrap(),
-            )
+            .queue_block(ctx, setup.blocks[0].clone())
             .await
             .unwrap();
         loop {
@@ -144,7 +140,7 @@ async fn test_concurrent_requests() {
 
         let mut conns = vec![];
         for _ in 0..4 {
-            let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis.hash())
+            let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis_hash())
                 .await
                 .unwrap();
             s.spawn_bg(async {
@@ -239,7 +235,7 @@ async fn test_bad_responses() {
             tracing::info!("bad response = {resp:?}");
 
             tracing::info!("Connect to peer");
-            let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis.hash())
+            let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis_hash())
                 .await
                 .unwrap();
             let conn_task = s.spawn_bg(async { Ok(runner.run(ctx).await) });
@@ -301,7 +297,7 @@ async fn test_retry() {
         tracing::info!("establish a bunch of connections");
         let mut conns = vec![];
         for _ in 0..4 {
-            let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis.hash())
+            let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis_hash())
                 .await
                 .unwrap();
             let task = s.spawn_bg(async { Ok(runner.run(ctx).await) });
@@ -350,7 +346,7 @@ async fn test_announce_truncated_block_range() {
 
     scope::run!(ctx, |ctx, s| async {
         // Build a custom persistent store, so that we can tweak it later.
-        let mut engine = in_memory::Engine::new_random(&setup, setup.genesis.first_block);
+        let mut engine = in_memory::Engine::new_random(&setup, setup.first_block());
         let (manager, runner) = EngineManager::new(ctx, Box::new(engine.clone())).await?;
         s.spawn_bg(runner.run(ctx));
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), manager);
@@ -361,7 +357,7 @@ async fn test_announce_truncated_block_range() {
         }
 
         // Connect to the node.
-        let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis.hash())
+        let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis_hash())
             .await
             .unwrap();
         s.spawn_bg(async {
@@ -369,7 +365,7 @@ async fn test_announce_truncated_block_range() {
             Ok(())
         });
 
-        let mut first = setup.genesis.first_block;
+        let mut first = setup.first_block();
         loop {
             tracing::info!("Truncate up to {first}");
             engine.truncate(first);

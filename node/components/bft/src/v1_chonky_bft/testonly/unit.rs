@@ -54,14 +54,7 @@ impl UnitTestHarness {
     pub(crate) async fn new_many(ctx: &ctx::Ctx) -> (UnitTestHarness, EngineManagerRunner) {
         let num_validators = 6;
         let (util, runner) = UnitTestHarness::new(ctx, num_validators).await;
-        assert!(
-            util.genesis()
-                .validators_schedule
-                .as_ref()
-                .unwrap()
-                .max_faulty_weight()
-                > 0
-        );
+        assert!(util.validators().max_faulty_weight() > 0);
         (util, runner)
     }
 
@@ -77,12 +70,16 @@ impl UnitTestHarness {
         let (input_channel_send, input_channel_recv) = create_input_channel();
         let (proposer_sender, proposer_receiver) = sync::watch::channel(None);
 
-        let cfg = Arc::new(Config {
-            secret_key: setup.validator_keys[0].clone(),
-            engine_manager: engine.manager.clone(),
-            max_payload_size: MAX_PAYLOAD_SIZE,
-            view_timeout: time::Duration::milliseconds(2000),
-        });
+        let cfg = Arc::new(
+            Config::new(
+                setup.validator_keys[0].clone(),
+                MAX_PAYLOAD_SIZE,
+                time::Duration::milliseconds(2000),
+                engine.manager.clone(),
+                validator::EpochNumber(0),
+            )
+            .unwrap(),
+        );
         let replica = StateMachine::start(
             ctx,
             cfg.clone(),
@@ -121,21 +118,25 @@ impl UnitTestHarness {
 
     pub(crate) fn view(&self) -> validator::v1::View {
         validator::v1::View {
-            genesis: self.genesis().hash(),
+            genesis: self.genesis_hash(),
             number: self.replica.view_number,
         }
     }
 
-    pub(crate) fn view_leader(&self, view: validator::ViewNumber) -> validator::PublicKey {
-        self.genesis()
-            .validators_schedule
-            .as_ref()
-            .unwrap()
-            .view_leader(view)
+    pub(crate) fn genesis_hash(&self) -> validator::GenesisHash {
+        self.replica.config.genesis_hash()
     }
 
-    pub(crate) fn genesis(&self) -> &validator::Genesis {
-        self.replica.config.genesis()
+    pub(crate) fn validators(&self) -> &validator::Schedule {
+        self.replica.config.validators()
+    }
+
+    pub(crate) fn first_block(&self) -> validator::BlockNumber {
+        self.replica.config.first_block()
+    }
+
+    pub(crate) fn view_leader(&self, view: validator::ViewNumber) -> validator::PublicKey {
+        self.validators().view_leader(view)
     }
 
     pub(crate) async fn new_leader_proposal(
@@ -192,9 +193,14 @@ impl UnitTestHarness {
     ) -> validator::v1::CommitQC {
         let mut msg = self.new_replica_commit(ctx).await;
         mutate_fn(&mut msg);
-        let mut qc = validator::v1::CommitQC::new(msg.clone(), self.genesis());
+        let mut qc = validator::v1::CommitQC::new(msg.clone(), self.validators());
         for key in &self.keys {
-            qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
+            qc.add(
+                &key.sign_msg(msg.clone()),
+                self.genesis_hash(),
+                self.validators(),
+            )
+            .unwrap();
         }
         qc
     }
@@ -203,7 +209,12 @@ impl UnitTestHarness {
         let msg = self.new_replica_timeout(ctx).await;
         let mut qc = validator::v1::TimeoutQC::new(msg.view);
         for key in &self.keys {
-            qc.add(&key.sign_msg(msg.clone()), self.genesis()).unwrap();
+            qc.add(
+                &key.sign_msg(msg.clone()),
+                self.genesis_hash(),
+                self.validators(),
+            )
+            .unwrap();
         }
         qc
     }
@@ -254,35 +265,15 @@ impl UnitTestHarness {
 
         for key in self.keys.iter() {
             let res = self.replica.on_commit(ctx, key.sign_msg(msg.clone())).await;
-            let val_index = self
-                .genesis()
-                .validators_schedule
-                .as_ref()
-                .unwrap()
-                .index(&key.public())
-                .unwrap();
+            let val_index = self.validators().index(&key.public()).unwrap();
 
-            cur_weight += self
-                .genesis()
-                .validators_schedule
-                .as_ref()
-                .unwrap()
-                .get(val_index)
-                .unwrap()
-                .weight;
+            cur_weight += self.validators().get(val_index).unwrap().weight;
 
             if threshold_reached {
                 assert_matches!(res, Err(commit::Error::Old { .. }));
             } else {
                 res.unwrap();
-                if cur_weight
-                    >= self
-                        .genesis()
-                        .validators_schedule
-                        .as_ref()
-                        .unwrap()
-                        .quorum_threshold()
-                {
+                if cur_weight >= self.validators().quorum_threshold() {
                     threshold_reached = true;
                 }
             }
@@ -304,34 +295,14 @@ impl UnitTestHarness {
                 .replica
                 .on_timeout(ctx, key.sign_msg(msg.clone()))
                 .await;
-            let val_index = self
-                .genesis()
-                .validators_schedule
-                .as_ref()
-                .unwrap()
-                .index(&key.public())
-                .unwrap();
+            let val_index = self.validators().index(&key.public()).unwrap();
 
-            cur_weight += self
-                .genesis()
-                .validators_schedule
-                .as_ref()
-                .unwrap()
-                .get(val_index)
-                .unwrap()
-                .weight;
+            cur_weight += self.validators().get(val_index).unwrap().weight;
             if threshold_reached {
                 assert_matches!(res, Err(timeout::Error::Old { .. }));
             } else {
                 res.unwrap();
-                if cur_weight
-                    >= self
-                        .genesis()
-                        .validators_schedule
-                        .as_ref()
-                        .unwrap()
-                        .quorum_threshold()
-                {
+                if cur_weight >= self.validators().quorum_threshold() {
                     threshold_reached = true;
                 }
             }

@@ -18,16 +18,18 @@ fn test_final_block_verify() {
 
     assert!(final_block
         .verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         )
         .is_ok());
 
     final_block.payload = rng.gen();
     assert_matches!(
         final_block.verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         ),
         Err(BlockValidationError::HashMismatch { .. })
     );
@@ -35,8 +37,9 @@ fn test_final_block_verify() {
     final_block.justification.message.proposal.payload = final_block.payload.hash();
     assert_matches!(
         final_block.verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         ),
         Err(BlockValidationError::Justification(_))
     );

@@ -2,8 +2,9 @@
 use rand::Rng;
 
 use super::{
-    Block, BlockNumber, ChainId, ForkNumber, Genesis, GenesisRaw, LeaderSelection,
-    LeaderSelectionMode, PreGenesisBlock, ProtocolVersion, Schedule, SecretKey, ValidatorInfo,
+    Block, BlockNumber, ChainId, EpochNumber, ForkNumber, Genesis, GenesisHash, GenesisRaw,
+    LeaderSelection, LeaderSelectionMode, PreGenesisBlock, ProtocolVersion, Schedule, SecretKey,
+    ValidatorInfo,
 };
 
 /// Test setup specification.
@@ -23,6 +24,8 @@ pub struct SetupSpec {
     pub validator_weights: Vec<(SecretKey, u64)>,
     /// Leader selection.
     pub leader_selection: LeaderSelection,
+    /// Epoch number.
+    pub epoch: EpochNumber,
 }
 
 impl SetupSpec {
@@ -61,6 +64,7 @@ impl SetupSpec {
                 frequency: 1,
                 mode: LeaderSelectionMode::RoundRobin,
             },
+            epoch: EpochNumber(0),
         }
     }
 }
@@ -74,6 +78,8 @@ pub struct SetupInner {
     pub blocks: Vec<Block>,
     /// Genesis config.
     pub genesis: Genesis,
+    /// Epoch number.
+    pub epoch: EpochNumber,
 }
 
 impl std::ops::Deref for Setup {
@@ -98,6 +104,18 @@ impl Setup {
     pub fn new_without_pregenesis(rng: &mut impl Rng, validators: usize) -> Self {
         let spec = SetupSpec::new_without_pregenesis(rng, validators);
         Self::from_spec(rng, spec)
+    }
+
+    /// New `Setup` without any validators schedule in genesis. Used to test validator rotation.
+    pub fn new_without_validators_schedule(rng: &mut impl Rng, validators: usize) -> Self {
+        let spec = SetupSpec::new(rng, validators);
+        let mut setup = Self::from_spec(rng, spec);
+        let mut genesis = setup.0.genesis.0;
+        // TODO: remove this after we deprecate protocol version 1
+        genesis.protocol_version = ProtocolVersion(2);
+        genesis.validators_schedule = None;
+        setup.0.genesis = genesis.with_hash();
+        setup
     }
 
     /// New `Setup` where validators have the given weights and the specified protocol version.
@@ -133,6 +151,7 @@ impl Setup {
             .with_hash(),
             validator_keys: spec.validator_weights.into_iter().map(|(k, _)| k).collect(),
             blocks: vec![],
+            epoch: spec.epoch,
         });
 
         // Populate pregenesis blocks.
@@ -161,5 +180,20 @@ impl Setup {
     pub fn block(&self, n: BlockNumber) -> Option<&Block> {
         let first = self.0.blocks.first()?.number();
         self.0.blocks.get(n.0.checked_sub(first.0)? as usize)
+    }
+
+    /// Returns the genesis hash.
+    pub fn genesis_hash(&self) -> GenesisHash {
+        self.0.genesis.hash()
+    }
+
+    /// Returns the first block.
+    pub fn first_block(&self) -> BlockNumber {
+        self.0.genesis.first_block
+    }
+
+    /// Returns the validators schedule.
+    pub fn validators_schedule(&self) -> &Schedule {
+        self.0.genesis.validators_schedule.as_ref().unwrap()
     }
 }

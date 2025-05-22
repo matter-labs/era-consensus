@@ -20,10 +20,14 @@ async fn new_view_sanity() {
                 payload: ctx.rng().gen(),
             },
         };
-        let mut commit_qc_1 = validator::v1::CommitQC::new(commit_1.clone(), util.genesis());
+        let mut commit_qc_1 = validator::v1::CommitQC::new(commit_1.clone(), util.validators());
         for key in &util.keys {
             commit_qc_1
-                .add(&key.sign_msg(commit_1.clone()), util.genesis())
+                .add(
+                    &key.sign_msg(commit_1.clone()),
+                    util.genesis_hash(),
+                    util.validators(),
+                )
                 .unwrap();
         }
         let new_view_1 = validator::v1::ReplicaNewView {
@@ -37,10 +41,14 @@ async fn new_view_sanity() {
                 payload: ctx.rng().gen(),
             },
         };
-        let mut commit_qc_2 = validator::v1::CommitQC::new(commit_2.clone(), util.genesis());
+        let mut commit_qc_2 = validator::v1::CommitQC::new(commit_2.clone(), util.validators());
         for key in &util.keys {
             commit_qc_2
-                .add(&key.sign_msg(commit_2.clone()), util.genesis())
+                .add(
+                    &key.sign_msg(commit_2.clone()),
+                    util.genesis_hash(),
+                    util.validators(),
+                )
                 .unwrap();
         }
         let new_view_2 = validator::v1::ReplicaNewView {
@@ -55,7 +63,11 @@ async fn new_view_sanity() {
         let mut timeout_qc = validator::v1::TimeoutQC::new(timeout.view);
         for key in &util.keys {
             timeout_qc
-                .add(&key.sign_msg(timeout.clone()), util.genesis())
+                .add(
+                    &key.sign_msg(timeout.clone()),
+                    util.genesis_hash(),
+                    util.validators(),
+                )
                 .unwrap();
         }
         let new_view_3 = validator::v1::ReplicaNewView {

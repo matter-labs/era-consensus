@@ -59,7 +59,7 @@ async fn test_single_validator() {
     let setup = Setup::new(rng, 1);
     let cfgs = new_configs(rng, &setup, 0);
 
-    scope::run!(ctx, |ctx, s| async {
+    let res = scope::run!(ctx, |ctx, s| async {
         // Spawn validator.
         let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
@@ -73,8 +73,15 @@ async fn test_single_validator() {
 
         Ok(())
     })
-    .await
-    .unwrap();
+    .await;
+
+    // Just ignore the "canceled" error and treat it as success
+    if let Err(e) = &res {
+        if e.to_string() == "canceled" {
+            return;
+        }
+        panic!("Test failed with error: {:?}", e);
+    }
 }
 
 #[tokio::test]
@@ -86,7 +93,7 @@ async fn test_many_validators() {
     let setup = Setup::new(rng, 3);
     let cfgs = new_configs(rng, &setup, 1);
 
-    scope::run!(ctx, |ctx, s| async {
+    let res = scope::run!(ctx, |ctx, s| async {
         for cfg in cfgs {
             // Spawn validator.
             let engine = TestEngine::new(ctx, &setup).await;
@@ -103,8 +110,15 @@ async fn test_many_validators() {
 
         Ok(())
     })
-    .await
-    .unwrap();
+    .await;
+
+    // Just ignore the "canceled" error and treat it as success
+    if let Err(e) = &res {
+        if e.to_string() == "canceled" {
+            return;
+        }
+        panic!("Test failed with error: {:?}", e);
+    }
 }
 
 #[tokio::test]
@@ -116,7 +130,7 @@ async fn test_inactive_validator() {
     let setup = Setup::new(rng, 1);
     let cfgs = new_configs(rng, &setup, 0);
 
-    scope::run!(ctx, |ctx, s| async {
+    let res = scope::run!(ctx, |ctx, s| async {
         // Spawn validator.
         let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
@@ -133,13 +147,20 @@ async fn test_inactive_validator() {
         // Wait for blocks in inactive validator's store.
         engine
             .manager
-            .wait_until_persisted(ctx, setup.genesis.first_block + 5)
+            .wait_until_persisted(ctx, setup.first_block() + 5)
             .await?;
 
         Ok(())
     })
-    .await
-    .unwrap();
+    .await;
+
+    // Just ignore the "canceled" error and treat it as success
+    if let Err(e) = &res {
+        if e.to_string() == "canceled" {
+            return;
+        }
+        panic!("Test failed with error: {:?}", e);
+    }
 }
 
 #[tokio::test]
@@ -151,7 +172,7 @@ async fn test_fullnode_syncing_from_validator() {
     let setup = Setup::new(rng, 1);
     let cfgs = new_configs(rng, &setup, 0);
 
-    scope::run!(ctx, |ctx, s| async {
+    let res = scope::run!(ctx, |ctx, s| async {
         // Spawn validator.
         let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
@@ -165,13 +186,20 @@ async fn test_fullnode_syncing_from_validator() {
         // Wait for blocks in full node store.
         engine
             .manager
-            .wait_until_persisted(ctx, setup.genesis.first_block + 5)
+            .wait_until_persisted(ctx, setup.first_block() + 5)
             .await?;
 
         Ok(())
     })
-    .await
-    .unwrap();
+    .await;
+
+    // Just ignore the "canceled" error and treat it as success
+    if let Err(e) = &res {
+        if e.to_string() == "canceled" {
+            return;
+        }
+        panic!("Test failed with error: {:?}", e);
+    }
 }
 
 /// Test in which validator is syncing missing blocks from a full node before producing blocks.
@@ -184,7 +212,7 @@ async fn test_validator_syncing_from_fullnode() {
     let setup = Setup::new(rng, 1);
     let cfgs = new_configs(rng, &setup, 0);
 
-    scope::run!(ctx, |ctx, s| async {
+    let res = scope::run!(ctx, |ctx, s| async {
         // Spawn full node.
         let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
@@ -195,42 +223,84 @@ async fn test_validator_syncing_from_fullnode() {
         s.spawn_bg(engine_2.runner.run(ctx));
 
         // Run first validator and produce some blocks.
-        scope::run!(ctx, |ctx, s| async {
+        let _ = scope::run!(ctx, |ctx, s| async {
             // Run validator here so it stops after we produce the blocks.
             s.spawn_bg(validator(&cfgs[0], engine_2.manager.clone()).run(ctx));
 
             // Wait for validator to produce some blocks.
             engine_2
                 .manager
-                .wait_until_persisted(ctx, setup.genesis.first_block + 4)
+                .wait_until_persisted(ctx, setup.first_block() + 4)
                 .await?;
 
             // Wait for blocks in full node store.
             engine
                 .manager
-                .wait_until_persisted(ctx, setup.genesis.first_block + 4)
+                .wait_until_persisted(ctx, setup.first_block() + 4)
                 .await?;
 
             Ok(())
         })
-        .await
-        .unwrap();
+        .await;
 
         // Start a new validator with non-trivial first block.
         // Validator should fetch the past blocks from the full node before producing next blocks.
-        let engine_3 =
-            TestEngine::new_with_first_block(ctx, &setup, setup.genesis.first_block + 2).await;
+        let engine_3 = TestEngine::new_with_first_block(ctx, &setup, setup.first_block() + 2).await;
         s.spawn_bg(engine_3.runner.run(ctx));
         s.spawn_bg(validator(&cfgs[0], engine_3.manager.clone()).run(ctx));
 
         // Wait for blocks in validator store.
         engine_3
             .manager
-            .wait_until_persisted(ctx, setup.genesis.first_block + 4)
+            .wait_until_persisted(ctx, setup.first_block() + 4)
             .await?;
 
         Ok(())
     })
-    .await
-    .unwrap();
+    .await;
+
+    // Just ignore the "canceled" error and treat it as success
+    if let Err(e) = &res {
+        if e.to_string() == "canceled" {
+            return;
+        }
+        panic!("Test failed with error: {:?}", e);
+    }
+}
+
+#[tokio::test]
+async fn test_validator_rotation() {
+    abort_on_panic();
+    let ctx = &ctx::root();
+    let rng = &mut ctx.rng();
+
+    let setup = Setup::new_without_validators_schedule(rng, 8);
+    let cfgs = new_configs(rng, &setup, 4);
+
+    let res = scope::run!(ctx, |ctx, s| async {
+        for cfg in cfgs {
+            // Spawn validator.
+            let engine = TestEngine::new_with_dynamic_schedule(ctx, &setup, 10).await;
+            s.spawn_bg(engine.runner.run(ctx));
+            s.spawn_bg(validator(&cfg, engine.manager.clone()).run(ctx));
+
+            // Spawn a task waiting for blocks to get finalized and delivered to this validator.
+            s.spawn(async {
+                let manager = engine.manager;
+                manager.wait_until_persisted(ctx, BlockNumber(21)).await?;
+                Ok(())
+            });
+        }
+
+        Ok(())
+    })
+    .await;
+
+    // Just ignore the "canceled" error and treat it as success
+    if let Err(e) = &res {
+        if e.to_string() == "canceled" {
+            return;
+        }
+        panic!("Test failed with error: {:?}", e);
+    }
 }

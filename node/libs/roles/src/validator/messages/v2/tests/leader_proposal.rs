@@ -28,8 +28,9 @@ fn test_leader_proposal_verify() {
 
     assert!(proposal
         .verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         )
         .is_ok());
 
@@ -39,8 +40,9 @@ fn test_leader_proposal_verify() {
 
     assert_matches!(
         wrong_proposal.verify(
-            setup.genesis.hash(),
-            setup.genesis.validators_schedule.as_ref().unwrap()
+            setup.genesis_hash(),
+            setup.epoch,
+            setup.validators_schedule()
         ),
         Err(LeaderProposalVerifyError::Justification(_))
     );
@@ -65,10 +67,9 @@ fn test_justification_get_implied_block() {
         justification,
     };
 
-    let (implied_block_number, implied_payload) = proposal.justification.get_implied_block(
-        &setup.genesis,
-        setup.genesis.validators_schedule.as_ref().unwrap(),
-    );
+    let (implied_block_number, implied_payload) = proposal
+        .justification
+        .get_implied_block(setup.validators_schedule(), setup.first_block());
 
     assert_eq!(implied_block_number, setup.next());
     assert!(implied_payload.is_none());
@@ -81,10 +82,9 @@ fn test_justification_get_implied_block() {
         justification,
     };
 
-    let (implied_block_number, implied_payload) = proposal.justification.get_implied_block(
-        &setup.genesis,
-        setup.genesis.validators_schedule.as_ref().unwrap(),
-    );
+    let (implied_block_number, implied_payload) = proposal
+        .justification
+        .get_implied_block(setup.validators_schedule(), setup.first_block());
 
     assert_eq!(implied_block_number, setup.next());
     assert_eq!(implied_payload, Some(payload.hash()));

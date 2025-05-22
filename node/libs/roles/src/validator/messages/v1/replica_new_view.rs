@@ -2,7 +2,10 @@ use anyhow::Context as _;
 use zksync_protobuf::{read_required, ProtoFmt};
 
 use super::{ProposalJustification, ProposalJustificationVerifyError, View};
-use crate::{proto::validator as proto, validator::Genesis};
+use crate::{
+    proto::validator as proto,
+    validator::{GenesisHash, Schedule},
+};
 
 /// A new view message from a replica.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -18,10 +21,14 @@ impl ReplicaNewView {
     }
 
     /// Verifies ReplicaNewView.
-    pub fn verify(&self, genesis: &Genesis) -> Result<(), ReplicaNewViewVerifyError> {
+    pub fn verify(
+        &self,
+        genesis_hash: GenesisHash,
+        validators: &Schedule,
+    ) -> Result<(), ReplicaNewViewVerifyError> {
         // Check that the justification is valid.
         self.justification
-            .verify(genesis)
+            .verify(genesis_hash, validators)
             .map_err(ReplicaNewViewVerifyError::Justification)?;
 
         Ok(())

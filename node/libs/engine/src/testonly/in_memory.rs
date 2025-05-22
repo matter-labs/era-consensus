@@ -42,7 +42,7 @@ impl Engine {
                 .blocks
                 .first()
                 .map(|b| b.number())
-                .unwrap_or(setup.genesis.first_block)
+                .unwrap_or(setup.first_block())
                 <= first
         );
         Self(Arc::new(EngineInner {
@@ -60,6 +60,8 @@ impl Engine {
             payload_manager,
             state: Arc::new(Mutex::new(ReplicaState::default())),
             capacity: None,
+            schedules: vec![],
+            epoch_length: 0,
         }))
     }
 
@@ -79,6 +81,75 @@ impl Engine {
             payload_manager: PayloadManager::Random(100),
             state: Arc::new(Mutex::new(ReplicaState::default())),
             capacity: Some(capacity),
+            schedules: vec![],
+            epoch_length: 0,
+        }))
+    }
+
+    /// New in-memory `EngineManager` with a dynamic validator schedule. It splits the validators in
+    /// two groups and swaps them every `n` blocks.
+    pub fn new_dynamic_schedule(setup: &Setup, first: validator::BlockNumber, n: u64) -> Self {
+        assert!(
+            setup
+                .blocks
+                .first()
+                .map(|b| b.number())
+                .unwrap_or(setup.first_block())
+                <= first
+        );
+
+        let validator_keys: Vec<_> = setup.validator_keys.iter().enumerate().collect();
+
+        // Split into even and odd indices
+        let even_validators: Vec<validator::ValidatorInfo> = validator_keys
+            .iter()
+            .filter(|(i, _)| i % 2 == 0)
+            .map(|(_, k)| validator::ValidatorInfo {
+                key: k.public(),
+                weight: 1,
+                leader: true,
+            })
+            .collect();
+
+        let odd_validators: Vec<validator::ValidatorInfo> = validator_keys
+            .iter()
+            .filter(|(i, _)| i % 2 == 1)
+            .map(|(_, k)| validator::ValidatorInfo {
+                key: k.public(),
+                weight: 1,
+                leader: true,
+            })
+            .collect();
+
+        // Create leader selection config
+        let leader_selection = validator::LeaderSelection {
+            frequency: 1,
+            mode: validator::LeaderSelectionMode::RoundRobin,
+        };
+
+        // Create two schedules with even and odd validators
+        let schedule_a =
+            validator::Schedule::new(even_validators, leader_selection.clone()).unwrap();
+
+        let schedule_b = validator::Schedule::new(odd_validators, leader_selection).unwrap();
+
+        Self(Arc::new(EngineInner {
+            genesis: setup.genesis.clone(),
+            persisted: sync::watch::channel(BlockStoreState { first, last: None }).0,
+            blocks: Mutex::default(),
+            pregenesis_blocks: setup
+                .blocks
+                .iter()
+                .flat_map(|b| match b {
+                    validator::Block::PreGenesis(b) => Some((b.number, b.clone())),
+                    _ => None,
+                })
+                .collect(),
+            payload_manager: PayloadManager::Random(100),
+            state: Arc::new(Mutex::new(ReplicaState::default())),
+            capacity: None,
+            schedules: vec![schedule_a, schedule_b],
+            epoch_length: n,
         }))
     }
 
@@ -109,6 +180,42 @@ impl EngineInterface for Engine {
 
     fn persisted(&self) -> sync::watch::Receiver<BlockStoreState> {
         self.0.persisted.subscribe()
+    }
+
+    async fn get_validator_schedule(
+        &self,
+        _ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+    ) -> ctx::Result<(validator::Schedule, validator::BlockNumber)> {
+        if let Some(schedule) = self.0.genesis.validators_schedule.clone() {
+            // If we have a static schedule, we just return it.
+            return Ok((schedule, self.0.genesis.first_block));
+        } else {
+            // If we have a dynamic schedule, we need to calculate the correct schedule for the given block number.
+            let epoch = number.0 / self.0.epoch_length;
+            let schedule = self.0.schedules[(epoch % 2) as usize].clone();
+            let start =
+                validator::BlockNumber(self.0.genesis.first_block.0 + self.0.epoch_length * epoch);
+            Ok((schedule, start))
+        }
+    }
+
+    async fn get_pending_validator_schedule(
+        &self,
+        _ctx: &ctx::Ctx,
+        number: validator::BlockNumber,
+    ) -> ctx::Result<Option<(validator::Schedule, validator::BlockNumber)>> {
+        if self.0.genesis.validators_schedule.is_some() {
+            // If we have a static schedule, we return None.
+            return Ok(None);
+        } else {
+            // If we have a dynamic schedule, we need to calculate the correct schedule for the given block number.
+            let epoch = number.0 / self.0.epoch_length + 1;
+            let schedule = self.0.schedules[(epoch % 2) as usize].clone();
+            let start =
+                validator::BlockNumber(self.0.genesis.first_block.0 + self.0.epoch_length * epoch);
+            Ok(Some((schedule, start)))
+        }
     }
 
     async fn get_block(
@@ -200,6 +307,8 @@ struct EngineInner {
     payload_manager: PayloadManager,
     state: Arc<Mutex<ReplicaState>>,
     capacity: Option<usize>,
+    schedules: Vec<validator::Schedule>,
+    epoch_length: u64,
 }
 
 /// Payload manager for testing purposes.

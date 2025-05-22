@@ -4,7 +4,7 @@ use zksync_protobuf::{read_required, ProtoFmt};
 use super::{get_committee_from_schedule, BlockHeader, Signers, View};
 use crate::{
     proto::validator as proto,
-    validator::{self, Genesis, Signed},
+    validator::{self, GenesisHash, Signed},
 };
 
 /// A commit message from a replica.
@@ -19,9 +19,9 @@ pub struct ReplicaCommit {
 
 impl ReplicaCommit {
     /// Verifies the message.
-    pub fn verify(&self, genesis: &Genesis) -> Result<(), ReplicaCommitVerifyError> {
+    pub fn verify(&self, genesis_hash: GenesisHash) -> Result<(), ReplicaCommitVerifyError> {
         self.view
-            .verify(genesis)
+            .verify(genesis_hash)
             .map_err(ReplicaCommitVerifyError::BadView)?;
 
         Ok(())
@@ -79,10 +79,10 @@ impl CommitQC {
     }
 
     /// Create a new empty instance for a given `ReplicaCommit` message and a validator set size.
-    pub fn new(message: ReplicaCommit, genesis: &Genesis) -> Self {
+    pub fn new(message: ReplicaCommit, validators: &validator::Schedule) -> Self {
         Self {
             message,
-            signers: Signers::new(genesis.validators_schedule.as_ref().unwrap().len()),
+            signers: Signers::new(validators.len()),
             signature: validator::AggregateSignature::default(),
         }
     }
@@ -91,15 +91,11 @@ impl CommitQC {
     pub fn add(
         &mut self,
         msg: &Signed<ReplicaCommit>,
-        genesis: &Genesis,
+        genesis_hash: GenesisHash,
+        validators: &validator::Schedule,
     ) -> Result<(), CommitQCAddError> {
         // Check if the signer is in the committee.
-        let Some(i) = genesis
-            .validators_schedule
-            .as_ref()
-            .unwrap()
-            .index(&msg.key)
-        else {
+        let Some(i) = validators.index(&msg.key) else {
             return Err(CommitQCAddError::SignerNotInCommittee {
                 signer: Box::new(msg.key.clone()),
             });
@@ -122,7 +118,7 @@ impl CommitQC {
 
         // Check that the message itself is valid.
         msg.msg
-            .verify(genesis)
+            .verify(genesis_hash)
             .map_err(CommitQCAddError::InvalidMessage)?;
 
         // Add the signer to the signers map, and the signature to the aggregate signature.
@@ -133,26 +129,26 @@ impl CommitQC {
     }
 
     /// Verifies the integrity of the CommitQC.
-    pub fn verify(&self, genesis: &Genesis) -> Result<(), CommitQCVerifyError> {
+    pub fn verify(
+        &self,
+        genesis_hash: GenesisHash,
+        validators: &validator::Schedule,
+    ) -> Result<(), CommitQCVerifyError> {
         // Check that the message is valid.
         self.message
-            .verify(genesis)
+            .verify(genesis_hash)
             .map_err(CommitQCVerifyError::InvalidMessage)?;
 
         // Check that the signers set has the same size as the validator set.
-        if self.signers.len() != genesis.validators_schedule.as_ref().unwrap().len() {
+        if self.signers.len() != validators.len() {
             return Err(CommitQCVerifyError::BadSignersSet);
         }
 
         // Verify the signers' weight is enough.
-        let weight = self.signers.weight(&get_committee_from_schedule(
-            genesis.validators_schedule.as_ref().unwrap(),
-        ));
-        let threshold = genesis
-            .validators_schedule
-            .as_ref()
-            .unwrap()
-            .quorum_threshold();
+        let weight = self
+            .signers
+            .weight(&get_committee_from_schedule(validators));
+        let threshold = validators.quorum_threshold();
         if weight < threshold {
             return Err(CommitQCVerifyError::NotEnoughWeight {
                 got: weight,
@@ -161,10 +157,7 @@ impl CommitQC {
         }
 
         // Now we can verify the signature.
-        let messages_and_keys = genesis
-            .validators_schedule
-            .as_ref()
-            .unwrap()
+        let messages_and_keys = validators
             .keys()
             .enumerate()
             .filter(|(i, _)| self.signers.0[*i])

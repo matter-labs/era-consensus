@@ -169,10 +169,7 @@ async fn run_twins(
             let partitions = &splits[r].last().unwrap();
 
             let leader_pk = setup
-                .genesis
-                .validators_schedule
-                .as_ref()
-                .unwrap()
+                .validators_schedule()
                 .view_leader(ViewNumber(r as u64));
 
             let leader_ports = cluster
@@ -191,7 +188,11 @@ async fn run_twins(
                 .iter()
                 .all(|s| *s < cluster.quorum_size());
 
-            tracing::info!("round={r} partitions={partitions:?} leaders={leader_ports:?} leader_partition_sizes={leader_partition_sizes:?} leader_isolated={leader_isolated}");
+            tracing::info!(
+                "round={r} partitions={partitions:?} leaders={leader_ports:?} \
+                 leader_partition_sizes={leader_partition_sizes:?} \
+                 leader_isolated={leader_isolated}"
+            );
         }
 
         IntegrationTestConfig {

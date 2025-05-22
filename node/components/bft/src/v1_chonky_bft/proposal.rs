@@ -10,7 +10,8 @@ use crate::metrics;
 pub(crate) enum Error {
     /// Message for a past view or phase.
     #[error(
-        "message for a past view / phase (current view: {current_view:?}, current phase: {current_phase:?})"
+        "message for a past view / phase (current view: {current_view:?}, current phase: \
+         {current_phase:?})"
     )]
     Old {
         /// Current view.
@@ -101,13 +102,7 @@ impl StateMachine {
         }
 
         // Check that it comes from the correct leader.
-        let leader = self
-            .config
-            .genesis()
-            .validators_schedule
-            .as_ref()
-            .unwrap()
-            .view_leader(view);
+        let leader = self.config.validators().view_leader(view);
         if author != &leader {
             return Err(Error::InvalidLeader {
                 correct_leader: leader,
@@ -120,12 +115,12 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         message
-            .verify(self.config.genesis())
+            .verify(self.config.genesis_hash(), self.config.validators())
             .map_err(Error::InvalidMessage)?;
 
         let (implied_block_number, implied_block_hash) = message
             .justification
-            .get_implied_block(self.config.genesis());
+            .get_implied_block(self.config.validators(), self.config.first_block());
 
         // Replica MUSTN'T vote for blocks which have been already pruned for storage.
         // (because it won't be able to persist and broadcast them once finalized).
@@ -180,7 +175,8 @@ impl StateMachine {
                 // up to the previous block.
                 if let Some(prev) = implied_block_number.prev() {
                     tracing::debug!(
-                        "ChonkyBFT replica - Waiting for previous block (number {}) to be stored before verifying proposal.",
+                        "ChonkyBFT replica - Waiting for previous block (number {}) to be stored \
+                         before verifying proposal.",
                         prev.0
                     );
                     self.config
@@ -198,7 +194,7 @@ impl StateMachine {
                 if let Err(err) = self
                     .config
                     .engine_manager
-                    .verify_payload(ctx, implied_block_number, payload)
+                    .verify_payload(ctx, implied_block_number, self.config.epoch, payload)
                     .await
                 {
                     return Err(match err {
@@ -227,7 +223,8 @@ impl StateMachine {
         };
 
         tracing::info!(
-            "ChonkyBFT replica - Received a proposal from {:#?} at view {} for block number {} with payload hash {:#?}.",
+            "ChonkyBFT replica - Received a proposal from {:#?} at view {} for block number {} \
+             with payload hash {:#?}.",
             author,
             view.0,
             implied_block_number.0,

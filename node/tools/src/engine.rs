@@ -120,6 +120,24 @@ impl EngineInterface for RocksDB {
         self.0.persisted.subscribe()
     }
 
+    async fn get_validator_schedule(
+        &self,
+        _ctx: &ctx::Ctx,
+        _number: validator::BlockNumber,
+    ) -> ctx::Result<(validator::Schedule, validator::BlockNumber)> {
+        // For simplicity we just assume that we don't have dynamic validator schedules.
+        unimplemented!()
+    }
+
+    async fn get_pending_validator_schedule(
+        &self,
+        _ctx: &ctx::Ctx,
+        _head: validator::BlockNumber,
+    ) -> ctx::Result<Option<(validator::Schedule, validator::BlockNumber)>> {
+        // For simplicity we just assume that we don't have dynamic validator schedules.
+        unimplemented!()
+    }
+
     async fn get_block(
         &self,
         _ctx: &ctx::Ctx,

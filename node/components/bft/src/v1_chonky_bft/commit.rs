@@ -67,14 +67,7 @@ impl StateMachine {
         let author = &signed_message.key;
 
         // Check that the message signer is in the validator committee.
-        if !self
-            .config
-            .genesis()
-            .validators_schedule
-            .as_ref()
-            .unwrap()
-            .contains(author)
-        {
+        if !self.config.validators().contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone().into(),
             });
@@ -103,7 +96,7 @@ impl StateMachine {
         signed_message.verify().map_err(Error::InvalidSignature)?;
 
         message
-            .verify(self.config.genesis())
+            .verify(self.config.genesis_hash())
             .map_err(Error::InvalidMessage)?;
 
         // ----------- All checks finished. Now we process the message. --------------
@@ -119,19 +112,23 @@ impl StateMachine {
             .or_default()
             .entry(message.clone())
             .or_insert_with(|| {
-                validator::v1::CommitQC::new(message.clone(), self.config.genesis())
+                validator::v1::CommitQC::new(message.clone(), self.config.validators())
             });
 
         // Should always succeed as all checks have been already performed
         commit_qc
-            .add(&signed_message, self.config.genesis())
+            .add(
+                &signed_message,
+                self.config.genesis_hash(),
+                self.config.validators(),
+            )
             .expect("could not add message to CommitQC");
 
         // Calculate the CommitQC signers weight.
         let weight = commit_qc
             .signers
             .weight(&validator::v1::get_committee_from_schedule(
-                self.config.genesis().validators_schedule.as_ref().unwrap(),
+                self.config.validators(),
             ));
 
         // Update view number of last commit message for author
@@ -147,15 +144,7 @@ impl StateMachine {
             .retain(|view_number, _| active_views.contains(view_number));
 
         // Now we check if we have enough weight to continue. If not, we wait for more messages.
-        if weight
-            < self
-                .config
-                .genesis()
-                .validators_schedule
-                .as_ref()
-                .unwrap()
-                .quorum_threshold()
-        {
+        if weight < self.config.validators().quorum_threshold() {
             return Ok(());
         };
 
@@ -169,7 +158,9 @@ impl StateMachine {
             .remove(message)
             .unwrap();
 
-        tracing::info!("ChonkyBFT replica - We have a commit QC with weight {} at view {} for block number {} with hash {:#?}.",
+        tracing::info!(
+            "ChonkyBFT replica - We have a commit QC with weight {} at view {} for block number \
+             {} with hash {:#?}.",
             weight,
             commit_qc.view().number.0,
             commit_qc.message.proposal.number.0,

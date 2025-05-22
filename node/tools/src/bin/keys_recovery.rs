@@ -9,7 +9,10 @@ use zksync_consensus_roles::{node, validator};
 
 /// This tool calculates a node/validator public key from its corresponding secret key and prints it to stdout.
 fn main() {
-    println!("Please enter the node secret key (don't trim the identifiers at the beginning) or leave empty to skip:");
+    println!(
+        "Please enter the node secret key (don't trim the identifiers at the beginning) or leave \
+         empty to skip:"
+    );
 
     let mut input = String::new();
 
@@ -25,7 +28,10 @@ fn main() {
         println!("{}", secret_key.public().encode());
     }
 
-    println!("Please enter the validator secret key (don't trim the identifiers at the beginning) or leave empty to skip:");
+    println!(
+        "Please enter the validator secret key (don't trim the identifiers at the beginning) or \
+         leave empty to skip:"
+    );
 
     let mut input = String::new();
 

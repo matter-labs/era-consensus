@@ -1,13 +1,11 @@
 //! Node configuration.
 use std::{
     collections::{HashMap, HashSet},
-    fs, io,
     net::SocketAddr,
     path::PathBuf,
 };
 
-use anyhow::{anyhow, Context as _};
-use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use anyhow::Context as _;
 use zksync_concurrency::{ctx, net, time};
 use zksync_consensus_crypto::{read_optional_text, read_required_text, Text, TextFmt};
 use zksync_consensus_engine::{
@@ -16,9 +14,7 @@ use zksync_consensus_engine::{
 use zksync_consensus_executor::{self as executor};
 use zksync_consensus_network as network;
 use zksync_consensus_roles::{node, validator};
-use zksync_protobuf::{
-    read_optional, read_optional_repr, read_required, required, ProtoFmt, ProtoRepr,
-};
+use zksync_protobuf::{read_optional, read_required, required, ProtoFmt};
 
 use crate::{engine, proto};
 
@@ -89,58 +85,18 @@ pub struct App {
     pub debug_page: Option<DebugPage>,
 }
 
-impl ProtoRepr for proto::Credentials {
-    type Type = network::debug_page::Credentials;
-
-    fn read(&self) -> anyhow::Result<Self::Type> {
-        Ok(Self::Type {
-            user: required(&self.user).context("user")?.clone(),
-            password: required(&self.password).context("password")?.clone(),
-        })
-    }
-
-    fn build(this: &Self::Type) -> Self {
-        Self {
-            user: Some(this.user.clone()),
-            password: Some(this.password.clone()),
-        }
-    }
-}
-
-impl ProtoFmt for Tls {
-    type Proto = proto::TlsConfig;
-
-    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        Ok(Self {
-            cert_path: read_required_text(&r.cert_path).context("cert_path")?,
-            key_path: read_required_text(&r.key_path).context("key_path")?,
-        })
-    }
-
-    fn build(&self) -> Self::Proto {
-        Self::Proto {
-            cert_path: Some(self.cert_path.to_string_lossy().into()),
-            key_path: Some(self.key_path.to_string_lossy().into()),
-        }
-    }
-}
-
 impl ProtoFmt for DebugPage {
     type Proto = proto::DebugPageConfig;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
             addr: read_required_text(&r.addr).context("addr")?,
-            credentials: read_optional_repr(&r.credentials).context("credentials")?,
-            tls: read_optional(&r.tls).context("tls")?,
         })
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
             addr: Some(self.addr.encode()),
-            credentials: self.credentials.as_ref().map(ProtoRepr::build),
-            tls: self.tls.as_ref().map(|x| x.build()),
         }
     }
 }
@@ -240,10 +196,6 @@ pub struct Tls {
 pub struct DebugPage {
     /// Public Http address to listen incoming http requests.
     pub addr: SocketAddr,
-    /// Debug page credentials.
-    pub credentials: Option<network::debug_page::Credentials>,
-    /// TLS config.
-    pub tls: Option<Tls>,
 }
 
 #[derive(Debug)]
@@ -288,20 +240,6 @@ impl Configs {
                     .map(|debug_page_config| {
                         anyhow::Ok(network::debug_page::Config {
                             addr: debug_page_config.addr,
-                            credentials: debug_page_config.credentials.clone(),
-                            tls: debug_page_config
-                                .tls
-                                .as_ref()
-                                .map(|tls| {
-                                    anyhow::Ok(network::debug_page::TlsConfig {
-                                        cert_chain: load_cert_chain(&tls.cert_path)
-                                            .context("load_cert_chain()")?,
-                                        private_key: load_private_key(&tls.key_path)
-                                            .context("load_private_key()")?,
-                                    })
-                                })
-                                .transpose()
-                                .context("tls")?,
                         })
                     })
                     .transpose()
@@ -311,22 +249,4 @@ impl Configs {
         };
         Ok((e, runner))
     }
-}
-
-/// Load public certificate from file.
-fn load_cert_chain(path: &PathBuf) -> anyhow::Result<Vec<CertificateDer<'static>>> {
-    let file = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
-    let mut reader = io::BufReader::new(file);
-    rustls_pemfile::certs(&mut reader)
-        .collect::<Result<_, _>>()
-        .context("invalid certificate chain")
-}
-
-/// Load private key from file.
-fn load_private_key(path: &PathBuf) -> anyhow::Result<PrivateKeyDer<'static>> {
-    let keyfile = fs::File::open(path).with_context(|| anyhow!("failed to open {:?}", path))?;
-    let mut reader = io::BufReader::new(keyfile);
-    rustls_pemfile::private_key(&mut reader)
-        .context("invalid key")?
-        .context("no key in file")
 }

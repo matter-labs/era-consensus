@@ -5,7 +5,7 @@ use zksync_protobuf::{read_required, required, ProtoFmt};
 use super::{CommitQC, CommitQCVerifyError};
 use crate::{
     proto::validator as proto,
-    validator::{self, BlockNumber, GenesisHash, Payload, PayloadHash},
+    validator::{self, BlockNumber, EpochNumber, GenesisHash, Payload, PayloadHash},
 };
 
 /// A block header.
@@ -64,10 +64,16 @@ impl FinalBlock {
         self.header().number
     }
 
+    /// Epoch of the block.
+    pub fn epoch(&self) -> EpochNumber {
+        self.justification.message.view.epoch
+    }
+
     /// Verifies internal consistency of this block.
     pub fn verify(
         &self,
         genesis: GenesisHash,
+        epoch: EpochNumber,
         validators_schedule: &validator::Schedule,
     ) -> Result<(), BlockValidationError> {
         let payload_hash = self.payload.hash();
@@ -78,7 +84,7 @@ impl FinalBlock {
             });
         }
         self.justification
-            .verify(genesis, validators_schedule)
+            .verify(genesis, epoch, validators_schedule)
             .map_err(BlockValidationError::Justification)
     }
 }
@@ -116,8 +122,8 @@ impl ProtoFmt for FinalBlock {
 pub enum BlockValidationError {
     /// Block payload doesn't match the block header.
     #[error(
-        "block payload doesn't match the block header (hash in header: {header_hash:?}, \
-             payload hash: {payload_hash:?})"
+        "block payload doesn't match the block header (hash in header: {header_hash:?}, payload \
+         hash: {payload_hash:?})"
     )]
     HashMismatch {
         /// Payload hash in block header.

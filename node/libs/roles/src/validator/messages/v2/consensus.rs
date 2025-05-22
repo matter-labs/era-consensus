@@ -1,4 +1,4 @@
-use std::{fmt, hash::Hash};
+use std::hash::Hash;
 
 use anyhow::Context as _;
 use bit_vec::BitVec;
@@ -8,7 +8,7 @@ use zksync_protobuf::{read_required, required, ProtoFmt};
 use super::{LeaderProposal, ReplicaCommit, ReplicaNewView, ReplicaTimeout};
 use crate::{
     proto::validator as proto,
-    validator::{GenesisHash, Msg, Schedule, ViewNumber},
+    validator::{EpochNumber, GenesisHash, Msg, Schedule, ViewNumber},
 };
 
 /// Consensus messages.
@@ -130,16 +130,31 @@ impl ProtoFmt for ChonkyMsg {
 pub struct View {
     /// Genesis of the chain this view belongs to.
     pub genesis: GenesisHash,
-    /// The number of the current view.
-    pub number: ViewNumber,
     /// The number of the current epoch.
     pub epoch: EpochNumber,
+    /// The number of the current view.
+    pub number: ViewNumber,
 }
 
 impl View {
     /// Verifies the view against the genesis.
-    pub fn verify(&self, genesis: GenesisHash) -> anyhow::Result<()> {
-        anyhow::ensure!(self.genesis == genesis, "genesis mismatch");
+    pub fn verify(
+        &self,
+        genesis_hash: GenesisHash,
+        epoch_number: EpochNumber,
+    ) -> anyhow::Result<()> {
+        anyhow::ensure!(
+            self.genesis == genesis_hash,
+            "Genesis mismatch. expected: {:?}, got: {:?}",
+            genesis_hash,
+            self.genesis
+        );
+        anyhow::ensure!(
+            self.epoch == epoch_number,
+            "Epoch number mismatch. expected: {}, got: {}",
+            epoch_number,
+            self.epoch
+        );
         Ok(())
     }
 
@@ -197,29 +212,6 @@ impl ProtoFmt for View {
             number: Some(self.number.0),
             epoch: Some(self.epoch.0),
         }
-    }
-}
-
-/// A struct that represents an epoch number.
-/// WARNING: any change to this struct may invalidate preexisting signatures. See `TimeoutQC` docs.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EpochNumber(pub u64);
-
-impl EpochNumber {
-    /// Get the next epoch number.
-    pub fn next(self) -> Self {
-        Self(self.0 + 1)
-    }
-
-    /// Get the previous epoch number.
-    pub fn prev(self) -> Option<Self> {
-        self.0.checked_sub(1).map(Self)
-    }
-}
-
-impl fmt::Display for EpochNumber {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        fmt::Display::fmt(&self.0, formatter)
     }
 }
 

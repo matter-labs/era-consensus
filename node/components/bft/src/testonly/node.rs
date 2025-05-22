@@ -4,6 +4,7 @@ use anyhow::Context as _;
 use zksync_concurrency::{ctx, ctx::channel, scope, sync, time};
 use zksync_consensus_engine::EngineManager;
 use zksync_consensus_network as network;
+use zksync_consensus_roles::validator;
 
 use crate::{FromNetworkMessage, ToNetworkMessage};
 
@@ -44,12 +45,14 @@ impl Node {
             // Run the consensus component
             s.spawn(async {
                 let validator_key = self.net.validator_key.clone().unwrap();
-                crate::Config {
-                    secret_key: validator_key.clone(),
-                    engine_manager: self.engine_manager.clone(),
-                    max_payload_size: MAX_PAYLOAD_SIZE,
-                    view_timeout: time::Duration::milliseconds(2000),
-                }
+                crate::Config::new(
+                    validator_key.clone(),
+                    MAX_PAYLOAD_SIZE,
+                    time::Duration::milliseconds(2000),
+                    self.engine_manager.clone(),
+                    validator::EpochNumber(0),
+                )
+                .unwrap()
                 .run(ctx, net_send, consensus_receiver)
                 .await
                 .context("consensus.run()")

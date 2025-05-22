@@ -6,28 +6,14 @@ use std::{
 };
 
 use anyhow::Context as _;
-use base64::Engine;
 use build_html::{Html, HtmlContainer, HtmlPage, Table, TableCell, TableCellType, TableRow};
 use http_body_util::Full;
 use human_repr::{HumanCount, HumanDuration, HumanThroughput};
-use hyper::{
-    body::Bytes,
-    header::{self, HeaderValue},
-    server::conn::http1,
-    service::service_fn,
-    HeaderMap, Request, Response, StatusCode,
-};
+use hyper::{body::Bytes, server::conn::http1, service::service_fn, Request, Response};
 use hyper_util::rt::tokio::TokioIo;
 use tls_listener::TlsListener;
 use tokio::net::TcpListener;
-use tokio_rustls::{
-    rustls::{
-        pki_types::{CertificateDer, PrivateKeyDer},
-        ServerConfig,
-    },
-    server::TlsStream,
-    TlsAcceptor,
-};
+use tokio_rustls::{server::TlsStream, TlsAcceptor};
 use zksync_concurrency::{ctx, net, scope};
 use zksync_consensus_crypto::TextFmt as _;
 use zksync_consensus_roles::{node, validator};
@@ -36,55 +22,11 @@ use crate::{gossip::Connection, MeteredStreamStats, Network};
 
 const STYLE: &str = include_str!("style.css");
 
-/// TLS certificate chain with a private key.
-#[derive(Debug, PartialEq)]
-pub struct TlsConfig {
-    /// TLS certificate chain.
-    pub cert_chain: Vec<CertificateDer<'static>>,
-    /// Private key for the leaf cert.
-    pub private_key: PrivateKeyDer<'static>,
-}
-
-/// Credentials.
-#[derive(PartialEq, Clone)]
-pub struct Credentials {
-    /// User for debug page
-    pub user: String,
-    /// Password for debug page
-    /// TODO: it should be treated as a secret: zeroize, etc.
-    pub password: String,
-}
-
-impl Credentials {
-    fn parse(value: String) -> anyhow::Result<Self> {
-        let [user, password] = value
-            .split(':')
-            .collect::<Vec<_>>()
-            .try_into()
-            .ok()
-            .context("bad format")?;
-        Ok(Self {
-            user: user.to_string(),
-            password: password.to_string(),
-        })
-    }
-}
-
-impl std::fmt::Debug for Credentials {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Credentials").finish_non_exhaustive()
-    }
-}
-
 /// Http debug page configuration.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct Config {
     /// Public Http address to listen incoming http requests.
     pub addr: SocketAddr,
-    /// Debug page credentials.
-    pub credentials: Option<Credentials>,
-    /// TLS certificate to terminate the connections with.
-    pub tls: Option<TlsConfig>,
 }
 
 /// Http Server for debug page.
@@ -126,16 +68,7 @@ impl Server {
         let listener = TcpListener::bind(self.config.addr)
             .await
             .context("TcpListener::bind()")?;
-        if let Some(tls) = &self.config.tls {
-            let cfg = ServerConfig::builder()
-                .with_no_client_auth()
-                .with_single_cert(tls.cert_chain.clone(), tls.private_key.clone_key())
-                .context("with_single_cert()")?;
-            self.run_with_listener(ctx, TlsListener::new(Arc::new(cfg).into(), listener))
-                .await
-        } else {
-            self.run_with_listener(ctx, listener).await
-        }
+        self.run_with_listener(ctx, listener).await
     }
 
     async fn run_with_listener<L: Listener>(
@@ -181,41 +114,8 @@ impl Server {
         request: Request<hyper::body::Incoming>,
     ) -> anyhow::Result<Response<Full<Bytes>>> {
         let mut response = Response::new(Full::default());
-        if let Err(err) = self.authenticate(request.headers()) {
-            *response.status_mut() = StatusCode::UNAUTHORIZED;
-            *response.body_mut() = Full::new(Bytes::from(err.to_string()));
-            let header_value = HeaderValue::from_str(r#"Basic realm="debug""#).unwrap();
-            response
-                .headers_mut()
-                .insert(header::WWW_AUTHENTICATE, header_value);
-        }
         *response.body_mut() = self.serve(request);
         Ok(response)
-    }
-
-    fn authenticate(&self, headers: &HeaderMap) -> anyhow::Result<()> {
-        let Some(want) = self.config.credentials.as_ref() else {
-            return Ok(());
-        };
-
-        // The header value, if present, must be a valid UTF8 string
-        let header_value = headers
-            .get("Authorization")
-            .context("The 'Authorization' header was missing")?
-            .to_str()
-            .context("The 'Authorization' header was not a valid UTF8 string.")?;
-        let base64encoded_segment = header_value
-            .strip_prefix("Basic ")
-            .context("Unsupported authorization scheme.")?;
-        let decoded_bytes = base64::engine::general_purpose::STANDARD
-            .decode(base64encoded_segment)
-            .context("Failed to base64-decode 'Basic' credentials.")?;
-        let got = Credentials::parse(
-            String::from_utf8(decoded_bytes)
-                .context("The decoded credential string is not valid UTF8.")?,
-        )?;
-        anyhow::ensure!(want == &got, "Invalid credentials.");
-        Ok(())
     }
 
     fn serve(&self, _request: Request<hyper::body::Incoming>) -> Full<Bytes> {

@@ -97,14 +97,18 @@ async fn test_one_connection_per_validator() {
     let setup = validator::testonly::Setup::new(rng, 3);
     let nodes = testonly::new_configs(rng, &setup, 1);
 
-    scope::run!(ctx, |ctx,s| async {
+    scope::run!(ctx, |ctx, s| async {
         let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
-        let nodes : Vec<_> = nodes.into_iter().enumerate().map(|(i,node)| {
-            let (node,runner) = testonly::Instance::new(node, engine.manager.clone());
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
-            node
-        }).collect();
+        let nodes: Vec<_> = nodes
+            .into_iter()
+            .enumerate()
+            .map(|(i, node)| {
+                let (node, runner) = testonly::Instance::new(node, engine.manager.clone());
+                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+                node
+            })
+            .collect();
 
         tracing::info!("waiting for all gossip to be established");
         for node in &nodes {
@@ -116,7 +120,10 @@ async fn test_one_connection_per_validator() {
             node.wait_for_consensus_connections().await;
         }
 
-        tracing::info!("Impersonate node 1, and try to establish additional connection to node 0. It should close automatically after the handshake.");
+        tracing::info!(
+            "Impersonate node 1, and try to establish additional connection to node 0. It should \
+             close automatically after the handshake."
+        );
         let mut stream = preface::connect(
             ctx,
             *nodes[0].cfg().server_addr,
@@ -127,7 +134,7 @@ async fn test_one_connection_per_validator() {
         handshake::outbound(
             ctx,
             &nodes[1].cfg().validator_key.clone().unwrap(),
-            setup.genesis.hash(),
+            setup.genesis_hash(),
             &mut stream,
             &nodes[0].cfg().validator_key.as_ref().unwrap().public(),
         )
@@ -136,8 +143,8 @@ async fn test_one_connection_per_validator() {
         // The multiplexer runner should exit gracefully.
         let _ = rpc::Service::new().run(ctx, stream).await;
         tracing::info!(
-            "Exiting the main task. Context will get canceled, all the nodes are expected \
-             to terminate gracefully"
+            "Exiting the main task. Context will get canceled, all the nodes are expected to \
+             terminate gracefully"
         );
         Ok(())
     })
@@ -167,7 +174,7 @@ async fn test_genesis_mismatch() {
             .gossip
             .validator_addrs
             .update(
-                setup.genesis.validators_schedule.as_ref().unwrap(),
+                setup.validators_schedule(),
                 &[Arc::new(setup.validator_keys[1].sign_msg(
                     validator::NetAddress {
                         addr: *cfgs[1].server_addr,

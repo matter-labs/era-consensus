@@ -170,7 +170,7 @@ impl IntegrationTestConfig {
 
             // Run the nodes until all honest nodes store enough finalized blocks.
             assert!(self.blocks_to_finalize > 0);
-            let first = setup.genesis.first_block;
+            let first = setup.first_block();
             let last = first + (self.blocks_to_finalize as u64 - 1);
             for store in &honest {
                 store.wait_until_queued(ctx, last).await?;
@@ -425,11 +425,12 @@ async fn twins_receive_loop(
             unreachable!()
         };
 
-        let can_send = |to| {
-            match router.can_send(chonky_msg, port, to) {
-                Some(can_send) => Ok(can_send),
-                None => anyhow::bail!("ran out of port schedule; we probably wouldn't finalize blocks even if we continued")
-            }
+        let can_send = |to| match router.can_send(chonky_msg, port, to) {
+            Some(can_send) => Ok(can_send),
+            None => anyhow::bail!(
+                "ran out of port schedule; we probably wouldn't finalize blocks even if we \
+                 continued"
+            ),
         };
 
         let network_msg = || FromNetworkMessage {
@@ -492,13 +493,7 @@ async fn twins_gossip_loop(
                         return Ok(());
                     };
                     tracing::info!("   ~~> gossip queue from={from} to={to} number={number}");
-                    let _ = remote_store
-                        .queue_block(
-                            ctx,
-                            block,
-                            remote_store.genesis().validators_schedule.as_ref().unwrap(),
-                        )
-                        .await;
+                    let _ = remote_store.queue_block(ctx, block).await;
                     tracing::info!("   ~~V gossip stored from={from} to={to} number={number}");
                     Ok(())
                 });

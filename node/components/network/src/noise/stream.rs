@@ -297,7 +297,7 @@ where
                 this.write_buf.payload.as_slice(),
                 &mut this.write_buf.frame.as_mut_capacity()[LENGTH_FIELD_LEN..],
             )
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .map_err(io::Error::other)?;
         this.write_buf.frame.set_prefix((n as u16).to_le_bytes());
         this.write_buf.frame.extend(LENGTH_FIELD_LEN + n);
         this.write_buf.payload.take(this.write_buf.payload.len());
