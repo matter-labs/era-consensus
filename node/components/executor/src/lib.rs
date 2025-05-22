@@ -214,6 +214,7 @@ impl Executor {
         ctx: &ctx::Ctx,
         epoch_number: validator::EpochNumber,
     ) -> anyhow::Result<validator::Schedule> {
+        let loop_time = time::Duration::seconds(5);
         let mut counter = 0;
 
         loop {
@@ -222,11 +223,11 @@ impl Executor {
             }
             // Epochs should be at least minutes apart so that validators have time to
             // establish network connections. So we don't need to check for new epochs too often.
-            ctx.sleep(time::Duration::seconds(5)).await?;
+            ctx.sleep(loop_time).await?;
             counter += 1;
 
             // 10 minutes
-            if counter > 10 * 60 / 5 {
+            if counter > 10 * 60 / loop_time.whole_seconds() as usize {
                 tracing::debug!(
                     "Timed out waiting for validator schedule for current epoch. Might be a bug, \
                      might not have been published yet."
