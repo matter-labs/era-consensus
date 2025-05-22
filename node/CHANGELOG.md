@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.0](https://github.com/matter-labs/era-consensus/compare/v0.10.0...v0.11.0) (2025-05-22)
+
+
+### Features
+
+* Dynamic validator sets ([#252](https://github.com/matter-labs/era-consensus/issues/252)) ([ab66412](https://github.com/matter-labs/era-consensus/commit/ab66412360b45292c3fa9821dcd3c2523d696a57))
+* Improve leader selection ([#251](https://github.com/matter-labs/era-consensus/issues/251)) ([e64f65a](https://github.com/matter-labs/era-consensus/commit/e64f65a53184efda52fcb181b703e2a9878411bf))
+
 ## [0.10.0](https://github.com/matter-labs/era-consensus/compare/v0.9.0...v0.10.0) (2025-04-15)
 
 

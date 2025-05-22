@@ -22,21 +22,21 @@ homepage   = "https://matter-labs.io/"
 keywords   = ["blockchain", "zksync"]
 license    = "MIT OR Apache-2.0"
 repository = "https://github.com/matter-labs/era-consensus"
-version    = "0.10.0"                                        # x-release-please-version
+version    = "0.11.0"                                        # x-release-please-version
 
 [workspace.dependencies]
 # Crates from this repo.
-zksync_concurrency        = { version = "=0.10.0", path = "libs/concurrency" }
-zksync_consensus_bft      = { version = "=0.10.0", path = "components/bft" }
-zksync_consensus_crypto   = { version = "=0.10.0", path = "libs/crypto" }
-zksync_consensus_engine   = { version = "=0.10.0", path = "libs/engine" }
-zksync_consensus_executor = { version = "=0.10.0", path = "components/executor" }
-zksync_consensus_network  = { version = "=0.10.0", path = "components/network" }
-zksync_consensus_roles    = { version = "=0.10.0", path = "libs/roles" }
-zksync_consensus_tools    = { version = "=0.10.0", path = "tools" }
-zksync_consensus_utils    = { version = "=0.10.0", path = "libs/utils" }
-zksync_protobuf           = { version = "=0.10.0", path = "libs/protobuf" }
-zksync_protobuf_build     = { version = "=0.10.0", path = "libs/protobuf_build" }
+zksync_concurrency        = { version = "=0.11.0", path = "libs/concurrency" }
+zksync_consensus_bft      = { version = "=0.11.0", path = "components/bft" }
+zksync_consensus_crypto   = { version = "=0.11.0", path = "libs/crypto" }
+zksync_consensus_engine   = { version = "=0.11.0", path = "libs/engine" }
+zksync_consensus_executor = { version = "=0.11.0", path = "components/executor" }
+zksync_consensus_network  = { version = "=0.11.0", path = "components/network" }
+zksync_consensus_roles    = { version = "=0.11.0", path = "libs/roles" }
+zksync_consensus_tools    = { version = "=0.11.0", path = "tools" }
+zksync_consensus_utils    = { version = "=0.11.0", path = "libs/utils" }
+zksync_protobuf           = { version = "=0.11.0", path = "libs/protobuf" }
+zksync_protobuf_build     = { version = "=0.11.0", path = "libs/protobuf_build" }
 
 # Crates from Matter Labs.
 vise          = "0.3.0"
