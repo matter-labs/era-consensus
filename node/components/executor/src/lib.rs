@@ -228,8 +228,8 @@ impl Executor {
             // 10 minutes
             if counter > 10 * 60 / 5 {
                 tracing::debug!(
-                    "Timed out waiting for validator schedule for current epoch. \
-                     Might be a bug, might not have been published yet."
+                    "Timed out waiting for validator schedule for current epoch. Might be a bug, \
+                     might not have been published yet."
                 );
                 counter = 0;
             }
