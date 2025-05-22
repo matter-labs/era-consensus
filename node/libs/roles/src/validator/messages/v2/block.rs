@@ -64,6 +64,11 @@ impl FinalBlock {
         self.header().number
     }
 
+    /// Epoch of the block.
+    pub fn epoch(&self) -> EpochNumber {
+        self.justification.message.view.epoch
+    }
+
     /// Verifies internal consistency of this block.
     pub fn verify(
         &self,

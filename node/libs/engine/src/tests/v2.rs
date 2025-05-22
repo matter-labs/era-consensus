@@ -1,5 +1,5 @@
 use zksync_concurrency::{ctx, scope, sync, testonly::abort_on_panic};
-use zksync_consensus_roles::validator::{self, testonly::Setup};
+use zksync_consensus_roles::validator::testonly::Setup;
 
 use crate::{
     block_store::BlockStore,
@@ -49,11 +49,7 @@ async fn test_get_not_cached_block_v2() {
         for block in &setup.blocks {
             engine
                 .manager
-                .queue_block(
-                    ctx,
-                    block.clone(),
-                    Some((validator::EpochNumber(0), setup.validators_schedule())),
-                )
+                .queue_block(ctx, block.clone())
                 .await
                 .unwrap();
         }
@@ -103,11 +99,7 @@ async fn test_state_updates_v2() {
         for block in &setup.blocks {
             engine
                 .manager
-                .queue_block(
-                    ctx,
-                    block.clone(),
-                    Some((validator::EpochNumber(0), setup.validators_schedule())),
-                )
+                .queue_block(ctx, block.clone())
                 .await
                 .unwrap();
             if block.number() < first_block.number() {

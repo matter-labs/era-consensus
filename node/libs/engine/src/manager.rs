@@ -171,16 +171,7 @@ impl EngineManager {
     /// `queue_block()` adds a block to the queue as soon as all intermediate
     /// blocks are queued_state as well. Queue is unbounded, so it is caller's
     /// responsibility to manage the queue size.
-    ///
-    /// For pre-genesis blocks, we don't need to provide an epoch number or
-    /// validators schedule, so we should pass `None` to this function. For all
-    /// other blocks, an epoch number and validators schedule are required.
-    pub async fn queue_block(
-        &self,
-        ctx: &ctx::Ctx,
-        block: Block,
-        post_genesis: Option<(validator::EpochNumber, &validator::Schedule)>,
-    ) -> ctx::Result<()> {
+    pub async fn queue_block(&self, ctx: &ctx::Ctx, block: Block) -> ctx::Result<()> {
         // Verify the block.
         match &block {
             Block::PreGenesis(b) => {
@@ -200,23 +191,27 @@ impl EngineManager {
                 t.observe();
             }
             Block::FinalV1(b) => {
-                if let Some((_, validators_schedule)) = post_genesis {
-                    b.verify(self.genesis.hash(), validators_schedule)
+                // v1 always has a static schedule, so epoch is always 0.
+                if let Some(schedule_with_lifetime) =
+                    self.validator_schedule(validator::EpochNumber(0))
+                {
+                    b.verify(self.genesis.hash(), &schedule_with_lifetime.schedule)
                         .context("block_v1.verify()")?;
                 } else {
                     return Err(anyhow::format_err!(
-                        "validators schedule is required for final blocks"
+                        "cannot verify block v1: epoch schedule is not available"
                     )
                     .into());
                 }
             }
             Block::FinalV2(b) => {
-                if let Some((epoch, validators_schedule)) = post_genesis {
-                    b.verify(self.genesis.hash(), epoch, validators_schedule)
+                let epoch = b.epoch();
+                if let Some(schedule_with_lifetime) = self.validator_schedule(epoch) {
+                    b.verify(self.genesis.hash(), epoch, &schedule_with_lifetime.schedule)
                         .context("block_v2.verify()")?;
                 } else {
                     return Err(anyhow::format_err!(
-                        "epoch number and validators schedule are required for final blocks"
+                        "cannot verify block v2: epoch schedule is not available"
                     )
                     .into());
                 }

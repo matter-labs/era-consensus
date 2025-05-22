@@ -30,11 +30,7 @@ impl StateMachine {
         );
         self.config
             .engine_manager
-            .queue_block(
-                ctx,
-                block.clone().into(),
-                Some((self.config.epoch, self.config.validators())), // The epoch number is not used for v1 blocks.
-            )
+            .queue_block(ctx, block.clone().into())
             .await?;
 
         // For availability, replica should not proceed until it stores the block persistently.

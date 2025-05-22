@@ -51,11 +51,7 @@ async fn test_simple() {
         tracing::info!("Insert a block.");
         engine
             .manager
-            .queue_block(
-                ctx,
-                setup.blocks[0].clone(),
-                Some((validator::EpochNumber(0), setup.validators_schedule())),
-            )
+            .queue_block(ctx, setup.blocks[0].clone())
             .await
             .unwrap();
         loop {

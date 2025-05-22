@@ -185,17 +185,14 @@ impl Network {
                                 .await?;
                             let block = resp.0.context("empty response")?;
                             anyhow::ensure!(block.number() == req.0, "received wrong block");
+
                             // Storing the block will fail in case block is invalid.
-                            let schedule = self.validator_schedule()?;
-                            let post_genesis = match (self.epoch_number, schedule.as_ref()) {
-                                (Some(e), Some(s)) => Some((e, s)),
-                                _ => None,
-                            };
                             self.engine_manager
-                                .queue_block(ctx, block, post_genesis)
+                                .queue_block(ctx, block)
                                 .await
                                 .context("queue_block()")?;
                             tracing::info!("fetched block {}", req.0);
+
                             // Send a response that fetching was successful.
                             // Ignore disconnection error.
                             let _ = send_resp.send(());

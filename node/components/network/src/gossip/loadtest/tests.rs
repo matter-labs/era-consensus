@@ -27,11 +27,7 @@ async fn test_loadtest() {
         for b in &setup.blocks {
             engine
                 .manager
-                .queue_block(
-                    ctx,
-                    b.clone(),
-                    Some((validator::EpochNumber(0), setup.validators_schedule())),
-                )
+                .queue_block(ctx, b.clone())
                 .await
                 .context("queue_block()")?;
         }
