@@ -27,7 +27,8 @@ impl Distribution<BlockNumber> for Standard {
 
 impl Distribution<ProtocolVersion> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ProtocolVersion {
-        ProtocolVersion(rng.gen())
+        let range = ProtocolVersion::supported_range();
+        ProtocolVersion(rng.gen_range(range))
     }
 }
 
