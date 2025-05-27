@@ -1,4 +1,4 @@
-use std::{fmt, hash::Hash};
+use std::{fmt, hash::Hash, ops::RangeInclusive};
 
 use anyhow::Context as _;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
@@ -273,6 +273,11 @@ impl ProtocolVersion {
     /// Returns the integer corresponding to this version.
     pub fn as_u32(self) -> u32 {
         self.0
+    }
+
+    /// Returns the range of supported protocol versions.
+    pub fn supported_range() -> RangeInclusive<u32> {
+        1..=2
     }
 
     /// Checks protocol version compatibility. Specifically, it checks which protocol
