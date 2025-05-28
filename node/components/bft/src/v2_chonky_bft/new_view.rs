@@ -61,7 +61,7 @@ impl StateMachine {
         // leader.
         if message.view().number < self.view_number
             || (message.view().number == self.view_number
-                && author != &self.config.validators().view_leader(self.view_number))
+                && author != &self.config.validators.view_leader(self.view_number))
         {
             return Err(Error::Old {
                 current_view: self.view_number,
@@ -69,7 +69,7 @@ impl StateMachine {
         }
 
         // Check that the message signer is in the validator committee.
-        if !self.config.validators().contains(author) {
+        if !self.config.validators.contains(author) {
             return Err(Error::NonValidatorSigner {
                 signer: author.clone().into(),
             });
@@ -84,7 +84,7 @@ impl StateMachine {
             .verify(
                 self.config.genesis_hash(),
                 self.config.epoch,
-                self.config.validators(),
+                &self.config.validators,
             )
             .map_err(Error::InvalidMessage)?;
 

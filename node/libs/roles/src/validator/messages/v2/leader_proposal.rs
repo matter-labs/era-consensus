@@ -112,7 +112,7 @@ impl ProposalJustification {
     pub fn get_implied_block(
         &self,
         validators_schedule: &validator::Schedule,
-        genesis_first_block: BlockNumber,
+        fork_first_block: BlockNumber,
     ) -> (BlockNumber, Option<PayloadHash>) {
         match self {
             ProposalJustification::Commit(qc) => {
@@ -152,7 +152,7 @@ impl ProposalJustification {
                     // If there is no high QC, then we must be at the start of the chain.
                     let block_number = match high_qc {
                         Some(qc) => qc.header().number.next(),
-                        None => genesis_first_block,
+                        None => fork_first_block,
                     };
 
                     (block_number, None)

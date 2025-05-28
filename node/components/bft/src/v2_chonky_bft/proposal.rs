@@ -102,7 +102,7 @@ impl StateMachine {
         }
 
         // Check that it comes from the correct leader.
-        let leader = self.config.validators().view_leader(view);
+        let leader = self.config.validators.view_leader(view);
         if author != &leader {
             return Err(Error::InvalidLeader {
                 correct_leader: leader,
@@ -118,13 +118,13 @@ impl StateMachine {
             .verify(
                 self.config.genesis_hash(),
                 self.config.epoch,
-                self.config.validators(),
+                &self.config.validators,
             )
             .map_err(Error::InvalidMessage)?;
 
         let (implied_block_number, implied_block_hash) = message
             .justification
-            .get_implied_block(self.config.validators(), self.config.first_block());
+            .get_implied_block(&self.config.validators, self.config.first_block);
 
         // Replica MUSTN'T vote for blocks which have been already pruned for storage.
         // (because it won't be able to persist and broadcast them once finalized).

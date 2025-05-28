@@ -128,11 +128,11 @@ impl UnitTestHarness {
     }
 
     pub(crate) fn validators(&self) -> &validator::Schedule {
-        self.replica.config.validators()
+        &self.replica.config.validators
     }
 
     pub(crate) fn first_block(&self) -> validator::BlockNumber {
-        self.replica.config.first_block()
+        self.replica.config.first_block
     }
 
     pub(crate) fn view_leader(&self, view: validator::ViewNumber) -> validator::PublicKey {
