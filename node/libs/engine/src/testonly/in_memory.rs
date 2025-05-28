@@ -192,7 +192,7 @@ impl EngineInterface for Engine {
             return Ok((schedule, self.0.genesis.first_block));
         } else {
             // If we have a dynamic schedule, we need to calculate the correct schedule for the given block number.
-            let epoch = number.0 / self.0.epoch_length;
+            let epoch = (number.0 - self.0.genesis.first_block.0) / self.0.epoch_length;
             let schedule = self.0.schedules[(epoch % 2) as usize].clone();
             let start =
                 validator::BlockNumber(self.0.genesis.first_block.0 + self.0.epoch_length * epoch);
@@ -210,7 +210,7 @@ impl EngineInterface for Engine {
             return Ok(None);
         } else {
             // If we have a dynamic schedule, we need to calculate the correct schedule for the given block number.
-            let epoch = number.0 / self.0.epoch_length + 1;
+            let epoch = (number.0 - self.0.genesis.first_block.0) / self.0.epoch_length + 1;
             let schedule = self.0.schedules[(epoch % 2) as usize].clone();
             let start =
                 validator::BlockNumber(self.0.genesis.first_block.0 + self.0.epoch_length * epoch);
