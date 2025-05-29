@@ -41,7 +41,7 @@ impl Config {
             self.protocol_version()
         );
 
-        if let Some(prev) = self.first_block().prev() {
+        if let Some(prev) = self.first_block.prev() {
             tracing::info!("Waiting for the pre-fork blocks to be persisted.");
             if let Err(ctx::Canceled) = self.engine_manager.wait_until_persisted(ctx, prev).await {
                 return Ok(());
@@ -107,7 +107,6 @@ impl Config {
                     .run_v2(ctx, outbound_channel, inbound_channel)
                     .await
                     .wrap("run_v2()"),
-
                 _ => Err(ctx::Error::Internal(anyhow::anyhow!(
                     "Unsupported protocol version: {:?}",
                     self.protocol_version()

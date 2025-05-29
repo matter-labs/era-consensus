@@ -20,9 +20,11 @@ pub struct Config {
     pub(crate) view_timeout: time::Duration,
     /// The epoch number for this BFT instance.
     pub(crate) epoch: validator::EpochNumber,
+    /// The first block for this epoch. If we have a static schedule, this is the genesis block.
+    pub(crate) first_block: validator::BlockNumber,
     /// The validator schedule for this epoch. We cache it here to avoid
     /// recomputing it on every call.
-    validators: validator::Schedule,
+    pub(crate) validators: validator::Schedule,
 }
 
 impl Config {
@@ -34,14 +36,14 @@ impl Config {
         engine_manager: Arc<EngineManager>,
         epoch_number: validator::EpochNumber,
     ) -> anyhow::Result<Self> {
-        let validators = engine_manager
-            .validator_schedule(epoch_number)
-            .context(format!(
-                "BFT config can't be created for epoch {} because there's no corresponding \
-                 validator schedule.",
-                epoch_number,
-            ))?
-            .schedule;
+        let schedule_with_lifetime =
+            engine_manager
+                .validator_schedule(epoch_number)
+                .context(format!(
+                    "BFT config can't be created for epoch {} because there's no corresponding \
+                     validator schedule.",
+                    epoch_number,
+                ))?;
 
         Ok(Self {
             engine_manager,
@@ -49,7 +51,8 @@ impl Config {
             max_payload_size,
             view_timeout,
             epoch: epoch_number,
-            validators,
+            validators: schedule_with_lifetime.schedule,
+            first_block: schedule_with_lifetime.activation_block,
         })
     }
 
@@ -61,15 +64,5 @@ impl Config {
     /// Protocol version of the genesis.
     pub(crate) fn protocol_version(&self) -> validator::ProtocolVersion {
         self.engine_manager.protocol_version()
-    }
-
-    /// Genesis first block.
-    pub(crate) fn first_block(&self) -> validator::BlockNumber {
-        self.engine_manager.first_block()
-    }
-
-    /// Validator schedule for this epoch.
-    pub(crate) fn validators(&self) -> &validator::Schedule {
-        &self.validators
     }
 }

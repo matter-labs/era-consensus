@@ -84,12 +84,35 @@ impl StateMachine {
         inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
         proposer_sender: sync::watch::Sender<Option<validator::v2::ProposalJustification>>,
     ) -> ctx::Result<Self> {
-        let backup = config
-            .engine_manager
-            .get_state(ctx)
-            .await?
-            .v2
-            .unwrap_or_default();
+        let backup_opt = config.engine_manager.get_state(ctx).await?.v2;
+
+        let backup = match backup_opt {
+            Some(backup) => {
+                if backup.epoch == config.epoch {
+                    // If the backup epoch matches the current epoch, we return the existing backup state.
+                    tracing::debug!(
+                        "ChonkyBFT replica - Starting from backup state for epoch {}.",
+                        backup.epoch
+                    );
+                    backup
+                } else {
+                    // If the backup epoch does not match the current epoch, we return a default state.
+                    // This will cause the replica to start from the beginning of the current epoch.
+                    tracing::debug!(
+                        "ChonkyBFT replica - Backup epoch {} does not match current epoch {}",
+                        backup.epoch,
+                        config.epoch
+                    );
+                    validator::v2::ChonkyV2State::default()
+                }
+            }
+            None => {
+                // If there is no backup state, we return a default state.
+                // This will cause the replica to start from the beginning of the current epoch.
+                tracing::debug!("ChonkyBFT replica - No backup state found.");
+                validator::v2::ChonkyV2State::default()
+            }
+        };
 
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
         for proposal in backup.proposals {
@@ -178,9 +201,19 @@ impl StateMachine {
                             match err {
                                 // If the error is internal, we stop here.
                                 proposal::Error::Internal(err) => {
-                                    tracing::error!(
-                                        "ChonkyBFT replica - on_proposal: internal error - {err:#}"
-                                    );
+                                    match &err {
+                                        ctx::Error::Canceled(_) => {
+                                            tracing::debug!(
+                                                "ChonkyBFT replica - on_proposal: canceled"
+                                            );
+                                        }
+                                        ctx::Error::Internal(error) => {
+                                            tracing::error!(
+                                                "ChonkyBFT replica - on_proposal: internal error: \
+                                                 {error:#}"
+                                            );
+                                        }
+                                    }
                                     return Err(err);
                                 }
                                 // If the error is due to an old message, we log it at a lower level.
@@ -207,9 +240,19 @@ impl StateMachine {
                             match err {
                                 // If the error is internal, we stop here.
                                 commit::Error::Internal(err) => {
-                                    tracing::error!(
-                                        "ChonkyBFT replica - on_commit: internal error: {err:#}"
-                                    );
+                                    match &err {
+                                        ctx::Error::Canceled(_) => {
+                                            tracing::debug!(
+                                                "ChonkyBFT replica - on_commit: canceled"
+                                            );
+                                        }
+                                        ctx::Error::Internal(error) => {
+                                            tracing::error!(
+                                                "ChonkyBFT replica - on_commit: internal error: \
+                                                 {error:#}"
+                                            );
+                                        }
+                                    }
                                     return Err(err);
                                 }
                                 // If the error is due to an old message, we log it at a lower level.
@@ -236,9 +279,19 @@ impl StateMachine {
                             match err {
                                 // If the error is internal, we stop here.
                                 timeout::Error::Internal(err) => {
-                                    tracing::error!(
-                                        "ChonkyBFT replica - on_timeout: internal error: {err:#}"
-                                    );
+                                    match &err {
+                                        ctx::Error::Canceled(_) => {
+                                            tracing::debug!(
+                                                "ChonkyBFT replica - on_timeout: canceled"
+                                            );
+                                        }
+                                        ctx::Error::Internal(error) => {
+                                            tracing::error!(
+                                                "ChonkyBFT replica - on_timeout: internal error: \
+                                                 {error:#}"
+                                            );
+                                        }
+                                    }
                                     return Err(err);
                                 }
                                 // If the error is due to an old message, we log it at a lower level.
@@ -265,9 +318,19 @@ impl StateMachine {
                             match err {
                                 // If the error is internal, we stop here.
                                 new_view::Error::Internal(err) => {
-                                    tracing::error!(
-                                        "ChonkyBFT replica - on_new_view: internal error: {err:#}"
-                                    );
+                                    match &err {
+                                        ctx::Error::Canceled(_) => {
+                                            tracing::debug!(
+                                                "ChonkyBFT replica - on_new_view: canceled"
+                                            );
+                                        }
+                                        ctx::Error::Internal(error) => {
+                                            tracing::error!(
+                                                "ChonkyBFT replica - on_new_view: internal error: \
+                                                 {error:#}"
+                                            );
+                                        }
+                                    }
                                     return Err(err);
                                 }
                                 // If the error is due to an old message, we log it at a lower level.

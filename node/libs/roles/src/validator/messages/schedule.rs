@@ -251,6 +251,15 @@ impl LeaderSelection {
     }
 }
 
+impl Default for LeaderSelection {
+    fn default() -> Self {
+        Self {
+            frequency: 1,
+            mode: LeaderSelectionMode::RoundRobin,
+        }
+    }
+}
+
 impl ProtoFmt for LeaderSelection {
     type Proto = proto::LeaderSelection;
 
