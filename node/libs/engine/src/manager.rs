@@ -315,7 +315,7 @@ impl EngineManager {
             .interface
             .propose_payload(ctx, number)
             .await
-            .context("propose_payload()")?;
+            .wrap("propose_payload()")?;
         t.observe();
         Ok(payload)
     }
