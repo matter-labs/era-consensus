@@ -4,7 +4,7 @@ use anyhow::Context as _;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_protobuf::{required, ProtoFmt};
 
-use super::{v1, v2};
+use super::{v1, v2, EpochNumber};
 use crate::proto::validator as proto;
 
 /// Represents a blockchain block across different consensus protocol versions (including pre-genesis blocks).
@@ -43,6 +43,16 @@ impl Block {
             Self::PreGenesis(b) => b.number,
             Self::FinalV1(b) => b.number(),
             Self::FinalV2(b) => b.number(),
+        }
+    }
+
+    /// Epoch number, if the block is a consensus block.
+    /// Returns `None` for pre-genesis blocks and v1 blocks.
+    pub fn epoch(&self) -> Option<EpochNumber> {
+        match self {
+            Self::PreGenesis(_) => None,
+            Self::FinalV1(_) => None,
+            Self::FinalV2(b) => Some(b.epoch()),
         }
     }
 

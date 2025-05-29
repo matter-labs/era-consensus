@@ -139,6 +139,8 @@ impl Executor {
         epoch_number: validator::EpochNumber,
         validator_schedule: validator::Schedule,
     ) -> anyhow::Result<()> {
+        tracing::debug!("Spawning components for epoch {}", epoch_number);
+
         // Generate the communication channels. We have one for each component.
         let (consensus_send, consensus_recv) = bft::create_input_channel();
         let (network_send, network_recv) = ctx::channel::unbounded();
