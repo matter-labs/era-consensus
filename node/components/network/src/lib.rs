@@ -113,10 +113,7 @@ impl Runner {
                     weight: 1,
                     leader: true,
                 }],
-                validator::LeaderSelection {
-                    frequency: 1,
-                    mode: validator::LeaderSelectionMode::Weighted,
-                },
+                validator::LeaderSelection::default(),
             )
             .unwrap(),
         );
@@ -177,29 +174,19 @@ impl Runner {
                     }
                 } else {
                     // This instance of the network is alive until we fetch all the pre-genesis blocks.
-                    let first_block = self.net.gossip.first_block();
-
-                    loop {
-                        // Get the last persisted block number.
-                        let last_block_number = self.net.gossip.engine_manager.persisted().head();
-
-                        if last_block_number >= first_block {
-                            return Err(ctx::Error::Internal(anyhow::anyhow!(
-                                "Network instance was started to fetch pre-genesis blocks but \
-                                 continued past the genesis first block {}. Current block number: \
-                                 {}.",
-                                first_block,
-                                last_block_number
-                            )));
-                        }
-
-                        // If we already have all the pre-genesis blocks, we can stop the network component.
-                        if last_block_number.next() == first_block {
-                            s.cancel();
-                            break;
-                        }
-                        ctx.sleep(time::Duration::seconds(5)).await?;
+                    if let Some(last_pregenesis_block) = self.net.gossip.first_block().prev() {
+                        // Wait until the last pre-genesis block is persisted.
+                        self.net
+                            .gossip
+                            .engine_manager
+                            .wait_until_persisted(ctx, last_pregenesis_block)
+                            .await?;
                     }
+
+                    println!("fetched all pre-genesis blocks");
+
+                    // If we already have all the pre-genesis blocks, we can stop the network component.
+                    s.cancel();
                 }
 
                 Ok(())
