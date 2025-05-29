@@ -269,6 +269,7 @@ async fn test_validator_syncing_from_fullnode() {
 }
 
 /// Test that the validator schedule rotation feature works as expected.
+/// The test can take several seconds up to a minute to run.
 #[tokio::test]
 async fn test_validator_rotation() {
     abort_on_panic();

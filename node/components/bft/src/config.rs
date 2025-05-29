@@ -41,7 +41,7 @@ impl Config {
                 .validator_schedule(epoch_number)
                 .context(format!(
                     "BFT config can't be created for epoch {} because there's no corresponding \
-                 validator schedule.",
+                     validator schedule.",
                     epoch_number,
                 ))?;
 

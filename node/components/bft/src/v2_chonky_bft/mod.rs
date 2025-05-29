@@ -86,25 +86,32 @@ impl StateMachine {
     ) -> ctx::Result<Self> {
         let backup_opt = config.engine_manager.get_state(ctx).await?.v2;
 
-        let backup = if let Some(backup) = backup_opt {
-            if backup.epoch != config.epoch {
-                tracing::debug!(
-                    "ChonkyBFT replica - Backup epoch {} does not match current epoch {}",
-                    backup.epoch,
-                    config.epoch
-                );
-
-                // If the backup epoch does not match the current epoch, we return a default state.
-                // This will cause the replica to start from the beginning of the current epoch.
-                validator::v2::ChonkyV2State::default()
-            } else {
-                // If the backup epoch matches the current epoch, we return the existing backup state.
-                backup
+        let backup = match backup_opt {
+            Some(backup) => {
+                if backup.epoch == config.epoch {
+                    // If the backup epoch matches the current epoch, we return the existing backup state.
+                    tracing::debug!(
+                        "ChonkyBFT replica - Starting from backup state for epoch {}.",
+                        backup.epoch
+                    );
+                    backup
+                } else {
+                    // If the backup epoch does not match the current epoch, we return a default state.
+                    // This will cause the replica to start from the beginning of the current epoch.
+                    tracing::debug!(
+                        "ChonkyBFT replica - Backup epoch {} does not match current epoch {}",
+                        backup.epoch,
+                        config.epoch
+                    );
+                    validator::v2::ChonkyV2State::default()
+                }
             }
-        } else {
-            // If there is no backup state, we return a default state.
-            // This will cause the replica to start from the beginning of the current epoch.
-            validator::v2::ChonkyV2State::default()
+            None => {
+                // If there is no backup state, we return a default state.
+                // This will cause the replica to start from the beginning of the current epoch.
+                tracing::debug!("ChonkyBFT replica - No backup state found.");
+                validator::v2::ChonkyV2State::default()
+            }
         };
 
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
@@ -202,7 +209,8 @@ impl StateMachine {
                                         }
                                         ctx::Error::Internal(error) => {
                                             tracing::error!(
-                                                "ChonkyBFT replica - on_proposal: internal error: {error:#}"
+                                                "ChonkyBFT replica - on_proposal: internal error: \
+                                                 {error:#}"
                                             );
                                         }
                                     }
@@ -240,7 +248,8 @@ impl StateMachine {
                                         }
                                         ctx::Error::Internal(error) => {
                                             tracing::error!(
-                                                "ChonkyBFT replica - on_commit: internal error: {error:#}"
+                                                "ChonkyBFT replica - on_commit: internal error: \
+                                                 {error:#}"
                                             );
                                         }
                                     }
@@ -278,7 +287,8 @@ impl StateMachine {
                                         }
                                         ctx::Error::Internal(error) => {
                                             tracing::error!(
-                                                "ChonkyBFT replica - on_timeout: internal error: {error:#}"
+                                                "ChonkyBFT replica - on_timeout: internal error: \
+                                                 {error:#}"
                                             );
                                         }
                                     }
@@ -316,7 +326,8 @@ impl StateMachine {
                                         }
                                         ctx::Error::Internal(error) => {
                                             tracing::error!(
-                                                "ChonkyBFT replica - on_new_view: internal error: {error:#}"
+                                                "ChonkyBFT replica - on_new_view: internal error: \
+                                                 {error:#}"
                                             );
                                         }
                                     }
