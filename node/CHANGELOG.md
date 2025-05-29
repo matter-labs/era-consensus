@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.1](https://github.com/matter-labs/era-consensus/compare/v0.11.0...v0.11.1) (2025-05-29)
+
+
+### Bug Fixes
+
+* Fix test and several bugs for validator schedule rotation ([#256](https://github.com/matter-labs/era-consensus/issues/256)) ([1769ec7](https://github.com/matter-labs/era-consensus/commit/1769ec71c5171c68a95261b54129edd76e6885f3))
+* Only generate supported protocol versions for tests. ([#254](https://github.com/matter-labs/era-consensus/issues/254)) ([c3ff672](https://github.com/matter-labs/era-consensus/commit/c3ff6729c8eec6adc2aefcf335b2bd8e1fb4c359))
+
 ## [0.11.0](https://github.com/matter-labs/era-consensus/compare/v0.10.0...v0.11.0) (2025-05-22)
 
 
