@@ -61,6 +61,7 @@ impl StateMachine {
 
         let mut backup = validator::ReplicaState::default();
         let backup_v2 = validator::v2::ChonkyV2State {
+            epoch: self.config.epoch,
             view_number: self.view_number,
             phase: self.phase,
             high_vote: self.high_vote.clone(),

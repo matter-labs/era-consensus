@@ -82,6 +82,7 @@ message PhaseV2 {
 }
 
 message ChonkyV2State {
+  optional uint64 epoch = 7; // required
   optional uint64 view_number = 1; // required;
   optional PhaseV2 phase = 2; // required
   optional ReplicaCommitV2 high_vote = 3; // optional

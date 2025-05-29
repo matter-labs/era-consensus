@@ -313,6 +313,7 @@ impl Distribution<Phase> for Standard {
 impl Distribution<ChonkyV2State> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> ChonkyV2State {
         ChonkyV2State {
+            epoch: rng.gen(),
             view_number: rng.gen(),
             phase: rng.gen(),
             high_vote: rng.gen(),

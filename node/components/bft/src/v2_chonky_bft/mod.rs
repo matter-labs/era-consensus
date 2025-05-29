@@ -84,12 +84,28 @@ impl StateMachine {
         inbound_channel: sync::prunable_mpsc::Receiver<FromNetworkMessage>,
         proposer_sender: sync::watch::Sender<Option<validator::v2::ProposalJustification>>,
     ) -> ctx::Result<Self> {
-        let backup = config
-            .engine_manager
-            .get_state(ctx)
-            .await?
-            .v2
-            .unwrap_or_default();
+        let backup_opt = config.engine_manager.get_state(ctx).await?.v2;
+
+        let backup = if let Some(backup) = backup_opt {
+            if backup.epoch != config.epoch {
+                tracing::debug!(
+                    "ChonkyBFT replica - Backup epoch {} does not match current epoch {}",
+                    backup.epoch,
+                    config.epoch
+                );
+
+                // If the backup epoch does not match the current epoch, we return a default state.
+                // This will cause the replica to start from the beginning of the current epoch.
+                validator::v2::ChonkyV2State::default()
+            } else {
+                // If the backup epoch matches the current epoch, we return the existing backup state.
+                backup
+            }
+        } else {
+            // If there is no backup state, we return a default state.
+            // This will cause the replica to start from the beginning of the current epoch.
+            validator::v2::ChonkyV2State::default()
+        };
 
         let mut block_proposal_cache: BTreeMap<_, HashMap<_, _>> = BTreeMap::new();
         for proposal in backup.proposals {

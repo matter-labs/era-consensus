@@ -107,7 +107,6 @@ impl Config {
                     .run_v2(ctx, outbound_channel, inbound_channel)
                     .await
                     .wrap("run_v2()"),
-
                 _ => Err(ctx::Error::Internal(anyhow::anyhow!(
                     "Unsupported protocol version: {:?}",
                     self.protocol_version()

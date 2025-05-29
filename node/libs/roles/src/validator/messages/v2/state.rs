@@ -4,12 +4,14 @@ use zksync_protobuf::{read_optional, read_required, ProtoFmt};
 use super::{CommitQC, Phase, ReplicaCommit, TimeoutQC};
 use crate::{
     proto::validator as proto,
-    validator::{Proposal, ViewNumber},
+    validator::{EpochNumber, Proposal, ViewNumber},
 };
 
 /// The struct that contains the state of a ChonkyBFT v2 replica to be persisted.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChonkyV2State {
+    /// The current epoch number.
+    pub epoch: EpochNumber,
     /// The current view number.
     pub view_number: ViewNumber,
     /// The current phase.
@@ -27,6 +29,7 @@ pub struct ChonkyV2State {
 impl Default for ChonkyV2State {
     fn default() -> Self {
         Self {
+            epoch: EpochNumber(0),
             view_number: ViewNumber(0),
             phase: Phase::Prepare,
             high_vote: None,
@@ -42,6 +45,7 @@ impl ProtoFmt for ChonkyV2State {
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
         Ok(Self {
+            epoch: EpochNumber(r.epoch.context("epoch")?),
             view_number: ViewNumber(r.view_number.context("view_number")?),
             phase: read_required(&r.phase).context("phase")?,
             high_vote: read_optional(&r.high_vote).context("high_vote")?,
@@ -58,6 +62,7 @@ impl ProtoFmt for ChonkyV2State {
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
+            epoch: Some(self.epoch.0),
             view_number: Some(self.view_number.0),
             phase: Some(self.phase.build()),
             high_vote: self.high_vote.as_ref().map(|x| x.build()),
