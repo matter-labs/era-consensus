@@ -83,7 +83,10 @@ pub struct Executor {
 impl Executor {
     /// Runs this executor to completion. This should be spawned on a separate task.
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        let cur_epoch = self.wait_for_current_epoch(ctx).await?;
+        let cur_epoch = self
+            .engine_manager
+            .wait_until_epoch_schedule_populated(ctx)
+            .await?;
         let cur_epoch_counter = Arc::new(AtomicU64::new(cur_epoch.0));
 
         scope::run!(ctx, |ctx, s| async {
@@ -110,7 +113,11 @@ impl Executor {
             loop {
                 // Wait for the validator schedule for the current epoch.
                 let cur_epoch = validator::EpochNumber(cur_epoch_counter.load(Ordering::Relaxed));
-                let schedule = self.wait_for_validator_schedule(ctx, cur_epoch).await?;
+                let schedule = self
+                    .engine_manager
+                    .wait_for_validator_schedule(ctx, cur_epoch)
+                    .await?
+                    .schedule;
 
                 // Spawn the components for the current epoch.
                 s.spawn(async {
@@ -194,49 +201,6 @@ impl Executor {
             }
         })
         .await
-    }
-
-    /// Waits until we have the current epoch.
-    async fn wait_for_current_epoch(
-        &self,
-        ctx: &ctx::Ctx,
-    ) -> anyhow::Result<validator::EpochNumber> {
-        loop {
-            if let Some(epoch) = self.engine_manager.current_epoch() {
-                return Ok(epoch);
-            }
-
-            ctx.sleep(time::Duration::milliseconds(100)).await?;
-        }
-    }
-
-    /// Wait until we have the validator schedule for the given epoch.
-    async fn wait_for_validator_schedule(
-        &self,
-        ctx: &ctx::Ctx,
-        epoch_number: validator::EpochNumber,
-    ) -> anyhow::Result<validator::Schedule> {
-        let loop_time = time::Duration::seconds(5);
-        let mut counter = 0;
-
-        loop {
-            if let Some(schedule) = self.engine_manager.validator_schedule(epoch_number) {
-                return Ok(schedule.schedule);
-            }
-            // Epochs should be at least minutes apart so that validators have time to
-            // establish network connections. So we don't need to check for new epochs too often.
-            ctx.sleep(loop_time).await?;
-            counter += 1;
-
-            // 10 minutes
-            if counter > 10 * 60 / loop_time.whole_seconds() as usize {
-                tracing::debug!(
-                    "Timed out waiting for validator schedule for current epoch. Might be a bug, \
-                     might not have been published yet."
-                );
-                counter = 0;
-            }
-        }
     }
 
     /// Extracts a network crate config.

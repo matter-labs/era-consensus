@@ -132,50 +132,28 @@ impl Runner {
                 if let Some(epoch_number) = self.net.gossip.epoch_number {
                     // This instance of the network is alive only until the end of the current epoch.
 
-                    // Get the expiration block number for the current epoch.
-                    let expiration = loop {
-                        if let Some(n) = self
-                            .net
-                            .gossip
-                            .engine_manager
-                            .validator_schedule(epoch_number)
-                            .context(format!(
-                                "Network instance was started for epoch {} but there's no \
-                                 corresponding validator schedule.",
-                                epoch_number
-                            ))?
-                            .expiration_block
-                        {
-                            break n;
-                        }
-                        ctx.sleep(time::Duration::seconds(5)).await?;
-                    };
+                    // Wait for the expiration block number for the current epoch.
+                    let expiration = self
+                        .net
+                        .gossip
+                        .engine_manager
+                        .wait_for_validator_schedule_expiration(ctx, epoch_number)
+                        .await?;
 
-                    loop {
-                        // Get the last persisted block number.
-                        let last_block_number = self.net.gossip.engine_manager.persisted().head();
+                    // Wait until the expiration block is persisted.
+                    self.net
+                        .gossip
+                        .engine_manager
+                        .wait_until_persisted(ctx, expiration)
+                        .await?;
 
-                        if last_block_number > expiration {
-                            return Err(ctx::Error::Internal(anyhow::anyhow!(
-                                "Network instance was started for epoch {} but continued past the \
-                                 expiration block {}. Current block number: {}.",
-                                epoch_number,
-                                expiration,
-                                last_block_number
-                            )));
-                        }
-
-                        // If we already have the expiration block, we can stop the network component.
-                        if last_block_number == expiration {
-                            s.cancel();
-                            break;
-                        }
-                        ctx.sleep(time::Duration::seconds(1)).await?;
-                    }
+                    // When we already have the expiration block, we can stop the network component.
+                    s.cancel();
                 } else {
                     // This instance of the network is alive until we fetch all the pre-genesis blocks.
+
+                    // Wait until the last pre-genesis block is persisted.
                     if let Some(last_pregenesis_block) = self.net.gossip.first_block().prev() {
-                        // Wait until the last pre-genesis block is persisted.
                         self.net
                             .gossip
                             .engine_manager
@@ -185,7 +163,7 @@ impl Runner {
 
                     println!("fetched all pre-genesis blocks");
 
-                    // If we already have all the pre-genesis blocks, we can stop the network component.
+                    // When we already have all the pre-genesis blocks, we can stop the network component.
                     s.cancel();
                 }
 

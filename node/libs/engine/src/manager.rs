@@ -108,11 +108,6 @@ impl EngineManager {
         self.genesis.validators_schedule.is_some()
     }
 
-    /// Returns the current epoch number, assuming we already populated the epoch schedule.
-    pub fn current_epoch(&self) -> Option<validator::EpochNumber> {
-        self.epoch_schedule.borrow().keys().next().copied()
-    }
-
     /// Returns the validator schedule, with its activation and expiration block numbers,
     /// for the given epoch number.
     pub fn validator_schedule(
@@ -277,6 +272,64 @@ impl EngineManager {
         )
         .await?
         .clone())
+    }
+
+    /// Waits until the epoch schedule is populated. Returns the number of the first epoch stored.
+    pub async fn wait_until_epoch_schedule_populated(
+        &self,
+        ctx: &ctx::Ctx,
+    ) -> ctx::OrCanceled<validator::EpochNumber> {
+        sync::wait_for(
+            ctx,
+            &mut self.epoch_schedule.subscribe(),
+            |epoch_schedule| epoch_schedule.keys().next().is_some(),
+        )
+        .await?;
+
+        Ok(self.epoch_schedule.borrow().keys().next().cloned().unwrap()) // unwrap is safe because we know that the epoch schedule is populated
+    }
+
+    /// Waits until the validator schedule for the given epoch is available.
+    pub async fn wait_for_validator_schedule(
+        &self,
+        ctx: &ctx::Ctx,
+        epoch: validator::EpochNumber,
+    ) -> ctx::OrCanceled<ScheduleWithLifetime> {
+        sync::wait_for(
+            ctx,
+            &mut self.epoch_schedule.subscribe(),
+            |epoch_schedule| epoch_schedule.get(&epoch).is_some(),
+        )
+        .await?;
+
+        Ok(self.validator_schedule(epoch).unwrap()) // unwrap is safe because we know that the schedule is available
+    }
+
+    /// Waits until the validator schedule for the given epoch has an expiration block.
+    pub async fn wait_for_validator_schedule_expiration(
+        &self,
+        ctx: &ctx::Ctx,
+        epoch: validator::EpochNumber,
+    ) -> ctx::OrCanceled<validator::BlockNumber> {
+        sync::wait_for(
+            ctx,
+            &mut self.epoch_schedule.subscribe(),
+            |epoch_schedule| {
+                epoch_schedule
+                    .get(&epoch)
+                    .map(|schedule| schedule.expiration_block.is_some())
+                    .unwrap_or(false)
+            },
+        )
+        .await?;
+
+        Ok(self
+            .epoch_schedule
+            .borrow()
+            .get(&epoch)
+            .unwrap() // unwrap is safe because we know that the schedule for the given epoch is available
+            .expiration_block
+            .unwrap()) // unwrap is safe because we know that the schedule has an expiration block
     }
 
     /// Verifies a payload.
