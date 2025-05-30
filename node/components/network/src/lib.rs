@@ -6,7 +6,7 @@ use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx::{self, channel},
     error::Wrap as _,
-    limiter, scope, sync, time,
+    limiter, scope, sync,
 };
 use zksync_consensus_engine::EngineManager;
 
@@ -65,17 +65,17 @@ impl Network {
         epoch_number: Option<validator::EpochNumber>,
         consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
         consensus_receiver: channel::UnboundedReceiver<io::ConsensusInputMessage>,
-    ) -> (Arc<Self>, Runner) {
+    ) -> anyhow::Result<(Arc<Self>, Runner)> {
         let gossip = gossip::Network::new(cfg, engine_manager, epoch_number, consensus_sender);
-        let consensus = consensus::Network::new(gossip.clone());
+        let consensus = consensus::Network::new(gossip.clone())?; // TODO: propagate errors
         let net = Arc::new(Self { gossip, consensus });
-        (
+        Ok((
             net.clone(),
             Runner {
                 net,
                 consensus_receiver,
             },
-        )
+        ))
     }
 
     /// Registers metrics for this state.

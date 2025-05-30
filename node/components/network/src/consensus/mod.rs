@@ -149,22 +149,35 @@ impl rpc::Handler<rpc::consensus::Rpc> for &Network {
 
 impl Network {
     /// Constructs a new consensus network state.
-    pub(crate) fn new(gossip: Arc<gossip::Network>) -> Option<Arc<Self>> {
-        let key = gossip.cfg.validator_key.clone()?;
+    pub(crate) fn new(gossip: Arc<gossip::Network>) -> anyhow::Result<Option<Arc<Self>>> {
+        // Check that we have both an epoch number and a validator key.
+        // Otherwise, we can't have a consensus network.
+        let Some(epoch_number) = gossip.epoch_number else {
+            return Ok(None);
+        };
+        let Some(key) = gossip.cfg.validator_key.clone() else {
+            return Ok(None);
+        };
+
         let validators: HashSet<_> = gossip
-            .validator_schedule()
-            .unwrap()
-            .unwrap() // unwrap is safe because we don't have a consensus network unless there's a validator schedule.
+            .validator_schedule()?
+            .ok_or_else(|| {
+                anyhow::anyhow!(
+                    "network component has no validator schedule for epoch {}",
+                    epoch_number
+                )
+            })?
             .keys()
             .cloned()
             .collect();
-        Some(Arc::new(Self {
+
+        Ok(Some(Arc::new(Self {
             key,
             inbound: PoolWatch::new(validators.clone(), 0),
             outbound: PoolWatch::new(validators.clone(), 0),
             gossip,
             msg_pool: MsgPool::new(),
-        }))
+        })))
     }
 
     /// Performs handshake of an inbound stream.

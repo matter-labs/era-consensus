@@ -15,7 +15,6 @@
 //! network graph (minimize its diameter, increase connectedness).
 use std::sync::{atomic::AtomicUsize, Arc};
 
-use anyhow::Context as _;
 use fetch::RequestItem;
 use tracing::Instrument;
 pub(crate) use validator_addrs::*;
@@ -107,19 +106,15 @@ impl Network {
 
     /// Validator schedule for this epoch. If None, we are only fetching pre-genesis blocks.
     pub(crate) fn validator_schedule(&self) -> anyhow::Result<Option<validator::Schedule>> {
-        if let Some(epoch_number) = self.epoch_number {
-            Ok(Some(
-                self.engine_manager
-                    .validator_schedule(epoch_number)
-                    .context(format!(
-                        "Network instance was started for epoch {} but there's no corresponding \
-                         validator schedule.",
-                        epoch_number,
-                    ))?
-                    .schedule,
-            ))
-        } else {
-            Ok(None)
+        match self.epoch_number {
+            None => Ok(None),
+            Some(epoch_number) => match self.engine_manager.validator_schedule(epoch_number) {
+                Some(vs) => Ok(Some(vs.schedule)),
+                None => anyhow::bail!(
+                    "validator schedule not found for epoch {} in network component",
+                    epoch_number
+                ),
+            },
         }
     }
 

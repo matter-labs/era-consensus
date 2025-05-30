@@ -104,7 +104,7 @@ impl Executor {
                     None,
                     consensus_send,
                     network_recv,
-                );
+                )?;
                 net.register_metrics();
                 s.spawn(async { runner.run(ctx).await.context("Network stopped") });
             }
@@ -161,7 +161,7 @@ impl Executor {
                 Some(epoch_number),
                 consensus_send,
                 network_recv,
-            );
+            )?;
             net.register_metrics();
             s.spawn(async { runner.run(ctx).await.context("Network stopped") });
 
