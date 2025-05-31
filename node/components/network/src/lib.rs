@@ -134,6 +134,8 @@ impl Runner {
                         .wait_until_persisted(ctx, expiration)
                         .await?;
 
+                    println!("cancelling network component");
+
                     // When we already have the expiration block, we can stop the network component.
                     s.cancel();
                 } else {
@@ -147,8 +149,6 @@ impl Runner {
                             .wait_until_persisted(ctx, last_pregenesis_block)
                             .await?;
                     }
-
-                    println!("fetched all pre-genesis blocks");
 
                     // When we already have all the pre-genesis blocks, we can stop the network component.
                     s.cancel();
