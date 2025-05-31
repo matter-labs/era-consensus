@@ -90,23 +90,12 @@ impl Executor {
         let cur_epoch_counter = Arc::new(AtomicU64::new(cur_epoch.0));
 
         scope::run!(ctx, |ctx, s| async {
-            let network_config = self.network_config();
-
             if self.engine_manager.head().next() < self.engine_manager.first_block() {
-                tracing::info!("Starting network component to fetch pre-genesis blocks.");
-
-                let (consensus_send, _) = bft::create_input_channel();
-                let (_, network_recv) = ctx::channel::unbounded();
-
-                let (net, runner) = network::Network::new(
-                    network_config,
-                    self.engine_manager.clone(),
-                    None,
-                    consensus_send,
-                    network_recv,
-                )?;
-                net.register_metrics();
-                s.spawn(async { runner.run(ctx).await.context("Network stopped") });
+                s.spawn(async {
+                    self.spawn_components(ctx, self.network_config(), None, None)
+                        .await
+                        .context("Components for pregenesis stopped")
+                });
             }
 
             // Start the loop to spawn the components for each epoch.
@@ -122,7 +111,7 @@ impl Executor {
                 // Spawn the components for the current epoch.
                 s.spawn(async {
                     let epoch = validator::EpochNumber(cur_epoch_counter.load(Ordering::Relaxed));
-                    self.spawn_components(ctx, self.network_config(), epoch, schedule)
+                    self.spawn_components(ctx, self.network_config(), Some(epoch), Some(schedule))
                         .await
                         .context(format!("Components for epoch {} stopped", epoch))
                 });
@@ -143,10 +132,14 @@ impl Executor {
         &self,
         ctx: &ctx::Ctx,
         network_config: network::Config,
-        epoch_number: validator::EpochNumber,
-        validator_schedule: validator::Schedule,
+        epoch: Option<validator::EpochNumber>,
+        validator_schedule: Option<validator::Schedule>,
     ) -> anyhow::Result<()> {
-        tracing::debug!("Spawning components for epoch {}", epoch_number);
+        if let Some(epoch_number) = epoch {
+            tracing::debug!("Spawning components for epoch {}", epoch_number);
+        } else {
+            tracing::debug!("Spawning components for pregenesis");
+        }
 
         // Generate the communication channels. We have one for each component.
         let (consensus_send, consensus_recv) = bft::create_input_channel();
@@ -158,7 +151,7 @@ impl Executor {
             let (net, runner) = network::Network::new(
                 network_config,
                 self.engine_manager.clone(),
-                Some(epoch_number),
+                epoch,
                 consensus_send,
                 network_recv,
             )?;
@@ -175,19 +168,24 @@ impl Executor {
             }
 
             // Run the bft component iff this node is an active validator for this epoch.
-            if self.config.validator_key.is_some()
-                && validator_schedule.contains(&self.config.validator_key.clone().unwrap().public())
+            if epoch.is_some()
+                && validator_schedule.is_some()
+                && self.config.validator_key.is_some()
+                && validator_schedule
+                    .as_ref()
+                    .unwrap()
+                    .contains(&self.config.validator_key.clone().unwrap().public())
             {
                 tracing::debug!(
                     "This node is an active validator for epoch {}. Starting bft component.",
-                    epoch_number
+                    epoch.unwrap()
                 );
                 bft::Config::new(
                     self.config.validator_key.clone().unwrap(),
                     self.config.max_payload_size,
                     self.config.view_timeout,
                     self.engine_manager.clone(),
-                    epoch_number,
+                    epoch.unwrap(),
                 )?
                 .run(ctx, network_send, consensus_recv)
                 .await
@@ -195,7 +193,7 @@ impl Executor {
             } else {
                 tracing::debug!(
                     "Running the node in non-validator mode for epoch {}.",
-                    epoch_number
+                    epoch.unwrap()
                 );
                 Ok(())
             }

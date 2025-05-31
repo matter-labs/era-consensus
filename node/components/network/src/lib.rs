@@ -103,20 +103,7 @@ impl Runner {
     /// Runs the network component.
     pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         // In order to satisfy the borrow checker, this validator schedule needs to live as long as the runner.
-        // Unfortunately, we don't know if the validator schedule is available at this point, so we need to
-        // create a dummy one if it isn't.
-        // It's somewhat ugly but it works.
-        let validators = self.net.gossip.validator_schedule()?.unwrap_or(
-            validator::Schedule::new(
-                vec![validator::ValidatorInfo {
-                    key: validator::SecretKey::generate().public(),
-                    weight: 1,
-                    leader: true,
-                }],
-                validator::LeaderSelection::default(),
-            )
-            .unwrap(),
-        );
+        let validators_opt = self.net.gossip.validator_schedule()?;
 
         let res: ctx::Result<()> = scope::run!(ctx, |ctx, s| async {
             let mut listener = self
@@ -210,14 +197,16 @@ impl Runner {
             }
 
             if let Some(c) = &self.net.consensus {
-                // If we are an active validator ...
-                if validators.contains(&c.key.public()) {
-                    // Maintain outbound connections.
-                    for peer in validators.keys() {
-                        s.spawn(async {
-                            c.maintain_connection(ctx, peer).await;
-                            Ok(())
-                        });
+                if validators_opt.is_some() {
+                    // If we are an active validator ...
+                    if validators_opt.as_ref().unwrap().contains(&c.key.public()) {
+                        // Maintain outbound connections.
+                        for peer in validators_opt.as_ref().unwrap().keys() {
+                            s.spawn(async {
+                                c.maintain_connection(ctx, peer).await;
+                                Ok(())
+                            });
+                        }
                     }
                 }
             }
