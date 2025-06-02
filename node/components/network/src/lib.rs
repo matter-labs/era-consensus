@@ -134,8 +134,6 @@ impl Runner {
                         .wait_until_persisted(ctx, expiration)
                         .await?;
 
-                    println!("cancelling network component");
-
                     // When we already have the expiration block, we can stop the network component.
                     s.cancel();
                 } else {

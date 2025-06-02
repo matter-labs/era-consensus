@@ -103,12 +103,16 @@ impl Executor {
             loop {
                 // Wait for the validator schedule for the current epoch.
                 let cur_epoch = validator::EpochNumber(cur_epoch_counter.load(Ordering::Relaxed));
-                let schedule = self
-                    .engine_manager
-                    .wait_for_validator_schedule(ctx, cur_epoch)
-                    .await
-                    .context("Failed to wait for validator schedule")?
-                    .schedule;
+                let schedule = loop {
+                    match self
+                        .engine_manager
+                        .wait_for_validator_schedule(ctx, cur_epoch)
+                        .await
+                    {
+                        Ok(s) => break s.schedule,
+                        Err(ctx::Canceled) => continue,
+                    };
+                };
 
                 // Spawn the components for the current epoch.
                 s.spawn(async {
