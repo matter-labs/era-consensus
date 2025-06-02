@@ -100,7 +100,7 @@ tempfile           = "3"
 test-casing        = "0.1.0"
 thiserror          = "1.0.40"
 time               = "0.3.23"
-tls-listener       = { version = "0.10.1", features = ["rustls"] }
+tls-listener       = { version = "0.10.3", features = ["rustls"] }
 tokio              = { version = "1.34.0", features = ["full"] }
 tokio-rustls       = "0.26.0"
 tower              = { version = "0.4.13" }
