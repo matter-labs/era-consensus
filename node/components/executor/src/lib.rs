@@ -83,11 +83,15 @@ pub struct Executor {
 impl Executor {
     /// Runs this executor to completion. This should be spawned on a separate task.
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        let cur_epoch = self
+        let cur_epoch = match self
             .engine_manager
             .wait_until_epoch_schedule_populated(ctx)
             .await
-            .context("Failed to wait for epoch schedule populated")?;
+        {
+            Ok(s) => s,
+            // If the context is canceled, we return successfully.
+            Err(ctx::Canceled) => return Ok(()),
+        };
         let cur_epoch_counter = Arc::new(AtomicU64::new(cur_epoch.0));
 
         scope::run!(ctx, |ctx, s| async {
@@ -103,15 +107,14 @@ impl Executor {
             loop {
                 // Wait for the validator schedule for the current epoch.
                 let cur_epoch = validator::EpochNumber(cur_epoch_counter.load(Ordering::Relaxed));
-                let schedule = loop {
-                    match self
-                        .engine_manager
-                        .wait_for_validator_schedule(ctx, cur_epoch)
-                        .await
-                    {
-                        Ok(s) => break s.schedule,
-                        Err(ctx::Canceled) => continue,
-                    };
+                let schedule = match self
+                    .engine_manager
+                    .wait_for_validator_schedule(ctx, cur_epoch)
+                    .await
+                {
+                    Ok(s) => s.schedule,
+                    // If the context is canceled, we return successfully.
+                    Err(ctx::Canceled) => return Ok(()),
                 };
 
                 // Spawn the components for the current epoch.
