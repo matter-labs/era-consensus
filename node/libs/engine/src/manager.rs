@@ -376,7 +376,7 @@ impl EngineManager {
     /// Gets the replica state.
     pub async fn get_state(&self, ctx: &ctx::Ctx) -> ctx::Result<validator::ReplicaState> {
         let t = metrics::ENGINE_INTERFACE.get_state_latency.start();
-        let state = self.interface.get_state(ctx).await.context("get_state()")?;
+        let state = self.interface.get_state(ctx).await.wrap("get_state()")?;
         t.observe();
         Ok(state)
     }
