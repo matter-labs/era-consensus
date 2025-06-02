@@ -129,9 +129,9 @@ impl Executor {
                 // Note: This is a hack to avoid a race condition between this and the spawn_components.
                 // Otherwise the counter is incremented before the components are spawned and the components
                 // will not be able to start.
-                ctx.sleep(time::Duration::seconds(5))
-                    .await
-                    .context("Failed to sleep")?;
+                if let Err(ctx::Canceled) = ctx.sleep(time::Duration::seconds(5)).await {
+                    return Ok(());
+                }
                 cur_epoch_counter.fetch_add(1, Ordering::Relaxed);
             }
         })
