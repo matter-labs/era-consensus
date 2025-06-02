@@ -86,7 +86,8 @@ impl Executor {
         let cur_epoch = self
             .engine_manager
             .wait_until_epoch_schedule_populated(ctx)
-            .await?;
+            .await
+            .context("Failed to wait for epoch schedule populated")?;
         let cur_epoch_counter = Arc::new(AtomicU64::new(cur_epoch.0));
 
         scope::run!(ctx, |ctx, s| async {
@@ -105,7 +106,8 @@ impl Executor {
                 let schedule = self
                     .engine_manager
                     .wait_for_validator_schedule(ctx, cur_epoch)
-                    .await?
+                    .await
+                    .context("Failed to wait for validator schedule")?
                     .schedule;
 
                 // Spawn the components for the current epoch.
