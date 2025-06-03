@@ -583,6 +583,7 @@ impl EngineManagerRunner {
 
                         // Epochs should be at least minutes apart so that validators have time to
                         // establish network connections. So we don't need to check for new epochs too often.
+                        // TODO: Maybe make this configurable.
                         ctx.sleep(time::Duration::seconds(5)).await?;
                     }
                 });
