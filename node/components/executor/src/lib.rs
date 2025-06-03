@@ -9,7 +9,7 @@ use std::{
 
 use anyhow::Context as _;
 pub use network::RpcConfig;
-use zksync_concurrency::{ctx, limiter, net, scope, time};
+use zksync_concurrency::{ctx, error::Wrap as _, limiter, net, scope, time};
 use zksync_consensus_bft as bft;
 use zksync_consensus_engine::EngineManager;
 use zksync_consensus_network as network;
@@ -94,12 +94,12 @@ impl Executor {
         };
         let cur_epoch_counter = Arc::new(AtomicU64::new(cur_epoch.0));
 
-        scope::run!(ctx, |ctx, s| async {
+        let res = scope::run!(ctx, |ctx, s| async {
             if self.engine_manager.head().next() < self.engine_manager.first_block() {
                 s.spawn(async {
                     self.spawn_components(ctx, self.network_config(), None, None)
                         .await
-                        .context("Components for pregenesis stopped")
+                        .wrap("Components for pregenesis stopped")
                 });
             }
 
@@ -107,35 +107,34 @@ impl Executor {
             loop {
                 // Wait for the validator schedule for the current epoch.
                 let cur_epoch = validator::EpochNumber(cur_epoch_counter.load(Ordering::Relaxed));
-                let schedule = match self
+                let schedule = self
                     .engine_manager
                     .wait_for_validator_schedule(ctx, cur_epoch)
-                    .await
-                {
-                    Ok(s) => s.schedule,
-                    // If the context is canceled, we return successfully.
-                    Err(ctx::Canceled) => return Ok(()),
-                };
+                    .await?
+                    .schedule;
 
                 // Spawn the components for the current epoch.
                 s.spawn(async {
                     let epoch = validator::EpochNumber(cur_epoch_counter.load(Ordering::Relaxed));
                     self.spawn_components(ctx, self.network_config(), Some(epoch), Some(schedule))
                         .await
-                        .context(format!("Components for epoch {} stopped", epoch))
+                        .wrap(format!("Components for epoch {} stopped", epoch))
                 });
 
                 // Increment the epoch counter.
                 // Note: This is a hack to avoid a race condition between this and the spawn_components.
                 // Otherwise the counter is incremented before the components are spawned and the components
                 // will not be able to start.
-                if let Err(ctx::Canceled) = ctx.sleep(time::Duration::seconds(5)).await {
-                    return Ok(());
-                }
+                ctx.sleep(time::Duration::seconds(5)).await?;
                 cur_epoch_counter.fetch_add(1, Ordering::Relaxed);
             }
         })
-        .await
+        .await;
+
+        match res {
+            Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
+            Err(ctx::Error::Internal(err)) => Err(err),
+        }
     }
 
     /// Spawns the bft and network components for the given epoch.
@@ -145,7 +144,7 @@ impl Executor {
         network_config: network::Config,
         epoch: Option<validator::EpochNumber>,
         validator_schedule: Option<validator::Schedule>,
-    ) -> anyhow::Result<()> {
+    ) -> ctx::Result<()> {
         if let Some(epoch_number) = epoch {
             tracing::debug!("Spawning components for epoch {}", epoch_number);
         } else {
@@ -191,25 +190,30 @@ impl Executor {
                     "This node is an active validator for epoch {}. Starting bft component.",
                     epoch.unwrap()
                 );
-                bft::Config::new(
-                    self.config.validator_key.clone().unwrap(),
-                    self.config.max_payload_size,
-                    self.config.view_timeout,
-                    self.engine_manager.clone(),
-                    epoch.unwrap(),
-                )?
-                .run(ctx, network_send, consensus_recv)
-                .await
-                .context("Consensus stopped")
+                s.spawn(async {
+                    bft::Config::new(
+                        self.config.validator_key.clone().unwrap(),
+                        self.config.max_payload_size,
+                        self.config.view_timeout,
+                        self.engine_manager.clone(),
+                        epoch.unwrap(),
+                    )?
+                    .run(ctx, network_send, consensus_recv)
+                    .await
+                    .context("Consensus stopped")
+                });
             } else {
                 tracing::debug!(
                     "Running the node in non-validator mode for epoch {}.",
                     epoch.unwrap()
                 );
-                Ok(())
             }
+
+            Ok(())
         })
-        .await
+        .await?;
+
+        Ok(())
     }
 
     /// Extracts a network crate config.
