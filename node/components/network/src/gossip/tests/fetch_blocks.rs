@@ -29,7 +29,7 @@ async fn test_simple() {
         s.spawn_bg(engine.runner.run(ctx));
 
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), engine.manager.clone());
-        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
+        s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node")));
 
         let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis_hash())
             .await
@@ -39,7 +39,7 @@ async fn test_simple() {
             Ok(())
         });
 
-        tracing::info!("Store is empty so requesting a block should return an empty response.");
+        tracing::trace!("Store is empty so requesting a block should return an empty response.");
         let mut stream = conn.open_client::<rpc::get_block::Rpc>(ctx).await.unwrap();
         stream
             .send(ctx, &rpc::get_block::Req(setup.blocks[0].number()))
@@ -48,7 +48,7 @@ async fn test_simple() {
         let resp = stream.recv(ctx).await.unwrap();
         assert_eq!(resp.0, None);
 
-        tracing::info!("Insert a block.");
+        tracing::trace!("Insert a block.");
         engine
             .manager
             .queue_block(ctx, setup.blocks[0].clone())
@@ -62,11 +62,11 @@ async fn test_simple() {
             let resp = stream.recv(ctx).await.unwrap();
             stream.send(ctx, &()).await.unwrap();
             if resp.state.contains(setup.blocks[0].number()) {
-                tracing::info!("peer reported to have a block");
+                tracing::trace!("peer reported to have a block");
                 break;
             }
         }
-        tracing::info!("fetch that block.");
+        tracing::trace!("fetch that block.");
         let mut stream = conn.open_client::<rpc::get_block::Rpc>(ctx).await.unwrap();
         stream
             .send(ctx, &rpc::get_block::Req(setup.blocks[0].number()))
@@ -75,7 +75,7 @@ async fn test_simple() {
         let resp = stream.recv(ctx).await.unwrap();
         assert_eq!(resp.0, Some(setup.blocks[0].clone()));
 
-        tracing::info!("Inform the peer that we have {}", setup.blocks[1].number());
+        tracing::trace!("Inform the peer that we have {}", setup.blocks[1].number());
         let mut stream = conn
             .open_client::<rpc::push_block_store_state::Rpc>(ctx)
             .await
@@ -94,18 +94,18 @@ async fn test_simple() {
             .unwrap();
         stream.recv(ctx).await.unwrap();
 
-        tracing::info!("Wait for the client to request that block");
+        tracing::trace!("Wait for the client to request that block");
         let mut stream = conn.open_server::<rpc::get_block::Rpc>(ctx).await.unwrap();
         let req = stream.recv(ctx).await.unwrap();
         assert_eq!(req.0, setup.blocks[1].number());
 
-        tracing::info!("Return the requested block");
+        tracing::trace!("Return the requested block");
         stream
             .send(ctx, &rpc::get_block::Resp(Some(setup.blocks[1].clone())))
             .await
             .unwrap();
 
-        tracing::info!("Wait for the client to store that block");
+        tracing::trace!("Wait for the client to store that block");
         engine
             .manager
             .wait_until_persisted(ctx, setup.blocks[1].number())
@@ -136,7 +136,7 @@ async fn test_concurrent_requests() {
         let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), engine.manager.clone());
-        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
+        s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node")));
 
         let mut conns = vec![];
         for _ in 0..4 {
@@ -209,7 +209,7 @@ async fn test_bad_responses() {
         let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), engine.manager.clone());
-        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
+        s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node")));
 
         let state = rpc::push_block_store_state::Req {
             state: BlockStoreState {
@@ -232,15 +232,15 @@ async fn test_bad_responses() {
                 Some(b.into())
             },
         ] {
-            tracing::info!("bad response = {resp:?}");
+            tracing::trace!("bad response = {resp:?}");
 
-            tracing::info!("Connect to peer");
+            tracing::trace!("Connect to peer");
             let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis_hash())
                 .await
                 .unwrap();
             let conn_task = s.spawn_bg(async { Ok(runner.run(ctx).await) });
 
-            tracing::info!("Inform the peer about the block that we possess");
+            tracing::trace!("Inform the peer about the block that we possess");
             let mut stream = conn
                 .open_client::<rpc::push_block_store_state::Rpc>(ctx)
                 .await
@@ -248,15 +248,15 @@ async fn test_bad_responses() {
             stream.send(ctx, &state).await.unwrap();
             stream.recv(ctx).await.unwrap();
 
-            tracing::info!("Wait for the client to request that block");
+            tracing::trace!("Wait for the client to request that block");
             let mut stream = conn.open_server::<rpc::get_block::Rpc>(ctx).await.unwrap();
             let req = stream.recv(ctx).await.unwrap();
             assert_eq!(req.0, setup.blocks[0].number());
 
-            tracing::info!("Return a bad response");
+            tracing::trace!("Return a bad response");
             stream.send(ctx, &rpc::get_block::Resp(resp)).await.unwrap();
 
-            tracing::info!("Wait for the peer to drop the connection");
+            tracing::trace!("Wait for the peer to drop the connection");
             assert_matches!(
                 conn_task.join(ctx).await.unwrap(),
                 Err(mux::RunError::Closed)
@@ -285,7 +285,7 @@ async fn test_retry() {
         let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), engine.manager.clone());
-        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
+        s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node")));
 
         let state = rpc::push_block_store_state::Req {
             state: BlockStoreState {
@@ -294,7 +294,7 @@ async fn test_retry() {
             },
         };
 
-        tracing::info!("establish a bunch of connections");
+        tracing::trace!("establish a bunch of connections");
         let mut conns = vec![];
         for _ in 0..4 {
             let (conn, runner) = gossip::testonly::connect(ctx, &cfg, setup.genesis_hash())
@@ -311,15 +311,15 @@ async fn test_retry() {
         }
 
         for (conn, task) in conns {
-            tracing::info!("Wait for the client to request a block");
+            tracing::trace!("Wait for the client to request a block");
             let mut stream = conn.open_server::<rpc::get_block::Rpc>(ctx).await.unwrap();
             let req = stream.recv(ctx).await.unwrap();
             assert_eq!(req.0, setup.blocks[0].number());
 
-            tracing::info!("Return a bad response");
+            tracing::trace!("Return a bad response");
             stream.send(ctx, &rpc::get_block::Resp(None)).await.unwrap();
 
-            tracing::info!("Wait for the peer to drop the connection");
+            tracing::trace!("Wait for the peer to drop the connection");
             assert_matches!(task.join(ctx).await.unwrap(), Err(mux::RunError::Closed));
         }
 
@@ -350,7 +350,7 @@ async fn test_announce_truncated_block_range() {
         let (manager, runner) = EngineManager::new(ctx, Box::new(engine.clone())).await?;
         s.spawn_bg(runner.run(ctx));
         let (_node, runner) = crate::testonly::Instance::new(cfg.clone(), manager);
-        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
+        s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node")));
         // Fill in all the blocks.
         for b in &setup.blocks {
             engine.queue_next_block(ctx, b.clone()).await?;
@@ -367,7 +367,7 @@ async fn test_announce_truncated_block_range() {
 
         let mut first = setup.first_block();
         loop {
-            tracing::info!("Truncate up to {first}");
+            tracing::trace!("Truncate up to {first}");
             engine.truncate(first);
             first = first + 3;
 

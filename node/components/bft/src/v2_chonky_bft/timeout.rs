@@ -106,7 +106,7 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // We add the message to the incrementally-constructed QC.
-        tracing::debug!(
+        tracing::trace!(
             bft_message = format!("{:#?}", message),
             "ChonkyBFT replica - Received a timeout message from {author:#?}.",
         );
@@ -149,7 +149,7 @@ impl StateMachine {
         // Consume the created timeout QC for this view.
         let timeout_qc = self.timeout_qcs_cache.remove(&message.view.number).unwrap();
 
-        tracing::info!(
+        tracing::trace!(
             "ChonkyBFT replica - We have a timeout QC with weight {} for view number {}.",
             weight,
             timeout_qc.view.number.0
@@ -168,7 +168,7 @@ impl StateMachine {
 
     /// This blocking method is used whenever we timeout in a view.
     pub(crate) async fn start_timeout(&mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
-        tracing::info!(
+        tracing::trace!(
             "ChonkyBFT replica - Timed out at view {}.",
             self.view_number
         );
@@ -194,7 +194,7 @@ impl StateMachine {
                     }),
                 )),
             };
-            tracing::debug!(
+            tracing::trace!(
                 bft_message = format!("{:#?}", output_message.message),
                 "ChonkyBFT replica - Broadcasting new view message as part of timeout.",
             );
@@ -215,7 +215,7 @@ impl StateMachine {
                 }),
             )),
         };
-        tracing::debug!(
+        tracing::trace!(
             bft_message = format!("{:#?}", output_message.message),
             "ChonkyBFT replica - Broadcasting timeout message.",
         );

@@ -41,11 +41,11 @@ async fn test_sleep_until() {
     let res = scope::run!(ctx, |ctx, s| async {
         s.spawn(async {
             ctx.sleep_until(t).await.unwrap();
-            tracing::info!("subtask terminating");
+            tracing::trace!("subtask terminating");
             R::Err(9)
         });
         clock.advance(1001 * sec);
-        tracing::info!("root task terminating");
+        tracing::trace!("root task terminating");
         std::result::Result::Ok(())
     })
     .await;

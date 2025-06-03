@@ -221,7 +221,7 @@ async fn run_nodes_real(ctx: &ctx::Ctx, specs: &[Node]) -> anyhow::Result<()> {
                 send,
                 recv,
             );
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node", i)));
             nodes.push(node);
         }
         network::testonly::instant_network(ctx, nodes.iter()).await?;
@@ -233,7 +233,7 @@ async fn run_nodes_real(ctx: &ctx::Ctx, specs: &[Node]) -> anyhow::Result<()> {
                     spec.run(ctx, node.consensus_receiver, node.consensus_sender)
                         .await
                 }
-                .instrument(tracing::info_span!("node", i)),
+                .instrument(tracing::trace_span!("node", i)),
             );
         }
         Ok(())
@@ -290,7 +290,7 @@ async fn run_nodes_twins(
             // Run consensus node.
             s.spawn(
                 async { spec.run(ctx, input_channel_recv, output_channel_send).await }
-                    .instrument(tracing::info_span!("node", i, port)),
+                    .instrument(tracing::trace_span!("node", i, port)),
             );
         }
         // Taking these references is necessary for the `scope::run!` environment lifetime rules to compile
@@ -322,7 +322,7 @@ async fn run_nodes_twins(
                         port,
                         recv,
                     )
-                    .instrument(tracing::info_span!("node", i, port))
+                    .instrument(tracing::trace_span!("node", i, port))
                     .await
                 });
             }
@@ -386,7 +386,7 @@ async fn twins_receive_loop(
         stash.retain(|stashed| output_msg_label(stashed) != kind);
 
         if !can_send {
-            tracing::info!("   VVV stashed view={view} from={port} to={target_port} kind={kind}");
+            tracing::trace!("   VVV stashed view={view} from={port} to={target_port} kind={kind}");
             stash.push(msg);
             return;
         }
@@ -396,7 +396,7 @@ async fn twins_receive_loop(
         // Send after taking note of potentially gossipable blocks.
         let send = |msg| {
             if let Some(number) = block_to_gossip(target_port, &msg) {
-                tracing::info!("   ~~~ gossip from={port} to={target_port} number={number}");
+                tracing::trace!("   ~~~ gossip from={port} to={target_port} number={number}");
                 gossip.send.send(TwinsGossipMessage {
                     from: port,
                     to: target_port,
@@ -412,10 +412,12 @@ async fn twins_receive_loop(
         for unstashed in stash.drain(0..) {
             let view = output_msg_view_number(&unstashed);
             let kind = output_msg_label(&unstashed);
-            tracing::info!("   ^^^ unstashed view={view} from={port} to={target_port} kind={kind}");
+            tracing::trace!(
+                "   ^^^ unstashed view={view} from={port} to={target_port} kind={kind}"
+            );
             send(unstashed);
         }
-        tracing::info!("   >>> sending view={view} from={port} to={target_port} kind={kind}");
+        tracing::trace!("   >>> sending view={view} from={port} to={target_port} kind={kind}");
         send(msg);
     };
 
@@ -436,7 +438,7 @@ async fn twins_receive_loop(
             ),
         };
 
-        tracing::info!("broadcasting view={view} from={port} kind={kind}");
+        tracing::trace!("broadcasting view={view} from={port} kind={kind}");
         for target_port in sends.keys() {
             send_or_stash(can_send(*target_port)?, *target_port, msg());
         }
@@ -482,14 +484,14 @@ async fn twins_gossip_loop(
                         return Ok(());
                     }
                     let Ok(Some(block)) = local_store.get_block(ctx, number).await else {
-                        tracing::info!(
+                        tracing::trace!(
                             "   ~~x gossip unavailable from={from} to={to} number={number}"
                         );
                         return Ok(());
                     };
-                    tracing::info!("   ~~> gossip queue from={from} to={to} number={number}");
+                    tracing::trace!("   ~~> gossip queue from={from} to={to} number={number}");
                     let _ = remote_store.queue_block(ctx, block).await;
-                    tracing::info!("   ~~V gossip stored from={from} to={to} number={number}");
+                    tracing::trace!("   ~~V gossip stored from={from} to={to} number={number}");
                     Ok(())
                 });
                 // Be pessimistic and try to insert all ancestors, to minimise the chance that

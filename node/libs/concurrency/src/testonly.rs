@@ -22,7 +22,7 @@ pub fn abort_on_panic() {
     if nextest != "1" || nextest_execution_mode != "process-per-test" {
         return;
     }
-    tracing::info!("[panic=abort] enabled");
+    tracing::trace!("[panic=abort] enabled");
     let orig_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |panic_info| {
         orig_hook(panic_info);
@@ -72,7 +72,7 @@ pub fn with_runtimes<Fut: Future>(test: impl Fn() -> Fut) {
         ),
         ("multi_thread", tokio::runtime::Builder::new_multi_thread()),
     ] {
-        tracing::info!("tokio runtime: {name}");
+        tracing::trace!("tokio runtime: {name}");
         let r = b.enable_all().build().unwrap();
         r.block_on(test());
     }

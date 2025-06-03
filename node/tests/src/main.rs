@@ -96,9 +96,9 @@ async fn main() -> anyhow::Result<()> {
         TesterCommands::GenerateConfig => generate_config().await,
         TesterCommands::StartPod => start_tests_pod().await,
         TesterCommands::Run => {
-            tracing::info!("Running sanity test");
+            tracing::trace!("Running sanity test");
             sanity_test().await;
-            tracing::info!("Test Passed!");
+            tracing::trace!("Test Passed!");
             Ok(())
         }
     }

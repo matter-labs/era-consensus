@@ -231,7 +231,7 @@ impl<R: Rpc, H: Handler<R>> ServerTrait for Server<R, H> {
                     }
                     .await;
                     if let Err(err) = res {
-                        tracing::info!("{err:#}");
+                        tracing::debug!("{err:#}");
                     }
                     Ok(())
                 });

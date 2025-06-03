@@ -91,10 +91,10 @@ async fn main() -> anyhow::Result<()> {
     tracing::subscriber::set_global_default(subscriber).unwrap();
 
     // Start the node.
-    tracing::info!("Starting node.");
+    tracing::trace!("Starting node.");
 
     // Load the config files.
-    tracing::debug!("Loading config files.");
+    tracing::trace!("Loading config files.");
     let mut configs = args.load().context("config_args().load()")?;
     // if `PUBLIC_ADDR` env var is set, use it to override publicAddr in config
     check_public_addr(&mut configs.app).context("check_public_addr()")?;

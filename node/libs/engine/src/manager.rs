@@ -438,7 +438,7 @@ impl EngineManagerRunner {
                 loop {
                     async {
                         let new = sync::changed::<BlockStoreState>(ctx, &mut persisted)
-                            .instrument(tracing::info_span!("wait_for_block_store_change"))
+                            .instrument(tracing::trace_span!("wait_for_block_store_change"))
                             .await?
                             .clone();
                         sync::try_send_modify(&self.0.block_store, |block_store| {
@@ -447,7 +447,7 @@ impl EngineManagerRunner {
 
                         ctx::Ok(())
                     }
-                    .instrument(tracing::info_span!("watch_persistent_state_iteration"))
+                    .instrument(tracing::trace_span!("watch_persistent_state_iteration"))
                     .await?;
                 }
             });
@@ -461,7 +461,7 @@ impl EngineManagerRunner {
                         let block = sync::wait_for_some(ctx, block_store, |block_store| {
                             block_store.block(queue_next.max(block_store.persisted.next()))
                         })
-                        .instrument(tracing::info_span!("wait_for_next_block"))
+                        .instrument(tracing::trace_span!("wait_for_next_block"))
                         .await?;
                         queue_next = block.number().next();
 
@@ -471,7 +471,7 @@ impl EngineManagerRunner {
 
                         ctx::Ok(())
                     }
-                    .instrument(tracing::info_span!("queue_persist_block_iteration"))
+                    .instrument(tracing::trace_span!("queue_persist_block_iteration"))
                     .await?;
                 }
             });
@@ -578,7 +578,7 @@ impl EngineManagerRunner {
 
                             ctx::Ok(())
                         }
-                        .instrument(tracing::info_span!("update_validator_schedule_iteration"))
+                        .instrument(tracing::trace_span!("update_validator_schedule_iteration"))
                         .await?;
 
                         // Epochs should be at least minutes apart so that validators have time to

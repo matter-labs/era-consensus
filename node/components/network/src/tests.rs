@@ -22,7 +22,7 @@ async fn test_metrics() {
             .enumerate()
             .map(|(i, cfg)| {
                 let (node, runner) = testonly::Instance::new(cfg, engine.manager.clone());
-                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+                s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node", i)));
                 node
             })
             .collect();
@@ -32,7 +32,7 @@ async fn test_metrics() {
         nodes[0].state().register_metrics();
         let mut encoded_metrics = String::new();
         registry.encode(&mut encoded_metrics, vise::Format::OpenMetricsForPrometheus)?;
-        tracing::info!("stats =\n{encoded_metrics}");
+        tracing::trace!("stats =\n{encoded_metrics}");
 
         Ok(())
     })

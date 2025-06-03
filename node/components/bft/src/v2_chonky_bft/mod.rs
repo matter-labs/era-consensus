@@ -90,7 +90,7 @@ impl StateMachine {
             Some(backup) => {
                 if backup.epoch == config.epoch {
                     // If the backup epoch matches the current epoch, we return the existing backup state.
-                    tracing::debug!(
+                    tracing::trace!(
                         "ChonkyBFT replica - Starting from backup state for epoch {}.",
                         backup.epoch
                     );
@@ -98,7 +98,7 @@ impl StateMachine {
                 } else {
                     // If the backup epoch does not match the current epoch, we return a default state.
                     // This will cause the replica to start from the beginning of the current epoch.
-                    tracing::debug!(
+                    tracing::trace!(
                         "ChonkyBFT replica - Backup epoch {} does not match current epoch {}",
                         backup.epoch,
                         config.epoch
@@ -109,7 +109,7 @@ impl StateMachine {
             None => {
                 // If there is no backup state, we return a default state.
                 // This will cause the replica to start from the beginning of the current epoch.
-                tracing::debug!("ChonkyBFT replica - No backup state found.");
+                tracing::trace!("ChonkyBFT replica - No backup state found.");
                 validator::v2::ChonkyV2State::default()
             }
         };
@@ -148,7 +148,7 @@ impl StateMachine {
     /// This is the main entry point for the state machine,
     /// potentially triggering state modifications and message sending to the executor.
     pub(crate) async fn run(mut self, ctx: &ctx::Ctx) -> ctx::Result<()> {
-        tracing::info!("Starting ChonkyBFT replica.");
+        tracing::trace!("Starting ChonkyBFT replica.");
         self.view_start = ctx.now();
 
         // If this is the first view, we immediately timeout. This will force the replicas
@@ -156,7 +156,7 @@ impl StateMachine {
         // next view. This is necessary because the first view is not justified by any
         // previous view.
         if self.view_number == validator::ViewNumber(0) {
-            tracing::debug!("ChonkyBFT replica - Starting view 0, immediately timing out.");
+            tracing::trace!("ChonkyBFT replica - Starting view 0, immediately timing out.");
             self.start_timeout(ctx).await?;
         }
 
@@ -183,7 +183,7 @@ impl StateMachine {
 
             // Unwrap the v2 message from the others.
             let validator::ConsensusMsg::V2(msg) = &req.msg.msg else {
-                tracing::warn!(
+                tracing::debug!(
                     "ChonkyBFT replica - Received a message from a different protocol version.",
                 );
                 continue;
@@ -203,7 +203,7 @@ impl StateMachine {
                                 proposal::Error::Internal(err) => {
                                     match &err {
                                         ctx::Error::Canceled(_) => {
-                                            tracing::debug!(
+                                            tracing::trace!(
                                                 "ChonkyBFT replica - on_proposal: canceled"
                                             );
                                         }
@@ -221,7 +221,7 @@ impl StateMachine {
                                     tracing::debug!("ChonkyBFT replica - on_proposal: {err:#}");
                                 }
                                 _ => {
-                                    tracing::warn!("ChonkyBFT replica - on_proposal: {err:#}");
+                                    tracing::debug!("ChonkyBFT replica - on_proposal: {err:#}");
                                 }
                             }
                             Err(())
@@ -242,7 +242,7 @@ impl StateMachine {
                                 commit::Error::Internal(err) => {
                                     match &err {
                                         ctx::Error::Canceled(_) => {
-                                            tracing::debug!(
+                                            tracing::trace!(
                                                 "ChonkyBFT replica - on_commit: canceled"
                                             );
                                         }
@@ -260,7 +260,7 @@ impl StateMachine {
                                     tracing::debug!("ChonkyBFT replica - on_commit: {err:#}");
                                 }
                                 _ => {
-                                    tracing::warn!("ChonkyBFT replica - on_commit: {err:#}");
+                                    tracing::debug!("ChonkyBFT replica - on_commit: {err:#}");
                                 }
                             }
                             Err(())
@@ -281,7 +281,7 @@ impl StateMachine {
                                 timeout::Error::Internal(err) => {
                                     match &err {
                                         ctx::Error::Canceled(_) => {
-                                            tracing::debug!(
+                                            tracing::trace!(
                                                 "ChonkyBFT replica - on_timeout: canceled"
                                             );
                                         }
@@ -299,7 +299,7 @@ impl StateMachine {
                                     tracing::debug!("ChonkyBFT replica - on_timeout: {err:#}");
                                 }
                                 _ => {
-                                    tracing::warn!("ChonkyBFT replica - on_timeout: {err:#}");
+                                    tracing::debug!("ChonkyBFT replica - on_timeout: {err:#}");
                                 }
                             }
                             Err(())
@@ -320,7 +320,7 @@ impl StateMachine {
                                 new_view::Error::Internal(err) => {
                                     match &err {
                                         ctx::Error::Canceled(_) => {
-                                            tracing::debug!(
+                                            tracing::trace!(
                                                 "ChonkyBFT replica - on_new_view: canceled"
                                             );
                                         }
@@ -338,7 +338,7 @@ impl StateMachine {
                                     tracing::debug!("ChonkyBFT replica - on_new_view: {err:#}");
                                 }
                                 _ => {
-                                    tracing::warn!("ChonkyBFT replica - on_new_view: {err:#}");
+                                    tracing::debug!("ChonkyBFT replica - on_new_view: {err:#}");
                                 }
                             }
                             Err(())
@@ -367,7 +367,7 @@ impl StateMachine {
             .as_ref()
             .is_none_or(|cur| cur.view().number < qc.view().number)
         {
-            tracing::debug!(
+            tracing::trace!(
                 "ChonkyBFT replica - Processing newer CommitQC: current view {}, QC view {}",
                 self.view_number.0,
                 qc.view().number.0,
@@ -397,7 +397,7 @@ impl StateMachine {
             .as_ref()
             .is_none_or(|old| old.view.number < qc.view.number)
         {
-            tracing::debug!(
+            tracing::trace!(
                 "ChonkyBFT replica - Processing newer TimeoutQC: current view {}, QC view {}",
                 self.view_number.0,
                 qc.view.number.0,

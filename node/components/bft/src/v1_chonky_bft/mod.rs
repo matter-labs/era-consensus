@@ -128,7 +128,7 @@ impl StateMachine {
         // next view. This is necessary because the first view is not justified by any
         // previous view.
         if self.view_number == validator::ViewNumber(0) {
-            tracing::debug!("ChonkyBFT replica - Starting view 0, immediately timing out.");
+            tracing::trace!("ChonkyBFT replica - Starting view 0, immediately timing out.");
             self.start_timeout(ctx).await?;
         }
 
@@ -148,6 +148,20 @@ impl StateMachine {
             let Some(req) = recv.ok() else {
                 self.start_timeout(ctx).await?;
                 continue;
+            };
+
+            // Check if the message is a v1 message.
+            match &req.msg.msg {
+                validator::ConsensusMsg::LeaderProposal(_)
+                | validator::ConsensusMsg::ReplicaCommit(_)
+                | validator::ConsensusMsg::ReplicaTimeout(_)
+                | validator::ConsensusMsg::ReplicaNewView(_) => {}
+                _ => {
+                    tracing::debug!(
+                        "ChonkyBFT replica - Received a message from a different protocol version.",
+                    );
+                    continue;
+                }
             };
 
             // Process the message.
@@ -291,7 +305,7 @@ impl StateMachine {
             .as_ref()
             .is_none_or(|cur| cur.view().number < qc.view().number)
         {
-            tracing::debug!(
+            tracing::trace!(
                 "ChonkyBFT replica - Processing newer CommitQC: current view {}, QC view {}",
                 self.view_number.0,
                 qc.view().number.0,
@@ -321,7 +335,7 @@ impl StateMachine {
             .as_ref()
             .is_none_or(|old| old.view.number < qc.view.number)
         {
-            tracing::debug!(
+            tracing::trace!(
                 "ChonkyBFT replica - Processing newer TimeoutQC: current view {}, QC view {}",
                 self.view_number.0,
                 qc.view.number.0,

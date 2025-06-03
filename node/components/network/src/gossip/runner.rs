@@ -191,7 +191,7 @@ impl Network {
                                 .queue_block(ctx, block)
                                 .await
                                 .context("queue_block()")?;
-                            tracing::info!("fetched block {}", req.0);
+                            tracing::trace!("fetched block {}", req.0);
 
                             // Send a response that fetching was successful.
                             // Ignore disconnection error.
@@ -219,7 +219,7 @@ impl Network {
         mut stream: noise::Stream,
     ) -> anyhow::Result<()> {
         let conn = handshake::inbound(ctx, &self.cfg, self.genesis_hash(), &mut stream).await?;
-        tracing::info!("peer = {:?}", conn.key);
+        tracing::trace!("peer = {:?}", conn.key);
         self.inbound.insert(conn.key.clone(), conn.clone()).await?;
         let res = self.run_stream(ctx, stream).await;
         self.inbound.remove(&conn.key).await;
@@ -244,7 +244,7 @@ impl Network {
         let mut stream = preface::connect(ctx, addr, preface::Endpoint::GossipNet).await?;
         let conn =
             handshake::outbound(ctx, &self.cfg, self.genesis_hash(), &mut stream, peer).await?;
-        tracing::info!("peer = {peer:?}");
+        tracing::trace!("peer = {peer:?}");
         self.outbound.insert(peer.clone(), conn.into()).await?;
         let res = self.run_stream(ctx, stream).await;
         self.outbound.remove(peer).await;

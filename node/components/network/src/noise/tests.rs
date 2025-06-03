@@ -22,7 +22,7 @@ async fn transmit_ok() {
                 io::shutdown(ctx, &mut s1).await??;
                 Ok(())
             }
-            .instrument(tracing::info_span!("server")),
+            .instrument(tracing::trace_span!("server")),
         );
         s.spawn(
             async {
@@ -35,7 +35,7 @@ async fn transmit_ok() {
                 io::shutdown(ctx, &mut s2).await??;
                 Ok(())
             }
-            .instrument(tracing::info_span!("client")),
+            .instrument(tracing::trace_span!("client")),
         );
         anyhow::Ok(())
     })
@@ -57,7 +57,7 @@ async fn transmit_sender_dies() {
                 io::shutdown(ctx, &mut s1).await??;
                 Ok(())
             }
-            .instrument(tracing::info_span!("server")),
+            .instrument(tracing::trace_span!("server")),
         );
         s.spawn(
             async {
@@ -65,7 +65,7 @@ async fn transmit_sender_dies() {
                 io::shutdown(ctx, &mut s2).await??;
                 Ok(())
             }
-            .instrument(tracing::info_span!("client")),
+            .instrument(tracing::trace_span!("client")),
         );
         anyhow::Ok(())
     })
@@ -91,7 +91,7 @@ async fn transmit_receiver_dies() {
                 assert_eq!(&got, &msg);
                 Ok(())
             }
-            .instrument(tracing::info_span!("server")),
+            .instrument(tracing::trace_span!("server")),
         );
         s.spawn(
             async {
@@ -99,7 +99,7 @@ async fn transmit_receiver_dies() {
                 while io::write_all(ctx, &mut s2, &msg).await?.is_ok() {}
                 Ok(())
             }
-            .instrument(tracing::info_span!("client")),
+            .instrument(tracing::trace_span!("client")),
         );
         anyhow::Ok(())
     })

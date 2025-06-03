@@ -219,7 +219,7 @@ impl NetworkGauges {
             })
         });
         if register_result.is_err() {
-            tracing::warn!("Failed registering network metrics collector: already registered");
+            tracing::debug!("Failed registering network metrics collector: already registered");
         }
     }
 }

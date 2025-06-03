@@ -27,7 +27,7 @@ pub(crate) async fn run_proposer(
         }
 
         // Create a proposal for the given justification, within the timeout.
-        tracing::info!(
+        tracing::trace!(
             "ChonkyBFT proposer - Creating a proposal for view {}.",
             justification.view().number
         );
@@ -40,7 +40,7 @@ pub(crate) async fn run_proposer(
         {
             Ok(proposal) => proposal,
             Err(ctx::Error::Canceled(_)) => {
-                tracing::warn!("run_proposer(): timed out while creating a proposal");
+                tracing::debug!("run_proposer(): timed out while creating a proposal");
                 continue;
             }
             Err(ctx::Error::Internal(err)) => {
@@ -53,7 +53,7 @@ pub(crate) async fn run_proposer(
         let msg = cfg.secret_key.sign_msg(validator::ConsensusMsg::V2(
             validator::v2::ChonkyMsg::LeaderProposal(proposal),
         ));
-        tracing::debug!(
+        tracing::trace!(
             bft_message = format!("{:#?}", msg.msg),
             "ChonkyBFT proposer - Broadcasting proposal.",
         );

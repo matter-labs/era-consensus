@@ -40,7 +40,7 @@ impl Config {
         );
 
         if let Some(prev) = self.first_block.prev() {
-            tracing::info!("Waiting for the pre-fork blocks to be persisted.");
+            tracing::trace!("Waiting for the pre-fork blocks to be persisted.");
             if let Err(ctx::Canceled) = self.engine_manager.wait_until_persisted(ctx, prev).await {
                 return Ok(());
             }
@@ -112,7 +112,7 @@ impl Config {
         .await?;
 
         scope::run!(ctx, |ctx, s| async {
-            tracing::info!(
+            tracing::trace!(
                 "Starting consensus component (v1). Validator public key: {:?}.",
                 cfg.secret_key.public()
             );
@@ -154,7 +154,7 @@ impl Config {
         .await?;
 
         scope::run!(ctx, |ctx, s| async {
-            tracing::info!(
+            tracing::trace!(
                 "Starting consensus component (v2). Validator public key: {:?}.",
                 cfg.secret_key.public()
             );

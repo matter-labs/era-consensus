@@ -191,7 +191,7 @@ impl Network {
         let peer =
             handshake::inbound(ctx, &self.key, self.gossip.genesis_hash(), &mut stream).await?;
         self.inbound.insert(peer.clone(), stream.stats()).await?;
-        tracing::info!("peer = {peer:?}");
+        tracing::trace!("peer = {peer:?}");
         let res = scope::run!(ctx, |ctx, s| async {
             let mut service = rpc::Service::new()
                 .add_server(ctx, rpc::ping::Server, rpc::ping::RATE)
@@ -229,7 +229,7 @@ impl Network {
         )
         .await?;
         self.outbound.insert(peer.clone(), stream.stats()).await?;
-        tracing::info!("peer = {peer:?}");
+        tracing::trace!("peer = {peer:?}");
         let consensus_cli =
             rpc::Client::<rpc::consensus::Rpc>::new(ctx, self.gossip.cfg.rpc.consensus_rate);
         let res = scope::run!(ctx, |ctx, s| async {
@@ -254,7 +254,7 @@ impl Network {
                         let req = rpc::consensus::Req(msg);
                         let res = call.call(ctx, &req, RESP_MAX_SIZE).await;
                         if let Err(err) = res {
-                            tracing::info!("{err:#}");
+                            tracing::debug!("{err:#}");
                         }
                         Ok(())
                     });
@@ -315,7 +315,7 @@ impl Network {
         if &self.key.public() == peer {
             while ctx.is_active() {
                 if let Err(err) = self.run_loopback_stream(ctx).await {
-                    tracing::info!("run_loopback_stream(): {err:#}");
+                    tracing::debug!("run_loopback_stream(): {err:#}");
                 }
             }
             return;
@@ -330,17 +330,17 @@ impl Network {
                     sync::wait_for(&ctx.with_timeout(config::CONNECT_RETRY), addrs, |addrs| {
                         addrs.get(peer).map(|x| x.msg.addr) != addr
                     })
-                    .instrument(tracing::info_span!("wait_for_address"))
+                    .instrument(tracing::trace_span!("wait_for_address"))
                     .await
                 {
                     addr = new.get(peer).map(|x| x.msg.addr);
                 }
                 let Some(addr) = addr else { return };
                 if let Err(err) = self.run_outbound_stream(ctx, peer, addr).await {
-                    tracing::info!("run_outbound_stream({peer:?},{addr}): {err:#}");
+                    tracing::debug!("run_outbound_stream({peer:?},{addr}): {err:#}");
                 }
             }
-            .instrument(tracing::info_span!("maintain_connection_iter"))
+            .instrument(tracing::trace_span!("maintain_connection_iter"))
             .await;
         }
     }

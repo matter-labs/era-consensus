@@ -44,7 +44,7 @@ async fn coordinated_block_syncing(node_count: usize, gossip_peers: usize) {
             let engine = TestEngine::new(ctx, &setup).await;
             s.spawn_bg(engine.runner.run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, engine.manager);
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node", i)));
             nodes.push(node);
         }
         for block in &setup.blocks {
@@ -102,7 +102,7 @@ async fn uncoordinated_block_syncing(
             let engine = TestEngine::new(ctx, &setup).await;
             s.spawn_bg(engine.runner.clone().run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, engine.manager);
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node", i)));
             nodes.push(node);
         }
         for block in &setup.blocks {
@@ -157,7 +157,7 @@ async fn test_switching_on_nodes() {
             let engine = TestEngine::new(ctx, &setup).await;
             s.spawn_bg(engine.runner.run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, engine.manager);
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node", i)));
             nodes.push(node);
 
             // Insert a block to storage of a random node.
@@ -212,7 +212,7 @@ async fn test_switching_off_nodes() {
             let engine = TestEngine::new(ctx, &setup).await;
             s.spawn_bg(engine.runner.run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, engine.manager);
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node", i)));
             nodes.push(node);
         }
         nodes.shuffle(rng);
@@ -275,7 +275,7 @@ async fn test_different_first_block() {
             let engine = TestEngine::new_with_first_block(ctx, &setup, first).await;
             s.spawn_bg(engine.runner.run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, engine.manager);
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node", i)));
             nodes.push(node);
         }
         nodes.shuffle(rng);
@@ -340,7 +340,7 @@ async fn test_sidechannel_sync() {
             let (manager, runner) = EngineManager::new(ctx, Box::new(engine)).await?;
             s.spawn_bg(runner.run(ctx));
             let (node, runner) = testonly::Instance::new(cfg, manager);
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node", i)));
             nodes.push(node);
         }
 

@@ -86,7 +86,7 @@ impl StateMachine {
 
         // ----------- All checks finished. Now we process the message. --------------
 
-        tracing::debug!(
+        tracing::trace!(
             bft_message = format!("{:#?}", message),
             "ChonkyBFT replica - Received a new view message from {author:#?}.",
         );
@@ -117,7 +117,7 @@ impl StateMachine {
         ctx: &ctx::Ctx,
         view: validator::ViewNumber,
     ) -> ctx::Result<()> {
-        tracing::info!("ChonkyBFT replica - Starting view number {}.", view);
+        tracing::trace!("ChonkyBFT replica - Starting view number {}.", view);
 
         // Update the state machine.
         self.view_number = view;
@@ -161,7 +161,7 @@ impl StateMachine {
                     },
                 )),
         };
-        tracing::debug!(
+        tracing::trace!(
             bft_message = format!("{:#?}", output_message.message),
             "ChonkyBFT replica - Broadcasting new view message at start of view.",
         );
