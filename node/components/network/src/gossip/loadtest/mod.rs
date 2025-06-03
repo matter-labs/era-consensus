@@ -171,6 +171,7 @@ impl Loadtest {
             }
         })
         .await;
+
         match res {
             Ok(()) | Err(ctx::Error::Canceled(_)) => Ok(()),
             Err(ctx::Error::Internal(err)) => Err(err),

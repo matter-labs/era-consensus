@@ -3,14 +3,12 @@
 
 use std::sync::Arc;
 
-use anyhow::Context as _;
 pub use config::Config;
 use zksync_concurrency::{
     ctx,
     error::Wrap as _,
     scope,
     sync::{self, prunable_mpsc::SelectionFunctionResult},
-    time,
 };
 use zksync_consensus_roles::validator;
 
@@ -56,43 +54,16 @@ impl Config {
         let res: ctx::Result<()> = scope::run!(ctx, |ctx, s| async {
             // Spawn task to terminate this instance of the bft component at the end of the current epoch.
             s.spawn(async {
-                // Get the expiration block number for the current epoch when it's available.
-                let expiration = loop {
-                    if let Some(n) = engine_manager
-                        .validator_schedule(epoch_number)
-                        .context(format!(
-                            "BFT instance was started for epoch {} but there's no corresponding \
-                             validator schedule.",
-                            epoch_number
-                        ))?
-                        .expiration_block
-                    {
-                        break n;
-                    }
-                    ctx.sleep(time::Duration::seconds(5)).await?;
-                };
+                // Wait for the expiration block number for the current epoch.
+                let expiration = engine_manager
+                    .wait_for_validator_schedule_expiration(ctx, epoch_number)
+                    .await?;
 
-                loop {
-                    // Get the last persisted block number.
-                    let last_block_number = engine_manager.persisted().head();
+                // Wait until the expiration block is persisted.
+                engine_manager.wait_until_persisted(ctx, expiration).await?;
 
-                    if last_block_number > expiration {
-                        return Err(ctx::Error::Internal(anyhow::anyhow!(
-                            "BFT instance was started for epoch {} but continued past the \
-                             expiration block {}. Current block number: {}.",
-                            epoch_number,
-                            expiration,
-                            last_block_number
-                        )));
-                    }
-
-                    // If we already have the expiration block, we can stop the BFT component.
-                    if last_block_number == expiration {
-                        s.cancel();
-                        break;
-                    }
-                    ctx.sleep(time::Duration::seconds(1)).await?;
-                }
+                // When we already have the expiration block, we can stop the BFT component.
+                s.cancel();
 
                 Ok(())
             });

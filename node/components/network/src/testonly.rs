@@ -233,7 +233,8 @@ impl Instance {
             Some(validator::EpochNumber(0)),
             net_to_con_send,
             con_to_net_recv,
-        );
+        )
+        .unwrap();
 
         (
             Self {

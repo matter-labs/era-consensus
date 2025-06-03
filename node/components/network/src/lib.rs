@@ -6,7 +6,7 @@ use tracing::Instrument as _;
 use zksync_concurrency::{
     ctx::{self, channel},
     error::Wrap as _,
-    limiter, scope, sync, time,
+    limiter, scope, sync,
 };
 use zksync_consensus_engine::EngineManager;
 
@@ -65,17 +65,17 @@ impl Network {
         epoch_number: Option<validator::EpochNumber>,
         consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
         consensus_receiver: channel::UnboundedReceiver<io::ConsensusInputMessage>,
-    ) -> (Arc<Self>, Runner) {
+    ) -> anyhow::Result<(Arc<Self>, Runner)> {
         let gossip = gossip::Network::new(cfg, engine_manager, epoch_number, consensus_sender);
-        let consensus = consensus::Network::new(gossip.clone());
+        let consensus = consensus::Network::new(gossip.clone())?; // TODO: propagate errors
         let net = Arc::new(Self { gossip, consensus });
-        (
+        Ok((
             net.clone(),
             Runner {
                 net,
                 consensus_receiver,
             },
-        )
+        ))
     }
 
     /// Registers metrics for this state.
@@ -103,23 +103,7 @@ impl Runner {
     /// Runs the network component.
     pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         // In order to satisfy the borrow checker, this validator schedule needs to live as long as the runner.
-        // Unfortunately, we don't know if the validator schedule is available at this point, so we need to
-        // create a dummy one if it isn't.
-        // It's somewhat ugly but it works.
-        let validators = self.net.gossip.validator_schedule()?.unwrap_or(
-            validator::Schedule::new(
-                vec![validator::ValidatorInfo {
-                    key: validator::SecretKey::generate().public(),
-                    weight: 1,
-                    leader: true,
-                }],
-                validator::LeaderSelection {
-                    frequency: 1,
-                    mode: validator::LeaderSelectionMode::Weighted,
-                },
-            )
-            .unwrap(),
-        );
+        let validators_opt = self.net.gossip.validator_schedule()?;
 
         let res: ctx::Result<()> = scope::run!(ctx, |ctx, s| async {
             let mut listener = self
@@ -135,71 +119,37 @@ impl Runner {
                 if let Some(epoch_number) = self.net.gossip.epoch_number {
                     // This instance of the network is alive only until the end of the current epoch.
 
-                    // Get the expiration block number for the current epoch.
-                    let expiration = loop {
-                        if let Some(n) = self
-                            .net
-                            .gossip
-                            .engine_manager
-                            .validator_schedule(epoch_number)
-                            .context(format!(
-                                "Network instance was started for epoch {} but there's no \
-                                 corresponding validator schedule.",
-                                epoch_number
-                            ))?
-                            .expiration_block
-                        {
-                            break n;
-                        }
-                        ctx.sleep(time::Duration::seconds(5)).await?;
-                    };
+                    // Wait for the expiration block number for the current epoch.
+                    let expiration = self
+                        .net
+                        .gossip
+                        .engine_manager
+                        .wait_for_validator_schedule_expiration(ctx, epoch_number)
+                        .await?;
 
-                    loop {
-                        // Get the last persisted block number.
-                        let last_block_number = self.net.gossip.engine_manager.persisted().head();
+                    // Wait until the expiration block is persisted.
+                    self.net
+                        .gossip
+                        .engine_manager
+                        .wait_until_persisted(ctx, expiration)
+                        .await?;
 
-                        if last_block_number > expiration {
-                            return Err(ctx::Error::Internal(anyhow::anyhow!(
-                                "Network instance was started for epoch {} but continued past the \
-                                 expiration block {}. Current block number: {}.",
-                                epoch_number,
-                                expiration,
-                                last_block_number
-                            )));
-                        }
-
-                        // If we already have the expiration block, we can stop the network component.
-                        if last_block_number == expiration {
-                            s.cancel();
-                            break;
-                        }
-                        ctx.sleep(time::Duration::seconds(1)).await?;
-                    }
+                    // When we already have the expiration block, we can stop the network component.
+                    s.cancel();
                 } else {
                     // This instance of the network is alive until we fetch all the pre-genesis blocks.
-                    let first_block = self.net.gossip.first_block();
 
-                    loop {
-                        // Get the last persisted block number.
-                        let last_block_number = self.net.gossip.engine_manager.persisted().head();
-
-                        if last_block_number >= first_block {
-                            return Err(ctx::Error::Internal(anyhow::anyhow!(
-                                "Network instance was started to fetch pre-genesis blocks but \
-                                 continued past the genesis first block {}. Current block number: \
-                                 {}.",
-                                first_block,
-                                last_block_number
-                            )));
-                        }
-
-                        // If we already have all the pre-genesis blocks, we can stop the network component.
-                        if last_block_number.next() == first_block {
-                            s.cancel();
-                            break;
-                        }
-                        ctx.sleep(time::Duration::seconds(5)).await?;
+                    // Wait until the last pre-genesis block is persisted.
+                    if let Some(last_pregenesis_block) = self.net.gossip.first_block().prev() {
+                        self.net
+                            .gossip
+                            .engine_manager
+                            .wait_until_persisted(ctx, last_pregenesis_block)
+                            .await?;
                     }
+
+                    // When we already have all the pre-genesis blocks, we can stop the network component.
+                    s.cancel();
                 }
 
                 Ok(())
@@ -245,14 +195,16 @@ impl Runner {
             }
 
             if let Some(c) = &self.net.consensus {
-                // If we are an active validator ...
-                if validators.contains(&c.key.public()) {
-                    // Maintain outbound connections.
-                    for peer in validators.keys() {
-                        s.spawn(async {
-                            c.maintain_connection(ctx, peer).await;
-                            Ok(())
-                        });
+                if validators_opt.is_some() {
+                    // If we are an active validator ...
+                    if validators_opt.as_ref().unwrap().contains(&c.key.public()) {
+                        // Maintain outbound connections.
+                        for peer in validators_opt.as_ref().unwrap().keys() {
+                            s.spawn(async {
+                                c.maintain_connection(ctx, peer).await;
+                                Ok(())
+                            });
+                        }
                     }
                 }
             }
