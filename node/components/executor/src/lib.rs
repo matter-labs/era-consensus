@@ -81,6 +81,8 @@ impl Executor {
     /// Runs this executor to completion. This should be spawned on a separate task.
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         let res = scope::run!(ctx, |ctx, s| async {
+            tracing::trace!("Starting executor.");
+
             // If we are before the first block in genesis, we need to spawn the components
             // to fetch the pre-genesis blocks.
             if self.engine_manager.head().next() < self.engine_manager.first_block() {
@@ -138,9 +140,9 @@ impl Executor {
         validator_schedule: Option<validator::Schedule>,
     ) -> ctx::Result<()> {
         if let Some(epoch_number) = epoch {
-            tracing::debug!("Spawning components for epoch {}", epoch_number);
+            tracing::trace!("Spawning components for epoch {}", epoch_number);
         } else {
-            tracing::debug!("Spawning components for pregenesis");
+            tracing::trace!("Spawning components for pregenesis");
         }
 
         // Generate the communication channels. We have one for each component.
@@ -149,7 +151,7 @@ impl Executor {
 
         scope::run!(ctx, |ctx, s| async {
             // Run the network component.
-            tracing::debug!("Starting network component.");
+            tracing::trace!("Starting network component.");
             let (net, runner) = network::Network::new(
                 network_config,
                 self.engine_manager.clone(),
@@ -178,7 +180,7 @@ impl Executor {
                     .unwrap()
                     .contains(&self.config.validator_key.clone().unwrap().public())
             {
-                tracing::debug!(
+                tracing::trace!(
                     "This node is an active validator for epoch {}. Starting bft component.",
                     epoch.unwrap()
                 );
@@ -195,7 +197,7 @@ impl Executor {
                     .context("Consensus stopped")
                 });
             } else {
-                tracing::debug!(
+                tracing::trace!(
                     "Running the node in non-validator mode for epoch {}.",
                     epoch.unwrap()
                 );

@@ -41,7 +41,7 @@ impl ReadStream {
             };
             match frame.header.frame_kind() {
                 FrameKind::OPEN => {
-                    tracing::warn!("unexpected OPEN frame");
+                    tracing::debug!("unexpected OPEN frame");
                 }
                 FrameKind::CLOSE => {
                     self.0.close_received = true;

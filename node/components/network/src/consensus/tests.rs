@@ -105,22 +105,22 @@ async fn test_one_connection_per_validator() {
             .enumerate()
             .map(|(i, node)| {
                 let (node, runner) = testonly::Instance::new(node, engine.manager.clone());
-                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+                s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node", i)));
                 node
             })
             .collect();
 
-        tracing::info!("waiting for all gossip to be established");
+        tracing::trace!("waiting for all gossip to be established");
         for node in &nodes {
             node.wait_for_gossip_connections().await;
         }
 
-        tracing::info!("waiting for all connections to be established");
+        tracing::trace!("waiting for all connections to be established");
         for node in &nodes {
             node.wait_for_consensus_connections().await;
         }
 
-        tracing::info!(
+        tracing::trace!(
             "Impersonate node 1, and try to establish additional connection to node 0. It should \
              close automatically after the handshake."
         );
@@ -142,7 +142,7 @@ async fn test_one_connection_per_validator() {
         // The connection is expected to be closed automatically by node 0.
         // The multiplexer runner should exit gracefully.
         let _ = rpc::Service::new().run(ctx, stream).await;
-        tracing::info!(
+        tracing::trace!(
             "Exiting the main task. Context will get canceled, all the nodes are expected to \
              terminate gracefully"
         );
@@ -163,13 +163,13 @@ async fn test_genesis_mismatch() {
     scope::run!(ctx, |ctx, s| async {
         let mut listener = cfgs[1].server_addr.bind().context("server_addr.bind()")?;
 
-        tracing::info!("Start one node, we will simulate the other one.");
+        tracing::trace!("Start one node, we will simulate the other one.");
         let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
         let (node, runner) = testonly::Instance::new(cfgs[0].clone(), engine.manager.clone());
-        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
+        s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node")));
 
-        tracing::info!("Populate the validator_addrs of the running node.");
+        tracing::trace!("Populate the validator_addrs of the running node.");
         node.net
             .gossip
             .validator_addrs
@@ -186,7 +186,7 @@ async fn test_genesis_mismatch() {
             .await
             .unwrap();
 
-        tracing::info!("Accept a connection with mismatching genesis.");
+        tracing::trace!("Accept a connection with mismatching genesis.");
         let stream = metrics::MeteredStream::accept(ctx, &mut listener)
             .await
             .wrap("accept()")?;
@@ -194,11 +194,11 @@ async fn test_genesis_mismatch() {
             .await
             .wrap("preface::accept()")?;
         assert_eq!(endpoint, preface::Endpoint::ConsensusNet);
-        tracing::info!("Expect the handshake to fail");
+        tracing::trace!("Expect the handshake to fail");
         let res = handshake::inbound(ctx, &setup.validator_keys[1], rng.gen(), &mut stream).await;
         assert_matches!(res, Err(handshake::Error::GenesisMismatch));
 
-        tracing::info!("Try to connect to a node with a mismatching genesis.");
+        tracing::trace!("Try to connect to a node with a mismatching genesis.");
         let mut stream =
             preface::connect(ctx, *cfgs[0].server_addr, preface::Endpoint::ConsensusNet)
                 .await
@@ -211,7 +211,7 @@ async fn test_genesis_mismatch() {
             &setup.validator_keys[0].public(),
         )
         .await;
-        tracing::info!(
+        tracing::trace!(
             "Expect the peer to verify the mismatching Genesis and close the connection."
         );
         assert_matches!(res, Err(handshake::Error::Stream(_)));
@@ -237,7 +237,7 @@ async fn test_address_change() {
             .enumerate()
             .map(|(i, cfg)| {
                 let (node, runner) = testonly::Instance::new(cfg.clone(), engine.manager.clone());
-                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+                s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node", i)));
                 node
             })
             .collect();
@@ -261,7 +261,7 @@ async fn test_address_change() {
         cfgs[0].public_addr = (*cfgs[0].server_addr).into();
 
         let (node0, runner) = testonly::Instance::new(cfgs[0].clone(), engine.manager.clone());
-        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
+        s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node0")));
 
         nodes[0] = node0;
         for n in &nodes {
@@ -297,7 +297,7 @@ async fn test_transmission() {
                     let i = i;
                     runner
                         .run(ctx)
-                        .instrument(tracing::info_span!("node", i = *i))
+                        .instrument(tracing::trace_span!("node", i = *i))
                         .await
                         .context(*i)
                 });
@@ -305,12 +305,12 @@ async fn test_transmission() {
             })
             .collect();
 
-        tracing::info!("waiting for all connections to be established");
+        tracing::trace!("waiting for all connections to be established");
         for n in &mut nodes {
             n.wait_for_consensus_connections().await;
         }
         for i in 0..10 {
-            tracing::info!("message {i}");
+            tracing::trace!("message {i}");
             // Construct a message and ensure that view is increasing
             // (otherwise the message could get filtered out).
             let mut want: validator::Signed<validator::v1::ReplicaCommit> = rng.gen();
@@ -324,7 +324,7 @@ async fn test_transmission() {
             let message = nodes[1].consensus_receiver.recv(ctx).await.unwrap();
 
             assert_eq!(want, message.msg);
-            tracing::info!("OK");
+            tracing::trace!("OK");
         }
         Ok(())
     })
@@ -360,7 +360,7 @@ async fn test_retransmission() {
         // Spawn the second node multiple times.
         // Each time the node should reconnect and re-receive the broadcasted consensus message.
         for i in 0..2 {
-            tracing::info!("iteration {i}");
+            tracing::trace!("iteration {i}");
             scope::run!(ctx, |ctx, s| async {
                 let (mut node1, runner) =
                     testonly::Instance::new(cfgs[1].clone(), engine.manager.clone());
@@ -369,7 +369,7 @@ async fn test_retransmission() {
                 let message = node1.consensus_receiver.recv(ctx).await.unwrap();
 
                 assert_eq!(want, message.msg);
-                tracing::info!("OK");
+                tracing::trace!("OK");
 
                 Ok(())
             })

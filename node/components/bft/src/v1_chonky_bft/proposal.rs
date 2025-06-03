@@ -174,7 +174,7 @@ impl StateMachine {
                 // we might just have started from a snapshot state. It just means that we have the state of the chain
                 // up to the previous block.
                 if let Some(prev) = implied_block_number.prev() {
-                    tracing::debug!(
+                    tracing::trace!(
                         "ChonkyBFT replica - Waiting for previous block (number {}) to be stored \
                          before verifying proposal.",
                         prev.0
@@ -187,7 +187,7 @@ impl StateMachine {
                 }
 
                 // Execute the payload.
-                tracing::debug!(
+                tracing::trace!(
                     "ChonkyBFT replica - Verifying proposal for block number {}.",
                     implied_block_number.0
                 );
@@ -208,7 +208,7 @@ impl StateMachine {
                     .proposal_payload_size
                     .observe(payload.0.len());
 
-                tracing::debug!(
+                tracing::trace!(
                     "ChonkyBFT replica - Caching proposal for block number {}.",
                     implied_block_number.0
                 );
@@ -222,7 +222,7 @@ impl StateMachine {
             }
         };
 
-        tracing::info!(
+        tracing::debug!(
             "ChonkyBFT replica - Received a proposal from {:#?} at view {} for block number {} \
              with payload hash {:#?}.",
             author,
@@ -266,7 +266,7 @@ impl StateMachine {
         self.backup_state(ctx).await.wrap("backup_state()")?;
 
         // Broadcast our commit message.
-        tracing::debug!(
+        tracing::trace!(
             bft_message = format!("{:#?}", commit_vote),
             "ChonkyBFT replica - Broadcasting commit vote.",
         );

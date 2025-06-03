@@ -128,7 +128,7 @@ async fn test_genesis_mismatch() {
     let cfg0 = testonly::make_config(rng.gen());
     let cfg1 = testonly::make_config(rng.gen());
 
-    tracing::info!("test that inbound handshake rejects mismatching genesis");
+    tracing::trace!("test that inbound handshake rejects mismatching genesis");
     scope::run!(ctx, |ctx, s| async {
         let (s0, mut s1) = noise::testonly::pipe(ctx).await;
         s.spawn(async {
@@ -151,7 +151,7 @@ async fn test_genesis_mismatch() {
     .await
     .unwrap();
 
-    tracing::info!("test that outbound handshake rejects mismatching genesis");
+    tracing::trace!("test that outbound handshake rejects mismatching genesis");
     scope::run!(ctx, |ctx, s| async {
         let (s0, mut s1) = noise::testonly::pipe(ctx).await;
         s.spawn(async {

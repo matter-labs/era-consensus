@@ -158,13 +158,13 @@ impl Loadtest {
                     Ok(stream) => {
                         s.spawn(async {
                             if let Err(err) = self.spam(ctx, stream).await {
-                                tracing::warn!("spam(): {err:#}");
+                                tracing::trace!("spam(): {err:#}");
                             }
                             Ok(())
                         });
                     }
                     Err(err) => {
-                        tracing::warn!("connect(): {err:#}");
+                        tracing::trace!("connect(): {err:#}");
                         ctx.sleep(time::Duration::seconds(10)).await?;
                     }
                 }

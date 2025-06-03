@@ -92,13 +92,13 @@ impl Server {
                         let fut = graceful.watch(conn);
                         s.spawn_bg(async {
                             if let Err(e) = fut.await {
-                                tracing::error!("Error serving connection: {:?}", e);
+                                tracing::debug!("Error serving connection: {:?}", e);
                             }
                             Ok(())
                         });
                     }
                     Err(err) => {
-                        tracing::error!("Error accepting connection: {}", err);
+                        tracing::debug!("Error accepting connection: {}", err);
                         continue;
                     }
                 }

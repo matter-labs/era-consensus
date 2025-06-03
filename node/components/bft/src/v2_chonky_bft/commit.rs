@@ -102,7 +102,7 @@ impl StateMachine {
         // ----------- All checks finished. Now we process the message. --------------
 
         // We add the message to the incrementally-constructed QC.
-        tracing::debug!(
+        tracing::trace!(
             bft_message = format!("{:#?}", message),
             "ChonkyBFT replica - Received a commit message from {author:#?}."
         );
@@ -155,7 +155,7 @@ impl StateMachine {
             .remove(message)
             .unwrap();
 
-        tracing::info!(
+        tracing::trace!(
             "ChonkyBFT replica - We have a commit QC with weight {} at view {} for block number \
              {} with hash {:#?}.",
             weight,

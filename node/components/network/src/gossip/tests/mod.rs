@@ -44,17 +44,17 @@ async fn test_one_connection_per_node() {
             .enumerate()
             .map(|(i, cfg)| {
                 let (node, runner) = testonly::Instance::new(cfg.clone(), engine.manager.clone());
-                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+                s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node", i)));
                 node
             })
             .collect();
 
-        tracing::info!("waiting for all connections to be established");
+        tracing::trace!("waiting for all connections to be established");
         for node in &mut nodes {
             node.wait_for_gossip_connections().await;
         }
 
-        tracing::info!(
+        tracing::trace!(
             "Impersonate a node, and try to establish additional connection to an already \
              connected peer."
         );
@@ -70,10 +70,10 @@ async fn test_one_connection_per_node() {
         handshake::outbound(ctx, &cfgs[0], setup.genesis_hash(), &mut stream, peer)
             .await
             .context("handshake::outbound")?;
-        tracing::info!("The connection is expected to be closed automatically by peer.");
+        tracing::trace!("The connection is expected to be closed automatically by peer.");
         // The multiplexer runner should exit gracefully.
         let _ = rpc::Service::new().run(ctx, stream).await;
-        tracing::info!(
+        tracing::trace!(
             "Exiting the main task. Context will get canceled, all the nodes are expected to \
              terminate gracefully."
         );
@@ -263,7 +263,7 @@ async fn test_validator_addrs_propagation() {
             .enumerate()
             .map(|(i, cfg)| {
                 let (node, runner) = testonly::Instance::new(cfg.clone(), engine.manager.clone());
-                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+                s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node", i)));
                 node
             })
             .collect();
@@ -277,7 +277,7 @@ async fn test_validator_addrs_propagation() {
             })
             .collect();
         for (i, node) in nodes.iter().enumerate() {
-            tracing::info!("awaiting for node[{i}] to learn validator_addrs");
+            tracing::trace!("awaiting for node[{i}] to learn validator_addrs");
             let sub = &mut node.net.gossip.validator_addrs.subscribe();
             sync::wait_for(ctx, sub, |got| want == to_addr_map(got)).await?;
         }
@@ -298,13 +298,13 @@ async fn test_genesis_mismatch() {
     scope::run!(ctx, |ctx, s| async {
         let mut listener = cfgs[1].server_addr.bind().context("server_addr.bind()")?;
 
-        tracing::info!("Start one node, we will simulate the other one.");
+        tracing::trace!("Start one node, we will simulate the other one.");
         let engine = TestEngine::new(ctx, &setup).await;
         s.spawn_bg(engine.runner.run(ctx));
         let (_node, runner) = testonly::Instance::new(cfgs[0].clone(), engine.manager);
-        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node")));
+        s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node")));
 
-        tracing::info!("Accept a connection with mismatching genesis.");
+        tracing::trace!("Accept a connection with mismatching genesis.");
         let stream = metrics::MeteredStream::accept(ctx, &mut listener)
             .await
             .wrap("accept()")?;
@@ -312,11 +312,11 @@ async fn test_genesis_mismatch() {
             .await
             .wrap("preface::accept()")?;
         assert_eq!(endpoint, preface::Endpoint::GossipNet);
-        tracing::info!("Expect the handshake to fail");
+        tracing::trace!("Expect the handshake to fail");
         let res = handshake::inbound(ctx, &cfgs[1], rng.gen(), &mut stream).await;
         assert_matches!(res, Err(handshake::Error::GenesisMismatch));
 
-        tracing::info!("Try to connect to a node with a mismatching genesis.");
+        tracing::trace!("Try to connect to a node with a mismatching genesis.");
         let mut stream = preface::connect(ctx, *cfgs[0].server_addr, preface::Endpoint::GossipNet)
             .await
             .context("preface::connect")?;
@@ -328,7 +328,7 @@ async fn test_genesis_mismatch() {
             &cfgs[0].gossip.key.public(),
         )
         .await;
-        tracing::info!(
+        tracing::trace!(
             "Expect the peer to verify the mismatching Genesis and close the connection."
         );
         assert_matches!(res, Err(handshake::Error::Stream(_)));
@@ -365,7 +365,7 @@ async fn validator_node_restart() {
         s.spawn_bg(
             node1_runner
                 .run(ctx)
-                .instrument(tracing::info_span!("node1")),
+                .instrument(tracing::trace_span!("node1")),
         );
 
         // We restart the node0 after shifting the UTC clock back and forth.
@@ -384,14 +384,14 @@ async fn validator_node_restart() {
                 "UTC time has to be unique for the broadcast to be guaranteed to succeed"
             );
             clock.set_utc(now);
-            tracing::info!("now = {now:?}");
+            tracing::trace!("now = {now:?}");
 
             // _node0 contains pipe, which has to exist to prevent the connection from dying
             // early.
             let (_node0, runner) = testonly::Instance::new(cfgs[0].clone(), engine.manager.clone());
             scope::run!(ctx, |ctx, s| async {
-                s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node0")));
-                tracing::info!("wait for the update to arrive to node1");
+                s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node0")));
+                tracing::trace!("wait for the update to arrive to node1");
                 let sub = &mut node1.net.gossip.validator_addrs.subscribe();
                 let want = Some(*cfgs[0].server_addr);
                 sync::wait_for(ctx, sub, |got| {
@@ -447,7 +447,7 @@ async fn rate_limiting() {
         // their own address.
         for (i, cfg) in cfgs[1..].iter().enumerate() {
             let (node, runner) = testonly::Instance::new(cfg.clone(), engine.manager.clone());
-            s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node", i)));
+            s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node", i)));
             let sub = &mut node.net.gossip.validator_addrs.subscribe();
             sync::wait_for(ctx, sub, |got| {
                 got.get(&node.cfg().validator_key.as_ref().unwrap().public())
@@ -460,7 +460,7 @@ async fn rate_limiting() {
 
         // Spawn the center node.
         let (center, runner) = testonly::Instance::new(cfgs[0].clone(), engine.manager.clone());
-        s.spawn_bg(runner.run(ctx).instrument(tracing::info_span!("node[0]")));
+        s.spawn_bg(runner.run(ctx).instrument(tracing::trace_span!("node[0]")));
         // Await for the center to receive all validator addrs.
         let sub = &mut center.net.gossip.validator_addrs.subscribe();
         sync::wait_for(ctx, sub, |got| want == to_addr_map(got)).await?;

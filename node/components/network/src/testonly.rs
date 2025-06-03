@@ -378,6 +378,6 @@ pub async fn instant_network(
     for n in &nodes {
         n.wait_for_consensus_connections().await;
     }
-    tracing::info!("consensus network established");
+    tracing::trace!("consensus network established");
     Ok(())
 }

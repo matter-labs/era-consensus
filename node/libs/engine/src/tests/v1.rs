@@ -22,7 +22,7 @@ async fn test_inmemory_block_store_v1() {
 
     let mut want = vec![];
     for block in &setup.blocks {
-        tracing::info!("block = {:?}", block.number());
+        tracing::trace!("block = {:?}", block.number());
         engine.queue_next_block(ctx, block.clone()).await.unwrap();
         sync::wait_for(ctx, &mut engine.persisted(), |p| p.contains(block.number()))
             .await

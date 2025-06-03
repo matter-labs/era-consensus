@@ -136,19 +136,19 @@ impl Network {
                             s.spawn_bg(
                                 self.fetch_queue
                                     .request(ctx, RequestItem::Block(number))
-                                    .instrument(tracing::info_span!("fetch_block_request")),
+                                    .instrument(tracing::trace_span!("fetch_block_request")),
                             );
                             // Cancel fetching as soon as block is queued for storage.
                             self.engine_manager.wait_until_queued(ctx, number).await?;
                             Err(ctx::Canceled)
                         })
-                        .instrument(tracing::info_span!("wait_for_block_to_queue"))
+                        .instrument(tracing::trace_span!("wait_for_block_to_queue"))
                         .await;
                         // Wait until the block is actually persisted, so that the amount of blocks
                         // stored in memory is bounded.
                         self.engine_manager.wait_until_persisted(ctx, number).await
                     }
-                    .instrument(tracing::info_span!("fetch_block_from_peer", l2_block = %next)),
+                    .instrument(tracing::trace_span!("fetch_block_from_peer", l2_block = %next)),
                 );
             }
         })

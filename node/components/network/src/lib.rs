@@ -161,7 +161,7 @@ impl Runner {
                 while let Ok(message) = self.consensus_receiver.recv(ctx).await {
                     s.spawn(async {
                         if let Err(err) = self.net.handle_message(ctx, message).await {
-                            tracing::info!("handle_message(): {err:#}");
+                            tracing::debug!("handle_message(): {err:#}");
                         }
                         Ok(())
                     });
@@ -184,10 +184,10 @@ impl Runner {
                             .net
                             .gossip
                             .run_outbound_stream(ctx, peer, addr.clone())
-                            .instrument(tracing::info_span!("out", ?addr))
+                            .instrument(tracing::trace_span!("out", ?addr))
                             .await;
                         if let Err(err) = res {
-                            tracing::info!("gossip.run_outbound_stream({addr:?}): {err:#}");
+                            tracing::debug!("gossip.run_outbound_stream({addr:?}): {err:#}");
                         }
                         ctx.sleep(CONNECT_RETRY).await?;
                     }
@@ -219,7 +219,7 @@ impl Runner {
                     // May fail if the socket got closed.
                     let addr = stream.peer_addr().context("peer_addr()")?;
                     let res = async {
-                        tracing::info!("new connection");
+                        tracing::trace!("new connection");
                         let (stream, endpoint) = preface::accept(ctx, stream)
                             .await
                             .context("preface::accept()")
@@ -247,10 +247,10 @@ impl Runner {
                         }
                         anyhow::Ok(())
                     }
-                    .instrument(tracing::info_span!("in", ?addr))
+                    .instrument(tracing::trace_span!("in", ?addr))
                     .await;
                     if let Err(err) = res {
-                        tracing::info!("{addr}: {err:#}");
+                        tracing::debug!("{addr}: {err:#}");
                     }
                     Ok(())
                 });
