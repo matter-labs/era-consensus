@@ -1,10 +1,7 @@
 //! Library files for the executor. We have it separate from the binary so that we can use these files in the tools crate.
 use std::{
     collections::{HashMap, HashSet},
-    sync::{
-        atomic::{AtomicU64, Ordering},
-        Arc,
-    },
+    sync::Arc,
 };
 
 use anyhow::Context as _;
@@ -83,18 +80,9 @@ pub struct Executor {
 impl Executor {
     /// Runs this executor to completion. This should be spawned on a separate task.
     pub async fn run(self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
-        let cur_epoch = match self
-            .engine_manager
-            .wait_until_epoch_schedule_populated(ctx)
-            .await
-        {
-            Ok(s) => s,
-            // If the context is canceled, we return successfully.
-            Err(ctx::Canceled) => return Ok(()),
-        };
-        let cur_epoch_counter = Arc::new(AtomicU64::new(cur_epoch.0));
-
         let res = scope::run!(ctx, |ctx, s| async {
+            // If we are before the first block in genesis, we need to spawn the components
+            // to fetch the pre-genesis blocks.
             if self.engine_manager.head().next() < self.engine_manager.first_block() {
                 s.spawn(async {
                     self.spawn_components(ctx, self.network_config(), None, None)
@@ -103,30 +91,34 @@ impl Executor {
                 });
             }
 
+            // Wait for the first epoch to be populated to get number of the first epoch.
+            let mut cur_epoch = self
+                .engine_manager
+                .wait_until_epoch_schedule_populated(ctx)
+                .await?;
+
             // Start the loop to spawn the components for each epoch.
             loop {
                 // Wait for the validator schedule for the current epoch.
-                let cur_epoch = validator::EpochNumber(cur_epoch_counter.load(Ordering::Relaxed));
                 let schedule = self
                     .engine_manager
                     .wait_for_validator_schedule(ctx, cur_epoch)
                     .await?
                     .schedule;
 
+                // We need to wrap this in a NoCopy to be able to move into the spawned task.
+                let epoch = ctx::NoCopy(cur_epoch);
+
                 // Spawn the components for the current epoch.
                 s.spawn(async {
-                    let epoch = validator::EpochNumber(cur_epoch_counter.load(Ordering::Relaxed));
+                    let epoch = epoch.into();
                     self.spawn_components(ctx, self.network_config(), Some(epoch), Some(schedule))
                         .await
                         .wrap(format!("Components for epoch {} stopped", epoch))
                 });
 
                 // Increment the epoch counter.
-                // Note: This is a hack to avoid a race condition between this and the spawn_components.
-                // Otherwise the counter is incremented before the components are spawned and the components
-                // will not be able to start.
-                ctx.sleep(time::Duration::seconds(5)).await?;
-                cur_epoch_counter.fetch_add(1, Ordering::Relaxed);
+                cur_epoch = cur_epoch.next();
             }
         })
         .await;
