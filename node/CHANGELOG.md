@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.2](https://github.com/matter-labs/era-consensus/compare/v0.11.1...v0.11.2) (2025-06-03)
+
+
+### Bug Fixes
+
+* More fixes to validator rotation ([#257](https://github.com/matter-labs/era-consensus/issues/257)) ([bc1fe19](https://github.com/matter-labs/era-consensus/commit/bc1fe195c7472bc407319da9d72f080fc33e3d9e))
+
 ## [0.11.1](https://github.com/matter-labs/era-consensus/compare/v0.11.0...v0.11.1) (2025-05-29)
 
 
