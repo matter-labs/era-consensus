@@ -22,7 +22,7 @@ homepage   = "https://matter-labs.io/"
 keywords   = ["blockchain", "zksync"]
 license    = "MIT OR Apache-2.0"
 repository = "https://github.com/matter-labs/era-consensus"
-version    = "0.11.1"                                        # x-release-please-version
+version    = "0.11.2"                                        # x-release-please-version
 
 [workspace.dependencies]
 # Crates from this repo.
