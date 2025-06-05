@@ -26,8 +26,7 @@ async fn some_long_operation(ctx: &ctx::Ctx) -> ctx::OrCanceled<()> {
     // Use ctx.wait to await a future while also listening for cancellation
     let result = ctx.wait(async {
         // some sub-operation
-        tokio::time::sleep(time::Duration::seconds(1)).await;
-        "done"
+        // ...
     }).await?;
     println!("Sub-operation result: {}", result);
 
@@ -52,6 +51,12 @@ async fn my_task(parent_ctx: &ctx::Ctx) {
         Err(ctx::Canceled) => println!("Operation was canceled."),
     }
 }
+
+#[tokio::main]
+async fn main() {
+    let root_ctx = ctx::root(); // In tests, we use ctx::test_root() instead.
+    my_task(&root_ctx).await;
+}
 ```
 
 ### 2. `scope` - Structured Concurrency
@@ -59,9 +64,12 @@ async fn my_task(parent_ctx: &ctx::Ctx) {
 Structured concurrency ensures that concurrent tasks are managed within a well-defined scope. If a scope exits, all tasks spawned within it are guaranteed to have completed or been canceled.
 
 - **`scope::run!` (async) and `scope::run_blocking!` (sync)**: These macros create a new scope. The scope manages a group of tasks.
-- **Task Spawning**:
-    - **Main Tasks**: `s.spawn(async_fn)` or `s.spawn_blocking(sync_fn)`. The scope waits for all main tasks to complete. If any main task returns an error, the scope is canceled.
-    - **Background Tasks**: `s.spawn_bg(async_fn)` or `s.spawn_bg_blocking(sync_fn)`. These tasks can continue running even after all main tasks complete, but they are also canceled when the scope is canceled. They are useful for tasks like request handlers or periodic jobs that don't define the primary completion of the scope.
+    - `scope::run!(ctx, async_closure)`: Use this for asynchronous scopes. The provided closure must be `async`. The `run!` macro itself returns a future that you `.await`. Inside, you'll typically use `s.spawn()` for async tasks and `s.spawn_blocking()` for tasks that need to run on a separate thread due to blocking operations.
+    - `scope::run_blocking!(ctx, sync_closure)`: Use this for synchronous scopes. The provided closure is a regular (non-`async`) closure. The `run_blocking!` macro is a blocking call. Inside, you'll typically use `s.spawn_blocking()` for tasks, though `s.spawn()` for async sub-tasks is also possible.
+    The choice depends on whether the function creating the scope is `async` or synchronous.
+- **Task Spawning within a Scope**:
+    - **Main Tasks**: `s.spawn(async_fn)` or `s.spawn_blocking(sync_fn)`. The scope waits for all main tasks to complete. If any main task returns an error or is canceled, the scope is canceled.
+    - **Background Tasks**: `s.spawn_bg(async_fn)` or `s.spawn_bg_blocking(sync_fn)`. The scope's primary work is considered complete once all main tasks finish. At this point (or if any task errors, or if the scope is explicitly canceled), the scope's context is canceled. Background tasks are also subject to this cancellation and must terminate gracefully. The `scope::run!` or `scope::run_blocking!` call will only return after all tasks, including background tasks, have fully terminated. They are useful for auxiliary operations like logging, monitoring, or handling side effects that don't define the main completion criteria of the scope.
 - **Cancellation**:
     - **Automatic**: If any task (main or background) within the scope returns an `Err`, the scope's context is immediately canceled. All other tasks within that scope should then terminate gracefully.
     - **Explicit**: You can explicitly cancel a scope's context using `s.cancel()`.
@@ -78,16 +86,13 @@ Structured concurrency ensures that concurrent tasks are managed within a well-d
 use zksync_concurrency::{ctx, scope, time};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-async fn application_logic(global_ctx: &ctx::Ctx) -> Result<String, anyhow::Error> {
-    let counter = AtomicUsize::new(0);
-
+async fn application_logic(ctx: &ctx::Ctx) -> Result<String, anyhow::Error> {
     // scope::run! takes the parent context and a closure.
     // The closure receives the scope's context and a reference to the scope itself.
-    let result_from_scope: Result<String, anyhow::Error> = scope::run!(global_ctx, |ctx, s| async {
+    let result_from_scope: Result<String, anyhow::Error> = scope::run!(ctx, |ctx, s| async {
         // Spawn a main async task
         s.spawn(async {
             ctx.sleep(time::Duration::milliseconds(50)).await?;
-            counter.fetch_add(1, Ordering::Relaxed);
             println!("Main async task 1 completed.");
             // Tasks should return Result<T, E> where E is the scope's error type
             Ok(())
@@ -97,12 +102,11 @@ async fn application_logic(global_ctx: &ctx::Ctx) -> Result<String, anyhow::Erro
         let handle = s.spawn_blocking(|| {
             // Simulate work
             std::thread::sleep(std::time::Duration::from_millis(100));
-            counter.fetch_add(1, Ordering::Relaxed);
             println!("Main blocking task completed.");
 
             // Example of returning an error:
             // return Err(anyhow::anyhow!("Something went wrong in blocking task"));
-            Ok(100) // This task returns Ok(100)
+            Ok(100)
         });
 
         // Spawn a background task
@@ -127,36 +131,128 @@ async fn application_logic(global_ctx: &ctx::Ctx) -> Result<String, anyhow::Erro
         // The root task of the scope. Its Ok value is returned if all tasks succeed.
         // If we want the scope to fail, this root task can return an error,
         // or any spawned task can return an error.
-        // For example, to make the scope fail if the counter is unexpected:
-        // if counter.load(Ordering::Relaxed) != 2 {
-        //     return Err(anyhow::anyhow!("Counter mismatch"));
-        // }
         Ok("All main tasks launched".to_string())
     }).await;
 
-    println!("Scope finished. Final counter: {}", counter.load(Ordering::Relaxed));
+    println!("Scope finished.");
     result_from_scope
 }
 ```
 
 ### Error Types
 
-- **`ctx::Canceled`**: A distinct error type indicating that an operation was canceled because its context was canceled.
-- **`ctx::Error`**: An enum that can be either `ctx::Canceled` or `anyhow::Error`. This is useful for functions that can fail either due to cancellation or other reasons.
-  ```rust
-  use zksync_concurrency::ctx;
+- **`ctx::Canceled`**: A distinct error type indicating that an operation was specifically canceled because its context was terminated. This is crucial for distinguishing cancellations from other failures.
 
-  fn operation_that_can_be_canceled(ctx: &ctx::Ctx) -> ctx::Result<String> {
-      if !ctx.is_active() {
-          return Err(ctx::Canceled.into());
-      }
-      // ... some fallible operation
-      // let data = might_fail().map_err(anyhow::Error::from)?;
-      // Ok(data)
-      ctx::Ok("Success!".to_string()) // Equivalent to Ok(Ok(...)) for ctx::Result
-  }
-  ```
+- **`ctx::Error`**: This is an enum that represents the outcome of a cancellable operation. It can be one of two variants:
+    - `Error::Canceled(ctx::Canceled)`: Indicates the operation was canceled via its context.
+    - `Error::Internal(anyhow::Error)`: Indicates the operation failed for a reason other than cancellation. The underlying cause is captured as an `anyhow::Error`, allowing for rich error reporting from various sources.
+   `ctx::Error` is the standard error type for many functions and methods within the `zksync_concurrency` crate.
+
+- **`ctx::Result<T>`**: A convenient type alias for `std::result::Result<T, ctx::Error>`.
+
 - **`error::Wrap`**: A trait similar to `anyhow::Context` for adding context to your custom error types that might embed `anyhow::Error`, while correctly handling `ctx::Canceled`.
+
+```rust
+use zksync_concurrency::{ctx, error::Wrap, time};
+
+async fn process_data_with_proper_context(ctx: &ctx::Ctx, data_input: &str) -> ctx::Result<String> {
+    if !ctx.is_active() {
+        // This becomes ctx::Error::Canceled.
+        // The .wrap() here will preserve it as Canceled.
+        return Err(ctx::Canceled.into()).wrap(|| format!("Ctx canceled before processing '{}'", data_input));
+    }
+
+    if data_input == "trigger_fail" {
+        // This becomes ctx::Error::Internal wrapping an anyhow::Error.
+        let internal_failure = anyhow::anyhow!("Specific failure for '{}'", data_input);
+        return Err(ctx::Error::Internal(internal_failure))
+            .wrap(|| format!("High-level context for processing '{}'", data_input));
+    }
+      
+    // Simulating some cancellable work
+    ctx.wait(async { tokio::time::sleep(time::Duration::milliseconds(10)).await }).await?;
+
+    ctx::Ok(format!("Successfully processed '{}'", data_input))
+}
+```
+
+### Pitfalls: `ctx::Canceled` vs. `anyhow::Error`
+
+It is critical to handle `ctx::Canceled` correctly to maintain its distinct semantic meaning. Improperly mixing `ctx::Error::Canceled` with general `anyhow::Error` propagation or the `anyhow::Context` trait can obscure the specific reason for termination (i.e., cancellation).
+
+1.  **Using `anyhow::Context::context()` on `ctx::Error` (or `ctx::Result`)**: 
+    - If you have a `ctx::Result<T>` (which is `Result<T, ctx::Error>`) and you call `.context("some context")` on it, a `ctx::Error::Canceled` variant will be converted into an `anyhow::Error`.
+    - The resulting `anyhow::Error` will contain the new context string prepended to the string representation of the original `Canceled` error (e.g., "some context: canceled").
+    - **Crucially, the distinct `ctx::Error::Canceled` variant is lost.** The error is now a generic `anyhow::Error`, and you can no longer specifically match on `ctx::Error::Canceled`.
+    - **Recommendation**: **Always use `your_ctx_result.wrap("...")`** (from `zksync_concurrency::error::Wrap`) when you want to add context to a `ctx::Result` while preserving the `ctx::Error::Canceled` variant if it occurs. If the function must return `anyhow::Result`, be aware of the conversion (see next point).
+
+    ```rust
+    use zksync_concurrency::{ctx, error::Wrap as _};
+    use anyhow::Context as _;
+
+    let canceled_result: ctx::Result<()> = Err(ctx::Error::Canceled(ctx::Canceled));
+
+    // INCORRECT - converts Canceled to generic anyhow::Error:
+    let wrong = canceled_result.clone().context("Added context");
+    // `wrong` is now Result<(), anyhow::Error>, cannot match on ctx::Error::Canceled
+
+    // CORRECT - preserves Canceled type:
+    let correct = canceled_result.wrap("Added context");
+    match correct {
+        Err(ctx::Error::Canceled(_)) => { /* Handle cancellation specifically */ }
+        Err(ctx::Error::Internal(_)) => { /* Handle other errors */ }
+        Ok(_) => {}
+    }
+    ```
+
+2.  **Propagating `ctx::Error::Canceled` via `?` into a function returning `Result<_, anyhow::Error>`**:
+    - If a function `func_A()` returns `ctx::Result<T>` and this result is `Err(ctx::Error::Canceled)`, and you use `func_A()?` inside another function `func_B()` that is declared to return `Result<U, anyhow::Error>`. The `?` operator will perform an implicit conversion from `ctx::Error` to `anyhow::Error` (because `ctx::Error` implements `Into<anyhow::Error>`). The `ctx::Error::Canceled` will be converted into a generic `anyhow::Error`. The error message of this `anyhow::Error` will typically be just "canceled".
+    - **The specific `ctx::Canceled` type information is lost** at the level of `func_B()`'s return type. `func_B()` now only knows it got *an* `anyhow::Error`, not specifically a cancellation.
+    - **Recommendation**: The **primary and most robust approach** is to **explicitly handle the `ctx::Result`** returned by `func_A()` *before* it's propagated further using `?`, especially if `func_B()` needs to return a generic `Result<_, anyhow::Error>`. This typically involves using a `match` statement on the result of `func_A()`:
+        - If `Err(ctx::Error::Canceled)` is received, `func_B()` can perform cancellation-specific cleanup, log the cancellation, or transform it into an appropriate `anyhow::Error` if cancellation at this specific point in `func_B`'s logic is unexpected and should be reported as a distinct failure (while still acknowledging its origin if possible).
+        - If `Err(ctx::Error::Internal)` is received, it can be propagated (e.g., using `?` if `func_B` returns `anyhow::Error`) or wrapped as needed.
+        - If `Ok` is received, proceed as normal.
+      Allowing the `?` operator to implicitly convert `ctx::Error::Canceled` to a generic `anyhow::Error` (when `func_B` returns `Result<_, anyhow::Error>`) should be a conscious decision. It is only appropriate if `func_B` can genuinely treat a context cancellation originating from `func_A` identically to any other internal error, and the loss of the specific `Canceled` type information is acceptable for all callers of `func_B`. If precise cancellation information *must* be propagated out of `func_B`, then `func_B` itself should consider returning `ctx::Result` or a custom error enum that can distinctly represent cancellation (as shown in Scenario 2 of the conceptual example below).
+
+    ```rust
+    use zksync_concurrency::{ctx, time};
+
+    fn operation_that_might_be_canceled(ctx: &ctx::Ctx) -> ctx::Result<String> {
+        ctx.sleep(time::Duration::milliseconds(1)).await?; // This can return Err(ctx::Error::Canceled)
+        // Or, explicitly:
+        // if !ctx.is_active() {
+        //     return Err(ctx::Canceled.into()); // Becomes ctx::Error::Canceled
+        // }
+        ctx::Ok("Operation Succeeded".to_string())
+    }
+
+    // This function loses the specific Canceled type if operation is canceled.
+    fn calling_func_that_returns_anyhow(ctx: &ctx::Ctx) -> Result<String, anyhow::Error> {
+        let result = operation_that_might_be_canceled(ctx)?; // Converts ctx::Error::Canceled to anyhow::Error
+        Ok(format!("Got: {}", result))
+    }
+
+    // This function preserves the Canceled type.
+    fn calling_func_that_returns_ctx_result(ctx: &ctx::Ctx) -> ctx::Result<String> {
+        let result_string = operation_that_might_be_canceled(ctx)?;
+        ctx::Ok(format!("Got: {}", result_string))
+    }
+
+    // Example of explicit handling when returning anyhow::Error:
+    async fn handler_with_explicit_handling(ctx: &ctx::Ctx) -> Result<String, anyhow::Error> {
+        match operation_that_might_be_canceled(ctx) {
+            Ok(result) => Ok(format!("Processed: {}", result)),
+            Err(ctx::Error::Canceled(_)) => {
+                // Handle cancellation specifically
+                Err(anyhow::anyhow!("Operation was canceled"))
+            }
+            Err(ctx::Error::Internal(err)) => {
+                // Propagate other errors
+                Err(err.context("Operation failed"))
+            }
+        }
+    }
+    ```
 
 ## Utilities
 
