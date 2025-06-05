@@ -22,43 +22,21 @@ And then run tests with:
 cargo nextest run
 ```
 
-## Codebase Layout
+### Linting and formatting
 
-We want the files to be relatively small in general (lets say, <500 LoC), so feel free to split the module into multiple files
-- the more granular the codebase files, the easier is to work with `git merge`.
-
-### tests
-
-Put tests in a separate submodule called `tests.rs`.
-Use `testonly.rs` to provide test utilities to be available outside of the module.
-Depending whether you want `testonly.rs` to be also available outside of the whole crate,
-`lib.rs`/`mod.rs` might contain either:
+We use `clippy` to lint the code. You can run it with the following command:
 
 ```
-#[cfg(test)]
-pub(crate) mod testonly;
-```
-or
-
-```
-pub mod testonly;
+cargo clippy --fix --all-targets
 ```
 
-because if you write tests in crate A depending on crate B, the elements under `#[cfg(test)]` in crate B are not visible from crate A tests.
-An alternative to that would be to introduce a custom `testonly` compilation flag which would make `testonly` elements available transitively,
-but compilation flags are ugly (they explode the number of possible compilation modes).
+We use `rustfmt` to format the code, but with custom flags. You can run it with the following command:
 
-Your tests should be as close as possible to the code under test. For example, if you test
-functionality of `a/b/mod.rs`, then put your tests in `a/b/tests.rs`, rather than in `a/tests.rs`.
-Note that if you want to test `a/b.rs` you need to change it first into `a/b/mod.rs` so that you can add `a/b/tests.rs`.
+```
+cargo fmt --all -- --config imports_granularity=Crate --config group_imports=StdExternalCrate --config format_strings=true
+```
 
-### example
-
-* `somemodule` implementation fragments: `somemodule/a.rs`, `somemodule/b.rs`, ...
-* `somemodule/mod.rs` containing `pub use a::*`, `pub use b::*`, ...
-* proper submodules of `somemodule`: `somemodule/inner1/mod.rs`, `somemodule/inner2/mod.rs`, ...
-* `somemodule/tests.rs`
-* `somemodule/testonly.rs`
+Both of these are enabled in our CI.
 
 ## Panics
 
@@ -101,9 +79,11 @@ when you know that for every `x` than can occur at this callsite, `f(x)` will al
 Clean code should never expect a panic. Code which is expecting a panic is usually some meta-code (like test harness itself),
 or code which actually is written with `panic=unwind` in mind (and people rarely think about it when coding).
 
-# Structured concurrency
+## Structured concurrency
 
-## Naming conventions
+First, read the [README](node/libs/concurrency/README.md) of the `zksync_concurrency` crate to understand the core concepts and basic usage.
+
+### Naming conventions
 
 Scope variable should be called `s` or `scope`.
 
@@ -123,7 +103,7 @@ However since our codebase is using structured concurrency, you shouldn't implem
 for spawning concurrent tasks, use `Scope::spawn/spawn_bg/spawn_blocking/spawn_bg_blocking` functions
 which enforce the invariant that the tasks terminate before the scope terminates.
 
-## Avoid passing `Scope` as a function argument.
+### Avoid passing `Scope` as a function argument.
 
 The point of structured concurrency is to make the concurrency an implementation detail of otherwise synchronous function.
 If logic within a `scope::run!` grows too complex, you usually should be able to extract that logic into auxiliary functions

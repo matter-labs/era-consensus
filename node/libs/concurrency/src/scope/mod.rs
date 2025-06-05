@@ -28,9 +28,6 @@
 //! which allows and promotes making concurrency an implementation detail of your functions.
 //! Therefore it is highly discouraged to pass `&Scope` as an argument to functions - if
 //! some function needs concurrency internally, it should rather run its own scope internally.
-// TODO(gprusak): add more tests
-// TODO(gprusak): add simple useful real-life examples
-// TODO(gprusak): add a style guide on how to use scopes.
 use std::{
     future::Future,
     pin::Pin,
