@@ -219,10 +219,12 @@ It is critical to handle `ctx::Canceled` correctly to maintain its distinct sema
 
     fn operation_that_might_be_canceled(ctx: &ctx::Ctx) -> ctx::Result<String> {
         ctx.sleep(time::Duration::milliseconds(1)).await?; // This can return Err(ctx::Error::Canceled)
+
         // Or, explicitly:
-        // if !ctx.is_active() {
-        //     return Err(ctx::Canceled.into()); // Becomes ctx::Error::Canceled
-        // }
+        if !ctx.is_active() {
+            return Err(ctx::Canceled); // Becomes ctx::Error::Canceled
+        }
+
         ctx::Ok("Operation Succeeded".to_string())
     }
 
@@ -254,6 +256,37 @@ It is critical to handle `ctx::Canceled` correctly to maintain its distinct sema
     }
     ```
 
+3.  **Moving `Copy` types into tasks**:
+    - When spawning tasks, `Copy` types are prevented from being moved into the task async block. Use `ctx::NoCopy` to wrap `Copy` types when you want to move them inside tasks, then unwrap them inside the task.
+
+    ```rust
+    use zksync_concurrency::{ctx, scope};
+
+    let epoch = 42u64; // A Copy type
+    
+    // Without NoCopy - this won't compile
+    scope::run!(ctx, |ctx, s| async {
+        s.spawn(async {
+            println!("Task processing epoch: {}", epoch);
+            Ok(())
+        });
+        
+        Ok(())
+    }).await.unwrap();
+
+    // With NoCopy - epoch is moved, ensuring transfer of ownership
+    let nc_epoch = ctx::NoCopy(epoch);
+    scope::run!(ctx, |ctx, s| async {
+        s.spawn(async {
+            let epoch = nc_epoch.into(); // epoch is moved
+            println!("Task processing epoch: {}", epoch);
+            Ok(())
+        });
+        // nc_epoch is no longer accessible here - it was moved
+        Ok(())
+    }).await.unwrap();
+    ```
+
 ## Utilities
 
 The `zksync_concurrency` crate also provides several context-aware utilities:
@@ -277,112 +310,4 @@ The `zksync_concurrency` crate also provides several context-aware utilities:
 4.  **Use `scope` for Related Tasks**: Group related concurrent tasks within a `scope` to ensure proper lifecycle management and error propagation.
 5.  **Return `Result<T, YourError>` from Tasks**: Tasks spawned in a scope should return a `Result`. The error type `YourError` should be consistent across the scope (often `anyhow::Error` or `ctx::Error`).
 6.  **Keep Tasks Focused**: Tasks should ideally represent a single logical unit of work.
-7.  **Resource Cleanup**: When a task detects cancellation (e.g., `ctx.wait()` returns `Err(ctx::Canceled)` or `ctx.is_active()` is false), it should clean up any resources it holds before returning.
-
-## Full Example
-
-```rust
-use zksync_concurrency::{ctx, scope, time, error::Wrap};
-use std::sync::atomic::{AtomicBool, Ordering};
-
-// Custom error for our application
-#[derive(Debug, thiserror::Error)]
-enum MyError {
-    #[error("Operation failed: {0}")]
-    OperationFailed(String),
-    #[error(transparent)]
-    Context(#[from] ctx::Error), // Allow easy conversion from ctx::Error
-}
-
-// A worker function
-async fn worker_task(ctx: &ctx::Ctx, id: usize, fail_flag: &AtomicBool) -> Result<usize, MyError> {
-    println!("[Worker {}] Starting", id);
-    for i in 0..5 {
-        if !ctx.is_active() {
-            println!("[Worker {}] Canceled during iteration {}", id, i);
-            return Err(ctx::Canceled.into()).wrap(|| format!("Worker {} canceled", id));
-        }
-        println!("[Worker {}] Processing item {}", id, i);
-        ctx.sleep(time::Duration::milliseconds(50 + (id * 20) as i64)).await
-            .map_err(ctx::Error::from)?; // Convert Canceled to ctx::Error
-
-        if id == 1 && i == 2 && fail_flag.load(Ordering::Relaxed) {
-            println!("[Worker {}] Simulating failure", id);
-            return Err(MyError::OperationFailed(format!("Worker {} failed intentionally", id)));
-        }
-    }
-    println!("[Worker {}] Finished successfully", id);
-    Ok(id * 10)
-}
-
-// Main application entry point using the concurrency primitives
-async fn run_application(should_fail: bool) -> Result<Vec<usize>, MyError> {
-    let root_ctx = ctx::root(); // Create a root context
-    let fail_flag = AtomicBool::new(should_fail);
-
-    println!("Application starting. Simulating failure: {}", should_fail);
-
-    let results = scope::run!(&root_ctx, |ctx, s| async {
-        let mut handles = vec![];
-        for i in 0..3 {
-            let handle = s.spawn(worker_task(ctx, i, &fail_flag));
-            handles.push(handle);
-        }
-
-        // Background task example
-        s.spawn_bg(async {
-            loop {
-                if !ctx.is_active() {
-                    println!("[Monitor] Scope canceled, monitor exiting.");
-                    break;
-                }
-                println!("[Monitor] System nominal.");
-                if ctx.sleep(time::Duration::seconds(1)).await.is_err() {
-                    println!("[Monitor] Sleep canceled, monitor exiting.");
-                    break;
-                }
-            }
-            Ok(()) // Background tasks also return Result
-        });
-
-        let mut collected_results = vec![];
-        for (idx, handle) in handles.into_iter().enumerate() {
-            match handle.join(ctx).await {
-                Ok(res) => {
-                    println!("[Main] Worker {} joined with result: {}", idx, res);
-                    collected_results.push(res);
-                }
-                Err(ctx::Canceled) => {
-                    // This occurs if the scope was canceled due to another task's error,
-                    // or if this specific task returned an error that canceled the scope.
-                    println!("[Main] Worker {} was canceled or its scope failed.", idx);
-                    // Depending on requirements, you might want to propagate a generic error
-                    // or specific information. Here, the scope::run! will return the first
-                    // actual error that occurred.
-                }
-            }
-        }
-        // The root task of the scope.
-        // If this returns an error, the scope::run! will return it (if no other task failed first).
-        Ok(collected_results)
-    }).await?;
-
-    println!("Application finished. Collected results: {:?}", results);
-    Ok(results)
-}
-
-// Example of how to run this (e.g., in a #[tokio::main] function)
-// async fn main() {
-//     match run_application(true).await {
-//         Ok(results) => println!("Success: {:?}", results),
-//         Err(e) => println!("Error: {:?}", e),
-//     }
-//     println!("---");
-//     match run_application(false).await {
-//         Ok(results) => println!("Success: {:?}", results),
-//         Err(e) => println!("Error: {:?}", e),
-//     }
-// }
-```
-
-This README provides a good overview of the `zksync_concurrency` crate, its main components, and how to use them effectively for managing concurrent operations in Rust.
+7.  **Resource Cleanup**: When a task detects cancellation, it should clean up any resources it holds before returning.
