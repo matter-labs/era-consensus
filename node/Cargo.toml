@@ -139,6 +139,7 @@ missing_docs          = "warn"
 unreachable_pub       = "warn"
 unsafe_code           = "deny"
 unused_qualifications = "warn"
+unused_crate_dependencies = "warn"
 
 [workspace.lints.clippy]
 # restriction group

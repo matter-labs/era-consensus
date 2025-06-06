@@ -10,7 +10,6 @@ repository.workspace = true
 version.workspace    = true
 
 [dependencies]
-anyhow.workspace             = true
 rand.workspace               = true
 thiserror.workspace          = true
 zksync_concurrency.workspace = true
