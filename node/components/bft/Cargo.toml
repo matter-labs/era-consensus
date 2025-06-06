@@ -14,9 +14,11 @@ zksync_concurrency.workspace       = true
 zksync_consensus_network.workspace = true
 zksync_consensus_roles.workspace   = true
 zksync_consensus_engine.workspace  = true
+zksync_consensus_utils.workspace   = true
 zksync_protobuf.workspace          = true
 
 anyhow.workspace      = true
+rand.workspace        = true
 thiserror.workspace   = true
 tracing.workspace     = true
 vise.workspace        = true

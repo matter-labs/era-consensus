@@ -18,6 +18,7 @@ zksync_consensus_engine.workspace = true
 zksync_protobuf.workspace          = true
 
 anyhow.workspace      = true
+rand.workspace        = true
 semver.workspace      = true
 tracing.workspace     = true
 

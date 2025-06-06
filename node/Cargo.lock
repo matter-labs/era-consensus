@@ -3822,6 +3822,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "pretty_assertions",
+ "rand",
  "test-casing",
  "thiserror 1.0.69",
  "tokio",
@@ -3831,6 +3832,7 @@ dependencies = [
  "zksync_consensus_engine",
  "zksync_consensus_network",
  "zksync_consensus_roles",
+ "zksync_consensus_utils",
  "zksync_protobuf",
 ]
 
@@ -3874,6 +3876,7 @@ name = "zksync_consensus_executor"
 version = "0.11.2"
 dependencies = [
  "anyhow",
+ "rand",
  "semver",
  "test-casing",
  "tokio",
@@ -3916,6 +3919,7 @@ dependencies = [
  "zksync_consensus_crypto",
  "zksync_consensus_engine",
  "zksync_consensus_roles",
+ "zksync_consensus_utils",
  "zksync_protobuf",
  "zksync_protobuf_build",
 ]
