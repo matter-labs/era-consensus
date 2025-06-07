@@ -5,8 +5,7 @@ projects:
 filters:
   - status = RUNNING
   - labels.repo = zksync-bft
-  # - labels.test_id = "${TEST_ID}" # Placeholder for envsubst
-  - labels.test_id = "ib-1"
+  - labels.test_id = "${TEST_ID}" # Placeholder for envsubst
 keyed_groups:
   - prefix: gcp
     key: labels.purpose
