@@ -9,6 +9,11 @@ variable "test_id" {
     condition     = var.test_id != ""
     error_message = "Unique test ID should not be empty"
   }
+
+  validation {
+    condition     = length(var.test_id) <= 21
+    error_message = "Test ID must not exceed 21 characters (service account name limit is 30 chars, prefix 'zkbft-vm-' uses 9)"
+  }
 }
 
 variable "num_instances" {
