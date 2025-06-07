@@ -6,7 +6,7 @@
       include_role:
         name: victoriametrics.cluster.vmagent
       vars:
-        vmagent_version: v1.93.1
+        vmagent_version: v1.118.0
         vmagent_remote_write_host: https://vm-access.infra-staging.matterlabs.dev
         vmagent_service_args:
           "remoteWrite.basicAuth.username": "{{ lookup('env', 'VM_AUTH_USERNAME') }}"
