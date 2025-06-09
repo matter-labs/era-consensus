@@ -22,9 +22,7 @@ hex.workspace        = true
 num-bigint.workspace = true
 prost.workspace      = true
 rand.workspace       = true
-serde.workspace      = true
 thiserror.workspace  = true
-tracing.workspace    = true
 
 [dev-dependencies]
 assert_matches.workspace = true
