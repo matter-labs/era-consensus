@@ -10,9 +10,6 @@ logs/
 .ssh
 **/*terraform.tfstate*
 
-# Binaries generated in Docker
-node/tools/docker_binaries
-
 # Apalache files
 **/_apalache-out
 
