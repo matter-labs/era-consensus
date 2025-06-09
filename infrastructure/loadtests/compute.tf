@@ -98,10 +98,10 @@ resource "google_compute_instance" "vmagent" {
 
 module "vmagent_sa" {
   source      = "terraform-google-modules/service-accounts/google"
-  version     = "4.2.1"
+  version     = "4.5.4"
   project_id  = var.project_id
   description = "zksync-bft-loadtest-vmagent-${var.test_id}"
-  prefix      = "zksync-bft-vmagent"
+  prefix      = "zkbft-vm"
   names       = [var.test_id]
   project_roles = [
     "${var.project_id}=>roles/compute.viewer",
