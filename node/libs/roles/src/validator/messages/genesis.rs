@@ -24,7 +24,6 @@ pub struct GenesisRaw {
     pub first_block: BlockNumber,
     /// The schedule of validators for the chain. If None, the chain is getting the
     /// validator schedule from the on-chain ConsensusRegistry contract.
-    /// NOTE: For now this field is still required, support for on-chain schedule is not yet implemented.
     pub validators_schedule: Option<Schedule>,
 }
 
@@ -91,9 +90,6 @@ impl ProtoFmt for GenesisRaw {
             2 => {
                 validators_schedule =
                     read_optional(&r.validators_schedule).context("validators_schedule")?;
-                if validators_schedule.is_none() {
-                    anyhow::bail!("validators_schedule on genesis is still required");
-                }
             }
             _ => {
                 unreachable!();
