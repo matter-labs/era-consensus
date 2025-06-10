@@ -3,7 +3,7 @@ use std::fmt;
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 
 /// A transaction propagated by the gossip network. Consensus layer does not interpret the transaction.
-/// It is the responsibility of the application layer to interpret the transaction.
+/// It is the responsibility of the execution layer to interpret the transaction.
 #[derive(Clone, PartialEq, Eq)]
 pub struct Transaction(pub Vec<u8>);
 
