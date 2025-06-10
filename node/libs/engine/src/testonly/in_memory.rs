@@ -7,7 +7,10 @@ use std::{
 use anyhow::Context as _;
 use rand::Rng;
 use zksync_concurrency::{ctx, sync};
-use zksync_consensus_roles::validator::{self, testonly::Setup, ReplicaState};
+use zksync_consensus_roles::{
+    node,
+    validator::{self, testonly::Setup, ReplicaState},
+};
 
 use crate::{block_store::Last, BlockStoreState, EngineInterface};
 
@@ -295,6 +298,14 @@ impl EngineInterface for Engine {
     async fn set_state(&self, _ctx: &ctx::Ctx, state: &ReplicaState) -> ctx::Result<()> {
         *self.0.state.lock().unwrap() = state.clone();
         Ok(())
+    }
+
+    async fn push_tx(&self, _ctx: &ctx::Ctx, _tx: node::Transaction) -> ctx::Result<bool> {
+        unimplemented!()
+    }
+
+    async fn fetch_txs(&self, _ctx: &ctx::Ctx) -> ctx::Result<Vec<node::Transaction>> {
+        unimplemented!()
     }
 }
 
