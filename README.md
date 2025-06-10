@@ -37,6 +37,7 @@ This section provides a physical map of folders & files in this repository.
 
 - [Security policy](.github/SECURITY.md)
 - [Contribution policy](.github/CONTRIBUTING.md)
+- [Style guide](STYLE.md)
 
 ## License
 
