@@ -13,7 +13,7 @@ message Genesis {
   optional uint64 first_block = 7; // required; BlockNumber
   optional uint32 protocol_version = 8; // required; ProtocolVersion
   repeated WeightedValidator validators_v1 = 3;
-  optional LeaderSelectionMode leader_selection = 4; // required
+  optional LeaderSelectionMode leader_selection = 4;
   optional ValidatorSchedule validators_schedule = 10; // optional
 }
 

@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.11.3](https://github.com/matter-labs/era-consensus/compare/v0.11.2...v0.11.3) (2025-06-10)
+
+
+### Bug Fixes
+
+* Downgrade the level of most logs ([#259](https://github.com/matter-labs/era-consensus/issues/259)) ([4eb6c1b](https://github.com/matter-labs/era-consensus/commit/4eb6c1b9a4ff8d0dcfa6d21afbee14e969623a16))
+* remove requirement for validator schedule in genesis ([#264](https://github.com/matter-labs/era-consensus/issues/264)) ([0478902](https://github.com/matter-labs/era-consensus/commit/0478902be58802f9dd9e5b3803316f2540fc2819))
+
 ## [0.11.2](https://github.com/matter-labs/era-consensus/compare/v0.11.1...v0.11.2) (2025-06-03)
 
 
