@@ -3860,6 +3860,7 @@ dependencies = [
  "anyhow",
  "assert_matches",
  "async-trait",
+ "hex",
  "rand",
  "tempfile",
  "test-casing",
@@ -3867,6 +3868,7 @@ dependencies = [
  "tracing",
  "vise",
  "zksync_concurrency",
+ "zksync_consensus_crypto",
  "zksync_consensus_roles",
  "zksync_protobuf_build",
 ]

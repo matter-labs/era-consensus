@@ -7,12 +7,9 @@ use std::{
 use anyhow::Context as _;
 use rand::Rng;
 use zksync_concurrency::{ctx, sync};
-use zksync_consensus_roles::{
-    node,
-    validator::{self, testonly::Setup, ReplicaState},
-};
+use zksync_consensus_roles::validator::{self, testonly::Setup, ReplicaState};
 
-use crate::{block_store::Last, BlockStoreState, EngineInterface};
+use crate::{block_store::Last, BlockStoreState, EngineInterface, Transaction};
 
 /// In-memory engine manager.
 #[derive(Clone, Debug)]
@@ -300,11 +297,11 @@ impl EngineInterface for Engine {
         Ok(())
     }
 
-    async fn push_tx(&self, _ctx: &ctx::Ctx, _tx: node::Transaction) -> ctx::Result<bool> {
+    async fn push_tx(&self, _ctx: &ctx::Ctx, _tx: Transaction) -> ctx::Result<bool> {
         unimplemented!()
     }
 
-    async fn fetch_txs(&self, _ctx: &ctx::Ctx) -> ctx::Result<Vec<node::Transaction>> {
+    async fn fetch_txs(&self, _ctx: &ctx::Ctx) -> ctx::Result<Vec<Transaction>> {
         unimplemented!()
     }
 }

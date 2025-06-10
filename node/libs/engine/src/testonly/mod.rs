@@ -6,7 +6,9 @@ use rand::{distributions::Standard, prelude::Distribution, Rng};
 use zksync_concurrency::ctx;
 use zksync_consensus_roles::{validator, validator::testonly::Setup};
 
-use crate::{BlockStoreState, EngineInterface, EngineManager, EngineManagerRunner, Last};
+use crate::{
+    BlockStoreState, EngineInterface, EngineManager, EngineManagerRunner, Last, Transaction, TxHash,
+};
 
 pub mod in_memory;
 
@@ -25,6 +27,19 @@ impl Distribution<BlockStoreState> for Standard {
             first: rng.gen(),
             last: rng.gen(),
         }
+    }
+}
+
+impl Distribution<Transaction> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Transaction {
+        let size: usize = rng.gen_range(10..100);
+        Transaction((0..size).map(|_| rng.gen()).collect())
+    }
+}
+
+impl Distribution<TxHash> for Standard {
+    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TxHash {
+        TxHash(rng.gen())
     }
 }
 

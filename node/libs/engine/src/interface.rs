@@ -1,9 +1,9 @@
 use std::fmt;
 
 use zksync_concurrency::{ctx, sync};
-use zksync_consensus_roles::{node, validator};
+use zksync_consensus_roles::validator;
 
-use crate::BlockStoreState;
+use crate::{BlockStoreState, Transaction};
 
 /// Defines the interface between the consensus layer and the execution layer.
 /// Implementations **must** propagate context cancellation.
@@ -81,8 +81,8 @@ pub trait EngineInterface: 'static + fmt::Debug + Send + Sync {
     async fn set_state(&self, ctx: &ctx::Ctx, state: &validator::ReplicaState) -> ctx::Result<()>;
 
     /// Pushes a transaction to the mempool. Returns `true` if the transaction was accepted, `false` otherwise.
-    async fn push_tx(&self, ctx: &ctx::Ctx, tx: node::Transaction) -> ctx::Result<bool>;
+    async fn push_tx(&self, ctx: &ctx::Ctx, tx: Transaction) -> ctx::Result<bool>;
 
     /// Fetches new transactions from the mempool. Returns a list of new transactions that need to be propagated.
-    async fn fetch_txs(&self, ctx: &ctx::Ctx) -> ctx::Result<Vec<node::Transaction>>;
+    async fn fetch_txs(&self, ctx: &ctx::Ctx) -> ctx::Result<Vec<Transaction>>;
 }

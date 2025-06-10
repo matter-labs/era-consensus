@@ -6,9 +6,7 @@ use rand::{
 };
 use zksync_consensus_utils::enum_util::Variant;
 
-use super::{
-    Msg, MsgHash, PublicKey, SecretKey, SessionId, Signature, Signed, Transaction, TxHash,
-};
+use super::{Msg, MsgHash, PublicKey, SecretKey, SessionId, Signature, Signed};
 
 impl Distribution<MsgHash> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> MsgHash {
@@ -47,18 +45,5 @@ impl Distribution<SessionId> for Standard {
     fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> SessionId {
         let n = rng.gen_range(10..20);
         SessionId((0..n).map(|_| rng.gen()).collect())
-    }
-}
-
-impl Distribution<Transaction> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> Transaction {
-        let size: usize = rng.gen_range(10..100);
-        Transaction((0..size).map(|_| rng.gen()).collect())
-    }
-}
-
-impl Distribution<TxHash> for Standard {
-    fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> TxHash {
-        TxHash(rng.gen())
     }
 }

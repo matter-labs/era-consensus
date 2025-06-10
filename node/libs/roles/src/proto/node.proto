@@ -21,7 +21,3 @@ message Signed {
   optional PublicKey key = 2;
   optional Signature sig = 3;
 }
-
-message Transaction {
-  optional bytes tx = 1;
-}

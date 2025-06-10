@@ -1,9 +1,7 @@
 //! RPC for propagating user transactions.
-use std::sync::Arc;
-
 use anyhow::Context as _;
-use zksync_consensus_roles::node;
-use zksync_protobuf::ProtoFmt;
+use zksync_consensus_engine::Transaction;
+use zksync_protobuf::{read_required_repr, required, ProtoFmt, ProtoRepr};
 
 use super::Capability;
 use crate::proto::gossip as proto;
@@ -20,26 +18,32 @@ impl super::Rpc for Rpc {
     type Resp = ();
 }
 
-/// Contains a batch of new ValidatorAddrs that the sender has learned about.
+/// Contains a new Transaction that the sender has learned about.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Req(pub(crate) node::Transaction);
+pub(crate) struct Req(pub(crate) Transaction);
 
 impl ProtoFmt for Req {
-    type Proto = proto::PushValidatorAddrs;
+    type Proto = proto::PushTx;
 
     fn read(r: &Self::Proto) -> anyhow::Result<Self> {
-        let mut addrs = vec![];
-        for (i, e) in r.net_addresses.iter().enumerate() {
-            addrs.push(Arc::new(
-                ProtoFmt::read(e).with_context(|| format!("net_addresses[{i}]"))?,
-            ));
-        }
-        Ok(Self(addrs))
+        Ok(Self(read_required_repr(&r.tx)?))
     }
 
     fn build(&self) -> Self::Proto {
         Self::Proto {
-            net_addresses: self.0.iter().map(|a| ProtoFmt::build(a.as_ref())).collect(),
+            tx: Some(ProtoRepr::build(&self.0)),
+        }
+    }
+}
+
+impl ProtoRepr for proto::Transaction {
+    type Type = Transaction;
+    fn read(&self) -> anyhow::Result<Self::Type> {
+        Ok(Transaction(required(&self.tx).context("tx")?.clone()))
+    }
+    fn build(this: &Self::Type) -> Self {
+        Self {
+            tx: Some(this.0.clone()),
         }
     }
 }
