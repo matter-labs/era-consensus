@@ -17,6 +17,9 @@ fn test_byte_encoding() {
 
 #[test]
 fn test_text_encoding() {
+    let ctx = &ctx::test_root(&ctx::RealClock);
+    let rng = &mut ctx.rng();
+
     let key = SecretKey::generate();
     let t1 = TextFmt::encode(&key);
     let t2 = TextFmt::encode(&key.public());
@@ -24,6 +27,10 @@ fn test_text_encoding() {
     assert_eq!(key.public(), Text::new(&t2).decode().unwrap());
     assert!(Text::new(&t1).decode::<PublicKey>().is_err());
     assert!(Text::new(&t2).decode::<SecretKey>().is_err());
+
+    let tx: TxHash = rng.gen();
+    let t1 = TextFmt::encode(&tx);
+    assert_eq!(tx, Text::new(&t1).decode::<TxHash>().unwrap());
 }
 
 #[test]
@@ -31,6 +38,7 @@ fn test_schema_encoding() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     test_encode_random::<Signed<SessionId>>(rng);
+    test_encode_random::<Signed<Transaction>>(rng);
     let key = rng.gen::<SecretKey>().public();
     test_encode(rng, &key);
     test_encode_random::<Signature>(rng);

@@ -5,6 +5,7 @@ package zksync.roles.node;
 message Msg {
   oneof t {
     bytes session_id = 1;
+    bytes transaction = 2;
   }
 }
 
@@ -20,4 +21,8 @@ message Signed {
   optional Msg msg = 1;
   optional PublicKey key = 2;
   optional Signature sig = 3;
+}
+
+message Transaction {
+  optional bytes tx = 1;
 }
