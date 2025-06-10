@@ -38,7 +38,6 @@ fn test_schema_encoding() {
     let ctx = &ctx::test_root(&ctx::RealClock);
     let rng = &mut ctx.rng();
     test_encode_random::<Signed<SessionId>>(rng);
-    test_encode_random::<Signed<Transaction>>(rng);
     let key = rng.gen::<SecretKey>().public();
     test_encode(rng, &key);
     test_encode_random::<Signature>(rng);

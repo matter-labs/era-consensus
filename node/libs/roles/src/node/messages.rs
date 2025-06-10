@@ -1,5 +1,4 @@
 use anyhow::Context as _;
-use std::fmt;
 
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
@@ -17,8 +16,6 @@ pub struct SessionId(pub Vec<u8>);
 pub enum Msg {
     // Authentication
     SessionId(SessionId),
-    // Transaction propagation
-    Transaction(Transaction),
 }
 
 impl Msg {
@@ -33,21 +30,7 @@ impl Variant<Msg> for SessionId {
         Msg::SessionId(self)
     }
     fn extract(msg: Msg) -> Result<Self, BadVariantError> {
-        let Msg::SessionId(this) = msg else {
-            return Err(BadVariantError);
-        };
-        Ok(this)
-    }
-}
-
-impl Variant<Msg> for Transaction {
-    fn insert(self) -> Msg {
-        Msg::Transaction(self)
-    }
-    fn extract(msg: Msg) -> Result<Self, BadVariantError> {
-        let Msg::Transaction(this) = msg else {
-            return Err(BadVariantError);
-        };
+        let Msg::SessionId(this) = msg;
         Ok(this)
     }
 }
@@ -58,14 +41,12 @@ impl ProtoFmt for Msg {
         use proto::msg::T;
         Ok(match required(&r.t)? {
             T::SessionId(r) => Self::SessionId(SessionId(r.clone())),
-            T::Transaction(r) => Self::Transaction(Transaction(r.clone())),
         })
     }
     fn build(&self) -> Self::Proto {
         use proto::msg::T;
         let t = match self {
             Self::SessionId(x) => T::SessionId(x.0.clone()),
-            Self::Transaction(x) => T::Transaction(x.0.clone()),
         };
         Self::Proto { t: Some(t) }
     }

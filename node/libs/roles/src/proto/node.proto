@@ -5,7 +5,6 @@ package zksync.roles.node;
 message Msg {
   oneof t {
     bytes session_id = 1;
-    bytes transaction = 2;
   }
 }
 
