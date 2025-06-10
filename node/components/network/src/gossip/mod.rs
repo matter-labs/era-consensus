@@ -63,7 +63,6 @@ pub(crate) struct Network {
     /// Sender of the channel to the consensus component.
     pub(crate) consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
     /// Queue of block fetching requests.
-    ///
     /// These are blocks that this node wants to request from remote peers via RPC.
     pub(crate) fetch_queue: fetch::Queue,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.

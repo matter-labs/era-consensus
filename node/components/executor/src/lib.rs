@@ -224,6 +224,7 @@ impl Executor {
             validator_key: self.config.validator_key.clone(),
             ping_timeout: Some(time::Duration::seconds(10)),
             max_block_size: self.config.max_payload_size.saturating_add(kB),
+            max_tx_size: self.config.max_tx_size,
             max_block_queue_size: 20,
             tcp_accept_rate: limiter::Rate {
                 burst: 10,
