@@ -22,7 +22,15 @@ use zksync_concurrency::{ctx, scope, sync};
 use zksync_consensus_engine::EngineManager;
 use zksync_consensus_roles::{node, validator};
 
-use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
+use crate::{
+    gossip::{
+        tx_pool::{TxPool, TxPoolSender},
+        ValidatorAddrsWatch,
+    },
+    io,
+    pool::PoolWatch,
+    Config, MeteredStreamStats,
+};
 
 mod fetch;
 mod handshake;
@@ -32,6 +40,7 @@ mod runner;
 mod testonly;
 #[cfg(test)]
 mod tests;
+mod tx_pool;
 mod validator_addrs;
 
 /// Info about a gossip connection.
@@ -65,6 +74,10 @@ pub(crate) struct Network {
     /// Queue of block fetching requests.
     /// These are blocks that this node wants to request from remote peers via RPC.
     pub(crate) fetch_queue: fetch::Queue,
+    /// Pool of transactions to be gossiped.
+    pub(crate) tx_pool: TxPool,
+    /// Sender of the channel to the tx pool.
+    pub(crate) tx_pool_sender: TxPoolSender,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
 }
@@ -77,6 +90,7 @@ impl Network {
         epoch_number: Option<validator::EpochNumber>,
         consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
     ) -> Arc<Self> {
+        let (tx_pool, tx_pool_sender) = TxPool::new();
         Arc::new(Self {
             epoch_number,
             consensus_sender,
@@ -89,6 +103,8 @@ impl Network {
             cfg,
             fetch_queue: fetch::Queue::default(),
             engine_manager,
+            tx_pool,
+            tx_pool_sender,
             push_validator_addrs_calls: 0.into(),
         })
     }

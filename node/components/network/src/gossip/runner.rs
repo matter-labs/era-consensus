@@ -51,6 +51,19 @@ impl rpc::Handler<rpc::push_validator_addrs::Rpc> for &PushServer<'_> {
 }
 
 #[async_trait]
+impl rpc::Handler<rpc::push_tx::Rpc> for &PushServer<'_> {
+    fn max_req_size(&self) -> usize {
+        self.net.cfg.max_tx_size
+    }
+    async fn handle(&self, ctx: &ctx::Ctx, req: rpc::push_tx::Req) -> anyhow::Result<()> {
+        if self.net.engine_manager.push_tx(ctx, req.0.clone()).await? {
+            self.net.tx_pool_sender.send(req.0);
+        }
+        Ok(())
+    }
+}
+
+#[async_trait]
 impl rpc::Handler<rpc::push_block_store_state::Rpc> for &PushServer<'_> {
     fn max_req_size(&self) -> usize {
         10 * kB
