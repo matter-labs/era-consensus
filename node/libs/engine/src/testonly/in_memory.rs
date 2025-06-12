@@ -298,11 +298,7 @@ impl EngineInterface for Engine {
     }
 
     async fn push_tx(&self, _ctx: &ctx::Ctx, _tx: Transaction) -> ctx::Result<bool> {
-        unimplemented!()
-    }
-
-    async fn fetch_txs(&self, _ctx: &ctx::Ctx) -> ctx::Result<Vec<Transaction>> {
-        unimplemented!()
+        Ok(true)
     }
 }
 

@@ -82,7 +82,4 @@ pub trait EngineInterface: 'static + fmt::Debug + Send + Sync {
 
     /// Pushes a transaction to the mempool. Returns `true` if the transaction was accepted, `false` otherwise.
     async fn push_tx(&self, ctx: &ctx::Ctx, tx: Transaction) -> ctx::Result<bool>;
-
-    /// Fetches new transactions from the mempool. Returns a list of new transactions that need to be propagated.
-    async fn fetch_txs(&self, ctx: &ctx::Ctx) -> ctx::Result<Vec<Transaction>>;
 }
