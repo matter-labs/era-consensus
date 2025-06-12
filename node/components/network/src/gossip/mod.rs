@@ -19,14 +19,11 @@ use fetch::RequestItem;
 use tracing::Instrument;
 pub(crate) use validator_addrs::*;
 use zksync_concurrency::{ctx, scope, sync};
-use zksync_consensus_engine::EngineManager;
+use zksync_consensus_engine::{EngineManager, Transaction};
 use zksync_consensus_roles::{node, validator};
 
 use crate::{
-    gossip::{
-        tx_pool::{TxPool, TxPoolSender},
-        ValidatorAddrsWatch,
-    },
+    gossip::{tx_pool::TxPool, ValidatorAddrsWatch},
     io,
     pool::PoolWatch,
     Config, MeteredStreamStats,
@@ -77,7 +74,7 @@ pub(crate) struct Network {
     /// Pool of transactions to be gossiped.
     pub(crate) tx_pool: TxPool,
     /// Sender of the channel to the tx pool.
-    pub(crate) tx_pool_sender: TxPoolSender,
+    pub(crate) tx_pool_sender: sync::broadcast::Sender<Transaction>,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
 }
@@ -90,7 +87,6 @@ impl Network {
         epoch_number: Option<validator::EpochNumber>,
         consensus_sender: sync::prunable_mpsc::Sender<io::ConsensusReq>,
     ) -> Arc<Self> {
-        let (tx_pool, tx_pool_sender) = TxPool::new();
         Arc::new(Self {
             epoch_number,
             consensus_sender,
@@ -102,10 +98,10 @@ impl Network {
             validator_addrs: ValidatorAddrsWatch::default(),
             cfg,
             fetch_queue: fetch::Queue::default(),
-            engine_manager,
-            tx_pool,
-            tx_pool_sender,
+            tx_pool: TxPool::new(engine_manager.tx_pool_receiver()),
+            tx_pool_sender: engine_manager.tx_pool_sender(),
             push_validator_addrs_calls: 0.into(),
+            engine_manager,
         })
     }
 
