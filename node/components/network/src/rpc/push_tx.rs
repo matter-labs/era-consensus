@@ -11,7 +11,7 @@ pub(crate) struct Rpc;
 
 impl super::Rpc for Rpc {
     const CAPABILITY: Capability = Capability::PushTx;
-    const INFLIGHT: u32 = 5;
+    const INFLIGHT: u32 = 1;
     const METHOD: &'static str = "push_tx";
 
     type Req = Req;
