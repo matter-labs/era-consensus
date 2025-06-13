@@ -57,7 +57,9 @@ impl rpc::Handler<rpc::push_tx::Rpc> for &PushServer<'_> {
     }
     async fn handle(&self, ctx: &ctx::Ctx, req: rpc::push_tx::Req) -> anyhow::Result<()> {
         if self.net.engine_manager.push_tx(ctx, req.0.clone()).await? {
+            let tx_hash = req.0.hash();
             self.net.tx_pool.send(req.0).context("tx_pool.send()")?;
+            tracing::trace!("added transaction with hash {:?} to tx pool", tx_hash);
         }
         Ok(())
     }
