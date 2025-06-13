@@ -12,5 +12,5 @@ pub use crate::{
     block_store::{BlockStoreState, Last},
     interface::EngineInterface,
     manager::{EngineManager, EngineManagerRunner},
-    transaction::{Transaction, TxHash},
+    transaction::Transaction,
 };

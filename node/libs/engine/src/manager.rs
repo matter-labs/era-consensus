@@ -406,8 +406,9 @@ impl EngineManager {
         Ok(())
     }
 
-    /// Pushes a transaction to the mempool in the execution layer. If it's a valid transaction,
-    /// it will be added to the mempool and return true. Otherwise, it will return false.
+    /// Pushes a transaction to the mempool in the execution layer. If it's a valid transaction
+    /// and hasn't been added before, it will be added to the mempool now and return true.
+    /// Otherwise, it will return false.
     pub async fn push_tx(&self, ctx: &ctx::Ctx, tx: Transaction) -> ctx::Result<bool> {
         let t = metrics::ENGINE_INTERFACE.push_tx_latency.start();
         let accepted = self.interface.push_tx(ctx, tx).await.wrap("push_tx()")?;
@@ -424,8 +425,8 @@ impl EngineManager {
         self.tx_pool.clone()
     }
 
-    /// Returns a Receiver handle to the tx pool. It can be used to receive transactions from the mempool
-    /// in the execution layer to be gossiped to the network.
+    /// Returns a Receiver handle to the tx pool. It is used to receive transactions to be gossiped
+    /// to the network.
     pub fn tx_pool_receiver(&self) -> sync::broadcast::Receiver<Transaction> {
         self.tx_pool.subscribe()
     }

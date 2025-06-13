@@ -57,10 +57,7 @@ impl rpc::Handler<rpc::push_tx::Rpc> for &PushServer<'_> {
     }
     async fn handle(&self, ctx: &ctx::Ctx, req: rpc::push_tx::Req) -> anyhow::Result<()> {
         if self.net.engine_manager.push_tx(ctx, req.0.clone()).await? {
-            self.net
-                .tx_pool_sender
-                .send(req.0)
-                .context("tx_pool_sender.send()")?;
+            self.net.tx_pool.send(req.0).context("tx_pool.send()")?;
         }
         Ok(())
     }
@@ -158,6 +155,9 @@ impl Network {
                         .await?;
                 }
             });
+
+            // Push tx updates to peer.
+            // TODO
 
             // Push validator addrs updates to peer.
             s.spawn::<()>(async {

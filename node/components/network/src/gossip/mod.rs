@@ -22,12 +22,7 @@ use zksync_concurrency::{ctx, scope, sync};
 use zksync_consensus_engine::{EngineManager, Transaction};
 use zksync_consensus_roles::{node, validator};
 
-use crate::{
-    gossip::{tx_pool::TxPool, ValidatorAddrsWatch},
-    io,
-    pool::PoolWatch,
-    Config, MeteredStreamStats,
-};
+use crate::{gossip::ValidatorAddrsWatch, io, pool::PoolWatch, Config, MeteredStreamStats};
 
 mod fetch;
 mod handshake;
@@ -37,7 +32,6 @@ mod runner;
 mod testonly;
 #[cfg(test)]
 mod tests;
-mod tx_pool;
 mod validator_addrs;
 
 /// Info about a gossip connection.
@@ -71,10 +65,8 @@ pub(crate) struct Network {
     /// Queue of block fetching requests.
     /// These are blocks that this node wants to request from remote peers via RPC.
     pub(crate) fetch_queue: fetch::Queue,
-    /// Pool of transactions to be gossiped.
-    pub(crate) tx_pool: TxPool,
-    /// Sender of the channel to the tx pool.
-    pub(crate) tx_pool_sender: sync::broadcast::Sender<Transaction>,
+    /// Sender of the channel of transactions to be gossiped.
+    pub(crate) tx_pool: sync::broadcast::Sender<Transaction>,
     /// TESTONLY: how many time push_validator_addrs rpc was called by the peers.
     pub(crate) push_validator_addrs_calls: AtomicUsize,
 }
@@ -98,8 +90,7 @@ impl Network {
             validator_addrs: ValidatorAddrsWatch::default(),
             cfg,
             fetch_queue: fetch::Queue::default(),
-            tx_pool: TxPool::new(engine_manager.tx_pool_receiver()),
-            tx_pool_sender: engine_manager.tx_pool_sender(),
+            tx_pool: engine_manager.tx_pool_sender(),
             push_validator_addrs_calls: 0.into(),
             engine_manager,
         })
