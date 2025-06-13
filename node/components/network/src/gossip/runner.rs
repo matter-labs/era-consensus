@@ -156,8 +156,18 @@ impl Network {
                 }
             });
 
-            // Push tx updates to peer.
-            // TODO
+            // Push new transactions to peer.
+            s.spawn::<()>(async {
+                // Get a receiver to the tx pool.
+                let mut rec = self.tx_pool.subscribe();
+                loop {
+                    // Wait for a new transaction.
+                    let tx = sync::broadcast_recv(ctx, &mut rec).await?;
+                    let req = rpc::push_tx::Req(tx);
+                    // Push it to the peer.
+                    push_tx_client.call(ctx, &req, kB).await?;
+                }
+            });
 
             // Push validator addrs updates to peer.
             s.spawn::<()>(async {
