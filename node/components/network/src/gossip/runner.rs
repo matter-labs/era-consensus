@@ -106,6 +106,7 @@ impl Network {
             ctx,
             self.cfg.rpc.push_validator_addrs_rate,
         );
+        let push_tx_client = rpc::Client::<rpc::push_tx::Rpc>::new(ctx, self.cfg.rpc.push_tx_rate);
         let push_block_store_state_client = rpc::Client::<rpc::push_block_store_state::Rpc>::new(
             ctx,
             self.cfg.rpc.push_block_store_state_rate,
@@ -121,6 +122,8 @@ impl Network {
                     &push_server,
                     self.cfg.rpc.push_validator_addrs_rate,
                 )
+                .add_client(&push_tx_client)
+                .add_server::<rpc::push_tx::Rpc>(ctx, &push_server, self.cfg.rpc.push_tx_rate)
                 .add_client(&push_block_store_state_client)
                 .add_server::<rpc::push_block_store_state::Rpc>(
                     ctx,

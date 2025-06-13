@@ -13,6 +13,8 @@ pub(crate) const CONNECT_RETRY: time::Duration = time::Duration::seconds(20);
 pub struct RpcConfig {
     /// Max rate of sending/receiving push_validator_addrs messages.
     pub push_validator_addrs_rate: limiter::Rate,
+    /// Max rate of sending/receiving push_tx messages.
+    pub push_tx_rate: limiter::Rate,
     /// Max rate of sending/receiving push_block_store_state messages.
     pub push_block_store_state_rate: limiter::Rate,
     /// Max rate of sending/receiving `get_block` RPCs.
@@ -29,6 +31,10 @@ impl Default for RpcConfig {
             push_validator_addrs_rate: limiter::Rate {
                 burst: 1,
                 refresh: time::Duration::seconds(5),
+            },
+            push_tx_rate: limiter::Rate {
+                burst: 10,
+                refresh: time::Duration::milliseconds(100),
             },
             push_block_store_state_rate: limiter::Rate {
                 burst: 2,
