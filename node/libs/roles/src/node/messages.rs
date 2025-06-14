@@ -1,5 +1,4 @@
 use anyhow::Context as _;
-
 use zksync_consensus_crypto::{keccak256::Keccak256, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::{BadVariantError, Variant};
 use zksync_protobuf::{read_required, required, ProtoFmt};

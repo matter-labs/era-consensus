@@ -9,9 +9,8 @@ use zksync_consensus_crypto::{ed25519, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
 use zksync_protobuf::{required, ProtoFmt};
 
-use crate::proto::node as proto;
-
 use super::{Msg, MsgHash, Signed};
+use crate::proto::node as proto;
 
 /// A node's secret key.
 #[derive(Clone, PartialEq)]
