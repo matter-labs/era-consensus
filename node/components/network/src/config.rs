@@ -15,6 +15,8 @@ pub struct RpcConfig {
     pub push_validator_addrs_rate: limiter::Rate,
     /// Max rate of sending/receiving push_block_store_state messages.
     pub push_block_store_state_rate: limiter::Rate,
+    /// Max rate of sending/receiving push_tx messages.
+    pub push_tx_rate: limiter::Rate,
     /// Max rate of sending/receiving `get_block` RPCs.
     pub get_block_rate: limiter::Rate,
     /// Timeout for the `get_block` RPC.
@@ -33,6 +35,10 @@ impl Default for RpcConfig {
             push_block_store_state_rate: limiter::Rate {
                 burst: 2,
                 refresh: time::Duration::milliseconds(200),
+            },
+            push_tx_rate: limiter::Rate {
+                burst: 10,
+                refresh: time::Duration::milliseconds(10),
             },
             get_block_rate: limiter::Rate {
                 burst: 10,
@@ -83,6 +89,8 @@ pub struct Config {
     pub validator_key: Option<validator::SecretKey>,
     /// Maximal size of the proto-encoded `validator::FinalBlock` in bytes.
     pub max_block_size: usize,
+    /// Maximal size of the proto-encoded `Transaction` in bytes.
+    pub max_tx_size: usize,
     /// If a peer doesn't respond to a ping message within `ping_timeout`,
     /// the connection is dropped.
     /// `None` disables sending ping messages (useful for tests).

@@ -39,6 +39,9 @@ struct Args {
     /// Block payload size in bytes.
     #[arg(long, default_value_t = 1000000)]
     payload_size: usize,
+    /// Transaction size in bytes.
+    #[arg(long, default_value_t = 100000)]
+    tx_size: usize,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -77,6 +80,7 @@ fn main() -> anyhow::Result<()> {
                 .map(|port| SocketAddr::new(Ipv4Addr::UNSPECIFIED.into(), port)),
             genesis: setup.genesis.clone(),
             max_payload_size: args.payload_size,
+            max_tx_size: args.tx_size,
             view_timeout: time::Duration::milliseconds(2000),
             node_key: node_keys[i].clone(),
             validator_key: validator_keys.get(i).cloned(),

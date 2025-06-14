@@ -13,6 +13,7 @@ fn test_schema_encode_decode() {
     test_encode_random::<consensus::Req>(rng);
     test_encode_random::<consensus::Resp>(rng);
     test_encode_random::<push_validator_addrs::Req>(rng);
+    test_encode_random::<push_tx::Req>(rng);
     test_encode_random::<push_block_store_state::Req>(rng);
     test_encode_random::<get_block::Req>(rng);
     test_encode_random::<get_block::Resp>(rng);
