@@ -4,7 +4,7 @@ use zksync_consensus_crypto::keccak256::Keccak256;
 
 /// A transaction propagated by the gossip network. Consensus layer does not interpret the transaction.
 /// It is the responsibility of the execution layer to interpret the transaction.
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq, Hash)]
 pub struct Transaction(pub Vec<u8>);
 
 impl Transaction {

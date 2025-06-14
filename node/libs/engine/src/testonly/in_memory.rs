@@ -1,6 +1,6 @@
 //! In-memory storage implementation.
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     sync::{Arc, Mutex},
 };
 
@@ -62,6 +62,7 @@ impl Engine {
             capacity: None,
             schedules: vec![],
             epoch_length: 0,
+            mempool: Arc::new(Mutex::new(HashSet::new())),
         }))
     }
 
@@ -83,6 +84,7 @@ impl Engine {
             capacity: Some(capacity),
             schedules: vec![],
             epoch_length: 0,
+            mempool: Arc::new(Mutex::new(HashSet::new())),
         }))
     }
 
@@ -150,6 +152,7 @@ impl Engine {
             capacity: None,
             schedules: vec![schedule_a, schedule_b],
             epoch_length: n,
+            mempool: Arc::new(Mutex::new(HashSet::new())),
         }))
     }
 
@@ -169,6 +172,11 @@ impl Engine {
             s.first = first;
             true
         });
+    }
+
+    /// Returns the mempool.
+    pub fn mempool(&self) -> Arc<Mutex<HashSet<Transaction>>> {
+        self.0.mempool.clone()
     }
 }
 
@@ -297,8 +305,8 @@ impl EngineInterface for Engine {
         Ok(())
     }
 
-    async fn push_tx(&self, _ctx: &ctx::Ctx, _tx: Transaction) -> ctx::Result<bool> {
-        Ok(true)
+    async fn push_tx(&self, _ctx: &ctx::Ctx, tx: Transaction) -> ctx::Result<bool> {
+        Ok(self.0.mempool.lock().unwrap().insert(tx))
     }
 }
 
@@ -313,6 +321,7 @@ struct EngineInner {
     capacity: Option<usize>,
     schedules: Vec<validator::Schedule>,
     epoch_length: u64,
+    mempool: Arc<Mutex<HashSet<Transaction>>>,
 }
 
 /// Payload manager for testing purposes.
