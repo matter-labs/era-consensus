@@ -7,8 +7,10 @@ use std::{fmt, sync::Arc};
 pub use ed25519::InvalidSignatureError;
 use zksync_consensus_crypto::{ed25519, ByteFmt, Text, TextFmt};
 use zksync_consensus_utils::enum_util::Variant;
+use zksync_protobuf::{required, ProtoFmt};
 
 use super::{Msg, MsgHash, Signed};
+use crate::proto::node as proto;
 
 /// A node's secret key.
 #[derive(Clone, PartialEq)]
@@ -94,6 +96,18 @@ impl TextFmt for PublicKey {
     }
 }
 
+impl ProtoFmt for PublicKey {
+    type Proto = proto::PublicKey;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.ed25519)?)?))
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            ed25519: Some(self.0.encode()),
+        }
+    }
+}
+
 impl fmt::Debug for PublicKey {
     fn fmt(&self, fmt: &mut fmt::Formatter) -> fmt::Result {
         fmt.write_str(&TextFmt::encode(self))
@@ -110,5 +124,17 @@ impl ByteFmt for Signature {
     }
     fn decode(bytes: &[u8]) -> anyhow::Result<Self> {
         ByteFmt::decode(bytes).map(Self)
+    }
+}
+
+impl ProtoFmt for Signature {
+    type Proto = proto::Signature;
+    fn read(r: &Self::Proto) -> anyhow::Result<Self> {
+        Ok(Self(ByteFmt::decode(required(&r.ed25519)?)?))
+    }
+    fn build(&self) -> Self::Proto {
+        Self::Proto {
+            ed25519: Some(self.0.encode()),
+        }
     }
 }

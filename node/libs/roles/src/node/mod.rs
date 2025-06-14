@@ -1,5 +1,4 @@
 //! Node role implementation.
-mod conv;
 mod keys;
 mod messages;
 mod testonly;
