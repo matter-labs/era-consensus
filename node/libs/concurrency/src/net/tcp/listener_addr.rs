@@ -24,13 +24,13 @@ pub(super) static RESERVED_LISTENER_ADDRS: Lazy<
 /// * it allows to avoid race conditions in tests which require a dedicated TCP port to spawn a
 ///   node on (and potentially restart it every now and then).
 /// * it is implemented by using SO_REUSEPORT socket option (do not confuse with SO_REUSEADDR),
-///   which allows multiple sockets to share a port. reserve_for_test() creates a socket and binds
+///   which allows multiple sockets to share a port. reserve_listener() creates a socket and binds
 ///   it to a random unused local port (without starting a TCP listener).
 ///   This socket won't be used for anything but telling the OS that the given TCP port is in use.
 ///   However thanks to SO_REUSEPORT we can create another socket bind it to the same port
 ///   and make it a listener.
 /// * The reserved port stays reserved until the process terminates - hence during a process
-///   lifetime reserve_for_test() should be called a small amount of times (~1000 should be fine,
+///   lifetime reserve_listener() should be called a small amount of times (~1000 should be fine,
 ///   there are only 2^16 ports on a network interface). TODO(gprusak): we may want to track the
 ///   lifecycle of ListenerAddr (for example via reference counter), so that we can reuse the port
 ///   after all the references are dropped.
@@ -71,16 +71,19 @@ impl ListenerAddr {
         Self(addr)
     }
 
-    /// Binds a TCP listener to this address.
-    pub fn bind(&self) -> std::io::Result<Listener> {
+    /// Binds a TCP listener to this address. If in_production is true, the same port
+    /// is allowed to be reused for multiple listeners. This is necessary for validator set
+    /// rotation since we run multiple instances of the network component at the same time.
+    pub fn bind(&self, in_production: bool) -> std::io::Result<Listener> {
         let socket = match &self.0 {
             std::net::SocketAddr::V4(_) => tokio::net::TcpSocket::new_v4()?,
             std::net::SocketAddr::V6(_) => tokio::net::TcpSocket::new_v6()?,
         };
-        if RESERVED_LISTENER_ADDRS
-            .lock()
-            .unwrap()
-            .contains_key(&self.0)
+        if in_production
+            || RESERVED_LISTENER_ADDRS
+                .lock()
+                .unwrap()
+                .contains_key(&self.0)
         {
             socket.set_reuseport(true)?;
         }
