@@ -101,7 +101,7 @@ impl Network {
 
 impl Runner {
     /// Runs the network component.
-    pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
+    pub async fn run(mut self, ctx: &ctx::Ctx, in_production: bool) -> anyhow::Result<()> {
         // In order to satisfy the borrow checker, this validator schedule needs to live as long as the runner.
         let validators_opt = self.net.gossip.validator_schedule()?;
 
@@ -111,7 +111,7 @@ impl Runner {
                 .gossip
                 .cfg
                 .server_addr
-                .bind()
+                .bind(in_production)
                 .context("server_addr.bind()")?;
 
             // Spawn task to check when this instance of the network component is shutting down.
