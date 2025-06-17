@@ -163,8 +163,8 @@ wildcard_imports       = "warn"
 wildcard_dependencies = "warn"
 
 # Produces too many false positives.
+len_without_is_empty     = "allow"
 box_default              = "allow"
 needless_pass_by_ref_mut = "allow"
 redundant_locals         = "allow"
-# &*x is not equivalent to x, because it affects borrowing in closures.
-borrow_deref_ref = "allow"
+borrow_deref_ref         = "allow" # &*x is not equivalent to x, because it affects borrowing in closures.

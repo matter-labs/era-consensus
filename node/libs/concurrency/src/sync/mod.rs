@@ -172,9 +172,9 @@ pub async fn wait_for_some<T, R>(
 /// Context-aware wrapper for the `recv` method of the `tokio::sync::broadcast` channel.
 /// If the channel lags, we log it and continue. If the channel is closed, we wait for
 /// context cancelation. So this method never errors by itself.
-pub async fn broadcast_recv<'a, T: Clone>(
+pub async fn broadcast_recv<T: Clone>(
     ctx: &ctx::Ctx,
-    recv: &'a mut broadcast::Receiver<T>,
+    recv: &mut broadcast::Receiver<T>,
 ) -> ctx::OrCanceled<T> {
     loop {
         match ctx.wait(recv.recv()).await? {
