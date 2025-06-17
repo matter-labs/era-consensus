@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.11.4](https://github.com/matter-labs/era-consensus/compare/v0.11.3...v0.11.4) (2025-06-16)
+
+
+### Bug Fixes
+
+* Allow port reuse in production ([#269](https://github.com/matter-labs/era-consensus/issues/269)) ([d2c57f2](https://github.com/matter-labs/era-consensus/commit/d2c57f288a41a5f3e6e2348de5e94f44e39c11cb))
+
 ## [0.11.3](https://github.com/matter-labs/era-consensus/compare/v0.11.2...v0.11.3) (2025-06-10)
 
 

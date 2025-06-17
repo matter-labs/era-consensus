@@ -170,7 +170,7 @@ impl InstanceRunner {
     /// Runs the instance background processes.
     pub async fn run(mut self, ctx: &ctx::Ctx) -> anyhow::Result<()> {
         scope::run!(ctx, |ctx, s| async {
-            s.spawn_bg(self.net_runner.run(ctx));
+            s.spawn_bg(self.net_runner.run(ctx, false));
             let _ = self.terminate.recv(ctx).await;
             Ok(())
         })

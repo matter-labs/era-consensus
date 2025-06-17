@@ -297,7 +297,10 @@ async fn test_genesis_mismatch() {
     let cfgs = testonly::new_configs(rng, &setup, 1);
 
     scope::run!(ctx, |ctx, s| async {
-        let mut listener = cfgs[1].server_addr.bind().context("server_addr.bind()")?;
+        let mut listener = cfgs[1]
+            .server_addr
+            .bind(false)
+            .context("server_addr.bind()")?;
 
         tracing::trace!("Start one node, we will simulate the other one.");
         let engine = TestEngine::new(ctx, &setup).await;

@@ -164,7 +164,7 @@ impl Executor {
                 network_recv,
             )?;
             net.register_metrics();
-            s.spawn(async { runner.run(ctx).await.context("Network stopped") });
+            s.spawn(async { runner.run(ctx, true).await.context("Network stopped") });
 
             if let Some(cfg) = self.config.debug_page.clone() {
                 s.spawn(async {

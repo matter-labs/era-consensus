@@ -28,7 +28,7 @@ pub fn reserve_listener() -> ListenerAddr {
 pub async fn pipe(ctx: &ctx::Ctx) -> (Stream, Stream) {
     let addr = reserve_listener();
     scope::run!(ctx, |ctx, s| async {
-        let mut listener = addr.bind()?;
+        let mut listener = addr.bind(false)?;
         let s1 = s.spawn(async { connect(ctx, *addr).await.unwrap() });
         let s2 = accept(ctx, &mut listener).await.unwrap()?;
         Ok((s1.join(ctx).await.unwrap(), s2))
